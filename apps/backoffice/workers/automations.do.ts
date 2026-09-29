@@ -417,8 +417,8 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
     return {
       apiKeys: piApiKeys(this.#env),
       models: this.#piModels,
-      codemode: this.#env
-        ? createPiCodemodeRuntime(this.#env)
+      codemode: this.#runtimeServices.codemodeEnv
+        ? createPiCodemodeRuntime(this.#runtimeServices.codemodeEnv)
         : createUnavailablePiCodemodeRuntime(),
       createRuntime: this.#createPiRuntime
         ? (execution: BackofficeExecutionContext) => this.#createPiRuntime!(execution, this.#kernel)

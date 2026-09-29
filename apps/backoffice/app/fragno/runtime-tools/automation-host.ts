@@ -5,6 +5,7 @@ import {
   createAutomationRunResult,
   type AutomationRunResult,
 } from "@/fragno/automation/run-result";
+import type { BackofficeCodemodeEnv } from "@/fragno/codemode/execute";
 
 import {
   createBashHost,
@@ -64,16 +65,14 @@ export const executeAutomationScript = async ({
   script: string;
   context: AutomationScriptHostContext;
   masterFs: MasterFileSystem;
-  env?: CloudflareEnv;
+  env?: BackofficeCodemodeEnv;
 }) => {
   switch (engine) {
     case "bash":
       return executeBashAutomation({ script, context, masterFs });
     case "codemode": {
-      if (!env?.LOADER) {
-        throw new Error(
-          "Codemode automation requires the Cloudflare Worker Loader. Run codemode execution tests with vitest.cloudflare.config.ts.",
-        );
+      if (!env) {
+        throw new Error("Codemode automation requires a configured executor.");
       }
 
       const { executeCodemodeAutomation } = await import("@/fragno/automation/engine/codemode");

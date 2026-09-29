@@ -1,9 +1,8 @@
-import type { WorkerCompiler } from "./dynamic-workers/compile-worker";
+import type { BackofficeCodemodeEnv } from "@/fragno/codemode/execute";
 
 /** Runtime bindings and configuration consumed by Backoffice objects and codemode execution. */
 export type BackofficeRuntimeEnv = {
-  LOADER?: WorkerLoader;
-  compileWorker?: WorkerCompiler;
+  codemode: BackofficeCodemodeEnv | null;
   DOCS_PUBLIC_BASE_URL?: string;
   TURNSTILE_SITEKEY?: string;
   GITHUB_CLIENT_ID?: string;

@@ -1,3 +1,4 @@
+import type { ToolProvider } from "@fragno-dev/codemode/runtime-api";
 import { defineCommand } from "just-bash";
 import type { z } from "zod";
 
@@ -19,7 +20,6 @@ import {
 } from "@/backoffice-runtime/permissions";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 import type { BackofficeCapabilityId } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
-import type { ToolProvider } from "@/fragno/codemode/codemode-executor";
 import type {
   AutomationCommandExecutionResult,
   AutomationCommandHelp,

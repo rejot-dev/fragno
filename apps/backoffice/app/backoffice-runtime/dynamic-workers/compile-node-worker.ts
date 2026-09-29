@@ -1,7 +1,7 @@
-import type { WorkerCompiler } from "./compile-worker";
-import { createWorkerBundle } from "./worker-bundle";
+import type { WorkerCompiler } from "@fragno-dev/codemode/compiler/compile-worker";
+import { createWorkerBundle } from "@fragno-dev/codemode/compiler/worker-bundle";
 
-/** Compiles the single bundled JavaScript module accepted by Node's Deno codemode runtime. */
+/** Adapts one JavaScript entrypoint for the in-process scenario loader, never production execution. */
 export const compileNodeWorker: WorkerCompiler = async (input) => {
   if (Object.keys(input.dependencies).length > 0) {
     throw new Error("Node codemode compilation does not support npm dependencies.");

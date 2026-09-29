@@ -201,7 +201,8 @@ export const createCodemodeWorkflowAgent = ({
   let activePromptName: string | null = null;
 
   return {
-    prompt: async (parentScope, rawName, rawInput, toolExecutor) => {
+    prompt: async (parentScope, rawName, rawInput, toolExecutor, signal) => {
+      signal.throwIfAborted();
       const name = z.string().trim().min(1).parse(rawName);
       const input = workflowAgentPromptInputSchema.parse(rawInput);
       const toolDefinitions = input.tools ?? [];
@@ -238,30 +239,47 @@ export const createCodemodeWorkflowAgent = ({
               : [];
             const harness = new AgentHarness({ ...harnessOptions, ...restored.options, tools });
 
-            return await withWorkflowAgentHarness({
-              restored,
-              harness,
-              tx,
-              runDurableStep: async () => ({
-                assistant: await harness.prompt(
-                  input.text,
-                  input.images ? { images: input.images } : undefined,
-                ),
-              }),
-              onTerminalOutcome: ({ operationEntries }) => {
-                schedulePiOperationCompletedHook({
-                  tx,
-                  actor,
-                  workflowName,
-                  sessionId: workflowInstanceId,
-                  metadata,
-                  stepName: name,
-                  operationId,
-                  operation: "prompt",
-                  operationEntries,
-                });
-              },
-            });
+            signal.throwIfAborted();
+            const abortTasks: Array<ReturnType<typeof harness.abort>> = [];
+            const abortHarness = () => {
+              const abortTask = harness.abort();
+              abortTasks.push(abortTask);
+              // Observe cleanup failures immediately, then propagate them when the prompt unwinds.
+              void abortTask.catch(() => {});
+            };
+            signal.addEventListener("abort", abortHarness, { once: true });
+            try {
+              return await withWorkflowAgentHarness({
+                restored,
+                harness,
+                tx,
+                runDurableStep: async () => {
+                  signal.throwIfAborted();
+                  const assistant = await harness.prompt(
+                    input.text,
+                    input.images ? { images: input.images } : undefined,
+                  );
+                  signal.throwIfAborted();
+                  return { assistant };
+                },
+                onTerminalOutcome: ({ operationEntries }) => {
+                  schedulePiOperationCompletedHook({
+                    tx,
+                    actor,
+                    workflowName,
+                    sessionId: workflowInstanceId,
+                    metadata,
+                    stepName: name,
+                    operationId,
+                    operation: "prompt",
+                    operationEntries,
+                  });
+                },
+              });
+            } finally {
+              signal.removeEventListener("abort", abortHarness);
+              await Promise.all(abortTasks);
+            }
           },
         );
 

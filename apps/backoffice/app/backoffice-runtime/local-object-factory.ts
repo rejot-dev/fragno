@@ -296,7 +296,7 @@ const localObjectFactories = {
   SANDBOX_MANAGER: ({ state, env, runtime, implementation }) =>
     new InMemorySandboxManagerObject({
       state,
-      env: env as CloudflareEnv,
+      env: env as unknown as CloudflareEnv,
       runtime,
       implementation,
     }),
@@ -435,7 +435,7 @@ export class LocalObjectFactory implements BackofficeObjectFactory {
               execution: context.execution,
               propagationContext: context.propagationContext ?? null,
             },
-            env: this.env as CloudflareEnv,
+            env: this.env as unknown as CloudflareEnv,
             nowEpochMs: this.now(),
           }),
         ),

@@ -1,3 +1,8 @@
+import type {
+  WorkerCompiler,
+  WorkerTypeChecker,
+} from "@fragno-dev/codemode/compiler/compile-worker";
+import { createWorkerTypeCheckerServiceClient } from "@fragno-dev/codemode/compiler/compiler-service-client";
 import type { FragmentDurableObjectHostOperations } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 
 import type { FragnoRuntime } from "@fragno-dev/core";
@@ -15,8 +20,6 @@ import {
   type BackofficeDatabaseAdapterFactory,
   type BackofficeDatabaseAdapterScope,
 } from "./database-adapters";
-import type { WorkerCompiler, WorkerTypeChecker } from "./dynamic-workers/compile-worker";
-import { createWorkerTypeCheckerServiceClient } from "./dynamic-workers/compiler-service-client";
 import { noopBackofficeKernelObserver, type BackofficeKernelObserver } from "./kernel";
 import type { BackofficeObjectRegistry } from "./object-registry";
 

@@ -1,6 +1,6 @@
+import type { ToolProvider } from "@fragno-dev/codemode/runtime-api";
 import { z } from "zod";
 
-import type { ToolProvider } from "@/fragno/codemode/codemode-executor";
 import type {
   McpListServersOutput,
   McpRuntime,

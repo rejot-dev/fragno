@@ -1,3 +1,5 @@
+import type { WorkerTypeChecker } from "@fragno-dev/codemode/compiler/compile-worker";
+
 import { defaultFragnoRuntime } from "@fragno-dev/core";
 
 import type { AutomationSourceReader } from "@/fragno/automation/automation-source";
@@ -8,7 +10,6 @@ import {
 } from "../authority-resolver";
 import type { BackofficeRuntimeEnv } from "../backoffice-runtime-env";
 import type { BackofficeDatabaseAdapterFactory } from "../database-adapters";
-import type { WorkerTypeChecker } from "../dynamic-workers/compile-worker";
 import { createInMemoryBackofficeDatabaseAdapters } from "../in-memory-database-adapters";
 import { noopBackofficeKernelObserver, type BackofficeKernelObserver } from "../kernel";
 import { LocalObjectFactory, type LocalObjectFactoryOverrides } from "../local-object-factory";
@@ -106,13 +107,7 @@ export async function createLocalBackofficeRuntime(
         { now: () => objectFactory.now() },
       ),
     kernelObserver: options.kernelObserver ?? noopBackofficeKernelObserver,
-    codemodeEnv:
-      options.runtimeEnv.LOADER && options.runtimeEnv.compileWorker
-        ? {
-            LOADER: options.runtimeEnv.LOADER,
-            compileWorker: options.runtimeEnv.compileWorker,
-          }
-        : null,
+    codemodeEnv: options.runtimeEnv.codemode,
     workerTypeChecker: options.workerTypeChecker ?? null,
     fragnoRuntime: {
       ...defaultFragnoRuntime,

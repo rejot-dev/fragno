@@ -92,6 +92,34 @@ describe("runBackofficeCodemode", () => {
     assert(result.result === "hello expression");
   });
 
+  test.each([
+    { label: "primitive", code: '() => { throw "boom"; }', error: "boom" },
+    {
+      label: "object message",
+      code: '() => { throw { message: "object boom" }; }',
+      error: "object boom",
+    },
+    {
+      label: "empty string",
+      code: '() => { throw ""; }',
+      error: "CODEMODE_EXECUTION_FAILED",
+    },
+    {
+      label: "empty Error message",
+      code: "() => { throw new Error(); }",
+      error: "CODEMODE_EXECUTION_FAILED",
+    },
+  ])("reports $label throws as execution errors", async ({ code, error }) => {
+    const result = await runBackofficeCodemode({
+      env,
+      families: runtimeToolFamilies,
+      toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
+      code,
+    });
+
+    expect(result).toMatchObject({ result: undefined, error, toolCalls: [] });
+  });
+
   test("returns the exact current execution scope", async () => {
     const toolContext = createTrustedSystemBackofficeToolContext({ runtimes: {} });
     const result = await runBackofficeCodemode({
@@ -715,7 +743,7 @@ describe("runBackofficeCodemode", () => {
 
   test("runs route-backed event emit tools through codemode handles", async () => {
     const runtime = await createInMemoryBackofficeRuntime({
-      env: { LOADER: env.LOADER },
+      env: { codemode: env },
       authorityResolver: unrestrictedBackofficeAuthorityResolver,
     });
     try {
@@ -762,7 +790,7 @@ describe("runBackofficeCodemode", () => {
   });
 
   test("runs project-scoped automation store tools through codemode handles", async () => {
-    const runtime = await createInMemoryBackofficeRuntime({ env: { LOADER: env.LOADER } });
+    const runtime = await createInMemoryBackofficeRuntime({ env: { codemode: env } });
     try {
       const kernel = new BackofficeKernel(runtime.services);
       const routeContext = createRouteBackedRuntimeContext({

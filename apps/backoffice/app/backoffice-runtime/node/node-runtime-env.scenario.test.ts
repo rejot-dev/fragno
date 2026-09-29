@@ -1,4 +1,4 @@
-import { expect, test, vi } from "vitest";
+import { beforeAll, afterAll, expect, test, vi } from "vitest";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
   DurableObject: class {},
@@ -7,39 +7,53 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
 }));
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
+import { createCodemodeTestServer } from "@fragno-dev/codemode/testing/codemode-test-server";
+
 import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
 
 import { createNodeBackofficeRuntimeEnv } from "./node-runtime-env";
 
-test("Node production codemode executes through Deno in a Backoffice scenario", async () => {
+let server: Awaited<ReturnType<typeof createCodemodeTestServer>>;
+beforeAll(async () => {
+  server = await createCodemodeTestServer();
+});
+afterAll(async () => {
+  await server?.close();
+});
+
+test("Node production codemode persists scoped state through an ordinary Worker WebSocket", async () => {
   const env = await createNodeBackofficeRuntimeEnv({
-    denoExecutable: process.env.DENO_EXECUTABLE,
+    executorUrl: server.url,
+    executorApiKey: server.apiKey,
     env: {},
   });
-
   await runBackofficeScenario(
     defineBackofficeScenario({
-      name: "Node production codemode executes through Deno",
+      name: "Node-authoritative state across separate WebSocket activations",
       env,
       setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
       steps: ({ when, then }) => [
         when.codemode.run({
           orgId: "org-1",
-          label: "execute realm-detached Deno codemode",
-          code: `async () => ({ runtime: "deno", nested: { safe: true } })`,
+          code: `async () => {
+        await context.current.store.set({ key: "remote-state", value: "saved" });
+        return await context.getCurrentScope();
+      }`,
         }),
-        then.assert("Deno returns host-realm codemode results", (ctx) => {
-          const result = ctx.codemodeRuns.at(-1)?.result;
-          if (!result) {
-            throw new Error("Deno codemode scenario did not record a result.");
-          }
-          expect(result).toMatchObject({
-            result: { runtime: "deno", nested: { safe: true } },
+        when.codemode.run({
+          orgId: "org-1",
+          code: `async () => await context.current.store.get({ key: "remote-state" })`,
+        }),
+        then.assert("SQLite-backed state survives executor replacement", (ctx) => {
+          expect(ctx.codemodeRuns[0].result.result).toEqual({ kind: "org", orgId: "org-1" });
+          expect(ctx.codemodeRuns[1].result).toMatchObject({
+            result: { value: "saved" },
             logs: [],
           });
-          expect(Object.getPrototypeOf(result.result)).toBe(Object.prototype);
-          expect(Object.getPrototypeOf((result.result as { nested: object }).nested)).toBe(
-            Object.prototype,
+          expect(ctx.codemodeRuns[0].result.toolCalls).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({ toolName: "set", status: "success" }),
+            ]),
           );
         }),
       ],

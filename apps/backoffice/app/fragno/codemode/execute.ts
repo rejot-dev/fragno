@@ -1,8 +1,15 @@
-import type {
-  CompiledWorker,
-  WorkerCompiler,
-} from "@/backoffice-runtime/dynamic-workers/compile-worker";
-import { createWorkerCompilerServiceClient } from "@/backoffice-runtime/dynamic-workers/compiler-service-client";
+import type { CompiledWorker, WorkerCompiler } from "@fragno-dev/codemode/compiler/compile-worker";
+import { createWorkerCompilerServiceClient } from "@fragno-dev/codemode/compiler/compiler-service-client";
+import {
+  normalizeCode,
+  resolveProvider,
+  type ExecuteResult,
+  type ResolvedProvider,
+} from "@fragno-dev/codemode/runtime-api";
+import type { CodemodeRemoteExecutor } from "@fragno-dev/codemode/transport/codemode-protocol";
+import { DynamicWorkerExecutor } from "@fragno-dev/codemode/worker/codemode-executor";
+import { createCodemodeExpressionSource } from "@fragno-dev/codemode/worker/codemode-guest-source";
+
 import type { NpmDependencyMap } from "@/backoffice-runtime/dynamic-workers/npm-dependencies";
 import { createMcpCodemodeProviders } from "@/fragno/codemode/mcp-codemode-tools";
 import {
@@ -16,15 +23,13 @@ import type {
 } from "@/fragno/runtime-tools/runtime-tools";
 import type { CoreBackofficeToolContext } from "@/fragno/runtime-tools/tool-families";
 
-import {
-  DynamicWorkerExecutor,
-  normalizeCode,
-  resolveProvider,
-  type ExecuteResult,
-  type ResolvedProvider,
-} from "./codemode-executor";
+import { runBackofficeRemoteImmediate } from "./remote-immediate-execute";
 
-export type BackofficeCodemodeEnv = {
+export type BackofficeCodemodeEnv =
+  | LocalBackofficeCodemodeEnv
+  | { remoteExecutor: CodemodeRemoteExecutor };
+
+export type LocalBackofficeCodemodeEnv = {
   LOADER: WorkerLoader;
   /**
    * Outbound egress capability for workflow sandboxes (the `OutboundProxy`
@@ -217,7 +222,7 @@ export const createBackofficeCodemodeResolvedProviders = async ({
 };
 
 /** Resolves the in-process test compiler or private production compiler service. */
-export function resolveBackofficeWorkerCompiler(env: BackofficeCodemodeEnv): WorkerCompiler {
+export function resolveBackofficeWorkerCompiler(env: LocalBackofficeCodemodeEnv): WorkerCompiler {
   if (env.compileWorker) {
     return env.compileWorker;
   }
@@ -238,27 +243,38 @@ export const runBackofficeCodemode = async ({
 }: RunBackofficeCodemodeInput): Promise<BackofficeCodemodeExecuteResult> => {
   const toolCalls: BackofficeRuntimeToolCall[] = [];
 
-  const executor = new DynamicWorkerExecutor({
-    loader: env.LOADER,
-    timeout,
-    // Default (caller passed nothing): grant egress via the host's OUTBOUND
-    // capability when bound, else stay sealed. An explicit Fetcher or `null` wins.
-    globalOutbound: globalOutbound === undefined ? (env.OUTBOUND ?? null) : globalOutbound,
-  });
-
   const providers = await createBackofficeCodemodeResolvedProviders({
     families,
     toolContext,
     toolCalls,
   });
-
+  if ("remoteExecutor" in env) {
+    if (globalOutbound) {
+      throw new Error("CODEMODE_REMOTE_EGRESS_UNSUPPORTED");
+    }
+    return {
+      ...(await runBackofficeRemoteImmediate({
+        execute: env.remoteExecutor,
+        kind: "immediate",
+        code,
+        dependencies: dependencies ?? {},
+        timeout,
+        providers,
+      })),
+      toolCalls,
+    };
+  }
+  const executor = new DynamicWorkerExecutor({
+    loader: env.LOADER,
+    globalOutbound: globalOutbound === undefined ? (env.OUTBOUND ?? null) : globalOutbound,
+  });
   const executableCode = normalizeBackofficeCodemodeCode(code);
   let compiled: CompiledWorker;
   try {
     const compile = resolveBackofficeWorkerCompiler(env);
     compiled = await compile({
       files: {
-        "executor.js": executor.createExecutorModule(executableCode, providers),
+        "executor.js": createCodemodeExpressionSource(executableCode, providers, timeout),
       },
       entryPoint: "executor.js",
       dependencies: dependencies ?? {},

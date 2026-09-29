@@ -93,8 +93,7 @@ const createInMemoryWorkerLoader = (): WorkerLoader => {
 
 /** Creates the node:vm runtime environment used only by in-process tests. */
 export const defaultInMemoryBackofficeRuntimeEnv = (): BackofficeRuntimeEnv => ({
-  LOADER: createInMemoryWorkerLoader(),
-  compileWorker: compileNodeWorker,
+  codemode: { LOADER: createInMemoryWorkerLoader(), compileWorker: compileNodeWorker },
   DOCS_PUBLIC_BASE_URL: "https://example.com",
   TURNSTILE_SITEKEY: "0x4AAAAAACEAKTUMl498hZ6v",
   GITHUB_CLIENT_ID: "in-memory-github-client-id",

@@ -100,17 +100,14 @@ const createScenarioPiExecCodeMode = async (
   sessionId: string,
   execution: BackofficeExecutionContext,
 ): Promise<AgentTool> => {
-  const loader = ctx.runtime.env.LOADER;
-  if (!loader) {
-    throw new Error("Pi authority scenario requires a Worker Loader.");
+  const codemode = ctx.runtime.env.codemode;
+  if (!codemode) {
+    throw new Error("Pi authority scenario requires a codemode executor.");
   }
 
   const kernel = new BackofficeKernel(ctx.runtime.services);
   const createTools = createPiToolFactory({
-    codemode: createPiCodemodeRuntime({
-      LOADER: loader,
-      compileWorker: ctx.runtime.env.compileWorker,
-    }),
+    codemode: createPiCodemodeRuntime(codemode),
     runtimeToolContext: (toolExecution) =>
       createRouteBackedRuntimeContext({
         runtime: ctx.runtime.services,

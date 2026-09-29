@@ -1,4 +1,7 @@
-import type { CompiledWorker } from "@/backoffice-runtime/dynamic-workers/compile-worker";
+import type { CompiledWorker } from "@fragno-dev/codemode/compiler/compile-worker";
+import { DynamicWorkerExecutor } from "@fragno-dev/codemode/worker/codemode-executor";
+import { createCodemodeModuleSource } from "@fragno-dev/codemode/worker/codemode-guest-source";
+
 import {
   createBackofficeCodemodeResolvedProviders,
   resolveBackofficeWorkerCompiler,
@@ -8,7 +11,7 @@ import {
 import type { BackofficeRuntimeToolFamily } from "@/fragno/runtime-tools/runtime-tools";
 import type { CoreBackofficeToolContext } from "@/fragno/runtime-tools/tool-families";
 
-import { DynamicWorkerExecutor } from "./codemode-executor";
+import { runBackofficeRemoteImmediate } from "./remote-immediate-execute";
 
 export type RunBackofficeJavaScriptModuleInput = {
   code: string;
@@ -29,22 +32,37 @@ export async function runBackofficeJavaScriptModule({
   globalOutbound,
 }: RunBackofficeJavaScriptModuleInput): Promise<BackofficeCodemodeExecuteResult> {
   const toolCalls: BackofficeCodemodeExecuteResult["toolCalls"] = [];
-  const executor = new DynamicWorkerExecutor({
-    loader: env.LOADER,
-    timeout,
-    globalOutbound: globalOutbound === undefined ? (env.OUTBOUND ?? null) : globalOutbound,
-  });
   const providers = await createBackofficeCodemodeResolvedProviders({
     families,
     toolContext,
     toolCalls,
+  });
+  if ("remoteExecutor" in env) {
+    if (globalOutbound) {
+      throw new Error("CODEMODE_REMOTE_EGRESS_UNSUPPORTED");
+    }
+    return {
+      ...(await runBackofficeRemoteImmediate({
+        execute: env.remoteExecutor,
+        kind: "module",
+        code,
+        dependencies: {},
+        timeout,
+        providers,
+      })),
+      toolCalls,
+    };
+  }
+  const executor = new DynamicWorkerExecutor({
+    loader: env.LOADER,
+    globalOutbound: globalOutbound === undefined ? (env.OUTBOUND ?? null) : globalOutbound,
   });
 
   let compiled: CompiledWorker;
   try {
     compiled = await resolveBackofficeWorkerCompiler(env)({
       files: {
-        "executor.js": executor.createJavaScriptModuleExecutorModule("./script.js", providers),
+        "executor.js": createCodemodeModuleSource("./script.js", providers, timeout),
         "script.js": code,
       },
       entryPoint: "executor.js",

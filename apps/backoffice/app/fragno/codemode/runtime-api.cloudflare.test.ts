@@ -1,6 +1,6 @@
 import { describe, expect, test, assert } from "vitest";
 
-import { normalizeCode } from "./runtime-api";
+import { normalizeCode } from "@fragno-dev/codemode/runtime-api";
 
 describe("normalizeCode", () => {
   test("trims surrounding whitespace", () => {

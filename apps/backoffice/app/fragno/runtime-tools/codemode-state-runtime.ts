@@ -1,6 +1,6 @@
+import type { ToolProvider } from "@fragno-dev/codemode/runtime-api";
 import { z } from "zod";
 
-import type { ToolProvider } from "@/fragno/codemode/runtime-api";
 import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
 import { jsonValueSchema } from "@/lib/zod/json-value";
 

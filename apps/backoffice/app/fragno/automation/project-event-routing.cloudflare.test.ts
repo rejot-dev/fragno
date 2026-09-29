@@ -203,7 +203,7 @@ describe("project automation event routing", () => {
 
   test("emits project.created hooks and mounts project workspaces by slug", async () => {
     const orgId = "org-1";
-    runtime = await createInMemoryBackofficeRuntime({ env: { LOADER: env.LOADER } });
+    runtime = await createInMemoryBackofficeRuntime({ env: { codemode: env } });
 
     const orgAutomations = runtime.objects.automations.forOrg(orgId);
     const orgRoutes = createAutomationsRouteCaller({ object: orgAutomations });
@@ -268,7 +268,7 @@ describe("project automation event routing", () => {
 
   test("does not instantiate project automations for archived projects", async () => {
     const orgId = "org-1";
-    runtime = await createInMemoryBackofficeRuntime({ env: { LOADER: env.LOADER } });
+    runtime = await createInMemoryBackofficeRuntime({ env: { codemode: env } });
 
     const orgAutomations = runtime.objects.automations.forOrg(orgId);
     const orgRoutes = createAutomationsRouteCaller({ object: orgAutomations });

@@ -1,8 +1,8 @@
 import { assert, describe, expect, test, vi } from "vitest";
 
+import type { WorkerTypeChecker } from "@fragno-dev/codemode/compiler/compile-worker";
 import { InMemoryFs } from "just-bash";
 
-import type { WorkerTypeChecker } from "@/backoffice-runtime/dynamic-workers/compile-worker";
 import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
 import { createTrustedSystemBackofficeToolContext } from "@/fragno/runtime-tools/runtime-tools";
 
@@ -125,6 +125,30 @@ describe("createJavaScriptRuntime", () => {
     await fileSystem.writeFile(
       "/workspace/example.js",
       `/* import value from "./unused.js"; */\nconst message = \`export * from "./unused.js"\`;`,
+    );
+    const typeCheckFiles = vi.fn<WorkerTypeChecker>(async () => ({ diagnostics: [] }));
+    const runtime = createJavaScriptRuntime({
+      getStateBackend: async () => createTestJavaScriptStateBackend(fileSystem),
+      typeCheckFiles,
+      executeModule: null,
+    });
+    assert(runtime.checkFile);
+
+    await expect(runtime.checkFile({ path: "/workspace/example.js" })).resolves.toMatchObject({
+      path: "/workspace/example.js",
+      valid: true,
+      diagnostics: [],
+    });
+    expect(typeCheckFiles).toHaveBeenCalledOnce();
+  });
+
+  test("allows semicolonless local exports before from-named declarations", async () => {
+    const fileSystem = new InMemoryFs();
+    await fileSystem.mkdir("/static", { recursive: true });
+    await fileSystem.mkdir("/workspace", { recursive: true });
+    await fileSystem.writeFile(
+      "/workspace/example.js",
+      "const value = 1;\nexport { value }\nconst from = 2;",
     );
     const typeCheckFiles = vi.fn<WorkerTypeChecker>(async () => ({ diagnostics: [] }));
     const runtime = createJavaScriptRuntime({

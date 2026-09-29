@@ -112,18 +112,24 @@ test("rejects overlapping prompts before they can branch the shared session", as
   const agent = createAgent({ do: doStep } as unknown as RemoteWorkflowStepHost);
 
   const firstPromptError = agent
-    .prompt(null, "first", { text: "First prompt" }, null)
+    .prompt(null, "first", { text: "First prompt" }, null, new AbortController().signal)
     .catch((error: unknown) => error);
 
-  await expect(agent.prompt(null, "second", { text: "Second prompt" }, null)).rejects.toThrow(
-    "WORKFLOW_AGENT_CONCURRENT_PROMPT",
-  );
+  await expect(
+    agent.prompt(null, "second", { text: "Second prompt" }, null, new AbortController().signal),
+  ).rejects.toThrow("WORKFLOW_AGENT_CONCURRENT_PROMPT");
   expect(doStep).toHaveBeenCalledTimes(1);
 
   rejectFirstPrompt(new Error("FIRST_PROMPT_STOPPED"));
   await expect(firstPromptError).resolves.toMatchObject({ message: "FIRST_PROMPT_STOPPED" });
 
-  const nextPrompt = agent.prompt(null, "third", { text: "Third prompt" }, null);
+  const nextPrompt = agent.prompt(
+    null,
+    "third",
+    { text: "Third prompt" },
+    null,
+    new AbortController().signal,
+  );
   expect(doStep).toHaveBeenCalledTimes(2);
   await expect(nextPrompt).rejects.toThrow("THIRD_PROMPT_STOPPED");
 });
@@ -151,11 +157,15 @@ test("propagates a remote suspension before projecting the committed prompt resu
   } as unknown as RemoteWorkflowStepHost;
   const agent = createAgent(remote);
 
-  await expect(agent.prompt(null, "suspended", { text: "Suspend" }, null)).rejects.toMatchObject({
+  await expect(
+    agent.prompt(null, "suspended", { text: "Suspend" }, null, new AbortController().signal),
+  ).rejects.toMatchObject({
     name: "RemoteWorkflowSuspendedError",
     reason: suspension.reason,
   });
-  await expect(agent.prompt(null, "suspended", { text: "Replay" }, null)).resolves.toMatchObject({
+  await expect(
+    agent.prompt(null, "suspended", { text: "Replay" }, null, new AbortController().signal),
+  ).resolves.toMatchObject({
     text: "replayed response",
     stopReason: "stop",
     leafId: null,
@@ -232,7 +242,13 @@ test("returns tool results in durable transcript order instead of executor compl
   } as unknown as RemoteWorkflowStepHost;
   const agent = createAgent(remote);
 
-  const result = await agent.prompt(null, "ordered-tools", { text: "Use both tools" }, null);
+  const result = await agent.prompt(
+    null,
+    "ordered-tools",
+    { text: "Use both tools" },
+    null,
+    new AbortController().signal,
+  );
 
   expect(result.toolResults).toEqual([
     {

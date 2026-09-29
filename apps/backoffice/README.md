@@ -1,38 +1,47 @@
 # Backoffice
 
-Backoffice deploys as three Cloudflare Workers:
+Backoffice deploys as two Cloudflare Workers:
 
-- `rejot-codemode-compiler` owns the stateless TypeScript and esbuild service.
 - `rejot-backoffice` owns the Durable Objects and backend bindings.
 - `rejot-backoffice-web` is the public React Router Worker.
+
+Compilation and type-checking live in the separately deployed
+[`cf-sandbox-bridge`](../cf-sandbox-bridge/README.md#compiler). Both Backoffice Workers bind
+`CODEMODE_COMPILER` to its private `CodemodeCompiler` entrypoint; guest execution still uses
+Backoffice's own Worker Loader. There is no standalone compiler Worker. For local Cloudflare
+codemode development, start the bridge's `dev` script alongside Backoffice.
 
 ## Build outputs
 
 `pnpm --dir apps/backoffice build` produces:
 
 ```text
-dist/rejot_codemode_compiler/wrangler.json # rejot-codemode-compiler
 dist/rejot_backoffice/wrangler.json        # rejot-backoffice
 build/server/wrangler.json                  # rejot-backoffice-web
 ```
 
 React Router owns the primary Worker build under `build/server`. Cloudflare's Vite plugin builds the
-compiler and object host as independent auxiliary Worker module graphs under `dist`.
+object host as an independent auxiliary Worker module graph under `dist`.
 
 Use these generated configs for uploads. They point to compiled bundles where Vite has resolved
-virtual modules and raw asset imports. The source configs, `wrangler.compiler.jsonc`,
-`wrangler.jsonc`, and `wrangler.web.jsonc`, are sufficient when activating versions because
-activation does not rebuild the source.
+virtual modules and raw asset imports. The source configs, `wrangler.jsonc` and
+`wrangler.web.jsonc`, are sufficient when activating versions because activation does not rebuild
+the source.
 
 ## Run on Node with file-backed SQLite
 
 For a file-backed Node instance without Cloudflare bindings, create `apps/backoffice/.dev.vars` from
 `.dev.vars.example` if you do not already have one. Set `AUTH_ACCESS_TOKEN_SECRET` and
 `BACKOFFICE_INTERNAL_REQUEST_SECRET` there; replace the example secrets with strong values and keep
-them unchanged across restarts. Install Deno for codemode execution; Node discovers it from `PATH`,
-`DENO_INSTALL`, or `~/.deno/bin`, and `DENO_EXECUTABLE` can select another executable. SQLite data
-defaults to `.backoffice-node/`; set `BACKOFFICE_SQLITE_DIR` in `.dev.vars` to use another path. The
-file and default data directory are ignored by git.
+them unchanged across restarts. Codemode requires `apps/cf-sandbox-bridge`, which includes its
+compiler. Set `CODEMODE_EXECUTOR_URL` to the bridge's `wss://` origin and
+`CODEMODE_EXECUTOR_API_KEY` to its `SANDBOX_API_KEY`. For local Wrangler development,
+`ws://127.0.0.1:8787` is allowed. Both Node processes use these same settings. Missing configuration
+fails startup; bridge unavailability fails the invocation without a local fallback or automatic
+immediate retry. Node no longer needs Deno. A disconnected activation has an unknown outcome: tool
+effects already performed are not rolled back. Workflow retries follow the existing Node-owned step
+policy and checkpoints. SQLite data defaults to `.backoffice-node/`; set `BACKOFFICE_SQLITE_DIR` in
+`.dev.vars` to use another path. The file and default data directory are ignored by git.
 
 ```bash
 pnpm --dir apps/backoffice start:node
@@ -150,11 +159,12 @@ belongs in SQLite; read/await/write sequences need OCC, a transaction, or an exp
 processor process in production; `start:node` runs that same topology under one local process
 multiplexer.
 
-Codemode executes in a separate Deno process and Web Worker with filesystem, network, environment,
-subprocess, system, FFI, and remote-import permissions denied. The Node process communicates with it
-over a capability-based stdio RPC bridge and terminates executions after a hard timeout. Node
-codemode currently accepts one bundled JavaScript entry point and rejects requested npm
-dependencies.
+Codemode executes in a sealed dynamic Worker in `cf-sandbox-bridge`, with compilation performed
+directly inside that bridge. One authenticated WebSocket carries each expression, JavaScript module,
+or workflow activation. Node keeps runtime-tool authorization, scoped/MCP providers, workflow
+checkpoints, and durable agent state. The executor owns no durable state, cannot reconnect to an old
+activation, and does not grant the guest direct internet access. Source, frames, calls, logs, CPU,
+subrequests, and activation duration are bounded by `@fragno-dev/codemode`.
 
 If you access Node Backoffice through an HTTPS reverse proxy, set `DOCS_PUBLIC_BASE_URL` to its
 public HTTPS URL. Have the proxy **preserve the public `Host` header** and overwrite
@@ -169,13 +179,16 @@ This stores auth, object key/value state and alarms, and Fragment databases in S
 the selected data directory. Fragno's Node hook processor polls durable hooks, while the runtime
 processor services the remaining object-owned alarms. Do not run multiple processor replicas against
 the same directory. Cloudflare-specific integrations, the Cloudflare Sandbox integration, and
-external upload storage are **not** provided by this mode. Deno permissions constrain codemode
-capabilities but are not host-level CPU or memory quotas. Do not expose it as a production service
-without addressing those capabilities, resource containment, the shared rate-limit bucket when a
-client IP cannot be determined, and the operational requirements of backups, TLS and trusted
-proxies.
+external upload storage are **not** provided by this mode. Verify the deployed bridge's resource
+limits and interruption behavior before rollout. Production still requires backups, TLS, trusted
+proxies, and a policy for the shared rate-limit bucket when a client IP cannot be determined.
 
 ## Release
+
+Deploy `cf-sandbox-bridge` before releasing Backoffice versions that use its compiler entrypoint.
+Backoffice release scripts do not deploy the bridge or its containers. When migrating an existing
+installation, keep the former compiler service available until all callers have switched to the
+bridge.
 
 When a release adds a Durable Object class, an inactive upload cannot provision its namespace.
 Bootstrap that release instead:
@@ -184,10 +197,10 @@ Bootstrap that release instead:
 pnpm --dir apps/backoffice run deploy:bootstrap
 ```
 
-Bootstrap builds and **activates** the compiler, object, and web Workers in dependency order so the
-object Worker can provision its classes before the web Worker binds to them. It skips container
-image rollout (`--containers-rollout=none`); deploy container changes separately if the release
-requires them. This is a live release, not an inactive upload.
+Bootstrap builds and **activates** the object and web Workers in dependency order so the object
+Worker can provision its classes before the web Worker binds to them. It skips container image
+rollout (`--containers-rollout=none`); deploy container changes separately if the release requires
+them. This is a live release, not an inactive upload.
 
 For releases without new Durable Object classes, upload an inactive version of all Workers with one
 shared tag:
@@ -197,7 +210,7 @@ VERSION_TAG=release-$(date -u +%Y%m%d-%H%M%S)
 pnpm --dir apps/backoffice run deploy:upload -- --tag "$VERSION_TAG"
 ```
 
-Activate the tagged versions in dependency order: compiler, object host, then web Worker:
+Activate the tagged versions in dependency order: object host, then web Worker:
 
 ```bash
 pnpm --dir apps/backoffice run deploy -- \
@@ -205,4 +218,4 @@ pnpm --dir apps/backoffice run deploy -- \
   --yes
 ```
 
-The three activations are sequential, so releases must remain compatible during the rollout.
+The two activations are sequential, so releases must remain compatible during the rollout.

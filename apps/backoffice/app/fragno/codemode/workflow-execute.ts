@@ -1,3 +1,12 @@
+import { CODEMODE_LIMITS } from "@fragno-dev/codemode/codemode-limits";
+import { decodeCodemodeError } from "@fragno-dev/codemode/transport/codemode-errors";
+import { createCodemodeDispatchers } from "@fragno-dev/codemode/worker/codemode-dispatcher";
+import {
+  DynamicWorkerExecutor,
+  type DynamicWorkerRpcCall,
+} from "@fragno-dev/codemode/worker/codemode-executor";
+import { createCodemodeProviderProxySource } from "@fragno-dev/codemode/worker/codemode-guest-source";
+import { createRemoteWorkflowWorkerCode } from "@fragno-dev/codemode/worker/workflow-source";
 import {
   RemoteWorkflowSuspendedError,
   type RemoteWorkflowAllowedHook,
@@ -13,18 +22,11 @@ import type {
 } from "@/fragno/runtime-tools/runtime-tools";
 
 import {
-  CODEMODE_SANDBOX_CODEC_SOURCE,
-  DynamicWorkerExecutor,
-  createCodemodeDispatchers,
-  createCodemodeProviderProxySource,
-  type DynamicWorkerRpcCall,
-} from "./codemode-executor";
-import {
   createBackofficeCodemodeResolvedProviders,
-  normalizeBackofficeCodemodeCode,
   resolveBackofficeWorkerCompiler,
   type BackofficeCodemodeEnv,
 } from "./execute";
+import { createBackofficeCodemodeRemoteHost } from "./remote-execution-host";
 import { CodemodeWorkflowAgentTarget, type CodemodeWorkflowAgent } from "./workflow-agent-rpc";
 import { WorkflowStepTarget } from "./workflow-rpc";
 
@@ -32,25 +34,10 @@ export type BackofficeCodemodeWorkflowResult<TOutput = unknown> = {
   result?: TOutput;
   error?: string;
 };
-
 type WorkflowWorkerResult<TOutput> =
   | { ok: true; result: TOutput }
   | { ok: false; suspension: RemoteWorkflowSuspension };
-
 type CodemodeWorkflowEvent<TParams> = WorkflowEvent<TParams> & { id?: string };
-
-const isRemoteWorkflowSuspendedError = (
-  error: unknown,
-): error is { reason: RemoteWorkflowSuspension["reason"] } => {
-  if (!error || typeof error !== "object" || !("reason" in error)) {
-    return false;
-  }
-  return (
-    (error as { name?: unknown }).name === "RemoteWorkflowSuspendedError" ||
-    (error as { message?: unknown }).message === "WORKFLOW_STEP_SUSPENDED"
-  );
-};
-
 type WorkflowWorkerEntrypoint<TParams, TOutput> = {
   run(
     event: CodemodeWorkflowEvent<TParams>,
@@ -65,369 +52,139 @@ export type BackofficeCodemodeWorkflowOptions = {
   toolContext: BackofficeToolContext;
   /** Hook identities the trusted host permits this sandbox to trigger. */
   allowedHooks: readonly RemoteWorkflowAllowedHook[];
-  /**
-   * Outbound network policy for the workflow sandbox. The dynamic worker the
-   * codemode runs in is created with this as its `globalOutbound`, which decides
-   * whether a bare `fetch()` inside a `step.do(...)` body reaches the internet.
-   *
-   * - `undefined` (default): seal the sandbox.
-   * - a `Fetcher`: route every `fetch()` through a custom/allowlisting outbound.
-   * - `null`: seal the sandbox — any `fetch()` throws "this worker is not
-   *   permitted to access the internet".
-   */
+  /** Local sandboxes are sealed unless explicitly granted an allowlisting Fetcher. Remote sandboxes are always sealed. */
   globalOutbound?: Fetcher | null;
   dependencies?: NpmDependencyMap;
   workflowAgent?: CodemodeWorkflowAgent;
 };
 
-const createRemoteWorkflowWorkerCode = ({
-  code,
-  providerProxySource,
-}: {
-  code: string;
-  providerProxySource: string;
-}) => {
-  const executableCode = normalizeBackofficeCodemodeCode(code);
-  return `
-import { RpcTarget, WorkerEntrypoint } from "cloudflare:workers";
-import { AsyncLocalStorage } from "node:async_hooks";
-
-${CODEMODE_SANDBOX_CODEC_SOURCE}
-let __dispatchers = {};
-${providerProxySource}
-
-const workflowProgram = (${executableCode});
-const REMOTE_SUSPENSION_KEY = "__fragnoRemoteWorkflowSuspended";
-
-class RemoteWorkflowSuspendedError extends Error {
-  constructor(reason) {
-    super("WORKFLOW_STEP_SUSPENDED");
-    this.name = "RemoteWorkflowSuspendedError";
-    this.reason = reason;
-  }
-}
-
-const createRemoteWorkflowSuspension = (reason) => ({
-  [REMOTE_SUSPENSION_KEY]: true,
-  reason,
-});
-
-const isRemoteWorkflowSuspension = (value) =>
-  Boolean(value) &&
-  typeof value === "object" &&
-  value[REMOTE_SUSPENSION_KEY] === true &&
-  "reason" in value;
-
-const isRemoteWorkflowSuspendedError = (error) =>
-  Boolean(error) &&
-  typeof error === "object" &&
-  "reason" in error &&
-  (error.name === "RemoteWorkflowSuspendedError" || error.message === "WORKFLOW_STEP_SUSPENDED");
-
-const unwrapRemoteStepResult = (result) => {
-  if (isRemoteWorkflowSuspension(result)) {
-    throw result;
-  }
-  return result;
-};
-
-const normalizeStepDoArgs = (configOrCallback, maybeCallback) => {
-  if (typeof configOrCallback === "function") {
-    return { config: undefined, callback: configOrCallback };
-  }
-  return { config: configOrCallback, callback: maybeCallback };
-};
-
-const createUnsupportedTxMethod = (name) => () => {
-  throw new Error(name);
-};
-
-const defineTool = (definition) => definition;
-
-class WorkflowAgentToolTarget extends RpcTarget {
-  constructor(tools) {
-    super();
-    this.tools = new Map(tools.map((tool, index) => [\`tool-\${index}\`, tool]));
-  }
-
-  async execute(toolId, toolCallId, input) {
-    const tool = this.tools.get(toolId);
-    if (!tool || typeof tool.execute !== "function") {
-      throw new Error("WORKFLOW_AGENT_TOOL_NOT_FOUND");
-    }
-    return await tool.execute(toolCallId, input);
-  }
-}
-
-const createRemoteWorkflowStep = (stepTarget, agentTarget) => {
-  const scopeStorage = new AsyncLocalStorage();
-
-  const wrapTx = (txTarget) => {
-    const pending = [];
-    const queue = (operation) => {
-      pending.push(Promise.resolve(operation));
-    };
-
-    return {
-      emit: (payload) => queue(txTarget.emit(payload)),
-      previousEmissions: async () => await txTarget.previousEmissions(),
-      previousConsumedEvents: async () => await txTarget.previousConsumedEvents(),
-      workflowServiceCalls: (factory) => queue(txTarget.workflowServiceCalls(factory())),
-      triggerHook: (operation) => queue(txTarget.triggerHook(operation)),
-      onEvent: (type, handler) => {
-        let active = true;
-        const unsubscribePromise = txTarget.onEvent(type, handler);
-        return () => {
-          active = false;
-          unsubscribePromise.then((unsubscribe) => {
-            if (!active && typeof unsubscribe === "function") {
-              unsubscribe();
-            }
-          });
-        };
-      },
-      mutate: createUnsupportedTxMethod("REMOTE_WORKFLOW_TX_MUTATE_UNSUPPORTED"),
-      serviceCalls: createUnsupportedTxMethod("REMOTE_WORKFLOW_TX_SERVICE_CALLS_UNSUPPORTED"),
-      onTerminalError: {
-        mutate: createUnsupportedTxMethod("REMOTE_WORKFLOW_TX_ON_TERMINAL_ERROR_MUTATE_UNSUPPORTED"),
-      },
-      __flush: async () => {
-        const results = await Promise.allSettled(pending);
-        for (const result of results) {
-          if (result.status === "rejected") {
-            throw result.reason;
-          }
-        }
-      },
-    };
-  };
-
-  const step = {
-    do: async (name, configOrCallback, maybeCallback) => {
-      const { config, callback } = normalizeStepDoArgs(configOrCallback, maybeCallback);
-      if (typeof callback !== "function") {
-        throw new Error("WORKFLOW_STEP_CALLBACK_REQUIRED");
-      }
-      const parentScope = scopeStorage.getStore() ?? null;
-      const result = await stepTarget.do(parentScope, name, config, async (txTarget, childScope) => {
-        return await scopeStorage.run(childScope, async () => {
-          const tx = wrapTx(txTarget);
-          try {
-            return await callback(tx);
-          } catch (error) {
-            if (isRemoteWorkflowSuspension(error)) {
-              return error;
-            }
-            if (isRemoteWorkflowSuspendedError(error)) {
-              return createRemoteWorkflowSuspension(error.reason);
-            }
-            throw error;
-          } finally {
-            // Terminal-error hook intents must reach the host before the failed step settles.
-            await tx.__flush();
-          }
-        });
-      });
-      return unwrapRemoteStepResult(result);
-    },
-    sleep: async (name, duration) => {
-      const parentScope = scopeStorage.getStore() ?? null;
-      unwrapRemoteStepResult(await stepTarget.sleep(parentScope, name, duration));
-    },
-    sleepUntil: async (name, timestamp) => {
-      const parentScope = scopeStorage.getStore() ?? null;
-      unwrapRemoteStepResult(await stepTarget.sleepUntil(parentScope, name, timestamp));
-    },
-    waitForEvent: async (name, options) => {
-      const parentScope = scopeStorage.getStore() ?? null;
-      const remoteOptions = {
-        type: options.type,
-        timeout: options.timeout,
-      };
-      if (typeof options.onConsume === "function") {
-        remoteOptions.onConsume = async (txTarget, event) => {
-          const tx = wrapTx(txTarget);
-          await options.onConsume(tx, event);
-          await tx.__flush();
-        };
-      }
-      return unwrapRemoteStepResult(await stepTarget.waitForEvent(parentScope, name, remoteOptions));
-    },
-    agent: {
-      prompt: async (name, input) => {
-        if (!agentTarget) {
-          throw new Error("WORKFLOW_AGENT_UNAVAILABLE");
-        }
-        const tools = input.tools ?? [];
-        const toolDefinitions = tools.map((tool, index) => ({
-          id: \`tool-\${index}\`,
-          name: tool.name,
-          description: tool.description,
-          parameters: tool.parameters,
-        }));
-        const toolTarget = tools.length > 0 ? new WorkflowAgentToolTarget(tools) : null;
-        const parentScope = scopeStorage.getStore() ?? null;
-        return unwrapRemoteStepResult(
-          await agentTarget.prompt(
-            parentScope,
-            name,
-            {
-              text: input.text,
-              images: input.images,
-              tools: toolDefinitions,
-            },
-            toolTarget,
-          ),
-        );
-      },
-    },
-  };
-
-  return step;
-};
-
-export default class RemoteWorkflowEntrypoint extends WorkerEntrypoint {
-  async run(event, stepTarget, agentTarget, dispatchers = {}) {
-    __dispatchers = dispatchers;
-    if (
-      typeof workflowProgram !== "function" &&
-      !__isFragnoCodemodeWorkflowDefinition(workflowProgram)
-    ) {
-      throw new Error("REMOTE_WORKFLOW_CODE_MUST_EVALUATE_TO_FUNCTION");
-    }
-    try {
-      const step = createRemoteWorkflowStep(stepTarget, agentTarget);
-      const isWorkflowDefinition = __isFragnoCodemodeWorkflowDefinition(workflowProgram);
-      const definitionOrResult = isWorkflowDefinition || workflowProgram.length >= 2
-        ? workflowProgram
-        : await workflowProgram();
-      const runWorkflow = __isFragnoCodemodeWorkflowDefinition(definitionOrResult)
-        ? definitionOrResult.run
-        : definitionOrResult;
-      if (typeof runWorkflow !== "function") {
-        throw new Error("REMOTE_WORKFLOW_CODE_MUST_DEFINE_WORKFLOW");
-      }
-      return { ok: true, result: await runWorkflow(event, step) };
-    } catch (error) {
-      if (isRemoteWorkflowSuspension(error)) {
-        return { ok: false, suspension: error };
-      }
-      if (isRemoteWorkflowSuspendedError(error)) {
-        return { ok: false, suspension: createRemoteWorkflowSuspension(error.reason) };
-      }
-      throw error;
-    }
-  }
-}
-`;
-};
-
-const executeBackofficeCodemodeWorkflow = async <TParams = unknown, TOutput = unknown>({
-  code,
-  event,
-  remote,
-  env,
-  families,
-  toolContext,
-  globalOutbound,
-  dependencies,
-  workflowAgent,
-  allowedHooks,
-}: {
+type WorkflowExecutionInput<TParams> = {
   code: string;
   event: CodemodeWorkflowEvent<TParams>;
   remote: RemoteWorkflowStepHost;
   env: BackofficeCodemodeEnv;
-} & BackofficeCodemodeWorkflowOptions): Promise<TOutput> => {
-  const stepTarget = new WorkflowStepTarget(remote, allowedHooks);
-  const agentTarget = workflowAgent ? new CodemodeWorkflowAgentTarget(workflowAgent) : null;
-  const executor = new DynamicWorkerExecutor({
-    loader: env.LOADER,
-    // Durable workflow sandboxes are sealed unless the trusted caller supplies an explicit
-    // allowlisting Fetcher. The host's general OUTBOUND binding is never inherited implicitly.
-    globalOutbound: globalOutbound ?? null,
-  });
+} & BackofficeCodemodeWorkflowOptions;
 
-  const providers = await createBackofficeCodemodeResolvedProviders({
+async function executeBackofficeCodemodeWorkflow<TParams, TOutput>(
+  input: WorkflowExecutionInput<TParams>,
+): Promise<TOutput> {
+  const {
+    code,
+    event,
+    remote,
+    env,
     families,
     toolContext,
-  });
-  const dispatcherResult = createCodemodeDispatchers(providers);
-  if ("error" in dispatcherResult) {
-    throw new Error(dispatcherResult.error);
-  }
-  const { dispatchers } = dispatcherResult;
-  const executableCode = normalizeBackofficeCodemodeCode(code);
-
-  const compiled = await resolveBackofficeWorkerCompiler(env)({
-    files: {
-      "remote-workflow.js": createRemoteWorkflowWorkerCode({
-        code: executableCode,
-        providerProxySource: createCodemodeProviderProxySource(providers),
-      }),
-    },
-    entryPoint: "remote-workflow.js",
-    dependencies: dependencies ?? {},
-    runtime: {
-      compatibilityDate: "2026-05-07",
-      compatibilityFlags: ["nodejs_als"],
-    },
-  });
-  const output = await executor.runEntrypoint<
-    WorkflowWorkerEntrypoint<TParams, TOutput>,
-    WorkflowWorkerResult<TOutput>
-  >({
-    bundle: compiled.bundle,
-    rpcTargets: { agentTarget, dispatchers, stepTarget },
-    run: (entrypoint, rpcTargets) =>
-      entrypoint.run(
-        {
-          ...event,
-          id: event.id ?? event.instanceId,
-        },
-        rpcTargets.stepTarget as WorkflowStepTarget,
-        rpcTargets.agentTarget as CodemodeWorkflowAgentTarget | null,
-        rpcTargets.dispatchers as Record<string, unknown>,
-      ),
-  });
-  if (!output.ok) {
-    throw new RemoteWorkflowSuspendedError(output.suspension.reason);
-  }
-  return output.result;
-};
-
-export const runBackofficeCodemodeWorkflow = async <TParams = unknown, TOutput = unknown>(
-  input: {
-    code: string;
-    event: CodemodeWorkflowEvent<TParams>;
-    remote: RemoteWorkflowStepHost;
-    env: BackofficeCodemodeEnv;
-  } & BackofficeCodemodeWorkflowOptions,
-): Promise<BackofficeCodemodeWorkflowResult<TOutput>> => {
+    globalOutbound,
+    dependencies,
+    workflowAgent,
+    allowedHooks,
+  } = input;
+  const stepTarget = new WorkflowStepTarget(remote, allowedHooks);
+  const agentTarget = workflowAgent ? new CodemodeWorkflowAgentTarget(workflowAgent) : null;
+  const providers = await createBackofficeCodemodeResolvedProviders({ families, toolContext });
   try {
-    return {
-      result: await executeBackofficeCodemodeWorkflow<TParams, TOutput>(input),
-    };
+    if ("remoteExecutor" in env) {
+      if (globalOutbound) {
+        throw new Error("CODEMODE_REMOTE_EGRESS_UNSUPPORTED");
+      }
+      const { host, manifest } = createBackofficeCodemodeRemoteHost(providers, {
+        step: stepTarget,
+        agent: agentTarget,
+      });
+      try {
+        const completion = await env.remoteExecutor(
+          {
+            kind: "workflow",
+            code,
+            dependencies: dependencies ?? {},
+            providers: manifest,
+            timeoutMs: CODEMODE_LIMITS.activationTimeoutMs,
+            event: { ...event, id: event.id ?? event.instanceId },
+            agentAvailable: agentTarget !== null,
+          },
+          host,
+        );
+        if (completion.status === "suspended") {
+          throw new RemoteWorkflowSuspendedError(completion.reason);
+        }
+        if (completion.status === "failed") {
+          throw decodeCodemodeError(completion.error);
+        }
+        // Workflow output remains opaque until the runner's registered output schema validates it.
+        return completion.value as TOutput;
+      } finally {
+        host.close();
+      }
+    }
+    const dispatcherResult = createCodemodeDispatchers(providers);
+    if ("error" in dispatcherResult) {
+      throw new Error(dispatcherResult.error);
+    }
+    const executor = new DynamicWorkerExecutor({
+      loader: env.LOADER,
+      globalOutbound: globalOutbound ?? null,
+    });
+    const compiled = await resolveBackofficeWorkerCompiler(env)({
+      files: {
+        "remote-workflow.js": createRemoteWorkflowWorkerCode({
+          code,
+          providerProxySource: createCodemodeProviderProxySource(providers),
+        }),
+      },
+      entryPoint: "remote-workflow.js",
+      dependencies: dependencies ?? {},
+      runtime: { compatibilityDate: "2026-05-07", compatibilityFlags: ["nodejs_als"] },
+    });
+    const output = await executor.runEntrypoint<
+      WorkflowWorkerEntrypoint<TParams, TOutput>,
+      WorkflowWorkerResult<TOutput>
+    >({
+      bundle: compiled.bundle,
+      rpcTargets: { agentTarget, dispatchers: dispatcherResult.dispatchers, stepTarget },
+      run: (entrypoint, targets) =>
+        entrypoint.run(
+          { ...event, id: event.id ?? event.instanceId },
+          targets.stepTarget as WorkflowStepTarget,
+          targets.agentTarget as CodemodeWorkflowAgentTarget | null,
+          targets.dispatchers as Record<string, unknown>,
+        ),
+    });
+    if (!output.ok) {
+      throw new RemoteWorkflowSuspendedError(output.suspension.reason);
+    }
+    return output.result;
+  } finally {
+    agentTarget?.close();
+  }
+}
+
+/** Runs one activation; suspension stays visible to the workflow runner rather than becoming an error string. */
+export async function runBackofficeCodemodeWorkflow<TParams = unknown, TOutput = unknown>(
+  input: WorkflowExecutionInput<TParams>,
+): Promise<BackofficeCodemodeWorkflowResult<TOutput>> {
+  try {
+    return { result: await executeBackofficeCodemodeWorkflow<TParams, TOutput>(input) };
   } catch (error) {
-    if (isRemoteWorkflowSuspendedError(error)) {
+    if (error instanceof RemoteWorkflowSuspendedError) {
       throw error;
     }
     return { error: error instanceof Error ? error.message : String(error) };
   }
-};
+}
 
-export const defineCodemodeWorkflowRun = <TParams = unknown, TOutput = unknown>(
+/** Re-evaluates workflow source on each runner tick using Node-owned checkpoints. */
+export function defineCodemodeWorkflowRun<TParams = unknown, TOutput = unknown>(
   code: string,
   env: BackofficeCodemodeEnv,
   options: BackofficeCodemodeWorkflowOptions,
-): RemoteWorkflowRunFn<TParams, TOutput> => {
-  return async (event, remote) => {
-    return await executeBackofficeCodemodeWorkflow<TParams, TOutput>({
+): RemoteWorkflowRunFn<TParams, TOutput> {
+  return async (event, remote) =>
+    await executeBackofficeCodemodeWorkflow<TParams, TOutput>({
       code,
       event,
       remote,
       env,
       ...options,
     });
-  };
-};
+}
