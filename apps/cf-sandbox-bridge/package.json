@@ -1,0 +1,52 @@
+{
+  "name": "@fragno-apps/cf-sandbox-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cloudflare Sandbox bridge with codemode compilation and execution",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rejot-dev/fragno.git",
+    "directory": "apps/cf-sandbox-bridge"
+  },
+  "type": "module",
+  "exports": {
+    "./compiler/build-worker-project": "./src/compiler/build-worker-project.ts",
+    "./compiler/type-check-project": "./src/compiler/type-check-project.ts"
+  },
+  "scripts": {
+    "build": "tsx scripts/generate-typescript-standard-libraries.ts --check && wrangler deploy --dry-run --outdir dist --containers-rollout=none --env-file .dev.vars.example",
+    "compiler:generate": "tsx scripts/generate-typescript-standard-libraries.ts",
+    "compiler:check": "tsx scripts/generate-typescript-standard-libraries.ts --check",
+    "deploy": "turbo run build --filter=@fragno-apps/cf-sandbox-bridge && wrangler deploy",
+    "deploy:skip-container": "turbo run build --filter=@fragno-apps/cf-sandbox-bridge && wrangler deploy --containers-rollout=none",
+    "predev": "pnpm run build",
+    "dev": "wrangler dev",
+    "types:check": "tsc --noEmit",
+    "test": "vitest run",
+    "types:generate": "wrangler types --env-file .dev.vars.example",
+    "format:package": "node ../../scripts/run-package-quality.mjs format",
+    "format:check:package": "node ../../scripts/run-package-quality.mjs format:check",
+    "lint:package": "node ../../scripts/run-package-quality.mjs lint",
+    "lint:fix:package": "node ../../scripts/run-package-quality.mjs lint:fix"
+  },
+  "dependencies": {
+    "@cloudflare/sandbox": "0.12.4",
+    "@cloudflare/worker-bundler": "0.2.2",
+    "@fragno-dev/codemode": "workspace:*"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260804.1",
+    "@fragno-private/typescript-config": "workspace:*",
+    "@types/node": "^24.10.9",
+    "esbuild": "^0.28.1",
+    "miniflare": "^5.20260730.0-alpha",
+    "tsx": "^4.21.0",
+    "typescript": "catalog:",
+    "typescript-runtime": "npm:typescript@6.0.3",
+    "vitest": "catalog:",
+    "wrangler": "^4.118.0"
+  },
+  "engines": {
+    "node": "^22.22.0 || >=24.11.0"
+  }
+}
