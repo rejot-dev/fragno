@@ -1,7 +1,7 @@
 # cloudflare-sandbox-bridge
 
-Cloudflare Worker that exposes the Sandbox HTTP API, codemode execution, and a private compiler.
-Creates and manages sandboxed execution environments backed by
+Cloudflare Worker that exposes the Sandbox HTTP API, codemode execution, and authenticated compiler
+APIs. Creates and manages sandboxed execution environments backed by
 [Cloudflare Containers](https://developers.cloudflare.com/containers/).
 
 This is Fragno's workspace-integrated bridge, including the Node Backoffice codemode WebSocket
@@ -100,7 +100,8 @@ The stateless compiler lives in `src/compiler/`:
 
 - `build-worker-project.ts` installs declared dependencies and bundles guest code with esbuild.
 - `type-check-project.ts` checks streamed source files with TypeScript.
-- `codemode-compiler.ts` exposes the private `CodemodeCompiler` RPC entrypoint.
+- `codemode-compiler.ts` exposes the private `CodemodeCompiler` RPC entrypoint and public
+  authenticated HTTP routes.
 
 WebSocket activations call the compiler directly. Cloudflare Backoffice uses a service binding and
 then executes the returned bundle with its own Worker Loader:
@@ -109,11 +110,20 @@ then executes the returned bundle with its own Worker Loader:
 { "binding": "CODEMODE_COMPILER", "service": "cf-sandbox-bridge", "entrypoint": "CodemodeCompiler" }
 ```
 
-There is no public compiler HTTP endpoint, and the bridge no longer has a compiler service binding.
-Compilation and type-checking share the isolate-local admission limit with WebSocket compilation.
-Slots remain occupied until operations settle, including after disconnects; `ctx.waitUntil` keeps
-settlement cleanup alive within the platform's lifecycle allowance. This is not a distributed quota.
-Compiler work shares the bridge's runtime resources; JavaScript deadlines cannot interrupt
+Node processes can use the same compiler over authenticated streaming HTTP:
+
+- `POST /v1/codemode/compile-worker`
+- `POST /v1/codemode/type-check-files`
+
+Both routes require `Authorization: Bearer <SANDBOX_API_KEY>` and use the compiler service archive
+protocol. `createCodemodeCompilerHttpClient` from
+`@fragno-dev/codemode/compiler/compiler-service-client` constructs both Node clients from the bridge
+URL and API key. The bridge no longer needs a compiler service binding.
+
+RPC, HTTP compilation, type-checking, and WebSocket compilation share the isolate-local admission
+limit. Slots remain occupied until operations settle, including after disconnects; `ctx.waitUntil`
+keeps settlement cleanup alive within the platform's lifecycle allowance. This is not a distributed
+quota. Compiler work shares the bridge's runtime resources; JavaScript deadlines cannot interrupt
 synchronous compiler CPU work. Validate startup, memory, CPU, and disconnect behavior after
 deployment.
 
@@ -137,9 +147,10 @@ ordinary Worker, before the Sandbox SDK's `/v1/*` router; it adds no Durable Obj
 The embedded compiler builds the guest and `LOADER` runs it in a sealed dynamic Worker. Keep the
 existing Sandbox and WarmPool bindings even when only exercising codemode.
 
-Set Node Backoffice's `CODEMODE_EXECUTOR_URL` to this bridge's `wss://` origin and
-`CODEMODE_EXECUTOR_API_KEY` to its `SANDBOX_API_KEY`. Local loopback `ws://` is supported. Unlike
-the Sandbox SDK development routes, codemode always fails closed without a configured API key.
+Set Node Backoffice's `CLOUDFLARE_BRIDGE_URL` to this bridge's `https://` origin and
+`CLOUDFLARE_BRIDGE_API_KEY` to its `SANDBOX_API_KEY`. Node derives the corresponding WebSocket URL
+for execution. Local loopback `http://` is supported. Unlike the Sandbox SDK development routes,
+codemode always fails closed without a configured API key.
 
 The shared `@fragno-dev/codemode` package owns protocol v1 and guest runtime generation. Node owns
 all tools, authorization, persistence, workflow retry decisions, and Pi sessions. A disconnect ends

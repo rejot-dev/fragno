@@ -1,5 +1,7 @@
 import { bridge } from "@cloudflare/sandbox/bridge";
-import { handleCodemodeWorkerRequest } from "@fragno-dev/codemode/worker/codemode-worker-session";
+import { Hono } from "hono";
+
+import { registerCodemodeHttpRoutes, type SandboxBridgeHonoEnv } from "./codemode-http-routes";
 
 // Wrangler discovers named RPC entrypoints and the existing container/pool classes here.
 export { CodemodeCompiler } from "./compiler/codemode-compiler";
@@ -12,30 +14,15 @@ const sandboxBridge = bridge({
   },
 }) as unknown as Required<Pick<ExportedHandler<Env>, "fetch" | "scheduled">>;
 
+const app = new Hono<SandboxBridgeHonoEnv>();
+registerCodemodeHttpRoutes(app);
+app.notFound((context) => {
+  const request = context.req.raw as Request<unknown, IncomingRequestCfProperties>;
+  const executionCtx = context.executionCtx as unknown as ExecutionContext;
+  return sandboxBridge.fetch(request, context.env, executionCtx);
+});
+
 export default {
   ...sandboxBridge,
-  async fetch(
-    request: Request<unknown, IncomingRequestCfProperties>,
-    env: Env,
-    ctx: ExecutionContext,
-  ): Promise<Response> {
-    // The SDK claims all /v1/* paths, including unknown ones. Intercept codemode before it,
-    // not in bridge({ fetch }), which only receives paths outside the SDK's API prefix.
-    if (new URL(request.url).pathname === "/v1/codemode/execute") {
-      return await handleCodemodeWorkerRequest(
-        request,
-        env.SANDBOX_API_KEY,
-        {
-          loader: env.LOADER,
-          async compile(input) {
-            // Sandbox-only requests should not initialize the compiler runtime.
-            const { buildWorkerProject } = await import("./compiler/build-worker-project");
-            return await buildWorkerProject(input);
-          },
-        },
-        ctx,
-      );
-    }
-    return await sandboxBridge.fetch(request, env, ctx);
-  },
+  fetch: app.fetch,
 };

@@ -50,7 +50,7 @@ async function compileCodemodeTestWorker(input: CompileWorkerInput): Promise<Com
   };
 }
 
-/** Real local workerd + WebSocket executor; wrap its JS compiler to control latency or diagnostics. */
+/** Real local workerd bridge with WebSocket execution and an authenticated HTTP type-check seam. */
 export async function createCodemodeTestServer(
   wrapCompiler: (compile: WorkerCompiler) => WorkerCompiler = (compile) => compile,
 ) {
@@ -60,10 +60,26 @@ export async function createCodemodeTestServer(
     stdin: {
       resolveDir,
       contents: `
-import { handleCodemodeWorkerRequest } from "../worker/codemode-worker-session";
 import { createWorkerCompilerServiceClient } from "../compiler/compiler-service-client";
+import {
+  createTypeCheckFilesServiceResponse,
+  readTypeCheckFilesServiceRequest,
+} from "../compiler/compiler-service-protocol";
+import { authenticateCodemodeHttpRequest } from "../transport/codemode-http-authentication";
+import { handleCodemodeWorkerRequest } from "../worker/codemode-worker-session";
 export default {
   async fetch(request, env, ctx) {
+    const url = new URL(request.url);
+    if (url.pathname === "/v1/codemode/type-check-files") {
+      const authenticationError = await authenticateCodemodeHttpRequest(request, env.API_KEY);
+      if (authenticationError) return authenticationError;
+      if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
+      const project = await readTypeCheckFilesServiceRequest(request);
+      for await (const file of project.files) {
+        void file;
+      }
+      return createTypeCheckFilesServiceResponse({ diagnostics: [] });
+    }
     return await handleCodemodeWorkerRequest(request, env.API_KEY, {
       loader: env.LOADER, compile: createWorkerCompilerServiceClient(env.COMPILER),
     }, ctx);
@@ -128,7 +144,7 @@ export default class JavaScriptTestCompiler extends WorkerEntrypoint {
   });
   try {
     const ready = await runtime.ready;
-    return { url: ready.href.replace(/^http:/, "ws:"), apiKey, close: () => runtime.dispose() };
+    return { url: ready.href, apiKey, close: () => runtime.dispose() };
   } catch (error) {
     await runtime.dispose();
     throw error;

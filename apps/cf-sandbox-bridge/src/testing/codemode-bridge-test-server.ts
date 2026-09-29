@@ -73,7 +73,7 @@ export default {
     const ready = await runtime.ready;
     const compiler = await runtime.getWorker("compiler-client");
     return {
-      url: ready.href.replace(/^http:/, "ws:"),
+      url: ready.href,
       apiKey: bridge.bindings.SANDBOX_API_KEY,
       async requestCompiler(request: Request): Promise<Response> {
         // Miniflare's undici Request is distinct from Node's native Request; forward its stream explicitly.

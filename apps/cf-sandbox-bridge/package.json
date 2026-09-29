@@ -32,7 +32,8 @@
   "dependencies": {
     "@cloudflare/sandbox": "0.12.4",
     "@cloudflare/worker-bundler": "0.2.2",
-    "@fragno-dev/codemode": "workspace:*"
+    "@fragno-dev/codemode": "workspace:*",
+    "hono": "^4.13.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260804.1",

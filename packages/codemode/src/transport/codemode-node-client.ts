@@ -1,6 +1,7 @@
 import WebSocket from "ws";
 
 import { CODEMODE_LIMITS } from "../codemode-limits";
+import { createCodemodeBridgeWebSocketUrl } from "./codemode-bridge-url";
 import { CodemodeInterruptedError } from "./codemode-errors";
 import { CodemodePeer } from "./codemode-peer";
 import {
@@ -20,24 +21,10 @@ export function createCodemodeNodeExecutor(config: {
   url: string;
   apiKey: string;
 }): CodemodeRemoteExecutor {
-  const url = new URL(config.url);
-  const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
-  if (
-    (url.protocol !== "wss:" && !(url.protocol === "ws:" && loopback)) ||
-    url.username ||
-    url.password ||
-    url.search ||
-    url.hash ||
-    !["/", "/v1/codemode/execute"].includes(url.pathname)
-  ) {
-    throw new Error(
-      "CODEMODE_EXECUTOR_URL must be a wss:// bridge URL (ws:// is allowed only on loopback).",
-    );
-  }
+  const url = createCodemodeBridgeWebSocketUrl(config.url, "/v1/codemode/execute");
   if (!config.apiKey.trim()) {
-    throw new Error("CODEMODE_EXECUTOR_API_KEY must not be empty.");
+    throw new Error("Codemode bridge API key must not be empty.");
   }
-  url.pathname = "/v1/codemode/execute";
 
   return async function executeRemoteCodemode(activation, host): Promise<CodemodeCompletion> {
     codemodeActivationSchema.parse(activation);

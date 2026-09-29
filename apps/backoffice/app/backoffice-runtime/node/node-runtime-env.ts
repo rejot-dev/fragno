@@ -1,29 +1,43 @@
+import type { WorkerTypeChecker } from "@fragno-dev/codemode/compiler/compile-worker";
+import { createCodemodeCompilerHttpClient } from "@fragno-dev/codemode/compiler/compiler-service-client";
 import { createCodemodeNodeExecutor } from "@fragno-dev/codemode/transport/codemode-node-client";
 
 import type { BackofficeRuntimeEnv } from "../backoffice-runtime-env";
 
-export type CreateNodeBackofficeRuntimeEnvInput = {
-  executorUrl: string | undefined;
-  executorApiKey: string | undefined;
+export type CreateNodeBackofficeRuntimeConfigurationInput = {
+  bridgeUrl: string | undefined;
+  bridgeApiKey: string | undefined;
   env: Omit<BackofficeRuntimeEnv, "codemode">;
 };
 
-/** Creates Node-owned runtime services without loading or compiling guest code in the VPS process. */
-export async function createNodeBackofficeRuntimeEnv(
-  input: CreateNodeBackofficeRuntimeEnvInput,
-): Promise<BackofficeRuntimeEnv> {
-  if (!input.executorUrl || !input.executorApiKey) {
+export type NodeBackofficeRuntimeConfiguration = {
+  runtimeEnv: BackofficeRuntimeEnv;
+  workerTypeChecker: WorkerTypeChecker;
+};
+
+/** Creates Node runtime configuration backed by the bridge's WebSocket and HTTP APIs. */
+export function createNodeBackofficeRuntimeConfiguration(
+  input: CreateNodeBackofficeRuntimeConfigurationInput,
+): NodeBackofficeRuntimeConfiguration {
+  if (!input.bridgeUrl || !input.bridgeApiKey) {
     throw new Error(
-      "Node codemode requires CODEMODE_EXECUTOR_URL and CODEMODE_EXECUTOR_API_KEY in .dev.vars; no local executor fallback is available.",
+      "Node codemode requires CLOUDFLARE_BRIDGE_URL and CLOUDFLARE_BRIDGE_API_KEY in .dev.vars; no local bridge fallback is available.",
     );
   }
+  const compiler = createCodemodeCompilerHttpClient({
+    url: input.bridgeUrl,
+    apiKey: input.bridgeApiKey,
+  });
   return {
-    ...input.env,
-    codemode: {
-      remoteExecutor: createCodemodeNodeExecutor({
-        url: input.executorUrl,
-        apiKey: input.executorApiKey,
-      }),
+    runtimeEnv: {
+      ...input.env,
+      codemode: {
+        remoteExecutor: createCodemodeNodeExecutor({
+          url: input.bridgeUrl,
+          apiKey: input.bridgeApiKey,
+        }),
+      },
     },
+    workerTypeChecker: compiler.typeCheckFiles,
   };
 }
