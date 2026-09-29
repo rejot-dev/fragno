@@ -2,13 +2,24 @@ import { execFileSync, spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+/** @typedef {{ name: "server" | "processor"; entrypoint: string }} NodeBackofficeServiceDefinition */
+/** @typedef {NodeBackofficeServiceDefinition & { child: import("node:child_process").ChildProcess }} NodeBackofficeService */
+/** @typedef {{ kind: "error"; error: Error } | { kind: "exit"; code: number | null; signal: NodeJS.Signals | null }} NodeBackofficeServiceCompletion */
+/** @typedef {NodeBackofficeServiceCompletion & { service: NodeBackofficeService }} NodeBackofficeServiceResult */
+/** @typedef {{ kind: "signal"; signal: NodeJS.Signals } | { kind: "launcher-exited"; processId: number } | { kind: "service-exited"; result: NodeBackofficeServiceResult }} SupervisorShutdownReason */
+
 const backofficeDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const gracefulShutdownTimeoutMs = 10_000;
+/** @type {NodeBackofficeServiceDefinition[]} */
 const serviceDefinitions = [
   { name: "server", entrypoint: "build-node/node-server.mjs" },
   { name: "processor", entrypoint: "build-node/node-hook-processor.mjs" },
 ];
 
+/**
+ * @param {number} processId
+ * @returns {number | null}
+ */
 function readParentProcessId(processId) {
   try {
     const output = execFileSync("ps", ["-o", "ppid=", "-p", String(processId)], {
@@ -21,7 +32,9 @@ function readParentProcessId(processId) {
   }
 }
 
+/** @returns {number[]} */
 function listLauncherProcessIds() {
+  /** @type {number[]} */
   const processIds = [];
   let processId = process.ppid;
   while (processId > 1 && !processIds.includes(processId)) {
@@ -31,6 +44,10 @@ function listLauncherProcessIds() {
   return processIds;
 }
 
+/**
+ * @param {number} processId
+ * @returns {boolean}
+ */
 function processIsAlive(processId) {
   try {
     process.kill(processId, 0);
@@ -40,6 +57,10 @@ function processIsAlive(processId) {
   }
 }
 
+/**
+ * @param {NodeBackofficeServiceDefinition} definition
+ * @returns {NodeBackofficeService}
+ */
 function spawnNodeBackofficeService(definition) {
   const child = spawn(
     process.execPath,
@@ -53,9 +74,14 @@ function spawnNodeBackofficeService(definition) {
   return { ...definition, child };
 }
 
+/**
+ * @param {NodeBackofficeService} service
+ * @returns {Promise<NodeBackofficeServiceResult>}
+ */
 function observeNodeBackofficeService(service) {
   return new Promise((resolve) => {
     let completed = false;
+    /** @param {NodeBackofficeServiceCompletion} result */
     function complete(result) {
       if (completed) {
         return;
@@ -73,6 +99,10 @@ function observeNodeBackofficeService(service) {
   });
 }
 
+/**
+ * @param {NodeBackofficeService[]} services
+ * @param {NodeJS.Signals} signal
+ */
 function signalRunningServices(services, signal) {
   for (const { child } of services) {
     if (child.exitCode === null && child.signalCode === null) {
@@ -84,22 +114,25 @@ function signalRunningServices(services, signal) {
 const launcherProcessIds = listLauncherProcessIds();
 const services = serviceDefinitions.map(spawnNodeBackofficeService);
 const observations = services.map(observeNodeBackofficeService);
-let shutdownReason = null;
-let forcedShutdown = null;
+/** @type {{ shutdownReason: SupervisorShutdownReason | null; forcedShutdown: NodeJS.Timeout | null }} */
+const supervisorState = { shutdownReason: null, forcedShutdown: null };
 
+/** @param {SupervisorShutdownReason} reason */
 function beginSupervisorShutdown(reason) {
-  if (shutdownReason !== null) {
+  if (supervisorState.shutdownReason !== null) {
     return;
   }
-  shutdownReason = reason;
+  supervisorState.shutdownReason = reason;
   signalRunningServices(services, reason.kind === "signal" ? reason.signal : "SIGTERM");
-  forcedShutdown = setTimeout(() => {
+  supervisorState.forcedShutdown = setTimeout(() => {
     signalRunningServices(services, "SIGKILL");
   }, gracefulShutdownTimeoutMs);
-  forcedShutdown.unref();
+  supervisorState.forcedShutdown.unref();
 }
 
-for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
+/** @type {NodeJS.Signals[]} */
+const shutdownSignals = ["SIGINT", "SIGTERM", "SIGHUP"];
+for (const signal of shutdownSignals) {
   process.once(signal, () => {
     beginSupervisorShutdown({ kind: "signal", signal });
   });
@@ -117,7 +150,7 @@ launcherWatchdog.unref();
 
 for (const observation of observations) {
   void observation.then((result) => {
-    if (shutdownReason === null) {
+    if (supervisorState.shutdownReason === null) {
       beginSupervisorShutdown({ kind: "service-exited", result });
     }
   });
@@ -129,12 +162,12 @@ console.info(
 
 const results = await Promise.all(observations);
 clearInterval(launcherWatchdog);
-if (forcedShutdown !== null) {
-  clearTimeout(forcedShutdown);
+if (supervisorState.forcedShutdown !== null) {
+  clearTimeout(supervisorState.forcedShutdown);
 }
 
-if (shutdownReason?.kind === "service-exited") {
-  const failedResult = shutdownReason.result;
+if (supervisorState.shutdownReason?.kind === "service-exited") {
+  const failedResult = supervisorState.shutdownReason.result;
   if (failedResult.kind === "error") {
     console.error(
       `Node Backoffice ${failedResult.service.name} failed to start`,
