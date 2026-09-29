@@ -6,7 +6,6 @@ import type {
 import { z } from "zod";
 
 import { backofficeContextScopeSchema } from "@/backoffice-runtime/context-schema";
-import { BackofficeUnavailableError } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectHandle, UploadObject } from "@/backoffice-runtime/object-registry";
 import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
 import {
@@ -1798,18 +1797,11 @@ const getUploadObject = (ctx: FilesContext) => {
   if (ctx.uploadObject) {
     return ctx.uploadObject;
   }
-  if (!ctx.objects) {
+  if (!ctx.objects || ctx.execution.scope.kind === "system") {
     return null;
   }
 
-  try {
-    return ctx.kernel.scoped("UPLOAD", ctx.execution.scope, ctx.objects.upload);
-  } catch (error) {
-    if (error instanceof BackofficeUnavailableError) {
-      return null;
-    }
-    throw error;
-  }
+  return ctx.kernel.scoped("UPLOAD", ctx.execution.scope, ctx.objects.upload);
 };
 
 const getUploadConfig = async (ctx: FilesContext): Promise<UploadAdminConfigResponse | null> => {
