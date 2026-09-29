@@ -808,11 +808,13 @@ export class RunnerStep implements WorkflowStep {
     const snapshot = this.#state.stepsByKey.get(stepKey);
 
     if (snapshot && isCompletedStatus(snapshot.status)) {
-      return snapshot.result as {
+      const result = snapshot.result as {
         type: string;
         payload: Readonly<T>;
-        timestamp: Date;
+        timestamp: string | Date;
       };
+      // Checkpoints are JSON-backed, unlike a freshly delivered event's database Date column.
+      return { ...result, timestamp: new Date(result.timestamp) };
     }
 
     if (snapshot?.status === "errored") {
