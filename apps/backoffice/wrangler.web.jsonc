@@ -45,7 +45,8 @@
     },
     {
       "binding": "CODEMODE_COMPILER",
-      "service": "rejot-codemode-compiler",
+      "service": "cf-sandbox-bridge",
+      "entrypoint": "CodemodeCompiler",
     },
   ],
   "durable_objects": {
