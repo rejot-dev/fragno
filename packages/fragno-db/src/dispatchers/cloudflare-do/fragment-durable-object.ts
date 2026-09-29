@@ -27,13 +27,22 @@ export interface FragmentDurableObjectInitializationInstrumentation {
   run<T>(context: FragmentDurableObjectInitializationContext, execute: () => T): T;
 }
 
-type CommonHostOptions<TEnv, TSource, TRuntime> = {
-  /** Human-readable runtime name used in diagnostics. */
-  name?: string;
+type FragmentDurableObjectHostInfrastructure<TEnv> = {
   /** Durable Object state subset used for hook alarms and passed to `createRuntime()`. */
   state: DurableHooksDispatcherDurableObjectState;
   /** Worker environment bindings passed to `createRuntime()` and hook dispatcher factories. */
   env: TEnv;
+  /** Overrides instrumentation for every durable-hook fragment hosted by this Durable Object. */
+  durableHooksInstrumentation?: DurableHooksInstrumentation;
+  /** Instruments runtime construction and each fragment migration. */
+  initializationInstrumentation?: FragmentDurableObjectInitializationInstrumentation;
+  /** @internal Override low-level operations in tests or advanced integrations. */
+  operations?: FragmentDurableObjectHostOperations<TEnv>;
+};
+
+type CommonFragmentDurableObjectHostDefinition<TEnv, TSource, TRuntime> = {
+  /** Human-readable runtime name used in diagnostics. */
+  name?: string;
   /**
    * Builds the runtime for a source.
    *
@@ -67,21 +76,15 @@ type CommonHostOptions<TEnv, TSource, TRuntime> = {
    * required alarm-backed hook processing.
    */
   onDispatcherError?: DurableHooksErrorObserver;
-  /** Overrides instrumentation for every durable-hook fragment hosted by this Durable Object. */
-  durableHooksInstrumentation?: DurableHooksInstrumentation;
-  /** Instruments runtime construction and each fragment migration. */
-  initializationInstrumentation?: FragmentDurableObjectInitializationInstrumentation;
   /** Called by the durable hook dispatcher when processing or alarm scheduling fails. */
   onProcessError?: DurableHooksErrorObserver;
-  /** @internal Override low-level operations in tests or advanced integrations. */
-  operations?: FragmentDurableObjectHostOperations<TEnv>;
 };
 
-type SingleFragmentHostOptions<
+type SingleFragmentHostDefinition<
   TEnv,
   TSource,
   TFragment extends AnyFragnoInstantiatedDatabaseFragment,
-> = CommonHostOptions<TEnv, TSource, TFragment> & {
+> = CommonFragmentDurableObjectHostDefinition<TEnv, TSource, TFragment> & {
   /**
    * Selects the database fragments that must be migrated before the runtime is returned.
    *
@@ -90,14 +93,31 @@ type SingleFragmentHostOptions<
   getMigrationFragments?: (runtime: TFragment) => readonly AnyFragnoInstantiatedDatabaseFragment[];
 };
 
-type MultiFragmentHostOptions<TEnv, TSource, TRuntime> = CommonHostOptions<
+type MultiFragmentHostDefinition<TEnv, TSource, TRuntime> =
+  CommonFragmentDurableObjectHostDefinition<TEnv, TSource, TRuntime> & {
+    /** Selects the database fragments that must be migrated before the runtime is returned. */
+    getMigrationFragments: (runtime: TRuntime) => readonly AnyFragnoInstantiatedDatabaseFragment[];
+  };
+
+/** Fragment lifecycle behavior without runtime-specific state, environment, or instrumentation. */
+export type FragmentDurableObjectHostDefinition<TEnv, TSource, TRuntime> =
+  TRuntime extends AnyFragnoInstantiatedDatabaseFragment
+    ? SingleFragmentHostDefinition<TEnv, TSource, TRuntime>
+    : MultiFragmentHostDefinition<TEnv, TSource, TRuntime>;
+
+type SingleFragmentHostOptions<
+  TEnv,
+  TSource,
+  TFragment extends AnyFragnoInstantiatedDatabaseFragment,
+> = SingleFragmentHostDefinition<TEnv, TSource, TFragment> &
+  FragmentDurableObjectHostInfrastructure<TEnv>;
+
+type MultiFragmentHostOptions<TEnv, TSource, TRuntime> = MultiFragmentHostDefinition<
   TEnv,
   TSource,
   TRuntime
-> & {
-  /** Selects the database fragments that must be migrated before the runtime is returned. */
-  getMigrationFragments: (runtime: TRuntime) => readonly AnyFragnoInstantiatedDatabaseFragment[];
-};
+> &
+  FragmentDurableObjectHostInfrastructure<TEnv>;
 
 const methodsThatNotifyHooks = new Set<PropertyKey>([
   "callRoute",
