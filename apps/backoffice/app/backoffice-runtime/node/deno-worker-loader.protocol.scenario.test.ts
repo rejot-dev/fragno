@@ -18,7 +18,11 @@ import { DynamicWorkerExecutor } from "@/fragno/codemode/codemode-executor";
 import { compileNodeWorker } from "../dynamic-workers/compile-node-worker";
 import { createWorkerBundle } from "../dynamic-workers/worker-bundle";
 import { DENO_CODEMODE_PROTOCOL_LIMITS } from "./deno-codemode-runner-source";
-import { createDenoWorkerLoader, resolveDenoCodemodeExecutable } from "./deno-worker-loader";
+import {
+  createDenoWorkerLoader,
+  resolveDenoCodemodeExecutable,
+  verifyDenoCodemodeExecutable,
+} from "./deno-worker-loader";
 
 let denoExecutable: string;
 
@@ -625,6 +629,33 @@ denoProtocolScenarioTest("Deno Worker Loader limits deeply nested wire values", 
     "DENO_CODEMODE_RPC_WIRE_DEPTH_LIMIT_EXCEEDED",
   );
 });
+
+denoProtocolScenarioTest(
+  "Deno executable verification waits for version output streams to close",
+  async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "backoffice-delayed-deno-version-"));
+    const executable = path.join(directory, "deno");
+    try {
+      await writeFile(
+        executable,
+        `#!${process.execPath}
+const { spawn } = require("node:child_process");
+const child = spawn(
+  process.execPath,
+  ["-e", "setTimeout(() => console.log(\\"deno 2.9.7\\"), 100)"],
+  { stdio: ["ignore", 1, 2] },
+);
+child.unref();
+`,
+      );
+      await chmod(executable, 0o700);
+
+      await expect(verifyDenoCodemodeExecutable(executable)).resolves.toBeUndefined();
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  },
+);
 
 denoProtocolScenarioTest("Deno executable resolution uses the parent process PATH", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "backoffice-path-deno-"));

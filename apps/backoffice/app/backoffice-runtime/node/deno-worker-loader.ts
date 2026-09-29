@@ -918,7 +918,8 @@ export async function verifyDenoCodemodeExecutable(executable: string): Promise<
         }),
       );
     });
-    child.on("exit", (code) => {
+    // The exit event can precede stdout and stderr draining, while verification depends on stdout.
+    child.on("close", (code) => {
       clearTimeout(timeout);
       if (code === 0 && stdout.startsWith("deno ")) {
         resolve();
