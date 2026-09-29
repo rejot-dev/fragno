@@ -20,6 +20,7 @@ import {
 } from "./node-server-listeners";
 import { configureNodeBackofficeProxy } from "./node-server-proxy";
 import { stopNodeBackofficeOnSupervisorDisconnect } from "./node-supervisor-disconnect";
+import { registerNodeBackofficeWorkerSourceMaps } from "./node-worker-source-maps";
 
 const serverBuild = (await import(
   new URL("./server/index.js", import.meta.url).href
@@ -41,6 +42,7 @@ configureNodeBackofficeProxy(
   config.publicBaseUrl,
   process.env.BACKOFFICE_TRUST_PROXY ?? "loopback",
 );
+registerNodeBackofficeWorkerSourceMaps(app, process.env.NODE_ENV === "development");
 app.use(
   "/assets",
   express.static(path.join(staticDirectory, "assets"), {

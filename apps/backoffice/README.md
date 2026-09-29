@@ -36,6 +36,11 @@ file and default data directory are ignored by git.
 pnpm --dir apps/backoffice start:node
 ```
 
+The local `start:node*` commands run with `NODE_ENV=development`. In this mode, the Node server
+serves the browser SQLite worker's source maps directly from the installed dependency for DevTools;
+they are never copied into build artifacts. Production Node launches use `NODE_ENV=production`, and
+neither they nor Cloudflare serve these maps.
+
 ### Run the Node version in Docker
 
 Build the repository-pruned production image from the repository root:
