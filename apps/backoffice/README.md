@@ -127,15 +127,20 @@ object-storage mutations fence expired owners, but claims cannot cancel JavaScri
 effects: handlers must remain idempotent.
 
 Node OpenTelemetry is enabled only when `OTEL_EXPORTER_OTLP_ENDPOINT` is configured. Both child
-processes preload the Node SDK before application modules, export OTLP HTTP/protobuf traces and
-metrics, and identify themselves as `rejot-backoffice-web` and `rejot-backoffice-processor`.
-Durable-hook records persist only W3C `traceparent` and optional `tracestate`, allowing the
-processor to continue the enqueuing request trace without persisting baggage. Cloudflare and Node
-bind their tracing and Fragment-host operations through runtime-specific object implementations; the
-reusable `InMemory*` objects contain no instrumentation selection or Cloudflare fallback logic.
-Shutdown drains each runtime and then flushes its telemetry. For local collection, point the common
-endpoint at an OTLP HTTP receiver, for example `http://127.0.0.1:4318`; without an endpoint the
-instrumentation remains a no-op.
+processes preload the Node SDK before application modules, export OTLP HTTP/protobuf traces, and
+identify themselves as `rejot-backoffice-web` and `rejot-backoffice-processor`. The web process also
+emits one structured `backoffice.request.completed` log when every HTTP request finishes or aborts,
+including its `backoffice.request_id`, outcome, status, duration, and active trace identifiers when
+present. The log includes Cloud Logging's native trace and span fields; set `GOOGLE_CLOUD_PROJECT`
+to format the trace as its full Google Cloud resource name. Search logs by the request ID first,
+then follow `trace_id` when the collector retained that trace. Durable-hook records persist only W3C
+`traceparent` and optional `tracestate`, allowing the processor to continue the enqueuing request
+trace without persisting baggage. Cloudflare and Node bind their tracing and Fragment-host
+operations through runtime-specific object implementations; the reusable `InMemory*` objects contain
+no instrumentation selection or Cloudflare fallback logic. Shutdown drains each runtime and then
+flushes its telemetry. For local collection, point the common endpoint at an OTLP HTTP receiver, for
+example `http://127.0.0.1:4318`; without an endpoint trace instrumentation remains a no-op while
+request completion logs continue to be emitted.
 
 Node objects must not treat mutable process-local fields as authoritative shared state.
 Config-backed Fragment hosts reload persisted configuration before events and processor discovery,
