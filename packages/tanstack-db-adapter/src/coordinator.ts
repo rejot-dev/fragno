@@ -5,7 +5,6 @@ import type { AnySchema, AnyTable, FragnoId, FragnoReference } from "@fragno-dev
 import type { Collection } from "@tanstack/db";
 import type { PersistedCollectionPersistence } from "@tanstack/db-sqlite-persistence-core";
 
-import { outboxStreamResumeCursor } from "./checkpoint";
 import {
   openFragnoBrowserPersistenceWithDiagnostics,
   type FragnoBrowserPersistenceDiagnostics,
@@ -51,7 +50,7 @@ import { FragnoOutboxTransportError } from "./outbox-transport-error";
  *   -> coordinator.preload() closes registration and preloads every registered collection
  *   -> each collection's sync callback subscribes to the shared outbox synchronizer
  *   -> read the database's one exact persisted outbox checkpoint
- *   -> open a framed outbox stream from the aligned checkpoint boundary
+ *   -> verify checkpoint UOW identity and stream strictly after its versionstamp
  *   -> validate and decode each outbox entry once
  *   -> route every operation to its schema/table collection
  *   -> commit all affected collections before advancing the database checkpoint
@@ -67,7 +66,7 @@ import { FragnoOutboxTransportError } from "./outbox-transport-error";
  * - one exact checkpoint describes the complete local database, not an individual collection;
  * - an entry advances that checkpoint only after every affected collection has committed;
  * - entries without relevant operations still advance the checkpoint;
- * - replay from an aligned page never reapplies entries at or before the exact checkpoint;
+ * - reloads and stream rotations verify checkpoint identity without replaying old entries;
  * - changing adapter identity discards the previous local database materialization;
  * - persisted rows alone never make collections ready before network catch-up finishes;
  * - cleanup stops the shared request, stream, persistence, and every generated collection.
@@ -95,7 +94,8 @@ export {
   type FragnoOutboxCoordinatorState,
 } from "./coordinator/fragno-internal-collection";
 
-export const FRAGNO_OUTBOX_LOCAL_SCHEMA_VERSION = 1;
+// Version 1 could persist checkpoints without a UOW identity, which cannot verify restored history.
+export const FRAGNO_OUTBOX_LOCAL_SCHEMA_VERSION = 2;
 
 const FRAGNO_OUTBOX_STARTUP_TIMEOUT_MS = 5_000;
 
@@ -474,8 +474,9 @@ function catchUpPageCount(
     return 1;
   }
 
-  const resumeCursor = outboxStreamResumeCursor(checkpointVersionstamp);
-  const checkpointVersion = resumeCursor ? BigInt(`0x${resumeCursor.slice(0, 20)}`) : -1n;
+  const checkpointVersion = checkpointVersionstamp
+    ? BigInt(`0x${checkpointVersionstamp.slice(0, 20)}`)
+    : -1n;
   const currentVersion = BigInt(`0x${currentVersionstamp.slice(0, 20)}`);
   const remainingEntries =
     currentVersion > checkpointVersion ? currentVersion - checkpointVersion : 0n;

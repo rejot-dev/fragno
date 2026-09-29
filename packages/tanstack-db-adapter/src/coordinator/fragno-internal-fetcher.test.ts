@@ -39,11 +39,11 @@ describe("outbox stream fetch failure classification", () => {
         baseUrl: `${httpBaseUrl}/disconnect`,
         fetch: globalThis.fetch,
       });
-      await expect(disconnected.openOutboxStream({})).rejects.toBeInstanceOf(
+      await expect(disconnected.openOutboxStream({ checkpoint: undefined })).rejects.toBeInstanceOf(
         FragnoOutboxTransportError,
       );
       const fetcher = new FragnoInternalFetcher({ baseUrl: httpBaseUrl, fetch: globalThis.fetch });
-      const body = await fetcher.openOutboxStream({});
+      const body = await fetcher.openOutboxStream({ checkpoint: undefined });
       const response = await streamingResponse.promise;
       await expect(
         consumeNdjsonOutboxStream(body, {
@@ -71,7 +71,7 @@ describe("outbox stream fetch failure classification", () => {
           throw cause;
         },
       });
-      const opened = fetcher.openOutboxStream({});
+      const opened = fetcher.openOutboxStream({ checkpoint: undefined });
       await expect(opened).rejects.toBeInstanceOf(FragnoOutboxTransportError);
       await expect(opened).rejects.toMatchObject({ cause });
     },
@@ -86,7 +86,7 @@ describe("outbox stream fetch failure classification", () => {
           throw failure;
         },
       });
-      await expect(fetcher.openOutboxStream({})).rejects.toBe(failure);
+      await expect(fetcher.openOutboxStream({ checkpoint: undefined })).rejects.toBe(failure);
     },
   );
 
@@ -100,7 +100,9 @@ describe("outbox stream fetch failure classification", () => {
         throw failure;
       },
     });
-    await expect(fetcher.openOutboxStream({ signal: abort.signal })).rejects.toBe(failure);
+    await expect(
+      fetcher.openOutboxStream({ checkpoint: undefined, signal: abort.signal }),
+    ).rejects.toBe(failure);
   });
 
   it("rejects invalid requests before invoking Fetch", async () => {
@@ -112,7 +114,7 @@ describe("outbox stream fetch failure classification", () => {
         return new Response();
       },
     });
-    const opened = fetcher.openOutboxStream({});
+    const opened = fetcher.openOutboxStream({ checkpoint: undefined });
     await expect(opened).rejects.toBeInstanceOf(TypeError);
     await expect(opened).rejects.not.toBeInstanceOf(FragnoOutboxTransportError);
     assert(requests === 0);
@@ -126,7 +128,7 @@ describe("outbox stream fetch failure classification", () => {
       baseUrl,
       fetch: async () => new Response(null, { status: 204 }),
     });
-    const opened = fetcher.openOutboxStream({});
+    const opened = fetcher.openOutboxStream({ checkpoint: undefined });
     await expect(opened).rejects.toThrow("has no body");
     await expect(opened).rejects.not.toBeInstanceOf(FragnoOutboxTransportError);
   });

@@ -142,7 +142,12 @@ async function createKeyTrackingScenario(rowUpdateMode: "partial" | "full" = "pa
       liveEntries: FragnoOutboxEntry[] = [],
       completion: "rotate" | "interrupt" = "rotate",
     ) {
-      body = createOutboxTestStream(entries, liveEntries, completion);
+      body = createOutboxTestStream(
+        entries.filter((entry) => !checkpoint || entry.versionstamp > checkpoint.versionstamp),
+        liveEntries,
+        completion,
+        entries.at(-1)?.versionstamp ?? checkpoint?.versionstamp ?? null,
+      );
       await frontend.outbox.streamSession({ onStarted() {}, onCaughtUp() {} });
       await frontend.ready;
     },
@@ -498,7 +503,7 @@ describe("FragnoTableCollection", () => {
     }
   });
 
-  it("skips replayed and older entries and rejects a conflicting UOW", async () => {
+  it("skips committed entries but rejects replacement UOWs after a partial commit", async () => {
     const database = new Database(":memory:");
     const persistence = orderFragnoPersistenceWrites(createNodeSQLitePersistence({ database }));
     const outbox = createOutboxSynchronizer();
@@ -572,10 +577,11 @@ describe("FragnoTableCollection", () => {
       );
       expect(() =>
         outbox.applyChanges(usersTarget.key, {
-          checkpoint: { versionstamp: checkpoint.versionstamp, uowId: "conflicting-uow" },
-          changes: [],
+          checkpoint: { versionstamp: checkpoint.versionstamp, uowId: "replacement-uow" },
+          changes: [{ type: "update", key: "user-1", value: { name: "Restored" } }],
         }),
-      ).toThrow(`Outbox versionstamp ${checkpoint.versionstamp} changed from UOW`);
+      ).toThrow("changed unit of work");
+      expect(tableCollection.collection.get("user-1")).toMatchObject({ name: "Ada" });
 
       outbox.markReady();
       await preload;

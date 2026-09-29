@@ -1,5 +1,6 @@
 import { FRAGNO_OUTBOX_PAGE_SIZE } from "@fragno-dev/db/outbox";
 
+import type { FragnoOutboxCheckpoint } from "../checkpoint";
 import { FragnoOutboxProtocolError } from "../outbox-stream";
 import { rethrowOutboxNetworkFailure } from "../outbox-transport-error";
 
@@ -54,10 +55,16 @@ export class FragnoInternalFetcher {
   }
 
   async openOutboxStream(options: {
-    afterVersionstamp?: string;
+    checkpoint: FragnoOutboxCheckpoint | undefined;
     signal?: AbortSignal;
   }): Promise<ReadableStream<Uint8Array>> {
-    const url = this.#outboxRequestUrl(this.#outboxStreamUrl, options.afterVersionstamp);
+    const url = new URL(this.#outboxStreamUrl);
+    url.searchParams.set("protocol", "1");
+    if (options.checkpoint) {
+      url.searchParams.set("afterVersionstamp", options.checkpoint.versionstamp);
+      url.searchParams.set("afterUowId", options.checkpoint.uowId);
+    }
+    url.searchParams.set("limit", String(FRAGNO_OUTBOX_PAGE_SIZE));
     const request = new Request(url, { signal: options.signal });
     let response: Response;
     try {
@@ -80,16 +87,6 @@ export class FragnoInternalFetcher {
       throw new Error("Fragno outbox stream response has no body.");
     }
     return response.body;
-  }
-
-  #outboxRequestUrl(route: URL, afterVersionstamp: string | undefined): URL {
-    const url = new URL(route);
-    url.searchParams.set("protocol", "1");
-    if (afterVersionstamp) {
-      url.searchParams.set("afterVersionstamp", afterVersionstamp);
-    }
-    url.searchParams.set("limit", String(FRAGNO_OUTBOX_PAGE_SIZE));
-    return url;
   }
 
   async #get(url: URL, signal: AbortSignal | undefined): Promise<Response> {

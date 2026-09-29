@@ -3,12 +3,7 @@ import type { AnySchema } from "@fragno-dev/db/schema";
 
 import type { OutboxOperation } from "@fragno-dev/db";
 
-import {
-  checkpointForEntry,
-  outboxStreamResumeCursor,
-  shouldApplyOutboxEntry,
-  type FragnoOutboxCheckpoint,
-} from "../checkpoint";
+import type { FragnoOutboxCheckpoint } from "../checkpoint";
 import { consumeNdjsonOutboxStream, FragnoOutboxProtocolError } from "../outbox-stream";
 import {
   decodeFragnoOutboxPayload,
@@ -21,7 +16,7 @@ type FragnoSynchronizedRow = Record<string, unknown>;
 
 type FragnoOutboxFetcher = {
   openOutboxStream(options: {
-    afterVersionstamp?: string;
+    checkpoint: FragnoOutboxCheckpoint | undefined;
     signal?: AbortSignal;
   }): Promise<ReadableStream<Uint8Array>>;
 };
@@ -173,19 +168,18 @@ export class FragnoOutboxSynchronizer {
     );
 
     const initialCheckpoint = this.#checkpointStore.getCheckpoint();
-    const afterVersionstamp = outboxStreamResumeCursor(initialCheckpoint?.versionstamp);
-    let checkpointVerified = initialCheckpoint === undefined;
+    const afterVersionstamp = initialCheckpoint?.versionstamp;
     let caughtUp = false;
     let entries: FragnoOutboxEntry[] = [];
     let completedBatches = 0;
     const flushCatchUpBatch = () => {
-      this.#applyAndAdvancePage(this.#checkpointStore.getCheckpoint(), entries);
+      this.#applyAndAdvancePage(entries);
       entries = [];
       completedBatches += 1;
       this.#onCatchUpPage?.(this.#checkpointStore.getCheckpoint());
     };
     const body = await this.#fetcher.openOutboxStream({
-      afterVersionstamp,
+      checkpoint: initialCheckpoint,
       signal: this.#abortController.signal,
     });
     await consumeNdjsonOutboxStream(body, {
@@ -211,25 +205,8 @@ export class FragnoOutboxSynchronizer {
             options.onStarted(frame.catchUpTargetVersionstamp);
             break;
           case "entry":
-            if (!checkpointVerified && initialCheckpoint) {
-              try {
-                shouldApplyOutboxEntry(initialCheckpoint, frame.entry);
-              } catch (cause) {
-                throw new FragnoOutboxProtocolError(
-                  cause instanceof Error ? cause.message : "Fragno outbox checkpoint conflict.",
-                  { cause },
-                );
-              }
-              if (frame.entry.versionstamp === initialCheckpoint.versionstamp) {
-                checkpointVerified = true;
-              } else if (frame.entry.versionstamp > initialCheckpoint.versionstamp) {
-                throw new FragnoOutboxProtocolError(
-                  "Fragno outbox persisted checkpoint is missing from replay.",
-                );
-              }
-            }
             if (caughtUp) {
-              this.#applyAndAdvanceEntry(this.#checkpointStore.getCheckpoint(), frame.entry);
+              this.#applyAndAdvanceEntry(frame.entry);
             } else {
               entries.push(frame.entry);
               if (entries.length === FRAGNO_OUTBOX_PAGE_SIZE) {
@@ -238,11 +215,6 @@ export class FragnoOutboxSynchronizer {
             }
             break;
           case "caught-up":
-            if (!checkpointVerified) {
-              throw new FragnoOutboxProtocolError(
-                "Fragno outbox persisted checkpoint was not verified.",
-              );
-            }
             if (entries.length > 0 || completedBatches === 0) {
               flushCatchUpBatch();
             }
@@ -266,57 +238,35 @@ export class FragnoOutboxSynchronizer {
     });
   }
 
-  #applyAndAdvancePage(
-    checkpoint: FragnoOutboxCheckpoint | undefined,
-    entries: readonly FragnoOutboxEntry[],
-  ): FragnoOutboxCheckpoint | undefined {
-    const deliveriesByTarget = new Map<string, FragnoOutboxDelivery[]>();
-    let nextCheckpoint = checkpoint;
-
-    for (const entry of entries) {
-      if (!shouldApplyOutboxEntry(nextCheckpoint, entry)) {
-        continue;
-      }
-
-      this.#planEntryDeliveries(entry, deliveriesByTarget);
-      nextCheckpoint = checkpointForEntry(entry);
+  #applyAndAdvancePage(entries: readonly FragnoOutboxEntry[]): void {
+    const lastEntry = entries.at(-1);
+    if (!lastEntry) {
+      return;
     }
 
-    if (!nextCheckpoint || nextCheckpoint === checkpoint) {
-      return checkpoint;
+    const deliveriesByTarget = new Map<string, FragnoOutboxDelivery[]>();
+    for (const entry of entries) {
+      this.#planEntryDeliveries(entry, deliveriesByTarget);
     }
 
     for (const [targetKey, deliveries] of deliveriesByTarget) {
       this.#requireSubscriber(targetKey).applyBatch(deliveries);
     }
-    this.#checkpointStore.setCheckpoint(nextCheckpoint);
-    return nextCheckpoint;
+    this.#checkpointStore.setCheckpoint({
+      versionstamp: lastEntry.versionstamp,
+      uowId: lastEntry.uowId,
+    });
   }
 
-  #applyAndAdvanceEntry(
-    checkpoint: FragnoOutboxCheckpoint | undefined,
-    entry: FragnoOutboxEntry,
-  ): FragnoOutboxCheckpoint | undefined {
-    if (!shouldApplyOutboxEntry(checkpoint, entry)) {
-      return checkpoint;
-    }
-
-    this.#applyEntry(entry);
-
-    // Each affected collection stores this entry identity atomically with its row changes. A retry
-    // therefore skips collections that committed before a later collection failed.
-    const nextCheckpoint = checkpointForEntry(entry);
-    this.#checkpointStore.setCheckpoint(nextCheckpoint);
-    return nextCheckpoint;
-  }
-
-  #applyEntry(entry: FragnoOutboxEntry): void {
+  #applyAndAdvanceEntry(entry: FragnoOutboxEntry): void {
     const deliveriesByTarget = new Map<string, FragnoOutboxDelivery[]>();
     this.#planEntryDeliveries(entry, deliveriesByTarget);
 
     for (const [targetKey, deliveries] of deliveriesByTarget) {
       this.#requireSubscriber(targetKey).apply(deliveries[0]);
     }
+    // Collection checkpoints make partial cross-collection commits safe to retry.
+    this.#checkpointStore.setCheckpoint({ versionstamp: entry.versionstamp, uowId: entry.uowId });
   }
 
   #planEntryDeliveries(
@@ -350,7 +300,7 @@ export class FragnoOutboxSynchronizer {
       });
       const deliveries = deliveriesByTarget.get(targetKey) ?? [];
       deliveries.push({
-        checkpoint: checkpointForEntry(entry),
+        checkpoint: { versionstamp: entry.versionstamp, uowId: entry.uowId },
         changes: changes as FragnoCollectionChange<FragnoSynchronizedRow>[],
       });
       deliveriesByTarget.set(targetKey, deliveries);

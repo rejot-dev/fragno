@@ -1,10 +1,6 @@
 import { assert, describe, expect, it } from "vitest";
 
-import {
-  encodeVersionstamp,
-  outboxPageAfterVersionstamp,
-  versionstampToHex,
-} from "@fragno-dev/db/outbox";
+import { encodeVersionstamp, versionstampToHex } from "@fragno-dev/db/outbox";
 import { idColumn, schema } from "@fragno-dev/db/schema";
 import superjson from "superjson";
 
@@ -59,7 +55,7 @@ function createScenario(
   liveEntries: FragnoOutboxEntry[] = [],
 ) {
   let checkpoint = initialCheckpoint;
-  const requests: Array<string | undefined> = [];
+  const requests: Array<FragnoOutboxCheckpoint | undefined> = [];
   let body = createOutboxTestStream(entries, liveEntries);
   const batches: string[][] = [];
   const applied: string[] = [];
@@ -68,7 +64,7 @@ function createScenario(
     adapterIdentity: "test-adapter",
     fetcher: {
       async openOutboxStream(options) {
-        requests.push(options.afterVersionstamp);
+        requests.push(options.checkpoint);
         return body;
       },
     },
@@ -222,14 +218,14 @@ describe("FragnoOutboxSynchronizer stream sessions", () => {
     scenario.synchronizer.dispose();
   });
 
-  it("replays an aligned checkpoint without duplicating committed changes", async () => {
+  it("requests only entries after the exact checkpoint", async () => {
     const checkpoint = checkpointFor(outboxEntry(75));
     const scenario = createScenario(
-      Array.from({ length: 51 }, (_, index) => outboxEntry(50 + index)),
+      Array.from({ length: 25 }, (_, index) => outboxEntry(76 + index)),
       checkpoint,
     );
     await scenario.run();
-    expect(scenario.requests).toEqual([outboxPageAfterVersionstamp(checkpoint.versionstamp)]);
+    expect(scenario.requests).toEqual([checkpoint]);
     expect(scenario.batches.flat()).toEqual(
       Array.from({ length: 25 }, (_, index) => `users-${76 + index}`),
     );
@@ -237,21 +233,22 @@ describe("FragnoOutboxSynchronizer stream sessions", () => {
     scenario.synchronizer.dispose();
   });
 
-  it.each([1, 49, 99])("validates the exact UOW even at page boundary %s", async (version) => {
-    const entry = outboxEntry(version);
-    const scenario = createScenario([{ ...entry, uowId: "conflicting-uow" }], checkpointFor(entry));
-    await expect(scenario.run()).rejects.toThrow("changed from UOW");
-    expect(scenario.getCheckpoint()).toEqual(checkpointFor(entry));
-    assert(scenario.readyCalls() === 0);
-    scenario.synchronizer.dispose();
-  });
-
-  it("rejects a missing persisted checkpoint before applying newer entries", async () => {
-    const scenario = createScenario([outboxEntry(2)], checkpointFor(outboxEntry(1)));
-    await expect(scenario.run()).rejects.toThrow("checkpoint is missing");
-    expect(scenario.batches).toEqual([]);
-    scenario.synchronizer.dispose();
-  });
+  it.each([0, 1, 49, 50, 75, 99])(
+    "rotates an unchanged source at version %s without replaying entries",
+    async (version) => {
+      const entry = outboxEntry(version);
+      const scenario = createScenario([entry]);
+      await scenario.run();
+      scenario.setBody(createOutboxTestStream([], [], "rotate", entry.versionstamp));
+      await scenario.run();
+      expect(scenario.requests).toEqual([undefined, checkpointFor(entry)]);
+      expect(scenario.batches).toEqual([[`users-${version}`]]);
+      expect(scenario.applied).toEqual([]);
+      expect(scenario.getCheckpoint()).toEqual(checkpointFor(entry));
+      assert(scenario.readyCalls() === 1);
+      scenario.synchronizer.dispose();
+    },
+  );
 
   it("discards a partial catch-up batch on interruption and recovers on the next session", async () => {
     const scenario = createScenario();
@@ -262,11 +259,12 @@ describe("FragnoOutboxSynchronizer stream sessions", () => {
     expect(scenario.getCheckpoint()).toEqual(checkpointFor(outboxEntry(49)));
     assert(scenario.readyCalls() === 0);
     scenario.setBody(
-      createOutboxTestStream(Array.from({ length: 5 }, (_, index) => outboxEntry(49 + index))),
+      createOutboxTestStream(Array.from({ length: 4 }, (_, index) => outboxEntry(50 + index))),
     );
     await scenario.run();
     expect(scenario.batches.map((batch) => batch.length)).toEqual([50, 4]);
     expect(scenario.getCheckpoint()).toEqual(checkpointFor(outboxEntry(53)));
+    expect(scenario.requests).toEqual([undefined, checkpointFor(outboxEntry(49))]);
     scenario.synchronizer.dispose();
   });
 
@@ -289,7 +287,7 @@ describe("FragnoOutboxSynchronizer stream sessions", () => {
     await scenario.run();
     expect(scenario.getCheckpoint()).toEqual(checkpointFor(outboxEntry(1)));
     assert(scenario.readyCalls() === 0);
-    scenario.setBody(createOutboxTestStream([outboxEntry(1), outboxEntry(2), outboxEntry(3)]));
+    scenario.setBody(createOutboxTestStream([outboxEntry(2), outboxEntry(3)]));
     await scenario.run();
     expect(scenario.batches).toEqual([
       ["users-0", "users-1"],

@@ -5,8 +5,8 @@ export function createOutboxTestStream(
   entries: readonly OutboxStreamEntry[],
   liveEntries: readonly OutboxStreamEntry[] = [],
   completion: "rotate" | "interrupt" = "rotate",
+  target: string | null = entries.at(-1)?.versionstamp ?? null,
 ): ReadableStream<Uint8Array> {
-  const target = entries.at(-1)?.versionstamp ?? null;
   const frames: OutboxStreamFrame[] = [
     {
       type: "started",

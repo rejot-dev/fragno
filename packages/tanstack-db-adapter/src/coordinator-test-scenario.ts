@@ -19,6 +19,7 @@ import { createNodeSQLitePersistence } from "@tanstack/node-db-sqlite-persistenc
 
 import {
   createFragnoOutboxCoordinator,
+  FRAGNO_OUTBOX_LOCAL_SCHEMA_VERSION,
   type FragnoCollectionRow,
   type FragnoOutboxCoordinator,
   type FragnoOutboxCoordinatorDependencies,
@@ -144,7 +145,12 @@ export async function withFromScratchTestScenario<
       }
       const namespace = options.schema.name.replaceAll("-", "_");
       const collectionId = `fragno.outbox.table.v1:${namespace.length}:${namespace}${options.table.length}:${options.table}`;
-      return (await activePersistence.adapter.scanRows(collectionId)) as Array<{
+      const persistence = activePersistence.resolvePersistenceForCollection!({
+        collectionId,
+        mode: "sync-present",
+        schemaVersion: FRAGNO_OUTBOX_LOCAL_SCHEMA_VERSION,
+      });
+      return (await persistence.adapter.scanRows!(collectionId)) as Array<{
         key: string | number;
         value: Record<string, unknown>;
         metadata?: unknown;

@@ -261,31 +261,70 @@ export const createInternalFragmentOutboxRoutes = () =>
             { status: 400 },
           );
         }
-        const { adapterIdentity, catchUpTargetVersionstamp } = await this.handlerTx({
-          name: "internal.outbox.stream.start",
-        })
-          .withServiceCalls(
-            () =>
-              [
-                services.settingsService.getOrCreate(
-                  SETTINGS_NAMESPACE,
-                  ADAPTER_IDENTITY_KEY,
-                  crypto.randomUUID(),
-                ),
-                services.outboxService.latestVersionstamp(),
-              ] as const,
-          )
-          .transform(({ serviceResult: [adapterIdentity, catchUpTargetVersionstamp] }) => ({
-            adapterIdentity,
-            catchUpTargetVersionstamp,
-          }))
-          .execute();
+        const afterUowId = input.query.get("afterUowId");
+        if (afterUowId !== null && (afterVersionstamp === undefined || afterUowId.length === 0)) {
+          return json(
+            {
+              error: "Checkpoint UOW identity requires an outbox cursor and a non-empty UOW ID.",
+              code: "INVALID_CHECKPOINT",
+            },
+            { status: 400 },
+          );
+        }
+        const { adapterIdentity, catchUpTargetVersionstamp, checkpointUowId } =
+          await this.handlerTx({
+            name: "internal.outbox.stream.start",
+          })
+            .withServiceCalls(
+              () =>
+                [
+                  services.settingsService.getOrCreate(
+                    SETTINGS_NAMESPACE,
+                    ADAPTER_IDENTITY_KEY,
+                    crypto.randomUUID(),
+                  ),
+                  services.outboxService.latestVersionstamp(),
+                ] as const,
+            )
+            .retrieve(({ forSchema }) =>
+              afterUowId !== null && afterVersionstamp !== undefined
+                ? forSchema(internalSchema).findFirst("fragno_db_outbox", (b) =>
+                    b
+                      .whereIndex("idx_outbox_versionstamp", (eb) =>
+                        eb("versionstamp", "=", afterVersionstamp),
+                      )
+                      .select(["uowId"]),
+                  )
+                : undefined,
+            )
+            .transform(
+              ({
+                serviceResult: [adapterIdentity, catchUpTargetVersionstamp],
+                retrieveResult: [checkpoint],
+              }) => ({
+                adapterIdentity,
+                catchUpTargetVersionstamp,
+                checkpointUowId: checkpoint?.uowId ?? null,
+              }),
+            )
+            .execute();
         if (
           afterVersionstamp !== undefined &&
           (catchUpTargetVersionstamp === null || afterVersionstamp > catchUpTargetVersionstamp)
         ) {
           return json(
             { error: "Outbox stream cursor is ahead of the source.", code: "OUTBOX_CURSOR_AHEAD" },
+            { status: 409 },
+          );
+        }
+
+        // Adapter identity is restored with the database; the checkpoint UOW detects rewritten history.
+        if (afterUowId !== null && checkpointUowId !== afterUowId) {
+          return json(
+            {
+              error: "Outbox checkpoint is missing or belongs to a different unit of work.",
+              code: "OUTBOX_CHECKPOINT_MISMATCH",
+            },
             { status: 409 },
           );
         }

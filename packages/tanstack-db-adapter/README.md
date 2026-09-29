@@ -63,17 +63,17 @@ The coordinator derives these routes from `baseUrl`:
 - `GET /_internal`
 - `GET /_internal/outbox/stream?protocol=1`
 
-The adapter never requests paginated `/outbox` data. Each stream replays from an aligned checkpoint
-boundary, including the exact persisted entry to verify its UOW identity. Catch-up is applied in
-bounded 50-entry batches. The response's `started` frame fixes the target; only `caught-up` makes
+The adapter never requests paginated `/outbox` data. Each stream starts strictly after the exact
+checkpoint. Reloads and rotations with no new commits receive no entry payloads. Catch-up is applied
+in bounded 50-entry batches. The response's `started` frame fixes the target; only `caught-up` makes
 collections ready. Heartbeats are transport liveness, not readiness.
 
 A final `rotate` frame requests immediate reconnection without backoff. Only classified network
 failures and EOF without `rotate` transition through `"retrying"` and `"replaying"` with exponential
 backoff. Request validation, HTTP errors (including 401/404 and 5xx), malformed protocol or
-payloads, checkpoint conflicts, and application/callback errors transition to `"failed"` and reject
-pending `preload()`. Only coordinator-owned disposal silently stops the stream loop; an unrelated
-`AbortError` is a failure.
+payloads, and application/callback errors transition to `"failed"` and reject pending `preload()`.
+Only coordinator-owned disposal silently stops the stream loop; an unrelated `AbortError` is a
+failure.
 
 An interrupted partial catch-up batch is discarded and replayed; a planned rotation commits its
 partial batch without marking it ready. Collections already ready remain usable during reconnection.
@@ -134,6 +134,12 @@ type FragnoOutboxCheckpoint = {
 };
 ```
 
+Every resumed request sends `afterVersionstamp` and `afterUowId`. The server verifies that exact
+checkpoint before streaming, without downloading old entries. A missing or different UOW returns
+HTTP 409 and stops synchronization. Adapter identity alone is insufficient because it survives a
+backup restore, even when subsequent commits rewrite previously observed versionstamps. Collection
+checkpoints also reject a changed UOW during partial-commit recovery.
+
 During finite catch-up, each affected collection applies one bounded batch in one TanStack
 transaction. Row changes and that collection's applied-entry checkpoint commit together. The shared
 database checkpoint advances only after every affected collection accepts the page, and ordered
@@ -151,7 +157,8 @@ tab owns the SQLite writer. The OPFS database identity includes:
 
 Changing the backend adapter identity or local schema version opens a fresh local database and
 replays the outbox. Increase `FRAGNO_OUTBOX_LOCAL_SCHEMA_VERSION` whenever a persisted materialized
-row format changes.
+row format changes. Local schema version 2 rebuilds version-1 caches that may lack checkpoint UOW
+IDs.
 
 ## Row update mode
 

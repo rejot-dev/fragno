@@ -84,7 +84,7 @@ const setupAdapter = async ({ migrateInternal = true } = {}) => {
     sqliteDatabase.close();
   };
 
-  return { adapter, close };
+  return { adapter, sqliteDatabase, close };
 };
 
 describe("internal fragment describe routes", () => {
@@ -724,6 +724,99 @@ describe("internal fragment describe routes", () => {
         const response = await fragment.handler(new Request(url));
         assert(response.status === 400);
         expect(await response.json()).toMatchObject({ code: "UNSUPPORTED_OUTBOX_PROTOCOL" });
+      } finally {
+        await close();
+      }
+    },
+  );
+
+  it.each([
+    { afterUowId: "uow-without-cursor" },
+    { afterVersionstamp: "000000000000000000010000" },
+  ])("rejects incomplete checkpoint identity before reading storage: %j", async (cursor) => {
+    const { adapter, close } = await setupAdapter({ migrateInternal: false });
+    const fragment = instantiate(
+      defineFragment("checkpoint-validation").extend(withDatabase(alphaSchema)).build(),
+    )
+      .withOptions({ databaseAdapter: adapter, mountRoute: "/alpha", outbox: { enabled: true } })
+      .build();
+    try {
+      const response = await fragment.callRoute(
+        "GET",
+        "/_internal/outbox/stream" as never,
+        {
+          query: { protocol: "1", afterUowId: "", ...cursor },
+        } as never,
+      );
+      assert(response.status === 400);
+      assert(response.type === "error");
+      expect(response.error).toMatchObject({ code: "INVALID_CHECKPOINT" });
+    } finally {
+      await close();
+    }
+  });
+
+  it.each(["valid", "changed", "missing"] as const)(
+    "validates the checkpoint UOW before streaming: %s",
+    async (kind) => {
+      const { adapter, sqliteDatabase, close } = await setupAdapter();
+      const fragment = instantiate(
+        defineFragment("checkpoint-validation").extend(withDatabase(alphaSchema)).build(),
+      )
+        .withOptions({ databaseAdapter: adapter, mountRoute: "/alpha", outbox: { enabled: true } })
+        .build();
+      const namespace = (fragment.$internal.deps as { namespace: string | null }).namespace;
+      await adapter.prepareMigrations(alphaSchema, namespace).executeWithDriver(adapter.driver, 0);
+      try {
+        for (const name of ["first", "second"]) {
+          await fragment.inContext(async function (this: DatabaseRequestContext) {
+            await this.handlerTx()
+              .mutate(({ forSchema }) => forSchema(alphaSchema).create("alpha_items", { name }))
+              .execute();
+          });
+        }
+        const listed = await fragment.callRoute("GET", "/_internal/outbox" as never);
+        assert(listed.type === "json");
+        const [checkpoint, newer] = listed.data as { versionstamp: string; uowId: string }[];
+        if (kind === "missing") {
+          sqliteDatabase
+            .prepare("DELETE FROM fragno_db_outbox WHERE versionstamp = ?")
+            .run(checkpoint.versionstamp);
+        }
+        const response = await fragment.callRoute(
+          "GET",
+          "/_internal/outbox/stream" as never,
+          {
+            query: {
+              protocol: "1",
+              afterVersionstamp: checkpoint.versionstamp,
+              afterUowId: kind === "changed" ? "replacement-uow" : checkpoint.uowId,
+            },
+          } as never,
+        );
+        if (kind === "valid") {
+          assert(response.type === "jsonStream");
+          try {
+            expect((await response.stream.next()).value).toMatchObject({ type: "started" });
+            expect((await response.stream.next()).value).toMatchObject({
+              type: "entry",
+              entry: { versionstamp: newer.versionstamp },
+            });
+            expect((await response.stream.next()).value).toEqual({
+              type: "caught-up",
+              throughVersionstamp: newer.versionstamp,
+            });
+          } finally {
+            await response.stream.return(undefined);
+          }
+        } else {
+          assert(response.status === 409);
+          assert(response.type === "error");
+          expect(response.error).toMatchObject({ code: "OUTBOX_CHECKPOINT_MISMATCH" });
+          assert(
+            getRegistryForAdapterSync(adapter).outboxObservationHub.activeObserverCount() === 0,
+          );
+        }
       } finally {
         await close();
       }

@@ -4,7 +4,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { FRAGNO_OUTBOX_PAGE_SIZE, outboxPageAfterVersionstamp } from "@fragno-dev/db/outbox";
+import { FRAGNO_OUTBOX_PAGE_SIZE } from "@fragno-dev/db/outbox";
+import { parseOutboxStreamFrame } from "@fragno-dev/db/outbox-stream";
 import { column, idColumn, referenceColumn, schema } from "@fragno-dev/db/schema";
 import Database from "better-sqlite3";
 
@@ -20,6 +21,7 @@ import type {
 } from "@tanstack/db-sqlite-persistence-core";
 import { createNodeSQLitePersistence } from "@tanstack/node-db-sqlite-persistence";
 
+import type { FragnoOutboxCheckpoint } from "./checkpoint";
 import {
   createFragnoOutboxCoordinator,
   type FragnoBrowserPersistenceDiagnostics,
@@ -164,10 +166,7 @@ function delayPersistenceWrites(
   return wrapPersistence(persistence);
 }
 
-function readDurableCheckpoint(databasePath: string): {
-  versionstamp: string;
-  uowId: string;
-} | null {
+function readDurableCheckpoint(databasePath: string): FragnoOutboxCheckpoint | null {
   const database = new Database(databasePath, { readonly: true });
   try {
     const row = database
@@ -179,7 +178,7 @@ function readDurableCheckpoint(databasePath: string): {
       .get("fragno.outbox.internal.v1", "fragno.outbox.checkpoint.v1") as
       | { value: string }
       | undefined;
-    return row ? (JSON.parse(row.value) as { versionstamp: string; uowId: string }) : null;
+    return row ? (JSON.parse(row.value) as FragnoOutboxCheckpoint) : null;
   } finally {
     database.close();
   }
@@ -276,6 +275,32 @@ async function createTestServer(name: string) {
     createDiscussion,
     updateDiscussion,
     createUserHistory,
+    async backup() {
+      const tables = (await setup.test.kysely
+        .selectFrom("sqlite_master")
+        .select("name")
+        .where("type", "=", "table")
+        .where("name", "not like", "sqlite_%")
+        .execute()) as { name: string }[];
+      return await Promise.all(
+        tables.map(async ({ name }) => ({
+          table: name,
+          rows: (await setup.test.kysely.selectFrom(name).selectAll().execute()) as Record<
+            string,
+            unknown
+          >[],
+        })),
+      );
+    },
+    async restore(backup: { table: string; rows: Record<string, unknown>[] }[]) {
+      await setup.test.resetDatabase();
+      for (const { table, rows } of backup) {
+        await setup.test.kysely.deleteFrom(table).execute();
+        if (rows.length > 0) {
+          await setup.test.kysely.insertInto(table).values(rows).execute();
+        }
+      }
+    },
     cleanup: () => setup.test.cleanup(),
   };
 }
@@ -410,83 +435,172 @@ describe("Fragno TanStack adapter from scratch end-to-end", () => {
     }
   }, 10_000);
 
-  it("checks the aligned outbox page before streaming from a persisted database", async () => {
-    const server = await createTestServer("persisted-reload");
-    const temporaryDirectory = await mkdtemp(join(tmpdir(), "fragno-outbox-reload-"));
-    const databasePath = join(temporaryDirectory, "persistence.sqlite");
-    const persistenceDependencies = createPersistentNodeDependencies(databasePath);
-
-    try {
-      await server.createDiscussion();
-
-      const firstCoordinator = await createFragnoOutboxCoordinator(
-        {
-          baseUrl: server.baseUrl,
-          fetch: server.fetch,
-          schemas: [appSchema],
-        },
-        persistenceDependencies,
-      );
-      firstCoordinator.collection(appSchema, "users");
-      await firstCoordinator.preload();
-      await waitForCollection(
-        firstCoordinator.internal.collection,
-        () => firstCoordinator.state === "live",
-      );
-      const persistedCheckpoint = firstCoordinator.internal.getCheckpoint();
-      assert.ok(persistedCheckpoint);
-      await firstCoordinator.cleanup();
-
-      const outboxRequests: URL[] = [];
-      const reloadFetch: typeof globalThis.fetch = async (input, init) => {
-        const url = new URL(input instanceof Request ? input.url : input.toString());
-        assert(
-          !url.pathname.endsWith("/_internal/outbox"),
-          "Coordinator must never request paginated outbox data",
-        );
-        if (url.pathname.endsWith("/_internal/outbox/stream")) {
-          outboxRequests.push(url);
-        }
-        return server.fetch(input, init);
-      };
-      const secondCoordinator = await createFragnoOutboxCoordinator(
-        {
-          baseUrl: server.baseUrl,
-          fetch: reloadFetch,
-          schemas: [appSchema],
-        },
-        persistenceDependencies,
-      );
-      const users = secondCoordinator.collection(appSchema, "users");
+  it.each([false, true])(
+    "resumes after the persisted checkpoint (new changes: %s)",
+    async (changed) => {
+      const server = await createTestServer("persisted-reload");
+      const temporaryDirectory = await mkdtemp(join(tmpdir(), "fragno-outbox-reload-"));
+      const databasePath = join(temporaryDirectory, "persistence.sqlite");
+      const persistenceDependencies = createPersistentNodeDependencies(databasePath);
 
       try {
-        assert.deepEqual(secondCoordinator.internal.getCheckpoint(), persistedCheckpoint);
-        await secondCoordinator.preload();
-        await waitForCollection(
-          secondCoordinator.internal.collection,
-          () => secondCoordinator.state === "live",
-        );
+        await server.createDiscussion();
 
-        expect(sortedRows<User>(users.values())).toEqual([
-          { id: "user-1", name: "Ada" },
-          { id: "user-2", name: "Grace" },
-        ]);
-        assert.equal(outboxRequests.length, 1);
-        const catchUpRequest = outboxRequests[0]!;
-        assert.equal(
-          catchUpRequest.searchParams.get("afterVersionstamp"),
-          outboxPageAfterVersionstamp(persistedCheckpoint.versionstamp) ?? null,
+        const firstCoordinator = await createFragnoOutboxCoordinator(
+          {
+            baseUrl: server.baseUrl,
+            fetch: server.fetch,
+            schemas: [appSchema],
+          },
+          persistenceDependencies,
         );
-        assert.equal(catchUpRequest.searchParams.get("limit"), String(FRAGNO_OUTBOX_PAGE_SIZE));
-        assert.equal(catchUpRequest.searchParams.get("protocol"), "1");
+        firstCoordinator.collection(appSchema, "users");
+        await firstCoordinator.preload();
+        await waitForCollection(
+          firstCoordinator.internal.collection,
+          () => firstCoordinator.state === "live",
+        );
+        const persistedCheckpoint = firstCoordinator.internal.getCheckpoint();
+        assert.ok(persistedCheckpoint);
+        await firstCoordinator.cleanup();
+        if (changed) {
+          await server.updateDiscussion();
+        }
+
+        const outboxRequests: URL[] = [];
+        const receivedFrames: string[] = [];
+        const reloadFetch: typeof globalThis.fetch = async (input, init) => {
+          const url = new URL(input instanceof Request ? input.url : input.toString());
+          assert(
+            !url.pathname.endsWith("/_internal/outbox"),
+            "Coordinator must never request paginated outbox data",
+          );
+          const response = await server.fetch(input, init);
+          if (!url.pathname.endsWith("/_internal/outbox/stream")) {
+            return response;
+          }
+          outboxRequests.push(url);
+          assert(response.body);
+          const decoder = new TextDecoder();
+          let buffer = "";
+          return new Response(
+            response.body.pipeThrough(
+              new TransformStream({
+                transform(chunk, controller) {
+                  buffer += decoder.decode(chunk, { stream: true });
+                  const lines = buffer.split("\n");
+                  buffer = lines.pop()!;
+                  receivedFrames.push(
+                    ...lines.map((line) => parseOutboxStreamFrame(JSON.parse(line)).type),
+                  );
+                  controller.enqueue(chunk);
+                },
+              }),
+            ),
+            response,
+          );
+        };
+        const secondCoordinator = await createFragnoOutboxCoordinator(
+          {
+            baseUrl: server.baseUrl,
+            fetch: reloadFetch,
+            schemas: [appSchema],
+          },
+          persistenceDependencies,
+        );
+        const users = secondCoordinator.collection(appSchema, "users");
+
+        try {
+          assert.deepEqual(secondCoordinator.internal.getCheckpoint(), persistedCheckpoint);
+          await secondCoordinator.preload();
+          await waitForCollection(
+            secondCoordinator.internal.collection,
+            () => secondCoordinator.state === "live",
+          );
+
+          expect(sortedRows<User>(users.values())).toEqual([
+            { id: "user-1", name: changed ? "Ada Lovelace" : "Ada" },
+            { id: "user-2", name: "Grace" },
+          ]);
+          expect(receivedFrames).toEqual(
+            changed ? ["started", "entry", "caught-up"] : ["started", "caught-up"],
+          );
+          assert.equal(outboxRequests.length, 1);
+          const catchUpRequest = outboxRequests[0]!;
+          assert.equal(
+            catchUpRequest.searchParams.get("afterVersionstamp"),
+            persistedCheckpoint.versionstamp,
+          );
+          assert.equal(catchUpRequest.searchParams.get("afterUowId"), persistedCheckpoint.uowId);
+          assert.equal(catchUpRequest.searchParams.get("limit"), String(FRAGNO_OUTBOX_PAGE_SIZE));
+          assert.equal(catchUpRequest.searchParams.get("protocol"), "1");
+        } finally {
+          await secondCoordinator.cleanup();
+        }
       } finally {
-        await secondCoordinator.cleanup();
+        await server.cleanup();
+        await rm(temporaryDirectory, { recursive: true, force: true });
       }
-    } finally {
-      await server.cleanup();
-      await rm(temporaryDirectory, { recursive: true, force: true });
-    }
-  });
+    },
+  );
+
+  it.each([1, 3])(
+    "rejects rewritten history after restoring a backup and committing %s replacements",
+    async (replacementCount) => {
+      const server = await createTestServer("restored-history");
+      const directory = await mkdtemp(join(tmpdir(), "fragno-outbox-restore-"));
+      const databasePath = join(directory, "persistence.sqlite");
+      const dependencies = createPersistentNodeDependencies(databasePath);
+      try {
+        await server.createDiscussion();
+        const first = await createFragnoOutboxCoordinator(
+          { baseUrl: server.baseUrl, fetch: server.fetch, schemas: [appSchema] },
+          dependencies,
+        );
+        first.collection(appSchema, "users");
+        const originalDescription = (await (
+          await server.fetch(`${server.baseUrl}/_internal`)
+        ).json()) as { adapterIdentity: string };
+        const backup = await server.backup();
+        await server.updateDiscussion();
+        await first.preload();
+        const checkpoint = first.internal.getCheckpoint();
+        assert(checkpoint);
+        await first.cleanup();
+
+        await server.restore(backup);
+        await server.createUserHistory(replacementCount);
+        const description = (await (await server.fetch(`${server.baseUrl}/_internal`)).json()) as {
+          adapterIdentity: string;
+          currentVersionstamp: string;
+        };
+        assert.equal(description.adapterIdentity, originalDescription.adapterIdentity);
+        assert(description.currentVersionstamp >= checkpoint.versionstamp);
+
+        const second = await createFragnoOutboxCoordinator(
+          { baseUrl: server.baseUrl, fetch: server.fetch, schemas: [appSchema] },
+          dependencies,
+        );
+        const users = second.collection(appSchema, "users");
+        try {
+          await expect(second.preload()).rejects.toThrow("409");
+          assert.equal(second.state, "failed");
+          expect(second.internal.getCheckpoint()).toEqual(checkpoint);
+          expect(sortedRows<User>(users.values())).toEqual([
+            { id: "user-1", name: "Ada Lovelace" },
+            { id: "user-2", name: "Grace" },
+          ]);
+          await second.flushPersistence();
+          expect(readDurableCheckpoint(databasePath)).toEqual(checkpoint);
+        } finally {
+          await second.cleanup();
+        }
+      } finally {
+        await server.cleanup();
+        await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("can go live before persistence finishes and explicitly flush the final checkpoint", async () => {
     const server = await createTestServer("durable-multi-page-catch-up");

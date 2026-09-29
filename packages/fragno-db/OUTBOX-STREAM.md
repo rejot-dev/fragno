@@ -1,8 +1,15 @@
 # Outbox stream protocol 1
 
 Request `GET /_internal/outbox/stream?protocol=1` on an outbox-enabled Fragment. Optional query
-parameters are `afterVersionstamp` (an exclusive, lowercase 24-digit hexadecimal cursor) and `limit`
-(the catch-up read size, 1–50; default 50). Shared live polling always uses 50-entry reads.
+parameters are `afterVersionstamp` (an exclusive, lowercase 24-digit hexadecimal cursor),
+`afterUowId` (the UOW identity at that exact cursor), and `limit` (the catch-up read size, 1–50;
+default 50). Shared live polling always uses 50-entry reads.
+
+Durable clients should send both `afterVersionstamp` and `afterUowId`. A supplied UOW ID must be
+non-empty and accompanied by a cursor; invalid pairs return HTTP 400. The server looks up only the
+checkpoint's UOW ID alongside the initial identity/head reads, without replaying its payload.
+Missing or changed checkpoint entries return HTTP 409 (`OUTBOX_CHECKPOINT_MISMATCH`) before any
+stream frames. Cursor-only clients do not get this restore detection.
 
 This is a breaking replacement for the unversioned, bare-entry stream. Missing or unsupported
 protocol versions return HTTP 400 before streaming. Malformed cursors return 400; cursors ahead of
@@ -71,9 +78,10 @@ target. There are no frames after `rotate`; EOF without it is interruption, not 
 
 Client checkpoints advance only after successfully applying entries, not on receipt of a control
 frame. Clients can safely commit a partial batch at planned rotation. On interruption, discard an
-unapplied partial batch and resume from the last applied checkpoint. Replaying the exact checkpoint
-entry allows validation that its `uowId` has not changed. Reject changed source identities before
-applying any data from a replacement response.
+unapplied partial batch and resume strictly after the last applied checkpoint, sending its UOW ID
+for verification. Adapter identity is stored in the database and survives a backup restore; it alone
+cannot detect rewritten history once the restored source advances past an old cursor. Reject changed
+source identities and checkpoint mismatches before applying replacement data.
 
 No in-band error frame is needed: pre-stream failures use HTTP errors, and interrupted streams use
 normal reconnect recovery. Unknown/malformed frames and illegal frame ordering are protocol errors,
