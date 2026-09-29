@@ -26,6 +26,7 @@ coverage.json
 next-env.d.ts
 .next/
 out/
+**/.docker-node/
 build
 dist
 .prisma/

@@ -2,6 +2,9 @@
 .github
 **/node_modules
 **/.turbo
+**/.wrangler
+**/.fallow
+**/.docker-node
 **/.react-router
 **/.source
 **/coverage
@@ -20,3 +23,13 @@
 **/*.sqlite-*
 **/*.pglite
 **/*.pglite/**
+**/*.cpuprofile
+**/*.heapprofile
+**/*.heapsnapshot
+**/*.trace
+**/profiles
+example-apps
+example-fragments
+apps/*
+!apps/backoffice
+!apps/backoffice/**

@@ -45,11 +45,15 @@ neither they nor Cloudflare serve these maps.
 
 ### Run the Node version in Docker
 
-Build the repository-pruned production image for local use from the repository root:
+Build the production image for local use from the repository root:
 
 ```bash
 pnpm --dir apps/backoffice docker:build:node
 ```
+
+The command prunes the workspace on the host before starting Docker, builds for the local machine's
+native architecture, and reuses persistent pnpm and Turbo BuildKit caches. The final image contains
+only the bundled Node build, its launcher, Deno, and the native SQLite runtime dependency.
 
 Deployment targets use AMD64 and require an explicit immutable image tag:
 

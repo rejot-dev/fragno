@@ -2,14 +2,9 @@
 
 FROM node:26.10.0-bookworm-slim AS pnpm-base
 
-RUN npm install --global pnpm@11.1.3 turbo@2.10.1
+RUN npm install --global pnpm@11.1.3
 
-WORKDIR /app
-
-FROM pnpm-base AS pruner
-
-COPY . .
-RUN turbo prune @fragno-apps/backoffice-rr --docker
+WORKDIR /workspace
 
 FROM pnpm-base AS builder
 
@@ -17,16 +12,28 @@ RUN apt-get update \
   && apt-get install --yes --no-install-recommends build-essential python3 \
   && rm -rf /var/lib/apt/lists/*
 
-COPY --from=pruner /app/out/json/ .
-RUN pnpm install --frozen-lockfile
+COPY json/ .
+RUN --mount=type=cache,id=backoffice-pnpm-store,target=/pnpm/store,sharing=locked \
+  --mount=type=cache,id=backoffice-pnpm-metadata,target=/root/.cache/pnpm,sharing=locked \
+  pnpm --store-dir=/pnpm/store install --frozen-lockfile
 
-COPY --from=pruner /app/out/full/ .
+COPY full/ .
 COPY .oxfmtrc.json .oxfmtrc.json
-RUN pnpm install --frozen-lockfile
-RUN turbo run build:node \
-  --filter=@fragno-apps/backoffice-rr \
-  --output-logs=errors-only
-RUN CI=true pnpm install --prod --frozen-lockfile
+RUN --mount=type=cache,id=backoffice-turbo-cache,target=/workspace/.turbo,sharing=locked \
+  pnpm exec turbo run build:node \
+    --filter=@fragno-apps/backoffice-rr \
+    --output-logs=errors-only
+
+FROM builder AS runtime-dependencies
+
+RUN --mount=type=cache,id=backoffice-pnpm-store,target=/pnpm/store,sharing=locked \
+  --mount=type=cache,id=backoffice-pnpm-metadata,target=/root/.cache/pnpm,sharing=locked \
+  pnpm --store-dir=/pnpm/store \
+    --config.inject-workspace-packages=true \
+    --filter=@fragno-private/backoffice-node-runtime \
+    deploy \
+    --prod \
+    /runtime
 
 FROM denoland/deno:bin-2.9.7 AS deno
 
@@ -37,7 +44,12 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 
 COPY --from=deno /deno /usr/local/bin/deno
-COPY --from=builder --chown=node:node /app /app
+COPY --from=runtime-dependencies --chown=node:node /runtime/package.json /app/package.json
+COPY --from=runtime-dependencies --chown=node:node /runtime/node_modules /app/node_modules
+COPY --from=builder --chown=node:node /workspace/apps/backoffice/build-node /app/build-node
+COPY --from=builder --chown=node:node \
+  /workspace/apps/backoffice/scripts/node-server/start-node-processes.mjs \
+  /app/scripts/node-server/start-node-processes.mjs
 
 ENV NODE_ENV=production
 ENV HOST=0.0.0.0
@@ -48,7 +60,7 @@ ENV DENO_EXECUTABLE=/usr/local/bin/deno
 
 RUN mkdir --parents /data && chown node:node /data
 
-WORKDIR /app/apps/backoffice
+WORKDIR /app
 USER node
 
 EXPOSE 5173

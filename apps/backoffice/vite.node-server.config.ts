@@ -13,6 +13,10 @@ export default defineConfig({
       undici: path.resolve(__dirname, "shims/undici.ts"),
     },
   },
+  ssr: {
+    external: ["better-sqlite3"],
+    noExternal: true,
+  },
   build: {
     ssr: true,
     outDir: "build-node",

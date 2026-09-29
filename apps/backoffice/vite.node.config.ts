@@ -23,6 +23,7 @@ export default defineConfig({
   },
   plugins: [tailwindcss(), reactRouter(), emitWaSqliteWasmAssetPlugin()],
   ssr: {
-    noExternal: ["@earendil-works/pi-ai"],
+    external: ["better-sqlite3"],
+    noExternal: true,
   },
 });
