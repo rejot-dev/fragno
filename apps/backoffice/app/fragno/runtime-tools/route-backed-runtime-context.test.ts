@@ -41,8 +41,6 @@ const createRuntime = (): BackofficeRuntimeServices => {
     objects,
     authorityResolver: unrestrictedBackofficeAuthorityResolver,
     kernelObserver: noopBackofficeKernelObserver,
-    fragmentHostOperations: null,
-    objectRuntime: null,
     codemodeEnv: null,
     workerTypeChecker: null,
     adapters: {} as BackofficeRuntimeServices["adapters"],

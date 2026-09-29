@@ -7,10 +7,7 @@ import {
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import type { GitHubObject } from "@/backoffice-runtime/object-registry";
-import {
-  createCloudflareDurableObjectRuntimeServices,
-  type BackofficeRuntimeServices,
-} from "@/backoffice-runtime/runtime-services";
+import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { type DurableHookQueueOptions } from "@/fragno/durable-hooks";
 import {
   buildGitHubAutomationEvent,
@@ -19,11 +16,12 @@ import {
 } from "@/fragno/github";
 
 import { configsEqual, extractFragmentConfig, resolveGitHubConfig } from "./github.shared";
-import {
-  createBackofficeFragmentDurableObject,
-  type BackofficeFragmentDurableObject,
-  type BackofficeObjectState,
+import type {
+  BackofficeFragmentDurableObject,
+  BackofficeObjectState,
 } from "./lib/backoffice-fragment-durable-object";
+import type { BackofficeObjectImplementation } from "./lib/backoffice-object-implementation";
+import { createCloudflareBackofficeObjectContext } from "./lib/cloudflare-backoffice-object-implementation";
 
 type StoredGitHubConfig = {
   scope: Extract<BackofficeContextScope, { kind: "org" }>;
@@ -44,20 +42,18 @@ export class InMemoryGitHubObject implements GitHubObject {
     state,
     env,
     runtime,
+    implementation,
   }: {
     state: BackofficeObjectState;
     env: Parameters<typeof resolveGitHubConfig>[0];
     runtime: BackofficeRuntimeServices;
+    implementation: BackofficeObjectImplementation;
   }) {
     this.#state = state;
     this.#runtimeServices = runtime;
     this.#configResolution = resolveGitHubConfig(env);
-    this.#host = createBackofficeFragmentDurableObject({
+    this.#host = implementation.createConfiguredFragmentHost({
       name: "GitHub",
-      state,
-      env,
-      fragmentHostOperations: this.#runtimeServices.fragmentHostOperations ?? undefined,
-      objectRuntime: runtime.objectRuntime,
       toSource: (stored) => stored.source,
       fingerprint: (source) => JSON.stringify(source),
       createRuntime: (config) =>
@@ -96,7 +92,7 @@ export class InMemoryGitHubObject implements GitHubObject {
             },
           },
           {
-            adapters: this.#runtimeServices.adapters,
+            ...implementation.fragmentDatabase,
           },
         ),
     });
@@ -267,11 +263,7 @@ export class GitHub extends DurableObject<CloudflareEnv> implements GitHubObject
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
-    this.#object = new InMemoryGitHubObject({
-      state,
-      env,
-      runtime: createCloudflareDurableObjectRuntimeServices(env, state),
-    });
+    this.#object = new InMemoryGitHubObject(createCloudflareBackofficeObjectContext(state, env));
   }
 
   async ensureAdminConfig(orgId: string) {

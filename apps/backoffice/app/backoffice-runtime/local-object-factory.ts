@@ -1,5 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 
+import type { FragmentDurableObjectHostOperations } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
+
 import type { AutomationSourceReader } from "@/fragno/automation/automation-source";
 
 import { InMemoryApiObject } from "../../workers/api.do";
@@ -11,6 +13,8 @@ import { InMemoryFormsObject } from "../../workers/forms.do";
 import { InMemoryGitHubWebhookRouterObject } from "../../workers/github-webhook-router.do";
 import { InMemoryGitHubObject } from "../../workers/github.do";
 import { createInMemoryAuthDatabase } from "../../workers/in-memory-auth-database";
+import { noOpBackofficeConfiguredObjectLifecycle } from "../../workers/lib/backoffice-fragment-durable-object";
+import type { BackofficeObjectImplementation } from "../../workers/lib/backoffice-object-implementation";
 import { InMemoryMarketplaceObject } from "../../workers/marketplace.do";
 import { InMemoryMcpObject } from "../../workers/mcp.do";
 import { InMemoryOtpObject } from "../../workers/otp.do";
@@ -34,6 +38,7 @@ import {
   type LocalDurableObjectFactory,
   type LocalDurableObjectInstance,
 } from "./local-durable-objects";
+import { createNodeBackofficeObjectImplementation } from "./node/node-object-implementation";
 import { createSqliteAuthDatabase } from "./node/sqlite-auth-database";
 import { SqliteDurableObjectState } from "./node/sqlite-durable-object-state";
 import { SqliteObjectCoordination } from "./node/sqlite-object-coordination";
@@ -51,7 +56,6 @@ import { encodeBackofficeObjectAddress } from "./object-registry";
 import {
   parseAuthEmailVerificationRuntimeConfig,
   parseSignUpInvitationsEnabled,
-  type BackofficeFragmentHostOperations,
   type BackofficeRuntimeConfig,
   type BackofficeRuntimeServices,
 } from "./runtime-services";
@@ -62,6 +66,7 @@ export type LocalBackofficeObjectFactory<TObject> = (input: {
   state: Parameters<LocalDurableObjectFactory<TObject>>[0]["state"];
   env: BackofficeRuntimeEnv;
   runtime: BackofficeRuntimeServices;
+  implementation: BackofficeObjectImplementation;
   nowEpochMs: () => number;
   readAutomationSource?: LocalObjectFactoryOptions["readAutomationSource"];
   sqliteDataDirectory?: string;
@@ -75,7 +80,9 @@ export type LocalObjectFactoryOverrides = Partial<
 export type LocalObjectFactoryOptions = {
   runtimeEnv: BackofficeRuntimeEnv;
   getRuntimeServices: () => BackofficeRuntimeServices;
-  createFragmentHostOperations?: (objectId: string) => BackofficeFragmentHostOperations | null;
+  createFragmentHostOperations?: (
+    objectId: string,
+  ) => FragmentDurableObjectHostOperations<BackofficeRuntimeEnv> | null;
   clearDurableHooks: (objectId: string) => Promise<void>;
   readAutomationSource?: AutomationSourceReader;
   objectFactories?: LocalObjectFactoryOverrides;
@@ -229,11 +236,12 @@ class UnavailableLocalDurableObject {
 const createUnavailableLocalObject = () => new UnavailableLocalDurableObject();
 
 const localObjectFactories = {
-  API: ({ state, env, runtime }) =>
+  API: ({ state, env, runtime, implementation }) =>
     new InMemoryApiObject({
       state,
       env,
       runtime,
+      implementation,
     }),
   AUTH: ({ state, env, runtime, getAuthDatabase }) =>
     new InMemoryAuthObject({
@@ -242,50 +250,62 @@ const localObjectFactories = {
       runtime,
       database: getAuthDatabase(),
     }),
-  TELEGRAM: ({ state, env, runtime }) =>
+  TELEGRAM: ({ state, env, runtime, implementation }) =>
     new InMemoryTelegramObject({
       state,
       env,
       runtime,
+      implementation,
     }),
-  RESEND: ({ state, env, runtime }) =>
+  RESEND: ({ state, env, runtime, implementation }) =>
     new InMemoryResendObject({
       state,
       env,
       runtime,
+      implementation,
     }),
-  RESON8: ({ state, env, runtime }) =>
+  RESON8: ({ state, env, runtime, implementation }) =>
     new InMemoryReson8Object({
       state,
       env,
       runtime,
+      implementation,
     }),
-  MCP: ({ state, env, runtime }) =>
+  MCP: ({ state, env, runtime, implementation }) =>
     new InMemoryMcpObject({
       state,
       env,
       runtime,
+      implementation,
     }),
-  OTP: ({ state, env, runtime }) =>
+  OTP: ({ state, env, runtime, implementation }) =>
     new InMemoryOtpObject({
       state,
       env,
       runtime,
+      implementation,
     }),
-  UPLOAD: ({ state, env, runtime }) =>
+  UPLOAD: ({ state, env, runtime, implementation }) =>
     new InMemoryUploadObject({
       state,
       env: env as never,
       runtime,
+      implementation,
     }),
   SANDBOX: createUnavailableLocalObject,
-  SANDBOX_MANAGER: ({ state, env, runtime }) =>
-    new InMemorySandboxManagerObject({ state, env: env as CloudflareEnv, runtime }),
-  GITHUB: ({ state, env, runtime }) =>
+  SANDBOX_MANAGER: ({ state, env, runtime, implementation }) =>
+    new InMemorySandboxManagerObject({
+      state,
+      env: env as CloudflareEnv,
+      runtime,
+      implementation,
+    }),
+  GITHUB: ({ state, env, runtime, implementation }) =>
     new InMemoryGitHubObject({
       state,
       env: env as never,
       runtime,
+      implementation,
     }),
   GITHUB_WEBHOOK_ROUTER: ({ state, env, runtime }) =>
     new InMemoryGitHubWebhookRouterObject({
@@ -299,31 +319,35 @@ const localObjectFactories = {
       env,
       runtime,
     }),
-  FORMS: ({ state, env, runtime }) =>
+  FORMS: ({ state, env, runtime, implementation }) =>
     new InMemoryFormsObject({
       state,
       env,
       runtime,
+      implementation,
     }),
-  AUTOMATIONS: ({ state, env, runtime, nowEpochMs, readAutomationSource }) =>
+  AUTOMATIONS: ({ state, env, runtime, implementation, nowEpochMs, readAutomationSource }) =>
     new InMemoryAutomationsObject({
       state,
       env,
       runtime,
+      implementation,
       nowEpochMs,
       readAutomationSource,
     }),
-  BILLING: ({ state, env, runtime }) =>
+  BILLING: ({ state, env, runtime, implementation }) =>
     new InMemoryBillingObject({
       state,
       env,
       runtime,
+      implementation,
     }),
-  MARKETPLACE: ({ state, env, runtime }) =>
+  MARKETPLACE: ({ state, env, runtime, implementation }) =>
     new InMemoryMarketplaceObject({
       state,
       env,
       runtime,
+      implementation,
     }),
 } satisfies Record<BackofficeObjectBindingName, LocalBackofficeObjectFactory<unknown>>;
 
@@ -588,27 +612,36 @@ export class LocalObjectFactory implements BackofficeObjectFactory {
           ? new SqliteDurableObjectState(id, this.#sqlite.storage, this.#sqliteCoordination)
           : new InMemoryDurableObjectState(id),
       createObject: (input) => {
-        const runtime = this.#getRuntimeServices();
+        const baseRuntime = this.#getRuntimeServices();
         const state = input.state;
+        const runtime = {
+          ...baseRuntime,
+          adapters: baseRuntime.adapters.forScope(
+            createDurableObjectDatabaseAdapterScope(input.state as unknown as DurableObjectState),
+          ),
+        };
+        const configuredObjectLifecycle =
+          state instanceof SqliteDurableObjectState
+            ? {
+                registerRefresh: (refresh: () => Promise<void>) => {
+                  state.registerRuntimeRefresh(refresh);
+                },
+                clearDurableHooks: () => this.#clearDurableHooks(String(input.id)),
+              }
+            : noOpBackofficeConfiguredObjectLifecycle;
+        const implementation = createNodeBackofficeObjectImplementation({
+          state,
+          env: this.env,
+          runtime,
+          fragmentHostOperations: this.#createFragmentHostOperations(String(input.id)) ?? undefined,
+          configuredObjectLifecycle,
+        });
+
         return factory({
           ...input,
           env: this.env,
-          runtime: {
-            ...runtime,
-            adapters: runtime.adapters.forScope(
-              createDurableObjectDatabaseAdapterScope(input.state as unknown as DurableObjectState),
-            ),
-            fragmentHostOperations: this.#createFragmentHostOperations(String(input.id)),
-            objectRuntime:
-              state instanceof SqliteDurableObjectState
-                ? {
-                    registerRefresh: (refresh) => {
-                      state.registerRuntimeRefresh(refresh);
-                    },
-                    clearDurableHooks: () => this.#clearDurableHooks(String(input.id)),
-                  }
-                : null,
-          },
+          runtime,
+          implementation,
           nowEpochMs: () => this.now(),
           readAutomationSource: this.#readAutomationSource,
           sqliteDataDirectory: this.#sqlite?.directory,

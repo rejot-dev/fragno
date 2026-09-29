@@ -28,6 +28,10 @@ export default defineConfig({
           __dirname,
           "scripts/node-server/node-hook-processor.mts",
         ),
+        "node-opentelemetry-bootstrap": path.resolve(
+          __dirname,
+          "scripts/node-server/node-opentelemetry-bootstrap.mts",
+        ),
       },
       output: { entryFileNames: "[name].mjs" },
     },

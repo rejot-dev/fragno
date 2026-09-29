@@ -5,11 +5,13 @@ import { fileURLToPath } from "node:url";
 import express from "express";
 import type { ServerBuild } from "react-router";
 
+import { trace } from "@opentelemetry/api";
 import { createRequestHandler } from "@react-router/express";
 
 import { BackofficeKernel } from "../../app/backoffice-runtime/kernel";
 import { createLocalBackofficeRuntime } from "../../app/backoffice-runtime/node/local-runtime";
 import { createExternallyProcessedNodeBackofficeDurableHooks } from "../../app/backoffice-runtime/node/node-durable-hooks";
+import { shutdownNodeOpenTelemetry } from "../../app/backoffice-runtime/node/node-opentelemetry-lifecycle";
 import { createBackofficeRouterContextProvider } from "../../app/worker-runtime/router-context-provider.server";
 import { createNodeBackofficeProcessConfig } from "./node-process-config";
 import { registerNodeBackofficeHealthCheck } from "./node-server-health";
@@ -54,7 +56,9 @@ app.use(
 );
 app.use(express.static(staticDirectory, { maxAge: "1m", index: false, redirect: false }));
 app.use((_request, response, next) => {
-  response.setHeader("backoffice-request-id", randomUUID());
+  const requestId = randomUUID();
+  response.setHeader("backoffice-request-id", requestId);
+  trace.getActiveSpan()?.setAttribute("backoffice.request_id", requestId);
   next();
 });
 app.use(
@@ -117,8 +121,12 @@ function shutdownNodeBackofficeServer(): Promise<void> {
   }
 
   shutdownPromise = (async () => {
-    await stopNodeBackofficeListeners(listeners);
-    await runtime.cleanup();
+    try {
+      await stopNodeBackofficeListeners(listeners);
+      await runtime.cleanup();
+    } finally {
+      await shutdownNodeOpenTelemetry();
+    }
   })();
   return shutdownPromise;
 }

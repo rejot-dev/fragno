@@ -2,7 +2,7 @@ import { execFileSync, spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-/** @typedef {{ name: "server" | "processor"; entrypoint: string }} NodeBackofficeServiceDefinition */
+/** @typedef {{ name: "server" | "processor"; role: "web" | "processor"; entrypoint: string }} NodeBackofficeServiceDefinition */
 /** @typedef {NodeBackofficeServiceDefinition & { child: import("node:child_process").ChildProcess }} NodeBackofficeService */
 /** @typedef {{ kind: "error"; error: Error } | { kind: "exit"; code: number | null; signal: NodeJS.Signals | null }} NodeBackofficeServiceCompletion */
 /** @typedef {NodeBackofficeServiceCompletion & { service: NodeBackofficeService }} NodeBackofficeServiceResult */
@@ -12,8 +12,8 @@ const backofficeDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.
 const gracefulShutdownTimeoutMs = 10_000;
 /** @type {NodeBackofficeServiceDefinition[]} */
 const serviceDefinitions = [
-  { name: "server", entrypoint: "build-node/node-server.mjs" },
-  { name: "processor", entrypoint: "build-node/node-hook-processor.mjs" },
+  { name: "server", role: "web", entrypoint: "build-node/node-server.mjs" },
+  { name: "processor", role: "processor", entrypoint: "build-node/node-hook-processor.mjs" },
 ];
 
 /**
@@ -64,10 +64,15 @@ function processIsAlive(processId) {
 function spawnNodeBackofficeService(definition) {
   const child = spawn(
     process.execPath,
-    ["--env-file-if-exists=.dev.vars", path.join(backofficeDirectory, definition.entrypoint)],
+    [
+      "--env-file-if-exists=.dev.vars",
+      "--import",
+      path.join(backofficeDirectory, "build-node/node-opentelemetry-bootstrap.mjs"),
+      path.join(backofficeDirectory, definition.entrypoint),
+    ],
     {
       cwd: backofficeDirectory,
-      env: process.env,
+      env: { ...process.env, BACKOFFICE_PROCESS_ROLE: definition.role },
       stdio: ["inherit", "inherit", "inherit", "ipc"],
     },
   );

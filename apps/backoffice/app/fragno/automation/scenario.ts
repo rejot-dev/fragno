@@ -4475,7 +4475,7 @@ const createObjectFactories = (fakes: ScenarioFakes): LocalObjectFactoryOverride
   const objectFactories: LocalObjectFactoryOverrides = {};
 
   if (fakes.telegram) {
-    objectFactories.TELEGRAM = ({ state, env, runtime }) => {
+    objectFactories.TELEGRAM = ({ state, env, runtime, implementation }) => {
       const fakeTelegram = fakes.telegram!;
       return new (class extends InMemoryTelegramObject {
         async getAutomationFile(input: {
@@ -4510,6 +4510,7 @@ const createObjectFactories = (fakes: ScenarioFakes): LocalObjectFactoryOverride
         state,
         env,
         runtime,
+        implementation,
         api: fakeTelegram.api,
         adminApi: fakeTelegram.adminApi,
       });
@@ -4517,11 +4518,19 @@ const createObjectFactories = (fakes: ScenarioFakes): LocalObjectFactoryOverride
   }
 
   if (fakes.pi) {
-    objectFactories.AUTOMATIONS = ({ state, env, runtime, nowEpochMs, readAutomationSource }) => {
+    objectFactories.AUTOMATIONS = ({
+      state,
+      env,
+      runtime,
+      implementation,
+      nowEpochMs,
+      readAutomationSource,
+    }) => {
       const object = new InMemoryAutomationsObject({
         state,
         env,
         runtime,
+        implementation,
         nowEpochMs,
         readAutomationSource,
         createPiRuntime: (execution, kernel) => {

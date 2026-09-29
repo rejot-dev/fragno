@@ -1,21 +1,9 @@
-import type {
-  DurableHookAttempt,
-  DurableHookNotification,
-  DurableHooksInstrumentation,
-} from "@fragno-dev/db/hooks";
+import type { DurableHookNotification, DurableHooksInstrumentation } from "@fragno-dev/db/hooks";
 import { tracing } from "cloudflare:workers";
 
-let customSpanWarningEmitted = false;
+import { executeLoggedBackofficeDurableHookAttempt } from "@/backoffice-runtime/runtime-instrumentation";
 
-const attemptFields = (attempt: DurableHookAttempt) => ({
-  namespace: attempt.namespace,
-  hookName: attempt.hookName,
-  hookId: attempt.hookId.toString(),
-  correlationId: attempt.idempotencyKey,
-  attempt: attempt.attempt,
-  maxAttempts: attempt.maxAttempts,
-  hasPropagationContext: attempt.propagationContext !== null,
-});
+let customSpanWarningEmitted = false;
 
 const toErrorFields = (error: unknown) =>
   error instanceof Error
@@ -32,27 +20,6 @@ const warnCustomSpanUnavailable = (reason: string, error?: unknown) => {
     reason,
     ...(error === undefined ? {} : toErrorFields(error)),
   });
-};
-
-const executeLoggedAttempt = async <T>(attempt: DurableHookAttempt, execute: () => Promise<T>) => {
-  const startedAt = Date.now();
-  console.info("fragno.durable_hook.attempt.started", attemptFields(attempt));
-
-  try {
-    const result = await execute();
-    console.info("fragno.durable_hook.attempt.completed", {
-      ...attemptFields(attempt),
-      durationMs: Date.now() - startedAt,
-    });
-    return result;
-  } catch (error) {
-    console.error("fragno.durable_hook.attempt.failed", {
-      ...attemptFields(attempt),
-      durationMs: Date.now() - startedAt,
-      ...toErrorFields(error),
-    });
-    throw error;
-  }
 };
 
 /**
@@ -120,7 +87,7 @@ export const cloudflareDurableHooksInstrumentation: DurableHooksInstrumentation 
           attempt.propagationContext !== null,
         );
 
-        return executeLoggedAttempt(attempt, execute);
+        return executeLoggedBackofficeDurableHookAttempt(attempt, execute);
       });
 
       if (enteredSpan) {
@@ -136,6 +103,6 @@ export const cloudflareDurableHooksInstrumentation: DurableHooksInstrumentation 
     }
 
     // Hook execution must remain available even when a runtime cannot create custom spans.
-    return await executeLoggedAttempt(attempt, execute);
+    return await executeLoggedBackofficeDurableHookAttempt(attempt, execute);
   },
 };

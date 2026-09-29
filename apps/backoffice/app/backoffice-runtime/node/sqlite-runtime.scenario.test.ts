@@ -401,9 +401,9 @@ describe("file-backed SQLite Backoffice scenario", () => {
     const processor = await createInMemoryBackofficeRuntime({
       sqliteDataDirectory: directory,
       objectFactories: {
-        UPLOAD: ({ name, runtime, state }) => {
+        UPLOAD: ({ name, implementation, state }) => {
           if (name.endsWith("org-1")) {
-            runtime.objectRuntime?.registerRefresh(async () => {
+            implementation.registerRuntimeRefresh(async () => {
               throw new Error("Expected persisted object refresh failure.");
             });
           }

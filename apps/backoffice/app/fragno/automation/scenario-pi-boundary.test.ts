@@ -362,11 +362,19 @@ describe("scenario Pi boundary", () => {
         name: "Backoffice Pi turn commits before returning settled detail",
         vars: () => ({}),
         objectFactories: {
-          AUTOMATIONS: ({ state, env, runtime, nowEpochMs, readAutomationSource }) =>
+          AUTOMATIONS: ({
+            state,
+            env,
+            runtime,
+            implementation,
+            nowEpochMs,
+            readAutomationSource,
+          }) =>
             new InMemoryAutomationsObject({
               state,
               env,
               runtime,
+              implementation,
               nowEpochMs,
               readAutomationSource,
               piModels: models,

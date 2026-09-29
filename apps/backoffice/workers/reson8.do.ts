@@ -3,19 +3,17 @@ import { z } from "zod";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import type { Reson8Object } from "@/backoffice-runtime/object-registry";
-import {
-  createCloudflareDurableObjectRuntimeServices,
-  type BackofficeRuntimeServices,
-} from "@/backoffice-runtime/runtime-services";
+import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 import { reson8ConfigureInputSchema } from "@/fragno/backoffice-capabilities/capabilities/reson8";
 import { createReson8Server, type Reson8Fragment } from "@/fragno/reson8";
 
-import {
-  createBackofficeFragmentDurableObject,
-  type BackofficeFragmentDurableObject,
-  type BackofficeObjectState,
+import type {
+  BackofficeFragmentDurableObject,
+  BackofficeObjectState,
 } from "./lib/backoffice-fragment-durable-object";
+import type { BackofficeObjectImplementation } from "./lib/backoffice-object-implementation";
+import { createCloudflareBackofficeObjectContext } from "./lib/cloudflare-backoffice-object-implementation";
 
 type StoredReson8Config = {
   scope: Extract<BackofficeContextScope, { kind: "org" }>;
@@ -99,24 +97,21 @@ export class InMemoryReson8Object implements Reson8Object {
 
   constructor({
     state,
-    env,
     runtime,
+    implementation,
     fetch: fetchImpl = fetch,
   }: {
     state: BackofficeObjectState;
     env?: unknown;
     runtime: BackofficeRuntimeServices;
+    implementation: BackofficeObjectImplementation;
     fetch?: typeof fetch;
   }) {
     this.#state = state;
     this.#runtime = runtime;
     this.#fetch = fetchImpl;
-    this.#host = createBackofficeFragmentDurableObject({
+    this.#host = implementation.createConfiguredFragmentHost({
       name: "Reson8",
-      state,
-      env,
-      fragmentHostOperations: this.#runtime.fragmentHostOperations ?? undefined,
-      objectRuntime: runtime.objectRuntime,
       configKey: CONFIG_KEY,
       parseStored: (raw) => storedReson8ConfigSchema.parse(raw),
       isConfigured: (stored): stored is StoredReson8Config =>
@@ -307,11 +302,7 @@ export class Reson8 extends DurableObject<CloudflareEnv> implements Reson8Object
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
-    this.#object = new InMemoryReson8Object({
-      state,
-      env,
-      runtime: createCloudflareDurableObjectRuntimeServices(env, state),
-    });
+    this.#object = new InMemoryReson8Object(createCloudflareBackofficeObjectContext(state, env));
   }
 
   async alarm() {

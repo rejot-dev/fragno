@@ -11,10 +11,7 @@ import {
   backofficeContextScopeFromDurableObjectId,
   type TelegramObject,
 } from "@/backoffice-runtime/object-registry";
-import {
-  createCloudflareDurableObjectRuntimeServices,
-  type BackofficeRuntimeServices,
-} from "@/backoffice-runtime/runtime-services";
+import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import {
   createTelegramAutomationFileResponse,
@@ -32,11 +29,12 @@ import {
   type TelegramFragment,
 } from "@/fragno/telegram";
 
-import {
-  createBackofficeFragmentDurableObject,
-  type BackofficeObjectState,
-  type BackofficeFragmentDurableObject,
+import type {
+  BackofficeFragmentDurableObject,
+  BackofficeObjectState,
 } from "./lib/backoffice-fragment-durable-object";
+import type { BackofficeObjectImplementation } from "./lib/backoffice-object-implementation";
+import { createCloudflareBackofficeObjectContext } from "./lib/cloudflare-backoffice-object-implementation";
 
 type TelegramObjectEnv = {
   DOCS_PUBLIC_BASE_URL?: string;
@@ -308,12 +306,14 @@ export class InMemoryTelegramObject extends RpcTarget implements TelegramObject 
     state,
     env,
     runtime,
+    implementation,
     api,
     adminApi,
   }: {
     state: BackofficeObjectState;
     env?: TelegramObjectEnv;
     runtime: BackofficeRuntimeServices;
+    implementation: BackofficeObjectImplementation;
     api?: TelegramApi;
     adminApi?: TelegramAdminApi;
   }) {
@@ -324,12 +324,8 @@ export class InMemoryTelegramObject extends RpcTarget implements TelegramObject 
     this.#api = api;
     this.#scope = backofficeContextScopeFromDurableObjectId(state.id, "TELEGRAM");
     this.#adminApi = adminApi;
-    this.#host = createBackofficeFragmentDurableObject({
+    this.#host = implementation.createConfiguredFragmentHost({
       name: "Telegram",
-      state,
-      env: {},
-      fragmentHostOperations: this.#runtime.fragmentHostOperations ?? undefined,
-      objectRuntime: runtime.objectRuntime,
       toSource: (stored) => ({
         botToken: stored.botToken,
         webhookSecretToken: stored.webhookSecretToken,
@@ -337,39 +333,33 @@ export class InMemoryTelegramObject extends RpcTarget implements TelegramObject 
         apiBaseUrl: stored.apiBaseUrl,
       }),
       createRuntime: (config) =>
-        createTelegramServer(
-          config,
-          {
-            adapters: this.#runtime.adapters,
-          },
-          {
-            api: this.#api,
-            hooks: {
-              onMessageReceived: async (payload, context) => {
-                const runtime = this.#host.getConfigured();
-                if (!runtime) {
-                  console.warn(
-                    "Ignoring Telegram message because automations routing is unavailable",
-                    {
-                      scope: null,
-                      updateId: payload.updateId,
-                      messageId: payload.messageId,
-                    },
-                  );
-                  return;
-                }
+        createTelegramServer(config, implementation.fragmentDatabase, {
+          api: this.#api,
+          hooks: {
+            onMessageReceived: async (payload, context) => {
+              const runtime = this.#host.getConfigured();
+              if (!runtime) {
+                console.warn(
+                  "Ignoring Telegram message because automations routing is unavailable",
+                  {
+                    scope: null,
+                    updateId: payload.updateId,
+                    messageId: payload.messageId,
+                  },
+                );
+                return;
+              }
 
-                const { scope } = runtime.stored;
-                await this.#runtime.objects.automations
-                  .for(scope)
-                  .commands.triggerIngestEvent(
-                    buildTelegramAutomationEvent(scope, payload, context.hookId.toString()),
-                    { propagationContext: context.capturePropagationContext() },
-                  );
-              },
+              const { scope } = runtime.stored;
+              await this.#runtime.objects.automations
+                .for(scope)
+                .commands.triggerIngestEvent(
+                  buildTelegramAutomationEvent(scope, payload, context.hookId.toString()),
+                  { propagationContext: context.capturePropagationContext() },
+                );
             },
           },
-        ),
+        }),
       outbox: {
         dispatch: async (item, { stored }) => {
           if (item.type !== "capability.configured") {
@@ -604,11 +594,7 @@ export class Telegram extends DurableObject<CloudflareEnv> implements TelegramOb
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
-    this.#object = new InMemoryTelegramObject({
-      state,
-      env,
-      runtime: createCloudflareDurableObjectRuntimeServices(env, state),
-    });
+    this.#object = new InMemoryTelegramObject(createCloudflareBackofficeObjectContext(state, env));
   }
 
   async alarm() {

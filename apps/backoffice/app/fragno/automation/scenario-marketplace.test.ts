@@ -1697,7 +1697,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
       defineBackofficeScenario({
         name: "replay marketplace ingestion transfer without recreating its upload",
         objectFactories: {
-          UPLOAD: ({ name, state, env, runtime }) => {
+          UPLOAD: ({ name, state, env, runtime, implementation }) => {
             const destinationObject = name.endsWith("v1:org:org-1");
             return new (class extends InMemoryUploadObject {
               async fetch(request: Request): Promise<Response> {
@@ -1724,7 +1724,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                 }
                 return await super.fetch(request);
               }
-            })({ state, env: env as never, runtime });
+            })({ state, env: env as never, runtime, implementation });
           },
         },
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
@@ -1801,7 +1801,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
         defineBackofficeScenario({
           name: "rebuild a multi-write Marketplace ingestion batch",
           objectFactories: {
-            UPLOAD: ({ name, state, env, runtime }) => {
+            UPLOAD: ({ name, state, env, runtime, implementation }) => {
               const destinationObject = name.endsWith("v1:org:org-1");
               return new (class extends InMemoryUploadObject {
                 async fetch(request: Request): Promise<Response> {
@@ -1846,7 +1846,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                   }
                   return await super.fetch(request);
                 }
-              })({ state, env: env as never, runtime });
+              })({ state, env: env as never, runtime, implementation });
             },
           },
           setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
@@ -1947,7 +1947,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
       defineBackofficeScenario({
         name: "reject permanent marketplace ingestion Upload errors",
         objectFactories: {
-          UPLOAD: ({ name, state, env, runtime }) => {
+          UPLOAD: ({ name, state, env, runtime, implementation }) => {
             const destinationObject = name.endsWith("v1:org:org-1");
             return new (class extends InMemoryUploadObject {
               async fetch(request: Request): Promise<Response> {
@@ -1968,7 +1968,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                 }
                 return await super.fetch(request);
               }
-            })({ state, env: env as never, runtime });
+            })({ state, env: env as never, runtime, implementation });
           },
         },
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
@@ -2225,7 +2225,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
         defineBackofficeScenario({
           name: "replay marketplace publication from a durable static snapshot",
           objectFactories: {
-            MARKETPLACE: ({ state, env, runtime }) =>
+            MARKETPLACE: ({ state, env, runtime, implementation }) =>
               new (class extends InMemoryMarketplaceObject {
                 async createDraftListing(input: MarketplaceCreateDraftListingInput) {
                   if (rejectReservation) {
@@ -2234,7 +2234,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                   }
                   return await super.createDraftListing(input);
                 }
-              })({ state, env, runtime }),
+              })({ state, env, runtime, implementation }),
           },
           setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
           steps: ({ when, then, runner }) => [
@@ -2297,7 +2297,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
       defineBackofficeScenario({
         name: "replay Marketplace upload creation with its existing session",
         objectFactories: {
-          UPLOAD: ({ name, state, env, runtime }) => {
+          UPLOAD: ({ name, state, env, runtime, implementation }) => {
             const artifactUploadObject = name.endsWith(MARKETPLACE_ARTIFACT_UPLOAD_OBJECT_NAME);
             return new (class extends InMemoryUploadObject {
               async fetch(request: Request): Promise<Response> {
@@ -2330,7 +2330,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                 }
                 return await super.fetch(request);
               }
-            })({ state, env: env as never, runtime });
+            })({ state, env: env as never, runtime, implementation });
           },
         },
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
@@ -2385,7 +2385,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
       defineBackofficeScenario({
         name: "replay marketplace artifact transfer without recreating its upload",
         objectFactories: {
-          UPLOAD: ({ name, state, env, runtime }) => {
+          UPLOAD: ({ name, state, env, runtime, implementation }) => {
             const artifactUploadObject = name.endsWith(MARKETPLACE_ARTIFACT_UPLOAD_OBJECT_NAME);
             return new (class extends InMemoryUploadObject {
               async fetch(request: Request): Promise<Response> {
@@ -2412,7 +2412,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                 }
                 return await super.fetch(request);
               }
-            })({ state, env: env as never, runtime });
+            })({ state, env: env as never, runtime, implementation });
           },
         },
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
@@ -2472,7 +2472,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
       defineBackofficeScenario({
         name: "reject permanent marketplace artifact upload errors",
         objectFactories: {
-          UPLOAD: ({ name, state, env, runtime }) => {
+          UPLOAD: ({ name, state, env, runtime, implementation }) => {
             const artifactUploadObject = name.endsWith(MARKETPLACE_ARTIFACT_UPLOAD_OBJECT_NAME);
             return new (class extends InMemoryUploadObject {
               async fetch(request: Request): Promise<Response> {
@@ -2493,7 +2493,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                 }
                 return await super.fetch(request);
               }
-            })({ state, env: env as never, runtime });
+            })({ state, env: env as never, runtime, implementation });
           },
         },
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
@@ -2527,7 +2527,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
       defineBackofficeScenario({
         name: "retry typed transient Marketplace Upload errors",
         objectFactories: {
-          UPLOAD: ({ name, state, env, runtime }) => {
+          UPLOAD: ({ name, state, env, runtime, implementation }) => {
             const artifactUploadObject = name.endsWith(MARKETPLACE_ARTIFACT_UPLOAD_OBJECT_NAME);
             return new (class extends InMemoryUploadObject {
               async fetch(request: Request): Promise<Response> {
@@ -2551,7 +2551,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                 }
                 return await super.fetch(request);
               }
-            })({ state, env: env as never, runtime });
+            })({ state, env: env as never, runtime, implementation });
           },
         },
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
@@ -2597,7 +2597,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
       defineBackofficeScenario({
         name: "replay a committed Marketplace publication batch",
         objectFactories: {
-          UPLOAD: ({ name, state, env, runtime }) => {
+          UPLOAD: ({ name, state, env, runtime, implementation }) => {
             const artifactUploadObject = name.endsWith(MARKETPLACE_ARTIFACT_UPLOAD_OBJECT_NAME);
             return new (class extends InMemoryUploadObject {
               async fetch(request: Request): Promise<Response> {
@@ -2617,7 +2617,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                 }
                 return await super.fetch(request);
               }
-            })({ state, env: env as never, runtime });
+            })({ state, env: env as never, runtime, implementation });
           },
         },
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
@@ -2682,7 +2682,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
       defineBackofficeScenario({
         name: "expire a prepared Marketplace publication upload",
         objectFactories: {
-          UPLOAD: ({ name, state, env, runtime }) => {
+          UPLOAD: ({ name, state, env, runtime, implementation }) => {
             const artifactUploadObject = name.endsWith(MARKETPLACE_ARTIFACT_UPLOAD_OBJECT_NAME);
             return new (class extends InMemoryUploadObject {
               async fetch(request: Request): Promise<Response> {
@@ -2700,7 +2700,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                 }
                 return await super.fetch(request);
               }
-            })({ state, env: env as never, runtime });
+            })({ state, env: env as never, runtime, implementation });
           },
         },
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
@@ -2771,7 +2771,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
       defineBackofficeScenario({
         name: "replay a committed marketplace ingestion batch",
         objectFactories: {
-          UPLOAD: ({ name, state, env, runtime }) => {
+          UPLOAD: ({ name, state, env, runtime, implementation }) => {
             const destinationObject = name.endsWith("v1:org:org-1");
             return new (class extends InMemoryUploadObject {
               async fetch(request: Request): Promise<Response> {
@@ -2791,7 +2791,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                 }
                 return await super.fetch(request);
               }
-            })({ state, env: env as never, runtime });
+            })({ state, env: env as never, runtime, implementation });
           },
         },
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
@@ -3002,7 +3002,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
         defineBackofficeScenario({
           name: "replay a marketplace update that removes a file",
           objectFactories: {
-            UPLOAD: ({ name, state, env, runtime }) => {
+            UPLOAD: ({ name, state, env, runtime, implementation }) => {
               const destinationObject = name.endsWith("v1:org:org-1");
               return new (class extends InMemoryUploadObject {
                 async fetch(request: Request): Promise<Response> {
@@ -3021,7 +3021,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                   }
                   return await super.fetch(request);
                 }
-              })({ state, env: env as never, runtime });
+              })({ state, env: env as never, runtime, implementation });
             },
           },
           setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
@@ -3227,7 +3227,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
         defineBackofficeScenario({
           name: "reject a marketplace batch after an asserted file changes",
           objectFactories: {
-            UPLOAD: ({ name, state, env, runtime }) => {
+            UPLOAD: ({ name, state, env, runtime, implementation }) => {
               const destinationObject = name.endsWith("v1:org:org-1");
               return new (class extends InMemoryUploadObject {
                 async fetch(request: Request): Promise<Response> {
@@ -3256,7 +3256,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                   }
                   return await super.fetch(request);
                 }
-              })({ state, env: env as never, runtime });
+              })({ state, env: env as never, runtime, implementation });
             },
           },
           setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
@@ -3446,7 +3446,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
       defineBackofficeScenario({
         name: "reject Marketplace source changed before transfer",
         objectFactories: {
-          UPLOAD: ({ name, state, env, runtime }) => {
+          UPLOAD: ({ name, state, env, runtime, implementation }) => {
             const destinationObject = name.endsWith("v1:org:org-1");
             return new (class extends InMemoryUploadObject {
               async fetch(request: Request): Promise<Response> {
@@ -3478,7 +3478,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                 }
                 return await super.fetch(request);
               }
-            })({ state, env: env as never, runtime });
+            })({ state, env: env as never, runtime, implementation });
           },
         },
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
@@ -3541,7 +3541,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
       defineBackofficeScenario({
         name: "reject a marketplace source changed during ingestion",
         objectFactories: {
-          UPLOAD: ({ name, state, env, runtime }) => {
+          UPLOAD: ({ name, state, env, runtime, implementation }) => {
             const destinationObject = name.endsWith("v1:org:org-1");
             return new (class extends InMemoryUploadObject {
               async fetch(request: Request): Promise<Response> {
@@ -3564,7 +3564,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                 }
                 return await super.fetch(request);
               }
-            })({ state, env: env as never, runtime });
+            })({ state, env: env as never, runtime, implementation });
           },
         },
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],

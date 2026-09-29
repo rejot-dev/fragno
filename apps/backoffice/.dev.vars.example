@@ -8,6 +8,12 @@ BACKOFFICE_SQLITE_DIR=./.backoffice-node
 # Set an explicit executable path when Deno is installed elsewhere.
 DENO_EXECUTABLE=
 
+# Node OpenTelemetry starts only when this collector endpoint is configured. The common OTLP
+# endpoint is expanded to /v1/traces and /v1/metrics by the HTTP/protobuf exporters.
+# OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318
+# OTEL_TRACES_SAMPLER=parentbased_traceidratio
+# OTEL_TRACES_SAMPLER_ARG=1
+
 # Node claims both 127.0.0.1 and ::1 by default so localhost cannot reach another process.
 # Set HOST explicitly only when the proxy runs elsewhere. Trust only the proxy's IP/CIDR for
 # X-Forwarded-Proto; false disables proxy trust.

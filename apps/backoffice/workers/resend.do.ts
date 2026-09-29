@@ -7,21 +7,19 @@ import type { ResendFragmentConfig, ResendSendEmailInput } from "@fragno-dev/res
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import type { ResendObject } from "@/backoffice-runtime/object-registry";
-import {
-  createCloudflareDurableObjectRuntimeServices,
-  type BackofficeRuntimeServices,
-} from "@/backoffice-runtime/runtime-services";
+import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 import { resendConfigureInputSchema } from "@/fragno/backoffice-capabilities/capabilities/resend";
 import { type DurableHookQueueOptions } from "@/fragno/durable-hooks";
 import { createResendServer, type ResendConfig, type ResendFragment } from "@/fragno/resend";
 
-import {
-  createBackofficeFragmentDurableObject,
-  type BackofficeFragmentDurableObject,
-  type BackofficeObjectState,
+import type {
+  BackofficeFragmentDurableObject,
+  BackofficeObjectState,
 } from "./lib/backoffice-fragment-durable-object";
+import type { BackofficeObjectImplementation } from "./lib/backoffice-object-implementation";
+import { createCloudflareBackofficeObjectContext } from "./lib/cloudflare-backoffice-object-implementation";
 
 type ResendConfigScope = Extract<BackofficeContextScope, { kind: "system" | "org" }>;
 
@@ -313,14 +311,15 @@ export class InMemoryResendObject implements ResendObject {
 
   constructor({
     state,
-    env,
     runtime,
+    implementation,
     createClient = (apiKey) => new ResendClient(apiKey),
     runtimeMode = import.meta.env.MODE,
   }: {
     state: BackofficeObjectState;
     env?: unknown;
     runtime: BackofficeRuntimeServices;
+    implementation: BackofficeObjectImplementation;
     createClient?: (apiKey: string) => ResendClient;
     runtimeMode?: string;
   }) {
@@ -328,12 +327,8 @@ export class InMemoryResendObject implements ResendObject {
     this.#runtimeServices = runtime;
     this.#createClient = createClient;
     this.#runtimeMode = runtimeMode;
-    this.#host = createBackofficeFragmentDurableObject({
+    this.#host = implementation.createConfiguredFragmentHost({
       name: "Resend",
-      state,
-      env,
-      fragmentHostOperations: this.#runtimeServices.fragmentHostOperations ?? undefined,
-      objectRuntime: runtime.objectRuntime,
       configKey: CONFIG_KEY,
       parseStored: (raw) => storedResendConfigSchema.parse(raw),
       isConfigured: (stored): stored is StoredResendConfig =>
@@ -347,10 +342,7 @@ export class InMemoryResendObject implements ResendObject {
         defaultHeaders: stored.defaultHeaders,
       }),
       fingerprint: (config) => JSON.stringify(config),
-      createRuntime: (config) =>
-        createResendServer(config, {
-          adapters: this.#runtimeServices.adapters,
-        }),
+      createRuntime: (config) => createResendServer(config, implementation.fragmentDatabase),
       outbox: {
         dispatch: async (item, { stored }) => {
           if (item.type !== "capability.configured") {
@@ -530,11 +522,7 @@ export class Resend extends DurableObject<CloudflareEnv> implements ResendObject
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
-    this.#object = new InMemoryResendObject({
-      state,
-      env,
-      runtime: createCloudflareDurableObjectRuntimeServices(env, state),
-    });
+    this.#object = new InMemoryResendObject(createCloudflareBackofficeObjectContext(state, env));
   }
 
   async alarm() {

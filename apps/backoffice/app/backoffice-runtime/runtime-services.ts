@@ -58,12 +58,6 @@ export type BackofficeRuntimeServices = {
   config: BackofficeRuntimeConfig;
   authorityResolver: BackofficeAuthorityResolver;
   kernelObserver: BackofficeKernelObserver;
-  fragmentHostOperations: BackofficeFragmentHostOperations | null;
-  /** Node instances refresh configuration from shared storage before events and processor discovery. */
-  objectRuntime: {
-    registerRefresh: (refresh: () => Promise<void>) => void;
-    clearDurableHooks: () => Promise<void>;
-  } | null;
   codemodeEnv: BackofficeCodemodeEnv | null;
   workerTypeChecker: WorkerTypeChecker | null;
   fragnoRuntime?: FragnoRuntime;
@@ -186,8 +180,6 @@ export const createCloudflareBackofficeRuntimeServices = (
         await objects.auth.singleton().commands.getUserAuthorityFacts(input),
     }),
     kernelObserver: options.kernelObserver ?? noopBackofficeKernelObserver,
-    fragmentHostOperations: null,
-    objectRuntime: null,
     codemodeEnv:
       env.LOADER && (env.CODEMODE_COMPILER || testCompilerEnv.compileWorker)
         ? (testCompilerEnv as BackofficeCodemodeEnv)
