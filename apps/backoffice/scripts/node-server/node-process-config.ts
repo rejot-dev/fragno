@@ -1,7 +1,9 @@
 import path from "node:path";
 
+import type { WorkerTypeChecker } from "@fragno-dev/codemode/compiler/compile-worker";
+
 import type { BackofficeRuntimeEnv } from "../../app/backoffice-runtime/backoffice-runtime-env";
-import { createNodeBackofficeRuntimeEnv } from "../../app/backoffice-runtime/node/node-runtime-env";
+import { createNodeBackofficeRuntimeConfiguration } from "../../app/backoffice-runtime/node/node-runtime-env";
 
 export type NodeBackofficeProcessConfig = {
   sqliteDataDirectory: string;
@@ -9,6 +11,7 @@ export type NodeBackofficeProcessConfig = {
   listenHosts: readonly string[];
   publicBaseUrl: string;
   runtimeEnv: BackofficeRuntimeEnv;
+  workerTypeChecker: WorkerTypeChecker;
 };
 
 function parseNodeBackofficeListenHosts(value: string | undefined): readonly string[] {
@@ -42,9 +45,9 @@ export async function createNodeBackofficeProcessConfig(): Promise<NodeBackoffic
     );
   }
 
-  const runtimeEnv = await createNodeBackofficeRuntimeEnv({
-    executorUrl: process.env.CODEMODE_EXECUTOR_URL,
-    executorApiKey: process.env.CODEMODE_EXECUTOR_API_KEY,
+  const runtime = createNodeBackofficeRuntimeConfiguration({
+    bridgeUrl: process.env.CLOUDFLARE_BRIDGE_URL,
+    bridgeApiKey: process.env.CLOUDFLARE_BRIDGE_API_KEY,
     env: {
       AUTH_ACCESS_TOKEN_SECRET: tokenSecret,
       BACKOFFICE_INTERNAL_REQUEST_SECRET: internalSecret,
@@ -74,6 +77,7 @@ export async function createNodeBackofficeProcessConfig(): Promise<NodeBackoffic
     port,
     listenHosts,
     publicBaseUrl,
-    runtimeEnv,
+    runtimeEnv: runtime.runtimeEnv,
+    workerTypeChecker: runtime.workerTypeChecker,
   };
 }

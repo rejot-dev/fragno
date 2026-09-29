@@ -31,6 +31,7 @@ const config = await createNodeBackofficeProcessConfig();
 const runtime = await createLocalBackofficeRuntime({
   sqliteDataDirectory: config.sqliteDataDirectory,
   runtimeEnv: config.runtimeEnv,
+  workerTypeChecker: config.workerTypeChecker,
   durableHooks: createExternallyProcessedNodeBackofficeDurableHooks(),
 });
 const kernel = new BackofficeKernel(runtime.services);

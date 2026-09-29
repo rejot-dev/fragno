@@ -11,7 +11,7 @@ import { createCodemodeTestServer } from "@fragno-dev/codemode/testing/codemode-
 import { createCodemodeNodeExecutor } from "@fragno-dev/codemode/transport/codemode-node-client";
 
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
-import { createNodeBackofficeRuntimeEnv } from "@/backoffice-runtime/node/node-runtime-env";
+import { createNodeBackofficeRuntimeConfiguration } from "@/backoffice-runtime/node/node-runtime-env";
 import {
   backofficeFiles,
   defineBackofficeScenario,
@@ -27,9 +27,9 @@ afterAll(async () => {
 });
 
 test("Node checkpoints and replays workflow codemode across fresh Worker WebSockets", async () => {
-  const env = await createNodeBackofficeRuntimeEnv({
-    executorUrl: server.url,
-    executorApiKey: server.apiKey,
+  const { runtimeEnv: env } = createNodeBackofficeRuntimeConfiguration({
+    bridgeUrl: server.url,
+    bridgeApiKey: server.apiKey,
     env: {},
   });
   const scope = { kind: "org" as const, orgId: "org-1" };
@@ -94,9 +94,9 @@ test("Node checkpoints and replays workflow codemode across fresh Worker WebSock
 });
 
 test("remote event consumption and sleep resume with Date values intact", async () => {
-  const env = await createNodeBackofficeRuntimeEnv({
-    executorUrl: server.url,
-    executorApiKey: server.apiKey,
+  const { runtimeEnv: env } = createNodeBackofficeRuntimeConfiguration({
+    bridgeUrl: server.url,
+    bridgeApiKey: server.apiKey,
     env: {},
   });
   const scope = { kind: "org" as const, orgId: "org-1" };

@@ -9,6 +9,12 @@ import {
 } from "./compile-worker";
 import { createWorkerBundle } from "./worker-bundle";
 
+/** Public authenticated HTTP paths for the compiler archive protocol. */
+export const CODEMODE_COMPILER_HTTP_PATHS = {
+  compileWorker: "/v1/codemode/compile-worker",
+  typeCheckFiles: "/v1/codemode/type-check-files",
+} as const;
+
 const COMPILER_ARCHIVE_CONTENT_TYPE = "application/vnd.fragno.compiler-archive";
 const COMPILER_ARCHIVE_MAGIC = new Uint8Array([0x46, 0x43, 0x50, 0x31]);
 const MAX_COMPILER_ARCHIVE_BYTES = 64 * 1024 * 1024;
@@ -609,7 +615,7 @@ export async function readTypeCheckFilesServiceResponse(
   };
 }
 
-/** Converts a compiler failure into the private service's stable error response. */
+/** Converts a compiler failure into the compiler service's stable error response. */
 export function createCompilerServiceErrorResponse(error: unknown) {
   const body: CompilerErrorResponse =
     error instanceof WorkerCompilationError

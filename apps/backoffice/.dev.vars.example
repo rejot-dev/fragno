@@ -4,10 +4,11 @@
 # Optional Node runtime override; defaults to this git-ignored directory.
 BACKOFFICE_SQLITE_DIR=./.backoffice-node
 
-# Node codemode executes in cf-sandbox-bridge. Use wss:// for deployed bridges.
+# Node codemode execution and TypeScript checking use the same cf-sandbox-bridge deployment.
+# Use the HTTPS origin; the executor derives WSS for WebSocket activations.
 # The key must match SANDBOX_API_KEY on that bridge; no local fallback is used.
-CODEMODE_EXECUTOR_URL=wss://cf-sandbox-bridge.rejot.workers.dev/
-CODEMODE_EXECUTOR_API_KEY=
+CLOUDFLARE_BRIDGE_URL=https://cf-sandbox-bridge.rejot.workers.dev/
+CLOUDFLARE_BRIDGE_API_KEY=
 
 # Node OpenTelemetry starts only when this collector endpoint is configured. The common OTLP
 # endpoint is expanded to /v1/traces and /v1/metrics by the HTTP/protobuf exporters.

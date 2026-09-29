@@ -33,15 +33,16 @@ the source.
 For a file-backed Node instance without Cloudflare bindings, create `apps/backoffice/.dev.vars` from
 `.dev.vars.example` if you do not already have one. Set `AUTH_ACCESS_TOKEN_SECRET` and
 `BACKOFFICE_INTERNAL_REQUEST_SECRET` there; replace the example secrets with strong values and keep
-them unchanged across restarts. Codemode requires `apps/cf-sandbox-bridge`, which includes its
-compiler. Set `CODEMODE_EXECUTOR_URL` to the bridge's `wss://` origin and
-`CODEMODE_EXECUTOR_API_KEY` to its `SANDBOX_API_KEY`. For local Wrangler development,
-`ws://127.0.0.1:8787` is allowed. Both Node processes use these same settings. Missing configuration
-fails startup; bridge unavailability fails the invocation without a local fallback or automatic
-immediate retry. Node no longer needs Deno. A disconnected activation has an unknown outcome: tool
-effects already performed are not rolled back. Workflow retries follow the existing Node-owned step
-policy and checkpoints. SQLite data defaults to `.backoffice-node/`; set `BACKOFFICE_SQLITE_DIR` in
-`.dev.vars` to use another path. The file and default data directory are ignored by git.
+them unchanged across restarts. Codemode requires `apps/cf-sandbox-bridge`, which provides remote
+execution and TypeScript checking. Set `CLOUDFLARE_BRIDGE_URL` to the bridge's `https://` origin and
+`CLOUDFLARE_BRIDGE_API_KEY` to its `SANDBOX_API_KEY`. The executor derives `wss://` for WebSocket
+activations. For local Wrangler development, `http://127.0.0.1:8787` is allowed. Both Node processes
+use these same settings. Missing configuration fails startup; bridge unavailability fails the
+invocation without a local fallback or automatic immediate retry. Node no longer needs Deno. A
+disconnected activation has an unknown outcome: tool effects already performed are not rolled back.
+Workflow retries follow the existing Node-owned step policy and checkpoints. SQLite data defaults to
+`.backoffice-node/`; set `BACKOFFICE_SQLITE_DIR` in `.dev.vars` to use another path. The file and
+default data directory are ignored by git.
 
 ```bash
 pnpm --dir apps/backoffice start:node

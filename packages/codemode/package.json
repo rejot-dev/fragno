@@ -56,6 +56,10 @@
       "types": "./dist/transport/codemode-errors.d.ts",
       "default": "./dist/transport/codemode-errors.js"
     },
+    "./transport/codemode-http-authentication": {
+      "types": "./dist/transport/codemode-http-authentication.d.ts",
+      "default": "./dist/transport/codemode-http-authentication.js"
+    },
     "./codemode-limits": {
       "types": "./dist/codemode-limits.d.ts",
       "default": "./dist/codemode-limits.js"

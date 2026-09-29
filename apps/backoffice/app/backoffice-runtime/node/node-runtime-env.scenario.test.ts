@@ -11,7 +11,7 @@ import { createCodemodeTestServer } from "@fragno-dev/codemode/testing/codemode-
 
 import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
 
-import { createNodeBackofficeRuntimeEnv } from "./node-runtime-env";
+import { createNodeBackofficeRuntimeConfiguration } from "./node-runtime-env";
 
 let server: Awaited<ReturnType<typeof createCodemodeTestServer>>;
 beforeAll(async () => {
@@ -21,10 +21,10 @@ afterAll(async () => {
   await server?.close();
 });
 
-test("Node production codemode persists scoped state through an ordinary Worker WebSocket", async () => {
-  const env = await createNodeBackofficeRuntimeEnv({
-    executorUrl: server.url,
-    executorApiKey: server.apiKey,
+test("Node production codemode uses the bridge WebSocket and compiler HTTP APIs", async () => {
+  const { runtimeEnv: env, workerTypeChecker } = createNodeBackofficeRuntimeConfiguration({
+    bridgeUrl: server.url,
+    bridgeApiKey: server.apiKey,
     env: {},
   });
   await runBackofficeScenario(
@@ -55,6 +55,18 @@ test("Node production codemode persists scoped state through an ordinary Worker 
               expect.objectContaining({ toolName: "set", status: "success" }),
             ]),
           );
+        }),
+        then.assert("TypeScript checking uses the bridge HTTP API", async () => {
+          const result = await workerTypeChecker({
+            files: [
+              {
+                path: "workspace/example.js",
+                read: async () => "const value = 42;",
+              },
+            ],
+            sourcePaths: ["workspace/example.js"],
+          });
+          expect(result).toEqual({ diagnostics: [] });
         }),
       ],
     }),

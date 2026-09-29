@@ -3,6 +3,7 @@ import { runWithCodemodeCompilerAdmission } from "../compiler/codemode-compiler-
 import type { WorkerCompiler } from "../compiler/compile-worker";
 import type { CodemodeWorkerEvaluation, ResolvedProvider } from "../runtime-api";
 import { CodemodeInterruptedError, encodeCodemodeError } from "../transport/codemode-errors";
+import { authenticateCodemodeHttpRequest } from "../transport/codemode-http-authentication";
 import { CodemodePeer } from "../transport/codemode-peer";
 import {
   codemodeGuestOperationSchema,
@@ -309,23 +310,9 @@ export async function handleCodemodeWorkerRequest(
   env: WorkerSessionEnv,
   ctx: ExecutionContext,
 ): Promise<Response> {
-  if (!apiKey) {
-    return new Response("Codemode executor authentication is not configured.", { status: 503 });
-  }
-  const authorization = request.headers.get("authorization") ?? "";
-  const [expected, actual] = await Promise.all(
-    [`Bearer ${apiKey}`, authorization].map((value) =>
-      crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)),
-    ),
-  );
-  const a = new Uint8Array(expected);
-  const b = new Uint8Array(actual);
-  let difference = 0;
-  for (let i = 0; i < a.length; i++) {
-    difference |= a[i] ^ b[i];
-  }
-  if (difference !== 0) {
-    return new Response("Unauthorized", { status: 401 });
+  const authenticationError = await authenticateCodemodeHttpRequest(request, apiKey);
+  if (authenticationError) {
+    return authenticationError;
   }
   const url = new URL(request.url);
   if (url.pathname !== "/v1/codemode/execute" || url.search) {

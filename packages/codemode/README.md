@@ -183,14 +183,14 @@ calls retain their existing JSON/binary argument encoding inside this outer tran
 - Frames, values, source/bundles, calls, handles, logs, and activation concurrency are bounded.
   Compilation and execution have deadlines; dynamic Workers also receive CPU/subrequest limits. See
   `CODEMODE_LIMITS` rather than duplicating its values in callers.
-- WebSocket compilation and private compiler RPC calls (including type-checking) share a bounded
-  admission count per bridge Worker isolate through `compiler/codemode-compiler-admission.ts`. A
-  timed-out or disconnected activation retains its slot until compilation settles; replacement
-  connections fail with `CODEMODE_COMPILATION_LIMIT_EXCEEDED` when all slots are occupied. The
-  activation is registered with `ctx.waitUntil` so post-disconnect settlement can release its slot.
-  Private RPC operations register settlement cleanup too. This is an isolate-local bound, not a
-  distributed quota. Compilation runs inside the bridge, so synchronous compiler work shares its CPU
-  and cannot be interrupted by a JavaScript timer.
+- WebSocket compilation, private compiler RPC calls, and authenticated HTTP compiler calls share a
+  bounded admission count per bridge Worker isolate through
+  `compiler/codemode-compiler-admission.ts`. A timed-out or disconnected caller retains its slot
+  until compilation settles; replacement calls fail with `CODEMODE_COMPILATION_LIMIT_EXCEEDED` when
+  all slots are occupied. Every entrypoint registers settlement with `ctx.waitUntil` so
+  post-disconnect cleanup can release its slot. This is an isolate-local bound, not a distributed
+  quota. Compilation runs inside the bridge, so synchronous compiler work shares its CPU and cannot
+  be interrupted by a JavaScript timer.
 - A caller's wait for host cleanup is bounded, but an unabortable host operation keeps its Node
   admission slot until it really settles. A disconnect must not free unlimited capacity for detached
   work.
@@ -207,11 +207,12 @@ The bridge endpoint is `GET /v1/codemode/execute` with a WebSocket upgrade and
 `Authorization: Bearer <SANDBOX_API_KEY>`. Codemode refuses unauthenticated access even in
 development.
 
-Node Backoffice reads `CODEMODE_EXECUTOR_URL` and `CODEMODE_EXECUTOR_API_KEY`; the latter must match
-the bridge's `SANDBOX_API_KEY`. The URL must use `wss://`, except for local loopback `ws://`. The
-bridge needs `LOADER` and includes its compiler directly. Cloudflare Backoffice binds
-`CODEMODE_COMPILER` to the bridge's private `CodemodeCompiler` entrypoint, while retaining its own
-Worker Loader. See the
+Node Backoffice reads `CLOUDFLARE_BRIDGE_URL` and `CLOUDFLARE_BRIDGE_API_KEY`; the latter must match
+the bridge's `SANDBOX_API_KEY`. The URL must use `https://`, except for local loopback `http://`.
+The executor derives the WebSocket scheme, while `createCodemodeCompilerHttpClient` uses the same
+URL and token for compilation or TypeScript checking over HTTP. The bridge needs `LOADER` and
+includes its compiler directly. Cloudflare Backoffice binds `CODEMODE_COMPILER` to the bridge's
+private `CodemodeCompiler` entrypoint, while retaining its own Worker Loader. See the
 [bridge setup notes](../../apps/cf-sandbox-bridge/README.md#node-backoffice-codemode) and
 [Backoffice README](../../apps/backoffice/README.md) for application setup.
 
@@ -226,8 +227,8 @@ Worker conversations. [`createCodemodeTestServer`](src/testing/codemode-test-ser
 through `@fragno-dev/codemode/testing/codemode-test-server`, starts local Miniflare/workerd with a
 compiler service boundary. Its test compiler uses esbuild and does **not** install npm dependencies.
 The bridge's own tests exercise its Wrangler-built entrypoint, real compiler/Wasm, private RPC,
-routing, authentication, and shared compiler admission. Backoffice's Cloudflare scenarios call the
-real compiler functions directly instead of starting an additional bridge Worker.
+authenticated HTTP, routing, and shared compiler admission. Backoffice's Cloudflare scenarios call
+the real compiler functions directly instead of starting an additional bridge Worker.
 
 [Backoffice scenarios](../../apps/backoffice/app/fragno/codemode/workflow-execute.node.scenario.test.ts)
 exercise the same remote path with the real workflow runner and SQLite-backed state. Local tests do

@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, expect, test, assert } from "vitest";
 
 import { CODEMODE_LIMITS } from "@fragno-dev/codemode/codemode-limits";
+import { createCodemodeCompilerHttpClient } from "@fragno-dev/codemode/compiler/compiler-service-client";
 import {
   createCompileWorkerServiceRequest,
   createTypeCheckFilesServiceRequest,
@@ -64,7 +65,66 @@ test("named compiler RPC type-checks streamed JavaScript against caller declarat
   });
 });
 
-test("private type-checking, compilation, and WebSocket execution share compiler admission and recover", async () => {
+test("Node HTTP clients compile and type-check through the authenticated public API", async () => {
+  const compiler = createCodemodeCompilerHttpClient({ url: server.url, apiKey: server.apiKey });
+  const compiled = await compiler.compileWorker({
+    files: { "worker.ts": "const value: number = 42; export default value;" },
+    entryPoint: "worker.ts",
+    dependencies: {},
+    runtime,
+  });
+  expect(compiled.bundle.modules[compiled.bundle.mainModule]).toContain("42");
+
+  const checked = await compiler.typeCheckFiles({
+    files: [
+      {
+        path: "workspace/example.js",
+        read: async () => "const value = declaredValue; const invalid = value.missing;",
+      },
+      {
+        path: "workspace/globals.d.ts",
+        read: async () => "declare const declaredValue: { name: string };",
+      },
+    ],
+    sourcePaths: ["workspace/example.js"],
+  });
+  expect(checked).toEqual({
+    diagnostics: [expect.objectContaining({ code: 2339, path: "workspace/example.js", line: 1 })],
+  });
+});
+
+test("public compiler HTTP routes require bearer authentication and POST", async () => {
+  const url = server.url.replace(/^ws:/, "http:");
+  const compileUrl = new URL("/v1/codemode/compile-worker", url);
+  const unauthorizedResponse = await fetch(compileUrl);
+  assert(unauthorizedResponse.status === 401);
+  assert.deepEqual(await unauthorizedResponse.json(), {
+    code: "AUTHENTICATION_FAILED",
+    message: "Codemode HTTP authentication failed.",
+  });
+  assert(
+    (
+      await fetch(compileUrl, {
+        headers: { authorization: `Bearer ${server.apiKey}` },
+      })
+    ).status === 405,
+  );
+
+  const unauthorizedClient = createCodemodeCompilerHttpClient({
+    url: server.url,
+    apiKey: "incorrect",
+  });
+  await expect(
+    unauthorizedClient.compileWorker({
+      files: { "worker.ts": "export default 42;" },
+      entryPoint: "worker.ts",
+      dependencies: {},
+      runtime,
+    }),
+  ).rejects.toMatchObject({ code: "AUTHENTICATION_FAILED" });
+});
+
+test("RPC, HTTP, and WebSocket compilation share compiler admission and recover", async () => {
   let releaseFiles!: () => void;
   const filesReady = new Promise<void>((resolve) => {
     releaseFiles = resolve;
@@ -125,6 +185,18 @@ test("private type-checking, compilation, and WebSocket execution share compiler
     await expect(readCompileWorkerServiceResponse(response)).rejects.toThrow(
       "CODEMODE_COMPILATION_LIMIT_EXCEEDED",
     );
+    const httpCompiler = createCodemodeCompilerHttpClient({
+      url: server.url,
+      apiKey: server.apiKey,
+    });
+    await expect(
+      httpCompiler.compileWorker({
+        files: { "worker.ts": "export default 42;" },
+        entryPoint: "worker.ts",
+        dependencies: {},
+        runtime,
+      }),
+    ).rejects.toThrow("CODEMODE_COMPILATION_LIMIT_EXCEEDED");
     await expect(execute(activation, host)).resolves.toMatchObject({
       status: "failed",
       error: { message: "CODEMODE_COMPILATION_LIMIT_EXCEEDED" },
@@ -143,7 +215,7 @@ test("private type-checking, compilation, and WebSocket execution share compiler
   });
 });
 
-test("named compiler RPC preserves invalid-project errors and does not expose an HTTP compiler", async () => {
+test("named compiler RPC preserves invalid-project errors and unrelated HTTP paths", async () => {
   const request = createCompileWorkerServiceRequest({
     files: { "worker.ts": "export default {};", "package.json": "{}" },
     entryPoint: "worker.ts",

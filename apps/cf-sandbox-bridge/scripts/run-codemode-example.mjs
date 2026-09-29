@@ -1,15 +1,15 @@
 import { parseCodemodeValue, stringifyCodemodeValue } from "@fragno-dev/codemode/runtime-api";
 import { createCodemodeNodeExecutor } from "@fragno-dev/codemode/transport/codemode-node-client";
 
-const apiKey = process.env.CODEMODE_EXECUTOR_API_KEY;
+const apiKey = process.env.CLOUDFLARE_BRIDGE_API_KEY;
 if (!apiKey) {
   throw new Error(
-    "Set CODEMODE_EXECUTOR_API_KEY to the deployed bridge's SANDBOX_API_KEY before running this example.",
+    "Set CLOUDFLARE_BRIDGE_API_KEY to the deployed bridge's SANDBOX_API_KEY before running this example.",
   );
 }
 
 const execute = createCodemodeNodeExecutor({
-  url: process.env.CODEMODE_EXECUTOR_URL ?? "wss://cf-sandbox-bridge.rejot.workers.dev/",
+  url: process.env.CLOUDFLARE_BRIDGE_URL ?? "https://cf-sandbox-bridge.rejot.workers.dev/",
   apiKey,
 });
 
