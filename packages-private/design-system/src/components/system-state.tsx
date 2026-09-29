@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 
-import { cn } from "@/lib/utils";
-
+import { cn } from "../cn";
 import { BackofficeFragmentMark } from "./fragment-mark";
 
 type BackofficeSystemStateTone = "loading" | "empty" | "error";
@@ -28,8 +27,8 @@ export function BackofficeSystemState({
   actions?: ReactNode;
   children?: ReactNode;
   // Set when the panel sits flush against the surrounding chrome (tab rail, top bar,
-  // view edges): clips the top and side edges of the panel shadow ring so only the
-  // bottom edge remains, and hides the corner mark that hangs over the clipped edge.
+  // view edges): squares the corners and clips the top and side edges of the panel shadow
+  // ring so only the bottom edge remains.
   flush?: boolean;
 }) {
   return (
@@ -38,16 +37,16 @@ export function BackofficeSystemState({
       aria-live={tone === "loading" ? "polite" : undefined}
       data-tone={tone}
       className={cn(
-        "bo-fragment-surface bo-panel-surface bo-system-state bg-[var(--bo-panel)] p-4",
-        flush && "[clip-path:inset(0_0_-1rem)] after:hidden!",
+        "bo-panel-surface bo-system-state bg-[var(--bo-panel)] p-4",
+        flush ? "[clip-path:inset(0_0_-1rem)]" : "rounded-[6px]",
       )}
     >
       <div className="flex items-start gap-3">
-        <div className="flex size-10 shrink-0 items-center justify-center bg-[var(--bo-panel-2)] shadow-[inset_0_0_0_1px_var(--bo-border)]">
+        <div className="flex size-10 shrink-0 items-center justify-center rounded-[4px] bg-[var(--bo-panel-2)] shadow-[inset_0_0_0_1px_var(--bo-border)]">
           <BackofficeFragmentMark animated={tone === "loading"} size="md" />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="bo-system-state-label font-mono text-[9px] font-semibold tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
+          <p className="bo-system-state-label text-xs font-semibold text-[var(--bo-muted-2)]">
             {label}
           </p>
           <h2 className="mt-1 text-base font-semibold text-balance text-[var(--bo-fg)]">{title}</h2>

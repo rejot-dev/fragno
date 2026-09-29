@@ -1,6 +1,7 @@
-import { Form, Link, redirect, useActionData, useLoaderData, useNavigation } from "react-router";
+import { Button, ButtonLink } from "@fragno-private/design-system/button";
+import { FormContainer } from "@fragno-private/design-system/form-container";
+import { Form, redirect, useActionData, useLoaderData, useNavigation } from "react-router";
 
-import { FormContainer } from "@/components/backoffice";
 import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import {
   getGitHubDurableObject,
@@ -253,12 +254,9 @@ export default function BackofficeGitHubOAuthCallback() {
       >
         <p className="text-sm text-red-500">{loaderData.message}</p>
         {loaderData.returnTo ? (
-          <Link
-            to={loaderData.returnTo}
-            className="mt-3 inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase"
-          >
+          <ButtonLink variant="secondary" to={loaderData.returnTo} className="mt-3">
             Back to GitHub configuration
-          </Link>
+          </ButtonLink>
         ) : null}
       </FormContainer>
     );
@@ -311,13 +309,9 @@ export default function BackofficeGitHubOAuthCallback() {
                   <input type="hidden" name="state" value={loaderData.state} />
                   <input type="hidden" name="installationId" value={installation.id} />
                   <input type="hidden" name="returnTo" value={loaderData.returnTo} />
-                  <button
-                    type="submit"
-                    disabled={saving}
-                    className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
-                  >
+                  <Button variant="accent" type="submit" disabled={saving}>
                     Restore this installation
-                  </button>
+                  </Button>
                 </Form>
               </div>
             </section>

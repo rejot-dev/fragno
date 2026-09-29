@@ -48,7 +48,7 @@ export function BackofficePageHeader({
   const sectionCode = code ?? resolveSectionCode(breadcrumbs, eyebrow);
 
   return (
-    <section className="bo-fragment-surface bo-panel-surface bg-[var(--bo-header-bg)] p-4">
+    <section className="bo-panel-surface rounded-[6px] bg-[var(--bo-header-bg)] p-4">
       <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div className="space-y-3">
           <BackofficeBreadcrumbs items={breadcrumbs} />
@@ -56,9 +56,7 @@ export function BackofficePageHeader({
             <div className="flex flex-wrap items-center gap-2">
               <span className="bo-product-code">{sectionCode}</span>
               {eyebrow ? (
-                <p className="font-mono text-[10px] tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
-                  {eyebrow}
-                </p>
+                <p className="text-xs font-semibold text-[var(--bo-muted-2)]">{eyebrow}</p>
               ) : null}
             </div>
             <h1 className="text-2xl font-semibold tracking-tight text-balance text-[var(--bo-fg)] md:text-3xl">

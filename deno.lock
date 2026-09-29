@@ -1,0 +1,34 @@
+{
+  "version": "5",
+  "specifiers": {
+    "jsr:@deno/installer-shell-setup@*": "0.3.4"
+  },
+  "jsr": {
+    "@deno/installer-shell-setup@0.3.4": {
+      "integrity": "48665d1a737d487cce6874bc97bba70a5aeffa7053aca3f60df93c6fab8963b4"
+    }
+  },
+  "workspace": {
+    "packageJson": {
+      "dependencies": [
+        "npm:@changesets/cli@^2.30.0",
+        "npm:@nanostores/query@~0.3.4",
+        "npm:fallow@^2.75.0",
+        "npm:lefthook@^1.13.6",
+        "npm:nanostores@^1.2.0",
+        "npm:oxfmt@0.40",
+        "npm:oxlint-tsgolint@0.23",
+        "npm:oxlint@^1.60.0",
+        "npm:prettier-plugin-astro@~0.14.1",
+        "npm:prettier-plugin-sql@~0.19.2",
+        "npm:prettier-plugin-svelte@^3.5.1",
+        "npm:prettier-plugin-tailwindcss@~0.6.14",
+        "npm:prettier@3.6.2",
+        "npm:tsdown@~0.22.4",
+        "npm:tsx@^4.21.0",
+        "npm:turbo@^2.10.1",
+        "npm:ws@^8.21.3"
+      ]
+    }
+  }
+}

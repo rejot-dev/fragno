@@ -1,4 +1,5 @@
 import type { DraftTool } from "@fragno-dev/pi-harness/workflow-session-projection";
+import { Button } from "@fragno-private/design-system/button";
 import { useState } from "react";
 
 import { useAuiState, type ToolCallMessagePartProps } from "@assistant-ui/react";
@@ -13,7 +14,7 @@ import { ToolCallDetails, ToolResultSection } from "./tool-call-layout";
 import { ToolResultContent } from "./tool-result-content";
 import { ToolArgumentsBlock, ToolResultDisclosure } from "./tool-result-details";
 import { ToolWorkspaceSelector, type ToolWorkspaceSelectorOption } from "./tool-workspace-selector";
-import { formatEventTimestamp, tapScale } from "./ui";
+import { formatEventTimestamp } from "./ui";
 import { useSessionWorkspaceNavigation } from "./workspace-context";
 import { generatedUiWorkspaceId, workflowGraphWorkspaceId } from "./workspace-model";
 
@@ -75,15 +76,14 @@ export function ToolCallBlock(props: ToolCallMessagePartProps) {
       label={completedToolResult.isError ? "Error" : "Result"}
       action={
         canExpandOrdinaryResult ? (
-          <button
-            type="button"
+          <Button
+            variant="ghost"
             onClick={() => {
               setResultExpanded((current) => !current);
             }}
-            className={`inline-flex min-h-10 items-center px-2 text-[10px] font-medium text-[var(--bo-muted)] transition-[color,scale] duration-150 ease-out hover:text-[var(--bo-fg)] ${tapScale}`}
           >
             {resultExpanded ? "Hide raw" : "Show raw"}
-          </button>
+          </Button>
         ) : null
       }
     >

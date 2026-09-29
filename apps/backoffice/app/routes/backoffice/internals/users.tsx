@@ -1,9 +1,11 @@
+import { Button } from "@fragno-private/design-system/button";
+import { cn } from "@fragno-private/design-system/cn";
+import { Input } from "@fragno-private/design-system/input";
+import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
 import { useEffect, useReducer, useState } from "react";
 import { useOutletContext } from "react-router";
 
-import { BackofficePageHeader } from "@/components/backoffice";
 import { authClient } from "@/fragno/auth/auth-client";
-import { cn } from "@/lib/utils";
 
 import { internalsScopeBasePath } from "./internals-scope";
 import type { InternalsLayoutContext } from "./layout";
@@ -172,7 +174,7 @@ export default function BackofficeInternalUsers() {
               runSearch();
             }}
           >
-            <input
+            <Input
               type="search"
               value={searchInput}
               onChange={(event) => {
@@ -180,15 +182,11 @@ export default function BackofficeInternalUsers() {
               }}
               placeholder="Search by email"
               aria-label="Search system users by email"
-              className="min-w-0 flex-1 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none sm:w-64"
+              className="min-w-0 flex-1 sm:w-64"
             />
-            <button
-              type="submit"
-              disabled={loading}
-              className="bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase shadow-[inset_0_0_0_1px_var(--bo-accent)] hover:shadow-[inset_0_0_0_1px_var(--bo-accent-strong)] disabled:opacity-60"
-            >
+            <Button type="submit" disabled={loading} variant="accent">
               Search
-            </button>
+            </Button>
           </form>
         </div>
 
@@ -265,26 +263,24 @@ export default function BackofficeInternalUsers() {
                 Page {page} of {totalPages}
               </p>
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
+                <Button
                   disabled={loading || page === 1}
                   onClick={() => {
                     dispatchDirectory({ type: "pageRequested", page: page - 1 });
                   }}
-                  className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
+                  variant="secondary"
                 >
                   Previous
-                </button>
-                <button
-                  type="button"
+                </Button>
+                <Button
                   disabled={loading || page >= totalPages}
                   onClick={() => {
                     dispatchDirectory({ type: "pageRequested", page: page + 1 });
                   }}
-                  className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
+                  variant="secondary"
                 >
                   Next
-                </button>
+                </Button>
               </div>
             </div>
           ) : null}
@@ -352,7 +348,7 @@ function SystemUserRow({
             });
             setNotice(null);
           }}
-          className="min-w-32 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-xs font-semibold tracking-[0.16em] text-[var(--bo-fg)] uppercase focus:border-[color:var(--bo-accent)] focus:outline-none"
+          className="bo-input min-w-32 px-3 py-2 text-xs font-semibold tracking-[0.16em] uppercase"
         >
           {GLOBAL_ROLES.map((role) => (
             <option key={role} value={role}>
@@ -368,14 +364,13 @@ function SystemUserRow({
               You cannot change your own role.
             </span>
           ) : (
-            <button
-              type="button"
+            <Button
               disabled={selectedRole === user.role || saving}
               onClick={() => void saveRole()}
-              className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.2em] text-[var(--bo-accent-fg)] uppercase hover:border-[color:var(--bo-accent-strong)] disabled:opacity-50"
+              variant="accent"
             >
               {saving ? "Saving…" : "Save role"}
-            </button>
+            </Button>
           )}
           {notice ? (
             <span

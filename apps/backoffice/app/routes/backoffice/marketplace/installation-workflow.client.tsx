@@ -1,4 +1,5 @@
-import { X } from "lucide-react";
+import { IconButton } from "@fragno-private/design-system/button";
+import { Icon } from "@fragno-private/design-system/icon";
 import { use, useState, type ReactNode } from "react";
 
 import {
@@ -296,20 +297,14 @@ function InstallationWorkflowSurface({
         </div>
         <div className="flex shrink-0 items-center gap-1">
           <span
-            className={`inline-flex min-h-6 items-center px-2 font-mono text-[9px] tracking-[0.12em] uppercase ${status.className}`}
+            className={`inline-flex min-h-6 items-center px-2 text-[9px] tracking-[0.12em] uppercase ${status.className}`}
           >
             {status.label}
           </span>
           {onClose ? (
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close installation result"
-              title="Close"
-              className="inline-flex size-10 items-center justify-center text-[var(--bo-muted-2)] transition-[scale,color] duration-150 ease-out hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none active:scale-[0.96]"
-            >
-              <X className="size-4" aria-hidden="true" />
-            </button>
+            <IconButton label="Close installation result" title="Close" onClick={onClose}>
+              <Icon name="x" className="size-4" />
+            </IconButton>
           ) : null}
         </div>
       </div>

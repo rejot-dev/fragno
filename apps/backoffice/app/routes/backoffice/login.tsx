@@ -1,12 +1,14 @@
-import "../../backoffice.css";
+import "@fragno-private/design-system/components.css";
 
-import { ArrowLeft } from "lucide-react";
+import { Button, ButtonLink } from "@fragno-private/design-system/button";
+import { FormContainer, FormField } from "@fragno-private/design-system/form-container";
+import { BackofficeFragmentMark } from "@fragno-private/design-system/fragment-mark";
+import { Icon } from "@fragno-private/design-system/icon";
+import { Input } from "@fragno-private/design-system/input";
 import { useState } from "react";
 import { Form, Link, redirect, useActionData, useLoaderData, useNavigation } from "react-router";
 import { z } from "zod";
 
-import { FormContainer, FormField } from "@/components/backoffice";
-import { BackofficeFragmentMark } from "@/components/backoffice/fragment-mark";
 import { authClient } from "@/fragno/auth/auth-client";
 import {
   callBetterAuth,
@@ -411,7 +413,7 @@ export default function BackofficeLogin() {
           to="/"
           className="inline-flex min-h-11 items-center gap-2 text-[10px] font-bold tracking-[0.14em] text-[var(--bo-muted)] uppercase no-underline transition-colors duration-150 hover:text-[var(--bo-fg)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--bo-accent)]"
         >
-          <ArrowLeft className="size-3.5" aria-hidden="true" />
+          <Icon name="arrow-left" className="size-3.5" />
           Back to home
         </Link>
       </header>
@@ -435,14 +437,14 @@ export default function BackofficeLogin() {
             description="Continue with GitHub or use your email and password."
           >
             <div className="space-y-3">
-              <button
-                type="button"
+              <Button
+                variant="accent"
                 onClick={() => void handleGithubSignIn()}
                 disabled={oauthPending}
-                className="flex w-full items-center justify-center gap-2 border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
+                className="w-full"
               >
                 {oauthPending ? "Redirecting…" : "Continue with GitHub"}
-              </button>
+              </Button>
               {authErrorNotice ? (
                 <div
                   role="alert"
@@ -476,24 +478,24 @@ export default function BackofficeLogin() {
                   <span className="h-px flex-1 bg-[var(--bo-border)]" aria-hidden="true" />
                 </div>
                 <FormField label="Email address">
-                  <input
+                  <Input
                     type="email"
                     name="email"
                     autoComplete="username"
                     defaultValue={verificationRequired?.email ?? ""}
                     required
                     placeholder="you@example.com"
-                    className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
+                    className="w-full"
                   />
                 </FormField>
                 <FormField label="Password">
-                  <input
+                  <Input
                     type="password"
                     name="password"
                     autoComplete="current-password"
                     required
                     placeholder="••••••••"
-                    className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
+                    className="w-full"
                   />
                 </FormField>
                 {passwordError ? (
@@ -508,26 +510,27 @@ export default function BackofficeLogin() {
                   </p>
                 ) : null}
                 {verificationRequired?.email ? (
-                  <button
+                  <Button
+                    variant="secondary"
                     type="submit"
                     name="intent"
                     value="resend"
                     formNoValidate
                     disabled={resendPending}
-                    className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-4 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
                   >
                     {resendPending ? "Requesting…" : "Resend verification email"}
-                  </button>
+                  </Button>
                 ) : null}
-                <button
+                <Button
+                  variant="accent"
                   type="submit"
                   name="intent"
                   value="sign_in"
                   disabled={passwordPending}
-                  className="w-full border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
+                  className="w-full"
                 >
                   {passwordPending ? "Signing in…" : "Sign in"}
-                </button>
+                </Button>
               </Form>
               <p className="border-t border-[color:var(--bo-border)] pt-4 text-xs text-[var(--bo-muted-2)]">
                 Need an account?{" "}
@@ -580,12 +583,9 @@ function BackofficeLoginBootstrap({
                   {bootstrapMessageForReturnTo(returnTo)}
                 </p>
               )}
-              <Link
-                to={returnTo}
-                className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-4 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-              >
+              <ButtonLink variant="secondary" to={returnTo}>
                 Continue to backoffice
-              </Link>
+              </ButtonLink>
             </div>
           </FormContainer>
         </div>

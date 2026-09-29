@@ -1,9 +1,11 @@
-import "../../backoffice.css";
+import "@fragno-private/design-system/components.css";
 
+import { Button, ButtonLink } from "@fragno-private/design-system/button";
+import { FormContainer, FormField } from "@fragno-private/design-system/form-container";
+import { Input } from "@fragno-private/design-system/input";
 import { Form, Link, redirect, useActionData, useLoaderData, useNavigation } from "react-router";
 import { z } from "zod";
 
-import { FormContainer, FormField } from "@/components/backoffice";
 import {
   callBetterAuth,
   createBackofficeIdentityChangeHeaders,
@@ -225,12 +227,9 @@ export default function BackofficeSignUp() {
             Register your email to access Backoffice.
           </p>
           <div className="flex flex-wrap gap-2">
-            <Link
-              to={buildBackofficeLoginPath(returnTo)}
-              className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)]"
-            >
+            <ButtonLink variant="accent" to={buildBackofficeLoginPath(returnTo)}>
               Back to sign in
-            </Link>
+            </ButtonLink>
           </div>
         </div>
 
@@ -274,32 +273,22 @@ export default function BackofficeSignUp() {
                 <Form method="post" action={buildBackofficeSignUpPath(returnTo)}>
                   <input type="hidden" name="intent" value="resend" />
                   <input type="hidden" name="email" value={verificationRequired.email} />
-                  <button
-                    type="submit"
-                    disabled={resendPending}
-                    className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-4 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
-                  >
+                  <Button variant="secondary" type="submit" disabled={resendPending}>
                     {resendPending ? "Requesting…" : "Resend verification email"}
-                  </button>
+                  </Button>
                 </Form>
-                <Link
-                  to={buildBackofficeLoginPath(returnTo)}
-                  className="inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)]"
-                >
+                <ButtonLink variant="accent" to={buildBackofficeLoginPath(returnTo)}>
                   Continue to sign in
-                </Link>
+                </ButtonLink>
               </div>
             ) : !signUpAllowed ? (
               <div className="space-y-4">
                 <p className="text-sm leading-6 text-[var(--bo-muted)]">
                   Ask a Backoffice administrator to create a sign-up invitation for your email.
                 </p>
-                <Link
-                  to={buildBackofficeLoginPath(returnTo)}
-                  className="inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)]"
-                >
+                <ButtonLink variant="accent" to={buildBackofficeLoginPath(returnTo)}>
                   Back to sign in
-                </Link>
+                </ButtonLink>
               </div>
             ) : (
               <Form method="post" action={signUpPath} className="space-y-3">
@@ -321,33 +310,33 @@ export default function BackofficeSignUp() {
                       : "Use the email tied to your team access."
                   }
                 >
-                  <input
+                  <Input
                     type="email"
                     name="email"
                     autoComplete="username"
                     required
                     placeholder="team@example.com"
-                    className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
+                    className="w-full"
                   />
                 </FormField>
                 <FormField label="Create password" hint="At least 8 characters.">
-                  <input
+                  <Input
                     type="password"
                     name="password"
                     autoComplete="new-password"
                     required
                     placeholder="••••••••"
-                    className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
+                    className="w-full"
                   />
                 </FormField>
                 <FormField label="Confirm password" hint="Re-type to confirm.">
-                  <input
+                  <Input
                     type="password"
                     name="confirmPassword"
                     autoComplete="new-password"
                     required
                     placeholder="••••••••"
-                    className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
+                    className="w-full"
                   />
                 </FormField>
                 {signUpError ? (
@@ -358,15 +347,15 @@ export default function BackofficeSignUp() {
                   </p>
                 )}
                 <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:items-center sm:justify-between">
-                  <button
+                  <Button
+                    variant="accent"
                     type="submit"
                     name="intent"
                     value="sign_up"
                     disabled={signUpPending}
-                    className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
                   >
                     {signUpPending ? "Creating account…" : "Sign up"}
-                  </button>
+                  </Button>
                   <span className="text-xs text-[var(--bo-muted-2)]">
                     Already registered?{" "}
                     <Link

@@ -1,3 +1,5 @@
+import { ButtonLink } from "@fragno-private/design-system/button";
+import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { useEffect } from "react";
 import { Link, Outlet, useLocation, useNavigate, useParams } from "react-router";
@@ -9,7 +11,6 @@ import {
 } from "@/backoffice-runtime/resolved-scope";
 import { requireBackofficeRouteScopeFromParams } from "@/backoffice-runtime/route-scope";
 import { isBackofficeScopeCodecError } from "@/backoffice-runtime/scope-codec";
-import { BackofficePageHeader } from "@/components/backoffice";
 import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import type { DurableHookQueueEntry, DurableHookQueueResponse } from "@/fragno/durable-hooks";
 import { getBackofficeObjects } from "@/worker-runtime/durable-objects";
@@ -273,7 +274,7 @@ function DurableHooksObjectPicker({
               aria-selected={isActive}
               className={
                 isActive
-                  ? "border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase"
+                  ? "border border-[color:var(--bo-selected-border)] bg-[var(--bo-selected-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-fg)] uppercase shadow-[var(--bo-selected-shadow)]"
                   : "border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
               }
             >
@@ -468,7 +469,7 @@ export default function BackofficeDurableHooksScopeLayout({ loaderData }: Route.
                               }}
                               className={
                                 isSelected
-                                  ? "cursor-pointer bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--bo-accent)]"
+                                  ? "cursor-pointer bg-[var(--bo-selected-bg)] text-[var(--bo-fg)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--bo-accent)]"
                                   : "cursor-pointer text-[var(--bo-muted)] hover:bg-[var(--bo-panel-2)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--bo-accent)]"
                               }
                             >
@@ -540,20 +541,14 @@ export default function BackofficeDurableHooksScopeLayout({ loaderData }: Route.
                     </span>
                     <div className="flex items-center gap-2">
                       {currentCursor ? (
-                        <Link
-                          to={newestPageHref}
-                          className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[9px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-                        >
+                        <ButtonLink to={newestPageHref} variant="secondary">
                           Newest
-                        </Link>
+                        </ButtonLink>
                       ) : null}
                       {hasNextPage && nextPageHref ? (
-                        <Link
-                          to={nextPageHref}
-                          className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[9px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-                        >
+                        <ButtonLink to={nextPageHref} variant="secondary">
                           Next page
-                        </Link>
+                        </ButtonLink>
                       ) : null}
                     </div>
                   </div>

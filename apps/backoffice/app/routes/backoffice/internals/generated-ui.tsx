@@ -1,8 +1,9 @@
+import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
+import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
 import { useOutletContext } from "react-router";
 
 import { BACKOFFICE_UI_COMPONENT_DEMOS, type BackofficeUiDemoCategory } from "@/backoffice-ui/demo";
 import { BackofficeUiErrorBoundary, BackofficeUiRenderer } from "@/backoffice-ui/renderer";
-import { BackofficePageHeader, BackofficeStatusLight } from "@/components/backoffice";
 
 import { internalsScopeBasePath } from "./internals-scope";
 import type { InternalsLayoutContext } from "./layout";
@@ -55,7 +56,7 @@ export default function BackofficeGeneratedUiCatalogDemo() {
                   {category}
                 </h2>
               </div>
-              <span className="font-mono text-[10px] text-[var(--bo-muted-2)] tabular-nums">
+              <span className="text-[10px] text-[var(--bo-muted-2)] tabular-nums">
                 {demos.length} components
               </span>
             </div>

@@ -1,14 +1,4 @@
-import {
-  AlertTriangle,
-  CheckCircle2,
-  Code2,
-  Copy,
-  GitBranch,
-  Layers3,
-  LogOut,
-  OctagonX,
-  Repeat2,
-} from "lucide-react";
+import { Icon } from "@fragno-private/design-system/icon";
 
 import type {
   BranchNode,
@@ -454,7 +444,7 @@ function ConditionCard({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-[9px] font-semibold tracking-[0.2em] text-[var(--bo-accent-fg)] uppercase">
-            <GitBranch className="h-3.5 w-3.5" />
+            <Icon name="git-branch" className="h-3.5 w-3.5" />
             If
           </div>
           <code className="mt-2 block font-mono text-xs leading-5 break-all text-[var(--bo-fg)]">
@@ -484,7 +474,7 @@ function LoopCard({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-[9px] font-semibold tracking-[0.2em] text-violet-800 uppercase dark:text-violet-200">
-            <Repeat2 className="h-3.5 w-3.5" />
+            <Icon name="repeat" className="h-3.5 w-3.5" />
             {loop.loopType} loop
           </div>
           <code className="mt-2 block font-mono text-xs leading-5 break-all text-[var(--bo-fg)]">
@@ -514,7 +504,7 @@ function ParallelCard({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-[9px] font-semibold tracking-[0.2em] text-sky-800 uppercase dark:text-sky-200">
-            <Layers3 className="h-3.5 w-3.5" />
+            <Icon name="layers" className="h-3.5 w-3.5" />
             Parallel · {parallel.strategy}
           </div>
           <p className="mt-1.5 font-mono text-xs text-[var(--bo-fg)]">{parallel.label}</p>
@@ -542,7 +532,7 @@ function CaughtThrowCard({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-[9px] font-semibold tracking-[0.2em] text-amber-800 uppercase dark:text-amber-200">
-            <LogOut className="h-3.5 w-3.5" />
+            <Icon name="log-out" className="h-3.5 w-3.5" />
             Throw to catch
           </div>
           {caughtThrow.value ? (
@@ -574,7 +564,7 @@ function TryCatchCard({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-[9px] font-semibold tracking-[0.2em] text-orange-800 uppercase dark:text-orange-200">
-            <GitBranch className="h-3.5 w-3.5" />
+            <Icon name="git-branch" className="h-3.5 w-3.5" />
             Error boundary
           </div>
           <p className="mt-1.5 text-xs text-[var(--bo-muted)]">
@@ -620,7 +610,7 @@ function TerminalCard({
     hasVisibleWorkflowOutput(runtimeOutput);
   const terminalDetails = workflowTerminalDetails(terminal, detailMode);
   const details = showsRuntimeOutput ? { ...terminalDetails, value: undefined } : terminalDetails;
-  const Icon = presentation.icon;
+  const icon = presentation.icon;
 
   return (
     <div className={`border p-3 ${presentation.surfaceClass}`}>
@@ -629,7 +619,7 @@ function TerminalCard({
           <div
             className={`flex items-center gap-2 text-[9px] font-semibold tracking-[0.2em] uppercase ${presentation.labelClass}`}
           >
-            <Icon className="h-3.5 w-3.5" />
+            <Icon name={icon} className="h-3.5 w-3.5" />
             {presentation.label}
           </div>
           {details.label ? (
@@ -662,21 +652,21 @@ function terminalPresentation(terminal: TerminalNode) {
     case "early-return":
       return {
         label: "Early exit",
-        icon: LogOut,
+        icon: "log-out" as const,
         surfaceClass: "border-amber-500/35 bg-amber-500/8",
         labelClass: "text-amber-800 dark:text-amber-200",
       };
     case "final-return":
       return {
         label: "Final return",
-        icon: CheckCircle2,
+        icon: "check-circle" as const,
         surfaceClass: "border-emerald-500/35 bg-emerald-500/8",
         labelClass: "text-emerald-800 dark:text-emerald-200",
       };
     case "error":
       return {
         label: "Error",
-        icon: OctagonX,
+        icon: "x-octagon" as const,
         surfaceClass: "border-red-500/35 bg-red-500/8",
         labelClass: "text-red-800 dark:text-red-200",
       };
@@ -787,9 +777,9 @@ function RuntimeMismatchNotice({
   return (
     <details className="group/mismatch mb-2 border border-amber-500/35 bg-amber-500/8 text-amber-900 dark:text-amber-100">
       <summary className="flex min-h-6 cursor-pointer list-none items-center gap-1.5 px-2 text-[9px] font-semibold tracking-[0.12em] uppercase outline-none marker:hidden hover:border-amber-500/60 focus-visible:ring-2 focus-visible:ring-amber-500/35">
-        <AlertTriangle className="size-3 shrink-0" aria-hidden="true" />
+        <Icon name="alert-triangle" className="size-3 shrink-0" />
         <span>Runtime mismatch</span>
-        <span className="font-mono tabular-nums opacity-70">{count}</span>
+        <span className="tabular-nums opacity-70">{count}</span>
         <span className="ml-auto opacity-70 group-open/mismatch:hidden">Show</span>
         <span className="ml-auto hidden opacity-70 group-open/mismatch:inline">Hide</span>
       </summary>
@@ -885,7 +875,7 @@ function RuntimeMismatchNotice({
           }}
           className="inline-flex min-h-7 items-center gap-1.5 border border-amber-500/35 bg-[var(--bo-panel)] px-2 text-[9px] font-semibold tracking-[0.12em] uppercase transition-colors hover:border-amber-500/60 hover:bg-amber-500/10 focus-visible:ring-2 focus-visible:ring-amber-500/35"
         >
-          <Copy className="size-3" aria-hidden="true" />
+          <Icon name="copy" className="size-3" />
           Copy report
         </button>
       </div>
@@ -897,7 +887,7 @@ function NonWorkflowMessage() {
   return (
     <div className="flex min-h-[32rem] items-center justify-center">
       <div className="max-w-sm border border-dashed border-[color:var(--bo-border-strong)] bg-[var(--bo-panel)] p-5 text-center">
-        <Code2 className="mx-auto h-5 w-5 text-[var(--bo-muted-2)]" />
+        <Icon name="code" className="mx-auto h-5 w-5 text-[var(--bo-muted-2)]" />
         <p className="mt-3 text-sm font-semibold text-[var(--bo-fg)]">This is a Codemode script</p>
         <p className="mt-2 text-xs leading-5 text-[var(--bo-muted)]">
           No direct <code className="font-mono">defineWorkflow()</code> call was found, so there is
@@ -916,7 +906,7 @@ function WorkflowDiagnostics({ visualization }: { visualization: WorkflowVisuali
   return (
     <div className="mt-5 border border-amber-500/30 bg-amber-500/8 p-3">
       <div className="flex items-center gap-2 text-[10px] font-semibold tracking-[0.18em] text-amber-800 uppercase dark:text-amber-200">
-        <AlertTriangle className="h-3.5 w-3.5" />
+        <Icon name="alert-triangle" className="h-3.5 w-3.5" />
         Parser notes
       </div>
       <ul className="mt-2 space-y-1.5 text-xs text-[var(--bo-muted)]">

@@ -1,6 +1,8 @@
-import { Form, Link } from "react-router";
+import { Button, ButtonLink } from "@fragno-private/design-system/button";
+import { FormContainer } from "@fragno-private/design-system/form-container";
+import { Input } from "@fragno-private/design-system/input";
+import { Form } from "react-router";
 
-import { FormContainer } from "@/components/backoffice";
 import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import { billingPeriodSchema, type BillingStatementTracker } from "@/fragno/billing";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
@@ -115,19 +117,16 @@ export default function BackofficeOrganizationBilling({ loaderData }: Route.Comp
         description="Usage is assigned to the UTC month in which each model operation completed."
         actions={
           <Form method="get" className="flex gap-2">
-            <input
+            <Input
               key={period}
               type="month"
               name="period"
               defaultValue={period}
-              className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 font-mono text-xs text-[var(--bo-fg)] focus:border-[color:var(--bo-accent)] focus:outline-none"
+              className="text-xs"
             />
-            <button
-              type="submit"
-              className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.18em] text-[var(--bo-accent-fg)] uppercase"
-            >
+            <Button variant="accent" type="submit">
               View
-            </button>
+            </Button>
           </Form>
         }
       >
@@ -136,7 +135,7 @@ export default function BackofficeOrganizationBilling({ loaderData }: Route.Comp
             <p className="text-[10px] font-semibold tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
               Estimated total
             </p>
-            <p className="mt-2 font-mono text-4xl font-semibold tracking-[-0.04em] text-[var(--bo-fg)]">
+            <p className="mt-2 text-4xl font-semibold tracking-[-0.04em] text-[var(--bo-fg)]">
               {formatUsd(totalCost)}
             </p>
           </div>
@@ -195,10 +194,10 @@ export default function BackofficeOrganizationBilling({ loaderData }: Route.Comp
                         {tracker.unit}
                       </p>
                     </td>
-                    <td className="px-3 py-3 text-right font-mono font-semibold text-[var(--bo-fg)]">
+                    <td className="px-3 py-3 text-right font-semibold text-[var(--bo-fg)]">
                       {formatTrackerQuantity(tracker)}
                     </td>
-                    <td className="px-3 py-3 text-right font-mono text-[var(--bo-muted)]">
+                    <td className="px-3 py-3 text-right text-[var(--bo-muted)]">
                       {formatInteger(tracker.eventCount)}
                     </td>
                     <td className="px-3 py-3 text-xs text-[var(--bo-muted)]">
@@ -224,11 +223,8 @@ function PeriodLink({ period, label }: { period: string; label: string }) {
 
 function PageLink({ to, label }: { to: string; label: string }) {
   return (
-    <Link
-      to={to}
-      className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.18em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-    >
+    <ButtonLink variant="secondary" to={to}>
       {label}
-    </Link>
+    </ButtonLink>
   );
 }

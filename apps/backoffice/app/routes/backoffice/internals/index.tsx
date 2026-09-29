@@ -1,6 +1,7 @@
-import { Link, useOutletContext } from "react-router";
-
-import { BackofficePageHeader, BackofficeStatusLight } from "@/components/backoffice";
+import { ButtonLink } from "@fragno-private/design-system/button";
+import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
+import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
+import { useOutletContext } from "react-router";
 
 import { internalsScopeBasePath } from "./internals-scope";
 import type { InternalsLayoutContext } from "./layout";
@@ -120,12 +121,9 @@ export default function BackofficeInternals() {
               <p className="mt-4 text-sm text-pretty text-[var(--bo-muted)]">{item.description}</p>
               <div className="mt-auto pt-4">
                 {isAvailable ? (
-                  <Link
-                    to={item.to!}
-                    className="inline-flex min-h-10 items-center bg-[var(--bo-accent-bg)] px-3 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase shadow-[inset_0_0_0_1px_var(--bo-accent)] transition-[scale,box-shadow] duration-150 ease-out hover:shadow-[inset_0_0_0_1px_var(--bo-accent-strong)] active:scale-[0.96]"
-                  >
+                  <ButtonLink to={item.to!} variant="accent">
                     Open
-                  </Link>
+                  </ButtonLink>
                 ) : (
                   <span className="inline-flex min-h-10 items-center bg-[var(--bo-panel-2)] px-3 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted-2)] uppercase shadow-[inset_0_0_0_1px_var(--bo-border)]">
                     Coming soon

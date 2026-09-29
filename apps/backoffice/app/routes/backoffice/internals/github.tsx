@@ -1,6 +1,8 @@
-import { Link, useLoaderData, useOutletContext } from "react-router";
+import { ButtonLink } from "@fragno-private/design-system/button";
+import { FormContainer } from "@fragno-private/design-system/form-container";
+import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
+import { useLoaderData, useOutletContext } from "react-router";
 
-import { BackofficePageHeader, FormContainer } from "@/components/backoffice";
 import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import {
   BACKOFFICE_ADMIN_OBJECT_NAME,
@@ -142,12 +144,9 @@ export default function BackofficeInternalsGitHub() {
         title="GitHub operator console"
         description="Runtime setup and singleton webhook routing state."
         actions={
-          <Link
-            to={internalsBasePath}
-            className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-          >
+          <ButtonLink to={internalsBasePath} variant="secondary">
             Back to internals
-          </Link>
+          </ButtonLink>
         }
       />
 
@@ -268,12 +267,12 @@ export default function BackofficeInternalsGitHub() {
                         <span className="font-semibold text-[var(--bo-fg)]">{mapping.orgId}</span>
                       </p>
                       {organizationSlugs[mapping.orgId] ? (
-                        <Link
+                        <ButtonLink
                           to={`/backoffice/connections/github/${encodeURIComponent(organizationSlugs[mapping.orgId])}/configuration`}
-                          className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-2 py-1 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+                          variant="secondary"
                         >
                           Open org
-                        </Link>
+                        </ButtonLink>
                       ) : null}
                     </div>
                   ))}

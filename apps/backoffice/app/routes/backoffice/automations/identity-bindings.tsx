@@ -1,3 +1,5 @@
+import { Button } from "@fragno-private/design-system/button";
+import { Input } from "@fragno-private/design-system/input";
 import { useState } from "react";
 import { useOutletContext, useSearchParams } from "react-router";
 
@@ -149,12 +151,12 @@ export default function BackofficeAutomationIdentityBindings() {
         </div>
       ) : null}
 
-      <div className="flex flex-wrap items-end gap-3 border border-l-0 border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 first:border-t-0 @max-7xl:border-r-0">
+      <div className="flex flex-wrap items-end gap-3 border border-l-0 border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 @max-7xl:border-r-0">
         <label className="flex min-w-64 flex-1 flex-col gap-1 text-xs text-[var(--bo-muted)]">
           <span className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
             Search bindings
           </span>
-          <input
+          <Input
             type="search"
             value={search}
             onChange={(event) => {
@@ -162,7 +164,6 @@ export default function BackofficeAutomationIdentityBindings() {
               setPageCursors([]);
             }}
             placeholder="source, identity, user, claim…"
-            className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] outline-none placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)]"
           />
         </label>
         <label className="flex flex-col gap-1 text-xs text-[var(--bo-muted)]">
@@ -175,7 +176,7 @@ export default function BackofficeAutomationIdentityBindings() {
               setStatus(event.currentTarget.value as BindingStatus);
               setPageCursors([]);
             }}
-            className="min-w-36 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] outline-none focus:border-[color:var(--bo-accent)]"
+            className="bo-input min-w-36 px-3 py-2 text-sm"
           >
             <option value="all">All</option>
             <option value="active">Active</option>
@@ -280,28 +281,26 @@ export default function BackofficeAutomationIdentityBindings() {
             {bindings.length} binding{bindings.length === 1 ? "" : "s"} shown · Page {page}
           </span>
           <div className="flex items-center gap-2">
-            <button
-              type="button"
+            <Button
+              variant="secondary"
               disabled={pageCursors.length === 0}
               onClick={() => {
                 setPageCursors((current) => current.slice(0, -1));
               }}
-              className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[9px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:cursor-not-allowed disabled:opacity-40"
             >
               Previous
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
+              variant="secondary"
               disabled={!nextPageCursor}
               onClick={() => {
                 if (nextPageCursor) {
                   setPageCursors((current) => [...current, nextPageCursor]);
                 }
               }}
-              className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[9px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:cursor-not-allowed disabled:opacity-40"
             >
               Next
-            </button>
+            </Button>
           </div>
         </div>
       ) : null}

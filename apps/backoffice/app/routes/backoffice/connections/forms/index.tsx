@@ -1,7 +1,9 @@
+import { Button, ButtonLink } from "@fragno-private/design-system/button";
+import { Input } from "@fragno-private/design-system/input";
+import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
 import { useState, type SubmitEvent } from "react";
-import { Link, useOutletContext } from "react-router";
+import { useOutletContext } from "react-router";
 
-import { BackofficeStatusLight } from "@/components/backoffice";
 import { formsClient } from "@/fragno/forms-client";
 
 import type { AutomationLayoutContext } from "../../automations/layout-context";
@@ -71,12 +73,9 @@ export default function BackofficeFormsIntegration() {
               Create and inspect schema-backed forms in the global system scope.
             </p>
           </div>
-          <Link
-            to={integrationsPath}
-            className="border border-[color:var(--bo-border)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:text-[var(--bo-fg)]"
-          >
+          <ButtonLink variant="secondary" to={integrationsPath}>
             All integrations
-          </Link>
+          </ButtonLink>
         </div>
       </section>
 
@@ -86,31 +85,25 @@ export default function BackofficeFormsIntegration() {
           onSubmit={(event) => void handleCreateForm(event)}
           className="mt-4 grid gap-3 md:grid-cols-[1fr_1fr_auto]"
         >
-          <input
+          <Input
             value={title}
             onChange={(event) => {
               setTitle(event.target.value);
             }}
             placeholder="Form title"
             aria-label="Form title"
-            className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)]"
           />
-          <input
+          <Input
             value={slug}
             onChange={(event) => {
               setSlug(event.target.value);
             }}
             placeholder="form-slug"
             aria-label="Form slug"
-            className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)]"
           />
-          <button
-            type="submit"
-            disabled={createForm.loading}
-            className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase disabled:opacity-60"
-          >
+          <Button variant="accent" type="submit" disabled={createForm.loading}>
             {createForm.loading ? "Creating…" : "Create draft"}
-          </button>
+          </Button>
         </form>
         {message ? <p className="mt-3 text-xs text-[var(--bo-muted)]">{message}</p> : null}
       </section>
@@ -136,12 +129,9 @@ export default function BackofficeFormsIntegration() {
                     <BackofficeStatusLight tone={form.status === "open" ? "live" : "muted"}>
                       {form.status}
                     </BackofficeStatusLight>
-                    <Link
-                      to={`${formsPath}/${form.id}`}
-                      className="inline-flex min-h-10 items-center border border-[color:var(--bo-border)] px-3 text-[9px] font-semibold tracking-[0.18em] text-[var(--bo-muted)] uppercase transition-[border-color,color,scale] duration-150 hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] active:scale-[0.96]"
-                    >
+                    <ButtonLink variant="secondary" to={`${formsPath}/${form.id}`}>
                       View
-                    </Link>
+                    </ButtonLink>
                   </div>
                 </div>
               ))

@@ -1,3 +1,6 @@
+import { Button } from "@fragno-private/design-system/button";
+import { FormContainer, FormField } from "@fragno-private/design-system/form-container";
+import { Input } from "@fragno-private/design-system/input";
 import { useEffect, useState, type SubmitEvent } from "react";
 import {
   Form,
@@ -7,7 +10,6 @@ import {
   type ActionFunctionArgs,
 } from "react-router";
 
-import { FormContainer, FormField } from "@/components/backoffice";
 import { getReson8DurableObject } from "@/worker-runtime/durable-objects";
 
 import { resolveAuthenticatedOrgIntegrationContext } from "../../integrations/scope";
@@ -153,7 +155,7 @@ export default function BackofficeOrganizationReson8Configuration() {
                 : "Required before you can use Reson8."
             }
           >
-            <input
+            <Input
               type="password"
               name="apiKey"
               value={formState.apiKey}
@@ -162,20 +164,16 @@ export default function BackofficeOrganizationReson8Configuration() {
                 setFormState({ apiKey: event.target.value });
               }}
               placeholder="rs8_..."
-              className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
+              className="w-full"
             />
           </FormField>
 
           {saveError ? <p className="text-xs text-red-500">{saveError}</p> : null}
           {saveSuccess ? <p className="text-xs text-green-500">{saveSuccess}</p> : null}
 
-          <button
-            type="submit"
-            disabled={saving}
-            className="w-full border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
-          >
+          <Button variant="accent" type="submit" disabled={saving} className="w-full">
             {saving ? "Saving…" : "Save Reson8 API key"}
-          </button>
+          </Button>
         </Form>
       </FormContainer>
     </div>

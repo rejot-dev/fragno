@@ -1,19 +1,9 @@
+import { Icon } from "@fragno-private/design-system/icon";
 import {
-  Bot,
-  Braces,
-  CalendarClock,
-  CircleDot,
-  Cloud,
-  GitBranch,
-  KeyRound,
-  Mail,
-  Mic2,
-  Send,
-  ShieldCheck,
-  Upload,
-  Workflow,
-  Zap,
-} from "lucide-react";
+  BackofficeStatusLight,
+  type BackofficeStatusTone,
+} from "@fragno-private/design-system/status-light";
+import { VerticalResizeHandle } from "@fragno-private/design-system/vertical-resize-handle";
 import {
   Fragment,
   useCallback,
@@ -35,11 +25,6 @@ import { z } from "zod";
 
 import { eq, or, useLiveQuery } from "@tanstack/react-db";
 
-import {
-  BackofficeStatusLight,
-  type BackofficeStatusTone,
-} from "@/components/backoffice/status-light";
-import { VerticalResizeHandle } from "@/components/backoffice/vertical-resize-handle";
 import type { AutomationRouteDefinition } from "@/fragno/automation/routing";
 import { useAutomationRoutes } from "@/fragno/automation/tanstack/use-automation-routes";
 import {
@@ -448,32 +433,32 @@ function SourceIcon({ source }: { source: string }) {
   const iconClassName = "h-3.5 w-3.5";
   switch (source) {
     case "telegram":
-      return <Send className={iconClassName} strokeWidth={1.8} />;
+      return <Icon name="send" className={iconClassName} strokeWidth={1.8} />;
     case "otp":
     case "auth":
-      return <KeyRound className={iconClassName} strokeWidth={1.8} />;
+      return <Icon name="key" className={iconClassName} strokeWidth={1.8} />;
     case "github":
-      return <GitBranch className={iconClassName} strokeWidth={1.8} />;
+      return <Icon name="git-branch" className={iconClassName} strokeWidth={1.8} />;
     case "upload":
-      return <Upload className={iconClassName} strokeWidth={1.8} />;
+      return <Icon name="upload" className={iconClassName} strokeWidth={1.8} />;
     case "pi":
-      return <Bot className={iconClassName} strokeWidth={1.8} />;
+      return <Icon name="cpu" className={iconClassName} strokeWidth={1.8} />;
     case "scheduler":
-      return <CalendarClock className={iconClassName} strokeWidth={1.8} />;
+      return <Icon name="calendar" className={iconClassName} strokeWidth={1.8} />;
     case "api":
-      return <Braces className={iconClassName} strokeWidth={1.8} />;
+      return <Icon name="code" className={iconClassName} strokeWidth={1.8} />;
     case "resend":
-      return <Mail className={iconClassName} strokeWidth={1.8} />;
+      return <Icon name="mail" className={iconClassName} strokeWidth={1.8} />;
     case "reson8":
-      return <Mic2 className={iconClassName} strokeWidth={1.8} />;
+      return <Icon name="mic" className={iconClassName} strokeWidth={1.8} />;
     case "sandbox":
-      return <Cloud className={iconClassName} strokeWidth={1.8} />;
+      return <Icon name="cloud" className={iconClassName} strokeWidth={1.8} />;
     case "automations":
-      return <Zap className={iconClassName} strokeWidth={1.8} />;
+      return <Icon name="zap" className={iconClassName} strokeWidth={1.8} />;
     case "mcp":
-      return <CircleDot className={iconClassName} strokeWidth={1.8} />;
+      return <Icon name="disc" className={iconClassName} strokeWidth={1.8} />;
     default:
-      return <ShieldCheck className={iconClassName} strokeWidth={1.8} />;
+      return <Icon name="shield" className={iconClassName} strokeWidth={1.8} />;
   }
 }
 
@@ -569,9 +554,9 @@ function TriggerCard({
       <div className="flex items-start gap-2.5">
         <span className="flex h-7 w-7 shrink-0 items-center justify-center bg-[var(--bo-accent-bg)] text-[var(--bo-accent-strong)]">
           {route.trigger.kind === "schedule" ? (
-            <CalendarClock className="h-3.5 w-3.5" strokeWidth={1.8} />
+            <Icon name="calendar" className="h-3.5 w-3.5" strokeWidth={1.8} />
           ) : (
-            <Zap className="h-3.5 w-3.5" strokeWidth={1.8} />
+            <Icon name="zap" className="h-3.5 w-3.5" strokeWidth={1.8} />
           )}
         </span>
         <div className="min-w-0 flex-1">
@@ -613,7 +598,7 @@ function EventCard({
       className={`flex h-full w-full min-w-0 items-center gap-2.5 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-2.5 text-left shadow-[0_1px_2px_rgb(0_0_0/0.04)] transition-[box-shadow,transform] hover:shadow-[0_4px_14px_rgb(0_0_0/0.06)] active:scale-[0.96] ${selected ? "ring-2 ring-[color:var(--bo-accent)]/30" : ""}`}
     >
       <span className="flex h-7 w-7 shrink-0 items-center justify-center bg-[var(--bo-accent-bg)] text-[var(--bo-accent-strong)]">
-        <Zap className="h-3.5 w-3.5" strokeWidth={1.8} />
+        <Icon name="zap" className="h-3.5 w-3.5" strokeWidth={1.8} />
       </span>
       <span className="min-w-0 flex-1">
         <span
@@ -635,28 +620,28 @@ const routeActionAppearance = (kind: DashboardRoute["action"]["kind"]) => {
   switch (kind) {
     case "start_workflow":
       return {
-        icon: <Workflow className="h-3.5 w-3.5" strokeWidth={1.8} />,
+        icon: <Icon name="share-2" className="h-3.5 w-3.5" strokeWidth={1.8} />,
         iconClassName: "bg-rose-950/8 text-rose-950 dark:bg-rose-300/10 dark:text-rose-200",
         labelClassName: "text-rose-800 dark:text-rose-300",
         selectedClassName: "ring-2 ring-rose-900/25 dark:ring-rose-300/25",
       };
     case "send_workflow_event":
       return {
-        icon: <Send className="h-3.5 w-3.5" strokeWidth={1.8} />,
+        icon: <Icon name="send" className="h-3.5 w-3.5" strokeWidth={1.8} />,
         iconClassName: "bg-sky-500/10 text-sky-700 dark:text-sky-300",
         labelClassName: "text-sky-700 dark:text-sky-300",
         selectedClassName: "ring-2 ring-sky-600/30 dark:ring-sky-300/25",
       };
     case "forward_event":
       return {
-        icon: <GitBranch className="h-3.5 w-3.5" strokeWidth={1.8} />,
+        icon: <Icon name="git-branch" className="h-3.5 w-3.5" strokeWidth={1.8} />,
         iconClassName: "bg-violet-500/10 text-violet-700 dark:text-violet-300",
         labelClassName: "text-violet-700 dark:text-violet-300",
         selectedClassName: "ring-2 ring-violet-600/30 dark:ring-violet-300/25",
       };
     case "reclassify_event":
       return {
-        icon: <GitBranch className="h-3.5 w-3.5" strokeWidth={1.8} />,
+        icon: <Icon name="git-branch" className="h-3.5 w-3.5" strokeWidth={1.8} />,
         iconClassName: "bg-lime-500/10 text-lime-700 dark:text-lime-300",
         labelClassName: "text-lime-700 dark:text-lime-300",
         selectedClassName: "ring-2 ring-lime-600/30 dark:ring-lime-300/25",
@@ -705,7 +690,7 @@ function ActionCard({
                   : routeActionLabel(route)}
               </p>
               {route.action.kind === "reclassify_event" ? (
-                <p className="mt-1 truncate font-mono text-[11px] text-[var(--bo-muted-2)]">
+                <p className="mt-1 truncate text-[11px] text-[var(--bo-muted-2)]">
                   {Object.keys(route.action.payload.fields).length} projected payload field
                   {Object.keys(route.action.payload.fields).length === 1 ? "" : "s"}
                 </p>
@@ -1474,13 +1459,13 @@ function DashboardLaneHeaders({
     >
       <LaneHeader
         dotClassName="bg-[#94a86d]"
-        icon={<CircleDot className="h-3 w-3" strokeWidth={1.8} />}
+        icon={<Icon name="disc" className="h-3 w-3" strokeWidth={1.8} />}
         title="Sources"
         description={sourceDescription}
       />
       <LaneHeader
         dotClassName="bg-[var(--bo-accent)]"
-        icon={<Zap className="h-3 w-3" strokeWidth={1.8} />}
+        icon={<Icon name="zap" className="h-3 w-3" strokeWidth={1.8} />}
         title={view === "workflows" ? "When" : "Events"}
         description={
           view === "workflows"
@@ -1490,7 +1475,7 @@ function DashboardLaneHeaders({
       />
       <LaneHeader
         dotClassName="bg-[#6b5f73]"
-        icon={<Braces className="h-3 w-3" strokeWidth={1.8} />}
+        icon={<Icon name="code" className="h-3 w-3" strokeWidth={1.8} />}
         title={view === "workflows" ? "Then" : "Routing"}
         description={
           view === "workflows"

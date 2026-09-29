@@ -1,6 +1,6 @@
 import "./app.css";
 
-import plusJakartaSansLatinUrl from "@fontsource-variable/plus-jakarta-sans/files/plus-jakarta-sans-latin-wght-normal.woff2?url";
+import { brandFontLatinUrl } from "@fragno-private/design-system/brand-font";
 import {
   isRouteErrorResponse,
   Links,
@@ -16,13 +16,13 @@ import { getRouteErrorDebugDetails } from "./routes/backoffice/route-errors";
 export const links: Route.LinksFunction = () => [
   { rel: "icon", href: "/favicon.svg", type: "image/svg+xml" },
   { rel: "icon", href: "/favicon.ico", sizes: "32x32" },
-  // Preloaded so the @font-face in app.css resolves before the first paint; without it the
+  // Preloaded so the design system's @font-face resolves before the first paint; without it the
   // page paints in the system fallback and swaps to the brand font later.
   {
     rel: "preload",
     as: "font",
     type: "font/woff2",
-    href: plusJakartaSansLatinUrl,
+    href: brandFontLatinUrl,
     crossOrigin: "anonymous",
   },
 ];

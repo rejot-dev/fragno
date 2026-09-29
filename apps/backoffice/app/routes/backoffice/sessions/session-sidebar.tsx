@@ -1,4 +1,5 @@
 import { ScrollArea } from "@base-ui/react/scroll-area";
+import { ButtonLink } from "@fragno-private/design-system/button";
 import { Link } from "react-router";
 
 import type { PiSessionListingState } from "@/fragno/pi/tanstack/session-listing";
@@ -27,13 +28,9 @@ export function SessionSidebar({
   return (
     <aside className="flex h-full min-h-0 w-full flex-col bg-[var(--bo-panel-2)]">
       <div className="border-b border-[color:var(--bo-border)] p-3">
-        <Link
-          to={basePath}
-          onClick={onNewChat}
-          className="flex min-h-11 items-center justify-center bg-[var(--bo-btn-bg)] px-4 text-xs font-semibold tracking-[0.08em] text-[var(--bo-btn-fg)] uppercase transition-[background-color,scale] duration-150 ease-out hover:bg-[var(--bo-btn-bg-hover)] active:scale-[0.96]"
-        >
+        <ButtonLink to={basePath} onClick={onNewChat} variant="solid" className="w-full">
           New chat
-        </Link>
+        </ButtonLink>
       </div>
 
       {listingError ? (
@@ -66,7 +63,7 @@ export function SessionSidebar({
                     aria-current={isSelected ? "page" : undefined}
                     className={`group block border px-3 py-3 transition-[background-color,border-color,scale] duration-150 ease-out active:scale-[0.96] ${
                       isSelected
-                        ? "border-[color:var(--bo-accent)] bg-[var(--bo-panel)]"
+                        ? "border-[color:var(--bo-selected-border)] bg-[var(--bo-selected-bg)] shadow-[var(--bo-selected-shadow)]"
                         : "border-transparent hover:border-[color:var(--bo-border)] hover:bg-[rgba(var(--bo-grid),0.16)]"
                     }`}
                   >

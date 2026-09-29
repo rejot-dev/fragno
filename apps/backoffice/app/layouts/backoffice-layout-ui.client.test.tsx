@@ -7,8 +7,11 @@ import { render, waitFor } from "@testing-library/react";
 
 const backofficeShellMock = vi.hoisted(() => vi.fn());
 
-vi.mock("@/components/backoffice", () => ({
+vi.mock("@fragno-private/design-system/page-header", () => ({
   BackofficePageHeader: () => null,
+}));
+
+vi.mock("@/components/backoffice/shell", () => ({
   BackofficeShell: (props: { children: ReactNode }) => {
     backofficeShellMock(props);
     return props.children;

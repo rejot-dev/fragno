@@ -1,3 +1,4 @@
+import { Input } from "@fragno-private/design-system/input";
 import { useState } from "react";
 import {
   Form,
@@ -81,18 +82,18 @@ export default function BackofficeOrganizationAutomationStore() {
         </div>
       ) : null}
 
-      <div className="border border-l-0 border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 first:border-t-0 @max-7xl:border-r-0">
+      <div className="border border-l-0 border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 @max-7xl:border-r-0">
         <label className="flex flex-col gap-1 text-xs text-[var(--bo-muted)]">
           <span className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
             Key prefix
           </span>
-          <input
+          <Input
             value={storePrefix}
             onChange={(event) => {
               setStorePrefix(event.currentTarget.value);
             }}
             placeholder="telegram/"
-            className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 font-mono text-xs text-[var(--bo-fg)] outline-none focus:border-[color:var(--bo-accent)]"
+            className="font-mono text-xs"
           />
         </label>
       </div>

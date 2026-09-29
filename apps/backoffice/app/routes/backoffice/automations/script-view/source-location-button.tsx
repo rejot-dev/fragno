@@ -1,4 +1,4 @@
-import { LocateFixed } from "lucide-react";
+import { Icon } from "@fragno-private/design-system/icon";
 
 import type { SourceRange } from "@fragno-dev/workflow-visualizer-tokens";
 
@@ -23,7 +23,7 @@ export function SourceLocationButton({
       }}
       className="flex items-center gap-1 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-1.5 py-1 font-mono text-[9px] text-[var(--bo-muted-2)] tabular-nums transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
     >
-      <LocateFixed className="h-3 w-3" />
+      <Icon name="crosshair" className="h-3 w-3" />
       {label}
     </button>
   );

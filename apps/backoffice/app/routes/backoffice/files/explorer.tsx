@@ -1,3 +1,4 @@
+import { ClientOnly } from "@fragno-private/design-system/client-only";
 import { Suspense, use, useMemo } from "react";
 import { useLoaderData, useOutletContext } from "react-router";
 
@@ -12,7 +13,6 @@ import {
 } from "@/components/backoffice/files-explorer";
 import type { WorkflowFileRouting } from "@/components/backoffice/files-explorer/content-renderers";
 import type { FilesExplorerSearchGroup } from "@/components/backoffice/files-explorer/view";
-import { ClientOnly } from "@/components/client-only";
 import { createUploadFileTree } from "@/file-collection/create-upload-file-tree";
 import { resolveSynchronizedFileTree } from "@/file-collection/resolve-synchronized-file-tree";
 import {

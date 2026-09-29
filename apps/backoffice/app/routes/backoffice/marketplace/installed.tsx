@@ -1,4 +1,5 @@
-import { Link, useOutletContext } from "react-router";
+import { ButtonLink } from "@fragno-private/design-system/button";
+import { useOutletContext } from "react-router";
 
 import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import {
@@ -116,10 +117,10 @@ export default function BackofficeMarketplaceInstalled({ loaderData }: Route.Com
               >
                 {ingestion.outOfDate ? "Update available" : "Installed"}
               </span>
-              <span className="font-mono text-[10px] text-[var(--bo-muted-2)]">
+              <span className="text-[10px] text-[var(--bo-muted-2)]">
                 Installed v{ingestion.version}
               </span>
-              <span className="font-mono text-[10px] text-[var(--bo-muted-2)]">
+              <span className="text-[10px] text-[var(--bo-muted-2)]">
                 Latest {ingestion.latestVersion ? `v${ingestion.latestVersion}` : "unavailable"}
               </span>
             </div>
@@ -131,12 +132,12 @@ export default function BackofficeMarketplaceInstalled({ loaderData }: Route.Com
             </p>
           </div>
           <div className="flex flex-wrap gap-2 md:justify-end">
-            <Link
+            <ButtonLink
               to={marketplaceListingPath(ingestion.listingId, selectedScope)}
-              className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.18em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)]"
+              variant="accent"
             >
               {ingestion.outOfDate ? "Review update" : "View listing"}
-            </Link>
+            </ButtonLink>
           </div>
         </article>
       ))}

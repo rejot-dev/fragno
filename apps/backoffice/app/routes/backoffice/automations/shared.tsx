@@ -1,9 +1,9 @@
+import { OverflowTabRow } from "@fragno-private/design-system/overflow-tab-row";
+import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
 import type { ReactNode } from "react";
 import { isRouteErrorResponse, useSearchParams } from "react-router";
 
 import { type BackofficeScopeSelection } from "@/backoffice-runtime/resolved-scope";
-import { BackofficePageHeader } from "@/components/backoffice";
-import { OverflowTabRow } from "@/components/backoffice/overflow-tab-row";
 
 import { getRouteErrorMessage, getBackofficeOrganizationNotFound } from "../route-errors";
 import type { AutomationTab } from "./layout-context";
@@ -119,7 +119,7 @@ export function AutomationWorkspaceHeader({
   const workspaceLabel = isCreatingProject ? "New project" : selectedScope.label;
 
   return (
-    <section className="bo-fragment-surface overflow-hidden bg-[var(--bo-header-bg)]">
+    <section className="bo-fragment-surface overflow-hidden bg-[var(--bo-panel)] pb-4">
       <h1 className="sr-only">{heading ?? `Automations for ${workspaceLabel}`}</h1>
       <AutomationTabRail
         selectedScope={selectedScope}

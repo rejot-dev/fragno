@@ -1,7 +1,8 @@
+import { Button, ButtonLink } from "@fragno-private/design-system/button";
+import { FormContainer } from "@fragno-private/design-system/form-container";
 import { useEffect } from "react";
 import {
   Form,
-  Link,
   redirect,
   useActionData,
   useLoaderData,
@@ -9,7 +10,6 @@ import {
   useOutletContext,
 } from "react-router";
 
-import { FormContainer } from "@/components/backoffice";
 import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import {
   getGitHubDurableObject,
@@ -566,12 +566,9 @@ export default function BackofficeOrganizationGitHubConfiguration() {
             GitHub setup before repositories can be linked.
           </p>
           <div className="mt-3">
-            <Link
-              to="/backoffice/internals/github"
-              className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-            >
+            <ButtonLink variant="secondary" to="/backoffice/internals/github">
               View operator details
-            </Link>
+            </ButtonLink>
           </div>
         </FormContainer>
       ) : (
@@ -628,13 +625,9 @@ export default function BackofficeOrganizationGitHubConfiguration() {
                     </div>
                     <Form method="post" className="mt-4">
                       <input type="hidden" name="intent" value="start-installation" />
-                      <button
-                        type="submit"
-                        disabled={saving}
-                        className="inline-flex min-h-10 items-center border border-[color:var(--bo-accent)] bg-[var(--bo-panel)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
-                      >
+                      <Button variant="accent" type="submit" disabled={saving}>
                         Start GitHub install
-                      </button>
+                      </Button>
                     </Form>
                   </section>
 
@@ -653,13 +646,9 @@ export default function BackofficeOrganizationGitHubConfiguration() {
                     </div>
                     <Form method="post" className="mt-4">
                       <input type="hidden" name="intent" value="connect-existing-installation" />
-                      <button
-                        type="submit"
-                        disabled={saving}
-                        className="inline-flex min-h-10 items-center border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
-                      >
+                      <Button variant="secondary" type="submit" disabled={saving}>
                         Find existing install
-                      </button>
+                      </Button>
                     </Form>
                   </section>
                 </div>
@@ -754,13 +743,9 @@ export default function BackofficeOrganizationGitHubConfiguration() {
                                     <>
                                       <input type="hidden" name="intent" value="unlink-repo" />
                                       <input type="hidden" name="repoId" value={repo.id} />
-                                      <button
-                                        type="submit"
-                                        disabled={saving}
-                                        className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
-                                      >
+                                      <Button variant="secondary" type="submit" disabled={saving}>
                                         Unlink
-                                      </button>
+                                      </Button>
                                     </>
                                   ) : (
                                     <>
@@ -771,13 +756,9 @@ export default function BackofficeOrganizationGitHubConfiguration() {
                                         value={installation.id}
                                       />
                                       <input type="hidden" name="repoId" value={repo.id} />
-                                      <button
-                                        type="submit"
-                                        disabled={saving}
-                                        className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
-                                      >
+                                      <Button variant="accent" type="submit" disabled={saving}>
                                         Link repo
-                                      </button>
+                                      </Button>
                                     </>
                                   )}
                                 </Form>

@@ -1,3 +1,4 @@
+import { Button } from "@fragno-private/design-system/button";
 import { useState, type ReactNode } from "react";
 
 import { MessagePrimitive, groupPartByType, useAuiState } from "@assistant-ui/react";
@@ -5,7 +6,7 @@ import { MessagePrimitive, groupPartByType, useAuiState } from "@assistant-ui/re
 import type { PiAssistantMessageMetadata } from "./assistant-runtime";
 import { MarkdownText, MessageImage } from "./message-content";
 import { ToolCallBlock } from "./tool-call";
-import { formatEventTimestamp, formatMessageTimestamp, tapScale } from "./ui";
+import { formatEventTimestamp, formatMessageTimestamp } from "./ui";
 
 const reasoningGrouping = groupPartByType({
   reasoning: ["group-reasoning"],
@@ -81,7 +82,7 @@ export function AssistantMessage({
     <MessagePrimitive.Root className={`group relative min-w-0 ${isToolCallOnly ? "mb-3" : "mb-9"}`}>
       {isFinalOutput ? (
         <div className="mb-2 flex items-center gap-2">
-          <span className="font-mono text-[10px] font-semibold tracking-[0.12em] text-[var(--bo-fg)] uppercase">
+          <span className="text-[10px] font-semibold tracking-[0.12em] text-[var(--bo-fg)] uppercase">
             Pi
           </span>
           <time className="text-[10px] text-[var(--bo-muted-2)] tabular-nums">
@@ -138,13 +139,9 @@ export function AssistantMessage({
 
       {isFinalOutput && !isRunning ? (
         <div className="mt-3 flex min-h-10 justify-end">
-          <button
-            type="button"
-            onClick={() => void handleCopy()}
-            className={`inline-flex min-h-10 items-center px-2 text-[10px] font-medium text-[var(--bo-muted-2)] transition-[color,scale] duration-150 ease-out hover:text-[var(--bo-fg)] ${tapScale}`}
-          >
+          <Button variant="ghost" onClick={() => void handleCopy()}>
             {copied ? "Copied" : "Copy"}
-          </button>
+          </Button>
         </div>
       ) : null}
     </MessagePrimitive.Root>
@@ -193,13 +190,9 @@ function CompactionMessage({
             <span className="text-[10px] text-[var(--bo-muted-2)]">
               Summary used for subsequent turns
             </span>
-            <button
-              type="button"
-              onClick={onCopy}
-              className={`inline-flex min-h-10 items-center px-2 text-[10px] font-medium text-[var(--bo-muted-2)] transition-[color,scale] duration-150 ease-out hover:text-[var(--bo-fg)] ${tapScale}`}
-            >
+            <Button variant="ghost" onClick={onCopy}>
               {copied ? "Copied" : "Copy summary"}
-            </button>
+            </Button>
           </footer>
         </div>
       </details>

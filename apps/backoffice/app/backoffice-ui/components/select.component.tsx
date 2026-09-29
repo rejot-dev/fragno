@@ -29,7 +29,7 @@ export const Select: ComponentFn<typeof backofficeUiCatalog, "Select"> = ({ prop
         onChange={(event) => {
           setValue(event.target.value);
         }}
-        className="mt-2 min-h-10 w-full border border-[color:var(--bo-border-strong)] bg-[var(--bo-panel)] px-3 text-xs text-[var(--bo-fg)] transition-[border-color,box-shadow] duration-150 outline-none focus:border-[color:var(--bo-accent)] focus:shadow-[0_0_0_3px_var(--bo-accent-bg)] disabled:cursor-not-allowed disabled:opacity-50"
+        className="bo-input mt-2 min-h-10 w-full px-3 text-xs"
       >
         {props.options.map((option) => (
           <option key={option.value} value={option.value}>

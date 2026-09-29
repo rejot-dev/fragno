@@ -1,9 +1,11 @@
+import { Button } from "@fragno-private/design-system/button";
+import { cn } from "@fragno-private/design-system/cn";
+import { FormContainer } from "@fragno-private/design-system/form-container";
+import { Input } from "@fragno-private/design-system/input";
 import { useEffect, useMemo, useState } from "react";
 import { useOutletContext } from "react-router";
 
-import { FormContainer } from "@/components/backoffice";
 import { authClient } from "@/fragno/auth/auth-client";
-import { cn } from "@/lib/utils";
 
 import type { OrganizationLayoutContext } from "./organization-layout";
 import { ROLE_OPTIONS, formatDate, formatRoles, getErrorMessage } from "./organization-utils";
@@ -101,7 +103,7 @@ export default function BackofficeOrganizationMembers() {
         title={`Members (${members.length})`}
         description="Review the current organization roster and role assignments."
         actions={
-          <input
+          <Input
             type="search"
             aria-label="Search organization members"
             value={memberSearch}
@@ -109,7 +111,7 @@ export default function BackofficeOrganizationMembers() {
               setMemberSearch(event.target.value);
             }}
             placeholder="Search members"
-            className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-xs text-[var(--bo-fg)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none sm:w-52"
+            className="w-full text-xs sm:w-52"
           />
         }
       >
@@ -173,26 +175,26 @@ export default function BackofficeOrganizationMembers() {
           ) : null}
 
           <div className="flex items-center justify-end gap-2">
-            <button
+            <Button
+              variant="secondary"
               type="button"
               onClick={() => {
                 setMembersPage((page) => Math.max(1, page - 1));
               }}
               disabled={membersLoading || membersPage === 1}
-              className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
             >
               Previous
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="secondary"
               type="button"
               onClick={() => {
                 setMembersPage((page) => page + 1);
               }}
               disabled={membersLoading || membersPage >= (membersData?.totalPages ?? 1)}
-              className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
             >
               Next
-            </button>
+            </Button>
           </div>
         </div>
       </FormContainer>
@@ -311,7 +313,7 @@ function OrganizationMemberRow({
                   className={cn(
                     "border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] transition-colors disabled:cursor-not-allowed disabled:opacity-60",
                     isSelected
-                      ? "border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)]"
+                      ? "border-[color:var(--bo-selected-border)] bg-[var(--bo-selected-bg)] shadow-[var(--bo-selected-shadow)] text-[var(--bo-fg)]"
                       : "border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] text-[var(--bo-muted)] hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]",
                   )}
                 >
@@ -329,22 +331,22 @@ function OrganizationMemberRow({
         {canManageMembers ? (
           <div className="space-y-2">
             <div className="flex flex-wrap items-center gap-2">
-              <button
+              <Button
+                variant="accent"
                 type="button"
                 onClick={() => void handleSave()}
                 disabled={!canEditMember || !rolesChanged || selectedRoles.length === 0 || saving}
-                className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-2 py-1 text-[10px] font-semibold tracking-[0.2em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
               >
                 {saving ? "Saving" : "Save"}
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="secondary"
                 type="button"
                 onClick={() => void handleRemove()}
                 disabled={!canEditMember || removing}
-                className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] font-semibold tracking-[0.2em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
               >
                 {removing ? "Removing" : "Remove"}
-              </button>
+              </Button>
             </div>
             {actionNotice ? (
               <p

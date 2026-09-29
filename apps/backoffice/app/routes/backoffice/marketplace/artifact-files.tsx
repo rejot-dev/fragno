@@ -1,4 +1,6 @@
-import { PackageOpen } from "lucide-react";
+import { Button } from "@fragno-private/design-system/button";
+import type { IconName } from "@fragno-private/design-system/icon";
+import { underlineTabClassName } from "@fragno-private/design-system/underline-tabs";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useFetcher, useLocation } from "react-router";
 import { Streamdown } from "streamdown";
@@ -188,7 +190,7 @@ function MarketplaceArtifactExplorer({
             : null
         }
         treeAriaLabel="Marketplace artifact files"
-        rootIcon={PackageOpen}
+        rootIcon={"package"}
         rootSelection="detail"
         detailHeadingLevel={4}
         emptySelection={
@@ -262,7 +264,7 @@ function MarketplaceArtifactWorkflows({
       <div
         role="tablist"
         aria-label="Published workflows"
-        className="flex gap-1 overflow-x-auto border-b border-[color:var(--bo-border)]"
+        className="flex gap-4 overflow-x-auto shadow-[inset_0_-1px_0_var(--bo-border)]"
       >
         {workflowPaths.map((path) => {
           const selected = selectedPath === path;
@@ -279,11 +281,7 @@ function MarketplaceArtifactWorkflows({
               role="tab"
               aria-selected={selected}
               preventScrollReset
-              className={
-                selected
-                  ? "flex min-h-10 shrink-0 items-center border-b-2 border-[color:var(--bo-accent)] px-2 font-mono text-[10px] text-[var(--bo-accent-fg)]"
-                  : "flex min-h-10 shrink-0 items-center border-b-2 border-transparent px-2 font-mono text-[10px] text-[var(--bo-muted)] hover:text-[var(--bo-fg)]"
-              }
+              className={underlineTabClassName(selected ? "selected" : "idle")}
             >
               {path.split("/").at(-1)}
             </Link>
@@ -430,13 +428,9 @@ function MarketplaceArtifactMessage({
 
 function LoadContentButton({ onClick, children }: { onClick: () => void; children: ReactNode }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="bo-control-surface mt-4 min-h-9 bg-[var(--bo-panel)] px-3 text-[9px] font-semibold tracking-[0.14em] text-[var(--bo-muted)] uppercase transition-colors hover:text-[var(--bo-fg)]"
-    >
+    <Button onClick={onClick} variant="secondary" className="mt-4">
       {children}
-    </button>
+    </Button>
   );
 }
 

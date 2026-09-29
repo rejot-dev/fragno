@@ -1,4 +1,7 @@
-import { ChevronDown } from "lucide-react";
+import { Button, ButtonLink } from "@fragno-private/design-system/button";
+import { ClientOnly } from "@fragno-private/design-system/client-only";
+import { Icon } from "@fragno-private/design-system/icon";
+import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
 import { Suspense } from "react";
 import {
   Form,
@@ -17,8 +20,6 @@ import {
   backofficeScopeSinglePathSegment,
   type BackofficeRoutableScope,
 } from "@/backoffice-runtime/scope-codec";
-import { BackofficeStatusLight } from "@/components/backoffice";
-import { ClientOnly } from "@/components/client-only";
 import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import type { BackofficeMeData } from "@/fragno/auth/contracts";
@@ -397,7 +398,7 @@ export default function BackofficeMarketplaceDetail({ loaderData }: Route.Compon
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2.5">
               <span className="bo-product-code">PKG</span>
-              <p className="font-mono text-[10px] tracking-[0.16em] text-[var(--bo-muted-2)] uppercase">
+              <p className="text-[10px] tracking-[0.16em] text-[var(--bo-muted-2)] uppercase">
                 {listing.category}
               </p>
             </div>
@@ -423,15 +424,16 @@ export default function BackofficeMarketplaceDetail({ loaderData }: Route.Compon
 
           <div className="flex shrink-0 flex-col gap-3 xl:items-end">
             {manageOrganizationSlug ? (
-              <Link
+              <ButtonLink
                 to={marketplaceListingManagePath({
                   listingId: listing.listingId,
                   organizationSlug: manageOrganizationSlug,
                 })}
-                className="bo-control-surface inline-flex min-h-10 items-center justify-center self-start bg-[var(--bo-panel)] px-4 text-[10px] font-semibold tracking-[0.18em] text-[var(--bo-muted)] uppercase transition-[scale,background-color,color,box-shadow] duration-150 ease-out hover:bg-[var(--bo-panel-2)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none active:scale-[0.96] xl:self-end"
+                variant="secondary"
+                className="self-start xl:self-end"
               >
                 Manage listing
-              </Link>
+              </ButtonLink>
             ) : null}
 
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-end">
@@ -457,7 +459,7 @@ export default function BackofficeMarketplaceDetail({ loaderData }: Route.Compon
                       {selectedScope.label}
                     </p>
                     {installedRelease ? (
-                      <p className="mt-1 font-mono text-[9px] text-[var(--bo-muted-2)]">
+                      <p className="mt-1 text-[9px] text-[var(--bo-muted-2)]">
                         v{installedRelease.version}
                         {installedRelease.outOfDate ? " · update available" : " · current"}
                       </p>
@@ -465,13 +467,14 @@ export default function BackofficeMarketplaceDetail({ loaderData }: Route.Compon
                   </div>
                   <Form method="post">
                     <input type="hidden" name="version" value={installationVersion} />
-                    <button
+                    <Button
                       type="submit"
                       disabled={navigation.state !== "idle"}
-                      className="inline-flex min-h-11 shrink-0 items-center justify-center bg-[var(--bo-btn-bg)] px-5 text-[10px] font-semibold tracking-[0.16em] text-[var(--bo-btn-fg)] uppercase shadow-[0_8px_20px_rgba(var(--bo-accent-rgb),0.2)] transition-[scale,background-color,box-shadow,opacity] duration-150 ease-out hover:bg-[var(--bo-btn-bg-hover)] hover:shadow-[0_10px_24px_rgba(var(--bo-accent-rgb),0.26)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/35 focus-visible:ring-offset-2 focus-visible:outline-none active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none disabled:active:scale-100"
+                      variant="solid"
+                      className="shrink-0"
                     >
                       {navigation.state === "submitting" ? "Starting…" : installationActionLabel}
-                    </button>
+                    </Button>
                   </Form>
                 </div>
               ) : (
@@ -566,13 +569,13 @@ function VersionHistoryDropdown({
           <span className="block text-[9px] font-semibold tracking-[0.14em] text-[var(--bo-muted-2)] uppercase">
             Version history
           </span>
-          <span className="mt-1 block font-mono text-sm font-medium text-[var(--bo-fg)]">
+          <span className="mt-1 block text-sm font-medium text-[var(--bo-fg)]">
             v{selectedVersion}
           </span>
         </span>
-        <ChevronDown
+        <Icon
+          name="chevron-down"
           className="size-3.5 text-[var(--bo-muted-2)] transition-transform duration-150 ease-out group-open:rotate-180"
-          aria-hidden="true"
         />
       </summary>
       <div className="absolute top-full right-0 z-30 mt-2 w-[min(20rem,calc(100vw-2rem))] bg-[var(--bo-panel)] p-2 shadow-[0_18px_48px_rgba(0,0,0,0.18),0_0_0_1px_var(--bo-border-strong)]">
@@ -591,12 +594,12 @@ function VersionHistoryDropdown({
                 }}
                 className={
                   isSelected
-                    ? "flex min-h-12 items-center justify-between gap-4 bg-[var(--bo-accent-bg)] px-3 py-2.5 text-[var(--bo-fg)] shadow-[inset_0_0_0_1px_var(--bo-accent)] outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30"
+                    ? "flex min-h-12 items-center justify-between gap-4 bg-[var(--bo-selected-bg)] px-3 py-2.5 text-[var(--bo-fg)] shadow-[inset_0_0_0_1px_var(--bo-selected-border),var(--bo-selected-shadow)] outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30"
                     : "flex min-h-12 items-center justify-between gap-4 px-3 py-2.5 text-[var(--bo-fg)] transition-colors duration-150 ease-out outline-none hover:bg-[var(--bo-panel-2)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30"
                 }
               >
                 <span className="min-w-0">
-                  <span className="block font-mono text-xs font-semibold">v{version.version}</span>
+                  <span className="block text-xs font-semibold">v{version.version}</span>
                   <span className="mt-1 block text-[10px] text-[var(--bo-muted-2)]">
                     {version.publishedAt ? formatDate(version.publishedAt) : "Published release"}
                   </span>
@@ -662,9 +665,7 @@ function ReleaseFact({
 }) {
   return (
     <div className="min-w-0 bg-[var(--bo-panel-2)] px-4 py-3.5">
-      <dt className="font-mono text-[9px] tracking-[0.14em] text-[var(--bo-muted-2)] uppercase">
-        {label}
-      </dt>
+      <dt className="text-[9px] tracking-[0.14em] text-[var(--bo-muted-2)] uppercase">{label}</dt>
       <dd
         className={`mt-1 truncate text-sm text-[var(--bo-fg)] ${mono ? "font-mono font-semibold" : "font-medium"}`}
         title={value}

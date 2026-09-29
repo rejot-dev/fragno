@@ -47,7 +47,7 @@ export function AutomationBrowserPersistenceDiagnosticPanel({
           open
           className="mt-3 max-w-4xl border border-amber-500/30 bg-amber-500/6 text-left"
         >
-          <summary className="cursor-pointer px-3 py-2 font-mono text-[10px] font-semibold tracking-[0.16em] text-amber-700 uppercase dark:text-amber-200">
+          <summary className="cursor-pointer px-3 py-2 text-[10px] font-semibold tracking-[0.16em] text-amber-700 uppercase dark:text-amber-200">
             Browser persistence diagnostics · {Math.round(diagnostics.elapsedMs / 1_000)}s
           </summary>
           <div className="border-t border-amber-500/20 p-3">

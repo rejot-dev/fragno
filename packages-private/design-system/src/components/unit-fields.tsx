@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 
 import { FormField } from "./form-container";
+import { Input } from "./input";
 
 type UnitOption<UnitId extends string> = {
   id: UnitId;
@@ -29,11 +30,7 @@ type UnitNumberFieldProps<UnitId extends string> = {
   disabled?: boolean;
 };
 
-const INPUT_CLASS =
-  "focus:ring-[color:var(--bo-accent)]/20 w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:outline-none focus:ring-2";
-
-const SELECT_CLASS =
-  "focus:ring-[color:var(--bo-accent)]/20 w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-sm text-[var(--bo-fg)] focus:border-[color:var(--bo-accent)] focus:outline-none focus:ring-2";
+const INPUT_CLASS = "bo-input w-full px-3 py-2 text-sm";
 
 const parseIntegerString = (value: string): number | null => {
   const trimmed = value.trim();
@@ -182,7 +179,7 @@ function UnitNumberField<UnitId extends string>({
     <FormField label={label} hint={hint}>
       <input type="hidden" name={name} value={value} />
       <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
-        <input
+        <Input
           type="number"
           value={displayValue}
           onChange={handleValueChange}
@@ -190,13 +187,13 @@ function UnitNumberField<UnitId extends string>({
           step={step}
           required={required}
           disabled={disabled}
-          className={INPUT_CLASS}
+          className="w-full"
         />
         <select
           value={displayUnitId}
           onChange={handleUnitChange}
           disabled={disabled}
-          className={SELECT_CLASS}
+          className={INPUT_CLASS}
           aria-label={`${label} unit`}
         >
           {units.map((unit) => (

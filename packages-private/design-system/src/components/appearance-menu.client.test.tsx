@@ -2,9 +2,9 @@
 
 import { afterEach, describe, test, vi, assert } from "vitest";
 
-import { cleanup, render, waitFor } from "@testing-library/react";
+import { cleanup, renderHook, waitFor } from "@testing-library/react";
 
-import { BackofficeThemeMenu } from "./theme-menu";
+import { useAppearancePreferences } from "./appearance-menu";
 
 function mediaQueryList(media: string, matches: boolean): MediaQueryList {
   return {
@@ -32,10 +32,10 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("BackofficeThemeMenu", () => {
+describe("useAppearancePreferences", () => {
   test("follows the system motion preference when no override is stored", async () => {
     installAppearancePreferences({ reducedMotion: true });
-    render(<BackofficeThemeMenu />);
+    renderHook(() => useAppearancePreferences());
 
     await waitFor(() => {
       assert(document.documentElement.dataset.reducedMotion === "reduce");
@@ -46,7 +46,7 @@ describe("BackofficeThemeMenu", () => {
     installAppearancePreferences({ reducedMotion: true });
     window.localStorage.setItem("reduced-motion", "no-preference");
 
-    render(<BackofficeThemeMenu />);
+    renderHook(() => useAppearancePreferences());
 
     await waitFor(() => {
       assert(document.documentElement.dataset.reducedMotion === "no-preference");

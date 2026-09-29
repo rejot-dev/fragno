@@ -1,6 +1,7 @@
-import { Link, redirect, useOutletContext, type LoaderFunctionArgs } from "react-router";
+import { ButtonLink } from "@fragno-private/design-system/button";
+import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
+import { redirect, useOutletContext, type LoaderFunctionArgs } from "react-router";
 
-import { BackofficePageHeader } from "@/components/backoffice";
 import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import type { BackofficeLayoutContext } from "@/layouts/backoffice-layout";
 
@@ -46,12 +47,9 @@ export default function BackofficeConnectionsUpload() {
         title="Upload connection workspace."
         description="Pick an organization to configure storage and manage files."
         actions={
-          <Link
-            to="/backoffice/internals"
-            className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-          >
+          <ButtonLink variant="secondary" to="/backoffice/internals">
             Back to internals
-          </Link>
+          </ButtonLink>
         }
       />
 
@@ -98,12 +96,12 @@ export default function BackofficeConnectionsUpload() {
               </div>
 
               <div className="mt-4">
-                <Link
+                <ButtonLink
+                  variant="accent"
                   to={`/backoffice/connections/upload/${encodeURIComponent(organization.slug)}`}
-                  className="inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)]"
                 >
                   Manage Upload
-                </Link>
+                </ButtonLink>
               </div>
             </div>
           ))}

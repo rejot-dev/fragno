@@ -1,7 +1,7 @@
-import { ArrowRight } from "lucide-react";
+import { ButtonLink } from "@fragno-private/design-system/button";
+import { BackofficeFragmentMark } from "@fragno-private/design-system/fragment-mark";
+import { Icon } from "@fragno-private/design-system/icon";
 import { Link } from "react-router";
-
-import { BackofficeFragmentMark } from "@/components/backoffice/fragment-mark";
 
 /** Provides the public Backoffice product header and app entry point. */
 export function LandingHeader() {
@@ -15,13 +15,10 @@ export function LandingHeader() {
         <BackofficeFragmentMark size="md" />
         ReJot Backoffice
       </Link>
-      <Link
-        to="/backoffice"
-        className="inline-flex min-h-11 items-center gap-2 text-[10px] font-bold tracking-[0.14em] text-[var(--bo-muted)] uppercase no-underline transition-colors duration-150 hover:text-[var(--bo-fg)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--bo-accent)]"
-      >
+      <ButtonLink to="/backoffice" variant="ghost" className="no-underline">
         Open app
-        <ArrowRight className="size-3.5" aria-hidden="true" />
-      </Link>
+        <Icon name="arrow-right" className="size-3.5" />
+      </ButtonLink>
     </header>
   );
 }

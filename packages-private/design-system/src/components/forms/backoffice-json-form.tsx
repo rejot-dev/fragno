@@ -2,7 +2,6 @@ import { Checkbox } from "@base-ui/react/checkbox";
 import { Field } from "@base-ui/react/field";
 import { Input } from "@base-ui/react/input";
 import { Select } from "@base-ui/react/select";
-import { Check, ChevronDown } from "lucide-react";
 import {
   useCallback,
   useMemo,
@@ -46,15 +45,15 @@ import {
   withJsonFormsLayoutProps as jsonFormsLayoutProps,
 } from "@jsonforms/react";
 
-import { ClientOnly } from "@/components/client-only";
-
+import { Button } from "../button";
+import { ClientOnly } from "../client-only";
+import { Icon } from "../icon";
 import {
   getBackofficeJsonFormErrorMessages,
   translateBackofficeJsonFormError,
 } from "./backoffice-json-form-errors";
 
-const inputClassName =
-  "min-h-12 w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-4 text-[15px] text-[var(--bo-fg)] outline-none transition-[border-color,box-shadow,background-color] duration-150 placeholder:text-[var(--bo-muted-2)] hover:border-[color:var(--bo-border-strong)] focus:border-[color:var(--bo-accent)] focus:bg-[var(--bo-panel)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/15 disabled:cursor-not-allowed disabled:opacity-50";
+const inputClassName = "bo-input min-h-12 w-full px-4 text-[15px]";
 
 function withJsonFormsControlProps(component: ComponentType<ControlProps>) {
   return jsonFormsControlProps(component);
@@ -93,11 +92,11 @@ function BackofficeControlField({
     <Field.Root invalid={invalid} className="space-y-2.5">
       <Field.Label
         htmlFor={id}
-        className="flex items-baseline justify-between gap-3 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted-2)] uppercase"
+        className="flex items-center justify-between gap-3 text-sm font-semibold text-[var(--bo-fg)]"
       >
         <span>{label}</span>
         {required ? (
-          <span className="shrink-0 text-[9px] tracking-[0.18em] text-[var(--bo-accent-fg)]">
+          <span className="shrink-0 rounded-[4px] bg-[var(--bo-panel-2)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--bo-muted)]">
             Required
           </span>
         ) : null}
@@ -108,7 +107,7 @@ function BackofficeControlField({
         </Field.Description>
       ) : null}
       {children}
-      <Field.Error match={invalid} className="text-xs leading-5 text-red-600 dark:text-red-400">
+      <Field.Error match={invalid} className="text-xs leading-5 text-[var(--bo-failed)]">
         {errors}
       </Field.Error>
     </Field.Root>
@@ -254,7 +253,7 @@ function BackofficeBooleanControl(props: ControlProps) {
     <Field.Root invalid={invalid} className="space-y-2.5">
       <label
         htmlFor={inputId}
-        className="flex min-h-14 cursor-pointer items-start gap-3 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-4 py-3.5 transition-[border-color,background-color] duration-150 hover:border-[color:var(--bo-border-strong)] hover:bg-[var(--bo-panel)]"
+        className="flex min-h-14 cursor-pointer items-start gap-3 rounded-[4px] border border-[color:var(--bo-selected-border)] bg-[var(--bo-selected-bg)] px-4 py-3.5 shadow-[var(--bo-selected-shadow)] transition-[border-color] duration-150 ease-out hover:border-[color:var(--bo-border-strong)]"
       >
         <Checkbox.Root
           id={inputId}
@@ -265,17 +264,17 @@ function BackofficeBooleanControl(props: ControlProps) {
             markTouched();
             props.handleChange(path, checked);
           }}
-          className="group mt-0.5 inline-flex size-5 shrink-0 items-center justify-center border border-[color:var(--bo-border-strong)] bg-[var(--bo-panel)] text-[var(--bo-accent-fg)] transition-[border-color,background-color,scale] duration-150 outline-none focus-visible:border-[color:var(--bo-accent)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/20 active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-50 data-[checked]:border-[color:var(--bo-accent)] data-[checked]:bg-[var(--bo-accent-bg)]"
+          className="group mt-0.5 inline-flex size-5 shrink-0 items-center justify-center rounded-[4px] border border-[color:var(--bo-border-strong)] bg-[var(--bo-panel)] text-[var(--bo-btn-fg)] transition-[border-color,background-color,scale] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-50 data-[checked]:border-[color:var(--bo-accent)] data-[checked]:bg-[var(--bo-btn-bg)]"
         >
           <Checkbox.Indicator>
-            <Check className="size-3.5" strokeWidth={2} />
+            <Icon name="check" className="size-3.5" strokeWidth={2} />
           </Checkbox.Indicator>
         </Checkbox.Root>
         <span className="min-w-0 flex-1">
-          <span className="flex items-baseline justify-between gap-3 text-sm font-medium text-[var(--bo-fg)]">
+          <span className="flex items-center justify-between gap-3 text-sm font-semibold text-[var(--bo-fg)]">
             {label}
             {required ? (
-              <span className="text-[9px] font-semibold tracking-[0.16em] text-[var(--bo-accent-fg)] uppercase">
+              <span className="shrink-0 rounded-[4px] bg-[var(--bo-panel-2)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--bo-muted)]">
                 Required
               </span>
             ) : null}
@@ -287,7 +286,7 @@ function BackofficeBooleanControl(props: ControlProps) {
           ) : null}
         </span>
       </label>
-      <Field.Error match={invalid} className="text-xs leading-5 text-red-600 dark:text-red-400">
+      <Field.Error match={invalid} className="text-xs leading-5 text-[var(--bo-failed)]">
         {errors}
       </Field.Error>
     </Field.Root>
@@ -327,34 +326,38 @@ function BackofficeEnumControl(props: ControlProps & OwnPropsOfEnum) {
           props.handleChange(path, value ?? undefined);
         }}
       >
-        <Select.Trigger className="group flex min-h-12 w-full items-center border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] text-left transition-[border-color,background-color,scale] duration-150 outline-none hover:border-[color:var(--bo-border-strong)] focus-visible:border-[color:var(--bo-accent)] focus-visible:bg-[var(--bo-panel)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/15 active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100">
+        <Select.Trigger className="bo-input group flex min-h-12 w-full cursor-pointer items-center text-left disabled:cursor-not-allowed">
           <Select.Value
             placeholder="Choose an option"
             className="min-w-0 flex-1 truncate px-4 text-[15px]"
           />
-          <span className="flex size-10 shrink-0 items-center justify-center border-l border-[color:var(--bo-border)] text-[var(--bo-muted-2)] transition-colors duration-150 group-hover:text-[var(--bo-fg)]">
-            <ChevronDown className="size-4" strokeWidth={1.5} />
+          <span className="flex size-10 shrink-0 items-center justify-center text-[var(--bo-muted-2)] transition-colors duration-150 ease-out group-hover:text-[var(--bo-fg)]">
+            <Icon
+              name="chevron-down"
+              className="size-4 transition-transform duration-150 ease-out group-data-[popup-open]:rotate-180"
+              strokeWidth={1.75}
+            />
           </span>
         </Select.Trigger>
         <Select.Portal>
           <Select.Positioner
-            sideOffset={6}
+            sideOffset={4}
             align="start"
             className="z-50 w-[var(--anchor-width)] min-w-52"
           >
             <Select.Popup
               data-backoffice-root
-              className="bo-popover-surface origin-[var(--transform-origin)] border border-[color:var(--bo-border-strong)] bg-[var(--bo-panel)] p-1 text-[var(--bo-fg)] transition-[opacity,transform] duration-150 data-[ending-style]:translate-y-1 data-[ending-style]:opacity-0 data-[starting-style]:translate-y-1 data-[starting-style]:opacity-0"
+              className="bo-popover-surface flex origin-[var(--transform-origin)] flex-col gap-0.5 rounded-[6px] border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-1.5 text-[var(--bo-fg)] transition-[opacity,scale] duration-150 ease-out data-[ending-style]:scale-[0.98] data-[ending-style]:opacity-0 data-[starting-style]:scale-[0.98] data-[starting-style]:opacity-0"
             >
               {items.map((option) => (
                 <Select.Item
                   key={`${option.label}-${String(option.value)}`}
                   value={option.value}
-                  className="grid min-h-10 cursor-default grid-cols-[1fr_auto] items-center gap-3 px-3 py-2 text-sm text-[var(--bo-muted)] transition-[background-color,color] duration-100 outline-none data-[highlighted]:bg-[var(--bo-panel-2)] data-[highlighted]:text-[var(--bo-fg)] data-[selected]:text-[var(--bo-fg)]"
+                  className="grid min-h-10 cursor-pointer grid-cols-[1fr_auto] items-center gap-3 rounded-[4px] px-2.5 py-2 text-sm font-medium text-[var(--bo-fg)] transition-[background-color,box-shadow] duration-150 ease-out outline-none data-[highlighted]:bg-[var(--bo-panel-2)] data-[selected]:bg-[var(--bo-selected-bg)] data-[selected]:shadow-[var(--bo-selected-shadow)]"
                 >
                   <Select.ItemText>{option.label}</Select.ItemText>
                   <Select.ItemIndicator>
-                    <Check className="size-3.5 text-[var(--bo-accent-fg)]" strokeWidth={2} />
+                    <Icon name="check" className="size-4 text-[var(--bo-accent)]" />
                   </Select.ItemIndicator>
                 </Select.Item>
               ))}
@@ -453,11 +456,9 @@ function BackofficeGroupLayout({
   }
 
   return (
-    <fieldset className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4 sm:p-5">
+    <fieldset className="rounded-[6px] border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4 sm:p-5">
       {label ? (
-        <legend className="px-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-          {label}
-        </legend>
+        <legend className="px-1.5 text-sm font-semibold text-[var(--bo-fg)]">{label}</legend>
       ) : null}
       <div className="space-y-6">
         {createKeyedUISchemaElements(uischema.elements).map(({ element, key }) => (
@@ -576,7 +577,7 @@ export function BackofficeJsonForm(props: BackofficeJsonFormProps) {
         <div
           role="status"
           aria-label="Loading form preview"
-          className="min-h-28 border-l-2 border-[color:var(--bo-border)] bg-[var(--bo-panel-2)]"
+          className="min-h-28 rounded-[6px] bg-[var(--bo-panel-2)]"
         />
       }
     >
@@ -638,11 +639,15 @@ function BackofficeJsonFormClient({
       />
 
       {submitAttempted && errorMessages.length > 0 ? (
-        <div className="border-l-2 border-red-500 bg-red-500/5 px-3 py-2" role="alert">
-          <p className="text-[10px] font-semibold tracking-[0.2em] text-red-600 uppercase dark:text-red-400">
+        <div
+          className="rounded-[4px] bg-[var(--bo-failed-bg)] px-3 py-2.5 text-[var(--bo-failed)]"
+          role="alert"
+        >
+          <p className="flex items-center gap-2 text-sm font-semibold">
+            <Icon name="alert-circle" className="size-4 shrink-0" strokeWidth={1.75} />
             Check the highlighted fields
           </p>
-          <p className="mt-1 text-xs text-red-600/90 dark:text-red-400/90">
+          <p className="mt-1 pl-6 text-xs">
             {errorMessages.length === 1
               ? "1 field needs attention before this response can be submitted."
               : `${errorMessages.length} fields need attention before this response can be submitted.`}
@@ -652,13 +657,9 @@ function BackofficeJsonFormClient({
 
       {onSubmit ? (
         <div className="border-t border-[color:var(--bo-border)] pt-5">
-          <button
-            type="submit"
-            disabled={submitting}
-            className="min-h-12 w-full border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-5 text-[11px] font-semibold tracking-[0.24em] text-[var(--bo-accent-fg)] uppercase transition-[border-color,background-color,scale] duration-150 hover:border-[color:var(--bo-accent-strong)] active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
-          >
+          <Button type="submit" variant="solid" disabled={submitting} className="min-h-12 w-full">
             {submitting ? "Submitting…" : submitLabel}
-          </button>
+          </Button>
         </div>
       ) : null}
     </form>

@@ -1,7 +1,10 @@
+import { Button, ButtonLink } from "@fragno-private/design-system/button";
+import { ClientOnly } from "@fragno-private/design-system/client-only";
+import { Input } from "@fragno-private/design-system/input";
+import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
 import { Suspense, use, useSyncExternalStore } from "react";
 import {
   Form,
-  Link,
   Outlet,
   redirect,
   useActionData,
@@ -10,9 +13,7 @@ import {
 } from "react-router";
 
 import { backofficeRouteScopeFromParams } from "@/backoffice-runtime/route-scope";
-import { BackofficeSystemState } from "@/components/backoffice";
 import { useCurrentBackofficeContext } from "@/components/backoffice/current-context";
-import { ClientOnly } from "@/components/client-only";
 import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import {
   describeAutomationCollectionSource,
@@ -223,13 +224,9 @@ function CreateProjectPanel({
             The project slug is generated automatically from the name.
           </p>
         </div>
-        <Link
-          to={cancelPath}
-          preventScrollReset
-          className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-        >
+        <ButtonLink variant="secondary" to={cancelPath} preventScrollReset>
           Cancel
-        </Link>
+        </ButtonLink>
       </div>
 
       {actionData?.message ? (
@@ -245,13 +242,7 @@ function CreateProjectPanel({
           <span className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
             Name
           </span>
-          <input
-            name="name"
-            required
-            maxLength={160}
-            placeholder="Launch Plan"
-            className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] outline-none focus:border-[color:var(--bo-accent)]"
-          />
+          <Input name="name" required maxLength={160} placeholder="Launch Plan" />
         </label>
         <label className="flex flex-col gap-1 text-xs text-[var(--bo-muted)]">
           <span className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
@@ -262,16 +253,12 @@ function CreateProjectPanel({
             maxLength={1000}
             rows={4}
             placeholder="What this project owns."
-            className="resize-y border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] outline-none focus:border-[color:var(--bo-accent)]"
+            className="bo-input resize-y px-3 py-2 text-sm"
           />
         </label>
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:cursor-not-allowed disabled:opacity-60"
-        >
+        <Button variant="secondary" type="submit" disabled={isSubmitting}>
           {isSubmitting ? "Creating…" : "Create project"}
-        </button>
+        </Button>
       </Form>
     </section>
   );

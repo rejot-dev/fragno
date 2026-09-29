@@ -1,3 +1,4 @@
+import { ButtonLink } from "@fragno-private/design-system/button";
 import { Link, useOutletContext } from "react-router";
 
 import { findBackofficeMe } from "@/fragno/auth/auth-server";
@@ -71,7 +72,7 @@ export default function BackofficeMarketplaceBrowse({ loaderData }: Route.Compon
     <div className="space-y-5">
       {listings.length === 0 ? (
         <section className="bo-panel-surface bg-[var(--bo-panel)] px-6 py-16 text-center">
-          <p className="font-mono text-[10px] tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
+          <p className="text-[10px] tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
             Featured automations
           </p>
           <h2 className="mt-3 text-2xl font-semibold tracking-tight text-balance text-[var(--bo-fg)]">
@@ -95,7 +96,7 @@ export default function BackofficeMarketplaceBrowse({ loaderData }: Route.Compon
                 Published automations ready to install.
               </p>
             </div>
-            <p className="font-mono text-[9px] tracking-[0.14em] text-[var(--bo-muted-2)] uppercase">
+            <p className="text-[9px] tracking-[0.14em] text-[var(--bo-muted-2)] uppercase">
               {listings.length}
               {hasNextPage ? "+" : ""} available
             </p>
@@ -124,15 +125,15 @@ export default function BackofficeMarketplaceBrowse({ loaderData }: Route.Compon
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex flex-wrap items-center gap-2">
                       {isLeadFeature ? (
-                        <span className="bg-[var(--bo-accent-bg)] px-2 py-1 font-mono text-[9px] font-semibold tracking-[0.14em] text-[var(--bo-accent-fg)] uppercase shadow-[inset_0_0_0_1px_var(--bo-accent)]">
+                        <span className="bg-[var(--bo-accent-bg)] px-2 py-1 text-[9px] font-semibold tracking-[0.14em] text-[var(--bo-accent-fg)] uppercase shadow-[inset_0_0_0_1px_var(--bo-accent)]">
                           Featured
                         </span>
                       ) : null}
-                      <span className="bg-[var(--bo-panel-2)] px-2 py-1 font-mono text-[9px] tracking-[0.14em] text-[var(--bo-muted-2)] uppercase shadow-[inset_0_0_0_1px_var(--bo-border)]">
+                      <span className="bg-[var(--bo-panel-2)] px-2 py-1 text-[9px] tracking-[0.14em] text-[var(--bo-muted-2)] uppercase shadow-[inset_0_0_0_1px_var(--bo-border)]">
                         {listing.category}
                       </span>
                     </div>
-                    <span className="shrink-0 font-mono text-[10px] font-semibold text-[var(--bo-muted-2)]">
+                    <span className="shrink-0 text-[10px] font-semibold text-[var(--bo-muted-2)]">
                       v{listing.latestVersion}
                     </span>
                   </div>
@@ -151,10 +152,7 @@ export default function BackofficeMarketplaceBrowse({ loaderData }: Route.Compon
                     {listing.tags.length ? (
                       <div className="mt-5 flex flex-wrap gap-1.5">
                         {listing.tags.map((tag) => (
-                          <span
-                            key={tag}
-                            className="font-mono text-[10px] text-[var(--bo-muted-2)]"
-                          >
+                          <span key={tag} className="text-[10px] text-[var(--bo-muted-2)]">
                             #{tag}
                           </span>
                         ))}
@@ -167,7 +165,7 @@ export default function BackofficeMarketplaceBrowse({ loaderData }: Route.Compon
                       <p className="truncate text-xs font-medium text-[var(--bo-fg)]">
                         {listing.publisherName}
                       </p>
-                      <p className="mt-1 font-mono text-[9px] text-[var(--bo-muted-2)]">
+                      <p className="mt-1 text-[9px] text-[var(--bo-muted-2)]">
                         Published {formatPublishedAt(listing.publishedAt)}
                       </p>
                     </div>
@@ -184,12 +182,9 @@ export default function BackofficeMarketplaceBrowse({ loaderData }: Route.Compon
 
       {hasNextPage && nextCursor ? (
         <div className="flex justify-center pt-1">
-          <Link
-            to={marketplacePagePath(basePath, nextCursor)}
-            className="bo-control-surface inline-flex min-h-11 items-center justify-center bg-[var(--bo-panel-2)] px-5 text-[10px] font-semibold tracking-[0.18em] text-[var(--bo-muted)] uppercase transition-[scale,background-color,color,box-shadow] duration-150 ease-out hover:bg-[var(--bo-panel)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none active:scale-[0.96]"
-          >
+          <ButtonLink to={marketplacePagePath(basePath, nextCursor)} variant="secondary">
             Show more automations →
-          </Link>
+          </ButtonLink>
         </div>
       ) : null}
     </div>

@@ -1,10 +1,10 @@
+import { ClientOnly } from "@fragno-private/design-system/client-only";
+import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
 import { Suspense, use, useCallback, useState } from "react";
 import { Outlet, useActionData, useNavigation } from "react-router";
 
 import { backofficeRouteScopeFromResolvedScope } from "@/backoffice-runtime/resolved-scope";
 import { backofficeRouteScopePath } from "@/backoffice-runtime/route-scope";
-import { BackofficeSystemState } from "@/components/backoffice";
-import { ClientOnly } from "@/components/client-only";
 import { getAutomationBrowserDatabase } from "@/fragno/automation/tanstack/browser-database";
 import { BACKOFFICE_PI_WORKFLOW_NAME } from "@/fragno/pi/pi-shared";
 import type { PiSessionListingState } from "@/fragno/pi/tanstack/session-listing";

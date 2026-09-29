@@ -1,7 +1,9 @@
+import { Button } from "@fragno-private/design-system/button";
+import { FormContainer, FormField } from "@fragno-private/design-system/form-container";
+import { Input } from "@fragno-private/design-system/input";
+import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
 import { useEffect, useRef, useState, type SubmitEvent } from "react";
 import { z } from "zod";
-
-import { BackofficeStatusLight, FormContainer, FormField } from "@/components/backoffice";
 
 const cdpMessageSchema = z.union([
   z.object({
@@ -79,13 +81,6 @@ type ConsoleEntry = {
   method: string;
   summary: string;
 };
-
-const primaryButtonClassName =
-  "inline-flex min-h-10 items-center justify-center border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 text-[10px] font-semibold tracking-[0.2em] text-[var(--bo-accent-fg)] uppercase transition-[border-color,opacity,scale] hover:border-[color:var(--bo-accent-strong)] active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50";
-const secondaryButtonClassName =
-  "inline-flex min-h-9 items-center justify-center border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 text-[10px] font-semibold tracking-[0.18em] text-[var(--bo-muted)] uppercase transition-[border-color,color,scale] hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50";
-const controlClassName =
-  "min-h-10 w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 text-sm text-[var(--bo-fg)] outline-none transition-colors focus:border-[color:var(--bo-accent)]";
 
 class CdpConnection {
   readonly #pendingCommands = new Map<number, PendingCommand>();
@@ -317,14 +312,9 @@ function EventLog({ events, onClear }: { events: ConsoleEntry[]; onClear: () => 
         <p className="text-[10px] tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
           Live console + network events
         </p>
-        <button
-          className={secondaryButtonClassName}
-          disabled={events.length === 0}
-          type="button"
-          onClick={onClear}
-        >
+        <Button variant="secondary" disabled={events.length === 0} onClick={onClear}>
           Clear
-        </button>
+        </Button>
       </div>
       {events.length === 0 ? (
         <p className="border border-dashed border-[color:var(--bo-border)] p-3 text-sm text-[var(--bo-muted)]">
@@ -562,22 +552,21 @@ export function CloudflareCdpInspector({
         </BackofficeStatusLight>
         <code className="min-w-0 flex-1 text-xs break-all text-[var(--bo-muted)]">{targetId}</code>
         {connected ? (
-          <button className={secondaryButtonClassName} type="button" onClick={disconnect}>
+          <Button variant="secondary" onClick={disconnect}>
             Disconnect
-          </button>
+          </Button>
         ) : (
-          <button
-            className={primaryButtonClassName}
+          <Button
+            variant="accent"
             disabled={connectionStatus === "connecting"}
-            type="button"
             onClick={() => void connect()}
           >
             {connectionStatus === "connecting" ? "Connecting…" : "Connect WebSocket"}
-          </button>
+          </Button>
         )}
-        <button className={secondaryButtonClassName} type="button" onClick={onClose}>
+        <Button variant="secondary" onClick={onClose}>
           Hide inspector
-        </button>
+        </Button>
       </div>
 
       {error ? (
@@ -595,8 +584,8 @@ export function CloudflareCdpInspector({
             label="Navigate target"
             hint="Runs Page.navigate through the active connection."
           >
-            <input
-              className={controlClassName}
+            <Input
+              className="min-h-10 w-full"
               value={navigationUrl}
               inputMode="url"
               onChange={(event) => {
@@ -605,26 +594,21 @@ export function CloudflareCdpInspector({
             />
           </FormField>
         </div>
-        <button
-          className={primaryButtonClassName}
-          disabled={!connected || operation !== null}
-          type="submit"
-        >
+        <Button variant="accent" disabled={!connected || operation !== null} type="submit">
           Navigate
-        </button>
+        </Button>
       </form>
 
       <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
         {inspectionOperations.map(({ label, run }) => (
-          <button
+          <Button
             key={label}
-            className={secondaryButtonClassName}
+            variant="secondary"
             disabled={!connected || operation !== null}
-            type="button"
             onClick={() => void run()}
           >
             {operation === label ? `${label}…` : label}
-          </button>
+          </Button>
         ))}
       </div>
 

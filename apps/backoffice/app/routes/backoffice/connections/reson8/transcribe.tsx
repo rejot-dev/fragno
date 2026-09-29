@@ -1,3 +1,5 @@
+import { Button } from "@fragno-private/design-system/button";
+import { FormContainer, FormField } from "@fragno-private/design-system/form-container";
 import {
   useEffect,
   useEffectEvent,
@@ -25,7 +27,6 @@ import type {
   Reson8PrerecordedTranscription,
 } from "@fragno-dev/reson8-fragment";
 
-import { FormContainer, FormField } from "@/components/backoffice";
 import { createReson8Client } from "@/fragno/reson8-client";
 
 import { resolveAuthenticatedOrgIntegrationContext } from "../../integrations/scope";
@@ -417,7 +418,7 @@ function RealtimeSpeechSection({
           onChange={(event) => {
             setRealtimeModelId(event.target.value);
           }}
-          className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none disabled:opacity-60"
+          className="bo-input w-full px-3 py-2 text-sm"
         >
           <option value="">No custom model</option>
           {models.map((model) => (
@@ -472,22 +473,16 @@ function RealtimeSpeechSection({
           </div>
         ) : null}
 
-        <button
-          type="button"
-          onClick={() => void startRealtime()}
-          disabled={realtime.started}
-          className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
-        >
+        <Button variant="accent" onClick={() => void startRealtime()} disabled={realtime.started}>
           {realtime.starting ? "Starting…" : "Start Recording"}
-        </button>
-        <button
-          type="button"
+        </Button>
+        <Button
+          variant="secondary"
           onClick={() => void stopRealtime()}
           disabled={!realtime.started}
-          className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
         >
           Stop
-        </button>
+        </Button>
       </div>
 
       {realtimeControlError ? <p className="text-xs text-red-500">{realtimeControlError}</p> : null}
@@ -650,7 +645,7 @@ export default function BackofficeOrganizationReson8Transcribe() {
                         customModelId: event.target.value,
                       }));
                     }}
-                    className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
+                    className="bo-input w-full px-3 py-2 text-sm"
                   >
                     <option value="">No custom model</option>
                     {models.map((model) => (
@@ -691,13 +686,9 @@ export default function BackofficeOrganizationReson8Transcribe() {
                 <p className="text-xs text-red-500">{transcriptionError}</p>
               ) : null}
 
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="w-full border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
-              >
+              <Button variant="accent" type="submit" disabled={isSubmitting} className="w-full">
                 {isSubmitting ? "Transcribing…" : "Transcribe file"}
-              </button>
+              </Button>
             </Form>
           </FormContainer>
 
@@ -744,13 +735,9 @@ export default function BackofficeOrganizationReson8Transcribe() {
                     Download audio
                   </a>
                 ) : null}
-                <button
-                  type="button"
-                  onClick={clearConversation}
-                  className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-                >
+                <Button variant="secondary" onClick={clearConversation}>
                   Clear conversation
-                </button>
+                </Button>
               </div>
             }
           >

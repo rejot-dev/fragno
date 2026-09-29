@@ -1,6 +1,10 @@
 "use client";
 
-import { Check, Code2, FileCode2, ListTree, OctagonX, PanelsTopLeft, Puzzle } from "lucide-react";
+import { Tabs } from "@base-ui/react/tabs";
+import { Button } from "@fragno-private/design-system/button";
+import { Icon } from "@fragno-private/design-system/icon";
+import { Input } from "@fragno-private/design-system/input";
+import { UnderlineTab, UnderlineTabList } from "@fragno-private/design-system/underline-tabs";
 import { useEffect, useRef, useState, type RefObject, type SyntheticEvent } from "react";
 
 import { visualizeWorkflowSource, type StepNode } from "@fragno-dev/workflow-visualizer-tokens";
@@ -88,9 +92,9 @@ const ACTIVITY_ITEMS = [
 ] as const;
 
 const DISPLAY_OPTIONS = [
-  { id: "ui", label: "UI", icon: PanelsTopLeft },
-  { id: "flow", label: "Flow", icon: ListTree },
-  { id: "code", label: "Code", icon: Code2 },
+  { id: "ui", label: "UI", icon: "layout" },
+  { id: "flow", label: "Flow", icon: "list" },
+  { id: "code", label: "Code", icon: "code" },
 ] as const;
 
 type LandingWorkflowDisplay = (typeof DISPLAY_OPTIONS)[number]["id"];
@@ -298,7 +302,7 @@ export function LandingWorkflow() {
       <div className="grid min-h-[620px] grid-cols-[minmax(310px,0.42fr)_minmax(0,0.58fr)] overflow-hidden bg-[var(--bo-panel)] shadow-[var(--bo-panel-shadow)] outline outline-1 -outline-offset-1 outline-black/10 max-[820px]:grid-cols-1 dark:outline-white/10">
         <div className="flex min-h-0 flex-col border-r border-[color:var(--bo-border)] max-[820px]:border-r-0 max-[820px]:border-b">
           <header className="flex h-12 items-center gap-2 border-b border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-4 sm:px-5">
-            <Puzzle className="size-3.5 text-[var(--bo-accent)]" aria-hidden="true" />
+            <Icon name="box" className="size-3.5 text-[var(--bo-accent)]" />
             <span className="text-[10px] font-bold tracking-[0.18em] uppercase">Conversation</span>
           </header>
 
@@ -327,7 +331,7 @@ export function LandingWorkflow() {
                 >
                   <span className="flex min-w-0 items-center gap-2 text-[11px] font-medium text-[var(--bo-fg)]">
                     <span className="grid size-4 shrink-0 place-items-center bg-emerald-500/10 text-[var(--bo-live)]">
-                      <Check className="size-2.5" aria-hidden="true" />
+                      <Icon name="check" className="size-2.5" />
                     </span>
                     <span className="truncate">{item.action}</span>
                   </span>
@@ -350,35 +354,35 @@ export function LandingWorkflow() {
         <div className="flex min-h-0 min-w-0 flex-col max-[820px]:h-[620px]">
           <header className="flex h-12 items-stretch justify-between gap-3 border-b border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 sm:px-4">
             <div className="flex min-w-0 items-center gap-2.5">
-              <FileCode2 className="size-3.5 shrink-0 text-[var(--bo-accent)]" aria-hidden="true" />
+              <Icon name="file-text" className="size-3.5 shrink-0 text-[var(--bo-accent)]" />
               <span className="truncate font-mono text-[9px] font-semibold tracking-[0.06em] text-[var(--bo-muted)]">
                 configure-reson8.workflow.js
               </span>
             </div>
 
-            <div role="tablist" aria-label="Workflow representation" className="flex items-stretch">
-              {DISPLAY_OPTIONS.map(({ id, label, icon: Icon }) => (
-                <button
-                  key={id}
-                  id={`landing-workflow-${id}-tab`}
-                  type="button"
-                  role="tab"
-                  aria-selected={display === id}
-                  aria-controls={`landing-workflow-${id}-panel`}
-                  onClick={() => {
-                    selectDisplay(id);
-                  }}
-                  className={`flex h-full items-center gap-1.5 border-b-2 px-2 text-[9px] font-semibold tracking-[0.16em] uppercase transition-[border-color,color,scale] duration-150 outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 active:scale-[0.96] sm:px-3 ${
-                    display === id
-                      ? "border-[color:var(--bo-accent)] text-[var(--bo-fg)]"
-                      : "border-transparent text-[var(--bo-muted-2)] hover:text-[var(--bo-fg)]"
-                  }`}
-                >
-                  <Icon className="size-3" aria-hidden="true" />
-                  {label}
-                </button>
-              ))}
-            </div>
+            <Tabs.Root
+              value={display}
+              onValueChange={(value: LandingWorkflowDisplay) => {
+                selectDisplay(value);
+              }}
+              className="flex items-stretch"
+            >
+              {/* The panels are rendered outside Tabs.Root, so the tabs keep their explicit ids and
+                  aria-controls to stay linked to them. */}
+              <UnderlineTabList aria-label="Workflow representation" className="-mb-px shadow-none">
+                {DISPLAY_OPTIONS.map(({ id, label, icon }) => (
+                  <UnderlineTab
+                    key={id}
+                    value={id}
+                    id={`landing-workflow-${id}-tab`}
+                    aria-controls={`landing-workflow-${id}-panel`}
+                  >
+                    <Icon name={icon} />
+                    {label}
+                  </UnderlineTab>
+                ))}
+              </UnderlineTabList>
+            </Tabs.Root>
           </header>
 
           <div className="min-h-0 flex-1">
@@ -453,7 +457,7 @@ function LandingGeneratedUi({
             <span className="mt-1 block text-[10px] leading-4 text-[var(--bo-muted-2)]">
               Your key is handled as a secret and is not shown in the setup result.
             </span>
-            <input
+            <Input
               type="password"
               value={apiKey}
               autoComplete="off"
@@ -461,16 +465,12 @@ function LandingGeneratedUi({
               onChange={(event) => {
                 onApiKeyChange(event.target.value);
               }}
-              className="mt-2 min-h-10 w-full border border-[color:var(--bo-border-strong)] bg-[var(--bo-panel)] px-3 text-xs text-[var(--bo-fg)] transition-[border-color,box-shadow] duration-150 outline-none focus:border-[color:var(--bo-accent)] focus:shadow-[0_0_0_3px_var(--bo-accent-bg)] disabled:cursor-not-allowed disabled:opacity-50"
+              className="mt-2 min-h-10 w-full text-xs"
             />
           </label>
-          <button
-            type="submit"
-            disabled={disabled}
-            className="inline-flex min-h-10 items-center justify-center border border-[color:var(--bo-btn-bg)] bg-[var(--bo-btn-bg)] px-4 text-xs font-semibold text-[var(--bo-btn-fg)] transition-[background-color,scale,opacity] duration-150 hover:bg-[var(--bo-btn-bg-hover)] active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-45"
-          >
+          <Button type="submit" variant="solid" disabled={disabled}>
             Configure Reson8
-          </button>
+          </Button>
         </div>
       </form>
     </div>
@@ -550,7 +550,7 @@ function LandingWorkflowGraph({
           role="alert"
           className="flex shrink-0 animate-[pulse_600ms_ease-out_1] items-center gap-2 border-b border-[color:var(--bo-failed)] bg-[var(--bo-failed-bg)] px-4 py-3 text-xs font-semibold text-[var(--bo-failed)]"
         >
-          <OctagonX className="size-4 shrink-0" aria-hidden="true" />
+          <Icon name="x-octagon" className="size-4 shrink-0" />
           Workflow stopped: a Reson8 API key is required.
         </div>
       ) : null}

@@ -1,8 +1,9 @@
-import { Link, useOutletContext } from "react-router";
+import { ButtonLink } from "@fragno-private/design-system/button";
+import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
+import { useOutletContext } from "react-router";
 
 import { eq, useLiveQuery } from "@tanstack/react-db";
 
-import { BackofficeStatusLight } from "@/components/backoffice";
 import { backofficeConnectionCatalog } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 
 import { integrationBasePath } from "../integrations/scope";
@@ -114,12 +115,9 @@ export default function BackofficeAutomationIntegrations() {
               <p className="mt-4 text-sm text-[var(--bo-muted)]">{integration.description}</p>
               {managePath ? (
                 <div className="mt-4">
-                  <Link
-                    to={managePath}
-                    className="inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)]"
-                  >
+                  <ButtonLink variant="accent" to={managePath}>
                     Manage
-                  </Link>
+                  </ButtonLink>
                 </div>
               ) : null}
             </div>
@@ -142,12 +140,9 @@ function SystemFormsIntegration({ managePath }: { managePath: string }) {
         and user scopes are intentionally unavailable for now.
       </p>
       <div className="mt-4">
-        <Link
-          to={managePath}
-          className="inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)]"
-        >
+        <ButtonLink variant="accent" to={managePath}>
           Manage
-        </Link>
+        </ButtonLink>
       </div>
     </section>
   );

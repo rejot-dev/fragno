@@ -121,7 +121,7 @@ export default function BackofficeOrganizationResendThreads() {
             aria-current={isStartRoute ? "page" : undefined}
             className={
               isStartRoute
-                ? "block w-full border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-3 text-left text-[var(--bo-accent-fg)]"
+                ? "block w-full border border-[color:var(--bo-selected-border)] bg-[var(--bo-selected-bg)] px-3 py-3 text-left text-[var(--bo-fg)] shadow-[var(--bo-selected-shadow)]"
                 : "block w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-3 text-left text-[var(--bo-muted)] hover:border-[color:var(--bo-border-strong)]"
             }
           >
@@ -155,7 +155,7 @@ export default function BackofficeOrganizationResendThreads() {
                   aria-current={isSelected ? "page" : undefined}
                   className={
                     isSelected
-                      ? "block w-full border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-3 text-left text-[var(--bo-accent-fg)]"
+                      ? "block w-full border border-[color:var(--bo-selected-border)] bg-[var(--bo-selected-bg)] px-3 py-3 text-left text-[var(--bo-fg)] shadow-[var(--bo-selected-shadow)]"
                       : "block w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-3 text-left text-[var(--bo-muted)] hover:border-[color:var(--bo-border-strong)]"
                   }
                 >

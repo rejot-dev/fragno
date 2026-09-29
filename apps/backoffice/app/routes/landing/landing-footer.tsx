@@ -1,6 +1,5 @@
+import { BackofficeFragmentMark } from "@fragno-private/design-system/fragment-mark";
 import { Link } from "react-router";
-
-import { BackofficeFragmentMark } from "@/components/backoffice/fragment-mark";
 
 const footerLinkClassName =
   "inline-flex min-h-10 items-center text-[10px] font-semibold tracking-[0.1em] text-[var(--bo-fg)] uppercase no-underline transition-colors duration-150 hover:text-[var(--bo-accent)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--bo-accent)]";
@@ -20,7 +19,7 @@ export function LandingFooter() {
               <BackofficeFragmentMark size="md" />
               Backoffice by ReJot
             </Link>
-            <p className="max-w-xs font-mono text-[11px] leading-6 text-pretty text-[var(--bo-muted)]">
+            <p className="max-w-xs text-[11px] leading-6 text-pretty text-[var(--bo-muted)]">
               A controlled workspace for AI workflows.
             </p>
           </div>
@@ -28,11 +27,11 @@ export function LandingFooter() {
           <nav aria-labelledby="landing-footer-connect">
             <h2
               id="landing-footer-connect"
-              className="font-mono text-[10px] font-bold tracking-[0.18em] text-[var(--bo-muted-2)] uppercase"
+              className="text-[10px] font-bold tracking-[0.18em] text-[var(--bo-muted-2)] uppercase"
             >
               Connect
             </h2>
-            <ul className="mt-3 font-mono">
+            <ul className="mt-3">
               <li>
                 <a
                   className={footerLinkClassName}
@@ -67,7 +66,7 @@ export function LandingFooter() {
           </nav>
         </div>
 
-        <div className="mt-14 flex flex-col gap-4 border-t border-[color:var(--bo-border)] pt-8 font-mono text-[9px] tracking-[0.18em] text-[var(--bo-muted-2)] uppercase md:flex-row md:items-center md:justify-between">
+        <div className="mt-14 flex flex-col gap-4 border-t border-[color:var(--bo-border)] pt-8 text-[9px] tracking-[0.18em] text-[var(--bo-muted-2)] uppercase md:flex-row md:items-center md:justify-between">
           <p>© 2026 ReJot</p>
           <div className="flex gap-1.5" aria-hidden="true">
             <span className="size-1.5 bg-[var(--bo-accent)]" />

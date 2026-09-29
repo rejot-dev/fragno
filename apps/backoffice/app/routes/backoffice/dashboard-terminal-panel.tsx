@@ -1,3 +1,4 @@
+import { Button } from "@fragno-private/design-system/button";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useFetcher } from "react-router";
 
@@ -179,7 +180,7 @@ export function DashboardTerminalPanel({
                 }}
                 className={`flex min-h-16 w-full items-start gap-3 px-3 py-2 text-left font-mono text-xs transition-colors ${
                   isActive
-                    ? "bg-[var(--bo-accent-bg)] font-semibold text-[var(--bo-accent-fg)] shadow-[inset_3px_0_0_var(--bo-accent)]"
+                    ? "bg-[var(--bo-selected-bg)] font-semibold text-[var(--bo-fg)] shadow-[inset_3px_0_0_var(--bo-accent)]"
                     : "text-[var(--bo-fg)] hover:bg-[var(--bo-panel-2)]"
                 }`}
               >
@@ -318,21 +319,12 @@ export function DashboardTerminalPanel({
           </div>
           {!isQuakeTerminal ? (
             <>
-              <button
-                type="submit"
-                className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase disabled:cursor-not-allowed disabled:opacity-60"
-                disabled={isSubmitting}
-              >
+              <Button variant="accent" type="submit" disabled={isSubmitting}>
                 {isSubmitting ? "Running" : "Run"}
-              </button>
-              <button
-                type="button"
-                onClick={terminal.clear}
-                className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-4 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase"
-                disabled={isSubmitting}
-              >
+              </Button>
+              <Button variant="secondary" onClick={terminal.clear} disabled={isSubmitting}>
                 Clear
-              </button>
+              </Button>
             </>
           ) : null}
         </div>

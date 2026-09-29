@@ -1,8 +1,8 @@
 import { ScrollArea } from "@base-ui/react/scroll-area";
+import { Button, ButtonLink } from "@fragno-private/design-system/button";
 import { useEffect, useRef, useState } from "react";
 import {
   Form,
-  Link,
   useActionData,
   useLoaderData,
   useNavigation,
@@ -425,12 +425,9 @@ function ChatMessages({
           <h3 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">{chatTitle}</h3>
           <p className="text-xs text-[var(--bo-muted-2)]">Chat ID: {chatId}</p>
         </div>
-        <Link
-          to={backPath}
-          className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] lg:hidden"
-        >
+        <ButtonLink variant="secondary" to={backPath} className="lg:hidden">
           Back to chats
-        </Link>
+        </ButtonLink>
       </div>
 
       <ScrollArea.Root className="relative overflow-hidden border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)]">
@@ -513,15 +510,11 @@ function ChatMessages({
             required
             minLength={1}
             placeholder="Write a message as the bot..."
-            className="w-full flex-1 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
+            className="bo-input w-full flex-1 px-3 py-2 text-sm"
           />
-          <button
-            type="submit"
-            disabled={isSending}
-            className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-4 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:cursor-not-allowed disabled:opacity-60"
-          >
+          <Button variant="secondary" type="submit" disabled={isSending}>
             {isSending ? "Sending..." : "Send"}
-          </button>
+          </Button>
         </div>
       </Form>
     </div>

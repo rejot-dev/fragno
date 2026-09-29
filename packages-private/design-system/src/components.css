@@ -1,4 +1,4 @@
-/* Theme tokens (--bo-*) are defined centrally in app.css. This file holds
+/* Theme tokens (--bo-*) are defined centrally in theme.css. This file holds
    component styles only. */
 
 .bo-control-surface {
@@ -7,6 +7,36 @@
 
 .bo-control-surface:hover {
   box-shadow: var(--bo-control-shadow-hover);
+}
+
+/* Text-entry surface for input, textarea, and select. Mirrors the selected sidebar item so
+   fields read as part of the shell. Owns only the surface; size and padding stay with the
+   caller. Unlayered, so it wins over Tailwind border/bg/shadow utilities on the element. */
+.bo-input {
+  border: 1px solid var(--bo-selected-border);
+  border-radius: 4px;
+  background: var(--bo-selected-bg);
+  box-shadow: var(--bo-selected-shadow);
+  color: var(--bo-fg);
+  outline: none;
+  transition: border-color 150ms ease-out;
+}
+
+.bo-input::placeholder {
+  color: var(--bo-muted-2);
+}
+
+.bo-input:hover:not(:disabled) {
+  border-color: var(--bo-border-strong);
+}
+
+.bo-input[aria-invalid="true"] {
+  border-color: var(--bo-failed);
+}
+
+.bo-input:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .bo-panel-surface {
@@ -153,14 +183,13 @@
   display: inline-flex;
   min-height: 22px;
   align-items: center;
+  border-radius: 4px;
   padding-inline: 6px;
   color: var(--bo-accent-fg);
   background: var(--bo-accent-bg);
-  box-shadow: inset 0 0 0 1px var(--bo-accent);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.04em;
   line-height: 1;
 }
 
@@ -193,6 +222,7 @@
 }
 
 .bo-status-light-dot {
+  border-radius: 999px;
   background: currentcolor;
   box-shadow: 0 0 0 3px color-mix(in srgb, currentcolor 15%, transparent);
 }

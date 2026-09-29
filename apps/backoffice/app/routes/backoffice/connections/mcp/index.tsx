@@ -1,7 +1,8 @@
-import { Link, useOutletContext } from "react-router";
+import { ButtonLink } from "@fragno-private/design-system/button";
+import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
+import { useOutletContext } from "react-router";
 
 import { backofficeRouteScopePath } from "@/backoffice-runtime/route-scope";
-import { BackofficePageHeader } from "@/components/backoffice";
 import type { BackofficeLayoutContext } from "@/layouts/backoffice-layout";
 
 import { formatTimestamp } from "../formatting";
@@ -30,12 +31,9 @@ export default function BackofficeConnectionsMcp() {
         title="MCP connection workspace."
         description="Pick an organization to add MCP servers, run OAuth login, and inspect available tools."
         actions={
-          <Link
-            to="/backoffice/automations"
-            className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-          >
+          <ButtonLink variant="secondary" to="/backoffice/automations">
             Back to automations
-          </Link>
+          </ButtonLink>
         }
       />
 
@@ -82,12 +80,12 @@ export default function BackofficeConnectionsMcp() {
               </div>
 
               <div className="mt-4">
-                <Link
+                <ButtonLink
+                  variant="accent"
                   to={`/backoffice/automations/${backofficeRouteScopePath({ kind: "org", orgSlug: organization.slug })}/mcp`}
-                  className="inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)]"
                 >
                   Manage MCP
-                </Link>
+                </ButtonLink>
               </div>
             </div>
           ))}

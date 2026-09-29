@@ -1,4 +1,4 @@
-import { GitBranch, Workflow, Zap } from "lucide-react";
+import { Icon } from "@fragno-private/design-system/icon";
 
 const laneHeaderClassName = "flex min-h-14 items-center px-4 py-3";
 const routeCardClassName =
@@ -33,7 +33,7 @@ export function AutomationOrchestration() {
               <div className={`${routeCardClassName} row-span-2`}>
                 <div className="flex items-start gap-3">
                   <span className="flex size-9 shrink-0 items-center justify-center bg-lime-500/10 text-lime-700 dark:text-lime-300">
-                    <GitBranch className="size-3.5" strokeWidth={1.8} aria-hidden="true" />
+                    <Icon name="git-branch" className="size-3.5" strokeWidth={1.8} />
                   </span>
                   <div className="min-w-0">
                     <h3 className="text-base font-semibold text-[var(--bo-fg)]">GitHub</h3>
@@ -100,17 +100,17 @@ function TriggerCard({
     <article className={routeCardClassName}>
       <div className="flex items-start justify-between gap-4">
         <div className="flex min-w-0 items-start gap-3">
-          <span className="flex size-9 shrink-0 items-center justify-center bg-orange-500/10 text-orange-700 dark:text-orange-300">
-            <Zap className="size-3.5" strokeWidth={1.8} aria-hidden="true" />
+          <span className="flex size-9 shrink-0 items-center justify-center bg-[var(--bo-accent-bg)] text-[var(--bo-accent-strong)]">
+            <Icon name="zap" className="size-3.5" strokeWidth={1.8} />
           </span>
           <div className="min-w-0">
             <h3 className="truncate text-base font-semibold text-[var(--bo-fg)]">{title}</h3>
-            <p className="mt-1 text-[9px] font-semibold tracking-[0.18em] text-orange-700 uppercase dark:text-orange-300">
+            <p className="mt-1 text-[9px] font-semibold tracking-[0.18em] text-[var(--bo-accent-strong)] uppercase">
               Trigger
             </p>
           </div>
         </div>
-        <span className="font-mono text-[10px] text-[var(--bo-muted-2)]">{priority}</span>
+        <span className="text-[10px] text-[var(--bo-muted-2)]">{priority}</span>
       </div>
       <div className="mt-4 space-y-2 border-t border-[color:var(--bo-border)] pt-3 font-mono">
         <p className="text-[11px] text-[var(--bo-fg)]">{eventType}</p>
@@ -133,9 +133,9 @@ function ActionCard({
 }) {
   const icon =
     kind === "workflow" ? (
-      <Workflow className="size-3.5" strokeWidth={1.8} aria-hidden="true" />
+      <Icon name="share-2" className="size-3.5" strokeWidth={1.8} />
     ) : (
-      <GitBranch className="size-3.5" strokeWidth={1.8} aria-hidden="true" />
+      <Icon name="git-branch" className="size-3.5" strokeWidth={1.8} />
     );
   const iconClassName =
     kind === "workflow"
@@ -161,7 +161,7 @@ function ActionCard({
           </p>
         </div>
       </div>
-      <p className="mt-4 border-t border-[color:var(--bo-border)] pt-3 font-mono text-[10px] text-[var(--bo-muted-2)]">
+      <p className="mt-4 border-t border-[color:var(--bo-border)] pt-3 text-[10px] text-[var(--bo-muted-2)]">
         {detail}
       </p>
     </article>

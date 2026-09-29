@@ -1,9 +1,11 @@
+import { Button } from "@fragno-private/design-system/button";
+import { cn } from "@fragno-private/design-system/cn";
+import { FormContainer, FormField } from "@fragno-private/design-system/form-container";
+import { Input } from "@fragno-private/design-system/input";
 import { useEffect, useReducer, useState, type SubmitEvent } from "react";
 import { useOutletContext } from "react-router";
 
-import { FormContainer, FormField } from "@/components/backoffice";
 import { authClient } from "@/fragno/auth/auth-client";
-import { cn } from "@/lib/utils";
 
 import type { OrganizationLayoutContext } from "./organization-layout";
 import { Notice } from "./organization-shared";
@@ -106,14 +108,9 @@ function CopyButton({
   };
 
   return (
-    <button
-      type="button"
-      onClick={() => void handleCopy()}
-      disabled={disabled}
-      className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
-    >
+    <Button variant="secondary" type="button" onClick={() => void handleCopy()} disabled={disabled}>
       {copied ? "Copied" : label}
-    </button>
+    </Button>
   );
 }
 
@@ -213,7 +210,7 @@ export default function BackofficeOrganizationInvites() {
             label="Email"
             hint="Invites are not emailed automatically. Share the generated link manually or via your own hook."
           >
-            <input
+            <Input
               type="email"
               value={inviteForm.email}
               onChange={(event) => {
@@ -221,7 +218,7 @@ export default function BackofficeOrganizationInvites() {
               }}
               placeholder="teammate@fragno.dev"
               disabled={!canManageMembers}
-              className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none disabled:opacity-60"
+              className="w-full"
             />
           </FormField>
           <div className="space-y-2">
@@ -242,7 +239,7 @@ export default function BackofficeOrganizationInvites() {
                     className={cn(
                       "border px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] transition-colors",
                       isSelected
-                        ? "border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)]"
+                        ? "border-[color:var(--bo-selected-border)] bg-[var(--bo-selected-bg)] shadow-[var(--bo-selected-shadow)] text-[var(--bo-fg)]"
                         : "border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] text-[var(--bo-muted)] hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]",
                       !canManageMembers && "opacity-60",
                     )}
@@ -254,13 +251,9 @@ export default function BackofficeOrganizationInvites() {
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="submit"
-              disabled={!canManageMembers || invitingMember}
-              className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
-            >
+            <Button variant="accent" type="submit" disabled={!canManageMembers || invitingMember}>
               {invitingMember ? "Sending..." : "Send invite"}
-            </button>
+            </Button>
             {inviteMemberError ? (
               <span className="text-xs text-red-600">{getErrorMessage(inviteMemberError)}</span>
             ) : null}
@@ -277,11 +270,11 @@ export default function BackofficeOrganizationInvites() {
                 Invite link
               </p>
               <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
-                <input
+                <Input
                   readOnly
                   aria-label="Invitation link"
                   value={inviteLink}
-                  className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 font-mono text-[11px] text-[var(--bo-fg)]"
+                  className="w-full font-mono text-[11px]"
                 />
                 <CopyButton text={inviteLink} />
               </div>

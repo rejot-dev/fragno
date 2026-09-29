@@ -1,4 +1,5 @@
-import { Link, useLoaderData } from "react-router";
+import { ButtonLink } from "@fragno-private/design-system/button";
+import { useLoaderData } from "react-router";
 
 import { findBackofficeMe } from "@/fragno/auth/auth-server";
 
@@ -122,12 +123,9 @@ export default function BackofficeApiOAuthComplete() {
             </p>
           </div>
         ) : null}
-        <Link
-          to={backUrl}
-          className="inline-flex min-h-10 items-center border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-transform active:scale-[0.96]"
-        >
+        <ButtonLink variant="accent" to={backUrl}>
           Back to API
-        </Link>
+        </ButtonLink>
       </div>
     </section>
   );

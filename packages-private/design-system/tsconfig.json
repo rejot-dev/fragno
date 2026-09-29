@@ -1,0 +1,10 @@
+{
+  "extends": "@fragno-private/typescript-config/tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    // Matches the Backoffice app, which consumes these sources and type-checks them itself.
+    "noPropertyAccessFromIndexSignature": false,
+    "types": ["vite/client"]
+  },
+  "include": ["src", ".storybook", "vitest.config.ts"]
+}

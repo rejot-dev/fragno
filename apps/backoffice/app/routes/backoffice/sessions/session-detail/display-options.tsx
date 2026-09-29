@@ -1,4 +1,5 @@
 import { Switch } from "@base-ui/react/switch";
+import { Button } from "@fragno-private/design-system/button";
 import { useState } from "react";
 
 import { tapScale } from "./ui";
@@ -26,16 +27,15 @@ export function SessionDisplayOptions({
 
   return (
     <div className="relative">
-      <button
-        type="button"
+      <Button
+        variant="ghost"
         aria-expanded={expanded}
         onClick={() => {
           setExpanded((current) => !current);
         }}
-        className={`inline-flex min-h-10 items-center px-3 text-xs font-medium text-[var(--bo-muted)] transition-[color,scale] duration-150 ease-out hover:text-[var(--bo-fg)] ${tapScale}`}
       >
         View
-      </button>
+      </Button>
 
       {expanded ? (
         <div className="bo-popover-surface absolute top-12 right-0 z-30 w-64 border border-[color:var(--bo-border-strong)] bg-[var(--bo-panel)] p-2">

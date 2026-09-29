@@ -1,13 +1,8 @@
-import {
-  ChevronRight,
-  Download,
-  File as FileIcon,
-  Folder,
-  FolderOpen,
-  RefreshCcw,
-  Trash2,
-  Upload,
-} from "lucide-react";
+import { Button, ButtonLink } from "@fragno-private/design-system/button";
+import { ClientOnly } from "@fragno-private/design-system/client-only";
+import { Icon } from "@fragno-private/design-system/icon";
+import { Input } from "@fragno-private/design-system/input";
+import { formatBytes } from "@fragno-private/design-system/unit-fields";
 import {
   Suspense,
   use,
@@ -36,8 +31,6 @@ import {
 import { Collapsible, Progress } from "@base-ui/react";
 import { eq, useLiveQuery } from "@tanstack/react-db";
 
-import { formatBytes } from "@/components/backoffice";
-import { ClientOnly } from "@/components/client-only";
 import { isUploadDirectoryMarker } from "@/files/contributors/upload-markers";
 import {
   UPLOAD_PROVIDER_DATABASE,
@@ -783,7 +776,7 @@ function CreateFolderForm({
       </div>
 
       <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-        <input
+        <Input
           type="text"
           value={folderName}
           onChange={(event) => {
@@ -791,16 +784,12 @@ function CreateFolderForm({
             setError(null);
           }}
           placeholder={parentPrefix ? "nested/reports" : "assets/images"}
-          className="min-w-0 flex-1 rounded-sm border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-sm text-[var(--bo-fg)] transition-colors outline-none placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)]"
+          className="min-w-0 flex-1"
         />
-        <button
-          type="submit"
-          disabled={!enabled || !folderName.trim()}
-          className="inline-flex items-center justify-center gap-2 rounded-sm border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
-        >
-          <Folder className="h-3.5 w-3.5" />
+        <Button variant="secondary" type="submit" disabled={!enabled || !folderName.trim()}>
+          <Icon name="folder" className="h-3.5 w-3.5" />
           Create folder
-        </button>
+        </Button>
       </div>
 
       {error ? (
@@ -1382,7 +1371,7 @@ function UploadExplorerPanel({ state }: { state: ReadyUploadFilesViewState }) {
           }
         >
           <span className="flex min-w-0 items-center gap-2">
-            <FolderOpen className="h-4 w-4 shrink-0" />
+            <Icon name="folder" className="h-4 w-4 shrink-0" />
             <span className="truncate text-sm font-semibold">Upload roots</span>
           </span>
           <span className="shrink-0 text-[11px] tracking-[0.22em] text-current/70 uppercase">
@@ -1448,13 +1437,10 @@ function UploadFileSelectionPanel({ state }: { state: ReadyUploadFilesViewState 
             replacement or inspect nearby files.
           </p>
           <div className="mt-4">
-            <Link
-              to={missingFileParentHref}
-              className="inline-flex items-center gap-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-            >
-              <FolderOpen className="h-3.5 w-3.5" />
+            <ButtonLink variant="secondary" to={missingFileParentHref}>
+              <Icon name="folder" className="h-3.5 w-3.5" />
               Open containing folder
-            </Link>
+            </ButtonLink>
           </div>
         </div>
       </div>
@@ -1475,12 +1461,9 @@ function UploadFileSelectionPanel({ state }: { state: ReadyUploadFilesViewState 
             <p className="mt-1 text-xs break-all text-[var(--bo-muted)]">{selectedFile.fileKey}</p>
           </div>
 
-          <Link
-            to={missingFileParentHref}
-            className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-          >
+          <ButtonLink variant="secondary" to={missingFileParentHref}>
             Open folder
-          </Link>
+          </ButtonLink>
         </div>
 
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -1517,25 +1500,21 @@ function UploadFileSelectionPanel({ state }: { state: ReadyUploadFilesViewState 
             <input type="hidden" name="intent" value="download-url" />
             <input type="hidden" name="provider" value={selectedFile.provider} />
             <input type="hidden" name="fileKey" value={selectedFile.fileKey} />
-            <button
-              type="submit"
-              disabled={actionBusy}
-              className="inline-flex w-full items-center justify-center gap-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
-            >
-              <Download className="h-3.5 w-3.5" />
+            <Button variant="secondary" type="submit" disabled={actionBusy} className="w-full">
+              <Icon name="download" className="h-3.5 w-3.5" />
               Generate download URL
-            </button>
+            </Button>
           </Form>
         ) : (
-          <button
-            type="button"
+          <Button
+            variant="secondary"
             onClick={() => void handleDownloadFile()}
             disabled={actionBusy || downloadingFile}
-            className="inline-flex w-full items-center justify-center gap-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
+            className="w-full"
           >
-            <Download className="h-3.5 w-3.5" />
+            <Icon name="download" className="h-3.5 w-3.5" />
             {downloadingFile ? "Downloading…" : "Download file"}
-          </button>
+          </Button>
         )}
 
         <Form method="post">
@@ -1547,7 +1526,7 @@ function UploadFileSelectionPanel({ state }: { state: ReadyUploadFilesViewState 
             disabled={actionBusy}
             className="inline-flex w-full items-center justify-center gap-2 border border-red-300 bg-red-50 px-3 py-2 text-[11px] font-semibold tracking-[0.22em] text-red-600 uppercase transition-colors hover:border-red-400 disabled:opacity-60"
           >
-            <Trash2 className="h-3.5 w-3.5" />
+            <Icon name="trash-2" className="h-3.5 w-3.5" />
             Delete file
           </button>
         </Form>
@@ -1680,34 +1659,32 @@ function UploadFolderSelectionPanel({ state }: { state: ReadyUploadFilesViewStat
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
+            <Button
+              variant="secondary"
               onClick={() => fileInputRef.current?.click()}
               disabled={!uploadTargetProvider}
-              className="inline-flex items-center gap-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
             >
-              <Upload className="h-3.5 w-3.5" />
+              <Icon name="upload" className="h-3.5 w-3.5" />
               Choose files
-            </button>
+            </Button>
             {hasFailedUploads ? (
-              <button
-                type="button"
+              <Button
+                variant="accent"
                 onClick={() => {
                   if (uploadTargetProvider && uploadTargetPrefix !== null) {
                     void startUploads(uploadTargetProvider, uploadTargetPrefix);
                   }
                 }}
                 disabled={uploadingFiles || !uploadTargetProvider || uploadTargetPrefix === null}
-                className="inline-flex items-center gap-2 border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
               >
-                <RefreshCcw className="h-3.5 w-3.5" />
+                <Icon name="refresh-ccw" className="h-3.5 w-3.5" />
                 {uploadingFiles && activeUploadPrefix === uploadTargetPrefix
                   ? "Uploading…"
                   : "Retry failed"}
-              </button>
+              </Button>
             ) : null}
-            <button
-              type="button"
+            <Button
+              variant="secondary"
               onClick={() => {
                 if (uploadTargetProvider && uploadTargetPrefix !== null) {
                   clearFinishedUploads(uploadTargetProvider, uploadTargetPrefix);
@@ -1719,11 +1696,10 @@ function UploadFolderSelectionPanel({ state }: { state: ReadyUploadFilesViewStat
                 !uploadTargetProvider ||
                 uploadTargetPrefix === null
               }
-              className="inline-flex items-center gap-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
             >
-              <Trash2 className="h-3.5 w-3.5" />
+              <Icon name="trash-2" className="h-3.5 w-3.5" />
               Clear finished
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -1826,12 +1802,12 @@ function UploadProviderRootTree({
         aria-current={isSelected ? "page" : undefined}
         className={
           isSelected
-            ? "flex min-w-0 items-center justify-between gap-3 rounded-sm border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-[var(--bo-fg)]"
+            ? "flex min-w-0 items-center justify-between gap-3 rounded-sm border border-[color:var(--bo-selected-border)] bg-[var(--bo-selected-bg)] px-3 py-2 text-[var(--bo-fg)] shadow-[var(--bo-selected-shadow)]"
             : "flex min-w-0 items-center justify-between gap-3 rounded-sm border border-transparent bg-transparent px-3 py-2 text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border)] hover:bg-[var(--bo-panel)] hover:text-[var(--bo-fg)]"
         }
       >
         <span className="flex min-w-0 items-center gap-2">
-          <FolderOpen className="h-4 w-4 shrink-0" />
+          <Icon name="folder" className="h-4 w-4 shrink-0" />
           <span className="truncate text-sm font-semibold">{providerTree.label}</span>
         </span>
         <span className="shrink-0 text-[11px] tracking-[0.22em] text-current/70 uppercase">
@@ -1901,7 +1877,8 @@ function UploadFolderTreeNode({
               aria-label={`${isOpen ? "Collapse" : "Expand"} ${folder.name}`}
               className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-transparent bg-transparent text-[var(--bo-muted-2)] transition-colors hover:border-[color:var(--bo-border)] hover:bg-[var(--bo-panel)] hover:text-[var(--bo-fg)]"
             >
-              <ChevronRight
+              <Icon
+                name="chevron-right"
                 className={`h-3.5 w-3.5 transition-transform ${isOpen ? "rotate-90" : ""}`}
               />
             </Collapsible.Trigger>
@@ -1914,15 +1891,15 @@ function UploadFolderTreeNode({
             aria-current={isSelected ? "page" : undefined}
             className={
               isSelected
-                ? "flex min-w-0 flex-1 items-center justify-between gap-3 rounded-sm border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-[var(--bo-fg)]"
+                ? "flex min-w-0 flex-1 items-center justify-between gap-3 rounded-sm border border-[color:var(--bo-selected-border)] bg-[var(--bo-selected-bg)] px-3 py-2 text-[var(--bo-fg)] shadow-[var(--bo-selected-shadow)]"
                 : "flex min-w-0 flex-1 items-center justify-between gap-3 rounded-sm border border-transparent bg-transparent px-3 py-2 text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border)] hover:bg-[var(--bo-panel)] hover:text-[var(--bo-fg)]"
             }
           >
             <span className="flex min-w-0 items-center gap-2">
               {isOpen ? (
-                <FolderOpen className="h-4 w-4 shrink-0" />
+                <Icon name="folder" className="h-4 w-4 shrink-0" />
               ) : (
-                <Folder className="h-4 w-4 shrink-0" />
+                <Icon name="folder" className="h-4 w-4 shrink-0" />
               )}
               <span className="truncate text-sm font-medium">{folder.name}</span>
             </span>
@@ -1986,13 +1963,13 @@ function UploadFileTreeLeaf({
       aria-current={isSelected ? "page" : undefined}
       className={
         isSelected
-          ? "flex items-start justify-between gap-3 rounded-sm border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-[var(--bo-fg)]"
+          ? "flex items-start justify-between gap-3 rounded-sm border border-[color:var(--bo-selected-border)] bg-[var(--bo-selected-bg)] px-3 py-2 text-[var(--bo-fg)] shadow-[var(--bo-selected-shadow)]"
           : "flex items-start justify-between gap-3 rounded-sm border border-transparent bg-transparent px-3 py-2 text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border)] hover:bg-[var(--bo-panel)] hover:text-[var(--bo-fg)]"
       }
     >
       <span className="min-w-0">
         <span className="flex items-center gap-2">
-          <FileIcon className="h-4 w-4 shrink-0 text-current/70" />
+          <Icon name="file" className="h-4 w-4 shrink-0 text-current/70" />
           <span className="truncate text-sm font-medium">{keyLeaf}</span>
         </span>
         <span className="mt-1 flex flex-wrap gap-2 text-[11px] text-current/70">

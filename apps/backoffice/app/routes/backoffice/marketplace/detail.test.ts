@@ -31,7 +31,7 @@ vi.mock("@/fragno/auth/backoffice-principal.server", () => ({
 vi.mock("@/fragno/automation/tanstack/server", () => ({
   fetchAutomationCollectionSource: fetchAutomationCollectionSourceMock,
 }));
-vi.mock("@/components/client-only", () => ({
+vi.mock("@fragno-private/design-system/client-only", () => ({
   ClientOnly: ({ children }: { children: () => never }) => children(),
 }));
 vi.mock("./artifact-files.server", () => ({

@@ -1,6 +1,9 @@
-import { Form, Link, redirect, useActionData, useLocation, useNavigation } from "react-router";
+import { Button, ButtonLink } from "@fragno-private/design-system/button";
+import { FormContainer } from "@fragno-private/design-system/form-container";
+import { Input } from "@fragno-private/design-system/input";
+import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
+import { Form, redirect, useActionData, useLocation, useNavigation } from "react-router";
 
-import { BackofficePageHeader, FormContainer } from "@/components/backoffice";
 import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import {
   MARKETPLACE_CATEGORIES,
@@ -291,16 +294,16 @@ export default function BackofficeMarketplaceManage({ loaderData }: Route.Compon
         description={listing.summary}
         actions={
           listing.status === "published" ? (
-            <Link
+            <ButtonLink
               to={marketplaceListingPath(listing.listingId, {
                 kind: "org",
                 organization,
                 label: organization.id,
               })}
-              className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-4 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+              variant="secondary"
             >
               View public page
-            </Link>
+            </ButtonLink>
           ) : null
         }
       />
@@ -336,7 +339,7 @@ export default function BackofficeMarketplaceManage({ loaderData }: Route.Compon
                   required
                   rows={8}
                   defaultValue={listing.description}
-                  className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] outline-none focus:border-[color:var(--bo-accent)]"
+                  className="bo-input px-3 py-2 text-sm"
                 />
               </label>
               <label className="flex flex-col gap-1">
@@ -346,7 +349,7 @@ export default function BackofficeMarketplaceManage({ loaderData }: Route.Compon
                 <select
                   name="category"
                   defaultValue={listing.category}
-                  className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] outline-none focus:border-[color:var(--bo-accent)]"
+                  className="bo-input px-3 py-2 text-sm"
                 >
                   {MARKETPLACE_CATEGORIES.map((category) => (
                     <option key={category} value={category}>
@@ -361,13 +364,9 @@ export default function BackofficeMarketplaceManage({ loaderData }: Route.Compon
                 defaultValue={listing.tags.join(", ")}
                 required={false}
               />
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-4 py-2 text-[10px] font-semibold tracking-[0.2em] text-[var(--bo-fg)] uppercase hover:border-[color:var(--bo-accent)] disabled:opacity-60"
-              >
+              <Button type="submit" disabled={isSubmitting} variant="secondary">
                 Save metadata
-              </button>
+              </Button>
             </Form>
           </FormContainer>
 
@@ -380,13 +379,9 @@ export default function BackofficeMarketplaceManage({ loaderData }: Route.Compon
               <input type="hidden" name="intent" value="add-version" />
               <input type="hidden" name="organizationSlug" value={organization.slug} />
               <MetadataField label="Version" name="version" defaultValue="" />
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-4 py-2 text-[10px] font-semibold tracking-[0.2em] text-[var(--bo-fg)] uppercase hover:border-[color:var(--bo-accent)] disabled:opacity-60"
-              >
+              <Button type="submit" disabled={isSubmitting} variant="secondary">
                 Add draft version
-              </button>
+              </Button>
             </Form>
           </FormContainer>
         </div>
@@ -450,13 +445,14 @@ export default function BackofficeMarketplaceManage({ loaderData }: Route.Compon
                         <input type="hidden" name="intent" value="publish" />
                         <input type="hidden" name="organizationSlug" value={organization.slug} />
                         <input type="hidden" name="version" value={version.version} />
-                        <button
+                        <Button
                           type="submit"
                           disabled={isSubmitting}
-                          className="w-full border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[9px] font-semibold tracking-[0.18em] text-[var(--bo-accent-fg)] uppercase disabled:opacity-60"
+                          variant="accent"
+                          className="w-full"
                         >
                           {canRestore ? "Restore listing" : "Publish version"}
-                        </button>
+                        </Button>
                       </Form>
                     ) : null}
                   </article>
@@ -464,16 +460,17 @@ export default function BackofficeMarketplaceManage({ loaderData }: Route.Compon
               })}
             </div>
             {hasNextVersionPage && nextVersionCursor ? (
-              <Link
+              <ButtonLink
                 to={marketplaceListingManagePath({
                   listingId: listing.listingId,
                   organizationSlug: organization.slug,
                   result: { versionCursor: nextVersionCursor },
                 })}
-                className="mt-3 block border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-center text-[9px] font-semibold tracking-[0.18em] text-[var(--bo-muted)] uppercase hover:border-[color:var(--bo-accent)]"
+                variant="secondary"
+                className="mt-3 w-full"
               >
                 Older versions →
-              </Link>
+              </ButtonLink>
             ) : null}
           </section>
         </aside>
@@ -498,12 +495,7 @@ function MetadataField({
       <span className="text-[10px] tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
         {label}
       </span>
-      <input
-        name={name}
-        required={required}
-        defaultValue={defaultValue}
-        className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] outline-none focus:border-[color:var(--bo-accent)]"
-      />
+      <Input name={name} required={required} defaultValue={defaultValue} />
     </label>
   );
 }

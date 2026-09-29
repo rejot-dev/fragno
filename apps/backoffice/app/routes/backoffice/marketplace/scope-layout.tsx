@@ -1,7 +1,7 @@
+import { OverflowTabRow } from "@fragno-private/design-system/overflow-tab-row";
 import { Outlet } from "react-router";
 
 import type { BackofficeRoutableScopeSelection } from "@/backoffice-runtime/resolved-scope";
-import { OverflowTabRow } from "@/components/backoffice/overflow-tab-row";
 import { findBackofficeMe } from "@/fragno/auth/auth-server";
 
 import { buildBackofficeLoginPath } from "../auth-navigation";
@@ -71,7 +71,7 @@ export default function BackofficeMarketplaceScopeLayout({
   const activeTab = currentTabFromPath(currentPath);
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-1 flex-col">
       <MarketplaceWorkspaceHeader selectedScope={loaderData.selectedScope} activeTab={activeTab} />
       <Outlet
         context={

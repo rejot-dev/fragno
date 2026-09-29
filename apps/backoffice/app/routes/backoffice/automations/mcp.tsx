@@ -1,4 +1,7 @@
 import { MCP_OAUTH_REDIRECT_URI_QUERY_PARAMETER } from "@fragno-dev/mcp-fragment/types";
+import { Button } from "@fragno-private/design-system/button";
+import { FormField } from "@fragno-private/design-system/form-container";
+import { Input } from "@fragno-private/design-system/input";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Form,
@@ -12,7 +15,6 @@ import {
 import { Streamdown } from "streamdown";
 
 import { backofficeRouteScopeSinglePathSegmentFromParams } from "@/backoffice-runtime/route-scope";
-import { FormField } from "@/components/backoffice";
 import { mcpPublicAddress } from "@/fragno/scoped-public-fragment-routes";
 import { jsonSchemaToTypeScript, type JsonSchemaObject } from "@/lib/zod/zod-formatter";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
@@ -234,11 +236,11 @@ function ServerConfigureForm({
 }) {
   const tabClass = (tab: AuthTab) =>
     authTab === tab
-      ? "border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)]"
+      ? "border-[color:var(--bo-selected-border)] bg-[var(--bo-selected-bg)] shadow-[var(--bo-selected-shadow)] text-[var(--bo-fg)]"
       : "border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] text-[var(--bo-muted)] hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]";
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden border border-r-0 border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 max-lg:border-l-0 lg:first:border-t-0">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden border border-r-0 border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 max-lg:border-l-0">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
@@ -287,60 +289,40 @@ function ServerConfigureForm({
         <input type="hidden" name="authMode" value={authTab} />
         <div className="grid gap-4 md:grid-cols-2">
           <FormField label="Slug" hint="Lowercase letters, numbers, and dashes.">
-            <input
-              name="slug"
-              placeholder="docs"
-              required
-              className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)]"
-            />
+            <Input name="slug" placeholder="docs" required className="w-full" />
           </FormField>
           <FormField label="Display name" hint="Optional.">
-            <input
-              name="name"
-              placeholder="Docs MCP"
-              className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)]"
-            />
+            <Input name="name" placeholder="Docs MCP" className="w-full" />
           </FormField>
           <FormField label="Endpoint URL" hint="Streamable HTTP MCP endpoint.">
-            <input
+            <Input
               type="url"
               name="endpointUrl"
               placeholder="https://example.com/mcp"
               required
-              className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)]"
+              className="w-full"
             />
           </FormField>
           {authTab === "oauth" ? (
             <>
               <FormField label="OAuth scopes" hint="Space or comma separated.">
-                <input
-                  name="scopes"
-                  placeholder="tools read"
-                  className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)]"
-                />
+                <Input name="scopes" placeholder="tools read" className="w-full" />
               </FormField>
               <FormField label="Client ID" hint="Optional for providers with dynamic clients.">
-                <input
-                  name="clientId"
-                  className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)]"
-                />
+                <Input name="clientId" className="w-full" />
               </FormField>
               <FormField label="Client secret" hint="Optional for OAuth servers that require it.">
-                <input
-                  type="password"
-                  name="clientSecret"
-                  className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)]"
-                />
+                <Input type="password" name="clientSecret" className="w-full" />
               </FormField>
             </>
           ) : authTab === "bearer" ? (
             <FormField label="Bearer token" hint="Stored for requests to this MCP server.">
-              <input
+              <Input
                 type="password"
                 name="token"
                 placeholder="mcp_..."
                 required
-                className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)]"
+                className="w-full"
               />
             </FormField>
           ) : (
@@ -349,15 +331,11 @@ function ServerConfigureForm({
             </div>
           )}
         </div>
-        <button
-          type="submit"
-          disabled={saving}
-          className="mt-4 w-full border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] active:scale-[0.96] disabled:opacity-60"
-        >
+        <Button variant="accent" type="submit" disabled={saving} className="mt-4 w-full">
           {saving
             ? "Configuring…"
             : `Configure ${authTab === "oauth" ? "OAuth" : authTab === "bearer" ? "bearer" : "no auth"} server`}
-        </button>
+        </Button>
       </Form>
     </div>
   );
@@ -507,13 +485,9 @@ function ServerStatusPanel({
           <Form method="post">
             <input type="hidden" name="intent" value="refresh-server" />
             <input type="hidden" name="slug" value={server.slug} />
-            <button
-              type="submit"
-              disabled={checkingServer}
-              className="min-h-10 border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-transform active:scale-[0.96] disabled:opacity-60"
-            >
+            <Button variant="accent" type="submit" disabled={checkingServer}>
               {checkingServer ? "Refreshing…" : "Refresh"}
-            </button>
+            </Button>
           </Form>
           <Form method="post">
             <input type="hidden" name="intent" value="delete-server" />
@@ -612,7 +586,7 @@ function ToolsList({ tools }: { tools: McpServerToolsState["tools"] }) {
             >
               Search Tools
             </label>
-            <input
+            <Input
               id="automation-mcp-tool-search"
               type="search"
               value={query}
@@ -620,7 +594,7 @@ function ToolsList({ tools }: { tools: McpServerToolsState["tools"] }) {
                 setQuery(event.target.value);
               }}
               placeholder="Search by tool name…"
-              className="mt-2 min-h-11 w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] outline-none placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)]"
+              className="mt-2 min-h-11 w-full"
             />
           </div>
           <div>
@@ -641,7 +615,7 @@ function ToolsList({ tools }: { tools: McpServerToolsState["tools"] }) {
                   }}
                   className={`border-r border-[color:var(--bo-border)] px-3 py-2 text-[10px] font-semibold tracking-[0.18em] uppercase last:border-r-0 ${
                     representationMode === mode
-                      ? "bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)]"
+                      ? "bg-[var(--bo-selected-bg)] text-[var(--bo-fg)]"
                       : "bg-[var(--bo-panel-2)] text-[var(--bo-muted-2)] hover:text-[var(--bo-fg)]"
                   }`}
                 >
@@ -738,7 +712,7 @@ function ServerDetail({
   const showBearerControls = server.authMode === "bearer";
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden border border-r-0 border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 max-lg:border-l-0 lg:first:border-t-0">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden border border-r-0 border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 max-lg:border-l-0">
       <div className="space-y-4">
         <ServerStatusPanel
           server={server}
@@ -762,18 +736,15 @@ function ServerDetail({
                   ? "OAuth needs attention for this server. Start the provider flow, then this page will refresh the tool cache automatically when you return."
                   : "Re-run OAuth to replace or expand the current provider authorization."}
               </p>
-              <input
+              <Input
                 name="scope"
                 aria-label="OAuth scope override"
                 placeholder="scope override (optional)"
-                className="mt-3 min-h-10 w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-xs text-[var(--bo-fg)] outline-none placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)]"
+                className="mt-3 min-h-10 w-full text-xs"
               />
-              <button
-                type="submit"
-                className="mt-3 min-h-10 border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-transform active:scale-[0.96]"
-              >
+              <Button variant="accent" type="submit" className="mt-3">
                 {authNeedsAttention ? "Start OAuth" : "Reauthorize OAuth"}
-              </button>
+              </Button>
             </Form>
           ) : null}
 
@@ -792,20 +763,17 @@ function ServerDetail({
                   ? "Save a bearer token before Backoffice can discover tools for this server."
                   : "Save a replacement bearer token if the current token is revoked, expired, or missing scopes."}
               </p>
-              <input
+              <Input
                 type="password"
                 name="token"
                 aria-label="Bearer token"
                 placeholder="Bearer token"
                 required
-                className="mt-3 min-h-10 w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-xs text-[var(--bo-fg)] outline-none placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)]"
+                className="mt-3 min-h-10 w-full text-xs"
               />
-              <button
-                type="submit"
-                className="mt-3 min-h-10 border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-transform active:scale-[0.96]"
-              >
+              <Button variant="accent" type="submit" className="mt-3">
                 {authNeedsAttention ? "Save token" : "Update token"}
-              </button>
+              </Button>
             </Form>
           ) : null}
         </div>
@@ -935,12 +903,12 @@ export default function BackofficeOrganizationMcpConfiguration() {
     : undefined;
 
   const configureLinkClass = isConfiguring
-    ? "block w-full border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-3 text-left text-[var(--bo-accent-fg)]"
+    ? "block w-full border border-[color:var(--bo-selected-border)] bg-[var(--bo-selected-bg)] shadow-[var(--bo-selected-shadow)] px-3 py-3 text-left text-[var(--bo-fg)]"
     : "block w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-3 text-left text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]";
 
   return (
     <section className="grid min-h-[min(760px,calc(100vh-15rem))] flex-1 grid-rows-1 gap-4 lg:grid-cols-[minmax(280px,380px)_minmax(0,1fr)]">
-      <div className="flex min-h-0 flex-col gap-4 border border-t-0 border-l-0 border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 max-lg:border-r-0">
+      <div className="flex min-h-0 flex-col gap-4 border border-l-0 border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 max-lg:border-r-0">
         <div className="flex items-center justify-between">
           <div>
             <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">MCP</p>
@@ -979,7 +947,7 @@ export default function BackofficeOrganizationMcpConfiguration() {
                     aria-current={isSelected ? "page" : undefined}
                     className={
                       isSelected
-                        ? "block w-full border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-3 text-left text-[var(--bo-accent-fg)]"
+                        ? "block w-full border border-[color:var(--bo-selected-border)] bg-[var(--bo-selected-bg)] px-3 py-3 text-left text-[var(--bo-fg)] shadow-[var(--bo-selected-shadow)]"
                         : "block w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-3 text-left text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
                     }
                   >
@@ -1055,7 +1023,7 @@ export default function BackofficeOrganizationMcpConfiguration() {
             }
           />
         ) : (
-          <div className="flex min-h-0 flex-1 items-center justify-center border border-r-0 border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-8 text-center max-lg:border-l-0 lg:first:border-t-0">
+          <div className="flex min-h-0 flex-1 items-center justify-center border border-r-0 border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-8 text-center max-lg:border-l-0">
             <div>
               <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
                 No server selected

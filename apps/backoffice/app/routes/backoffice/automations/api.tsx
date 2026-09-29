@@ -7,6 +7,9 @@ import {
   type WebhookVerificationConfig,
 } from "@fragno-dev/api-fragment/webhooks/verification";
 import { createRouteCaller, type RouteCallerForFragment } from "@fragno-dev/core/api";
+import { Button } from "@fragno-private/design-system/button";
+import { FormField } from "@fragno-private/design-system/form-container";
+import { Input } from "@fragno-private/design-system/input";
 import { useEffect, useMemo, useState } from "react";
 import {
   Form,
@@ -22,7 +25,6 @@ import type { RouterContextProvider } from "react-router";
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import { backofficeRouteScopeSinglePathSegmentFromParams } from "@/backoffice-runtime/route-scope";
 import { isBackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
-import { FormField } from "@/components/backoffice";
 import type { ApiFragment } from "@/fragno/api";
 import {
   apiPublicAddress,
@@ -720,7 +722,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
 
 const tabButtonClass = (active: boolean) =>
   active
-    ? "border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)]"
+    ? "border-[color:var(--bo-selected-border)] bg-[var(--bo-selected-bg)] shadow-[var(--bo-selected-shadow)] text-[var(--bo-fg)]"
     : "border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] text-[var(--bo-muted)] hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]";
 
 function SegmentedControl<T extends string>({
@@ -770,7 +772,7 @@ function CompactSegmentedControl<T extends string>({
           }}
           className={`min-h-9 border-r border-[color:var(--bo-border)] px-2 text-[10px] font-semibold tracking-[0.12em] uppercase last:border-r-0 active:scale-[0.96] ${
             value === option.value
-              ? "bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)]"
+              ? "bg-[var(--bo-selected-bg)] text-[var(--bo-fg)]"
               : "text-[var(--bo-muted)] hover:text-[var(--bo-fg)]"
           }`}
         >
@@ -781,8 +783,7 @@ function CompactSegmentedControl<T extends string>({
   );
 }
 
-const inputClass =
-  "w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] outline-none placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)]";
+const inputClass = "bo-input w-full px-3 py-2 text-sm";
 const selectClass = inputClass;
 
 function ConnectionConfigureForm({
@@ -796,7 +797,7 @@ function ConnectionConfigureForm({
 }) {
   const needsTokenEndpoint = authMode === "oauth" || authMode === "client_credentials";
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden border border-r-0 border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 max-lg:border-l-0 lg:first:border-t-0">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden border border-r-0 border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 max-lg:border-l-0">
       <div>
         <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
           Configure
@@ -827,29 +828,29 @@ function ConnectionConfigureForm({
         <input type="hidden" name="authMode" value={authMode} />
         <div className="grid gap-4 md:grid-cols-2">
           <FormField label="Slug" hint="Stable lowercase id used by automation scripts.">
-            <input name="slug" required placeholder="stripe" className={inputClass} />
+            <Input name="slug" required placeholder="stripe" className="w-full" />
           </FormField>
           <FormField label="Display name" hint="Optional.">
-            <input name="name" placeholder="Stripe" className={inputClass} />
+            <Input name="name" placeholder="Stripe" className="w-full" />
           </FormField>
           <FormField label="Base URL" hint="Requests use relative paths under this origin.">
-            <input
+            <Input
               name="baseUrl"
               type="url"
               required
               placeholder="https://api.stripe.com"
-              className={inputClass}
+              className="w-full"
             />
           </FormField>
 
           {authMode === "bearer" ? (
             <FormField label="Bearer token" hint="Stored server-side for this connection.">
-              <input
+              <Input
                 name="token"
                 type="password"
                 required
                 placeholder="sk_..."
-                className={inputClass}
+                className="w-full"
               />
             </FormField>
           ) : null}
@@ -857,15 +858,15 @@ function ConnectionConfigureForm({
           {authMode === "basic" ? (
             <>
               <FormField label="Username" hint="For Jira, use the Atlassian account email.">
-                <input name="username" required autoComplete="username" className={inputClass} />
+                <Input name="username" required autoComplete="username" className="w-full" />
               </FormField>
               <FormField label="Password" hint="For Jira, use an Atlassian API token.">
-                <input
+                <Input
                   name="password"
                   type="password"
                   required
                   autoComplete="current-password"
-                  className={inputClass}
+                  className="w-full"
                 />
               </FormField>
             </>
@@ -873,35 +874,35 @@ function ConnectionConfigureForm({
 
           {authMode === "oauth" ? (
             <FormField label="Authorization endpoint" hint="Provider OAuth authorization URL.">
-              <input name="authorizationEndpoint" type="url" required className={inputClass} />
+              <Input name="authorizationEndpoint" type="url" required className="w-full" />
             </FormField>
           ) : null}
 
           {needsTokenEndpoint ? (
             <>
               <FormField label="Token endpoint" hint="Provider token URL.">
-                <input name="tokenEndpoint" type="url" required className={inputClass} />
+                <Input name="tokenEndpoint" type="url" required className="w-full" />
               </FormField>
               <FormField label="Client ID">
-                <input name="clientId" required className={inputClass} />
+                <Input name="clientId" required className="w-full" />
               </FormField>
               <FormField
                 label="Client secret"
                 hint={authMode === "oauth" ? "Optional for public PKCE clients." : undefined}
               >
-                <input
+                <Input
                   name="clientSecret"
                   type="password"
                   required={authMode === "client_credentials"}
-                  className={inputClass}
+                  className="w-full"
                 />
               </FormField>
               <FormField label="Scopes" hint="Space or comma separated.">
-                <input name="scopes" placeholder="read write" className={inputClass} />
+                <Input name="scopes" placeholder="read write" className="w-full" />
               </FormField>
               {authMode === "client_credentials" ? (
                 <FormField label="Audience" hint="Optional token audience.">
-                  <input name="audience" className={inputClass} />
+                  <Input name="audience" className="w-full" />
                 </FormField>
               ) : null}
               <FormField label="Token endpoint auth method">
@@ -918,13 +919,9 @@ function ConnectionConfigureForm({
             </>
           ) : null}
         </div>
-        <button
-          type="submit"
-          disabled={saving}
-          className="mt-4 w-full border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-transform active:scale-[0.96] disabled:opacity-60"
-        >
+        <Button variant="accent" type="submit" disabled={saving} className="mt-4 w-full">
           {saving ? "Saving…" : "Save API connection"}
-        </button>
+        </Button>
       </Form>
     </div>
   );
@@ -944,7 +941,7 @@ function ConnectionDetail({
   const [headersValue, setHeadersValue] = useState('{"Accept":"application/json"}');
   const [requestBodyMode, setRequestBodyMode] = useState<RequestBodyMode>("empty");
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden border border-r-0 border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 max-lg:border-l-0 lg:first:border-t-0">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden border border-r-0 border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 max-lg:border-l-0">
       <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
@@ -957,15 +954,14 @@ function ConnectionDetail({
             <p className="mt-2 text-sm break-all text-[var(--bo-muted)]">{connection.baseUrl}</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
+            <Button
+              variant="secondary"
               onClick={() => {
                 setEditingAuth((editing) => !editing);
               }}
-              className="min-h-10 border border-[color:var(--bo-border)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase active:scale-[0.96]"
             >
               {editingAuth ? "Close edit" : "Edit"}
-            </button>
+            </Button>
             <Form method="post">
               <input type="hidden" name="intent" value="delete-connection" />
               <input type="hidden" name="slug" value={connection.slug} />
@@ -1009,12 +1005,9 @@ function ConnectionDetail({
               <p className="mt-2 text-sm text-[var(--bo-muted)]">
                 Clear stored credentials for this connection.
               </p>
-              <button
-                type="submit"
-                className="mt-3 min-h-10 border border-[color:var(--bo-border)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase active:scale-[0.96]"
-              >
+              <Button variant="secondary" type="submit" className="mt-3">
                 Clear
-              </button>
+              </Button>
             </Form>
           ) : null}
           {connection.authMode === "oauth" ? (
@@ -1030,11 +1023,11 @@ function ConnectionDetail({
               <p className="mt-2 text-sm text-[var(--bo-muted)]">
                 Start or restart provider authorization for this connection.
               </p>
-              <input
+              <Input
                 name="scopes"
                 aria-label="OAuth scope override"
                 placeholder="scope override"
-                className={`${inputClass} mt-3`}
+                className="mt-3 w-full"
               />
               <textarea
                 name="extraAuthorizationParams"
@@ -1042,12 +1035,9 @@ function ConnectionDetail({
                 placeholder='extra params JSON, e.g. {"prompt":"consent"}'
                 className={`${inputClass} mt-3 min-h-20 font-mono text-xs`}
               />
-              <button
-                type="submit"
-                className="mt-3 min-h-10 border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase active:scale-[0.96]"
-              >
+              <Button variant="accent" type="submit" className="mt-3">
                 Start OAuth
-              </button>
+              </Button>
             </Form>
           ) : null}
 
@@ -1064,20 +1054,17 @@ function ConnectionDetail({
               <p className="mt-2 text-sm text-[var(--bo-muted)]">
                 Replace a missing, expired, or revoked bearer token.
               </p>
-              <input
+              <Input
                 type="password"
                 name="token"
                 aria-label="Bearer token"
                 required
                 placeholder="Bearer token"
-                className={`${inputClass} mt-3`}
+                className="mt-3 w-full"
               />
-              <button
-                type="submit"
-                className="mt-3 min-h-10 border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase active:scale-[0.96]"
-              >
+              <Button variant="accent" type="submit" className="mt-3">
                 Save token
-              </button>
+              </Button>
             </Form>
           ) : null}
         </div>
@@ -1101,17 +1088,17 @@ function ConnectionDetail({
           </FormField>
           <div className="min-w-72 flex-1">
             <FormField label="Path" hint="Relative to base URL.">
-              <input name="path" required placeholder="/v1/customers" className={inputClass} />
+              <Input name="path" required placeholder="/v1/customers" className="w-full" />
             </FormField>
           </div>
           <FormField label="Timeout ms">
-            <input
+            <Input
               name="timeoutMs"
               type="number"
               min="1"
               max="120000"
               placeholder="30000"
-              className={inputClass}
+              className="w-full"
             />
           </FormField>
         </div>
@@ -1177,12 +1164,9 @@ function ConnectionDetail({
             ) : null}
           </div>
         </div>
-        <button
-          type="submit"
-          className="mt-4 w-full border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase active:scale-[0.96]"
-        >
+        <Button variant="accent" type="submit" className="mt-4 w-full">
           {submittingIntent === "execute-request" ? "Sending…" : "Send test request"}
-        </button>
+        </Button>
         {requestResult?.connectionSlug === connection.slug ? (
           <div className="mt-4 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3">
             <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
@@ -1264,7 +1248,7 @@ function WebhookConfigureForm({
   };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden border border-r-0 border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 max-lg:border-l-0 lg:first:border-t-0">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden border border-r-0 border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 max-lg:border-l-0">
       <div>
         <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
           Configure
@@ -1289,7 +1273,7 @@ function WebhookConfigureForm({
         <input type="hidden" name="endpointId" value={endpointId} />
         <div className="grid gap-4 md:grid-cols-2">
           <FormField label="Display name">
-            <input
+            <Input
               name="name"
               required
               placeholder="Stripe webhooks"
@@ -1297,15 +1281,15 @@ function WebhookConfigureForm({
               onChange={(event) => {
                 setName(event.currentTarget.value);
               }}
-              className={inputClass}
+              className="w-full"
             />
           </FormField>
           <FormField label="Endpoint ID">
-            <input
+            <Input
               value={endpointId}
               readOnly
               placeholder="Generated from display name"
-              className={inputClass}
+              className="w-full"
             />
           </FormField>
           <FormField label="Status" hint="Draft reserves the URL but rejects deliveries.">
@@ -1327,13 +1311,13 @@ function WebhookConfigureForm({
               Webhook URL
             </p>
             {endpointUrl ? (
-              <button
-                type="button"
+              <Button
+                variant="secondary"
                 onClick={() => void copyWebhookUrl()}
-                className="border border-[color:var(--bo-accent)] px-2 py-1 text-[10px] font-semibold tracking-[0.18em] text-[var(--bo-accent-fg)] uppercase enabled:active:scale-[0.96]"
+                className="shrink-0"
               >
                 {copiedWebhookUrl ? "Copied" : "Copy"}
-              </button>
+              </Button>
             ) : null}
           </div>
           <p className="mt-2 font-mono text-xs break-all text-[var(--bo-accent-fg)]">
@@ -1364,7 +1348,7 @@ function WebhookConfigureForm({
               label="JSON body path"
               hint="Dot or comma separated path to provider delivery id."
             >
-              <input
+              <Input
                 name="deliveryJsonPath"
                 defaultValue={
                   endpoint?.deliveryIdentity.type === "jsonBodyPath"
@@ -1372,12 +1356,12 @@ function WebhookConfigureForm({
                     : undefined
                 }
                 placeholder="event.id"
-                className={inputClass}
+                className="w-full"
               />
             </FormField>
           ) : (
             <FormField label={`${deliveryMode === "header" ? "Header" : "Query"} name`}>
-              <input
+              <Input
                 name="deliveryName"
                 defaultValue={
                   endpoint?.deliveryIdentity.type === "header" ||
@@ -1386,7 +1370,7 @@ function WebhookConfigureForm({
                     : undefined
                 }
                 placeholder={deliveryMode === "header" ? "x-delivery-id" : "delivery_id"}
-                className={inputClass}
+                className="w-full"
               />
             </FormField>
           )}
@@ -1420,7 +1404,7 @@ function WebhookConfigureForm({
                 delivery.
               </p>
               <FormField label="Bearer token">
-                <input type="password" name="webhookBearerToken" required className={inputClass} />
+                <Input type="password" name="webhookBearerToken" required className="w-full" />
               </FormField>
             </>
           ) : authMode === "apiKey" ? (
@@ -1445,17 +1429,17 @@ function WebhookConfigureForm({
                   </select>
                 </FormField>
                 <FormField label="Name">
-                  <input
+                  <Input
                     name="apiKeyName"
                     required
                     defaultValue={
                       endpoint?.authConfig.type === "apiKey" ? endpoint.authConfig.name : undefined
                     }
-                    className={inputClass}
+                    className="w-full"
                   />
                 </FormField>
                 <FormField label="Secret">
-                  <input type="password" name="apiKeySecret" required className={inputClass} />
+                  <Input type="password" name="apiKeySecret" required className="w-full" />
                 </FormField>
               </div>
             </>
@@ -1466,10 +1450,10 @@ function WebhookConfigureForm({
               </p>
               <div className="grid gap-4 md:grid-cols-2">
                 <FormField label="Username">
-                  <input name="basicUsername" required className={inputClass} />
+                  <Input name="basicUsername" required className="w-full" />
                 </FormField>
                 <FormField label="Password">
-                  <input type="password" name="basicPassword" required className={inputClass} />
+                  <Input type="password" name="basicPassword" required className="w-full" />
                 </FormField>
               </div>
             </>
@@ -1483,7 +1467,7 @@ function WebhookConfigureForm({
               <input type="hidden" name="signatureEncoding" value={hmacEncoding} />
               <div className="grid gap-4 md:grid-cols-3">
                 <FormField label="Secret" hint="Shared signing secret.">
-                  <input type="password" name="hmacSecret" required className={inputClass} />
+                  <Input type="password" name="hmacSecret" required className="w-full" />
                 </FormField>
                 <div className="space-y-2">
                   <p className="text-[11px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
@@ -1534,7 +1518,7 @@ function WebhookConfigureForm({
                   </select>
                 </FormField>
                 <FormField label="Signature name" hint="Header or query key.">
-                  <input
+                  <Input
                     name="signatureName"
                     required
                     defaultValue={
@@ -1543,18 +1527,18 @@ function WebhookConfigureForm({
                         : undefined
                     }
                     placeholder="x-signature"
-                    className={inputClass}
+                    className="w-full"
                   />
                 </FormField>
                 <FormField label="Signature prefix" hint="Optional, e.g. sha256=.">
-                  <input
+                  <Input
                     name="signaturePrefix"
                     defaultValue={
                       endpoint?.authConfig.type === "hmac"
                         ? endpoint.authConfig.signature.prefix
                         : undefined
                     }
-                    className={inputClass}
+                    className="w-full"
                   />
                 </FormField>
               </div>
@@ -1579,7 +1563,7 @@ function WebhookConfigureForm({
               {signedPayloadMode === "timestampedBody" ? (
                 <div className="grid gap-4 md:grid-cols-4">
                   <FormField label="Signed payload prefix" hint="Placed before the timestamp.">
-                    <input
+                    <Input
                       name="timestampPrefix"
                       defaultValue={
                         endpoint?.authConfig.type === "hmac" &&
@@ -1588,11 +1572,11 @@ function WebhookConfigureForm({
                           : ""
                       }
                       placeholder="v0:"
-                      className={inputClass}
+                      className="w-full"
                     />
                   </FormField>
                   <FormField label="Timestamp header" hint="Header containing provider time.">
-                    <input
+                    <Input
                       name="timestampHeader"
                       required
                       defaultValue={
@@ -1602,11 +1586,11 @@ function WebhookConfigureForm({
                           : undefined
                       }
                       placeholder="x-timestamp"
-                      className={inputClass}
+                      className="w-full"
                     />
                   </FormField>
                   <FormField label="Delimiter" hint="Placed between timestamp and body.">
-                    <input
+                    <Input
                       name="timestampDelimiter"
                       defaultValue={
                         endpoint?.authConfig.type === "hmac" &&
@@ -1614,11 +1598,11 @@ function WebhookConfigureForm({
                           ? endpoint.authConfig.signedPayload.delimiter
                           : "."
                       }
-                      className={inputClass}
+                      className="w-full"
                     />
                   </FormField>
                   <FormField label="Tolerance seconds" hint="Maximum clock drift allowed.">
-                    <input
+                    <Input
                       name="toleranceSeconds"
                       type="number"
                       min="1"
@@ -1628,7 +1612,7 @@ function WebhookConfigureForm({
                           ? endpoint.authConfig.signedPayload.toleranceSeconds
                           : 300
                       }
-                      className={inputClass}
+                      className="w-full"
                     />
                   </FormField>
                 </div>
@@ -1637,13 +1621,14 @@ function WebhookConfigureForm({
           ) : null}
         </div>
 
-        <button
+        <Button
+          variant="accent"
           type="submit"
           disabled={saving || !endpointId}
-          className="mt-5 w-full border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-transform enabled:active:scale-[0.96] disabled:opacity-60"
+          className="mt-5 w-full"
         >
           {saving ? "Saving…" : "Save webhook endpoint"}
-        </button>
+        </Button>
       </Form>
     </div>
   );
@@ -1671,7 +1656,7 @@ function WebhookDetail({
   saving: boolean;
 }) {
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden border border-r-0 border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 max-lg:border-l-0 lg:first:border-t-0">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden border border-r-0 border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 max-lg:border-l-0">
       <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
@@ -1717,7 +1702,7 @@ function WebhookDetail({
 
 function EmptyState({ title, description }: { title: string; description: string }) {
   return (
-    <div className="flex min-h-0 flex-1 items-center justify-center border border-r-0 border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-8 text-center max-lg:border-l-0 lg:first:border-t-0">
+    <div className="flex min-h-0 flex-1 items-center justify-center border border-r-0 border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-8 text-center max-lg:border-l-0">
       <div>
         <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
           Nothing selected
@@ -1776,7 +1761,7 @@ export default function BackofficeAutomationApiConfiguration() {
 
   return (
     <section className="grid min-h-[min(820px,calc(100vh-15rem))] flex-1 grid-rows-1 gap-4 lg:grid-cols-[minmax(300px,400px)_minmax(0,1fr)]">
-      <div className="flex min-h-0 flex-col gap-4 border border-t-0 border-l-0 border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 max-lg:border-r-0">
+      <div className="flex min-h-0 flex-col gap-4 border border-l-0 border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 max-lg:border-r-0">
         <div>
           <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">API</p>
           <h2 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">Connections & webhooks</h2>
