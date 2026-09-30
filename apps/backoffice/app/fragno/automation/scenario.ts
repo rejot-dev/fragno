@@ -89,6 +89,7 @@ import {
   createScenarioCollectionDatabase,
   type ScenarioCollectionDatabase,
 } from "@/fragno/tanstack/scenario-collection-database";
+import type { CreateSandboxRuntimeProviders } from "@/sandbox/contracts";
 
 import { InMemoryAutomationsObject } from "../../../workers/automations.do";
 import { InMemoryTelegramObject } from "../../../workers/telegram.do";
@@ -380,6 +381,7 @@ export type BackofficeScenarioDefinitionInput<TVars extends ScenarioVars = Scena
   vars?: () => TVars;
   fakes?: (ctx: { fake: ScenarioFakeFactory }) => ScenarioFakes;
   objectFactories?: LocalObjectFactoryOverrides;
+  createSandboxProviders?: CreateSandboxRuntimeProviders;
   durableHooks?: LocalBackofficeDurableHooks;
   setup?: (builders: BackofficeScenarioStepBuilders<TVars>) => BackofficeScenarioStep[];
   steps: (builders: BackofficeScenarioStepBuilders<TVars>) => BackofficeScenarioStep[];
@@ -4821,6 +4823,7 @@ export const runBackofficeScenario = async <TVars extends ScenarioVars = Scenari
   const runtime = await createInMemoryBackofficeRuntime({
     env: scenario.env,
     sqliteDataDirectory: scenario.options?.sqliteDataDirectory,
+    createSandboxProviders: scenario.createSandboxProviders,
     kernelObserver,
     readAutomationSource: async ({ execution, path }) => {
       const readSource = await snapshotTestAutomationSourceReader(

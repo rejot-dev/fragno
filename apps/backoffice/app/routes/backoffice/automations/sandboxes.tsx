@@ -188,6 +188,7 @@ export async function action({ request, params, context, url }: Route.ActionArgs
         timeoutMs,
         result: {
           ok: false,
+          code: "sandbox_id_required",
           reason: "internal_error",
           message: "Sandbox id is required.",
           retryable: false,
@@ -203,6 +204,7 @@ export async function action({ request, params, context, url }: Route.ActionArgs
         timeoutMs,
         result: {
           ok: false,
+          code: "command_required",
           reason: "command_failed",
           message: "Command cannot be empty.",
           retryable: false,
@@ -227,6 +229,7 @@ export async function action({ request, params, context, url }: Route.ActionArgs
         timeoutMs,
         result: {
           ok: false,
+          code: "internal_error",
           reason: "internal_error",
           message: toErrorMessage(error),
           retryable: false,

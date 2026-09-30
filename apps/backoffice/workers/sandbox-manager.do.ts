@@ -16,9 +16,10 @@ import type {
   SandboxProvider,
 } from "@/fragno/sandbox-manager/contracts";
 import { createSandboxManagerRuntime } from "@/fragno/sandbox-manager/sandbox-manager";
+import { createCloudflareSandboxPhysicalId } from "@/sandbox/cloudflare-sandbox-id";
 import { createCloudflareSandboxProvider } from "@/sandbox/cloudflare-sandbox-provider";
 import { CLOUDFLARE_SANDBOX_PROVIDER } from "@/sandbox/contracts";
-import type { SandboxCommandResult, SandboxRuntimeProvider } from "@/sandbox/contracts";
+import type { SandboxCommandResult, SandboxRuntimeProviders } from "@/sandbox/contracts";
 
 import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-object";
 import type { BackofficeObjectImplementation } from "./lib/backoffice-object-implementation";
@@ -54,52 +55,26 @@ function buildSandboxAutomationEvent(
   };
 }
 
-async function createPhysicalSandboxId(managerId: string, sandboxId: string): Promise<string> {
-  const identity = new TextEncoder().encode(`${managerId}\0${sandboxId}`);
-  const digest = await crypto.subtle.digest("SHA-256", identity);
-  const hexadecimalDigest = Array.from(new Uint8Array(digest), (byte) =>
-    byte.toString(16).padStart(2, "0"),
-  ).join("");
-
-  // Cloudflare sandbox IDs accept at most 63 characters; retaining 252 digest bits keeps
-  // manager-scoped identities collision-resistant without constraining logical sandbox IDs.
-  return hexadecimalDigest.slice(0, 63);
-}
-
 export class InMemorySandboxManagerObject extends RpcTarget implements SandboxManagerObject {
   readonly #host: FragmentDurableObjectHost<void, ReturnType<typeof createSandboxManagerRuntime>>;
-  readonly #sandboxProviders: Record<string, SandboxRuntimeProvider>;
+  readonly #sandboxProviders: SandboxRuntimeProviders;
   #runtime: ReturnType<typeof createSandboxManagerRuntime> | null = null;
 
   constructor({
     state,
-    env,
     runtime,
     implementation,
+    sandboxProviders,
   }: {
     state: BackofficeObjectState;
-    env: CloudflareEnv;
     runtime: BackofficeRuntimeServices;
     implementation: BackofficeObjectImplementation;
+    sandboxProviders: SandboxRuntimeProviders;
   }) {
     super();
     const runtimeServices = runtime;
     const scope = requireBackofficeContextScopeFromDurableObjectId(state.id, "SANDBOX_MANAGER");
-    this.#sandboxProviders = {
-      [CLOUDFLARE_SANDBOX_PROVIDER]: createCloudflareSandboxProvider({
-        sandboxNamespace: env.SANDBOX,
-        sdk: {
-          async getSandbox(namespace, id, options) {
-            const { getSandbox } = await import("@cloudflare/sandbox");
-            return getSandbox(
-              namespace,
-              await createPhysicalSandboxId(state.id.toString(), id),
-              options,
-            );
-          },
-        },
-      }),
-    };
+    this.#sandboxProviders = sandboxProviders;
     this.#host = implementation.createFragmentHost({
       name: "SandboxManager",
       createRuntime: () => {
@@ -181,6 +156,7 @@ export class InMemorySandboxManagerObject extends RpcTarget implements SandboxMa
     if (instance?.status !== "running") {
       return {
         ok: false,
+        code: "sandbox_unavailable",
         reason: "sandbox_unavailable",
         message: `Sandbox "${input.sandboxId}" is unavailable.`,
         retryable: true,
@@ -191,6 +167,7 @@ export class InMemorySandboxManagerObject extends RpcTarget implements SandboxMa
     if (!provider) {
       return {
         ok: false,
+        code: "provider_not_configured",
         reason: "internal_error",
         message: `No sandbox provider configured for '${instance.provider}'.`,
         retryable: false,
@@ -216,9 +193,25 @@ export class SandboxManager extends DurableObject<CloudflareEnv> implements Sand
   readonly #object: InMemorySandboxManagerObject;
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
-    this.#object = new InMemorySandboxManagerObject(
-      createCloudflareBackofficeObjectContext(state, env),
-    );
+    const managerId = state.id.toString();
+    this.#object = new InMemorySandboxManagerObject({
+      ...createCloudflareBackofficeObjectContext(state, env),
+      sandboxProviders: {
+        [CLOUDFLARE_SANDBOX_PROVIDER]: createCloudflareSandboxProvider({
+          sandboxNamespace: env.SANDBOX,
+          sdk: {
+            async getSandbox(namespace, id, options) {
+              const { getSandbox } = await import("@cloudflare/sandbox");
+              return getSandbox(
+                namespace,
+                await createCloudflareSandboxPhysicalId(managerId, id),
+                options,
+              );
+            },
+          },
+        }),
+      },
+    });
   }
   async listSandboxInstances(input?: { provider?: SandboxProvider; limit?: number }) {
     return await this.#object.listSandboxInstances(input);

@@ -48,8 +48,12 @@ type SandboxExecuteCommandOutput =
     }
   | {
       ok: false;
+      code: string;
       reason:
+        | "authentication_failed"
         | "command_failed"
+        | "invalid_request"
+        | "output_limit_exceeded"
         | "timeout"
         | "sandbox_terminated"
         | "sandbox_unavailable"

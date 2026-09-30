@@ -140,7 +140,7 @@ explicit compiler source exports. They do not start another bridge. The bridge's
 Wrangler-built Worker and Wasm in Miniflare to cover named RPC, local-loader consumption, WebSocket
 execution, authentication, and shared admission.
 
-## Node Backoffice codemode
+## Node Backoffice
 
 `GET /v1/codemode/execute` accepts one authenticated WebSocket per activation. It runs in the
 ordinary Worker, before the Sandbox SDK's `/v1/*` router; it adds no Durable Object or migration.
@@ -148,9 +148,12 @@ The embedded compiler builds the guest and `LOADER` runs it in a sealed dynamic 
 existing Sandbox and WarmPool bindings even when only exercising codemode.
 
 Set Node Backoffice's `CLOUDFLARE_BRIDGE_URL` to this bridge's `https://` origin and
-`CLOUDFLARE_BRIDGE_API_KEY` to its `SANDBOX_API_KEY`. Node derives the corresponding WebSocket URL
-for execution. Local loopback `http://` is supported. Unlike the Sandbox SDK development routes,
-codemode always fails closed without a configured API key.
+`CLOUDFLARE_BRIDGE_API_KEY` to its `SANDBOX_API_KEY`. Node uses the HTTP sandbox routes for sandbox
+lifecycle and commands, and derives the corresponding WebSocket URL for codemode execution. The
+bridge adds `PUT /v1/sandbox/:id/configuration` so Node can apply `keepAlive` and `sleepAfter` to
+the WarmPool-assigned Sandbox Durable Object before startup. Local loopback `http://` is supported.
+Unlike the Sandbox SDK development routes, codemode always fails closed without a configured API
+key.
 
 The shared `@fragno-dev/codemode` package owns protocol v1 and guest runtime generation. Node owns
 all tools, authorization, persistence, workflow retry decisions, and Pi sessions. A disconnect ends

@@ -3,6 +3,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import type { FragmentDurableObjectHostOperations } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 
 import type { AutomationSourceReader } from "@/fragno/automation/automation-source";
+import type { CreateSandboxRuntimeProviders } from "@/sandbox/contracts";
 
 import { InMemoryApiObject } from "../../workers/api.do";
 import { InMemoryAuthObject } from "../../workers/auth.do";
@@ -70,6 +71,7 @@ export type LocalBackofficeObjectFactory<TObject> = (input: {
   nowEpochMs: () => number;
   readAutomationSource?: LocalObjectFactoryOptions["readAutomationSource"];
   sqliteDataDirectory?: string;
+  readonly createSandboxProviders: CreateSandboxRuntimeProviders;
   readonly getAuthDatabase: () => LocalAuthDatabase;
 }) => TObject;
 
@@ -86,6 +88,7 @@ export type LocalObjectFactoryOptions = {
   clearDurableHooks: (objectId: string) => Promise<void>;
   readAutomationSource?: AutomationSourceReader;
   objectFactories?: LocalObjectFactoryOverrides;
+  createSandboxProviders?: CreateSandboxRuntimeProviders;
   sqlite?: { directory: string; storage: SqliteBackofficeObjectStorage };
 };
 
@@ -293,12 +296,12 @@ const localObjectFactories = {
       implementation,
     }),
   SANDBOX: createUnavailableLocalObject,
-  SANDBOX_MANAGER: ({ state, env, runtime, implementation }) =>
+  SANDBOX_MANAGER: ({ state, runtime, implementation, createSandboxProviders }) =>
     new InMemorySandboxManagerObject({
       state,
-      env: env as unknown as CloudflareEnv,
       runtime,
       implementation,
+      sandboxProviders: createSandboxProviders(state.id.toString()),
     }),
   GITHUB: ({ state, env, runtime, implementation }) =>
     new InMemoryGitHubObject({
@@ -361,6 +364,7 @@ export class LocalObjectFactory implements BackofficeObjectFactory {
   >;
   readonly #readAutomationSource?: LocalObjectFactoryOptions["readAutomationSource"];
   readonly #objectFactories?: LocalObjectFactoryOverrides;
+  readonly #createSandboxProviders: CreateSandboxRuntimeProviders;
   readonly #sqlite?: LocalObjectFactoryOptions["sqlite"];
   readonly #executionCoordinator: BackofficeObjectExecutionCoordinator;
   readonly #sqliteCoordination: SqliteObjectCoordination | null;
@@ -381,6 +385,7 @@ export class LocalObjectFactory implements BackofficeObjectFactory {
     this.#createFragmentHostOperations = options.createFragmentHostOperations ?? (() => null);
     this.#readAutomationSource = options.readAutomationSource;
     this.#objectFactories = options.objectFactories;
+    this.#createSandboxProviders = options.createSandboxProviders ?? (() => ({}));
     this.#sqlite = options.sqlite;
     this.#sqliteCoordination = options.sqlite
       ? new SqliteObjectCoordination(options.sqlite.storage)
@@ -645,6 +650,7 @@ export class LocalObjectFactory implements BackofficeObjectFactory {
           nowEpochMs: () => this.now(),
           readAutomationSource: this.#readAutomationSource,
           sqliteDataDirectory: this.#sqlite?.directory,
+          createSandboxProviders: this.#createSandboxProviders,
           getAuthDatabase: () =>
             getLocalAuthDatabase(this.#authDatabases, input.state, this.#sqlite?.directory, () =>
               this.now(),

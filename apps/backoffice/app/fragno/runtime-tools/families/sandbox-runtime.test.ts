@@ -89,6 +89,7 @@ describe("createSandboxRuntime", () => {
     const lifecycle = createLifecycle();
     lifecycle.executeSandboxCommand.mockResolvedValueOnce({
       ok: false,
+      code: "sandbox_unavailable",
       reason: "sandbox_unavailable",
       message: 'Sandbox "missing" is unavailable.',
       retryable: true,
@@ -98,6 +99,7 @@ describe("createSandboxRuntime", () => {
     await expect(runtime.executeCommand({ sandboxId: "Missing", command: "pwd" })).resolves.toEqual(
       {
         ok: false,
+        code: "sandbox_unavailable",
         reason: "sandbox_unavailable",
         message: 'Sandbox "missing" is unavailable.',
         retryable: true,

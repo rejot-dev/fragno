@@ -95,6 +95,7 @@ describe("sandbox runtime tools", () => {
     const runtime = createRuntime();
     vi.mocked(runtime.executeCommand).mockResolvedValueOnce({
       ok: false,
+      code: "command_failed",
       reason: "command_failed",
       message: "failed",
       stdout: "",
