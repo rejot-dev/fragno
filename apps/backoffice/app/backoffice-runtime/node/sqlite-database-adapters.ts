@@ -4,7 +4,6 @@ import path from "node:path";
 
 import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
 import { BetterSQLite3DriverConfig } from "@fragno-dev/db/drivers";
-import { configureBackofficeSqliteConnection } from "@fragno-private/backoffice-node-runtime/sqlite-connection-config";
 import Database from "better-sqlite3";
 import { SqliteDialect } from "kysely";
 
@@ -14,6 +13,7 @@ import type {
   BackofficeDatabaseAdapterScope,
   CreateBackofficeDatabaseAdapterInput,
 } from "../database-adapters";
+import { configureBackofficeSqliteConnection } from "./sqlite-connection-config";
 
 const sharedDatabaseKinds = new Set<BackofficeDatabaseAdapterKind>(["automations", "pi"]);
 

@@ -267,9 +267,6 @@ importers:
       '@fragno-dev/workflows':
         specifier: workspace:*
         version: link:../../packages/fragment-workflows
-      '@fragno-private/backoffice-node-runtime':
-        specifier: workspace:*
-        version: link:../../packages-private/backoffice-node-runtime
       '@fragno-private/design-system':
         specifier: workspace:*
         version: link:../../packages-private/design-system
