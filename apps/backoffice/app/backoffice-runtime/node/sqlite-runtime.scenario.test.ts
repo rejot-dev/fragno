@@ -11,13 +11,12 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
 }));
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
-import { startNodeBackofficeAlarmScheduler } from "@fragno-private/backoffice-node-runtime/node-alarm-scheduler";
-import { SqliteBackofficeObjectStorage } from "@fragno-private/backoffice-node-runtime/sqlite-object-storage";
-
 import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
 
 import { createInMemoryBackofficeRuntime } from "../in-memory-runtime";
 import type { LocalBackofficeDurableHooks } from "./local-runtime";
+import { startNodeBackofficeAlarmScheduler } from "./node-alarm-scheduler";
+import { SqliteBackofficeObjectStorage } from "./sqlite-object-storage";
 
 function createVoidDeferred() {
   let resolve!: () => void;

@@ -1,7 +1,6 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { createExternallyProcessedNodeBackofficeDurableHooks } from "@fragno-private/backoffice-node-runtime/node-durable-hooks";
 import express from "express";
 import type { ServerBuild } from "react-router";
 
@@ -9,6 +8,7 @@ import { createRequestHandler } from "@react-router/express";
 
 import { BackofficeKernel } from "../../app/backoffice-runtime/kernel";
 import { createLocalBackofficeRuntime } from "../../app/backoffice-runtime/node/local-runtime";
+import { createExternallyProcessedNodeBackofficeDurableHooks } from "../../app/backoffice-runtime/node/node-durable-hooks";
 import { shutdownNodeOpenTelemetry } from "../../app/backoffice-runtime/node/node-opentelemetry-lifecycle";
 import { createBackofficeRouterContextProvider } from "../../app/worker-runtime/router-context-provider.server";
 import { createNodeBackofficeProcessConfig } from "./node-process-config";

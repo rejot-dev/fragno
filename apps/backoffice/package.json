@@ -70,7 +70,6 @@
     "@fragno-dev/upload": "workspace:*",
     "@fragno-dev/workflow-visualizer-tokens": "workspace:*",
     "@fragno-dev/workflows": "workspace:*",
-    "@fragno-private/backoffice-node-runtime": "workspace:*",
     "@journeyapps/wa-sqlite": "^1.4.1",
     "@json-render/core": "0.20.0",
     "@json-render/react": "0.20.0",

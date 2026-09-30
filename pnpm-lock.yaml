@@ -264,9 +264,6 @@ importers:
       '@fragno-dev/workflows':
         specifier: workspace:*
         version: link:../../packages/fragment-workflows
-      '@fragno-private/backoffice-node-runtime':
-        specifier: workspace:*
-        version: link:../../packages-private/backoffice-node-runtime
       '@journeyapps/wa-sqlite':
         specifier: ^1.4.1
         version: 1.7.2
