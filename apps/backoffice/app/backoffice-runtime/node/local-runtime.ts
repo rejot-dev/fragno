@@ -3,6 +3,7 @@ import type { WorkerTypeChecker } from "@fragno-dev/codemode/compiler/compile-wo
 import { defaultFragnoRuntime } from "@fragno-dev/core";
 
 import type { AutomationSourceReader } from "@/fragno/automation/automation-source";
+import type { CreateSandboxRuntimeProviders } from "@/sandbox/contracts";
 
 import {
   createBackofficeAuthorityResolver,
@@ -50,6 +51,7 @@ export type CreateLocalBackofficeRuntimeOptions = {
   runtimeEnv: BackofficeRuntimeEnv;
   readAutomationSource?: AutomationSourceReader;
   objectFactories?: LocalObjectFactoryOverrides;
+  createSandboxProviders?: CreateSandboxRuntimeProviders;
   authorityResolver?: BackofficeAuthorityResolver;
   kernelObserver?: BackofficeKernelObserver;
   workerTypeChecker?: WorkerTypeChecker;
@@ -82,6 +84,7 @@ export async function createLocalBackofficeRuntime(
     },
     readAutomationSource: options.readAutomationSource,
     objectFactories: options.objectFactories,
+    createSandboxProviders: options.createSandboxProviders,
   });
   const config = objectFactory.createRuntimeConfig();
   const adapters = options.sqliteDataDirectory

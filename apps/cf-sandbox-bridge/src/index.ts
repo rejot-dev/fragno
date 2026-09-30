@@ -2,6 +2,7 @@ import { bridge } from "@cloudflare/sandbox/bridge";
 import { Hono } from "hono";
 
 import { registerCodemodeHttpRoutes, type SandboxBridgeHonoEnv } from "./codemode-http-routes";
+import { registerSandboxLifecycleHttpRoutes } from "./sandbox-lifecycle-http-routes";
 
 // Wrangler discovers named RPC entrypoints and the existing container/pool classes here.
 export { CodemodeCompiler } from "./compiler/codemode-compiler";
@@ -16,6 +17,7 @@ const sandboxBridge = bridge({
 
 const app = new Hono<SandboxBridgeHonoEnv>();
 registerCodemodeHttpRoutes(app);
+registerSandboxLifecycleHttpRoutes(app);
 app.notFound((context) => {
   const request = context.req.raw as Request<unknown, IncomingRequestCfProperties>;
   const executionCtx = context.executionCtx as unknown as ExecutionContext;

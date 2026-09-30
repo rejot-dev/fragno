@@ -4,8 +4,8 @@
 # Optional Node runtime override; defaults to this git-ignored directory.
 BACKOFFICE_SQLITE_DIR=./.backoffice-node
 
-# Node codemode execution and TypeScript checking use the same cf-sandbox-bridge deployment.
-# Use the HTTPS origin; the executor derives WSS for WebSocket activations.
+# Node codemode, TypeScript checking, and sandbox management use one cf-sandbox-bridge deployment.
+# Use the HTTPS origin; codemode derives WSS for WebSocket activations.
 # The key must match SANDBOX_API_KEY on that bridge; no local fallback is used.
 CLOUDFLARE_BRIDGE_URL=https://cf-sandbox-bridge.rejot.workers.dev/
 CLOUDFLARE_BRIDGE_API_KEY=

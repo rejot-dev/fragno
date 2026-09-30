@@ -10,7 +10,6 @@ const createCloudflareRuntimeHandleMock = () => ({
   mkdir: vi.fn(async () => undefined),
   writeFile: vi.fn(async () => undefined),
   exists: vi.fn(async () => ({ exists: false })),
-  getRuntimeStatus: vi.fn(async () => ({ status: "running" as const })),
 });
 
 describe("createCloudflareSandboxProvider", () => {
@@ -26,7 +25,6 @@ describe("createCloudflareSandboxProvider", () => {
       keepAlive: true,
       sleepAfter: "15m",
     });
-    const status = await provider.getStatus("org_123::dev", handle);
 
     expect(provider.provider).toBe(CLOUDFLARE_SANDBOX_PROVIDER);
     assert(handle.id === "org_123::dev");
@@ -34,19 +32,6 @@ describe("createCloudflareSandboxProvider", () => {
       keepAlive: true,
       sleepAfter: "15m",
     });
-    expect(status).toBe("running");
-  });
-
-  test("returns error status when the Cloudflare runtime status call fails", async () => {
-    const sandbox = createCloudflareRuntimeHandleMock();
-    sandbox.getRuntimeStatus.mockRejectedValueOnce(new Error("status failed"));
-    const provider = createCloudflareSandboxProvider({
-      sandboxNamespace: {} as never,
-      sdk: { getSandbox: vi.fn(async () => sandbox) as never },
-    });
-    const handle = await provider.getHandle("org_123::dev");
-
-    await expect(provider.getStatus("org_123::dev", handle)).resolves.toBe("error");
   });
 
   test("returns sandbox_terminated when sandbox dies during command execution", async () => {
@@ -61,6 +46,7 @@ describe("createCloudflareSandboxProvider", () => {
     const result = await handle.executeCommand("npm test");
 
     assert(!result.ok);
+    assert(result.code === "sandbox_terminated");
     assert(result.reason === "sandbox_terminated");
     assert(result.retryable);
   });
@@ -82,6 +68,7 @@ describe("createCloudflareSandboxProvider", () => {
     const result = await handle.executeCommand("npm run build");
 
     assert(!result.ok);
+    assert(result.code === "command_failed");
     assert(result.reason === "command_failed");
     assert(!result.retryable);
   });
@@ -98,6 +85,7 @@ describe("createCloudflareSandboxProvider", () => {
     const result = await handle.executeCommand("echo hi");
 
     assert(!result.ok);
+    assert(result.code === "internal_error");
     assert(result.reason === "internal_error");
     assert(result.message === "Unknown sandbox execution error.");
   });

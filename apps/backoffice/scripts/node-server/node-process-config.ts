@@ -4,6 +4,7 @@ import type { WorkerTypeChecker } from "@fragno-dev/codemode/compiler/compile-wo
 
 import type { BackofficeRuntimeEnv } from "../../app/backoffice-runtime/backoffice-runtime-env";
 import { createNodeBackofficeRuntimeConfiguration } from "../../app/backoffice-runtime/node/node-runtime-env";
+import type { CreateSandboxRuntimeProviders } from "../../app/sandbox/contracts";
 
 export type NodeBackofficeProcessConfig = {
   sqliteDataDirectory: string;
@@ -12,6 +13,7 @@ export type NodeBackofficeProcessConfig = {
   publicBaseUrl: string;
   runtimeEnv: BackofficeRuntimeEnv;
   workerTypeChecker: WorkerTypeChecker;
+  createSandboxProviders: CreateSandboxRuntimeProviders;
 };
 
 function parseNodeBackofficeListenHosts(value: string | undefined): readonly string[] {
@@ -79,5 +81,6 @@ export async function createNodeBackofficeProcessConfig(): Promise<NodeBackoffic
     publicBaseUrl,
     runtimeEnv: runtime.runtimeEnv,
     workerTypeChecker: runtime.workerTypeChecker,
+    createSandboxProviders: runtime.createSandboxProviders,
   };
 }

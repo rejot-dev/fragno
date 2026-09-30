@@ -13,6 +13,7 @@ import type {
   SandboxRuntimeHandleOptions,
   SandboxRuntimeProvider,
 } from "@/sandbox/contracts";
+import { SandboxRuntimeError } from "@/sandbox/sandbox-runtime-error";
 
 import {
   CLOUDFLARE_SANDBOX_PROVIDER,
@@ -29,6 +30,7 @@ type SandboxManagerFragment = ReturnType<typeof createSandboxManagerFragment>;
 
 type SandboxLifecycleScenarioVars = {
   requested?: SandboxInstanceRecord;
+  retryAt?: Date;
   startRun?: { processed: number; ticks: number };
 };
 
@@ -41,17 +43,22 @@ type SandboxHandleObservation = {
 
 class ScenarioSandboxRuntimeHandle implements SandboxRuntimeHandle {
   readonly id: string;
-  #status: SandboxInstanceStatus = "running";
-  readonly #recordStartupCommand: (command: string, options: SandboxRuntimeExecOptions) => void;
+  readonly #executeStartupCommand: (
+    command: string,
+    options: SandboxRuntimeExecOptions,
+  ) => SandboxRuntimeExecResult;
   readonly #recordDestroy: () => void;
 
   constructor(
     id: string,
-    recordStartupCommand: (command: string, options: SandboxRuntimeExecOptions) => void,
+    executeStartupCommand: (
+      command: string,
+      options: SandboxRuntimeExecOptions,
+    ) => SandboxRuntimeExecResult,
     recordDestroy: () => void,
   ) {
     this.id = id;
-    this.#recordStartupCommand = recordStartupCommand;
+    this.#executeStartupCommand = executeStartupCommand;
     this.#recordDestroy = recordDestroy;
   }
 
@@ -59,17 +66,11 @@ class ScenarioSandboxRuntimeHandle implements SandboxRuntimeHandle {
     command: string,
     options: SandboxRuntimeExecOptions = {},
   ): Promise<SandboxRuntimeExecResult> {
-    this.#recordStartupCommand(command, options);
-    return { success: true, stdout: "", stderr: "", exitCode: 0 };
+    return this.#executeStartupCommand(command, options);
   }
 
   async destroy(): Promise<void> {
     this.#recordDestroy();
-    this.#status = "stopped";
-  }
-
-  async getRuntimeStatus(): Promise<{ status: SandboxInstanceStatus }> {
-    return { status: this.#status };
   }
 
   async executeCommand(): Promise<SandboxCommandResult> {
@@ -94,9 +95,14 @@ class ScenarioSandboxRuntimeProvider implements SandboxRuntimeProvider {
   destroyCount = 0;
   readonly #handles = new Map<string, ScenarioSandboxRuntimeHandle>();
   readonly #readPersistedStatus: (sandboxId: string) => Promise<SandboxInstanceStatus | null>;
+  readonly #startupResults: SandboxRuntimeExecResult[];
 
-  constructor(readPersistedStatus: (sandboxId: string) => Promise<SandboxInstanceStatus | null>) {
+  constructor(
+    readPersistedStatus: (sandboxId: string) => Promise<SandboxInstanceStatus | null>,
+    startupResults: SandboxRuntimeExecResult[] = [],
+  ) {
     this.#readPersistedStatus = readPersistedStatus;
+    this.#startupResults = startupResults;
   }
 
   async getHandle(
@@ -118,6 +124,14 @@ class ScenarioSandboxRuntimeProvider implements SandboxRuntimeProvider {
       id,
       (command, execOptions) => {
         this.startupCommands.push({ command, timeout: execOptions.timeout ?? null });
+        return (
+          this.#startupResults.shift() ?? {
+            success: true,
+            stdout: "",
+            stderr: "",
+            exitCode: 0,
+          }
+        );
       },
       () => {
         this.destroyCount += 1;
@@ -126,16 +140,20 @@ class ScenarioSandboxRuntimeProvider implements SandboxRuntimeProvider {
     this.#handles.set(id, handle);
     return handle;
   }
+}
 
-  async getStatus(
-    id: string,
-    existingHandle?: SandboxRuntimeHandle,
-  ): Promise<SandboxInstanceStatus> {
-    const handle = existingHandle ?? this.#handles.get(id);
-    if (!handle) {
-      return "stopped";
-    }
-    return (await handle.getRuntimeStatus()).status;
+class PermanentFailureSandboxRuntimeProvider implements SandboxRuntimeProvider {
+  readonly provider = CLOUDFLARE_SANDBOX_PROVIDER;
+  handleAttempts = 0;
+
+  async getHandle(): Promise<SandboxRuntimeHandle> {
+    this.handleAttempts += 1;
+    throw new SandboxRuntimeError({
+      code: "unauthorized",
+      reason: "authentication_failed",
+      retryable: false,
+      message: "Sandbox bridge authentication failed.",
+    });
   }
 }
 
@@ -151,13 +169,19 @@ test("runs the sandbox lifecycle workflow through provider cleanup and lifecycle
     return sandboxManagerFragment;
   }
 
-  const provider = new ScenarioSandboxRuntimeProvider(async (id) => {
-    const fragment = requireSandboxManagerFragment();
-    const instance = await fragment.callServices(() =>
-      fragment.services.getSandboxInstance({ id }),
-    );
-    return instance?.status ?? null;
-  });
+  const provider = new ScenarioSandboxRuntimeProvider(
+    async (id) => {
+      const fragment = requireSandboxManagerFragment();
+      const instance = await fragment.callServices(() =>
+        fragment.services.getSandboxInstance({ id }),
+      );
+      return instance?.status ?? null;
+    },
+    [
+      { success: false, stdout: "", stderr: "Killed", exitCode: 137 },
+      { success: true, stdout: "", stderr: "", exitCode: 0 },
+    ],
+  );
   const sandboxManagerConfig = {
     sandboxProviders: { [CLOUDFLARE_SANDBOX_PROVIDER]: provider },
     deliverLifecycleEvent: async (event: SandboxLifecycleEvent) => {
@@ -266,6 +290,32 @@ test("runs the sandbox lifecycle workflow through provider cleanup and lifecycle
         workflow.read({
           read: async (ctx) => {
             assert(ctx.vars.requested?.workflowInstanceId);
+            const steps = await ctx.state.getSteps(
+              "SANDBOX_LIFECYCLE",
+              ctx.vars.requested.workflowInstanceId,
+            );
+            return steps.find((step) => step.stepKey === "do:start sandbox runtime")?.nextRetryAt;
+          },
+          storeAs: "retryAt",
+        }),
+        workflow.read({
+          read: async (ctx) => {
+            assert(ctx.vars.requested?.workflowInstanceId);
+            assert(ctx.vars.retryAt);
+            ctx.clock.set(new Date(ctx.vars.retryAt.getTime() + 1));
+            return await ctx.harness.runUntilIdle({
+              workflowName: SANDBOX_LIFECYCLE_WORKFLOW_NAME,
+              instanceId: ctx.vars.requested.workflowInstanceId,
+              reason: "retry",
+            });
+          },
+          assert: (run) => {
+            expect(run.processed).toBeGreaterThan(0);
+          },
+        }),
+        workflow.read({
+          read: async (ctx) => {
+            assert(ctx.vars.requested?.workflowInstanceId);
             return await ctx.state.getStatus(
               "SANDBOX_LIFECYCLE",
               ctx.vars.requested.workflowInstanceId,
@@ -370,12 +420,21 @@ test("runs the sandbox lifecycle workflow through provider cleanup and lifecycle
             },
             {
               operation: "reconcile",
+              persistedStatus: "starting",
+              keepAlive: true,
+              sleepAfter: null,
+            },
+            {
+              operation: "reconcile",
               persistedStatus: "stopping",
               keepAlive: null,
               sleepAfter: null,
             },
           ]);
-          expect(provider.startupCommands).toEqual([{ command: "scenario-start", timeout: 2_500 }]);
+          expect(provider.startupCommands).toEqual([
+            { command: "scenario-start", timeout: 2_500 },
+            { command: "scenario-start", timeout: 2_500 },
+          ]);
           assert(provider.destroyCount === 1);
           expect(lifecycleEvents).toEqual([
             {
@@ -393,6 +452,103 @@ test("runs the sandbox lifecycle workflow through provider cleanup and lifecycle
               status: "stopped",
             },
           ]);
+        }),
+      ],
+    }),
+  );
+});
+
+test("does not retry permanent sandbox provider startup failures", async () => {
+  const sandboxId = "org_123::permanent-failure";
+  const provider = new PermanentFailureSandboxRuntimeProvider();
+  let sandboxManagerFragment: SandboxManagerFragment | undefined;
+
+  function requireSandboxManagerFragment() {
+    if (!sandboxManagerFragment) {
+      throw new Error("Permanent failure scenario fragment is not initialized.");
+    }
+    return sandboxManagerFragment;
+  }
+
+  const sandboxManagerConfig = {
+    sandboxProviders: { [CLOUDFLARE_SANDBOX_PROVIDER]: provider },
+    deliverLifecycleEvent: async () => undefined,
+  };
+  const sandboxLifecycleWorkflow = defineSandboxLifecycleWorkflow({
+    sandboxProviders: sandboxManagerConfig.sandboxProviders,
+    getSandboxManagerFragment: () => sandboxManagerFragment,
+  });
+
+  await runScenario(
+    defineScenario({
+      name: "sandbox-manager-permanent-startup-failure",
+      workflows: { SANDBOX_LIFECYCLE: sandboxLifecycleWorkflow },
+      vars: (): { requested?: SandboxInstanceRecord } => ({}),
+      harness: {
+        configureFragments: (harness) => ({
+          sandboxManager: instantiate(sandboxManagerFragmentDefinition)
+            .withConfig(sandboxManagerConfig)
+            .withRoutes([])
+            .withServices({ workflows: harness.fragment.services }),
+        }),
+      },
+      steps: ({ workflow }) => [
+        workflow.read({
+          read: async (ctx) => {
+            sandboxManagerFragment = ctx.harness.fragments.sandboxManager.fragment;
+            const fragment = requireSandboxManagerFragment();
+            return await fragment.callServices(() =>
+              fragment.services.requestSandboxInstance({
+                id: sandboxId,
+                provider: CLOUDFLARE_SANDBOX_PROVIDER,
+                keepAlive: true,
+              }),
+            );
+          },
+          storeAs: "requested",
+        }),
+        workflow.read({
+          read: async (ctx) => {
+            await drainDurableHooks(
+              Object.values(ctx.harness.fragments).map((result) => result.fragment),
+            );
+          },
+        }),
+        workflow.read({
+          read: async (ctx) => {
+            assert(ctx.vars.requested?.workflowInstanceId);
+            return await ctx.harness.runUntilIdle({
+              workflowName: SANDBOX_LIFECYCLE_WORKFLOW_NAME,
+              instanceId: ctx.vars.requested.workflowInstanceId,
+              reason: "create",
+            });
+          },
+        }),
+        workflow.read({
+          read: async (ctx) => {
+            assert(ctx.vars.requested?.workflowInstanceId);
+            const fragment = requireSandboxManagerFragment();
+            const [instance, workflowStatus] = await Promise.all([
+              fragment.callServices(() => fragment.services.getSandboxInstance({ id: sandboxId })),
+              ctx.state.getStatus("SANDBOX_LIFECYCLE", ctx.vars.requested.workflowInstanceId),
+            ]);
+            return { instance, workflowStatus };
+          },
+          assert: ({ instance, workflowStatus }) => {
+            expect(instance).toMatchObject({
+              id: sandboxId,
+              status: "error",
+              lastError: "Sandbox startup failed after retries.",
+            });
+            expect(workflowStatus).toMatchObject({
+              status: "errored",
+              error: {
+                name: "NonRetryableError",
+                message: "[unauthorized] Sandbox bridge authentication failed.",
+              },
+            });
+            assert(provider.handleAttempts === 1);
+          },
         }),
       ],
     }),

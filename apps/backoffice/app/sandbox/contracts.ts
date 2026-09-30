@@ -72,7 +72,10 @@ export type SandboxCommandSuccess = {
 };
 
 export type SandboxCommandFailureReason =
+  | "authentication_failed"
   | "command_failed"
+  | "invalid_request"
+  | "output_limit_exceeded"
   | "timeout"
   | "sandbox_terminated"
   | "sandbox_unavailable"
@@ -80,6 +83,7 @@ export type SandboxCommandFailureReason =
 
 export type SandboxCommandFailure = {
   ok: false;
+  code: string;
   reason: SandboxCommandFailureReason;
   message: string;
   stdout?: string;
@@ -105,7 +109,6 @@ export interface SandboxHandle {
 export interface SandboxRuntimeHandle extends SandboxHandle {
   exec(command: string, options?: SandboxRuntimeExecOptions): Promise<SandboxRuntimeExecResult>;
   destroy(): Promise<void>;
-  getRuntimeStatus(): Promise<{ status: SandboxInstanceStatus }>;
 }
 
 export interface SandboxRuntimeProvider {
@@ -114,5 +117,10 @@ export interface SandboxRuntimeProvider {
     id: string,
     options?: SandboxRuntimeHandleOptions,
   ): SandboxRuntimeHandle | Promise<SandboxRuntimeHandle>;
-  getStatus(id: string, existingHandle?: SandboxRuntimeHandle): Promise<SandboxInstanceStatus>;
 }
+
+/** Sandbox runtime providers scoped to one Backoffice sandbox manager identity. */
+export type SandboxRuntimeProviders = Readonly<Record<string, SandboxRuntimeProvider>>;
+
+/** Creates provider adapters whose physical sandbox IDs are isolated to one manager. */
+export type CreateSandboxRuntimeProviders = (managerId: string) => SandboxRuntimeProviders;

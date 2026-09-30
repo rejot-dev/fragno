@@ -1,8 +1,17 @@
-import { defineWorkflow, WaitForEventTimeoutError } from "@fragno-dev/workflows/workflow";
+import {
+  defineWorkflow,
+  NonRetryableError,
+  WaitForEventTimeoutError,
+} from "@fragno-dev/workflows/workflow";
 
 import type { InstantiatedFragmentFromDefinition } from "@fragno-dev/core";
 
-import type { SandboxRuntimeHandle, SandboxRuntimeProvider } from "@/sandbox/contracts";
+import type {
+  SandboxRuntimeExecResult,
+  SandboxRuntimeHandle,
+  SandboxRuntimeProvider,
+} from "@/sandbox/contracts";
+import { SandboxRuntimeError } from "@/sandbox/sandbox-runtime-error";
 
 import type { SandboxManagerFragmentConfig, sandboxManagerFragmentDefinition } from "./definition";
 import { sandboxManagerFragmentSchema } from "./schema";
@@ -80,17 +89,17 @@ export const defineSandboxLifecycleWorkflow = (config: SandboxLifecycleWorkflowC
             );
           });
 
-          const handle = await provider.getHandle(sandboxId, {
-            keepAlive: params.keepAlive,
-            sleepAfter: params.sleepAfter,
-          });
-          const result = await handle.exec(startupCommand, { timeout: startupTimeoutMs });
-          if (!result.success) {
-            throw new Error(
-              result.stderr.trim() ||
-                result.stdout.trim() ||
-                `Sandbox startup command failed with exit code ${result.exitCode ?? "unknown"}.`,
-            );
+          try {
+            const handle = await provider.getHandle(sandboxId, {
+              keepAlive: params.keepAlive,
+              sleepAfter: params.sleepAfter,
+            });
+            const result = await handle.exec(startupCommand, { timeout: startupTimeoutMs });
+            if (!result.success) {
+              throw createSandboxStartupCommandError(result);
+            }
+          } catch (error) {
+            throwSandboxLifecycleOperationError(error);
           }
         },
       );
@@ -204,7 +213,11 @@ export const defineSandboxLifecycleWorkflow = (config: SandboxLifecycleWorkflowC
             );
           });
 
-          await reconcileSandboxStopped(provider, sandboxId);
+          try {
+            await reconcileSandboxStopped(provider, sandboxId);
+          } catch (error) {
+            throwSandboxLifecycleOperationError(error);
+          }
         },
       );
 
@@ -251,13 +264,9 @@ export const reconcileSandboxStopped = async (
   provider: SandboxRuntimeProvider,
   sandboxId: string,
 ) => {
-  const status = await provider.getStatus(sandboxId);
-  if (status === "stopped") {
-    return;
-  }
-
   let handle: SandboxRuntimeHandle;
   try {
+    // The bridge liveness route allocates missing containers, so reconciliation destroys without probing.
     handle = await provider.getHandle(sandboxId);
   } catch (error) {
     if (isTerminatedError(error)) {
@@ -275,7 +284,27 @@ export const reconcileSandboxStopped = async (
   }
 };
 
+function createSandboxStartupCommandError(result: SandboxRuntimeExecResult): Error {
+  const message =
+    result.stderr.trim() ||
+    result.stdout.trim() ||
+    `Sandbox startup command failed with exit code ${result.exitCode ?? "unknown"}.`;
+  return result.exitCode === 137 || result.exitCode === 143
+    ? new Error(message)
+    : new NonRetryableError(message);
+}
+
+function throwSandboxLifecycleOperationError(error: unknown): never {
+  if (error instanceof SandboxRuntimeError && !error.retryable) {
+    throw new NonRetryableError(`[${error.code}] ${error.message}`);
+  }
+  throw error;
+}
+
 const isTerminatedError = (error: unknown) => {
+  if (error instanceof SandboxRuntimeError && error.reason === "sandbox_terminated") {
+    return true;
+  }
   const message = error instanceof Error ? error.message : String(error);
   const normalized = message.toLowerCase();
   return (

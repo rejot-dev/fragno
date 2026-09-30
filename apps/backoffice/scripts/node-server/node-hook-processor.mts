@@ -10,7 +10,8 @@ const runtime = await createLocalBackofficeRuntime({
   sqliteDataDirectory: config.sqliteDataDirectory,
   runtimeEnv: config.runtimeEnv,
   workerTypeChecker: config.workerTypeChecker,
-  durableHooks: createNodeBackofficeDurableHooks({ pollIntervalMs: 1_000 }),
+  createSandboxProviders: config.createSandboxProviders,
+  durableHooks: createNodeBackofficeDurableHooks({ pollIntervalMs: 300 }),
 });
 const alarmScheduler = startNodeBackofficeAlarmScheduler(runtime);
 

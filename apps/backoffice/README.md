@@ -33,16 +33,17 @@ the source.
 For a file-backed Node instance without Cloudflare bindings, create `apps/backoffice/.dev.vars` from
 `.dev.vars.example` if you do not already have one. Set `AUTH_ACCESS_TOKEN_SECRET` and
 `BACKOFFICE_INTERNAL_REQUEST_SECRET` there; replace the example secrets with strong values and keep
-them unchanged across restarts. Codemode requires `apps/cf-sandbox-bridge`, which provides remote
-execution and TypeScript checking. Set `CLOUDFLARE_BRIDGE_URL` to the bridge's `https://` origin and
-`CLOUDFLARE_BRIDGE_API_KEY` to its `SANDBOX_API_KEY`. The executor derives `wss://` for WebSocket
-activations. For local Wrangler development, `http://127.0.0.1:8787` is allowed. Both Node processes
-use these same settings. Missing configuration fails startup; bridge unavailability fails the
-invocation without a local fallback or automatic immediate retry. Node no longer needs Deno. A
-disconnected activation has an unknown outcome: tool effects already performed are not rolled back.
-Workflow retries follow the existing Node-owned step policy and checkpoints. SQLite data defaults to
-`.backoffice-node/`; set `BACKOFFICE_SQLITE_DIR` in `.dev.vars` to use another path. The file and
-default data directory are ignored by git.
+them unchanged across restarts. Codemode and Cloudflare sandbox management require
+`apps/cf-sandbox-bridge`, which provides remote execution, TypeScript checking, and sandbox HTTP
+APIs. Set `CLOUDFLARE_BRIDGE_URL` to the bridge's `https://` origin and `CLOUDFLARE_BRIDGE_API_KEY`
+to its `SANDBOX_API_KEY`. Codemode derives `wss://` for WebSocket activations. For local Wrangler
+development, `http://127.0.0.1:8787` is allowed. Both Node processes use these same settings.
+Missing configuration fails startup; bridge unavailability fails the invocation without a local
+fallback or automatic immediate retry. Node no longer needs Deno. A disconnected activation has an
+unknown outcome: tool effects already performed are not rolled back. Workflow retries follow the
+existing Node-owned step policy and checkpoints. SQLite data defaults to `.backoffice-node/`; set
+`BACKOFFICE_SQLITE_DIR` in `.dev.vars` to use another path. The file and default data directory are
+ignored by git.
 
 ```bash
 pnpm --dir apps/backoffice start:node
@@ -179,10 +180,11 @@ loopback.
 This stores auth, object key/value state and alarms, and Fragment databases in SQLite files under
 the selected data directory. Fragno's Node hook processor polls durable hooks, while the runtime
 processor services the remaining object-owned alarms. Do not run multiple processor replicas against
-the same directory. Cloudflare-specific integrations, the Cloudflare Sandbox integration, and
-external upload storage are **not** provided by this mode. Verify the deployed bridge's resource
-limits and interruption behavior before rollout. Production still requires backups, TLS, trusted
-proxies, and a policy for the shared rate-limit bucket when a client IP cannot be determined.
+the same directory. Cloudflare-specific account integrations and external upload storage are **not**
+provided by this mode. Sandbox lifecycle and command execution use the configured bridge without
+running containers locally. Verify the deployed bridge's resource limits and interruption behavior
+before rollout. Production still requires backups, TLS, trusted proxies, and a policy for the shared
+rate-limit bucket when a client IP cannot be determined.
 
 ## Release
 

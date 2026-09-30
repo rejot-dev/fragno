@@ -45,8 +45,12 @@ const commandResultSchema = z.discriminatedUnion("ok", [
   z.object({ ok: z.literal(true), stdout: z.string(), stderr: z.string(), exitCode: z.number() }),
   z.object({
     ok: z.literal(false),
+    code: z.string(),
     reason: z.enum([
+      "authentication_failed",
       "command_failed",
+      "invalid_request",
+      "output_limit_exceeded",
       "timeout",
       "sandbox_terminated",
       "sandbox_unavailable",
