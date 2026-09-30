@@ -1,5 +1,4 @@
 import { Button } from "@fragno-private/design-system/button";
-import type { IconName } from "@fragno-private/design-system/icon";
 import { underlineTabClassName } from "@fragno-private/design-system/underline-tabs";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useFetcher, useLocation } from "react-router";
