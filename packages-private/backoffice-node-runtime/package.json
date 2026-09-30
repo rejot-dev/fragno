@@ -11,6 +11,10 @@
       "types": "./dist/node-alarm-scheduler.d.ts",
       "default": "./dist/node-alarm-scheduler.js"
     },
+    "./node-runtime-scenario": {
+      "types": "./dist/node-runtime-scenario.d.ts",
+      "default": "./dist/node-runtime-scenario.js"
+    },
     "./node-durable-hooks": {
       "types": "./dist/node-durable-hooks.d.ts",
       "default": "./dist/node-durable-hooks.js"
