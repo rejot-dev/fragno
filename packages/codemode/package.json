@@ -60,6 +60,10 @@
       "types": "./dist/transport/codemode-http-authentication.d.ts",
       "default": "./dist/transport/codemode-http-authentication.js"
     },
+    "./transport/cloudflare-bridge-url": {
+      "types": "./dist/transport/cloudflare-bridge-url.d.ts",
+      "default": "./dist/transport/cloudflare-bridge-url.js"
+    },
     "./codemode-limits": {
       "types": "./dist/codemode-limits.d.ts",
       "default": "./dist/codemode-limits.js"

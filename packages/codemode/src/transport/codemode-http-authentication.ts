@@ -60,18 +60,11 @@ export async function readCodemodeHttpAuthenticationError(
   return new CodemodeHttpAuthenticationError(code, message);
 }
 
-/** Returns an HTTP error response unless the request carries the configured codemode bearer token. */
-export async function authenticateCodemodeHttpRequest(
+/** Compares a request bearer token with the configured bridge token in constant time. */
+export async function hasExpectedBearerAuthorization(
   request: Request,
-  apiKey: string | undefined,
-): Promise<Response | null> {
-  if (!apiKey) {
-    return createCodemodeHttpAuthenticationErrorResponse(
-      "AUTHENTICATION_NOT_CONFIGURED",
-      "Codemode HTTP authentication is not configured.",
-      503,
-    );
-  }
+  apiKey: string,
+): Promise<boolean> {
   const authorization = request.headers.get("authorization") ?? "";
   const [expected, actual] = await Promise.all(
     [`Bearer ${apiKey}`, authorization].map((value) =>
@@ -84,7 +77,22 @@ export async function authenticateCodemodeHttpRequest(
   for (let index = 0; index < expectedBytes.length; index += 1) {
     difference |= expectedBytes[index] ^ actualBytes[index];
   }
-  return difference === 0
+  return difference === 0;
+}
+
+/** Returns an HTTP error response unless the request carries the configured codemode bearer token. */
+export async function authenticateCodemodeHttpRequest(
+  request: Request,
+  apiKey: string | undefined,
+): Promise<Response | null> {
+  if (!apiKey) {
+    return createCodemodeHttpAuthenticationErrorResponse(
+      "AUTHENTICATION_NOT_CONFIGURED",
+      "Codemode HTTP authentication is not configured.",
+      503,
+    );
+  }
+  return (await hasExpectedBearerAuthorization(request, apiKey))
     ? null
     : createCodemodeHttpAuthenticationErrorResponse(
         "AUTHENTICATION_FAILED",
