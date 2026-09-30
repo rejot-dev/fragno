@@ -1,11 +1,6 @@
 import { Tabs } from "@base-ui/react/tabs";
-import {
-  AlertTriangle,
-  CalendarClock,
-  Code2,
-  ShieldCheck,
-  Workflow as WorkflowIcon,
-} from "lucide-react";
+import { Icon } from "@fragno-private/design-system/icon";
+import { UnderlineTab, UnderlineTabList } from "@fragno-private/design-system/underline-tabs";
 import type { ReactNode } from "react";
 import { Streamdown } from "streamdown";
 
@@ -62,25 +57,16 @@ function WorkflowFilePreview({ preview }: { preview: FilesContentPreview }) {
 
   return (
     <Tabs.Root defaultValue="graph" className="flex h-full min-h-0 flex-col">
-      <Tabs.List
-        aria-label="Workflow preview views"
-        className="flex shrink-0 items-center gap-2 border-b border-[var(--bo-border)]"
-      >
-        <Tabs.Tab
-          value="code"
-          className="flex min-h-10 items-center gap-1.5 border-b-2 border-transparent px-1 font-mono text-[10px] font-semibold tracking-[0.18em] text-[var(--bo-muted)] uppercase transition-[scale,border-color,color] duration-150 ease-out outline-none hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 active:scale-[0.96] data-[active]:border-[color:var(--bo-accent)] data-[active]:text-[var(--bo-accent-fg)]"
-        >
-          <Code2 className="size-3.5" aria-hidden="true" />
+      <UnderlineTabList aria-label="Workflow preview views" className="shrink-0">
+        <UnderlineTab value="code">
+          <Icon name="code" />
           Code
-        </Tabs.Tab>
-        <Tabs.Tab
-          value="graph"
-          className="flex min-h-10 items-center gap-1.5 border-b-2 border-transparent px-1 font-mono text-[10px] font-semibold tracking-[0.18em] text-[var(--bo-muted)] uppercase transition-[scale,border-color,color] duration-150 ease-out outline-none hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 active:scale-[0.96] data-[active]:border-[color:var(--bo-accent)] data-[active]:text-[var(--bo-accent-fg)]"
-        >
-          <WorkflowIcon className="size-3.5" aria-hidden="true" />
+        </UnderlineTab>
+        <UnderlineTab value="graph">
+          <Icon name="share-2" />
           Graph
-        </Tabs.Tab>
-      </Tabs.List>
+        </UnderlineTab>
+      </UnderlineTabList>
 
       <Tabs.Panel value="code" className="min-h-0 flex-1 pt-3">
         <pre
@@ -125,7 +111,7 @@ function WorkflowStartRouteSummary({ routing }: { routing: WorkflowFileRouting }
         role="alert"
         className="mb-3 flex shrink-0 items-start gap-2 border border-[color:var(--bo-failed)] bg-[var(--bo-failed-bg)] px-3 py-2.5 text-xs text-[var(--bo-failed)]"
       >
-        <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+        <Icon name="alert-triangle" className="mt-0.5 size-3.5 shrink-0" />
         <span>Workflow routing unavailable: {routing.message}</span>
       </div>
     );
@@ -150,15 +136,15 @@ function WorkflowStartRouteSummary({ routing }: { routing: WorkflowFileRouting }
         >
           <div className="flex min-w-0 items-start justify-between gap-3">
             <div className="flex min-w-0 items-start gap-2.5">
-              <span className="flex size-7 shrink-0 items-center justify-center bg-orange-500/10 text-orange-700 dark:text-orange-300">
+              <span className="flex size-7 shrink-0 items-center justify-center bg-[var(--bo-accent-bg)] text-[var(--bo-accent-strong)]">
                 {route.trigger.kind === "event" ? (
-                  <ShieldCheck className="size-3.5" aria-hidden="true" />
+                  <Icon name="shield" className="size-3.5" />
                 ) : (
-                  <CalendarClock className="size-3.5" aria-hidden="true" />
+                  <Icon name="calendar" className="size-3.5" />
                 )}
               </span>
               <div className="min-w-0">
-                <p className="text-[9px] font-semibold tracking-[0.18em] text-orange-700 uppercase dark:text-orange-300">
+                <p className="text-[9px] font-semibold tracking-[0.18em] text-[var(--bo-accent-strong)] uppercase">
                   {route.trigger.kind === "event" ? "Runs on" : "Scheduled"}
                   {route.enabled ? "" : " · Disabled"}
                 </p>
@@ -171,7 +157,7 @@ function WorkflowStartRouteSummary({ routing }: { routing: WorkflowFileRouting }
                   </p>
                 ) : null}
                 {route.trigger.kind === "schedule" ? (
-                  <p className="mt-1.5 font-mono text-[10px] leading-4 text-[var(--bo-muted)] tabular-nums">
+                  <p className="mt-1.5 text-[10px] leading-4 text-[var(--bo-muted)] tabular-nums">
                     Next ·{" "}
                     {route.nextOccurrenceAt ? (
                       <time dateTime={route.nextOccurrenceAt}>
@@ -278,7 +264,7 @@ const MarkdownRenderer: FilesContentRenderer = {
 
     return (
       <section className="bg-[var(--bo-panel-2)] p-3 shadow-[inset_0_0_0_1px_var(--bo-border)] md:p-4">
-        <p className="font-mono text-[9px] font-semibold tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
+        <p className="text-[9px] font-semibold tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
           Frontmatter
         </p>
         <dl className="mt-3 divide-y divide-[var(--bo-border)] border-y border-[var(--bo-border)]">

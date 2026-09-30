@@ -116,7 +116,7 @@ export function AutomationRouteDetail({
                   : "Recurring cron schedule"}
               </p>
             </div>
-            <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 font-mono text-[8px] font-semibold tracking-[0.14em] text-[var(--bo-muted)] uppercase">
+            <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[8px] font-semibold tracking-[0.14em] text-[var(--bo-muted)] uppercase">
               {route.trigger.cadence.kind}
             </span>
           </div>
@@ -126,7 +126,7 @@ export function AutomationRouteDetail({
                 <dt className="text-[9px] tracking-[0.18em] text-[var(--bo-muted-2)] uppercase">
                   Runs at
                 </dt>
-                <dd className="font-mono text-[11px] text-[var(--bo-fg)] tabular-nums">
+                <dd className="text-[11px] text-[var(--bo-fg)] tabular-nums">
                   <time dateTime={route.trigger.cadence.at}>
                     {formatTimestamp(route.trigger.cadence.at)}
                   </time>
@@ -156,7 +156,7 @@ export function AutomationRouteDetail({
               <dt className="text-[9px] tracking-[0.18em] text-[var(--bo-muted-2)] uppercase">
                 Next
               </dt>
-              <dd className="font-mono text-[11px] text-[var(--bo-fg)] tabular-nums">
+              <dd className="text-[11px] text-[var(--bo-fg)] tabular-nums">
                 {route.nextOccurrenceAt ? (
                   <time dateTime={route.nextOccurrenceAt}>
                     {formatTimestampInTimeZone(

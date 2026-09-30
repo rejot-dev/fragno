@@ -1,4 +1,5 @@
-import { Link, useLoaderData, useOutletContext, useParams } from "react-router";
+import { ButtonLink } from "@fragno-private/design-system/button";
+import { useLoaderData, useOutletContext, useParams } from "react-router";
 
 import { resolveAuthenticatedIntegrationRuntimeScope } from "../../integrations/scope.server";
 import { formatTimestamp } from "../formatting";
@@ -52,12 +53,9 @@ export default function BackofficeOrganizationResendOutboxDetail() {
           The outgoing view shows the most recent 50 emails. Use pagination in the fragment API to
           load older messages.
         </p>
-        <Link
-          to={basePath}
-          className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-        >
+        <ButtonLink variant="secondary" to={basePath}>
           Back to outgoing
-        </Link>
+        </ButtonLink>
       </div>
     );
   }
@@ -107,12 +105,9 @@ export default function BackofficeOrganizationResendOutboxDetail() {
             <p className="text-xs text-[var(--bo-muted-2)]">Resend ID: {email.resendId}</p>
           ) : null}
         </div>
-        <Link
-          to={basePath}
-          className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] lg:hidden"
-        >
+        <ButtonLink variant="secondary" to={basePath} className="lg:hidden">
           Back to outgoing
-        </Link>
+        </ButtonLink>
       </div>
 
       <div className="grid gap-3 md:grid-cols-2">

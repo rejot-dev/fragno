@@ -1,3 +1,4 @@
+import { IconButton } from "@fragno-private/design-system/button";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -145,27 +146,26 @@ export function QuakeTerminal({ selectedScope }: QuakeTerminalProps) {
         }`}
       >
         <header className="flex h-12 shrink-0 items-center justify-between border-b border-[color:var(--bo-border)] bg-[color:color-mix(in_srgb,var(--bo-panel)_62%,transparent)] px-4 backdrop-blur-3xl sm:px-5">
-          <p className="font-mono text-[10px] font-semibold tracking-[0.24em] text-[var(--bo-fg)] uppercase">
+          <p className="text-[10px] font-semibold tracking-[0.24em] text-[var(--bo-fg)] uppercase">
             Terminal
           </p>
 
           <div className="flex items-center gap-2">
-            <p className="hidden font-mono text-[10px] tracking-[0.08em] text-[var(--bo-muted-2)] sm:block">
+            <p className="hidden text-[10px] tracking-[0.08em] text-[var(--bo-muted-2)] sm:block">
               ^J run · ^L clear · ^R history · Tab complete
             </p>
             <kbd className="border border-[color:var(--bo-border)] bg-[color:color-mix(in_srgb,var(--bo-panel-2)_50%,transparent)] px-2 py-1 font-mono text-[10px] text-[var(--bo-muted)]">
               ` · ⌃`
             </kbd>
-            <button
-              type="button"
+            <IconButton
+              label="Close terminal"
               onClick={() => {
                 setOpen(false);
               }}
-              className="flex size-10 items-center justify-center text-lg text-[var(--bo-muted)] transition-colors duration-150 hover:bg-[var(--bo-panel-2)] hover:text-[var(--bo-fg)] active:scale-[0.96]"
-              aria-label="Close terminal"
+              className="text-lg"
             >
               ×
-            </button>
+            </IconButton>
           </div>
         </header>
 

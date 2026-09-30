@@ -25,7 +25,7 @@ export function MarketplaceAgents() {
           <article className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] shadow-[var(--bo-panel-shadow)]">
             <header className="flex items-center justify-between gap-4 border-b border-[color:var(--bo-border)] px-5 py-4">
               <h3 className="text-base font-semibold text-[var(--bo-fg)]">Slack workflows</h3>
-              <span className="font-mono text-[10px] text-[var(--bo-muted-2)]">v1.3.0</span>
+              <span className="text-[10px] text-[var(--bo-muted-2)]">v1.3.0</span>
             </header>
 
             <div className="p-5">
@@ -40,7 +40,7 @@ export function MarketplaceAgents() {
                     <span className="w-20 shrink-0 text-[9px] font-semibold tracking-[0.14em] text-[var(--bo-muted-2)] uppercase">
                       {item.label}
                     </span>
-                    <span className="ml-auto min-w-0 truncate text-right font-mono text-[11px] text-[var(--bo-fg)]">
+                    <span className="ml-auto min-w-0 truncate text-right text-[11px] text-[var(--bo-fg)]">
                       {item.value}
                     </span>
                   </div>

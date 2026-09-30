@@ -1,3 +1,4 @@
+import { VerticalResizeHandle } from "@fragno-private/design-system/vertical-resize-handle";
 import {
   useCallback,
   useEffect,
@@ -7,8 +8,6 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from "react";
-
-import { VerticalResizeHandle } from "@/components/backoffice/vertical-resize-handle";
 
 const DEFAULT_THREAD_WIDTH = 54;
 const MIN_THREAD_WIDTH = 32;

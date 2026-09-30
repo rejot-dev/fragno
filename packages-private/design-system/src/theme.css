@@ -1,0 +1,447 @@
+/* Imported by the consumer's Tailwind entry after `@import "tailwindcss"`, so @theme, @apply and
+   the layers below join that stylesheet. The @source lets Tailwind see classes used inside this
+   package, which automatic detection skips because it lives outside the consumer's root. */
+@import "tw-animate-css";
+
+@source "./";
+
+@custom-variant dark (&:is(.dark *));
+
+/* Self-hosted so consumers can preload the latin file via brand-font.ts and the brand font is
+   there for the first paint. The ranges mirror the fontsource subsets. The urls are relative
+   because Tailwind inlines this file into the consumer's stylesheet and only rebases relative
+   urls; a bare specifier would be resolved from the consumer, which lacks this dependency. */
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  font-style: normal;
+  font-display: optional;
+  font-weight: 200 800;
+  src: url("../node_modules/@fontsource-variable/plus-jakarta-sans/files/plus-jakarta-sans-latin-wght-normal.woff2")
+    format("woff2-variations");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  font-style: normal;
+  font-display: optional;
+  font-weight: 200 800;
+  src: url("../node_modules/@fontsource-variable/plus-jakarta-sans/files/plus-jakarta-sans-latin-ext-wght-normal.woff2")
+    format("woff2-variations");
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F,
+    U+A720-A7FF;
+}
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  font-style: italic;
+  font-display: optional;
+  font-weight: 200 800;
+  src: url("../node_modules/@fontsource-variable/plus-jakarta-sans/files/plus-jakarta-sans-latin-wght-italic.woff2")
+    format("woff2-variations");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  font-style: italic;
+  font-display: optional;
+  font-weight: 200 800;
+  src: url("../node_modules/@fontsource-variable/plus-jakarta-sans/files/plus-jakarta-sans-latin-ext-wght-italic.woff2")
+    format("woff2-variations");
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F,
+    U+A720-A7FF;
+}
+
+@theme {
+  /* The shell (sidebar, top bar) is the typographic reference: brand sans for all UI text,
+     mono only for code, identifiers, and terminal output. */
+  --font-sans:
+    "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol",
+    sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
+    monospace;
+}
+
+@theme inline {
+  /* The standard gap between adjacent controls, and the sidebar's inset from its edge to the
+     navigation items. Tracks the overridden --spacing scale like the numeric utilities. */
+  --spacing-gutter: calc(var(--spacing) * 4);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+:root {
+  --radius: 0.75rem;
+  --spacing: 0.2rem;
+
+  /* Light theme: warm paper + deep ink, with a Klein ultramarine primary. The primary is the one brand hue;
+     it stays clear of the green/amber/red status colours so actions never read as run states. */
+  --background: #fbf9f8;
+  --foreground: oklch(0.2 0.04 265);
+  --card: oklch(0.995 0.006 255);
+  --card-foreground: oklch(0.2 0.04 265);
+  --popover: oklch(0.995 0.006 255);
+  --popover-foreground: oklch(0.2 0.04 265);
+
+  --primary: #1e2fb0;
+  --primary-foreground: #ffffff;
+  --secondary: oklch(0.965 0.01 255);
+  --secondary-foreground: oklch(0.23 0.04 265);
+  --muted: oklch(0.965 0.01 255);
+  --muted-foreground: oklch(0.54 0.04 265);
+  --accent: oklch(0.955 0.03 200);
+  --accent-foreground: oklch(0.22 0.04 265);
+
+  --destructive: oklch(0.6 0.23 25);
+  --border: #ece9e6;
+  --input: #ece9e6;
+  --ring: oklch(0.7 0.1 264);
+
+  /* Charts: slightly more vibrant (still accessible on light bg) */
+  --chart-1: oklch(0.62 0.23 40);
+  --chart-2: oklch(0.6 0.14 185);
+  --chart-3: oklch(0.5 0.14 230);
+  --chart-4: oklch(0.74 0.2 85);
+  --chart-5: oklch(0.7 0.2 15);
+
+  /* Sidebar: a tiny contrast step to feel “layered” */
+  --sidebar: oklch(0.985 0.008 255);
+  --sidebar-foreground: oklch(0.2 0.04 265);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: oklch(0.955 0.03 200);
+  --sidebar-accent-foreground: oklch(0.22 0.04 265);
+  --sidebar-border: #ece9e6;
+  --sidebar-ring: oklch(0.7 0.1 264);
+}
+
+.dark {
+  /* Dark theme: deep navy with a luminous ultramarine primary + teal accents */
+  --background: oklch(0.16 0.03 265);
+  --foreground: oklch(0.97 0.01 255);
+  --card: oklch(0.2 0.03 265);
+  --card-foreground: oklch(0.97 0.01 255);
+  --popover: oklch(0.2 0.03 265);
+  --popover-foreground: oklch(0.97 0.01 255);
+
+  --primary: #9aa6ff;
+  --primary-foreground: #0b0f3a;
+  --secondary: oklch(0.26 0.03 265);
+  --secondary-foreground: oklch(0.97 0.01 255);
+  --muted: oklch(0.26 0.03 265);
+  --muted-foreground: oklch(0.75 0.02 255);
+  --accent: oklch(0.3 0.05 200);
+  --accent-foreground: oklch(0.97 0.01 255);
+
+  --destructive: oklch(0.72 0.2 25);
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 16%);
+  --ring: oklch(0.75 0.12 264);
+
+  --chart-1: oklch(0.7 0.2 264);
+  --chart-2: oklch(0.78 0.16 165);
+  --chart-3: oklch(0.82 0.16 75);
+  --chart-4: oklch(0.74 0.22 310);
+  --chart-5: oklch(0.76 0.2 15);
+
+  --sidebar: oklch(0.18 0.03 265);
+  --sidebar-foreground: oklch(0.97 0.01 255);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: oklch(0.3 0.05 200);
+  --sidebar-accent-foreground: oklch(0.97 0.01 255);
+  --sidebar-border: oklch(1 0 0 / 12%);
+  --sidebar-ring: oklch(0.75 0.12 264);
+}
+
+/* Backoffice + landing palette. Both surfaces render inside [data-backoffice-root];
+   this file is the single source of truth for all theme tokens. The accent resolves --primary per
+   theme, so the brand hue is defined once above. */
+[data-backoffice-root] {
+  --bo-bg: #fbf9f8;
+  --bo-sidebar-bg: #f8f5f2;
+  --bo-selected-bg: #ffffff;
+  --bo-selected-border: #ece9e6;
+  --bo-selected-shadow: 2px 2px 0 0 rgba(207, 207, 207, 0.25);
+  --bo-panel: #ffffff;
+  --bo-panel-2: #fbf9f8;
+  --bo-header-bg: #f8f5f2;
+  --bo-fg: #25211c;
+  --bo-muted: #56647a;
+  --bo-muted-2: #7a889d;
+  --bo-border: #ece9e6;
+  --bo-border-strong: #ece9e6;
+  --bo-accent: var(--primary);
+  --bo-accent-strong: #141f7a;
+  --bo-accent-bg: #e4e6ff;
+  --bo-accent-fg: #141f7a;
+  /* rgba() needs channels, so this mirrors --primary and must change with it. */
+  --bo-accent-rgb: 30, 47, 176;
+  /* The call-to-action button is the brand primary; hover deepens it toward the strong accent. */
+  --bo-btn-bg: var(--primary);
+  --bo-btn-bg-hover: var(--bo-accent-strong);
+  --bo-btn-fg: var(--primary-foreground);
+  --bo-blue-1: #1f4ecc;
+  --bo-blue-2: #2b5ce6;
+  --bo-blue-3: #6f91ed;
+  --bo-blue-4: #adc2fb;
+  --bo-live: #12856f;
+  --bo-live-bg: #e1f5ef;
+  --bo-waiting: #a7650c;
+  --bo-waiting-bg: #fff2d8;
+  --bo-failed: #c74444;
+  --bo-failed-bg: #fde9e7;
+  --bo-grid: 180, 190, 210;
+  --bo-overlay: 251, 249, 248;
+  --bo-control-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.06), 0 1px 2px -1px rgba(0, 0, 0, 0.06), 0 2px 4px rgba(0, 0, 0, 0.04);
+  --bo-control-shadow-hover:
+    0 0 0 1px rgba(0, 0, 0, 0.09), 0 1px 2px -1px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.06);
+  --bo-panel-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.06), 0 1px 2px -1px rgba(0, 0, 0, 0.06), 0 3px 8px rgba(0, 0, 0, 0.05);
+  --bo-popover-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.09), 0 12px 28px -8px rgba(15, 23, 42, 0.22),
+    0 24px 48px -16px rgba(15, 23, 42, 0.16);
+}
+
+.dark [data-backoffice-root] {
+  --bo-bg: #070b12;
+  --bo-sidebar-bg: #070b12;
+  --bo-selected-bg: #0d1422;
+  --bo-selected-border: #2b3a52;
+  --bo-selected-shadow: 2px 2px 0 0 rgba(0, 0, 0, 0.35);
+  --bo-panel: #0d1422;
+  --bo-panel-2: #0a101b;
+  --bo-header-bg: #0d1422;
+  --bo-fg: #f8fbff;
+  --bo-muted: #c1ccdc;
+  --bo-muted-2: #8f9bb2;
+  --bo-border: #2b3a52;
+  --bo-border-strong: #5e79ad;
+  --bo-accent-strong: #c2c9ff;
+  --bo-accent-bg: #171a45;
+  --bo-accent-fg: #f4f5ff;
+  --bo-accent-rgb: 154, 166, 255;
+  --bo-blue-1: #6e9cff;
+  --bo-blue-2: #8eb2ff;
+  --bo-blue-3: #abc7ff;
+  --bo-blue-4: #d0deff;
+  --bo-live: #63d7be;
+  --bo-live-bg: #0e2d2a;
+  --bo-waiting: #f0b55c;
+  --bo-waiting-bg: #302410;
+  --bo-failed: #ff8b85;
+  --bo-failed-bg: #32191c;
+  --bo-grid: 43, 58, 82;
+  --bo-overlay: 8, 10, 16;
+  --bo-control-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+  --bo-control-shadow-hover: 0 0 0 1px rgba(255, 255, 255, 0.13);
+  --bo-panel-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+  --bo-popover-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12), 0 20px 44px -12px rgba(0, 0, 0, 0.7);
+}
+
+@layer components {
+  .bo-session-markdown {
+    color: var(--bo-muted);
+    overflow-wrap: anywhere;
+  }
+
+  .bo-session-markdown > :first-child {
+    margin-top: 0;
+  }
+
+  .bo-session-markdown > :last-child {
+    margin-bottom: 0;
+  }
+
+  .bo-session-markdown :where(p, ul, ol, blockquote, pre, table) {
+    margin-top: 0.5rem;
+  }
+
+  .bo-session-markdown :where(h1, h2, h3, h4) {
+    margin-top: 0.75rem;
+    color: var(--bo-fg);
+    font-weight: 700;
+    line-height: 1.25;
+  }
+
+  .bo-session-markdown h1 {
+    font-size: 1.15rem;
+  }
+
+  .bo-session-markdown h2 {
+    font-size: 1.05rem;
+  }
+
+  .bo-session-markdown h3,
+  .bo-session-markdown h4 {
+    font-size: 0.95rem;
+  }
+
+  .bo-session-markdown :where(strong, th) {
+    color: var(--bo-fg);
+    font-weight: 700;
+  }
+
+  .bo-session-markdown a {
+    color: var(--bo-accent-fg);
+    text-decoration-line: underline;
+    text-underline-offset: 3px;
+  }
+
+  .bo-session-markdown :where(ul, ol) {
+    padding-left: 1.25rem;
+  }
+
+  .bo-session-markdown ul {
+    list-style-type: disc;
+  }
+
+  .bo-session-markdown ol {
+    list-style-type: decimal;
+  }
+
+  .bo-session-markdown li + li {
+    margin-top: 0.25rem;
+  }
+
+  .bo-session-markdown blockquote {
+    border-left: 2px solid var(--bo-border-strong);
+    padding-left: 0.75rem;
+    color: var(--bo-muted-2);
+  }
+
+  .bo-session-markdown :not(pre) > code {
+    border: 1px solid var(--bo-border);
+    background: var(--bo-panel-2);
+    padding: 0.05rem 0.3rem;
+    font-family: var(--font-mono);
+    font-size: 0.85em;
+  }
+
+  .bo-session-markdown pre {
+    max-width: 100%;
+    overflow: auto;
+    border: 1px solid var(--bo-border);
+    background: var(--bo-panel-2);
+    padding: 0.5rem;
+    color: var(--bo-fg);
+  }
+
+  .bo-session-markdown table {
+    width: max-content;
+    max-width: 100%;
+    border-collapse: collapse;
+    overflow: auto;
+    display: block;
+  }
+
+  .bo-session-markdown :where(th, td) {
+    border: 1px solid var(--bo-border);
+    padding: 0.35rem 0.5rem;
+    text-align: left;
+  }
+
+  .bo-file-markdown [data-streamdown="code-block"] {
+    gap: 0;
+    overflow: hidden;
+    border-radius: 0;
+    background: var(--bo-panel-2);
+    padding: 0;
+  }
+
+  .bo-file-markdown [data-streamdown="code-block-header"] {
+    border-bottom: 1px solid var(--bo-border);
+    padding-inline: 0.75rem;
+  }
+
+  .bo-file-markdown [data-streamdown="code-block-body"] {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    padding: 0.75rem;
+  }
+
+  .bo-file-markdown [data-streamdown="code-block-body"] pre {
+    margin: 0;
+    border: 0;
+    background: transparent;
+    padding: 0;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  /* Tailwind v4's preflight resets buttons to `cursor: default`. Being in the base layer, this
+     yields to any utility, so `disabled:cursor-not-allowed` and friends still win. */
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+  html {
+    font-family: var(--font-sans);
+    font-optical-sizing: auto;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    background-image:
+      radial-gradient(1200px 600px at 20% -10%, oklch(0.92 0.06 264 / 35%), transparent 60%),
+      radial-gradient(900px 500px at 90% 0%, oklch(0.9 0.08 200 / 25%), transparent 55%);
+  }
+  .dark body {
+    background-image:
+      radial-gradient(1200px 600px at 20% -10%, oklch(0.55 0.18 264 / 22%), transparent 60%),
+      radial-gradient(900px 500px at 90% 0%, oklch(0.6 0.16 200 / 14%), transparent 55%);
+  }
+
+  ::selection {
+    background: oklch(0.72 0.14 264 / 35%);
+  }
+  .dark ::selection {
+    background: oklch(0.75 0.16 264 / 35%);
+  }
+}

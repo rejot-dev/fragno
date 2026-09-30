@@ -14,13 +14,11 @@ export function FormContainer({
   eyebrow?: string;
 }) {
   return (
-    <section className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
+    <section className="rounded-[6px] border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
       <div className="flex flex-col gap-3 border-b border-[color:var(--bo-border)] pb-3 md:flex-row md:items-start md:justify-between">
         <div className="space-y-2">
           {eyebrow ? (
-            <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
-              {eyebrow}
-            </p>
+            <p className="text-xs font-semibold text-[var(--bo-muted-2)]">{eyebrow}</p>
           ) : null}
           <h2 className="text-xl font-semibold text-[var(--bo-fg)]">{title}</h2>
           {description ? <p className="text-sm text-[var(--bo-muted)]">{description}</p> : null}
@@ -44,9 +42,7 @@ export function FormField({
   return (
     <label className="block space-y-2 text-sm">
       <span className="flex flex-col gap-1">
-        <span className="text-[11px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-          {label}
-        </span>
+        <span className="text-sm font-semibold text-[var(--bo-fg)]">{label}</span>
         {hint ? <span className="text-xs text-[var(--bo-muted)]">{hint}</span> : null}
       </span>
       {children}

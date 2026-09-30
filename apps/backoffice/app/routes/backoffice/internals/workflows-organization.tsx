@@ -1,3 +1,4 @@
+import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
 import { Link, Outlet, useLoaderData, useLocation, useParams } from "react-router";
 
 import { backofficeContextScopeLabel } from "@/backoffice-runtime/context";
@@ -5,7 +6,6 @@ import {
   backofficeRouteScopePath,
   requireBackofficeRouteScopeFromParams,
 } from "@/backoffice-runtime/route-scope";
-import { BackofficePageHeader } from "@/components/backoffice";
 import { requireBackofficeMe } from "@/fragno/auth/auth-server";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 
@@ -157,7 +157,7 @@ export default function BackofficeWorkflowsOrganization() {
                         aria-label={`View workflow instance ${instance.workflowName} ${instance.instanceId}`}
                         className={
                           isSelected
-                            ? "block border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] p-3 text-[var(--bo-accent-fg)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--bo-accent)]"
+                            ? "block border border-[color:var(--bo-selected-border)] bg-[var(--bo-selected-bg)] p-3 text-[var(--bo-fg)] shadow-[var(--bo-selected-shadow)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--bo-accent)]"
                             : "block border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--bo-accent)]"
                         }
                       >

@@ -1,5 +1,11 @@
 import { Menu } from "@base-ui/react/menu";
-import { Check, Code2, Ellipsis, ListTree, PanelsTopLeft, X } from "lucide-react";
+import { IconButton } from "@fragno-private/design-system/button";
+import { Icon } from "@fragno-private/design-system/icon";
+import {
+  ProgressiveOverflowControls,
+  type ProgressiveOverflowControlGroup,
+} from "@fragno-private/design-system/progressive-overflow-controls";
+import { UnderlineToggleButton } from "@fragno-private/design-system/underline-tabs";
 import { useCallback, useEffect, useState } from "react";
 
 import type { SourceRange } from "@fragno-dev/workflow-visualizer-tokens";
@@ -10,10 +16,6 @@ import {
 } from "@/backoffice-runtime/resolved-scope";
 import { parseBackofficeUiResult } from "@/backoffice-ui/result";
 import { sendBackofficeWorkflowEvent } from "@/backoffice-ui/workflow-events.client";
-import {
-  ProgressiveOverflowControls,
-  type ProgressiveOverflowControlGroup,
-} from "@/components/backoffice/progressive-overflow-controls";
 import type { ResolvedWorkflowRuntimeToolCall } from "@/fragno/runtime-tools/workflow-catalog";
 import { useLinkedScrollViewports } from "@/routes/backoffice/automations/script-view/linked-scroll";
 import { ScriptCodeView } from "@/routes/backoffice/automations/script-view/script-code-view";
@@ -39,9 +41,9 @@ const EMPTY_RUNTIME_TOOL_CALLS: ReadonlyMap<string, readonly ResolvedWorkflowRun
 type WorkflowDisplay = "ui" | "simple" | "code";
 
 const WORKFLOW_DISPLAY_OPTIONS = [
-  { mode: "ui" as const, label: "UI", icon: PanelsTopLeft },
-  { mode: "simple" as const, label: "Flow", icon: ListTree },
-  { mode: "code" as const, label: "Code", icon: Code2 },
+  { mode: "ui" as const, label: "UI", icon: "layout" as const },
+  { mode: "simple" as const, label: "Flow", icon: "list" as const },
+  { mode: "code" as const, label: "Code", icon: "code" as const },
 ];
 
 export function SessionWorkspacePanel({
@@ -100,15 +102,9 @@ export function SessionWorkspacePanel({
             />
           ) : null}
 
-          <button
-            type="button"
-            aria-label="Close session workspace"
-            title="Close workspace"
-            onClick={onClose}
-            className={`inline-flex size-10 shrink-0 items-center justify-center text-[var(--bo-muted)] transition-[background-color,color,scale] duration-150 ease-out outline-none hover:bg-[var(--bo-panel-2)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 ${tapScale}`}
-          >
-            <X className="size-4" aria-hidden="true" />
-          </button>
+          <IconButton label="Close session workspace" title="Close workspace" onClick={onClose}>
+            <Icon name="x" className="size-4" />
+          </IconButton>
         </div>
       </header>
 
@@ -152,24 +148,18 @@ function WorkflowDisplayButtons({
   onDisplayChange: (display: WorkflowDisplay) => void;
 }) {
   return (
-    <div role="group" aria-label="Workflow display" className="flex items-center gap-2">
-      {WORKFLOW_DISPLAY_OPTIONS.map(({ mode, label, icon: Icon }) => (
-        <button
+    <div role="group" aria-label="Workflow display" className="flex items-center gap-1">
+      {WORKFLOW_DISPLAY_OPTIONS.map(({ mode, label, icon }) => (
+        <UnderlineToggleButton
           key={mode}
-          type="button"
-          aria-pressed={display === mode}
+          pressed={display === mode}
           onClick={() => {
             onDisplayChange(mode);
           }}
-          className={`flex min-h-10 items-center gap-1.5 border-b-2 px-1 text-[10px] font-semibold tracking-[0.22em] uppercase transition-[scale,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 active:scale-[0.96] ${
-            display === mode
-              ? "border-[color:var(--bo-accent)] text-[var(--bo-accent-fg)]"
-              : "border-transparent text-[var(--bo-muted)] hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-          }`}
         >
-          <Icon className="size-3.5" aria-hidden="true" />
+          <Icon name={icon} />
           {label}
-        </button>
+        </UnderlineToggleButton>
       ))}
     </div>
   );
@@ -190,7 +180,7 @@ function WorkflowDisplayMenu({
         title="Workflow display options"
         className={`bo-control-surface inline-flex size-10 shrink-0 items-center justify-center bg-[var(--bo-panel)] text-[var(--bo-muted)] transition-[background-color,color,scale,box-shadow] duration-150 ease-out outline-none hover:bg-[var(--bo-panel-2)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 data-[popup-open]:bg-[var(--bo-accent-bg)] data-[popup-open]:text-[var(--bo-accent-fg)] ${tapScale}`}
       >
-        <Ellipsis className="size-4" aria-hidden="true" />
+        <Icon name="more-horizontal" className="size-4" />
       </Menu.Trigger>
       <Menu.Portal>
         <Menu.Positioner side="bottom" align="end" sideOffset={8} className="z-50">
@@ -208,16 +198,16 @@ function WorkflowDisplayMenu({
               }}
               className="space-y-1"
             >
-              {WORKFLOW_DISPLAY_OPTIONS.map(({ mode, label, icon: Icon }) => (
+              {WORKFLOW_DISPLAY_OPTIONS.map(({ mode, label, icon }) => (
                 <Menu.RadioItem
                   key={mode}
                   value={mode}
                   className="flex min-h-10 items-center gap-2 px-2.5 text-xs text-[var(--bo-muted)] outline-none data-[highlighted]:bg-[var(--bo-panel-2)] data-[highlighted]:text-[var(--bo-fg)]"
                 >
-                  <Icon className="size-4" aria-hidden="true" />
+                  <Icon name={icon} className="size-4" />
                   <span className="flex-1">{label}</span>
                   <Menu.RadioItemIndicator className="text-[var(--bo-accent-fg)]">
-                    <Check className="size-4" aria-hidden="true" />
+                    <Icon name="check" className="size-4" />
                   </Menu.RadioItemIndicator>
                 </Menu.RadioItem>
               ))}

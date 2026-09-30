@@ -1,6 +1,5 @@
+import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
 import { isRouteErrorResponse } from "react-router";
-
-import { BackofficePageHeader } from "@/components/backoffice";
 
 export function FilesErrorBoundary({
   error,

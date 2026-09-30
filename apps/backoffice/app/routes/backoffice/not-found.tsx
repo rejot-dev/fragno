@@ -1,4 +1,4 @@
-import { BackofficePageHeader } from "@/components/backoffice";
+import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
 
 export default function BackofficeNotFound() {
   return (

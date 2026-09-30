@@ -101,7 +101,7 @@ export default function BackofficeOrganizationResendLayout({
   }
 
   return (
-    <div className="space-y-4">
+    <div>
       <AutomationWorkspaceHeader
         selectedScope={uiScope}
         activeTab="integrations"

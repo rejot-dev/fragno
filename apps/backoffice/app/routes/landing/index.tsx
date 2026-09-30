@@ -1,4 +1,4 @@
-import "../../backoffice.css";
+import "@fragno-private/design-system/components.css";
 
 import { LandingFooter } from "./landing-footer";
 import { LandingHeader } from "./landing-header";

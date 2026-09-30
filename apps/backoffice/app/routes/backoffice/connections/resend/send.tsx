@@ -1,13 +1,14 @@
+import { Button } from "@fragno-private/design-system/button";
+import { FormContainer } from "@fragno-private/design-system/form-container";
 import { useEffect, useRef } from "react";
 import { useFetcher, useOutletContext } from "react-router";
 
 import type { ResendEmailRecord, ResendSendEmailInput } from "@fragno-dev/resend-fragment";
 
-import { FormContainer, FormField } from "@/components/backoffice";
-
 import { resolveAuthenticatedIntegrationContext } from "../../integrations/scope";
 import type { Route } from "./+types/send";
 import { sendResendEmail } from "./data";
+import { EmailComposeFields } from "./email-compose-fields";
 import type { ResendOutgoingOutletContext } from "./outbox";
 
 type ResendSendActionData = {
@@ -144,126 +145,21 @@ export default function BackofficeOrganizationResendSend() {
         description="Queue a message through the Resend fragment. Newly queued messages appear in the list on the left."
       >
         <fetcher.Form ref={formRef} method="post" className="space-y-3">
-          <div className="grid gap-3 md:grid-cols-2">
-            <FormField label="To" hint="Comma or newline separated list.">
-              <input
-                name="to"
-                required
-                placeholder="hello@resend.dev, ops@example.com"
-                className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
-              />
-            </FormField>
-            <FormField label="Subject" hint="Short summary line shown in the inbox preview.">
-              <input
-                name="subject"
-                required
-                placeholder="What would you like to send?"
-                className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
-              />
-            </FormField>
-          </div>
-
-          <div className="grid gap-3 md:grid-cols-2">
-            <FormField
-              label="From"
-              hint={
-                defaultFrom
-                  ? `Defaults to ${defaultFrom}.`
-                  : "Leave blank to use the configured default."
-              }
-            >
-              <input
-                name="from"
-                defaultValue={defaultFrom}
-                placeholder={defaultFrom || "onboarding@yourdomain.com"}
-                className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
-              />
-            </FormField>
-            <FormField
-              label="Reply-to"
-              hint={
-                defaultReplyTo
-                  ? `Defaults to ${defaultReplyTo}.`
-                  : "Optional. Use commas for multiple addresses."
-              }
-            >
-              <input
-                name="replyTo"
-                defaultValue={defaultReplyTo}
-                placeholder={defaultReplyTo || "support@yourdomain.com"}
-                className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
-              />
-            </FormField>
-          </div>
-
-          <div className="grid gap-3 md:grid-cols-2">
-            <FormField label="CC" hint="Optional. Use commas for multiple addresses.">
-              <input
-                name="cc"
-                placeholder="finance@yourdomain.com"
-                className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
-              />
-            </FormField>
-            <FormField label="BCC" hint="Optional. Use commas for multiple addresses.">
-              <input
-                name="bcc"
-                placeholder="audit@yourdomain.com"
-                className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
-              />
-            </FormField>
-          </div>
-
-          <FormField label="Schedule in" hint="Optional delay from now (uses database time).">
-            <div className="flex flex-wrap gap-2">
-              <input
-                name="scheduledInValue"
-                type="number"
-                min="1"
-                step="1"
-                placeholder="15"
-                className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none md:w-36"
-              />
-              <select
-                name="scheduledInUnit"
-                defaultValue="minutes"
-                className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
-              >
-                <option value="minutes">minutes</option>
-                <option value="hours">hours</option>
-                <option value="days">days</option>
-              </select>
-            </div>
-          </FormField>
-
-          <div className="grid gap-3 md:grid-cols-2">
-            <FormField label="Text" hint="Provide either text or HTML.">
-              <textarea
-                name="text"
-                rows={6}
-                placeholder="Write the plain text version of the email..."
-                className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
-              />
-            </FormField>
-            <FormField label="HTML" hint="Optional rich HTML body.">
-              <textarea
-                name="html"
-                rows={6}
-                placeholder="<p>Hello from Resend...</p>"
-                className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
-              />
-            </FormField>
-          </div>
+          <EmailComposeFields
+            defaultFrom={defaultFrom}
+            defaultReplyTo={defaultReplyTo}
+            subjectHint="Short summary line shown in the inbox preview."
+            subjectPlaceholder="What would you like to send?"
+            textPlaceholder="Write the plain text version of the email..."
+            bodyColumnsFrom="md"
+          />
 
           {sendError ? <p className="text-xs text-red-500">{sendError}</p> : null}
           {sendSuccess ? <p className="text-xs text-green-500">{sendSuccess}</p> : null}
 
-          <button
-            type="submit"
-            disabled={isSending}
-            className="w-full border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
-          >
+          <Button variant="accent" type="submit" disabled={isSending} className="w-full">
             {isSending ? "Sending…" : "Send email"}
-          </button>
+          </Button>
         </fetcher.Form>
       </FormContainer>
     </div>

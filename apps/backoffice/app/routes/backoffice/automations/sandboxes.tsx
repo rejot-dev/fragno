@@ -1,3 +1,5 @@
+import { Button, ButtonLink } from "@fragno-private/design-system/button";
+import { Input } from "@fragno-private/design-system/input";
 import { useEffect } from "react";
 import {
   Form,
@@ -368,7 +370,7 @@ function SandboxNavigation({
   loadFailed: boolean;
 }) {
   return (
-    <aside className="border border-t-0 border-l-0 border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 shadow-[0_1px_0_rgba(var(--bo-grid),0.2)] max-xl:border-r-0">
+    <aside className="border border-l-0 border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 shadow-[0_1px_0_rgba(var(--bo-grid),0.2)] max-xl:border-r-0">
       <div>
         <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
           Sandboxes
@@ -383,7 +385,7 @@ function SandboxNavigation({
           aria-current={view === "new" ? "page" : undefined}
           className={
             view === "new"
-              ? "block w-full border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-3 text-left text-[var(--bo-accent-fg)]"
+              ? "block w-full border border-[color:var(--bo-selected-border)] bg-[var(--bo-selected-bg)] px-3 py-3 text-left text-[var(--bo-fg)] shadow-[var(--bo-selected-shadow)]"
               : "block w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-3 text-left text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
           }
         >
@@ -429,7 +431,7 @@ function SandboxNavigationLink({
       aria-current={isSelected ? "page" : undefined}
       className={
         isSelected
-          ? "block border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-3 text-[var(--bo-accent-fg)] shadow-[0_0_0_1px_rgba(43,92,230,0.14)]"
+          ? "block border border-[color:var(--bo-selected-border)] bg-[var(--bo-selected-bg)] px-3 py-3 text-[var(--bo-fg)] shadow-[var(--bo-selected-shadow)]"
           : "block border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-3 text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:bg-[var(--bo-panel)] hover:text-[var(--bo-fg)]"
       }
     >
@@ -494,7 +496,7 @@ function SandboxContent({
   }
 
   return (
-    <section className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 shadow-[0_1px_0_rgba(var(--bo-grid),0.2)] max-xl:border-l-0 xl:border-t-0 @max-7xl:border-r-0">
+    <section className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 shadow-[0_1px_0_rgba(var(--bo-grid),0.2)] max-xl:border-l-0 @max-7xl:border-r-0">
       {content}
     </section>
   );
@@ -502,7 +504,7 @@ function SandboxContent({
 
 function SandboxLoadErrorView({ message }: { message: string }) {
   return (
-    <section className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 shadow-[0_1px_0_rgba(var(--bo-grid),0.2)] max-xl:border-l-0 xl:border-t-0 @max-7xl:border-r-0">
+    <section className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 shadow-[0_1px_0_rgba(var(--bo-grid),0.2)] max-xl:border-l-0 @max-7xl:border-r-0">
       <div className="border border-red-300 bg-red-100 p-3 text-sm text-red-700">
         Could not load sandbox instances: {message}
       </div>
@@ -519,12 +521,9 @@ function MissingSandboxView({ basePath }: { basePath: string }) {
       <p className="text-sm text-[var(--bo-muted)]">
         The selected sandbox instance is no longer available for this automation scope.
       </p>
-      <Link
-        to={toSandboxPath(basePath, { view: "new" })}
-        className="inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)]"
-      >
+      <ButtonLink variant="accent" to={toSandboxPath(basePath, { view: "new" })}>
         Create new sandbox
-      </Link>
+      </ButtonLink>
     </div>
   );
 }
@@ -564,11 +563,11 @@ function NewSandboxView({
             <span className="text-[10px] tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
               Sandbox id (optional)
             </span>
-            <input
+            <Input
               name="id"
               defaultValue={values.id}
               placeholder="auto-generated"
-              className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 font-mono text-sm tracking-normal text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:outline-none"
+              className="w-full font-mono tracking-normal"
             />
             <span className="block text-[11px] tracking-normal text-[var(--bo-muted)] normal-case">
               Leave blank to auto-generate. This id is used to reference and reopen the sandbox. IDs
@@ -580,14 +579,14 @@ function NewSandboxView({
             <span className="text-[10px] tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
               Sleep after
             </span>
-            <input
+            <Input
               name="sleepAfter"
               type="text"
               defaultValue={values.sleepAfter}
               placeholder="15m or 900"
               inputMode="text"
               autoComplete="off"
-              className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 font-mono text-sm tracking-normal text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:outline-none"
+              className="w-full tracking-normal"
             />
             <span className="block text-[11px] tracking-normal text-[var(--bo-muted)] normal-case">
               Idle timeout before the sandbox can sleep. Accepts duration text like `15m` or a
@@ -599,10 +598,10 @@ function NewSandboxView({
             <span className="text-[10px] tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
               Startup command
             </span>
-            <input
+            <Input
               name="startupCommand"
               defaultValue={values.startupCommand}
-              className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 font-mono text-sm tracking-normal text-[var(--bo-fg)] focus:border-[color:var(--bo-accent)] focus:outline-none"
+              className="w-full font-mono tracking-normal"
             />
             <span className="block text-[11px] tracking-normal text-[var(--bo-muted)] normal-case">
               Command executed immediately after provisioning. If it fails, sandbox startup is
@@ -614,13 +613,13 @@ function NewSandboxView({
             <span className="text-[10px] tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
               Startup timeout (ms)
             </span>
-            <input
+            <Input
               name="startupTimeoutMs"
               type="number"
               min={1}
               step={1}
               defaultValue={values.startupTimeoutMs}
-              className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 font-mono text-sm tracking-normal text-[var(--bo-fg)] focus:border-[color:var(--bo-accent)] focus:outline-none"
+              className="w-full tracking-normal"
             />
             <span className="block text-[11px] tracking-normal text-[var(--bo-muted)] normal-case">
               Maximum time allowed for the startup command before it times out.
@@ -653,13 +652,9 @@ function NewSandboxView({
         </div>
 
         <div className="space-y-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3">
-          <button
-            type="submit"
-            disabled={isStarting}
-            className="inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:cursor-not-allowed disabled:opacity-70"
-          >
+          <Button variant="accent" type="submit" disabled={isStarting}>
             {isStarting ? "Starting..." : "Start sandbox"}
-          </button>
+          </Button>
           <p className="text-xs text-[var(--bo-muted)]">
             Starts provisioning and runs the startup command before the sandbox is available.
           </p>
@@ -745,7 +740,7 @@ function SandboxDetailView({
             rows={3}
             defaultValue={commandRun?.command ?? ""}
             placeholder="pnpm test"
-            className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 font-mono text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:outline-none"
+            className="bo-input w-full px-3 py-2 font-mono text-sm"
           />
           <p className="text-xs text-[var(--bo-muted)]">
             Enter a single command exactly as it should run in the sandbox shell.
@@ -756,27 +751,23 @@ function SandboxDetailView({
               <span className="text-[10px] tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
                 Timeout (ms)
               </span>
-              <input
+              <Input
                 name="timeoutMs"
                 type="number"
                 min={1}
                 step={1}
                 defaultValue={commandRun?.timeoutMs ? String(commandRun.timeoutMs) : ""}
                 placeholder="15000"
-                className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 font-mono text-sm tracking-normal text-[var(--bo-fg)] focus:border-[color:var(--bo-accent)] focus:outline-none"
+                className="w-full tracking-normal"
               />
               <span className="block text-[11px] tracking-normal text-[var(--bo-muted)] normal-case">
                 Optional command timeout. Leave blank for runtime default.
               </span>
             </label>
 
-            <button
-              type="submit"
-              disabled={commandDisabled || isExecuting}
-              className="inline-flex border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:cursor-not-allowed disabled:opacity-70"
-            >
+            <Button variant="accent" type="submit" disabled={commandDisabled || isExecuting}>
               {isExecuting ? "Running..." : "Run command"}
-            </button>
+            </Button>
           </div>
           <p className="text-xs text-[var(--bo-muted)]">
             If the sandbox exits before completion, the result will be marked as terminated and

@@ -1,4 +1,5 @@
-import { BackofficePageHeader } from "@/components/backoffice";
+import { Button } from "@fragno-private/design-system/button";
+import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
 
 const USERS = [
   {
@@ -56,13 +57,9 @@ export default function BackofficeUsers() {
           </div>
           <div className="flex flex-wrap gap-2">
             {["Invite", "Access map", "Export"].map((label) => (
-              <button
-                key={label}
-                type="button"
-                className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-              >
+              <Button variant="secondary" key={label}>
                 {label}
-              </button>
+              </Button>
             ))}
           </div>
         </div>

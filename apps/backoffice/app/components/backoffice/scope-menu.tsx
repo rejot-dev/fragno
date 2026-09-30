@@ -1,7 +1,12 @@
-import { Menu } from "@base-ui/react/menu";
-import { ChevronsUpDown } from "lucide-react";
-import { Fragment } from "react";
-import { Link, useLocation } from "react-router";
+import type { IconName } from "@fragno-private/design-system/icon";
+import {
+  SelectorMenu,
+  SelectorMenuGroup,
+  SelectorMenuOption,
+  SelectorMenuPopup,
+  SelectorMenuTrigger,
+} from "@fragno-private/design-system/selector-menu";
+import { useLocation } from "react-router";
 
 import {
   backofficeRouteScopeFromResolvedScope,
@@ -21,23 +26,7 @@ const SCOPE_GROUPS = [
 type ScopeMenuOption = {
   id: string;
   label: string;
-  description: string;
   scope: BackofficeResolvedScope<Organization>;
-};
-
-const scopeKindLabel = (kind: BackofficeResolvedScope["kind"]) => {
-  switch (kind) {
-    case "system":
-      return "System";
-    case "org":
-      return "Org";
-    case "project":
-      return "Project";
-    case "user":
-      return "User";
-  }
-
-  throw new Error("Unsupported Backoffice scope kind.");
 };
 
 const scopeOptionId = (scope: BackofficeResolvedScope) => {
@@ -70,6 +59,34 @@ const triggerKindLabel = (kind: BackofficeResolvedScope["kind"]) => {
   throw new Error("Unsupported Backoffice scope kind.");
 };
 
+// While in project scope this menu shows the parent organization, so it shares its mark.
+const scopeMark = (
+  scope: BackofficeResolvedScope<Organization>,
+): { kind: "letter"; letter: string } | { kind: "icon"; icon: IconName } => {
+  switch (scope.kind) {
+    case "system":
+      return { kind: "icon", icon: "server" };
+    case "org":
+    case "project":
+      return { kind: "letter", letter: scope.organization.name.trim().charAt(0).toUpperCase() };
+    case "user":
+      return { kind: "icon", icon: "user" };
+  }
+
+  throw new Error("Unsupported Backoffice scope kind.");
+};
+
+// The first organization carries the app's primary colour; every other scope gets its own hue.
+const scopeColor = (
+  scope: BackofficeResolvedScope<Organization>,
+  me: BackofficeMeData,
+  scopeId: string,
+): { kind: "primary" } | { kind: "seeded"; seed: string } =>
+  (scope.kind === "org" || scope.kind === "project") &&
+  scope.organization.id === me.organizations[0]?.organization.id
+    ? { kind: "primary" }
+    : { kind: "seeded", seed: scopeId };
+
 const currentScopeLabel = (scope: BackofficeResolvedScope<Organization>, me: BackofficeMeData) => {
   switch (scope.kind) {
     case "system":
@@ -87,9 +104,11 @@ const currentScopeLabel = (scope: BackofficeResolvedScope<Organization>, me: Bac
 export function BackofficeScopeMenu({
   me,
   currentScope,
+  sidebarCollapsed,
 }: {
   me: BackofficeMeData | null;
   currentScope: BackofficeResolvedScope<Organization> | null;
+  sidebarCollapsed: boolean;
 }) {
   const location = useLocation();
   if (!me?.user || !currentScope) {
@@ -102,7 +121,6 @@ export function BackofficeScopeMenu({
           {
             id: "system:system",
             label: "System",
-            description: "Global system scope",
             scope: { kind: "system" as const },
           },
         ]
@@ -110,13 +128,11 @@ export function BackofficeScopeMenu({
     ...me.organizations.map(({ organization }) => ({
       id: `org:${organization.id}`,
       label: organization.name,
-      description: "Organization scope",
       scope: { kind: "org" as const, organization },
     })),
     {
       id: `user:${me.user.id}`,
       label: me.user.email ?? me.user.id,
-      description: "Personal user scope",
       scope: { kind: "user" as const, userId: me.user.id },
     },
   ];
@@ -124,108 +140,57 @@ export function BackofficeScopeMenu({
   const triggerLabel = currentScopeLabel(currentScope, me);
 
   return (
-    <Menu.Root modal={false}>
-      <Menu.Trigger
-        type="button"
-        aria-label={`Switch scope. Current context: ${triggerLabel}`}
-        className="group flex min-h-12 w-full min-w-0 cursor-pointer items-center gap-2.5 py-3.5 pr-4 pl-6 text-left outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30"
-      >
-        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className="text-[11px] font-semibold text-[var(--bo-muted-2)]">
-            {triggerKindLabel(currentScope.kind)}
-          </span>
-          <span className="min-w-0 truncate text-sm font-extrabold tracking-normal text-[var(--bo-fg)] normal-case">
-            {triggerLabel}
-          </span>
-        </span>
-        <ChevronsUpDown
-          aria-hidden="true"
-          className="size-3.5 shrink-0 text-[var(--bo-muted-2)] transition-colors duration-150 ease-out group-data-[popup-open]:text-[var(--bo-accent-fg)]"
-        />
-      </Menu.Trigger>
+    <SelectorMenu>
+      <SelectorMenuTrigger
+        label={triggerKindLabel(currentScope.kind)}
+        value={triggerLabel}
+        ariaLabel={`Switch scope. Current context: ${triggerLabel}`}
+        layout={{
+          kind: "workspace",
+          mark: scopeMark(currentScope),
+          color: scopeColor(currentScope, me, selectedId),
+          collapsed: sidebarCollapsed,
+        }}
+      />
 
-      <Menu.Portal style={{ position: "relative", zIndex: 2147483647 }}>
-        <Menu.Positioner side="bottom" align="start" sideOffset={0} style={{ zIndex: 2147483647 }}>
-          <Menu.Popup
-            data-backoffice-root
-            className="relative max-h-[min(32rem,calc(100vh-6rem))] w-[min(24rem,calc(100vw-2rem))] origin-top-left overflow-y-auto border border-[color:var(--bo-border-strong)] bg-[var(--bo-panel)] p-2 text-left tracking-normal text-[var(--bo-fg)] shadow-[0_18px_50px_rgba(15,23,42,0.2)] transition-[opacity,transform] duration-150 ease-out outline-none data-[ending-style]:-translate-y-1 data-[ending-style]:opacity-0 data-[starting-style]:-translate-y-1 data-[starting-style]:opacity-0 dark:shadow-[0_22px_60px_rgba(0,0,0,0.55)]"
-          >
-            <p className="px-2 py-1 text-[10px] font-semibold tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
-              Switch scope
-            </p>
-            {SCOPE_GROUPS.map((group) => {
-              const groupOptions = options.filter((option) => option.scope.kind === group.kind);
-              if (groupOptions.length === 0) {
-                return null;
-              }
+      <SelectorMenuPopup align="start" height="capped">
+        {SCOPE_GROUPS.map((group) => {
+          const groupOptions = options.filter((option) => option.scope.kind === group.kind);
+          if (groupOptions.length === 0) {
+            return null;
+          }
 
-              return (
-                <Fragment key={group.kind}>
-                  <Menu.Separator className="my-2 h-px bg-[var(--bo-border)]" />
-                  <Menu.Group className="space-y-1">
-                    <Menu.GroupLabel className="px-2 py-1 text-[9px] font-semibold tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
-                      {group.label}
-                    </Menu.GroupLabel>
-                    {groupOptions.map((option) => {
-                      const isCurrent = option.id === selectedId;
-                      const destinationOrganizationId =
-                        option.scope.kind === "org" || option.scope.kind === "project"
-                          ? option.scope.organization.id
-                          : null;
-                      const destination = scopeSwitchPath(
-                        location.pathname,
-                        backofficeRouteScopeFromResolvedScope(option.scope),
-                      );
-                      const switchPath =
-                        destinationOrganizationId &&
-                        destinationOrganizationId !== me.activeOrganizationId
-                          ? buildBackofficeOrganizationSwitchPath(
-                              destinationOrganizationId,
-                              destination,
-                            )
-                          : destination;
-                      const className = isCurrent
-                        ? "grid min-h-11 cursor-default gap-1 border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-2.5 py-2 text-left text-[var(--bo-accent-fg)] outline-none"
-                        : "grid min-h-11 gap-1 border border-transparent px-2.5 py-2 text-left text-[var(--bo-muted)] outline-none transition-[background-color,border-color,color] duration-150 ease-out data-[highlighted]:border-[color:var(--bo-border-strong)] data-[highlighted]:bg-[var(--bo-panel-2)] data-[highlighted]:text-[var(--bo-fg)]";
-                      const content = (
-                        <>
-                          <span className="flex min-w-0 items-center justify-between gap-4">
-                            <span
-                              className={`truncate text-sm tracking-normal text-[var(--bo-fg)] normal-case ${isCurrent ? "font-extrabold" : "font-medium"}`}
-                            >
-                              {option.label}
-                            </span>
-                            <span className="shrink-0 text-[9px] font-semibold tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
-                              {scopeKindLabel(option.scope.kind)}
-                            </span>
-                          </span>
-                          <span className="truncate text-xs tracking-normal text-[var(--bo-muted-2)] normal-case">
-                            {option.description}
-                          </span>
-                        </>
-                      );
+          return (
+            <SelectorMenuGroup key={group.kind} label={group.label}>
+              {groupOptions.map((option) => {
+                const destinationOrganizationId =
+                  option.scope.kind === "org" || option.scope.kind === "project"
+                    ? option.scope.organization.id
+                    : null;
+                const destination = scopeSwitchPath(
+                  location.pathname,
+                  backofficeRouteScopeFromResolvedScope(option.scope),
+                );
+                const switchPath =
+                  destinationOrganizationId && destinationOrganizationId !== me.activeOrganizationId
+                    ? buildBackofficeOrganizationSwitchPath(destinationOrganizationId, destination)
+                    : destination;
 
-                      return isCurrent ? (
-                        <Menu.Item key={option.id} disabled className={className}>
-                          {content}
-                        </Menu.Item>
-                      ) : (
-                        <Menu.Item
-                          key={option.id}
-                          render={<Link to={switchPath} preventScrollReset />}
-                          className={className}
-                        >
-                          {content}
-                        </Menu.Item>
-                      );
-                    })}
-                  </Menu.Group>
-                </Fragment>
-              );
-            })}
-          </Menu.Popup>
-        </Menu.Positioner>
-      </Menu.Portal>
-    </Menu.Root>
+                return (
+                  <SelectorMenuOption
+                    key={option.id}
+                    to={switchPath}
+                    label={option.label}
+                    description={null}
+                    badge={null}
+                    current={option.id === selectedId}
+                  />
+                );
+              })}
+            </SelectorMenuGroup>
+          );
+        })}
+      </SelectorMenuPopup>
+    </SelectorMenu>
   );
 }

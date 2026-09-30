@@ -1,3 +1,6 @@
+import { Button } from "@fragno-private/design-system/button";
+import { FormContainer, FormField } from "@fragno-private/design-system/form-container";
+import { Input } from "@fragno-private/design-system/input";
 import { useEffect, useMemo, useState, type SubmitEvent } from "react";
 import {
   Form,
@@ -9,8 +12,6 @@ import {
   type ActionFunctionArgs,
   type LoaderFunctionArgs,
 } from "react-router";
-
-import { FormContainer, FormField } from "@/components/backoffice";
 
 import { resolveAuthenticatedOrgIntegrationContext } from "../../integrations/scope";
 import { formatTimestamp } from "../formatting";
@@ -238,7 +239,7 @@ export default function BackofficeOrganizationReson8CustomModels() {
                 label="Model name"
                 hint="Human-readable label used throughout the backoffice."
               >
-                <input
+                <Input
                   type="text"
                   name="name"
                   value={formState.name}
@@ -247,7 +248,7 @@ export default function BackofficeOrganizationReson8CustomModels() {
                     setFormState((prev) => ({ ...prev, name: event.target.value }));
                   }}
                   placeholder="Clinical intake"
-                  className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
+                  className="w-full"
                 />
               </FormField>
 
@@ -264,7 +265,7 @@ export default function BackofficeOrganizationReson8CustomModels() {
                     setFormState((prev) => ({ ...prev, description: event.target.value }));
                   }}
                   placeholder="Terms commonly used during patient intake calls."
-                  className="w-full resize-y border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
+                  className="bo-input w-full resize-y px-3 py-2 text-sm"
                 />
               </FormField>
 
@@ -280,7 +281,7 @@ export default function BackofficeOrganizationReson8CustomModels() {
                   placeholder={
                     "myocardial infarction\natrial fibrillation\nnon-invasive ventilation"
                   }
-                  className="w-full resize-y border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 font-mono text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
+                  className="bo-input w-full resize-y px-3 py-2 text-sm"
                 />
               </FormField>
             </div>
@@ -288,13 +289,9 @@ export default function BackofficeOrganizationReson8CustomModels() {
             {createError ? <p className="text-xs text-red-500">{createError}</p> : null}
             {createSuccess ? <p className="text-xs text-green-500">{createSuccess}</p> : null}
 
-            <button
-              type="submit"
-              disabled={saving}
-              className="w-full border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
-            >
+            <Button variant="accent" type="submit" disabled={saving} className="w-full">
               {saving ? "Creating…" : "Create custom model"}
-            </button>
+            </Button>
           </Form>
         </FormContainer>
       </section>

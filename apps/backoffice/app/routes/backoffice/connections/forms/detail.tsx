@@ -1,13 +1,14 @@
+import { Button, ButtonLink } from "@fragno-private/design-system/button";
+import { BackofficeJsonForm } from "@fragno-private/design-system/forms/backoffice-json-form";
+import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
 import { useEffect, useState } from "react";
-import { Link, useOutletContext } from "react-router";
+import { useOutletContext } from "react-router";
 
 import type { FormResponse } from "@fragno-dev/forms";
 
 import type { UISchemaElement } from "@jsonforms/core";
 
 import { backofficeRouteScopePath } from "@/backoffice-runtime/route-scope";
-import { BackofficeStatusLight } from "@/components/backoffice";
-import { BackofficeJsonForm } from "@/components/backoffice/forms/backoffice-json-form";
 import { formsClient } from "@/fragno/forms-client";
 
 import type { AutomationLayoutContext } from "../../automations/layout-context";
@@ -117,21 +118,13 @@ function BackofficeFormDetailPage({ params }: Route.ComponentProps) {
           </div>
           <div className="flex flex-wrap gap-2">
             {(form.status === "open" || form.status === "static") && (
-              <Link
-                to={publicPath}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex min-h-10 items-center border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 text-[10px] font-semibold tracking-[0.2em] text-[var(--bo-accent-fg)] uppercase"
-              >
+              <ButtonLink variant="accent" to={publicPath} target="_blank" rel="noreferrer">
                 Open public form
-              </Link>
+              </ButtonLink>
             )}
-            <Link
-              to={formsPath}
-              className="inline-flex min-h-10 items-center border border-[color:var(--bo-border)] px-3 text-[10px] font-semibold tracking-[0.2em] text-[var(--bo-muted)] uppercase hover:text-[var(--bo-fg)]"
-            >
+            <ButtonLink variant="secondary" to={formsPath}>
               All forms
-            </Link>
+            </ButtonLink>
           </div>
         </div>
       </section>
@@ -199,16 +192,16 @@ function BackofficeFormDetailPage({ params }: Route.ComponentProps) {
                 ))}
               </ol>
               {nextSubmissionCursor ? (
-                <button
-                  type="button"
-                  className="mt-4 min-h-10 w-full border border-[color:var(--bo-border)] px-3 text-[10px] font-semibold tracking-[0.2em] text-[var(--bo-muted)] uppercase hover:text-[var(--bo-fg)] disabled:cursor-wait disabled:opacity-60"
+                <Button
+                  variant="secondary"
+                  className="mt-4 w-full"
                   disabled={submissionsState.loading}
                   onClick={() => {
                     setSubmissionCursor(nextSubmissionCursor);
                   }}
                 >
                   {submissionsState.loading ? "Loading…" : "Load more responses"}
-                </button>
+                </Button>
               ) : null}
             </>
           )}

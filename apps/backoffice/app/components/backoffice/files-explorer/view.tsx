@@ -1,23 +1,15 @@
 import {
-  ChevronDown,
-  ChevronRight,
-  Download,
-  File as FileIcon,
-  Folder,
-  HardDrive,
-  Info,
-  PanelLeftClose,
-  PanelLeftOpen,
-  Search,
-  X,
-  type LucideIcon,
-} from "lucide-react";
+  FileTreeExplorer,
+  type FileTreeExplorerNode,
+} from "@fragno-private/design-system/file-tree-explorer";
+import { Icon, type IconName } from "@fragno-private/design-system/icon";
+import { Input } from "@fragno-private/design-system/input";
+import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
 import { useMemo, useState, type ReactNode } from "react";
 import { Form, Link, type To } from "react-router";
 
 import type { FileTree, FileTreeEntry } from "@/file-collection/file-collection";
 
-import { BackofficeSystemState } from "../system-state";
 import { resolveFilesContentRenderer, type WorkflowFileRouting } from "./content-renderers";
 
 type FilesExplorerRootKind = "static" | "upload" | "custom";
@@ -37,7 +29,7 @@ type FilesExplorerNode = {
   updatedAt?: string | null;
   fileCount?: number;
   folderCount?: number;
-  children?: FilesExplorerNode[];
+  children: FilesExplorerNode[];
 };
 
 type ExplorerNodeDetail = {
@@ -105,13 +97,13 @@ export type FilesExplorerViewProps = {
   selectedContent?: FilesExplorerSelectedContent | null;
   loadError: string | null;
   buildNodeTo: (path: string) => To;
-  onNodeSelect?: (node: FilesExplorerNode) => void;
+  onNodeSelect?: (node: FileTreeExplorerNode) => void;
   buildDownloadHref?: (path: string) => string | null;
   defaultCollapsedRootPaths?: readonly string[];
   collapsedRootPaths?: readonly string[];
   onCollapsedRootPathsChange?: (paths: readonly string[]) => void;
   treeAriaLabel?: string;
-  rootIcon?: LucideIcon;
+  rootIcon?: IconName;
   rootSelection?: "summary" | "detail";
   detailHeadingLevel?: 2 | 3 | 4;
   emptySelection?: ReactNode;
@@ -131,76 +123,20 @@ export function FilesExplorerView({
   collapsedRootPaths,
   onCollapsedRootPathsChange,
   treeAriaLabel = "Files explorer",
-  rootIcon = HardDrive,
+  rootIcon = "hard-drive",
   rootSelection = "summary",
   detailHeadingLevel = 2,
   emptySelection = null,
   contentSearch,
   workflowRouting,
 }: FilesExplorerViewProps) {
-  const [uncontrolledCollapsedRootPaths, setUncontrolledCollapsedRootPaths] = useState(
-    () => new Set(defaultCollapsedRootPaths),
-  );
-  const [expandedDirectoryPaths, setExpandedDirectoryPaths] = useState<ReadonlySet<string>>(
-    () => new Set(),
-  );
   const [isMobileTreeCollapsed, setIsMobileTreeCollapsed] = useState(false);
-  const [treeNameQuery, setTreeNameQuery] = useState("");
-  const [explicitlyCollapsedPaths, setExplicitlyCollapsedPaths] = useState<ReadonlySet<string>>(
-    () => new Set(),
-  );
-  const effectiveCollapsedRootPaths = useMemo(
-    () => new Set(collapsedRootPaths ?? uncontrolledCollapsedRootPaths),
-    [collapsedRootPaths, uncontrolledCollapsedRootPaths],
-  );
-  const setNodeCollapsed = (node: FilesExplorerNode, collapsed: boolean) => {
-    setExplicitlyCollapsedPaths((current) => {
-      const next = new Set(current);
-      if (collapsed) {
-        next.add(node.path);
-      } else {
-        next.delete(node.path);
-      }
-      return next;
-    });
-
-    if (node.kind === "root") {
-      const next = new Set(effectiveCollapsedRootPaths);
-      if (collapsed) {
-        next.add(node.path);
-      } else {
-        next.delete(node.path);
-      }
-      if (collapsedRootPaths === undefined) {
-        setUncontrolledCollapsedRootPaths(next);
-      }
-      onCollapsedRootPathsChange?.([...next]);
-      return;
-    }
-
-    if (node.kind === "directory") {
-      setExpandedDirectoryPaths((current) => {
-        const next = new Set(current);
-        if (collapsed) {
-          next.delete(node.path);
-        } else {
-          next.add(node.path);
-        }
-        return next;
-      });
-    }
-  };
   const { tree, selectedDetail } = useMemo(
     () => createExplorerViewModel(sources, selectedPath, selectedContent),
     [selectedContent, selectedPath, sources],
   );
   const selectedRoot =
     rootSelection === "summary" && selectedDetail?.node.kind === "root" ? selectedDetail : null;
-  const treeNameSearch = useMemo(
-    () => filterExplorerTreeByName(tree, treeNameQuery),
-    [tree, treeNameQuery],
-  );
-  const isTreeNameSearchActive = treeNameQuery.trim().length > 0;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
@@ -214,8 +150,10 @@ export function FilesExplorerView({
           description="Files will appear here when a collection becomes available."
         />
       ) : (
+        // The tree column plus the 1px gap divider matches the top bar's w-72 project selector,
+        // whose border-r sits inside its width, so both dividers line up.
         <section
-          className={`${isMobileTreeCollapsed ? "grid-rows-[auto_minmax(22rem,1fr)]" : "grid-rows-[auto_minmax(22rem,1fr)_minmax(22rem,1fr)]"} grid min-h-[22rem] flex-1 gap-px overflow-hidden bg-[var(--bo-border)] shadow-[0_0_0_1px_var(--bo-border)] md:min-h-0 md:grid-cols-[18rem_minmax(0,1fr)] md:grid-rows-1`}
+          className={`${isMobileTreeCollapsed ? "grid-rows-[auto_minmax(22rem,1fr)]" : "grid-rows-[auto_minmax(22rem,1fr)_minmax(22rem,1fr)]"} grid min-h-[22rem] flex-1 gap-px overflow-hidden bg-[var(--bo-border)] shadow-[0_0_0_1px_var(--bo-border)] md:min-h-0 md:grid-cols-[calc(--spacing(72)-1px)_minmax(0,1fr)] md:grid-rows-1`}
         >
           <button
             type="button"
@@ -224,95 +162,42 @@ export function FilesExplorerView({
             onClick={() => {
               setIsMobileTreeCollapsed((collapsed) => !collapsed);
             }}
-            className="flex min-h-10 items-center justify-between bg-[var(--bo-panel-2)] px-3 text-[10px] font-semibold tracking-[0.18em] text-[var(--bo-muted)] uppercase transition-[background-color,color] duration-150 ease-out hover:bg-[var(--bo-panel)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none md:hidden"
+            className="flex min-h-10 items-center justify-between bg-[var(--bo-sidebar-bg)] px-3 text-[10px] font-semibold tracking-[0.18em] text-[var(--bo-muted)] uppercase transition-[background-color,color] duration-150 ease-out hover:bg-[var(--bo-panel)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none md:hidden"
           >
             <span>{isMobileTreeCollapsed ? "Show file tree" : "Hide file tree"}</span>
             {isMobileTreeCollapsed ? (
-              <PanelLeftOpen className="size-4" aria-hidden="true" />
+              <Icon name="chevrons-right" className="size-4" />
             ) : (
-              <PanelLeftClose className="size-4" aria-hidden="true" />
+              <Icon name="chevrons-left" className="size-4" />
             )}
           </button>
 
           <aside
             id="files-explorer-tree"
-            className={`${isMobileTreeCollapsed ? "hidden md:flex" : "flex"} min-h-0 flex-col overflow-hidden bg-[var(--bo-panel-2)]`}
+            className={`${isMobileTreeCollapsed ? "hidden md:flex" : "flex"} min-h-0 flex-col overflow-hidden bg-[var(--bo-sidebar-bg)]`}
           >
-            <div className="shrink-0 border-b border-[var(--bo-border)] p-3 md:p-4">
-              <div className="relative">
-                <Search
-                  className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-[var(--bo-muted-2)]"
-                  aria-hidden="true"
-                />
-                <input
-                  type="text"
-                  role="searchbox"
-                  value={treeNameQuery}
-                  onChange={(event) => {
-                    setTreeNameQuery(event.currentTarget.value);
-                  }}
-                  placeholder="Filter file or folder names"
-                  aria-label="Filter file or folder names"
-                  className="bo-control-surface min-h-11 w-full bg-[var(--bo-panel)] pr-11 pl-10 font-mono text-[13px] text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none"
-                />
-                {isTreeNameSearchActive ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setTreeNameQuery("");
-                    }}
-                    aria-label="Clear file name filter"
-                    className="absolute top-1/2 right-0 flex size-10 -translate-y-1/2 items-center justify-center text-[var(--bo-muted-2)] transition-[scale,color] duration-150 ease-out hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none active:scale-[0.96]"
-                  >
-                    <X className="size-4" aria-hidden="true" />
-                  </button>
-                ) : null}
-              </div>
-            </div>
-
-            <div className="backoffice-scroll min-h-0 flex-1 overflow-y-auto p-3">
-              <nav aria-label={treeAriaLabel} className="space-y-0.5">
-                {treeNameSearch.tree.map((node) => (
-                  <FilesTreeNodeRow
-                    key={node.path}
-                    node={node}
-                    selectedPath={selectedPath}
-                    isFileSelected={selectedDetail?.node.kind === "file"}
-                    buildNodeTo={buildNodeTo}
-                    onNodeSelect={onNodeSelect}
-                    rootIcon={rootIcon}
-                    collapsedRootPaths={effectiveCollapsedRootPaths}
-                    expandedDirectoryPaths={expandedDirectoryPaths}
-                    explicitlyCollapsedPaths={explicitlyCollapsedPaths}
-                    onSetCollapsed={setNodeCollapsed}
-                    forceExpanded={isTreeNameSearchActive}
-                    depth={0}
-                  />
-                ))}
-              </nav>
-
-              {isTreeNameSearchActive && treeNameSearch.matchCount > 0 ? (
-                <p className="mt-3 px-1 font-mono text-[9px] text-[var(--bo-muted-2)] tabular-nums">
-                  {treeNameSearch.matchCount}{" "}
-                  {treeNameSearch.matchCount === 1 ? "matching name" : "matching names"}
-                </p>
-              ) : isTreeNameSearchActive ? (
-                <p className="mt-4 px-3 text-center text-xs text-pretty text-[var(--bo-muted-2)]">
-                  No file or folder names match “{treeNameQuery.trim()}”.
-                </p>
-              ) : null}
-            </div>
+            <FileTreeExplorer
+              nodes={tree}
+              selectedPath={selectedPath}
+              buildNodeTo={buildNodeTo}
+              onNodeSelect={onNodeSelect}
+              defaultCollapsedRootPaths={defaultCollapsedRootPaths}
+              collapsedRootPaths={collapsedRootPaths}
+              onCollapsedRootPathsChange={onCollapsedRootPathsChange}
+              ariaLabel={treeAriaLabel}
+              rootIcon={rootIcon}
+            />
           </aside>
 
           <div className="flex min-h-0 min-w-0 flex-col bg-[var(--bo-panel)]">
             {contentSearch ? (
               <div className="shrink-0 border-b border-[var(--bo-border)] bg-[var(--bo-panel-2)] p-3 md:p-4">
                 <Form method="get" className="relative">
-                  <Search
+                  <Icon
+                    name="search"
                     className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-[var(--bo-muted-2)]"
-                    aria-hidden="true"
                   />
-                  <input
+                  <Input
                     key={contentSearch.query}
                     type="text"
                     role="searchbox"
@@ -320,7 +205,7 @@ export function FilesExplorerView({
                     defaultValue={contentSearch.query}
                     placeholder="Search file contents"
                     aria-label="Search file contents"
-                    className="bo-control-surface min-h-11 w-full bg-[var(--bo-panel)] pr-11 pl-10 font-mono text-[13px] text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none"
+                    className="min-h-11 w-full pr-11 pl-10"
                   />
                   {contentSearch.query ? (
                     <Link
@@ -328,7 +213,7 @@ export function FilesExplorerView({
                       aria-label="Clear file search"
                       className="absolute top-1/2 right-0 flex size-10 -translate-y-1/2 items-center justify-center text-[var(--bo-muted-2)] transition-[scale,color] duration-150 ease-out hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none active:scale-[0.96]"
                     >
-                      <X className="size-4" aria-hidden="true" />
+                      <Icon name="x" className="size-4" />
                     </Link>
                   ) : null}
                 </Form>
@@ -398,14 +283,14 @@ function FilesSearchResults({
     >
       <div className="flex items-end justify-between gap-4 border-b border-[var(--bo-border)] pb-3">
         <div>
-          <p className="font-mono text-[9px] font-semibold tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
+          <p className="text-[9px] font-semibold tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
             Search results
           </p>
           <h2 className="mt-1 text-xl font-semibold tracking-tight text-[var(--bo-fg)]">
             “{query}”
           </h2>
         </div>
-        <p className="shrink-0 font-mono text-[10px] text-[var(--bo-muted-2)]">
+        <p className="shrink-0 text-[10px] text-[var(--bo-muted-2)]">
           {matchCount} {matchCount === 1 ? "match" : "matches"}
         </p>
       </div>
@@ -414,7 +299,7 @@ function FilesSearchResults({
         {groups.map((group) =>
           group.matches.length > 0 ? (
             <section key={group.rootPath}>
-              <p className="font-mono text-[9px] font-semibold tracking-[0.16em] text-[var(--bo-muted-2)] uppercase">
+              <p className="text-[9px] font-semibold tracking-[0.16em] text-[var(--bo-muted-2)] uppercase">
                 {group.rootTitle}
               </p>
               <div className="mt-2 grid gap-2">
@@ -429,7 +314,7 @@ function FilesSearchResults({
                       <span className="truncate text-sm font-medium text-[var(--bo-fg)]">
                         {path}
                       </span>
-                      <span className="shrink-0 font-mono text-[9px] text-[var(--bo-muted-2)] tabular-nums">
+                      <span className="shrink-0 text-[9px] text-[var(--bo-muted-2)] tabular-nums">
                         {matches.length} {matches.length === 1 ? "match" : "matches"}
                       </span>
                     </span>
@@ -474,13 +359,13 @@ function searchMatchPreview(match: FilesExplorerSearchMatch): string {
 function ExplorerNodeDetailPanel({
   detail,
   buildDownloadHref,
-  rootIcon: RootIcon,
+  rootIcon,
   headingLevel,
   workflowRouting,
 }: {
   detail: ExplorerNodeDetail;
   buildDownloadHref?: (path: string) => string | null;
-  rootIcon: LucideIcon;
+  rootIcon: IconName;
   headingLevel: 2 | 3 | 4;
   workflowRouting: WorkflowFileRouting;
 }) {
@@ -507,8 +392,8 @@ function ExplorerNodeDetailPanel({
   const downloadHref =
     detail.node.kind === "file" ? (buildDownloadHref?.(detail.node.path) ?? null) : null;
   const Heading = getHeadingComponent(headingLevel);
-  const DetailIcon =
-    detail.node.kind === "root" ? RootIcon : detail.node.kind === "directory" ? Folder : FileIcon;
+  const detailIcon: IconName =
+    detail.node.kind === "root" ? rootIcon : detail.node.kind === "directory" ? "folder" : "file";
   const displayedMetadata = Object.fromEntries(
     PUBLIC_FILE_METADATA_FIELDS.flatMap((field) => {
       const value = detail.metadata?.[field];
@@ -521,10 +406,10 @@ function ExplorerNodeDetailPanel({
       <div className="flex shrink-0 flex-wrap items-start justify-between gap-4 pb-4">
         <div className="flex min-w-0 items-start gap-3">
           <span className="flex size-10 shrink-0 items-center justify-center bg-[var(--bo-panel-2)] text-[var(--bo-accent)] shadow-[inset_0_0_0_1px_var(--bo-border)]">
-            <DetailIcon className="size-[18px]" aria-hidden="true" />
+            <Icon name={detailIcon} className="size-[18px]" />
           </span>
           <div className="min-w-0">
-            <p className="font-mono text-[9px] font-semibold tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
+            <p className="text-[9px] font-semibold tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
               {detail.node.kind}
             </p>
             <Heading className="mt-1 text-2xl font-semibold tracking-tight text-balance break-all text-[var(--bo-fg)]">
@@ -538,17 +423,17 @@ function ExplorerNodeDetailPanel({
               href={downloadHref}
               className="bo-control-surface inline-flex min-h-10 items-center gap-2 bg-[var(--bo-panel-2)] px-3.5 text-[10px] font-semibold tracking-[0.2em] text-[var(--bo-muted)] uppercase transition-[scale,background-color,color,box-shadow] duration-150 ease-out hover:bg-[var(--bo-panel)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none active:scale-[0.96]"
             >
-              <Download className="h-3.5 w-3.5" aria-hidden="true" />
+              <Icon name="download" className="h-3.5 w-3.5" />
               Download
             </a>
           ) : null}
           <details className="group relative">
             <summary className="bo-control-surface flex size-10 cursor-pointer list-none items-center justify-center bg-[var(--bo-panel-2)] text-[var(--bo-muted)] transition-[scale,background-color,color,box-shadow] duration-150 ease-out marker:content-none hover:bg-[var(--bo-panel)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none active:scale-[0.96] [&::-webkit-details-marker]:hidden">
-              <Info className="size-4" aria-hidden="true" />
+              <Icon name="info" className="size-4" />
               <span className="sr-only">File information</span>
             </summary>
             <div className="backoffice-scroll absolute top-12 right-0 z-20 max-h-[calc(100dvh-8rem)] w-[min(24rem,calc(100vw-2rem))] overflow-y-auto overscroll-contain bg-[var(--bo-panel)] p-3 shadow-[0_12px_32px_rgba(0,0,0,0.2),0_0_0_1px_var(--bo-border)]">
-              <p className="font-mono text-[9px] font-semibold tracking-[0.18em] text-[var(--bo-muted-2)] uppercase">
+              <p className="text-[9px] font-semibold tracking-[0.18em] text-[var(--bo-muted-2)] uppercase">
                 File information
               </p>
               <dl className="mt-3 grid gap-2 sm:grid-cols-2">
@@ -557,7 +442,7 @@ function ExplorerNodeDetailPanel({
                     key={`${field.label}-${field.value}`}
                     className="min-w-0 bg-[var(--bo-panel-2)] px-3 py-2.5"
                   >
-                    <dt className="font-mono text-[9px] tracking-[0.18em] text-[var(--bo-muted-2)] uppercase">
+                    <dt className="text-[9px] tracking-[0.18em] text-[var(--bo-muted-2)] uppercase">
                       {field.label}
                     </dt>
                     <dd className="mt-1.5 text-xs break-all text-[var(--bo-muted)]">
@@ -581,13 +466,11 @@ function ExplorerNodeDetailPanel({
       {contentRenderer ? (
         <div className="mt-2 flex min-h-0 flex-1 flex-col bg-[var(--bo-panel-2)] p-3 shadow-[inset_0_0_0_1px_var(--bo-border)] md:p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="font-mono text-[9px] font-semibold tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
+            <p className="text-[9px] font-semibold tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
               {contentRenderer.label}
             </p>
             {detail.node.contentType ? (
-              <p className="font-mono text-[9px] text-[var(--bo-muted-2)]">
-                {detail.node.contentType}
-              </p>
+              <p className="text-[9px] text-[var(--bo-muted-2)]">{detail.node.contentType}</p>
             ) : null}
           </div>
           <div className="mt-3 min-h-0 flex-1 overflow-auto">
@@ -601,11 +484,11 @@ function ExplorerNodeDetailPanel({
 
 function RootSelectionState({
   detail,
-  icon: Icon,
+  icon,
   headingLevel,
 }: {
   detail: ExplorerNodeDetail;
-  icon: LucideIcon;
+  icon: IconName;
   headingLevel: 2 | 3 | 4;
 }) {
   const isEmpty = (detail.node.fileCount ?? 0) + (detail.node.folderCount ?? 0) === 0;
@@ -615,9 +498,9 @@ function RootSelectionState({
     <section className="flex min-h-full items-center justify-center bg-[var(--bo-panel)] p-6">
       <div className="max-w-sm text-center">
         <div className="bo-control-surface mx-auto flex size-12 items-center justify-center bg-[var(--bo-panel-2)] text-[var(--bo-accent)]">
-          <Icon className="size-5" aria-hidden="true" />
+          <Icon name={icon} className="size-5" />
         </div>
-        <p className="mt-4 font-mono text-[9px] tracking-[0.18em] text-[var(--bo-muted-2)] uppercase">
+        <p className="mt-4 text-[9px] tracking-[0.18em] text-[var(--bo-muted-2)] uppercase">
           Root selected
         </p>
         <Heading className="mt-2 text-xl font-semibold tracking-tight text-balance text-[var(--bo-fg)]">
@@ -630,223 +513,6 @@ function RootSelectionState({
         </p>
       </div>
     </section>
-  );
-}
-
-function FilesTreeNodeRow({
-  node,
-  selectedPath,
-  isFileSelected,
-  buildNodeTo,
-  onNodeSelect,
-  rootIcon: RootIcon,
-  collapsedRootPaths,
-  expandedDirectoryPaths,
-  explicitlyCollapsedPaths,
-  onSetCollapsed,
-  forceExpanded,
-  depth,
-}: {
-  node: FilesExplorerNode;
-  selectedPath: string | null;
-  isFileSelected: boolean;
-  buildNodeTo: (path: string) => To;
-  onNodeSelect?: (node: FilesExplorerNode) => void;
-  rootIcon: LucideIcon;
-  collapsedRootPaths: ReadonlySet<string>;
-  expandedDirectoryPaths: ReadonlySet<string>;
-  explicitlyCollapsedPaths: ReadonlySet<string>;
-  onSetCollapsed: (node: FilesExplorerNode, collapsed: boolean) => void;
-  forceExpanded: boolean;
-  depth: number;
-}) {
-  const isSelected = selectedPath === node.path;
-  const hasChildren = Boolean(node.children?.length);
-  const isCollapsedByState =
-    node.kind === "root"
-      ? collapsedRootPaths.has(node.path)
-      : node.kind === "directory"
-        ? !expandedDirectoryPaths.has(node.path)
-        : false;
-  const isCollapsed =
-    !forceExpanded &&
-    hasChildren &&
-    isCollapsedByState &&
-    (explicitlyCollapsedPaths.has(node.path) ||
-      (!isSelected && !isAncestorPath(node.path, selectedPath)));
-  const Icon = node.kind === "root" ? RootIcon : node.kind === "directory" ? Folder : FileIcon;
-
-  return (
-    <div>
-      {node.kind === "root" ? (
-        <button
-          type="button"
-          aria-disabled={forceExpanded}
-          aria-expanded={hasChildren ? !isCollapsed : undefined}
-          aria-label={
-            hasChildren ? `${isCollapsed ? "Expand" : "Collapse"} ${node.title}` : node.title
-          }
-          onClick={() => {
-            if (forceExpanded) {
-              return;
-            }
-            if (hasChildren) {
-              onSetCollapsed(node, !isCollapsed);
-            }
-          }}
-          className={
-            isSelected
-              ? "flex min-h-10 w-full items-center gap-2 bg-[var(--bo-accent-bg)] px-2 py-1 text-left text-[13px] font-medium text-[var(--bo-fg)] shadow-[inset_0_0_0_1px_var(--bo-accent)] outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30"
-              : "flex min-h-10 w-full items-center gap-2 px-2 py-1 text-left text-[13px] text-[var(--bo-muted)] shadow-[inset_0_0_0_1px_transparent] outline-none hover:bg-[var(--bo-panel)] hover:text-[var(--bo-fg)] hover:shadow-[inset_0_0_0_1px_var(--bo-border)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30"
-          }
-        >
-          <span className="flex size-6 shrink-0 items-center justify-center text-[var(--bo-muted-2)]">
-            {hasChildren ? (
-              isCollapsed ? (
-                <ChevronRight className="size-3.5" aria-hidden="true" />
-              ) : (
-                <ChevronDown className="size-3.5" aria-hidden="true" />
-              )
-            ) : null}
-          </span>
-          <RootIcon
-            className={`h-4 w-4 shrink-0 ${isSelected ? "text-[var(--bo-accent)]" : "text-[var(--bo-muted-2)]"}`}
-            aria-hidden="true"
-          />
-          <span className="min-w-0 truncate">{node.title}</span>
-        </button>
-      ) : (
-        <div className="flex min-h-10 items-center" style={{ paddingLeft: `${depth * 0.75}rem` }}>
-          {hasChildren ? (
-            <button
-              type="button"
-              aria-disabled={forceExpanded}
-              aria-expanded={!isCollapsed}
-              aria-label={`${isCollapsed ? "Expand" : "Collapse"} ${node.title}`}
-              onClick={() => {
-                if (forceExpanded) {
-                  return;
-                }
-                onSetCollapsed(node, !isCollapsed);
-              }}
-              className="flex size-8 shrink-0 items-center justify-center text-[var(--bo-muted-2)] transition-colors hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none"
-            >
-              {isCollapsed ? (
-                <ChevronRight className="size-3.5" aria-hidden="true" />
-              ) : (
-                <ChevronDown className="size-3.5" aria-hidden="true" />
-              )}
-            </button>
-          ) : (
-            <span className="size-8 shrink-0" aria-hidden="true" />
-          )}
-          <Link
-            to={buildNodeTo(node.path)}
-            onClick={(event) => {
-              const containsSelectedFile =
-                node.kind === "directory" &&
-                isFileSelected &&
-                isAncestorPath(node.path, selectedPath);
-
-              if (containsSelectedFile) {
-                onSetCollapsed(node, !isCollapsed);
-                event.preventDefault();
-                return;
-              }
-              if (node.kind === "directory") {
-                onSetCollapsed(node, false);
-              }
-              onNodeSelect?.(node);
-            }}
-            preventScrollReset
-            aria-current={isSelected ? "page" : undefined}
-            className={
-              isSelected
-                ? "flex min-h-10 min-w-0 flex-1 items-center gap-2 bg-[var(--bo-accent-bg)] px-2 py-1 text-[13px] font-medium text-[var(--bo-fg)] shadow-[inset_0_0_0_1px_var(--bo-accent)] transition-[scale,background-color,color,box-shadow] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 active:scale-[0.96]"
-                : "flex min-h-10 min-w-0 flex-1 items-center gap-2 px-2 py-1 text-[13px] text-[var(--bo-muted)] shadow-[inset_0_0_0_1px_transparent] transition-[scale,background-color,color,box-shadow] duration-150 ease-out outline-none hover:bg-[var(--bo-panel)] hover:text-[var(--bo-fg)] hover:shadow-[inset_0_0_0_1px_var(--bo-border)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 active:scale-[0.96]"
-            }
-          >
-            <Icon
-              className={`h-4 w-4 shrink-0 ${isSelected ? "text-[var(--bo-accent)]" : "text-[var(--bo-muted-2)]"}`}
-              aria-hidden="true"
-            />
-            <span className="min-w-0 truncate">{node.title}</span>
-          </Link>
-        </div>
-      )}
-
-      {!isCollapsed && node.children?.length ? (
-        <div className="space-y-0.5">
-          {node.children.map((child) => (
-            <FilesTreeNodeRow
-              key={child.path}
-              node={child}
-              selectedPath={selectedPath}
-              isFileSelected={isFileSelected}
-              buildNodeTo={buildNodeTo}
-              onNodeSelect={onNodeSelect}
-              rootIcon={RootIcon}
-              collapsedRootPaths={collapsedRootPaths}
-              expandedDirectoryPaths={expandedDirectoryPaths}
-              explicitlyCollapsedPaths={explicitlyCollapsedPaths}
-              onSetCollapsed={onSetCollapsed}
-              forceExpanded={forceExpanded}
-              depth={depth + 1}
-            />
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function filterExplorerTreeByName(
-  tree: readonly FilesExplorerNode[],
-  query: string,
-): { tree: FilesExplorerNode[]; matchCount: number } {
-  const normalizedQuery = query.trim().toLocaleLowerCase();
-  if (!normalizedQuery) {
-    return { tree: [...tree], matchCount: 0 };
-  }
-
-  const filterNode = (
-    node: FilesExplorerNode,
-  ): { node: FilesExplorerNode | null; matchCount: number } => {
-    const filteredChildren = (node.children ?? []).map(filterNode);
-    const children = filteredChildren.flatMap((result) => (result.node ? [result.node] : []));
-    const descendantMatchCount = filteredChildren.reduce(
-      (count, result) => count + result.matchCount,
-      0,
-    );
-    const nameMatches =
-      node.kind !== "root" && node.title.toLocaleLowerCase().includes(normalizedQuery);
-
-    if (!nameMatches && children.length === 0) {
-      return { node: null, matchCount: 0 };
-    }
-
-    return {
-      node: { ...node, children },
-      matchCount: descendantMatchCount + (nameMatches ? 1 : 0),
-    };
-  };
-
-  const filteredRoots = tree.map(filterNode);
-  return {
-    tree: filteredRoots.flatMap((result) => (result.node ? [result.node] : [])),
-    matchCount: filteredRoots.reduce((count, result) => count + result.matchCount, 0),
-  };
-}
-
-function isAncestorPath(path: string, selectedPath: string | null): boolean {
-  if (!selectedPath) {
-    return false;
-  }
-  const normalizedPath = path.replace(/\/$/u, "");
-  const normalizedSelectedPath = selectedPath.replace(/\/$/u, "");
-  return (
-    normalizedSelectedPath !== normalizedPath &&
-    normalizedSelectedPath.startsWith(`${normalizedPath}/`)
   );
 }
 

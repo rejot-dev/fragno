@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 
 import { FormField } from "./form-container";
-
-type UnitOption<UnitId extends string> = {
-  id: UnitId;
-  label: string;
-  factor: number;
-};
+import { Input } from "./input";
+import {
+  BYTE_UNITS,
+  formatUnitNumber,
+  pickReadableDisplayUnit,
+  resolveUnit,
+  type UnitOption,
+} from "./units";
 
 type ResolveDisplayUnitInput<UnitId extends string> = {
   outputValue: number;
@@ -29,11 +31,7 @@ type UnitNumberFieldProps<UnitId extends string> = {
   disabled?: boolean;
 };
 
-const INPUT_CLASS =
-  "focus:ring-[color:var(--bo-accent)]/20 w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:outline-none focus:ring-2";
-
-const SELECT_CLASS =
-  "focus:ring-[color:var(--bo-accent)]/20 w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-sm text-[var(--bo-fg)] focus:border-[color:var(--bo-accent)] focus:outline-none focus:ring-2";
+const INPUT_CLASS = "bo-input w-full px-3 py-2 text-sm";
 
 const parseIntegerString = (value: string): number | null => {
   const trimmed = value.trim();
@@ -47,47 +45,6 @@ const parseIntegerString = (value: string): number | null => {
   }
 
   return parsed;
-};
-
-const formatUnitNumber = (value: number) => {
-  if (!Number.isFinite(value)) {
-    return "";
-  }
-
-  if (Number.isInteger(value)) {
-    return String(value);
-  }
-
-  if (value >= 100) {
-    return value.toFixed(0);
-  }
-
-  if (value >= 10) {
-    return value.toFixed(1).replace(/\.0$/, "");
-  }
-
-  return value.toFixed(2).replace(/\.?0+$/, "");
-};
-
-const pickReadableDisplayUnit = <UnitId extends string>(
-  baseValue: number,
-  units: readonly UnitOption<UnitId>[],
-) => {
-  let chosen = units[0];
-  for (const unit of units) {
-    if (baseValue >= unit.factor) {
-      chosen = unit;
-    }
-  }
-  return chosen.id;
-};
-
-const resolveUnit = <UnitId extends string>(
-  units: readonly UnitOption<UnitId>[],
-  unitId: UnitId,
-  fallback: UnitOption<UnitId>,
-) => {
-  return units.find((unit) => unit.id === unitId) ?? fallback;
 };
 
 function UnitNumberField<UnitId extends string>({
@@ -182,7 +139,7 @@ function UnitNumberField<UnitId extends string>({
     <FormField label={label} hint={hint}>
       <input type="hidden" name={name} value={value} />
       <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
-        <input
+        <Input
           type="number"
           value={displayValue}
           onChange={handleValueChange}
@@ -190,13 +147,13 @@ function UnitNumberField<UnitId extends string>({
           step={step}
           required={required}
           disabled={disabled}
-          className={INPUT_CLASS}
+          className="w-full"
         />
         <select
           value={displayUnitId}
           onChange={handleUnitChange}
           disabled={disabled}
-          className={SELECT_CLASS}
+          className={INPUT_CLASS}
           aria-label={`${label} unit`}
         >
           {units.map((unit) => (
@@ -209,14 +166,6 @@ function UnitNumberField<UnitId extends string>({
     </FormField>
   );
 }
-
-const BYTE_UNITS = [
-  { id: "bytes", label: "Bytes", factor: 1 },
-  { id: "kb", label: "KB", factor: 1024 },
-  { id: "mb", label: "MB", factor: 1024 ** 2 },
-  { id: "gb", label: "GB", factor: 1024 ** 3 },
-  { id: "tb", label: "TB", factor: 1024 ** 4 },
-] as const;
 
 const TIME_UNITS = [
   { id: "seconds", label: "Seconds", factor: 1 },
@@ -243,26 +192,6 @@ type TimeUnitFieldProps = Omit<
   outputUnit?: TimeUnitId;
   defaultDisplayUnit?: TimeUnitId;
 };
-
-const formatUsingUnits = <UnitId extends string>(
-  value: number,
-  units: readonly UnitOption<UnitId>[],
-  outputUnit: UnitId,
-) => {
-  if (!Number.isFinite(value) || value < 0) {
-    return "";
-  }
-
-  const fallbackUnit = units[0];
-  const outputUnitOption = resolveUnit(units, outputUnit, fallbackUnit);
-  const baseValue = value * outputUnitOption.factor;
-  const displayUnitId = pickReadableDisplayUnit(baseValue, units);
-  const displayUnit = resolveUnit(units, displayUnitId, fallbackUnit);
-  const convertedValue = baseValue / displayUnit.factor;
-  return `${formatUnitNumber(convertedValue)} ${displayUnit.label}`;
-};
-
-export const formatBytes = (value: number) => formatUsingUnits(value, BYTE_UNITS, "bytes");
 
 export function ByteUnitField({
   outputUnit = "bytes",

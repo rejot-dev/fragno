@@ -1,3 +1,4 @@
+import { Button, ButtonLink } from "@fragno-private/design-system/button";
 import { Form, Link } from "react-router";
 
 import { findBackofficeMe } from "@/fragno/auth/auth-server";
@@ -131,12 +132,12 @@ export default function BackofficeMarketplaceMyListings({ loaderData }: Route.Co
             </p>
           </div>
           {organizationSlug ? (
-            <Link
+            <ButtonLink
               to={`/backoffice/marketplace/publish?ownerOrgSlug=${encodeURIComponent(organizationSlug)}`}
-              className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)]"
+              variant="accent"
             >
               New draft
-            </Link>
+            </ButtonLink>
           ) : null}
         </div>
         <Form method="get" className="mt-4 flex flex-col gap-3 md:flex-row md:items-end">
@@ -147,7 +148,7 @@ export default function BackofficeMarketplaceMyListings({ loaderData }: Route.Co
             <select
               name="status"
               defaultValue={status ?? ""}
-              className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] outline-none focus:border-[color:var(--bo-accent)]"
+              className="bo-input px-3 py-2 text-sm"
             >
               <option value="">All statuses</option>
               <option value="draft">Draft</option>
@@ -155,12 +156,9 @@ export default function BackofficeMarketplaceMyListings({ loaderData }: Route.Co
               <option value="archived">Archived</option>
             </select>
           </label>
-          <button
-            type="submit"
-            className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-4 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-          >
+          <Button type="submit" variant="secondary">
             Apply
-          </button>
+          </Button>
         </Form>
       </section>
 
@@ -189,16 +187,14 @@ export default function BackofficeMarketplaceMyListings({ loaderData }: Route.Co
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
                     <StatusBadge status={listing.status} />
-                    <span className="font-mono text-[10px] text-[var(--bo-muted-2)]">
+                    <span className="text-[10px] text-[var(--bo-muted-2)]">
                       {listing.latestPublishedVersion
                         ? `latest v${listing.latestPublishedVersion}`
                         : "not published"}
                     </span>
                   </div>
                   <h2 className="mt-3 text-xl font-semibold text-[var(--bo-fg)]">{listing.name}</h2>
-                  <p className="mt-1 font-mono text-xs text-[var(--bo-muted)]">
-                    {listing.category}
-                  </p>
+                  <p className="mt-1 text-xs text-[var(--bo-muted)]">{listing.category}</p>
                 </div>
                 <div className="text-left md:text-right">
                   <p className="text-[10px] tracking-[0.18em] text-[var(--bo-muted-2)] uppercase">
@@ -232,16 +228,16 @@ export default function BackofficeMarketplaceMyListings({ loaderData }: Route.Co
 
       {hasNextPage && nextCursor ? (
         <div className="flex justify-end">
-          <Link
+          <ButtonLink
             to={minePath({
               basePath,
               status: status ?? undefined,
               cursor: nextCursor,
             })}
-            className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-4 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+            variant="secondary"
           >
             Next page →
-          </Link>
+          </ButtonLink>
         </div>
       ) : null}
     </div>

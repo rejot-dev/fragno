@@ -1,3 +1,4 @@
+import { Input } from "@fragno-private/design-system/input";
 import { useId } from "react";
 
 import { useBoundProp, type ComponentFn } from "@json-render/react";
@@ -24,7 +25,7 @@ export const TextInput: ComponentFn<typeof backofficeUiCatalog, "TextInput"> = (
           {props.description}
         </span>
       ) : null}
-      <input
+      <Input
         id={id}
         type={props.secret ? "password" : "text"}
         value={value ?? ""}
@@ -35,7 +36,7 @@ export const TextInput: ComponentFn<typeof backofficeUiCatalog, "TextInput"> = (
         onChange={(event) => {
           setValue(event.target.value);
         }}
-        className="mt-2 min-h-10 w-full border border-[color:var(--bo-border-strong)] bg-[var(--bo-panel)] px-3 text-xs text-[var(--bo-fg)] transition-[border-color,box-shadow] duration-150 outline-none placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:shadow-[0_0_0_3px_var(--bo-accent-bg)] disabled:cursor-not-allowed disabled:opacity-50"
+        className="mt-2 min-h-10 w-full text-xs"
       />
     </label>
   );

@@ -1,9 +1,10 @@
-import "../../backoffice.css";
+import "@fragno-private/design-system/components.css";
 
+import { Button } from "@fragno-private/design-system/button";
+import { FormContainer } from "@fragno-private/design-system/form-container";
 import { data, Form, redirect, useActionData, useLoaderData } from "react-router";
 import { z } from "zod";
 
-import { FormContainer } from "@/components/backoffice";
 import { callBetterAuth } from "@/fragno/auth/auth-server";
 import { getAuthDurableObject } from "@/worker-runtime/durable-objects";
 
@@ -184,22 +185,12 @@ export default function BackofficeDeviceAuthorization() {
                   <p className="text-sm text-[var(--bo-failed)]">{actionData.message}</p>
                 ) : null}
                 <Form method="post" className="flex flex-col gap-2 sm:flex-row">
-                  <button
-                    type="submit"
-                    name="intent"
-                    value="approve"
-                    className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)]"
-                  >
+                  <Button variant="accent" type="submit" name="intent" value="approve">
                     Approve
-                  </button>
-                  <button
-                    type="submit"
-                    name="intent"
-                    value="deny"
-                    className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-4 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-                  >
+                  </Button>
+                  <Button variant="secondary" type="submit" name="intent" value="deny">
                     Deny
-                  </button>
+                  </Button>
                 </Form>
               </div>
             )}

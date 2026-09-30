@@ -1,13 +1,9 @@
+import { ButtonLink } from "@fragno-private/design-system/button";
+import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
 import { type ReactNode, useEffect } from "react";
-import {
-  Link,
-  Outlet,
-  isRouteErrorResponse,
-  useRouteError,
-  useRouteLoaderData,
-} from "react-router";
+import { Outlet, isRouteErrorResponse, useRouteError, useRouteLoaderData } from "react-router";
 
-import { BackofficePageHeader, BackofficeShell } from "@/components/backoffice";
+import { BackofficeShell } from "@/components/backoffice/shell";
 import { writePreferredOrganization } from "@/fragno/auth/preferred-organization.client";
 import {
   getBackofficeOrganizationNotFound,
@@ -107,27 +103,18 @@ export function ErrorBoundary() {
             organizationNotFound ? (
               <div className="flex flex-wrap gap-2">
                 {currentOrganizationPath ? (
-                  <Link
-                    to={currentOrganizationPath}
-                    className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)]"
-                  >
+                  <ButtonLink to={currentOrganizationPath} variant="accent">
                     Open current organization
-                  </Link>
+                  </ButtonLink>
                 ) : null}
-                <Link
-                  to="/backoffice/organizations"
-                  className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-                >
+                <ButtonLink to="/backoffice/organizations" variant="secondary">
                   Choose organization
-                </Link>
+                </ButtonLink>
               </div>
             ) : (
-              <Link
-                to="/backoffice"
-                className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-              >
+              <ButtonLink to="/backoffice" variant="secondary">
                 Back to terminal
-              </Link>
+              </ButtonLink>
             )
           }
         />

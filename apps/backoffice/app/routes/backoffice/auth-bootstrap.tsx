@@ -1,9 +1,10 @@
-import "../../backoffice.css";
+import "@fragno-private/design-system/components.css";
 
+import { ButtonLink } from "@fragno-private/design-system/button";
+import { FormContainer } from "@fragno-private/design-system/form-container";
 import { useEffect, useState } from "react";
-import { data, Link, redirect, useLoaderData } from "react-router";
+import { data, redirect, useLoaderData } from "react-router";
 
-import { FormContainer } from "@/components/backoffice";
 import { getBackofficeMe } from "@/fragno/auth/auth-server";
 import {
   readPreferredOrganization,
@@ -109,12 +110,9 @@ export default function BackofficeAuthBootstrap() {
             {error ? (
               <div className="space-y-3">
                 <p className="text-sm text-red-400">{error}</p>
-                <Link
-                  to={buildBackofficeLoginPath(returnTo)}
-                  className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-4 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-                >
+                <ButtonLink variant="secondary" to={buildBackofficeLoginPath(returnTo)}>
                   Return to sign in
-                </Link>
+                </ButtonLink>
               </div>
             ) : (
               <p className="text-sm text-[var(--bo-muted)]">Opening backoffice…</p>

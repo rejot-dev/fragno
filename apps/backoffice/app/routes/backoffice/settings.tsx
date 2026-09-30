@@ -1,9 +1,9 @@
+import { BackofficeBreadcrumbs } from "@fragno-private/design-system/breadcrumbs";
+import { OverflowTabRow } from "@fragno-private/design-system/overflow-tab-row";
 import { useOutletContext } from "react-router";
 
 import { resolveBackofficeUserAuthorityRole } from "@/backoffice-runtime/authority-roles";
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
-import { BackofficeBreadcrumbs } from "@/components/backoffice/breadcrumbs";
-import { OverflowTabRow } from "@/components/backoffice/overflow-tab-row";
 import { createBackofficeExecutionForPrincipal } from "@/fragno/auth/backoffice-principal.server";
 import { requireBackofficePrincipal } from "@/fragno/auth/request-auth.server";
 import type { BackofficeLayoutContext } from "@/layouts/backoffice-layout";
@@ -170,13 +170,13 @@ function PermissionsSettings({
             <dt className="text-[9px] tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
               Auth role
             </dt>
-            <dd className="mt-2 font-mono text-xs text-[var(--bo-fg)]">{authority.authRole}</dd>
+            <dd className="mt-2 text-xs text-[var(--bo-fg)]">{authority.authRole}</dd>
           </div>
           <div className="min-w-32 border-l border-[color:var(--bo-border)] p-4">
             <dt className="text-[9px] tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
               Scopes
             </dt>
-            <dd className="mt-2 font-mono text-xs text-[var(--bo-fg)] tabular-nums">
+            <dd className="mt-2 text-xs text-[var(--bo-fg)] tabular-nums">
               {authority.scopes.length}
             </dd>
           </div>
@@ -204,7 +204,7 @@ function PermissionsSettings({
                   <h3 className="font-semibold text-[var(--bo-fg)]">{presentation.label}</h3>
                 </div>
                 <p className="mt-2 text-xs text-[var(--bo-muted)]">{presentation.detail}</p>
-                <p className="mt-3 font-mono text-[10px] tracking-[0.12em] text-[var(--bo-accent-fg)] uppercase">
+                <p className="mt-3 text-[10px] tracking-[0.12em] text-[var(--bo-accent-fg)] uppercase">
                   {entry.role ?? "no access"}
                 </p>
               </div>
@@ -220,7 +220,7 @@ function PermissionsSettings({
                         key={namespace}
                         className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3"
                       >
-                        <p className="font-mono text-[10px] font-semibold tracking-[0.16em] text-[var(--bo-muted-2)] uppercase">
+                        <p className="text-[10px] font-semibold tracking-[0.16em] text-[var(--bo-muted-2)] uppercase">
                           {namespace}
                         </p>
                         <ul className="mt-2 space-y-1.5">

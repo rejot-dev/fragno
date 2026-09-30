@@ -1,4 +1,6 @@
-import { Activity, ArrowLeft, ChevronRight, Clock3, Workflow, X } from "lucide-react";
+import { IconButton } from "@fragno-private/design-system/button";
+import { ClientOnly } from "@fragno-private/design-system/client-only";
+import { Icon } from "@fragno-private/design-system/icon";
 import {
   Component,
   Suspense,
@@ -19,7 +21,6 @@ import { backofficeRuntimeScopeFromResolvedScope } from "@/backoffice-runtime/re
 import { BackofficeUiErrorBoundary, BackofficeUiRenderer } from "@/backoffice-ui/renderer";
 import { parseBackofficeUiResult } from "@/backoffice-ui/result";
 import { sendBackofficeWorkflowEvent } from "@/backoffice-ui/workflow-events.client";
-import { ClientOnly } from "@/components/client-only";
 import {
   describeAutomationCollectionSource,
   getAutomationBrowserDatabase,
@@ -35,6 +36,8 @@ import { WorkflowStepGeneratedUi } from "@/routes/backoffice/automations/script-
 
 import type { AutomationCollectionSourceState } from "./current-context-state";
 import { workflowRunErrorText } from "./global-workflow-drawer-utils";
+
+export const GLOBAL_WORKFLOW_DRAWER_ID = "global-workflow-drawer";
 
 const DEFAULT_WIDTH = 520;
 const MIN_WIDTH = 360;
@@ -157,11 +160,12 @@ export function GlobalWorkflowDrawer({
 
   return (
     <aside
+      id={GLOBAL_WORKFLOW_DRAWER_ID}
       aria-label="Recent automation activity"
       aria-hidden={!open}
       inert={!open}
       style={{ "--global-workflow-drawer-width": `${width}px` } as CSSProperties}
-      className={`sticky top-0 z-40 flex h-dvh shrink-0 flex-col overflow-hidden bg-[var(--bo-panel)] transition-[width,box-shadow] duration-200 ease-out ${open ? "w-[min(var(--global-workflow-drawer-width),calc(100vw-2rem))] border-l border-[color:var(--bo-border)] shadow-[var(--bo-popover-shadow)]" : "pointer-events-none w-0 shadow-none"}`}
+      className={`sticky top-0 z-40 flex h-dvh shrink-0 flex-col overflow-hidden bg-[var(--bo-panel)] transition-[width] duration-200 ease-out ${open ? "w-[min(var(--global-workflow-drawer-width),calc(100vw-2rem))] border-l border-[color:var(--bo-border)]" : "pointer-events-none w-0"}`}
     >
       <div
         role="separator"
@@ -186,7 +190,8 @@ export function GlobalWorkflowDrawer({
         <span className="absolute inset-y-0 -left-5 w-10 bg-transparent transition-colors duration-150 group-hover:bg-[color:var(--bo-accent-bg)]/45" />
       </div>
 
-      <header className="flex min-h-14 items-center justify-between gap-3 border-b border-[color:var(--bo-border)] pr-2 pl-3">
+      {/* Matches the main top bar: 64px of content plus its 1px bottom border. */}
+      <header className="flex h-[calc(--spacing(16)+1px)] shrink-0 items-stretch justify-between gap-3 border-b border-[color:var(--bo-border)] pr-3 pl-3">
         <div role="tablist" aria-label="Automation activity" className="flex min-w-0 self-stretch">
           {(["events", "workflows"] as const).map((tab) => {
             const isActive = activeTab === tab;
@@ -199,7 +204,7 @@ export function GlobalWorkflowDrawer({
                 onClick={() => {
                   setActiveTab(tab);
                 }}
-                className={`relative min-h-14 px-3 text-[10px] font-semibold tracking-[0.16em] uppercase transition-colors ${
+                className={`relative px-3 text-[10px] font-semibold tracking-[0.16em] uppercase transition-colors ${
                   isActive
                     ? "text-[var(--bo-fg)] after:absolute after:inset-x-3 after:bottom-0 after:h-px after:bg-[var(--bo-accent)]"
                     : "text-[var(--bo-muted-2)] hover:text-[var(--bo-fg)]"
@@ -210,14 +215,9 @@ export function GlobalWorkflowDrawer({
             );
           })}
         </div>
-        <button
-          type="button"
-          aria-label="Close activity drawer"
-          onClick={onClose}
-          className="inline-flex size-10 items-center justify-center text-[var(--bo-muted)] transition-[background-color,color,scale] duration-150 hover:bg-[var(--bo-panel-2)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none active:scale-[0.96]"
-        >
-          <X className="size-4" aria-hidden="true" />
-        </button>
+        <IconButton label="Close activity drawer" onClick={onClose} className="self-center">
+          <Icon name="x" className="size-4" />
+        </IconButton>
       </header>
 
       {open ? (
@@ -322,9 +322,9 @@ function RecentAutomationEvents({ database }: { database: AutomationBrowserDatab
         >
           <summary className="cursor-pointer list-none marker:content-none">
             <div className="flex items-start gap-3">
-              <Activity
+              <Icon
+                name="activity"
                 className="mt-0.5 size-3.5 shrink-0 text-[var(--bo-accent-fg)]"
-                aria-hidden="true"
               />
               <div className="min-w-0 flex-1">
                 <p className="font-mono text-xs font-semibold break-all text-[var(--bo-fg)]">
@@ -479,7 +479,7 @@ function RecentWorkflowRuns({
               {formatRelativeTime(run.updatedAt)}
             </p>
           </div>
-          <ChevronRight className="size-3.5 shrink-0 text-[var(--bo-muted-2)]" aria-hidden="true" />
+          <Icon name="chevron-right" className="size-3.5 shrink-0 text-[var(--bo-muted-2)]" />
         </button>
       ))}
     </div>
@@ -503,14 +503,9 @@ function WorkflowRunDetail({
     <div className="backoffice-scroll min-h-0 overflow-y-auto p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-2">
-          <button
-            type="button"
-            aria-label="Back to recent workflows"
-            onClick={onBack}
-            className="inline-flex size-8 shrink-0 items-center justify-center text-[var(--bo-muted)] transition-[background-color,color,scale] duration-150 hover:bg-[var(--bo-panel-2)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none active:scale-[0.96]"
-          >
-            <ArrowLeft className="size-4" aria-hidden="true" />
-          </button>
+          <IconButton label="Back to recent workflows" onClick={onBack}>
+            <Icon name="arrow-left" className="size-4" />
+          </IconButton>
           <div className="min-w-0">
             <p className="text-[9px] font-semibold tracking-[0.16em] text-[var(--bo-muted-2)] uppercase">
               Run detail
@@ -591,7 +586,7 @@ function WorkflowRunDetail({
       {generatedUi ? (
         <section className="mt-5" aria-labelledby="global-workflow-ui-title">
           <div className="mb-2 flex items-center gap-2">
-            <Workflow className="size-3.5 text-[var(--bo-accent-fg)]" aria-hidden="true" />
+            <Icon name="share-2" className="size-3.5 text-[var(--bo-accent-fg)]" />
             <h4
               id="global-workflow-ui-title"
               className="text-[9px] font-semibold tracking-[0.16em] text-[var(--bo-muted-2)] uppercase"
@@ -714,7 +709,7 @@ function DrawerState({ message, tone = "muted" }: { message: string; tone?: "mut
     <div
       className={`m-4 border border-dashed border-[color:var(--bo-border)] p-4 text-xs leading-relaxed ${tone === "error" ? "text-[var(--bo-failed)]" : "text-[var(--bo-muted)]"}`}
     >
-      <Clock3 className="mb-2 size-4" aria-hidden="true" />
+      <Icon name="clock" className="mb-2 size-4" />
       {message}
     </div>
   );

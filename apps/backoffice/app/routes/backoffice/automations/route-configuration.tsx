@@ -1,4 +1,4 @@
-import { Braces, CircleDot, GitBranch } from "lucide-react";
+import { Icon } from "@fragno-private/design-system/icon";
 import type { ReactNode } from "react";
 
 import type {
@@ -59,7 +59,7 @@ export function AutomationRouteTargetDetail({ target }: { target: AutomationRout
       <div className="flex items-start justify-between gap-3 border-b border-[color:var(--bo-border)] px-3 py-2.5">
         <div className="flex min-w-0 items-start gap-2.5">
           <span className="flex h-7 w-7 shrink-0 items-center justify-center bg-violet-500/10 text-violet-700 dark:text-violet-300">
-            <GitBranch className="h-3.5 w-3.5" strokeWidth={1.8} />
+            <Icon name="git-branch" className="h-3.5 w-3.5" strokeWidth={1.8} />
           </span>
           <div className="min-w-0">
             <p className="text-[9px] tracking-[0.18em] text-[var(--bo-muted-2)] uppercase">
@@ -269,7 +269,7 @@ export function AutomationEventMatcherDetail({
     <section className="overflow-hidden border border-[color:var(--bo-border)] bg-[var(--bo-panel)]">
       <div className="flex items-start gap-2.5 border-b border-[color:var(--bo-border)] px-3 py-2.5">
         <span className="flex h-7 w-7 shrink-0 items-center justify-center bg-amber-500/10 text-amber-700 dark:text-amber-300">
-          <Braces className="h-3.5 w-3.5" strokeWidth={1.8} />
+          <Icon name="code" className="h-3.5 w-3.5" strokeWidth={1.8} />
         </span>
         <div>
           <p className="text-[9px] tracking-[0.18em] text-[var(--bo-muted-2)] uppercase">Matcher</p>
@@ -284,7 +284,7 @@ export function AutomationEventMatcherDetail({
           <MatcherNode matcher={matcher} />
         ) : (
           <div className="flex items-start gap-2 text-[11px] leading-5 text-[var(--bo-muted)]">
-            <CircleDot className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--bo-muted-2)]" />
+            <Icon name="disc" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--bo-muted-2)]" />
             <p>Every event matching this source and event type activates the route.</p>
           </div>
         )}

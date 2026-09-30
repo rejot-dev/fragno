@@ -1,10 +1,11 @@
 import { ScrollArea } from "@base-ui/react/scroll-area";
+import { Button, ButtonLink } from "@fragno-private/design-system/button";
+import { FormField } from "@fragno-private/design-system/form-container";
+import { Input } from "@fragno-private/design-system/input";
 import { useEffect, useState } from "react";
-import { Link, useFetcher, useLoaderData, useOutletContext, useParams } from "react-router";
+import { useFetcher, useLoaderData, useOutletContext, useParams } from "react-router";
 
 import type { ResendThreadMessage, ResendThreadReplyInput } from "@fragno-dev/resend-fragment";
-
-import { FormField } from "@/components/backoffice";
 
 import { resolveAuthenticatedIntegrationContext } from "../../integrations/scope";
 import { resolveAuthenticatedIntegrationRuntimeScope } from "../../integrations/scope.server";
@@ -164,12 +165,9 @@ export default function BackofficeOrganizationResendThreadDetail() {
           Thread detail
         </p>
         <p>{error ?? "We could not find that thread."}</p>
-        <Link
-          to={basePath}
-          className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-        >
+        <ButtonLink variant="secondary" to={basePath}>
           Back to threads
-        </Link>
+        </ButtonLink>
       </div>
     );
   }
@@ -198,12 +196,9 @@ export default function BackofficeOrganizationResendThreadDetail() {
             <p className="text-xs text-[var(--bo-muted-2)]">Reply alias: {thread.replyToAddress}</p>
           ) : null}
         </div>
-        <Link
-          to={basePath}
-          className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] lg:hidden"
-        >
+        <ButtonLink variant="secondary" to={basePath} className="lg:hidden">
           Back to threads
-        </Link>
+        </ButtonLink>
       </div>
 
       {error ? <div className="text-sm text-red-500">{error}</div> : null}
@@ -288,39 +283,35 @@ export default function BackofficeOrganizationResendThreadDetail() {
         <fetcher.Form key={formResetKey} method="post" className="mt-3 space-y-3">
           <div className="grid gap-3 md:grid-cols-2">
             <FormField label="To" hint="Comma or newline separated list.">
-              <input
+              <Input
                 name="to"
                 required
                 defaultValue={defaultTo}
                 placeholder="reply@example.com"
-                className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
+                className="w-full"
               />
             </FormField>
             <FormField label="Subject" hint="Optional. Defaults to the thread subject.">
-              <input
+              <Input
                 name="subject"
                 defaultValue={thread.subject ?? ""}
                 placeholder={thread.subject ?? "Reply subject"}
-                className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
+                className="w-full"
               />
             </FormField>
           </div>
 
           <div className="grid gap-3 md:grid-cols-2">
             <FormField label="CC" hint="Optional additional recipients.">
-              <input
+              <Input
                 name="cc"
                 defaultValue={defaultCc}
                 placeholder="team@example.com"
-                className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
+                className="w-full"
               />
             </FormField>
             <FormField label="BCC" hint="Optional blind-copy recipients.">
-              <input
-                name="bcc"
-                placeholder="audit@example.com"
-                className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
-              />
+              <Input name="bcc" placeholder="audit@example.com" className="w-full" />
             </FormField>
           </div>
 
@@ -330,7 +321,7 @@ export default function BackofficeOrganizationResendThreadDetail() {
                 name="text"
                 rows={6}
                 placeholder="Write the plain text version of the reply..."
-                className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
+                className="bo-input w-full px-3 py-2 text-sm"
               />
             </FormField>
             <FormField label="HTML" hint="Optional rich HTML body.">
@@ -338,7 +329,7 @@ export default function BackofficeOrganizationResendThreadDetail() {
                 name="html"
                 rows={6}
                 placeholder="<p>Thanks for the update...</p>"
-                className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
+                className="bo-input w-full px-3 py-2 text-sm"
               />
             </FormField>
           </div>
@@ -346,13 +337,9 @@ export default function BackofficeOrganizationResendThreadDetail() {
           {sendError ? <p className="text-xs text-red-500">{sendError}</p> : null}
           {sendSuccess ? <p className="text-xs text-green-500">{sendSuccess}</p> : null}
 
-          <button
-            type="submit"
-            disabled={isSending}
-            className="w-full border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
-          >
+          <Button variant="accent" type="submit" disabled={isSending} className="w-full">
             {isSending ? "Sending…" : "Send reply"}
-          </button>
+          </Button>
         </fetcher.Form>
       </section>
     </div>

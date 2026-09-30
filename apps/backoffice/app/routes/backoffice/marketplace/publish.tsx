@@ -1,6 +1,9 @@
-import { Form, Link, redirect, useActionData, useNavigation } from "react-router";
+import { Button, ButtonLink } from "@fragno-private/design-system/button";
+import { FormContainer } from "@fragno-private/design-system/form-container";
+import { Input } from "@fragno-private/design-system/input";
+import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
+import { Form, redirect, useActionData, useNavigation } from "react-router";
 
-import { BackofficePageHeader, FormContainer } from "@/components/backoffice";
 import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import {
   MARKETPLACE_CATEGORIES,
@@ -128,7 +131,7 @@ export default function BackofficeMarketplacePublish({ loaderData }: Route.Compo
         title="Create a marketplace draft."
         description="Record the catalog metadata now. A named upload can be attached to a version later."
         actions={
-          <Link
+          <ButtonLink
             to={
               loaderData.activeOrganization
                 ? marketplaceScopeTabPath(
@@ -141,10 +144,10 @@ export default function BackofficeMarketplacePublish({ loaderData }: Route.Compo
                   )
                 : "/backoffice/marketplace"
             }
-            className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-4 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
+            variant="secondary"
           >
             My listings
-          </Link>
+          </ButtonLink>
         }
       />
 
@@ -171,7 +174,7 @@ export default function BackofficeMarketplacePublish({ loaderData }: Route.Compo
               name="category"
               required
               defaultValue="operations"
-              className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] outline-none focus:border-[color:var(--bo-accent)]"
+              className="bo-input px-3 py-2 text-sm"
             >
               {MARKETPLACE_CATEGORIES.map((category) => (
                 <option key={category} value={category}>
@@ -188,7 +191,7 @@ export default function BackofficeMarketplacePublish({ loaderData }: Route.Compo
               name="ownerOrgSlug"
               required
               defaultValue={loaderData.activeOrganization?.slug ?? ""}
-              className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] outline-none focus:border-[color:var(--bo-accent)]"
+              className="bo-input px-3 py-2 text-sm"
             >
               <option value="" disabled>
                 Select an organization
@@ -210,12 +213,7 @@ export default function BackofficeMarketplacePublish({ loaderData }: Route.Compo
             <span className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
               Description
             </span>
-            <textarea
-              name="description"
-              required
-              rows={8}
-              className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] outline-none focus:border-[color:var(--bo-accent)]"
-            />
+            <textarea name="description" required rows={8} className="bo-input px-3 py-2 text-sm" />
           </label>
           <Field
             label="Tags"
@@ -224,13 +222,14 @@ export default function BackofficeMarketplacePublish({ loaderData }: Route.Compo
             required={false}
             className="md:col-span-2"
           />
-          <button
+          <Button
             type="submit"
             disabled={isSubmitting || loaderData.organizations.length === 0}
-            className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:cursor-not-allowed disabled:opacity-60 md:col-span-2"
+            variant="accent"
+            className="md:col-span-2"
           >
             {isSubmitting ? "Creating draft…" : "Create private draft"}
-          </button>
+          </Button>
         </Form>
       </FormContainer>
     </div>
@@ -255,12 +254,7 @@ function Field({
       <span className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
         {label}
       </span>
-      <input
-        name={name}
-        required={required}
-        placeholder={placeholder}
-        className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] outline-none focus:border-[color:var(--bo-accent)]"
-      />
+      <Input name={name} required={required} placeholder={placeholder} />
     </label>
   );
 }

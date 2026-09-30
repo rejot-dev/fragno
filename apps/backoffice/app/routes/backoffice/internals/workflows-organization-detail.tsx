@@ -1,5 +1,6 @@
+import { ButtonLink } from "@fragno-private/design-system/button";
 import type { ReactNode } from "react";
-import { Link, useLoaderData, useSearchParams } from "react-router";
+import { useLoaderData, useSearchParams } from "react-router";
 
 import {
   backofficeRouteScopePath,
@@ -95,12 +96,9 @@ export default function BackofficeWorkflowsOrganizationDetail() {
           </h3>
           <p className="text-xs text-[var(--bo-muted-2)]">Instance ID: {detail.id}</p>
         </div>
-        <Link
-          to={basePath}
-          className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] lg:hidden"
-        >
+        <ButtonLink to={basePath} variant="secondary" className="lg:hidden">
           Back to list
-        </Link>
+        </ButtonLink>
       </div>
 
       <div
@@ -122,7 +120,7 @@ export default function BackofficeWorkflowsOrganizationDetail() {
               }}
               className={
                 isActive
-                  ? "border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase"
+                  ? "border border-[color:var(--bo-selected-border)] bg-[var(--bo-selected-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-fg)] uppercase shadow-[var(--bo-selected-shadow)]"
                   : "border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
               }
             >
@@ -449,7 +447,7 @@ function WorkflowEmissionsTab({ detail }: { detail: WorkflowDetailLoaderData }) 
                     </p>
                   </td>
                   <td className="px-3 py-2 align-top text-xs">
-                    <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 font-mono text-[10px] tracking-[0.18em] text-[var(--bo-fg)] uppercase">
+                    <span className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] tracking-[0.18em] text-[var(--bo-fg)] uppercase">
                       {emission.actor}
                     </span>
                   </td>

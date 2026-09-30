@@ -1,6 +1,6 @@
+import { ButtonLink } from "@fragno-private/design-system/button";
+import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
 import { Link, isRouteErrorResponse } from "react-router";
-
-import { BackofficePageHeader } from "@/components/backoffice";
 
 import { getRouteErrorMessage, getBackofficeOrganizationNotFound } from "../../route-errors";
 import type { UploadConfigurableProvider, UploadTab } from "./layout-context";
@@ -20,12 +20,9 @@ export function UploadHeader({ organizationLabel }: { organizationLabel: string 
       title={`Upload for ${organizationLabel}`}
       description="Configure organization-scoped upload storage with an enforced org namespace."
       actions={
-        <Link
-          to="/backoffice/connections/upload"
-          className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-        >
+        <ButtonLink variant="secondary" to="/backoffice/connections/upload">
           Back to Upload
-        </Link>
+        </ButtonLink>
       }
     />
   );
@@ -64,7 +61,7 @@ export function UploadWorkspaceTabs({
       {tabs.map((tab) => {
         const isActive = activeTab === tab.id;
         const className = isActive
-          ? "border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-accent-fg)]"
+          ? "border border-[color:var(--bo-selected-border)] bg-[var(--bo-selected-bg)] shadow-[var(--bo-selected-shadow)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-fg)]"
           : tab.disabled
             ? "cursor-not-allowed border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted-2)] opacity-60"
             : "border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]";
@@ -141,7 +138,7 @@ export function UploadProviderTabs({
       {tabs.map((tab) => {
         const isActive = activeProvider === tab.id;
         const className = isActive
-          ? "border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-accent-fg)]"
+          ? "border border-[color:var(--bo-selected-border)] bg-[var(--bo-selected-bg)] shadow-[var(--bo-selected-shadow)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-fg)]"
           : tab.disabled
             ? "cursor-not-allowed border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted-2)] opacity-60"
             : "border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)]";

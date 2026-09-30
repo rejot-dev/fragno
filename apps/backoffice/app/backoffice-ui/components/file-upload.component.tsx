@@ -1,4 +1,5 @@
-import { Check, FileUp, RefreshCw } from "lucide-react";
+import { Button } from "@fragno-private/design-system/button";
+import { Icon } from "@fragno-private/design-system/icon";
 import { useEffect, useId, useRef, useState } from "react";
 
 import type { UploadProgress } from "@fragno-dev/upload";
@@ -143,9 +144,9 @@ export const FileUpload: ComponentFn<typeof backofficeUiCatalog, "FileUpload"> =
         <div className="flex min-w-0 items-center gap-3">
           <div className="flex size-9 shrink-0 items-center justify-center bg-[var(--bo-panel)] text-[var(--bo-muted)] shadow-[inset_0_0_0_1px_var(--bo-border)]">
             {uploadState === "complete" ? (
-              <Check className="size-4" />
+              <Icon name="check" className="size-4" />
             ) : (
-              <FileUp className="size-4" />
+              <Icon name="upload" className="size-4" />
             )}
           </div>
           <div className="min-w-0 flex-1">
@@ -185,8 +186,8 @@ export const FileUpload: ComponentFn<typeof backofficeUiCatalog, "FileUpload"> =
               {error}
             </p>
             {retryFileRef.current ? (
-              <button
-                type="button"
+              <Button
+                variant="ghost"
                 disabled={disabled}
                 onClick={() => {
                   const file = retryFileRef.current;
@@ -194,10 +195,10 @@ export const FileUpload: ComponentFn<typeof backofficeUiCatalog, "FileUpload"> =
                     void upload(file);
                   }
                 }}
-                className="inline-flex min-h-10 shrink-0 items-center gap-1.5 px-2 text-[10px] font-semibold text-[var(--bo-foreground)] transition-[scale,opacity] active:scale-[0.96] disabled:opacity-45"
+                className="shrink-0"
               >
-                <RefreshCw className="size-3" /> Retry
-              </button>
+                <Icon name="refresh-cw" className="size-3" /> Retry
+              </Button>
             ) : null}
           </div>
         ) : null}

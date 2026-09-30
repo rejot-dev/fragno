@@ -1,3 +1,5 @@
+import { Button } from "@fragno-private/design-system/button";
+import { Select } from "@fragno-private/design-system/select";
 import { useState } from "react";
 import { Form, Link } from "react-router";
 
@@ -5,10 +7,7 @@ import type { PiModelOption } from "@/fragno/pi/pi-shared";
 import type { PiSessionListingState } from "@/fragno/pi/tanstack/session-listing";
 
 import { formatTimestamp } from "./formatting";
-import { SessionSelect } from "./session-select";
 
-const tapScale =
-  "transition-transform duration-150 ease-out active:not-disabled:scale-[0.96] disabled:active:scale-100";
 const INITIAL_HISTORY_COUNT = 2;
 
 type NewSessionComposerProps = {
@@ -63,10 +62,10 @@ export function NewSessionComposer({
         ) : (
           <Form method="post" action={basePath} className="w-full">
             <input type="hidden" name="intent" value="create-session" />
-            <div className="border border-[color:var(--bo-border-strong)] bg-[var(--bo-panel)] focus-within:border-[color:var(--bo-accent)] focus-within:ring-2 focus-within:ring-[color:var(--bo-accent)]/15">
+            <div className="bo-input">
               <label
                 htmlFor="new-session-prompt"
-                className="block px-4 pt-3 font-mono text-[10px] font-semibold tracking-[0.14em] text-[var(--bo-muted-2)] uppercase"
+                className="block px-4 pt-3 text-[10px] font-semibold tracking-[0.14em] text-[var(--bo-muted-2)] uppercase"
               >
                 Message
               </label>
@@ -97,8 +96,8 @@ export function NewSessionComposer({
               />
             </div>
 
-            <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-              <SessionSelect
+            <div className="gap-x-gutter mt-3 grid gap-y-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+              <Select
                 label="Model"
                 name="modelOption"
                 options={availableModelOptions.map((option) => ({
@@ -116,13 +115,14 @@ export function NewSessionComposer({
                 </p>
               ) : null}
 
-              <button
+              <Button
                 type="submit"
-                className={`min-h-11 bg-[var(--bo-btn-bg)] px-6 text-xs font-semibold text-[var(--bo-btn-fg)] transition-[background-color,scale] duration-150 ease-out hover:bg-[var(--bo-btn-bg-hover)] disabled:cursor-not-allowed disabled:opacity-35 sm:col-start-2 sm:row-start-1 sm:self-end ${tapScale}`}
+                variant="solid"
+                className="sm:col-start-2 sm:row-start-1 sm:self-end"
                 disabled={submissionDisabled}
               >
                 {creating ? "Sending…" : "Send"}
-              </button>
+              </Button>
             </div>
             {createError ? (
               <p className="mt-3 border border-[color:var(--bo-failed)] bg-[var(--bo-failed-bg)] px-3 py-2 text-sm text-pretty text-[var(--bo-failed)]">
@@ -189,17 +189,17 @@ export function NewSessionComposer({
               )}
 
               {sessions.length > INITIAL_HISTORY_COUNT ? (
-                <button
-                  type="button"
+                <Button
+                  variant="ghost"
                   onClick={() => {
                     setShowAllHistory((showAll) => !showAll);
                   }}
-                  className="mt-2 min-h-10 text-xs font-semibold text-[var(--bo-accent-fg)] hover:underline"
+                  className="mt-2"
                 >
                   {showAllHistory
                     ? "Show less"
                     : `Show ${sessions.length - INITIAL_HISTORY_COUNT} more`}
-                </button>
+                </Button>
               ) : null}
             </div>
           ) : null}

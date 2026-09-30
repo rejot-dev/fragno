@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import {
   backofficeRouteScopeFromResolvedScope,
@@ -12,7 +12,7 @@ import { BackofficeClsDebugger } from "./cls-debugger";
 import { CurrentBackofficeProvider } from "./current-context";
 import type { CurrentBackofficeContext } from "./current-context-state";
 import { GlobalHotkeysProvider, useGlobalHotkey } from "./global-hotkeys";
-import { GlobalWorkflowDrawer } from "./global-workflow-drawer";
+import { GLOBAL_WORKFLOW_DRAWER_ID, GlobalWorkflowDrawer } from "./global-workflow-drawer";
 import { QuakeTerminal } from "./quake-terminal";
 import { BackofficeSidebarNav } from "./sidebar-nav";
 import { BackofficeTopBar } from "./top-bar";
@@ -85,6 +85,7 @@ function BackofficeShellFrame({
 }: BackofficeShellProps) {
   const [workflowDrawerOpen, setWorkflowDrawerOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const pageColumnRef = useRef<HTMLDivElement>(null);
   const routeScope = resolvedScope ? backofficeRouteScopeFromResolvedScope(resolvedScope) : null;
   const terminalScope = resolvedScope ? backofficeTerminalScopeSelection(resolvedScope, me) : null;
   useEffect(() => {
@@ -95,6 +96,26 @@ function BackofficeShellFrame({
       window.location.replace("/backoffice/login");
     });
   }, [accessTokenExpiresAt]);
+  useEffect(() => {
+    if (!workflowDrawerOpen) {
+      return undefined;
+    }
+    // Only presses on the page column dismiss the drawer: popups opened from inside the drawer are
+    // portaled outside the shell and must not close it, and the toggle handles its own click.
+    const closeOnOutsidePress = (event: PointerEvent) => {
+      const target = event.target as Element;
+      if (
+        pageColumnRef.current?.contains(target) &&
+        !target.closest(`[aria-controls="${GLOBAL_WORKFLOW_DRAWER_ID}"]`)
+      ) {
+        setWorkflowDrawerOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", closeOnOutsidePress);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsidePress);
+    };
+  }, [workflowDrawerOpen]);
   useGlobalHotkey({
     id: "toggle-sidebar",
     key: "b",
@@ -119,13 +140,14 @@ function BackofficeShellFrame({
       className="relative isolate flex min-h-screen bg-[var(--bo-bg)] text-[var(--bo-fg)]"
     >
       <BackofficeClsDebugger />
-      <div className="relative flex min-w-0 flex-1 flex-col">
+      <div ref={pageColumnRef} className="relative flex min-w-0 flex-1 flex-col">
         <div className="bo-grid-backdrop pointer-events-none absolute inset-0" />
         <BackofficeTopBar
           me={me}
           resolvedScope={resolvedScope}
           projectCollectionSource={projectCollectionSource}
           isLoading={isLoading}
+          sidebarCollapsed={sidebarCollapsed}
           workflowDrawerOpen={workflowDrawerOpen}
           onWorkflowDrawerToggle={() => {
             setWorkflowDrawerOpen((open) => !open);

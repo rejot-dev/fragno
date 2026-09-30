@@ -1,14 +1,13 @@
+import { Button, ButtonLink } from "@fragno-private/design-system/button";
+import { FormContainer, FormField } from "@fragno-private/design-system/form-container";
+import { Input } from "@fragno-private/design-system/input";
+import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
+import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
 import { useState, type SubmitEvent } from "react";
-import { Link, useOutletContext } from "react-router";
+import { useOutletContext } from "react-router";
 
 import type { BrowserRunSessions } from "@fragno-dev/cloudflare-fragment";
 
-import {
-  BackofficePageHeader,
-  BackofficeStatusLight,
-  FormContainer,
-  FormField,
-} from "@/components/backoffice";
 import { cloudflareClient } from "@/fragno/cloudflare-client";
 
 import type { Route } from "./+types/cloudflare-browser-run";
@@ -19,12 +18,6 @@ import type { InternalsLayoutContext } from "./layout";
 type BrowserSession = Awaited<ReturnType<BrowserRunSessions["list"]>>[number];
 type BrowserTarget = Awaited<ReturnType<BrowserRunSessions["listTargets"]>>[number];
 
-const controlClassName =
-  "min-h-10 w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 text-sm text-[var(--bo-fg)] outline-none transition-colors focus:border-[color:var(--bo-accent)]";
-const primaryButtonClassName =
-  "inline-flex min-h-10 items-center justify-center border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 text-[10px] font-semibold tracking-[0.2em] text-[var(--bo-accent-fg)] uppercase transition-[border-color,opacity,scale] hover:border-[color:var(--bo-accent-strong)] active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50";
-const secondaryButtonClassName =
-  "inline-flex min-h-9 items-center justify-center border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 text-[10px] font-semibold tracking-[0.18em] text-[var(--bo-muted)] uppercase transition-[border-color,color,scale] hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50";
 const dangerButtonClassName =
   "inline-flex min-h-9 items-center justify-center border border-[color:var(--bo-failed)] bg-[var(--bo-failed-bg)] px-3 text-[10px] font-semibold tracking-[0.18em] text-[var(--bo-failed)] uppercase transition-[opacity,scale] active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50";
 const timestampFormatter = new Intl.DateTimeFormat("en-US", {
@@ -145,8 +138,8 @@ function SessionTargets({ sessionId }: { sessionId: string }) {
       >
         <div className="min-w-0 flex-1">
           <FormField label="Initial URL" hint="Leave empty to create a blank target.">
-            <input
-              className={controlClassName}
+            <Input
+              className="min-h-10 w-full"
               value={url}
               onChange={(event) => {
                 setUrl(event.target.value);
@@ -156,9 +149,9 @@ function SessionTargets({ sessionId }: { sessionId: string }) {
             />
           </FormField>
         </div>
-        <button className={primaryButtonClassName} disabled={busy} type="submit">
+        <Button variant="accent" disabled={busy} type="submit">
           {createTarget.loading ? "Opening…" : "Open target"}
-        </button>
+        </Button>
       </form>
 
       {operationError ? (
@@ -208,19 +201,17 @@ function SessionTargets({ sessionId }: { sessionId: string }) {
                 </div>
                 <div className="flex shrink-0 flex-wrap gap-2">
                   {target.webSocketDebuggerUrl ? (
-                    <button
-                      className={primaryButtonClassName}
+                    <Button
+                      variant="accent"
                       disabled={busy}
-                      type="button"
                       onClick={() => void handleInspectTarget(target.id)}
                     >
                       {refreshingTargetId === target.id ? "Refreshing…" : "Inspect CDP"}
-                    </button>
+                    </Button>
                   ) : null}
-                  <button
-                    className={secondaryButtonClassName}
+                  <Button
+                    variant="secondary"
                     disabled={busy}
-                    type="button"
                     onClick={() =>
                       void activateTarget.mutate({
                         path: { sessionId, targetId: target.id },
@@ -228,7 +219,7 @@ function SessionTargets({ sessionId }: { sessionId: string }) {
                     }
                   >
                     Activate
-                  </button>
+                  </Button>
                   <button
                     className={dangerButtonClassName}
                     disabled={busy}
@@ -364,9 +355,9 @@ export default function CloudflareBrowserRunInternals() {
         title="Browser Run session console"
         description="Exercise the fragment's HTTP session and target lifecycle APIs without loading Playwright."
         actions={
-          <Link className={secondaryButtonClassName} to={internalsBasePath}>
+          <ButtonLink variant="secondary" to={internalsBasePath}>
             Back to internals
-          </Link>
+          </ButtonLink>
         }
       />
 
@@ -382,8 +373,8 @@ export default function CloudflareBrowserRunInternals() {
                 label="Keep alive"
                 hint="Inactivity timeout in milliseconds, from 10,000 to 1,200,000."
               >
-                <input
-                  className={controlClassName}
+                <Input
+                  className="min-h-10 w-full"
                   type="number"
                   min={10_000}
                   max={1_200_000}
@@ -418,13 +409,14 @@ export default function CloudflareBrowserRunInternals() {
                 ))}
               </div>
 
-              <button
-                className={`${primaryButtonClassName} w-full`}
+              <Button
+                variant="accent"
+                className="w-full"
                 disabled={Boolean(createSession.loading)}
                 type="submit"
               >
                 {createSession.loading ? "Starting…" : "Start browser session"}
-              </button>
+              </Button>
             </form>
           </FormContainer>
 
@@ -454,7 +446,7 @@ export default function CloudflareBrowserRunInternals() {
                       key={session.sessionId}
                       className={`border p-3 transition-colors ${
                         selected
-                          ? "border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)]"
+                          ? "border-[color:var(--bo-selected-border)] bg-[var(--bo-selected-bg)] shadow-[var(--bo-selected-shadow)]"
                           : "border-[color:var(--bo-border)] bg-[var(--bo-panel-2)]"
                       }`}
                     >

@@ -12,7 +12,7 @@ export function BackofficeStatusLight({
   return (
     <span
       data-tone={tone}
-      className="bo-status-light inline-flex min-h-7 shrink-0 items-center gap-2 px-2 text-[9px] font-semibold tracking-[0.18em] uppercase"
+      className="bo-status-light inline-flex min-h-6 shrink-0 items-center gap-1.5 rounded-[4px] px-2 text-xs font-semibold whitespace-nowrap"
     >
       <span className="bo-status-light-dot size-1.5 shrink-0" aria-hidden="true" />
       {children}

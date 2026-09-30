@@ -1,4 +1,5 @@
-import { Link, useLoaderData, useOutletContext, useParams } from "react-router";
+import { ButtonLink } from "@fragno-private/design-system/button";
+import { useLoaderData, useOutletContext, useParams } from "react-router";
 
 import type { ResendDomainRecord } from "@fragno-dev/resend-fragment";
 
@@ -55,12 +56,9 @@ export default function BackofficeOrganizationResendDomainDetail() {
           Domain detail
         </p>
         <p>{error ?? "We could not load that domain."}</p>
-        <Link
-          to={basePath}
-          className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-        >
+        <ButtonLink variant="secondary" to={basePath}>
           Back to domains
-        </Link>
+        </ButtonLink>
       </div>
     );
   }
@@ -76,12 +74,9 @@ export default function BackofficeOrganizationResendDomainDetail() {
           <h3 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">{domain.name}</h3>
           <p className="text-xs text-[var(--bo-muted-2)]">ID: {domain.id}</p>
         </div>
-        <Link
-          to={basePath}
-          className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] lg:hidden"
-        >
+        <ButtonLink variant="secondary" to={basePath} className="lg:hidden">
           Back to domains
-        </Link>
+        </ButtonLink>
       </div>
 
       <div className="grid gap-3 md:grid-cols-2">

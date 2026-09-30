@@ -1,4 +1,4 @@
-import "../backoffice.css";
+import "@fragno-private/design-system/components.css";
 
 import type { CurrentBackofficeContext } from "@/components/backoffice/current-context-state";
 import { fetchAutomationCollectionSource } from "@/fragno/automation/tanstack/server";

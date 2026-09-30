@@ -1,4 +1,5 @@
-import { Link, useLoaderData, useOutletContext, useParams } from "react-router";
+import { ButtonLink } from "@fragno-private/design-system/button";
+import { useLoaderData, useOutletContext, useParams } from "react-router";
 
 import { resolveAuthenticatedIntegrationRuntimeScope } from "../../integrations/scope.server";
 import { formatTimestamp } from "../formatting";
@@ -48,12 +49,9 @@ export default function BackofficeOrganizationResendIncomingDetail() {
           Incoming detail
         </p>
         <p>{error ?? "We could not find that email in the current incoming page."}</p>
-        <Link
-          to={basePath}
-          className="inline-flex border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-        >
+        <ButtonLink variant="secondary" to={basePath}>
           Back to incoming
-        </Link>
+        </ButtonLink>
       </div>
     );
   }
@@ -72,12 +70,9 @@ export default function BackofficeOrganizationResendIncomingDetail() {
           <p className="text-xs text-[var(--bo-muted-2)]">ID: {email.id}</p>
           <p className="text-xs text-[var(--bo-muted-2)]">Message-ID: {email.messageId}</p>
         </div>
-        <Link
-          to={basePath}
-          className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] lg:hidden"
-        >
+        <ButtonLink variant="secondary" to={basePath} className="lg:hidden">
           Back to incoming
-        </Link>
+        </ButtonLink>
       </div>
 
       <div className="grid gap-3 md:grid-cols-2">

@@ -9,7 +9,7 @@ vi.mock("@base-ui/react", () => ({
   Progress: {},
 }));
 
-vi.mock("@/components/backoffice", () => ({
+vi.mock("@fragno-private/design-system/units", () => ({
   formatBytes: vi.fn(),
 }));
 

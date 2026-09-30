@@ -26,7 +26,7 @@ export const Progress: ComponentFn<typeof backofficeUiCatalog, "Progress"> = ({ 
     >
       <div className="flex items-baseline justify-between gap-3">
         <p className="text-[9px] font-semibold tracking-[0.18em] uppercase">{props.label}</p>
-        <p className="font-mono text-xs font-semibold tabular-nums">{value}%</p>
+        <p className="text-xs font-semibold tabular-nums">{value}%</p>
       </div>
       <div className="mt-2 h-1.5 bg-[var(--bo-panel)]" aria-hidden="true">
         <div

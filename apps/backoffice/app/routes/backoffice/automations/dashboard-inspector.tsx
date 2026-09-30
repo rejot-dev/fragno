@@ -1,4 +1,5 @@
-import { Braces, ChevronRight, X } from "lucide-react";
+import { IconButton } from "@fragno-private/design-system/button";
+import { Icon } from "@fragno-private/design-system/icon";
 import { useMemo } from "react";
 
 import { visualizeWorkflowSource } from "@fragno-dev/workflow-visualizer-tokens";
@@ -79,14 +80,9 @@ export function DashboardInspector({
           Inspector
         </p>
         {selection ? (
-          <button
-            type="button"
-            aria-label="Clear dashboard selection"
-            onClick={onClear}
-            className="flex h-10 w-10 items-center justify-center text-[var(--bo-muted-2)] transition-[color,transform] hover:text-[var(--bo-fg)] active:scale-[0.96]"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
+          <IconButton label="Clear dashboard selection" onClick={onClear}>
+            <Icon name="x" className="h-3.5 w-3.5" />
+          </IconButton>
         ) : null}
       </div>
 
@@ -235,7 +231,8 @@ function EventDefinitionDisclosure({
   return (
     <details className="group">
       <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 py-2.5 text-left marker:content-none">
-        <ChevronRight
+        <Icon
+          name="chevron-right"
           className="h-3.5 w-3.5 shrink-0 text-[var(--bo-muted-2)] transition-transform group-open:rotate-90"
           strokeWidth={1.8}
         />
@@ -264,7 +261,7 @@ function ActionPayloadDetail({ payload }: { payload: unknown }) {
     <section className="overflow-hidden border border-[color:var(--bo-border)] bg-[var(--bo-panel)]">
       <div className="flex items-start gap-2.5 border-b border-[color:var(--bo-border)] px-3 py-2.5">
         <span className="flex h-7 w-7 shrink-0 items-center justify-center bg-sky-500/10 text-sky-700 dark:text-sky-300">
-          <Braces className="h-3.5 w-3.5" strokeWidth={1.8} />
+          <Icon name="code" className="h-3.5 w-3.5" strokeWidth={1.8} />
         </span>
         <div>
           <p className="text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">

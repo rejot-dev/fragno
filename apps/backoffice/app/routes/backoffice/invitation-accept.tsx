@@ -1,12 +1,14 @@
 import { FragnoClientApiError } from "@fragno-dev/core/client";
+import { ButtonLink } from "@fragno-private/design-system/button";
+import { FormContainer } from "@fragno-private/design-system/form-container";
+import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router";
+import { useParams, useSearchParams } from "react-router";
 
 import {
   backofficeOrganizationIdentity,
   type BackofficeOrganizationIdentity,
 } from "@/backoffice-runtime/resolved-scope";
-import { BackofficePageHeader, FormContainer } from "@/components/backoffice";
 import { authClient } from "@/fragno/auth/auth-client";
 import { buildBackofficeOrganizationSwitchPath } from "@/routes/backoffice/auth-navigation";
 
@@ -197,21 +199,18 @@ export default function BackofficeInvitationAccept() {
         <Notice notice={notice} />
         {status === "success" && acceptedOrganization ? (
           <div className="flex flex-wrap gap-2">
-            <Link
+            <ButtonLink
+              variant="accent"
               to={buildBackofficeOrganizationSwitchPath(
                 acceptedOrganization.id,
                 `/backoffice/organizations/${encodeURIComponent(acceptedOrganization.slug)}`,
               )}
-              className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)]"
             >
               Open organization
-            </Link>
-            <Link
-              to="/backoffice/organizations"
-              className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-            >
+            </ButtonLink>
+            <ButtonLink variant="secondary" to="/backoffice/organizations">
               Back to organizations
-            </Link>
+            </ButtonLink>
           </div>
         ) : null}
       </FormContainer>

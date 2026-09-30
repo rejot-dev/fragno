@@ -1,6 +1,7 @@
-import { Link } from "react-router";
+import { ButtonLink } from "@fragno-private/design-system/button";
+import { FormContainer } from "@fragno-private/design-system/form-container";
+import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
 
-import { BackofficePageHeader, FormContainer } from "@/components/backoffice";
 import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import { getOtpDurableObject } from "@/worker-runtime/durable-objects";
 
@@ -101,12 +102,12 @@ export default function BackofficeAutomationClaimComplete({
         eyebrow={loaderData.ok ? "Success" : "Error"}
         description={loaderData.message}
         actions={
-          <Link
+          <ButtonLink
+            variant="secondary"
             to={`/backoffice/organizations/${encodeURIComponent(loaderData.organization.slug)}`}
-            className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
           >
             Back to organization
-          </Link>
+          </ButtonLink>
         }
       >
         <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4 text-sm text-[var(--bo-muted)]">

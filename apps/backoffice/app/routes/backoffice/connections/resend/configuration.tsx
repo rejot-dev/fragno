@@ -1,8 +1,11 @@
+import { Button } from "@fragno-private/design-system/button";
+import { FormContainer, FormField } from "@fragno-private/design-system/form-container";
+import { Input } from "@fragno-private/design-system/input";
+import { WizardStepper } from "@fragno-private/design-system/wizard-stepper";
 import { useEffect, useState } from "react";
 import { Form, useActionData, useNavigation, useOutletContext } from "react-router";
 
 import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
-import { FormContainer, FormField, WizardStepper } from "@/components/backoffice";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import { resolveAuthenticatedIntegrationContext } from "../../integrations/scope";
@@ -315,7 +318,7 @@ export default function BackofficeOrganizationResendConfiguration() {
                   : "Generate in the Resend dashboard. Required on first setup."
               }
             >
-              <input
+              <Input
                 type="password"
                 name="apiKey"
                 value={formState.apiKey}
@@ -326,7 +329,7 @@ export default function BackofficeOrganizationResendConfiguration() {
                   }));
                 }}
                 placeholder="re_..."
-                className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
+                className="w-full"
               />
             </FormField>
 
@@ -349,12 +352,12 @@ export default function BackofficeOrganizationResendConfiguration() {
                   }));
                 }}
                 placeholder="Fragno <hello@example.com>"
-                className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
+                className="bo-input w-full px-3 py-2 text-sm"
               />
             </FormField>
 
             <FormField label="Default reply-to" hint="Optional. Comma-separated list.">
-              <input
+              <Input
                 type="text"
                 name="defaultReplyTo"
                 value={formState.defaultReplyTo}
@@ -365,7 +368,7 @@ export default function BackofficeOrganizationResendConfiguration() {
                   }));
                 }}
                 placeholder="support@example.com"
-                className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
+                className="w-full"
               />
             </FormField>
 
@@ -373,7 +376,7 @@ export default function BackofficeOrganizationResendConfiguration() {
               label="Webhook base URL"
               hint="Required. Use the public Backoffice origin or a tunnel URL."
             >
-              <input
+              <Input
                 type="url"
                 name="webhookBaseUrl"
                 value={formState.webhookBaseUrl}
@@ -385,7 +388,7 @@ export default function BackofficeOrganizationResendConfiguration() {
                 }}
                 placeholder={origin}
                 required
-                className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
+                className="w-full"
               />
               {webhookBaseUrlError ? (
                 <p className="text-xs text-red-500">{webhookBaseUrlError}</p>
@@ -408,13 +411,9 @@ export default function BackofficeOrganizationResendConfiguration() {
           {saveError ? <p className="text-xs text-red-500">{saveError}</p> : null}
           {saveSuccess ? <p className="text-xs text-green-500">{saveSuccess}</p> : null}
 
-          <button
-            type="submit"
-            disabled={saving}
-            className="w-full border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
-          >
+          <Button variant="accent" type="submit" disabled={saving} className="w-full">
             {saving ? "Saving…" : "Save Resend config"}
-          </button>
+          </Button>
         </Form>
       </FormContainer>
     </div>

@@ -78,6 +78,12 @@ a product combining all best aspects of Fragno. Backoffice tests whether Fragno'
 primitives form one coherent system. Backoffice is our dogfooding proving ground for sessions, files, integrations, permissions,
 workflows, generated interfaces, synchronization, and operations.
 
+### Components
+
+Always add generic, reusable UI components to the private design system package
+(`packages-private/design-system`, `@fragno-private/design-system`), not to `apps/backoffice`.
+Only app-specific components belong in Backoffice.
+
 ### Tests
 
 In Backoffice, we test exclusively through scenario tests, unless specifically direct otherwise by me.

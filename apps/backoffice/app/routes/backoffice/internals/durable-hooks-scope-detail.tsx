@@ -1,5 +1,6 @@
+import { ButtonLink } from "@fragno-private/design-system/button";
 import type { ReactNode } from "react";
-import { Link, useLocation, useOutletContext } from "react-router";
+import { useLocation, useOutletContext } from "react-router";
 
 import type { DurableHookQueueEntry } from "@/fragno/durable-hooks";
 
@@ -44,12 +45,9 @@ function DurableHookDetailPanel({
           <h3 className="mt-2 text-xl font-semibold text-[var(--bo-fg)]">{hook.hookName}</h3>
           <p className="text-xs text-[var(--bo-muted-2)]">Hook ID: {hook.id}</p>
         </div>
-        <Link
-          to={backToListHref}
-          className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] lg:hidden"
-        >
+        <ButtonLink to={backToListHref} variant="secondary" className="lg:hidden">
           Back to queue
-        </Link>
+        </ButtonLink>
       </div>
 
       <div className="grid gap-3 md:grid-cols-2">

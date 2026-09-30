@@ -1,7 +1,9 @@
+import { Button } from "@fragno-private/design-system/button";
+import { FormContainer, FormField } from "@fragno-private/design-system/form-container";
+import { Input } from "@fragno-private/design-system/input";
 import { useEffect, useState, type SubmitEvent } from "react";
 import { useOutletContext } from "react-router";
 
-import { FormContainer, FormField } from "@/components/backoffice";
 import { authClient } from "@/fragno/auth/auth-client";
 
 import type { OrganizationLayoutContext } from "./organization-layout";
@@ -100,7 +102,7 @@ export default function BackofficeOrganizationOverview() {
       >
         <form onSubmit={(event) => void handleNameSubmit(event)} className="space-y-3">
           <FormField label="Organization name">
-            <input
+            <Input
               type="text"
               value={nameInput}
               onChange={(event) => {
@@ -108,17 +110,17 @@ export default function BackofficeOrganizationOverview() {
                 setNameNotice(null);
               }}
               disabled={!canManageOrganization}
-              className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none disabled:opacity-60"
+              className="w-full"
             />
           </FormField>
           <div className="flex flex-wrap items-center gap-2">
-            <button
+            <Button
+              variant="accent"
               type="submit"
               disabled={!canManageOrganization || !nameDirty || !nameValid || updatingOrganization}
-              className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
             >
               {updatingOrganization ? "Saving..." : "Save name"}
-            </button>
+            </Button>
             {updateOrganizationError ? (
               <span className="text-xs text-red-600">
                 {getErrorMessage(updateOrganizationError)}

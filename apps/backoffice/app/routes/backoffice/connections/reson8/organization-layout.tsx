@@ -102,7 +102,7 @@ function Reson8LayoutContent({
   }
 
   return (
-    <div className="space-y-4">
+    <div>
       <AutomationWorkspaceHeader
         selectedScope={uiScope}
         activeTab="integrations"

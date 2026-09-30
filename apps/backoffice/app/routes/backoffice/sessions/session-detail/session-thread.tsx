@@ -1,6 +1,7 @@
 import { Menu } from "@base-ui/react/menu";
 import type { PiCompactCommandOutcome } from "@fragno-dev/pi-harness/types";
-import { Check, ChevronDown } from "lucide-react";
+import { Button } from "@fragno-private/design-system/button";
+import { Icon } from "@fragno-private/design-system/icon";
 import { useRef, useState, type UIEvent } from "react";
 
 import { ComposerPrimitive, ThreadPrimitive } from "@assistant-ui/react";
@@ -127,7 +128,7 @@ export function SessionThread({
                 void onCompact();
               }
             }}
-            className={`border bg-[var(--bo-panel-2)] p-2 transition-[border-color,opacity] duration-150 ${disabled ? "cursor-not-allowed border-[color:var(--bo-border)] opacity-50" : "border-[color:var(--bo-border-strong)] focus-within:border-[color:var(--bo-accent)] focus-within:ring-2 focus-within:ring-[color:var(--bo-accent)]/15"}`}
+            className={`border bg-[var(--bo-panel-2)] p-2 transition-[border-color,opacity] duration-150 ${disabled ? "cursor-not-allowed border-[color:var(--bo-border)] opacity-50" : "border-[color:var(--bo-border-strong)]"}`}
           >
             <ComposerPrimitive.Input
               disabled={disabled}
@@ -184,13 +185,9 @@ export function SessionThread({
               </div>
               <div className="flex items-center gap-1">
                 {needsNudge ? (
-                  <button
-                    type="button"
-                    onClick={() => void onContinue()}
-                    className={`inline-flex min-h-10 items-center px-3 text-xs font-medium text-[var(--bo-muted)] transition-[background-color,color,scale] duration-150 ease-out hover:bg-[var(--bo-panel)] hover:text-[var(--bo-fg)] ${tapScale}`}
-                  >
+                  <Button variant="ghost" onClick={() => void onContinue()}>
                     Continue
-                  </button>
+                  </Button>
                 ) : null}
                 {running ? (
                   compacting ? null : (
@@ -229,7 +226,7 @@ export function SessionThread({
                         title="Choose composer action"
                         className={`inline-flex min-h-10 w-9 items-center justify-center border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)] transition-[background-color,scale] duration-150 ease-out outline-none hover:bg-[var(--bo-panel)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/25 disabled:cursor-not-allowed disabled:opacity-35 data-[popup-open]:bg-[var(--bo-panel)] ${tapScale}`}
                       >
-                        <ChevronDown className="size-3.5" aria-hidden="true" />
+                        <Icon name="chevron-down" className="size-3.5" />
                       </Menu.Trigger>
                       <Menu.Portal>
                         <Menu.Positioner side="top" align="end" sideOffset={8} className="z-50">
@@ -274,13 +271,13 @@ export function SessionThread({
       </ThreadPrimitive.Viewport>
 
       {showScrollToLatest ? (
-        <button
-          type="button"
+        <Button
+          variant="secondary"
           onClick={scrollToLatest}
-          className={`absolute bottom-[10.5rem] left-1/2 z-30 min-h-10 -translate-x-1/2 border border-[color:var(--bo-border-strong)] bg-[var(--bo-panel)] px-4 text-[10px] font-semibold tracking-[0.08em] text-[var(--bo-fg)] uppercase shadow-[var(--bo-popover-shadow)] transition-[background-color,border-color,scale] duration-150 ease-out hover:border-[color:var(--bo-accent)] hover:bg-[var(--bo-panel-2)] ${tapScale}`}
+          className="absolute bottom-[10.5rem] left-1/2 z-30 -translate-x-1/2 shadow-[var(--bo-popover-shadow)]"
         >
           Scroll to latest
-        </button>
+        </Button>
       ) : null}
     </ThreadPrimitive.Root>
   );
@@ -364,7 +361,7 @@ function ComposerActionItem({
         </span>
       </span>
       <Menu.RadioItemIndicator className="text-[var(--bo-accent-fg)]">
-        <Check className="size-4" aria-hidden="true" />
+        <Icon name="check" className="size-4" />
       </Menu.RadioItemIndicator>
     </Menu.RadioItem>
   );

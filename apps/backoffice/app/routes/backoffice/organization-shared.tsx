@@ -1,7 +1,7 @@
+import { ButtonLink } from "@fragno-private/design-system/button";
+import { cn } from "@fragno-private/design-system/cn";
+import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
 import { Link, isRouteErrorResponse } from "react-router";
-
-import { BackofficePageHeader } from "@/components/backoffice";
-import { cn } from "@/lib/utils";
 
 import type { ActionNotice, OrganizationTab } from "./organization-utils";
 import { getRouteErrorMessage, getBackofficeOrganizationNotFound } from "./route-errors";
@@ -31,12 +31,9 @@ export function OrganizationHeader({ organizationLabel }: { organizationLabel: s
       title={organizationLabel}
       description="Review organization details, team access, invitations, and metered usage."
       actions={
-        <Link
-          to="/backoffice/organizations"
-          className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
-        >
+        <ButtonLink variant="secondary" to="/backoffice/organizations">
           All organizations
-        </Link>
+        </ButtonLink>
       }
     />
   );
@@ -82,7 +79,7 @@ export function OrganizationTabs({
       {tabs.map((tab) => {
         const isActive = activeTab === tab.id;
         const className = isActive
-          ? "border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-accent-fg)]"
+          ? "border border-[color:var(--bo-selected-border)] bg-[var(--bo-selected-bg)] shadow-[var(--bo-selected-shadow)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-fg)]"
           : "border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]";
 
         return (

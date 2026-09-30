@@ -34,7 +34,7 @@ export const TextArea: ComponentFn<typeof backofficeUiCatalog, "TextArea"> = ({
         onChange={(event) => {
           setValue(event.target.value);
         }}
-        className="mt-2 w-full resize-y border border-[color:var(--bo-border-strong)] bg-[var(--bo-panel)] px-3 py-2.5 text-xs leading-5 text-[var(--bo-fg)] transition-[border-color,box-shadow] duration-150 outline-none placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:shadow-[0_0_0_3px_var(--bo-accent-bg)] disabled:cursor-not-allowed disabled:opacity-50"
+        className="bo-input mt-2 w-full resize-y px-3 py-2.5 text-xs leading-5"
       />
     </label>
   );

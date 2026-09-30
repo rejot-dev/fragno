@@ -1,7 +1,7 @@
+import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
 import { isRouteErrorResponse } from "react-router";
 
 import type { BackofficeResolvedScope } from "@/backoffice-runtime/resolved-scope";
-import { BackofficePageHeader } from "@/components/backoffice";
 import type { AutomationCollectionSource } from "@/fragno/automation/tanstack/browser-database";
 import type { PiRuntimeState } from "@/fragno/pi/pi-shared";
 

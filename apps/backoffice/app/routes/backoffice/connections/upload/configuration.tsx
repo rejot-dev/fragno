@@ -1,3 +1,7 @@
+import { Button } from "@fragno-private/design-system/button";
+import { FormContainer, FormField } from "@fragno-private/design-system/form-container";
+import { Input } from "@fragno-private/design-system/input";
+import { ByteUnitField, TimeUnitField } from "@fragno-private/design-system/unit-fields";
 import { useEffect, useState, type Dispatch, type SetStateAction, type SubmitEvent } from "react";
 import {
   Form,
@@ -7,7 +11,6 @@ import {
   type ActionFunctionArgs,
 } from "react-router";
 
-import { ByteUnitField, FormContainer, FormField, TimeUnitField } from "@/components/backoffice";
 import {
   UPLOAD_DATABASE_DEFAULT_MAX_SINGLE_UPLOAD_BYTES,
   UPLOAD_R2_DEFAULT_BINDING_NAME,
@@ -633,7 +636,7 @@ function UploadProviderConfigurationFields({
         <>
           <div className="grid gap-3 md:grid-cols-2">
             <FormField label="Bucket" hint="Lowercase bucket name.">
-              <input
+              <Input
                 name="bucket"
                 required={formState.provider === "r2"}
                 value={formState.bucket}
@@ -644,7 +647,7 @@ function UploadProviderConfigurationFields({
                   }));
                 }}
                 placeholder="acme-upload-bucket"
-                className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
+                className="w-full"
               />
             </FormField>
             <FormField label="Endpoint" hint="R2 S3 endpoint.">
@@ -659,14 +662,14 @@ function UploadProviderConfigurationFields({
                   }));
                 }}
                 placeholder="https://<account>.r2.cloudflarestorage.com"
-                className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
+                className="bo-input w-full px-3 py-2 text-sm"
               />
             </FormField>
           </div>
 
           <div className="grid gap-3 md:grid-cols-2">
             <FormField label="Access key id" hint="Required.">
-              <input
+              <Input
                 name="accessKeyId"
                 required={formState.provider === "r2"}
                 value={formState.accessKeyId}
@@ -677,11 +680,11 @@ function UploadProviderConfigurationFields({
                   }));
                 }}
                 placeholder={r2Config?.accessKeyIdPreview || "AKIA..."}
-                className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
+                className="w-full"
               />
             </FormField>
             <FormField label="Secret access key" hint="Leave blank to keep current secret.">
-              <input
+              <Input
                 name="secretAccessKey"
                 type="password"
                 value={formState.secretAccessKey}
@@ -692,14 +695,14 @@ function UploadProviderConfigurationFields({
                   }));
                 }}
                 placeholder={r2Config?.secretAccessKeyPreview || "••••••••"}
-                className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
+                className="w-full"
               />
             </FormField>
           </div>
 
           <div className="grid gap-3 md:grid-cols-2">
             <FormField label="Region" hint="Usually auto for R2.">
-              <input
+              <Input
                 name="region"
                 value={formState.region}
                 onChange={(event) => {
@@ -709,11 +712,11 @@ function UploadProviderConfigurationFields({
                   }));
                 }}
                 placeholder="auto"
-                className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
+                className="w-full"
               />
             </FormField>
             <FormField label="Session token" hint="Optional.">
-              <input
+              <Input
                 name="sessionToken"
                 value={formState.sessionToken}
                 onChange={(event) => {
@@ -723,7 +726,7 @@ function UploadProviderConfigurationFields({
                   }));
                 }}
                 placeholder="Optional session token"
-                className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
+                className="w-full"
               />
             </FormField>
           </div>
@@ -911,7 +914,7 @@ function UploadConfigurationEditor({
           />
 
           <FormField label="Storage suffix" hint="Optional suffix under org prefix.">
-            <input
+            <Input
               name="storageKeySuffix"
               value={formState.storageKeySuffix}
               onChange={(event) => {
@@ -921,7 +924,7 @@ function UploadConfigurationEditor({
                 }));
               }}
               placeholder="uploads"
-              className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] placeholder:text-[var(--bo-muted-2)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
+              className="w-full"
             />
           </FormField>
 
@@ -930,13 +933,9 @@ function UploadConfigurationEditor({
           {saveError ? <p className="text-xs text-red-500">{saveError}</p> : null}
           {saveSuccess ? <p className="text-xs text-green-500">{saveSuccess}</p> : null}
 
-          <button
-            type="submit"
-            disabled={saving}
-            className="w-full border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
-          >
+          <Button variant="accent" type="submit" disabled={saving} className="w-full">
             {saving ? "Saving…" : "Save configuration"}
-          </button>
+          </Button>
         </Form>
       </FormContainer>
     </div>

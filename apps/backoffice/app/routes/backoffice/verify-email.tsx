@@ -1,10 +1,12 @@
-import "../../backoffice.css";
+import "@fragno-private/design-system/components.css";
 
+import { Button, ButtonLink } from "@fragno-private/design-system/button";
+import { FormContainer, FormField } from "@fragno-private/design-system/form-container";
+import { Input } from "@fragno-private/design-system/input";
 import { useEffect, useRef } from "react";
-import { Form, Link, useActionData, useFetcher, useLoaderData, useNavigation } from "react-router";
+import { Form, useActionData, useFetcher, useLoaderData, useNavigation } from "react-router";
 import { z } from "zod";
 
-import { FormContainer, FormField } from "@/components/backoffice";
 import { requestEmailVerificationResend } from "@/fragno/auth/email-verification.server";
 import { getSystemOtpDurableObject } from "@/worker-runtime/durable-objects";
 
@@ -218,13 +220,9 @@ export default function VerifyEmail() {
                     ? "Confirming your email…"
                     : "Verification starts automatically. If it does not, continue below."}
                 </p>
-                <button
-                  type="submit"
-                  disabled={confirmationPending}
-                  className="min-h-10 border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-transform active:scale-[0.96] disabled:opacity-60"
-                >
+                <Button variant="accent" type="submit" disabled={confirmationPending}>
                   {confirmationPending ? "Verifying…" : "Verify now"}
-                </button>
+                </Button>
               </confirmation.Form>
             ) : (
               <div className="space-y-4">
@@ -235,30 +233,23 @@ export default function VerifyEmail() {
                       label="Email address"
                       hint="Enter the address used for this account."
                     >
-                      <input
+                      <Input
                         type="email"
                         name="email"
                         autoComplete="email"
                         required
-                        className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] focus:border-[color:var(--bo-accent)] focus:ring-2 focus:ring-[color:var(--bo-accent)]/20 focus:outline-none"
+                        className="w-full"
                       />
                     </FormField>
-                    <button
-                      type="submit"
-                      disabled={routeSubmissionPending}
-                      className="min-h-10 border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-transform active:scale-[0.96] disabled:opacity-60"
-                    >
+                    <Button variant="accent" type="submit" disabled={routeSubmissionPending}>
                       {routeSubmissionPending ? "Requesting…" : "Send a new verification email"}
-                    </button>
+                    </Button>
                   </Form>
                 ) : null}
                 <div className="flex flex-wrap gap-2">
-                  <Link
-                    to="/backoffice/login"
-                    className="inline-flex min-h-10 items-center border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 py-2 text-[11px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-transform active:scale-[0.96]"
-                  >
+                  <ButtonLink variant="accent" to="/backoffice/login">
                     Continue to sign in
-                  </Link>
+                  </ButtonLink>
                 </div>
               </div>
             )}

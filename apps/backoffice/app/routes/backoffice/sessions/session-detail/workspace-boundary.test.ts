@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 
 const workspaceFiles = [
   "workspace-context.tsx",
@@ -45,7 +46,7 @@ describe("session workspace dependency boundary", () => {
 
   test("defines a replayable drawer entrance and desktop split transition", () => {
     const backofficeCss = readFileSync(
-      new URL("../../../../backoffice.css", import.meta.url),
+      createRequire(import.meta.url).resolve("@fragno-private/design-system/components.css"),
       "utf8",
     );
 

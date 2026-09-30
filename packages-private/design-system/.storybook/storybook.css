@@ -1,0 +1,7 @@
+/* Tailwind entry for Storybook, mirroring how Backoffice consumes the package. The preview is
+   listed by file because Tailwind skips hidden folders like .storybook when scanning. */
+@import "tailwindcss";
+@import "../src/theme.css";
+@import "../src/components.css";
+
+@source "./preview.tsx";

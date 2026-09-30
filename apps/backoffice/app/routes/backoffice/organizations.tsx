@@ -1,7 +1,9 @@
+import { Button, ButtonLink } from "@fragno-private/design-system/button";
+import { FormContainer } from "@fragno-private/design-system/form-container";
+import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
 import { useMemo, useState, useSyncExternalStore } from "react";
-import { Link, useOutletContext, useRevalidator } from "react-router";
+import { useOutletContext, useRevalidator } from "react-router";
 
-import { BackofficePageHeader, FormContainer } from "@/components/backoffice";
 import { authClient } from "@/fragno/auth/auth-client";
 import type { BackofficeLayoutContext } from "@/layouts/backoffice-layout";
 import { buildBackofficeOrganizationSwitchPath } from "@/routes/backoffice/auth-navigation";
@@ -187,22 +189,22 @@ export default function BackofficeOrganizations() {
                       <td className="px-3 py-2">{formatDateTime(entry.invitation.expiresAt)}</td>
                       <td className="px-3 py-2">
                         <div className="flex flex-wrap gap-2">
-                          <button
+                          <Button
+                            variant="accent"
                             type="button"
                             onClick={() => void handleInvitationAction(entry, "accept")}
                             disabled={respondingInvitation}
-                            className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)] disabled:opacity-60"
                           >
                             {isWorking ? "Accepting..." : "Accept"}
-                          </button>
-                          <button
+                          </Button>
+                          <Button
+                            variant="secondary"
                             type="button"
                             onClick={() => void handleInvitationAction(entry, "reject")}
                             disabled={respondingInvitation}
-                            className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] disabled:opacity-60"
                           >
                             {isWorking ? "Rejecting..." : "Reject"}
-                          </button>
+                          </Button>
                         </div>
                       </td>
                     </tr>
@@ -262,22 +264,23 @@ export default function BackofficeOrganizations() {
                 </div>
                 <div className="mt-4 flex flex-wrap gap-2">
                   {preferenceState.canSwitch ? (
-                    <button
+                    <Button
+                      variant="secondary"
                       type="button"
                       onClick={() =>
                         void handleSetPreferredOrganization(organization.id, organization.name)
                       }
                       disabled={switchingOrganization}
-                      className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted)] uppercase transition-colors hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]"
                     >
                       {switchingOrganization ? "Updating..." : preferenceState.actionLabel}
-                    </button>
+                    </Button>
                   ) : (
                     <span className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase">
                       {preferenceState.actionLabel}
                     </span>
                   )}
-                  <Link
+                  <ButtonLink
+                    variant="accent"
                     to={
                       organization.id === me.activeOrganizationId
                         ? `/backoffice/organizations/${encodeURIComponent(organization.slug)}`
@@ -286,10 +289,9 @@ export default function BackofficeOrganizations() {
                             `/backoffice/organizations/${encodeURIComponent(organization.slug)}`,
                           )
                     }
-                    className="border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-3 py-2 text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-fg)] uppercase transition-colors hover:border-[color:var(--bo-accent-strong)]"
                   >
                     Open
-                  </Link>
+                  </ButtonLink>
                 </div>
               </div>
             );
