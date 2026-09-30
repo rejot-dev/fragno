@@ -1,15 +1,22 @@
+import type { FragmentDurableObjectHostOperations } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import {
   createDurableHooksProcessor,
   type DurableHooksDispatcher,
 } from "@fragno-dev/db/dispatchers/node";
 
-import type { BackofficeFragmentHostOperations } from "../runtime-services";
-import type { LocalBackofficeDurableHooks } from "./local-runtime";
+type CreateDispatcher<TEnv> = NonNullable<
+  FragmentDurableObjectHostOperations<TEnv>["createDispatcher"]
+>;
+type DispatcherContext<TEnv> = Parameters<CreateDispatcher<TEnv>>[0];
 
-type CreateDispatcher = NonNullable<BackofficeFragmentHostOperations["createDispatcher"]>;
-type DispatcherContext = Parameters<CreateDispatcher>[0];
+type RegisteredFragments = Pick<DispatcherContext<unknown>, "hookFragments" | "instrumentation">;
 
-type RegisteredFragments = Pick<DispatcherContext, "hookFragments" | "instrumentation">;
+/** Durable hook lifecycle supplied to each local Backoffice object. */
+export type NodeBackofficeDurableHooks<TEnv> = {
+  createFragmentHostOperations(objectId: string): FragmentDurableObjectHostOperations<TEnv> | null;
+  unregisterObject(objectId: string): Promise<void>;
+  cleanup(): Promise<void>;
+};
 
 export type CreateNodeBackofficeDurableHooksOptions = {
   pollIntervalMs?: number;
@@ -17,7 +24,9 @@ export type CreateNodeBackofficeDurableHooksOptions = {
 };
 
 /** Records durable hooks for a separate polling process without scheduling local processing. */
-export function createExternallyProcessedNodeBackofficeDurableHooks(): LocalBackofficeDurableHooks {
+export function createExternallyProcessedNodeBackofficeDurableHooks<
+  TEnv,
+>(): NodeBackofficeDurableHooks<TEnv> {
   return {
     createFragmentHostOperations() {
       return {
@@ -36,9 +45,9 @@ export function createExternallyProcessedNodeBackofficeDurableHooks(): LocalBack
 }
 
 /** Maintains one polling Fragno hook processor across the local objects active in this process. */
-export function createNodeBackofficeDurableHooks(
+export function createNodeBackofficeDurableHooks<TEnv>(
   options: CreateNodeBackofficeDurableHooksOptions = {},
-): LocalBackofficeDurableHooks {
+): NodeBackofficeDurableHooks<TEnv> {
   const registrations = new Map<string, RegisteredFragments>();
   let dispatcher: DurableHooksDispatcher | null = null;
   let rebuild = Promise.resolve();
@@ -95,7 +104,7 @@ export function createNodeBackofficeDurableHooks(
     await rebuild;
   };
 
-  const register = async (objectId: string, context: DispatcherContext) => {
+  const register = async (objectId: string, context: DispatcherContext<TEnv>) => {
     if (closed) {
       throw new Error("Cannot register durable hooks after the Node runtime has closed.");
     }

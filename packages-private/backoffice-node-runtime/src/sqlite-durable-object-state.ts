@@ -1,4 +1,4 @@
-import type { BackofficeDurableObjectState, BackofficeObjectAlarm } from "../local-durable-objects";
+import type { BackofficeDurableObjectState, BackofficeObjectAlarm } from "./local-durable-objects";
 import { SqliteObjectCoordination } from "./sqlite-object-coordination";
 import { SqliteBackofficeObjectStorage } from "./sqlite-object-storage";
 

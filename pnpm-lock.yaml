@@ -267,6 +267,9 @@ importers:
       '@fragno-dev/workflows':
         specifier: workspace:*
         version: link:../../packages/fragment-workflows
+      '@fragno-private/backoffice-node-runtime':
+        specifier: workspace:*
+        version: link:../../packages-private/backoffice-node-runtime
       '@fragno-private/design-system':
         specifier: workspace:*
         version: link:../../packages-private/design-system
@@ -1857,9 +1860,37 @@ importers:
 
   packages-private/backoffice-node-runtime:
     dependencies:
+      '@fragno-dev/db':
+        specifier: workspace:*
+        version: link:../../packages/fragno-db
       better-sqlite3:
         specifier: 12.10.0
         version: 12.10.0
+    devDependencies:
+      '@cloudflare/workers-types':
+        specifier: ^5.20260804.1
+        version: 5.20260804.1
+      '@fragno-private/typescript-config':
+        specifier: workspace:*
+        version: link:../typescript-config
+      '@fragno-private/vitest-config':
+        specifier: workspace:*
+        version: link:../vitest-config
+      '@types/better-sqlite3':
+        specifier: ^7.6.13
+        version: 7.6.13
+      '@types/node':
+        specifier: ^24.10.9
+        version: 24.13.1
+      tsdown:
+        specifier: ^0.22.4
+        version: 0.22.4(@typescript/typescript6@6.0.2)(oxc-resolver@11.21.2)(tsx@4.22.4)(vue-tsc@3.3.7(@typescript/typescript6@6.0.2))
+      typescript:
+        specifier: 'catalog:'
+        version: '@typescript/typescript6@6.0.2'
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(@vitest/coverage-istanbul@4.1.8)(happy-dom@20.10.2)(jsdom@27.4.0(@noble/hashes@2.3.0))(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0))
 
   packages-private/design-system:
     dependencies:

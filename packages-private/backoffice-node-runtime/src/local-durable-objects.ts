@@ -245,10 +245,13 @@ export type LocalDurableObjectInstance<TObject = unknown> = {
 };
 
 class LocalDurableObjectId {
-  constructor(
-    readonly namespace: string,
-    readonly name: string,
-  ) {}
+  readonly namespace: string;
+  readonly name: string;
+
+  constructor(namespace: string, name: string) {
+    this.namespace = namespace;
+    this.name = name;
+  }
 
   toString() {
     return `${this.namespace}:${this.name}`;

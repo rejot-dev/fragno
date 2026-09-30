@@ -1,4 +1,6 @@
 import type { WorkerTypeChecker } from "@fragno-dev/codemode/compiler/compile-worker";
+import type { NodeBackofficeDurableHooks } from "@fragno-private/backoffice-node-runtime/node-durable-hooks";
+import { SqliteBackofficeObjectStorage } from "@fragno-private/backoffice-node-runtime/sqlite-object-storage";
 
 import { defaultFragnoRuntime } from "@fragno-dev/core";
 
@@ -17,13 +19,8 @@ import { noopBackofficeKernelObserver, type BackofficeKernelObserver } from "../
 import { LocalObjectFactory, type LocalObjectFactoryOverrides } from "../local-object-factory";
 import { createBackofficeObjectRegistry } from "../object-registry";
 import type { BackofficeObjectAddress, BackofficeObjectRegistry } from "../object-registry";
-import type {
-  BackofficeFragmentHostOperations,
-  BackofficeRuntimeConfig,
-  BackofficeRuntimeServices,
-} from "../runtime-services";
+import type { BackofficeRuntimeConfig, BackofficeRuntimeServices } from "../runtime-services";
 import { createSqliteBackofficeDatabaseAdapters } from "./sqlite-database-adapters";
-import { SqliteBackofficeObjectStorage } from "./sqlite-object-storage";
 
 export type LocalBackofficeRuntime = {
   env: BackofficeRuntimeEnv;
@@ -42,11 +39,7 @@ export type LocalBackofficeRuntime = {
   cleanup(): Promise<void>;
 };
 
-export type LocalBackofficeDurableHooks = {
-  createFragmentHostOperations(objectId: string): BackofficeFragmentHostOperations | null;
-  unregisterObject(objectId: string): Promise<void>;
-  cleanup(): Promise<void>;
-};
+export type LocalBackofficeDurableHooks = NodeBackofficeDurableHooks<BackofficeRuntimeEnv>;
 
 export type CreateLocalBackofficeRuntimeOptions = {
   runtimeEnv: BackofficeRuntimeEnv;
