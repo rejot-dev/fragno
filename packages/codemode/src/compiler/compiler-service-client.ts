@@ -1,5 +1,5 @@
 import { CODEMODE_LIMITS } from "../codemode-limits";
-import { createCodemodeBridgeHttpUrl } from "../transport/codemode-bridge-url";
+import { createCloudflareBridgeHttpUrl } from "../transport/cloudflare-bridge-url";
 import { readCodemodeHttpAuthenticationError } from "../transport/codemode-http-authentication";
 import type { WorkerCompiler, WorkerCompilerService, WorkerTypeChecker } from "./compile-worker";
 import {
@@ -109,11 +109,11 @@ export function createCodemodeCompilerHttpClient(config: {
   if (!config.apiKey.trim()) {
     throw new Error("Codemode compiler API key must not be empty.");
   }
-  const compileEndpoint = createCodemodeBridgeHttpUrl(
+  const compileEndpoint = createCloudflareBridgeHttpUrl(
     config.url,
     CODEMODE_COMPILER_HTTP_PATHS.compileWorker,
   );
-  const typeCheckEndpoint = createCodemodeBridgeHttpUrl(
+  const typeCheckEndpoint = createCloudflareBridgeHttpUrl(
     config.url,
     CODEMODE_COMPILER_HTTP_PATHS.typeCheckFiles,
   );

@@ -1,7 +1,7 @@
 import WebSocket from "ws";
 
 import { CODEMODE_LIMITS } from "../codemode-limits";
-import { createCodemodeBridgeWebSocketUrl } from "./codemode-bridge-url";
+import { createCloudflareBridgeWebSocketUrl } from "./cloudflare-bridge-url";
 import { CodemodeInterruptedError } from "./codemode-errors";
 import { CodemodePeer } from "./codemode-peer";
 import {
@@ -21,7 +21,7 @@ export function createCodemodeNodeExecutor(config: {
   url: string;
   apiKey: string;
 }): CodemodeRemoteExecutor {
-  const url = createCodemodeBridgeWebSocketUrl(config.url, "/v1/codemode/execute");
+  const url = createCloudflareBridgeWebSocketUrl(config.url, "/v1/codemode/execute");
   if (!config.apiKey.trim()) {
     throw new Error("Codemode bridge API key must not be empty.");
   }
