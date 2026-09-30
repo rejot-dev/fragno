@@ -1,11 +1,11 @@
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 
+import { configureBackofficeSqliteConnection } from "@fragno-private/backoffice-node-runtime/sqlite-connection-config";
 import Database from "better-sqlite3";
 import { Kysely, SqliteDialect } from "kysely";
 
 import type { AuthDatabase } from "../../../workers/auth.do";
-import { configureBackofficeSqliteConnection } from "./sqlite-connection-config";
 
 /** Creates the file-backed auth database using the owning local runtime's logical clock. */
 export function createSqliteAuthDatabase(

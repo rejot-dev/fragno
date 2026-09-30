@@ -12,15 +12,15 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
 import {
+  createExternallyProcessedNodeBackofficeDurableHooks,
+  createNodeBackofficeDurableHooks,
+} from "@fragno-private/backoffice-node-runtime/node-durable-hooks";
+
+import {
   createInMemoryBackofficeRuntime,
   type InMemoryBackofficeRuntime,
 } from "@/backoffice-runtime/in-memory-runtime";
 import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
-
-import {
-  createExternallyProcessedNodeBackofficeDurableHooks,
-  createNodeBackofficeDurableHooks,
-} from "./node-durable-hooks";
 
 async function getFormsHookQueue(runtime: InMemoryBackofficeRuntime) {
   return await runtime.objects.forms.singleton().commands.getDurableHookQueue({ pageSize: 100 });

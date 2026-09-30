@@ -1,6 +1,7 @@
+import { startNodeBackofficeAlarmScheduler } from "@fragno-private/backoffice-node-runtime/node-alarm-scheduler";
+import { createNodeBackofficeDurableHooks } from "@fragno-private/backoffice-node-runtime/node-durable-hooks";
+
 import { createLocalBackofficeRuntime } from "../../app/backoffice-runtime/node/local-runtime";
-import { startNodeBackofficeAlarmScheduler } from "../../app/backoffice-runtime/node/node-alarm-scheduler";
-import { createNodeBackofficeDurableHooks } from "../../app/backoffice-runtime/node/node-durable-hooks";
 import { shutdownNodeOpenTelemetry } from "../../app/backoffice-runtime/node/node-opentelemetry-lifecycle";
 import { createNodeBackofficeProcessConfig } from "./node-process-config";
 import { stopNodeBackofficeOnSupervisorDisconnect } from "./node-supervisor-disconnect";

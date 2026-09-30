@@ -1,5 +1,11 @@
-import type { LocalBackofficeRuntime } from "./local-runtime";
+/** Runtime operations required by the separate Node Backoffice alarm processor. */
+export type NodeBackofficeAlarmRuntime = {
+  discoverPersistedObjects(): Promise<void>;
+  drainAlarms(): Promise<void>;
+  drainWaitUntil(): Promise<void>;
+};
 
+/** Controls the periodic Node Backoffice alarm processor. */
 export type NodeBackofficeAlarmScheduler = {
   /** Stops future alarm polls and waits for the active local object alarm drain to finish. */
   stop(): Promise<void>;
@@ -7,10 +13,7 @@ export type NodeBackofficeAlarmScheduler = {
 
 /** Services alarms owned by local objects; Fragno durable hooks use their Node dispatcher instead. */
 export function startNodeBackofficeAlarmScheduler(
-  runtime: Pick<
-    LocalBackofficeRuntime,
-    "discoverPersistedObjects" | "drainAlarms" | "drainWaitUntil"
-  >,
+  runtime: NodeBackofficeAlarmRuntime,
   options: { intervalMs?: number; onError?: (error: unknown) => void } = {},
 ): NodeBackofficeAlarmScheduler {
   const intervalMs = options.intervalMs ?? 1_000;
@@ -37,10 +40,18 @@ export function startNodeBackofficeAlarmScheduler(
         }
       }
 
-      await runAlarmDrainStage("persisted object discovery", runtime.discoverPersistedObjects);
-      await runAlarmDrainStage("pre-alarm waitUntil drain", runtime.drainWaitUntil);
-      await runAlarmDrainStage("alarm delivery", runtime.drainAlarms);
-      await runAlarmDrainStage("post-alarm waitUntil drain", runtime.drainWaitUntil);
+      await runAlarmDrainStage("persisted object discovery", async () => {
+        await runtime.discoverPersistedObjects();
+      });
+      await runAlarmDrainStage("pre-alarm waitUntil drain", async () => {
+        await runtime.drainWaitUntil();
+      });
+      await runAlarmDrainStage("alarm delivery", async () => {
+        await runtime.drainAlarms();
+      });
+      await runAlarmDrainStage("post-alarm waitUntil drain", async () => {
+        await runtime.drainWaitUntil();
+      });
 
       if (failures.length > 0) {
         throw new AggregateError(

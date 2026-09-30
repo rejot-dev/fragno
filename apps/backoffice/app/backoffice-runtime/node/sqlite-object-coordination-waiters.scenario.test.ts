@@ -13,11 +13,12 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
 }));
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
+import { SqliteObjectCoordination } from "@fragno-private/backoffice-node-runtime/sqlite-object-coordination";
+import { SqliteBackofficeObjectStorage } from "@fragno-private/backoffice-node-runtime/sqlite-object-storage";
+
 import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
 
 import type { LocalObjectFactoryOverrides } from "../local-object-factory";
-import { SqliteObjectCoordination } from "./sqlite-object-coordination";
-import { SqliteBackofficeObjectStorage } from "./sqlite-object-storage";
 
 class ObservedInitializationStorage extends SqliteBackofficeObjectStorage {
   readonly checks = new Map<string, number>();
