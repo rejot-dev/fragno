@@ -47,6 +47,37 @@ function workspaceTileColor(seed: string) {
   return `oklch(0.62 0.14 ${seedHue(seed)})`;
 }
 
+function WorkspaceTile({
+  mark,
+  color,
+  collapsed,
+}: {
+  mark: WorkspaceMark;
+  color: WorkspaceColor;
+  collapsed: boolean;
+}) {
+  return (
+    <span
+      style={
+        color.kind === "seeded" ? { backgroundColor: workspaceTileColor(color.seed) } : undefined
+      }
+      className={cn(
+        "mr-1 flex size-8 shrink-0 items-center justify-center rounded-[6px]",
+        color.kind === "primary"
+          ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
+          : "text-white",
+        collapsed && "min-[960px]:mr-0",
+      )}
+    >
+      {mark.kind === "letter" ? (
+        <span className="text-sm leading-none font-semibold">{mark.letter}</span>
+      ) : (
+        <Icon name={mark.icon} className="size-4" strokeWidth={2} />
+      )}
+    </span>
+  );
+}
+
 export function SelectorMenuTrigger({
   label,
   value,
@@ -78,26 +109,7 @@ export function SelectorMenuTrigger({
         </span>
       ) : null}
       {layout.kind === "workspace" ? (
-        <span
-          style={
-            layout.color.kind === "seeded"
-              ? { backgroundColor: workspaceTileColor(layout.color.seed) }
-              : undefined
-          }
-          className={cn(
-            "mr-1 flex size-8 shrink-0 items-center justify-center rounded-[6px]",
-            layout.color.kind === "primary"
-              ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
-              : "text-white",
-            layout.collapsed && "min-[960px]:mr-0",
-          )}
-        >
-          {layout.mark.kind === "letter" ? (
-            <span className="text-sm leading-none font-semibold">{layout.mark.letter}</span>
-          ) : (
-            <Icon name={layout.mark.icon} className="size-4" strokeWidth={2} />
-          )}
-        </span>
+        <WorkspaceTile mark={layout.mark} color={layout.color} collapsed={layout.collapsed} />
       ) : null}
       <span
         className={cn(

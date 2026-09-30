@@ -1,6 +1,5 @@
 import { Button } from "@fragno-private/design-system/button";
-import { FormContainer, FormField } from "@fragno-private/design-system/form-container";
-import { Input } from "@fragno-private/design-system/input";
+import { FormContainer } from "@fragno-private/design-system/form-container";
 import { useEffect, useRef, useState } from "react";
 import { useFetcher, useNavigate, useOutletContext } from "react-router";
 
@@ -9,6 +8,7 @@ import type { ResendSendEmailInput, ResendThreadMutationOutput } from "@fragno-d
 import { resolveAuthenticatedIntegrationContext } from "../../integrations/scope";
 import type { Route } from "./+types/thread-start";
 import { createResendThread } from "./data";
+import { EmailComposeFields } from "./email-compose-fields";
 import type { ResendThreadsOutletContext } from "./threads";
 
 type ResendStartThreadActionData =
@@ -188,107 +188,14 @@ export default function BackofficeOrganizationResendThreadStart() {
         description="Send the first message in a new tracked conversation. The created thread will appear in the list on the left."
       >
         <fetcher.Form ref={formRef} method="post" className="space-y-3">
-          <div className="grid gap-3 md:grid-cols-2">
-            <FormField label="To" hint="Comma or newline separated list.">
-              <Input
-                name="to"
-                required
-                placeholder="hello@resend.dev, ops@example.com"
-                className="w-full"
-              />
-            </FormField>
-            <FormField label="Subject" hint="Required for the first message in the thread.">
-              <Input
-                name="subject"
-                required
-                placeholder="What would you like to discuss?"
-                className="w-full"
-              />
-            </FormField>
-          </div>
-
-          <div className="grid gap-3 md:grid-cols-2">
-            <FormField
-              label="From"
-              hint={
-                defaultFrom
-                  ? `Defaults to ${defaultFrom}.`
-                  : "Leave blank to use the configured default."
-              }
-            >
-              <Input
-                name="from"
-                defaultValue={defaultFrom}
-                placeholder={defaultFrom || "onboarding@yourdomain.com"}
-                className="w-full"
-              />
-            </FormField>
-            <FormField
-              label="Reply-to"
-              hint={
-                defaultReplyTo
-                  ? `Defaults to ${defaultReplyTo}.`
-                  : "Optional. Use commas for multiple addresses."
-              }
-            >
-              <Input
-                name="replyTo"
-                defaultValue={defaultReplyTo}
-                placeholder={defaultReplyTo || "support@yourdomain.com"}
-                className="w-full"
-              />
-            </FormField>
-          </div>
-
-          <div className="grid gap-3 md:grid-cols-2">
-            <FormField label="CC" hint="Optional. Use commas for multiple addresses.">
-              <Input name="cc" placeholder="finance@yourdomain.com" className="w-full" />
-            </FormField>
-            <FormField label="BCC" hint="Optional. Use commas for multiple addresses.">
-              <Input name="bcc" placeholder="audit@yourdomain.com" className="w-full" />
-            </FormField>
-          </div>
-
-          <FormField label="Schedule in" hint="Optional delay from now (uses database time).">
-            <div className="flex flex-wrap gap-2">
-              <Input
-                name="scheduledInValue"
-                type="number"
-                min="1"
-                step="1"
-                placeholder="15"
-                className="w-full md:w-36"
-              />
-              <select
-                name="scheduledInUnit"
-                defaultValue="minutes"
-                className="bo-input px-3 py-2 text-sm"
-              >
-                <option value="minutes">minutes</option>
-                <option value="hours">hours</option>
-                <option value="days">days</option>
-              </select>
-            </div>
-          </FormField>
-
-          <div className="grid gap-3 lg:grid-cols-2">
-            <FormField label="Text" hint="Provide either text or HTML.">
-              <textarea
-                name="text"
-                rows={6}
-                placeholder="Write the plain text version of the first message..."
-                className="bo-input w-full px-3 py-2 text-sm"
-              />
-            </FormField>
-            <FormField label="HTML" hint="Optional rich HTML body.">
-              <textarea
-                name="html"
-                rows={6}
-                placeholder="<p>Hello from Resend...</p>"
-                className="bo-input w-full px-3 py-2 text-sm"
-              />
-            </FormField>
-          </div>
+          <EmailComposeFields
+            defaultFrom={defaultFrom}
+            defaultReplyTo={defaultReplyTo}
+            subjectHint="Required for the first message in the thread."
+            subjectPlaceholder="What would you like to discuss?"
+            textPlaceholder="Write the plain text version of the first message..."
+            bodyColumnsFrom="lg"
+          />
 
           {sendError ? <p className="text-xs text-red-500">{sendError}</p> : null}
 

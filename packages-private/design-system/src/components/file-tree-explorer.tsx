@@ -217,108 +217,29 @@ function FileTreeNodeRow({
     isCollapsedByState &&
     (explicitlyCollapsedPaths.has(node.path) ||
       (!isSelected && !isAncestorPath(node.path, selectedPath)));
-  const nodeIcon: IconName =
-    node.kind === "root" ? rootIcon : node.kind === "directory" ? "folder" : "file";
-  const chevron = (
-    <Icon
-      name={isCollapsed ? "chevron-right" : "chevron-down"}
-      className="size-3.5"
-      strokeWidth={1.75}
-    />
-  );
 
   return (
     <div>
       {node.kind === "root" ? (
-        // Roots group the tree like section headings, so they only toggle and never navigate.
-        <button
-          type="button"
-          aria-disabled={forceExpanded}
-          aria-expanded={hasChildren ? !isCollapsed : undefined}
-          aria-label={
-            hasChildren ? `${isCollapsed ? "Expand" : "Collapse"} ${node.title}` : node.title
-          }
-          onClick={() => {
-            if (forceExpanded) {
-              return;
-            }
-            if (hasChildren) {
-              onSetCollapsed(node, !isCollapsed);
-            }
-          }}
-          className={cn(
-            ROW,
-            "w-full gap-3 pl-0 font-semibold",
-            isSelected
-              ? ROW_SELECTED
-              : "border-transparent text-[var(--bo-fg)] hover:bg-[var(--bo-panel-2)]",
-          )}
-        >
-          {/* -ml-px cancels the row border so this chevron lines up with the guide line below. */}
-          <span className="-ml-px flex size-8 shrink-0 items-center justify-center text-[var(--bo-muted-2)]">
-            {hasChildren ? chevron : null}
-          </span>
-          <Icon
-            name={rootIcon}
-            strokeWidth={1.75}
-            className="size-4 shrink-0 text-[var(--bo-muted)]"
-          />
-          <span className="min-w-0 truncate">{node.title}</span>
-        </button>
+        <FileTreeRootRow
+          node={node}
+          isSelected={isSelected}
+          isCollapsed={isCollapsed}
+          rootIcon={rootIcon}
+          onSetCollapsed={onSetCollapsed}
+          forceExpanded={forceExpanded}
+        />
       ) : (
-        <div className="flex items-center">
-          {hasChildren ? (
-            <button
-              type="button"
-              aria-disabled={forceExpanded}
-              aria-expanded={!isCollapsed}
-              aria-label={`${isCollapsed ? "Expand" : "Collapse"} ${node.title}`}
-              onClick={() => {
-                if (forceExpanded) {
-                  return;
-                }
-                onSetCollapsed(node, !isCollapsed);
-              }}
-              className="flex size-8 shrink-0 items-center justify-center rounded-[4px] text-[var(--bo-muted-2)] transition-colors duration-150 ease-out hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none"
-            >
-              {chevron}
-            </button>
-          ) : (
-            <span className="size-8 shrink-0" aria-hidden="true" />
-          )}
-          <Link
-            to={buildNodeTo(node.path)}
-            onClick={(event) => {
-              const containsSelectedFile =
-                node.kind === "directory" &&
-                isFileSelected &&
-                isAncestorPath(node.path, selectedPath);
-
-              if (containsSelectedFile) {
-                onSetCollapsed(node, !isCollapsed);
-                event.preventDefault();
-                return;
-              }
-              if (node.kind === "directory") {
-                onSetCollapsed(node, false);
-              }
-              onNodeSelect?.(node);
-            }}
-            preventScrollReset
-            aria-current={isSelected ? "page" : undefined}
-            className={cn(ROW, "flex-1", isSelected ? ROW_SELECTED : ROW_RESTING)}
-          >
-            <Icon
-              name={nodeIcon}
-              strokeWidth={1.75}
-              className={cn(
-                "size-4 shrink-0",
-                isSelected ? "text-[var(--bo-fg)]" : "text-[var(--bo-muted-2)]",
-              )}
-            />
-            <span className="min-w-0 truncate">{node.title}</span>
-          </Link>
-        </div>
+        <FileTreeEntryRow
+          node={node}
+          selectedPath={selectedPath}
+          isFileSelected={isFileSelected}
+          isCollapsed={isCollapsed}
+          buildNodeTo={buildNodeTo}
+          onNodeSelect={onNodeSelect}
+          onSetCollapsed={onSetCollapsed}
+          forceExpanded={forceExpanded}
+        />
       )}
 
       {!isCollapsed && hasChildren ? (
@@ -343,6 +264,139 @@ function FileTreeNodeRow({
           ))}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function CollapseChevron({ isCollapsed }: { isCollapsed: boolean }) {
+  return (
+    <Icon
+      name={isCollapsed ? "chevron-right" : "chevron-down"}
+      className="size-3.5"
+      strokeWidth={1.75}
+    />
+  );
+}
+
+// Roots group the tree like section headings, so they only toggle and never navigate.
+function FileTreeRootRow({
+  node,
+  isSelected,
+  isCollapsed,
+  rootIcon,
+  onSetCollapsed,
+  forceExpanded,
+}: {
+  node: FileTreeExplorerNode;
+  isSelected: boolean;
+  isCollapsed: boolean;
+  rootIcon: IconName;
+  onSetCollapsed: (node: FileTreeExplorerNode, collapsed: boolean) => void;
+  forceExpanded: boolean;
+}) {
+  const hasChildren = node.children.length > 0;
+
+  return (
+    <button
+      type="button"
+      aria-disabled={forceExpanded}
+      aria-expanded={hasChildren ? !isCollapsed : undefined}
+      aria-label={hasChildren ? `${isCollapsed ? "Expand" : "Collapse"} ${node.title}` : node.title}
+      onClick={() => {
+        if (!forceExpanded && hasChildren) {
+          onSetCollapsed(node, !isCollapsed);
+        }
+      }}
+      className={cn(
+        ROW,
+        "w-full gap-3 pl-0 font-semibold",
+        isSelected
+          ? ROW_SELECTED
+          : "border-transparent text-[var(--bo-fg)] hover:bg-[var(--bo-panel-2)]",
+      )}
+    >
+      {/* -ml-px cancels the row border so this chevron lines up with the guide line below. */}
+      <span className="-ml-px flex size-8 shrink-0 items-center justify-center text-[var(--bo-muted-2)]">
+        {hasChildren ? <CollapseChevron isCollapsed={isCollapsed} /> : null}
+      </span>
+      <Icon name={rootIcon} strokeWidth={1.75} className="size-4 shrink-0 text-[var(--bo-muted)]" />
+      <span className="min-w-0 truncate">{node.title}</span>
+    </button>
+  );
+}
+
+function FileTreeEntryRow({
+  node,
+  selectedPath,
+  isFileSelected,
+  isCollapsed,
+  buildNodeTo,
+  onNodeSelect,
+  onSetCollapsed,
+  forceExpanded,
+}: {
+  node: FileTreeExplorerNode;
+  selectedPath: string | null;
+  isFileSelected: boolean;
+  isCollapsed: boolean;
+  buildNodeTo: (path: string) => To;
+  onNodeSelect?: (node: FileTreeExplorerNode) => void;
+  onSetCollapsed: (node: FileTreeExplorerNode, collapsed: boolean) => void;
+  forceExpanded: boolean;
+}) {
+  const isSelected = selectedPath === node.path;
+  const isDirectory = node.kind === "directory";
+
+  return (
+    <div className="flex items-center">
+      {node.children.length > 0 ? (
+        <button
+          type="button"
+          aria-disabled={forceExpanded}
+          aria-expanded={!isCollapsed}
+          aria-label={`${isCollapsed ? "Expand" : "Collapse"} ${node.title}`}
+          onClick={() => {
+            if (!forceExpanded) {
+              onSetCollapsed(node, !isCollapsed);
+            }
+          }}
+          className="flex size-8 shrink-0 items-center justify-center rounded-[4px] text-[var(--bo-muted-2)] transition-colors duration-150 ease-out hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none"
+        >
+          <CollapseChevron isCollapsed={isCollapsed} />
+        </button>
+      ) : (
+        <span className="size-8 shrink-0" aria-hidden="true" />
+      )}
+      <Link
+        to={buildNodeTo(node.path)}
+        onClick={(event) => {
+          const containsSelectedFile =
+            isDirectory && isFileSelected && isAncestorPath(node.path, selectedPath);
+
+          if (containsSelectedFile) {
+            onSetCollapsed(node, !isCollapsed);
+            event.preventDefault();
+            return;
+          }
+          if (isDirectory) {
+            onSetCollapsed(node, false);
+          }
+          onNodeSelect?.(node);
+        }}
+        preventScrollReset
+        aria-current={isSelected ? "page" : undefined}
+        className={cn(ROW, "flex-1", isSelected ? ROW_SELECTED : ROW_RESTING)}
+      >
+        <Icon
+          name={isDirectory ? "folder" : "file"}
+          strokeWidth={1.75}
+          className={cn(
+            "size-4 shrink-0",
+            isSelected ? "text-[var(--bo-fg)]" : "text-[var(--bo-muted-2)]",
+          )}
+        />
+        <span className="min-w-0 truncate">{node.title}</span>
+      </Link>
     </div>
   );
 }

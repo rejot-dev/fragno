@@ -5,6 +5,7 @@ import { cn } from "../cn";
 import { Icon } from "./icon";
 
 export type WizardStep = {
+  // Identifies the step within a stepper, so titles must be unique.
   title: string;
   description?: string;
   helper?: string;
@@ -55,7 +56,7 @@ export function WizardStepper({
             const isComplete = index < clampedStep;
             return (
               <Tabs.Tab
-                key={`${step.title}-${index}`}
+                key={step.title}
                 value={String(index)}
                 className={cn(
                   "cursor-pointer rounded-[4px] border p-3 text-left transition-[background-color,border-color,box-shadow] duration-150 ease-out outline-none hover:bg-[var(--bo-panel-2)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30",
@@ -82,7 +83,7 @@ export function WizardStepper({
 
         {steps.map((step, index) => (
           <Tabs.Panel
-            key={`${step.title}-panel-${index}`}
+            key={step.title}
             value={String(index)}
             className="rounded-[6px] border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-sm text-[var(--bo-muted)]"
           >

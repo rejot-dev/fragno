@@ -1,6 +1,6 @@
 import { ButtonLink } from "@fragno-private/design-system/button";
 import { cn } from "@fragno-private/design-system/cn";
-import { underlineTabClassName } from "@fragno-private/design-system/underline-tabs";
+import { underlineTabClassName } from "@fragno-private/design-system/underline-tab-class-name";
 import type { ReactNode } from "react";
 
 export function SessionHeader({

@@ -2,7 +2,7 @@ import { Button, ButtonLink } from "@fragno-private/design-system/button";
 import { ClientOnly } from "@fragno-private/design-system/client-only";
 import { Icon } from "@fragno-private/design-system/icon";
 import { Input } from "@fragno-private/design-system/input";
-import { formatBytes } from "@fragno-private/design-system/unit-fields";
+import { formatBytes } from "@fragno-private/design-system/units";
 import {
   Suspense,
   use,

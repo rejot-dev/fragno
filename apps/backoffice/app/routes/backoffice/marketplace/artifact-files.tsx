@@ -1,5 +1,5 @@
 import { Button } from "@fragno-private/design-system/button";
-import { underlineTabClassName } from "@fragno-private/design-system/underline-tabs";
+import { underlineTabClassName } from "@fragno-private/design-system/underline-tab-class-name";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useFetcher, useLocation } from "react-router";
 import { Streamdown } from "streamdown";

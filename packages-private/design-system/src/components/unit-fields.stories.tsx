@@ -1,6 +1,7 @@
 import { useState } from "react";
 
-import { ByteUnitField, TimeUnitField, formatBytes } from "./unit-fields";
+import { ByteUnitField, TimeUnitField } from "./unit-fields";
+import { formatBytes } from "./units";
 
 export default { title: "Forms/Unit fields" };
 

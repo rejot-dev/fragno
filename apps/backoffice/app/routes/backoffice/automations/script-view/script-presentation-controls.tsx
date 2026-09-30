@@ -1,5 +1,5 @@
 import { Icon } from "@fragno-private/design-system/icon";
-import { underlineTabClassName } from "@fragno-private/design-system/underline-tabs";
+import { underlineTabClassName } from "@fragno-private/design-system/underline-tab-class-name";
 
 import { SCRIPT_VIEW_OPTIONS, WORKFLOW_GRAPH_DETAIL_OPTIONS } from "./script-presentation-options";
 import type { ScriptViewMode, WorkflowGraphDetailMode } from "./script-view-mode";

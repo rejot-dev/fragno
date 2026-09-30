@@ -6,7 +6,7 @@ import { cn } from "../cn";
 import { browserTabClassName } from "./browser-tabs";
 import { Icon } from "./icon";
 import { visibleOverflowTabCount } from "./overflow-tab-row-layout";
-import { underlineTabClassName } from "./underline-tabs";
+import { underlineTabClassName } from "./underline-tab-class-name";
 
 export type OverflowTabRowItem = {
   id: string;

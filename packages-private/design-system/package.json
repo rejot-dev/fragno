@@ -14,6 +14,8 @@
     "./components.css": "./src/components.css",
     "./cn": "./src/cn.ts",
     "./brand-font": "./src/brand-font.ts",
+    "./underline-tab-class-name": "./src/components/underline-tab-class-name.ts",
+    "./units": "./src/components/units.ts",
     "./forms/*": "./src/components/forms/*.tsx",
     "./*": "./src/components/*.tsx"
   },
