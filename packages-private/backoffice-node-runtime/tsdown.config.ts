@@ -6,6 +6,7 @@ export default defineConfig({
     "./src/local-durable-objects.ts",
     "./src/node-alarm-scheduler.ts",
     "./src/node-durable-hooks.ts",
+    "./src/node-runtime-scenario.ts",
     "./src/sqlite-connection-config.ts",
     "./src/sqlite-durable-object-state.ts",
     "./src/sqlite-object-coordination.ts",

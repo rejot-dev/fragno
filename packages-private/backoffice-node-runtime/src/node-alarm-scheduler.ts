@@ -11,6 +11,37 @@ export type NodeBackofficeAlarmScheduler = {
   stop(): Promise<void>;
 };
 
+/** Runs one production alarm poll; scenario runners can call it without starting a timer. */
+export async function runNodeBackofficeAlarmTick(
+  runtime: NodeBackofficeAlarmRuntime,
+): Promise<void> {
+  const failures: Error[] = [];
+  async function runAlarmDrainStage(name: string, stage: () => Promise<void>): Promise<void> {
+    try {
+      await stage();
+    } catch (cause) {
+      failures.push(new Error(`Node Backoffice alarm drain failed during ${name}.`, { cause }));
+    }
+  }
+
+  await runAlarmDrainStage("persisted object discovery", async () => {
+    await runtime.discoverPersistedObjects();
+  });
+  await runAlarmDrainStage("pre-alarm waitUntil drain", async () => {
+    await runtime.drainWaitUntil();
+  });
+  await runAlarmDrainStage("alarm delivery", async () => {
+    await runtime.drainAlarms();
+  });
+  await runAlarmDrainStage("post-alarm waitUntil drain", async () => {
+    await runtime.drainWaitUntil();
+  });
+
+  if (failures.length > 0) {
+    throw new AggregateError(failures, "One or more Node Backoffice alarm drain stages failed.");
+  }
+}
+
 /** Services alarms owned by local objects; Fragno durable hooks use their Node dispatcher instead. */
 export function startNodeBackofficeAlarmScheduler(
   runtime: NodeBackofficeAlarmRuntime,
@@ -30,36 +61,7 @@ export function startNodeBackofficeAlarmScheduler(
       return;
     }
 
-    const alarmDrain = (async () => {
-      const failures: Error[] = [];
-      async function runAlarmDrainStage(name: string, stage: () => Promise<void>): Promise<void> {
-        try {
-          await stage();
-        } catch (cause) {
-          failures.push(new Error(`Node Backoffice alarm drain failed during ${name}.`, { cause }));
-        }
-      }
-
-      await runAlarmDrainStage("persisted object discovery", async () => {
-        await runtime.discoverPersistedObjects();
-      });
-      await runAlarmDrainStage("pre-alarm waitUntil drain", async () => {
-        await runtime.drainWaitUntil();
-      });
-      await runAlarmDrainStage("alarm delivery", async () => {
-        await runtime.drainAlarms();
-      });
-      await runAlarmDrainStage("post-alarm waitUntil drain", async () => {
-        await runtime.drainWaitUntil();
-      });
-
-      if (failures.length > 0) {
-        throw new AggregateError(
-          failures,
-          "One or more Node Backoffice alarm drain stages failed.",
-        );
-      }
-    })().catch(onError);
+    const alarmDrain = runNodeBackofficeAlarmTick(runtime).catch(onError);
     const trackedAlarmDrain = alarmDrain.finally(() => {
       if (activeAlarmDrain === trackedAlarmDrain) {
         activeAlarmDrain = null;
