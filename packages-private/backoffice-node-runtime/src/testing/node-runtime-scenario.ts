@@ -6,14 +6,14 @@ import {
   LocalDurableObjectNamespace,
   ProcessLocalObjectExecutionCoordinator,
   type BackofficeDurableObjectState,
-} from "./local-durable-objects";
+} from "../runtime/local-durable-objects";
 import {
   runNodeBackofficeAlarmTick,
   type NodeBackofficeAlarmRuntime,
-} from "./node-alarm-scheduler";
-import { SqliteDurableObjectState } from "./sqlite-durable-object-state";
-import { SqliteObjectCoordination } from "./sqlite-object-coordination";
-import { SqliteBackofficeObjectStorage } from "./sqlite-object-storage";
+} from "../scheduling/node-alarm-scheduler";
+import { SqliteDurableObjectState } from "../sqlite/sqlite-durable-object-state";
+import { SqliteObjectCoordination } from "../sqlite/sqlite-object-coordination";
+import { SqliteBackofficeObjectStorage } from "../sqlite/sqlite-object-storage";
 
 /** Object factories run independently in the main server and each scenario processor. */
 export type NodeRuntimeScenarioObjectContext = {

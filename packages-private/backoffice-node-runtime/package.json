@@ -4,36 +4,36 @@
   "type": "module",
   "exports": {
     "./local-durable-objects": {
-      "types": "./dist/local-durable-objects.d.ts",
-      "default": "./dist/local-durable-objects.js"
+      "types": "./dist/runtime/local-durable-objects.d.ts",
+      "default": "./dist/runtime/local-durable-objects.js"
     },
     "./node-alarm-scheduler": {
-      "types": "./dist/node-alarm-scheduler.d.ts",
-      "default": "./dist/node-alarm-scheduler.js"
+      "types": "./dist/scheduling/node-alarm-scheduler.d.ts",
+      "default": "./dist/scheduling/node-alarm-scheduler.js"
     },
     "./node-runtime-scenario": {
-      "types": "./dist/node-runtime-scenario.d.ts",
-      "default": "./dist/node-runtime-scenario.js"
+      "types": "./dist/testing/node-runtime-scenario.d.ts",
+      "default": "./dist/testing/node-runtime-scenario.js"
     },
     "./node-durable-hooks": {
-      "types": "./dist/node-durable-hooks.d.ts",
-      "default": "./dist/node-durable-hooks.js"
+      "types": "./dist/scheduling/node-durable-hooks.d.ts",
+      "default": "./dist/scheduling/node-durable-hooks.js"
     },
     "./sqlite-connection-config": {
-      "types": "./dist/sqlite-connection-config.d.ts",
-      "default": "./dist/sqlite-connection-config.js"
+      "types": "./dist/sqlite/sqlite-connection-config.d.ts",
+      "default": "./dist/sqlite/sqlite-connection-config.js"
     },
     "./sqlite-durable-object-state": {
-      "types": "./dist/sqlite-durable-object-state.d.ts",
-      "default": "./dist/sqlite-durable-object-state.js"
+      "types": "./dist/sqlite/sqlite-durable-object-state.d.ts",
+      "default": "./dist/sqlite/sqlite-durable-object-state.js"
     },
     "./sqlite-object-coordination": {
-      "types": "./dist/sqlite-object-coordination.d.ts",
-      "default": "./dist/sqlite-object-coordination.js"
+      "types": "./dist/sqlite/sqlite-object-coordination.d.ts",
+      "default": "./dist/sqlite/sqlite-object-coordination.js"
     },
     "./sqlite-object-storage": {
-      "types": "./dist/sqlite-object-storage.d.ts",
-      "default": "./dist/sqlite-object-storage.js"
+      "types": "./dist/sqlite/sqlite-object-storage.d.ts",
+      "default": "./dist/sqlite/sqlite-object-storage.js"
     }
   },
   "scripts": {

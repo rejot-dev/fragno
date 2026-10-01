@@ -4,7 +4,7 @@ import { deserialize, serialize } from "node:v8";
 
 import Database from "better-sqlite3";
 
-import type { BackofficeObjectAlarm } from "./local-durable-objects";
+import type { BackofficeObjectAlarm } from "../runtime/local-durable-objects";
 import { configureBackofficeSqliteConnection } from "./sqlite-connection-config";
 
 /** Narrow claims fence initialization and alarm work, never ordinary SQL operations. */
