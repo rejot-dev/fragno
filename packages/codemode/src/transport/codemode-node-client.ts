@@ -79,7 +79,13 @@ export function createCodemodeNodeExecutor(config: {
           },
           bufferedBytes: () => socket.bufferedAmount,
           close() {
-            socket.terminate();
+            if (completion === null) {
+              socket.terminate();
+            } else {
+              // Terminating after completion skips the close handshake and makes the bridge
+              // report an abnormal disconnect. ws bounds this handshake with its close timer.
+              socket.close(1000, "Codemode activation ended");
+            }
           },
           handle: (call) =>
             host.handle(codemodeHostOperationSchema.parse(call), (callback) => peer.call(callback)),
