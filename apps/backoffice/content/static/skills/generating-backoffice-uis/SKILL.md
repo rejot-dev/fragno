@@ -96,7 +96,7 @@ The installed json-render shape is a flat element graph:
 
 ```js
 async () => {
-  const eventCatalog = await events.catalogList({});
+  const eventCatalog = await events.catalogList();
   const sourceCount = new Set(eventCatalog.map((event) => event.source)).size;
   const summary = {
     eventTypeCount: eventCatalog.length,

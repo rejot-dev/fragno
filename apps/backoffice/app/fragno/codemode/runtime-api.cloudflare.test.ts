@@ -1,6 +1,27 @@
-import { describe, expect, test, assert } from "vitest";
+import { assert, describe, expect, test, vi } from "vitest";
 
-import { normalizeCode } from "@fragno-dev/codemode/runtime-api";
+import { normalizeCode, resolveProvider } from "@fragno-dev/codemode/runtime-api";
+
+describe("resolveProvider", () => {
+  test("calls no-input tools without a synthetic empty object and rejects arguments", async () => {
+    const execute = vi.fn(() => "ok");
+    const provider = resolveProvider({
+      name: "example",
+      tools: {
+        ping: {
+          inputMode: "none",
+          execute,
+        },
+      },
+    });
+
+    await expect(provider.fns.ping()).resolves.toBe("ok");
+    expect(execute).toHaveBeenCalledWith(undefined);
+    await expect(provider.fns.ping({})).rejects.toThrow(
+      "Tool 'example.ping' does not accept arguments.",
+    );
+  });
+});
 
 describe("normalizeCode", () => {
   test("trims surrounding whitespace", () => {

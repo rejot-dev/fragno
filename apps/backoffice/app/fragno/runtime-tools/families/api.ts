@@ -9,7 +9,7 @@ import { z } from "zod";
 
 import {
   defineCliArgsParser,
-  defineEmptyArgsParser,
+  defineNoInputArgsParser,
   readOutputOptions,
   type ParsedCliTokens,
 } from "@/fragno/runtime-tools/bash-cli";
@@ -386,7 +386,7 @@ export const apiRuntimeTools = [
     capabilityId: "api",
     description: "List API connections configured for the current scope.",
     requiredPermissions: ["connections.read"],
-    inputSchema: z.object({}).optional().default({}),
+    inputSchema: z.void(),
     outputSchema: connectionsOutputSchema,
     execute: async (_input, context: ApiToolContext) =>
       await getApiRuntime(context.runtimes.api).listConnections(),
@@ -398,7 +398,7 @@ export const apiRuntimeTools = [
           options: [],
           examples: ["api.connections.list"],
         },
-        parse: defineEmptyArgsParser("api.connections.list"),
+        parse: defineNoInputArgsParser("api.connections.list"),
         outputOptions: defaultOutput,
         format: textOrDataFormat(renderConnections),
       },
@@ -721,7 +721,7 @@ export const apiRuntimeTools = [
     capabilityId: "api",
     description: "List API webhook endpoints configured for the current scope.",
     requiredPermissions: ["webhooks.read"],
-    inputSchema: z.object({}).optional().default({}),
+    inputSchema: z.void(),
     outputSchema: webhookEndpointsOutputSchema,
     execute: async (_input, context: ApiToolContext) =>
       await getApiRuntime(context.runtimes.api).listWebhookEndpoints(),
@@ -733,7 +733,7 @@ export const apiRuntimeTools = [
           options: [],
           examples: ["api.webhooks.list"],
         },
-        parse: defineEmptyArgsParser("api.webhooks.list"),
+        parse: defineNoInputArgsParser("api.webhooks.list"),
         outputOptions: defaultOutput,
         format: textOrDataFormat(renderWebhookEndpoints),
       },

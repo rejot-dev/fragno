@@ -10,7 +10,7 @@ import {
 } from "@/fragno/automation/routing-schemas";
 import {
   defineCliArgsParser,
-  defineEmptyArgsParser,
+  defineNoInputArgsParser,
   ensureTrailingNewline,
   parseCliTokens,
   readOutputOptions,
@@ -146,7 +146,7 @@ const routerListTool = defineBackofficeRuntimeTool({
   name: "list",
   description: "List database-backed automation routing rules.",
   requiredPermissions: ["read"],
-  inputSchema: z.object({}),
+  inputSchema: z.void(),
   outputSchema: z.array(automationRouteSchema),
   execute: async (_input, context: AutomationRouterToolContext) =>
     await getRuntime(context).listRoutes(),
@@ -158,7 +158,7 @@ const routerListTool = defineBackofficeRuntimeTool({
         options: [],
         examples: ["router.list", "router.list --format json"],
       },
-      parse: defineEmptyArgsParser("router.list"),
+      parse: defineNoInputArgsParser("router.list"),
       outputOptions,
       format: (routes, options) =>
         options.format === "json" || options.print

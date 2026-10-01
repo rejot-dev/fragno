@@ -3,7 +3,7 @@ type EventsCodemodeProvider = {
   /** Fire an automation event for the current context or a selected target scope. */
   fire(input: EventsFireInput): Promise<EventsFireOutput>;
   /** List known automation event source/type pairs from the Backoffice capability registry. */
-  catalogList(input: EventsCatalogListInput): Promise<EventsCatalogListOutput>;
+  catalogList(): Promise<EventsCatalogListOutput>;
   /** Get one automation event descriptor and its JSON schemas. */
   catalogGet(input: EventsCatalogGetInput): Promise<EventsCatalogGetOutput>;
   /** Create a scoped dynamic automation event definition with optional JSON schemas. */
@@ -59,7 +59,6 @@ type EventsFireOutput = {
   source: string;
   eventType: string;
 };
-type EventsCatalogListInput = Record<string, unknown>;
 type EventsCatalogListOutput = {
   source: string;
   eventType: string;

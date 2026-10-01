@@ -1,7 +1,7 @@
 // forms tools
 type FormsCodemodeProvider = {
   /** List forms stored in the global system Forms integration. */
-  listForms(input: FormsListFormsInput): Promise<FormsListFormsOutput>;
+  listForms(): Promise<FormsListFormsOutput>;
   /** Create a schema-backed form in the global system Forms integration. */
   createForm(input: FormsCreateFormInput): Promise<FormsCreateFormOutput>;
   /** Update a schema-backed form in the global system Forms integration. */
@@ -11,7 +11,6 @@ type FormsCodemodeProvider = {
 };
 declare const forms: FormsCodemodeProvider;
 
-type FormsListFormsInput = Record<string, unknown>;
 type FormsListFormsOutput = {
   forms: {
     id: string;

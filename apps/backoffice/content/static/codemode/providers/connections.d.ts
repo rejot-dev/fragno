@@ -1,7 +1,7 @@
 // connections tools
 type ConnectionsCodemodeProvider = {
   /** List configurable Backoffice connections and their configuration status. */
-  list(input: ConnectionsListInput): Promise<ConnectionsListOutput>;
+  list(): Promise<ConnectionsListOutput>;
   /** Get one Backoffice connection status with masked configuration values. */
   get(input: ConnectionsGetInput): Promise<ConnectionsGetOutput>;
   /** Show human steps for configuring a Backoffice connection. */
@@ -17,7 +17,6 @@ type ConnectionsCodemodeProvider = {
 };
 declare const connections: ConnectionsCodemodeProvider;
 
-type ConnectionsListInput = Record<string, unknown>;
 type ConnectionsListOutput = {
   id: string;
   label: string;

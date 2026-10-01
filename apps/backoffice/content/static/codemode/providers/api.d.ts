@@ -1,7 +1,7 @@
 // api tools
 type ApiCodemodeProvider = {
   /** List API connections configured for the current scope. */
-  listConnections(input: ApiListConnectionsInput): Promise<ApiListConnectionsOutput>;
+  listConnections(): Promise<ApiListConnectionsOutput>;
   /** Create an outbound HTTP API connection. */
   createConnection(input: ApiCreateConnectionInput): Promise<ApiCreateConnectionOutput>;
   /** Delete an API connection and its stored auth state. */
@@ -15,7 +15,7 @@ type ApiCodemodeProvider = {
   /** Delete stored auth for an API connection. */
   deleteAuth(input: ApiDeleteAuthInput): Promise<ApiDeleteAuthOutput>;
   /** List API webhook endpoints configured for the current scope. */
-  listWebhookEndpoints(input: ApiListWebhookEndpointsInput): Promise<ApiListWebhookEndpointsOutput>;
+  listWebhookEndpoints(): Promise<ApiListWebhookEndpointsOutput>;
   /** Read an API webhook endpoint. */
   getWebhookEndpoint(input: ApiGetWebhookEndpointInput): Promise<ApiGetWebhookEndpointOutput>;
   /** Create or replace an API webhook endpoint. */
@@ -35,7 +35,6 @@ type ApiCodemodeProvider = {
 };
 declare const api: ApiCodemodeProvider;
 
-type ApiListConnectionsInput = Record<string, unknown>;
 type ApiListConnectionsOutput = {
   connections: {
     slug: string;
@@ -132,7 +131,6 @@ type ApiDeleteAuthInput = {
 type ApiDeleteAuthOutput = {
   ok: true;
 };
-type ApiListWebhookEndpointsInput = Record<string, unknown>;
 type ApiListWebhookEndpointsOutput = {
   endpoints: {
     id: string;

@@ -400,6 +400,15 @@ export const defineCliArgsParser =
 export const defineEmptyArgsParser = (commandName: string) =>
   defineNoPositionalsParser<Record<string, never>>(commandName, () => ({}));
 
+/** Parses an option-only command whose runtime tool receives no input value. */
+export const defineNoInputArgsParser = (commandName: string) => {
+  const parseEmptyArgs = defineEmptyArgsParser(commandName);
+  return (args: string[]): undefined => {
+    parseEmptyArgs(args);
+    return undefined;
+  };
+};
+
 export const normalizeExecutionResult = (rawResult: unknown): AutomationCommandExecutionResult => {
   if (
     rawResult &&
