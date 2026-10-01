@@ -45,6 +45,7 @@ export type BackofficeRuntimeConfig = {
     resend: boolean;
     reson8: boolean;
     mcp: boolean;
+    projectConnector: boolean;
     upload: boolean;
     github: boolean;
     githubWebhookRouter: boolean;
@@ -155,6 +156,7 @@ const createCloudflareBackofficeRuntimeConfig = (env: CloudflareEnv): Backoffice
     resend: Boolean(env.RESEND),
     reson8: Boolean(env.RESON8),
     mcp: Boolean(env.MCP),
+    projectConnector: Boolean(env.PROJECT_CONNECTOR),
     upload: Boolean(env.UPLOAD),
     github: Boolean(env.GITHUB),
     githubWebhookRouter: Boolean(env.GITHUB_WEBHOOK_ROUTER),

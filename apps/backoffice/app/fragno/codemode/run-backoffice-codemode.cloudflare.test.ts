@@ -958,6 +958,7 @@ const createScopedMcpRuntimeServices = (
         resend: false,
         reson8: false,
         mcp: true,
+        projectConnector: false,
         upload: false,
         github: false,
         githubWebhookRouter: false,

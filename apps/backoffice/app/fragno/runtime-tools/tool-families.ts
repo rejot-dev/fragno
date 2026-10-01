@@ -34,6 +34,8 @@ import type { JavaScriptRuntime } from "./families/javascript-runtime";
 import { mcpToolFamily, type McpRuntime } from "./families/mcp";
 import { otpToolFamily, type OtpRuntime } from "./families/otp";
 import { piToolFamily, type PiRuntime } from "./families/pi";
+import { projectConnectorToolFamily } from "./families/project-connector";
+import type { ProjectConnectorRuntime } from "./families/project-connector-runtime";
 import { resendToolFamily, type ResendRuntime } from "./families/resend";
 import { reson8ToolFamily, type Reson8Runtime } from "./families/reson8";
 import { sandboxToolFamily, type SandboxRuntime } from "./families/sandbox";
@@ -62,6 +64,7 @@ export type CoreBackofficeRuntimeMap = {
   internal?: InternalRuntime;
   api?: ApiRuntime;
   mcp?: McpRuntime;
+  projectConnector: ProjectConnectorRuntime | undefined;
   otp?: OtpRuntime;
   pi?: PiRuntime;
   resend?: ResendRuntime;
@@ -73,7 +76,7 @@ export type CoreBackofficeRuntimeMap = {
   web?: WebRuntime;
 };
 
-export type CoreBackofficeToolContext = BackofficeToolContext<CoreBackofficeRuntimeMap>;
+export type CoreBackofficeToolContext = BackofficeToolContext<Partial<CoreBackofficeRuntimeMap>>;
 
 export const runtimeToolFamilies = [
   codemodeStateToolFamily,
@@ -92,6 +95,7 @@ export const runtimeToolFamilies = [
   webToolFamily,
   apiToolFamily,
   mcpToolFamily,
+  projectConnectorToolFamily,
   otpToolFamily,
   piToolFamily,
   resendToolFamily,
@@ -118,6 +122,7 @@ const namespaceCapabilityIds = {
   github: "github",
   api: "api",
   mcp: "mcp",
+  connector: "connector",
   otp: "otp",
   pi: "pi",
   resend: "resend",

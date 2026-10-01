@@ -10,7 +10,7 @@ import {
 } from "./object-registry";
 
 const scopedAddress = (
-  binding: "OTP" | "AUTOMATIONS" | "UPLOAD",
+  binding: "OTP" | "AUTOMATIONS" | "PROJECT_CONNECTOR" | "UPLOAD",
   scope: BackofficeObjectScope,
 ) => ({
   binding,
@@ -71,6 +71,30 @@ describe("Automations object scope policy", () => {
       { binding: "AUTOMATIONS", scope: { kind: "org", orgId: "org-1" } },
     );
     expect(fetch).toHaveBeenCalledOnce();
+  });
+});
+
+describe("Connector object scope policy", () => {
+  it("allows user ownership and rejects organization or project ownership", () => {
+    expect(() =>
+      assertBackofficeObjectAddressAllowed(
+        scopedAddress("PROJECT_CONNECTOR", { kind: "user", userId: "user-1" }),
+      ),
+    ).not.toThrow();
+    expect(() =>
+      assertBackofficeObjectAddressAllowed(
+        scopedAddress("PROJECT_CONNECTOR", { kind: "org", orgId: "org-1" }),
+      ),
+    ).toThrow("cannot be instantiated with org scope");
+    expect(() =>
+      assertBackofficeObjectAddressAllowed(
+        scopedAddress("PROJECT_CONNECTOR", {
+          kind: "project",
+          orgId: "org-1",
+          projectId: "project-1",
+        }),
+      ),
+    ).toThrow("cannot be instantiated with project scope");
   });
 });
 

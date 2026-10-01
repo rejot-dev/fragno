@@ -400,6 +400,8 @@ export type Reson8Object = AdminConfigurableObject<
   ): Promise<AwaitedMethodReturn<Reson8, "getRealtimeOriginDiagnostic">>;
 };
 export type McpObject = DurableHookCommands;
+/** Connector has HTTP operations only; provider tokens stay upstream. */
+export type ProjectConnectorObject = Record<never, never>;
 export type UploadObject = DurableHookCommands &
   AdminConfigurableObject<AwaitedMethodReturn<Upload, "getAdminConfig">>;
 export type CloudflareObject = Record<never, never>;
@@ -479,6 +481,7 @@ export type BackofficeObjectBindingName =
   | "RESEND"
   | "RESON8"
   | "MCP"
+  | "PROJECT_CONNECTOR"
   | "UPLOAD"
   | "GITHUB"
   | "GITHUB_WEBHOOK_ROUTER"
@@ -518,6 +521,7 @@ export const backofficeObjectScopePolicy = {
   RESEND: ["singleton", "org"],
   RESON8: ["org"],
   MCP: ["org", "user", "project"],
+  PROJECT_CONNECTOR: ["user"],
   UPLOAD: ["org", "named", "user", "project"],
   GITHUB: ["org"],
 
@@ -788,6 +792,7 @@ export const createBackofficeObjectRegistry = (factory: BackofficeObjectFactory)
   resend: scoped(factory, binding<ResendObject>("RESEND")),
   reson8: scoped(factory, binding<Reson8Object>("RESON8")),
   mcp: scoped(factory, binding<McpObject>("MCP")),
+  projectConnector: scoped(factory, binding<ProjectConnectorObject>("PROJECT_CONNECTOR")),
   upload: scoped(factory, binding<UploadObject>("UPLOAD")),
   github: scoped(factory, binding<GitHubObject>("GITHUB")),
 

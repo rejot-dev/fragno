@@ -66,6 +66,11 @@ export const BACKOFFICE_PERMISSION = {
     serversRead: { namespace: "mcp", permission: "servers.read" },
     toolsCall: { namespace: "mcp", permission: "tools.call" },
   },
+  connector: {
+    accountsRead: { namespace: "connector", permission: "accounts.read" },
+    connectionsCreate: { namespace: "connector", permission: "connections.create" },
+    actionsExecute: { namespace: "connector", permission: "actions.execute" },
+  },
   otp: {
     create: { namespace: "otp", permission: "create" },
   },

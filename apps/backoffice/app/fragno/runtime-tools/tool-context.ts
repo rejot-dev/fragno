@@ -20,6 +20,7 @@ export const createBackofficeToolContext = (
     internal: context.internal?.runtime,
     api: context.api?.runtime,
     mcp: context.mcp?.runtime,
+    projectConnector: context.projectConnector?.runtime,
     otp: context.otp?.runtime,
     pi: context.pi?.runtime,
     resend: context.resend?.runtime,

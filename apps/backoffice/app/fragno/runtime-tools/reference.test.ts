@@ -363,4 +363,14 @@ describe("runtime tool reference generation", () => {
     assert(files.some((file) => file.path === "/static/codemode/providers/state.d.ts"));
     assert(!files.some((file) => file.path === "/static/codemode/state.d.ts"));
   });
+
+  test("renders void-input tools as zero-argument methods", () => {
+    const file = createCodemodeTypeFiles({ families: runtimeToolFamilies }).find(
+      (candidate) => candidate.path === "/static/codemode/providers/connector.d.ts",
+    );
+    assert(file);
+
+    expect(file.content).toContain("check(): Promise<ConnectorCheckOutput>;");
+    expect(file.content).not.toContain("ConnectorCheckInput");
+  });
 });

@@ -73,6 +73,7 @@ const config: BackofficeRuntimeConfig = {
     resend: false,
     reson8: false,
     mcp: false,
+    projectConnector: false,
     upload: false,
     github: false,
     githubWebhookRouter: false,

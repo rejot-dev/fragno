@@ -49,6 +49,7 @@ import {
   createUnavailableOtpRuntime,
 } from "@/fragno/runtime-tools/families/otp-runtime";
 import { createPiRouteRuntime, type PiRuntime } from "@/fragno/runtime-tools/families/pi-runtime";
+import { createProjectConnectorRuntime } from "@/fragno/runtime-tools/families/project-connector-runtime";
 import {
   createResendRouteRuntime,
   createUnavailableResendRuntime,
@@ -64,7 +65,11 @@ import {
 } from "@/fragno/runtime-tools/families/telegram-runtime";
 import { createUploadRuntime } from "@/fragno/runtime-tools/families/upload-runtime";
 import { createWebRuntime } from "@/fragno/runtime-tools/families/web-runtime";
-import { apiPublicAddress, mcpPublicAddress } from "@/fragno/scoped-public-fragment-routes";
+import {
+  apiPublicAddress,
+  mcpPublicAddress,
+  projectConnectorPublicAddress,
+} from "@/fragno/scoped-public-fragment-routes";
 
 import type { InteractiveRuntimeToolContext } from "./bash-host";
 import { getRuntimeToolNamespacesByCapability, runtimeToolFamilies } from "./tool-families";
@@ -365,6 +370,32 @@ export const createRouteBackedRuntimeContext = ({
                     throw new Error("MCP public routes require a routable scope.");
                   }
                   return mcpPublicAddress(
+                    runtime.config.docsPublicBaseUrl,
+                    backofficeRouteScopeSinglePathSegment(
+                      backofficeRouteScopeFromResolvedScope(resolvedScope),
+                    ),
+                  );
+                }),
+              }
+            : null;
+        })()
+      : null,
+    projectConnector: runtime.config.bindings.projectConnector
+      ? (() => {
+          const object = isBackofficeObjectAvailableInContext("PROJECT_CONNECTOR", execution.scope)
+            ? kernel.scoped("PROJECT_CONNECTOR", execution.scope, runtime.objects.projectConnector)
+            : null;
+          return object
+            ? {
+                runtime: createProjectConnectorRuntime(object.http, async () => {
+                  const resolvedScope = await resolveBackofficeRuntimeScope(
+                    execution.scope,
+                    (organizationId) => resolveRuntimeOrganization(runtime, organizationId),
+                  );
+                  if (resolvedScope.kind === "system") {
+                    throw new Error("Connector public routes require a routable scope.");
+                  }
+                  return projectConnectorPublicAddress(
                     runtime.config.docsPublicBaseUrl,
                     backofficeRouteScopeSinglePathSegment(
                       backofficeRouteScopeFromResolvedScope(resolvedScope),

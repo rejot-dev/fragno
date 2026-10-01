@@ -2710,6 +2710,207 @@
     ]
   },
   {
+    "command": "connector.status",
+    "summary": "connector.status checks gateway authentication.",
+    "options": [
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "connector.connect",
+    "summary": "connector.connect starts OAuth; the user must complete browser consent.",
+    "options": [
+      {
+        "name": "service",
+        "valueRequired": true,
+        "description": "Service, such as gmail; mutually exclusive with provider-config-id"
+      },
+      {
+        "name": "provider-config-id",
+        "valueRequired": true,
+        "description": "Explicit provider config; mutually exclusive with service"
+      },
+      {
+        "name": "connection-name",
+        "required": true,
+        "valueRequired": true,
+        "description": "Name for this connection"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "connector.connections.refresh",
+    "summary": "connector.connections.refresh confirms OAuth completion with the gateway.",
+    "options": [
+      {
+        "name": "request-id",
+        "required": true,
+        "valueRequired": true,
+        "description": "Saved request ID returned by connect"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "connector.accounts.list",
+    "summary": "connector.accounts.list lists one page of verified accounts.",
+    "options": [
+      {
+        "name": "cursor",
+        "valueRequired": true,
+        "description": "Cursor from the preceding page"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "connector.accounts.profile",
+    "summary": "connector.accounts.profile performs a read-only profile check.",
+    "options": [
+      {
+        "name": "account-id",
+        "required": true,
+        "valueRequired": true,
+        "description": "Verified connected account ID"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "connector.actions.execute",
+    "summary": "connector.actions.execute can modify provider data; choose the account and action explicitly.",
+    "options": [
+      {
+        "name": "account-id",
+        "required": true,
+        "valueRequired": true,
+        "description": "Verified connected account ID"
+      },
+      {
+        "name": "action-id",
+        "required": true,
+        "valueRequired": true,
+        "description": "Action in this account's service"
+      },
+      {
+        "name": "input-json",
+        "required": true,
+        "valueRequired": true,
+        "description": "Provider-specific JSON object"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
     "command": "otp.identity.create-claim",
     "summary": "otp.identity.create-claim creates a short-lived identity claim URL for the trusted external initiator.",
     "options": [

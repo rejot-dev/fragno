@@ -30,6 +30,7 @@ import { githubCapability } from "./capabilities/github";
 import { mcpCapability } from "./capabilities/mcp";
 import { otpCapability } from "./capabilities/otp";
 import { piCapability } from "./capabilities/pi";
+import { connectorCapability } from "./capabilities/project-connector";
 import { resendCapability } from "./capabilities/resend";
 import { reson8Capability } from "./capabilities/reson8";
 import { sandboxCapability } from "./capabilities/sandbox";
@@ -45,6 +46,7 @@ export type BackofficeCapabilityId =
   | "forms"
   | "github"
   | "mcp"
+  | "connector"
   | "otp"
   | "pi"
   | "resend"
@@ -192,6 +194,7 @@ export const backofficeCapabilities: readonly BackofficeCapability[] = [
   apiCapability,
   telegramCapability,
   mcpCapability,
+  connectorCapability,
   resendCapability,
   reson8Capability,
   uploadCapability,

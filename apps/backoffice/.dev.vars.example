@@ -28,6 +28,11 @@ GITHUB_CLIENT_SECRET=
 # For auth access-token cookies. Set a strong secret in production.
 AUTH_ACCESS_TOKEN_SECRET=dev-auth-access-token-secret-replace-me
 
+# Hosted SaaS project key; consumed only by the Connector object host.
+OOMOL_CONNECTOR_BASE_URL=https://connector.oomol.com/v1
+OOMOL_PROJECT_API_KEY=oo_proj_
+
+
 # Signs trusted execution context sent between the web Worker and Durable Objects.
 # Configure the same value on both deployments.
 BACKOFFICE_INTERNAL_REQUEST_SECRET=dev-backoffice-internal-request-secret-replace-me

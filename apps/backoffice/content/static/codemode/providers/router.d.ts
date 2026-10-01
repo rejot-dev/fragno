@@ -402,6 +402,18 @@ type BackofficePermissionRequirement =
       permission: "tools.call";
     }
   | {
+      namespace: "connector";
+      permission: "accounts.read";
+    }
+  | {
+      namespace: "connector";
+      permission: "connections.create";
+    }
+  | {
+      namespace: "connector";
+      permission: "actions.execute";
+    }
+  | {
       namespace: "otp";
       permission: "create";
     }
