@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 
-import type { BackofficeObjectAlarm } from "./local-durable-objects";
+import type { BackofficeObjectAlarm } from "../runtime/local-durable-objects";
 import { SqliteBackofficeObjectStorage, type SqliteObjectClaim } from "./sqlite-object-storage";
 
 const OBJECT_CLAIM_DURATION_MS = 30_000;

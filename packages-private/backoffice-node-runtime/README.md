@@ -4,6 +4,19 @@ Reusable local Durable Object execution, SQLite persistence and coordination, du
 processing, and alarm scheduling. Backoffice-specific object factories and authorization stay in the
 application.
 
+## Package layout
+
+```text
+src/
+  runtime/          Local Durable Object execution and coordination
+  sqlite/           Object storage, state, coordination, and connection configuration
+  scheduling/       Alarm scheduling and durable-hook processing
+  testing/          Scenario runner
+```
+
+Tests live beside their source files. Build output mirrors these directories; public package
+subpaths map directly to the defining modules and remain independent of the internal layout.
+
 ## Node runtime scenarios
 
 Import from `@fragno-private/backoffice-node-runtime/node-runtime-scenario`.
@@ -96,5 +109,5 @@ preserve their original cause. All runtimes are closed and the directory is remo
 failure. This harness does not install Backoffice's application-specific authorization envelopes,
 object registry, or Fragment services.
 
-See `src/node-runtime-scenario.test.ts` for multi-binding fetch/RPC, competing alarms, retry,
-rescheduling, and serialization scenarios.
+See `src/testing/node-runtime-scenario.test.ts` for multi-binding fetch/RPC, competing alarms,
+retry, rescheduling, and serialization scenarios.
