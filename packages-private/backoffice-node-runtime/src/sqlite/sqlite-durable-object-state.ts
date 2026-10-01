@@ -2,6 +2,11 @@ import type {
   BackofficeDurableObjectState,
   BackofficeObjectAlarm,
 } from "../runtime/local-durable-objects";
+import type { NodeDurableObjectStorage } from "../runtime/node-durable-object-storage";
+import { runNodeObjectEvent } from "../runtime/node-object-event";
+import { currentNodeObjectOutputBoundary } from "../runtime/node-object-output-boundary";
+import type { ManagedNodeRuntimeObjectDatabase } from "./managed-node-runtime-object-database";
+import { createNodeDurableObjectSqlStorage } from "./node-durable-object-sql-storage";
 import { SqliteObjectCoordination } from "./sqlite-object-coordination";
 import { SqliteBackofficeObjectStorage } from "./sqlite-object-storage";
 
@@ -12,9 +17,10 @@ type SqliteStorageListOptions = {
 /** Implements Durable Object state directly against authoritative SQLite storage. */
 export class SqliteDurableObjectState implements BackofficeDurableObjectState {
   readonly id: DurableObjectId;
-  readonly storage: DurableObjectStorage;
+  readonly storage: NodeDurableObjectStorage;
 
   readonly #objectId: string;
+  readonly #database: ManagedNodeRuntimeObjectDatabase;
   readonly #persistence: SqliteBackofficeObjectStorage;
   readonly #coordination: SqliteObjectCoordination;
   #refreshRuntime: (() => Promise<void>) | null = null;
@@ -26,11 +32,13 @@ export class SqliteDurableObjectState implements BackofficeDurableObjectState {
 
   constructor(
     id: DurableObjectId,
+    database: ManagedNodeRuntimeObjectDatabase,
     persistence: SqliteBackofficeObjectStorage,
     coordination: SqliteObjectCoordination,
   ) {
     this.id = id;
     this.#objectId = String(id);
+    this.#database = database;
     this.#persistence = persistence;
     this.#coordination = coordination;
     this.#persistence.registerObject(this.#objectId);
@@ -42,7 +50,8 @@ export class SqliteDurableObjectState implements BackofficeDurableObjectState {
       getAlarm: this.#getAlarm.bind(this),
       setAlarm: this.#setAlarm.bind(this),
       deleteAlarm: this.#deleteAlarm.bind(this),
-    } as unknown as DurableObjectStorage;
+      sql: createNodeDurableObjectSqlStorage(database),
+    };
   }
 
   get alarmTimestamp(): number | null {
@@ -72,6 +81,23 @@ export class SqliteDurableObjectState implements BackofficeDurableObjectState {
       this.#refreshing = null;
     });
     await this.#refreshing;
+  }
+
+  async runEvent<TResult>(operation: () => TResult | Promise<TResult>): Promise<TResult> {
+    await this.prepareForEvent();
+    const outputBoundary = currentNodeObjectOutputBoundary();
+    return await runNodeObjectEvent(operation, () => {
+      const position = this.#database.committedStoragePosition;
+      if (outputBoundary) {
+        outputBoundary.observeStoragePosition(position);
+      } else {
+        this.#database.ensureDurableStoragePosition(position);
+      }
+    });
+  }
+
+  ensureOutputDurable(requiredPosition: number): void {
+    this.#database.ensureDurableStoragePosition(requiredPosition);
   }
 
   async deliverAlarm(

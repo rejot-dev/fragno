@@ -3,6 +3,14 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./graft-database-operations": {
+      "types": "./dist/graft/graft-database-operations.d.ts",
+      "default": "./dist/graft/graft-database-operations.js"
+    },
+    "./graft-object-directory": {
+      "types": "./dist/graft/graft-object-directory.d.ts",
+      "default": "./dist/graft/graft-object-directory.js"
+    },
     "./local-durable-objects": {
       "types": "./dist/runtime/local-durable-objects.d.ts",
       "default": "./dist/runtime/local-durable-objects.js"
@@ -14,6 +22,14 @@
     "./node-runtime-object": {
       "types": "./dist/runtime/node-runtime-object.d.ts",
       "default": "./dist/runtime/node-runtime-object.js"
+    },
+    "./node-durable-object-state": {
+      "types": "./dist/runtime/node-durable-object-state.d.ts",
+      "default": "./dist/runtime/node-durable-object-state.js"
+    },
+    "./node-durable-object-storage": {
+      "types": "./dist/runtime/node-durable-object-storage.d.ts",
+      "default": "./dist/runtime/node-durable-object-storage.js"
     },
     "./node-runtime-clock": {
       "types": "./dist/runtime/node-runtime-clock.d.ts",
@@ -62,7 +78,8 @@
   "dependencies": {
     "@fragno-dev/db": "workspace:*",
     "better-sqlite3": "12.10.0",
-    "capnweb": "0.12.0"
+    "capnweb": "0.12.0",
+    "sqlite-graft": "0.2.1"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260804.1",

@@ -1,12 +1,12 @@
 import type { RpcStub } from "capnweb";
 
-import type { BackofficeDurableObjectState } from "./local-durable-objects";
+import type { NodeDurableObjectState } from "./node-durable-object-state";
 
 /** Object handlers and alarms share this state inside their dedicated worker thread. */
 export type NodeRuntimeObjectContext = {
   id: DurableObjectId;
   name: string;
-  state: BackofficeDurableObjectState;
+  state: NodeDurableObjectState;
   nowEpochMs(this: void): number;
 };
 

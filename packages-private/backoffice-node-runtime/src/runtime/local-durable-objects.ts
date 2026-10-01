@@ -1,5 +1,18 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 
+import { RpcTarget } from "capnweb";
+
+import type { NodeDurableObjectState } from "./node-durable-object-state";
+import type {
+  NodeDurableObjectSqlStorage,
+  NodeDurableObjectStorage,
+} from "./node-durable-object-storage";
+import {
+  currentNodeObjectOutputBoundary,
+  runWithNodeObjectOutputBoundary,
+  type NodeObjectOutputBoundary,
+} from "./node-object-output-boundary";
+
 export type BackofficeObjectAlarm = {
   timestamp: number;
   generation: number;
@@ -9,9 +22,16 @@ type LocalStorageListOptions = {
   prefix?: string;
 };
 
-export type BackofficeDurableObjectState = {
-  readonly id: DurableObjectId;
-  readonly storage: DurableObjectStorage;
+const unsupportedInMemorySqlStorage: NodeDurableObjectSqlStorage = {
+  exec() {
+    throw new Error("IN_MEMORY_DURABLE_OBJECT_SQL_UNSUPPORTED");
+  },
+  get databaseSize(): number {
+    throw new Error("IN_MEMORY_DURABLE_OBJECT_SQL_UNSUPPORTED");
+  },
+};
+
+export type BackofficeDurableObjectState = NodeDurableObjectState & {
   readonly alarmTimestamp: number | null;
   readonly hasPendingWork: boolean;
   dueAlarm(now: number): BackofficeObjectAlarm | null;
@@ -21,6 +41,8 @@ export type BackofficeDurableObjectState = {
     handler: () => Promise<void>,
   ): Promise<boolean>;
   prepareForEvent(): Promise<void>;
+  runEvent<T>(operation: () => T | Promise<T>): Promise<T>;
+  ensureOutputDurable(requiredPosition: number): void;
   blockConcurrencyWhile<T>(callback: () => T | Promise<T>): Promise<T>;
   waitUntil(promise: Promise<unknown>): void;
   setBackgroundDrain(drain: (() => Promise<void>) | null): void;
@@ -65,7 +87,7 @@ export class ProcessLocalObjectExecutionCoordinator implements BackofficeObjectE
 /** Implements transient Durable Object state for in-process tests. */
 export class InMemoryDurableObjectState implements BackofficeDurableObjectState {
   readonly id: DurableObjectId;
-  readonly storage: DurableObjectStorage;
+  readonly storage: NodeDurableObjectStorage;
 
   readonly #values = new Map<string, unknown>();
   #alarm: BackofficeObjectAlarm | null = null;
@@ -84,7 +106,8 @@ export class InMemoryDurableObjectState implements BackofficeDurableObjectState 
       getAlarm: this.#getAlarm.bind(this),
       setAlarm: this.#setAlarm.bind(this),
       deleteAlarm: this.#deleteAlarm.bind(this),
-    } as unknown as DurableObjectStorage;
+      sql: unsupportedInMemorySqlStorage,
+    };
   }
 
   get alarmTimestamp(): number | null {
@@ -105,6 +128,13 @@ export class InMemoryDurableObjectState implements BackofficeDurableObjectState 
   async prepareForEvent(): Promise<void> {
     await this.drainBlocking();
   }
+
+  async runEvent<T>(operation: () => T | Promise<T>): Promise<T> {
+    await this.prepareForEvent();
+    return await operation();
+  }
+
+  ensureOutputDurable(_requiredPosition: number): void {}
 
   async deliverAlarm(
     expectedAlarm: BackofficeObjectAlarm,
@@ -299,7 +329,7 @@ export class LocalDurableObjectNamespace<TObject> {
 
   async restorePersisted(id: DurableObjectId): Promise<void> {
     const instance = this.#instances.get(String(id)) ?? this.#createInstance(id, String(id));
-    await instance.state.prepareForEvent();
+    await instance.state.runEvent(() => {});
   }
 
   async discoverPersisted(id: DurableObjectId): Promise<void> {
@@ -318,7 +348,7 @@ export class LocalDurableObjectNamespace<TObject> {
         await existing.state.drainWaitUntil();
       }
       const replacement = this.#createInstance(id, key, existing?.state ?? this.#createState(id));
-      await replacement.state.drainBlocking();
+      await replacement.state.runEvent(() => {});
       return replacement.stub;
     });
   }
@@ -329,7 +359,9 @@ export class LocalDurableObjectNamespace<TObject> {
 
   async drainWaitUntil(): Promise<boolean> {
     const results = await Promise.all(
-      this.instances().map(async ({ state }) => await state.drainWaitUntil()),
+      this.instances().map(
+        async ({ state }) => await state.runEvent(async () => await state.drainWaitUntil()),
+      ),
     );
     return results.some(Boolean);
   }
@@ -339,9 +371,10 @@ export class LocalDurableObjectNamespace<TObject> {
       this.instances().map(async (instance) => {
         await this.#executionCoordinator.run(instance.name, async () => {
           const activeInstance = this.#activeInstance(instance.name);
-          await activeInstance.state.prepareForEvent();
-          await activeInstance.state.drainBackground();
-          await activeInstance.state.drainWaitUntil();
+          await activeInstance.state.runEvent(async () => {
+            await activeInstance.state.drainBackground();
+            await activeInstance.state.drainWaitUntil();
+          });
         });
       }),
     );
@@ -354,12 +387,13 @@ export class LocalDurableObjectNamespace<TObject> {
   ): Promise<boolean> {
     return await this.#executionCoordinator.run(instance.name, async () => {
       const activeInstance = this.#activeInstance(instance.name);
-      await activeInstance.state.prepareForEvent();
-      return await activeInstance.state.deliverAlarm(expectedAlarm, now, async () => {
-        const alarmHandler = (activeInstance.object as { alarm?: () => Promise<void> }).alarm;
-        if (alarmHandler) {
-          await alarmHandler.call(activeInstance.object);
-        }
+      return await activeInstance.state.runEvent(async () => {
+        return await activeInstance.state.deliverAlarm(expectedAlarm, now, async () => {
+          const alarmHandler = (activeInstance.object as { alarm?: () => Promise<void> }).alarm;
+          if (alarmHandler) {
+            await alarmHandler.call(activeInstance.object);
+          }
+        });
       });
     });
   }
@@ -407,20 +441,70 @@ export class LocalDurableObjectNamespace<TObject> {
         const wrapped = async (...args: unknown[]) =>
           await executionCoordinator.run(name, async () => {
             const instance = activeInstance(name);
-            await instance.state.prepareForEvent();
             const method = (instance.object as Record<PropertyKey, unknown>)[property];
             if (typeof method !== "function") {
               throw new Error(`LOCAL_DURABLE_OBJECT_METHOD_MISSING:${name}:${String(property)}`);
             }
-            const result = await (method as (...innerArgs: unknown[]) => Promise<unknown>).apply(
-              instance.object,
-              args,
-            );
-            return result;
+            return await instance.state.runEvent(async () => {
+              const result = await (method as (...innerArgs: unknown[]) => Promise<unknown>).apply(
+                instance.object,
+                args,
+              );
+              return gateReturnedRpcCapability(
+                result,
+                instance.state,
+                currentNodeObjectOutputBoundary(),
+              );
+            });
           });
         cache.set(property, wrapped);
         return wrapped;
       },
     }) as LocalDurableObjectStub<TObject>;
   }
+}
+
+function gateReturnedRpcCapability(
+  value: unknown,
+  state: BackofficeDurableObjectState,
+  outputBoundary: NodeObjectOutputBoundary | null,
+): unknown {
+  if (!(value instanceof RpcTarget)) {
+    return value;
+  }
+  const capability = value as unknown as Record<PropertyKey, unknown>;
+  const cache = new Map<PropertyKey, unknown>();
+  return new Proxy(new RpcTarget(), {
+    get(target, property): unknown {
+      const targetProperties = target as unknown as Record<PropertyKey, unknown>;
+      if (typeof property !== "string" || property === "constructor") {
+        return targetProperties[property];
+      }
+      if (property === "then") {
+        return undefined;
+      }
+      if (cache.has(property)) {
+        return cache.get(property);
+      }
+      const method = capability[property];
+      if (typeof method !== "function") {
+        return undefined;
+      }
+      const wrapped = async (...args: unknown[]) => {
+        const invoke = async () =>
+          await state.runEvent(async () => {
+            const result = await (method as (...innerArgs: unknown[]) => unknown).apply(
+              value,
+              args,
+            );
+            return gateReturnedRpcCapability(result, state, outputBoundary);
+          });
+        return outputBoundary
+          ? await runWithNodeObjectOutputBoundary(outputBoundary, invoke)
+          : await invoke();
+      };
+      cache.set(property, wrapped);
+      return wrapped;
+    },
+  });
 }

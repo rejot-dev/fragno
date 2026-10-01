@@ -8,7 +8,8 @@ implementation; application integration with this package is deferred.
 
 ```text
 src/
-  runtime/          Object definitions, worker ownership, lifecycle, and clocks
+  graft/            Graft VFS loading, pragma operations, object directory, and Graft-backed state
+  runtime/          Object definitions, worker ownership, lifecycle, clocks, and state APIs
   rpc/              Cap'n Web sessions over Node MessagePorts
   sqlite/           Object storage, state, coordination, and connection configuration
   scheduling/       Alarm scheduling and durable-hook processing
@@ -18,6 +19,11 @@ src/
 
 Tests live beside their source files. Build output mirrors these directories; public package
 subpaths map directly to the defining modules and remain independent of the internal layout.
+
+References:
+
+- `docs/sqlite-ddl-reference.md` inventories every package-owned and test-only SQLite DDL statement.
+- `docs/stateless-graft-runtime-plan.md` describes the remaining distributed runtime work.
 
 ## Object workers
 
@@ -106,6 +112,103 @@ clock. Worker exits reject outstanding and future RPC calls rather than hanging.
 remains failed until the runtime is recreated; this package does not automatically restart it or
 replay requests.
 
+## Single-owner Graft runtime
+
+`createGraftNodeObjectRuntime` is the first stateless-container storage slice. It uses one durable
+Graft control database to map object identities to remote logs and one Graft SQLite database per
+object. The object database contains application SQL plus the runtime's narrow KV and alarm tables.
+Object authors access persistence only through `state.storage`; the worker owns local commits and
+Graft pushes. The database assigns every local commit an activation-local storage position. Internal
+RPC calls made inside `runtime.runWithOutputGate()` accumulate the highest position their output can
+reveal without pushing between calls. Immediately before the enclosing external result or handler
+error is exposed, the worker proves that position durable with Graft. A failed push poisons that
+worker's database so its speculative local state cannot be read as confirmed state.
+
+This slice deliberately has **no leases, fencing epochs, peer routing, or concurrent-owner safety**.
+Run only one serving runtime for a control log. It proves that a fresh process with an empty local
+cache can recover object state; it is not yet a distributed Durable Object runtime.
+
+Provision the control database once and retain its remote log ID in deployment configuration:
+
+```ts
+import { provisionGraftControlDatabase } from "@fragno-private/backoffice-node-runtime/graft-object-directory";
+
+const controlRemoteLogId = provisionGraftControlDatabase("./graft.toml");
+```
+
+Then create a runtime from a process-local Graft config and that durable locator:
+
+```ts
+import { createGraftNodeObjectRuntime } from "@fragno-private/backoffice-node-runtime/node-object-runtime";
+
+const runtime = createGraftNodeObjectRuntime({
+  storage: { configPath: "./graft.toml", controlRemoteLogId },
+  clock: { kind: "system" },
+  objects: { COUNTER: counterDefinition },
+});
+```
+
+`GraftDatabaseOperations` owns the `clone`, `pull`, `push`, and remote-log lookup pragmas. The
+default runtime imports the production pragma implementation inside each worker. Tests and
+alternative adapters can use `defineGraftDatabaseOperations` with
+`createGraftNodeObjectRuntimeWithDatabaseOperations`; the definition transfers only a module URL,
+export name, and structured-clonable factory input across the worker boundary. The package scenario
+uses a recording decorator around the real pragmas to prove both boundaries: direct RPC calls push
+before returning to their caller, while separate RPCs inside one external output gate perform no
+intermediate pushes and share one final push. Concurrent scenarios also prove that RPCs within one
+scope and separate writer scopes can share a push, while a reader does not wait for a later storage
+position it did not observe.
+
+Routing code places all internal object RPCs used to produce one external result inside an output
+gate. The runtime owns the gate; object factories still receive no transaction or push controls:
+
+```ts
+const response = await runtime.runWithOutputGate(async () => {
+  using counter = runtime.objects.COUNTER.get("one");
+  await counter.increment();
+  await counter.increment();
+  return await counter.fetch(new Request("https://object.test/"));
+});
+```
+
+A second request that reads locally committed state inherits that object's storage position. Its
+output gate pushes that position before releasing the response, even when the request that wrote the
+state is still running. When the writer later reaches its own output gate, the already-proven
+position causes no additional push. These are visibility dependencies, not transactions: separate
+RPC calls may observe each other's intermediate commits, and atomic state changes still require a
+SQLite transaction. One output gate may touch several objects, but it pushes each object log
+independently and provides no cross-object atomicity.
+
+Object factories use the Durable Object-style SQL surface:
+
+```ts
+export function createCounterObject({ state }: NodeRuntimeObjectContext) {
+  return {
+    increment() {
+      state.storage.sql.exec("UPDATE counters SET count = count + 1 WHERE id = 1");
+      return state.storage.sql
+        .exec<{ count: number }>("SELECT count FROM counters WHERE id = 1")
+        .one().count;
+    },
+  };
+}
+```
+
+Calls outside `runWithOutputGate()` retain an implicit per-call gate, so a direct public RPC cannot
+return unconfirmed state. Initialization, alarms, and drained `waitUntil` work also retain immediate
+worker-owned durability boundaries. Returned `RpcTarget` capabilities inherit the output scope in
+which they were created and reject use after that scope closes. This is not a general side-effect
+gate: outbound fetches, callback arguments, and response-stream work performed after the handler
+returns are not transactional or delayed. Detached unregistered work remains unsupported.
+
+The Graft runtime requires Node.js 24.11 or newer. `state.storage.sql.exec()` accepts one
+application statement and does not expose transaction control, `PRAGMA`, or `ATTACH`. The Graft
+configuration must be established before the extension loads, use `make_default = false`, and use a
+distinct `data_dir` for each container cache. Graft 0.2.1 is pinned; its VFS uses
+`journal_mode = MEMORY`, not WAL. The filesystem remote supports local scenarios, while deployment
+can supply Graft's S3-compatible configuration. See `docs/stateless-graft-runtime-plan.md` for the
+remaining control plane, fencing, routing, and scheduling work.
+
 ### Caller-coordinated cleanup
 
 Before calling `cleanup()`:
@@ -180,7 +283,8 @@ test("fetch and alarms share the counter worker", async () => {
 
 - `given(label, run)`, `when(label, run)`, and `then(label, run)` create labeled custom steps. Their
   context exposes `server`, typed `objects`, `alarms`, and `clock`.
-- `server.fetch(request, assertResponse)` calls the routing handler and checks its response.
+- `server.fetch(request, assertResponse)` runs the routing handler inside
+  `runtime.runWithOutputGate()`, then checks the durable response.
 - `alarms.tick()` discovers persisted objects, drains `waitUntil`, delivers due alarms in each
   object's existing worker, then drains `waitUntil` again. It uses the production scheduler's
   stages.
