@@ -1,0 +1,27 @@
+{
+  "name": "@fragno-private/graft-poc",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build": "tsdown",
+    "types:check": "tsc --noEmit",
+    "seed": "tsx src/graft-sqlite-poc.ts seed",
+    "clone": "tsx src/graft-sqlite-poc.ts clone",
+    "format:package": "node ../../scripts/run-package-quality.mjs format",
+    "format:check:package": "node ../../scripts/run-package-quality.mjs format:check",
+    "lint:package": "node ../../scripts/run-package-quality.mjs lint",
+    "lint:fix:package": "node ../../scripts/run-package-quality.mjs lint:fix"
+  },
+  "dependencies": {
+    "sqlite-graft": "0.2.1"
+  },
+  "devDependencies": {
+    "@fragno-private/typescript-config": "workspace:*",
+    "@types/node": "^22.19.7"
+  },
+  "engines": {
+    "node": ">=24.11.0"
+  }
+}
