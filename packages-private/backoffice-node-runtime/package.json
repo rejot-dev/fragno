@@ -7,6 +7,18 @@
       "types": "./dist/runtime/local-durable-objects.d.ts",
       "default": "./dist/runtime/local-durable-objects.js"
     },
+    "./node-object-runtime": {
+      "types": "./dist/runtime/node-object-runtime.d.ts",
+      "default": "./dist/runtime/node-object-runtime.js"
+    },
+    "./node-runtime-object": {
+      "types": "./dist/runtime/node-runtime-object.d.ts",
+      "default": "./dist/runtime/node-runtime-object.js"
+    },
+    "./node-runtime-clock": {
+      "types": "./dist/runtime/node-runtime-clock.d.ts",
+      "default": "./dist/runtime/node-runtime-clock.js"
+    },
     "./node-alarm-scheduler": {
       "types": "./dist/scheduling/node-alarm-scheduler.d.ts",
       "default": "./dist/scheduling/node-alarm-scheduler.js"
@@ -49,7 +61,8 @@
   },
   "dependencies": {
     "@fragno-dev/db": "workspace:*",
-    "better-sqlite3": "12.10.0"
+    "better-sqlite3": "12.10.0",
+    "capnweb": "0.12.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260804.1",

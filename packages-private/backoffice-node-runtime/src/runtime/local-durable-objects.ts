@@ -236,12 +236,18 @@ export type LocalDurableObjectFactory<TObject> = (input: {
   state: BackofficeDurableObjectState;
 }) => TObject;
 
+type LocalDurableObjectStub<TObject> = {
+  [K in keyof TObject]: TObject[K] extends (...args: infer TArgs) => infer TResult
+    ? (...args: TArgs) => Promise<Awaited<TResult>>
+    : TObject[K];
+};
+
 export type LocalDurableObjectInstance<TObject = unknown> = {
   id: DurableObjectId;
   name: string;
   state: BackofficeDurableObjectState;
   object: TObject;
-  stub: TObject;
+  stub: LocalDurableObjectStub<TObject>;
 };
 
 class LocalDurableObjectId {
@@ -260,10 +266,6 @@ class LocalDurableObjectId {
   equals(other: unknown) {
     return other instanceof LocalDurableObjectId && other.toString() === this.toString();
   }
-}
-
-function isAsyncFunction(value: unknown): boolean {
-  return typeof value === "function" && value.constructor.name === "AsyncFunction";
 }
 
 export class LocalDurableObjectNamespace<TObject> {
@@ -290,7 +292,7 @@ export class LocalDurableObjectNamespace<TObject> {
     return new LocalDurableObjectId(this.name, name) as unknown as DurableObjectId;
   }
 
-  get(id: DurableObjectId): TObject {
+  get(id: DurableObjectId): LocalDurableObjectStub<TObject> {
     const key = String(id);
     return this.#instances.get(key)?.stub ?? this.#createInstance(id, key).stub;
   }
@@ -308,7 +310,7 @@ export class LocalDurableObjectNamespace<TObject> {
     return this.#instances.has(String(id));
   }
 
-  async restart(id: DurableObjectId): Promise<TObject> {
+  async restart(id: DurableObjectId): Promise<LocalDurableObjectStub<TObject>> {
     const key = String(id);
     return await this.#executionCoordinator.run(key, async () => {
       const existing = this.#instances.get(key);
@@ -387,7 +389,7 @@ export class LocalDurableObjectNamespace<TObject> {
     return instance;
   }
 
-  #createStub(name: string, object: TObject): TObject {
+  #createStub(name: string, object: TObject): LocalDurableObjectStub<TObject> {
     const cache = new Map<PropertyKey, unknown>();
     const target = object as Record<PropertyKey, unknown>;
     const executionCoordinator = this.#executionCoordinator;
@@ -402,12 +404,6 @@ export class LocalDurableObjectNamespace<TObject> {
         if (cache.has(property)) {
           return cache.get(property);
         }
-        if (!isAsyncFunction(value)) {
-          const bound = value.bind(target);
-          cache.set(property, bound);
-          return bound;
-        }
-
         const wrapped = async (...args: unknown[]) =>
           await executionCoordinator.run(name, async () => {
             const instance = activeInstance(name);
@@ -425,6 +421,6 @@ export class LocalDurableObjectNamespace<TObject> {
         cache.set(property, wrapped);
         return wrapped;
       },
-    }) as TObject;
+    }) as LocalDurableObjectStub<TObject>;
   }
 }
