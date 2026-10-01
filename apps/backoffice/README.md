@@ -64,7 +64,9 @@ pnpm --dir apps/backoffice docker:build:node
 
 The command prunes the workspace on the host before starting Docker, builds for the local machine's
 native architecture, and reuses persistent pnpm and Turbo BuildKit caches. The final image contains
-only the bundled Node build, its launcher, Deno, and the native SQLite runtime dependency.
+only the bundled Node build, its launcher, and the native SQLite runtime dependency. Codemode,
+TypeScript checking, and sandbox execution use the configured Cloudflare bridge; Deno is not
+bundled.
 
 Deployment targets use AMD64 and require an explicit immutable image tag:
 
@@ -82,6 +84,8 @@ restarting against an existing data volume.
 ```dotenv
 AUTH_ACCESS_TOKEN_SECRET=<strong-random-secret>
 BACKOFFICE_INTERNAL_REQUEST_SECRET=<different-strong-random-secret>
+CLOUDFLARE_BRIDGE_URL=https://cf-sandbox-bridge.rejot.workers.dev/
+CLOUDFLARE_BRIDGE_API_KEY=<bridge-SANDBOX_API_KEY>
 DOCS_PUBLIC_BASE_URL=http://backoffice.localhost:5173
 ```
 
