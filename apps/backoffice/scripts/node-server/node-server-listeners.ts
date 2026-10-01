@@ -1,8 +1,12 @@
-import { createServer, type RequestListener, type Server } from "node:http";
+import { createServer, type RequestListener, type Server, type ServerResponse } from "node:http";
+
+// Leave the process supervisor two seconds for runtime cleanup before its ten-second hard stop.
+const NODE_BACKOFFICE_RESPONSE_DRAIN_TIMEOUT_MS = 8_000;
 
 export type NodeBackofficeListener = {
   host: string;
   server: Server;
+  activeResponses: Set<ServerResponse>;
 };
 
 function formatNodeBackofficeListenUrl(host: string, port: number): string {
@@ -14,7 +18,16 @@ function listenOnNodeBackofficeHost(input: {
   host: string;
   port: number;
 }): Promise<NodeBackofficeListener> {
-  const server = createServer(input.requestListener);
+  const activeResponses = new Set<ServerResponse>();
+  const server = createServer((request, response) => {
+    activeResponses.add(response);
+    const releaseResponse = () => {
+      activeResponses.delete(response);
+    };
+    response.once("finish", releaseResponse);
+    response.once("close", releaseResponse);
+    input.requestListener(request, response);
+  });
   return new Promise((resolve, reject) => {
     function rejectListen(error: Error) {
       reject(error);
@@ -23,7 +36,7 @@ function listenOnNodeBackofficeHost(input: {
     server.once("error", rejectListen);
     server.listen(input.port, input.host, () => {
       server.off("error", rejectListen);
-      resolve({ host: input.host, server });
+      resolve({ host: input.host, server, activeResponses });
     });
   });
 }
@@ -62,24 +75,59 @@ export async function startNodeBackofficeListeners(input: {
   }
 }
 
-/** Stops all HTTP listeners owned by one Node Backoffice server process. */
+function closeNodeBackofficeListener(server: Server): Promise<void> {
+  return new Promise((resolve, reject) => {
+    server.close((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve();
+    });
+  });
+}
+
+function forceCloseNodeBackofficeResponses(listeners: readonly NodeBackofficeListener[]): void {
+  for (const { server, activeResponses } of listeners) {
+    for (const response of activeResponses) {
+      response.destroy();
+    }
+    server.closeAllConnections();
+  }
+}
+
+/** Drains ordinary HTTP responses, then force-closes streams that outlive the shutdown deadline. */
 export async function stopNodeBackofficeListeners(
   listeners: readonly NodeBackofficeListener[],
+  forceCloseAfterMs = NODE_BACKOFFICE_RESPONSE_DRAIN_TIMEOUT_MS,
 ): Promise<void> {
-  await Promise.all(
-    listeners.map(
-      ({ server }) =>
-        new Promise<void>((resolve, reject) => {
-          server.close((error) => {
-            if (error) {
-              reject(error);
-              return;
-            }
-            resolve();
-          });
-        }),
-    ),
+  const listenersStopped = Promise.all(
+    listeners.map(({ server }) => closeNodeBackofficeListener(server)),
   );
+  let forceCloseTimer: NodeJS.Timeout | null = null;
+  const forceCloseDeadline = new Promise<"deadline">((resolve) => {
+    forceCloseTimer = setTimeout(() => {
+      resolve("deadline");
+    }, forceCloseAfterMs);
+    forceCloseTimer.unref();
+  });
+
+  try {
+    const outcome = await Promise.race([
+      listenersStopped.then(() => "drained" as const),
+      forceCloseDeadline,
+    ]);
+    if (outcome === "drained") {
+      return;
+    }
+
+    forceCloseNodeBackofficeResponses(listeners);
+    await listenersStopped;
+  } finally {
+    if (forceCloseTimer) {
+      clearTimeout(forceCloseTimer);
+    }
+  }
 }
 
 /** Formats the listening addresses shown after Node Backoffice startup. */

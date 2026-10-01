@@ -26,11 +26,14 @@ function shutdownNodeBackofficeHookProcessor(): Promise<void> {
 
   shutdownPromise = (async () => {
     try {
+      console.info("Node Backoffice hook processor shutdown started: stopping alarm scheduler");
       await alarmScheduler.stop();
+      console.info("Node Backoffice hook processor alarm scheduler stopped: cleaning up runtime");
       await runtime.cleanup();
     } finally {
       await shutdownNodeOpenTelemetry();
     }
+    console.info("Node Backoffice hook processor shutdown complete");
   })();
   return shutdownPromise;
 }

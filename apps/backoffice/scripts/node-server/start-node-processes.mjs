@@ -128,9 +128,32 @@ function beginSupervisorShutdown(reason) {
     return;
   }
   supervisorState.shutdownReason = reason;
+
+  if (reason.kind === "signal") {
+    console.info(
+      `Node Backoffice supervisor received ${reason.signal}; waiting up to ${gracefulShutdownTimeoutMs / 1_000} seconds for server and processor shutdown`,
+    );
+  } else if (reason.kind === "launcher-exited") {
+    console.warn(
+      `Node Backoffice launcher process ${reason.processId} exited; requesting server and processor shutdown`,
+    );
+  } else {
+    console.warn(
+      `Node Backoffice ${reason.result.service.name} exited; requesting shutdown from the remaining service`,
+    );
+  }
+
   signalRunningServices(services, reason.kind === "signal" ? reason.signal : "SIGTERM");
   supervisorState.forcedShutdown = setTimeout(() => {
-    signalRunningServices(services, "SIGKILL");
+    const runningServiceNames = services
+      .filter(({ child }) => child.exitCode === null && child.signalCode === null)
+      .map(({ name }) => name);
+    if (runningServiceNames.length > 0) {
+      console.warn(
+        `Node Backoffice graceful shutdown timed out after ${gracefulShutdownTimeoutMs / 1_000} seconds; sending SIGKILL to ${runningServiceNames.join(" and ")}`,
+      );
+      signalRunningServices(services, "SIGKILL");
+    }
   }, gracefulShutdownTimeoutMs);
   supervisorState.forcedShutdown.unref();
 }
@@ -157,7 +180,17 @@ for (const observation of observations) {
   void observation.then((result) => {
     if (supervisorState.shutdownReason === null) {
       beginSupervisorShutdown({ kind: "service-exited", result });
+      return;
     }
+
+    if (result.kind === "error") {
+      console.error(`Node Backoffice ${result.service.name} failed during shutdown`, result.error);
+      return;
+    }
+
+    console.info(
+      `Node Backoffice ${result.service.name} process stopped (${result.signal ?? `exit ${result.code ?? 0}`})`,
+    );
   });
 }
 
@@ -188,4 +221,6 @@ if (supervisorState.shutdownReason?.kind === "service-exited") {
   }
 } else if (results.some((result) => result.kind === "error")) {
   process.exitCode = 1;
+} else {
+  console.info("Node Backoffice supervisor shutdown complete");
 }

@@ -124,11 +124,19 @@ function shutdownNodeBackofficeServer(): Promise<void> {
 
   shutdownPromise = (async () => {
     try {
+      console.info("Node Backoffice server shutdown started: closing HTTP listeners");
+      const activeResponseCount = listeners.reduce(
+        (count, listener) => count + listener.activeResponses.size,
+        0,
+      );
+      console.info(`Node Backoffice server closing ${activeResponseCount} active response(s)`);
       await stopNodeBackofficeListeners(listeners);
+      console.info("Node Backoffice server HTTP listeners closed: cleaning up runtime");
       await runtime.cleanup();
     } finally {
       await shutdownNodeOpenTelemetry();
     }
+    console.info("Node Backoffice server shutdown complete");
   })();
   return shutdownPromise;
 }
