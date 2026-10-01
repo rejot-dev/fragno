@@ -1826,6 +1826,9 @@ importers:
       better-sqlite3:
         specifier: 12.10.0
         version: 12.10.0
+      capnweb:
+        specifier: 0.12.0
+        version: 0.12.0
     devDependencies:
       '@cloudflare/workers-types':
         specifier: ^5.20260804.1
@@ -11924,6 +11927,9 @@ packages:
 
   caniuse-lite@1.0.30001797:
     resolution: {integrity: sha512-l8xKG+gwAIExZGl9FrF7KUwuOmk6wbEPC9Xoy/RtnWv1XG0Q4LFlagaLpUv3Kiza3W/wm27zy0yWJEieYKAP6w==}
+
+  capnweb@0.12.0:
+    resolution: {integrity: sha512-jgZ/LMtMVTi+RVlooIslH78Gg23XbDTdvcLghWx3oz17D6u5GuJARt+uhZk/wcTo+f81eeabfnow4d3zLBj+JQ==}
 
   capnweb@0.8.0:
     resolution: {integrity: sha512-BK/TuXUiyfLSKsmjojn70yN7oYG/JJzoURZ3tckjg5Zj2KcygPm0A5jyOlswK7SYB4f0Gh9tt+RZ132b80iLfA==}
@@ -28346,6 +28352,8 @@ snapshots:
       lodash.uniq: 4.5.0
 
   caniuse-lite@1.0.30001797: {}
+
+  capnweb@0.12.0: {}
 
   capnweb@0.8.0: {}
 

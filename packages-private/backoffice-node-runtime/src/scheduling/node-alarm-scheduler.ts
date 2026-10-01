@@ -1,11 +1,11 @@
-/** Runtime operations required by the separate Node Backoffice alarm processor. */
+/** Runtime operations required by the Node object alarm scheduler. */
 export type NodeBackofficeAlarmRuntime = {
   discoverPersistedObjects(): Promise<void>;
   drainAlarms(): Promise<void>;
   drainWaitUntil(): Promise<void>;
 };
 
-/** Controls the periodic Node Backoffice alarm processor. */
+/** Controls periodic alarm delivery to the workers that also serve object requests. */
 export type NodeBackofficeAlarmScheduler = {
   /** Stops future alarm polls and waits for the active local object alarm drain to finish. */
   stop(): Promise<void>;
