@@ -13,14 +13,14 @@ import { apiPublicRoute } from "./api-route.server";
 
 const apiOAuthStartPublicRoute = {
   ...apiPublicRoute,
-  forwardRequest: function forwardApiOAuthStart({ context, object, request, scopePathSegment }) {
+  forwardRequest: function forwardApiOAuthStart({ context, getObject, request, scopePathSegment }) {
     const publicOrigin = context.get(BackofficeWorkerContext).runtime.config.docsPublicBaseUrl;
     const internalUrl = new URL(request.url);
     internalUrl.searchParams.set(
       API_OAUTH_REDIRECT_URI_QUERY_PARAMETER,
       apiPublicAddress(publicOrigin, scopePathSegment).oauthRedirectUri,
     );
-    return object.http.fetch(new Request(internalUrl, request));
+    return getObject().http.fetch(new Request(internalUrl, request));
   },
 } satisfies PublicFragmentRoute<ApiObject>;
 

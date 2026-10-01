@@ -1,5 +1,6 @@
 import type { RouterContextProvider } from "react-router";
 
+import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { BackofficeObjectHandle } from "@/backoffice-runtime/object-registry";
 import {
   backofficeRuntimeScopeFromResolvedScope,
@@ -24,11 +25,15 @@ export type PublicFragmentRoute<TCommands> = {
   ): BackofficeObjectHandle<TCommands>;
   forwardRequest(input: {
     context: Readonly<RouterContextProvider>;
-    object: BackofficeObjectHandle<TCommands>;
+    execution: BackofficeExecutionContext | null;
+    /** Resolves the scoped object only when this request needs object-backed behavior. */
+    getObject: () => BackofficeObjectHandle<TCommands>;
     request: Request;
     scopePathSegment: string;
+    routeScope: BackofficeRoutableRouteScope;
     publicPathSuffix: string;
   }): Promise<Response>;
+  isScopeSupported?: (scope: BackofficeRoutableScope) => boolean;
   isAnonymousRequest?: (
     request: Request,
     scope: BackofficeRoutableScope,
@@ -151,7 +156,7 @@ async function handleScopedOAuthCallback<TCommands>({
   }
 
   const scope = await resolvePublicRouteScope(context, parsed.routeScope);
-  if (!scope) {
+  if (!scope || (route.isScopeSupported && !route.isScopeSupported(scope))) {
     return new Response("Not Found", { status: 404 });
   }
 
@@ -161,12 +166,13 @@ async function handleScopedOAuthCallback<TCommands>({
   callbackUrl.pathname = route.oauth.internalCallbackPath;
   appendBackofficeScopeQuery(callbackUrl, scope);
 
-  const object = route.getObjectForScope(context, scope);
   const response = await route.forwardRequest({
     context,
-    object,
+    getObject: () => route.getObjectForScope(context, scope),
     request: new Request(callbackUrl.toString(), request),
     scopePathSegment: scopePathSegment!,
+    routeScope: parsed.routeScope,
+    execution: null,
     publicPathSuffix: "/oauth/callback",
   });
   if (!response.ok) {
@@ -234,14 +240,14 @@ export async function forwardPublicFragmentRequest<TCommands>({
   }
 
   const scope = await resolvePublicRouteScope(context, parsed.routeScope);
-  if (!scope) {
+  if (!scope || (route.isScopeSupported && !route.isScopeSupported(scope))) {
     return new Response("Not Found", { status: 404 });
   }
   const url = new URL(request.url);
   const prefix = `${route.publicPrefix}/${encodeURIComponent(scopePathSegment!)}`;
   const publicPathSuffix = url.pathname.startsWith(prefix) ? url.pathname.slice(prefix.length) : "";
   const auth = route.isAnonymousRequest?.(request, scope, publicPathSuffix)
-    ? { ok: true as const, headers: [] }
+    ? { ok: true as const, execution: null, headers: [] }
     : await authorizeBackofficeContext(request, context, scope);
   if (!auth.ok) {
     return auth.response;
@@ -252,12 +258,17 @@ export async function forwardPublicFragmentRequest<TCommands>({
   }
   appendBackofficeScopeQuery(url, scope);
 
-  const object = route.getObjectForScope(context, scope);
+  let object: BackofficeObjectHandle<TCommands> | null = null;
   const response = await route.forwardRequest({
     context,
-    object,
+    getObject: () => {
+      object ??= route.getObjectForScope(context, scope);
+      return object;
+    },
     request: new Request(url.toString(), request),
     scopePathSegment: scopePathSegment!,
+    routeScope: parsed.routeScope,
+    execution: auth.execution,
     publicPathSuffix,
   });
   if (auth.headers.length === 0) {

@@ -13,7 +13,7 @@ import { mcpPublicRoute } from "./mcp-route.server";
 
 const mcpOAuthStartPublicRoute = {
   ...mcpPublicRoute,
-  forwardRequest: function forwardMcpOAuthStart({ context, object, request, scopePathSegment }) {
+  forwardRequest: function forwardMcpOAuthStart({ context, getObject, request, scopePathSegment }) {
     const internalUrl = new URL(request.url);
     internalUrl.searchParams.set(
       MCP_OAUTH_REDIRECT_URI_QUERY_PARAMETER,
@@ -22,7 +22,7 @@ const mcpOAuthStartPublicRoute = {
         scopePathSegment,
       ).oauthRedirectUri,
     );
-    return object.http.fetch(new Request(internalUrl, request));
+    return getObject().http.fetch(new Request(internalUrl, request));
   },
 } satisfies PublicFragmentRoute<McpObject>;
 
