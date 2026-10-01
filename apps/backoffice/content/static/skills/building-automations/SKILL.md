@@ -24,12 +24,12 @@ forwards the event.
 
    ```js
    async () => {
-     const catalog = await events.catalogList({});
+     const catalog = await events.catalogList();
      const eventDescriptor = await events.catalogGet({
        source: "telegram",
        eventType: "message.received",
      });
-     const routes = await router.list({});
+     const routes = await router.list();
      const workflowFiles = await state.glob({
        pattern: "/workspace/automations/**/*.workflow.js",
      });

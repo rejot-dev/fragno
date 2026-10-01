@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { defineCliArgsParser } from "@/fragno/runtime-tools/bash-cli";
+import { defineCliArgsParser, defineNoInputArgsParser } from "@/fragno/runtime-tools/bash-cli";
 import type { FormsRuntime } from "@/fragno/runtime-tools/families/forms-runtime";
 
 import { isoDateTimeOutputSchema, normalizeRuntimeOutput } from "../output-schemas";
@@ -70,7 +70,7 @@ function requireFormsRuntime(runtime: FormsRuntime | undefined): FormsRuntime {
   return runtime;
 }
 
-const parseFormsList = defineCliArgsParser<Record<string, never>>("forms.list", {});
+const parseFormsList = defineNoInputArgsParser("forms.list");
 const parseFormsSubmissionsList = defineCliArgsParser<
   z.input<typeof listFormSubmissionsInputSchema>
 >("forms.submissions.list", {
@@ -114,7 +114,7 @@ const listFormsTool = defineBackofficeRuntimeTool({
   name: "listForms",
   description: "List forms stored in the global system Forms integration.",
   requiredPermissions: ["read"],
-  inputSchema: z.object({}),
+  inputSchema: z.void(),
   outputSchema: z.object({ forms: z.array(formOutputSchema) }),
   execute: async (_input, context: FormsToolContext) => {
     const forms = await requireFormsRuntime(context.runtimes.forms).listForms();

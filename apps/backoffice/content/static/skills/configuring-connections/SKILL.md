@@ -17,7 +17,7 @@ Treat connection setup as a handshake: **inspect → collect → configure → v
 
    ```js
    async () => {
-     const connectionList = await connections.list({});
+     const connectionList = await connections.list();
      const status = await connections.get({ id: "telegram" });
      const schema = await connections.schema({ id: "telegram" });
      const setup = await connections.setup({ id: "telegram" });

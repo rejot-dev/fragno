@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import {
   defineCliArgsParser,
-  defineEmptyArgsParser,
+  defineNoInputArgsParser,
   parseCliTokens,
   readOutputOptions,
 } from "@/fragno/runtime-tools/bash-cli";
@@ -79,7 +79,7 @@ const parseStart = defineCliArgsParser<StartSandboxOptions>("sandbox.start", {
   startupTimeoutMs: { kind: "integer" },
 });
 
-const parseList = defineEmptyArgsParser("sandbox.list");
+const parseList = defineNoInputArgsParser("sandbox.list");
 
 const parseKill = defineCliArgsParser<SandboxKillArgs>("sandbox.kill", {
   sandboxId: { required: true },
@@ -163,7 +163,7 @@ const listSandboxesTool = defineBackofficeRuntimeTool({
   name: "listSandboxes",
   description: "List Cloudflare sandboxes for the current organization.",
   requiredPermissions: ["read"],
-  inputSchema: z.object({}),
+  inputSchema: z.void(),
   outputSchema: z.array(z.object({ id: z.string().trim().min(1), status: sandboxStatusSchema })),
   execute: async (_input, context: SandboxToolContext) =>
     await getSandboxRuntime(context.runtimes.sandbox).listSandboxes(),

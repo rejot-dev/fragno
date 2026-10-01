@@ -16,7 +16,7 @@ available only when the deployment exposes the Sandbox capability.
    does not expose the Sandbox capability. When present, read it and list current instances:
 
    ```js
-   async () => await sandbox.listSandboxes({});
+   async () => await sandbox.listSandboxes();
    ```
 
    Reuse a suitable running sandbox or choose a stable id for a new one. **Complete when** the

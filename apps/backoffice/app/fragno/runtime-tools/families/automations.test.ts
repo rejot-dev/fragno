@@ -225,7 +225,7 @@ describe("automation runtime tools", () => {
 
     await expect(
       catalogListTool.execute(
-        {},
+        undefined,
         createTrustedSystemBackofficeToolContext({ runtimes: { backoffice: runtime } }),
       ),
     ).resolves.toEqual([

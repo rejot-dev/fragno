@@ -3,7 +3,7 @@ type SandboxCodemodeProvider = {
   /** Start a Cloudflare sandbox for the current organization. */
   startSandbox(input: SandboxStartSandboxInput): Promise<SandboxStartSandboxOutput>;
   /** List Cloudflare sandboxes for the current organization. */
-  listSandboxes(input: SandboxListSandboxesInput): Promise<SandboxListSandboxesOutput>;
+  listSandboxes(): Promise<SandboxListSandboxesOutput>;
   /** Kill a Cloudflare sandbox for the current organization. */
   killSandbox(input: SandboxKillSandboxInput): Promise<SandboxKillSandboxOutput>;
   /** Execute a command in a Cloudflare sandbox. */
@@ -22,7 +22,6 @@ type SandboxStartSandboxOutput = {
   id: string;
   status: "requested" | "starting" | "running" | "stopping" | "stopped" | "error";
 };
-type SandboxListSandboxesInput = Record<string, unknown>;
 type SandboxListSandboxesOutput = {
   id: string;
   status: "requested" | "starting" | "running" | "stopping" | "stopped" | "error";

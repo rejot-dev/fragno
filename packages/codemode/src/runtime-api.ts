@@ -1,6 +1,7 @@
 export type CodemodeToolDescriptor = {
   description?: string;
   inputSchema?: unknown;
+  inputMode?: "none" | "value";
   outputSchema?: unknown;
   execute(input: unknown, ...args: unknown[]): unknown;
 };
@@ -78,7 +79,15 @@ export const resolveProvider = (provider: ToolProvider): ResolvedProvider => {
     fns: Object.fromEntries(
       Object.entries(provider.tools ?? {}).map(([name, tool]) => [
         name,
-        async (...args: unknown[]) => await tool.execute(args[0], ...args.slice(1)),
+        async (...args: unknown[]) => {
+          if (tool.inputMode === "none") {
+            if (args.length > 0) {
+              throw new Error(`Tool '${provider.name}.${name}' does not accept arguments.`);
+            }
+            return await tool.execute(undefined);
+          }
+          return await tool.execute(args[0], ...args.slice(1));
+        },
       ]),
     ),
   };

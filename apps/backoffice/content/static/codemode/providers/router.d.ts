@@ -1,7 +1,7 @@
 // router tools
 type RouterCodemodeProvider = {
   /** List database-backed automation routing rules. */
-  list(input: RouterListInput): Promise<RouterListOutput>;
+  list(): Promise<RouterListOutput>;
   /** Get one database-backed automation routing rule. */
   get(input: RouterGetInput): Promise<RouterGetOutput>;
   /** Create a database-backed automation routing rule. */
@@ -572,7 +572,6 @@ type AutomationReclassifyEventActionInput = {
   eventType: string;
   payload: AutomationEventPayloadProjection;
 };
-type RouterListInput = Record<string, unknown>;
 type RouterListOutput = AutomationRoute[];
 type RouterGetInput = {
   id: string;

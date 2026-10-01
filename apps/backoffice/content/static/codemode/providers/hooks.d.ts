@@ -1,7 +1,7 @@
 // hooks tools
 type HooksCodemodeProvider = {
   /** List hook scopes usable with hooks.list --fragment. */
-  scopesList(input: HooksScopesListInput): Promise<HooksScopesListOutput>;
+  scopesList(): Promise<HooksScopesListOutput>;
   /** List durable hook queue entries for a runtime fragment. */
   list(input: HooksListInput): Promise<HooksListOutput>;
   /** Get a durable hook queue entry by id. */
@@ -9,7 +9,6 @@ type HooksCodemodeProvider = {
 };
 declare const hooks: HooksCodemodeProvider;
 
-type HooksScopesListInput = Record<string, unknown>;
 type HooksScopesListOutput = {
   id: string;
   label: string;

@@ -21,7 +21,7 @@ export const SYSTEM_AUTOMATION_CONTENT: Record<string, FileContent> = {
     });
 
     const automationRoutes = await step.do("seed starter automation routes", async () => {
-      return await org.internal.automationsRoutesSeedStarter({});
+      return await org.internal.automationsRoutesSeedStarter();
     });
 
     return { seeded, automationRoutes };

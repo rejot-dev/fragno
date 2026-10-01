@@ -28,7 +28,7 @@ import {
 } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 import {
   defineCliArgsParser,
-  defineEmptyArgsParser,
+  defineNoInputArgsParser,
   parseCliTokens,
   readOutputOptions,
 } from "@/fragno/runtime-tools/bash-cli";
@@ -435,7 +435,7 @@ const capabilitiesListTool = defineBackofficeRuntimeTool({
   name: "list",
   description: "List Backoffice capabilities and availability/configuration status.",
   requiredPermissions: ["read"],
-  inputSchema: z.object({}),
+  inputSchema: z.void(),
   outputSchema: capabilitiesListOutputSchema,
   execute: async (_input, context: BackofficeCapabilitiesToolContext) =>
     await getRuntime(context).listCapabilities(),
@@ -447,7 +447,7 @@ const capabilitiesListTool = defineBackofficeRuntimeTool({
         options: [],
         examples: ["capabilities.list", "capabilities.list --format json"],
       },
-      parse: defineEmptyArgsParser("capabilities.list"),
+      parse: defineNoInputArgsParser("capabilities.list"),
       outputOptions: readOutput,
       format: formatCapabilitiesList,
     },
@@ -460,7 +460,7 @@ const hookScopesListTool = defineBackofficeRuntimeTool({
   name: "scopesList",
   description: "List hook scopes usable with hooks.list --fragment.",
   requiredPermissions: ["read"],
-  inputSchema: z.object({}),
+  inputSchema: z.void(),
   outputSchema: hookScopesListOutputSchema,
   execute: async (_input, context: BackofficeCapabilitiesToolContext) =>
     await getRuntime(context).listHookScopes(),
@@ -472,7 +472,7 @@ const hookScopesListTool = defineBackofficeRuntimeTool({
         options: [],
         examples: ["hooks.scopes.list", "hooks.scopes.list --format json"],
       },
-      parse: defineEmptyArgsParser("hooks.scopes.list"),
+      parse: defineNoInputArgsParser("hooks.scopes.list"),
       outputOptions: readOutput,
       format: formatHookScopesList,
     },
@@ -485,7 +485,7 @@ const connectionsListTool = defineBackofficeRuntimeTool({
   name: "list",
   description: "List configurable Backoffice connections and their configuration status.",
   requiredPermissions: ["read"],
-  inputSchema: z.object({}),
+  inputSchema: z.void(),
   outputSchema: connectionsListOutputSchema,
   execute: async (_input, context: BackofficeCapabilitiesToolContext) =>
     await getRuntime(context).listConnections(),
@@ -497,7 +497,7 @@ const connectionsListTool = defineBackofficeRuntimeTool({
         options: [],
         examples: ["connections.list", "connections.list --format json"],
       },
-      parse: defineEmptyArgsParser("connections.list"),
+      parse: defineNoInputArgsParser("connections.list"),
       outputOptions: readOutput,
       format: formatConnectionsList,
     },
@@ -743,7 +743,7 @@ export const automationEventsCatalogListTool = defineBackofficeRuntimeTool({
   description:
     "List known automation event source/type pairs from the Backoffice capability registry.",
   requiredPermissions: ["read"],
-  inputSchema: z.object({}),
+  inputSchema: z.void(),
   outputSchema: automationEventsCatalogListOutputSchema,
   execute: async (_input, context: BackofficeCapabilitiesToolContext) =>
     await getRuntime(context).listAutomationEvents(),
@@ -755,7 +755,7 @@ export const automationEventsCatalogListTool = defineBackofficeRuntimeTool({
         options: [],
         examples: ["events.catalog.list --format json"],
       },
-      parse: defineEmptyArgsParser("events.catalog.list"),
+      parse: defineNoInputArgsParser("events.catalog.list"),
       outputOptions: readOutput,
       format: formatAutomationEventsCatalogList,
     },

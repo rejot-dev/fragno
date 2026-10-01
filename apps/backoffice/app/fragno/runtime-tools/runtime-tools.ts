@@ -243,9 +243,14 @@ export const getAvailableRuntimeTools = ({
 type CodemodeToolDescriptor = {
   description?: string;
   inputSchema: z.ZodType;
+  inputMode: "none" | "value";
   outputSchema: z.ZodType;
   execute: (input: unknown) => Promise<unknown>;
 };
+
+function runtimeToolInputMode(schema: z.ZodType): CodemodeToolDescriptor["inputMode"] {
+  return schema._zod.def.type === "void" ? "none" : "value";
+}
 
 const summarizeToolValue = (value: unknown) => {
   try {
@@ -337,6 +342,7 @@ export const createBackofficeCodemodeProviders = ({
     providerTools[tool.name] = {
       description: tool.description,
       inputSchema: tool.inputSchema,
+      inputMode: runtimeToolInputMode(tool.inputSchema),
       outputSchema: tool.outputSchema,
       execute: async (input) => {
         const call: BackofficeRuntimeToolCall = {

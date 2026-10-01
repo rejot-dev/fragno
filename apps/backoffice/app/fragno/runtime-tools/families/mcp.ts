@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import {
   defineCliArgsParser,
-  defineEmptyArgsParser,
+  defineNoInputArgsParser,
   readOutputOptions,
   type ParsedCliTokens,
 } from "@/fragno/runtime-tools/bash-cli";
@@ -333,7 +333,7 @@ export const mcpRuntimeTools = [
     capabilityId: "mcp",
     description: "List MCP servers configured for the current organization.",
     requiredPermissions: ["servers.read"],
-    inputSchema: z.object({}).optional().default({}),
+    inputSchema: z.void(),
     outputSchema: serversOutputSchema,
     execute: async (_input, context: McpToolContext) =>
       await getMcpRuntime(context.runtimes.mcp).listServers(),
@@ -345,7 +345,7 @@ export const mcpRuntimeTools = [
           options: [],
           examples: ["mcp.servers.list"],
         },
-        parse: defineEmptyArgsParser("mcp.servers.list"),
+        parse: defineNoInputArgsParser("mcp.servers.list"),
         outputOptions: defaultOutput,
         format: textOrDataFormat(renderServers),
       },

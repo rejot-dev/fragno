@@ -121,7 +121,7 @@ describe("Forms runtime tools", () => {
 
     const result = await executeBackofficeRuntimeTool(
       listTool,
-      {},
+      undefined,
       createTrustedSystemBackofficeToolContext({
         runtimes: {
           forms: { listForms, createForm: vi.fn(), updateForm: vi.fn(), listSubmissions: vi.fn() },
