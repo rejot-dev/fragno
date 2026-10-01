@@ -3,6 +3,7 @@ import { coverageConfigDefaults } from "vitest/config";
 const baseConfig = {
   test: {
     globals: true,
+    silent: true,
     coverage: {
       provider: "istanbul",
       exclude: ["templates/**", ...coverageConfigDefaults.exclude],
