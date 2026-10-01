@@ -186,6 +186,25 @@ describe("resend file contributor", () => {
     expect(resolved).toBeNull();
   });
 
+  test("omits the Resend mount from user contexts", () => {
+    const resolved = resendFileContributor.createFileSystem?.(
+      createSystemFilesContext({
+        execution: {
+          actors: BACKOFFICE_SYSTEM_ACTORS,
+          scope: { kind: "user", userId: "user-1" },
+        },
+        objects: createFilesTestObjectRegistry({
+          resendRuntime: {
+            fetch: async () => Response.json({ threads: [], hasNextPage: false }),
+          },
+        }),
+        staticFileArtifacts: () => ({}),
+      }),
+    );
+
+    expect(resolved).toBeNull();
+  });
+
   test("accepts an injected resend runtime", async () => {
     const resolved = await resendFileContributor.createFileSystem?.(
       createSystemFilesContext({

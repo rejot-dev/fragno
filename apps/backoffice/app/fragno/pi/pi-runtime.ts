@@ -20,7 +20,7 @@ import type {
   BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
 import type { BackofficeDatabaseAdapterFactory } from "@/backoffice-runtime/database-adapters";
-import { BackofficeForbiddenError, type BackofficeKernel } from "@/backoffice-runtime/kernel";
+import { isBackofficeForbiddenError, type BackofficeKernel } from "@/backoffice-runtime/kernel";
 import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import {
   BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY,
@@ -167,7 +167,7 @@ const createBackofficeInteractiveChatWorkflow = ({
           },
         });
       } catch (error) {
-        if (error instanceof BackofficeForbiddenError && error.reason !== "authority-unavailable") {
+        if (isBackofficeForbiddenError(error) && error.reason !== "authority-unavailable") {
           throw new PiSessionBillingOrganizationAccessDeniedError(billingOrganizationId);
         }
         throw error;
@@ -344,7 +344,7 @@ export const createPiRuntimeDefinition = (
           });
           return undefined;
         } catch (cause) {
-          if (cause instanceof BackofficeForbiddenError) {
+          if (isBackofficeForbiddenError(cause)) {
             return error(
               { message: cause.message, code: cause.reason },
               cause.reason === "authority-unavailable" ? 503 : 403,

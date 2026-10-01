@@ -21,8 +21,8 @@ import {
   type InMemoryBackofficeRuntime,
 } from "@/backoffice-runtime/in-memory-runtime";
 import {
-  BackofficeForbiddenError,
   BackofficeKernel,
+  isBackofficeForbiddenError,
   type BackofficeKernelAction,
   type BackofficeKernelObserver,
 } from "@/backoffice-runtime/kernel";
@@ -4567,7 +4567,7 @@ const createObjectFactories = (fakes: ScenarioFakes): LocalObjectFactoryOverride
                   },
                 });
               } catch (cause) {
-                if (cause instanceof BackofficeForbiddenError) {
+                if (isBackofficeForbiddenError(cause)) {
                   return Response.json(
                     { message: cause.message, code: cause.reason },
                     { status: cause.reason === "authority-unavailable" ? 503 : 403 },

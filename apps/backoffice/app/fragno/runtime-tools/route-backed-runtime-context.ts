@@ -2,7 +2,8 @@ import {
   backofficeContextScopesEqual,
   type BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
-import { BackofficeUnavailableError, type BackofficeKernel } from "@/backoffice-runtime/kernel";
+import { isBackofficeUnavailableError, type BackofficeKernel } from "@/backoffice-runtime/kernel";
+import { isBackofficeObjectAvailableInContext } from "@/backoffice-runtime/object-registry";
 import {
   backofficeRouteScopeFromResolvedScope,
   resolveBackofficeRuntimeScope,
@@ -135,6 +136,17 @@ const createExecutionStateBackend = ({
   });
 };
 
+const unavailableObject = <T>(resolve: () => T): T | null => {
+  try {
+    return resolve();
+  } catch (error) {
+    if (isBackofficeUnavailableError(error)) {
+      return null;
+    }
+    throw error;
+  }
+};
+
 async function resolveRuntimeOrganization(
   runtime: BackofficeRuntimeServices,
   organizationId: string,
@@ -147,17 +159,6 @@ async function resolveRuntimeOrganization(
   }
   return { id: organization.id, slug: organization.slug };
 }
-
-const unavailableObject = <T>(resolve: () => T): T | null => {
-  try {
-    return resolve();
-  } catch (error) {
-    if (error instanceof BackofficeUnavailableError) {
-      return null;
-    }
-    throw error;
-  }
-};
 
 export const createRouteBackedRuntimeContext = ({
   runtime,
@@ -324,9 +325,9 @@ export const createRouteBackedRuntimeContext = ({
       : null,
     api: runtime.config.bindings.api
       ? (() => {
-          const object = unavailableObject(() =>
-            kernel.scoped("API", execution.scope, runtime.objects.api),
-          );
+          const object = isBackofficeObjectAvailableInContext("API", execution.scope)
+            ? kernel.scoped("API", execution.scope, runtime.objects.api)
+            : null;
           return object
             ? {
                 runtime: createApiRuntime(object.http, async () => {
@@ -350,9 +351,9 @@ export const createRouteBackedRuntimeContext = ({
       : null,
     mcp: runtime.config.bindings.mcp
       ? (() => {
-          const object = unavailableObject(() =>
-            kernel.scoped("MCP", execution.scope, runtime.objects.mcp),
-          );
+          const object = isBackofficeObjectAvailableInContext("MCP", execution.scope)
+            ? kernel.scoped("MCP", execution.scope, runtime.objects.mcp)
+            : null;
           return object
             ? {
                 runtime: createMcpRuntime(object.http, async () => {

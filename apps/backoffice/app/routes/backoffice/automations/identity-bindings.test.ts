@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
-import { BackofficeForbiddenError } from "@/backoffice-runtime/kernel";
 import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 
 const { requireAutomationRouteExecutionMock } = vi.hoisted(() => ({
@@ -51,7 +50,11 @@ describe("automation identity bindings loader", () => {
   });
 
   test("maps permission denial to an HTTP 403 response", async () => {
-    assertAuthorized.mockRejectedValue(new BackofficeForbiddenError("Forbidden"));
+    assertAuthorized.mockRejectedValue({
+      name: "BackofficeForbiddenError",
+      message: "Forbidden",
+      reason: "policy-denied",
+    });
 
     const response = await loader({
       request,

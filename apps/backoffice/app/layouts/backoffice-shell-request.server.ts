@@ -9,7 +9,7 @@ import type {
   BackofficeContextScope,
   BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
-import { BackofficeForbiddenError } from "@/backoffice-runtime/kernel";
+import { isBackofficeForbiddenError } from "@/backoffice-runtime/kernel";
 import {
   backofficeRuntimeScopeFromResolvedScope,
   type BackofficeResolvedScope,
@@ -109,7 +109,7 @@ export async function establishBackofficeShellRequest(
   try {
     execution = createBackofficeExecutionForPrincipal(principal, runtimeScope);
   } catch (error) {
-    if (error instanceof BackofficeForbiddenError) {
+    if (isBackofficeForbiddenError(error)) {
       throw new Response(error.message, { status: 403 });
     }
     throw error;
