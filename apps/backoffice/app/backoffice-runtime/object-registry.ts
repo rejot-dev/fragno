@@ -537,6 +537,15 @@ export const isBackofficeObjectScopeAllowed = (
   return allowedScopes.includes(scopeKind);
 };
 
+export const backofficeObjectScopeKindFromContextScope = (
+  scope: BackofficeContextScope,
+): BackofficeObjectScopeKind => (scope.kind === "system" ? "singleton" : scope.kind);
+
+export const isBackofficeObjectAvailableInContext = (
+  binding: BackofficeObjectBindingName,
+  scope: BackofficeContextScope,
+) => isBackofficeObjectScopeAllowed(binding, backofficeObjectScopeKindFromContextScope(scope));
+
 export const assertBackofficeObjectAddressAllowed = (address: BackofficeObjectAddress) => {
   if (!isBackofficeObjectScopeAllowed(address.binding, address.scope.kind)) {
     throw new Error(

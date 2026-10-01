@@ -1,8 +1,9 @@
-import { describe, expect, it, vi } from "vitest";
+import { assert, describe, expect, it, vi } from "vitest";
 
 import {
   assertBackofficeObjectAddressAllowed,
   createBackofficeObjectRegistry,
+  isBackofficeObjectAvailableInContext,
   type AutomationsObject,
   type BackofficeObjectFactory,
   type BackofficeObjectScope,
@@ -14,6 +15,23 @@ const scopedAddress = (
 ) => ({
   binding,
   scope,
+});
+
+describe("Backoffice object context availability", () => {
+  it("maps system context to singleton objects", () => {
+    assert(isBackofficeObjectAvailableInContext("RESEND", { kind: "system" }));
+  });
+
+  it("rejects object bindings that do not support the selected context", () => {
+    assert(!isBackofficeObjectAvailableInContext("RESEND", { kind: "user", userId: "user-1" }));
+    assert(
+      !isBackofficeObjectAvailableInContext("RESEND", {
+        kind: "project",
+        orgId: "org-1",
+        projectId: "project-1",
+      }),
+    );
+  });
 });
 
 describe("Automations object scope policy", () => {

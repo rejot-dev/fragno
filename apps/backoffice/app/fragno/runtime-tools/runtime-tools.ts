@@ -10,7 +10,9 @@ import type {
 import {
   BackofficeForbiddenError,
   BackofficeKernel,
+  isBackofficeForbiddenError,
   noopBackofficeKernelObserver,
+  type BackofficeForbiddenErrorDetails,
 } from "@/backoffice-runtime/kernel";
 import {
   isBackofficePermissionRequirement,
@@ -262,7 +264,7 @@ const summarizeToolValue = (value: unknown) => {
 function runtimeToolAuthorizationError(
   tool: AnyBackofficeRuntimeTool,
   operation: BackofficePermissionRequirement,
-  cause: BackofficeForbiddenError,
+  cause: BackofficeForbiddenErrorDetails,
 ): BackofficeForbiddenError {
   return new BackofficeForbiddenError(
     [
@@ -299,7 +301,7 @@ const authorizeBackofficeRuntimeTool = async (
         resource,
       });
     } catch (error) {
-      if (error instanceof BackofficeForbiddenError) {
+      if (isBackofficeForbiddenError(error)) {
         throw runtimeToolAuthorizationError(tool, operation, error);
       }
       throw error;

@@ -11,8 +11,8 @@ import { createWorkflowsFragment } from "@fragno-dev/workflows";
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { BackofficeFragmentRuntimeOptions } from "@/backoffice-runtime/fragment-runtime";
 import {
-  BackofficeForbiddenError,
   BackofficeKernel,
+  isBackofficeForbiddenError,
   type BackofficeAuthorizationDenialReason,
   type BackofficeKernelAuthorizationRequirement,
 } from "@/backoffice-runtime/kernel";
@@ -333,7 +333,7 @@ export const createAutomationsRuntime = (
         });
         return undefined;
       } catch (cause) {
-        if (cause instanceof BackofficeForbiddenError) {
+        if (isBackofficeForbiddenError(cause)) {
           return error(
             { message: cause.message, code: cause.reason },
             AUTOMATIONS_AUTHORIZATION_STATUS_BY_REASON[cause.reason],
@@ -597,7 +597,7 @@ export const createAutomationsRuntime = (
         await config.kernel.assertAuthorizedAll({ execution: requestContext, requirements });
         return undefined;
       } catch (cause) {
-        if (cause instanceof BackofficeForbiddenError) {
+        if (isBackofficeForbiddenError(cause)) {
           return error(
             { message: cause.message, code: cause.reason },
             AUTOMATIONS_AUTHORIZATION_STATUS_BY_REASON[cause.reason],
@@ -687,7 +687,7 @@ export const createAutomationsRuntime = (
               })),
             });
           } catch (cause) {
-            if (cause instanceof BackofficeForbiddenError) {
+            if (isBackofficeForbiddenError(cause)) {
               throw new AutomationRouteMutationAuthorizationError({
                 message: cause.message,
                 code: cause.reason,
@@ -724,7 +724,7 @@ export const createAutomationsRuntime = (
         });
         return undefined;
       } catch (cause) {
-        if (cause instanceof BackofficeForbiddenError) {
+        if (isBackofficeForbiddenError(cause)) {
           return error(
             {
               message: cause.message,

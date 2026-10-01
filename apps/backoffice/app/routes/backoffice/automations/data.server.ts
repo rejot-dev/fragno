@@ -6,7 +6,7 @@ import type {
   BackofficeContextScope,
   BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
-import { BackofficeForbiddenError } from "@/backoffice-runtime/kernel";
+import { isBackofficeForbiddenError } from "@/backoffice-runtime/kernel";
 import { getAutomationLayerForPath, readAutomationScript } from "@/fragno/automation";
 import { readBackofficeAutomationSource } from "@/fragno/automation/read-backoffice-automation-source";
 import { createAutomationsRouteCaller } from "@/fragno/automation/route-callers";
@@ -25,7 +25,7 @@ const rethrowHttpResponseOrForbiddenError = (error: unknown) => {
   if (error instanceof Response) {
     throw error;
   }
-  if (error instanceof BackofficeForbiddenError) {
+  if (isBackofficeForbiddenError(error)) {
     throw new Response(error.message, { status: 403 });
   }
 };

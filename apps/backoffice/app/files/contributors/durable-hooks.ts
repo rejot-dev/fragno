@@ -1,4 +1,4 @@
-import { BackofficeUnavailableError } from "@/backoffice-runtime/kernel";
+import { isBackofficeObjectAvailableInContext } from "@/backoffice-runtime/object-registry";
 import type {
   DurableHookQueueEntry,
   DurableHookQueueOptions,
@@ -255,19 +255,15 @@ const resolveRuntime = (ctx: FilesContext, contributorId: string): DurableHooksR
     return null;
   }
 
-  let automationsObject;
-  try {
-    automationsObject = ctx.kernel.scoped(
-      "AUTOMATIONS",
-      ctx.execution.scope,
-      ctx.objects.automations,
-    );
-  } catch (error) {
-    if (error instanceof BackofficeUnavailableError) {
-      return null;
-    }
-    throw error;
+  if (!isBackofficeObjectAvailableInContext("AUTOMATIONS", ctx.execution.scope)) {
+    return null;
   }
+
+  const automationsObject = ctx.kernel.scoped(
+    "AUTOMATIONS",
+    ctx.execution.scope,
+    ctx.objects.automations,
+  );
   if (!automationsObject.commands?.getDurableHookQueue) {
     return null;
   }
