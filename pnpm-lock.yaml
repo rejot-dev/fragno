@@ -791,6 +791,19 @@ importers:
         specifier: 'catalog:'
         version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.19.20)(@vitest/coverage-istanbul@4.1.8)(@vitest/ui@4.1.8)(happy-dom@20.10.2)(jsdom@27.4.0(@noble/hashes@2.3.0))(vite@8.0.16(@types/node@22.19.20)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0))
 
+  apps/graft-poc:
+    dependencies:
+      sqlite-graft:
+        specifier: 0.2.1
+        version: 0.2.1
+    devDependencies:
+      '@fragno-private/typescript-config':
+        specifier: workspace:*
+        version: link:../../packages-private/typescript-config
+      '@types/node':
+        specifier: ^22.19.7
+        version: 22.19.20
+
   example-apps/astro-example:
     dependencies:
       '@fragno-dev/example-fragment':
@@ -17415,6 +17428,34 @@ packages:
 
   sql.js@1.14.1:
     resolution: {integrity: sha512-gcj8zBWU5cFsi9WUP+4bFNXAyF1iRpA3LLyS/DP5xlrNzGmPIizUeBggKa8DbDwdqaKwUcTEnChtd2grWo/x/A==}
+
+  sqlite-graft-darwin-arm64@0.2.1:
+    resolution: {integrity: sha512-vjLiKsIADPvZsQitmyDhtdkWf4cBRaerav/aW5bmux+QIbm46rB+onsx9qk2ilsKaRE7dJ5zXgoLwZquWRg69Q==}
+    cpu: [arm64]
+    os: [darwin]
+
+  sqlite-graft-linux-arm64@0.2.1:
+    resolution: {integrity: sha512-f7CPUdtth/wN9r0TQtvL51jWeXEvBtdsGOOmiIHK6kVidLlOtsn690awFaW5pI2qAVEFkQe9B6UT0hE0Vp7RUg==}
+    cpu: [arm64]
+    os: [linux]
+
+  sqlite-graft-linux-x64@0.2.1:
+    resolution: {integrity: sha512-nU713oZV64WI5iBxjQt3JoPYsr2tgzdWmuKRkOUX2s0QJdmL4Wt9ovU+D/UpktunqArWQTaIrMIkD/yq/LDL9Q==}
+    cpu: [x64]
+    os: [linux]
+
+  sqlite-graft-windows-arm64@0.2.1:
+    resolution: {integrity: sha512-Q+tt1zNLwZRVxOe8PMwRwlvJVfrDV50f7hIGABw8ynGU3rRecU6VnJtMlZtIedJDZPsUxIAloIgu+mnLhKU2yQ==}
+    cpu: [arm64]
+    os: [win32]
+
+  sqlite-graft-windows-x64@0.2.1:
+    resolution: {integrity: sha512-mGzdJ/UJXerR97T6Mw4hxAP9xW81CkguRV0AYkJFEi99FpTUbkByWHCLhh07YI/35Gh36GpF609Oz1k7dFroig==}
+    cpu: [x64]
+    os: [win32]
+
+  sqlite-graft@0.2.1:
+    resolution: {integrity: sha512-misQRXKPqy2LE1wHM0GiQuPGOYrZZSETcM2bLozPNl0W5Xbq0mnk/Y02ceZYZh2uJglZ3sxi395vnomybD5Qrg==}
 
   sqlocal@0.15.2:
     resolution: {integrity: sha512-hvT5wfR90gDEjfywAcnG/dTvEFf4SjDUnVP804NHR14J53bwTZ/RXI4kR8xKM99X+u2vbIBzuSSuNrJqY6bnvw==}
@@ -35398,6 +35439,29 @@ snapshots:
       nearley: 2.20.1
 
   sql.js@1.14.1: {}
+
+  sqlite-graft-darwin-arm64@0.2.1:
+    optional: true
+
+  sqlite-graft-linux-arm64@0.2.1:
+    optional: true
+
+  sqlite-graft-linux-x64@0.2.1:
+    optional: true
+
+  sqlite-graft-windows-arm64@0.2.1:
+    optional: true
+
+  sqlite-graft-windows-x64@0.2.1:
+    optional: true
+
+  sqlite-graft@0.2.1:
+    optionalDependencies:
+      sqlite-graft-darwin-arm64: 0.2.1
+      sqlite-graft-linux-arm64: 0.2.1
+      sqlite-graft-linux-x64: 0.2.1
+      sqlite-graft-windows-arm64: 0.2.1
+      sqlite-graft-windows-x64: 0.2.1
 
   sqlocal@0.15.2(drizzle-orm@0.44.7(@cloudflare/workers-types@5.20260804.1)(@electric-sql/pglite@0.3.16)(@libsql/client@0.15.15)(@opentelemetry/api@1.9.1)(@prisma/client@6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(@types/better-sqlite3@7.6.13)(@types/pg@8.20.0)(better-sqlite3@12.10.0)(kysely@0.28.17)(mysql2@3.22.5(@types/node@22.19.20))(pg@8.21.0)(prisma@6.19.3(@typescript/typescript6@6.0.2))(sql.js@1.14.1))(kysely@0.28.17):
     dependencies:
