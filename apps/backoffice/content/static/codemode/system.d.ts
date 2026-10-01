@@ -15,6 +15,7 @@
 /// <reference path="/static/codemode/providers/web.d.ts" />
 /// <reference path="/static/codemode/providers/api.d.ts" />
 /// <reference path="/static/codemode/providers/mcp.d.ts" />
+/// <reference path="/static/codemode/providers/connector.d.ts" />
 /// <reference path="/static/codemode/providers/otp.d.ts" />
 /// <reference path="/static/codemode/providers/pi.d.ts" />
 /// <reference path="/static/codemode/providers/resend.d.ts" />
@@ -48,6 +49,7 @@ interface BackofficeCodemodeScopedProviders {
   web: WebCodemodeProvider;
   api: ApiCodemodeProvider;
   mcp: McpCodemodeProvider;
+  connector: ConnectorCodemodeProvider;
   otp: OtpCodemodeProvider;
   pi: PiCodemodeProvider;
   resend: ResendCodemodeProvider;

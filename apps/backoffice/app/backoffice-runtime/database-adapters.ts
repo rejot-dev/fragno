@@ -16,6 +16,7 @@ export type BackofficeDatabaseAdapterKind =
   | "marketplace"
   | "github"
   | "mcp"
+  | "projectConnector"
   | "otp"
   | "pi"
   | "resend"

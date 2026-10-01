@@ -3,8 +3,8 @@
 # Backoffice static agent-context graph
 
 - **Static mount:** `/static/`
-- **Files:** 49
-- **Entry points:** 1 `SYSTEM.md` + 16 skills
+- **Files:** 51
+- **Entry points:** 1 `SYSTEM.md` + 17 skills
 
 ## How context is loaded
 
@@ -38,15 +38,16 @@
    ├─ /static/codemode/providers/web.d.ts — web tools [line 15]
    ├─ /static/codemode/providers/api.d.ts — api tools [line 16]
    ├─ /static/codemode/providers/mcp.d.ts — mcp tools [line 17]
-   ├─ /static/codemode/providers/otp.d.ts — otp tools [line 18]
-   ├─ /static/codemode/providers/pi.d.ts — pi tools [line 19]
-   ├─ /static/codemode/providers/resend.d.ts — resend tools [line 20]
-   ├─ /static/codemode/providers/reson8.d.ts — reson8 tools [line 21]
-   ├─ /static/codemode/providers/sandbox.d.ts — sandbox tools [line 22]
-   ├─ /static/codemode/providers/telegram.d.ts — telegram tools [line 23]
-   ├─ /static/codemode/providers/js.d.ts — js tools [line 24]
-   ├─ /static/codemode/providers/upload.d.ts — upload tools [line 25]
-   └─ /static/codemode/sources/mcp.d.ts — Backoffice domain tool providers [line 26]
+   ├─ /static/codemode/providers/connector.d.ts — connector tools [line 18]
+   ├─ /static/codemode/providers/otp.d.ts — otp tools [line 19]
+   ├─ /static/codemode/providers/pi.d.ts — pi tools [line 20]
+   ├─ /static/codemode/providers/resend.d.ts — resend tools [line 21]
+   ├─ /static/codemode/providers/reson8.d.ts — reson8 tools [line 22]
+   ├─ /static/codemode/providers/sandbox.d.ts — sandbox tools [line 23]
+   ├─ /static/codemode/providers/telegram.d.ts — telegram tools [line 24]
+   ├─ /static/codemode/providers/js.d.ts — js tools [line 25]
+   ├─ /static/codemode/providers/upload.d.ts — upload tools [line 26]
+   └─ /static/codemode/sources/mcp.d.ts — Backoffice domain tool providers [line 27]
 ```
 
 ## Skill entry points
@@ -105,6 +106,18 @@
 │     ├─ /static/skills/generating-backoffice-uis/SKILL.md — Generating Backoffice UIs [line 17] [cycle]
 │     └─ /static/codemode/providers/upload.d.ts — upload tools [line 29]
 └─ /static/skills/workflows/SKILL.md — Workflows [line 34] [already expanded]
+```
+
+### `connector-connection`
+
+> **Load when:** Connect Gmail and other OAuth providers through Backoffice Connector. Use when
+> starting provider consent, checking connection requests, inspecting verified accounts, or
+> executing Connector actions.
+
+```text
+/static/skills/connector-connection/SKILL.md — Connector connection
+├─ /static/codemode/providers/connector.d.ts — connector tools [line 78]
+└─ /static/terminal/terminal-spec.json — terminal-spec.json JSON data [line 78]
 ```
 
 ### `forms`
@@ -244,4 +257,3 @@
 ## Not reachable from `SYSTEM.md` or any `SKILL.md`
 
 - `/static/automations/project-files-configure.workflow.js`
-- `/static/terminal/terminal-spec.json`

@@ -11,6 +11,10 @@ export default [
   route("backoffice/auth/bootstrap", "routes/backoffice/auth-bootstrap.tsx"),
   route("backoffice/sign-up", "routes/backoffice/sign-up.tsx"),
   route("backoffice/verify-email", "routes/backoffice/verify-email.tsx"),
+  route(
+    "backoffice/connections/connector/return/:scopeSegment",
+    "routes/backoffice/connections/project-connector-return.tsx",
+  ),
   layout("layouts/backoffice-layout.tsx", { id: BACKOFFICE_LAYOUT_ROUTE_ID }, [
     ...prefix("backoffice", [
       index("routes/backoffice/index.tsx"),
@@ -301,6 +305,7 @@ export default [
     route("reson8/:orgSlug/*", "routes/api/reson8.ts"),
     route("mcp/:scopeSegment/servers/:serverSlug/auth/start", "routes/api/mcp-oauth-start.ts"),
     route("mcp/:scopeSegment/*", "routes/api/mcp.ts"),
+    route("connector/:scopeSegment/*", "routes/api/project-connector.ts"),
     route(
       "http/:scopeSegment/connections/:connectionSlug/auth/oauth/start",
       "routes/api/api-oauth-start.ts",

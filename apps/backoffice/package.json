@@ -60,6 +60,7 @@
     "@fragno-dev/mcp-fragment": "workspace:*",
     "@fragno-dev/otp-fragment": "workspace:*",
     "@fragno-dev/pi-harness": "workspace:*",
+    "@fragno-dev/project-connector-fragment": "workspace:*",
     "@fragno-dev/resend-fragment": "workspace:*",
     "@fragno-dev/reson8-fragment": "workspace:*",
     "@fragno-dev/tanstack-db-adapter": "workspace:*",

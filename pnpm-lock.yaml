@@ -240,6 +240,9 @@ importers:
       '@fragno-dev/pi-harness':
         specifier: workspace:*
         version: link:../../packages/pi-harness
+      '@fragno-dev/project-connector-fragment':
+        specifier: workspace:*
+        version: link:../../packages/project-connector-fragment
       '@fragno-dev/resend-fragment':
         specifier: workspace:*
         version: link:../../packages/resend-fragment
@@ -3067,6 +3070,61 @@ importers:
       tsdown:
         specifier: ^0.22.4
         version: 0.22.4(@typescript/typescript6@6.0.2)(oxc-resolver@11.21.2)(tsx@4.22.4)(vue-tsc@3.3.7(@typescript/typescript6@6.0.2))
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@25.9.3)(happy-dom@20.10.2)(jsdom@27.4.0(@noble/hashes@2.3.0))(vite@8.0.16(@types/node@25.9.3)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0))
+
+  packages/project-connector-fragment:
+    dependencies:
+      '@fragno-dev/core':
+        specifier: workspace:*
+        version: link:../fragno
+      '@fragno-dev/db':
+        specifier: workspace:*
+        version: link:../fragno-db
+      '@oomol-lab/connector':
+        specifier: ^1.2.0
+        version: 1.2.0
+      '@standard-schema/spec':
+        specifier: ^1.1.0
+        version: 1.1.0
+      react:
+        specifier: '>=18.0.0'
+        version: 19.2.7
+      solid-js:
+        specifier: '>=1.0.0'
+        version: 1.9.13
+      svelte:
+        specifier: '>=4.0.0'
+        version: 5.56.3
+      typescript:
+        specifier: 'catalog:'
+        version: '@typescript/typescript6@6.0.2'
+      vue:
+        specifier: '>=3.0.0'
+        version: 3.5.35(@typescript/typescript6@6.0.2)
+      zod:
+        specifier: 4.5.4
+        version: 4.5.4
+    devDependencies:
+      '@fragno-dev/test':
+        specifier: workspace:*
+        version: link:../fragno-test
+      '@fragno-dev/unplugin-fragno':
+        specifier: workspace:*
+        version: link:../unplugin-fragno
+      '@fragno-private/typescript-config':
+        specifier: workspace:*
+        version: link:../../packages-private/typescript-config
+      '@types/node':
+        specifier: ^25.2.2
+        version: 25.9.3
+      tsdown:
+        specifier: ^0.22.4
+        version: 0.22.4(@typescript/typescript6@6.0.2)(oxc-resolver@11.21.2)(tsx@4.22.4)(vue-tsc@3.3.7(@typescript/typescript6@6.0.2))
+      tsx:
+        specifier: ^4.21.0
+        version: 4.22.4
       vitest:
         specifier: 'catalog:'
         version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@25.9.3)(happy-dom@20.10.2)(jsdom@27.4.0(@noble/hashes@2.3.0))(vite@8.0.16(@types/node@25.9.3)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0))
@@ -6670,6 +6728,10 @@ packages:
 
   '@one-ini/wasm@0.1.1':
     resolution: {integrity: sha512-XuySG1E38YScSJoMlqovLru4KTUNSjgVTIjyh7qMX6aNN5HY5Ct5LhRJdxO79JtTzKfzV/bnWpz+zquYrISsvw==}
+
+  '@oomol-lab/connector@1.2.0':
+    resolution: {integrity: sha512-UY3D8IWTkXNuLCdtTOxk1UPqhQEIuo5mabex91MNtD6Nacfe2tBof19O5+M7rBO/fl4mmB9esMq0Vn57l34WRg==}
+    engines: {node: '>=18'}
 
   '@oozcitak/dom@2.0.2':
     resolution: {integrity: sha512-GjpKhkSYC3Mj4+lfwEyI1dqnsKTgwGy48ytZEhm4A/xnH/8z9M3ZVXKr/YGQi3uCLs1AEBS+x5T2JPiueEDW8w==}
@@ -23170,6 +23232,8 @@ snapshots:
       '@octokit/webhooks-methods': 6.0.0
 
   '@one-ini/wasm@0.1.1': {}
+
+  '@oomol-lab/connector@1.2.0': {}
 
   '@oozcitak/dom@2.0.2':
     dependencies:

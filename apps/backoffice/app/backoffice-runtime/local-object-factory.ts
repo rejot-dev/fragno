@@ -19,6 +19,7 @@ import type { BackofficeObjectImplementation } from "../../workers/lib/backoffic
 import { InMemoryMarketplaceObject } from "../../workers/marketplace.do";
 import { InMemoryMcpObject } from "../../workers/mcp.do";
 import { InMemoryOtpObject } from "../../workers/otp.do";
+import { InMemoryProjectConnectorObject } from "../../workers/project-connector.do";
 import { InMemoryResendObject } from "../../workers/resend.do";
 import { InMemoryReson8Object } from "../../workers/reson8.do";
 import { InMemorySandboxManagerObject } from "../../workers/sandbox-manager.do";
@@ -281,6 +282,8 @@ const localObjectFactories = {
       runtime,
       implementation,
     }),
+  PROJECT_CONNECTOR: ({ state, env, runtime, implementation }) =>
+    new InMemoryProjectConnectorObject({ state, env, runtime, implementation }),
   OTP: ({ state, env, runtime, implementation }) =>
     new InMemoryOtpObject({
       state,
@@ -582,6 +585,7 @@ export class LocalObjectFactory implements BackofficeObjectFactory {
         resend: this.#hasNamespace("RESEND"),
         reson8: this.#hasNamespace("RESON8"),
         mcp: this.#hasNamespace("MCP"),
+        projectConnector: this.#hasNamespace("PROJECT_CONNECTOR"),
         upload: this.#hasNamespace("UPLOAD"),
         github: this.#hasNamespace("GITHUB"),
         githubWebhookRouter: this.#hasNamespace("GITHUB_WEBHOOK_ROUTER"),
