@@ -1879,6 +1879,9 @@ importers:
       capnweb:
         specifier: 0.12.0
         version: 0.12.0
+      sqlite-graft:
+        specifier: 0.2.1
+        version: 0.2.1
     devDependencies:
       '@cloudflare/workers-types':
         specifier: ^5.20260804.1

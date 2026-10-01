@@ -68,8 +68,12 @@ export async function runNodeRuntimeScenario<TBindings extends NodeRuntimeObject
     runtime = objectRuntime;
     const objects = objectRuntime.objects;
     const alarms = { tick: () => objectRuntime.tick() };
+    const scenarioServer = definition.server({ objects, nowEpochMs: clock.nowEpochMs });
     const context: NodeRuntimeScenarioContext<TBindings> = {
-      server: definition.server({ objects, nowEpochMs: clock.nowEpochMs }),
+      server: {
+        fetch: async (request) =>
+          await objectRuntime.runWithOutputGate(async () => await scenarioServer.fetch(request)),
+      },
       objects,
       alarms,
       clock,
