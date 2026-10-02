@@ -21,7 +21,7 @@ const publishedManifest: MarketplaceArtifactManifest = {
 describe("marketplace ingestion request rules", () => {
   test("rejects organization-owned targets from another organization before access checks", async () => {
     const projectExists = vi.fn(async () => true);
-    const organizationHasMember = vi.fn(async () => true);
+    const organizationHasActiveMember = vi.fn(async () => true);
 
     expect(() =>
       assertMarketplaceIngestionTargetBelongsToOrganization({
@@ -39,11 +39,11 @@ describe("marketplace ingestion request rules", () => {
         organizationId: "org-1",
         targetScope: { kind: "project", orgId: "org-2", projectId: "project-1" },
         projectExists,
-        organizationHasMember,
+        organizationHasActiveMember,
       }),
     ).rejects.toThrow("Marketplace ingestion target belongs to another organization.");
     expect(projectExists).not.toHaveBeenCalled();
-    expect(organizationHasMember).not.toHaveBeenCalled();
+    expect(organizationHasActiveMember).not.toHaveBeenCalled();
   });
 
   test("checks project existence and organization membership for their target kinds", async () => {
@@ -52,7 +52,7 @@ describe("marketplace ingestion request rules", () => {
         organizationId: "org-1",
         targetScope: { kind: "project", orgId: "org-1", projectId: "missing-project" },
         projectExists: async () => false,
-        organizationHasMember: async () => true,
+        organizationHasActiveMember: async () => true,
       }),
     ).rejects.toThrow("Marketplace ingestion project target was not found.");
 
@@ -61,7 +61,7 @@ describe("marketplace ingestion request rules", () => {
         organizationId: "org-1",
         targetScope: { kind: "user", userId: "former-member" },
         projectExists: async () => true,
-        organizationHasMember: async () => false,
+        organizationHasActiveMember: async () => false,
       }),
     ).rejects.toThrow("Marketplace ingestion user target is not a member of the organization.");
   });
