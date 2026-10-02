@@ -257,7 +257,15 @@ describe("createEventRuntime.emitEvent", () => {
   it("routes scoped events to an explicit target scope when authorized", async () => {
     const triggerOrgIngestEvent = vi.fn(async () => undefined);
     const triggerUserIngestEvent = vi.fn(async () => undefined);
+    const getUserAuthorityFacts = vi.fn(async () => ({
+      active: true,
+      role: "user",
+      organizationMember: true,
+    }));
     const objects = {
+      auth: {
+        singleton: () => ({ commands: { getUserAuthorityFacts } }),
+      },
       automations: {
         forOrg: vi.fn(() => ({ commands: { triggerIngestEvent: triggerOrgIngestEvent } })),
         forUser: vi.fn(() => ({ commands: { triggerIngestEvent: triggerUserIngestEvent } })),
@@ -281,12 +289,88 @@ describe("createEventRuntime.emitEvent", () => {
       scope: { kind: "user", userId: "user-1" },
     });
 
+    expect(getUserAuthorityFacts).toHaveBeenCalledWith({
+      organizationId: "org-1",
+      userId: "user-1",
+    });
     expect(triggerOrgIngestEvent).not.toHaveBeenCalled();
     expect(triggerUserIngestEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         scope: { kind: "user", userId: "user-1" },
       }),
     );
+  });
+
+  it("does not enqueue user-scoped events for users outside the owner organization", async () => {
+    const triggerUserIngestEvent = vi.fn(async () => undefined);
+    const objects = {
+      auth: {
+        singleton: () => ({
+          commands: {
+            getUserAuthorityFacts: async () => ({
+              active: true,
+              role: "user",
+              organizationMember: false,
+            }),
+          },
+        }),
+      },
+      automations: {
+        forOrg: vi.fn(() => ({ commands: { triggerIngestEvent: vi.fn(async () => undefined) } })),
+        forUser: vi.fn(() => ({ commands: { triggerIngestEvent: triggerUserIngestEvent } })),
+      },
+    } as unknown as BackofficeObjectRegistry;
+    const runtime = createEventRuntime({
+      objects,
+      kernel: new BackofficeKernel(TEST_KERNEL_RUNTIME),
+      execution: automationExecution({ kind: "org", orgId: "org-1" }),
+      parentEvent: createEvent({ scope: { kind: "org", orgId: "org-1" } }),
+    });
+
+    await expect(
+      runtime.emitEvent({
+        eventType: "custom.event",
+        targetScope: { kind: "user", userId: "user-2" },
+      }),
+    ).rejects.toBeInstanceOf(BackofficeForbiddenError);
+
+    expect(triggerUserIngestEvent).not.toHaveBeenCalled();
+  });
+
+  it("does not enqueue user-scoped events for banned members with stale membership rows", async () => {
+    const triggerUserIngestEvent = vi.fn(async () => undefined);
+    const objects = {
+      auth: {
+        singleton: () => ({
+          commands: {
+            getUserAuthorityFacts: async () => ({
+              active: false,
+              role: "user",
+              organizationMember: true,
+            }),
+          },
+        }),
+      },
+      automations: {
+        forOrg: vi.fn(() => ({ commands: { triggerIngestEvent: vi.fn(async () => undefined) } })),
+        forUser: vi.fn(() => ({ commands: { triggerIngestEvent: triggerUserIngestEvent } })),
+      },
+    } as unknown as BackofficeObjectRegistry;
+    const runtime = createEventRuntime({
+      objects,
+      kernel: new BackofficeKernel(TEST_KERNEL_RUNTIME),
+      execution: automationExecution({ kind: "org", orgId: "org-1" }),
+      parentEvent: createEvent({ scope: { kind: "org", orgId: "org-1" } }),
+    });
+
+    await expect(
+      runtime.emitEvent({
+        eventType: "custom.event",
+        targetScope: { kind: "user", userId: "user-1" },
+      }),
+    ).rejects.toBeInstanceOf(BackofficeForbiddenError);
+
+    expect(triggerUserIngestEvent).not.toHaveBeenCalled();
   });
 
   it("resolves project targets through the owning org before enqueueing", async () => {

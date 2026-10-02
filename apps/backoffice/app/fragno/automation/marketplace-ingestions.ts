@@ -118,7 +118,7 @@ export const assertMarketplaceIngestionTargetAccessible = async (input: {
   organizationId: string;
   targetScope: BackofficeRoutableScope;
   projectExists: (projectId: string) => Promise<boolean>;
-  organizationHasMember: (userId: string) => Promise<boolean>;
+  organizationHasActiveMember: (userId: string) => Promise<boolean>;
 }): Promise<void> => {
   assertMarketplaceIngestionTargetBelongsToOrganization(input);
 
@@ -133,7 +133,7 @@ export const assertMarketplaceIngestionTargetAccessible = async (input: {
 
   if (
     input.targetScope.kind === "user" &&
-    !(await input.organizationHasMember(input.targetScope.userId))
+    !(await input.organizationHasActiveMember(input.targetScope.userId))
   ) {
     throw new MarketplaceIngestionTargetAccessError(
       "Marketplace ingestion user target is not a member of the organization.",

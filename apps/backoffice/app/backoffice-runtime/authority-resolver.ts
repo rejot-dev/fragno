@@ -72,6 +72,16 @@ export type BackofficeIdentityDirectory = {
   }): Promise<UserAuthorityFacts>;
 };
 
+/**
+ * Reports whether identity facts describe a live member of the requested organization.
+ *
+ * Banned and missing users stay inactive even when a stale membership row survives, so
+ * membership-gated decisions must use this instead of reading the member row directly.
+ */
+export function isActiveOrganizationMember(facts: UserAuthorityFacts): boolean {
+  return facts.active && facts.organizationMember;
+}
+
 const noPermissions = [] as const satisfies readonly BackofficePermissionRequirement[];
 
 type CreateBackofficeAuthorityResolverOptions = {

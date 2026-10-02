@@ -4,6 +4,7 @@ import { defineFragment } from "@fragno-dev/core";
 import { withDatabase, type TxResult } from "@fragno-dev/db";
 import type { WorkflowsFragmentServices } from "@fragno-dev/workflows";
 
+import { isActiveOrganizationMember } from "@/backoffice-runtime/authority-resolver";
 import {
   createBackofficeSystemExecution,
   type BackofficeContextScope,
@@ -296,6 +297,10 @@ const handleForwardEventRouteAction = async ({
     ownerScope,
     targetScope: scope,
     operation: "automation.forward-event",
+    organizationHasActiveMember: async (input) =>
+      isActiveOrganizationMember(
+        await runtime.objects.auth.singleton().commands.getUserAuthorityFacts(input),
+      ),
   });
 
   const forwardedEvent = {

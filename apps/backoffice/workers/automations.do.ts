@@ -4,6 +4,7 @@ import { DurableObject, RpcTarget } from "cloudflare:workers";
 
 import type { Models } from "@earendil-works/pi-ai";
 
+import { isActiveOrganizationMember } from "@/backoffice-runtime/authority-resolver";
 import {
   backofficeContextScopesEqual,
   createBackofficeServiceExecution,
@@ -704,11 +705,12 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
             runtime.automationFragment.services.resolveProjectForExecution({ projectId }),
           ),
         ),
-      organizationHasMember: async (userId) =>
-        await this.#runtimeServices.objects.auth.singleton().commands.hasOrganizationMember({
-          organizationId: scope.orgId,
-          userId,
-        }),
+      organizationHasActiveMember: async (userId) =>
+        isActiveOrganizationMember(
+          await this.#runtimeServices.objects.auth
+            .singleton()
+            .commands.getUserAuthorityFacts({ organizationId: scope.orgId, userId }),
+        ),
     });
 
     const resolvedArtifact = resolveMarketplaceIngestionArtifactVersion(

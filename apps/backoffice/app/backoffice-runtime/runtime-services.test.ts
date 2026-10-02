@@ -8,6 +8,7 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
 
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
+import { isActiveOrganizationMember } from "./authority-resolver";
 import { createInMemoryBackofficeRuntime } from "./in-memory-runtime";
 import {
   BackofficeKernel,
@@ -143,6 +144,78 @@ describe("Backoffice authority runtime wiring", () => {
         }),
       ).rejects.toMatchObject({ reason: "principal-permission-denied" });
       expect(executeAfterRevocation).not.toHaveBeenCalled();
+    } finally {
+      await runtime.cleanup();
+    }
+  });
+
+  it("denies org-owned user scopes for banned members with stale membership rows", async () => {
+    const runtime = await createInMemoryBackofficeRuntime();
+
+    try {
+      const auth = runtime.objects.auth.singleton();
+      const organizationId = "scope-membership-org";
+      const memberUserId = "scope-membership-member";
+      await auth.commands.applyScenarioFixture({
+        users: [
+          {
+            id: "scope-membership-owner",
+            email: "scope-membership-owner@example.com",
+            role: "user",
+            status: "active",
+          },
+          {
+            id: memberUserId,
+            email: "scope-membership-member@example.com",
+            role: "user",
+            status: "active",
+          },
+        ],
+        organizations: [
+          {
+            id: organizationId,
+            name: "Scope Membership Org",
+            slug: "scope-membership-org",
+            ownerUserId: "scope-membership-owner",
+            ownerRoles: ["owner"],
+          },
+        ],
+        members: [{ organizationId, userId: memberUserId, roles: ["member"] }],
+      });
+
+      const kernel = new BackofficeKernel(runtime.services);
+      const organizationHasActiveMember = async (input: {
+        organizationId: string;
+        userId: string;
+      }) => isActiveOrganizationMember(await auth.commands.getUserAuthorityFacts(input));
+      const scopeCheck = {
+        ownerScope: { kind: "org", orgId: organizationId } as const,
+        targetScope: { kind: "user", userId: memberUserId } as const,
+        operation: "automation.forward-event" as const,
+        organizationHasActiveMember,
+      };
+
+      await expect(kernel.assertScopeAllowedByOwner(scopeCheck)).resolves.toBeUndefined();
+
+      await auth.commands.applyScenarioFixture({
+        users: [
+          {
+            id: memberUserId,
+            email: "scope-membership-member@example.com",
+            role: "user",
+            status: "banned",
+          },
+        ],
+      });
+
+      // The ban retains the member row, so a row-existence check would still pass here.
+      await expect(
+        auth.commands.hasOrganizationMember({ organizationId, userId: memberUserId }),
+      ).resolves.toBe(true);
+
+      await expect(kernel.assertScopeAllowedByOwner(scopeCheck)).rejects.toMatchObject({
+        reason: "policy-denied",
+      });
     } finally {
       await runtime.cleanup();
     }
