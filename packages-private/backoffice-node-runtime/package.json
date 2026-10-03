@@ -3,6 +3,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./graft-control-store": {
+      "types": "./dist/graft/graft-control-store.d.ts",
+      "default": "./dist/graft/graft-control-store.js"
+    },
     "./graft-database-operations": {
       "types": "./dist/graft/graft-database-operations.d.ts",
       "default": "./dist/graft/graft-database-operations.js"

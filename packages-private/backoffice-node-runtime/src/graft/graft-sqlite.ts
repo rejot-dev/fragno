@@ -3,11 +3,13 @@ import { dirname, join, resolve } from "node:path";
 import { arch, platform } from "node:process";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
+import { isMainThread } from "node:worker_threads";
 
 import { getLoadablePath } from "sqlite-graft";
 
 import type { GraftDatabaseOperations } from "./graft-database-operations";
 
+const initializedGraftConfigEnvironmentKey = "FRAGNO_GRAFT_SQLITE_INITIALIZED_CONFIG";
 let initializedConfigPath: string | null = null;
 
 function resolveGraftExtensionPath(): string {
@@ -34,6 +36,15 @@ function resolveGraftExtensionPath(): string {
 /** Registers the pinned Graft VFS once for this Node process and configuration file. */
 export function initializeGraftSqlite(configPath: string): void {
   const absoluteConfigPath = resolve(configPath);
+  if (
+    !isMainThread &&
+    initializedConfigPath === null &&
+    process.env[initializedGraftConfigEnvironmentKey] === absoluteConfigPath
+  ) {
+    // Worker isolates have separate module state but inherit the process-wide VFS registration.
+    initializedConfigPath = absoluteConfigPath;
+    return;
+  }
   if (initializedConfigPath !== null) {
     if (initializedConfigPath !== absoluteConfigPath) {
       throw new Error(
@@ -54,6 +65,7 @@ export function initializeGraftSqlite(configPath: string): void {
     bootstrap.close();
   }
   initializedConfigPath = absoluteConfigPath;
+  process.env[initializedGraftConfigEnvironmentKey] = absoluteConfigPath;
 }
 
 /** Opens a fresh local Graft volume whose remote log is created by its first push. */

@@ -8,12 +8,12 @@ from consumer-defined and test-only tables. Source code remains authoritative.
 
 ## Schema inventory
 
-| Database                                  | Runtime                    | Package-owned tables                                                               | Package-owned indexes |
-| ----------------------------------------- | -------------------------- | ---------------------------------------------------------------------------------- | --------------------- |
-| `objects.sqlite`                          | Local file-backed runtime  | `object_instances`, `object_values`, `object_alarms`, `object_coordination_claims` | `object_alarms_due`   |
-| Graft control database                    | Single-owner Graft runtime | `node_runtime_control_format`, `node_runtime_object_directory`                     | None                  |
-| One Graft database per object             | Single-owner Graft runtime | `node_runtime_object_identity`, `node_runtime_values`, `node_runtime_alarm`        | None                  |
-| One local managed SQL database per object | Local file-backed runtime  | None                                                                               | None                  |
+| Database                                  | Runtime                     | Package-owned tables                                                                                                                                               | Package-owned indexes                                                                                                             |
+| ----------------------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| `objects.sqlite`                          | Local file-backed runtime   | `object_instances`, `object_values`, `object_alarms`, `object_coordination_claims`                                                                                 | `object_alarms_due`                                                                                                               |
+| Graft control database                    | Graft runtime control plane | `node_runtime_control_format`, `node_runtime_object_directory`, `node_runtime_object_ownership`, `node_runtime_node_lease`, `node_runtime_control_command_receipt` | `node_runtime_node_lease_by_expiry`, `node_runtime_object_ownership_by_owner`, `node_runtime_control_command_receipt_by_creation` |
+| One Graft database per object             | Graft object runtime        | `node_runtime_object_identity`, `node_runtime_object_authority`, `node_runtime_values`, `node_runtime_alarm`                                                       | None                                                                                                                              |
+| One local managed SQL database per object | Local file-backed runtime   | None                                                                                                                                                               | None                                                                                                                              |
 
 The package defines no SQLite views or triggers. It currently has no schema migration framework.
 Local runtime tables use `CREATE ... IF NOT EXISTS`; Graft databases are provisioned once with a
@@ -138,13 +138,14 @@ They are applied by `src/sqlite/sqlite-connection-config.ts`.
 
 ## 2. Graft control database
 
-**Owner:** `src/graft/graft-object-directory.ts`
+**Owner:** `src/graft/graft-control-schema.ts`
 
 **Locator:** the remote log ID returned by `provisionGraftControlDatabase()`
 
-This database is the first control-plane slice. It stores only the control format and stable object
-to remote-log mappings. It does **not** yet contain node leases, ownership epochs, routing metadata,
-command receipts, or alarm discovery state.
+This database stores the control format, stable object-to-log mappings, process-incarnation leases,
+object ownership epochs, and durable command receipts. Alarm discovery state and peer-routing
+metadata remain planned. The authority-bound runtime consumes lease and ownership decisions during
+local activation; the compatibility single-owner Graft runtime does not.
 
 ### Complete DDL
 
@@ -158,17 +159,55 @@ CREATE TABLE node_runtime_object_directory (
   object_id TEXT PRIMARY KEY,
   remote_log_id TEXT NOT NULL UNIQUE
 ) STRICT;
+
+CREATE TABLE node_runtime_object_ownership (
+  object_id TEXT PRIMARY KEY REFERENCES node_runtime_object_directory(object_id),
+  epoch TEXT NOT NULL,
+  lifecycle TEXT NOT NULL CHECK (lifecycle IN ('unowned', 'restoring', 'ready')),
+  owner_node_id TEXT NOT NULL,
+  claim_id TEXT NOT NULL,
+  CHECK (
+    (lifecycle = 'unowned' AND owner_node_id = '' AND claim_id = '') OR
+    (lifecycle IN ('restoring', 'ready') AND owner_node_id <> '' AND claim_id <> '')
+  )
+) STRICT;
+
+CREATE TABLE node_runtime_node_lease (
+  node_id TEXT PRIMARY KEY,
+  process_generation TEXT NOT NULL,
+  private_address TEXT NOT NULL,
+  compatibility_version INTEGER NOT NULL,
+  expires_at_ms INTEGER NOT NULL,
+  renewal_id TEXT NOT NULL
+) STRICT;
+
+CREATE TABLE node_runtime_control_command_receipt (
+  command_id TEXT PRIMARY KEY,
+  command_name TEXT NOT NULL,
+  command_input_json TEXT NOT NULL,
+  result_json TEXT NOT NULL,
+  created_at_ms INTEGER NOT NULL
+) STRICT;
+
+CREATE INDEX node_runtime_node_lease_by_expiry
+ON node_runtime_node_lease (expires_at_ms, node_id);
+
+CREATE INDEX node_runtime_object_ownership_by_owner
+ON node_runtime_object_ownership (owner_node_id, object_id);
+
+CREATE INDEX node_runtime_control_command_receipt_by_creation
+ON node_runtime_control_command_receipt (created_at_ms, command_id);
 ```
 
 Provisioning inserts this format row:
 
 ```sql
 INSERT INTO node_runtime_control_format (singleton, format)
-VALUES (1, 1);
+VALUES (1, 2);
 ```
 
 The insert is data rather than DDL, but it is part of the schema compatibility contract. Runtime
-startup refuses a control database whose singleton format is not `1`.
+startup refuses a control database whose singleton format is not `2`.
 
 ### `node_runtime_control_format`
 
@@ -177,14 +216,15 @@ A one-row persisted format marker.
 | Column      | Meaning                                            |
 | ----------- | -------------------------------------------------- |
 | `singleton` | Must be `1`; prevents multiple active format rows. |
-| `format`    | Current control schema format, exactly `1`.        |
+| `format`    | Current control schema format, exactly `2`.        |
 
 There is no in-place upgrade path yet. A format change must add an explicit migration or provision a
 new control database and migration procedure.
 
 ### `node_runtime_object_directory`
 
-Stable identity-to-storage mapping for the single-owner Graft runtime.
+Stable identity-to-storage mapping shared by the single-owner runtime and distributed control
+commands.
 
 | Column          | Meaning                                                |
 | --------------- | ------------------------------------------------------ |
@@ -195,6 +235,59 @@ Both values are unique. An object is first provisioned and pushed to its own Gra
 mapping is inserted and the control database is pushed. A failure after object provisioning but
 before directory durability may leave an unreferenced remote log; the runtime never substitutes it
 for a different object's mapping.
+
+### `node_runtime_object_ownership`
+
+The current durable owner and monotonically increasing fencing epoch for each directory row.
+
+| Column          | Meaning                                                                                |
+| --------------- | -------------------------------------------------------------------------------------- |
+| `object_id`     | Primary key and foreign key to the stable object directory row.                        |
+| `epoch`         | Non-negative decimal string, bounded to signed 64-bit range and incremented on claims. |
+| `lifecycle`     | Exactly `unowned`, `restoring`, or `ready`.                                            |
+| `owner_node_id` | Owning process-incarnation node ID; empty only while `unowned`.                        |
+| `claim_id`      | Identity of the exact claim; empty only while `unowned`.                               |
+
+The table constraint makes owner and claim identity mandatory for owned variants and absent for the
+unowned variant. Releasing ownership preserves `epoch`; a later claim advances it. A control claim
+may replace an owned row only when the previous node lease is absent or expired in the same control
+snapshot.
+
+### `node_runtime_node_lease`
+
+One renewable authority record per process incarnation.
+
+| Column                  | Meaning                                                          |
+| ----------------------- | ---------------------------------------------------------------- |
+| `node_id`               | Unique process-incarnation identity.                             |
+| `process_generation`    | Additional generation checked by renewal and ownership commands. |
+| `private_address`       | Advertised peer-routing address.                                 |
+| `compatibility_version` | Runtime protocol compatibility version.                          |
+| `expires_at_ms`         | Wall-clock epoch-millisecond authority deadline.                 |
+| `renewal_id`            | Last confirmed renewal identity required by the next renewal.    |
+
+`node_runtime_node_lease_by_expiry` supports future expiry scans. The current control store performs
+exact node lookups for command preconditions; node watchdog and peer-routing integration remain
+planned.
+
+### `node_runtime_control_command_receipt`
+
+Durable idempotency and uncertainty-reconciliation record written in the same local SQLite
+transaction as each control decision.
+
+| Column               | Meaning                                                                         |
+| -------------------- | ------------------------------------------------------------------------------- |
+| `command_id`         | Globally unique logical command identity.                                       |
+| `command_name`       | Named operation such as `claim-object` or `renew-node-lease`.                   |
+| `command_input_json` | Canonical normalized input used to reject command-ID reuse with different data. |
+| `result_json`        | Exact command outcome returned after remote durability is confirmed.            |
+| `created_at_ms`      | Caller-supplied command creation time for bounded future receipt retention.     |
+
+After a failed push response, `GraftControlStore` discards the speculative branch and opens a fresh
+clone. A matching receipt proves the prior result. If no receipt is visible, the store reruns the
+named semantic command with the same identity and current preconditions. It never replays raw SQL
+from the losing branch. `node_runtime_control_command_receipt_by_creation` supports future bounded
+receipt collection; collection is not implemented yet.
 
 ### Graft connection settings
 
@@ -210,7 +303,7 @@ WAL is deliberately not used with the Graft VFS. `graft_clone`, `graft_pull`, `g
 
 ## 3. Per-object Graft database
 
-**Owner:** `src/graft/graft-object-directory.ts`
+**Owners:** `src/graft/graft-object-directory.ts`, `src/graft/graft-object-authority.ts`
 
 **Cardinality:** one remote Graft log per canonical object identity
 
@@ -224,6 +317,19 @@ an `object_id` column.
 CREATE TABLE node_runtime_object_identity (
   singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
   object_id TEXT NOT NULL UNIQUE
+) STRICT;
+
+CREATE TABLE node_runtime_object_authority (
+  singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+  object_id TEXT NOT NULL UNIQUE REFERENCES node_runtime_object_identity(object_id),
+  epoch TEXT NOT NULL,
+  owner_node_id TEXT NOT NULL,
+  process_generation TEXT NOT NULL,
+  claim_id TEXT NOT NULL,
+  CHECK (
+    (epoch = '0' AND owner_node_id = '' AND process_generation = '' AND claim_id = '') OR
+    (epoch <> '0' AND owner_node_id <> '' AND process_generation <> '' AND claim_id <> '')
+  )
 ) STRICT;
 
 CREATE TABLE node_runtime_values (
@@ -243,10 +349,15 @@ Provisioning also records the database's identity:
 ```sql
 INSERT INTO node_runtime_object_identity (singleton, object_id)
 VALUES (1, ?);
+
+INSERT INTO node_runtime_object_authority
+  (singleton, object_id, epoch, owner_node_id, process_generation, claim_id)
+VALUES (1, ?, '0', '', '', '');
 ```
 
-The worker verifies this row after cloning and refuses to activate a database mapped to a different
-object identity.
+The worker verifies the identity after cloning and refuses to activate a database mapped to a
+different object identity. The initial authority row is unfenced at epoch `0` until the first
+authority-bound activation pushes its claim.
 
 ### `node_runtime_object_identity`
 
@@ -257,8 +368,23 @@ A one-row binding between the remote log and its canonical runtime object.
 | `singleton` | Must be `1`.                                                           |
 | `object_id` | Canonical object identity; unique even though only one row is allowed. |
 
-This is an identity check, not yet an ownership fence. Future distributed ownership work will need
-an epoch/incarnation authority record or equivalent fencing protocol.
+### `node_runtime_object_authority`
+
+The exact object-log writer generation installed by an authority-bound activation.
+
+| Column               | Meaning                                                           |
+| -------------------- | ----------------------------------------------------------------- |
+| `singleton`          | Must be `1`, enforcing one current storage fence.                 |
+| `object_id`          | Foreign key to this database's canonical object identity.         |
+| `epoch`              | Monotonic decimal-string control epoch; `0` means not fenced yet. |
+| `owner_node_id`      | Process-incarnation node ID; empty only at epoch `0`.             |
+| `process_generation` | Exact process generation; empty only at epoch `0`.                |
+| `claim_id`           | Exact durable control claim; empty only at epoch `0`.             |
+
+After a control claim enters `restoring`, activation clones the stable object log and pushes this
+row with the new epoch. A competing old append that lands first is incorporated before fencing is
+retried. Once the fence lands first, an old clone diverges instead of extending the successor's
+history. Application SQL rejects every `node_runtime_` table name, keeping this row runtime-owned.
 
 ### `node_runtime_values`
 
@@ -304,14 +430,13 @@ state.storage.sql.exec(
 ```
 
 The managed boundary currently permits top-level `CREATE`, `ALTER`, and `DROP` statements.
-Transaction-control statements, `PRAGMA`, and `ATTACH` are rejected. SQLite commits locally during
-`exec`; after the enclosing object event settles, the worker pushes before exposing its result or
-handler error.
+Transaction-control statements, `PRAGMA`, `ATTACH`, and references to reserved `node_runtime_`
+tables are rejected. SQLite commits locally during `exec`; after the enclosing object event settles,
+the worker pushes before exposing its result or handler error.
 
 For `createNodeObjectRuntime`, each object receives a regular managed SQLite database named from the
 base64url-encoded canonical object identity. The package creates no tables in it automatically. For
-`createGraftNodeObjectRuntime`, consumer DDL shares the object database with the three runtime
-tables above.
+the Graft runtimes, consumer DDL shares the object database with the four runtime tables above.
 
 ## 5. Test-only DDL
 
@@ -370,6 +495,19 @@ CREATE TABLE read_boundary (
 
 This verifies that the internal read boundary rejects mutations and leaves the table empty.
 
+### `node_runtime_fake`
+
+**Source:** `src/sqlite/managed-node-runtime-object-database.test.ts`
+
+```sql
+CREATE TABLE node_runtime_fake (
+  value INTEGER NOT NULL
+);
+```
+
+This statement is intentionally rejected at the object-author SQL boundary. It verifies that
+consumer DDL cannot create or modify tables in the runtime-reserved `node_runtime_` namespace.
+
 ## 6. Schema relationships
 
 ```text
@@ -384,12 +522,18 @@ object_instances (object_id)
 Graft control database
 
 node_runtime_control_format (singleton = 1)
-node_runtime_object_directory
-  object_id ───────────────► opaque remote_log_id
+node_runtime_object_directory (object_id, remote_log_id)
+  └── node_runtime_object_ownership (object_id, epoch, lifecycle, owner_node_id, claim_id)
+node_runtime_node_lease (node_id, process_generation, expires_at_ms, renewal_id)
+node_runtime_control_command_receipt (command_id, command_name, result_json)
+
+object_id ─────────────────► opaque remote_log_id
 
 One Graft object database per directory row
 
 node_runtime_object_identity (singleton = 1, object_id)
+  └── node_runtime_object_authority
+      (singleton = 1, object_id, epoch, owner_node_id, process_generation, claim_id)
 node_runtime_values (key)
 node_runtime_alarm (singleton = 1)
 consumer-defined application/Fragment tables
@@ -397,7 +541,8 @@ consumer-defined application/Fragment tables
 
 There is no SQLite foreign key between the control database and object databases because they are
 separate Graft logs. The directory mapping and the object's identity row establish that relationship
-at runtime.
+at runtime. Activation validates that the control claim and object authority row carry the same
+object, epoch, node, and claim before publishing readiness.
 
 ## 7. Maintenance checklist
 

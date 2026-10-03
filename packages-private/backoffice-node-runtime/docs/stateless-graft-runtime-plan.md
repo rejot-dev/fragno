@@ -1,7 +1,8 @@
 # Stateless containers with Graft-backed object and control databases
 
-Status (October 1, 2026): the single-owner persistence slice is implemented; distributed ownership
-remains planned.
+Status (October 3, 2026): single-owner persistence, durable control commands, and the minimum
+authority-bound activation/fencing slice are implemented. Automatic lease renewal, terminal process
+watchdogs, peer routing, and durable alarm discovery remain planned.
 
 Scope: `packages-private/backoffice-node-runtime`. Backoffice application integration remains
 separate. This plan does not modify `apps/graft-poc` or port celld's execution engine.
@@ -162,9 +163,13 @@ numbers. Runtime-only states such as `resolving` and `fenced` need not all becom
 
 ### One durable control command
 
-All control access goes through a small concrete `GraftControlStore`, not arbitrary application SQL.
-Named operations include `registerNode`, `renewNodeLease`, `claimObject`, `markObjectReady`,
-`releaseObject`, `beginAlarmReconciliation`, and `publishAlarmState`.
+Distributed ownership access goes through a small concrete `GraftControlStore`, not arbitrary
+application SQL. Implemented operations are `registerNode`, `renewNodeLease`,
+`registerObjectDatabase`, `claimObject`, `markObjectReady`, and `releaseObject`. Alarm
+reconciliation commands remain planned. The compatibility `GraftObjectDirectory` still performs its
+narrow first-object mapping write directly. Authority-bound workers consume the control store for
+`restoring` claims, readiness publication, and takeover; concurrent first-object provisioning is not
+yet part of that protocol.
 
 For each mutating command:
 
@@ -194,30 +199,55 @@ Authoritative reads pull first. Cached routes are an explicitly bounded exceptio
 read leases indefinitely from a local clone. Every reset must invalidate prepared statements and
 local snapshot-dependent decisions.
 
-### Lease time and renewal
+### Lease time, renewal, and bounded clocks
 
-- Generate and compare persisted times within the control command's database operation. However,
-  SQLite time here is the proposing container's clock, **not a central database server clock**.
-- Document a maximum inter-node clock skew and use conservative expiry/takeover margins. Reject
-  operation outside those deployment assumptions; DB time alone does not solve distributed clocks.
-- Carry both a wall-clock expiry and a local monotonic deadline. Use elapsed time for I/O budgets,
-  detect clock discontinuity/suspension where possible, and fail closed rather than extending trust.
-- Compute the proposed expiry at the beginning of the attempt. A slow push does not buy a new full
-  TTL on receipt. Continue relying on the previous confirmed deadline while renewal is pending.
-- A renewal must be confirmed before the previous authority window ends. Once that window ends, this
-  incarnation is terminally fenced even if its delayed renewal later appears remotely.
-- Takeover checks the previous owner's lease in the same control snapshot as the claim transaction.
-  Renewals and takeovers therefore conflict through the control log rather than racing independent
-  unconditional row updates.
-- Prioritize renewals over background scans; choose TTL, cadence, and safety margin from measured
-  push/retry latency and the deployment's time assumptions, not celld's default numbers.
+Graft is the final **storage fence**, not a lease clock or ownership oracle. It rejects an old
+activation's different append after a replacement fencing commit has won the next object-log
+position. It does not reject an expired owner's append when no successor has fenced the log yet. An
+old append may also land immediately before the replacement fence; takeover must preserve that
+durable write, while the expired caller must not receive success. Graft therefore prevents history
+corruption but does not decide when a process may admit work, acknowledge output, or declare another
+owner expired.
 
-Missing/replaced leases, unreadable state, exhausted authority windows, and unreconciled renewal
-failures stop admission and retire workers. A timer assists this; admission and managed database
-boundaries also check authority. Neither can physically stop a suspended process, which is why the
-object database needs its own durable fence.
+The first fleet implementation uses a deliberately small bounded-clock contract rather than a
+general distributed-time system:
+
+1. Declare a maximum inter-node wall-clock skew for the deployment. Use a lease TTL and safety
+   margin substantially larger than that bound and measured control push/reconciliation latency.
+2. Compute each proposed wall-clock expiry at the beginning of the registration or renewal attempt.
+   Persisted SQLite time is still the proposing container's clock, not a central database-server
+   clock.
+3. At that same point, derive a local monotonic self-fencing deadline. A slow push consumes the
+   attempt's authority budget; confirmation does not grant a fresh full TTL starting at receipt.
+4. Continue relying on the previous confirmed deadline while renewal is pending or its response is
+   being reconciled. Advance authority only after the durable command or its receipt is confirmed.
+5. Stop admission and externally visible output at the conservative monotonic deadline. Admission
+   and managed database boundaries recheck it, so a process that resumes after suspension cannot
+   continue merely because its watchdog timer did not run while paused.
+6. Permit takeover only after the persisted expiry plus the declared skew margin. Check the previous
+   lease and apply the claim in the same control snapshot, so renewals and takeovers conflict
+   through the control log rather than racing unconditional row updates.
+7. Once the previous confirmed authority window ends, terminally fence that process generation even
+   if a delayed renewal later appears remotely. Retire its workers instead of reviving them.
+
+This does not require NTP integration, continuous clock-quality estimation, or tolerance of
+unbounded skew in the first release. It requires an explicit deployment assumption, conservative
+margins, a monotonic deadline, and scenarios covering clocks offset within the declared bound, a
+process suspended past its deadline, wall-clock movement, and renewal confirmation delayed beyond
+the old authority window. Operation outside those assumptions fails closed.
+
+Prioritize renewals over background scans. Choose TTL, cadence, skew allowance, and safety margin
+from measured backend behavior rather than celld defaults or a fixed fraction such as one-third of
+the TTL. Missing or replaced leases, unreadable control state, exhausted authority windows, and
+unreconciled renewal failures stop admission and retire workers. The object fencing commit remains
+necessary because a watchdog cannot physically stop a suspended or partitioned process.
 
 ## 5. Object takeover and storage fencing
+
+The minimum stable-log fencing protocol in this section is now implemented by
+`createAuthorityBoundGraftNodeObjectRuntime`. The remaining work is lease renewal/watchdog
+integration, remote-owner routing, activation crash-window coverage, and production backend
+qualification.
 
 **Do not claim that a control-row epoch atomically fences another database.** The databases are
 separate, so takeover is a recoverable protocol rather than a cross-database transaction.
@@ -477,6 +507,13 @@ application writes continue to fail closed rather than resetting or replaying th
 future control-command adapter must perform conflict classification and semantic command retries at
 one boundary.
 
+The authority-bound takeover scenarios use production worker threads inside independent child
+processes and a real push barrier. They prove both stable-log orderings: an old append that lands
+first is preserved when the replacement reclones and retries its fence, while a replacement fence
+that lands first makes the paused old append diverge. In both cases the old output reports failure,
+the successor serves from epoch 2, every local cache is deleted, and a third process restores the
+authoritative data under epoch 3.
+
 The existing controlled-push scenarios cover both adjacent uncertainty boundaries. A failure before
 the real push restores no write, while a real push followed by a simulated lost response restores
 the write in a fresh process without replaying the handler. These filesystem-remote results do not
@@ -512,9 +549,27 @@ real implementation proves that separate internal RPC calls share one push at th
 boundary, concurrent writer scopes can share a push, and readers wait for exactly the storage
 positions their outputs can reveal: an intermediate-state reader proves that state durable, while a
 reader that completed before a later write does not wait for it. It does not yet provide a Fragno
-SQL adapter. Phase 1 is a single-owner storage milestone, not permission to deploy several writers.
-Phase 3 is not complete without storage fencing. Distributed rollout requires the complete
-scheduling and failure qualification phases.
+SQL adapter.
+
+The implemented Phase 2 control-store slice persists process-incarnation leases, object ownership
+states, decimal-string epochs, and command receipts. Every named command starts from a clean clone,
+commits its decision and receipt together, and reconciles failed push responses through a fresh
+remote snapshot before semantically retrying. Independent child-process scenarios prove concurrent
+claim serialization, lost-response receipt recovery, lease renewal, conditional release, expired
+owner takeover, and rejection of a late predecessor completion.
+
+The implemented minimum Phase 3 slice registers a fixed node lease, claims an object as `restoring`,
+pushes the exact epoch/node/generation/claim into the object database, initializes the production
+worker, and publishes `ready` before RPC admission. Managed output checks the captured authority and
+confirmed lease deadline before and after Graft durability. A divergent application push poisons the
+activation and is never rebased. Two-process scenarios prove both old-write-first and
+replacement-fence-first orderings, followed by complete cache deletion and third-process recovery.
+
+Phase 3 remains incomplete as a fleet lifecycle: there is no automatic lease renewal, terminal node
+watchdog, remote-owner route, conditional graceful release, or broad activation crash-window suite.
+The single-owner API also remains available and must not be mixed with authority-bound serving.
+Distributed rollout requires those lifecycle pieces plus the complete scheduling and production
+backend qualification phases.
 
 ## 11. Package structure and test seams
 

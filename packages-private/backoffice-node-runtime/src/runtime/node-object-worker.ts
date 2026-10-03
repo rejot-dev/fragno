@@ -2,14 +2,21 @@ import { workerData, type MessagePort } from "node:worker_threads";
 
 import { RpcTarget } from "capnweb";
 
+import type { GraftNodeLease } from "../graft/graft-control-store";
 import type {
   GraftDatabaseOperations,
   GraftDatabaseOperationsFactory,
   ImportableGraftDatabaseOperations,
 } from "../graft/graft-database-operations";
 import { GraftDurableObjectState } from "../graft/graft-durable-object-state";
+import {
+  prepareGraftObjectActivation,
+  type PreparedGraftObjectActivation,
+} from "../graft/graft-object-activation";
+import type { GraftNodeRuntimeStorage } from "../graft/graft-object-directory";
 import { createNodeMessagePortRpcSession } from "../rpc/node-message-port-rpc";
 import {
+  manageAuthorityBoundGraftObjectDatabase,
   openGraftNodeRuntimeObjectDatabase,
   openLocalNodeRuntimeObjectDatabase,
 } from "../sqlite/managed-node-runtime-object-database";
@@ -35,6 +42,14 @@ type NodeObjectWorkerPersistence =
       localTag: string;
       remoteLogId: string;
       operations: ImportableGraftDatabaseOperations;
+    }
+  | {
+      kind: "authority-bound-graft";
+      remoteLogId: string;
+      operations: ImportableGraftDatabaseOperations;
+      storage: GraftNodeRuntimeStorage;
+      nodeLease: GraftNodeLease;
+      maxFenceAttempts: number;
     };
 
 /** Bootstrap data carries module identity, persistence, and shared clock state, never application RPC values. */
@@ -91,20 +106,42 @@ async function createWorkerObject(options: NodeObjectWorkerOptions) {
   }
   const createObject = exportedFactory as NodeRuntimeObjectFactory;
   const objectId = `${options.binding}:${options.name}`;
-  const objectDatabase =
-    options.persistence.kind === "graft"
-      ? openGraftNodeRuntimeObjectDatabase(
-          options.persistence.localTag,
-          options.persistence.remoteLogId,
-          await loadGraftDatabaseOperations(options.persistence.operations),
-        )
-      : openLocalNodeRuntimeObjectDatabase(options.persistence.directory, objectId);
+  let preparedActivation: PreparedGraftObjectActivation | null = null;
+  let objectDatabase;
+  if (options.persistence.kind === "local") {
+    objectDatabase = openLocalNodeRuntimeObjectDatabase(options.persistence.directory, objectId);
+  } else {
+    const objectOperations = await loadGraftDatabaseOperations(options.persistence.operations);
+    if (options.persistence.kind === "graft") {
+      objectDatabase = openGraftNodeRuntimeObjectDatabase(
+        options.persistence.localTag,
+        options.persistence.remoteLogId,
+        objectOperations,
+      );
+    } else {
+      preparedActivation = prepareGraftObjectActivation({
+        storage: options.persistence.storage,
+        objectId,
+        remoteLogId: options.persistence.remoteLogId,
+        nodeLease: options.persistence.nodeLease,
+        clock: options.clock,
+        objectOperations,
+        maxFenceAttempts: options.persistence.maxFenceAttempts,
+      });
+      objectDatabase = manageAuthorityBoundGraftObjectDatabase(
+        preparedActivation.database,
+        objectOperations,
+        preparedActivation.authority,
+        options.clock,
+      );
+    }
+  }
   let storage: SqliteBackofficeObjectStorage | null = null;
   let coordination: SqliteObjectCoordination | null = null;
   const executionCoordinator = new ProcessLocalObjectExecutionCoordinator();
   try {
     let createState: (id: DurableObjectId) => BackofficeDurableObjectState;
-    if (options.persistence.kind === "graft") {
+    if (options.persistence.kind !== "local") {
       const identity = objectDatabase.read(
         (database) =>
           database.get(
@@ -171,6 +208,7 @@ async function createWorkerObject(options: NodeObjectWorkerOptions) {
 
     const target = createObjectTarget(null);
     await namespace.restorePersisted(id);
+    preparedActivation?.markReady();
     return {
       target,
       getObjectForOutputScope(outputScopeId: string) {
@@ -222,6 +260,7 @@ async function createWorkerObject(options: NodeObjectWorkerOptions) {
       },
     };
   } catch (error) {
+    preparedActivation?.abort();
     await coordination?.waitForIdle();
     storage?.close();
     objectDatabase.close();
