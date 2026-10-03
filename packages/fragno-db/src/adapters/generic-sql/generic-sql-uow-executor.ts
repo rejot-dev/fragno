@@ -85,11 +85,16 @@ function hashLockKey(lockKey: string): string {
 async function acquireUowLocks(
   tx: SqlDriverAdapter,
   driverConfig: DriverConfig,
+  dialect: Dialect,
   lockKeys: readonly string[],
   owner: string,
 ): Promise<boolean> {
   if (lockKeys.length === 0) {
     return true;
+  }
+  const useSavepoint = driverConfig.databaseType === "postgresql";
+  if (useSavepoint) {
+    await tx.executeQuery(sql`SAVEPOINT fragno_uow_locks_acquire`.compile(dialect));
   }
   const db = createColdKysely(driverConfig.databaseType);
   const rowsPerInsert = Math.max(1, Math.floor(driverConfig.maxParametersPerQuery / 3));
@@ -108,6 +113,11 @@ async function acquireUowLocks(
       await tx.executeQuery(query);
     } catch (error) {
       if (isMissingLockTableError(error)) {
+        if (useSavepoint) {
+          await tx.executeQuery(
+            sql`ROLLBACK TO SAVEPOINT fragno_uow_locks_acquire`.compile(dialect),
+          );
+        }
         return false;
       }
       const normalized = driverConfig.normalizeError(error);
@@ -132,7 +142,7 @@ function isMissingLockTableError(error: unknown): boolean {
   }
   const message = error instanceof Error ? error.message : undefined;
   return (
-    message !== undefined &&
+    message?.includes(UOW_LOCK_TABLE_NAME) === true &&
     (message.includes("no such table") ||
       message.includes("does not exist") ||
       message.includes("doesn't exist"))
@@ -199,7 +209,13 @@ export async function executeMutation(
       );
       let locksHeld = false;
       if (uowIdForLocks !== undefined && lockKeys.length > 0) {
-        locksHeld = await acquireUowLocks(tx, driverConfig, lockKeys, uowIdForLocks);
+        locksHeld = await acquireUowLocks(
+          tx,
+          driverConfig,
+          options.dialect,
+          lockKeys,
+          uowIdForLocks,
+        );
       }
 
       let outboxReservation: ReservedOutboxVersion | null = null;

@@ -48,9 +48,9 @@ const createRecordingOutboxAdapter = (queries: CompiledQuery[]) => {
       await callback({
         executeQuery: async (query) => {
           queries.push(query);
-          // Logical lock acquire/release queries succeed without affecting
+          // Lock acquire/release and savepoint queries succeed without affecting
           // outbox reservation sequencing.
-          if (query.sql.includes("fragno_db_uow_locks")) {
+          if (query.sql.includes("fragno_db_uow_locks") || query.sql.includes("SAVEPOINT")) {
             return { rows: [] };
           }
           queryCount += 1;
@@ -102,9 +102,9 @@ const createOutboxInsertFailureAdapter = (error: Error, events: string[]) => {
       try {
         return await callback({
           executeQuery: async (query) => {
-            // Logical lock acquire/release queries succeed without affecting
+            // Lock acquire/release and savepoint queries succeed without affecting
             // outbox failure sequencing.
-            if (query.sql.includes("fragno_db_uow_locks")) {
+            if (query.sql.includes("fragno_db_uow_locks") || query.sql.includes("SAVEPOINT")) {
               return { rows: [] };
             }
             queryCount += 1;
