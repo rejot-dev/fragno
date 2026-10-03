@@ -4,13 +4,17 @@ import {
   projectConnectorConnectionSchema,
   projectConnectorExecutionSchema,
   projectConnectorProfileSchema,
+  projectConnectorProviderActionsSchema,
+  projectConnectorProviderConfigsSchema,
   projectConnectorStatusSchema,
 } from "@fragno-dev/project-connector-fragment/contracts";
 import { z } from "zod";
 
+import type { AutomationCommandOutputOptions } from "../automation-types";
 import {
   defineCliArgsParser,
   defineNoInputArgsParser,
+  ensureTrailingNewline,
   readOutputOptions,
   type ParsedCliTokens,
 } from "../bash-cli";
@@ -34,6 +38,9 @@ const profileInputSchema = z.strictObject({ accountId: z.string().min(1) });
 const actionInputSchema = profileInputSchema.extend({
   actionId: z.string().min(1),
   input: z.record(z.string(), z.unknown()),
+});
+const providerActionsInputSchema = z.strictObject({
+  providerConfigId: projectConnectorProviderActionsSchema.shape.providerConfigId,
 });
 const noInputSchema = z.void();
 type ProjectConnectorToolContext = BackofficeToolContext<{
@@ -68,16 +75,124 @@ function parseProjectConnectorConnect(args: string[]): z.input<typeof connectInp
     : { service: service ?? "", connectionName };
 }
 
+function formatConnectorProviderConfigs(
+  output: z.output<typeof projectConnectorProviderConfigsSchema>,
+  options: AutomationCommandOutputOptions,
+) {
+  if (options.format === "json" || options.print) {
+    return { data: output };
+  }
+  const lines = [
+    `Project: ${output.projectId}`,
+    output.providerConfigs.length
+      ? `OAuth provider configurations (${output.providerConfigs.length}):`
+      : "No OAuth provider configurations available.",
+    ...output.providerConfigs.map(
+      (config) =>
+        `- ${config.id}: ${config.displayName} (${config.service}) | proxy: ${config.proxyAvailable ? "yes" : "no"}`,
+    ),
+  ];
+  return { stdout: ensureTrailingNewline(lines.join("\n")) };
+}
+
+function formatConnectorProviderActions(
+  output: z.output<typeof projectConnectorProviderActionsSchema>,
+  options: AutomationCommandOutputOptions,
+) {
+  if (options.format === "json" || options.print) {
+    return { data: output };
+  }
+  const lines = [
+    `Project: ${output.projectId}`,
+    `Provider configuration: ${output.providerConfigId}`,
+    output.actionIds.length
+      ? `Action IDs (${output.actionIds.length}):`
+      : "No action IDs available.",
+    ...output.actionIds.map((actionId) => `- ${actionId}`),
+  ];
+  return { stdout: ensureTrailingNewline(lines.join("\n")) };
+}
+
 /** Provider actions require an explicit account and independent execution permission. */
 export const projectConnectorToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "connector",
   permissions: {
+    "providers.read":
+      "Read the project's OAuth provider overviews and configuration-specific action IDs.",
     "accounts.read": "Read verified account bindings, profiles, and project authentication status.",
     "connections.create": "Start OAuth and confirm connection requests for the owning user.",
     "actions.execute": "Execute provider actions on an explicitly selected connected account.",
   },
   isAvailable: (context: ProjectConnectorToolContext) => !!context.runtimes.projectConnector,
   tools: [
+    defineBackofficeRuntimeTool({
+      id: "connector.providers.list",
+      namespace: "connector",
+      name: "listProviderConfigs",
+      capabilityId: "connector",
+      description:
+        "List the project's OAuth provider configuration overviews without action IDs. Use listProviderActions for a selected providerConfigId; discovery does not verify user accounts.",
+      requiredPermissions: ["providers.read"],
+      inputSchema: noInputSchema,
+      outputSchema: projectConnectorProviderConfigsSchema,
+      execute: async (_input, context: ProjectConnectorToolContext) =>
+        await getProjectConnectorRuntime(context).listProviderConfigs(),
+      adapters: {
+        bash: {
+          command: "connector.providers.list",
+          help: {
+            summary:
+              "connector.providers.list shows an overview of the project's OAuth provider configurations, without action IDs.",
+            options: [],
+            examples: ["connector.providers.list", "connector.providers.list --format json"],
+          },
+          parse: defineNoInputArgsParser("connector.providers.list"),
+          outputOptions,
+          format: formatConnectorProviderConfigs,
+        },
+      },
+    }),
+    defineBackofficeRuntimeTool({
+      id: "connector.providers.actions",
+      namespace: "connector",
+      name: "listProviderActions",
+      capabilityId: "connector",
+      description:
+        "List available action IDs for one exact OAuth provider configuration; this does not execute actions.",
+      requiredPermissions: ["providers.read"],
+      inputSchema: providerActionsInputSchema,
+      outputSchema: projectConnectorProviderActionsSchema,
+      getResource: (input) => ({ providerConfigId: input.providerConfigId }),
+      execute: async (input, context: ProjectConnectorToolContext) =>
+        await getProjectConnectorRuntime(context).listProviderActions(input),
+      adapters: {
+        bash: {
+          command: "connector.providers.actions",
+          help: {
+            summary:
+              "connector.providers.actions lists action IDs for one OAuth provider configuration, without executing them.",
+            options: [
+              {
+                name: "provider-config-id",
+                required: true,
+                valueRequired: true,
+                description: "Exact configuration ID from connector.providers.list",
+              },
+            ],
+            examples: [
+              "connector.providers.actions --provider-config-id PROVIDER_CONFIG_ID",
+              "connector.providers.actions --provider-config-id PROVIDER_CONFIG_ID --format json",
+            ],
+          },
+          parse: defineCliArgsParser<z.input<typeof providerActionsInputSchema>>(
+            "connector.providers.actions",
+            { providerConfigId: { required: true } },
+          ),
+          outputOptions,
+          format: formatConnectorProviderActions,
+        },
+      },
+    }),
     defineBackofficeRuntimeTool({
       id: "connector.status",
       namespace: "connector",

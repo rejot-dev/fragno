@@ -65,6 +65,34 @@ export const projectConnectorAccountsSchema = z.object({
   hasNextPage: z.boolean(),
 });
 
+/** Project-scoped OAuth provider overview excludes action IDs and credentials. */
+export const projectConnectorProviderConfigsSchema = z
+  .object({
+    projectId: z.string().min(1),
+    providerConfigs: z.array(
+      z.object({
+        id: z.string().min(1),
+        service: z.string().min(1),
+        displayName: z.string(),
+        callbackUrl: projectConnectorHttpUrlSchema,
+        effectiveScopes: z.array(z.string().min(1)),
+        proxyAvailable: z.boolean(),
+      }),
+    ),
+  })
+  .refine(
+    ({ providerConfigs }) =>
+      new Set(providerConfigs.map((config) => config.id)).size === providerConfigs.length,
+    "Provider configuration IDs must be unique",
+  );
+
+/** Available action IDs belong to one exact project OAuth provider configuration. */
+export const projectConnectorProviderActionsSchema = z.object({
+  projectId: projectConnectorProviderConfigsSchema.shape.projectId,
+  providerConfigId: projectConnectorProviderConfigsSchema.shape.providerConfigs.element.shape.id,
+  actionIds: z.array(z.string().min(1)),
+});
+
 /** Project authentication does not imply that an individual provider account is usable. */
 export const projectConnectorStatusSchema = z.object({ authenticated: z.literal(true) });
 

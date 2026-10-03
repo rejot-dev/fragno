@@ -2710,6 +2710,62 @@
     ]
   },
   {
+    "command": "connector.providers.list",
+    "summary": "connector.providers.list shows an overview of the project's OAuth provider configurations, without action IDs.",
+    "options": [
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "connector.providers.actions",
+    "summary": "connector.providers.actions lists action IDs for one OAuth provider configuration, without executing them.",
+    "options": [
+      {
+        "name": "provider-config-id",
+        "required": true,
+        "valueRequired": true,
+        "description": "Exact configuration ID from connector.providers.list"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
     "command": "connector.status",
     "summary": "connector.status checks gateway authentication.",
     "options": [

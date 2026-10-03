@@ -11,6 +11,8 @@ import {
 import {
   projectConnectorAccountsSchema,
   projectConnectorStatusSchema,
+  projectConnectorProviderConfigsSchema,
+  projectConnectorProviderActionsSchema,
   projectConnectorConnectInputSchema,
   projectConnectorConnectionSchema,
   projectConnectorProfileSchema,
@@ -22,6 +24,56 @@ import { projectConnectorSchema } from "./schema";
 /** Authenticated routes never accept a product user ID or account binding from the browser. */
 export const projectConnectorRoutes = defineRoutes(projectConnectorFragmentDefinition).create(
   ({ config, deps, defineRoute }) => [
+    defineRoute({
+      method: "GET",
+      path: "/provider-configs",
+      outputSchema: projectConnectorProviderConfigsSchema,
+      errorCodes: ["UNAUTHENTICATED", "PROJECT_CONNECTOR_ERROR"],
+      handler: async function ({ headers }, { json, error }) {
+        if (!(await config.getExternalUserId(headers))) {
+          return error({ code: "UNAUTHENTICATED", message: "Authentication required" }, 401);
+        }
+        try {
+          return json(await deps.projectConnector.listProviderConfigs());
+        } catch (cause) {
+          if (!(cause instanceof ProjectConnectorClientError)) {
+            throw cause;
+          }
+          return error({ code: "PROJECT_CONNECTOR_ERROR", message: cause.message }, 502);
+        }
+      },
+    }),
+    defineRoute({
+      method: "GET",
+      path: "/provider-configs/:providerConfigId/actions",
+      outputSchema: projectConnectorProviderActionsSchema,
+      errorCodes: ["UNAUTHENTICATED", "PROVIDER_CONFIG_NOT_FOUND", "PROJECT_CONNECTOR_ERROR"],
+      handler: async function ({ headers, pathParams }, { json, error }) {
+        if (!(await config.getExternalUserId(headers))) {
+          return error({ code: "UNAUTHENTICATED", message: "Authentication required" }, 401);
+        }
+        try {
+          const actions = await deps.projectConnector.listProviderActions(
+            pathParams.providerConfigId,
+          );
+          if (!actions) {
+            return error(
+              {
+                code: "PROVIDER_CONFIG_NOT_FOUND",
+                message: "Provider configuration not found",
+              },
+              404,
+            );
+          }
+          return json(actions);
+        } catch (cause) {
+          if (!(cause instanceof ProjectConnectorClientError)) {
+            throw cause;
+          }
+          return error({ code: "PROJECT_CONNECTOR_ERROR", message: cause.message }, 502);
+        }
+      },
+    }),
     defineRoute({
       method: "GET",
       path: "/status",

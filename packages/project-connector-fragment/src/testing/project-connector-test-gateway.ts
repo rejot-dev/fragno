@@ -3,6 +3,16 @@ import type { AddressInfo } from "node:net";
 
 import { z } from "zod";
 
+import type {
+  projectConnectorProviderActionsSchema,
+  projectConnectorProviderConfigsSchema,
+} from "../project-connector-contracts";
+
+type GatewayProviderConfig = z.infer<
+  typeof projectConnectorProviderConfigsSchema
+>["providerConfigs"][number] &
+  Pick<z.infer<typeof projectConnectorProviderActionsSchema>, "actionIds">;
+
 const connectSchema = z.object({
   userId: z.string(),
   service: z.string().default("gmail"),
@@ -37,6 +47,17 @@ export async function startProjectConnectorTestGateway() {
   const requests = new Map<string, ConnectionRequest>();
   const links: z.infer<typeof connectSchema>[] = [];
   const accounts = new Map<string, ConnectionRequest>();
+  const providerConfigs: GatewayProviderConfig[] = [
+    {
+      id: "gmail-provider",
+      service: "gmail",
+      displayName: "Work Gmail",
+      callbackUrl: "https://connector.example/oauth/callback",
+      effectiveScopes: ["https://www.googleapis.com/auth/gmail.readonly"],
+      actionIds: ["gmail.search_threads"],
+      proxyAvailable: false,
+    },
+  ];
   const executions: {
     externalUserId: string;
     providerConfigId: string;
@@ -47,10 +68,26 @@ export async function startProjectConnectorTestGateway() {
     actionFailure: "flat" | "envelope" | "text" | "malformed" | null;
     profileUserId: string | null;
     requestReads: number;
+    discoveryFailure:
+      | "flat"
+      | "envelope"
+      | "text"
+      | "malformed"
+      | "duplicate"
+      | "not-found"
+      | "invalid-json"
+      | "redirect"
+      | "network"
+      | null;
+    discoveryReads: number;
+    redirectReads: number;
   } = {
     actionFailure: null,
     profileUserId: null,
     requestReads: 0,
+    discoveryFailure: null,
+    discoveryReads: 0,
+    redirectReads: 0,
   };
   let origin = "";
   async function handleRequest(req: IncomingMessage, res: ServerResponse) {
@@ -76,6 +113,69 @@ export async function startProjectConnectorTestGateway() {
         chunks.push(chunk as string);
       }
       payload = JSON.parse(chunks.join(""));
+    }
+    if (req.method === "GET" && url.pathname === "/v1/saas/oauth/provider-configs") {
+      control.discoveryReads += 1;
+      if (control.discoveryFailure === "flat") {
+        json({ errorCode: "provider_not_configured", errorMessage: "test-project-key" }, 503);
+        return;
+      }
+      if (control.discoveryFailure === "envelope") {
+        json({ success: false, errorCode: "rate_limited", message: "test-project-key" }, 429);
+        return;
+      }
+      if (control.discoveryFailure === "text") {
+        res.writeHead(502).end("test-project-key upstream HTML error");
+        return;
+      }
+      if (control.discoveryFailure === "malformed") {
+        json({ success: true, data: { projectId: "project-1", providerConfigs: [{}] } });
+        return;
+      }
+      if (control.discoveryFailure === "duplicate") {
+        json({
+          success: true,
+          data: {
+            projectId: "project-1",
+            providerConfigs: providerConfigs.concat(providerConfigs),
+          },
+        });
+        return;
+      }
+      if (control.discoveryFailure === "not-found") {
+        failure("not_found", 404);
+        return;
+      }
+      if (control.discoveryFailure === "invalid-json") {
+        res.writeHead(200, { "content-type": "application/json" }).end("not JSON test-project-key");
+        return;
+      }
+      if (control.discoveryFailure === "redirect") {
+        res.writeHead(302, { location: `${origin}/v1/saas/redirect-target` }).end();
+        return;
+      }
+      if (control.discoveryFailure === "network") {
+        req.socket.destroy();
+        return;
+      }
+      // Extra upstream fields must not become public API or expose credentials.
+      json({
+        success: true,
+        data: {
+          projectId: "project-1",
+          providerConfigs: providerConfigs.map((config) => ({
+            ...config,
+            clientSecret: "test-project-key",
+          })),
+          apiKey: "test-project-key",
+        },
+      });
+      return;
+    }
+    if (url.pathname === "/v1/saas/redirect-target") {
+      control.redirectReads += 1;
+      failure("redirect_followed", 500);
+      return;
     }
     if (route === "connected-accounts" && id === "link") {
       const input = connectSchema.parse(payload);
@@ -195,6 +295,7 @@ export async function startProjectConnectorTestGateway() {
     links,
     requests,
     accounts,
+    providerConfigs,
     executions,
     control,
     authorize(requestId: string, accountId: string) {

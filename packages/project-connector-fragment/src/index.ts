@@ -23,10 +23,12 @@ export function createProjectConnectorFragment(
     .build();
 }
 
-/** Client operations select only accounts previously verified and bound on the server. */
+/** Discover project OAuth configurations and select only server-verified accounts for actions. */
 export function createProjectConnectorFragmentClients(fragnoConfig: FragnoPublicClientConfig = {}) {
   const builder = createClientBuilder(projectConnectorFragmentDefinition, fragnoConfig, routes);
   return {
+    useProviderConfigs: builder.createHook("/provider-configs"),
+    useProviderActions: builder.createHook("/provider-configs/:providerConfigId/actions"),
     useStatus: builder.createHook("/status"),
     useAccounts: builder.createHook("/accounts"),
     useProfile: builder.createHook("/accounts/:accountId/profile"),

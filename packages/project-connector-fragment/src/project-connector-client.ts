@@ -14,6 +14,8 @@ import {
   projectConnectorExecutionSchema,
   projectConnectorHttpUrlSchema,
   projectConnectorProfileSchema,
+  projectConnectorProviderActionsSchema,
+  projectConnectorProviderConfigsSchema,
   type ProjectConnectorConnectionState,
 } from "./project-connector-contracts";
 
@@ -31,6 +33,16 @@ const projectConnectorConnectionRequestSchema = z
   .and(projectConnectorConnectionStateSchema);
 
 const projectConnectorCallOptions = { retries: 0 } satisfies ProjectCallOptions;
+const projectConnectorDiscoveryEnvelopeSchema = z.object({
+  success: z.literal(true),
+  data: projectConnectorProviderConfigsSchema.safeExtend({
+    providerConfigs: z.array(
+      projectConnectorProviderConfigsSchema.shape.providerConfigs.element.extend({
+        actionIds: projectConnectorProviderActionsSchema.shape.actionIds,
+      }),
+    ),
+  }),
+});
 
 type ProjectConnectorSdk = Pick<
   ProjectApi,
@@ -109,18 +121,91 @@ function parseProjectConnectorResponse<T>(schema: z.ZodType<T>, value: unknown):
   return parsed.data;
 }
 
-/** Official ProjectConnector SDK client with retries disabled for every provider operation. */
+async function fetchProjectConnectorProviderConfigs(config: ProjectConnectorClientConfig) {
+  // The SDK has no discovery method; redirects must not forward the project key elsewhere.
+  const signal = AbortSignal.timeout(30_000);
+  let response: Response;
+  try {
+    response = await fetch(`${config.baseUrl}/saas/oauth/provider-configs`, {
+      method: "GET",
+      headers: { authorization: `Bearer ${config.apiKey}` },
+      redirect: "error",
+      signal,
+    });
+  } catch (cause) {
+    if (signal.aborted) {
+      throw new ProjectConnectorClientError("client_timeout", 0);
+    }
+    if (cause instanceof TypeError) {
+      throw new ProjectConnectorClientError("client_network_error", 0);
+    }
+    throw cause;
+  }
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch (cause) {
+    if (signal.aborted) {
+      throw new ProjectConnectorClientError("client_timeout", 0);
+    }
+    if (cause instanceof TypeError) {
+      throw new ProjectConnectorClientError("client_network_error", 0);
+    }
+    if (!(cause instanceof SyntaxError)) {
+      throw cause;
+    }
+    payload = null;
+  }
+  const failure = z.object({ errorCode: z.string().min(1) }).safeParse(payload);
+  if (!response.ok || failure.success) {
+    throw new ProjectConnectorClientError(
+      failure.success
+        ? failure.data.errorCode
+        : response.status === 429
+          ? "rate_limited"
+          : "provider_error",
+      response.status,
+    );
+  }
+  return parseProjectConnectorResponse(projectConnectorDiscoveryEnvelopeSchema, payload).data;
+}
+
+/** Project Connector adapter with retries disabled and project keys confined to server requests. */
 export function createProjectConnectorClient(
   config: ProjectConnectorClientConfig,
   createSdk: CreateProjectConnectorSdk = createOomolProjectConnectorSdk,
 ) {
-  const client = createSdk({
-    apiKey: parseProjectConnectorApiKey(config.apiKey),
-    baseUrl: parseProjectConnectorApiBaseUrl(config.baseUrl),
-    maxRetries: 0,
-  });
+  const apiKey = parseProjectConnectorApiKey(config.apiKey);
+  const baseUrl = parseProjectConnectorApiBaseUrl(config.baseUrl);
+  const client = createSdk({ apiKey, baseUrl, maxRetries: 0 });
 
   return {
+    async listProviderConfigs() {
+      const discovery = await fetchProjectConnectorProviderConfigs({ apiKey, baseUrl });
+      return {
+        projectId: discovery.projectId,
+        providerConfigs: discovery.providerConfigs.map((config) => ({
+          id: config.id,
+          service: config.service,
+          displayName: config.displayName,
+          callbackUrl: config.callbackUrl,
+          effectiveScopes: config.effectiveScopes,
+          proxyAvailable: config.proxyAvailable,
+        })),
+      };
+    },
+    async listProviderActions(providerConfigId: string) {
+      const discovery = await fetchProjectConnectorProviderConfigs({ apiKey, baseUrl });
+      const config = discovery.providerConfigs.find((config) => config.id === providerConfigId);
+      if (!config) {
+        return null;
+      }
+      return {
+        projectId: discovery.projectId,
+        providerConfigId: config.id,
+        actionIds: config.actionIds,
+      };
+    },
     async check() {
       // The project API has no health endpoint. An authenticated lookup of a fresh,
       // nonexistent request must return connection_request_not_found, not Unauthorized.

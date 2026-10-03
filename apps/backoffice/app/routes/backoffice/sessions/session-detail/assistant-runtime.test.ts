@@ -349,7 +349,7 @@ describe("createAssistantUiMessages", () => {
               type: "toolCall",
               id: "tool-read-skill",
               name: "read",
-              arguments: { path: "/starter/skills/telegram-connection/SKILL.md" },
+              arguments: { path: "/starter/skills/telegram-integration/SKILL.md" },
             },
           ],
           timestamp: 1,
@@ -361,7 +361,7 @@ describe("createAssistantUiMessages", () => {
           toolCallId: "tool-read-skill",
           toolName: "read",
           content: [{ type: "text", text: "# Secret skill contents" }],
-          details: { path: "/starter/skills/telegram-connection/SKILL.md" },
+          details: { path: "/starter/skills/telegram-integration/SKILL.md" },
           isError: false,
           timestamp: 2,
         } as never,
@@ -373,7 +373,7 @@ describe("createAssistantUiMessages", () => {
       : null;
     expect(toolPart).toMatchObject({
       toolName: "read",
-      args: { path: "/starter/skills/telegram-connection/SKILL.md" },
+      args: { path: "/starter/skills/telegram-integration/SKILL.md" },
     });
   });
 });

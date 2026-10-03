@@ -1,11 +1,11 @@
 ---
-name: upload-connection
-description:
-  Configure Upload storage providers and inspect Upload hooks. Use when storage configuration,
-  provider selection, or Upload connection health is the task.
+name: upload-integration
+description: >
+  Configure the native Backoffice Upload integration. Load with configuring-integrations for storage
+  setup, provider selection, and integration health; also use for Upload hook inspection.
 ---
 
-# Upload Connection
+# Upload Integration
 
 Use this skill for organization-scoped Upload storage configuration and hook behavior.
 
@@ -37,5 +37,5 @@ Upload hook work is available under the `upload` hook scope.
 
 Prepared file lifecycle operations are documented by the `using-prepared-uploads` skill.
 
-Use Backoffice connection tools for configuration and status, and hook tools for queued hook
+Use `connections.*` for integration configuration and status, and hook tools for queued hook
 inspection.

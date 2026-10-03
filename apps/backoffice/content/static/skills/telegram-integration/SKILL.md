@@ -1,12 +1,12 @@
 ---
-name: telegram-connection
-description:
-  Configure and automate the Backoffice Telegram bot capability. Use when setting up Telegram,
-  handling events with source "telegram" and eventType "message.received", sending chat replies,
-  downloading Telegram files, or debugging Telegram hooks and runtime tools.
+name: telegram-integration
+description: >
+  Use the native Backoffice Telegram integration and telegram.* runtime tools. Load with
+  configuring-integrations for bot setup; also use for message.received events, chat replies,
+  Telegram files, and hook debugging.
 ---
 
-# Telegram Connection
+# Telegram Integration
 
 Use this skill for the organization-scoped Telegram bot integration: bot setup details, inbound
 message semantics, Telegram hook scope, and Telegram-specific runtime tool purposes.
@@ -26,9 +26,9 @@ Setup procedure:
 1. Tell the user how to register a bot with Telegram:
    - Open a chat with the verified `@BotFather` account in Telegram.
    - Send `/newbot` and follow the prompts to choose a display name and a unique username.
-   - Copy the bot token BotFather returns and enter it in the Backoffice Telegram connection.
+   - Copy the bot token BotFather returns and enter it in the Backoffice Telegram integration.
    - Treat the bot token like a password and regenerate it in BotFather if it is exposed.
-2. Save the connection configuration. Backoffice generates a cryptographically secure webhook
+2. Save the integration configuration. Backoffice generates a cryptographically secure webhook
    secret, derives the organization-scoped webhook URL, and registers both with Telegram.
 
 The stored secret must match the `X-Telegram-Bot-Api-Secret-Token` header Telegram sends to the

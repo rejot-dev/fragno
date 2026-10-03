@@ -403,6 +403,10 @@ type BackofficePermissionRequirement =
     }
   | {
       namespace: "connector";
+      permission: "providers.read";
+    }
+  | {
+      namespace: "connector";
       permission: "accounts.read";
     }
   | {

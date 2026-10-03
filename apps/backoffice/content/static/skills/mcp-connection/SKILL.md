@@ -1,15 +1,20 @@
 ---
 name: mcp-connection
-description:
-  Configure and use Backoffice MCP servers. Use when registering remote MCP endpoints,
-  authenticating MCP servers with OAuth or bearer tokens, listing MCP tools, or calling MCP tools
-  from automations.
+description: >
+  Register and use low-level MCP connections with mcp.*. Use when the user requests MCP or supplies
+  an MCP endpoint, and for server authentication, tool discovery, and MCP tool calls. Named services
+  without a native integration default to Open Connector connections.
 ---
 
-# MCP Connection
+# Low-Level MCP Connections
 
-Use this skill for organization-scoped MCP server registration, OAuth or bearer-token
-authentication, tool discovery, and MCP tool calls from Backoffice runtimes.
+Read `/static/codemode/providers/mcp.d.ts` before executing MCP calls. This skill registers remote
+MCP endpoints and their authentication with `mcp.*`. These low-level connections belong to
+`mcp.listServers()`, separately from native integration configuration, low-level API connections,
+and Open Connector connections.
+
+Resolve the provider's streamable HTTP MCP endpoint from available context or provider documentation
+before registration; a service name alone does not establish an endpoint.
 
 # MCP configuration
 

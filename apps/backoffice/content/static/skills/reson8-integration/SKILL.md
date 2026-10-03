@@ -1,11 +1,12 @@
 ---
-name: reson8-connection
-description:
-  Configure and use the Backoffice Reson8 speech-to-text capability. Use when setting up Reson8,
-  transcribing audio files, or debugging Reson8 runtime availability.
+name: reson8-integration
+description: >
+  Use the native Backoffice Reson8 integration and reson8.* runtime tools. Load with
+  configuring-integrations for speech-to-text setup; also use for audio transcription and Reson8
+  runtime availability.
 ---
 
-# Reson8 Connection
+# Reson8 Integration
 
 Use this skill for Reson8 speech-to-text setup and prerecorded audio transcription from Backoffice
 automation runtimes.

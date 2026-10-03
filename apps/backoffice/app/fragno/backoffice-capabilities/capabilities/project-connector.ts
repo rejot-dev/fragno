@@ -10,7 +10,7 @@ export const connectorCapability: BackofficeCapability = {
     eventSources: [],
     actionProviders: ["connector"],
     hookScopes: [],
-    skillPaths: ["skills/connector-connection/SKILL.md"],
+    skillPaths: ["skills/open-connector-connection/SKILL.md"],
     externalEntities: [],
     automationEvents: [],
   },

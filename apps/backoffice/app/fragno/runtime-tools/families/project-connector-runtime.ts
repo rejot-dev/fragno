@@ -26,6 +26,22 @@ export function createProjectConnectorRuntime(
     });
   }
   return {
+    async listProviderConfigs() {
+      const response = await callRoute("GET", "/provider-configs");
+      if (response.type === "json" && isSuccessStatus(response.status)) {
+        return response.data;
+      }
+      return fail(response, "connector.providers.list");
+    },
+    async listProviderActions({ providerConfigId }: { providerConfigId: string }) {
+      const response = await callRoute("GET", "/provider-configs/:providerConfigId/actions", {
+        pathParams: { providerConfigId },
+      });
+      if (response.type === "json" && isSuccessStatus(response.status)) {
+        return response.data;
+      }
+      return fail(response, "connector.providers.actions");
+    },
     async check() {
       const response = await callRoute("GET", "/status");
       if (response.type === "json" && isSuccessStatus(response.status)) {

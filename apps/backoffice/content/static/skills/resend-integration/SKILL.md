@@ -1,12 +1,12 @@
 ---
-name: resend-connection
-description:
-  Configure and automate the Backoffice Resend email capability. Use when setting up Resend
-  delivery, inspecting email threads, replying to emails, or debugging Resend webhooks and durable
-  hooks.
+name: resend-integration
+description: >
+  Use the native Backoffice Resend integration and resend.* runtime tools. Load with
+  configuring-integrations for email setup; also use for email threads, replies, Resend webhooks,
+  and durable-hook debugging.
 ---
 
-# Resend Connection
+# Resend Integration
 
 Use this skill for organization-scoped Resend email delivery, email thread state, and reply
 automation.

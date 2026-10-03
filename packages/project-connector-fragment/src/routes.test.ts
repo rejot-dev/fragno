@@ -94,6 +94,192 @@ afterEach(async () => {
 });
 
 describe("Project Connector connection scenarios", () => {
+  test("authenticated discovery updates the client store and selects an exact OAuth configuration", async () => {
+    const scenario = await connectorScenario();
+    expect(await scenario.call(null, "GET", "/provider-configs")).toMatchObject({
+      status: 401,
+      data: { code: "UNAUTHENTICATED" },
+    });
+    assert(scenario.gateway.control.discoveryReads === 0);
+    const [workConfig] = scenario.gateway.providerConfigs;
+    assert(workConfig);
+    const { actionIds, ...workOverview } = workConfig;
+    scenario.gateway.providerConfigs.push({
+      ...workConfig,
+      id: "gmail-personal",
+      displayName: "Personal Gmail",
+    });
+    const client = createProjectConnectorFragmentClient({
+      baseUrl: "http://localhost",
+      fetcherConfig: {
+        type: "function",
+        useOnServer: true,
+        fetcher: async (input, init) => {
+          const request = new Request(input, init);
+          request.headers.set("x-test-user", "alice");
+          const response = await scenario.fragment.handler(request);
+          assert(response);
+          return response;
+        },
+      },
+    });
+    const providerStore = client.useProviderConfigs();
+    const unsubscribe = providerStore.subscribe(() => undefined);
+    try {
+      await expect
+        .poll(() => providerStore.get().data)
+        .toEqual({
+          projectId: "project-1",
+          providerConfigs: [
+            workOverview,
+            { ...workOverview, id: "gmail-personal", displayName: "Personal Gmail" },
+          ],
+        });
+      expect(JSON.stringify(providerStore.get().data)).not.toContain("test-project-key");
+      assert(scenario.gateway.requests.size === 0);
+      expect((await scenario.call("alice", "GET", "/accounts")).data).toEqual({
+        accounts: [],
+        cursor: null,
+        hasNextPage: false,
+      });
+      const selectedConfig = providerStore
+        .get()
+        .data?.providerConfigs.find((config) => config.id === "gmail-personal");
+      assert(selectedConfig);
+      expect(
+        await scenario.call("alice", "GET", `/provider-configs/${selectedConfig.id}/actions`),
+      ).toEqual({
+        status: 200,
+        data: { projectId: "project-1", providerConfigId: selectedConfig.id, actionIds },
+      });
+      const started = await client.connect().mutate({
+        body: { providerConfigId: selectedConfig.id, connectionName: "personal", returnUri },
+      });
+      assert(started);
+      expect(scenario.gateway.links).toEqual([
+        {
+          userId: "alice",
+          service: "gmail",
+          providerConfigId: "gmail-personal",
+          alias: "personal",
+          returnUri,
+        },
+      ]);
+      scenario.gateway.authorize(started.id, "personal-account");
+      await client.refreshConnection().mutate({ path: { requestId: started.id } });
+      expect((await scenario.call("alice", "GET", "/accounts")).data).toMatchObject({
+        accounts: [{ id: "personal-account", providerConfigId: "gmail-personal" }],
+      });
+      scenario.gateway.providerConfigs.splice(0);
+      expect(await scenario.call("alice", "GET", "/provider-configs")).toEqual({
+        status: 200,
+        data: { projectId: "project-1", providerConfigs: [] },
+      });
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  test("action discovery selects one configuration, updates its client store, and distinguishes empty from missing", async () => {
+    const scenario = await connectorScenario();
+    expect(
+      await scenario.call(null, "GET", "/provider-configs/gmail-provider/actions"),
+    ).toMatchObject({
+      status: 401,
+      data: { code: "UNAUTHENTICATED" },
+    });
+    assert(scenario.gateway.control.discoveryReads === 0);
+    const [workConfig] = scenario.gateway.providerConfigs;
+    assert(workConfig);
+    const personalConfig = {
+      ...workConfig,
+      id: "gmail-personal",
+      displayName: "Personal Gmail",
+      actionIds: ["gmail.send_email"],
+    };
+    scenario.gateway.providerConfigs.push(personalConfig);
+    const client = createProjectConnectorFragmentClient({
+      baseUrl: "http://localhost",
+      fetcherConfig: {
+        type: "function",
+        useOnServer: true,
+        fetcher: async (input, init) => {
+          const request = new Request(input, init);
+          request.headers.set("x-test-user", "alice");
+          const response = await scenario.fragment.handler(request);
+          assert(response);
+          return response;
+        },
+      },
+    });
+    const actionsStore = client.useProviderActions({
+      path: { providerConfigId: personalConfig.id },
+    });
+    const unsubscribe = actionsStore.subscribe(() => undefined);
+    try {
+      await expect
+        .poll(() => actionsStore.get().data)
+        .toEqual({
+          projectId: "project-1",
+          providerConfigId: "gmail-personal",
+          actionIds: ["gmail.send_email"],
+        });
+      expect(JSON.stringify(actionsStore.get().data)).not.toContain("test-project-key");
+      personalConfig.actionIds.splice(0);
+      expect(
+        await scenario.call("alice", "GET", "/provider-configs/gmail-personal/actions"),
+      ).toEqual({
+        status: 200,
+        data: { projectId: "project-1", providerConfigId: "gmail-personal", actionIds: [] },
+      });
+      expect(
+        await scenario.call("alice", "GET", "/provider-configs/unknown/actions"),
+      ).toMatchObject({
+        status: 404,
+        data: { code: "PROVIDER_CONFIG_NOT_FOUND" },
+      });
+      assert(scenario.gateway.requests.size === 0);
+      expect(scenario.gateway.executions).toEqual([]);
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  test.each([
+    { failure: "flat", code: "provider_not_configured" },
+    { failure: "envelope", code: "rate_limited" },
+    { failure: "text", code: "provider_error" },
+    { failure: "malformed", code: "invalid_response" },
+    { failure: "duplicate", code: "invalid_response" },
+    { failure: "not-found", code: "not_found" },
+    { failure: "invalid-json", code: "invalid_response" },
+    { failure: "redirect", code: "client_network_error" },
+    { failure: "network", code: "client_network_error" },
+  ] as const)(
+    "$failure discovery failures are safe and never create accounts or follow redirects",
+    async ({ failure, code }) => {
+      const scenario = await connectorScenario();
+      scenario.gateway.control.discoveryFailure = failure;
+      for (const route of ["/provider-configs", "/provider-configs/gmail-provider/actions"]) {
+        const readsBefore = scenario.gateway.control.discoveryReads;
+        const result = await scenario.call("alice", "GET", route);
+        expect(result).toMatchObject({
+          status: 502,
+          data: { code: "PROJECT_CONNECTOR_ERROR", message: expect.stringContaining(code) },
+        });
+        expect(JSON.stringify(result.data)).not.toContain("test-project-key");
+        assert(scenario.gateway.control.discoveryReads === readsBefore + 1);
+      }
+      assert(scenario.gateway.control.redirectReads === 0);
+      assert(scenario.gateway.requests.size === 0);
+      expect((await scenario.call("alice", "GET", "/accounts")).data).toEqual({
+        accounts: [],
+        cursor: null,
+        hasNextPage: false,
+      });
+    },
+  );
+
   test("Gmail authorization binds only a verified account, updates the client store, and selects it for actions", async () => {
     const scenario = await connectorScenario();
     const client = createProjectConnectorFragmentClient({

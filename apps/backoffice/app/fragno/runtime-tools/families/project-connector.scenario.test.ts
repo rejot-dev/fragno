@@ -28,9 +28,21 @@ test("user-scoped codemode verifies OAuth before SQLite bindings, profiles, and 
     steps: ({ when, then }) => [
       when.codemode.run({
         orgId: "org-1",
-        label: "start Gmail consent",
-        code: 'async () => await context.user("user-1").connector.connect({ service: "gmail", connectionName: "work" })',
-        assertToolCalls: ["connector.connect"],
+        label: "discover the configured provider and start Gmail consent",
+        code: `async () => {
+          const connector = context.user("user-1").connector;
+          const discovery = await connector.listProviderConfigs();
+          const provider = discovery.providerConfigs.find((config) => config.service === "gmail");
+          if (!provider) throw new Error("Gmail is not configured");
+          const actions = await connector.listProviderActions({ providerConfigId: provider.id });
+          if (!actions.actionIds.includes("gmail.search_threads")) throw new Error("Gmail search is not available");
+          return await connector.connect({ providerConfigId: provider.id, connectionName: "work" });
+        }`,
+        assertToolCalls: [
+          "connector.providers.list",
+          "connector.providers.actions",
+          "connector.connect",
+        ],
       }),
       then.assert(
         "only the ID-backed scope and server-selected callback reach the gateway",
@@ -177,6 +189,78 @@ test("Connector bash commands use the same user-owned fragment as codemode", asy
               execution,
             }),
           });
+          const providerHelp = await bash.exec("connector.providers.list --help");
+          expect(providerHelp.exitCode, providerHelp.stderr).toBe(0);
+          expect(providerHelp.stdout).toContain("OAuth provider configurations");
+          const overview = await bash.exec("connector.providers.list");
+          expect(overview.exitCode, overview.stderr).toBe(0);
+          assert(
+            overview.stdout ===
+              "Project: project-1\nOAuth provider configurations (1):\n- gmail-provider: Work Gmail (gmail) | proxy: no\n",
+            overview.stdout,
+          );
+          expect(overview.stdout).not.toContain("gmail.search_threads");
+          const explicitText = await bash.exec("connector.providers.list --format text");
+          expect(explicitText.exitCode, explicitText.stderr).toBe(0);
+          expect(explicitText.stdout).toBe(overview.stdout);
+          const printedProject = await bash.exec("connector.providers.list --print project-id");
+          expect(printedProject.exitCode, printedProject.stderr).toBe(0);
+          assert(printedProject.stdout === "project-1\n", printedProject.stdout);
+          const discovered = await bash.exec("connector.providers.list --format json");
+          expect(discovered.exitCode, discovered.stderr).toBe(0);
+          expect(JSON.parse(discovered.stdout)).toEqual({
+            projectId: "project-1",
+            providerConfigs: [
+              {
+                id: "gmail-provider",
+                service: "gmail",
+                displayName: "Work Gmail",
+                callbackUrl: "https://connector.example/oauth/callback",
+                effectiveScopes: ["https://www.googleapis.com/auth/gmail.readonly"],
+                proxyAvailable: false,
+              },
+            ],
+          });
+          expect(discovered.stdout).not.toContain("test-project-key");
+          expect(discovered.stdout).not.toContain("actionIds");
+          const providerActionsHelp = await bash.exec("connector.providers.actions --help");
+          expect(providerActionsHelp.exitCode, providerActionsHelp.stderr).toBe(0);
+          expect(providerActionsHelp.stdout).toContain("provider-config-id");
+          const providerActions = await bash.exec(
+            "connector.providers.actions --provider-config-id gmail-provider",
+          );
+          expect(providerActions.exitCode, providerActions.stderr).toBe(0);
+          assert(
+            providerActions.stdout ===
+              "Project: project-1\nProvider configuration: gmail-provider\nAction IDs (1):\n- gmail.search_threads\n",
+            providerActions.stdout,
+          );
+          const actionIds = await bash.exec(
+            "connector.providers.actions --provider-config-id gmail-provider --format json",
+          );
+          expect(actionIds.exitCode, actionIds.stderr).toBe(0);
+          expect(JSON.parse(actionIds.stdout)).toEqual({
+            projectId: "project-1",
+            providerConfigId: "gmail-provider",
+            actionIds: ["gmail.search_threads"],
+          });
+          const printedActions = await bash.exec(
+            "connector.providers.actions --provider-config-id gmail-provider --print action-ids",
+          );
+          expect(printedActions.exitCode, printedActions.stderr).toBe(0);
+          assert(printedActions.stdout === '["gmail.search_threads"]\n', printedActions.stdout);
+          const unknownProvider = await bash.exec(
+            "connector.providers.actions --provider-config-id unknown",
+          );
+          expect(unknownProvider.exitCode).not.toBe(0);
+          expect(unknownProvider.stderr).toContain("Provider configuration not found");
+          const readsBeforeMissingSelector = gateway.control.discoveryReads;
+          const missingSelector = await bash.exec("connector.providers.actions");
+          expect(missingSelector.exitCode).not.toBe(0);
+          expect(missingSelector.stderr).toContain("Missing required option --provider-config-id");
+          assert(gateway.control.discoveryReads === readsBeforeMissingSelector);
+          expect(gateway.links).toEqual([]);
+          expect(gateway.executions).toEqual([]);
           const help = await bash.exec("connector.connect --help");
           expect(help.exitCode, help.stderr).toBe(0);
           expect(help.stdout).toContain("browser consent");
@@ -214,6 +298,32 @@ test("Connector bash commands use the same user-owned fragment as codemode", asy
           expect(injected.exitCode).not.toBe(0);
           expect(injected.stderr).toContain("does not accept option --return-uri");
           expect(gateway.links).toHaveLength(1);
+          const [provider] = gateway.providerConfigs;
+          assert(provider);
+          provider.actionIds.splice(0);
+          const emptyActions = await bash.exec(
+            "connector.providers.actions --provider-config-id gmail-provider",
+          );
+          expect(emptyActions.exitCode, emptyActions.stderr).toBe(0);
+          assert(
+            emptyActions.stdout ===
+              "Project: project-1\nProvider configuration: gmail-provider\nNo action IDs available.\n",
+            emptyActions.stdout,
+          );
+          gateway.providerConfigs.splice(0);
+          const emptyOverview = await bash.exec("connector.providers.list");
+          expect(emptyOverview.exitCode, emptyOverview.stderr).toBe(0);
+          assert(
+            emptyOverview.stdout ===
+              "Project: project-1\nNo OAuth provider configurations available.\n",
+            emptyOverview.stdout,
+          );
+          const emptyOverviewJson = await bash.exec("connector.providers.list --format json");
+          expect(emptyOverviewJson.exitCode, emptyOverviewJson.stderr).toBe(0);
+          expect(JSON.parse(emptyOverviewJson.stdout)).toEqual({
+            projectId: "project-1",
+            providerConfigs: [],
+          });
         },
       ),
     ],
@@ -246,6 +356,15 @@ test("runtime permission failures and unavailable configuration do not contact t
             execution,
           }),
         });
+        const discovery = await bash.exec("connector.providers.list");
+        expect(discovery.exitCode).not.toBe(0);
+        expect(discovery.stderr).toContain("connector.providers.read");
+        const providerActions = await bash.exec(
+          "connector.providers.actions --provider-config-id gmail-provider",
+        );
+        expect(providerActions.exitCode).not.toBe(0);
+        expect(providerActions.stderr).toContain("connector.providers.read");
+        assert(gateway.control.discoveryReads === 0);
         const connect = await bash.exec("connector.connect --service gmail --connection-name work");
         expect(connect.exitCode).not.toBe(0);
         expect(connect.stderr).toContain("connector.connections.create");
@@ -276,6 +395,21 @@ test("missing project credentials return an actionable configuration error witho
             code: 'async () => await context.user("user-1").connector.check()',
           }),
         ).rejects.toThrow("Connector is not configured.");
+        await expect(
+          ctx.runCodemode({
+            orgId: "org-1",
+            label: "discover providers with a missing connector key",
+            code: 'async () => await context.user("user-1").connector.listProviderConfigs()',
+          }),
+        ).rejects.toThrow("Connector is not configured.");
+        await expect(
+          ctx.runCodemode({
+            orgId: "org-1",
+            label: "discover provider actions with a missing connector key",
+            code: 'async () => await context.user("user-1").connector.listProviderActions({ providerConfigId: "gmail-provider" })',
+          }),
+        ).rejects.toThrow("Connector is not configured.");
+        assert(gateway.control.discoveryReads === 0);
         expect(gateway.links).toEqual([]);
         assert(gateway.control.requestReads === 0);
       }),

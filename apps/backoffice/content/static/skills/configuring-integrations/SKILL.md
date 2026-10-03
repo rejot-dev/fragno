@@ -1,19 +1,24 @@
 ---
-name: configuring-connections
-description:
-  "Set up any Backoffice integration, connection, or named provider. Always use for setup requests
-  such as \u2018help me set up Reson8\u2019, even when a provider-specific skill also applies; also
-  use when required configuration is missing or connection status must be verified."
+name: configuring-integrations
+description: >
+  Configure native Backoffice integrations with dedicated runtime tools, such as Telegram, Resend,
+  Reson8, and Upload. Always load for native integration setup or verification, together with its
+  provider-specific skill. Open Connector and low-level API/MCP connections use their own skills.
 ---
 
-# Configuring Connections
+# Configuring Integrations
 
-Treat connection setup as a handshake: **inspect → collect → configure → verify**.
+Integrations are native Backoffice capabilities with dedicated runtime tools. The `connections.*`
+namespace is their configuration API; its catalog IDs identify integrations, not Open Connector
+accounts or low-level API/MCP connection slugs.
+
+Treat integration setup as a handshake: **inspect → collect → configure → verify**.
 
 ## Required process
 
-1. Read "/static/codemode/providers/connections.d.ts", then inspect the catalog and selected
-   connection:
+1. Read `/static/codemode/providers/connections.d.ts`, list the integration configuration catalog,
+   then inspect the selected integration using its returned capability ID. For example, for
+   Telegram:
 
    ```js
    async () => {
@@ -26,7 +31,7 @@ Treat connection setup as a handshake: **inspect → collect → configure → v
    ```
 
    Read the matching capability skill from the available skills, such as
-   `/static/skills/telegram-connection/SKILL.md`, for provider-specific fields, webhook behavior,
+   `/static/skills/telegram-integration/SKILL.md`, for provider-specific fields, webhook behavior,
    events, and tools. **Complete when** configurability, current status, required fields, masked
    existing values, and provider-specific setup steps are known.
 
@@ -60,13 +65,13 @@ Treat connection setup as a handshake: **inspect → collect → configure → v
    };
    ```
 
-   When schema/setup exposes no configurable fields or identifies a managed connection, follow its
+   When schema/setup exposes no configurable fields or identifies a managed integration, follow its
    manual steps and status `nextSteps` instead of calling `configure`. **Complete when** the
    configure call succeeds or the managed setup path is explicit.
 
 4. Verify and re-read status in the same setup workflow when one is active. `connections.verify`
    always returns a required `verification` result; treat `verification.ok` as the single
-   authoritative verification signal. Return a generated final UI that presents the connection
+   authoritative verification signal. Return a generated final UI that presents the integration
    status, verification result, and actionable next steps while preserving the raw results as
    ordinary sibling fields:
 
@@ -84,7 +89,7 @@ Treat connection setup as a handshake: **inspect → collect → configure → v
    ```
 
    **Complete only when** `result.verification.ok` is true and the rendered final result confirms
-   the configured connection. If it is false, present `result.verification.message`, `missing`
+   the configured integration. If it is false, present `result.verification.message`, `missing`
    fields, and `nextSteps` in the generated UI; start another input handshake only when those next
    steps require another user-supplied value.
 

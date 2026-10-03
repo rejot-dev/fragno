@@ -1,5 +1,11 @@
 // connector tools
 type ConnectorCodemodeProvider = {
+  /** List the project's OAuth provider configuration overviews without action IDs. Use listProviderActions for a selected providerConfigId; discovery does not verify user accounts. */
+  listProviderConfigs(): Promise<ConnectorListProviderConfigsOutput>;
+  /** List available action IDs for one exact OAuth provider configuration; this does not execute actions. */
+  listProviderActions(
+    input: ConnectorListProviderActionsInput,
+  ): Promise<ConnectorListProviderActionsOutput>;
   /** Check gateway project-key authentication, not individual provider availability. */
   check(): Promise<ConnectorCheckOutput>;
   /** Start provider OAuth for the owning user. Return the authorization URL and retain the request ID for refresh. */
@@ -17,6 +23,25 @@ type ConnectorCodemodeProvider = {
 };
 declare const connector: ConnectorCodemodeProvider;
 
+type ConnectorListProviderConfigsOutput = {
+  projectId: string;
+  providerConfigs: {
+    id: string;
+    service: string;
+    displayName: string;
+    callbackUrl: string;
+    effectiveScopes: string[];
+    proxyAvailable: boolean;
+  }[];
+};
+type ConnectorListProviderActionsInput = {
+  providerConfigId: string;
+};
+type ConnectorListProviderActionsOutput = {
+  projectId: string;
+  providerConfigId: string;
+  actionIds: string[];
+};
 type ConnectorCheckOutput = {
   authenticated: true;
 };

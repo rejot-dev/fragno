@@ -96,6 +96,25 @@ and migrate the fragment using your application's usual Fragno integration. The 
 authorization policy when needed; the fragment enforces account ownership and action/service
 matching.
 
+## Provider configuration discovery
+
+`GET /provider-configs` returns live OAuth configuration metadata for the configured project:
+`projectId` and `providerConfigs`, whose entries contain `id`, `service`, `displayName`,
+`callbackUrl`, `effectiveScopes`, and `proxyAvailable`, without action IDs. Use the
+`useProviderConfigs` client hook to load this catalog, then pass the selected entry's `id` as
+`providerConfigId` when connecting, especially when several configurations use the same service.
+
+`GET /provider-configs/:providerConfigId/actions` and the `useProviderActions` client hook retrieve
+`{ projectId, providerConfigId, actionIds }` for one exact configuration. An unknown configuration
+returns `PROVIDER_CONFIG_NOT_FOUND` (404); a known configuration with no actions returns an empty
+`actionIds` list. Discovery never executes actions.
+
+Discovery requires an authenticated product user but is project-scoped, not an account list. It
+neither creates connections nor verifies provider accounts, and does not include API-key or custom
+credential configurations. The server calls `/v1/saas/oauth/provider-configs` with the project key;
+credentials and extra upstream fields stay outside the public response. Unsupported deployments and
+upstream failures return `PROJECT_CONNECTOR_ERROR`, rather than an invented or cached catalog.
+
 ## Client flow
 
 ```ts
@@ -127,21 +146,23 @@ preferred for projects with multiple configurations for one service. React, Vue,
 entrypoints also export `createProjectConnectorFragmentClient` with their native adapter
 conventions.
 
-Client operations: `useStatus`, `useAccounts`, `useProfile`, `connect`, `refreshConnection`, and
-`executeAction`. Refreshing a connection invalidates the account-list store. The account list is
-cursor-paginated (25 items per page); it lists local verified bindings, not live provider
-availability.
+Client operations: `useProviderConfigs`, `useProviderActions`, `useStatus`, `useAccounts`,
+`useProfile`, `connect`, `refreshConnection`, and `executeAction`. Refreshing a connection
+invalidates the account-list store. The account list is cursor-paginated (25 items per page); it
+lists local verified bindings, not live provider availability.
 
 ## Routes
 
-| Method | Path                                      | Purpose                                                       |
-| ------ | ----------------------------------------- | ------------------------------------------------------------- |
-| GET    | `/status`                                 | Check project-key authentication                              |
-| POST   | `/connection-requests`                    | Create an OAuth authorization link and save expected identity |
-| POST   | `/connection-requests/:requestId/refresh` | Verify gateway status and bind a completed account            |
-| GET    | `/accounts?cursor=...`                    | List this user's locally verified account bindings            |
-| GET    | `/accounts/:accountId/profile`            | Read and verify the provider account profile                  |
-| POST   | `/accounts/:accountId/actions/:actionId`  | Execute `{ "input": { ... } }` using the saved selector       |
+| Method | Path                                          | Purpose                                                       |
+| ------ | --------------------------------------------- | ------------------------------------------------------------- |
+| GET    | `/provider-configs`                           | Overview of this project's available OAuth configurations     |
+| GET    | `/provider-configs/:providerConfigId/actions` | List action IDs for one exact OAuth configuration             |
+| GET    | `/status`                                     | Check project-key authentication                              |
+| POST   | `/connection-requests`                        | Create an OAuth authorization link and save expected identity |
+| POST   | `/connection-requests/:requestId/refresh`     | Verify gateway status and bind a completed account            |
+| GET    | `/accounts?cursor=...`                        | List this user's locally verified account bindings            |
+| GET    | `/accounts/:accountId/profile`                | Read and verify the provider account profile                  |
+| POST   | `/accounts/:accountId/actions/:actionId`      | Execute `{ "input": { ... } }` using the saved selector       |
 
 A connection is bound only when the authenticated gateway response is `connected` and matches the
 saved request ID, project, provider config, external user, service, and connection name. `failed`

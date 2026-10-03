@@ -117,7 +117,7 @@ export const resendCapability: BackofficeCapability = {
           createDurableHookRepositoryFromCommands(getResendDo(objects, orgId).commands),
       },
     ],
-    skillPaths: ["skills/resend-connection/SKILL.md"],
+    skillPaths: ["skills/resend-integration/SKILL.md"],
     externalEntities: [],
     automationEvents: [
       {
