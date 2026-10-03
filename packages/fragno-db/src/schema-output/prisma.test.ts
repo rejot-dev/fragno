@@ -184,6 +184,18 @@ describe("generatePrismaSchema", () => {
         @@map("fragno_db_sync_requests")
       }
 
+      model FragnoDbUowLocks {
+        id String @unique @default(cuid())
+        lockKey String
+        owner String
+        createdAt DateTime @default(now())
+        _internalId Int @id @default(autoincrement())
+        _version Int @default(0)
+        @@index([owner], map: "idx_fragno_db_uow_locks_idx_lock_owner_5d6b0d67")
+        @@unique([lockKey], map: "uidx_fragno_db_uow_locks_unique_lock_key_ab1e037f")
+        @@map("fragno_db_uow_locks")
+      }
+
       model FragnoHooks {
         id String @unique @default(cuid())
         namespace String
@@ -334,6 +346,18 @@ describe("generatePrismaSchema", () => {
         _version Int @default(0)
         @@unique([requestId], map: "uidx_fragno_db_sync_requests_idx_sync_request_id_a352b2bb")
         @@map("fragno_db_sync_requests")
+      }
+
+      model FragnoDbUowLocks {
+        id String @unique @default(cuid())
+        lockKey String
+        owner String
+        createdAt Int @default(dbgenerated("CURRENT_TIMESTAMP"))
+        _internalId Int @id @default(autoincrement())
+        _version Int @default(0)
+        @@index([owner], map: "idx_fragno_db_uow_locks_idx_lock_owner_5d6b0d67")
+        @@unique([lockKey], map: "uidx_fragno_db_uow_locks_unique_lock_key_ab1e037f")
+        @@map("fragno_db_uow_locks")
       }
 
       model FragnoHooks {
@@ -491,6 +515,18 @@ describe("generatePrismaSchema", () => {
         _version Int @default(0)
         @@unique([requestId], map: "idx_sync_request_id")
         @@map("fragno_db_sync_requests")
+      }
+
+      model FragnoDbUowLocks {
+        id String @unique @default(cuid()) @db.VarChar(128)
+        lockKey String @db.VarChar(191)
+        owner String @db.VarChar(191)
+        createdAt DateTime @default(now())
+        _internalId BigInt @id @default(autoincrement())
+        _version Int @default(0)
+        @@index([owner], map: "idx_lock_owner")
+        @@unique([lockKey], map: "unique_lock_key")
+        @@map("fragno_db_uow_locks")
       }
 
       model FragnoHooks {

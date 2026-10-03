@@ -5,6 +5,7 @@ import { SqliteDialect } from "kysely";
 
 import { BetterSQLite3DriverConfig } from "../../adapters/generic-sql/driver-config";
 import { SqlAdapter } from "../../adapters/generic-sql/generic-sql-adapter";
+import { internalSchema } from "../../fragments/internal-fragment.schema";
 import { column, schema, idColumn, FragnoId } from "../../schema/create";
 import { createIndexedBuilder } from "../condition-builder";
 import { Cursor } from "../cursor";
@@ -1422,6 +1423,9 @@ describe("Instrumentation", () => {
     });
 
     try {
+      await adapter
+        .prepareMigrations(internalSchema, "")
+        .execute(0, undefined, { updateVersionInMigration: false });
       await adapter
         .prepareMigrations(testSchema, null)
         .execute(0, undefined, { updateVersionInMigration: false });

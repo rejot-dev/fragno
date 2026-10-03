@@ -1,9 +1,12 @@
+import { createHash } from "node:crypto";
+
 import superjson from "superjson";
 
 import { isRetryableDatabaseError, isUniqueConstraintError } from "../../errors";
 import {
   SETTINGS_NAMESPACE,
   SETTINGS_TABLE_NAME,
+  UOW_LOCK_TABLE_NAME,
   internalSchema,
 } from "../../fragments/internal-fragment.schema";
 import { createId } from "../../id";
@@ -20,6 +23,7 @@ import {
 } from "../../outbox/outbox";
 import { buildOutboxPlan, finalizeOutboxPayload } from "../../outbox/outbox-builder";
 import { createSQLSerializer } from "../../query/serialize/create-sql-serializer";
+import { deriveLogicalLockKeys } from "../../query/unit-of-work/logical-lock-keys";
 import type {
   CompiledMutation,
   MutationResult,
@@ -70,6 +74,91 @@ export async function executeRetrieval(
   return retrievalResults;
 }
 
+/**
+ * Claim sorted logical keys before checks/mutations; duplicates raise a version
+ * conflict for UOW retry. Returns false when the lock table is not migrated yet.
+ */
+function hashLockKey(lockKey: string): string {
+  return createHash("sha256").update(lockKey).digest("hex");
+}
+
+async function acquireUowLocks(
+  tx: SqlDriverAdapter,
+  driverConfig: DriverConfig,
+  dialect: Dialect,
+  lockKeys: readonly string[],
+  owner: string,
+): Promise<boolean> {
+  if (lockKeys.length === 0) {
+    return true;
+  }
+  const useSavepoint = driverConfig.databaseType === "postgresql";
+  if (useSavepoint) {
+    await tx.executeQuery(sql`SAVEPOINT fragno_uow_locks_acquire`.compile(dialect));
+  }
+  const db = createColdKysely(driverConfig.databaseType);
+  const rowsPerInsert = Math.max(1, Math.floor(driverConfig.maxParametersPerQuery / 3));
+  for (let offset = 0; offset < lockKeys.length; offset += rowsPerInsert) {
+    const query = db
+      .insertInto(UOW_LOCK_TABLE_NAME)
+      .values(
+        lockKeys.slice(offset, offset + rowsPerInsert).map((lockKey) => ({
+          id: createId(),
+          lockKey: hashLockKey(lockKey),
+          owner,
+        })),
+      )
+      .compile();
+    try {
+      await tx.executeQuery(query);
+    } catch (error) {
+      if (isMissingLockTableError(error)) {
+        if (useSavepoint) {
+          await tx.executeQuery(
+            sql`ROLLBACK TO SAVEPOINT fragno_uow_locks_acquire`.compile(dialect),
+          );
+        }
+        return false;
+      }
+      const normalized = driverConfig.normalizeError(error);
+      if (isUniqueConstraintError(normalized) || isRetryableDatabaseError(normalized)) {
+        throw new SqlVersionConflictError(
+          "Optimistic concurrency conflict: lock is held by another transaction.",
+        );
+      }
+      throw normalized;
+    }
+  }
+  return true;
+}
+
+function isMissingLockTableError(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+  const { code, errno } = error as Record<string, unknown>;
+  if (code === "42P01" || code === "ER_NO_SUCH_TABLE" || errno === 1146) {
+    return true;
+  }
+  const message = error instanceof Error ? error.message : undefined;
+  return (
+    message?.includes(UOW_LOCK_TABLE_NAME) === true &&
+    (message.includes("no such table") ||
+      message.includes("does not exist") ||
+      message.includes("doesn't exist"))
+  );
+}
+
+async function releaseUowLocks(
+  tx: SqlDriverAdapter,
+  driverConfig: DriverConfig,
+  owner: string,
+): Promise<void> {
+  const db = createColdKysely(driverConfig.databaseType);
+  const query = db.deleteFrom(UOW_LOCK_TABLE_NAME).where("owner", "=", owner).compile();
+  await tx.executeQuery(query);
+}
+
 export async function executeMutation(
   adapter: SqlDriverAdapter,
   driverConfig: DriverConfig,
@@ -111,6 +200,24 @@ export async function executeMutation(
 
   try {
     await adapter.transaction(async (tx) => {
+      const uowIdForLocks = mutationBatch[0]?.uowId;
+      const lockKeys = deriveLogicalLockKeys(
+        mutationBatch.flatMap((mutation) => {
+          const operation = mutation.materializedOperation ?? mutation.operation;
+          return operation ? [operation] : [];
+        }),
+      );
+      let locksHeld = false;
+      if (uowIdForLocks !== undefined && lockKeys.length > 0) {
+        locksHeld = await acquireUowLocks(
+          tx,
+          driverConfig,
+          options.dialect,
+          lockKeys,
+          uowIdForLocks,
+        );
+      }
+
       let outboxReservation: ReservedOutboxVersion | null = null;
 
       if (shouldWriteOutbox) {
@@ -231,6 +338,10 @@ export async function executeMutation(
           refMap,
         });
         failedOutboxInsert = undefined;
+      }
+
+      if (locksHeld && uowIdForLocks !== undefined) {
+        await releaseUowLocks(tx, driverConfig, uowIdForLocks);
       }
     });
 

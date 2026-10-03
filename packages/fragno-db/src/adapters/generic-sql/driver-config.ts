@@ -112,7 +112,7 @@ function normalizePostgresError(error: unknown): Error {
   const tableName = typeof table === "string" ? table : undefined;
   const constraintName = typeof constraint === "string" ? constraint : undefined;
 
-  if (code === "40001" || code === "40P01") {
+  if (code === "40001" || code === "40P01" || code === "25P02") {
     return new DatabaseTransactionError({
       message: error instanceof Error ? error.message : "Database transaction conflict.",
       retryable: true,
@@ -167,6 +167,23 @@ function normalizeSqliteError(error: unknown): Error {
 
   const { code, resultCode } = error as Record<string, unknown>;
   const message = error instanceof Error ? error.message : undefined;
+
+  // SQLite write-lock contention is retryable so lock conflicts retry.
+  if (
+    code === "SQLITE_BUSY" ||
+    code === "SQLITE_LOCKED" ||
+    resultCode === 5 ||
+    resultCode === 6 ||
+    message?.includes("database is locked") ||
+    message?.includes("database table is locked") ||
+    message?.includes("database is busy")
+  ) {
+    return new DatabaseTransactionError({
+      message: message ?? "Database is busy.",
+      retryable: true,
+      cause: error,
+    });
+  }
 
   if (
     code === "SQLITE_CONSTRAINT_UNIQUE" ||
