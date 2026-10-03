@@ -3,6 +3,7 @@ import { defineConfig } from "tsdown";
 export default defineConfig({
   fixedExtension: false,
   entry: [
+    "./src/graft/graft-control-store.ts",
     "./src/graft/graft-database-operations.ts",
     "./src/graft/graft-object-directory.ts",
     "./src/graft/graft-sqlite.ts",

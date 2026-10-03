@@ -8,7 +8,7 @@ implementation; application integration with this package is deferred.
 
 ```text
 src/
-  graft/            Graft VFS loading, pragma operations, object directory, and Graft-backed state
+  graft/            Graft storage, durable control commands, activation, and object-log fencing
   runtime/          Object definitions, worker ownership, lifecycle, clocks, and state APIs
   rpc/              Cap'n Web sessions over Node MessagePorts
   sqlite/           Object storage, state, coordination, and connection configuration
@@ -19,6 +19,9 @@ src/
 
 Tests live beside their source files. Build output mirrors these directories; public package
 subpaths map directly to the defining modules and remain independent of the internal layout.
+
+Type checking and type-aware lint wait for this package's build because scenario fixtures consume
+its compiled public exports; otherwise rebuilding can remove declarations while checks read them.
 
 References:
 
@@ -124,9 +127,11 @@ reveal without pushing between calls. Immediately before the enclosing external 
 error is exposed, the worker proves that position durable with Graft. A failed push poisons that
 worker's database so its speculative local state cannot be read as confirmed state.
 
-This slice deliberately has **no leases, fencing epochs, peer routing, or concurrent-owner safety**.
-Run only one serving runtime for a control log. It proves that a fresh process with an empty local
-cache can recover object state; it is not yet a distributed Durable Object runtime.
+`createGraftNodeObjectRuntime` remains the compatibility path for one serving owner. It does not
+claim control ownership or write object-log fencing commits, so run only one such runtime for a
+control log. Use the authority-bound runtime below for takeover qualification. Fresh-process
+recovery is proven, but peer routing, automatic lease renewal, watchdog-driven worker retirement,
+and distributed alarm discovery remain incomplete.
 
 Provision the control database once and retain its remote log ID in deployment configuration:
 
@@ -148,16 +153,77 @@ const runtime = createGraftNodeObjectRuntime({
 });
 ```
 
+### Authority-bound activation and takeover
+
+`createAuthorityBoundGraftNodeObjectRuntime` registers one process-incarnation lease, claims each
+opened object as `restoring`, pushes an authority fencing commit to the object's stable log,
+initializes the worker, and publishes `ready` before its first RPC is admitted. The managed object
+database captures the exact object epoch, node generation, claim ID, and confirmed lease deadline.
+Every output checks that token before and after its durability push. Expired authority, an authority
+row mismatch, or a divergent push poisons the activation instead of rebasing application SQL.
+
+```ts
+import { createAuthorityBoundGraftNodeObjectRuntime } from "@fragno-private/backoffice-node-runtime/node-object-runtime";
+
+const runtime = createAuthorityBoundGraftNodeObjectRuntime({
+  storage: { configPath: "./graft.toml", controlRemoteLogId },
+  clock: { kind: "system" },
+  nodeLease: {
+    nodeId: crypto.randomUUID(),
+    processGeneration: crypto.randomUUID(),
+    privateAddress: "node-a.internal:8081",
+    compatibilityVersion: 1,
+    expiresAtMs: Date.now() + 30_000,
+    renewalId: crypto.randomUUID(),
+  },
+  objects: { COUNTER: counterDefinition },
+});
+```
+
+This is the minimum local-takeover slice, not a complete fleet runtime. Callers must currently
+supply a lease deadline long enough for their qualification run; the runtime does not renew it. It
+also does not route calls to a live remote owner. A process therefore activates only objects it can
+claim locally, and authority loss is enforced at worker output boundaries rather than by a process
+watchdog.
+
+Real two-process scenarios cover both object-log orderings. If an old write reaches remote storage
+first, the replacement reclones that head and preserves the write behind its higher-epoch fence,
+while the expired caller receives no success. If the replacement fence lands first, the paused old
+push diverges and its speculative write is discarded. Both paths delete every local cache and
+restore the authoritative result in a third process.
+
+### Durable control commands
+
+`GraftControlStore` from `@fragno-private/backoffice-node-runtime/graft-control-store` manages the
+shared control log through named, receipt-backed commands. It stores process-incarnation leases,
+stable object mappings, explicit `unowned`/`restoring`/`ready` ownership, and decimal-string fencing
+epochs. Available commands register and renew nodes, register object databases, claim objects, mark
+claims ready, and conditionally release exact claims.
+
+Every command opens a clean clone, checks an existing command receipt, evaluates its preconditions
+in a short SQLite transaction, writes the result and receipt together, and synchronously pushes.
+After a failed or lost push response, the store discards the speculative clone and searches a fresh
+remote snapshot for the receipt. If the receipt is absent, it reruns the named command against
+current state with the same command ID. It never rebases raw SQL from the losing snapshot.
+
+Independent-process scenarios prove that concurrent claims produce one fresh epoch, losing clients
+recompute against the winning history, a remotely committed command survives a lost response, an
+expired owner can be replaced, and a late completion from the old claim cannot publish readiness.
+The authority-bound runtime now consumes these decisions for local activation and object-log
+fencing. Node lease renewal, terminal process watchdogs, remote-owner routing, and alarm discovery
+remain to be connected before a general multi-node deployment is safe.
+
 `GraftDatabaseOperations` owns the `clone`, `pull`, `push`, and remote-log lookup pragmas. The
 default runtime imports the production pragma implementation inside each worker. Tests and
 alternative adapters can use `defineGraftDatabaseOperations` with
-`createGraftNodeObjectRuntimeWithDatabaseOperations`; the definition transfers only a module URL,
-export name, and structured-clonable factory input across the worker boundary. The package scenario
-uses a recording decorator around the real pragmas to prove both boundaries: direct RPC calls push
-before returning to their caller, while separate RPCs inside one external output gate perform no
-intermediate pushes and share one final push. Concurrent scenarios also prove that RPCs within one
-scope and separate writer scopes can share a push, while a reader does not wait for a later storage
-position it did not observe.
+`createGraftNodeObjectRuntimeWithDatabaseOperations` or
+`createAuthorityBoundGraftNodeObjectRuntimeWithDatabaseOperations`; the definition transfers only a
+module URL, export name, and structured-clonable factory input across the worker boundary. The
+package scenario uses a recording decorator around the real pragmas to prove both boundaries: direct
+RPC calls push before returning to their caller, while separate RPCs inside one external output gate
+perform no intermediate pushes and share one final push. Concurrent scenarios also prove that RPCs
+within one scope and separate writer scopes can share a push, while a reader does not wait for a
+later storage position it did not observe.
 
 Routing code places all internal object RPCs used to produce one external result inside an output
 gate. The runtime owns the gate; object factories still receive no transaction or push controls:
@@ -202,12 +268,13 @@ gate: outbound fetches, callback arguments, and response-stream work performed a
 returns are not transactional or delayed. Detached unregistered work remains unsupported.
 
 The Graft runtime requires Node.js 24.11 or newer. `state.storage.sql.exec()` accepts one
-application statement and does not expose transaction control, `PRAGMA`, or `ATTACH`. The Graft
-configuration must be established before the extension loads, use `make_default = false`, and use a
-distinct `data_dir` for each container cache. Graft 0.2.1 is pinned; its VFS uses
-`journal_mode = MEMORY`, not WAL. The filesystem remote supports local scenarios, while deployment
-can supply Graft's S3-compatible configuration. See `docs/stateless-graft-runtime-plan.md` for the
-remaining control plane, fencing, routing, and scheduling work.
+application statement and does not expose transaction control, `PRAGMA`, `ATTACH`, or tables whose
+names begin with `node_runtime_`. The Graft configuration must be established before the extension
+loads, use `make_default = false`, and use a distinct `data_dir` for each container cache. Graft
+0.2.1 is pinned; its VFS uses `journal_mode = MEMORY`, not WAL. The filesystem remote supports local
+scenarios, while deployment can supply Graft's S3-compatible configuration. See
+`docs/stateless-graft-runtime-plan.md` for the remaining control plane, fencing, routing, and
+scheduling work.
 
 ### Caller-coordinated cleanup
 

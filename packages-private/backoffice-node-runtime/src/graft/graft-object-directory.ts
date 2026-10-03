@@ -1,14 +1,14 @@
 import { randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 
+import { GRAFT_CONTROL_FORMAT, createGraftControlSchema } from "./graft-control-schema";
 import { createSqlitePragmaGraftDatabaseOperations } from "./graft-database-operations";
+import { createGraftObjectAuthoritySchema } from "./graft-object-authority";
 import {
   initializeGraftSqlite,
   openClonedGraftDatabase,
   openNewGraftDatabase,
 } from "./graft-sqlite";
-
-const GRAFT_CONTROL_FORMAT = 1;
 const graftOperations = createSqlitePragmaGraftDatabaseOperations();
 
 /** Identifies one process-local Graft cache and the durable fleet directory log it clones. */
@@ -22,19 +22,7 @@ export function provisionGraftControlDatabase(configPath: string): string {
   initializeGraftSqlite(configPath);
   const database = openNewGraftDatabase(`control-provision-${randomUUID()}`);
   try {
-    database.exec(`
-      CREATE TABLE node_runtime_control_format (
-        singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
-        format INTEGER NOT NULL
-      ) STRICT;
-      CREATE TABLE node_runtime_object_directory (
-        object_id TEXT PRIMARY KEY,
-        remote_log_id TEXT NOT NULL UNIQUE
-      ) STRICT;
-    `);
-    database
-      .prepare("INSERT INTO node_runtime_control_format (singleton, format) VALUES (1, ?)")
-      .run(GRAFT_CONTROL_FORMAT);
+    createGraftControlSchema(database);
     graftOperations.push(database);
     return graftOperations.readRemoteLogId(database);
   } finally {
@@ -42,7 +30,7 @@ export function provisionGraftControlDatabase(configPath: string): string {
   }
 }
 
-/** Resolves stable object identities to one Graft remote log; this slice assumes one runtime owner. */
+/** Resolves stable object logs; first-object provisioning still assumes one concurrent creator. */
 export class GraftObjectDirectory {
   readonly #database: DatabaseSync;
   #failure: Error | null = null;
@@ -89,6 +77,13 @@ export class GraftObjectDirectory {
           "INSERT INTO node_runtime_object_directory (object_id, remote_log_id) VALUES (?, ?)",
         )
         .run(objectId, remoteLogId);
+      this.#database
+        .prepare(
+          `INSERT INTO node_runtime_object_ownership
+            (object_id, epoch, lifecycle, owner_node_id, claim_id)
+           VALUES (?, '0', 'unowned', '', '')`,
+        )
+        .run(objectId);
       this.#database.exec("COMMIT");
     } catch (error) {
       if (this.#database.isTransaction) {
@@ -137,6 +132,7 @@ function provisionGraftObjectDatabase(objectId: string): string {
     database
       .prepare("INSERT INTO node_runtime_object_identity (singleton, object_id) VALUES (1, ?)")
       .run(objectId);
+    createGraftObjectAuthoritySchema(database, objectId);
     graftOperations.push(database);
     return graftOperations.readRemoteLogId(database);
   } finally {

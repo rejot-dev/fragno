@@ -33,6 +33,53 @@ export function createCountingGraftDatabaseOperations(input: unknown): GraftData
   };
 }
 
+/** Blocks one selected worker push until a scenario releases its shared atomic barrier. */
+export function createBarrierGraftDatabaseOperations(input: unknown): GraftDatabaseOperations {
+  if (
+    typeof input !== "object" ||
+    input === null ||
+    !("pushCounter" in input) ||
+    !(input.pushCounter instanceof SharedArrayBuffer) ||
+    !("blockNextPush" in input) ||
+    !(input.blockNextPush instanceof SharedArrayBuffer) ||
+    !("blockedPush" in input) ||
+    !(input.blockedPush instanceof SharedArrayBuffer) ||
+    !("releaseBlockedPush" in input) ||
+    !(input.releaseBlockedPush instanceof SharedArrayBuffer)
+  ) {
+    throw new Error("BARRIER_GRAFT_DATABASE_OPERATIONS_INPUT_INVALID");
+  }
+  const pushCounter = requireAtomicInt32(input.pushCounter, "pushCounter");
+  const blockNextPush = requireAtomicInt32(input.blockNextPush, "blockNextPush");
+  const blockedPush = requireAtomicInt32(input.blockedPush, "blockedPush");
+  const releaseBlockedPush = requireAtomicInt32(input.releaseBlockedPush, "releaseBlockedPush");
+  const operations = createSqlitePragmaGraftDatabaseOperations();
+  return {
+    clone(database, remoteLogId) {
+      operations.clone(database, remoteLogId);
+    },
+    pull(database) {
+      operations.pull(database);
+    },
+    push(database) {
+      Atomics.add(pushCounter, 0, 1);
+      if (Atomics.exchange(blockNextPush, 0, 0) === 1) {
+        Atomics.store(blockedPush, 0, 1);
+        Atomics.notify(blockedPush, 0);
+        while (Atomics.load(releaseBlockedPush, 0) === 0) {
+          Atomics.wait(releaseBlockedPush, 0, 0);
+        }
+        Atomics.store(releaseBlockedPush, 0, 0);
+        Atomics.store(blockedPush, 0, 0);
+      }
+      operations.push(database);
+    },
+    readRemoteLogId(database) {
+      return operations.readRemoteLogId(database);
+    },
+  };
+}
+
 /** Records pushes and injects one controlled failure before or after the real Graft push. */
 export function createControlledGraftDatabaseOperations(input: unknown): GraftDatabaseOperations {
   if (
@@ -72,4 +119,11 @@ export function createControlledGraftDatabaseOperations(input: unknown): GraftDa
       return operations.readRemoteLogId(database);
     },
   };
+}
+
+function requireAtomicInt32(buffer: SharedArrayBuffer, name: string): Int32Array {
+  if (buffer.byteLength < Int32Array.BYTES_PER_ELEMENT) {
+    throw new Error(`GRAFT_DATABASE_OPERATIONS_ATOMIC_BUFFER_INVALID:${name}`);
+  }
+  return new Int32Array(buffer);
 }

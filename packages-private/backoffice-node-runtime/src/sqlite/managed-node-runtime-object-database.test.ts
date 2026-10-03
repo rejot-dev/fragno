@@ -59,6 +59,9 @@ test("the managed SQL boundary rejects hidden pragmas and mutations in read unit
     expect(() => database.executeSql("SELECT 1; SELECT 2", [])).toThrow(
       "NODE_DURABLE_OBJECT_SQL_MULTIPLE_STATEMENTS_FORBIDDEN",
     );
+    expect(() =>
+      database.executeSql("CREATE TABLE node_runtime_fake (value INTEGER NOT NULL)", []),
+    ).toThrow("NODE_RUNTIME_OBJECT_DATABASE_RUNTIME_SQL_FORBIDDEN");
   } finally {
     database.close();
     await rm(directory, { recursive: true, force: true });

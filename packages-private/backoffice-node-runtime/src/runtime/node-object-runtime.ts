@@ -4,10 +4,12 @@ import { MessageChannel, Worker } from "node:worker_threads";
 
 import type { RpcStub } from "capnweb";
 
+import { GraftControlStore, type GraftNodeLease } from "../graft/graft-control-store";
 import {
   defineGraftDatabaseOperations,
   type ImportableGraftDatabaseOperations,
 } from "../graft/graft-database-operations";
+import { DEFAULT_GRAFT_OBJECT_ACTIVATION_FENCE_ATTEMPTS } from "../graft/graft-object-activation";
 import {
   GraftObjectDirectory,
   type GraftNodeRuntimeStorage,
@@ -106,6 +108,57 @@ export function createGraftNodeObjectRuntimeWithDatabaseOperations<
           localTag: `object-clone-${randomUUID()}`,
           remoteLogId: directory.resolveObjectRemoteLogId(objectId),
           operations: options.databaseOperations,
+        };
+      },
+      close: () => {
+        directory.close();
+      },
+    },
+  });
+}
+
+/** Owns workers admitted only after a durable control claim and object-log fencing commit. */
+export function createAuthorityBoundGraftNodeObjectRuntime<
+  TBindings extends NodeRuntimeObjectBindings,
+>(options: {
+  storage: GraftNodeRuntimeStorage;
+  objects: TBindings;
+  clock: NodeRuntimeClock;
+  nodeLease: GraftNodeLease;
+}) {
+  return createAuthorityBoundGraftNodeObjectRuntimeWithDatabaseOperations({
+    ...options,
+    databaseOperations: defaultGraftDatabaseOperations,
+  });
+}
+
+/** Owns authority-bound Graft workers using injectable object-log management operations. */
+export function createAuthorityBoundGraftNodeObjectRuntimeWithDatabaseOperations<
+  TBindings extends NodeRuntimeObjectBindings,
+>(options: {
+  storage: GraftNodeRuntimeStorage;
+  objects: TBindings;
+  clock: NodeRuntimeClock;
+  nodeLease: GraftNodeLease;
+  databaseOperations: ImportableGraftDatabaseOperations;
+}) {
+  validateNodeRuntimeObjectBindings(options.objects);
+  registerGraftRuntimeNode(options.storage, options.clock, options.nodeLease);
+  const directory = new GraftObjectDirectory(options.storage);
+  return createNodeObjectRuntimeWithDirectory({
+    objects: options.objects,
+    clock: options.clock,
+    directory: {
+      objectIds: () => directory.objectIds(),
+      resolveObject(binding, name) {
+        const objectId = `${binding}:${name}`;
+        return {
+          kind: "authority-bound-graft",
+          remoteLogId: directory.resolveObjectRemoteLogId(objectId),
+          operations: options.databaseOperations,
+          storage: options.storage,
+          nodeLease: options.nodeLease,
+          maxFenceAttempts: DEFAULT_GRAFT_OBJECT_ACTIVATION_FENCE_ATTEMPTS,
         };
       },
       close: () => {
@@ -351,6 +404,27 @@ function createNodeObjectRuntimeWithDirectory<
     },
   };
   return runtime;
+}
+
+function registerGraftRuntimeNode(
+  storage: GraftNodeRuntimeStorage,
+  clock: NodeRuntimeClock,
+  nodeLease: GraftNodeLease,
+): void {
+  const controlStore = new GraftControlStore(storage);
+  try {
+    const nowEpochMs = readNodeRuntimeClock(clock);
+    const result = controlStore.registerNode({
+      commandId: randomUUID(),
+      commandCreatedAtMs: nowEpochMs,
+      input: { lease: nodeLease },
+    });
+    if (result.outcome !== "registered") {
+      throw new Error(`GRAFT_NODE_RUNTIME_REGISTRATION_REJECTED:${nodeLease.nodeId}`);
+    }
+  } finally {
+    controlStore.close();
+  }
 }
 
 function validateNodeRuntimeObjectBindings(objects: NodeRuntimeObjectBindings): void {

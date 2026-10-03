@@ -1,0 +1,14 @@
+{
+  "extends": ["//"],
+  "tasks": {
+    "types:check": {
+      "dependsOn": ["$TURBO_EXTENDS$", "build"]
+    },
+    "lint:package": {
+      "dependsOn": ["$TURBO_EXTENDS$", "build"]
+    },
+    "lint:fix:package": {
+      "dependsOn": ["$TURBO_EXTENDS$", "build"]
+    }
+  }
+}

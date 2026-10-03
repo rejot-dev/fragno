@@ -3,8 +3,13 @@ import path from "node:path";
 import { DatabaseSync, type StatementResultingChanges } from "node:sqlite";
 
 import type { GraftDatabaseOperations } from "../graft/graft-database-operations";
+import {
+  assertGraftObjectAuthority,
+  type GraftObjectActivationAuthority,
+} from "../graft/graft-object-authority";
 import { openClonedGraftDatabase } from "../graft/graft-sqlite";
 import type { NodeDurableObjectSqlValue } from "../runtime/node-durable-object-storage";
+import { readNodeRuntimeClock, type NodeRuntimeClock } from "../runtime/node-runtime-clock";
 
 type NodeRuntimeSqlValue = null | number | bigint | string | Uint8Array;
 
@@ -28,7 +33,13 @@ export type NodeRuntimeSqlExecution = {
 
 type NodeRuntimeObjectDatabaseDurability =
   | { kind: "local" }
-  | { kind: "graft"; operations: GraftDatabaseOperations };
+  | { kind: "graft"; operations: GraftDatabaseOperations }
+  | {
+      kind: "authority-bound-graft";
+      operations: GraftDatabaseOperations;
+      authority: GraftObjectActivationAuthority;
+      clock: NodeRuntimeClock;
+    };
 
 type ActiveDatabaseSession = {
   session: NodeRuntimeObjectDatabaseSession;
@@ -88,6 +99,7 @@ export class ManagedNodeRuntimeObjectDatabase {
     query: string,
     bindings: readonly NodeDurableObjectSqlValue[],
   ): NodeRuntimeSqlExecution {
+    assertObjectAuthorSql(query);
     const operation = applicationSqlOperation(query);
     const parameters = bindings.map(toNodeSqlValue);
     if (operation === "select") {
@@ -112,6 +124,7 @@ export class ManagedNodeRuntimeObjectDatabase {
   /** Proves the requested object storage position durable before external output is released. */
   ensureDurableStoragePosition(requiredPosition: number): void {
     this.#requireUsable();
+    this.#assertOutputAuthority();
     if (this.#durableStoragePosition >= requiredPosition) {
       return;
     }
@@ -132,10 +145,31 @@ export class ManagedNodeRuntimeObjectDatabase {
       this.#failure = new Error("NODE_RUNTIME_OBJECT_DATABASE_DURABILITY_UNCERTAIN", { cause });
       throw this.#failure;
     }
+    this.#assertOutputAuthority();
   }
 
   close(): void {
     this.#database.close();
+  }
+
+  #assertOutputAuthority(): void {
+    if (this.#durability.kind !== "authority-bound-graft") {
+      return;
+    }
+    try {
+      assertGraftObjectAuthority(this.#database, this.#durability.authority);
+      if (
+        this.#durability.authority.leaseExpiresAtMs <= readNodeRuntimeClock(this.#durability.clock)
+      ) {
+        throw new Error("NODE_RUNTIME_OBJECT_AUTHORITY_EXPIRED");
+      }
+    } catch (cause) {
+      this.#failure =
+        cause instanceof Error
+          ? cause
+          : new Error("NODE_RUNTIME_OBJECT_AUTHORITY_INVALID", { cause });
+      throw this.#failure;
+    }
   }
 
   #executeStatement(
@@ -222,6 +256,21 @@ export function openGraftNodeRuntimeObjectDatabase(
   );
 }
 
+/** Owns a previously fenced object clone and rejects output after its exact authority expires. */
+export function manageAuthorityBoundGraftObjectDatabase(
+  database: DatabaseSync,
+  operations: GraftDatabaseOperations,
+  authority: GraftObjectActivationAuthority,
+  clock: NodeRuntimeClock,
+): ManagedNodeRuntimeObjectDatabase {
+  return new ManagedNodeRuntimeObjectDatabase(database, {
+    kind: "authority-bound-graft",
+    operations,
+    authority,
+    clock,
+  });
+}
+
 function mutationResult(result: StatementResultingChanges): NodeRuntimeSqlMutationResult {
   return {
     changes: Number(result.changes),
@@ -248,6 +297,12 @@ function applicationSqlOperation(sql: string): string {
     throw new Error(`NODE_RUNTIME_OBJECT_DATABASE_SQL_FORBIDDEN:${operation || "unknown"}`);
   }
   return operation;
+}
+
+function assertObjectAuthorSql(sql: string): void {
+  if (/\bnode_runtime_[a-z0-9_]*\b/i.test(sql)) {
+    throw new Error("NODE_RUNTIME_OBJECT_DATABASE_RUNTIME_SQL_FORBIDDEN");
+  }
 }
 
 function assertApplicationSql(sql: string, mode: "read" | "write"): void {
