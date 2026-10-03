@@ -38,8 +38,15 @@ If you want to contact us in a more casual manner than creating an issue, you ca
 
 ## Getting Started
 
-1. Clone the repository
-1. Run `pnpm exec turbo build types:check test`
+1. Clone the repository.
+1. Activate Node.js 26.10.0, as pinned in `.node-version`, before installing dependencies.
+1. Run `pnpm install --frozen-lockfile`.
+1. Run `pnpm exec turbo build types:check test --output-logs=errors-only`.
+
+After switching Node.js versions in an existing checkout, run `pnpm -r rebuild better-sqlite3`
+before running builds or tests. Native SQLite bindings must match the active Node.js ABI. The
+recursive flag rebuilds dependencies across the workspace; a root-only rebuild misses bindings owned
+by individual packages.
 
 ### Optional Backoffice infrastructure
 
