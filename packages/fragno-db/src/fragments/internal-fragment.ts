@@ -28,6 +28,7 @@ import {
   internalSchema,
   SETTINGS_NAMESPACE,
   SETTINGS_TABLE_NAME,
+  UOW_LOCK_TABLE_NAME,
 } from "./internal-fragment.schema";
 type AdapterRegistry = {
   outboxObservationHub: OutboxObservationHub;
@@ -75,7 +76,7 @@ export type InternalFragmentConfig = {
   registry?: AdapterRegistry;
 };
 
-export { internalSchema, SETTINGS_NAMESPACE, SETTINGS_TABLE_NAME };
+export { internalSchema, SETTINGS_NAMESPACE, SETTINGS_TABLE_NAME, UOW_LOCK_TABLE_NAME };
 
 const INTERNAL_SCHEMA_MIN_VERSION = 4;
 if (internalSchema.version < INTERNAL_SCHEMA_MIN_VERSION) {

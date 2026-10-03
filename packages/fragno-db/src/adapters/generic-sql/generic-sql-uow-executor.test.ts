@@ -48,6 +48,11 @@ const createRecordingOutboxAdapter = (queries: CompiledQuery[]) => {
       await callback({
         executeQuery: async (query) => {
           queries.push(query);
+          // Logical lock acquire/release queries succeed without affecting
+          // outbox reservation sequencing.
+          if (query.sql.includes("fragno_db_uow_locks")) {
+            return { rows: [] };
+          }
           queryCount += 1;
           if (queryCount === 1) {
             return { rows: [{ value: "7", nowMs: 1_786_339_200_000 }] };
@@ -90,11 +95,18 @@ const createOutboxInsertFailureAdapter = (error: Error, events: string[]) => {
 
   return {
     transaction: async (
-      callback: (trx: { executeQuery: () => Promise<unknown> }) => Promise<unknown>,
+      callback: (trx: {
+        executeQuery: (query: CompiledQuery) => Promise<unknown>;
+      }) => Promise<unknown>,
     ) => {
       try {
         return await callback({
-          executeQuery: async () => {
+          executeQuery: async (query) => {
+            // Logical lock acquire/release queries succeed without affecting
+            // outbox failure sequencing.
+            if (query.sql.includes("fragno_db_uow_locks")) {
+              return { rows: [] };
+            }
             queryCount += 1;
             if (queryCount === 1) {
               return { rows: [{ value: "0", nowMs: 1_785_500_800_000 }] };

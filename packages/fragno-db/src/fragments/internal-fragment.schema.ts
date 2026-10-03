@@ -5,6 +5,9 @@ export const SETTINGS_TABLE_NAME = "fragno_db_settings" as const;
 // FIXME: In some places we simply use empty string "" as namespace, which is not correct.
 export const SETTINGS_NAMESPACE = "fragno-db-settings" as const;
 
+// Logical locks for unit-of-work concurrency; rows live only for the mutation transaction.
+export const UOW_LOCK_TABLE_NAME = "fragno_db_uow_locks" as const;
+
 export const internalSchema = schema("fragno_internal", (s) => {
   return s
     .addTable(SETTINGS_TABLE_NAME, (t) => {
@@ -85,6 +88,18 @@ export const internalSchema = schema("fragno_internal", (s) => {
           column("timestamp").defaultTo((b) => b.now()),
         )
         .createIndex("idx_sync_request_id", ["requestId"], { unique: true });
+    })
+    .addTable(UOW_LOCK_TABLE_NAME, (t) => {
+      return t
+        .addColumn("id", idColumn())
+        .addColumn("lockKey", column("string"))
+        .addColumn("owner", column("string"))
+        .addColumn(
+          "createdAt",
+          column("timestamp").defaultTo((b) => b.now()),
+        )
+        .createIndex("unique_lock_key", ["lockKey"], { unique: true })
+        .createIndex("idx_lock_owner", ["owner"]);
     })
     .alterTable("fragno_hooks", (t) =>
       t.createIndex("idx_namespace_status_last_attempt", ["namespace", "status", "lastAttemptAt"]),

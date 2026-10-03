@@ -146,7 +146,7 @@ describe("generateSchema and migrate", () => {
       	"nonce" varchar(191) NOT NULL,
       	"_internalId" bigserial PRIMARY KEY NOT NULL,
       	"_version" integer DEFAULT 0 NOT NULL,
-      \t"propagationContext" json,
+      	"propagationContext" json,
       	CONSTRAINT "fragno_hooks_id_unique" UNIQUE("id")
       );
 
@@ -169,12 +169,12 @@ describe("generateSchema and migrate", () => {
       	"uowId" varchar(191) NOT NULL,
       	"schema" varchar(191) NOT NULL,
       	"table" varchar(191) NOT NULL,
-      \t"externalId" varchar(191),
+      	"externalId" varchar(191),
       	"op" varchar(191) NOT NULL,
       	"createdAt" timestamp DEFAULT now() NOT NULL,
       	"_internalId" bigserial PRIMARY KEY NOT NULL,
       	"_version" integer DEFAULT 0 NOT NULL,
-      \t"payload" json NOT NULL,
+      	"payload" json NOT NULL,
       	CONSTRAINT "fragno_db_outbox_mutations_id_unique" UNIQUE("id")
       );
 
@@ -190,6 +190,16 @@ describe("generateSchema and migrate", () => {
       	"_internalId" bigserial PRIMARY KEY NOT NULL,
       	"_version" integer DEFAULT 0 NOT NULL,
       	CONSTRAINT "fragno_db_sync_requests_id_unique" UNIQUE("id")
+      );
+
+      CREATE TABLE "fragno_db_uow_locks" (
+      	"id" varchar(128) NOT NULL,
+      	"lockKey" varchar(191) NOT NULL,
+      	"owner" varchar(191) NOT NULL,
+      	"createdAt" timestamp DEFAULT now() NOT NULL,
+      	"_internalId" bigserial PRIMARY KEY NOT NULL,
+      	"_version" integer DEFAULT 0 NOT NULL,
+      	CONSTRAINT "fragno_db_uow_locks_id_unique" UNIQUE("id")
       );
 
       CREATE TABLE "test"."users" (
@@ -281,6 +291,8 @@ describe("generateSchema and migrate", () => {
       CREATE INDEX "idx_outbox_mutations_uow" ON "fragno_db_outbox_mutations" USING btree ("uowId");
       CREATE INDEX "idx_outbox_mutations_entry_order" ON "fragno_db_outbox_mutations" USING btree ("entryVersionstamp","mutationVersionstamp");
       CREATE UNIQUE INDEX "idx_sync_request_id" ON "fragno_db_sync_requests" USING btree ("requestId");
+      CREATE UNIQUE INDEX "unique_lock_key" ON "fragno_db_uow_locks" USING btree ("lockKey");
+      CREATE INDEX "idx_lock_owner" ON "fragno_db_uow_locks" USING btree ("owner");
       CREATE UNIQUE INDEX "idx_users_email" ON "test"."users" USING btree ("email");
       CREATE INDEX "idx_users_name" ON "test"."users" USING btree ("name");
       CREATE INDEX "idx_users_active" ON "test"."users" USING btree ("isActive");

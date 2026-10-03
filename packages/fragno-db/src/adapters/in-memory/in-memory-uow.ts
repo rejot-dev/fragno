@@ -28,6 +28,7 @@ import {
 import { getDbNowOffsetMs, isDbNow } from "../../query/db-now";
 import { createSQLSerializer } from "../../query/serialize/create-sql-serializer";
 import { buildCheckAbsentCondition } from "../../query/unit-of-work/check-absent";
+import { deriveLogicalLockKeys } from "../../query/unit-of-work/logical-lock-keys";
 import type { MutationOperation } from "../../query/unit-of-work/mutation-recorder";
 import type {
   CompiledMutation,
@@ -87,6 +88,41 @@ class VersionConflictError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "VersionConflictError";
+  }
+}
+
+// Mirrors the SQL lock table; overlapping keys force a retryable conflict.
+const inMemoryLockSets = new WeakMap<InMemoryStore, Set<string>>();
+
+function getInMemoryLockSet(store: InMemoryStore): Set<string> {
+  let locks = inMemoryLockSets.get(store);
+  if (!locks) {
+    locks = new Set();
+    inMemoryLockSets.set(store, locks);
+  }
+  return locks;
+}
+
+function acquireInMemoryLocks(store: InMemoryStore, keys: readonly string[]): boolean {
+  const held = getInMemoryLockSet(store);
+  for (const key of keys) {
+    if (held.has(key)) {
+      return false;
+    }
+  }
+  for (const key of keys) {
+    held.add(key);
+  }
+  return true;
+}
+
+function releaseInMemoryLocks(store: InMemoryStore, keys: readonly string[]): void {
+  const held = inMemoryLockSets.get(store);
+  if (!held) {
+    return;
+  }
+  for (const key of keys) {
+    held.delete(key);
   }
 }
 
@@ -1304,6 +1340,16 @@ export const createInMemoryUowExecutor = (
     const shouldWriteOutbox = outboxEnabled && outboxPlan !== null && outboxPlan.drafts.length > 0;
     let outboxReservation: ReturnType<typeof reserveOutboxVersion> | null = null;
 
+    const lockKeys = deriveLogicalLockKeys(
+      mutationBatch.flatMap((mutation) => {
+        const operation = mutation.materializedOperation ?? mutation.operation;
+        return operation ? [operation] : [];
+      }),
+    );
+    if (!acquireInMemoryLocks(store, lockKeys)) {
+      return { success: false };
+    }
+
     try {
       if (shouldWriteOutbox) {
         outboxReservation = reserveOutboxVersion(store, options, resolverFactory);
@@ -1520,12 +1566,14 @@ export const createInMemoryUowExecutor = (
       for (const rollback of rollbackActions.reverse()) {
         rollback();
       }
+      releaseInMemoryLocks(store, lockKeys);
       if (error instanceof VersionConflictError) {
         return { success: false };
       }
       throw error;
     }
 
+    releaseInMemoryLocks(store, lockKeys);
     return { success: true, createdInternalIds };
   },
 });

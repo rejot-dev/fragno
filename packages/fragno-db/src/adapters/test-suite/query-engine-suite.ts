@@ -315,6 +315,58 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
       }
     });
 
+    it("prevents write skew between concurrent standalone checks", async () => {
+      const { adapter, close } = await createContext();
+      try {
+        const skewScope = `skew-scope-${"s".repeat(50)}`;
+        const skewKeyA = `skew-key-a-${"a".repeat(100)}`;
+        const skewKeyB = `skew-key-b-${"b".repeat(100)}`;
+        const txA = createSuiteUnitOfWork(adapter, "write-skew-a");
+        txA.checkAbsent("reservations", "reservations_scope_key_idx", {
+          scope: skewScope,
+          key: skewKeyA,
+        });
+        txA.create("reservations", {
+          id: "reservation-skew-a",
+          scope: skewScope,
+          key: skewKeyB,
+        });
+
+        const txB = createSuiteUnitOfWork(adapter, "write-skew-b");
+        txB.checkAbsent("reservations", "reservations_scope_key_idx", {
+          scope: skewScope,
+          key: skewKeyB,
+        });
+        txB.create("reservations", {
+          id: "reservation-skew-b",
+          scope: skewScope,
+          key: skewKeyA,
+        });
+
+        const [resultA, resultB] = await Promise.all([
+          txA.executeMutations(),
+          txB.executeMutations(),
+        ]);
+        assert(!(resultA.success && resultB.success));
+
+        const readKey = async (key: string) => {
+          const [rows] = await createSuiteUnitOfWork(adapter, "read-skew-key")
+            .find("reservations", (b) =>
+              b.whereIndex("reservations_scope_key_idx", (eb) =>
+                eb.and(eb("scope", "=", skewScope), eb("key", "=", key)),
+              ),
+            )
+            .executeRetrieve();
+          return rows;
+        };
+        const [rowsA, rowsB] = await Promise.all([readKey(skewKeyA), readKey(skewKeyB)]);
+        // Both rows existing means both absence assertions were violated.
+        assert(!(rowsA.length > 0 && rowsB.length > 0));
+      } finally {
+        await close?.();
+      }
+    });
+
     it("checks and deletes rows with version enforcement", async () => {
       const { adapter, close } = await createContext();
       try {
