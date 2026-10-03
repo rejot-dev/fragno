@@ -1,6 +1,6 @@
 {
   "name": "@fragno-dev/project-connector-fragment",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "A Fragno fragment for OOMOL Project Connector integrations",
   "keywords": [
     "fragno",
