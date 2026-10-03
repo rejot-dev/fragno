@@ -331,6 +331,20 @@ CREATE TABLE IF NOT EXISTS graft_counter (
 
 This verifies that consumer SQL and runtime KV state recover together from an empty container cache.
 
+### `conflict_events`
+
+**Source:** `src/testing/fixtures/graft-conflict-process.ts`
+
+```sql
+CREATE TABLE conflict_events (
+  writer TEXT PRIMARY KEY
+) STRICT;
+```
+
+Two independent clones insert distinct writers from the same remote head. Exactly one push wins; a
+fresh clone contains only that writer, while the losing clone retains its speculative row and
+reports divergence.
+
 ### `rejected_write`
 
 **Source:** `src/sqlite/managed-node-runtime-object-database.test.ts`

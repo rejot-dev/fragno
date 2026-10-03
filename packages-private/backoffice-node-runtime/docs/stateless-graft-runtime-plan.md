@@ -456,6 +456,33 @@ Use Graft's filesystem remote for repeatable local scenarios, and an isolated S3
 for faulted HTTP integration. Qualify the actual production R2/S3 backend separately with explicit
 credentials and a disposable prefix. Do not silently run tests against the POC's existing data.
 
+### Filesystem-remote conflict qualification
+
+Qualified on October 1, 2026 with Node 24.18.0 and `sqlite-graft@0.2.1`. The
+`graft-independent-clone-conflict.scenario.test.ts` scenario uses child-process invocations with two
+independent cache directories, clones the same remote head, and commits a distinct SQL row in each
+clone. Competing pushes produce these observable results:
+
+- Exactly one push succeeds. The other synchronously throws an `Error` with
+  `code="ERR_SQLITE_ERROR"`, `errcode=2`, `errstr="unknown error"`, and a message stating that the
+  volume diverged from the remote.
+- The losing local SQLite commit remains readable. `PRAGMA graft_status` reports one different local
+  commit and one different remote commit, and retrying the losing push fails again.
+- A third process with a fresh cache restores only the winning row. Graft neither merges the two SQL
+  branches nor overwrites the winning remote commit with the losing clone.
+
+This is a proven divergence only because the remote already contains a different commit and Graft's
+status reports divergence. The generic SQLite error fields do not classify the failure. Runtime
+application writes continue to fail closed rather than resetting or replaying the losing branch; a
+future control-command adapter must perform conflict classification and semantic command retries at
+one boundary.
+
+The existing controlled-push scenarios cover both adjacent uncertainty boundaries. A failure before
+the real push restores no write, while a real push followed by a simulated lost response restores
+the write in a fresh process without replaying the handler. These filesystem-remote results do not
+qualify conditional-create, delayed visibility, or lost HTTP response behavior for the production
+R2/S3 backend; that still requires a controllable S3-compatible proxy and disposable remote prefix.
+
 **Go/no-go:** if the pinned extension cannot safely support this worker topology, its remote append
 cannot be reconciled reliably, or control-log contention cannot fit renewal budgets, stop here.
 Report the concrete dependency/API limitation before changing the topology or promising fleet
