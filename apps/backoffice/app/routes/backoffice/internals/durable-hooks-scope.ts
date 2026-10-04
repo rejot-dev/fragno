@@ -33,7 +33,6 @@ export const DURABLE_HOOK_OBJECT_DEFINITIONS = [
   { id: "mcp", binding: "MCP", label: "MCP" },
   { id: "upload", binding: "UPLOAD", label: "Upload" },
   { id: "github", binding: "GITHUB", label: "GitHub" },
-  { id: "pi", binding: "AUTOMATIONS", label: "Pi" },
   { id: "workflows", binding: "AUTOMATIONS", label: "Workflows" },
 ] as const satisfies readonly {
   id: string;
@@ -358,10 +357,6 @@ export const DURABLE_HOOKS_OBJECT_CONFIGURE_META: Partial<
   github: {
     path: (orgSlug) => `/backoffice/automations/org/${orgSlug}/integrations/github/configuration`,
     label: "Configure GitHub",
-  },
-  pi: {
-    path: (orgSlug) => `/backoffice/sessions/${orgSlug}/configuration`,
-    label: "Configure Pi",
   },
   workflows: {
     path: (orgSlug) => `/backoffice/automations/org/${orgSlug}/dashboard`,

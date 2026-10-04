@@ -1,195 +1,162 @@
-import { describe, expect, test, vi } from "vitest";
+import { describe, expect, test, vi, assert } from "vitest";
+
+import type { PiManagerRuntime } from "@/fragno/pi-manager/pi-manager-runtime";
 
 import {
   createTrustedSystemBackofficeToolContext,
   type BackofficeToolContext,
 } from "../runtime-tools";
-import { piRuntimeTools, type PiRuntime } from "./pi";
+import { piRuntimeTools } from "./pi";
 
-const createRuntime = (): PiRuntime =>
-  ({
-    createSession: vi.fn(async ({ model, name }) => ({
-      id: "session-1",
-      name: name ?? null,
-      status: "waiting",
-      metadata: { model },
-      workflowName: "interactive-chat-workflow",
-      createdAt: new Date("2026-06-03T00:00:00.000Z"),
-      updatedAt: new Date("2026-06-03T00:00:00.000Z"),
+const actors = {
+  initiator: {
+    scope: "internal" as const,
+    type: "service",
+    id: "pi-runtime-tool-test",
+    role: "initiator" as const,
+  },
+  principal: null,
+  delegation: [],
+};
+
+function createManagerSession(sessionId = "session-1") {
+  return {
+    name: "Support",
+    model: { provider: "openai", modelId: "gpt-6-luna" },
+    instructions: "Help the support team.",
+    billingOrganizationId: null,
+    scope: { kind: "system" as const },
+    sessionId,
+    actors,
+  };
+}
+
+function createRuntimeSessionOutput(sessionId = "session-1") {
+  return {
+    sessionId,
+    name: "Support",
+    model: { provider: "openai", modelId: "gpt-6-luna" },
+    instructions: "Help the support team.",
+    billingOrganizationId: null,
+  };
+}
+
+function createRuntime(): PiManagerRuntime {
+  const session = createManagerSession();
+  const directorySession = { ...session, createdAt: "2026-10-03T00:00:00.000Z" };
+  return {
+    createSession: vi.fn(async () => session),
+    getSession: vi.fn(async () => ({
+      ...directorySession,
+      view: { conversation: { id: 1 } as never, entries: [], docs: {} },
     })),
-    getSession: vi.fn(async ({ sessionId }) => createSessionDetail(sessionId)),
-    listSessions: vi.fn(async () => [
-      {
-        id: "session-1",
-        name: null,
-        status: "waiting",
-        metadata: { model: { provider: "openai", name: "gpt-5.6-luna" } },
-        workflowName: "interactive-chat-workflow",
-        createdAt: new Date("2026-06-03T00:00:00.000Z"),
-        updatedAt: new Date("2026-06-03T00:00:00.000Z"),
-      },
-    ]),
-    runTurn: vi.fn(async ({ sessionId, text }) => ({
-      ...createSessionDetail(sessionId),
-      assistantText: `echo: ${text}`,
-      commandStatus: "waiting",
-      stream: [],
-      terminalState: { messages: [] },
+    listSessions: vi.fn(async () => ({
+      sessions: [directorySession],
+      cursor: null,
+      hasNextPage: false,
     })),
-  }) as unknown as PiRuntime;
+    submitPrompt: vi.fn(async () => ({ submissionId: 1, requestId: "request-1" })),
+    getSubmission: vi.fn(async () => ({ status: "done" }) as never),
+    runPrompt: vi.fn(async ({ content }) => ({
+      ...directorySession,
+      view: { conversation: { id: 1 } as never, entries: [], docs: {} },
+      submission: { status: "done" } as never,
+      assistantText: `echo: ${content}`,
+    })),
+    abortSession: vi.fn(async () => undefined),
+  };
+}
 
-const createSessionDetail = (sessionId: string) => ({
-  id: sessionId,
-  name: null,
-  workflowName: "interactive-chat-workflow",
-  createdAt: new Date("2026-06-03T00:00:00.000Z"),
-  updatedAt: new Date("2026-06-03T00:00:00.000Z"),
-  metadata: { model: { provider: "openai", name: "gpt-5.6-luna" } },
-  workflow: { status: "waiting" },
-  agent: { state: { messages: [] } },
-});
+function createContext(runtime: PiManagerRuntime): BackofficeToolContext<{ pi: PiManagerRuntime }> {
+  return createTrustedSystemBackofficeToolContext({ runtimes: { pi: runtime } });
+}
 
-describe("pi runtime tools", () => {
-  test("parse and validate session create input", () => {
-    const [createSession] = piRuntimeTools;
+describe("durable Pi runtime tools", () => {
+  test("parses the durable session creation contract", () => {
+    const createSessionTool = piRuntimeTools[0];
 
     expect(
-      createSession.inputSchema.parse(
-        createSession.adapters!.bash!.parse([
+      createSessionTool.inputSchema.parse(
+        createSessionTool.adapters!.bash!.parse([
+          "--request-id",
+          "workflow-1:create-agent",
           "--model-json",
-          '{"provider":"openai","name":"gpt-5.6-luna"}',
+          '{"provider":"openai","modelId":"gpt-6-luna"}',
           "--name",
           "support",
-          "--tag",
-          "urgent",
-          "--tag",
-          "customer",
-          "--metadata-json",
-          '{"ticket":"123"}',
-          "--steering-mode",
-          "one-at-a-time",
+          "--instructions",
+          "Help the support team.",
         ]),
       ),
     ).toEqual({
-      model: { provider: "openai", name: "gpt-5.6-luna" },
+      requestId: "workflow-1:create-agent",
+      model: { provider: "openai", modelId: "gpt-6-luna" },
       name: "support",
-      metadata: { ticket: "123" },
-      tags: ["urgent", "customer"],
-      steeringMode: "one-at-a-time",
+      instructions: "Help the support team.",
     });
   });
 
-  test("accepts serialized runtime dates and exposes ISO date strings", async () => {
-    const [createSession] = piRuntimeTools;
-    const runtime = {
-      createSession: vi.fn(async ({ model, name }) => ({
-        id: "session-1",
-        name: name ?? null,
-        status: "waiting",
-        metadata: { model },
-        workflowName: "interactive-chat-workflow",
-        createdAt: "2026-06-03T00:00:00.000Z",
-        updatedAt: new Date("2026-06-03T00:01:00.000Z"),
-      })),
-    } as unknown as PiRuntime;
-    const context: BackofficeToolContext<{ pi: PiRuntime }> =
-      createTrustedSystemBackofficeToolContext({
-        runtimes: { pi: runtime },
-      });
+  test("does not accept workflow-harness session options", () => {
+    const createSessionTool = piRuntimeTools[0];
+    assert(
+      !createSessionTool.inputSchema.safeParse({
+        model: { provider: "openai", modelId: "gpt-6-luna" },
+        tags: ["legacy"],
+      }).success,
+    );
+  });
 
+  test("keeps session scope and actor provenance out of runtime results", async () => {
+    const runtime = createRuntime();
+    const directorySession = {
+      ...createRuntimeSessionOutput(),
+      createdAt: "2026-10-03T00:00:00.000Z",
+    };
+    const view = { conversation: { id: 1 }, entries: [], docs: {} };
+
+    await expect(piRuntimeTools[0].execute({}, createContext(runtime))).resolves.toEqual(
+      createRuntimeSessionOutput(),
+    );
     await expect(
-      createSession.execute(
-        { model: { provider: "openai", name: "gpt-5.6-luna" }, name: "Support" },
-        context,
+      piRuntimeTools[1].execute({ sessionId: "session-1" }, createContext(runtime)),
+    ).resolves.toEqual({ ...directorySession, view });
+    await expect(
+      piRuntimeTools[2].execute({ pageSize: 10 }, createContext(runtime)),
+    ).resolves.toEqual({
+      sessions: [directorySession],
+      cursor: null,
+      hasNextPage: false,
+    });
+
+    expect(runtime.listSessions).toHaveBeenCalledWith({ pageSize: 10 });
+  });
+
+  test("admits and waits for a durable prompt", async () => {
+    const runtime = createRuntime();
+    await expect(
+      piRuntimeTools[5].execute(
+        { sessionId: "session-1", content: "Hello", requestId: "request-1" },
+        createContext(runtime),
       ),
     ).resolves.toEqual({
-      id: "session-1",
-      name: "Support",
-      status: "waiting",
-      metadata: { model: { provider: "openai", name: "gpt-5.6-luna" } },
-      createdAt: "2026-06-03T00:00:00.000Z",
-      updatedAt: "2026-06-03T00:01:00.000Z",
-    });
-  });
-
-  test("parse boolean session get flags", () => {
-    const getSession = piRuntimeTools[1];
-
-    expect(
-      getSession.inputSchema.parse(
-        getSession.adapters!.bash!.parse([
-          "--session-id",
-          "session-1",
-          "--events",
-          "--trace",
-          "false",
-          "--turns",
-          "true",
-        ]),
-      ),
-    ).toEqual({ sessionId: "session-1", events: true, trace: false, turns: true });
-  });
-
-  test("accepts session create responses without a legacy top-level status", async () => {
-    const createSession = piRuntimeTools[0];
-    const runtime = {
-      createSession: vi.fn(async ({ model, name }) => ({
-        id: "session-1",
-        name: name ?? null,
-        metadata: { model },
-        workflowName: "interactive-chat-workflow",
-        createdAt: new Date("2026-06-03T00:00:00.000Z"),
-        updatedAt: new Date("2026-06-03T00:00:00.000Z"),
-      })),
-    } as unknown as PiRuntime;
-    const context: BackofficeToolContext<{ pi: PiRuntime }> =
-      createTrustedSystemBackofficeToolContext({
-        runtimes: { pi: runtime },
-      });
-
-    await expect(
-      createSession.execute(
-        { model: { provider: "openai", name: "gpt-5.6-luna" }, name: "Support" },
-        context,
-      ),
-    ).resolves.toMatchObject({
-      id: "session-1",
-      metadata: { model: { provider: "openai", name: "gpt-5.6-luna" } },
-      name: "Support",
-    });
-    expect(runtime.createSession).toHaveBeenCalledWith({
-      model: { provider: "openai", name: "gpt-5.6-luna" },
-      name: "Support",
-    });
-  });
-
-  test("accepts current Pi session detail contract", async () => {
-    const getSession = piRuntimeTools[1];
-    const runtime = createRuntime();
-    const context: BackofficeToolContext<{ pi: PiRuntime }> =
-      createTrustedSystemBackofficeToolContext({
-        runtimes: { pi: runtime },
-      });
-
-    await expect(getSession.execute({ sessionId: "session-1" }, context)).resolves.toMatchObject({
-      agent: { state: { messages: [] } },
-    });
-    expect(runtime.getSession).toHaveBeenCalledWith({ sessionId: "session-1" });
-  });
-
-  test("invokes semantic runtime for codemode", async () => {
-    const runtime = createRuntime();
-    const context: BackofficeToolContext<{ pi: PiRuntime }> =
-      createTrustedSystemBackofficeToolContext({
-        runtimes: { pi: runtime },
-      });
-
-    await expect(
-      piRuntimeTools[3].execute({ sessionId: "session-1", text: "Hello" }, context),
-    ).resolves.toMatchObject({
-      agent: { state: { messages: [] } },
+      ...createRuntimeSessionOutput(),
+      createdAt: "2026-10-03T00:00:00.000Z",
+      view: { conversation: { id: 1 }, entries: [], docs: {} },
+      submission: { status: "done" },
       assistantText: "echo: Hello",
     });
-    expect(runtime.runTurn).toHaveBeenCalledWith({ sessionId: "session-1", text: "Hello" });
+    expect(runtime.runPrompt).toHaveBeenCalledWith({
+      sessionId: "session-1",
+      content: "Hello",
+      requestId: "request-1",
+    });
+  });
+
+  test("aborts durable agent work", async () => {
+    const runtime = createRuntime();
+    await expect(
+      piRuntimeTools[6].execute({ sessionId: "session-1" }, createContext(runtime)),
+    ).resolves.toEqual({ aborted: true });
+    expect(runtime.abortSession).toHaveBeenCalledWith({ sessionId: "session-1" });
   });
 });

@@ -52,6 +52,16 @@ function __stringifyForCodemode(value) {
 function __parseForCodemode(json) {
   return JSON.parse(json, (_key, nested) => __decodeCodemodeValue(nested));
 }
+function __throwCodemodeProviderError(encoded) {
+  if (!encoded || typeof encoded !== "object") throw new Error(String(encoded));
+  const error = new Error(typeof encoded.message === "string" ? encoded.message : "Codemode provider failed.");
+  if (typeof encoded.name === "string") error.name = encoded.name;
+  if (encoded.details && typeof encoded.details === "object") {
+    if (typeof encoded.details.status === "number") error.status = encoded.details.status;
+    if (typeof encoded.details.code === "string") error.code = encoded.details.code;
+  }
+  throw error;
+}
 function defineWorkflow(options, run) {
   if (!options || typeof options !== "object" || typeof options.name !== "string" || options.name.trim() === "") {
     throw new Error("defineWorkflow requires a non-empty workflow name.");
@@ -82,7 +92,7 @@ function createScopedContextProxySource(): string {
             return async (...args) => {
               const resJson = await __dispatchers.__context.call("callScoped", __stringifyForCodemode([{ scope, namespace, toolName, args }]));
               const data = __parseForCodemode(resJson);
-              if (data.error) throw new Error(data.error);
+              if (data.error) __throwCodemodeProviderError(data.error);
               return data.result;
             };
           }
@@ -93,7 +103,7 @@ function createScopedContextProxySource(): string {
       getCurrentScope: async () => {
         const resJson = await __dispatchers.__context.call("getCurrentScope", __stringifyForCodemode([]));
         const data = __parseForCodemode(resJson);
-        if (data.error) throw new Error(data.error);
+        if (data.error) __throwCodemodeProviderError(data.error);
         return data.result;
       },
       get current() { return __createScopedContextHandle({ kind: "current" }); },
@@ -114,7 +124,7 @@ export function createCodemodeProviderProxySource(providers: readonly ResolvedPr
           `      get: (_, toolName) => async (...args) => {\n` +
           `        const resJson = await __dispatchers.${provider.name}.call(String(toolName), __stringifyForCodemode(args));\n` +
           `        const data = __parseForCodemode(resJson);\n` +
-          `        if (data.error) throw new Error(data.error);\n` +
+          `        if (data.error) __throwCodemodeProviderError(data.error);\n` +
           `        return data.result;\n` +
           `      }\n` +
           `    });`,

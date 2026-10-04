@@ -92,10 +92,6 @@ const loadDurableHookQueue = async ({
       return await objects.upload.for(runtimeScope).commands.getDurableHookQueue(queueOptions);
     case "github":
       return await objects.github.for(runtimeScope).commands.getDurableHookQueue(queueOptions);
-    case "pi":
-      return await objects.automations
-        .for(runtimeScope)
-        .commands.getDurableHookQueue("pi", queueOptions);
     case "workflows":
       return await objects.automations
         .for(runtimeScope)

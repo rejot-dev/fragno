@@ -3,6 +3,7 @@ import type { ProjectConnectorFragmentConfig } from "@fragno-dev/project-connect
 import { DurableObject, RpcTarget } from "cloudflare:workers";
 
 import type { BackofficeRuntimeEnv } from "@/backoffice-runtime/backoffice-runtime-env";
+import { backofficeUserScopeSchema } from "@/backoffice-runtime/context-schema";
 import {
   backofficeContextScopeFromDurableObjectId,
   type ProjectConnectorObject,
@@ -76,6 +77,7 @@ export class InMemoryProjectConnectorObject extends RpcTarget implements Project
       state,
       ownerScope: backofficeContextScopeFromDurableObjectId(state.id, "PROJECT_CONNECTOR"),
       host,
+      scopeSchema: backofficeUserScopeSchema,
       createSource: function createScopedProjectConnectorConfig(
         scope,
       ): ProjectConnectorFragmentConfig {

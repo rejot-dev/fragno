@@ -1,5 +1,4 @@
 import { createLocalBackofficeRuntime } from "../../app/backoffice-runtime/node/local-runtime";
-import { startNodeBackofficeAlarmScheduler } from "../../app/backoffice-runtime/node/node-alarm-scheduler";
 import { createNodeBackofficeDurableHooks } from "../../app/backoffice-runtime/node/node-durable-hooks";
 import { shutdownNodeOpenTelemetry } from "../../app/backoffice-runtime/node/node-opentelemetry-lifecycle";
 import { createNodeBackofficeProcessConfig } from "./node-process-config";
@@ -13,8 +12,6 @@ const runtime = await createLocalBackofficeRuntime({
   createSandboxProviders: config.createSandboxProviders,
   durableHooks: createNodeBackofficeDurableHooks({ pollIntervalMs: 300 }),
 });
-const alarmScheduler = startNodeBackofficeAlarmScheduler(runtime);
-
 console.info("Node Backoffice hook processor started");
 
 let shutdownPromise: Promise<void> | null = null;
@@ -26,9 +23,6 @@ function shutdownNodeBackofficeHookProcessor(): Promise<void> {
 
   shutdownPromise = (async () => {
     try {
-      console.info("Node Backoffice hook processor shutdown started: stopping alarm scheduler");
-      await alarmScheduler.stop();
-      console.info("Node Backoffice hook processor alarm scheduler stopped: cleaning up runtime");
       await runtime.cleanup();
     } finally {
       await shutdownNodeOpenTelemetry();

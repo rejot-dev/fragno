@@ -1197,7 +1197,7 @@
         "required": true,
         "valueRequired": true,
         "valueName": "fragment",
-        "description": "Fragment scope. Run hooks.scopes.list to discover values. Current values: api, telegram, mcp, resend, upload, pi, otp, automations, workflows, github, auth, forms."
+        "description": "Fragment scope. Run hooks.scopes.list to discover values. Current values: api, telegram, mcp, resend, upload, otp, automations, workflows, github, auth, forms."
       },
       {
         "name": "cursor",
@@ -2999,49 +2999,37 @@
   },
   {
     "command": "pi.session.create",
-    "summary": "pi.session.create creates a new Pi session via the existing Pi session route.",
+    "summary": "pi.session.create creates a durable Pi agent in the current scope.",
     "options": [
       {
-        "name": "billing-organization-id",
+        "name": "request-id",
         "valueRequired": true,
-        "valueName": "organization-id",
-        "description": "Organization billed for a user-scoped session; inherited from the current Pi session when available"
+        "valueName": "request-id",
+        "description": "Stable idempotency key for replay-safe creation"
       },
       {
         "name": "model-json",
         "valueRequired": true,
         "valueName": "json",
-        "description": "Optional model selection; defaults to the first available supported model"
+        "description": "Optional durable model selection, for example {\"provider\":\"openai\",\"modelId\":\"gpt-6-luna\"}. Omitting it uses the configured default."
       },
       {
         "name": "name",
         "valueRequired": true,
         "valueName": "name",
-        "description": "Optional display name for the session"
+        "description": "Session name"
       },
       {
-        "name": "system-message",
+        "name": "instructions",
         "valueRequired": true,
         "valueName": "text",
-        "description": "Additional system message to append to the configured agent system prompt for this session"
+        "description": "Session-specific agent instructions"
       },
       {
-        "name": "tag",
+        "name": "billing-organization-id",
         "valueRequired": true,
-        "valueName": "tag",
-        "description": "Repeatable session tag"
-      },
-      {
-        "name": "metadata-json",
-        "valueRequired": true,
-        "valueName": "json",
-        "description": "Arbitrary JSON metadata object"
-      },
-      {
-        "name": "steering-mode",
-        "valueRequired": true,
-        "valueName": "steering-mode",
-        "description": "Set the session steering mode (all|one-at-a-time)"
+        "valueName": "organization-id",
+        "description": "Billing owner required for user-scoped sessions"
       },
       {
         "name": "help",
@@ -3066,29 +3054,14 @@
   },
   {
     "command": "pi.session.get",
-    "summary": "pi.session.get retrieves a Pi session detail by id.",
+    "summary": "pi.session.get retrieves a durable Pi session and conversation view.",
     "options": [
       {
         "name": "session-id",
         "required": true,
         "valueRequired": true,
         "valueName": "session-id",
-        "description": "Pi session id to retrieve"
-      },
-      {
-        "name": "events",
-        "valueRequired": false,
-        "description": "Include event history in response"
-      },
-      {
-        "name": "trace",
-        "valueRequired": false,
-        "description": "Include runtime trace in response"
-      },
-      {
-        "name": "turns",
-        "valueRequired": false,
-        "description": "Include turn records in response"
+        "description": "Durable Pi session id"
       },
       {
         "name": "help",
@@ -3113,13 +3086,19 @@
   },
   {
     "command": "pi.session.list",
-    "summary": "pi.session.list lists Pi sessions ordered by creation time.",
+    "summary": "pi.session.list lists a page of durable Pi sessions.",
     "options": [
       {
-        "name": "limit",
+        "name": "cursor",
         "valueRequired": true,
-        "valueName": "limit",
-        "description": "Maximum number of sessions to return"
+        "valueName": "cursor",
+        "description": "Page cursor"
+      },
+      {
+        "name": "page-size",
+        "valueRequired": true,
+        "valueName": "count",
+        "description": "Page size from 1 to 100"
       },
       {
         "name": "help",
@@ -3143,28 +3122,162 @@
     ]
   },
   {
-    "command": "pi.session.turn",
-    "summary": "pi.session.turn sends one prompt command through the active-session stream and returns the settled result.",
+    "command": "pi.prompt.submit",
+    "summary": "pi.prompt.submit admits durable agent work without waiting for completion.",
     "options": [
       {
         "name": "session-id",
         "required": true,
         "valueRequired": true,
         "valueName": "session-id",
-        "description": "Pi session id to send the turn to"
+        "description": "Durable Pi session id"
       },
       {
-        "name": "text",
+        "name": "content",
         "required": true,
         "valueRequired": true,
         "valueName": "text",
-        "description": "User message text to send for this turn"
+        "description": "Prompt content"
+      },
+      {
+        "name": "request-id",
+        "valueRequired": true,
+        "valueName": "request-id",
+        "description": "Optional deduplication key"
+      },
+      {
+        "name": "when-busy",
+        "valueRequired": true,
+        "valueName": "mode",
+        "description": "followUp, steer, or reject"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "pi.submission.get",
+    "summary": "pi.submission.get reads one durable prompt submission.",
+    "options": [
+      {
+        "name": "session-id",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "session-id",
+        "description": "Durable Pi session id"
+      },
+      {
+        "name": "request-id",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "request-id",
+        "description": "Prompt request id"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "pi.prompt.run",
+    "summary": "pi.prompt.run admits a prompt and waits for its durable submission to settle.",
+    "options": [
+      {
+        "name": "session-id",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "session-id",
+        "description": "Durable Pi session id"
+      },
+      {
+        "name": "content",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "text",
+        "description": "Prompt content"
+      },
+      {
+        "name": "request-id",
+        "valueRequired": true,
+        "valueName": "request-id",
+        "description": "Optional deduplication key"
+      },
+      {
+        "name": "when-busy",
+        "valueRequired": true,
+        "valueName": "mode",
+        "description": "followUp, steer, or reject"
       },
       {
         "name": "timeout-ms",
         "valueRequired": true,
         "valueName": "milliseconds",
-        "description": "Maximum time to wait for the agent to finish (default: 120000)"
+        "description": "Maximum wait; admitted work continues after timeout"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "pi.session.abort",
+    "summary": "pi.session.abort cancels active work in a durable Pi agent.",
+    "options": [
+      {
+        "name": "session-id",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "session-id",
+        "description": "Durable Pi session id"
       },
       {
         "name": "help",

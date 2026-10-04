@@ -7,7 +7,6 @@ import type { WorkflowsFragmentServices } from "@fragno-dev/workflows";
 import {
   createBackofficeSystemExecution,
   type BackofficeContextScope,
-  type BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
@@ -31,7 +30,6 @@ import {
   createCodemodeWorkflowInstanceInput,
   prepareCodemodeWorkflowInstance,
 } from "./engine/codemode-invocation";
-import { type AutomationPiBashContext } from "./engine/runtime";
 import {
   buildAutomationEventDefinitionId,
   validateAutomationEventPayload,
@@ -109,11 +107,6 @@ export interface AutomationFragmentConfig {
   env?: CloudflareEnv;
   runtime?: BackofficeRuntimeServices;
   ownerScope: BackofficeContextScope;
-  createPiAutomationContext?: (input: {
-    event: AutomationEvent;
-    execution: BackofficeExecutionContext;
-    idempotencyKey: string;
-  }) => Promise<AutomationPiBashContext | undefined> | AutomationPiBashContext | undefined;
 }
 
 const buildIngestResult = (event: AutomationEvent): AutomationIngestResult => ({

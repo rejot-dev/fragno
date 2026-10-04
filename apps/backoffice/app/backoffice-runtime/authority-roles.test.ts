@@ -33,6 +33,7 @@ const automationAuthoringPermissions = [
   BACKOFFICE_PERMISSION.telegram.send,
   BACKOFFICE_PERMISSION.upload.modify,
   BACKOFFICE_PERMISSION.upload.read,
+  BACKOFFICE_PERMISSION.workflow.executeCode,
   BACKOFFICE_PERMISSION.workflow.modify,
   BACKOFFICE_PERMISSION.workflow.read,
 ];
@@ -77,11 +78,11 @@ describe("Backoffice authority role grants", () => {
     );
   });
 
-  test("user owners can use user-scoped automation authoring tools", () => {
+  test("user owners can author and execute user-scoped codemode workflows", () => {
     expect(BACKOFFICE_AUTHORITY_ROLE_GRANTS["user-owner"]).toEqual(automationAuthoringPermissions);
   });
 
-  test("organization members can use organization-scoped automation authoring tools", () => {
+  test("organization members can author and execute organization-scoped codemode workflows", () => {
     expect(BACKOFFICE_AUTHORITY_ROLE_GRANTS["organization-member"]).toEqual([
       BACKOFFICE_PERMISSION.api.connectionsRead,
       BACKOFFICE_PERMISSION.capabilities.read,

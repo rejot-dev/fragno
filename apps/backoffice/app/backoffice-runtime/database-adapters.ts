@@ -19,6 +19,7 @@ export type BackofficeDatabaseAdapterKind =
   | "projectConnector"
   | "otp"
   | "pi"
+  | "pi-manager"
   | "resend"
   | "reson8"
   | "telegram"

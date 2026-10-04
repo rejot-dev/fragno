@@ -6,16 +6,10 @@ import {
 } from "@/backoffice-runtime/route-scope";
 import { requireBackofficeMe } from "@/fragno/auth/auth-server";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
-import {
-  BACKOFFICE_PI_WORKFLOW_NAME,
-  PI_BILLING_ORGANIZATION_ID_METADATA_KEY,
-  findPiModelOption,
-  resolvePiModelThinkingLevel,
-} from "@/fragno/pi/pi-shared";
 
 import { automationRuntimeScopeFromRouteParams } from "../automations/scope";
 import type { Route } from "./+types/sessions";
-import { createPiSession, fetchPiRuntimeState, sendPiSessionMessage } from "./data";
+import { createPiManagerSession, submitPiManagerPrompt } from "./data";
 import type { PiCreateSessionActionData } from "./session-types";
 
 function actionError(message: string): PiCreateSessionActionData {
@@ -48,61 +42,39 @@ export async function createSessionAction({ request, params, context }: Route.Ac
   if (!modelOption) {
     return actionError("Model selection is required.");
   }
-  if ((scope.kind === "user" || scope.kind === "system") && !billingOrganizationId) {
+  if (scope.kind === "user" && !billingOrganizationId) {
     return actionError("Select an active organization before starting this session.");
   }
 
   const [providerRaw, ...modelParts] = modelOption.split("::");
-  const model = modelParts.join("::");
-  if (!providerRaw || !model) {
+  const modelId = modelParts.join("::");
+  if (!providerRaw || !modelId) {
     return actionError("Model selection is invalid.");
   }
 
-  const modelSelection = findPiModelOption(providerRaw as "openai" | "anthropic" | "gemini", model);
-  if (!modelSelection) {
-    return actionError("Model selection is invalid.");
-  }
-
-  const { runtimeState, runtimeError } = await fetchPiRuntimeState(context, scope);
-  if (runtimeError) {
-    return actionError(runtimeError);
-  }
-  if (
-    !runtimeState?.modelCatalog.some(
-      (option) =>
-        option.provider === modelSelection.provider && option.name === modelSelection.name,
-    )
-  ) {
-    return actionError(`Missing API key for ${modelSelection.provider}.`);
-  }
-
-  const result = await createPiSession(request, context, scope, {
-    workflowName: BACKOFFICE_PI_WORKFLOW_NAME,
-    metadata: {
-      model: { provider: modelSelection.provider, name: modelSelection.name },
-      ...(billingOrganizationId
-        ? { [PI_BILLING_ORGANIZATION_ID_METADATA_KEY]: billingOrganizationId }
-        : {}),
-    },
-    input: {
-      thinkingLevel: resolvePiModelThinkingLevel(modelSelection.provider),
-    },
-    name: prompt.split("\n")[0]?.slice(0, 72) || undefined,
+  const result = await createPiManagerSession(request, context, scope, {
+    name: prompt.split("\n")[0]?.slice(0, 72) || null,
+    model: { provider: providerRaw, modelId },
+    instructions: "",
+    billingOrganizationId,
   });
 
   if (result.error || !result.session) {
     return actionError(result.error ?? "Failed to create session.");
   }
 
-  const messageResult = await sendPiSessionMessage(
+  const messageResult = await submitPiManagerPrompt(
     request,
     context,
     scope,
-    result.session.workflowName,
-    result.session.id,
-    { text: prompt, commandKind: "prompt" },
+    result.session.sessionId,
+    {
+      requestId: crypto.randomUUID(),
+      content: prompt,
+      whenBusy: "reject",
+    },
   );
-  const detailPath = `/backoffice/sessions/${backofficeRouteScopePath(routeScope)}/sessions/${encodeURIComponent(result.session.workflowName)}/${encodeURIComponent(result.session.id)}`;
+  const detailPath = `/backoffice/sessions/${backofficeRouteScopePath(routeScope)}/sessions/${encodeURIComponent(result.session.sessionId)}`;
 
   if (messageResult.error) {
     return redirect(`${detailPath}?initialPromptError=${encodeURIComponent(messageResult.error)}`);

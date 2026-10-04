@@ -1,4 +1,5 @@
 import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
+import type { PiManagerRuntime } from "@/fragno/pi-manager/pi-manager-runtime";
 
 import { codemodeStateToolFamily } from "./codemode-state-runtime";
 import { adminToolFamily, type AdminRuntime } from "./families/admin";
@@ -33,7 +34,7 @@ import { javaScriptCheckToolFamily, javaScriptRunToolFamily } from "./families/j
 import type { JavaScriptRuntime } from "./families/javascript-runtime";
 import { mcpToolFamily, type McpRuntime } from "./families/mcp";
 import { otpToolFamily, type OtpRuntime } from "./families/otp";
-import { piToolFamily, type PiRuntime } from "./families/pi";
+import { piToolFamily } from "./families/pi";
 import { projectConnectorToolFamily } from "./families/project-connector";
 import type { ProjectConnectorRuntime } from "./families/project-connector-runtime";
 import { resendToolFamily, type ResendRuntime } from "./families/resend";
@@ -66,7 +67,7 @@ export type CoreBackofficeRuntimeMap = {
   mcp?: McpRuntime;
   projectConnector: ProjectConnectorRuntime | undefined;
   otp?: OtpRuntime;
-  pi?: PiRuntime;
+  pi?: PiManagerRuntime;
   resend?: ResendRuntime;
   reson8?: Reson8Runtime;
   sandbox?: SandboxRuntime;

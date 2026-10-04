@@ -175,6 +175,14 @@
         "class_name": "Automations",
       },
       {
+        "name": "PI",
+        "class_name": "Pi",
+      },
+      {
+        "name": "PI_MANAGER",
+        "class_name": "PiManager",
+      },
+      {
         "name": "BILLING",
         "class_name": "Billing",
       },
@@ -211,6 +219,8 @@
     "GitHub": { "type": "durable-object", "storage": "sqlite" },
     "GitHubWebhookRouter": { "type": "durable-object", "storage": "sqlite" },
     "Automations": { "type": "durable-object", "storage": "sqlite" },
+    "Pi": { "type": "durable-object", "storage": "sqlite" },
+    "PiManager": { "type": "durable-object", "storage": "sqlite" },
     "Billing": { "type": "durable-object", "storage": "sqlite" },
     "Marketplace": { "type": "durable-object", "storage": "sqlite" },
     "Cloudflare": { "type": "durable-object", "storage": "sqlite" },

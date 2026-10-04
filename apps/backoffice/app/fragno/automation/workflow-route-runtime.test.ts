@@ -4,9 +4,16 @@ import type {
   AutomationsObject,
   BackofficeObjectHandle,
 } from "@/backoffice-runtime/object-registry";
+import {
+  BACKOFFICE_PERMISSION,
+  BACKOFFICE_REQUIRED_PERMISSION_HEADER,
+} from "@/backoffice-runtime/permissions";
 
 import { CODEMODE_WORKFLOW } from "./engine/codemode-invocation";
-import { createRouteBackedAutomationWorkflowRuntime } from "./workflow-route-runtime";
+import {
+  AutomationWorkflowRuntimeRequestError,
+  createRouteBackedAutomationWorkflowRuntime,
+} from "./workflow-route-runtime";
 
 const jsonResponse = (body: unknown) =>
   new Response(JSON.stringify(body), {
@@ -71,6 +78,43 @@ describe("createRouteBackedAutomationWorkflowRuntime", () => {
       `/api/workflows/${CODEMODE_WORKFLOW}/instances/run-1/events`,
       `/api/workflows/${CODEMODE_WORKFLOW}/instances/run-1/history`,
     ]);
+  });
+
+  test("preserves structured workflow backend failures", async () => {
+    const requiredPermission = BACKOFFICE_PERMISSION.workflow.executeCode;
+    const object = createObject(
+      () =>
+        new Response(
+          JSON.stringify({
+            code: "principal-permission-denied",
+            message: "The current principal does not have the required permission.",
+          }),
+          {
+            status: 403,
+            headers: {
+              "content-type": "application/json",
+              [BACKOFFICE_REQUIRED_PERMISSION_HEADER]: JSON.stringify(requiredPermission),
+            },
+          },
+        ),
+    );
+    const runtime = createRouteBackedAutomationWorkflowRuntime({ object });
+
+    const request = runtime.createInternalInstance({
+      workflowName: CODEMODE_WORKFLOW,
+      remoteWorkflowName: "denied-workflow",
+      instanceId: "run-denied",
+      params: {},
+    });
+
+    await expect(request).rejects.toBeInstanceOf(AutomationWorkflowRuntimeRequestError);
+    await expect(request).rejects.toMatchObject({
+      status: 403,
+      code: "principal-permission-denied",
+      requiredPermission,
+      message:
+        "Workflows backend returned 403: The current principal does not have the required permission.",
+    });
   });
 
   test("projects saved-workflow details from narrow metadata while allowing backend additions", async () => {

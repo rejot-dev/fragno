@@ -1,6 +1,4 @@
-import type { AgentMessage } from "@earendil-works/pi-agent-core";
-
-type ToolResultMessage = Extract<AgentMessage, { role: "toolResult" }>;
+import type { ToolResultMessage } from "@earendil-works/pi-ai";
 
 export const formatJson = (value: unknown) => {
   try {

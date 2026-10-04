@@ -2,6 +2,7 @@ import {
   createAuthorizedBackofficeObjectRequest,
   removeBackofficeInternalContextHeader,
 } from "./internal-object-request";
+import { BackofficeUnavailableError } from "./kernel";
 import type {
   BackofficeObjectAddress,
   BackofficeObjectBinding,
@@ -26,7 +27,9 @@ const getNamespace = (
 ): DurableObjectNamespaceLike => {
   const namespace = env[binding.name as keyof CloudflareEnv];
   if (!namespace || typeof namespace !== "object") {
-    throw new Error(`Backoffice Durable Object binding ${binding.name} is not configured.`);
+    throw new BackofficeUnavailableError(
+      `Backoffice Durable Object binding ${binding.name} is not configured.`,
+    );
   }
 
   return namespace as DurableObjectNamespaceLike;
@@ -69,6 +72,7 @@ export class CloudflareDurableObjectFactory implements BackofficeObjectFactory {
               context: {
                 execution: context.execution,
                 propagationContext: context.propagationContext ?? null,
+                authorization: context.authorization,
               },
               env: this.env,
             }),

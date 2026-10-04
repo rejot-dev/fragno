@@ -117,10 +117,10 @@ describe("automation internal ingest scenarios", () => {
           then.telegram.noMessages(),
           then.assert("assert Pi was not called by legacy scripts", (ctx) => {
             const createSessionCalls = ctx.fakes.pi?.createSessionCalls ?? [];
-            const runTurnCalls = ctx.fakes.pi?.runTurnCalls ?? [];
-            if (createSessionCalls.length !== 0 || runTurnCalls.length !== 0) {
+            const runPromptCalls = ctx.fakes.pi?.runPromptCalls ?? [];
+            if (createSessionCalls.length !== 0 || runPromptCalls.length !== 0) {
               throw new Error(
-                `Expected no Pi calls, got create=${createSessionCalls.length}, turn=${runTurnCalls.length}.`,
+                `Expected no Pi calls, got create=${createSessionCalls.length}, turn=${runPromptCalls.length}.`,
               );
             }
           }),

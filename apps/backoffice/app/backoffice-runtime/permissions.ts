@@ -126,6 +126,9 @@ export type BackofficePermissionRequirement = ValueOf<{
 
 export type BackofficePermission = BackofficePermissionRequirement["permission"];
 
+/** Internal HTTP response header carrying the canonical permission rejected by authorization. */
+export const BACKOFFICE_REQUIRED_PERMISSION_HEADER = "x-backoffice-required-permission";
+
 const backofficePermissionNamespaces = Object.values(BACKOFFICE_PERMISSION) as readonly Readonly<
   Record<string, BackofficePermissionRequirement>
 >[];

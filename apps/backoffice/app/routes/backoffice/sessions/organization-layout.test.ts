@@ -1,8 +1,8 @@
 import { assert, beforeEach, describe, expect, test, vi } from "vitest";
 
-const { fetchPiRuntimeStateMock, requireBackofficeContextMock, requireBackofficeMeMock } =
+const { fetchPiManagerAvailableModelsMock, requireBackofficeContextMock, requireBackofficeMeMock } =
   vi.hoisted(() => ({
-    fetchPiRuntimeStateMock: vi.fn(),
+    fetchPiManagerAvailableModelsMock: vi.fn(),
     requireBackofficeContextMock: vi.fn(),
     requireBackofficeMeMock: vi.fn(),
   }));
@@ -14,22 +14,18 @@ vi.mock("@/fragno/auth/backoffice-principal.server", () => ({
   requireBackofficeContext: requireBackofficeContextMock,
 }));
 vi.mock("./data", () => ({
-  fetchPiAdapterIdentity: vi.fn(),
-  fetchPiRuntimeState: fetchPiRuntimeStateMock,
+  fetchPiManagerAvailableModels: fetchPiManagerAvailableModelsMock,
 }));
-
 import { loader } from "./organization-layout";
 import { isPiSessionsPath } from "./path";
 
 beforeEach(() => {
-  fetchPiRuntimeStateMock.mockReset();
+  fetchPiManagerAvailableModelsMock.mockReset();
+  fetchPiManagerAvailableModelsMock.mockResolvedValue([
+    { provider: "faux", modelId: "faux-1", label: "Faux 1" },
+  ]);
   requireBackofficeContextMock.mockReset();
   requireBackofficeMeMock.mockReset();
-
-  fetchPiRuntimeStateMock.mockResolvedValue({
-    runtimeState: { configured: false, modelCatalog: [] },
-    runtimeError: null,
-  });
 });
 
 describe("organization sessions layout", () => {
@@ -92,13 +88,13 @@ describe("isPiSessionsPath", () => {
 
   test.each([
     "/backoffice/sessions/project/org-1%3Aproject-1/sessions",
-    "/backoffice/sessions/project/org-1%3Aproject-1/sessions/pi/session-1",
-    "/backoffice/sessions/project/org-1%3Aproject-1/sessions/pi/session-1/debug",
+    "/backoffice/sessions/project/org-1%3Aproject-1/sessions/session-1",
+    "/backoffice/sessions/project/org-1%3Aproject-1/sessions/session-1/debug",
     // React Router reports matched pathnames decoded, so the scope separator
     // arrives as a literal colon at runtime.
     "/backoffice/sessions/project/org-1:project-1/sessions",
-    "/backoffice/sessions/project/org-1:project-1/sessions/pi/session-1",
-    "/backoffice/sessions/project/org-1:project-1/sessions/pi/session-1/debug",
+    "/backoffice/sessions/project/org-1:project-1/sessions/session-1",
+    "/backoffice/sessions/project/org-1:project-1/sessions/session-1/debug",
   ])("keeps the complete sessions branch in the workspace layout: %s", (pathname) => {
     assert(isPiSessionsPath(scope, pathname));
   });
@@ -116,10 +112,10 @@ describe("isPiSessionsPath", () => {
   const slashScope = { kind: "project" as const, orgSlug: "org-1", projectId: "a/b" };
 
   test.each([
-    [colonScope, "/backoffice/sessions/project/org-1%3Aa%253Ab/sessions/pi/session-1"],
-    [colonScope, "/backoffice/sessions/project/org-1:a%3Ab/sessions/pi/session-1"],
-    [slashScope, "/backoffice/sessions/project/org-1%3Aa%252Fb/sessions/pi/session-1"],
-    [slashScope, "/backoffice/sessions/project/org-1:a%2Fb/sessions/pi/session-1"],
+    [colonScope, "/backoffice/sessions/project/org-1%3Aa%253Ab/sessions/session-1"],
+    [colonScope, "/backoffice/sessions/project/org-1:a%3Ab/sessions/session-1"],
+    [slashScope, "/backoffice/sessions/project/org-1%3Aa%252Fb/sessions/session-1"],
+    [slashScope, "/backoffice/sessions/project/org-1:a%2Fb/sessions/session-1"],
   ])("matches scope ids containing encoded characters: %o %s", (encodedScope, pathname) => {
     assert(isPiSessionsPath(encodedScope, pathname));
   });

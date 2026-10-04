@@ -1,8 +1,5 @@
-import type { PiFragmentConfig } from "@fragno-dev/pi-harness/types";
 import type { InstanceStatus } from "@fragno-dev/workflows/workflow";
 import { DurableObject, RpcTarget } from "cloudflare:workers";
-
-import type { Models } from "@earendil-works/pi-ai";
 
 import {
   backofficeContextScopesEqual,
@@ -81,7 +78,6 @@ import {
   MARKETPLACE_PUBLISH_WORKFLOW_NAME,
 } from "@/fragno/automation/marketplace-publish-workflow";
 import { readBackofficeAutomationSource } from "@/fragno/automation/read-backoffice-automation-source";
-import { recordPiOperationBilling } from "@/fragno/billing/pi";
 import type { DurableHookQueueOptions } from "@/fragno/durable-hooks";
 import type { MarketplaceStaticArtifactEntry } from "@/fragno/marketplace/artifacts";
 import type {
@@ -92,13 +88,6 @@ import { MarketplaceListingArchivedError } from "@/fragno/marketplace/definition
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
 import { listStaticMarketplaceEntries } from "@/fragno/marketplace/static-entries";
 import { compareMarketplaceVersions } from "@/fragno/marketplace/version";
-import {
-  createPiCodemodeRuntime,
-  createUnavailablePiCodemodeRuntime,
-} from "@/fragno/pi/pi-codemode";
-import { PI_SUPPORTED_MODELS, type PiApiKeys, type PiRuntimeState } from "@/fragno/pi/pi-shared";
-import type { PiRuntime } from "@/fragno/runtime-tools/families/pi-runtime";
-import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 
 import type {
   BackofficeFragmentDurableObject,
@@ -123,20 +112,12 @@ function selectAutomationsDurableHookFragment(
   switch (fragment) {
     case "workflows":
       return runtime.workflowsFragment;
-    case "pi":
-      return runtime.piFragment;
     case "automation":
       return runtime.automationFragment;
     default:
       throw new Error("Unsupported Automations durable hook fragment.");
   }
 }
-
-const piApiKeys = (env?: CloudflareEnv): PiApiKeys => ({
-  openai: env?.OPENAI_API_KEY,
-  anthropic: env?.ANTHROPIC_API_KEY,
-  gemini: env?.GEMINI_API_KEY,
-});
 
 const createAutomationsObjectExecution = (
   scope: BackofficeContextScope,
@@ -151,12 +132,6 @@ const createAutomationsObjectExecution = (
       id: `automations:${backofficeScopeSinglePathSegment(scope)}`,
     },
   });
-};
-
-const buildPiRuntimeState = (env?: CloudflareEnv): PiRuntimeState => {
-  const apiKeys = piApiKeys(env);
-  const modelCatalog = PI_SUPPORTED_MODELS.filter((option) => Boolean(apiKeys[option.provider]));
-  return { configured: modelCatalog.length > 0, modelCatalog };
 };
 
 const assertAutomationObjectScope = (
@@ -230,7 +205,6 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
   readonly #runtimeServices: BackofficeRuntimeServices;
   readonly #internalRequestEnv: Pick<CloudflareEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET"> | null;
   readonly #nowEpochMs: () => number;
-  readonly #piModels: Models | undefined;
   readonly #kernel: BackofficeKernel;
   readonly #host: BackofficeFragmentDurableObject<
     AutomationDurableObjectConfig,
@@ -238,10 +212,6 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
     AutomationsRuntime,
     AutomationsOutboxItem
   >;
-  readonly #createPiRuntime?: (
-    execution: BackofficeExecutionContext,
-    kernel: BackofficeKernel,
-  ) => PiRuntime;
   #scope: BackofficeContextScope | null = null;
   private readonly automationRoutePrefix = "/api/automations";
 
@@ -252,8 +222,6 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
     implementation,
     nowEpochMs = Date.now,
     readAutomationSource,
-    createPiRuntime,
-    piModels,
   }: {
     state: BackofficeObjectState;
     env?: unknown;
@@ -261,11 +229,6 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
     implementation: BackofficeObjectImplementation;
     nowEpochMs?: () => number;
     readAutomationSource?: AutomationSourceReader;
-    piModels?: Models;
-    createPiRuntime?: (
-      execution: BackofficeExecutionContext,
-      kernel: BackofficeKernel,
-    ) => PiRuntime;
   }) {
     super();
     this.#env = env as AutomationFragmentConfig["env"];
@@ -289,10 +252,8 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
       }),
     };
     this.#nowEpochMs = nowEpochMs;
-    this.#piModels = piModels;
     this.#kernel = new BackofficeKernel(this.#runtimeServices);
     this.#scope = backofficeContextScopeFromDurableObjectId(state.id, "AUTOMATIONS");
-    this.#createPiRuntime = createPiRuntime;
     const automationSourceReader =
       readAutomationSource ??
       (({ execution, path }) =>
@@ -312,19 +273,13 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
           runtime: this.#runtimeServices,
           ownerScope: config.scope,
           kernel: this.#kernel,
-          pi: this.#createPiRuntimeOptions(config.scope),
           readAutomationSource: automationSourceReader,
         }),
-      getMigrationFragments: (runtime) => [
-        runtime.workflowsFragment,
-        runtime.automationFragment,
-        runtime.piFragment,
-      ],
+      getMigrationFragments: (runtime) => [runtime.workflowsFragment, runtime.automationFragment],
       hostRuntime: (runtime, { hostFragment }) => ({
         ...runtime,
         workflowsFragment: hostFragment(runtime.workflowsFragment),
         automationFragment: hostFragment(runtime.automationFragment),
-        piFragment: hostFragment(runtime.piFragment),
       }),
       mounts: [
         {
@@ -333,11 +288,6 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
             pathname === this.automationRoutePrefix ||
             pathname.startsWith(`${this.automationRoutePrefix}/`),
           target: (runtime) => runtime.automationFragment,
-        },
-        {
-          id: "pi",
-          match: ({ pathname }) => pathname === "/api/pi" || pathname.startsWith("/api/pi/"),
-          target: (runtime) => runtime.piFragment,
         },
         { id: "workflows", target: (runtime) => runtime.workflowsFragment },
       ],
@@ -411,44 +361,6 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
       await this.#host.storeAndInitialize(config);
       await this.#dispatchInitialized(config.scope);
     });
-  }
-
-  #createPiRuntimeOptions(scope: BackofficeContextScope) {
-    return {
-      apiKeys: piApiKeys(this.#env),
-      models: this.#piModels,
-      codemode: this.#runtimeServices.codemodeEnv
-        ? createPiCodemodeRuntime(this.#runtimeServices.codemodeEnv)
-        : createUnavailablePiCodemodeRuntime(),
-      createRuntime: this.#createPiRuntime
-        ? (execution: BackofficeExecutionContext) => this.#createPiRuntime!(execution, this.#kernel)
-        : undefined,
-      createRuntimeToolContext: (sessionExecution: BackofficeExecutionContext, pi: PiRuntime) =>
-        createRouteBackedRuntimeContext({
-          runtime: this.#runtimeServices,
-          kernel: this.#kernel,
-          execution: sessionExecution,
-          pi: { runtime: pi },
-        }),
-      onOperationCompleted: async (
-        payload: Parameters<NonNullable<PiFragmentConfig["onOperationCompleted"]>>[0],
-        context: Parameters<NonNullable<PiFragmentConfig["onOperationCompleted"]>>[1],
-      ) => {
-        await recordPiOperationBilling({
-          scope,
-          payload,
-          hookId: context.hookId.toString(),
-          idempotencyKey: context.idempotencyKey,
-          recordEvent: async (billingOrganizationId, event) => {
-            await this.#runtimeServices.objects.billing
-              .forOrg(billingOrganizationId)
-              .commands.recordEvent(event, {
-                propagationContext: context.capturePropagationContext(),
-              });
-          },
-        });
-      },
-    };
   }
 
   async #invokeAutomationAction<TResult>({
@@ -1102,11 +1014,6 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
     );
   }
 
-  async getPiRuntimeState(): Promise<PiRuntimeState> {
-    await this.#ensureConfigured({ scope: this.#requireScope() });
-    return buildPiRuntimeState(this.#env);
-  }
-
   async getDurableHookQueue(
     fragment: AutomationsDurableHookFragment,
     options?: DurableHookQueueOptions,
@@ -1270,10 +1177,6 @@ export class Automations extends DurableObject<CloudflareEnv> implements Automat
 
   async resolveProjectForExecution(input: { projectId?: string; slug?: string }) {
     return await this.#object.resolveProjectForExecution(input);
-  }
-
-  async getPiRuntimeState(): Promise<PiRuntimeState> {
-    return await this.#object.getPiRuntimeState();
   }
 
   async getDurableHookQueue(

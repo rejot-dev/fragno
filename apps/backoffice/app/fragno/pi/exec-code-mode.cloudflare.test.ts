@@ -1,5 +1,6 @@
 import { describe, expect, test, assert } from "vitest";
 
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { createWorkflowsTestHarness } from "@fragno-dev/workflows/test";
 import { defineRemoteWorkflow } from "@fragno-dev/workflows/workflow";
 import { env } from "cloudflare:workers";
@@ -8,8 +9,10 @@ import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 
 import { createBackofficeUserExecution } from "@/backoffice-runtime/context";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
+import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
 import { codemodeWorkflowParamsSchema } from "@/fragno/automation/engine/codemode-invocation";
+import { AutomationWorkflowRuntimeRequestError } from "@/fragno/automation/workflow-route-runtime";
 
 import { MemoryUploadObject, createTestStateBackend } from "../codemode/state-backend.test-utils";
 import { runBackofficeCodemodeWorkflow } from "../codemode/workflow-execute";
@@ -23,7 +26,7 @@ import type {
 import { createTrustedSystemBackofficeToolContext } from "../runtime-tools/runtime-tools";
 import { runtimeToolFamilies } from "../runtime-tools/tool-families";
 import { createPiCodemodeRuntime } from "./pi-codemode";
-import { createPiToolRegistry } from "./pi-tools";
+import { createBackofficePiTools } from "./pi-tools";
 
 const unusedObjects = {} as BackofficeObjectRegistry;
 const testRuntimeConfig: BackofficeRuntimeConfig = {
@@ -103,31 +106,19 @@ describe("Pi execCodeMode tool", () => {
       upload: new MemoryUploadObject({ "input.txt": "hello" }),
     });
 
-    const tools = createPiToolRegistry({
-      execution: createPiSystemFileContext().execution,
-      codemode: createPiCodemodeRuntime(env),
-      runtimeToolContext: { ...EMPTY_BASH_HOST_CONTEXT, stateBackend } as never,
-    });
+    const tool = await createExecCodeModeTool({ stateBackend });
 
-    const execCodeModeFactory = tools.execCodeMode;
-    if (typeof execCodeModeFactory !== "function") {
-      throw new Error("Expected execCodeMode tool to be registered as a factory.");
-    }
-
-    const tool = await execCodeModeFactory({
-      session: { id: "session-1" },
-      turnId: "turn-1",
-      toolConfig: null,
-      messages: [],
-    } as never);
-
-    const result = await tool.execute("tool-call-1", {
-      code: `async () => {
-        const input = await state.readFile({ path: "/workspace/input.txt" });
-        await state.writeFile({ path: "/workspace/output.txt", content: input + " from pi" });
-        return await state.readFile({ path: "/workspace/output.txt" });
-      }`,
-    });
+    const result = await tool.execute(
+      {
+        code: `async () => {
+          const input = await state.readFile({ path: "/workspace/input.txt" });
+          await state.writeFile({ path: "/workspace/output.txt", content: input + " from pi" });
+          return await state.readFile({ path: "/workspace/output.txt" });
+        }`,
+      },
+      { taskId: "tool-call-1" } as never,
+      BACKGROUND_CONTEXT,
+    );
 
     expect(result.details).toMatchObject({
       result: "hello from pi",
@@ -145,33 +136,37 @@ describe("Pi execCodeMode tool", () => {
   test("preserves an immediate generated UI result in details.result", async () => {
     const tool = await createExecCodeModeTool({});
 
-    const result = await tool.execute("tool-call-ui", {
-      code: `async () => {
-        const total = 24;
-        return {
-          total,
-          $ui: {
-            version: 1,
-            state: { total },
-            spec: {
-              root: "report",
-              elements: {
-                report: {
-                  type: "Stack",
-                  props: { gap: "md" },
-                  children: ["metric"],
-                },
-                metric: {
-                  type: "Metric",
-                  props: { label: "Orders", value: String(total) },
-                  children: [],
+    const result = await tool.execute(
+      {
+        code: `async () => {
+          const total = 24;
+          return {
+            total,
+            $ui: {
+              version: 1,
+              state: { total },
+              spec: {
+                root: "report",
+                elements: {
+                  report: {
+                    type: "Stack",
+                    props: { gap: "md" },
+                    children: ["metric"],
+                  },
+                  metric: {
+                    type: "Metric",
+                    props: { label: "Orders", value: String(total) },
+                    children: [],
+                  },
                 },
               },
             },
-          },
-        };
-      }`,
-    });
+          };
+        }`,
+      },
+      { taskId: "tool-call-ui" } as never,
+      BACKGROUND_CONTEXT,
+    );
 
     expect((result.details as { result?: unknown }).result).toEqual({
       total: 24,
@@ -202,14 +197,18 @@ describe("Pi execCodeMode tool", () => {
       workflowRuntime: createPiWorkflowRuntime(),
     });
 
-    const result = await tool.execute("tool-call-1", {
-      code: `defineWorkflow({ name: "pi-session-workflow" }, async (_event, step) => {
-        return await step.do("write-file", async () => {
-          await state.writeFile({ path: "/workspace/workflow.txt", content: "from workflow" });
-          return "defined";
-        });
-      });`,
-    });
+    const result = await tool.execute(
+      {
+        code: `defineWorkflow({ name: "pi-session-workflow" }, async (_event, step) => {
+          return await step.do("write-file", async () => {
+            await state.writeFile({ path: "/workspace/workflow.txt", content: "from workflow" });
+            return "defined";
+          });
+        });`,
+      },
+      { taskId: "tool-call-1" } as never,
+      BACKGROUND_CONTEXT,
+    );
 
     expect(result.details).toMatchObject({
       workflowDefinition: { name: "pi-session-workflow", options: { name: "pi-session-workflow" } },
@@ -221,6 +220,43 @@ describe("Pi execCodeMode tool", () => {
       throw new Error("Expected text content from execCodeMode.");
     }
     expect(content.text).toContain("18tfv3i1e4o7fe");
+  });
+
+  test("returns structured scheduling failures as failed tool results", async () => {
+    const requiredPermission = BACKOFFICE_PERMISSION.workflow.executeCode;
+    const tool = await createExecCodeModeTool({
+      workflowRuntime: createPiWorkflowRuntime({
+        createInternalInstance: async () => {
+          throw new AutomationWorkflowRuntimeRequestError(
+            403,
+            "principal-permission-denied",
+            "Workflows backend returned 403: The current principal does not have the required permission.",
+            requiredPermission,
+          );
+        },
+      }),
+    });
+
+    const result = await tool.execute(
+      {
+        code: `defineWorkflow({ name: "denied-workflow" }, async () => ({ ok: true }));`,
+      },
+      { taskId: "tool-call-denied" } as never,
+      BACKGROUND_CONTEXT,
+    );
+
+    assert(result.isError);
+    expect(result.details).toMatchObject({
+      workflowDefinition: { name: "denied-workflow" },
+      scheduleError: {
+        status: 403,
+        code: "principal-permission-denied",
+        requiredPermission,
+        message:
+          "Workflows backend returned 403: The current principal does not have the required permission.",
+      },
+    });
+    expect(result.details).not.toHaveProperty("run");
   });
 
   test("schedules and runs a workflow defined from execCodeMode", async () => {
@@ -256,51 +292,41 @@ describe("Pi execCodeMode tool", () => {
       autoTickHooks: false,
     });
 
-    const tools = createPiToolRegistry({
-      execution: createPiSystemFileContext().execution,
-      codemode: {
-        ...createPiCodemodeRuntime(env),
-        workflow: createPiWorkflowRuntime({
-          createInternalInstance: async ({
-            workflowName,
-            remoteWorkflowName,
-            instanceId,
+    const tool = await createExecCodeModeTool({
+      stateBackend,
+      workflowRuntime: createPiWorkflowRuntime({
+        createInternalInstance: async ({
+          workflowName,
+          remoteWorkflowName,
+          instanceId,
+          params,
+        }) => {
+          const resolvedInstanceId = instanceId ?? "generated-instance-id";
+          await harness.createInstance(workflowName, {
+            id: resolvedInstanceId,
             params,
-          }) => {
-            const resolvedInstanceId = instanceId ?? "generated-instance-id";
-            await harness.createInstance(workflowName, {
-              id: resolvedInstanceId,
-              params,
-              remoteWorkflowName,
-            });
-            return { workflowName, instanceId: resolvedInstanceId };
-          },
-        }),
-      },
-      runtimeToolContext: { ...EMPTY_BASH_HOST_CONTEXT, stateBackend } as never,
-    });
-    const execCodeModeFactory = tools.execCodeMode;
-    if (typeof execCodeModeFactory !== "function") {
-      throw new Error("Expected execCodeMode tool to be registered as a factory.");
-    }
-    const tool = await execCodeModeFactory({
-      session: { id: "session-1" },
-      turnId: "turn-1",
-      toolConfig: null,
-      messages: [],
-    } as never);
-
-    const result = await tool.execute("tool-call-1", {
-      code: `defineWorkflow({ name: "pi-session-workflow" }, async (_event, step) => {
-        return await step.do("write-session-file", async () => {
-          await state.writeFile({
-            path: "/workspace/from-workflow.txt",
-            content: "ran from execCodeMode workflow",
+            remoteWorkflowName,
           });
-          return await state.readFile({ path: "/workspace/from-workflow.txt" });
-        });
-      });`,
+          return { workflowName, instanceId: resolvedInstanceId };
+        },
+      }),
     });
+
+    const result = await tool.execute(
+      {
+        code: `defineWorkflow({ name: "pi-session-workflow" }, async (_event, step) => {
+          return await step.do("write-session-file", async () => {
+            await state.writeFile({
+              path: "/workspace/from-workflow.txt",
+              content: "ran from execCodeMode workflow",
+            });
+            return await state.readFile({ path: "/workspace/from-workflow.txt" });
+          });
+        });`,
+      },
+      { taskId: "tool-call-1" } as never,
+      BACKGROUND_CONTEXT,
+    );
 
     expect(result.details).toMatchObject({
       workflowDefinition: { name: "pi-session-workflow", options: { name: "pi-session-workflow" } },
@@ -350,52 +376,38 @@ describe("Pi execCodeMode tool", () => {
       autoTickHooks: false,
     });
 
-    const tools = createPiToolRegistry({
-      execution: createPiSystemFileContext().execution,
-      codemode: {
-        ...createPiCodemodeRuntime(env),
-        workflow: createPiWorkflowRuntime({
-          createInternalInstance: async ({
-            workflowName,
-            remoteWorkflowName,
-            instanceId,
+    const tool = await createExecCodeModeTool({
+      workflowRuntime: createPiWorkflowRuntime({
+        createInternalInstance: async ({
+          workflowName,
+          remoteWorkflowName,
+          instanceId,
+          params,
+        }) => {
+          const resolvedInstanceId = instanceId ?? "generated-instance-id";
+          await harness.createInstance(workflowName, {
+            id: resolvedInstanceId,
             params,
-          }) => {
-            const resolvedInstanceId = instanceId ?? "generated-instance-id";
-            await harness.createInstance(workflowName, {
-              id: resolvedInstanceId,
-              params,
-              remoteWorkflowName,
-            });
-            return { workflowName, instanceId: resolvedInstanceId };
-          },
-        }),
-      },
-      runtimeToolContext: {
-        ...EMPTY_BASH_HOST_CONTEXT,
-        stateBackend: createTestStateBackend(),
-      } as never,
-    });
-    const execCodeModeFactory = tools.execCodeMode;
-    if (typeof execCodeModeFactory !== "function") {
-      throw new Error("Expected execCodeMode tool to be registered as a factory.");
-    }
-    const tool = await execCodeModeFactory({
-      session: { id: "session-1" },
-      turnId: "turn-1",
-      toolConfig: null,
-      messages: [],
-    } as never);
-
-    const result = await tool.execute("tool-call-1", {
-      code: `defineWorkflow({ name: "pi-session-workflow-npm" }, async (_event, step) => {
-          return await step.do("is-number", async () => {
-            const isNumber = (await import("is-number")).default;
-            return isNumber(7);
+            remoteWorkflowName,
           });
-        });`,
-      dependencies: { "is-number": "7.0.0" },
+          return { workflowName, instanceId: resolvedInstanceId };
+        },
+      }),
     });
+
+    const result = await tool.execute(
+      {
+        code: `defineWorkflow({ name: "pi-session-workflow-npm" }, async (_event, step) => {
+            return await step.do("is-number", async () => {
+              const isNumber = (await import("is-number")).default;
+              return isNumber(7);
+            });
+          });`,
+        dependencies: { "is-number": "7.0.0" },
+      },
+      { taskId: "tool-call-1" } as never,
+      BACKGROUND_CONTEXT,
+    );
 
     const details = result.details as { result?: { instanceId?: string } };
     assert(details.result?.instanceId === "18tfv3i1e4o7fe");
@@ -410,25 +422,20 @@ describe("Pi execCodeMode tool", () => {
     });
   });
 
-  test("shows current raw text behavior when codemode returns a Map", async () => {
+  test("rejects codemode details that cannot be persisted as strict JSON", async () => {
     const tool = await createExecCodeModeTool({});
 
-    const result = await tool.execute("tool-call-1", {
-      code: `async () => {
-        return new Map([["key", "value"]]);
-      }`,
-    });
-
-    expect((result.details as { result?: unknown }).result).toBeInstanceOf(Map);
-    expect([...(result.details as { result: Map<string, string> }).result]).toEqual([
-      ["key", "value"],
-    ]);
-    const content = result.content[0];
-    assert(content?.type === "text");
-    if (content?.type !== "text") {
-      throw new Error("Expected text content from execCodeMode.");
-    }
-    assert(content.text === "{}");
+    await expect(
+      tool.execute(
+        {
+          code: `async () => {
+            return new Map([["key", "value"]]);
+          }`,
+        },
+        { taskId: "tool-call-1" } as never,
+        BACKGROUND_CONTEXT,
+      ),
+    ).rejects.toThrow("Value must contain strict JSON plain objects or arrays");
   });
 
   test("calls workflow domain tools through codemode when configured", async () => {
@@ -450,11 +457,15 @@ describe("Pi execCodeMode tool", () => {
       }),
     });
 
-    const result = await tool.execute("tool-call-1", {
-      code: `async () => {
-        return await workflow.getInstance({ instanceId: "instance-1" });
-      }`,
-    });
+    const result = await tool.execute(
+      {
+        code: `async () => {
+          return await workflow.getInstance({ instanceId: "instance-1" });
+        }`,
+      },
+      { taskId: "tool-call-1" } as never,
+      BACKGROUND_CONTEXT,
+    );
 
     expect(result.details).toMatchObject({
       result: {
@@ -505,15 +516,19 @@ describe("Pi execCodeMode tool", () => {
       automationsRuntime,
     });
 
-    const result = await tool.execute("tool-call-1", {
-      code: `async () => {
-        const existing = await store.get({ key: "telegram/chat-123" });
-        return await store.set({
-          key: "telegram/chat-456",
-          value: existing.value,
-        });
-      }`,
-    });
+    const result = await tool.execute(
+      {
+        code: `async () => {
+          const existing = await store.get({ key: "telegram/chat-123" });
+          return await store.set({
+            key: "telegram/chat-456",
+            value: existing.value,
+          });
+        }`,
+      },
+      { taskId: "tool-call-1" } as never,
+      BACKGROUND_CONTEXT,
+    );
 
     expect(result.details).toMatchObject({
       result: { key: "telegram/chat-456", value: "user-55" },
@@ -579,11 +594,15 @@ describe("Pi execCodeMode tool", () => {
 
     const tool = await createExecCodeModeTool({ automationsRuntime });
     await expect(
-      tool.execute("tool-call-1", {
-        code: `async () => {
-          return await store.set({ key: "", value: "" });
-        }`,
-      }),
+      tool.execute(
+        {
+          code: `async () => {
+            return await store.set({ key: "", value: "" });
+          }`,
+        },
+        { taskId: "tool-call-1" } as never,
+        BACKGROUND_CONTEXT,
+      ),
     ).rejects.toThrow("Too small");
 
     expect(calls).toEqual([]);
@@ -593,32 +612,42 @@ describe("Pi execCodeMode tool", () => {
 const createExecCodeModeTool = async ({
   automationsRuntime,
   workflowRuntime,
+  stateBackend = createTestStateBackend(),
 }: {
   automationsRuntime?: RegisteredAutomationsRuntime;
   workflowRuntime?: PiWorkflowRuntime;
+  stateBackend?: ReturnType<typeof createTestStateBackend>;
 }) => {
-  const stateBackend = createTestStateBackend();
-  const tools = createPiToolRegistry({
+  const runtimeToolContext = automationsRuntime
+    ? ({
+        ...EMPTY_BASH_HOST_CONTEXT,
+        stateBackend,
+        automations: { runtime: automationsRuntime },
+      } as never)
+    : ({ ...EMPTY_BASH_HOST_CONTEXT, stateBackend } as never);
+  const tool = createBackofficePiTools({
+    sessionId: "session-1",
     execution: createPiSystemFileContext().execution,
     codemode: { ...createPiCodemodeRuntime(env), workflow: workflowRuntime },
-    runtimeToolContext: automationsRuntime
-      ? ({
-          ...EMPTY_BASH_HOST_CONTEXT,
-          stateBackend,
-          automations: { runtime: automationsRuntime },
-        } as never)
-      : ({ ...EMPTY_BASH_HOST_CONTEXT, stateBackend } as never),
-  });
-
-  const execCodeModeFactory = tools.execCodeMode;
-  if (typeof execCodeModeFactory !== "function") {
-    throw new Error("Expected execCodeMode tool to be registered as a factory.");
-  }
-
-  return await execCodeModeFactory({
-    session: { id: "session-1" },
-    turnId: "turn-1",
-    toolConfig: null,
-    messages: [],
-  } as never);
+    authorizeExecution: async () => undefined,
+    createRuntimeToolContext: () => runtimeToolContext,
+  }).execCodeMode;
+  return {
+    ...tool,
+    async execute(
+      args: Parameters<typeof tool.execute>[0],
+      api: Parameters<typeof tool.execute>[1],
+      context: Parameters<typeof tool.execute>[2],
+    ) {
+      const result = await tool.execute(args, api, context);
+      if (!result.content || result.details === undefined) {
+        throw new Error("Expected execCodeMode to return persisted content and details.");
+      }
+      return {
+        content: result.content,
+        details: result.details,
+        isError: result.isError === true,
+      };
+    },
+  };
 };

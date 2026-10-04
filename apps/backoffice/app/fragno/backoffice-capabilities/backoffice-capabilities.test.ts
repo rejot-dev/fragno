@@ -55,7 +55,7 @@ describe("Capability contributions", () => {
       api: "system",
       mcp: "system",
       connector: "system",
-      pi: "connection",
+      pi: "system",
       telegram: "connection",
     });
   });

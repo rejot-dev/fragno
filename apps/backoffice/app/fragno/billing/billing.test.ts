@@ -11,7 +11,7 @@ const scope = { kind: "org" as const, orgId: "org-1" };
 const usageEvent = (overrides: Partial<BillingEventInput> = {}): BillingEventInput => ({
   id: "pi:org-1:hook-1",
   scope,
-  source: "pi-harness",
+  source: "pi",
   eventType: "operation.completed",
   occurredAt: "2026-07-16T12:00:00.000Z",
   measurements: [

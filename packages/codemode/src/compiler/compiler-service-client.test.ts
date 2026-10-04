@@ -2,6 +2,10 @@ import { afterEach, expect, test, vi } from "vitest";
 
 import { CODEMODE_LIMITS } from "../codemode-limits";
 import {
+  authenticateCodemodeHttpRequest,
+  CodemodeHttpAuthenticationError,
+} from "../transport/codemode-http-authentication";
+import {
   CodemodeCompilerHttpError,
   createCodemodeCompilerHttpClient,
 } from "./compiler-service-client";
@@ -15,6 +19,24 @@ const typeCheckInput = {
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
+});
+
+test("compiler HTTP clients preserve authoritative authentication failures", async () => {
+  const authenticationResponse = await authenticateCodemodeHttpRequest(
+    new Request(bridge.url, { headers: { authorization: "Bearer incorrect" } }),
+    bridge.apiKey,
+  );
+  if (!authenticationResponse) {
+    throw new Error("Expected codemode authentication to reject the incorrect bearer token.");
+  }
+  vi.spyOn(globalThis, "fetch").mockResolvedValue(authenticationResponse);
+  const client = createCodemodeCompilerHttpClient(bridge);
+
+  await expect(client.typeCheckFiles(typeCheckInput)).rejects.toMatchObject({
+    name: CodemodeHttpAuthenticationError.name,
+    code: "AUTHENTICATION_FAILED",
+    message: "Codemode HTTP authentication failed.",
+  });
 });
 
 test("proxy 503 responses are not mislabeled as authentication configuration failures", async () => {

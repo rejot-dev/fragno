@@ -1,132 +1,114 @@
 // pi tools
 type PiCodemodeProvider = {
-  /** Create a new Pi session. */
+  /** Create a durable Pi agent in the current scoped directory. */
   createSession(input: PiCreateSessionInput): Promise<PiCreateSessionOutput>;
-  /** Retrieve a Pi session by id. */
+  /** Get a durable Pi directory record and its conversation view. */
   getSession(input: PiGetSessionInput): Promise<PiGetSessionOutput>;
-  /** List Pi sessions ordered by creation time. */
+  /** List one cursor-paginated page from the durable Pi directory. */
   listSessions(input: PiListSessionsInput): Promise<PiListSessionsOutput>;
-  /** Send one prompt command through a Pi active session and return the settled result. */
-  runTurn(input: PiRunTurnInput): Promise<PiRunTurnOutput>;
+  /** Durably admit a prompt and return its deduplicated submission receipt. */
+  submitPrompt(input: PiSubmitPromptInput): Promise<PiSubmitPromptOutput>;
+  /** Get the durable status of one prompt submission. */
+  getSubmission(input: PiGetSubmissionInput): Promise<unknown>;
+  /** Durably admit a prompt, wait for settlement, and return its conversation view. */
+  runPrompt(input: PiRunPromptInput): Promise<PiRunPromptOutput>;
+  /** Abort active foreground and background work in a durable Pi agent. */
+  abortSession(input: PiAbortSessionInput): Promise<PiAbortSessionOutput>;
 };
 declare const pi: PiCodemodeProvider;
 
 type PiCreateSessionInput = {
-  billingOrganizationId?: string;
+  requestId?: string;
+  billingOrganizationId?: string | null;
+  instructions?: string;
   model?: {
-    provider: "openai" | "anthropic" | "gemini";
-    name: string;
+    provider: string;
+    modelId: string;
   };
-  name?: string;
-  systemMessage?: string;
-  metadata?: {
-    [key: string]: unknown;
-  };
-  tags?: string[];
-  steeringMode?: "all" | "one-at-a-time";
+  name?: string | null;
 };
 type PiCreateSessionOutput = {
-  id: string;
+  sessionId: string;
   name: string | null;
-  status?: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
-  metadata: {
-    [key: string]: unknown;
-  } | null;
-  /** ISO 8601 datetime string. */
-  createdAt: string;
-  /** ISO 8601 datetime string. */
-  updatedAt: string;
-  tags?: string[];
-  steeringMode?: "all" | "one-at-a-time";
+  model: {
+    provider: string;
+    modelId: string;
+  };
+  instructions: string;
+  billingOrganizationId: string | null;
 };
 type PiGetSessionInput = {
   sessionId: string;
-  events?: boolean;
-  trace?: boolean;
-  turns?: boolean;
 };
 type PiGetSessionOutput = {
-  id: string;
+  sessionId: string;
   name: string | null;
-  status?: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
-  metadata: {
-    [key: string]: unknown;
-  } | null;
-  /** ISO 8601 datetime string. */
+  model: {
+    provider: string;
+    modelId: string;
+  };
+  instructions: string;
+  billingOrganizationId: string | null;
   createdAt: string;
-  /** ISO 8601 datetime string. */
-  updatedAt: string;
-  workflow: {
-    status: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
-    error?: {
-      name: string;
-      message: string;
-    };
-    output?: unknown;
-  };
-  agent: {
-    state: {
-      messages: unknown[];
-      errorMessage?: string;
-    };
-  };
-  tags?: string[];
-  steeringMode?: "all" | "one-at-a-time";
+  view: unknown;
 };
 type PiListSessionsInput = {
-  limit?: number;
+  cursor?: string;
+  pageSize?: number;
 };
 type PiListSessionsOutput = {
-  id: string;
-  name: string | null;
-  status?: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
-  metadata: {
-    [key: string]: unknown;
-  } | null;
-  /** ISO 8601 datetime string. */
-  createdAt: string;
-  /** ISO 8601 datetime string. */
-  updatedAt: string;
-  tags?: string[];
-  steeringMode?: "all" | "one-at-a-time";
-}[];
-type PiRunTurnInput = {
+  sessions: {
+    sessionId: string;
+    name: string | null;
+    model: {
+      provider: string;
+      modelId: string;
+    };
+    instructions: string;
+    billingOrganizationId: string | null;
+    createdAt: string;
+  }[];
+  cursor: string | null;
+  hasNextPage: boolean;
+};
+type PiSubmitPromptInput = {
   sessionId: string;
-  text: string;
+  content: string;
+  requestId?: string;
+  whenBusy?: "followUp" | "steer" | "reject";
+};
+type PiSubmitPromptOutput = {
+  submissionId: number;
+  requestId: string;
+};
+type PiGetSubmissionInput = {
+  sessionId: string;
+  requestId: string;
+};
+type PiRunPromptInput = {
+  sessionId: string;
+  content: string;
+  requestId?: string;
+  whenBusy?: "followUp" | "steer" | "reject";
   timeoutMs?: number;
 };
-type PiRunTurnOutput = {
-  id: string;
+type PiRunPromptOutput = {
+  sessionId: string;
   name: string | null;
-  status?: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
-  metadata: {
-    [key: string]: unknown;
-  } | null;
-  /** ISO 8601 datetime string. */
+  model: {
+    provider: string;
+    modelId: string;
+  };
+  instructions: string;
+  billingOrganizationId: string | null;
   createdAt: string;
-  /** ISO 8601 datetime string. */
-  updatedAt: string;
-  workflow: {
-    status: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
-    error?: {
-      name: string;
-      message: string;
-    };
-    output?: unknown;
-  };
-  agent: {
-    state: {
-      messages: unknown[];
-      errorMessage?: string;
-    };
-  };
-  tags?: string[];
-  steeringMode?: "all" | "one-at-a-time";
+  view: unknown;
+  submission: unknown;
   assistantText: string;
-  commandStatus: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
-  stream: unknown[];
-  terminalState: {
-    messages: unknown[];
-    errorMessage?: string;
-  };
+};
+type PiAbortSessionInput = {
+  sessionId: string;
+};
+type PiAbortSessionOutput = {
+  aborted: true;
 };

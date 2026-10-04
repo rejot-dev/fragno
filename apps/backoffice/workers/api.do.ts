@@ -1,6 +1,7 @@
 import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { DurableObject, RpcTarget } from "cloudflare:workers";
 
+import { backofficeRoutableScopeSchema } from "@/backoffice-runtime/context-schema";
 import {
   backofficeContextScopeFromDurableObjectId,
   type ApiObject,
@@ -38,7 +39,7 @@ function scopeSubject(scope: BackofficeRoutableScope, subject?: Record<string, u
 export class InMemoryApiObject extends RpcTarget implements ApiObject {
   readonly #runtimeServices: BackofficeRuntimeServices;
   readonly #host: FragmentDurableObjectHost<ApiConfig, ApiFragment>;
-  readonly #scopedRuntime: ScopedFragmentDurableObjectRuntime<ApiFragment>;
+  readonly #scopedRuntime: ScopedFragmentDurableObjectRuntime<ApiFragment, BackofficeRoutableScope>;
 
   constructor({
     state,
@@ -67,6 +68,7 @@ export class InMemoryApiObject extends RpcTarget implements ApiObject {
       state,
       ownerScope: backofficeContextScopeFromDurableObjectId(state.id, "API"),
       host: this.#host,
+      scopeSchema: backofficeRoutableScopeSchema,
       createSource: (scope) => this.#createConfig(scope),
     });
 

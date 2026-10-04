@@ -88,6 +88,20 @@ ignored by git.
 pnpm --dir apps/backoffice start:node
 ```
 
+To run the local `cf-sandbox-bridge` under the same supervisor, configure its API key and pass
+`--local-bridge`:
+
+```bash
+cp apps/cf-sandbox-bridge/.dev.vars.example apps/cf-sandbox-bridge/.dev.vars
+# Set SANDBOX_API_KEY in apps/cf-sandbox-bridge/.dev.vars.
+pnpm --dir apps/backoffice start:node -- --local-bridge
+```
+
+The flag starts the bridge at `http://127.0.0.1:8787`, copies its `SANDBOX_API_KEY` into
+Backoffice's `CLOUDFLARE_BRIDGE_API_KEY`, and sets `CLOUDFLARE_BRIDGE_URL` in
+`apps/backoffice/.dev.vars`. If Backoffice's file does not exist, it is created from
+`.dev.vars.example`. The supervisor stops the bridge, web server, and processor together.
+
 The local `start:node*` commands run with `NODE_ENV=development`. In this mode, the Node server
 serves the browser SQLite worker's source maps directly from the installed dependency for DevTools;
 they are never copied into build artifacts. Production Node launches use `NODE_ENV=production`, and

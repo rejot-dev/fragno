@@ -1,12 +1,33 @@
-import type { PiHarnessFrontendAgentMessage } from "@fragno-dev/pi-harness/harness/agent-harness-event-protocol";
-import type {
-  DraftAgentMessage,
-  DraftTool,
-} from "@fragno-dev/pi-harness/workflow-session-projection";
-
 import type { AppendMessage, ThreadMessageLike } from "@assistant-ui/react";
+import type { Message as PiDurableMessage } from "@earendil-works/pi-ai";
+import type { ConversationView, LiveState } from "@earendil-works/pi-durable";
 
-export type ToolResultMessage = Extract<PiHarnessFrontendAgentMessage, { role: "toolResult" }>;
+export type PiConversationMessage = PiDurableMessage;
+export type ToolResultMessage = Extract<PiConversationMessage, { role: "toolResult" }>;
+export type PiDraftTool = {
+  id: string;
+  name: string;
+  args: Record<string, unknown>;
+  argsText?: string;
+  status: "starting" | "running" | "done";
+  partialResult?: unknown;
+  resultMessage?: ToolResultMessage;
+};
+export type PiDraftAgentActivity =
+  | "starting"
+  | "thinking"
+  | "writing"
+  | "tool_calling"
+  | "running_tools";
+
+export type PiDraftAgentMessage = {
+  activity: PiDraftAgentActivity;
+  assistant?: Extract<PiConversationMessage, { role: "assistant" }>;
+  tools: Record<string, PiDraftTool>;
+  startedAt: number;
+  updatedAt: number;
+  appendAssistant?: boolean;
+};
 
 export type PiContentBlock =
   | { type: "text"; text: string }
@@ -16,16 +37,15 @@ export type PiContentBlock =
 
 export type PiToolCallArtifact = {
   completedToolResult: ToolResultMessage | null;
-  draftTool: DraftTool | null;
+  draftTool: PiDraftTool | null;
 };
 
 export type PiAssistantMessageMetadata = {
-  kind?: "assistant" | "compaction";
-  tokensBefore?: number;
+  kind?: "assistant";
   errorMessage?: string;
   statusText?: string | null;
-  stopReason?: Extract<PiHarnessFrontendAgentMessage, { role: "assistant" }>["stopReason"];
-  usage?: Extract<PiHarnessFrontendAgentMessage, { role: "assistant" }>["usage"];
+  stopReason?: Extract<PiConversationMessage, { role: "assistant" }>["stopReason"];
+  usage?: Extract<PiConversationMessage, { role: "assistant" }>["usage"];
 };
 
 type AssistantContentBlock = ThreadMessageLike["content"] extends string | readonly (infer Block)[]
@@ -94,10 +114,119 @@ export function normalizePiContent(content: unknown): PiContentBlock[] {
   });
 }
 
+function assistantRecoveryFingerprint(
+  message: Extract<PiConversationMessage, { role: "assistant" }>,
+) {
+  return JSON.stringify(
+    normalizePiContent(message.content).filter(
+      (block) => block.type !== "thinking" || block.thinking.length > 0,
+    ),
+  );
+}
+
+/** Hides superseded recovery partials while preserving distinct attempts and completed tool rounds. */
+export function piConversationMessages(view: ConversationView): PiConversationMessage[] {
+  const completedAssistantAttempts = new Set<string>();
+  for (const entry of view.entries) {
+    const taskKey = entry.byTaskId === undefined ? `entry:${entry.id}` : `task:${entry.byTaskId}`;
+    for (const message of entry.model ?? []) {
+      if (message.role === "assistant" && message.stopReason !== "aborted") {
+        completedAssistantAttempts.add(`${taskKey}:${assistantRecoveryFingerprint(message)}`);
+      }
+    }
+  }
+
+  const visibleAbortedAttempts = new Set<string>();
+  return view.entries.flatMap((entry) => {
+    const taskKey = entry.byTaskId === undefined ? `entry:${entry.id}` : `task:${entry.byTaskId}`;
+    return (entry.model ?? []).filter((message) => {
+      if (message.role !== "assistant" || message.stopReason !== "aborted") {
+        return true;
+      }
+      const attemptKey = `${taskKey}:${assistantRecoveryFingerprint(message)}`;
+      if (completedAssistantAttempts.has(attemptKey) || visibleAbortedAttempts.has(attemptKey)) {
+        return false;
+      }
+      visibleAbortedAttempts.add(attemptKey);
+      return true;
+    });
+  });
+}
+
+/** Projects Pi's committed live document into the existing Assistant UI draft model. */
+export function piConversationDraftAgentMessage(
+  view: ConversationView,
+): PiDraftAgentMessage | null {
+  const live = view.docs["pi.live"] as Readonly<LiveState> | undefined;
+  const assistant = live?.generation?.message as
+    | Extract<PiConversationMessage, { role: "assistant" }>
+    | undefined;
+  const toolCallsById = new Map<string, Extract<PiContentBlock, { type: "toolCall" }>>();
+  for (const entry of view.entries) {
+    for (const message of entry.model ?? []) {
+      if (message.role !== "assistant") {
+        continue;
+      }
+      for (const block of normalizePiContent(message.content)) {
+        if (block.type === "toolCall") {
+          toolCallsById.set(block.id, block);
+        }
+      }
+    }
+  }
+  for (const block of normalizePiContent(assistant?.content)) {
+    if (block.type === "toolCall") {
+      toolCallsById.set(block.id, block);
+    }
+  }
+
+  const tools = Object.fromEntries(
+    (live?.tools ?? []).map((slot) => {
+      const call = toolCallsById.get(slot.callId);
+      return [
+        slot.callId,
+        {
+          id: slot.callId,
+          name: slot.name,
+          args: call?.arguments ?? {},
+          status:
+            slot.status === "pending" ? "starting" : slot.status === "running" ? "running" : "done",
+          ...(slot.output === undefined ? {} : { partialResult: slot.output }),
+        } satisfies PiDraftTool,
+      ];
+    }),
+  );
+  if (!assistant && Object.keys(tools).length === 0) {
+    return null;
+  }
+
+  const partialContent = normalizePiContent(assistant?.content);
+  const activity: PiDraftAgentActivity = Object.values(tools).some(
+    (tool) => tool.status === "running",
+  )
+    ? "running_tools"
+    : Object.keys(tools).length > 0
+      ? "tool_calling"
+      : partialContent.some((block) => block.type === "text" && block.text.length > 0)
+        ? "writing"
+        : partialContent.some((block) => block.type === "thinking" && block.thinking.length > 0)
+          ? "thinking"
+          : "starting";
+  const timestamp = assistant?.timestamp ?? 0;
+  return {
+    activity,
+    ...(assistant === undefined ? {} : { assistant }),
+    tools,
+    startedAt: timestamp,
+    updatedAt: timestamp,
+    appendAssistant: assistant !== undefined,
+  };
+}
+
 function convertContentBlock(
   block: unknown,
   toolResultsByCallId: ReadonlyMap<string, ToolResultMessage>,
-  draftToolsByCallId: ReadonlyMap<string, DraftTool>,
+  draftToolsByCallId: ReadonlyMap<string, PiDraftTool>,
 ): AssistantContentBlock | null {
   const normalizedBlock = normalizePiContentBlock(block);
   if (!normalizedBlock) {
@@ -135,7 +264,7 @@ function convertContentBlock(
 }
 
 function convertDraftTool(
-  tool: DraftTool,
+  tool: PiDraftTool,
   toolResultsByCallId: ReadonlyMap<string, ToolResultMessage>,
 ) {
   const completedToolResult = tool.resultMessage ?? toolResultsByCallId.get(tool.id) ?? null;
@@ -160,8 +289,8 @@ export function createAssistantUiMessages({
   readyForInput,
   statusText,
 }: {
-  draftAgentMessage: DraftAgentMessage | null;
-  messages: PiHarnessFrontendAgentMessage[];
+  draftAgentMessage: PiDraftAgentMessage | null;
+  messages: PiConversationMessage[];
   readyForInput: boolean;
   statusText: string | null;
 }): ThreadMessageLike[] {
@@ -193,23 +322,6 @@ export function createAssistantUiMessages({
       .map((block) => convertContentBlock(block, toolResultsByCallId, draftToolsByCallId))
       .filter((block): block is AssistantContentBlock => block !== null);
 
-    if (message.role === "compactionSummary") {
-      converted.push({
-        id: `pi-compaction-${message.timestamp}-${index}`,
-        role: "assistant",
-        content: [{ type: "text", text: message.summary }],
-        createdAt: messageDate(message.timestamp, index),
-        status: { type: "complete", reason: "stop" },
-        metadata: {
-          custom: {
-            kind: "compaction",
-            tokensBefore: message.tokensBefore,
-          } satisfies PiAssistantMessageMetadata,
-        },
-      });
-      return;
-    }
-
     if (message.role === "user") {
       converted.push({
         id: `pi-user-${message.timestamp ?? index}-${index}`,
@@ -224,7 +336,10 @@ export function createAssistantUiMessages({
       return;
     }
 
-    const shouldStream = index === lastVisibleMessageIndex && !readyForInput;
+    const shouldStream =
+      index === lastVisibleMessageIndex &&
+      !readyForInput &&
+      draftAgentMessage?.appendAssistant !== true;
     const existingToolCallIds = new Set(
       contentBlocks.flatMap((block) => (block.type === "toolCall" ? [block.id] : [])),
     );
@@ -265,7 +380,10 @@ export function createAssistantUiMessages({
   });
 
   const lastConvertedMessage = converted.at(-1);
-  if (!readyForInput && lastConvertedMessage?.role !== "assistant") {
+  if (
+    !readyForInput &&
+    (lastConvertedMessage?.role !== "assistant" || draftAgentMessage?.appendAssistant === true)
+  ) {
     const draftContentBlocks = normalizePiContent(draftAgentMessage?.assistant?.content);
     const draftContent: AssistantContentBlock[] = [];
     for (const block of draftContentBlocks) {

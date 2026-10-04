@@ -1,6 +1,10 @@
 import { assert, describe, expect, test } from "vitest";
 
-import { createAssistantUiMessages } from "./assistant-runtime";
+import {
+  createAssistantUiMessages,
+  piConversationDraftAgentMessage,
+  piConversationMessages,
+} from "./assistant-runtime";
 import { formatToolArgumentsDisplayText } from "./tool-arguments";
 
 const usage = {
@@ -24,34 +28,130 @@ describe("formatToolArgumentsDisplayText", () => {
   });
 });
 
-describe("createAssistantUiMessages", () => {
-  test("converts compaction summaries into readable assistant timeline entries", () => {
-    const converted = createAssistantUiMessages({
-      draftAgentMessage: null,
-      readyForInput: true,
-      statusText: null,
-      messages: [
-        {
-          role: "compactionSummary",
-          summary: "## Goal\nPreserve the current implementation plan.",
-          tokensBefore: 42_000,
-          timestamp: 1,
-        } as never,
-      ],
-    });
+describe("piConversationMessages", () => {
+  test("hides repeated aborted recovery copies of a completed assistant response", () => {
+    const completed = {
+      role: "assistant",
+      content: [{ type: "text", text: "One response", textSignature: "completed" }],
+      timestamp: 2,
+      usage,
+      stopReason: "stop",
+    } as never;
+    const abortedCopy = {
+      role: "assistant",
+      content: [{ type: "text", text: "One response", textSignature: "recovered" }],
+      timestamp: 3,
+      usage,
+      stopReason: "aborted",
+    } as never;
 
-    expect(converted).toEqual([
-      expect.objectContaining({
-        role: "assistant",
-        content: [{ type: "text", text: "## Goal\nPreserve the current implementation plan." }],
-        metadata: {
-          custom: {
-            kind: "compaction",
-            tokensBefore: 42_000,
+    expect(
+      piConversationMessages({
+        conversation: { id: 1 },
+        entries: [
+          { id: 1, conversationId: 1, kind: "pi.user", model: [] },
+          { id: 2, conversationId: 1, kind: "pi.assistant", byTaskId: 8, model: [completed] },
+          {
+            id: 3,
+            conversationId: 1,
+            kind: "pi.assistant",
+            byTaskId: 8,
+            model: [abortedCopy],
+          },
+          {
+            id: 4,
+            conversationId: 1,
+            kind: "pi.assistant",
+            byTaskId: 8,
+            model: [abortedCopy],
+          },
+        ],
+        docs: {},
+      } as never),
+    ).toEqual([completed]);
+  });
+
+  test("keeps a distinct aborted partial when no completed response supersedes it", () => {
+    const aborted = {
+      role: "assistant",
+      content: [{ type: "text", text: "Partial response" }],
+      timestamp: 2,
+      usage,
+      stopReason: "aborted",
+    } as never;
+
+    expect(
+      piConversationMessages({
+        conversation: { id: 1 },
+        entries: [
+          { id: 2, conversationId: 1, kind: "pi.assistant", byTaskId: 8, model: [aborted] },
+        ],
+        docs: {},
+      } as never),
+    ).toEqual([aborted]);
+  });
+});
+
+describe("createAssistantUiMessages", () => {
+  test("renders the durable live generation as a separate streaming assistant message", () => {
+    const view = {
+      conversation: { id: 1 },
+      entries: [
+        {
+          id: 1,
+          conversationId: 1,
+          kind: "pi.assistant",
+          model: [
+            {
+              role: "assistant",
+              content: [
+                {
+                  type: "toolCall",
+                  id: "tool-read",
+                  name: "read",
+                  arguments: { path: "/tmp/example.ts" },
+                },
+              ],
+              timestamp: 2,
+              usage,
+              stopReason: "toolUse",
+            },
+          ],
+        },
+      ],
+      docs: {
+        "pi.live": {
+          generation: {
+            attempt: 1,
+            message: {
+              role: "assistant",
+              content: [{ type: "text", text: "The final answer is being written" }],
+              timestamp: 4,
+              usage,
+              stopReason: "pending",
+            },
           },
         },
-      }),
-    ]);
+      },
+    } as never;
+
+    const converted = createAssistantUiMessages({
+      draftAgentMessage: piConversationDraftAgentMessage(view),
+      readyForInput: false,
+      statusText: "Working…",
+      messages: piConversationMessages(view),
+    });
+
+    expect(converted).toHaveLength(2);
+    expect(converted[0]).toMatchObject({
+      role: "assistant",
+      status: { type: "complete", reason: "stop" },
+    });
+    expect(converted[1]).toMatchObject({
+      role: "assistant",
+      content: [{ type: "text", text: "The final answer is being written" }],
+      status: { type: "running" },
+    });
   });
 
   test("converts thinking into reasoning and joins tool results to their calls", () => {
@@ -256,6 +356,9 @@ describe("createAssistantUiMessages", () => {
         assistant: {
           role: "assistant",
           content: [{ type: "thinking", thinking: "I will run the command." }],
+          api: "openai-responses",
+          provider: "openai",
+          model: "test-model",
           timestamp: 2,
           usage,
           stopReason: "toolUse",
@@ -312,6 +415,9 @@ describe("createAssistantUiMessages", () => {
             null,
             { type: "thinking", thinking: "Still reasoning" },
           ] as never,
+          api: "openai-responses",
+          provider: "openai",
+          model: "test-model",
           timestamp: 2,
           usage,
           stopReason: "toolUse",
