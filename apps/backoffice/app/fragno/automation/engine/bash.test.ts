@@ -113,7 +113,6 @@ const createTestAutomationScriptHostContext = ({
     idempotencyKey: `idempotency-${event.id}`,
     runtime: automationRuntime,
     kernel: testKernel,
-    pi: null,
     execution: createTestExecution(event),
   });
 
@@ -164,7 +163,6 @@ describe("bash command runner", () => {
         },
         idempotencyKey: "idempotency-1",
         runtime: automationRuntime,
-        pi: null,
         execution: createTestExecution(event),
       }),
     });
@@ -195,7 +193,6 @@ describe("bash command runner", () => {
         binding: { source: "telegram", eventType: "message.received", scriptId: "s-dev" },
         idempotencyKey: "idem-dev",
         runtime: automationRuntime,
-        pi: null,
         execution: createTestExecution(event),
       }),
     });
@@ -228,7 +225,6 @@ describe("bash command runner", () => {
         binding: { source: "telegram", eventType: "message.received", scriptId: "s-cleanup" },
         idempotencyKey: "idem-cleanup",
         runtime: automationRuntime,
-        pi: null,
         execution: createTestExecution(event),
       }),
     });
@@ -434,7 +430,6 @@ describe("bash command runner", () => {
         binding: { source: "telegram", eventType: "message.received", scriptId: "s-edev" },
         idempotencyKey: "idem-edev",
         runtime: automationRuntime,
-        pi: null,
         execution: createTestExecution(event),
       }),
     });

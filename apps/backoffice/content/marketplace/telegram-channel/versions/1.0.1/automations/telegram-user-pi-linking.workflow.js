@@ -3,6 +3,7 @@ defineWorkflow({ name: "telegram-user-pi-linking" }, async (event, step) => {
 
   const text = automationEvent.payload.text ?? "";
   const chatId = automationEvent.payload.chatId;
+  const workflowInstanceId = event.instanceId;
 
   const telegramActor = automationEvent.actors.initiator;
   if (
@@ -33,19 +34,16 @@ defineWorkflow({ name: "telegram-user-pi-linking" }, async (event, step) => {
     }
 
     try {
-      const session = await pi.getSession({ sessionId });
-      const status = session.workflow?.status ?? session.status ?? "";
-      if (["terminated", "complete", "errored", ""].includes(status)) {
-        return { reusable: false, sessionId: "" };
-      }
-
+      await pi.getSession({ sessionId });
       return { reusable: true, sessionId };
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
       const isMissingSession =
-        (message.includes("Pi fragment returned 404:") || message.includes("Pi returned 404:")) &&
-        message.includes("Session ") &&
-        message.includes(" not found.");
+        error !== null &&
+        typeof error === "object" &&
+        "status" in error &&
+        error.status === 404 &&
+        "code" in error &&
+        error.code === "SESSION_NOT_FOUND";
       if (!isMissingSession) {
         throw error;
       }
@@ -57,9 +55,9 @@ defineWorkflow({ name: "telegram-user-pi-linking" }, async (event, step) => {
   if (!reusableSession.reusable) {
     const session = await step.do("create pi session", async () => {
       return await pi.createSession({
+        requestId: "telegram-user:" + linkedUser,
         name: "Telegram " + chatId,
-        tags: ["telegram", "auto-session"],
-        systemMessage:
+        instructions:
           "IMPORTANT:ALL non-tool call output will AUTOMATICALLY be " +
           "forwarded to Telegram in Markdown parse mode.",
       });
@@ -68,13 +66,13 @@ defineWorkflow({ name: "telegram-user-pi-linking" }, async (event, step) => {
     await step.do("store pi session binding", async () => {
       await store.set({
         key: "telegram-pi-session/" + linkedUser,
-        value: session.id,
+        value: session.sessionId,
         description: "Pi session for Telegram chat " + chatId,
         category: ["telegram", "pi"],
       });
     });
 
-    piSession = { created: true, sessionId: session.id };
+    piSession = { created: true, sessionId: session.sessionId };
   }
 
   const commandReply = await step.do("reply to pi command if needed", async () => {
@@ -103,9 +101,10 @@ defineWorkflow({ name: "telegram-user-pi-linking" }, async (event, step) => {
   });
 
   const assistantText = await step.do("run pi turn", async () => {
-    const resp = await pi.runTurn({
+    const resp = await pi.runPrompt({
       sessionId: piSession.sessionId,
-      text,
+      requestId: workflowInstanceId + ":run-pi-turn",
+      content: text,
     });
 
     return resp.assistantText;

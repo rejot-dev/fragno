@@ -122,6 +122,11 @@
         "script_name": "rejot-backoffice",
       },
       {
+        "name": "PI_MANAGER",
+        "class_name": "PiManager",
+        "script_name": "rejot-backoffice",
+      },
+      {
         "name": "BILLING",
         "class_name": "Billing",
         "script_name": "rejot-backoffice",

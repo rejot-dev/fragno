@@ -14,8 +14,8 @@ export function SessionDisplayOptions({
   onShowToolCallsChange,
   onShowUsageChange,
 }: {
-  exportFilename: string;
-  exportHref: string;
+  exportFilename?: string;
+  exportHref?: string;
   showThinking: boolean;
   showToolCalls: boolean;
   showUsage: boolean;
@@ -50,13 +50,15 @@ export function SessionDisplayOptions({
             onCheckedChange={onShowThinkingChange}
           />
           <ToggleSwitch label="Usage" checked={showUsage} onCheckedChange={onShowUsageChange} />
-          <a
-            href={exportHref}
-            download={exportFilename}
-            className={`mt-1 flex min-h-10 items-center px-3 text-xs font-medium text-[var(--bo-muted)] transition-[background-color,color,scale] duration-150 ease-out hover:bg-[var(--bo-panel-2)] hover:text-[var(--bo-fg)] ${tapScale}`}
-          >
-            Download JSONL
-          </a>
+          {exportHref ? (
+            <a
+              href={exportHref}
+              download={exportFilename}
+              className={`mt-1 flex min-h-10 items-center px-3 text-xs font-medium text-[var(--bo-muted)] transition-[background-color,color,scale] duration-150 ease-out hover:bg-[var(--bo-panel-2)] hover:text-[var(--bo-fg)] ${tapScale}`}
+            >
+              Download JSONL
+            </a>
+          ) : null}
         </div>
       ) : null}
     </div>

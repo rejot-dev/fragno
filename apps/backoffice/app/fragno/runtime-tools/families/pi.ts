@@ -1,240 +1,209 @@
 import { z } from "zod";
 
-import type { PiModel } from "@/fragno/pi/pi-shared";
+import {
+  piAgentConfigSchema,
+  piManagerSessionSchema,
+  type PiAgentConfig,
+  type PiManagerSession,
+} from "@/fragno/pi-manager/pi-agent-contract";
+import type {
+  PiManagerAbortSessionInput,
+  PiManagerCreateSessionInput,
+  PiManagerGetSessionInput,
+  PiManagerGetSubmissionInput,
+  PiManagerListSessionsInput,
+  PiManagerRunPromptInput,
+  PiManagerRuntime,
+  PiManagerSubmitPromptInput,
+} from "@/fragno/pi-manager/pi-manager-runtime";
 import {
   defineCliArgsParser,
   parseCliTokens,
   readOutputOptions,
 } from "@/fragno/runtime-tools/bash-cli";
-import type {
-  PiRuntime,
-  PiSessionCreateArgs,
-  PiSessionGetArgs,
-  PiSessionListArgs,
-  PiSessionTurnArgs,
-} from "@/fragno/runtime-tools/families/pi-runtime";
 
-import { isoDateTimeOutputSchema, normalizeRuntimeOutput } from "../output-schemas";
+import { normalizeRuntimeOutput } from "../output-schemas";
 import {
   defineBackofficeRuntimeTool,
   defineBackofficeRuntimeToolFamily,
   type BackofficeToolContext,
 } from "../runtime-tools";
 
-type PiToolContext = BackofficeToolContext<{ pi?: PiRuntime }>;
+export type RegisteredPiCommandContext = { runtime: PiManagerRuntime };
+type PiToolContext = BackofficeToolContext<{ pi?: PiManagerRuntime }>;
 
-const PI_SESSION_STATUSES = [
-  "active",
-  "paused",
-  "errored",
-  "terminated",
-  "complete",
-  "waiting",
-] as const;
-
-const piAgentStateSnapshotOutputSchema = z.object({
-  messages: z.array(z.unknown()),
-  errorMessage: z.string().optional(),
+const piAgentModelSchema = piAgentConfigSchema.shape.model;
+const piRuntimeSessionOutputSchema = z.object({
+  sessionId: piAgentConfigSchema.shape.sessionId,
+  name: piAgentConfigSchema.shape.name,
+  model: piAgentConfigSchema.shape.model,
+  instructions: piAgentConfigSchema.shape.instructions,
+  billingOrganizationId: piAgentConfigSchema.shape.billingOrganizationId,
+});
+const piRuntimeDirectorySessionOutputSchema = piRuntimeSessionOutputSchema.extend({
+  createdAt: piManagerSessionSchema.shape.createdAt,
+});
+const piSessionDetailOutputSchema = piRuntimeDirectorySessionOutputSchema.extend({
+  view: z.unknown(),
+});
+const piSessionPageOutputSchema = z.object({
+  sessions: z.array(piRuntimeDirectorySessionOutputSchema),
+  cursor: z.string().nullable(),
+  hasNextPage: z.boolean(),
+});
+const piPromptReceiptOutputSchema = z.object({
+  submissionId: z.number(),
+  requestId: z.string(),
+});
+const piPromptResultOutputSchema = piSessionDetailOutputSchema.extend({
+  submission: z.unknown(),
+  assistantText: z.string(),
 });
 
-const workflowStatusOutputSchema = z.object({
-  status: z.enum(PI_SESSION_STATUSES),
-  error: z
-    .object({
-      name: z.string(),
-      message: z.string(),
-    })
-    .optional(),
-  output: z.unknown().optional(),
+const sessionCreateInputSchema = z.strictObject({
+  requestId: z.string().trim().min(1).max(256).optional(),
+  billingOrganizationId: z.string().trim().min(1).nullable().optional(),
+  instructions: z.string().optional(),
+  model: piAgentModelSchema.optional(),
+  name: z.string().trim().min(1).nullable().optional(),
 });
-
-const sessionBaseOutputSchema = z.object({
-  id: z.string(),
-  name: z.string().nullable(),
-  status: z.enum(PI_SESSION_STATUSES).optional(),
-  metadata: z.record(z.string(), z.unknown()).nullable(),
-  createdAt: isoDateTimeOutputSchema,
-  updatedAt: isoDateTimeOutputSchema,
+const sessionListInputSchema = z.strictObject({
+  cursor: z.string().trim().min(1).optional(),
+  pageSize: z.number().int().min(1).max(100).optional(),
 });
-
-const sessionDetailBaseOutputSchema = sessionBaseOutputSchema.extend({
-  workflow: workflowStatusOutputSchema,
-  agent: z.object({
-    state: piAgentStateSnapshotOutputSchema,
-  }),
-});
-
-const sessionCreateInputSchema = z.object({
-  billingOrganizationId: z.string().trim().min(1).optional(),
-  model: z
-    .object({
-      provider: z.enum(["openai", "anthropic", "gemini"]),
-      name: z.string().trim().min(1),
-    })
-    .optional(),
-  name: z.string().trim().min(1).optional(),
-  systemMessage: z.string().trim().min(1).optional(),
-  metadata: z.record(z.string(), z.unknown()).optional(),
-  tags: z.array(z.string().trim().min(1)).optional(),
-  steeringMode: z.enum(["all", "one-at-a-time"]).optional(),
-});
-
-const sessionGetInputSchema = z.object({
+const promptSubmitInputSchema = z.strictObject({
   sessionId: z.string().trim().min(1),
-  events: z.boolean().optional(),
-  trace: z.boolean().optional(),
-  turns: z.boolean().optional(),
+  content: z.string().trim().min(1),
+  requestId: z.string().trim().min(1).optional(),
+  whenBusy: z.enum(["followUp", "steer", "reject"]).optional(),
 });
-
-const sessionListInputSchema = z.object({
-  limit: z.number().int().positive().optional(),
-});
-
-const sessionTurnInputSchema = z.object({
+const submissionGetInputSchema = z.strictObject({
   sessionId: z.string().trim().min(1),
-  text: z.string().trim().min(1),
+  requestId: z.string().trim().min(1),
+});
+const promptRunInputSchema = promptSubmitInputSchema.extend({
   timeoutMs: z.number().int().positive().optional(),
 });
 
-const sessionExtraOutputSchema = {
-  tags: z.array(z.string()).optional(),
-  steeringMode: z.enum(["all", "one-at-a-time"]).optional(),
-};
+type PiRuntimeSessionOutput = z.output<typeof piRuntimeSessionOutputSchema>;
+type PiRuntimeDirectorySessionOutput = z.output<typeof piRuntimeDirectorySessionOutputSchema>;
 
-const sessionOutputSchema = sessionBaseOutputSchema.extend(sessionExtraOutputSchema);
-const sessionDetailOutputSchema = sessionDetailBaseOutputSchema.extend(sessionExtraOutputSchema);
+function serializePiRuntimeSession(session: PiAgentConfig): PiRuntimeSessionOutput {
+  return {
+    sessionId: session.sessionId,
+    name: session.name,
+    model: session.model,
+    instructions: session.instructions,
+    billingOrganizationId: session.billingOrganizationId,
+  };
+}
 
-const sessionTurnOutputSchema = sessionDetailOutputSchema.extend({
-  assistantText: z.string(),
-  commandStatus: z.enum(PI_SESSION_STATUSES),
-  stream: z.array(z.unknown()),
-  terminalState: piAgentStateSnapshotOutputSchema,
-});
+function serializePiRuntimeDirectorySession(
+  session: PiManagerSession,
+): PiRuntimeDirectorySessionOutput {
+  return {
+    ...serializePiRuntimeSession(session),
+    createdAt: session.createdAt,
+  };
+}
 
-const getPiRuntime = (runtime: PiToolContext["runtimes"]["pi"]): PiRuntime => {
+function requirePiManagerRuntime(runtime: PiToolContext["runtimes"]["pi"]): PiManagerRuntime {
   if (!runtime) {
-    throw new Error("Pi runtime is not available in this execution context");
+    throw new Error("PI_MANAGER_RUNTIME_UNAVAILABLE");
   }
   return runtime;
-};
+}
 
-const normalizeSteeringMode = (
-  value: string | undefined,
-  optionName = "steering-mode",
-): PiSessionCreateArgs["steeringMode"] | undefined => {
-  if (typeof value === "undefined") {
-    return undefined;
-  }
-  if (value !== "all" && value !== "one-at-a-time") {
-    throw new Error(`--${optionName} must be one of: all, one-at-a-time`);
-  }
-  return value;
-};
-
-const parseSessionCreate = defineCliArgsParser<PiSessionCreateArgs>("pi.session.create", {
+const parseSessionCreate = defineCliArgsParser<PiManagerCreateSessionInput>("pi.session.create", {
+  requestId: { option: "request-id" },
   billingOrganizationId: { option: "billing-organization-id" },
+  instructions: {},
   model: { kind: "json", option: "model-json" },
   name: {},
-  systemMessage: {},
-  metadata: { kind: "json", option: "metadata-json" },
-  tags: { kind: "stringArray", option: "tag" },
-  steeringMode: { transform: (value) => normalizeSteeringMode(value) },
 });
-
-const parseSessionGet = defineCliArgsParser<PiSessionGetArgs>("pi.session.get", {
+const parseSessionGet = defineCliArgsParser<PiManagerGetSessionInput>("pi.session.get", {
   sessionId: { required: true },
-  events: { kind: "boolean" },
-  trace: { kind: "boolean" },
-  turns: { kind: "boolean" },
 });
-
-const parseSessionList = defineCliArgsParser<PiSessionListArgs>("pi.session.list", {
-  limit: { kind: "integer" },
+const parseSessionList = defineCliArgsParser<PiManagerListSessionsInput>("pi.session.list", {
+  cursor: {},
+  pageSize: { option: "page-size", kind: "integer" },
 });
-
-const parseSessionTurn = defineCliArgsParser<PiSessionTurnArgs>("pi.session.turn", {
+const parsePromptSubmit = defineCliArgsParser<PiManagerSubmitPromptInput>("pi.prompt.submit", {
   sessionId: { required: true },
-  text: { required: true },
+  content: { required: true },
+  requestId: { option: "request-id" },
+  whenBusy: { option: "when-busy" },
+});
+const parseSubmissionGet = defineCliArgsParser<PiManagerGetSubmissionInput>("pi.submission.get", {
+  sessionId: { required: true },
+  requestId: { option: "request-id", required: true },
+});
+const parsePromptRun = defineCliArgsParser<PiManagerRunPromptInput>("pi.prompt.run", {
+  sessionId: { required: true },
+  content: { required: true },
+  requestId: { option: "request-id" },
+  whenBusy: { option: "when-busy" },
   timeoutMs: { option: "timeout-ms", kind: "integer" },
 });
+const parseSessionAbort = defineCliArgsParser<PiManagerAbortSessionInput>("pi.session.abort", {
+  sessionId: { required: true },
+});
 
-const jsonByDefaultOutputOptions = (args: string[]) => {
+function jsonByDefaultOutputOptions(args: string[]) {
   const parsed = parseCliTokens(args);
   const output = readOutputOptions(parsed);
   return output.print || parsed.options.has("format")
     ? output
     : { ...output, format: "json" as const };
-};
+}
 
 const sessionCreateTool = defineBackofficeRuntimeTool({
   id: "pi.session.create",
   namespace: "pi",
   name: "createSession",
-  description: "Create a new Pi session.",
+  description: "Create a durable Pi agent in the current scoped directory.",
   requiredPermissions: ["modify"],
   inputSchema: sessionCreateInputSchema,
-  outputSchema: sessionOutputSchema,
+  outputSchema: piRuntimeSessionOutputSchema,
   execute: async (input, context: PiToolContext) => {
-    return sessionOutputSchema.parse(
-      normalizeRuntimeOutput(await getPiRuntime(context.runtimes.pi).createSession(input)),
-    );
+    const session = await requirePiManagerRuntime(context.runtimes.pi).createSession(input);
+    return serializePiRuntimeSession(session);
   },
   adapters: {
     bash: {
       command: "pi.session.create",
       help: {
-        summary: "pi.session.create creates a new Pi session via the existing Pi session route.",
+        summary: "pi.session.create creates a durable Pi agent in the current scope.",
         options: [
           {
-            name: "billing-organization-id",
+            name: "request-id",
             valueRequired: true,
-            valueName: "organization-id",
-            description:
-              "Organization billed for a user-scoped session; inherited from the current Pi session when available",
+            valueName: "request-id",
+            description: "Stable idempotency key for replay-safe creation",
           },
           {
             name: "model-json",
             valueRequired: true,
             valueName: "json",
             description:
-              "Optional model selection; defaults to the first available supported model",
+              'Optional durable model selection, for example {"provider":"openai","modelId":"gpt-6-luna"}. Omitting it uses the configured default.',
           },
+          { name: "name", valueRequired: true, valueName: "name", description: "Session name" },
           {
-            name: "name",
-            valueRequired: true,
-            valueName: "name",
-            description: "Optional display name for the session",
-          },
-          {
-            name: "system-message",
+            name: "instructions",
             valueRequired: true,
             valueName: "text",
-            description:
-              "Additional system message to append to the configured agent system prompt for this session",
+            description: "Session-specific agent instructions",
           },
           {
-            name: "tag",
+            name: "billing-organization-id",
             valueRequired: true,
-            valueName: "tag",
-            description: "Repeatable session tag",
-          },
-          {
-            name: "metadata-json",
-            valueRequired: true,
-            valueName: "json",
-            description: "Arbitrary JSON metadata object",
-          },
-          {
-            name: "steering-mode",
-            valueRequired: true,
-            valueName: "steering-mode",
-            description: "Set the session steering mode (all|one-at-a-time)",
+            valueName: "organization-id",
+            description: "Billing owner required for user-scoped sessions",
           },
         ],
         examples: [
-          `pi.session.create --name onboarding --tag team-alpha --tag priority --metadata-json '{"purpose":"support"}'`,
-          'pi.session.create --system-message "You are operating in staging mode." --format json',
-          `pi.session.create --model-json '${JSON.stringify({ provider: "openai", name: "gpt-5.6-luna" } satisfies PiModel)}' --steering-mode one-at-a-time --format json`,
+          `pi.session.create --request-id workflow-123:create-research-agent --name research --model-json '${JSON.stringify({ provider: "openai", modelId: "gpt-6-luna" })}'`,
         ],
       },
       parse: parseSessionCreate,
@@ -247,40 +216,32 @@ const sessionGetTool = defineBackofficeRuntimeTool({
   id: "pi.session.get",
   namespace: "pi",
   name: "getSession",
-  description: "Retrieve a Pi session by id.",
+  description: "Get a durable Pi directory record and its conversation view.",
   requiredPermissions: ["read"],
-  inputSchema: sessionGetInputSchema,
-  outputSchema: sessionDetailOutputSchema,
+  inputSchema: z.strictObject({ sessionId: z.string().trim().min(1) }),
+  outputSchema: piSessionDetailOutputSchema,
   execute: async (input, context: PiToolContext) => {
-    return sessionDetailOutputSchema.parse(
-      normalizeRuntimeOutput(await getPiRuntime(context.runtimes.pi).getSession(input)),
-    );
+    const session = await requirePiManagerRuntime(context.runtimes.pi).getSession(input);
+    return {
+      ...serializePiRuntimeDirectorySession(session),
+      view: normalizeRuntimeOutput(session.view),
+    };
   },
   adapters: {
     bash: {
       command: "pi.session.get",
       help: {
-        summary: "pi.session.get retrieves a Pi session detail by id.",
+        summary: "pi.session.get retrieves a durable Pi session and conversation view.",
         options: [
           {
             name: "session-id",
             required: true,
             valueRequired: true,
             valueName: "session-id",
-            description: "Pi session id to retrieve",
+            description: "Durable Pi session id",
           },
-          {
-            name: "events",
-            valueRequired: false,
-            description: "Include event history in response",
-          },
-          { name: "trace", valueRequired: false, description: "Include runtime trace in response" },
-          { name: "turns", valueRequired: false, description: "Include turn records in response" },
         ],
-        examples: [
-          "pi.session.get --session-id session-123",
-          "pi.session.get --session-id session-123 --format json --print workflow.status",
-        ],
+        examples: ["pi.session.get --session-id session-123 --format json"],
       },
       parse: parseSessionGet,
       format: (data) => ({ data }),
@@ -292,33 +253,33 @@ const sessionListTool = defineBackofficeRuntimeTool({
   id: "pi.session.list",
   namespace: "pi",
   name: "listSessions",
-  description: "List Pi sessions ordered by creation time.",
+  description: "List one cursor-paginated page from the durable Pi directory.",
   requiredPermissions: ["read"],
   inputSchema: sessionListInputSchema,
-  outputSchema: z.array(sessionOutputSchema),
+  outputSchema: piSessionPageOutputSchema,
   execute: async (input, context: PiToolContext) => {
-    return z
-      .array(sessionOutputSchema)
-      .parse(normalizeRuntimeOutput(await getPiRuntime(context.runtimes.pi).listSessions(input)));
+    const page = await requirePiManagerRuntime(context.runtimes.pi).listSessions(input);
+    return {
+      sessions: page.sessions.map(serializePiRuntimeDirectorySession),
+      cursor: page.cursor,
+      hasNextPage: page.hasNextPage,
+    };
   },
   adapters: {
     bash: {
       command: "pi.session.list",
       help: {
-        summary: "pi.session.list lists Pi sessions ordered by creation time.",
+        summary: "pi.session.list lists a page of durable Pi sessions.",
         options: [
+          { name: "cursor", valueRequired: true, valueName: "cursor", description: "Page cursor" },
           {
-            name: "limit",
+            name: "page-size",
             valueRequired: true,
-            valueName: "limit",
-            description: "Maximum number of sessions to return",
+            valueName: "count",
+            description: "Page size from 1 to 100",
           },
         ],
-        examples: [
-          "pi.session.list",
-          "pi.session.list --limit 10 --format json",
-          "pi.session.list --limit 5 --print 0.id",
-        ],
+        examples: ["pi.session.list --page-size 10 --format json"],
       },
       parse: parseSessionList,
       outputOptions: jsonByDefaultOutputOptions,
@@ -327,54 +288,200 @@ const sessionListTool = defineBackofficeRuntimeTool({
   },
 });
 
-const sessionTurnTool = defineBackofficeRuntimeTool({
-  id: "pi.session.turn",
+const promptSubmitTool = defineBackofficeRuntimeTool({
+  id: "pi.prompt.submit",
   namespace: "pi",
-  name: "runTurn",
-  description: "Send one prompt command through a Pi active session and return the settled result.",
+  name: "submitPrompt",
+  description: "Durably admit a prompt and return its deduplicated submission receipt.",
   requiredPermissions: ["modify"],
-  inputSchema: sessionTurnInputSchema,
-  outputSchema: sessionTurnOutputSchema,
+  inputSchema: promptSubmitInputSchema,
+  outputSchema: piPromptReceiptOutputSchema,
   execute: async (input, context: PiToolContext) => {
-    return sessionTurnOutputSchema.parse(
-      normalizeRuntimeOutput(await getPiRuntime(context.runtimes.pi).runTurn(input)),
+    return piPromptReceiptOutputSchema.parse(
+      normalizeRuntimeOutput(
+        await requirePiManagerRuntime(context.runtimes.pi).submitPrompt(input),
+      ),
     );
   },
   adapters: {
     bash: {
-      command: "pi.session.turn",
+      command: "pi.prompt.submit",
       help: {
-        summary:
-          "pi.session.turn sends one prompt command through the active-session stream and returns the settled result.",
+        summary: "pi.prompt.submit admits durable agent work without waiting for completion.",
         options: [
           {
             name: "session-id",
             required: true,
             valueRequired: true,
             valueName: "session-id",
-            description: "Pi session id to send the turn to",
+            description: "Durable Pi session id",
           },
           {
-            name: "text",
+            name: "content",
             required: true,
             valueRequired: true,
             valueName: "text",
-            description: "User message text to send for this turn",
+            description: "Prompt content",
+          },
+          {
+            name: "request-id",
+            valueRequired: true,
+            valueName: "request-id",
+            description: "Optional deduplication key",
+          },
+          {
+            name: "when-busy",
+            valueRequired: true,
+            valueName: "mode",
+            description: "followUp, steer, or reject",
+          },
+        ],
+        examples: ['pi.prompt.submit --session-id session-123 --content "Investigate the failure"'],
+      },
+      parse: parsePromptSubmit,
+      format: (data) => ({ data }),
+    },
+  },
+});
+
+const submissionGetTool = defineBackofficeRuntimeTool({
+  id: "pi.submission.get",
+  namespace: "pi",
+  name: "getSubmission",
+  description: "Get the durable status of one prompt submission.",
+  requiredPermissions: ["read"],
+  inputSchema: submissionGetInputSchema,
+  outputSchema: z.unknown(),
+  execute: async (input, context: PiToolContext) => {
+    return normalizeRuntimeOutput(
+      await requirePiManagerRuntime(context.runtimes.pi).getSubmission(input),
+    );
+  },
+  adapters: {
+    bash: {
+      command: "pi.submission.get",
+      help: {
+        summary: "pi.submission.get reads one durable prompt submission.",
+        options: [
+          {
+            name: "session-id",
+            required: true,
+            valueRequired: true,
+            valueName: "session-id",
+            description: "Durable Pi session id",
+          },
+          {
+            name: "request-id",
+            required: true,
+            valueRequired: true,
+            valueName: "request-id",
+            description: "Prompt request id",
+          },
+        ],
+        examples: ["pi.submission.get --session-id session-123 --request-id request-456"],
+      },
+      parse: parseSubmissionGet,
+      format: (data) => ({ data }),
+    },
+  },
+});
+
+const promptRunTool = defineBackofficeRuntimeTool({
+  id: "pi.prompt.run",
+  namespace: "pi",
+  name: "runPrompt",
+  description: "Durably admit a prompt, wait for settlement, and return its conversation view.",
+  requiredPermissions: ["modify"],
+  inputSchema: promptRunInputSchema,
+  outputSchema: piPromptResultOutputSchema,
+  execute: async (input, context: PiToolContext) => {
+    const result = await requirePiManagerRuntime(context.runtimes.pi).runPrompt(input);
+    return {
+      ...serializePiRuntimeDirectorySession(result),
+      view: normalizeRuntimeOutput(result.view),
+      submission: normalizeRuntimeOutput(result.submission),
+      assistantText: result.assistantText,
+    };
+  },
+  adapters: {
+    bash: {
+      command: "pi.prompt.run",
+      help: {
+        summary: "pi.prompt.run admits a prompt and waits for its durable submission to settle.",
+        options: [
+          {
+            name: "session-id",
+            required: true,
+            valueRequired: true,
+            valueName: "session-id",
+            description: "Durable Pi session id",
+          },
+          {
+            name: "content",
+            required: true,
+            valueRequired: true,
+            valueName: "text",
+            description: "Prompt content",
+          },
+          {
+            name: "request-id",
+            valueRequired: true,
+            valueName: "request-id",
+            description: "Optional deduplication key",
+          },
+          {
+            name: "when-busy",
+            valueRequired: true,
+            valueName: "mode",
+            description: "followUp, steer, or reject",
           },
           {
             name: "timeout-ms",
             valueRequired: true,
             valueName: "milliseconds",
-            description: "Maximum time to wait for the agent to finish (default: 120000)",
+            description: "Maximum wait; admitted work continues after timeout",
           },
         ],
         examples: [
-          'pi.session.turn --session-id session-123 --text "Hello there" --print assistantText',
-          'pi.session.turn --session-id session-123 --text "Summarize the latest messages" --format json',
+          'pi.prompt.run --session-id session-123 --content "Summarize your findings" --print assistantText',
         ],
       },
-      parse: parseSessionTurn,
+      parse: parsePromptRun,
       outputOptions: jsonByDefaultOutputOptions,
+      format: (data) => ({ data }),
+    },
+  },
+});
+
+const sessionAbortTool = defineBackofficeRuntimeTool({
+  id: "pi.session.abort",
+  namespace: "pi",
+  name: "abortSession",
+  description: "Abort active foreground and background work in a durable Pi agent.",
+  requiredPermissions: ["modify"],
+  inputSchema: z.strictObject({ sessionId: z.string().trim().min(1) }),
+  outputSchema: z.object({ aborted: z.literal(true) }),
+  execute: async (input, context: PiToolContext) => {
+    await requirePiManagerRuntime(context.runtimes.pi).abortSession(input);
+    return { aborted: true as const };
+  },
+  adapters: {
+    bash: {
+      command: "pi.session.abort",
+      help: {
+        summary: "pi.session.abort cancels active work in a durable Pi agent.",
+        options: [
+          {
+            name: "session-id",
+            required: true,
+            valueRequired: true,
+            valueName: "session-id",
+            description: "Durable Pi session id",
+          },
+        ],
+        examples: ["pi.session.abort --session-id session-123"],
+      },
+      parse: parseSessionAbort,
       format: (data) => ({ data }),
     },
   },
@@ -384,17 +491,18 @@ export const piRuntimeTools = [
   sessionCreateTool,
   sessionGetTool,
   sessionListTool,
-  sessionTurnTool,
+  promptSubmitTool,
+  submissionGetTool,
+  promptRunTool,
+  sessionAbortTool,
 ] as const;
 
 export const piToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "pi",
   permissions: {
-    read: "Read Pi sessions.",
-    modify: "Create Pi sessions and run turns.",
+    read: "Read durable Pi sessions and submissions.",
+    modify: "Create durable Pi sessions, submit prompts, and abort active work.",
   },
   tools: piRuntimeTools,
   isAvailable: (context: PiToolContext) => !!context.runtimes.pi,
 });
-
-export type { PiRuntime };

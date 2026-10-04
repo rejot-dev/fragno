@@ -18,7 +18,7 @@ export const billingFragmentSchema = schema("billing", (s) =>
         .addColumn("scopeKey", column("string"))
         // Structured scope retained for consumers so they do not need to decode scopeKey.
         .addColumn("scope", jsonColumn<BackofficeContextScope>())
-        // Component that produced the event, such as pi-harness.
+        // Component that produced the event, such as a durable Pi agent.
         .addColumn("source", column("string"))
         // Producer-defined classification of the event within its source.
         .addColumn("eventType", column("string"))

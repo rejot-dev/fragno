@@ -88,7 +88,7 @@ Backoffice operations independently. The guest cannot see the socket or its cred
 
 Reuse the generated guest runtime and existing workflow host behavior. Do not copy the Deno bridge's
 generic remote-object reflection onto the network boundary. Support explicit operations for today's
-provider, workflow, transaction, event, and agent APIs.
+provider, workflow, transaction, and event APIs.
 
 Do not build an executor recovery engine. Node interprets interruption through its workflow runtime;
 the bridge neither retries activations nor schedules workflow ticks.
@@ -102,8 +102,8 @@ the bridge neither retries activations nor schedules workflow ticks.
   scoped context and MCP providers.
 - `apps/backoffice/app/fragno/codemode/javascript-module-execute.ts`: ES-module execution without
   invoking exports. This also uses the Node loader and must migrate before Deno is removed.
-- `apps/backoffice/app/fragno/codemode/workflow-execute.ts`: guest workflow API, nested scopes,
-  transaction flushing, and workflow agent tools.
+- `apps/backoffice/app/fragno/codemode/workflow-execute.ts`: guest workflow API, nested scopes, and
+  transaction flushing.
 - `packages/fragment-workflows/src/remote-workflow-message.ts`: explicit host requests, callback
   invocation, transaction handles, and `onConsume`. Reuse its behavior, not its permissive message
   validation or incomplete error reconstruction.
@@ -113,8 +113,8 @@ the bridge neither retries activations nor schedules workflow ticks.
 Extract generic protocol and execution code into one narrow shared package with separate entry
 points for transport-neutral contracts and Cloudflare executor code. Node must be able to import
 contracts without loading `cloudflare:workers`. Keep runtime tools, authorization, MCP discovery,
-route-backed contexts, and workflow agent persistence in Backoffice. No app-to-app imports and no
-second copy of the injected guest runtime.
+route-backed contexts, and durable Pi agents in Backoffice. No app-to-app imports and no second copy
+of the injected guest runtime.
 
 ## Protocol
 
@@ -161,10 +161,9 @@ other messages. Do not serialize all message handling behind the pending activat
 
 Operation variants cover only:
 
-- bridge → Node: exposed provider calls, scoped context operations, workflow step operations,
-  supported transaction/event operations, and workflow agent prompts;
-- Node → bridge: registered step callbacks, `onConsume` callbacks, active event deliveries, and
-  prompt-local agent tools.
+- bridge → Node: exposed provider calls, scoped context operations, workflow step operations, and
+  supported transaction/event operations;
+- Node → bridge: registered step callbacks, `onConsume` callbacks, and active event deliveries.
 
 Use these operation variants inside `call`; do not add a separate message family per feature.
 
@@ -208,8 +207,8 @@ invocation; do not turn a JavaScript file into an implicitly invoked exported fu
 
 ### Workflow activations
 
-Workflow input includes source/dependencies, the workflow event, allowed hook identities, exposed
-providers, and whether a workflow agent is available. Node owns the actual host and agent objects.
+Workflow input includes source/dependencies, the workflow event, allowed hook identities, and
+exposed providers. Node owns the actual host objects.
 
 For `step.do`:
 
@@ -247,17 +246,6 @@ Define unsubscribe/in-flight delivery ordering; step completion or connection cl
 subscriptions and rejects late use. Keep the transaction capabilities of `onConsume` restricted to
 its existing consume-transaction surface.
 
-### Workflow agents
-
-Transport `step.agent.prompt` to Node with prompt content and prompt-local tool definitions. When
-the model requests one of those tools, Node calls its registered guest callback and awaits a return.
-Scope tool IDs to the owning prompt and release them when the prompt ends.
-
-Keep the durable Pi session in Node. Preserve sequential prompt enforcement, tool-name uniqueness,
-result projection, and restoration from durable workflow emissions. Prompt-local tools do not
-inherit Backoffice Pi tools. Disconnect cleanup must also end or abort the Node-side prompt where
-supported; it must not leave a detached prompt modifying the shared session during a later attempt.
-
 ## Connection lifecycle and failures
 
 Use connection-local states: awaiting start, running, closing, closed. The close path is idempotent
@@ -268,7 +256,7 @@ and shared by completion, cancellation, deadline, malformed input, socket error,
   awaiting results.
 - On termination, stop admitting operations, reject pending calls, revoke transaction/callback
   handles, unsubscribe events, cancel the active guest RPC call, and dispose its entrypoint.
-- Abort Node-owned tool/prompt work where supported. Dropping a promise does not cancel its work.
+- Abort Node-owned tool work where supported. Dropping a promise does not cancel its work.
 - Send at most one `complete` if the socket is usable, then close. Do not promise delivery of a
   terminal frame after network or Worker failure.
 - Node treats closure without a valid completion as interruption, even if the WebSocket close code

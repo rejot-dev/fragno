@@ -26,7 +26,7 @@ const execution = createBackofficeUserExecution({
 const issuedAtEpochMs = Date.parse("2026-08-27T12:00:00.000Z");
 
 async function authorizedRequest(
-  request = new Request("https://automations.test/api/pi/sessions?limit=10", {
+  request = new Request("https://automations.test/api/workflows/sessions?limit=10", {
     headers: { [BACKOFFICE_INTERNAL_CONTEXT_HEADER]: "caller-controlled" },
   }),
 ) {
@@ -55,9 +55,33 @@ describe("Backoffice internal object requests", () => {
     expect(verified.context).toEqual({
       execution,
       propagationContext: { traceparent: "00-test-trace-test-span-01" },
+      authorization: "enforce",
     });
     assert(verified.requestId === "17079b77-c6f0-4e4e-ae42-dbab28bf62d4");
     assert(!verified.request.headers.has(BACKOFFICE_INTERNAL_CONTEXT_HEADER));
+  });
+
+  test("round-trips a signed preauthorization assertion", async () => {
+    const request = await createAuthorizedBackofficeObjectRequest({
+      request: new Request("https://automations.test/api/workflows/sessions"),
+      address,
+      context: {
+        execution,
+        propagationContext: null,
+        authorization: "preauthorized",
+      },
+      env,
+      nowEpochMs: issuedAtEpochMs,
+    });
+
+    const verified = await verifyAuthorizedBackofficeObjectRequest({
+      request,
+      address,
+      env,
+      nowEpochMs: issuedAtEpochMs + 1_000,
+    });
+
+    assert(verified.context.authorization === "preauthorized");
   });
 
   test("rejects an envelope whose signature was modified", async () => {
@@ -84,7 +108,7 @@ describe("Backoffice internal object requests", () => {
 
     await expect(
       verifyAuthorizedBackofficeObjectRequest({
-        request: new Request("https://automations.test/api/pi/other?limit=10", request),
+        request: new Request("https://automations.test/api/workflows/other?limit=10", request),
         address,
         env,
         nowEpochMs: issuedAtEpochMs + 1_000,
@@ -105,7 +129,7 @@ describe("Backoffice internal object requests", () => {
 
   test("rejects execution scope that differs from the object identity", async () => {
     const request = await createAuthorizedBackofficeObjectRequest({
-      request: new Request("https://automations.test/api/pi/sessions"),
+      request: new Request("https://automations.test/api/workflows/sessions"),
       address,
       context: {
         execution: createBackofficeUserExecution({

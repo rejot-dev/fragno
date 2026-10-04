@@ -9,7 +9,7 @@ export function createRemoteWorkflowWorkerCode(input: {
 }): string {
   const code = normalizeCode(input.code.trim().replace(/;*$/, "")).trim().replace(/;*$/, "");
   return `
-import { RpcTarget, WorkerEntrypoint } from "cloudflare:workers";
+import { WorkerEntrypoint } from "cloudflare:workers";
 import { AsyncLocalStorage } from "node:async_hooks";
 ${CODEMODE_SANDBOX_CODEC_SOURCE}
 let __dispatchers = {};
@@ -30,16 +30,7 @@ const suspensionKey = "__fragnoRemoteWorkflowSuspended";
 const isSuspension = (value) => Boolean(value) && typeof value === "object" && value[suspensionKey] === true && "reason" in value;
 const unwrap = (value) => { if (isSuspension(value)) throw value; return value; };
 const unsupported = (name) => () => { throw new Error(name); };
-const defineTool = (definition) => definition;
-class WorkflowAgentToolTarget extends RpcTarget {
-  constructor(tools) { super(); this.tools = new Map(tools.map((tool, index) => [\`tool-\${index}\`, tool])); }
-  async execute(toolId, toolCallId, input) {
-    const tool = this.tools.get(toolId);
-    if (!tool || typeof tool.execute !== "function") throw new Error("WORKFLOW_AGENT_TOOL_NOT_FOUND");
-    return await tool.execute(toolCallId, input);
-  }
-}
-function createRemoteWorkflowStep(stepTarget, agentTarget) {
+function createRemoteWorkflowStep(stepTarget) {
   const scopeStorage = new AsyncLocalStorage();
   const wrapTx = (target) => {
     const pending = [];
@@ -105,20 +96,14 @@ function createRemoteWorkflowStep(stepTarget, agentTarget) {
       }
       return unwrap(await stepTarget.waitForEvent(scopeStorage.getStore() ?? null, name, remoteOptions));
     },
-    agent: { prompt: async (name, input) => {
-      if (!agentTarget) throw new Error("WORKFLOW_AGENT_UNAVAILABLE");
-      const tools = input.tools ?? [];
-      const definitions = tools.map((tool, index) => ({ id: \`tool-\${index}\`, name: tool.name, description: tool.description, parameters: tool.parameters }));
-      return unwrap(await agentTarget.prompt(scopeStorage.getStore() ?? null, name, { text: input.text, images: input.images, tools: definitions }, tools.length ? new WorkflowAgentToolTarget(tools) : null));
-    } },
   };
 }
 export default class RemoteWorkflowEntrypoint extends WorkerEntrypoint {
-  async run(event, stepTarget, agentTarget, dispatchers = {}) {
+  async run(event, stepTarget, dispatchers = {}) {
     __dispatchers = dispatchers;
     if (typeof workflowProgram !== "function" && !__isFragnoCodemodeWorkflowDefinition(workflowProgram)) throw new Error("REMOTE_WORKFLOW_CODE_MUST_EVALUATE_TO_FUNCTION");
     try {
-      const step = createRemoteWorkflowStep(stepTarget, agentTarget);
+      const step = createRemoteWorkflowStep(stepTarget);
       const definition = __isFragnoCodemodeWorkflowDefinition(workflowProgram) || workflowProgram.length >= 2 ? workflowProgram : await workflowProgram();
       const run = __isFragnoCodemodeWorkflowDefinition(definition) ? definition.run : definition;
       if (typeof run !== "function") throw new Error("REMOTE_WORKFLOW_CODE_MUST_DEFINE_WORKFLOW");

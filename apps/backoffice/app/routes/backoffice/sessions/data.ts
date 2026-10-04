@@ -1,257 +1,377 @@
 import { createRouteCaller } from "@fragno-dev/core/api";
-import type { createPiHarness } from "@fragno-dev/pi-harness/factory";
-import type { PiSession, PiSessionDetail, PiWorkflowStatus } from "@fragno-dev/pi-harness/types";
 import type { RouterContextProvider } from "react-router";
 
-import { fetchFragnoOutboxDescription } from "@fragno-dev/tanstack-db-adapter";
+import type { ConversationView, EntryRecord, SubmissionRecord } from "@earendil-works/pi-durable";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
-import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
-import { BACKOFFICE_PI_WORKFLOW_NAME } from "@/fragno/pi/pi-shared";
-import type { PiModel, PiRuntimeState, PiThinkingLevel } from "@/fragno/pi/pi-shared";
-import { getScopedAutomationsDurableObject } from "@/worker-runtime/durable-objects";
+import type {
+  PiAgentCompactionStatus,
+  PiAgentConfig,
+  PiAvailableModel,
+  PiManagerSession,
+} from "@/fragno/pi-manager/pi-agent-contract";
+import type { createPiManagerFragment } from "@/fragno/pi-manager/pi-manager-fragment";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
-const DEFAULT_PAGE_SIZE = 50;
-const MAX_PAGE_SIZE = 200;
+const PI_SESSION_PAGE_SIZE = 100;
+type PiManagerFragment = ReturnType<typeof createPiManagerFragment>;
 
-type PiFragment = ReturnType<typeof createPiHarness>;
+type PiRouteError = { message: string; code: string };
+type PiRouteErrorResponse = { type: "error"; status: number; error: PiRouteError };
 
-const createPiRouteCaller = async (
-  request: Request,
-  context: Readonly<RouterContextProvider>,
-  scope: BackofficeContextScope,
-) => {
-  const execution = await requireBackofficeContext(request, context, scope);
-  const { runtime, kernel } = context.get(BackofficeWorkerContext);
-  const piObject = kernel.scoped("AUTOMATIONS", scope, runtime.objects.automations);
-
-  return createRouteCaller<PiFragment>({
-    baseUrl: request.url,
-    mountRoute: "/api/pi",
-    baseHeaders: request.headers,
-    fetch: async (routeRequest) =>
-      await piObject.http.fetchAuthorized(routeRequest, {
-        execution,
-        propagationContext: null,
-      }),
-  });
+export type PiManagerSessionDetail = {
+  session: PiManagerSession;
+  view: ConversationView;
 };
 
-type PiRuntimeStateResult = {
-  runtimeState: PiRuntimeState | null;
-  runtimeError: string | null;
-};
-
-type PiSessionsResult = {
-  sessions: PiSession[];
+export type PiManagerSessionsResult = {
+  sessions: PiManagerSession[];
   sessionsError: string | null;
 };
 
-type PiRouteError = { message: string; code: string };
-
-type PiRouteErrorResponse = {
-  type: "error";
-  status: number;
-  error: PiRouteError;
-};
-
-const throwPiAuthorizationFailure = (response: PiRouteErrorResponse) => {
-  if (response.status === 401 || response.status === 403 || response.status === 503) {
-    throw Response.json(response.error, { status: response.status });
-  }
-};
-
-type PiSessionDetailResult = {
-  session: PiSessionDetail | null;
+export type PiManagerSessionDetailResult = {
+  detail: PiManagerSessionDetail | null;
   status?: number;
   sessionError: PiRouteError | null;
 };
 
-type PiCreateSessionResult = {
-  session: PiSession | null;
-  error: string | null;
+export type PiManagerEntryPage = {
+  entries: EntryRecord[];
+  cursor: string | null;
+  hasNextPage: boolean;
 };
 
-type PiSendMessageResult = {
-  status: PiWorkflowStatus | null;
-  error: string | null;
-};
-
-export async function fetchPiAdapterIdentity(
+async function createPiManagerAuthorizedAccess(
   request: Request,
   context: Readonly<RouterContextProvider>,
   scope: BackofficeContextScope,
-): Promise<string> {
-  const piDo = getScopedAutomationsDurableObject(context, scope);
-  const scopeKey = backofficeContextScopeSinglePathSegment(scope);
-  const description = await fetchFragnoOutboxDescription({
-    baseUrl: new URL("/api/pi", request.url),
-    signal: request.signal,
-    fetch: (input, init) => {
-      const url = new URL(input instanceof Request ? input.url : input.toString());
-      url.searchParams.set("scope", scopeKey);
-      return piDo.http.fetch(new Request(url, { ...init, headers: request.headers }));
-    },
-  });
-
-  return description.adapterIdentity;
+) {
+  const execution = await requireBackofficeContext(request, context, scope);
+  const { runtime, kernel } = context.get(BackofficeWorkerContext);
+  const manager = kernel.scoped("PI_MANAGER", scope, runtime.objects.piManager);
+  return { execution, manager };
 }
 
-export async function fetchPiRuntimeState(
+async function createPiManagerRouteCaller(
+  request: Request,
   context: Readonly<RouterContextProvider>,
   scope: BackofficeContextScope,
-): Promise<PiRuntimeStateResult> {
-  try {
-    const piDo = getScopedAutomationsDurableObject(context, scope);
-    const runtimeState = await piDo.commands.getPiRuntimeState();
-    return { runtimeState, runtimeError: null };
-  } catch (error) {
-    return {
-      runtimeState: null,
-      runtimeError: error instanceof Error ? error.message : "Failed to initialize Pi.",
-    };
+) {
+  const { execution, manager } = await createPiManagerAuthorizedAccess(request, context, scope);
+  const callRoute = createRouteCaller<PiManagerFragment>({
+    baseUrl: request.url,
+    mountRoute: "/api/pi-manager",
+    baseHeaders: request.headers,
+    fetch: async (routeRequest) =>
+      await manager.http.fetchAuthorized(routeRequest, {
+        execution,
+        propagationContext: null,
+      }),
+  });
+  return { callRoute, execution };
+}
+
+function throwPiManagerAuthorizationFailure(response: PiRouteErrorResponse) {
+  if (response.status === 401 || response.status === 403 || response.status === 503) {
+    throw Response.json(response.error, { status: response.status });
   }
 }
 
-export async function fetchPiSessions(
+export async function fetchPiManagerAvailableModels(
   request: Request,
   context: Readonly<RouterContextProvider>,
   scope: BackofficeContextScope,
-  options: { limit?: number } = {},
-): Promise<PiSessionsResult> {
-  const callRoute = await createPiRouteCaller(request, context, scope);
-  const requestedLimit =
-    typeof options.limit === "number" && Number.isFinite(options.limit)
-      ? options.limit
-      : DEFAULT_PAGE_SIZE;
-  const limit = Math.min(MAX_PAGE_SIZE, Math.max(1, requestedLimit));
+): Promise<PiAvailableModel[]> {
+  const { callRoute } = await createPiManagerRouteCaller(request, context, scope);
+  const response = await callRoute("GET", "/models", {});
+  if (response.type === "json") {
+    return response.data;
+  }
+  if (response.type === "error") {
+    throwPiManagerAuthorizationFailure(response);
+    throw Response.json(response.error, { status: response.status });
+  }
+  throw new Response(`Failed to fetch Pi models (${response.status}).`, {
+    status: response.status,
+  });
+}
 
-  const response = await callRoute("GET", "/workflows/:workflowName/sessions", {
-    pathParams: { workflowName: BACKOFFICE_PI_WORKFLOW_NAME },
-    query: { limit: String(limit) },
+export async function fetchPiManagerSessions(
+  request: Request,
+  context: Readonly<RouterContextProvider>,
+  scope: BackofficeContextScope,
+): Promise<PiManagerSessionsResult> {
+  const { callRoute } = await createPiManagerRouteCaller(request, context, scope);
+  const response = await callRoute("GET", "/sessions", {
+    query: { pageSize: String(PI_SESSION_PAGE_SIZE) },
   });
 
   if (response.type === "json") {
-    return { sessions: response.data, sessionsError: null };
+    return { sessions: response.data.sessions, sessionsError: null };
   }
-
   if (response.type === "error") {
-    throwPiAuthorizationFailure(response);
+    throwPiManagerAuthorizationFailure(response);
     return { sessions: [], sessionsError: response.error.message };
   }
-
-  return {
-    sessions: [],
-    sessionsError: `Failed to fetch sessions (${response.status}).`,
-  };
+  return { sessions: [], sessionsError: `Failed to fetch sessions (${response.status}).` };
 }
 
-export async function fetchPiSessionDetail(
+export async function fetchPiManagerSessionDetail(
   request: Request,
   context: Readonly<RouterContextProvider>,
   scope: BackofficeContextScope,
-  workflowName: string,
   sessionId: string,
-): Promise<PiSessionDetailResult> {
-  const callRoute = await createPiRouteCaller(request, context, scope);
-  const response = await callRoute("GET", "/workflows/:workflowName/sessions/:sessionId", {
-    pathParams: { workflowName, sessionId },
-  });
-  if (response.type === "json") {
-    return { session: response.data as PiSessionDetail, sessionError: null };
-  }
-
-  if (response.type === "error") {
-    throwPiAuthorizationFailure(response);
+): Promise<PiManagerSessionDetailResult> {
+  const { callRoute } = await createPiManagerRouteCaller(request, context, scope);
+  const route = "/sessions/:sessionId" as const;
+  const sessionResponse = await callRoute("GET", route, { pathParams: { sessionId } });
+  if (sessionResponse.type === "error") {
+    throwPiManagerAuthorizationFailure(sessionResponse);
     return {
-      session: null,
-      status: response.status,
-      sessionError: response.error,
+      detail: null,
+      status: sessionResponse.status,
+      sessionError: sessionResponse.error,
+    };
+  }
+  if (sessionResponse.type !== "json") {
+    return {
+      detail: null,
+      status: sessionResponse.status,
+      sessionError: {
+        code: "PI_SESSION_FETCH_FAILED",
+        message: `Failed to fetch session (${sessionResponse.status}).`,
+      },
     };
   }
 
-  return {
-    session: null,
-    status: response.status,
-    sessionError: {
-      code: "PI_SESSION_FETCH_FAILED",
-      message: `Failed to fetch session (${response.status}).`,
-    },
-  };
+  const viewResponse = await callRoute("GET", "/sessions/:sessionId/view", {
+    pathParams: { sessionId },
+  });
+  if (viewResponse.type === "error") {
+    throwPiManagerAuthorizationFailure(viewResponse);
+    return { detail: null, status: viewResponse.status, sessionError: viewResponse.error };
+  }
+  if (viewResponse.type !== "json") {
+    return {
+      detail: null,
+      status: viewResponse.status,
+      sessionError: {
+        code: "PI_SESSION_VIEW_FETCH_FAILED",
+        message: `Failed to fetch session conversation (${viewResponse.status}).`,
+      },
+    };
+  }
+
+  // The manager intentionally keeps the agent-owned structural view opaque.
+  const view = viewResponse.data as ConversationView;
+  return { detail: { session: sessionResponse.data, view }, sessionError: null };
 }
 
-export async function createPiSession(
+/** Opens the authorized NDJSON stream produced by the session's durable Pi agent. */
+export async function fetchPiManagerSessionViewStream(
   request: Request,
   context: Readonly<RouterContextProvider>,
   scope: BackofficeContextScope,
-  payload: {
-    workflowName?: string;
-    metadata: { model: PiModel } & Record<string, unknown>;
-    input: {
-      systemPrompt?: string;
-      thinkingLevel?: PiThinkingLevel;
-    };
-    name?: string;
-  },
-): Promise<PiCreateSessionResult> {
-  const callRoute = await createPiRouteCaller(request, context, scope);
-  const { workflowName = BACKOFFICE_PI_WORKFLOW_NAME, ...body } = payload;
-  const response = await callRoute("POST", "/workflows/:workflowName/sessions", {
-    pathParams: { workflowName },
-    body: {
-      ...body,
-      input: {
-        ...body.input,
-        systemPrompt: body.input.systemPrompt,
-      },
-    },
-  });
+  sessionId: string,
+): Promise<Response> {
+  const { execution, manager } = await createPiManagerAuthorizedAccess(request, context, scope);
+  const url = new URL(
+    `/api/pi-manager/sessions/${encodeURIComponent(sessionId)}/view-stream`,
+    request.url,
+  );
+  return await manager.http.fetchAuthorized(
+    new Request(url, {
+      method: "GET",
+      headers: { accept: "application/x-ndjson" },
+      signal: request.signal,
+    }),
+    { execution, propagationContext: null },
+  );
+}
 
+export async function createPiManagerSession(
+  request: Request,
+  context: Readonly<RouterContextProvider>,
+  scope: BackofficeContextScope,
+  input: {
+    name: string | null;
+    model: PiAgentConfig["model"];
+    instructions: string;
+    billingOrganizationId: string | null;
+  },
+): Promise<{ session: PiAgentConfig | null; error: string | null }> {
+  const { callRoute, execution } = await createPiManagerRouteCaller(request, context, scope);
+  const response = await callRoute("POST", "/sessions", {
+    body: { ...input, requestId: crypto.randomUUID(), actors: execution.actors },
+  });
   if (response.type === "json") {
     return { session: response.data, error: null };
   }
-
   if (response.type === "error") {
-    throwPiAuthorizationFailure(response);
+    throwPiManagerAuthorizationFailure(response);
     return { session: null, error: response.error.message };
   }
-
-  return {
-    session: null,
-    error: `Failed to create session (${response.status}).`,
-  };
+  return { session: null, error: `Failed to create session (${response.status}).` };
 }
 
-export async function sendPiSessionMessage(
+export async function submitPiManagerPrompt(
   request: Request,
   context: Readonly<RouterContextProvider>,
   scope: BackofficeContextScope,
-  workflowName: string,
   sessionId: string,
-  payload: {
-    text: string;
-    commandKind?: "prompt" | "followUp" | "steer";
-  },
-): Promise<PiSendMessageResult> {
-  const callRoute = await createPiRouteCaller(request, context, scope);
-  const response = await callRoute("POST", "/workflows/:workflowName/sessions/:sessionId/command", {
-    pathParams: { workflowName, sessionId },
-    body: { kind: payload.commandKind ?? "prompt", input: { text: payload.text } },
+  input: { requestId: string; content: string; whenBusy: "followUp" | "steer" | "reject" },
+): Promise<{ requestId: string | null; error: string | null }> {
+  const { callRoute } = await createPiManagerRouteCaller(request, context, scope);
+  const response = await callRoute("POST", "/sessions/:sessionId/prompts", {
+    pathParams: { sessionId },
+    body: input,
   });
-
   if (response.type === "json") {
-    return { status: response.data.status, error: null };
+    return { requestId: response.data.requestId, error: null };
   }
-
   if (response.type === "error") {
-    throwPiAuthorizationFailure(response);
-    return { status: null, error: response.error.message };
+    throwPiManagerAuthorizationFailure(response);
+    return { requestId: null, error: response.error.message };
   }
+  return { requestId: null, error: `Failed to send message (${response.status}).` };
+}
 
-  return {
-    status: null,
-    error: `Failed to send message (${response.status}).`,
-  };
+export async function fetchPiManagerSubmission(
+  request: Request,
+  context: Readonly<RouterContextProvider>,
+  scope: BackofficeContextScope,
+  sessionId: string,
+  requestId: string,
+): Promise<SubmissionRecord | null> {
+  const { callRoute } = await createPiManagerRouteCaller(request, context, scope);
+  const response = await callRoute("GET", "/sessions/:sessionId/submissions/:requestId", {
+    pathParams: { sessionId, requestId },
+  });
+  if (response.type === "json") {
+    return response.data as SubmissionRecord;
+  }
+  if (response.type === "error") {
+    throwPiManagerAuthorizationFailure(response);
+    if (response.status === 404) {
+      return null;
+    }
+    throw Response.json(response.error, { status: response.status });
+  }
+  throw new Response(`Failed to fetch submission (${response.status}).`, {
+    status: response.status,
+  });
+}
+
+export async function fetchPiManagerEntryPage(
+  request: Request,
+  context: Readonly<RouterContextProvider>,
+  scope: BackofficeContextScope,
+  sessionId: string,
+  input: { cursor?: string | null; pageSize?: number },
+): Promise<PiManagerEntryPage> {
+  const { callRoute } = await createPiManagerRouteCaller(request, context, scope);
+  const response = await callRoute("GET", "/sessions/:sessionId/entries", {
+    pathParams: { sessionId },
+    query: {
+      pageSize: String(input.pageSize ?? 100),
+      ...(input.cursor ? { cursor: input.cursor } : {}),
+    },
+  });
+  if (response.type === "json") {
+    return response.data as PiManagerEntryPage;
+  }
+  if (response.type === "error") {
+    throwPiManagerAuthorizationFailure(response);
+    throw Response.json(response.error, { status: response.status });
+  }
+  throw new Response(`Failed to fetch Pi entry history (${response.status}).`, {
+    status: response.status,
+  });
+}
+
+/** Proxies the authorized durable JSONL export without buffering it in the application Worker. */
+export async function fetchPiManagerSessionExport(
+  request: Request,
+  context: Readonly<RouterContextProvider>,
+  scope: BackofficeContextScope,
+  sessionId: string,
+): Promise<Response> {
+  const { execution, manager } = await createPiManagerAuthorizedAccess(request, context, scope);
+  const url = new URL(
+    `/api/pi-manager/sessions/${encodeURIComponent(sessionId)}/export`,
+    request.url,
+  );
+  return await manager.http.fetchAuthorized(
+    new Request(url, { method: "GET", signal: request.signal }),
+    {
+      execution,
+      propagationContext: null,
+    },
+  );
+}
+
+export async function compactPiManagerSession(
+  request: Request,
+  context: Readonly<RouterContextProvider>,
+  scope: BackofficeContextScope,
+  sessionId: string,
+  instructions: string | null,
+): Promise<{ taskId: number | null; error: string | null }> {
+  const { callRoute } = await createPiManagerRouteCaller(request, context, scope);
+  const response = await callRoute("POST", "/sessions/:sessionId/compact", {
+    pathParams: { sessionId },
+    body: { instructions },
+  });
+  if (response.type === "json") {
+    return { taskId: response.data.taskId, error: null };
+  }
+  if (response.type === "error") {
+    throwPiManagerAuthorizationFailure(response);
+    return { taskId: null, error: response.error.message };
+  }
+  return { taskId: null, error: `Failed to compact session (${response.status}).` };
+}
+
+export async function fetchPiManagerCompaction(
+  request: Request,
+  context: Readonly<RouterContextProvider>,
+  scope: BackofficeContextScope,
+  sessionId: string,
+  taskId: string,
+): Promise<PiAgentCompactionStatus> {
+  const { callRoute } = await createPiManagerRouteCaller(request, context, scope);
+  const response = await callRoute("GET", "/sessions/:sessionId/compactions/:taskId", {
+    pathParams: { sessionId, taskId },
+  });
+  if (response.type === "json") {
+    return response.data;
+  }
+  if (response.type === "error") {
+    throwPiManagerAuthorizationFailure(response);
+    throw Response.json(response.error, { status: response.status });
+  }
+  throw new Response(`Failed to fetch Pi compaction (${response.status}).`, {
+    status: response.status,
+  });
+}
+
+export async function abortPiManagerSession(
+  request: Request,
+  context: Readonly<RouterContextProvider>,
+  scope: BackofficeContextScope,
+  sessionId: string,
+): Promise<string | null> {
+  const { callRoute } = await createPiManagerRouteCaller(request, context, scope);
+  const response = await callRoute("POST", "/sessions/:sessionId/abort", {
+    pathParams: { sessionId },
+  });
+  if (response.type === "empty") {
+    return null;
+  }
+  if (response.type === "error") {
+    throwPiManagerAuthorizationFailure(response);
+    return response.error.message;
+  }
+  return `Failed to stop session (${response.status}).`;
 }

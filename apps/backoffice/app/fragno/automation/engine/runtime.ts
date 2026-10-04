@@ -7,7 +7,6 @@ import {
 } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import type { BashHostContext } from "@/fragno/runtime-tools/bash-host";
-import type { PiRuntime } from "@/fragno/runtime-tools/families/pi-runtime";
 import { createUnavailableResendRuntime } from "@/fragno/runtime-tools/families/resend-runtime";
 import { createUnavailableReson8Runtime } from "@/fragno/runtime-tools/families/reson8-runtime";
 import { createUnavailableTelegramRuntime } from "@/fragno/runtime-tools/families/telegram-runtime";
@@ -28,10 +27,6 @@ import {
 import type {} from "../../runtime-tools/families/otp";
 import { type OtpRuntime } from "../../runtime-tools/families/otp-runtime";
 import type { AutomationEvent } from "../contracts";
-
-export type AutomationPiBashContext = {
-  runtime: PiRuntime;
-};
 
 export type AutomationRuntime = AutomationStoreRuntime &
   AutomationRouterRuntime &
@@ -116,7 +111,6 @@ export const createAutomationRuntimeHostContext = ({
   runtime,
   runtimeServices,
   kernel,
-  pi,
   execution,
 }: {
   event: AutomationEvent;
@@ -125,7 +119,6 @@ export const createAutomationRuntimeHostContext = ({
   runtime: AutomationRuntime;
   runtimeServices?: BackofficeRuntimeServices;
   kernel?: BackofficeKernel;
-  pi: AutomationPiBashContext | null;
   execution: BackofficeExecutionContext;
 }): AutomationRuntimeHostContext => {
   const backofficeKernel =
@@ -142,7 +135,6 @@ export const createAutomationRuntimeHostContext = ({
         runtime: runtimeServices,
         kernel: backofficeKernel,
         execution,
-        ...(pi ? { pi: { runtime: pi.runtime } } : {}),
       })
     : null;
 

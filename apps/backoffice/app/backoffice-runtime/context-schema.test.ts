@@ -20,6 +20,7 @@ describe("Backoffice context scope schema", () => {
         kind: "project",
         orgId: "org-1",
         projectId: "project-1",
+        ignored: true,
       }),
     ).toEqual({ kind: "project", orgId: "org-1", projectId: "project-1" });
     assert(!backofficeRoutableScopeSchema.safeParse({ kind: "system" }).success);

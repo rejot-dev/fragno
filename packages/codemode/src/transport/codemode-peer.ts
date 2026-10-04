@@ -164,11 +164,7 @@ export class CodemodePeer {
         }
         if (
           message.result.status === "suspended" &&
-          (this.#options.role !== "bridge" ||
-            !(
-              pending.operation.operation.startsWith("step.") ||
-              pending.operation.operation === "agent.prompt"
-            ))
+          (this.#options.role !== "bridge" || !pending.operation.operation.startsWith("step."))
         ) {
           throw new Error("CODEMODE_UNEXPECTED_SUSPENSION");
         }

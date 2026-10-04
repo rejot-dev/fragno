@@ -47,8 +47,8 @@ describe("Automations object scope policy", () => {
   });
 
   it("returns separate command and HTTP capabilities for the addressed object", async () => {
-    const getPiRuntimeState = vi.fn(async () => ({ configured: true, modelCatalog: [] }));
-    const commands = { getPiRuntimeState } as unknown as AutomationsObject;
+    const seedStarterAutomationRoutes = vi.fn(async () => ({ created: [], existing: [] }));
+    const commands = { seedStarterAutomationRoutes } as unknown as AutomationsObject;
     const fetch = vi.fn(async () => new Response());
     const handle = {
       commands,
@@ -60,9 +60,9 @@ describe("Automations object scope policy", () => {
     const get = vi.fn(() => handle) as unknown as BackofficeObjectFactory["get"];
     const automations = createBackofficeObjectRegistry({ get }).automations.forOrg("org-1");
 
-    await expect(automations.commands.getPiRuntimeState()).resolves.toEqual({
-      configured: true,
-      modelCatalog: [],
+    await expect(automations.commands.seedStarterAutomationRoutes()).resolves.toEqual({
+      created: [],
+      existing: [],
     });
     await automations.http.fetch(new Request("https://automations.test/api/automations/outbox"));
 

@@ -1,21 +1,11 @@
 import type { Route } from "./+types/workflows";
-import { forwardScopedPiRequest } from "./scoped-pi";
+import { forwardScopedWorkflowsRequest } from "./scoped-workflows";
 
-/** Authenticated scope-aware proxy for the shared Workflows fragment hosted by Automations. */
+/** Authenticated scope-aware proxy for the Workflows fragment hosted by Automations. */
 export async function loader({ request, context, params }: Route.LoaderArgs) {
-  return forwardScopedPiRequest({
-    request,
-    context,
-    params,
-    mountRoute: "/api/workflows",
-  });
+  return forwardScopedWorkflowsRequest({ request, context, params });
 }
 
 export async function action({ request, context, params }: Route.ActionArgs) {
-  return forwardScopedPiRequest({
-    request,
-    context,
-    params,
-    mountRoute: "/api/workflows",
-  });
+  return forwardScopedWorkflowsRequest({ request, context, params });
 }

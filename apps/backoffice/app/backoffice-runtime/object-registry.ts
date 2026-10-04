@@ -87,7 +87,6 @@ import type {
   MarketplacePublishVersionResult,
   MarketplaceUpdateListingInput,
 } from "@/fragno/marketplace/contracts";
-import type { PiRuntimeState } from "@/fragno/pi/pi-shared";
 import type { TelegramAutomationFileMetadata } from "@/fragno/runtime-tools/families/telegram-runtime";
 import type {
   SandboxInstanceRecord,
@@ -102,6 +101,8 @@ export type BackofficeRpcContext = Pick<FragnoExecutionContext, "propagationCont
 
 export type BackofficeActionRpcContext = BackofficeRpcContext & {
   execution: BackofficeExecutionContext;
+  /** Signed assertion that the caller already performed the target object's authorization check. */
+  authorization?: "enforce" | "preauthorized";
 };
 
 export type FetchObject = {
@@ -130,7 +131,7 @@ export type DurableHookCommands = {
   getDurableHook(hookId: string): Promise<DurableHookQueueEntry | null>;
 };
 
-export type AutomationsDurableHookFragment = "automation" | "pi" | "workflows";
+export type AutomationsDurableHookFragment = "automation" | "workflows";
 
 type ScopedObjects<TObject> = {
   singleton(): TObject;
@@ -355,7 +356,6 @@ export type AutomationsObject = {
     projectId?: string;
     slug?: string;
   }): Promise<AutomationProjectExecutionTarget | null>;
-  getPiRuntimeState(): Promise<PiRuntimeState>;
   getDurableHookQueue(
     fragment: AutomationsDurableHookFragment,
     options?: DurableHookQueueOptions,
@@ -474,6 +474,7 @@ export type BackofficeObjectBindingName =
   | "API"
   | "AUTH"
   | "AUTOMATIONS"
+  | "PI_MANAGER"
   | "BILLING"
   | "MARKETPLACE"
   | "TELEGRAM"
@@ -513,6 +514,7 @@ export const backofficeObjectScopePolicy = {
   AUTH: ["singleton"],
 
   AUTOMATIONS: ["singleton", "org", "user", "project"],
+  PI_MANAGER: ["singleton", "org", "user", "project"],
   BILLING: ["org"],
   MARKETPLACE: ["singleton"],
 
@@ -785,6 +787,7 @@ export const createBackofficeObjectRegistry = (factory: BackofficeObjectFactory)
   auth: scoped(factory, binding<AuthObject>("AUTH")),
 
   automations: scoped(factory, binding<AutomationsObject>("AUTOMATIONS")),
+  piManager: scoped(factory, binding<Record<never, never>>("PI_MANAGER")),
   billing: scoped(factory, binding<BillingObject>("BILLING")),
   marketplace: scoped(factory, binding<MarketplaceObject>("MARKETPLACE")),
   telegram: scoped(factory, binding<TelegramObject>("TELEGRAM")),

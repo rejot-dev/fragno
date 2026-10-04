@@ -27,7 +27,6 @@ import {
   type BackofficeCodemodeEnv,
 } from "./execute";
 import { createBackofficeCodemodeRemoteHost } from "./remote-execution-host";
-import { CodemodeWorkflowAgentTarget, type CodemodeWorkflowAgent } from "./workflow-agent-rpc";
 import { WorkflowStepTarget } from "./workflow-rpc";
 
 export type BackofficeCodemodeWorkflowResult<TOutput = unknown> = {
@@ -42,7 +41,6 @@ type WorkflowWorkerEntrypoint<TParams, TOutput> = {
   run(
     event: CodemodeWorkflowEvent<TParams>,
     stepTarget: WorkflowStepTarget,
-    agentTarget: CodemodeWorkflowAgentTarget | null,
     dispatchers: Record<string, unknown>,
   ): DynamicWorkerRpcCall<WorkflowWorkerResult<TOutput>>;
 };
@@ -55,7 +53,6 @@ export type BackofficeCodemodeWorkflowOptions = {
   /** Local sandboxes are sealed unless explicitly granted an allowlisting Fetcher. Remote sandboxes are always sealed. */
   globalOutbound?: Fetcher | null;
   dependencies?: NpmDependencyMap;
-  workflowAgent?: CodemodeWorkflowAgent;
 };
 
 type WorkflowExecutionInput<TParams> = {
@@ -77,86 +74,77 @@ async function executeBackofficeCodemodeWorkflow<TParams, TOutput>(
     toolContext,
     globalOutbound,
     dependencies,
-    workflowAgent,
     allowedHooks,
   } = input;
   const stepTarget = new WorkflowStepTarget(remote, allowedHooks);
-  const agentTarget = workflowAgent ? new CodemodeWorkflowAgentTarget(workflowAgent) : null;
   const providers = await createBackofficeCodemodeResolvedProviders({ families, toolContext });
-  try {
-    if ("remoteExecutor" in env) {
-      if (globalOutbound) {
-        throw new Error("CODEMODE_REMOTE_EGRESS_UNSUPPORTED");
-      }
-      const { host, manifest } = createBackofficeCodemodeRemoteHost(providers, {
-        step: stepTarget,
-        agent: agentTarget,
-      });
-      try {
-        const completion = await env.remoteExecutor(
-          {
-            kind: "workflow",
-            code,
-            dependencies: dependencies ?? {},
-            providers: manifest,
-            timeoutMs: CODEMODE_LIMITS.activationTimeoutMs,
-            event: { ...event, id: event.id ?? event.instanceId },
-            agentAvailable: agentTarget !== null,
-          },
-          host,
-        );
-        if (completion.status === "suspended") {
-          throw new RemoteWorkflowSuspendedError(completion.reason);
-        }
-        if (completion.status === "failed") {
-          throw decodeCodemodeError(completion.error);
-        }
-        // Workflow output remains opaque until the runner's registered output schema validates it.
-        return completion.value as TOutput;
-      } finally {
-        host.close();
-      }
+  if ("remoteExecutor" in env) {
+    if (globalOutbound) {
+      throw new Error("CODEMODE_REMOTE_EGRESS_UNSUPPORTED");
     }
-    const dispatcherResult = createCodemodeDispatchers(providers);
-    if ("error" in dispatcherResult) {
-      throw new Error(dispatcherResult.error);
-    }
-    const executor = new DynamicWorkerExecutor({
-      loader: env.LOADER,
-      globalOutbound: globalOutbound ?? null,
+    const { host, manifest } = createBackofficeCodemodeRemoteHost(providers, {
+      step: stepTarget,
     });
-    const compiled = await resolveBackofficeWorkerCompiler(env)({
-      files: {
-        "remote-workflow.js": createRemoteWorkflowWorkerCode({
+    try {
+      const completion = await env.remoteExecutor(
+        {
+          kind: "workflow",
           code,
-          providerProxySource: createCodemodeProviderProxySource(providers),
-        }),
-      },
-      entryPoint: "remote-workflow.js",
-      dependencies: dependencies ?? {},
-      runtime: { compatibilityDate: "2026-05-07", compatibilityFlags: ["nodejs_als"] },
-    });
-    const output = await executor.runEntrypoint<
-      WorkflowWorkerEntrypoint<TParams, TOutput>,
-      WorkflowWorkerResult<TOutput>
-    >({
-      bundle: compiled.bundle,
-      rpcTargets: { agentTarget, dispatchers: dispatcherResult.dispatchers, stepTarget },
-      run: (entrypoint, targets) =>
-        entrypoint.run(
-          { ...event, id: event.id ?? event.instanceId },
-          targets.stepTarget as WorkflowStepTarget,
-          targets.agentTarget as CodemodeWorkflowAgentTarget | null,
-          targets.dispatchers as Record<string, unknown>,
-        ),
-    });
-    if (!output.ok) {
-      throw new RemoteWorkflowSuspendedError(output.suspension.reason);
+          dependencies: dependencies ?? {},
+          providers: manifest,
+          timeoutMs: CODEMODE_LIMITS.activationTimeoutMs,
+          event: { ...event, id: event.id ?? event.instanceId },
+        },
+        host,
+      );
+      if (completion.status === "suspended") {
+        throw new RemoteWorkflowSuspendedError(completion.reason);
+      }
+      if (completion.status === "failed") {
+        throw decodeCodemodeError(completion.error);
+      }
+      // Workflow output remains opaque until the runner's registered output schema validates it.
+      return completion.value as TOutput;
+    } finally {
+      host.close();
     }
-    return output.result;
-  } finally {
-    agentTarget?.close();
   }
+  const dispatcherResult = createCodemodeDispatchers(providers);
+  if ("error" in dispatcherResult) {
+    throw new Error(dispatcherResult.error);
+  }
+  const executor = new DynamicWorkerExecutor({
+    loader: env.LOADER,
+    globalOutbound: globalOutbound ?? null,
+  });
+  const compiled = await resolveBackofficeWorkerCompiler(env)({
+    files: {
+      "remote-workflow.js": createRemoteWorkflowWorkerCode({
+        code,
+        providerProxySource: createCodemodeProviderProxySource(providers),
+      }),
+    },
+    entryPoint: "remote-workflow.js",
+    dependencies: dependencies ?? {},
+    runtime: { compatibilityDate: "2026-05-07", compatibilityFlags: ["nodejs_als"] },
+  });
+  const output = await executor.runEntrypoint<
+    WorkflowWorkerEntrypoint<TParams, TOutput>,
+    WorkflowWorkerResult<TOutput>
+  >({
+    bundle: compiled.bundle,
+    rpcTargets: { dispatchers: dispatcherResult.dispatchers, stepTarget },
+    run: (entrypoint, targets) =>
+      entrypoint.run(
+        { ...event, id: event.id ?? event.instanceId },
+        targets.stepTarget as WorkflowStepTarget,
+        targets.dispatchers as Record<string, unknown>,
+      ),
+  });
+  if (!output.ok) {
+    throw new RemoteWorkflowSuspendedError(output.suspension.reason);
+  }
+  return output.result;
 }
 
 /** Runs one activation; suspension stays visible to the workflow runner rather than becoming an error string. */

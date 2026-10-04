@@ -168,7 +168,6 @@ test("a workflow callback can call Node while Node awaits that callback", async 
       kind: "workflow",
       code: 'async (_event, step) => await step.do("outer", async () => await store.write("nested"))',
       event: { id: "event", instanceId: "instance", timestamp: new Date(), payload: {} },
-      agentAvailable: false,
     },
     {
       ...host,
@@ -198,7 +197,6 @@ const workflowBase = {
     timestamp: new Date("2026-09-29T00:00:00Z"),
     payload: {},
   },
-  agentAvailable: false,
 };
 
 test.each(["logs", "workflowProgram", "RpcTarget"])(
@@ -285,37 +283,6 @@ test("transaction emissions flush before the callback result returns to Node", a
     },
   );
   expect(completion).toMatchObject({ status: "completed", value: 42 });
-});
-
-test("guest-defined agent tools reenter the guest and can call a Node provider", async () => {
-  const host = providerHost();
-  const completion = await execute(
-    {
-      ...workflowBase,
-      agentAvailable: true,
-      code: `async (_event, step) => await step.agent.prompt("prompt", { text: "write", tools: [defineTool({ name: "write", description: "write value", parameters: { type: "object" }, execute: async (_id, input) => await store.write(input) })] })`,
-    },
-    {
-      ...host,
-      async handle(call, guest) {
-        if (call.operation !== "agent.prompt") {
-          return await host.handle(call);
-        }
-        if (call.callbackId === null) {
-          throw new Error("Tool callback required");
-        }
-        return await guest({
-          operation: "callback.agentTool",
-          callbackId: call.callbackId,
-          toolId: call.input.tools[0].id,
-          toolCallId: "tool-call",
-          input: { fromAgent: true },
-        });
-      },
-    },
-  );
-  expect(completion).toMatchObject({ status: "completed", value: { fromAgent: true } });
-  expect(host.writes).toEqual([{ fromAgent: true }]);
 });
 
 test("permanent callback errors retain their workflow failure class on Node", async () => {

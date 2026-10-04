@@ -1,13 +1,12 @@
 import type { ReactNode } from "react";
 
 import type { BackofficeResolvedScope } from "@/backoffice-runtime/resolved-scope";
-import type { WorkflowRunCollections } from "@/routes/backoffice/automations/script-view/use-script-workflow-runs";
+import type { PiAvailableModel, PiManagerSession } from "@/fragno/pi-manager/pi-agent-contract";
 
 import type {
   SessionWorkspaceStateBySession,
   SessionWorkspaceStateUpdate,
 } from "./session-detail/workspace-model";
-import type { PiLayoutContext } from "./shared";
 
 export type PiCreateSessionActionData = {
   intent: "create-session";
@@ -17,12 +16,12 @@ export type PiCreateSessionActionData = {
 
 export type PiSessionsOutletContext = {
   resolvedScope: BackofficeResolvedScope;
-  persistenceSource: NonNullable<PiLayoutContext["persistenceSource"]>;
   basePath: string;
   createSessionPanel?: ReactNode;
   startNewSession: () => void;
+  availableModelOptions: PiAvailableModel[];
+  sessions: PiManagerSession[];
+  sessionsError: string | null;
   workspaceStates: SessionWorkspaceStateBySession;
-  updateWorkspaceState: (sessionKey: string, update: SessionWorkspaceStateUpdate) => void;
-  workflowCollections?: WorkflowRunCollections;
-  workflowCollectionsError: string | null;
+  updateWorkspaceState: (sessionId: string, update: SessionWorkspaceStateUpdate) => void;
 };

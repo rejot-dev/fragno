@@ -1,5 +1,4 @@
 import { Menu } from "@base-ui/react/menu";
-import type { PiCompactCommandOutcome } from "@fragno-dev/pi-harness/types";
 import { Button } from "@fragno-private/design-system/button";
 import { Icon } from "@fragno-private/design-system/icon";
 import { useRef, useState, type UIEvent } from "react";
@@ -31,10 +30,17 @@ export function SessionThread({
   commandKind,
   composerAction,
   compacting,
-  compactOutcome,
+  compactionError,
+  compactionNotice,
   contextTokens,
+  showContextUsage = true,
+  inactiveHistoryCount,
+  hasMoreHistory,
+  historyLoading,
+  historyError,
   onCommandKindChange,
   onComposerActionChange,
+  onLoadMoreHistory,
 }: {
   disabledReason: string | null;
   error: string | null;
@@ -52,10 +58,17 @@ export function SessionThread({
   commandKind: "followUp" | "steer";
   composerAction: "message" | "compact";
   compacting: boolean;
-  compactOutcome: PiCompactCommandOutcome | null;
+  compactionError: string | null;
+  compactionNotice: string | null;
   contextTokens: number;
+  showContextUsage?: boolean;
+  inactiveHistoryCount: number;
+  hasMoreHistory: boolean;
+  historyLoading: boolean;
+  historyError: string | null;
   onCommandKindChange: (value: "followUp" | "steer") => void;
   onComposerActionChange: (value: "message" | "compact") => void;
+  onLoadMoreHistory: () => unknown;
 }) {
   const disabled = disabledReason !== null;
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -85,6 +98,40 @@ export function SessionThread({
         className="backoffice-scroll flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain scroll-smooth px-3 sm:px-6"
       >
         <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col py-5 sm:py-8">
+          {inactiveHistoryCount > 0 || hasMoreHistory || historyError ? (
+            <section className="mb-5 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-xs text-[var(--bo-muted)]">
+              <div className="flex min-h-8 items-center justify-between gap-3">
+                <span>
+                  <span className="font-medium text-[var(--bo-fg)]">Earlier history</span>
+                  {inactiveHistoryCount > 0 ? (
+                    <span className="ml-2 text-[10px] text-[var(--bo-muted-2)] tabular-nums">
+                      {inactiveHistoryCount} inactive{" "}
+                      {inactiveHistoryCount === 1 ? "entry" : "entries"}
+                    </span>
+                  ) : null}
+                </span>
+                {hasMoreHistory ? (
+                  <Button
+                    variant="ghost"
+                    disabled={historyLoading}
+                    onClick={() => void onLoadMoreHistory()}
+                  >
+                    {historyLoading ? "Loading…" : "Load older"}
+                  </Button>
+                ) : null}
+              </div>
+              <p className="text-[10px] leading-4 text-[var(--bo-muted-2)]">
+                Entries shown here remain durable but are no longer part of Pi&apos;s active model
+                context.
+              </p>
+              {historyError ? (
+                <p role="alert" className="mt-2 text-[var(--bo-failed)]">
+                  {historyError}
+                </p>
+              ) : null}
+            </section>
+          ) : null}
+
           <ThreadPrimitive.Messages>
             {({ message }) => {
               if (message.role === "user") {
@@ -102,10 +149,12 @@ export function SessionThread({
               return null;
             }}
           </ThreadPrimitive.Messages>
-          {compacting ? (
-            <CompactionOperationIndicator />
-          ) : compactOutcome?.status === "rejected" && !running ? (
-            <CompactionOperationFailure outcome={compactOutcome} onRetry={onCompact} />
+
+          {compacting ? <CompactionOperationIndicator /> : null}
+          {compactionError && !compacting ? (
+            <CompactionOperationFailure message={compactionError} onRetry={onCompact} />
+          ) : compactionNotice && !compacting ? (
+            <CompactionOperationNotice message={compactionNotice} />
           ) : null}
         </div>
 
@@ -122,7 +171,6 @@ export function SessionThread({
               if (composerAction !== "compact") {
                 return;
               }
-
               event.preventDefault();
               if (readyForInput) {
                 void onCompact();
@@ -148,15 +196,17 @@ export function SessionThread({
                 <span className="hidden max-w-44 truncate px-2 text-[10px] text-[var(--bo-muted-2)] sm:block">
                   {modelLabel}
                 </span>
-                <span
-                  title={`${contextTokens.toLocaleString()} estimated context tokens`}
-                  className="border-l border-[color:var(--bo-border)] px-2 text-[10px] text-[var(--bo-muted-2)] tabular-nums"
-                >
-                  {contextTokenFormatter.format(contextTokens)} context
-                </span>
+                {showContextUsage ? (
+                  <span
+                    title={`${contextTokens.toLocaleString()} estimated context tokens`}
+                    className="border-l border-[color:var(--bo-border)] px-2 text-[10px] text-[var(--bo-muted-2)] tabular-nums"
+                  >
+                    {contextTokenFormatter.format(contextTokens)} context
+                  </span>
+                ) : null}
                 {readyForInput ? (
                   <span className="px-2 text-xs font-medium text-[var(--bo-muted)]">New turn</span>
-                ) : (
+                ) : !compacting ? (
                   <label>
                     <span className="sr-only">Message mode</span>
                     <select
@@ -171,7 +221,7 @@ export function SessionThread({
                       <option value="steer">Steer</option>
                     </select>
                   </label>
-                )}
+                ) : null}
                 {disabled ? (
                   <span className="hidden text-xs text-[var(--bo-muted-2)] sm:inline">
                     {disabledReason}
@@ -190,15 +240,13 @@ export function SessionThread({
                   </Button>
                 ) : null}
                 {running ? (
-                  compacting ? null : (
-                    <button
-                      type="button"
-                      onClick={() => void onStop()}
-                      className={`inline-flex min-h-10 items-center border border-[color:var(--bo-border-strong)] bg-[var(--bo-panel)] px-3 text-xs font-semibold text-[var(--bo-fg)] transition-[border-color,scale] duration-150 ease-out hover:border-[color:var(--bo-failed)] ${tapScale}`}
-                    >
-                      Stop
-                    </button>
-                  )
+                  <button
+                    type="button"
+                    onClick={() => void onStop()}
+                    className={`inline-flex min-h-10 items-center border border-[color:var(--bo-border-strong)] bg-[var(--bo-panel)] px-3 text-xs font-semibold text-[var(--bo-fg)] transition-[border-color,scale] duration-150 ease-out hover:border-[color:var(--bo-failed)] ${tapScale}`}
+                  >
+                    Stop
+                  </button>
                 ) : (
                   <div className="flex items-stretch">
                     {composerAction === "compact" ? (
@@ -232,7 +280,7 @@ export function SessionThread({
                         <Menu.Positioner side="top" align="end" sideOffset={8} className="z-50">
                           <Menu.Popup
                             data-backoffice-root
-                            className="bo-popover-surface w-72 origin-bottom-right bg-[var(--bo-panel)] p-2 text-[var(--bo-fg)] transition-[opacity,transform] duration-150 ease-out outline-none data-[ending-style]:translate-y-1 data-[ending-style]:opacity-0 data-[starting-style]:translate-y-1 data-[starting-style]:opacity-0"
+                            className="bo-popover-surface w-72 origin-bottom-right bg-[var(--bo-panel)] p-2 text-[var(--bo-fg)] outline-none"
                           >
                             <p className="px-2.5 py-1 text-[9px] font-semibold tracking-[0.18em] text-[var(--bo-muted-2)] uppercase">
                               Composer action
@@ -254,7 +302,7 @@ export function SessionThread({
                               <ComposerActionItem
                                 value="compact"
                                 label="Compact context"
-                                description={`Summarize history using the instructions above · ${contextTokens.toLocaleString()} tokens`}
+                                description="Summarize durable history using the instructions above"
                                 disabled={!readyForInput}
                               />
                             </Menu.RadioGroup>
@@ -294,45 +342,48 @@ function CompactionOperationIndicator() {
       <span>
         <span className="block font-medium text-[var(--bo-fg)]">Compacting context</span>
         <span className="mt-0.5 block text-[10px] text-[var(--bo-muted-2)]">
-          Selecting history and writing a summary…
+          Selecting history and writing a durable summary…
         </span>
       </span>
     </div>
   );
 }
 
-function CompactionOperationFailure({
-  onRetry,
-  outcome,
-}: {
-  onRetry: () => unknown;
-  outcome: Extract<PiCompactCommandOutcome, { status: "rejected" }>;
-}) {
-  const failed = outcome.code === "compaction_failed";
+function CompactionOperationNotice({ message }: { message: string }) {
   return (
     <div
-      role={failed ? "alert" : "status"}
-      className={`mb-3 flex min-h-12 items-center justify-between gap-3 border px-3 py-2 text-xs ${
-        failed
-          ? "border-[color:var(--bo-failed)] bg-[var(--bo-failed-bg)] text-[var(--bo-failed)]"
-          : "border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] text-[var(--bo-muted)]"
-      }`}
+      role="status"
+      className="mb-3 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-xs text-[var(--bo-muted)]"
+    >
+      <span className="block font-medium text-[var(--bo-fg)]">Context was not compacted</span>
+      <span className="mt-0.5 block text-[10px] text-[var(--bo-muted-2)]">{message}</span>
+    </div>
+  );
+}
+
+function CompactionOperationFailure({
+  message,
+  onRetry,
+}: {
+  message: string;
+  onRetry: () => unknown;
+}) {
+  return (
+    <div
+      role="alert"
+      className="mb-3 flex min-h-12 items-center justify-between gap-3 border border-[color:var(--bo-failed)] bg-[var(--bo-failed-bg)] px-3 py-2 text-xs text-[var(--bo-failed)]"
     >
       <span className="min-w-0 text-pretty">
-        <span className="block font-medium">
-          {failed ? "Context compaction failed" : "Context was not compacted"}
-        </span>
-        <span className="mt-0.5 block text-[10px] opacity-80">{outcome.message}</span>
+        <span className="block font-medium">Context compaction failed</span>
+        <span className="mt-0.5 block text-[10px] opacity-80">{message}</span>
       </span>
-      {failed ? (
-        <button
-          type="button"
-          onClick={() => void onRetry()}
-          className={`inline-flex min-h-10 shrink-0 items-center px-3 text-[10px] font-semibold transition-[background-color,scale] duration-150 ease-out hover:bg-[var(--bo-panel)] ${tapScale}`}
-        >
-          Retry
-        </button>
-      ) : null}
+      <button
+        type="button"
+        onClick={() => void onRetry()}
+        className={`inline-flex min-h-10 shrink-0 items-center px-3 text-[10px] font-semibold transition-[background-color,scale] duration-150 ease-out hover:bg-[var(--bo-panel)] ${tapScale}`}
+      >
+        Retry
+      </button>
     </div>
   );
 }

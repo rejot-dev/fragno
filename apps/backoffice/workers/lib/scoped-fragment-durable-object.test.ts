@@ -2,6 +2,8 @@ import { describe, expect, test, vi } from "vitest";
 
 import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 
+import { backofficeRoutableScopeSchema } from "@/backoffice-runtime/context-schema";
+
 import type { BackofficeObjectState } from "./backoffice-fragment-durable-object";
 import { createScopedFragmentDurableObjectRuntime } from "./scoped-fragment-durable-object";
 
@@ -46,6 +48,7 @@ describe("scoped fragment Durable Object runtime", () => {
       state: warmState,
       ownerScope: { kind: "org", orgId: "org-1" },
       host: warmHost.host,
+      scopeSchema: backofficeRoutableScopeSchema,
       createSource: (scope) => ({
         scopeId: scope.kind === "user" ? scope.userId : scope.orgId,
       }),
@@ -61,6 +64,7 @@ describe("scoped fragment Durable Object runtime", () => {
       state: coldState,
       ownerScope: null,
       host: coldHost.host,
+      scopeSchema: backofficeRoutableScopeSchema,
       createSource: (scope) => ({
         scopeId: scope.kind === "user" ? scope.userId : scope.orgId,
       }),
@@ -80,6 +84,7 @@ describe("scoped fragment Durable Object runtime", () => {
       state: createState(new Map(), undefined),
       ownerScope: null,
       host: host.host,
+      scopeSchema: backofficeRoutableScopeSchema,
       createSource: () => ({ scopeId: "unused" }),
     });
 

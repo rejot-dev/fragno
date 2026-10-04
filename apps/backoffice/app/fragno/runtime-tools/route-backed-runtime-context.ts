@@ -34,6 +34,10 @@ import {
   type BackofficeStateBackend,
 } from "@/fragno/codemode/state-backend";
 import { createCodemodeStaticArtifactsResolver } from "@/fragno/codemode/static-codemode-artifacts";
+import {
+  createPiManagerRuntime,
+  type PiManagerRuntime,
+} from "@/fragno/pi-manager/pi-manager-runtime";
 import { createAdminRuntime } from "@/fragno/runtime-tools/families/admin-runtime";
 import { createApiRuntime } from "@/fragno/runtime-tools/families/api-runtime";
 import { createBackofficeCapabilitiesRuntime } from "@/fragno/runtime-tools/families/backoffice-capabilities";
@@ -48,7 +52,6 @@ import {
   createOtpRuntime,
   createUnavailableOtpRuntime,
 } from "@/fragno/runtime-tools/families/otp-runtime";
-import { createPiRouteRuntime, type PiRuntime } from "@/fragno/runtime-tools/families/pi-runtime";
 import { createProjectConnectorRuntime } from "@/fragno/runtime-tools/families/project-connector-runtime";
 import {
   createResendRouteRuntime,
@@ -79,7 +82,10 @@ export type RouteBackedRuntimeContextOptions = {
   kernel: BackofficeKernel;
   execution: BackofficeExecutionContext;
   emittedEventActors?: AutomationActors;
-  pi?: { runtime: PiRuntime } | null;
+  pi?:
+    | { runtime: PiManagerRuntime }
+    | ((execution: BackofficeExecutionContext) => { runtime: PiManagerRuntime })
+    | null;
   workflowSourceReader?: AutomationSourceReader;
 };
 
@@ -310,7 +316,10 @@ export const createRouteBackedRuntimeContext = ({
       : null,
     forms:
       execution.scope.kind === "system" && formsObjects
-        ? { runtime: createFormsRuntime(formsObjects.singleton().http) }
+        ? (() => {
+            const object = unavailableObject(() => formsObjects.singleton());
+            return object ? { runtime: createFormsRuntime(object.http) } : null;
+          })()
         : null,
     github:
       runtime.config.bindings.github && org
@@ -425,26 +434,24 @@ export const createRouteBackedRuntimeContext = ({
           }
         : createUnavailableOtpRuntime(unavailableMessage("OTP", execution)),
     },
-    pi: pi ?? {
-      runtime: createPiRouteRuntime({
-        object: automationsObject,
-        scope: execution.scope,
-        execution,
-      }),
+    pi: (typeof pi === "function" ? pi(execution) : pi) ?? {
+      runtime: createPiManagerRuntime({ runtime, kernel, execution }),
     },
     reson8: {
-      runtime: selectedOrg
-        ? createReson8RouteRuntime({
-            object: kernel.scoped("RESON8", execution.scope, runtime.objects.reson8).http,
-          })
-        : createUnavailableReson8Runtime(unavailableMessage("RESON8", execution)),
+      runtime:
+        selectedOrg && runtime.config.bindings.reson8
+          ? createReson8RouteRuntime({
+              object: kernel.scoped("RESON8", execution.scope, runtime.objects.reson8).http,
+            })
+          : createUnavailableReson8Runtime(unavailableMessage("RESON8", execution)),
     },
     resend: {
-      runtime: selectedOrg
-        ? createResendRouteRuntime({
-            object: kernel.scoped("RESEND", execution.scope, runtime.objects.resend).http,
-          })
-        : createUnavailableResendRuntime(unavailableMessage("RESEND", execution)),
+      runtime:
+        selectedOrg && runtime.config.bindings.resend
+          ? createResendRouteRuntime({
+              object: kernel.scoped("RESEND", execution.scope, runtime.objects.resend).http,
+            })
+          : createUnavailableResendRuntime(unavailableMessage("RESEND", execution)),
     },
     sandbox:
       runtime.config.bindings.sandbox && runtime.config.bindings.automations
@@ -487,7 +494,7 @@ export const createRouteBackedRuntimeContext = ({
           }
         : null,
     telegram:
-      execution.scope.kind === "org"
+      execution.scope.kind === "org" && runtime.config.bindings.telegram
         ? {
             runtime: createTelegramRuntime({
               object: kernel.scoped("TELEGRAM", execution.scope, runtime.objects.telegram),

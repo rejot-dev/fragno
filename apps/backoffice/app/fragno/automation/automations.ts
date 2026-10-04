@@ -3,7 +3,6 @@ import {
   type DurableHooksDispatcherDurableObjectHandler,
 } from "@fragno-dev/db/dispatchers/cloudflare-do";
 import type { DurableHooksInstrumentation } from "@fragno-dev/db/hooks";
-import type { PiSessionMetadata } from "@fragno-dev/pi-harness/types";
 
 import { defaultFragnoRuntime } from "@fragno-dev/core";
 import { createWorkflowsFragment } from "@fragno-dev/workflows";
@@ -18,6 +17,7 @@ import {
 } from "@/backoffice-runtime/kernel";
 import {
   BACKOFFICE_PERMISSION,
+  BACKOFFICE_REQUIRED_PERMISSION_HEADER,
   type BackofficePermissionRequirement,
 } from "@/backoffice-runtime/permissions";
 import { createAutomationFragment, type AutomationFragmentConfig } from "@/fragno/automation";
@@ -25,17 +25,6 @@ import { BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY } from "@/fragno/automation/act
 import { CODEMODE_WORKFLOW } from "@/fragno/automation/engine/codemode-invocation";
 import { defineCodemodeWorkflow } from "@/fragno/automation/engine/codemode-workflow";
 import { listAutomationEventDescriptors } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
-import {
-  createPiRuntimeDefinition,
-  type CreatePiRuntimeDefinitionOptions,
-  type PiFragment,
-} from "@/fragno/pi/pi-runtime";
-import { piSessionBillingOrganizationId } from "@/fragno/pi/pi-shared";
-import type { PiRuntimeToolContext } from "@/fragno/pi/pi-tools";
-import {
-  createPiFragmentRuntime,
-  type PiRuntime,
-} from "@/fragno/runtime-tools/families/pi-runtime";
 
 import { defineMarketplaceIngestWorkflow } from "./marketplace-ingest-workflow.server";
 import { defineMarketplacePublishWorkflow } from "./marketplace-publish-workflow";
@@ -67,7 +56,6 @@ const AUTOMATIONS_AUTHORIZATION_STATUS_BY_REASON = {
 export type AutomationsRuntime = {
   workflowsFragment: ReturnType<typeof createWorkflowsFragment<BackofficeExecutionContext>>;
   automationFragment: AutomationFragmentWithExecutionContext;
-  piFragment: PiFragment;
   dispatcher: DurableHooksDispatcherDurableObjectHandler | null;
 };
 
@@ -133,66 +121,18 @@ export const createAutomationsRuntime = (
     "env" | "runtime" | "readAutomationSource" | "ownerScope"
   > & {
     kernel: BackofficeKernel;
-    pi: Omit<CreatePiRuntimeDefinitionOptions, "scope" | "kernel" | "runtimeToolContext"> & {
-      createRuntime?(
-        execution: BackofficeExecutionContext,
-        fragment: PiFragment,
-        inheritedBillingOrganizationId?: string,
-      ): PiRuntime;
-      createRuntimeToolContext(
-        execution: BackofficeExecutionContext,
-        pi: PiRuntime,
-        metadata: PiSessionMetadata | null,
-      ): PiRuntimeToolContext;
-    };
   },
 ): AutomationsRuntime => {
   const databaseAdapter = runtime.adapters.createAdapter({
     kind: "automations",
   });
   let automationFragment: AutomationFragmentWithExecutionContext | undefined;
-  let piFragment: PiFragment | undefined;
-  const createHostedPiRuntime = (
-    execution: BackofficeExecutionContext,
-    parentSessionMetadata: PiSessionMetadata | null = null,
-  ): PiRuntime => {
-    if (!piFragment) {
-      throw new Error("Pi fragment is not ready.");
-    }
-
-    const inheritedBillingOrganizationId =
-      piSessionBillingOrganizationId(parentSessionMetadata) ?? undefined;
-
-    return config.pi.createRuntime
-      ? config.pi.createRuntime(execution, piFragment, inheritedBillingOrganizationId)
-      : createPiFragmentRuntime({
-          fragment: piFragment,
-          execution,
-          inheritedBillingOrganizationId,
-        });
-  };
-  const pi = createPiRuntimeDefinition({
-    ...config.pi,
-    scope: config.ownerScope,
-    kernel: config.kernel,
-    runtimeToolContext: (execution, metadata) => {
-      return config.pi.createRuntimeToolContext(
-        execution,
-        createHostedPiRuntime(execution, metadata),
-        metadata,
-      );
-    },
-  });
   const workflowsFragment = createWorkflowsFragment<BackofficeExecutionContext>(
     {
       workflows: {
         CODEMODE_SCRIPT: defineCodemodeWorkflow({
           ...config,
           env: config.runtime?.codemodeEnv ?? undefined,
-          createPiAutomationContext: ({ execution }) => ({
-            runtime: createHostedPiRuntime(execution),
-          }),
-          resolveWorkflowAgentHarnessOptions: pi.resolveWorkflowAgentHarnessOptions,
         }),
         MARKETPLACE_PUBLISH: defineMarketplacePublishWorkflow({
           ownerScope: config.ownerScope,
@@ -205,7 +145,6 @@ export const createAutomationsRuntime = (
           getAutomationFragment: () => automationFragment,
           getWorkflowsFragment: (): AutomationsRuntime["workflowsFragment"] => workflowsFragment,
         }),
-        ...pi.workflows,
       },
       runtime: config.runtime?.fragnoRuntime ?? defaultFragnoRuntime,
       onWorkflowTerminal: async function notifyWorkflowOwnerOfTerminalInstance(payload) {
@@ -337,6 +276,7 @@ export const createAutomationsRuntime = (
           return error(
             { message: cause.message, code: cause.reason },
             AUTOMATIONS_AUTHORIZATION_STATUS_BY_REASON[cause.reason],
+            { [BACKOFFICE_REQUIRED_PERMISSION_HEADER]: JSON.stringify(operation) },
           );
         }
         throw cause;
@@ -545,12 +485,6 @@ export const createAutomationsRuntime = (
 
     return undefined;
   });
-  piFragment = pi.createFragment({
-    databaseAdapter,
-    workflows: workflowsFragment.services,
-    mountRoute: "/api/pi",
-  });
-
   automationFragment = createAutomationFragment<BackofficeExecutionContext>(
     {
       builtInEventDefinitions: listAutomationEventDescriptors().map((definition) => ({
@@ -561,9 +495,6 @@ export const createAutomationsRuntime = (
       })),
       env: config.env,
       runtime: config.runtime,
-      createPiAutomationContext: async ({ execution }) => ({
-        runtime: createHostedPiRuntime(execution),
-      }),
       readAutomationSource: config.readAutomationSource,
       ownerScope: config.ownerScope,
     },
@@ -752,7 +683,6 @@ export const createAutomationsRuntime = (
   return {
     workflowsFragment,
     automationFragment,
-    piFragment,
     dispatcher: null,
   } satisfies AutomationsRuntime;
 };

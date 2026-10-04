@@ -132,7 +132,6 @@ async function executeCodemodeActivation(
         run(
           event: unknown,
           step: unknown,
-          agent: unknown,
           dispatchers: unknown,
         ): DynamicWorkerRpcCall<WorkflowResult>;
       },
@@ -141,12 +140,7 @@ async function executeCodemodeActivation(
       {
         ...common,
         run: (entrypoint) =>
-          entrypoint.run(
-            activation.event,
-            rpcTargets.stepTarget,
-            rpcTargets.agentTarget,
-            rpcTargets.dispatchers,
-          ),
+          entrypoint.run(activation.event, rpcTargets.stepTarget, rpcTargets.dispatchers),
       },
       execution,
     );

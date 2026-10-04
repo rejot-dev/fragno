@@ -1,124 +1,145 @@
-import type { PiOperationCompletedHookPayload } from "@fragno-dev/pi-harness/types";
-
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
-import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
-import { piSessionBillingOrganizationId } from "@/fragno/pi/pi-shared";
 
 import type { BillingEventInput, BillingMeasurementInput } from "./contracts";
 
-const toNanoUsd = (usd: number) => Math.round(usd * 1_000_000_000);
-
-export class PiOperationBillingEventValidationError extends Error {
-  constructor() {
-    super("Pi operation billing events require at least one model call.");
-    this.name = "PiOperationBillingEventValidationError";
-  }
-}
-
-export class PiOperationBillingOwnerMissingError extends Error {
-  constructor(readonly userId: string) {
-    super(`PI_SESSION_BILLING_OWNER_MISSING:${userId}`);
-    this.name = "PiOperationBillingOwnerMissingError";
-  }
-}
-
-const piUsageMeasurements = (
-  usage: PiOperationCompletedHookPayload["usage"],
-): BillingMeasurementInput[] => [
-  { meter: "ai.tokens.input", unit: "token", quantity: usage.input },
-  { meter: "ai.tokens.output", unit: "token", quantity: usage.output },
-  { meter: "ai.tokens.cache-read", unit: "token", quantity: usage.cacheRead },
-  { meter: "ai.tokens.cache-write", unit: "token", quantity: usage.cacheWrite },
-  { meter: "ai.tokens.total", unit: "token", quantity: usage.totalTokens },
-  { meter: "ai.cost.input", unit: "nano-usd", quantity: toNanoUsd(usage.cost.input) },
-  { meter: "ai.cost.output", unit: "nano-usd", quantity: toNanoUsd(usage.cost.output) },
-  { meter: "ai.cost.cache-read", unit: "nano-usd", quantity: toNanoUsd(usage.cost.cacheRead) },
-  { meter: "ai.cost.cache-write", unit: "nano-usd", quantity: toNanoUsd(usage.cost.cacheWrite) },
-  { meter: "ai.cost.total", unit: "nano-usd", quantity: toNanoUsd(usage.cost.total) },
-];
-
-export const resolvePiOperationBillingOrganizationId = (
-  scope: BackofficeContextScope,
-  metadata: Record<string, unknown> | null | undefined,
-): string | null => {
-  switch (scope.kind) {
-    case "org":
-    case "project":
-      return scope.orgId;
-    case "user": {
-      const organizationId = piSessionBillingOrganizationId(metadata);
-      if (!organizationId) {
-        throw new PiOperationBillingOwnerMissingError(scope.userId);
-      }
-      return organizationId;
-    }
-    case "system":
-      return piSessionBillingOrganizationId(metadata) ?? null;
-  }
-
-  throw new Error("Unsupported Backoffice context scope kind.");
-};
-
-export const createPiOperationBillingEvent = (input: {
-  scope: BackofficeContextScope;
-  payload: PiOperationCompletedHookPayload;
-  hookId: string;
-  idempotencyKey: string;
-}): BillingEventInput => {
-  const occurredAt = input.payload.modelCalls.reduce<number | null>(
-    (latest, call) => (latest === null ? call.timestamp : Math.max(latest, call.timestamp)),
-    null,
-  );
-  if (occurredAt === null) {
-    throw new PiOperationBillingEventValidationError();
-  }
-
-  return {
-    id: `pi:${backofficeContextScopeSinglePathSegment(input.scope)}:${input.hookId}`,
-    scope: input.scope,
-    source: "pi-harness",
-    eventType: "operation.completed",
-    occurredAt: new Date(occurredAt).toISOString(),
-    measurements: piUsageMeasurements(input.payload.usage),
-    metadata: {
-      idempotencyKey: input.idempotencyKey,
-      workflowName: input.payload.workflowName,
-      sessionId: input.payload.sessionId,
-      sessionMetadata: input.payload.metadata,
-      stepName: input.payload.stepName,
-      operationId: input.payload.operationId,
-      operation: input.payload.operation,
-      actor: input.payload.actor,
-      modelCalls: input.payload.modelCalls,
-    },
+export type PiBillingUsageInput = {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  totalTokens: number;
+  cost: {
+    input: number;
+    output: number;
+    cacheRead: number;
+    cacheWrite: number;
+    total: number;
   };
 };
 
-export const recordPiOperationBilling = async (input: {
-  scope: BackofficeContextScope;
-  payload: PiOperationCompletedHookPayload;
-  hookId: string;
-  idempotencyKey: string;
-  recordEvent: (organizationId: string, event: BillingEventInput) => Promise<void>;
-}): Promise<{ recorded: boolean; billingOrganizationId: string | null }> => {
-  let event: BillingEventInput;
-  try {
-    event = createPiOperationBillingEvent(input);
-  } catch (error) {
-    if (error instanceof PiOperationBillingEventValidationError) {
-      return { recorded: false, billingOrganizationId: null };
-    }
-    throw error;
-  }
-
-  const billingOrganizationId = resolvePiOperationBillingOrganizationId(
-    input.scope,
-    input.payload.metadata,
-  );
-  if (!billingOrganizationId) {
-    return { recorded: false, billingOrganizationId: null };
-  }
-
-  await input.recordEvent(billingOrganizationId, event);
-  return { recorded: true, billingOrganizationId };
+export type PiBillingCounters = {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  totalTokens: number;
+  inputNanoUsd: number;
+  outputNanoUsd: number;
+  cacheReadNanoUsd: number;
+  cacheWriteNanoUsd: number;
+  totalNanoUsd: number;
 };
+
+const PI_BILLING_COUNTER_KEYS = [
+  "inputTokens",
+  "outputTokens",
+  "cacheReadTokens",
+  "cacheWriteTokens",
+  "totalTokens",
+  "inputNanoUsd",
+  "outputNanoUsd",
+  "cacheReadNanoUsd",
+  "cacheWriteNanoUsd",
+  "totalNanoUsd",
+] as const satisfies readonly (keyof PiBillingCounters)[];
+
+function toNanoUsd(usd: number) {
+  return Math.round(usd * 1_000_000_000);
+}
+
+/** Converts cumulative Pi usage into integer token and nano-USD billing counters. */
+export function piBillingCountersFromUsage(
+  usages: Iterable<PiBillingUsageInput>,
+): PiBillingCounters {
+  const counters: PiBillingCounters = {
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    totalTokens: 0,
+    inputNanoUsd: 0,
+    outputNanoUsd: 0,
+    cacheReadNanoUsd: 0,
+    cacheWriteNanoUsd: 0,
+    totalNanoUsd: 0,
+  };
+
+  for (const usage of usages) {
+    counters.inputTokens += usage.input;
+    counters.outputTokens += usage.output;
+    counters.cacheReadTokens += usage.cacheRead;
+    counters.cacheWriteTokens += usage.cacheWrite;
+    counters.totalTokens += usage.totalTokens;
+    counters.inputNanoUsd += toNanoUsd(usage.cost.input);
+    counters.outputNanoUsd += toNanoUsd(usage.cost.output);
+    counters.cacheReadNanoUsd += toNanoUsd(usage.cost.cacheRead);
+    counters.cacheWriteNanoUsd += toNanoUsd(usage.cost.cacheWrite);
+    counters.totalNanoUsd += toNanoUsd(usage.cost.total);
+  }
+
+  return counters;
+}
+
+/** Returns the undelivered part of cumulative Pi usage and rejects a regressed watermark. */
+export function subtractPiBillingCounters(
+  through: PiBillingCounters,
+  delivered: PiBillingCounters,
+): PiBillingCounters {
+  const delta = { ...through };
+  for (const key of PI_BILLING_COUNTER_KEYS) {
+    const quantity = through[key] - delivered[key];
+    if (quantity < 0) {
+      throw new Error(`PI_BILLING_COUNTER_REGRESSION:${key}:${delivered[key]}:${through[key]}`);
+    }
+    delta[key] = quantity;
+  }
+  return delta;
+}
+
+/** True when at least one token or nano-USD counter has not been delivered. */
+export function hasPiBillingUsage(counters: PiBillingCounters): boolean {
+  return PI_BILLING_COUNTER_KEYS.some((key) => counters[key] > 0);
+}
+
+/** Maps integer Pi billing counters into the canonical AI billing meters. */
+export function createPiBillingMeasurements(
+  counters: PiBillingCounters,
+): BillingMeasurementInput[] {
+  return [
+    { meter: "ai.tokens.input", unit: "token", quantity: counters.inputTokens },
+    { meter: "ai.tokens.output", unit: "token", quantity: counters.outputTokens },
+    { meter: "ai.tokens.cache-read", unit: "token", quantity: counters.cacheReadTokens },
+    { meter: "ai.tokens.cache-write", unit: "token", quantity: counters.cacheWriteTokens },
+    { meter: "ai.tokens.total", unit: "token", quantity: counters.totalTokens },
+    { meter: "ai.cost.input", unit: "nano-usd", quantity: counters.inputNanoUsd },
+    { meter: "ai.cost.output", unit: "nano-usd", quantity: counters.outputNanoUsd },
+    { meter: "ai.cost.cache-read", unit: "nano-usd", quantity: counters.cacheReadNanoUsd },
+    { meter: "ai.cost.cache-write", unit: "nano-usd", quantity: counters.cacheWriteNanoUsd },
+    { meter: "ai.cost.total", unit: "nano-usd", quantity: counters.totalNanoUsd },
+  ];
+}
+
+/** Constructs one idempotent event for a durable Pi usage-watermark delta. */
+export function createPiDurableBillingEvent(input: {
+  eventId: string;
+  scope: BackofficeContextScope;
+  sessionId: string;
+  taskId: number;
+  occurredAt: string;
+  through: PiBillingCounters;
+  delta: PiBillingCounters;
+}): BillingEventInput {
+  return {
+    id: input.eventId,
+    scope: input.scope,
+    source: "pi-durable",
+    eventType: "usage.committed",
+    occurredAt: input.occurredAt,
+    measurements: createPiBillingMeasurements(input.delta),
+    metadata: {
+      sessionId: input.sessionId,
+      taskId: input.taskId,
+      through: input.through,
+    },
+  };
+}

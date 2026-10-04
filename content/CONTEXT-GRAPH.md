@@ -102,7 +102,7 @@
 │  ├─ /static/skills/generating-backoffice-uis/CATALOG.md — Production Component Catalog [line 14]
 │  ├─ /static/skills/generating-backoffice-uis/WORKFLOWS.md — Durable Workflow UI Results [line 24]
 │  │  └─ /static/skills/workflows/SKILL.md — Workflows [line 3]
-│  │     └─ /static/codemode/providers/workflow.d.ts — workflow tools [line 106]
+│  │     └─ /static/codemode/providers/workflow.d.ts — workflow tools [line 92]
 │  ├─ /static/skills/workflows/SKILL.md — Workflows [line 24] [already expanded]
 │  └─ /static/skills/using-prepared-uploads/SKILL.md — Using Prepared Uploads [line 26]
 │     ├─ /static/skills/generating-backoffice-uis/SKILL.md — Generating Backoffice UIs [line 17] [cycle]
@@ -131,7 +131,7 @@
 ├─ /static/skills/generating-backoffice-uis/CATALOG.md — Production Component Catalog [line 14]
 ├─ /static/skills/generating-backoffice-uis/WORKFLOWS.md — Durable Workflow UI Results [line 24]
 │  └─ /static/skills/workflows/SKILL.md — Workflows [line 3]
-│     └─ /static/codemode/providers/workflow.d.ts — workflow tools [line 106]
+│     └─ /static/codemode/providers/workflow.d.ts — workflow tools [line 92]
 ├─ /static/skills/workflows/SKILL.md — Workflows [line 24] [already expanded]
 └─ /static/skills/using-prepared-uploads/SKILL.md — Using Prepared Uploads [line 26]
    ├─ /static/skills/generating-backoffice-uis/SKILL.md — Generating Backoffice UIs [line 17] [cycle]
@@ -233,7 +233,7 @@
 │  ├─ /static/skills/generating-backoffice-uis/CATALOG.md — Production Component Catalog [line 14]
 │  ├─ /static/skills/generating-backoffice-uis/WORKFLOWS.md — Durable Workflow UI Results [line 24]
 │  │  └─ /static/skills/workflows/SKILL.md — Workflows [line 3]
-│  │     └─ /static/codemode/providers/workflow.d.ts — workflow tools [line 106]
+│  │     └─ /static/codemode/providers/workflow.d.ts — workflow tools [line 92]
 │  ├─ /static/skills/workflows/SKILL.md — Workflows [line 24] [already expanded]
 │  └─ /static/skills/using-prepared-uploads/SKILL.md — Using Prepared Uploads [line 26] [cycle]
 └─ /static/codemode/providers/upload.d.ts — upload tools [line 29]
@@ -257,7 +257,7 @@
 
 ```text
 /static/skills/workflows/SKILL.md — Workflows
-└─ /static/codemode/providers/workflow.d.ts — workflow tools [line 106]
+└─ /static/codemode/providers/workflow.d.ts — workflow tools [line 92]
 ```
 
 ## Not reachable from `SYSTEM.md` or any `SKILL.md`

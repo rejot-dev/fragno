@@ -3,15 +3,14 @@ import { Select } from "@fragno-private/design-system/select";
 import { useState } from "react";
 import { Form, Link } from "react-router";
 
-import type { PiModelOption } from "@/fragno/pi/pi-shared";
-import type { PiSessionListingState } from "@/fragno/pi/tanstack/session-listing";
+import type { PiAvailableModel, PiManagerSession } from "@/fragno/pi-manager/pi-agent-contract";
 
 import { formatTimestamp } from "./formatting";
 
 const INITIAL_HISTORY_COUNT = 2;
 
 type NewSessionComposerProps = {
-  availableModelOptions: PiModelOption[];
+  availableModelOptions: PiAvailableModel[];
   basePath: string;
   billingOrganization?: { id: string; name: string } | null;
   createError: string | null;
@@ -19,8 +18,7 @@ type NewSessionComposerProps = {
   draftPrompt: string;
   selectedModelOption: string;
   listingError: string | null;
-  sessions: PiSessionListingState["snapshot"]["sessions"];
-  workflowStatuses: PiSessionListingState["snapshot"]["workflowStatuses"];
+  sessions: PiManagerSession[];
   onDraftPromptChange: (value: string) => void;
   onModelChange: (value: string) => void;
 };
@@ -35,7 +33,6 @@ export function NewSessionComposer({
   selectedModelOption,
   listingError,
   sessions,
-  workflowStatuses,
   onDraftPromptChange,
   onModelChange,
 }: NewSessionComposerProps) {
@@ -101,7 +98,7 @@ export function NewSessionComposer({
                 label="Model"
                 name="modelOption"
                 options={availableModelOptions.map((option) => ({
-                  value: `${option.provider}::${option.name}`,
+                  value: `${option.provider}::${option.modelId}`,
                   label: option.label,
                   description: option.provider.toUpperCase(),
                 }))}
@@ -160,31 +157,28 @@ export function NewSessionComposer({
                 <p className="py-5 text-sm text-[var(--bo-muted-2)]">No previous sessions</p>
               ) : (
                 <div className="divide-y divide-[color:var(--bo-border)]">
-                  {visibleSessions.map((session) => {
-                    const workflowStatus = workflowStatuses[session.id] ?? "unknown";
-                    return (
-                      <Link
-                        key={session.id}
-                        to={`${basePath}/${encodeURIComponent(session.workflowName)}/${encodeURIComponent(session.id)}`}
-                        preventScrollReset
-                        className="group flex min-h-14 items-center justify-between gap-4 px-1 py-3 transition-colors hover:bg-[rgba(var(--bo-grid),0.12)] sm:px-3"
-                      >
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-medium text-[var(--bo-fg)]">
-                            {session.name || session.id}
-                          </p>
-                          <time className="mt-1 block text-[10px] text-[var(--bo-muted-2)] tabular-nums">
-                            {formatTimestamp(session.updatedAt)}
-                          </time>
-                        </div>
-                        <span
-                          role="img"
-                          aria-label={workflowStatus}
-                          className={`size-1.5 flex-none rounded-full ${workflowStatus === "active" ? "animate-pulse bg-[var(--bo-accent)]" : workflowStatus === "errored" || workflowStatus === "terminated" ? "bg-[var(--bo-failed)]" : workflowStatus === "waiting" || workflowStatus === "paused" ? "bg-[var(--bo-waiting)]" : "bg-[var(--bo-live)]"}`}
-                        />
-                      </Link>
-                    );
-                  })}
+                  {visibleSessions.map((session) => (
+                    <Link
+                      key={session.sessionId}
+                      to={`${basePath}/${encodeURIComponent(session.sessionId)}`}
+                      preventScrollReset
+                      className="group flex min-h-14 items-center justify-between gap-4 px-1 py-3 transition-colors hover:bg-[rgba(var(--bo-grid),0.12)] sm:px-3"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-[var(--bo-fg)]">
+                          {session.name || session.sessionId}
+                        </p>
+                        <time className="mt-1 block text-[10px] text-[var(--bo-muted-2)] tabular-nums">
+                          {formatTimestamp(session.createdAt)}
+                        </time>
+                      </div>
+                      <span
+                        role="img"
+                        aria-label="durable"
+                        className="size-1.5 flex-none rounded-full bg-[var(--bo-live)]"
+                      />
+                    </Link>
+                  ))}
                 </div>
               )}
 
