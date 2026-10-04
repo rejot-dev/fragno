@@ -20,6 +20,13 @@ export type ImportableGraftDatabaseOperations<TInput = unknown> = {
   input: TInput;
 };
 
+/** Supplies main-thread control/provisioning operations and worker-importable object operations. */
+export type GraftRuntimeDatabaseOperations<TInput = unknown> = {
+  control: GraftDatabaseOperations;
+  provisioning: GraftDatabaseOperations;
+  worker: ImportableGraftDatabaseOperations<TInput>;
+};
+
 /** Declares worker-importable Graft operations without transferring functions across threads. */
 export function defineGraftDatabaseOperations<TInput>(
   moduleUrl: URL,

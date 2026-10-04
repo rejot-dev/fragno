@@ -6,8 +6,11 @@
   "type": "module",
   "scripts": {
     "build": "tsdown",
-    "start": "node dist/runtime-showcase-server.js",
-    "demo": "node dist/runtime-showcase-walkthrough.js",
+    "start": "node dist/start-fleet.js",
+    "start:node": "node dist/start-node.js",
+    "start:gateway": "node dist/start-gateway.js",
+    "demo": "node dist/node/node.scenario.js",
+    "test": "node dist/gateway/gateway.scenario.js && node dist/node/node.scenario.js && node dist/fleet/fleet.scenario.js",
     "types:check": "tsc --noEmit",
     "format:package": "node ../../scripts/run-package-quality.mjs format",
     "format:check:package": "node ../../scripts/run-package-quality.mjs format:check",
@@ -16,7 +19,9 @@
   },
   "dependencies": {
     "@fragno-private/backoffice-node-runtime": "workspace:*",
-    "capnweb": "0.12.0"
+    "@hono/node-server": "1.19.14",
+    "capnweb": "0.12.0",
+    "hono": "4.12.25"
   },
   "devDependencies": {
     "@fragno-private/typescript-config": "workspace:*",

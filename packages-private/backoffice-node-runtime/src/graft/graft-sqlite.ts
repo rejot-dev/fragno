@@ -13,6 +13,14 @@ const initializedGraftConfigEnvironmentKey = "FRAGNO_GRAFT_SQLITE_INITIALIZED_CO
 let initializedConfigPath: string | null = null;
 
 function resolveGraftExtensionPath(): string {
+  const configuredPath = process.env["FRAGNO_GRAFT_EXTENSION_PATH"];
+  if (configuredPath !== undefined) {
+    const extensionPath = resolve(configuredPath);
+    if (!existsSync(extensionPath)) {
+      throw new Error(`GRAFT_SQLITE_EXTENSION_MISSING:${extensionPath}`);
+    }
+    return extensionPath;
+  }
   try {
     return getLoadablePath();
   } catch (error) {

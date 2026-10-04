@@ -1,15 +1,17 @@
-import { mkdirSync } from "node:fs";
-import path from "node:path";
 import { DatabaseSync, type StatementResultingChanges } from "node:sqlite";
 
 import type { GraftDatabaseOperations } from "../graft/graft-database-operations";
+import type { GraftNodeAuthorityWindow } from "../graft/graft-node-authority";
 import {
   assertGraftObjectAuthority,
   type GraftObjectActivationAuthority,
 } from "../graft/graft-object-authority";
-import { openClonedGraftDatabase } from "../graft/graft-sqlite";
 import type { NodeDurableObjectSqlValue } from "../runtime/node-durable-object-storage";
-import { readNodeRuntimeClock, type NodeRuntimeClock } from "../runtime/node-runtime-clock";
+import {
+  readNodeRuntimeEpochMilliseconds,
+  readNodeRuntimeMonotonicMilliseconds,
+  type NodeRuntimeClock,
+} from "../runtime/node-runtime-clock";
 
 type NodeRuntimeSqlValue = null | number | bigint | string | Uint8Array;
 
@@ -31,15 +33,11 @@ export type NodeRuntimeSqlExecution = {
   rowsWritten: number;
 };
 
-type NodeRuntimeObjectDatabaseDurability =
-  | { kind: "local" }
-  | { kind: "graft"; operations: GraftDatabaseOperations }
-  | {
-      kind: "authority-bound-graft";
-      operations: GraftDatabaseOperations;
-      authority: GraftObjectActivationAuthority;
-      clock: NodeRuntimeClock;
-    };
+type NodeRuntimeObjectDatabaseDurability = {
+  operations: GraftDatabaseOperations;
+  authority: GraftObjectActivationAuthority;
+  clock: NodeRuntimeClock;
+};
 
 type ActiveDatabaseSession = {
   session: NodeRuntimeObjectDatabaseSession;
@@ -81,9 +79,6 @@ export class ManagedNodeRuntimeObjectDatabase {
       this.#assertSynchronousOperation(result);
       this.#database.exec("COMMIT");
       this.#committedStoragePosition += 1;
-      if (this.#durability.kind === "local") {
-        this.#durableStoragePosition = this.#committedStoragePosition;
-      }
     } catch (error) {
       if (this.#database.isTransaction) {
         this.#database.exec("ROLLBACK");
@@ -124,7 +119,6 @@ export class ManagedNodeRuntimeObjectDatabase {
   /** Proves the requested object storage position durable before external output is released. */
   ensureDurableStoragePosition(requiredPosition: number): void {
     this.#requireUsable();
-    this.#assertOutputAuthority();
     if (this.#durableStoragePosition >= requiredPosition) {
       return;
     }
@@ -132,10 +126,6 @@ export class ManagedNodeRuntimeObjectDatabase {
       throw new Error(
         `NODE_RUNTIME_OBJECT_DATABASE_POSITION_INVALID:${requiredPosition}:${this.#committedStoragePosition}`,
       );
-    }
-    if (this.#durability.kind === "local") {
-      this.#durableStoragePosition = this.#committedStoragePosition;
-      return;
     }
     const pushTarget = this.#committedStoragePosition;
     try {
@@ -148,18 +138,41 @@ export class ManagedNodeRuntimeObjectDatabase {
     this.#assertOutputAuthority();
   }
 
+  /** Never extends an already expired or poisoned activation, even after late confirmation. */
+  advanceNodeAuthorityWindow(next: GraftNodeAuthorityWindow): void {
+    this.#requireUsable();
+    const authority = this.#durability.authority;
+    const previous = authority.nodeAuthority;
+    if (
+      next.nodeId !== authority.ownerNodeId ||
+      next.processGeneration !== authority.processGeneration ||
+      next.leaseExpiresAtEpochMs < previous.leaseExpiresAtEpochMs ||
+      next.selfFenceAtMonotonicMs < previous.selfFenceAtMonotonicMs ||
+      (next.renewalId === previous.renewalId &&
+        (next.leaseExpiresAtEpochMs !== previous.leaseExpiresAtEpochMs ||
+          next.selfFenceAtMonotonicMs !== previous.selfFenceAtMonotonicMs)) ||
+      (next.renewalId !== previous.renewalId &&
+        (next.selfFenceAtMonotonicMs === previous.selfFenceAtMonotonicMs ||
+          next.leaseExpiresAtEpochMs === previous.leaseExpiresAtEpochMs))
+    ) {
+      this.#failure = new Error("NODE_RUNTIME_OBJECT_AUTHORITY_WINDOW_INVALID");
+      throw this.#failure;
+    }
+    authority.nodeAuthority = next;
+  }
+
   close(): void {
     this.#database.close();
   }
 
   #assertOutputAuthority(): void {
-    if (this.#durability.kind !== "authority-bound-graft") {
-      return;
-    }
     try {
       assertGraftObjectAuthority(this.#database, this.#durability.authority);
       if (
-        this.#durability.authority.leaseExpiresAtMs <= readNodeRuntimeClock(this.#durability.clock)
+        this.#durability.authority.nodeAuthority.selfFenceAtMonotonicMs <=
+          readNodeRuntimeMonotonicMilliseconds(this.#durability.clock) ||
+        this.#durability.authority.nodeAuthority.leaseExpiresAtEpochMs <=
+          readNodeRuntimeEpochMilliseconds(this.#durability.clock)
       ) {
         throw new Error("NODE_RUNTIME_OBJECT_AUTHORITY_EXPIRED");
       }
@@ -229,31 +242,8 @@ export class ManagedNodeRuntimeObjectDatabase {
     if (this.#failure) {
       throw new Error("NODE_RUNTIME_OBJECT_DATABASE_POISONED", { cause: this.#failure });
     }
+    this.#assertOutputAuthority();
   }
-}
-
-/** Opens a regular file-backed object database for the existing local runtime. */
-export function openLocalNodeRuntimeObjectDatabase(
-  directory: string,
-  objectKey: string,
-): ManagedNodeRuntimeObjectDatabase {
-  mkdirSync(directory, { recursive: true });
-  const filename = path.join(directory, `${Buffer.from(objectKey).toString("base64url")}.sqlite`);
-  const database = new DatabaseSync(filename);
-  database.exec("PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL; PRAGMA foreign_keys = ON");
-  return new ManagedNodeRuntimeObjectDatabase(database, { kind: "local" });
-}
-
-/** Opens an object database clone whose externally visible outputs wait for a worker-owned push. */
-export function openGraftNodeRuntimeObjectDatabase(
-  localTag: string,
-  remoteLogId: string,
-  operations: GraftDatabaseOperations,
-): ManagedNodeRuntimeObjectDatabase {
-  return new ManagedNodeRuntimeObjectDatabase(
-    openClonedGraftDatabase(localTag, remoteLogId, operations),
-    { kind: "graft", operations },
-  );
 }
 
 /** Owns a previously fenced object clone and rejects output after its exact authority expires. */
@@ -264,7 +254,6 @@ export function manageAuthorityBoundGraftObjectDatabase(
   clock: NodeRuntimeClock,
 ): ManagedNodeRuntimeObjectDatabase {
   return new ManagedNodeRuntimeObjectDatabase(database, {
-    kind: "authority-bound-graft",
     operations,
     authority,
     clock,

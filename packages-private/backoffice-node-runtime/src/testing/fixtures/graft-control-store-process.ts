@@ -1,3 +1,4 @@
+import { provisionGraftControlDatabase } from "@fragno-private/backoffice-node-runtime/graft-control-database";
 import type {
   GraftClaimObjectInput,
   GraftControlCommand,
@@ -12,7 +13,6 @@ import {
   createSqlitePragmaGraftDatabaseOperations,
   type GraftDatabaseOperations,
 } from "@fragno-private/backoffice-node-runtime/graft-database-operations";
-import { provisionGraftControlDatabase } from "@fragno-private/backoffice-node-runtime/graft-object-directory";
 
 import { createControlledGraftDatabaseOperations } from "./graft-database-operations.ts";
 

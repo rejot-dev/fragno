@@ -1,14 +1,19 @@
 import { afterAll, assert, beforeAll, expect, test } from "vitest";
 
 import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 
-import { defineGraftDatabaseOperations } from "@fragno-private/backoffice-node-runtime/graft-database-operations";
-import { provisionGraftControlDatabase } from "@fragno-private/backoffice-node-runtime/graft-object-directory";
-import { createGraftNodeObjectRuntimeWithDatabaseOperations } from "@fragno-private/backoffice-node-runtime/node-object-runtime";
+import { provisionGraftControlDatabase } from "@fragno-private/backoffice-node-runtime/graft-control-database";
+import {
+  createSqlitePragmaGraftDatabaseOperations,
+  defineGraftDatabaseOperations,
+} from "@fragno-private/backoffice-node-runtime/graft-database-operations";
+import { createAuthorityBoundGraftNodeObjectRuntimeWithDatabaseOperations } from "@fragno-private/backoffice-node-runtime/node-object-runtime";
+import { createManualNodeRuntimeClock } from "@fragno-private/backoffice-node-runtime/node-runtime-clock";
 import { defineNodeRuntimeObject } from "@fragno-private/backoffice-node-runtime/node-runtime-object";
 
 import type { createGraftCounterObject } from "../testing/fixtures/graft-runtime.objects";
@@ -354,6 +359,10 @@ test("concurrent outputs fail closed when their shared push fails", async () => 
       then("only the failed push was attempted", ({ pushes }) => {
         assert.equal(pushes.count(), 1);
       }),
+      then("a fresh request rejects and retires the poisoned activation", async ({ counter }) => {
+        using object = counter.get("one");
+        await expect(object.read()).rejects.toThrow("NODE_RUNTIME_OBJECT_DATABASE_POISONED");
+      }),
     ],
   }));
 
@@ -548,7 +557,7 @@ test("a nested output gate shares the outer object scope", async () => {
   });
 });
 
-test("stubs and capabilities retained after an output scope closes are rejected", async () => {
+test("namespace stubs are disposed and returned capabilities reject after an output scope closes", async () => {
   let stubError: string | null = null;
   let capabilityError: string | null = null;
 
@@ -575,8 +584,8 @@ test("stubs and capabilities retained after an output scope closes are rejected"
         retainedStub[Symbol.dispose]();
         retainedCapability[Symbol.dispose]();
       }),
-      then("both retained handles fail at their closed scope boundary", () => {
-        assert.equal(stubError, "NODE_OBJECT_OUTPUT_SCOPE_CLOSED");
+      then("both retained handles fail according to their output-scope ownership", () => {
+        assert.equal(stubError, "Attempted to use RPC stub after it has been disposed.");
         assert.equal(capabilityError, "NODE_OBJECT_OUTPUT_SCOPE_CLOSED");
       }),
       then("closed handles perform no push", ({ pushes }) => {
@@ -632,15 +641,39 @@ function createGraftCounterRuntime(
   nextPushBehavior: Int32Array,
   controlRemoteLogId: string,
 ) {
-  return createGraftNodeObjectRuntimeWithDatabaseOperations({
+  return createAuthorityBoundGraftNodeObjectRuntimeWithDatabaseOperations({
     storage: { configPath: scenarioConfigPath, controlRemoteLogId },
-    clock: { kind: "system" },
+    clock: createManualNodeRuntimeClock(0).source,
+    nodeIdentity: {
+      nodeId: randomUUID(),
+      processGeneration: randomUUID(),
+      privateAddress: "ws://127.0.0.1:1/node-object-peer",
+      applicationOrigin: "http://127.0.0.1:1",
+      compatibilityVersion: 1,
+    },
+    leasePolicy: {
+      leaseDurationMs: 60_000,
+      renewalIntervalMs: 10_000,
+      renewalRetryIntervalMs: 1_000,
+      selfFenceSafetyMarginMs: 5_000,
+      maximumClockSkewMs: 0,
+    },
+    peerRpc: {
+      authenticationSecret: "graft-output-gate-scenario-secret",
+      authenticationWindowMs: 5_000,
+    },
     objects: { COUNTER: counterDefinition },
-    databaseOperations: defineGraftDatabaseOperations(
-      new URL("../testing/fixtures/graft-database-operations.ts", import.meta.url),
-      "createControlledGraftDatabaseOperations",
-      { pushCounter: pushCounter.buffer, nextPushBehavior: nextPushBehavior.buffer },
-    ),
+    objectProvisioning: { kind: "lazy" },
+    objectEviction: { kind: "disabled" },
+    databaseOperations: {
+      control: createSqlitePragmaGraftDatabaseOperations(),
+      provisioning: createSqlitePragmaGraftDatabaseOperations(),
+      worker: defineGraftDatabaseOperations(
+        new URL("../testing/fixtures/graft-database-operations.ts", import.meta.url),
+        "createControlledGraftDatabaseOperations",
+        { pushCounter: pushCounter.buffer, nextPushBehavior: nextPushBehavior.buffer },
+      ),
+    },
   });
 }
 

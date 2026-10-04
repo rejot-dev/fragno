@@ -1,8 +1,17 @@
 # Stateless containers with Graft-backed object and control databases
 
-Status (October 3, 2026): single-owner persistence, durable control commands, and the minimum
-authority-bound activation/fencing slice are implemented. Automatic lease renewal, terminal process
-watchdogs, peer routing, and durable alarm discovery remain planned.
+Status (October 4, 2026): one authority-bound Graft implementation, durable control commands,
+distributed lazy first-object provisioning, authority-bound activation/fencing, renewable node
+authority, terminal process self-fencing, authenticated peer routing, a runtime-owned Node HTTP/peer
+host with automatic Fetch output gates and namespace-handle disposal, conditional graceful release,
+process-local object activity tracking, configurable idle activation eviction, and the first
+correctness slice of durable fleet alarm discovery are implemented. Control-worker isolation,
+persisted alarm retry backoff, scanner partitioning or peer wake delivery, orphan-log collection,
+and the broader peer fault matrix remain planned. Local scenarios now use temporary filesystem Graft
+remotes with the same authority, fencing, output gates, and alarm reconciliation. The in-memory,
+plain-SQLite, and unbound single-owner runtime alternatives have been removed. Process-local
+control-store locking protects Graft 0.2.1's shared native cache during concurrent activation;
+object-log pushes do not take that lock.
 
 Scope: `packages-private/backoffice-node-runtime`. Backoffice application integration remains
 separate. This plan does not modify `apps/graft-poc` or port celld's execution engine.
@@ -48,12 +57,13 @@ owner can resume JS; it must not extend the successor's database history with st
 
 ### Private runtime
 
-- `src/runtime/node-object-runtime.ts` caches local workers and discovers every object from one
-  local `objects.sqlite` file. Namespace handles currently resolve directly to those workers.
-- `src/sqlite/sqlite-object-storage.ts` stores identities, KV, alarms, and narrow
-  initialization/alarm claims together. Its ordinary writes are not fleet-fenced.
-- `src/sqlite/sqlite-connection-config.ts` requires WAL. This configuration cannot be reused for a
-  Graft connection.
+- `src/runtime/node-object-runtime.ts` caches object workers and reads fresh ownership and
+  owner-lease state before choosing local activation or authenticated peer routing.
+- `src/graft/graft-durable-object-state.ts` is the sole object-state implementation. SQL, KV, and
+  authoritative alarms share one fenced object log; durable control commands coordinate ownership
+  and alarm discovery. There is no separate local SQLite persistence or coordination path.
+- `src/testing/node-runtime-scenario.ts` provisions filesystem Graft storage and uses the production
+  runtime with real leases. Manual clocks do not bypass expiry or output authority checks.
 - `NodeRuntimeObjectContext` exposes identity, a clock, and a narrow state API whose
   `state.storage.sql` surface uses the worker-owned object connection. It exposes no transaction,
   commit, flush, or push controls.
@@ -111,7 +121,8 @@ durable alarm discovery. Do not port turns, its LTX/follower protocol, or Cloudf
                           object remote log
 
 Each container:
-  main thread: ingress, routing, worker lifecycle, authority watchdog
+  main thread host: HTTP ingress, peer WebSocket ingress, routing, worker lifecycle,
+                    control-index alarm polling, authority watchdog, readiness, and drain
   control worker: serialized local access to a clone of the shared control log
   object workers: one instance and one managed DB owner per resident object
 
@@ -141,8 +152,8 @@ rollout; do not disguise it as row-level distributed locking. Sharding is a late
   then publish its log ID in deployment configuration. Serving containers clone it; they must not
   silently create independent control planes when lookup fails.
 - On first object creation, push a new database's identity/schema before conditionally registering
-  its mapping. A losing concurrent creator discards its candidate. Unreferenced candidates may be
-  collected later, not reused as the winner's storage.
+  its mapping. A losing concurrent creator uses the canonical winning mapping and leaves its
+  unreferenced candidate for future collection; it never reuses that candidate as winner storage.
 
 ## 4. Control-plane database and command protocol
 
@@ -151,7 +162,7 @@ rollout; do not disguise it as row-level distributed locking. Sharding is a late
 | Concept                     | Required information and access paths                                                                                                                   |
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Fleet format                | Schema/protocol version; reject incompatible clients before serving.                                                                                    |
-| Node lease                  | Incarnation ID, private address, compatibility version, expiry, renewal identity; lookup by node ID and scan by expiry.                                 |
+| Node lease                  | Incarnation ID, peer address, application origin, compatibility version, expiry, renewal identity; lookup by node ID and scan by expiry.                |
 | Object directory/ownership  | Binding/name, stable remote log ID, monotonically increasing epoch, lifecycle, owner incarnation when owned; unique object identity and index by owner. |
 | Alarm index                 | Object identity, installation identity, next due time; index `(due_at, object_id)` for cursor scans.                                                    |
 | Alarm reconciliation intent | Object identity, ownership epoch, operation token; find unfinished publications without opening every object database.                                  |
@@ -166,10 +177,9 @@ numbers. Runtime-only states such as `resolving` and `fenced` need not all becom
 Distributed ownership access goes through a small concrete `GraftControlStore`, not arbitrary
 application SQL. Implemented operations are `registerNode`, `renewNodeLease`,
 `registerObjectDatabase`, `claimObject`, `markObjectReady`, and `releaseObject`. Alarm
-reconciliation commands remain planned. The compatibility `GraftObjectDirectory` still performs its
-narrow first-object mapping write directly. Authority-bound workers consume the control store for
-`restoring` claims, readiness publication, and takeover; concurrent first-object provisioning is not
-yet part of that protocol.
+reconciliation commands remain planned. `provisionGraftObject` pushes a complete candidate object
+log, then uses the receipt-backed registration command to select one canonical mapping. Concurrent
+creators re-read and use the winner before the ordinary `restoring` claim and readiness protocol.
 
 For each mutating command:
 
@@ -223,7 +233,9 @@ general distributed-time system:
    being reconciled. Advance authority only after the durable command or its receipt is confirmed.
 5. Stop admission and externally visible output at the conservative monotonic deadline. Admission
    and managed database boundaries recheck it, so a process that resumes after suspension cannot
-   continue merely because its watchdog timer did not run while paused.
+   continue merely because its watchdog timer did not run while paused. Also reject crossing the
+   captured persisted wall expiry: a forward correction or platform sleep must not grant authority
+   when the monotonic counter has not yet consumed that window.
 6. Permit takeover only after the persisted expiry plus the declared skew margin. Check the previous
    lease and apply the claim in the same control snapshot, so renewals and takeovers conflict
    through the control log rather than racing unconditional row updates.
@@ -245,8 +257,9 @@ necessary because a watchdog cannot physically stop a suspended or partitioned p
 ## 5. Object takeover and storage fencing
 
 The minimum stable-log fencing protocol in this section is now implemented by
-`createAuthorityBoundGraftNodeObjectRuntime`. The remaining work is lease renewal/watchdog
-integration, remote-owner routing, activation crash-window coverage, and production backend
+`createAuthorityBoundGraftNodeObjectRuntime`. Lazy first-object provisioning, renewable authority,
+terminal self-fencing, and remote-owner routing are also implemented. Remaining work includes
+orphan-log collection, broader activation crash-window coverage, and production backend
 qualification.
 
 **Do not claim that a control-row epoch atomically fences another database.** The databases are
@@ -367,18 +380,22 @@ mutation as though its SQL transaction rolled back.
 
 ### Deliberately narrower output contract
 
-`runtime.runWithOutputGate()` is the shell boundary for a non-streaming external result. Namespace
-lookups made inside it receive worker capabilities bound to that output scope. Calls outside it keep
+The runtime-owned Node host wraps each admitted application `fetch()` in one output gate. Custom
+hosts and non-HTTP shells establish the same non-streaming external-result boundary explicitly with
+`runtime.runWithOutputGate()`. Namespace handles acquired inside a gate are owned and automatically
+disposed by its outermost scope; they cannot escape the Fetch invocation. Calls outside a gate keep
 an implicit per-call durability boundary so direct RPC users cannot accidentally receive unconfirmed
-state. A failed push rejects every output waiting on the covered object position and poisons the
-activation. Competing managed reads cannot continue from its rejected speculative state.
+state, but those namespace handles remain caller-owned. A failed push rejects every output waiting
+on the covered object position and poisons the activation. Competing managed reads cannot continue
+from its rejected speculative state.
 
 It does not make arbitrary JS memory, outbound `fetch`, callback arguments, or stream producers
 transactional. Response-stream work performed after the handler returns is outside the scope and
 will require per-chunk tickets before claiming general streaming output coverage. Applications still
 use durable hooks/outboxes plus idempotency for external effects. Returned capabilities inherit the
-scope that created them and cannot be used after it closes. Raw in-memory capability methods are not
-promised linearizable behavior across ownership changes.
+scope that created them and cannot be used after it closes, but the runtime does not discover and
+automatically dispose arbitrary capabilities nested in RPC results. Raw in-memory capability methods
+are not promised linearizable behavior across ownership changes.
 
 Keep `blockConcurrencyWhile` as an initialization/explicit admission barrier with documented Node
 semantics. It does not pause already-running native promise continuations. Registered `waitUntil`
@@ -387,17 +404,22 @@ outbox/job first. No automatic event-level rollback or serialization is added.
 
 ## 7. Routing, Cap'n Web, and lifecycle
 
-Namespace lookup resolves an object identity, not a permanent node address. Refactor worker creation
-behind a resolver that returns either a ready local activation or an epoch-bound remote route.
-Single-flight local resolution prevents duplicate workers for the same activation.
+Namespace lookup resolves an object identity, not a permanent node address. Authority-bound
+namespace handles now resolve either a prepared local activation or an epoch/claim-bound remote
+route. A fresh control snapshot supplies ownership and the owner's exact node lease for each new
+handle; peer WebSocket sessions, not object routes, are cached by owner incarnation.
 
-- Retain MessagePort Cap'n Web sessions between the container and its workers.
-- Add an authenticated peer Cap'n Web transport, preferably a persistent WebSocket session, with a
-  private routing handshake carrying object identity, expected epoch, node incarnation, and protocol
-  version. Select its exact adapter after testing the stock dependency's transport behavior.
-- Cache routes no longer than the observed owner's conservative lease deadline. Refresh on an
-  explicit pre-delivery stale-owner refusal. Receiver-side admission validates its own authority;
-  cached caller metadata does not confer ownership.
+- MessagePort Cap'n Web sessions remain between the container and its workers.
+- `src/rpc/node-peer-rpc.ts` owns authenticated persistent WebSocket sessions. Its HMAC handshake
+  binds caller and receiver node IDs, process generations, compatibility versions, an issuance time,
+  and a single-use nonce. The caller's durable lease must still be live.
+- Remote object delivery carries object identity, expected epoch and claim, owner node incarnation,
+  compatibility version, and the advertised WebSocket address. Receiver-side admission rereads the
+  route, validates local and caller authority, and only then returns a capability for that
+  activation.
+- Explicit pre-delivery stale-route refusals trigger a bounded fresh resolution. Application method
+  failures and ambiguous disconnects are not replayed. Because routes are not cached, the observed
+  lease deadline bounds only the current resolution decision, not future namespace lookups.
 - Preserve native capability lifetimes: a returned capability is tied to its activation/session. On
   worker loss or ownership change it breaks. Do not silently reconnect it to a different object
   instance. Reacquire a namespace handle for a new attempt.
@@ -408,15 +430,49 @@ Single-flight local resolution prevents duplicate workers for the same activatio
   authentication; a private address alone is not authorization. Keep local module definitions
   application-owned.
 
+`startAuthorityBoundGraftNodeObjectHost` is the reusable Node process shell around this protocol. It
+binds separate application and internal HTTP listeners before publishing node authority. Only the
+internal listener owns peer WebSocket upgrades. Application Fetch handlers receive an automatic
+output gate and request-owned namespace handles; internal diagnostics remain available after
+self-fencing and internal commands retain explicit runtime authority checks. The host starts durable
+alarm-work polling, rejects new requests and peer upgrades during shutdown, and coordinates both
+listeners' cleanup. Its application-listener `GET /_runtime/ready` bypasses the application and
+returns the leased node identity and process generation only while the host and authority are
+serving. The read-only gateway forwards to the registered application origin without duplicating
+application routes; internal HTTP origins need not be stored in the control schema. The application
+maps failures that can occur after its handler returns, including output durability failures,
+without performing more object RPC. The low-level runtime and `acceptNodePeerWebSocket()` remain
+available for custom hosts.
+
 Graceful container drain: stop ingress/producers, let callers finish RPC and streams, drain
 registered background work, close workers, and conditionally release ownership while authority
-remains valid. If quiescence cannot be established within budget, fence/terminate and let recovery
-handle uncertain operations. Do not extend `cleanup()` into a patched Cap'n Web session drain.
+remains valid. The Node host waits for active Fetch handlers within the caller's required
+`maximumDrainDurationMs`. Deadline expiry rejects the close promise while cleanup remains in the
+terminal draining state; a container supervisor may then terminate the process and let lease expiry
+recover unfinished ownership. A returned response stream or retained capability remains
+caller-coordinated because its lifetime is not represented by the Fetch promise. Do not extend
+`cleanup()` into a patched Cap'n Web session drain or install library-owned process signal handlers.
 
-First release: no idle eviction or live migration with outstanding capabilities. Cap resident
-workers and reject new placements at capacity; start with on-demand placement and failure takeover.
-If a single object worker dies while its parent remains live, invalidate its handles and perform an
-explicit fresh-epoch activation. Never revive the old epoch or automatically replay failed calls.
+Resident activations now track active event count, open output scopes, registered pending work, and
+the monotonic time of their last completed activity. Completed `waitUntil` and initialization work
+also advances that local activity time. `NodeObjectActivationEvictionPolicy` can disable eviction,
+expose caller-driven deterministic sweeps, or schedule automatic sweeps with configurable sweep and
+idle durations. This activity is intentionally process-local; eviction does not add a control-plane
+write to every object event.
+
+An idle sweep quiesces a worker only when it has no admitted event, open output scope, or registered
+pending work and its last completed activity is at or before the configured cutoff. Quiescing
+rejects new worker delivery, waits for already admitted work, confirms the committed object
+position, conditionally releases exact authority, closes the database, and terminates the worker.
+Durable object state, canonical provisioning, and future alarms remain intact; the next namespace
+lookup or alarm activation restores a fresh instance. A future scheduled alarm does not pin a
+resident worker.
+
+Retaining an unused capability does not pin an activation. Active direct capability calls count as
+work, but retained capabilities and post-return streams remain activation-bound and can break after
+idle eviction. There is still no live migration with outstanding capabilities or transparent replay
+of failed calls. Capacity-aware admission, planned handoff, and individual unexpected worker-death
+replacement remain follow-up work.
 
 ## 8. Durable alarms across the two databases
 
@@ -450,9 +506,24 @@ its alarm on the existing instance. After success, durably consume only the deli
 a concurrent re-arm wins. Persist failure/backoff and index it through the same reconciliation
 protocol. Do not copy Cloudflare's exact retry count unless the application needs it.
 
-Replace `discoverPersistedObjects()`'s activate-everything behavior with cursor-based due-alarm and
-reconciliation scans. Local timers may accelerate discovery, but every acknowledged installation
-must remain recoverable with no resident worker and no local files.
+Cursor-based due-alarm and reconciliation scans have replaced activate-everything discovery. Local
+timers may accelerate discovery, but every acknowledged installation must remain recoverable with no
+resident worker and no local files.
+
+The implemented first slice uses one `node_runtime_object_alarm_work` row as both reconciliation
+marker and scheduled discovery entry. Authority-bound alarm installation, deletion, and successful
+consumption are serialized and force an immediate object-log push before completing that row. This
+is deliberately less optimized than deferring publication to the enclosing Fetch output gate, but it
+closes the cross-database crash window with substantially less machinery. Each installation has a
+UUID, so completion of an old handler cannot remove a same-timestamp re-arm.
+
+Each host scans a bounded object-ID cursor page and services rows owned by its exact node generation
+or eligible for local claim/takeover. Live remote-owner rows are left for that owner's scanner.
+Activation republishes the authoritative object alarm before readiness. Handler failure leaves the
+scheduled row due for the next poll; persisted backoff, scanner partitioning, and peer alarm-wake
+RPC remain follow-up work. Real child-process scenarios kill an owner before and after the object
+push, delete every local cache, and prove false-positive repair or durable alarm discovery
+respectively.
 
 ## 9. Native integration qualification: the first implementation gate
 
@@ -530,16 +601,16 @@ safety.
 Each phase leaves an executable scenario and a narrow reviewable change. No phase wires Backoffice
 into the package.
 
-| Phase                           | Deliverable                                                                                        | Acceptance criterion                                                                                                                                                                                      |
-| ------------------------------- | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0. Qualify Graft                | Native loader/configuration, managed connection spike, real backend scenarios                      | Node 24, concurrent object workers/control connection, remote conflict and uncertain-push recovery pass; driver/topology decisions recorded.                                                              |
-| 1. Per-object persistence       | One object database with runtime tables and managed Fragment SQL; explicit durable commit boundary | Write real Fragment data, minimal KV, and an alarm; destroy the entire local cache; restore data from the same object remote log. Failed push cannot return success or leak through a later managed read. |
-| 2. Graft control store          | Fleet bootstrap, schema, receipts, pull/transaction/push commands                                  | Independent control clients race conflicting and unrelated updates; all successful outcomes exist in one remote history, losing commands recompute, unknown outcomes are not guessed.                     |
-| 3. Authority and local takeover | Node leases, fresh epochs, `restoring`/`ready`, fencing commits, terminal authority loss           | Two containers contend; one ready epoch. Pause an old owner, take over, resume it: stale writes cannot append after the successor fence.                                                                  |
-| 4. Peer routing                 | Resolver, bounded caches, authenticated Cap'n Web peer sessions                                    | Requests arriving at either node reach the owner; stale pre-delivery routes refresh; callbacks/capabilities/streaming work; ambiguous operations are not replayed.                                        |
-| 5. Durable scheduling           | Alarm reconciliation intents, due index, retry, production scheduler integration                   | Crash at every publication/consumption boundary; fresh containers rediscover acknowledged alarms; old cleanup cannot remove a re-arm.                                                                     |
-| 6. Fleet scenarios and drain    | Multi-process test runner, fresh-cache restart, graceful drain/forced fencing                      | Whole-fleet cache loss preserves all successful writes; existing caller-coordinated cleanup and `.dup()` ownership tests remain valid.                                                                    |
-| 7. Deployment qualification     | Container native packaging, readiness/drain wiring, metrics, load/failure soak                     | Control throughput and renewal headroom meet the declared fleet target; actual backend fault tests pass; no persistent volume required.                                                                   |
+| Phase                           | Deliverable                                                                                            | Acceptance criterion                                                                                                                                                                                      |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0. Qualify Graft                | Native loader/configuration, managed connection spike, real backend scenarios                          | Node 24, concurrent object workers/control connection, remote conflict and uncertain-push recovery pass; driver/topology decisions recorded.                                                              |
+| 1. Per-object persistence       | One object database with runtime tables and managed Fragment SQL; explicit durable commit boundary     | Write real Fragment data, minimal KV, and an alarm; destroy the entire local cache; restore data from the same object remote log. Failed push cannot return success or leak through a later managed read. |
+| 2. Graft control store          | Fleet bootstrap, schema, receipts, pull/transaction/push commands                                      | Independent control clients race conflicting and unrelated updates; all successful outcomes exist in one remote history, losing commands recompute, unknown outcomes are not guessed.                     |
+| 3. Authority and local takeover | Node leases, fresh epochs, `restoring`/`ready`, fencing commits, terminal authority loss               | Two containers contend; one ready epoch. Pause an old owner, take over, resume it: stale writes cannot append after the successor fence.                                                                  |
+| 4. Peer routing                 | Resolver, bounded caches, authenticated Cap'n Web peer sessions                                        | Requests arriving at either node reach the owner; stale pre-delivery routes refresh; callbacks/capabilities/streaming work; ambiguous operations are not replayed.                                        |
+| 5. Durable scheduling           | Alarm reconciliation intents, due index, retry, production scheduler integration                       | Crash at every publication/consumption boundary; fresh containers rediscover acknowledged alarms; old cleanup cannot remove a re-arm.                                                                     |
+| 6. Fleet scenarios and drain    | Runtime-owned Node host, multi-process test runner, fresh-cache restart, graceful drain/forced fencing | Whole-fleet cache loss preserves all successful writes; host shutdown stops admission without hanging on peer sessions; existing caller-coordinated cleanup and `.dup()` ownership tests remain valid.    |
+| 7. Deployment qualification     | Container native packaging, readiness/drain wiring, metrics, load/failure soak                         | Control throughput and renewal headroom meet the declared fleet target; actual backend fault tests pass; no persistent volume required.                                                                   |
 
 The implemented Phase 1 slice provisions a Graft control directory, creates one Graft database per
 object, exposes synchronous SQL through `state.storage.sql`, stores the narrow KV/alarm surface with
@@ -554,22 +625,65 @@ SQL adapter.
 The implemented Phase 2 control-store slice persists process-incarnation leases, object ownership
 states, decimal-string epochs, and command receipts. Every named command starts from a clean clone,
 commits its decision and receipt together, and reconciles failed push responses through a fresh
-remote snapshot before semantically retrying. Independent child-process scenarios prove concurrent
-claim serialization, lost-response receipt recovery, lease renewal, conditional release, expired
-owner takeover, and rejection of a late predecessor completion.
+remote snapshot before semantically retrying. Lazy provisioning pushes a candidate object database
+before the registration command selects its canonical mapping. Independent child-process scenarios
+prove concurrent candidate selection, claim serialization, lost-response receipt recovery, lease
+renewal, conditional release, expired owner takeover, and rejection of a late predecessor
+completion.
 
-The implemented minimum Phase 3 slice registers a fixed node lease, claims an object as `restoring`,
-pushes the exact epoch/node/generation/claim into the object database, initializes the production
-worker, and publishes `ready` before RPC admission. Managed output checks the captured authority and
-confirmed lease deadline before and after Graft durability. A divergent application push poisons the
-activation and is never rebased. Two-process scenarios prove both old-write-first and
-replacement-fence-first orderings, followed by complete cache deletion and third-process recovery.
+The implemented Phase 3 slice registers runtime-owned renewable node authority, claims an object as
+`restoring`, pushes the exact epoch/node/generation/claim into the object database, initializes the
+production worker, and publishes `ready` before RPC admission. `src/graft/graft-node-authority.ts`
+keeps the prior confirmed monotonic window during unconfirmed renewal and retries the same semantic
+command/receipt. Confirmation never resets the TTL at response time or revives a fenced generation.
+System runtimes schedule renewals and a separate self-fencing watchdog; manual runtimes use
+`tick()`.
 
-Phase 3 remains incomplete as a fleet lifecycle: there is no automatic lease renewal, terminal node
-watchdog, remote-owner route, conditional graceful release, or broad activation crash-window suite.
-The single-owner API also remains available and must not be mixed with authority-bound serving.
-Distributed rollout requires those lifecycle pieces plus the complete scheduling and production
-backend qualification phases.
+`src/sqlite/managed-node-runtime-object-database.ts` accepts only deadline extensions for the exact
+node generation, never for an expired activation. Storage, events, and managed output check
+authority; `src/rpc/node-message-port-rpc.ts` also rejects replies queued across main-thread
+suspension. Terminal fencing aborts sessions and retires workers. Healthy cleanup keeps renewing
+during caller-coordinated drain, then conditionally releases exact shutdown claims. A divergent
+application push poisons the activation and is never rebased. Real scenarios prove renewed worker
+authority, delayed/lost renewal responses, skew-aware takeover cutoffs, wall-clock movement,
+suspension, retained-handle rejection, and graceful replacement, alongside both append orderings and
+cache-loss recovery.
+
+The implemented Phase 4 functional slice resolves remote ready/restoring owners through stock Cap'n
+Web over authenticated WebSockets. Namespace calls preserve callbacks, returned capabilities,
+promise pipelining, structured values, and Request/Response streams across the peer and worker
+sessions. Request/Response forwarding creates fresh stream wrappers at each RPC boundary because a
+stream deserialized from one Cap'n Web payload cannot be directly re-exported through another
+session. Receiver admission validates the exact route and both nodes' authority, retained handles do
+not reconnect after activation loss, and only explicit pre-delivery stale-route refusals are
+retried. The standalone two-server walkthrough places objects on separate owners, performs a
+multi-owner request, routes capabilities and streams, hard-kills one owner, takes over after expiry,
+deletes all caches, and restores state in a third process.
+
+The runtime-owned Node host now binds application HTTP and peer WebSocket ingress on one listener,
+derives the advertised address after binding, generates process incarnations, starts durable alarm
+work polling, gates startup/shutdown admission, and closes peer transport before waiting for the
+listener to finish. The standalone Hono demonstration now supplies only its application Fetch routes
+and process signal wiring. This host does not make post-return streams or retained capabilities
+implicitly drainable.
+
+The implemented Phase 5 correctness slice stores exact alarm installations in object logs and one
+reconciliation-or-scheduled work row in the control log. Alarm mutations force an immediate durable
+object barrier before publishing discovery state. Bounded owner-local scans activate unowned or
+expired-owner objects through the ordinary fencing protocol, and activation repairs unfinished
+markers before readiness. Scenarios prove process death on both sides of the object push, total
+cache deletion, fresh-node delivery, at-least-once retry after handler failure, and survival of a
+handler re-arm. Persisted retry backoff, peer wake delivery, scan partitioning, and the remaining
+fault matrix are not implemented.
+
+The peer fault matrix is not complete: authentication rejection, stale-route races, proven
+no-delivery connection failure, post-delivery response loss, and partially consumed request streams
+still need dedicated deterministic scenarios. Broad activation crash-window coverage and safe orphan
+candidate-log collection also remain. Control commands still perform synchronous native SQLite work
+on the main thread; the proposed control worker and fleet latency qualification are not implemented.
+The unbound single-owner API has been removed; all callers now exercise authority-bound serving.
+Distributed rollout still requires alarm retry/load qualification and production backend
+qualification.
 
 ## 11. Package structure and test seams
 
@@ -592,10 +706,12 @@ src/
     node-object-resolver.ts
     node-object-activation.ts
     node-object-runtime.ts                 # refactor existing owner
+    node-object-runtime-host.ts            # Node HTTP, readiness, alarms, and drain shell
     node-object-worker.ts                  # authority-bound DB bootstrap
   rpc/
     node-message-port-rpc.ts               # retain stock Cap'n Web
     node-peer-rpc.ts
+    node-peer-websocket-server.ts          # Node HTTP upgrade adapter
   scheduling/
     graft-alarm-discovery.ts
     graft-alarm-discovery.scenario.test.ts
@@ -634,9 +750,13 @@ Required scenarios, in addition to the current serialization/cleanup coverage:
   return a false rollback or automatically replay the handler.
 - Read-only handler overlaps a pending/failed database unit: no speculative SQL state escapes.
 - Late ownership release/readiness publication cannot modify a replacement's record.
-- Every alarm-intent/index crash window, same-timestamp re-arm, retry, and competing scanners.
+- Remaining alarm completion/control-response crash windows, same-timestamp re-arm under competing
+  events, and competing scanners. The implemented scenarios already cover pre-object-push and
+  post-object-push process death, fresh-cache delivery, handler retry, and handler re-arm survival.
 - Returned capability survives ordinary use but breaks on activation loss; new namespace lookup
   resolves the replacement. Disposing one duplicate still leaves other callers valid.
+- Idle activation sweep skips admitted events, open output scopes, and registered pending work;
+  durable state and scheduled alarms survive eviction and restore under a fresh activation.
 - Peer authentication failure, stale route, no-delivery connection failure, post-delivery response
   loss, and partially consumed streaming request. Assert allowed retries and uncertain outcomes.
 - Full fleet termination, deletion of all caches, fresh-container recovery of Fragment data and
@@ -649,9 +769,13 @@ activation latency, Graft push latency, uncertain outcomes, cache growth, alarm 
 and peer retry classification. Include node incarnation, object identity, epoch, control command ID,
 and activation ID in traces; never credentials or application values by default.
 
-Readiness requires confirmed node authority, a compatible control schema, and functioning peer
-routing. Liveness must not keep a fenced incarnation serving. Resource limits bound resident
-workers, in-flight activations, local cache usage, and background scans.
+Readiness requires a bound listener, installed peer upgrade ingress, confirmed node authority, a
+compatible control schema, and functioning peer routing. The Node host resolves its advertised peer
+address from the actual bound port before registering authority and does not expose the application
+handler until runtime construction succeeds. Liveness must not keep a fenced incarnation serving.
+Resource limits bound resident workers, in-flight activations, local cache usage, and background
+scans. Idle eviction bounds inactive resident workers by time but is not a substitute for a hard
+resident-worker limit or capacity-aware admission.
 
 Expect a remote round trip on each committed write and multiple remote operations on cold
 activation/alarm publication. That is an intentional initial cost. Batch only within existing
@@ -661,7 +785,8 @@ control log may become the first scaling bottleneck, particularly with frequent 
 Keep these as explicit later work:
 
 - Backoffice composition/adapters/migrations and the mapping of existing shared database scopes.
-- Capacity-aware placement, idle eviction with capability lifetime accounting, and planned handoff.
+- Capacity-aware placement, retained-capability and post-return stream lifetime accounting beyond
+  active calls, and planned handoff.
 - Control-plane sharding if measured workload requires it.
 - Application idempotency improvements and durable cancellation where independently required.
 - Safe remote garbage collection, backup/restore procedures, and a reviewed dependency upgrade path.
@@ -670,8 +795,9 @@ No follower durability, turns, or exact KV compatibility is a prerequisite for a
 
 ## 13. Source map
 
-This plan combines inspected behavior with a proposed protocol. The fence/lease/alarm protocols
-above are runtime designs to prove in scenarios, not claims that Graft already supplies them.
+This plan combines inspected behavior with implemented and proposed protocol work. The current
+fence, lease, routing, provisioning, host, output-gate, and minimal alarm protocols are runtime
+behavior proven in package scenarios, not capabilities supplied directly by Graft.
 
 Local inputs:
 

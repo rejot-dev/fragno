@@ -10,6 +10,7 @@ import {
 class NodeMessagePortTransport implements RpcTransportWithCustomEncoding {
   readonly encodingLevel = "structuredClonable" as const;
   readonly #port: MessagePort;
+  readonly #assertAuthority: (() => void) | null;
   readonly #messages: unknown[] = [];
   #receiver: {
     resolve(message: unknown): void;
@@ -17,8 +18,9 @@ class NodeMessagePortTransport implements RpcTransportWithCustomEncoding {
   } | null = null;
   #failure: Error | null = null;
 
-  constructor(port: MessagePort) {
+  constructor(port: MessagePort, assertAuthority: (() => void) | null) {
     this.#port = port;
+    this.#assertAuthority = assertAuthority;
     port.on("message", (message: unknown) => {
       if (this.#failure) {
         return;
@@ -46,6 +48,7 @@ class NodeMessagePortTransport implements RpcTransportWithCustomEncoding {
       throw this.#failure;
     }
     try {
+      this.#assertAuthority?.();
       this.#port.postMessage(message);
     } catch (error) {
       this.abort(error);
@@ -57,12 +60,20 @@ class NodeMessagePortTransport implements RpcTransportWithCustomEncoding {
     if (this.#failure) {
       throw this.#failure;
     }
-    if (this.#messages.length > 0) {
-      return this.#messages.shift();
+    const message =
+      this.#messages.length > 0
+        ? this.#messages.shift()
+        : await new Promise<unknown>((resolve, reject) => {
+            this.#receiver = { resolve, reject };
+          });
+    try {
+      // A reply queued before suspension must not acknowledge authority after the main thread resumes.
+      this.#assertAuthority?.();
+      return message;
+    } catch (error) {
+      this.abort(error);
+      throw error;
     }
-    return await new Promise<unknown>((resolve, reject) => {
-      this.#receiver = { resolve, reject };
-    });
   }
 
   abort(reason: unknown): void {
@@ -84,8 +95,9 @@ class NodeMessagePortTransport implements RpcTransportWithCustomEncoding {
 export function createNodeMessagePortRpcSession<T extends RpcCompatible<T>>(
   port: MessagePort,
   localMain: unknown,
+  assertAuthority: (() => void) | null,
 ): { remote: RpcStub<T>; abort(reason: unknown): void } {
-  const transport = new NodeMessagePortTransport(port);
+  const transport = new NodeMessagePortTransport(port, assertAuthority);
   const session = new RpcSession<T>(transport, localMain);
   return {
     remote: session.getRemoteMain(),

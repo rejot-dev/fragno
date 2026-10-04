@@ -1,33 +1,41 @@
 import { deserialize, serialize } from "node:v8";
 
-import type {
-  BackofficeDurableObjectState,
-  BackofficeObjectAlarm,
-} from "../runtime/local-durable-objects";
+import type { NodeDurableObjectState } from "../runtime/node-durable-object-state";
 import type { NodeDurableObjectStorage } from "../runtime/node-durable-object-storage";
 import { runNodeObjectEvent } from "../runtime/node-object-event";
 import { currentNodeObjectOutputBoundary } from "../runtime/node-object-output-boundary";
 import type { ManagedNodeRuntimeObjectDatabase } from "../sqlite/managed-node-runtime-object-database";
 import { createNodeDurableObjectSqlStorage } from "../sqlite/node-durable-object-sql-storage";
+import {
+  GraftObjectAlarmCoordinator,
+  readGraftObjectAlarm,
+  type GraftObjectAlarm,
+} from "./graft-object-alarm-coordinator";
 
 type GraftStorageListOptions = {
   prefix?: string;
 };
 
 /** Stores the runtime's narrow KV and alarm compatibility surface in the object's Graft database. */
-export class GraftDurableObjectState implements BackofficeDurableObjectState {
+export class GraftDurableObjectState implements NodeDurableObjectState {
   readonly id: DurableObjectId;
   readonly storage: NodeDurableObjectStorage;
 
   readonly #database: ManagedNodeRuntimeObjectDatabase;
+  readonly #alarmCoordinator: GraftObjectAlarmCoordinator;
   readonly #pendingWaitUntil = new Set<Promise<unknown>>();
   readonly #pendingBlockConcurrency = new Set<Promise<unknown>>();
-  #deliveringAlarmGeneration: number | null = null;
-  #backgroundDrain: (() => Promise<void>) | null = null;
+  #deliveringAlarmInstallationId: string | null = null;
+  #pendingWorkSettledListener: (() => void) | null = null;
 
-  constructor(id: DurableObjectId, database: ManagedNodeRuntimeObjectDatabase) {
+  constructor(
+    id: DurableObjectId,
+    database: ManagedNodeRuntimeObjectDatabase,
+    alarmCoordinator: GraftObjectAlarmCoordinator,
+  ) {
     this.id = id;
     this.#database = database;
+    this.#alarmCoordinator = alarmCoordinator;
     this.storage = {
       get: this.#get.bind(this),
       put: this.#put.bind(this),
@@ -40,21 +48,20 @@ export class GraftDurableObjectState implements BackofficeDurableObjectState {
     };
   }
 
-  get alarmTimestamp(): number | null {
-    return this.#readAlarm()?.timestamp ?? null;
-  }
-
   get hasPendingWork(): boolean {
     return this.#pendingWaitUntil.size > 0 || this.#pendingBlockConcurrency.size > 0;
   }
 
-  dueAlarm(now: number): BackofficeObjectAlarm | null {
+  dueAlarm(now: number): GraftObjectAlarm | null {
     const alarm = this.#readAlarm();
     return alarm && alarm.timestamp <= now ? alarm : null;
   }
 
   async prepareForEvent(): Promise<void> {
-    await this.drainBlocking();
+    // Admission checks authority without flushing another output scope's unconfirmed writes.
+    this.#database.ensureDurableStoragePosition(0);
+    await this.#drainBlocking();
+    this.#database.ensureDurableStoragePosition(0);
   }
 
   async runEvent<TResult>(operation: () => TResult | Promise<TResult>): Promise<TResult> {
@@ -67,27 +74,22 @@ export class GraftDurableObjectState implements BackofficeDurableObjectState {
   }
 
   async deliverAlarm(
-    expectedAlarm: BackofficeObjectAlarm,
+    expectedAlarm: GraftObjectAlarm,
     now: number,
     handler: () => Promise<void>,
   ): Promise<boolean> {
     if (
-      this.#deliveringAlarmGeneration !== null ||
-      this.dueAlarm(now)?.generation !== expectedAlarm.generation
+      this.#deliveringAlarmInstallationId !== null ||
+      this.dueAlarm(now)?.installationId !== expectedAlarm.installationId
     ) {
       return false;
     }
-    this.#deliveringAlarmGeneration = expectedAlarm.generation;
+    this.#deliveringAlarmInstallationId = expectedAlarm.installationId;
     try {
       await handler();
-      this.#database.write((database) => {
-        database.run("DELETE FROM node_runtime_alarm WHERE generation = ?", [
-          expectedAlarm.generation,
-        ]);
-      });
-      return true;
+      return await this.#alarmCoordinator.consumeAlarm(expectedAlarm.installationId);
     } finally {
-      this.#deliveringAlarmGeneration = null;
+      this.#deliveringAlarmInstallationId = null;
     }
   }
 
@@ -95,8 +97,14 @@ export class GraftDurableObjectState implements BackofficeDurableObjectState {
     const promise = Promise.resolve().then(async () => await this.#runDurableEvent(callback));
     this.#pendingBlockConcurrency.add(promise);
     void promise.then(
-      () => this.#pendingBlockConcurrency.delete(promise),
-      () => this.#pendingBlockConcurrency.delete(promise),
+      () => {
+        this.#pendingBlockConcurrency.delete(promise);
+        this.#pendingWorkSettledListener?.();
+      },
+      () => {
+        this.#pendingBlockConcurrency.delete(promise);
+        this.#pendingWorkSettledListener?.();
+      },
     );
     return promise;
   }
@@ -105,20 +113,22 @@ export class GraftDurableObjectState implements BackofficeDurableObjectState {
     const tracked = Promise.resolve(promise);
     this.#pendingWaitUntil.add(tracked);
     void tracked.then(
-      () => this.#pendingWaitUntil.delete(tracked),
-      () => this.#pendingWaitUntil.delete(tracked),
+      () => {
+        this.#pendingWaitUntil.delete(tracked);
+        this.#pendingWorkSettledListener?.();
+      },
+      () => {
+        this.#pendingWaitUntil.delete(tracked);
+        this.#pendingWorkSettledListener?.();
+      },
     );
   }
 
-  setBackgroundDrain(drain: (() => Promise<void>) | null): void {
-    this.#backgroundDrain = drain;
+  setPendingWorkSettledListener(listener: (() => void) | null): void {
+    this.#pendingWorkSettledListener = listener;
   }
 
-  async drainBackground(): Promise<void> {
-    await this.#backgroundDrain?.();
-  }
-
-  async drainBlocking(): Promise<boolean> {
+  async #drainBlocking(): Promise<boolean> {
     return await this.#drainSet(this.#pendingBlockConcurrency);
   }
 
@@ -207,7 +217,7 @@ export class GraftDurableObjectState implements BackofficeDurableObjectState {
 
   async #getAlarm(): Promise<number | null> {
     const alarm = this.#readAlarm();
-    if (alarm?.generation === this.#deliveringAlarmGeneration) {
+    if (alarm?.installationId === this.#deliveringAlarmInstallationId) {
       return null;
     }
     return alarm?.timestamp ?? null;
@@ -215,21 +225,14 @@ export class GraftDurableObjectState implements BackofficeDurableObjectState {
 
   async #setAlarm(timestamp: number | Date): Promise<void> {
     const alarmTimestamp = timestamp instanceof Date ? timestamp.getTime() : Math.trunc(timestamp);
-    this.#database.write((database) => {
-      database.run(
-        `INSERT INTO node_runtime_alarm (singleton, timestamp, generation) VALUES (1, ?, 1)
-         ON CONFLICT(singleton) DO UPDATE SET
-           timestamp = excluded.timestamp,
-           generation = node_runtime_alarm.generation + 1`,
-        [alarmTimestamp],
-      );
-    });
+    if (!Number.isSafeInteger(alarmTimestamp) || alarmTimestamp < 0) {
+      throw new Error("NODE_OBJECT_ALARM_TIMESTAMP_INVALID");
+    }
+    await this.#alarmCoordinator.setAlarm(alarmTimestamp);
   }
 
   async #deleteAlarm(): Promise<void> {
-    this.#database.write((database) => {
-      database.run("DELETE FROM node_runtime_alarm WHERE singleton = 1", []);
-    });
+    await this.#alarmCoordinator.deleteAlarm();
   }
 
   async #runDurableEvent<TResult>(operation: () => TResult | Promise<TResult>): Promise<TResult> {
@@ -244,13 +247,7 @@ export class GraftDurableObjectState implements BackofficeDurableObjectState {
     });
   }
 
-  #readAlarm(): BackofficeObjectAlarm | null {
-    return this.#database.read(
-      (database) =>
-        database.get(
-          "SELECT timestamp, generation FROM node_runtime_alarm WHERE singleton = 1",
-          [],
-        ) as BackofficeObjectAlarm | null,
-    );
+  #readAlarm(): GraftObjectAlarm | null {
+    return readGraftObjectAlarm(this.#database);
   }
 }

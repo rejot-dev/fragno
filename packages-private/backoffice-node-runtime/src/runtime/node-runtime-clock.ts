@@ -1,36 +1,67 @@
-/** Worker clocks either read system time or an atomically shared manual epoch in milliseconds. */
+/** Shares wall time and monotonic elapsed time between routing and object workers. */
 export type NodeRuntimeClock =
   | { kind: "system" }
-  | { kind: "manual"; epochMilliseconds: SharedArrayBuffer };
+  | {
+      kind: "manual";
+      epochMilliseconds: SharedArrayBuffer;
+      monotonicMilliseconds: SharedArrayBuffer;
+    };
 
-/** Reads the same clock in the routing thread and every object worker. */
-export function readNodeRuntimeClock(clock: NodeRuntimeClock): number {
+/** Reads wall time for persisted leases, application time, and alarm scheduling. */
+export function readNodeRuntimeEpochMilliseconds(clock: NodeRuntimeClock): number {
   return clock.kind === "system"
     ? Date.now()
     : Number(Atomics.load(new BigInt64Array(clock.epochMilliseconds), 0));
 }
 
-/** Creates a manual clock whose advances are visible to workers without an RPC round trip. */
+/** Reads process-comparable monotonic time for local authority deadlines. */
+export function readNodeRuntimeMonotonicMilliseconds(clock: NodeRuntimeClock): number {
+  return clock.kind === "system"
+    ? Number(process.hrtime.bigint() / 1_000_000n)
+    : Number(Atomics.load(new BigInt64Array(clock.monotonicMilliseconds), 0));
+}
+
+/** Creates independently adjustable wall and monotonic clocks visible without worker RPC. */
 export function createManualNodeRuntimeClock(initialTimeEpochMs: number) {
-  if (!Number.isSafeInteger(initialTimeEpochMs) || initialTimeEpochMs < 0) {
-    throw new Error(
-      "NODE_RUNTIME_CLOCK_INVALID_TIME: expected nonnegative integer epoch milliseconds.",
-    );
-  }
+  requireClockMilliseconds(initialTimeEpochMs);
   const epoch = new BigInt64Array(new SharedArrayBuffer(BigInt64Array.BYTES_PER_ELEMENT));
+  const monotonic = new BigInt64Array(new SharedArrayBuffer(BigInt64Array.BYTES_PER_ELEMENT));
   Atomics.store(epoch, 0, BigInt(initialTimeEpochMs));
-  const source: NodeRuntimeClock = { kind: "manual", epochMilliseconds: epoch.buffer };
+  const source: NodeRuntimeClock = {
+    kind: "manual",
+    epochMilliseconds: epoch.buffer,
+    monotonicMilliseconds: monotonic.buffer,
+  };
   return {
     source,
-    nowEpochMs: () => readNodeRuntimeClock(source),
-    advanceBy(ms: number) {
-      const next = readNodeRuntimeClock(source) + ms;
-      if (!Number.isSafeInteger(ms) || ms < 0 || !Number.isSafeInteger(next)) {
-        throw new Error(
-          "NODE_RUNTIME_CLOCK_INVALID_ADVANCE: expected nonnegative integer milliseconds.",
-        );
-      }
-      Atomics.store(epoch, 0, BigInt(next));
+    nowEpochMs: () => readNodeRuntimeEpochMilliseconds(source),
+    nowMonotonicMs: () => readNodeRuntimeMonotonicMilliseconds(source),
+    advanceBy(milliseconds: number) {
+      requireClockMilliseconds(milliseconds);
+      const nextEpoch = readNodeRuntimeEpochMilliseconds(source) + milliseconds;
+      const nextMonotonic = readNodeRuntimeMonotonicMilliseconds(source) + milliseconds;
+      requireClockMilliseconds(nextEpoch);
+      requireClockMilliseconds(nextMonotonic);
+      Atomics.store(epoch, 0, BigInt(nextEpoch));
+      Atomics.store(monotonic, 0, BigInt(nextMonotonic));
+    },
+    setEpochMilliseconds(epochMilliseconds: number) {
+      requireClockMilliseconds(epochMilliseconds);
+      Atomics.store(epoch, 0, BigInt(epochMilliseconds));
+    },
+    advanceMonotonicBy(milliseconds: number) {
+      requireClockMilliseconds(milliseconds);
+      const next = readNodeRuntimeMonotonicMilliseconds(source) + milliseconds;
+      requireClockMilliseconds(next);
+      Atomics.store(monotonic, 0, BigInt(next));
     },
   };
+}
+
+function requireClockMilliseconds(value: number): void {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error(
+      "NODE_RUNTIME_CLOCK_INVALID_TIME: expected nonnegative safe integer milliseconds.",
+    );
+  }
 }

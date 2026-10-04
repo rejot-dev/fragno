@@ -1,0 +1,6 @@
+data_dir = "/runtime-data/cache"
+make_default = false
+
+[remote]
+type = "fs"
+root = "/data/remote"

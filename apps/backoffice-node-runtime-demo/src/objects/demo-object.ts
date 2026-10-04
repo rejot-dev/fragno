@@ -3,21 +3,21 @@ import { isMainThread, threadId } from "node:worker_threads";
 import type { NodeRuntimeObjectContext } from "@fragno-private/backoffice-node-runtime/node-runtime-object";
 import { RpcTarget } from "capnweb";
 
-type RuntimeShowcaseEventRow = {
+type DemoEventRow = {
   id: number;
   delta: number;
   label: string;
   created_at_ms: number;
 };
 
-type RuntimeShowcaseValues = {
+type DemoRpcValues = {
   label: string;
   createdAt: Date;
   bytes: Uint8Array;
   total: bigint;
 };
 
-class RuntimeShowcaseCounterCapability extends RpcTarget {
+class DemoCounterCapability extends RpcTarget {
   readonly #increment: (delta: number, label: string) => number;
 
   constructor(increment: (delta: number, label: string) => number) {
@@ -31,8 +31,9 @@ class RuntimeShowcaseCounterCapability extends RpcTarget {
 }
 
 /** Demonstrates SQL, KV, alarms, waitUntil, fetch, callbacks, and returned RPC capabilities. */
-export function createRuntimeShowcaseObject({ name, state, nowEpochMs }: NodeRuntimeObjectContext) {
+export function createDemoObject({ name, state, nowEpochMs }: NodeRuntimeObjectContext) {
   let memoryMutationCount = 0;
+  // Keep the existing table names so reorganizing the demo preserves its durable state.
   const initialization = state.blockConcurrencyWhile(() => {
     state.storage.sql.exec(
       `CREATE TABLE IF NOT EXISTS runtime_showcase_counter (
@@ -78,7 +79,7 @@ export function createRuntimeShowcaseObject({ name, state, nowEpochMs }: NodeRun
 
   async function readSnapshot() {
     const events = state.storage.sql
-      .exec<RuntimeShowcaseEventRow>(
+      .exec<DemoEventRow>(
         `SELECT id, delta, label, created_at_ms
          FROM runtime_showcase_events
          ORDER BY id DESC
@@ -101,7 +102,7 @@ export function createRuntimeShowcaseObject({ name, state, nowEpochMs }: NodeRun
       alarm: await state.storage.getAlarm(),
       memoryMutationCount,
       databaseSize: state.storage.sql.databaseSize,
-      worker: { threadId, isMainThread },
+      worker: { processId: process.pid, threadId, isMainThread },
     };
   }
 
@@ -136,9 +137,9 @@ export function createRuntimeShowcaseObject({ name, state, nowEpochMs }: NodeRun
       return await callback(`callback from ${name} on worker ${threadId}`);
     },
     operationCapability() {
-      return new RuntimeShowcaseCounterCapability(increment);
+      return new DemoCounterCapability(increment);
     },
-    async exchangeValues(value: RuntimeShowcaseValues) {
+    async exchangeValues(value: DemoRpcValues) {
       await state.storage.put("demo:rpc-values", value);
       value.label = "changed inside worker";
       value.bytes[0] = 9;

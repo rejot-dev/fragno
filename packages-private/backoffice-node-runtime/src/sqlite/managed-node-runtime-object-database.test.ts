@@ -1,14 +1,26 @@
-import { expect, test } from "vitest";
+import { afterAll, assert, beforeAll, expect, test } from "vitest";
 
-import { mkdtemp, rm } from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
+import { GraftControlStore } from "../graft/graft-control-store";
+import { createSqlitePragmaGraftDatabaseOperations } from "../graft/graft-database-operations";
+import { prepareGraftObjectActivation } from "../graft/graft-object-activation";
+import { provisionGraftObject } from "../graft/graft-object-provisioning";
+import { createManualNodeRuntimeClock } from "../runtime/node-runtime-clock";
+import {
+  createNodeRuntimeScenarioEnvironment,
+  createNodeRuntimeScenarioRuntime,
+} from "../testing/node-runtime-scenario";
+import { manageAuthorityBoundGraftObjectDatabase } from "./managed-node-runtime-object-database";
 
-import { openLocalNodeRuntimeObjectDatabase } from "./managed-node-runtime-object-database";
+let environment: Awaited<ReturnType<typeof createNodeRuntimeScenarioEnvironment>>;
+beforeAll(async () => {
+  environment = await createNodeRuntimeScenarioEnvironment();
+});
+afterAll(async () => {
+  await environment.cleanup();
+});
 
 test("an async database callback rolls back and cannot reuse its captured SQL session", async () => {
-  const directory = await mkdtemp(path.join(os.tmpdir(), "node-runtime-database-"));
-  const database = openLocalNodeRuntimeObjectDatabase(directory, "COUNTER:one");
+  const { database, cleanup } = openScenarioDatabase();
   const continued = Promise.withResolvers<void>();
   let continuationError: unknown = null;
   try {
@@ -35,14 +47,12 @@ test("an async database callback rolls back and cannot reuse its captured SQL se
       ),
     ).toBeNull();
   } finally {
-    database.close();
-    await rm(directory, { recursive: true, force: true });
+    await cleanup();
   }
 });
 
 test("the managed SQL boundary rejects hidden pragmas and mutations in read units", async () => {
-  const directory = await mkdtemp(path.join(os.tmpdir(), "node-runtime-database-sql-"));
-  const database = openLocalNodeRuntimeObjectDatabase(directory, "COUNTER:one");
+  const { database, cleanup } = openScenarioDatabase();
   try {
     database.write((sql) => {
       sql.run("CREATE TABLE read_boundary (value INTEGER NOT NULL)", []);
@@ -63,7 +73,58 @@ test("the managed SQL boundary rejects hidden pragmas and mutations in read unit
       database.executeSql("CREATE TABLE node_runtime_fake (value INTEGER NOT NULL)", []),
     ).toThrow("NODE_RUNTIME_OBJECT_DATABASE_RUNTIME_SQL_FORBIDDEN");
   } finally {
-    database.close();
-    await rm(directory, { recursive: true, force: true });
+    await cleanup();
   }
 });
+
+function openScenarioDatabase() {
+  const storage = environment.createStorage();
+  const clock = createManualNodeRuntimeClock(0);
+  const operations = createSqlitePragmaGraftDatabaseOperations();
+  const controlStore = new GraftControlStore(storage);
+  const location = (() => {
+    try {
+      return provisionGraftObject({
+        storage,
+        controlStore,
+        clock: clock.source,
+        objectId: "COUNTER:one",
+        databaseOperations: operations,
+      });
+    } finally {
+      controlStore.close();
+    }
+  })();
+  const runtime = createNodeRuntimeScenarioRuntime({
+    storage,
+    objects: {},
+    clock: clock.source,
+    objectEviction: { kind: "disabled" },
+  });
+  const status = runtime.readNodeAuthorityStatus();
+  assert(status.state === "serving");
+  const activation = prepareGraftObjectActivation({
+    storage,
+    objectId: "COUNTER:one",
+    remoteLogId: location.location.remoteLogId,
+    nodeAuthority: status.window,
+    maximumClockSkewMs: 0,
+    clock: clock.source,
+    objectOperations: operations,
+    maxFenceAttempts: 4,
+  });
+  const database = manageAuthorityBoundGraftObjectDatabase(
+    activation.database,
+    operations,
+    activation.authority,
+    clock.source,
+  );
+  activation.markReady();
+  return {
+    database,
+    async cleanup() {
+      database.close();
+      await runtime.cleanup();
+    },
+  };
+}

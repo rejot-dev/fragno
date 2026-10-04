@@ -213,6 +213,14 @@ class BackgroundOperationCapability extends RpcTarget {
 /** Cleanup must settle background work before terminating its object worker and closing SQLite. */
 export function createBackgroundObject({ state }: NodeRuntimeObjectContext) {
   return {
+    startBlockedBackground(release: () => Promise<void>) {
+      state.waitUntil(
+        (async () => {
+          await release();
+          await state.storage.put("backgroundFinished", true);
+        })(),
+      );
+    },
     async startBackground() {
       state.waitUntil(
         (async () => {
@@ -234,7 +242,7 @@ export function createBackgroundObject({ state }: NodeRuntimeObjectContext) {
       await callback();
       await state.storage.put("requestBody", await request.text());
     },
-    async fetch() {
+    async fetch(_request: Request) {
       return Response.json({
         requestBody: (await state.storage.get("requestBody")) ?? null,
         backgroundFinished: (await state.storage.get("backgroundFinished")) ?? false,

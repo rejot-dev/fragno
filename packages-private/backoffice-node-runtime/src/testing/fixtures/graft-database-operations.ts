@@ -63,16 +63,14 @@ export function createBarrierGraftDatabaseOperations(input: unknown): GraftDatab
     },
     push(database) {
       Atomics.add(pushCounter, 0, 1);
-      if (Atomics.exchange(blockNextPush, 0, 0) === 1) {
-        Atomics.store(blockedPush, 0, 1);
-        Atomics.notify(blockedPush, 0);
-        while (Atomics.load(releaseBlockedPush, 0) === 0) {
-          Atomics.wait(releaseBlockedPush, 0, 0);
-        }
-        Atomics.store(releaseBlockedPush, 0, 0);
-        Atomics.store(blockedPush, 0, 0);
+      const blockPhase = Atomics.exchange(blockNextPush, 0, 0);
+      if (blockPhase === 1) {
+        waitAtGraftPushBarrier(blockedPush, releaseBlockedPush);
       }
       operations.push(database);
+      if (blockPhase === 2) {
+        waitAtGraftPushBarrier(blockedPush, releaseBlockedPush);
+      }
     },
     readRemoteLogId(database) {
       return operations.readRemoteLogId(database);
@@ -119,6 +117,16 @@ export function createControlledGraftDatabaseOperations(input: unknown): GraftDa
       return operations.readRemoteLogId(database);
     },
   };
+}
+
+function waitAtGraftPushBarrier(blockedPush: Int32Array, releaseBlockedPush: Int32Array): void {
+  Atomics.store(blockedPush, 0, 1);
+  Atomics.notify(blockedPush, 0);
+  while (Atomics.load(releaseBlockedPush, 0) === 0) {
+    Atomics.wait(releaseBlockedPush, 0, 0);
+  }
+  Atomics.store(releaseBlockedPush, 0, 0);
+  Atomics.store(blockedPush, 0, 0);
 }
 
 function requireAtomicInt32(buffer: SharedArrayBuffer, name: string): Int32Array {

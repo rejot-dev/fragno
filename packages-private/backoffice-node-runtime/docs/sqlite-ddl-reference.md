@@ -1,6 +1,6 @@
 # SQLite DDL reference
 
-Reference date: October 1, 2026.
+Reference date: October 4, 2026.
 
 This document inventories every SQLite DDL statement in
 `packages-private/backoffice-node-runtime/src`. It distinguishes package-owned production schemas
@@ -8,144 +8,24 @@ from consumer-defined and test-only tables. Source code remains authoritative.
 
 ## Schema inventory
 
-| Database                                  | Runtime                     | Package-owned tables                                                                                                                                               | Package-owned indexes                                                                                                             |
-| ----------------------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
-| `objects.sqlite`                          | Local file-backed runtime   | `object_instances`, `object_values`, `object_alarms`, `object_coordination_claims`                                                                                 | `object_alarms_due`                                                                                                               |
-| Graft control database                    | Graft runtime control plane | `node_runtime_control_format`, `node_runtime_object_directory`, `node_runtime_object_ownership`, `node_runtime_node_lease`, `node_runtime_control_command_receipt` | `node_runtime_node_lease_by_expiry`, `node_runtime_object_ownership_by_owner`, `node_runtime_control_command_receipt_by_creation` |
-| One Graft database per object             | Graft object runtime        | `node_runtime_object_identity`, `node_runtime_object_authority`, `node_runtime_values`, `node_runtime_alarm`                                                       | None                                                                                                                              |
-| One local managed SQL database per object | Local file-backed runtime   | None                                                                                                                                                               | None                                                                                                                              |
+| Database                      | Runtime                     | Package-owned tables                                                                                                                                                                                 | Package-owned indexes                                                                                                                                                      |
+| ----------------------------- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Graft control database        | Graft runtime control plane | `node_runtime_control_format`, `node_runtime_object_directory`, `node_runtime_object_ownership`, `node_runtime_node_lease`, `node_runtime_control_command_receipt`, `node_runtime_object_alarm_work` | `node_runtime_node_lease_by_expiry`, `node_runtime_object_ownership_by_owner`, `node_runtime_control_command_receipt_by_creation`, `node_runtime_object_alarm_work_by_due` |
+| One Graft database per object | Graft object runtime        | `node_runtime_object_identity`, `node_runtime_object_authority`, `node_runtime_values`, `node_runtime_alarm`                                                                                         | None                                                                                                                                                                       |
 
 The package defines no SQLite views or triggers. It currently has no schema migration framework.
-Local runtime tables use `CREATE ... IF NOT EXISTS`; Graft databases are provisioned once with a
-format marker and plain `CREATE TABLE` statements.
+Graft databases are provisioned once with a format marker and plain `CREATE TABLE` statements. There
+is no separate local SQLite backend or coordination schema.
 
-## 1. Local runtime coordination database
-
-**Owner:** `src/sqlite/sqlite-object-storage.ts`
-
-**File:** `<runtime directory>/objects.sqlite`
-
-This database multiplexes every local object identity into one SQLite file. It is used by
-`createNodeObjectRuntime`, not by `createGraftNodeObjectRuntime`. Foreign keys are enabled, so
-removing an `object_instances` row cascades to its values, alarm, and claims.
-
-### Complete DDL
-
-```sql
-CREATE TABLE IF NOT EXISTS object_instances (
-  object_id TEXT PRIMARY KEY,
-  alarm_generation INTEGER NOT NULL DEFAULT 0
-) STRICT;
-
-CREATE TABLE IF NOT EXISTS object_values (
-  object_id TEXT NOT NULL REFERENCES object_instances(object_id) ON DELETE CASCADE,
-  key TEXT NOT NULL,
-  value BLOB NOT NULL,
-  PRIMARY KEY (object_id, key)
-) STRICT;
-
-CREATE TABLE IF NOT EXISTS object_alarms (
-  object_id TEXT PRIMARY KEY REFERENCES object_instances(object_id) ON DELETE CASCADE,
-  timestamp INTEGER NOT NULL,
-  generation INTEGER NOT NULL
-) STRICT;
-
-CREATE INDEX IF NOT EXISTS object_alarms_due
-ON object_alarms(timestamp, object_id);
-
-CREATE TABLE IF NOT EXISTS object_coordination_claims (
-  object_id TEXT NOT NULL REFERENCES object_instances(object_id) ON DELETE CASCADE,
-  kind TEXT NOT NULL CHECK (kind IN ('initialization', 'alarm')),
-  owner_id TEXT NOT NULL,
-  token INTEGER NOT NULL,
-  active INTEGER NOT NULL CHECK (active IN (0, 1)),
-  expires_at INTEGER NOT NULL,
-  PRIMARY KEY (object_id, kind)
-) STRICT;
-```
-
-### `object_instances`
-
-One row establishes a persistent local object identity.
-
-| Column             | Meaning                                                                                      |
-| ------------------ | -------------------------------------------------------------------------------------------- |
-| `object_id`        | Canonical `${binding}:${name}` identity. Binding names cannot contain `:`; object names may. |
-| `alarm_generation` | Monotonic local generation assigned whenever the current alarm is replaced or deleted.       |
-
-`registerObject()` inserts this row with `INSERT OR IGNORE`. The runtime lists this table to
-rediscover local objects before alarm processing.
-
-### `object_values`
-
-The local `DurableObjectStorage` compatibility key/value table.
-
-| Column      | Meaning                                                                                    |
-| ----------- | ------------------------------------------------------------------------------------------ |
-| `object_id` | Owning local object. Cascades when its `object_instances` row is deleted.                  |
-| `key`       | Object-local string key.                                                                   |
-| `value`     | `node:v8` serialized value. This is not JSON and is independent of Cap'n Web RPC encoding. |
-
-The composite primary key enforces one value per object/key pair. Prefix listing is currently
-implemented by reading an object's ordered keys and filtering in JavaScript; there is no prefix
-index beyond the primary key.
-
-### `object_alarms`
-
-The authoritative current local alarm installation. Absence means no alarm.
-
-| Column       | Meaning                                                                |
-| ------------ | ---------------------------------------------------------------------- |
-| `object_id`  | Owning object and the one-row-per-object primary key.                  |
-| `timestamp`  | Integer epoch milliseconds at which the alarm becomes due.             |
-| `generation` | Installation identity copied from `object_instances.alarm_generation`. |
-
-`object_alarms_due(timestamp, object_id)` supports globally ordered due-alarm scans. The current
-runtime normally reads alarms per object, but this index preserves the direct due-scan access path.
-An alarm handler deletes only the generation it delivered, so a concurrent replacement survives.
-
-### `object_coordination_claims`
-
-Short-lived local claims for initialization and alarm delivery. These claims do not authorize
-ordinary object events or implement distributed object ownership.
-
-| Column       | Meaning                                                      |
-| ------------ | ------------------------------------------------------------ |
-| `object_id`  | Object whose narrow operation is claimed.                    |
-| `kind`       | Exactly `initialization` or `alarm`.                         |
-| `owner_id`   | Process claim owner, currently `${pid}:${random UUID}`.      |
-| `token`      | Increasing fencing token for this object/kind row.           |
-| `active`     | Integer boolean constrained to `0` or `1`.                   |
-| `expires_at` | Epoch milliseconds generated and compared using SQLite time. |
-
-The `(object_id, kind)` primary key allows at most one current claim of each kind. Reacquisition
-increments `token`; an expired token cannot be renewed. Claimed writes validate the token, active
-state, and expiry inside the same SQLite transaction as the mutation.
-
-### Connection settings
-
-These are PRAGMAs, not DDL, but they define the local schema's execution environment:
-
-```sql
-PRAGMA journal_mode = WAL;
-PRAGMA synchronous = FULL;
-PRAGMA foreign_keys = ON;
-PRAGMA busy_timeout = 5000;
-PRAGMA wal_autocheckpoint = 1000;
-```
-
-They are applied by `src/sqlite/sqlite-connection-config.ts`.
-
-## 2. Graft control database
+## 1. Graft control database
 
 **Owner:** `src/graft/graft-control-schema.ts`
 
 **Locator:** the remote log ID returned by `provisionGraftControlDatabase()`
 
 This database stores the control format, stable object-to-log mappings, process-incarnation leases,
-object ownership epochs, and durable command receipts. Alarm discovery state and peer-routing
-metadata remain planned. The authority-bound runtime consumes lease and ownership decisions during
-local activation; the compatibility single-owner Graft runtime does not.
+object ownership epochs, durable command receipts, and alarm reconciliation/discovery work. The
+runtime consumes these decisions during activation and alarm polling, including local scenarios.
 
 ### Complete DDL
 
@@ -176,6 +56,7 @@ CREATE TABLE node_runtime_node_lease (
   node_id TEXT PRIMARY KEY,
   process_generation TEXT NOT NULL,
   private_address TEXT NOT NULL,
+  application_origin TEXT NOT NULL,
   compatibility_version INTEGER NOT NULL,
   expires_at_ms INTEGER NOT NULL,
   renewal_id TEXT NOT NULL
@@ -189,6 +70,19 @@ CREATE TABLE node_runtime_control_command_receipt (
   created_at_ms INTEGER NOT NULL
 ) STRICT;
 
+CREATE TABLE node_runtime_object_alarm_work (
+  object_id TEXT PRIMARY KEY REFERENCES node_runtime_object_directory(object_id),
+  kind TEXT NOT NULL CHECK (kind IN ('reconcile', 'scheduled')),
+  reconciliation_id TEXT NOT NULL,
+  installation_id TEXT NOT NULL,
+  due_at_ms INTEGER NOT NULL,
+  created_at_ms INTEGER NOT NULL,
+  CHECK (
+    (kind = 'reconcile' AND reconciliation_id <> '' AND installation_id = '' AND due_at_ms = 0) OR
+    (kind = 'scheduled' AND reconciliation_id = '' AND installation_id <> '')
+  )
+) STRICT;
+
 CREATE INDEX node_runtime_node_lease_by_expiry
 ON node_runtime_node_lease (expires_at_ms, node_id);
 
@@ -197,17 +91,20 @@ ON node_runtime_object_ownership (owner_node_id, object_id);
 
 CREATE INDEX node_runtime_control_command_receipt_by_creation
 ON node_runtime_control_command_receipt (created_at_ms, command_id);
+
+CREATE INDEX node_runtime_object_alarm_work_by_due
+ON node_runtime_object_alarm_work (kind, due_at_ms, object_id);
 ```
 
 Provisioning inserts this format row:
 
 ```sql
 INSERT INTO node_runtime_control_format (singleton, format)
-VALUES (1, 2);
+VALUES (1, 4);
 ```
 
 The insert is data rather than DDL, but it is part of the schema compatibility contract. Runtime
-startup refuses a control database whose singleton format is not `2`.
+startup refuses a control database whose singleton format is not `4`.
 
 ### `node_runtime_control_format`
 
@@ -216,15 +113,14 @@ A one-row persisted format marker.
 | Column      | Meaning                                            |
 | ----------- | -------------------------------------------------- |
 | `singleton` | Must be `1`; prevents multiple active format rows. |
-| `format`    | Current control schema format, exactly `2`.        |
+| `format`    | Current control schema format, exactly `4`.        |
 
 There is no in-place upgrade path yet. A format change must add an explicit migration or provision a
 new control database and migration procedure.
 
 ### `node_runtime_object_directory`
 
-Stable identity-to-storage mapping shared by the single-owner runtime and distributed control
-commands.
+Stable identity-to-storage mapping used by the distributed control commands.
 
 | Column          | Meaning                                                |
 | --------------- | ------------------------------------------------------ |
@@ -262,13 +158,14 @@ One renewable authority record per process incarnation.
 | `node_id`               | Unique process-incarnation identity.                             |
 | `process_generation`    | Additional generation checked by renewal and ownership commands. |
 | `private_address`       | Advertised peer-routing address.                                 |
+| `application_origin`    | Validated HTTP origin used for gateway application delivery.     |
 | `compatibility_version` | Runtime protocol compatibility version.                          |
 | `expires_at_ms`         | Wall-clock epoch-millisecond authority deadline.                 |
 | `renewal_id`            | Last confirmed renewal identity required by the next renewal.    |
 
-`node_runtime_node_lease_by_expiry` supports future expiry scans. The current control store performs
-exact node lookups for command preconditions; node watchdog and peer-routing integration remain
-planned.
+`node_runtime_node_lease_by_expiry` supports takeover and alarm-work serviceability decisions. The
+control store also performs exact node lookups for command preconditions, authority renewal, and
+peer routing.
 
 ### `node_runtime_control_command_receipt`
 
@@ -289,6 +186,25 @@ named semantic command with the same identity and current preconditions. It neve
 from the losing branch. `node_runtime_control_command_receipt_by_creation` supports future bounded
 receipt collection; collection is not implemented yet.
 
+### `node_runtime_object_alarm_work`
+
+One durable discovery or repair row per object with a current alarm-related obligation.
+
+| Column              | Meaning                                                                |
+| ------------------- | ---------------------------------------------------------------------- |
+| `object_id`         | Primary key and foreign key to the canonical object directory.         |
+| `kind`              | Exactly `reconcile` or `scheduled`.                                    |
+| `reconciliation_id` | Exact repair marker; nonempty only for `reconcile`.                    |
+| `installation_id`   | Exact alarm installation UUID; nonempty only for `scheduled`.          |
+| `due_at_ms`         | Alarm due time for `scheduled`; exactly `0` for `reconcile`.           |
+| `created_at_ms`     | Creation time of the command that produced the current work-row state. |
+
+Before changing an authority-bound object alarm, the worker durably replaces this row with an exact
+`reconcile` marker. After pushing the object database, it conditionally converts that marker to
+`scheduled` or removes it when no alarm remains. Activation and periodic polling repair unfinished
+markers from the authoritative object database. `node_runtime_object_alarm_work_by_due` supports
+bounded object-ID cursor scans filtered by due time; reconciliation rows are always eligible.
+
 ### Graft connection settings
 
 Graft databases use:
@@ -301,9 +217,9 @@ PRAGMA foreign_keys = ON;
 WAL is deliberately not used with the Graft VFS. `graft_clone`, `graft_pull`, `graft_push`, and
 `graft_info` are Graft management PRAGMAs, not schema DDL.
 
-## 3. Per-object Graft database
+## 2. Per-object Graft database
 
-**Owners:** `src/graft/graft-object-directory.ts`, `src/graft/graft-object-authority.ts`
+**Owners:** `src/graft/graft-object-provisioning.ts`, `src/graft/graft-object-authority.ts`
 
 **Cardinality:** one remote Graft log per canonical object identity
 
@@ -340,7 +256,8 @@ CREATE TABLE node_runtime_values (
 CREATE TABLE node_runtime_alarm (
   singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
   timestamp INTEGER NOT NULL,
-  generation INTEGER NOT NULL
+  generation INTEGER NOT NULL,
+  installation_id TEXT NOT NULL UNIQUE
 ) STRICT;
 ```
 
@@ -404,18 +321,19 @@ cannot be read as confirmed state.
 
 The current object-local alarm installation. Absence means no alarm.
 
-| Column       | Meaning                                             |
-| ------------ | --------------------------------------------------- |
-| `singleton`  | Must be `1`, enforcing at most one current alarm.   |
-| `timestamp`  | Integer epoch milliseconds.                         |
-| `generation` | Incremented when an alarm is installed or replaced. |
+| Column            | Meaning                                                        |
+| ----------------- | -------------------------------------------------------------- |
+| `singleton`       | Must be `1`, enforcing at most one current alarm.              |
+| `timestamp`       | Integer epoch milliseconds.                                    |
+| `generation`      | Local diagnostic generation incremented while the row exists.  |
+| `installation_id` | Fresh UUID identifying this exact installation across re-arms. |
 
-A successful handler deletes only the generation it received. The implemented single-owner slice
-persists this row with the object, but it does not yet publish a fleet-wide alarm discovery index.
-Consequently, this is durable alarm state without the distributed wake-up protocol described in
-`stateless-graft-runtime-plan.md`.
+Authority-bound alarm mutations install a control reconciliation marker before changing this row,
+then immediately push the object database and publish the resulting discovery state. Successful
+delivery deletes only the exact `installation_id`; a handler re-arm therefore survives completion of
+the older alarm.
 
-## 4. Consumer-defined object database DDL
+## 3. Consumer-defined object database DDL
 
 `state.storage.sql` exposes synchronous object-owned application SQL without transaction, commit,
 flush, or push controls. The package does not prescribe consumer table names or columns.
@@ -434,11 +352,9 @@ Transaction-control statements, `PRAGMA`, `ATTACH`, and references to reserved `
 tables are rejected. SQLite commits locally during `exec`; after the enclosing object event settles,
 the worker pushes before exposing its result or handler error.
 
-For `createNodeObjectRuntime`, each object receives a regular managed SQLite database named from the
-base64url-encoded canonical object identity. The package creates no tables in it automatically. For
-the Graft runtimes, consumer DDL shares the object database with the four runtime tables above.
+Consumer DDL shares each object's Graft database with the four runtime tables above.
 
-## 5. Test-only DDL
+## 4. Test-only DDL
 
 These tables appear under `src/testing` or colocated tests. They verify the managed database but are
 not runtime schema contracts.
@@ -508,23 +424,18 @@ CREATE TABLE node_runtime_fake (
 This statement is intentionally rejected at the object-author SQL boundary. It verifies that
 consumer DDL cannot create or modify tables in the runtime-reserved `node_runtime_` namespace.
 
-## 6. Schema relationships
+## 5. Schema relationships
 
 ```text
-Local runtime: objects.sqlite
-
-object_instances (object_id)
-  ├── object_values (object_id, key)          ON DELETE CASCADE
-  ├── object_alarms (object_id)               ON DELETE CASCADE
-  └── object_coordination_claims
-      (object_id, kind)                       ON DELETE CASCADE
-
 Graft control database
 
 node_runtime_control_format (singleton = 1)
 node_runtime_object_directory (object_id, remote_log_id)
-  └── node_runtime_object_ownership (object_id, epoch, lifecycle, owner_node_id, claim_id)
-node_runtime_node_lease (node_id, process_generation, expires_at_ms, renewal_id)
+  ├── node_runtime_object_ownership (object_id, epoch, lifecycle, owner_node_id, claim_id)
+  └── node_runtime_object_alarm_work
+      (object_id, kind, reconciliation_id, installation_id, due_at_ms)
+node_runtime_node_lease
+  (node_id, process_generation, private_address, application_origin, expires_at_ms, renewal_id)
 node_runtime_control_command_receipt (command_id, command_name, result_json)
 
 object_id ─────────────────► opaque remote_log_id
@@ -535,7 +446,7 @@ node_runtime_object_identity (singleton = 1, object_id)
   └── node_runtime_object_authority
       (singleton = 1, object_id, epoch, owner_node_id, process_generation, claim_id)
 node_runtime_values (key)
-node_runtime_alarm (singleton = 1)
+node_runtime_alarm (singleton = 1, installation_id)
 consumer-defined application/Fragment tables
 ```
 
@@ -544,7 +455,7 @@ separate Graft logs. The directory mapping and the object's identity row establi
 at runtime. Activation validates that the control claim and object authority row carry the same
 object, epoch, node, and claim before publishing readiness.
 
-## 7. Maintenance checklist
+## 6. Maintenance checklist
 
 When changing package-owned DDL:
 
@@ -554,7 +465,8 @@ When changing package-owned DDL:
 3. Advance `node_runtime_control_format` when a control database reader cannot safely interpret the
    previous shape, and implement the corresponding migration or replacement procedure.
 4. Preserve `STRICT` tables unless a concrete compatibility requirement says otherwise.
-5. Keep epoch milliseconds and alarm generations as integers.
+5. Keep epoch milliseconds and local alarm generations as integers; installation identities remain
+   opaque nonempty strings.
 6. Preserve V8 serialization compatibility or provide an explicit data migration.
 7. Add a fresh-database test and a restart/clone test for persistent changes.
 8. For Graft schemas, assert recovery after deleting the complete local cache.

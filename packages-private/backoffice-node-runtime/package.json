@@ -1,27 +1,66 @@
 {
   "name": "@fragno-private/backoffice-node-runtime",
   "private": true,
+  "bin": {
+    "backoffice-node-runtime": "./bin/run.js"
+  },
   "type": "module",
   "exports": {
+    "./node-runtime-gateway": {
+      "types": "./dist/gateway/node-runtime-gateway.d.ts",
+      "default": "./dist/gateway/node-runtime-gateway.js"
+    },
+    "./graft-gateway-directory": {
+      "types": "./dist/gateway/graft-gateway-directory.d.ts",
+      "default": "./dist/gateway/graft-gateway-directory.js"
+    },
+    "./node-runtime-readiness": {
+      "types": "./dist/runtime/node-runtime-readiness.d.ts",
+      "default": "./dist/runtime/node-runtime-readiness.js"
+    },
+    "./graft-sqlite": {
+      "types": "./dist/graft/graft-sqlite.d.ts",
+      "default": "./dist/graft/graft-sqlite.js"
+    },
+    "./graft-worker-directory": {
+      "types": "./dist/graft/graft-worker-directory.d.ts",
+      "default": "./dist/graft/graft-worker-directory.js"
+    },
+    "./graft-control-database": {
+      "types": "./dist/graft/graft-control-database.d.ts",
+      "default": "./dist/graft/graft-control-database.js"
+    },
     "./graft-control-store": {
       "types": "./dist/graft/graft-control-store.d.ts",
       "default": "./dist/graft/graft-control-store.js"
+    },
+    "./graft-node-authority": {
+      "types": "./dist/graft/graft-node-authority.d.ts",
+      "default": "./dist/graft/graft-node-authority.js"
     },
     "./graft-database-operations": {
       "types": "./dist/graft/graft-database-operations.d.ts",
       "default": "./dist/graft/graft-database-operations.js"
     },
-    "./graft-object-directory": {
-      "types": "./dist/graft/graft-object-directory.d.ts",
-      "default": "./dist/graft/graft-object-directory.js"
+    "./graft-object-provisioning": {
+      "types": "./dist/graft/graft-object-provisioning.d.ts",
+      "default": "./dist/graft/graft-object-provisioning.js"
     },
-    "./local-durable-objects": {
-      "types": "./dist/runtime/local-durable-objects.d.ts",
-      "default": "./dist/runtime/local-durable-objects.js"
+    "./graft-runtime-storage": {
+      "types": "./dist/graft/graft-runtime-storage.d.ts",
+      "default": "./dist/graft/graft-runtime-storage.js"
     },
     "./node-object-runtime": {
       "types": "./dist/runtime/node-object-runtime.d.ts",
       "default": "./dist/runtime/node-object-runtime.js"
+    },
+    "./node-object-runtime-host": {
+      "types": "./dist/runtime/node-object-runtime-host.d.ts",
+      "default": "./dist/runtime/node-object-runtime-host.js"
+    },
+    "./node-peer-rpc": {
+      "types": "./dist/rpc/node-peer-rpc.d.ts",
+      "default": "./dist/rpc/node-peer-rpc.js"
     },
     "./node-runtime-object": {
       "types": "./dist/runtime/node-runtime-object.d.ts",
@@ -50,26 +89,11 @@
     "./node-durable-hooks": {
       "types": "./dist/scheduling/node-durable-hooks.d.ts",
       "default": "./dist/scheduling/node-durable-hooks.js"
-    },
-    "./sqlite-connection-config": {
-      "types": "./dist/sqlite/sqlite-connection-config.d.ts",
-      "default": "./dist/sqlite/sqlite-connection-config.js"
-    },
-    "./sqlite-durable-object-state": {
-      "types": "./dist/sqlite/sqlite-durable-object-state.d.ts",
-      "default": "./dist/sqlite/sqlite-durable-object-state.js"
-    },
-    "./sqlite-object-coordination": {
-      "types": "./dist/sqlite/sqlite-object-coordination.d.ts",
-      "default": "./dist/sqlite/sqlite-object-coordination.js"
-    },
-    "./sqlite-object-storage": {
-      "types": "./dist/sqlite/sqlite-object-storage.d.ts",
-      "default": "./dist/sqlite/sqlite-object-storage.js"
     }
   },
   "scripts": {
     "build": "tsdown",
+    "cli": "node bin/run.js",
     "build:watch": "tsdown --watch",
     "types:check": "tsc --noEmit",
     "test": "vitest run",
@@ -81,16 +105,18 @@
   },
   "dependencies": {
     "@fragno-dev/db": "workspace:*",
-    "better-sqlite3": "12.10.0",
+    "@hono/node-server": "1.19.14",
     "capnweb": "0.12.0",
-    "sqlite-graft": "0.2.1"
+    "hono": "4.12.25",
+    "sqlite-graft": "0.2.1",
+    "ws": "8.21.3"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260804.1",
     "@fragno-private/typescript-config": "workspace:*",
     "@fragno-private/vitest-config": "workspace:*",
-    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^24.10.9",
+    "@types/ws": "8.18.1",
     "tsdown": "^0.22.4",
     "typescript": "catalog:",
     "vitest": "catalog:"

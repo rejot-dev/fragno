@@ -1,10 +1,11 @@
-import { assert, expect, test } from "vitest";
+import { afterAll, assert, beforeAll, expect, test } from "vitest";
 
 import { isMainThread, threadId } from "node:worker_threads";
 
 // Exercise the built worker entry point, exactly as an installed runtime does.
 import { defineNodeRuntimeObject } from "@fragno-private/backoffice-node-runtime/node-runtime-object";
 import {
+  createNodeRuntimeScenarioEnvironment,
   defineNodeRuntimeScenario,
   runNodeRuntimeScenario,
 } from "@fragno-private/backoffice-node-runtime/node-runtime-scenario";
@@ -35,6 +36,14 @@ const classObject = defineNodeRuntimeObject<typeof createClassObject>(
   "createClassObject",
 );
 
+let environment: Awaited<ReturnType<typeof createNodeRuntimeScenarioEnvironment>>;
+beforeAll(async () => {
+  environment = await createNodeRuntimeScenarioEnvironment();
+});
+afterAll(async () => {
+  await environment.cleanup();
+});
+
 function request(pathname: string, init: RequestInit = {}): Request {
   return new Request(`https://node-scenario.test${pathname}`, init);
 }
@@ -45,7 +54,9 @@ test("fetch, RPC, and competing alarm ticks share one object instance in its own
   const result = await runNodeRuntimeScenario(
     defineNodeRuntimeScenario({
       name: "one-worker-per-object",
+      storage: environment.createStorage(),
       initialTimeEpochMs: 1_000,
+      objectEviction: { kind: "disabled" },
       objects: { QUEUE: queue, RECEIPT: receipt },
       server: ({ objects }) => ({
         async fetch(req) {
@@ -64,7 +75,7 @@ test("fetch, RPC, and competing alarm ticks share one object instance in its own
           return await objects.QUEUE.get(name).fetch(req);
         },
       }),
-      steps: ({ server, then, alarms, clock, concurrent }) => [
+      steps: ({ server, then, alarms, background, clock, concurrent }) => [
         server.fetch(
           request("/schedule", { method: "POST", body: "hello from main" }),
           async (response) => {
@@ -115,6 +126,7 @@ test("fetch, RPC, and competing alarm ticks share one object instance in its own
             processedByThread: queueThread,
           });
         }),
+        background.drain(),
         then(
           "RPC sees alarm waitUntil work and initialized synchronous methods",
           async ({ objects }) => {
@@ -158,7 +170,9 @@ test("Cap'n Web serializes values and fetch bodies across threads without sharin
   await runNodeRuntimeScenario(
     defineNodeRuntimeScenario({
       name: "worker-serialization",
+      storage: environment.createStorage(),
       initialTimeEpochMs: 0,
+      objectEviction: { kind: "disabled" },
       objects: { VALUES: values },
       server: ({ objects }) => ({
         async fetch(req) {
@@ -180,9 +194,9 @@ test("Cap'n Web serializes values and fetch bodies across threads without sharin
             });
             expect(result.bytes).toEqual(new Uint8Array([9, 2]));
             expect(await objects.VALUES.get("one").read()).toEqual(input);
-            expect(() =>
+            await expect(
               objects.VALUES.get("one").echoUnknown(new Map([["unsupported", 1]])),
-            ).toThrow("Cannot serialize value: [object Map]");
+            ).rejects.toThrow("Cannot serialize value: [object Map]");
           },
         ),
         server.fetch(originalRequest, async (response) => {
@@ -227,7 +241,9 @@ test("failed alarms retry and reschedule inside the same serving worker", async 
   await runNodeRuntimeScenario(
     defineNodeRuntimeScenario({
       name: "alarm-retry-and-reschedule",
+      storage: environment.createStorage(),
       initialTimeEpochMs: 0,
+      objectEviction: { kind: "disabled" },
       objects: { RETRY: retry },
       server: ({ objects }) => ({
         async fetch(req) {
@@ -240,7 +256,7 @@ test("failed alarms retry and reschedule inside the same serving worker", async 
         }),
         when("alarm tick surfaces the serialized delivery failure", async (ctx) => {
           await expect(ctx.alarms.tick()).rejects.toThrow(
-            "One or more Node Backoffice alarm drain stages failed.",
+            "NODE_OBJECT_RUNTIME_ALARM_DELIVERY_FAILED",
           );
         }),
         server.fetch(request("/state"), async (response) => {
@@ -265,7 +281,9 @@ test("ordinary classes share private state between synchronous RPC and fetch han
   await runNodeRuntimeScenario(
     defineNodeRuntimeScenario({
       name: "class-object",
+      storage: environment.createStorage(),
       initialTimeEpochMs: 0,
+      objectEviction: { kind: "disabled" },
       objects: { COUNTER: classObject },
       server: ({ objects }) => ({
         async fetch(req) {
@@ -293,7 +311,9 @@ test.each(["explicit", "using"] as const)(
     await runNodeRuntimeScenario(
       defineNodeRuntimeScenario({
         name: `namespace-stub-ownership-${disposal}`,
+        storage: environment.createStorage(),
         initialTimeEpochMs: 0,
+        objectEviction: { kind: "disabled" },
         objects: { COUNTER: classObject },
         server: ({ objects }) => ({
           async fetch(req) {
@@ -329,7 +349,9 @@ test.each(["explicit", "using"] as const)(
 test("scenario failures identify the step and preserve serialized RPC error causes", async () => {
   const scenario = defineNodeRuntimeScenario({
     name: "rpc-failure",
+    storage: environment.createStorage(),
     initialTimeEpochMs: 0,
+    objectEviction: { kind: "disabled" },
     objects: { FAILING: failing },
     server: ({ objects }) => ({
       async fetch() {

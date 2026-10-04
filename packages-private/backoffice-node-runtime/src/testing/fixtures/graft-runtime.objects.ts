@@ -24,6 +24,12 @@ export function createGraftCounterObject({ state }: NodeRuntimeObjectContext) {
         count INTEGER NOT NULL
       ) STRICT`,
     );
+    state.storage.sql.exec(
+      `CREATE TABLE IF NOT EXISTS graft_alarm_delivery (
+        singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+        count INTEGER NOT NULL
+      ) STRICT`,
+    );
   });
   void initialization.catch(() => {});
 
@@ -44,7 +50,18 @@ export function createGraftCounterObject({ state }: NodeRuntimeObjectContext) {
     return readCount();
   }
 
+  function readAlarmDeliveryCount(): number {
+    return (
+      state.storage.sql
+        .exec<{ count: number }>("SELECT count FROM graft_alarm_delivery WHERE singleton = 1")
+        .toArray()[0]?.count ?? 0
+    );
+  }
+
   return {
+    inMemoryValue() {
+      return "counter-instance";
+    },
     increment,
     incrementMany(deltas: number[]) {
       for (const delta of deltas) {
@@ -65,6 +82,39 @@ export function createGraftCounterObject({ state }: NodeRuntimeObjectContext) {
     },
     async writeCompatibilityValue(value: string) {
       await state.storage.put("compatibility-value", value);
+    },
+    async scheduleAlarm(timestamp: number) {
+      await state.storage.setAlarm(timestamp);
+    },
+    async cancelAlarm() {
+      await state.storage.deleteAlarm();
+    },
+    async rearmOnNextAlarm(timestamp: number) {
+      await state.storage.put("alarm-rearm-at", timestamp);
+    },
+    async failNextAlarm() {
+      await state.storage.put("alarm-fail-next", true);
+    },
+    async readAlarmState() {
+      return {
+        scheduledAt: await state.storage.getAlarm(),
+        deliveryCount: readAlarmDeliveryCount(),
+      };
+    },
+    async alarm() {
+      state.storage.sql.exec(
+        `INSERT INTO graft_alarm_delivery (singleton, count) VALUES (1, 1)
+         ON CONFLICT(singleton) DO UPDATE SET count = graft_alarm_delivery.count + 1`,
+      );
+      const rearmAt = await state.storage.get<number>("alarm-rearm-at");
+      if (rearmAt !== undefined) {
+        await state.storage.delete("alarm-rearm-at");
+        await state.storage.setAlarm(rearmAt);
+      }
+      if (await state.storage.get<boolean>("alarm-fail-next")) {
+        await state.storage.delete("alarm-fail-next");
+        throw new Error("EXPECTED_GRAFT_ALARM_FAILURE");
+      }
     },
     async read() {
       return {

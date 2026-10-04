@@ -1,13 +1,18 @@
 import { randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 
-import { readNodeRuntimeClock, type NodeRuntimeClock } from "../runtime/node-runtime-clock";
+import {
+  readNodeRuntimeEpochMilliseconds,
+  readNodeRuntimeMonotonicMilliseconds,
+  type NodeRuntimeClock,
+} from "../runtime/node-runtime-clock";
 import {
   GraftControlStore,
   type GraftNodeLease,
   type GraftObjectOwnership,
 } from "./graft-control-store";
 import type { GraftDatabaseOperations } from "./graft-database-operations";
+import type { GraftNodeAuthorityWindow } from "./graft-node-authority";
 import {
   graftObjectAuthorityEpochPrecedes,
   readGraftObjectAuthority,
@@ -16,7 +21,7 @@ import {
   type GraftObjectActivationAuthority,
   type GraftObjectAuthority,
 } from "./graft-object-authority";
-import type { GraftNodeRuntimeStorage } from "./graft-object-directory";
+import type { GraftNodeRuntimeStorage } from "./graft-runtime-storage";
 import { openClonedGraftDatabase } from "./graft-sqlite";
 
 const DEFAULT_GRAFT_OBJECT_FENCE_ATTEMPTS = 4;
@@ -34,7 +39,8 @@ export function prepareGraftObjectActivation(options: {
   storage: GraftNodeRuntimeStorage;
   objectId: string;
   remoteLogId: string;
-  nodeLease: GraftNodeLease;
+  nodeAuthority: GraftNodeAuthorityWindow;
+  maximumClockSkewMs: number;
   clock: NodeRuntimeClock;
   objectOperations: GraftDatabaseOperations;
   maxFenceAttempts: number;
@@ -44,8 +50,21 @@ export function prepareGraftObjectActivation(options: {
   let database: DatabaseSync | null = null;
   let completed = false;
   try {
-    const nowEpochMs = readNodeRuntimeClock(options.clock);
-    const confirmedLease = requireConfirmedNodeLease(controlStore, options.nodeLease, nowEpochMs);
+    const assertLocalAuthority = () => {
+      if (
+        readNodeRuntimeMonotonicMilliseconds(options.clock) >=
+        options.nodeAuthority.selfFenceAtMonotonicMs
+      ) {
+        throw new Error("NODE_RUNTIME_OBJECT_AUTHORITY_EXPIRED");
+      }
+    };
+    assertLocalAuthority();
+    const nowEpochMs = readNodeRuntimeEpochMilliseconds(options.clock);
+    const confirmedLease = requireConfirmedNodeLease(
+      controlStore,
+      options.nodeAuthority,
+      nowEpochMs,
+    );
     const observedOwnership = controlStore.readObjectOwnership(options.objectId);
     if (!observedOwnership || observedOwnership.remoteLogId !== options.remoteLogId) {
       throw new Error(`GRAFT_OBJECT_ACTIVATION_DIRECTORY_MISMATCH:${options.objectId}`);
@@ -61,6 +80,7 @@ export function prepareGraftObjectActivation(options: {
         processGeneration: confirmedLease.processGeneration,
         claimId,
         attemptedAtMs: nowEpochMs,
+        ownerLeaseExpiryCutoffMs: Math.max(0, nowEpochMs - options.maximumClockSkewMs),
       },
     });
     if (claim.outcome !== "claimed") {
@@ -72,11 +92,12 @@ export function prepareGraftObjectActivation(options: {
       ownerNodeId: confirmedLease.nodeId,
       processGeneration: confirmedLease.processGeneration,
       claimId,
-      leaseExpiresAtMs: confirmedLease.expiresAtMs,
+      nodeAuthority: options.nodeAuthority,
     };
     const assertControlAuthority = () => {
-      const currentTime = readNodeRuntimeClock(options.clock);
-      requireConfirmedNodeLease(controlStore, confirmedLease, currentTime);
+      assertLocalAuthority();
+      const currentTime = readNodeRuntimeEpochMilliseconds(options.clock);
+      requireConfirmedNodeLease(controlStore, options.nodeAuthority, currentTime);
       requireRestoringControlOwnership(controlStore, authority);
     };
     database = fenceGraftObjectDatabase({
@@ -96,7 +117,8 @@ export function prepareGraftObjectActivation(options: {
         if (completed) {
           throw new Error("GRAFT_OBJECT_ACTIVATION_ALREADY_COMPLETED");
         }
-        const readyAtMs = readNodeRuntimeClock(options.clock);
+        assertControlAuthority();
+        const readyAtMs = readNodeRuntimeEpochMilliseconds(options.clock);
         const result = controlStore.markObjectReady({
           commandId: randomUUID(),
           commandCreatedAtMs: readyAtMs,
@@ -112,6 +134,7 @@ export function prepareGraftObjectActivation(options: {
         if (result.outcome !== "ready" || !matchesControlOwnership(result.ownership, authority)) {
           throw new Error(`GRAFT_OBJECT_ACTIVATION_READY_REJECTED:${result.outcome}`);
         }
+        assertLocalAuthority();
         completed = true;
         controlStore.close();
       },
@@ -188,7 +211,7 @@ function fenceGraftObjectDatabase(options: {
 
 function requireConfirmedNodeLease(
   controlStore: GraftControlStore,
-  expected: GraftNodeLease,
+  expected: GraftNodeAuthorityWindow,
   nowEpochMs: number,
 ): GraftNodeLease {
   const actual = controlStore.readNodeLease(expected.nodeId);
@@ -198,7 +221,7 @@ function requireConfirmedNodeLease(
   if (actual.processGeneration !== expected.processGeneration) {
     throw new Error(`GRAFT_OBJECT_ACTIVATION_NODE_GENERATION_MISMATCH:${expected.nodeId}`);
   }
-  if (actual.expiresAtMs <= nowEpochMs) {
+  if (actual.expiresAtMs <= nowEpochMs || actual.expiresAtMs < expected.leaseExpiresAtEpochMs) {
     throw new Error(`GRAFT_OBJECT_ACTIVATION_NODE_LEASE_EXPIRED:${expected.nodeId}`);
   }
   return actual;

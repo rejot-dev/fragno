@@ -1,11 +1,16 @@
+import { randomUUID } from "node:crypto";
 import { rename, rm, writeFile } from "node:fs/promises";
 
-import { defineGraftDatabaseOperations } from "@fragno-private/backoffice-node-runtime/graft-database-operations";
-import { provisionGraftControlDatabase } from "@fragno-private/backoffice-node-runtime/graft-object-directory";
+import { provisionGraftControlDatabase } from "@fragno-private/backoffice-node-runtime/graft-control-database";
 import {
-  createGraftNodeObjectRuntime,
-  createGraftNodeObjectRuntimeWithDatabaseOperations,
+  createSqlitePragmaGraftDatabaseOperations,
+  defineGraftDatabaseOperations,
+} from "@fragno-private/backoffice-node-runtime/graft-database-operations";
+import {
+  createAuthorityBoundGraftNodeObjectRuntime,
+  createAuthorityBoundGraftNodeObjectRuntimeWithDatabaseOperations,
 } from "@fragno-private/backoffice-node-runtime/node-object-runtime";
+import { createManualNodeRuntimeClock } from "@fragno-private/backoffice-node-runtime/node-runtime-clock";
 import { defineNodeRuntimeObject } from "@fragno-private/backoffice-node-runtime/node-runtime-object";
 
 import type { createGraftCounterObject } from "./graft-runtime.objects";
@@ -30,22 +35,47 @@ if (command === "provision") {
   const pushCounter = ["push-counts", "output-gate-push-counts"].includes(command)
     ? new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT))
     : null;
+  // Recovery reads run beyond the writer's lease, including writers poisoned before claim release.
+  const clock = createManualNodeRuntimeClock(command === "read" ? 60_001 : 0);
+  const options = {
+    storage: { configPath, controlRemoteLogId },
+    clock: clock.source,
+    objects: { COUNTER: counter },
+    objectProvisioning: { kind: "lazy" } as const,
+    objectEviction: { kind: "disabled" } as const,
+    nodeIdentity: {
+      nodeId: randomUUID(),
+      processGeneration: randomUUID(),
+      privateAddress: "ws://127.0.0.1:1/node-object-peer",
+      applicationOrigin: "http://127.0.0.1:1",
+      compatibilityVersion: 1,
+    },
+    leasePolicy: {
+      leaseDurationMs: 60_000,
+      renewalIntervalMs: 10_000,
+      renewalRetryIntervalMs: 1_000,
+      selfFenceSafetyMarginMs: 5_000,
+      maximumClockSkewMs: 0,
+    },
+    peerRpc: {
+      authenticationSecret: "graft-runtime-process-authentication-secret",
+      authenticationWindowMs: 5_000,
+    },
+  };
   const runtime = pushCounter
-    ? createGraftNodeObjectRuntimeWithDatabaseOperations({
-        storage: { configPath, controlRemoteLogId },
-        clock: { kind: "system" },
-        objects: { COUNTER: counter },
-        databaseOperations: defineGraftDatabaseOperations(
-          new URL("./graft-database-operations.ts", import.meta.url),
-          "createCountingGraftDatabaseOperations",
-          { pushCounter: pushCounter.buffer },
-        ),
+    ? createAuthorityBoundGraftNodeObjectRuntimeWithDatabaseOperations({
+        ...options,
+        databaseOperations: {
+          control: createSqlitePragmaGraftDatabaseOperations(),
+          provisioning: createSqlitePragmaGraftDatabaseOperations(),
+          worker: defineGraftDatabaseOperations(
+            new URL("./graft-database-operations.ts", import.meta.url),
+            "createCountingGraftDatabaseOperations",
+            { pushCounter: pushCounter.buffer },
+          ),
+        },
       })
-    : createGraftNodeObjectRuntime({
-        storage: { configPath, controlRemoteLogId },
-        clock: { kind: "system" },
-        objects: { COUNTER: counter },
-      });
+    : createAuthorityBoundGraftNodeObjectRuntime(options);
   try {
     using object = runtime.objects.COUNTER.get("one");
     if (command === "write") {
@@ -130,22 +160,25 @@ if (command === "provision") {
       }
       await object.increment(0);
       const unavailableDirectory = `${remoteDirectory}-unavailable`;
-      await rename(remoteDirectory, unavailableDirectory);
-      await writeFile(remoteDirectory, "remote storage unavailable");
+      let writeError: string | null = null;
       try {
-        const writeError = await captureError(async () => {
+        writeError = await captureError(async () => {
           await runtime.runWithOutputGate(async () => {
             using scopedObject = runtime.objects.COUNTER.get("one");
             using capability = await scopedObject.operationCapability();
+            // Resolve ownership before the outage so this tests the object output gate, not routing.
+            await rename(remoteDirectory, unavailableDirectory);
+            await writeFile(remoteDirectory, "remote storage unavailable");
             await capability.increment(1);
           });
         });
-        const readError = await captureError(() => object.read());
-        writeResult({ writeError, readError });
       } finally {
         await rm(remoteDirectory, { force: true });
         await rename(unavailableDirectory, remoteDirectory);
       }
+      using freshObject = runtime.objects.COUNTER.get("one");
+      const readError = await captureError(() => freshObject.read());
+      writeResult({ writeError, readError });
     } else {
       throw new Error(`GRAFT_RUNTIME_PROCESS_COMMAND_UNKNOWN:${command}`);
     }

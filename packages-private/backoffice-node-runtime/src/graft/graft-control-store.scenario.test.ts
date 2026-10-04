@@ -69,10 +69,20 @@ test("independent control clients serialize an object claim and reconcile a lost
   try {
     const nodeA = createNodeLease("node-a", 10_000);
     const nodeB = createNodeLease("node-b", 10_000);
-    await Promise.all([
+    const registrations = await Promise.all([
       registerNode(scenario, "register-node-a", nodeA),
       registerNode(scenario, "register-node-b", nodeB),
     ]);
+    expect(registrations).toEqual([
+      { outcome: "registered", lease: nodeA },
+      { outcome: "registered", lease: nodeB },
+    ]);
+    await expect(
+      registerNode(scenario, "register-node-invalid-origin", {
+        ...createNodeLease("node-invalid-origin", 10_000),
+        applicationOrigin: "http://node-invalid-origin.internal:8081/application-path",
+      }),
+    ).rejects.toThrow("GRAFT_CONTROL_NODE_APPLICATION_ORIGIN_INVALID");
     const registeredObject = await registerObjectDatabase(
       scenario,
       "register-object",
@@ -86,6 +96,23 @@ test("independent control clients serialize an object claim and reconcile a lost
         state: "unowned",
         objectId: "COUNTER:one",
         remoteLogId: "object-log-one",
+        epoch: "0",
+      },
+    });
+    expect(
+      await registerObjectDatabase(
+        scenario,
+        "register-object-after-lost-response",
+        "COUNTER:lost-response",
+        "object-log-after-lost-response",
+        "lose-response-after-commit",
+      ),
+    ).toEqual({
+      outcome: "registered",
+      ownership: {
+        state: "unowned",
+        objectId: "COUNTER:lost-response",
+        remoteLogId: "object-log-after-lost-response",
         epoch: "0",
       },
     });
@@ -108,6 +135,7 @@ test("independent control clients serialize an object claim and reconcile a lost
         processGeneration: nodeA.processGeneration,
         claimId: "claim-a",
         attemptedAtMs: 100,
+        ownerLeaseExpiryCutoffMs: 100,
       }),
       createControlCommand<GraftClaimObjectInput>("claim-node-b", 100, {
         objectId: "COUNTER:one",
@@ -116,6 +144,7 @@ test("independent control clients serialize an object claim and reconcile a lost
         processGeneration: nodeB.processGeneration,
         claimId: "claim-b",
         attemptedAtMs: 100,
+        ownerLeaseExpiryCutoffMs: 100,
       }),
     ];
     const claimResults = await Promise.all(
@@ -265,6 +294,7 @@ test("an expired owner can be replaced while its late completion is rejected", a
         processGeneration: oldNode.processGeneration,
         claimId: "old-claim",
         attemptedAtMs: 100,
+        ownerLeaseExpiryCutoffMs: 100,
       }),
     });
     expect(oldClaim).toMatchObject({ outcome: "claimed", ownership: { epoch: "1" } });
@@ -272,13 +302,14 @@ test("an expired owner can be replaced while its late completion is rejected", a
     const earlyTakeover = await runControlStoreProcess(scenario, "early-new-claim", {
       operation: "claim-object",
       pushBehavior: "normal",
-      command: createControlCommand<GraftClaimObjectInput>("early-new-claim", 400, {
+      command: createControlCommand<GraftClaimObjectInput>("early-new-claim", 599, {
         objectId: "COUNTER:one",
         observedEpoch: "1",
         nodeId: newNode.nodeId,
         processGeneration: newNode.processGeneration,
         claimId: "early-new-claim",
-        attemptedAtMs: 400,
+        attemptedAtMs: 599,
+        ownerLeaseExpiryCutoffMs: 499,
       }),
     });
     expect(earlyTakeover).toMatchObject({
@@ -313,6 +344,7 @@ test("an expired owner can be replaced while its late completion is rejected", a
         processGeneration: newNode.processGeneration,
         claimId: "new-claim",
         attemptedAtMs: 600,
+        ownerLeaseExpiryCutoffMs: 500,
       }),
     });
     expect(takeover).toEqual({
@@ -356,6 +388,7 @@ function createNodeLease(nodeId: string, expiresAtMs: number): GraftNodeLease {
     nodeId,
     processGeneration: `${nodeId}-generation`,
     privateAddress: `${nodeId}.internal:8081`,
+    applicationOrigin: `http://${nodeId}.internal:8081`,
     compatibilityVersion: 1,
     expiresAtMs,
     renewalId: "renewal-1",

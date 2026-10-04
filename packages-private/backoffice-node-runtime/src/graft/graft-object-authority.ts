@@ -1,5 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 
+import type { GraftNodeAuthorityWindow } from "./graft-node-authority";
+
 const MAX_OBJECT_AUTHORITY_EPOCH = 9_223_372_036_854_775_807n;
 
 /** Identifies the exact node claim authorized to append to one Graft object log. */
@@ -16,9 +18,9 @@ export type GraftObjectAuthorityState =
   | { state: "unowned"; objectId: string; epoch: "0" }
   | ({ state: "owned" } & GraftObjectAuthority);
 
-/** Binds one object-log authority token to its last confirmed node lease deadline. */
+/** Binds one exact object-log claim to a confirmed renewable process authority window. */
 export type GraftObjectActivationAuthority = GraftObjectAuthority & {
-  leaseExpiresAtMs: number;
+  nodeAuthority: GraftNodeAuthorityWindow;
 };
 
 type GraftObjectAuthorityRow = {

@@ -499,6 +499,34 @@ importers:
         specifier: 'catalog:'
         version: 4.1.11(@opentelemetry/api@1.9.1)(@types/node@22.19.20)(@vitest/coverage-istanbul@4.1.8)(@vitest/ui@4.1.8)(happy-dom@20.10.2)(jsdom@27.4.0(@noble/hashes@2.3.0))(vite@8.0.16(@types/node@22.19.20)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0))
 
+  apps/backoffice-node-runtime-demo:
+    dependencies:
+      '@fragno-private/backoffice-node-runtime':
+        specifier: workspace:*
+        version: link:../../packages-private/backoffice-node-runtime
+      '@hono/node-server':
+        specifier: 1.19.14
+        version: 1.19.14(hono@4.12.25)
+      capnweb:
+        specifier: 0.12.0
+        version: 0.12.0
+      hono:
+        specifier: 4.12.25
+        version: 4.12.25
+    devDependencies:
+      '@fragno-private/typescript-config':
+        specifier: workspace:*
+        version: link:../../packages-private/typescript-config
+      '@types/node':
+        specifier: ^24.10.9
+        version: 24.13.1
+      tsdown:
+        specifier: ^0.22.4
+        version: 0.22.4(@typescript/typescript6@6.0.2)(oxc-resolver@11.21.2)(tsx@4.22.4)(vue-tsc@3.3.7(@typescript/typescript6@6.0.2))
+      typescript:
+        specifier: 'catalog:'
+        version: '@typescript/typescript6@6.0.2'
+
   apps/cf-sandbox-bridge:
     dependencies:
       '@cloudflare/sandbox':
@@ -544,28 +572,6 @@ importers:
       wrangler:
         specifier: ^4.147.0
         version: 4.147.0(@cloudflare/workers-types@5.20260804.1)(@types/node@24.13.1)
-
-  apps/backoffice-node-runtime-demo:
-    dependencies:
-      '@fragno-private/backoffice-node-runtime':
-        specifier: workspace:*
-        version: link:../../packages-private/backoffice-node-runtime
-      capnweb:
-        specifier: 0.12.0
-        version: 0.12.0
-    devDependencies:
-      '@fragno-private/typescript-config':
-        specifier: workspace:*
-        version: link:../../packages-private/typescript-config
-      '@types/node':
-        specifier: ^24.10.9
-        version: 24.13.1
-      tsdown:
-        specifier: ^0.22.4
-        version: 0.22.4(@typescript/typescript6@6.0.2)(tsx@4.22.4)(vue-tsc@3.3.7(@typescript/typescript6@6.0.2))
-      typescript:
-        specifier: 'catalog:'
-        version: '@typescript/typescript6@6.0.2'
 
   apps/create-cli:
     dependencies:
@@ -1895,15 +1901,21 @@ importers:
       '@fragno-dev/db':
         specifier: workspace:*
         version: link:../../packages/fragno-db
-      better-sqlite3:
-        specifier: 12.10.0
-        version: 12.10.0
+      '@hono/node-server':
+        specifier: 1.19.14
+        version: 1.19.14(hono@4.12.25)
       capnweb:
         specifier: 0.12.0
         version: 0.12.0
+      hono:
+        specifier: 4.12.25
+        version: 4.12.25
       sqlite-graft:
         specifier: 0.2.1
         version: 0.2.1
+      ws:
+        specifier: 8.21.3
+        version: 8.21.3
     devDependencies:
       '@cloudflare/workers-types':
         specifier: ^5.20260804.1
@@ -1914,12 +1926,12 @@ importers:
       '@fragno-private/vitest-config':
         specifier: workspace:*
         version: link:../vitest-config
-      '@types/better-sqlite3':
-        specifier: ^7.6.13
-        version: 7.6.13
       '@types/node':
         specifier: ^24.10.9
         version: 24.13.1
+      '@types/ws':
+        specifier: 8.18.1
+        version: 8.18.1
       tsdown:
         specifier: ^0.22.4
         version: 0.22.4(@typescript/typescript6@6.0.2)(oxc-resolver@11.21.2)(tsx@4.22.4)(vue-tsc@3.3.7(@typescript/typescript6@6.0.2))
@@ -15110,6 +15122,10 @@ packages:
   highlight.js@10.7.3:
     resolution: {integrity: sha512-tzcUFauisWKNHaRkN4Wjl/ZA07gENAjFl3J/c480dprkGTg5EQstgaNFqBfUqCq54kZRIEcreTsAgF/m2quD7A==}
 
+  hono@4.12.25:
+    resolution: {integrity: sha512-2NFaIyNVgJmBs/ecmtGzlmluTFs5cHEWGTdu0t1HBwYzoGXOL5nUQBRMXsXWla5i4KkG//QMzVP88m1+I3fdAQ==}
+    engines: {node: '>=16.9.0'}
+
   hono@4.13.0:
     resolution: {integrity: sha512-jhunvfHWxd7J5EFfSgH4xsYJzSe/lfqbUCxiyyeaQasUsXeEHXtzVid+7EOGByc5JnFa23SSFL3Y2RV/z1T+eQ==}
     engines: {node: '>=16.9.0'}
@@ -23066,6 +23082,10 @@ snapshots:
       long: 5.3.2
       protobufjs: 7.6.3
       yargs: 17.7.3
+
+  '@hono/node-server@1.19.14(hono@4.12.25)':
+    dependencies:
+      hono: 4.12.25
 
   '@hono/node-server@1.19.14(hono@4.13.0)':
     dependencies:
@@ -32954,6 +32974,8 @@ snapshots:
   hex-rgb@4.3.0: {}
 
   highlight.js@10.7.3: {}
+
+  hono@4.12.25: {}
 
   hono@4.13.0: {}
 
