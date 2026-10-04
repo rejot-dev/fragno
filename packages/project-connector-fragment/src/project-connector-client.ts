@@ -54,7 +54,11 @@ type ProjectConnectorSdk = Pick<
 type CreateProjectConnectorSdk = (config: ProjectConnectorConfig) => ProjectConnectorSdk;
 
 function createOomolProjectConnectorSdk(config: ProjectConnectorConfig): ProjectConnectorSdk {
-  return new ProjectConnector(config);
+  return new ProjectConnector({
+    ...config,
+    // The SDK calls fetch as a transport method; Workers rejects that native fetch binding.
+    fetch: (input, init) => globalThis.fetch(input, init),
+  });
 }
 
 /** A safe SDK failure exposes its code, never its raw response data or project API key. */
