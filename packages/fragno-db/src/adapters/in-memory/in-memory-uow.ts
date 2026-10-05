@@ -18,7 +18,7 @@ import {
 } from "../../outbox/outbox";
 import { buildOutboxPlan, finalizeOutboxPayload } from "../../outbox/outbox-builder";
 import type { RuntimeDefaultContext } from "../../query/column-defaults";
-import { buildCondition } from "../../query/condition-builder";
+import { buildCondition, type Condition } from "../../query/condition-builder";
 import {
   createCursorFromRecord,
   decodeCursor,
@@ -130,8 +130,11 @@ const buildSelection = (
     }
   }
 
-  selection.add("_internalId");
-  selection.add("_version");
+  for (const [columnName, column] of Object.entries(table.columns)) {
+    if (column.isHidden) {
+      selection.add(columnName);
+    }
+  }
 
   return selection;
 };
@@ -345,12 +348,14 @@ const findRowByExternalId = (
   tableStore: InMemoryTableStore,
   table: AnyTable,
   externalId: string,
+  shard: string | null,
   resolver?: NamingResolver,
 ): { internalId: bigint; row: InMemoryRow } | undefined => {
   const idColumn = table.getIdColumn();
   const idColumnName = getPhysicalColumnName(table, idColumn.name, resolver);
+  const shardColumnName = getPhysicalColumnName(table, "_shard", resolver);
   for (const [internalId, row] of tableStore.rows) {
-    if (row[idColumnName] === externalId) {
+    if (row[idColumnName] === externalId && (shard === null || row[shardColumnName] === shard)) {
       return { internalId, row };
     }
   }
@@ -379,6 +384,7 @@ const buildCursorKey = (
   cursor: CursorInput,
   table: AnyTable,
   columnNames: readonly string[],
+  shard: string,
   resolver?: NamingResolver,
 ): readonly unknown[] | undefined => {
   if (!cursor) {
@@ -396,7 +402,10 @@ const buildCursorKey = (
       throw new Error(`Column "${logicalName}" not found on table "${table.name}".`);
     }
 
-    const rawValue = resolveCursorValue(cursorObj.indexValues[column.name], column);
+    const rawValue =
+      column.name === "_shard"
+        ? shard
+        : resolveCursorValue(cursorObj.indexValues[column.name], column);
     if (rawValue === undefined) {
       return undefined;
     }
@@ -405,6 +414,29 @@ const buildCursorKey = (
     return normalizeIndexValue(deserialized, column);
   });
 };
+
+function findRowShard(condition: Condition | boolean | undefined): string {
+  if (condition === undefined || typeof condition === "boolean") {
+    return "";
+  }
+  if (condition.type === "compare") {
+    return condition.a.name === "_shard" &&
+      condition.operator === "=" &&
+      typeof condition.b === "string"
+      ? condition.b
+      : "";
+  }
+  if (condition.type === "not") {
+    return "";
+  }
+  for (const item of condition.items) {
+    const shard = findRowShard(item);
+    if (shard.length > 0) {
+      return shard;
+    }
+  }
+  return "";
+}
 
 const findRows = (
   op: Extract<RetrievalOperation<AnySchema>, { type: "find" }>,
@@ -421,17 +453,25 @@ const findRows = (
   if (!orderIndex) {
     throw new Error(`Missing in-memory index "${orderIndexName}" on table "${table.name}".`);
   }
+  const whereResult = op.options.queryTree
+    ? op.options.queryTree.where
+    : op.options.where
+      ? buildCondition(table.columns, op.options.where)
+      : undefined;
+  const shard = findRowShard(whereResult);
   const direction = orderByIndex?.direction ?? "asc";
   const afterKey = buildCursorKey(
     op.options.after,
     table,
     orderIndex.definition.columnNames,
+    shard,
     resolver,
   );
   const beforeKey = buildCursorKey(
     op.options.before,
     table,
     orderIndex.definition.columnNames,
+    shard,
     resolver,
   );
   const limit =
@@ -471,12 +511,6 @@ const findRows = (
   }
 
   const entries = orderIndex.index.scan(scanOptions);
-
-  const whereResult = op.options.queryTree
-    ? op.options.queryTree.where
-    : op.options.where
-      ? buildCondition(table.columns, op.options.where)
-      : undefined;
 
   if (whereResult === false) {
     return [];
@@ -579,14 +613,16 @@ const createRow = (
     throw new Error(`Invalid table name ${op.table}.`);
   }
 
+  const createValues = op.shard === null ? op.values : { ...op.values, _shard: op.shard };
   const encoded = encodeValuesWithDbDefaults(
-    op.values,
+    createValues,
     table,
     {
       now: options.clock.now,
       createId: options.idGenerator,
     },
     resolver,
+    op.shard,
   );
   const resolvedValues = options.enforceConstraints
     ? resolveReferenceSubqueriesOrThrow(namespaceStore, table, encoded, resolver)
@@ -675,7 +711,7 @@ const updateRow = (
 
   const externalId = getExternalId(op.id);
   const versionToCheck = getVersionToCheck(op.id, op.checkVersion);
-  const existing = findRowByExternalId(tableStore, table, externalId, resolver);
+  const existing = findRowByExternalId(tableStore, table, externalId, op.shard, resolver);
   if (!existing) {
     if (versionToCheck !== undefined) {
       throw new VersionConflictError(`Version conflict: row "${externalId}" not found.`);
@@ -689,7 +725,17 @@ const updateRow = (
     throw new VersionConflictError(`Version conflict: row "${externalId}" has changed.`);
   }
 
-  const encoded = encodeValues(op.set as Record<string, unknown>, table, false, {}, resolver);
+  if (Object.prototype.hasOwnProperty.call(op.set, "_shard")) {
+    throw new Error("Update mutation cannot change a row shard.");
+  }
+  const encoded = encodeValues(
+    op.set as Record<string, unknown>,
+    table,
+    false,
+    {},
+    resolver,
+    op.shard,
+  );
   const resolvedValues = options.enforceConstraints
     ? resolveReferenceSubqueriesOrThrow(namespaceStore, table, encoded, resolver)
     : resolveReferenceSubqueries(namespaceStore, encoded, resolver);
@@ -766,7 +812,7 @@ const deleteRow = (
 ): (() => void) | null => {
   const externalId = getExternalId(op.id);
   const versionToCheck = getVersionToCheck(op.id, op.checkVersion);
-  const existing = findRowByExternalId(tableStore, table, externalId, resolver);
+  const existing = findRowByExternalId(tableStore, table, externalId, op.shard, resolver);
   if (!existing) {
     if (versionToCheck !== undefined) {
       throw new VersionConflictError(`Version conflict: row "${externalId}" not found.`);
@@ -861,7 +907,7 @@ const checkRow = (
   table: AnyTable,
   resolver?: NamingResolver,
 ): void => {
-  const existing = findRowByExternalId(tableStore, table, op.id.externalId, resolver);
+  const existing = findRowByExternalId(tableStore, table, op.id.externalId, op.shard, resolver);
   if (!existing) {
     throw new VersionConflictError(`Version conflict: row "${op.id.externalId}" not found.`);
   }
@@ -890,8 +936,9 @@ const checkAbsent = (
     throw new Error(`Missing in-memory index "${normalizedIndexName}" on table "${table.name}".`);
   }
 
-  const encodedValues = encodeValues(op.values, table, false, {}, resolver);
+  const encodedValues = encodeValues(op.values, table, false, {}, resolver, op.shard);
   const resolvedValues = resolveReferenceSubqueries(namespaceStore, encodedValues, resolver);
+  resolvedValues[getPhysicalColumnName(table, "_shard", resolver)] = op.shard ?? "";
   const key = buildIndexKey(table, indexStore.definition, resolvedValues, resolver);
   const matches = indexStore.index.scan({
     start: key,
@@ -936,6 +983,7 @@ const resolveSchemaForLookup = (
 const reserveOutboxVersion = (
   store: InMemoryStore,
   options: ResolvedInMemoryAdapterOptions,
+  shard: string | null,
   resolverFactory?: ResolverFactory,
 ): { version: bigint; now: Date; rollback: () => void } => {
   const resolver = getResolver(internalSchema, null, resolverFactory);
@@ -947,6 +995,7 @@ const reserveOutboxVersion = (
   const tableStore = getTableStore(namespaceStore, settingsTable, resolver);
   const keyColumnName = getPhysicalColumnName(settingsTable, "key", resolver);
   const valueColumnName = getPhysicalColumnName(settingsTable, "value", resolver);
+  const shardColumnName = getPhysicalColumnName(settingsTable, "_shard", resolver);
   const idColumnName = getPhysicalColumnName(
     settingsTable,
     settingsTable.getIdColumn().name,
@@ -954,7 +1003,7 @@ const reserveOutboxVersion = (
   );
 
   for (const row of tableStore.rows.values()) {
-    if (row[keyColumnName] !== OUTBOX_VERSION_KEY) {
+    if (row[keyColumnName] !== OUTBOX_VERSION_KEY || row[shardColumnName] !== (shard ?? "")) {
       continue;
     }
 
@@ -968,6 +1017,7 @@ const reserveOutboxVersion = (
 
     const updateOp: Extract<MutationOperation<AnySchema>, { type: "update" }> = {
       type: "update",
+      shard,
       schema: internalSchema,
       namespace: null,
       table: settingsTable.name,
@@ -981,10 +1031,11 @@ const reserveOutboxVersion = (
 
   const createOp: Extract<MutationOperation<AnySchema>, { type: "create" }> = {
     type: "create",
+    shard,
     schema: internalSchema,
     namespace: null,
     table: settingsTable.name,
-    values: { key: OUTBOX_VERSION_KEY, value: "0" },
+    values: { _shard: shard ?? "", key: OUTBOX_VERSION_KEY, value: "0" },
     generatedExternalId: options.idGenerator(),
   };
   const previousInternalId = tableStore.nextInternalId;
@@ -1065,6 +1116,7 @@ const insertOutboxRow = (
   options: ResolvedInMemoryAdapterOptions,
   resolverFactory: ResolverFactory | undefined,
   payload: {
+    shard: string | null;
     versionstamp: string;
     uowId: string;
     payload: { json: unknown; meta?: Record<string, unknown> };
@@ -1080,10 +1132,12 @@ const insertOutboxRow = (
   const tableStore = getTableStore(namespaceStore, outboxTable, resolver);
   const createOp: Extract<MutationOperation<AnySchema>, { type: "create" }> = {
     type: "create",
+    shard: payload.shard,
     schema: internalSchema,
     namespace: null,
     table: outboxTable.name,
     values: {
+      _shard: payload.shard ?? "",
       versionstamp: payload.versionstamp,
       uowId: payload.uowId,
       payload: payload.payload,
@@ -1134,10 +1188,12 @@ const insertOutboxMutationRows = (
     for (const operation of payload.operations) {
       const createOp: Extract<MutationOperation<AnySchema>, { type: "create" }> = {
         type: "create",
+        shard: operation.shard,
         schema: internalSchema,
         namespace: null,
         table: mutationsTable.name,
         values: {
+          _shard: operation.shard ?? "",
           entryVersionstamp: payload.entryVersionstamp,
           mutationVersionstamp: operation.versionstamp,
           uowId: payload.uowId,
@@ -1280,6 +1336,13 @@ export const createInMemoryUowExecutor = (
   ): Promise<MutationResult> {
     const createdInternalIds: (bigint | null)[] = [];
     const rollbackActions: Array<() => void> = [];
+    const operationShards = new Set(
+      mutationBatch.flatMap((mutation) => (mutation.operation ? [mutation.operation.shard] : [])),
+    );
+    if (operationShards.size > 1) {
+      throw new Error("A Unit of Work cannot contain mutations from multiple row shards.");
+    }
+    const mutationShard = operationShards.values().next().value ?? null;
     const outboxEnabled = options.outbox?.enabled ?? false;
     const shouldInclude = options.outbox?.shouldInclude;
     const outboxOperations = outboxEnabled
@@ -1299,14 +1362,19 @@ export const createInMemoryUowExecutor = (
     );
     const outboxPlan =
       outboxOperations.length > 0 || outboxNotifications.length > 0
-        ? buildOutboxPlan(outboxOperations, outboxNotifications)
+        ? buildOutboxPlan(outboxOperations, outboxNotifications, mutationShard)
         : null;
     const shouldWriteOutbox = outboxEnabled && outboxPlan !== null && outboxPlan.drafts.length > 0;
     let outboxReservation: ReturnType<typeof reserveOutboxVersion> | null = null;
 
     try {
       if (shouldWriteOutbox) {
-        outboxReservation = reserveOutboxVersion(store, options, resolverFactory);
+        outboxReservation = reserveOutboxVersion(
+          store,
+          options,
+          outboxPlan?.shard ?? null,
+          resolverFactory,
+        );
         rollbackActions.push(outboxReservation.rollback);
       }
 
@@ -1509,6 +1577,7 @@ export const createInMemoryUowExecutor = (
           }),
         );
         const rollback = insertOutboxRow(store, options, resolverFactory, {
+          shard: outboxPlan.shard,
           versionstamp,
           uowId,
           payload: entryPayloadSerialized,

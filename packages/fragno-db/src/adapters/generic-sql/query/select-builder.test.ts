@@ -38,6 +38,7 @@ describe("select-builder", () => {
         "users.email as email",
         "users._internalId as _internalId",
         "users._version as _version",
+        "users._shard as _shard",
       ]);
     });
 
@@ -52,6 +53,7 @@ describe("select-builder", () => {
         "users.createdAt as createdAt",
         "users._internalId as _internalId",
         "users._version as _version",
+        "users._shard as _shard",
       ]);
     });
 
@@ -64,6 +66,7 @@ describe("select-builder", () => {
         "users.name as author:name",
         "users._internalId as author:_internalId",
         "users._version as author:_version",
+        "users._shard as author:_shard",
       ]);
     });
 
@@ -76,6 +79,7 @@ describe("select-builder", () => {
         "p.title as title",
         "p._internalId as _internalId",
         "p._version as _version",
+        "p._shard as _shard",
       ]);
     });
 
@@ -89,6 +93,7 @@ describe("select-builder", () => {
         "p.title as posts:title",
         "p._internalId as posts:_internalId",
         "p._version as posts:_version",
+        "p._shard as posts:_shard",
       ]);
     });
 
@@ -98,6 +103,7 @@ describe("select-builder", () => {
         "users.name as name",
         "users._internalId as _internalId",
         "users._version as _version",
+        "users._shard as _shard",
       ]);
     });
 
@@ -105,26 +111,31 @@ describe("select-builder", () => {
       // When an array is passed, hidden columns should not be included in the select
       // (unless they are in the array), but they should always be added at the end
       const result = mapSelect(["name", "email"], usersTable, undefined);
-      // Should not duplicate _internalId or _version in the main select
+      // Should not duplicate hidden columns in the main select.
       expect(result).toEqual([
         "users.name as name",
         "users.email as email",
         "users._internalId as _internalId",
         "users._version as _version",
+        "users._shard as _shard",
       ]);
     });
 
     it("should always include hidden columns", () => {
-      // Hidden columns (_internalId, _version) should always be included
       const result = mapSelect(["name"], usersTable, undefined);
       assert(result.some((col) => col.includes("_internalId")));
       assert(result.some((col) => col.includes("_version")));
+      assert(result.some((col) => col.includes("_shard")));
     });
 
     it("should handle empty select array", () => {
       const result = mapSelect([], usersTable, undefined);
       // Should still include hidden columns
-      expect(result).toEqual(["users._internalId as _internalId", "users._version as _version"]);
+      expect(result).toEqual([
+        "users._internalId as _internalId",
+        "users._version as _version",
+        "users._shard as _shard",
+      ]);
     });
 
     it("should work with different table schemas", () => {
@@ -135,6 +146,7 @@ describe("select-builder", () => {
         "posts.content as content",
         "posts._internalId as _internalId",
         "posts._version as _version",
+        "posts._shard as _shard",
       ]);
     });
   });

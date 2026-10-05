@@ -295,7 +295,11 @@ describe("generateSchemaArtifacts - sql", () => {
     expect(resultsV1[1].schema).toMatchInlineSnapshot(`
       "CREATE SCHEMA IF NOT EXISTS "test-db";
 
-      create table "test-db"."users" ("id" varchar(128) not null unique, "name" varchar(191) not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
+      create table "test-db"."users" ("id" varchar(128) not null, "name" varchar(191) not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null, "_shard" varchar(191) default '' not null);
+
+      create unique index "_fragno_users_shard_external_id" on "test-db"."users" ("_shard", "id");
+
+      create unique index "_fragno_users_shard_internal_id" on "test-db"."users" ("_shard", "_internalId");
 
       insert into "fragno_db_settings" ("id", "key", "value") values ('6_U2SCfiaNG9VyYmQ_JwzQ', 'test-db.schema_version', '1');"
     `);

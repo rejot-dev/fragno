@@ -86,9 +86,9 @@ describe("in-memory uow mutations", () => {
     assert((await check.executeMutations()).success);
 
     expect(scan).toHaveBeenCalledExactlyOnceWith({
-      start: ["scope-b", "missing-key"],
+      start: ["", "scope-b", "missing-key"],
       startInclusive: true,
-      end: ["scope-b", "missing-key"],
+      end: ["", "scope-b", "missing-key"],
       endInclusive: true,
       limit: 1,
     });

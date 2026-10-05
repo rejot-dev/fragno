@@ -69,10 +69,34 @@ describe("create", () => {
     const addTableOps = userSchema.operations.filter((op) => op.type === "add-table");
     expect(addTableOps).toHaveLength(1);
     const indexOps = addTableOps[0].operations.filter((op) => op.type === "add-index");
-    expect(indexOps).toHaveLength(1);
-    assert(indexOps[0].name === "unique_email");
-    expect(indexOps[0].columns).toEqual(["email"]);
-    assert(indexOps[0].unique);
+    expect(indexOps).toHaveLength(3);
+    const emailIndex = indexOps.find((operation) => operation.name === "unique_email");
+    assert(emailIndex);
+    expect(emailIndex.columns).toEqual(["_shard", "email"]);
+    assert(emailIndex.unique);
+  });
+
+  it("adds a non-nullable hidden shard column with an empty string default", () => {
+    const testSchema = schema("test", (s) =>
+      s.addTable("items", (t) => t.addColumn("id", idColumn())),
+    );
+
+    const shardColumn = testSchema.tables.items.getColumnByName("_shard");
+    assert(shardColumn);
+    assert(shardColumn.isHidden);
+    assert(!shardColumn.isNullable);
+    expect(shardColumn.default).toEqual({ value: "" });
+
+    const addTableOperation = testSchema.operations.find(
+      (operation) => operation.type === "add-table" && operation.tableName === "items",
+    );
+    assert(addTableOperation?.type === "add-table");
+    expect(addTableOperation.operations).toContainEqual(
+      expect.objectContaining({
+        type: "add-column",
+        columnName: "_shard",
+      }),
+    );
   });
 
   it("should create a schema with multiple tables using callback pattern", () => {
@@ -153,10 +177,11 @@ describe("create", () => {
     const addTableOps = userSchema.operations.filter((op) => op.type === "add-table");
     expect(addTableOps).toHaveLength(1);
     const indexOps = addTableOps[0].operations.filter((op) => op.type === "add-index");
-    expect(indexOps).toHaveLength(1);
-    assert(indexOps[0].name === "unique_email_username");
-    expect(indexOps[0].columns).toEqual(["email", "username"]);
-    assert(indexOps[0].unique);
+    expect(indexOps).toHaveLength(3);
+    const uniqueIndex = indexOps.find((operation) => operation.name === "unique_email_username");
+    assert(uniqueIndex);
+    expect(uniqueIndex.columns).toEqual(["_shard", "email", "username"]);
+    assert(uniqueIndex.unique);
   });
 
   it("should support creating indexes on tables", () => {
@@ -175,16 +200,16 @@ describe("create", () => {
     const addTableOps = userSchema.operations.filter((op) => op.type === "add-table");
     expect(addTableOps).toHaveLength(1);
     const indexOps = addTableOps[0].operations.filter((op) => op.type === "add-index");
-    expect(indexOps).toHaveLength(2);
+    expect(indexOps).toHaveLength(4);
 
     const emailIndex = indexOps.find((op) => op.name === "idx_email");
     expect(emailIndex).toBeDefined();
-    expect(emailIndex!.columns).toEqual(["email"]);
+    expect(emailIndex!.columns).toEqual(["_shard", "email"]);
     assert(!emailIndex!.unique);
 
     const usernameIndex = indexOps.find((op) => op.name === "idx_username_unique");
     expect(usernameIndex).toBeDefined();
-    expect(usernameIndex!.columns).toEqual(["username"]);
+    expect(usernameIndex!.columns).toEqual(["_shard", "username"]);
     assert(usernameIndex!.unique);
   });
 
@@ -289,7 +314,10 @@ describe("create", () => {
     expect(authorRelation).toBeDefined();
     assert(authorRelation?.type === "one");
     expect(authorRelation?.table).toBe(userSchema.tables.users);
-    expect(authorRelation?.on).toEqual([["authorId", "id"]]);
+    expect(authorRelation?.on).toEqual([
+      ["_shard", "_shard"],
+      ["authorId", "id"],
+    ]);
     expect(authorForeignKey?.referencedTable).toBe(userSchema.tables.users);
     assert(authorForeignKey?.referencedColumnName === "_internalId");
   });
@@ -360,7 +388,10 @@ describe("create", () => {
     expect(inviterRelation).toBeDefined();
     assert(inviterRelation?.type === "one");
     expect(inviterRelation?.table).toBe(usersTable);
-    expect(inviterRelation?.on).toEqual([["invitedBy", "id"]]);
+    expect(inviterRelation?.on).toEqual([
+      ["_shard", "_shard"],
+      ["invitedBy", "id"],
+    ]);
     expect(inviterForeignKey?.referencedTable).toBe(usersTable);
   });
 
@@ -548,7 +579,7 @@ describe("create", () => {
     const addTableOps = userSchema.operations.filter((op) => op.type === "add-table");
     expect(addTableOps).toHaveLength(1);
     const addTableIndexOps = addTableOps[0].operations.filter((op) => op.type === "add-index");
-    expect(addTableIndexOps).toHaveLength(2);
+    expect(addTableIndexOps).toHaveLength(4);
 
     // Verify the alter-table operation does NOT contain the existing indexes
     const alterTableOps = userSchema.operations.filter((op) => op.type === "alter-table");
@@ -588,8 +619,8 @@ describe("create", () => {
     const addTableOps = userSchema.operations.filter((op) => op.type === "add-table");
     expect(addTableOps).toHaveLength(1);
     const addTableIndexOps = addTableOps[0].operations.filter((op) => op.type === "add-index");
-    expect(addTableIndexOps).toHaveLength(1);
-    assert(addTableIndexOps[0].name === "idx_email");
+    expect(addTableIndexOps).toHaveLength(3);
+    assert(addTableIndexOps.some((operation) => operation.name === "idx_email"));
 
     // Verify the alter-table operation contains only the NEW indexes
     const alterTableOps = userSchema.operations.filter((op) => op.type === "alter-table");

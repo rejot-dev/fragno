@@ -63,7 +63,8 @@ const setupTables = async (driver: SqlDriverAdapter, dialect: SqliteDialect) => 
       schema text,
       "table" text,
       externalId text,
-      op text
+      op text,
+      _shard text default ''
     );`.compile(dialect),
   );
 };
@@ -78,18 +79,20 @@ describe("checkConflicts", () => {
     table,
     externalId,
     entryVersionstamp = nextVersionstamp,
+    shard = null,
   }: {
     id: string;
     schema: string;
     table: string;
     externalId: string;
     entryVersionstamp?: string;
+    shard?: string | null;
   }) => {
     await driver.executeQuery(
       sql`INSERT INTO fragno_db_outbox_mutations (
-            id, entryVersionstamp, mutationVersionstamp, uowId, schema, "table", externalId, op
+            id, entryVersionstamp, mutationVersionstamp, uowId, schema, "table", externalId, op, _shard
           ) VALUES (
-            ${id}, ${entryVersionstamp}, ${entryVersionstamp}, ${`uow_${id}`}, ${schemaName}, ${table}, ${externalId}, ${"update"}
+            ${id}, ${entryVersionstamp}, ${entryVersionstamp}, ${`uow_${id}`}, ${schemaName}, ${table}, ${externalId}, ${"update"}, ${shard ?? ""}
           );`.compile(dialect),
     );
   };
@@ -123,7 +126,7 @@ describe("checkConflicts", () => {
     const hasConflict = await checkConflicts(
       {
         baseVersionstamp,
-        readKeys: [{ schema: "", table: "users", externalId: "u1" }],
+        readKeys: [{ shard: null, schema: "", table: "users", externalId: "u1" }],
         writeKeys: [],
         readScopes: [],
       },
@@ -131,6 +134,28 @@ describe("checkConflicts", () => {
     );
 
     assert(hasConflict);
+  });
+
+  test("ignores matching keys from another row shard", async () => {
+    await insertMutation({
+      id: "m2",
+      shard: "tenant-b",
+      schema: "",
+      table: "users",
+      externalId: "u1",
+    });
+
+    const hasConflict = await checkConflicts(
+      {
+        baseVersionstamp,
+        readKeys: [{ shard: "tenant-a", schema: "", table: "users", externalId: "u1" }],
+        writeKeys: [],
+        readScopes: [],
+      },
+      { driver, driverConfig: new BetterSQLite3DriverConfig() },
+    );
+
+    assert(!hasConflict);
   });
 
   test("honors unknownReadStrategy ignore", async () => {
@@ -147,7 +172,7 @@ describe("checkConflicts", () => {
         readKeys: [],
         writeKeys: [],
         readScopes: [],
-        unknownReads: [{ schema: "", table: "users" }],
+        unknownReads: [{ shard: null, schema: "", table: "users" }],
         unknownReadStrategy: "ignore",
       },
       { driver, driverConfig: new BetterSQLite3DriverConfig() },
@@ -167,8 +192,8 @@ describe("checkConflicts", () => {
     const hasConflict = await checkConflicts(
       {
         baseVersionstamp,
-        readKeys: [{ schema: "", table: "users", externalId: "   " }],
-        writeKeys: [{ schema: "", table: "users", externalId: "" }],
+        readKeys: [{ shard: null, schema: "", table: "users", externalId: "   " }],
+        writeKeys: [{ shard: null, schema: "", table: "users", externalId: "" }],
         readScopes: [],
       },
       { driver, driverConfig: new BetterSQLite3DriverConfig() },
@@ -189,7 +214,7 @@ describe("checkConflicts", () => {
       {
         baseVersionstamp,
         readKeys: [],
-        writeKeys: [{ schema: "", table: "users", externalId: "u1" }],
+        writeKeys: [{ shard: null, schema: "", table: "users", externalId: "u1" }],
         readScopes: [],
       },
       { driver, driverConfig: new BetterSQLite3DriverConfig() },
@@ -210,7 +235,7 @@ describe("checkConflicts", () => {
     const hasConflict = await checkConflicts(
       {
         baseVersionstamp,
-        readKeys: [{ schema: "", table: "users", externalId: "u1" }],
+        readKeys: [{ shard: null, schema: "", table: "users", externalId: "u1" }],
         writeKeys: [],
         readScopes: [],
       },
@@ -234,7 +259,7 @@ describe("checkConflicts", () => {
         readKeys: [],
         writeKeys: [],
         readScopes: [],
-        unknownReads: [{ schema: "", table: "posts" }],
+        unknownReads: [{ shard: null, schema: "", table: "posts" }],
       },
       { driver, driverConfig: new BetterSQLite3DriverConfig() },
     );
@@ -256,7 +281,7 @@ describe("checkConflicts", () => {
         readKeys: [],
         writeKeys: [],
         readScopes: [],
-        unknownReads: [{ schema: "", table: "posts" }],
+        unknownReads: [{ shard: null, schema: "", table: "posts" }],
         unknownReadStrategy: "table",
       },
       { driver, driverConfig: new BetterSQLite3DriverConfig() },
@@ -268,7 +293,7 @@ describe("checkConflicts", () => {
         readKeys: [],
         writeKeys: [],
         readScopes: [],
-        unknownReads: [{ schema: "", table: "users" }],
+        unknownReads: [{ shard: null, schema: "", table: "users" }],
         unknownReadStrategy: "table",
       },
       { driver, driverConfig: new BetterSQLite3DriverConfig() },
@@ -306,6 +331,7 @@ describe("checkConflicts", () => {
         writeKeys: [],
         readScopes: [
           {
+            shard: null,
             schema: "",
             table: testSchema.tables.posts,
             indexName: "primary",
@@ -350,12 +376,14 @@ describe("checkConflicts", () => {
         writeKeys: [],
         readScopes: [
           {
+            shard: null,
             schema: "",
             table: testSchema.tables.posts,
             indexName: "primary",
             condition: noMatch.where,
           },
           {
+            shard: null,
             schema: "",
             table: testSchema.tables.posts,
             indexName: "primary",
@@ -380,7 +408,7 @@ describe("checkConflicts", () => {
     const hasConflict = await checkConflicts(
       {
         baseVersionstamp,
-        readKeys: [{ schema: "", table: "users", externalId: "u1" }],
+        readKeys: [{ shard: null, schema: "", table: "users", externalId: "u1" }],
         writeKeys: [],
         readScopes: [],
       },

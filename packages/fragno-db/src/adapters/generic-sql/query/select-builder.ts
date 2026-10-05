@@ -51,7 +51,7 @@ export function mapSelectColumns(
     addColumn(key, column);
   }
 
-  // Always include hidden columns (for FragnoId construction with internal ID and version)
+  // Hidden columns remain available to internal result processing without entering the public result.
   for (const key in table.columns) {
     const column = table.columns[key];
     if (column.isHidden && !keys.includes(key)) {

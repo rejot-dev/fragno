@@ -10,12 +10,14 @@ import type { AnyTable } from "../schema/create";
 import type { SqlDriverAdapter } from "../sql-driver/sql-driver-adapter";
 
 export type ConflictKey = {
+  shard: string | null;
   schema: string;
   table: string;
   externalId: string;
 };
 
 export type ConflictReadScope = {
+  shard: string | null;
   schema: string;
   table: AnyTable;
   indexName: string;
@@ -23,6 +25,7 @@ export type ConflictReadScope = {
 };
 
 export type UnknownRead = {
+  shard: string | null;
   schema: string;
   table: string;
 };
@@ -51,15 +54,19 @@ const normalizeKeys = (keys: ConflictKey[]): ConflictKey[] =>
   keys.filter((key) => key.externalId.trim().length > 0);
 
 const groupKeys = (keys: ConflictKey[]) => {
-  const map = new Map<string, { schema: string; table: string; externalIds: string[] }>();
+  const map = new Map<
+    string,
+    { shard: string | null; schema: string; table: string; externalIds: string[] }
+  >();
   for (const key of keys) {
-    const groupKey = `${key.schema}::${key.table}`;
+    const groupKey = `${key.shard ?? ""}::${key.schema}::${key.table}`;
     const existing = map.get(groupKey);
     if (existing) {
       existing.externalIds.push(key.externalId);
       continue;
     }
     map.set(groupKey, {
+      shard: key.shard,
       schema: key.schema,
       table: key.table,
       externalIds: [key.externalId],
@@ -71,7 +78,7 @@ const groupKeys = (keys: ConflictKey[]) => {
 const groupTables = (tables: UnknownRead[]) => {
   const map = new Map<string, UnknownRead>();
   for (const entry of tables) {
-    const key = `${entry.schema}::${entry.table}`;
+    const key = `${entry.shard ?? ""}::${entry.schema}::${entry.table}`;
     if (!map.has(key)) {
       map.set(key, entry);
     }
@@ -102,6 +109,7 @@ const hasKeyConflicts = async (
     eb.or(
       grouped.map((group) =>
         eb.and([
+          eb("_shard", "=", group.shard ?? ""),
           eb("schema", "=", group.schema),
           eb("table", "=", group.table),
           eb("externalId", "in", group.externalIds),
@@ -128,17 +136,23 @@ const hasUnknownReadConflicts = async (
 
   const db = createColdKysely(runtime.driverConfig.databaseType);
 
+  const grouped = groupTables(unknownReads);
+
   if (strategy === "conflict") {
     let query = db.selectFrom(OUTBOX_MUTATIONS_TABLE).select(sql<number>`1`.as("exists"));
     if (baseVersionstamp) {
       query = query.where("entryVersionstamp", ">", baseVersionstamp);
     }
+    query = query.where(
+      "_shard",
+      "in",
+      grouped.map((group) => group.shard ?? ""),
+    );
     query = query.limit(1);
     const result = await runtime.driver.executeQuery(query.compile());
     return result.rows.length > 0;
   }
 
-  const grouped = groupTables(unknownReads);
   let query = db.selectFrom(OUTBOX_MUTATIONS_TABLE).select(sql<number>`1`.as("exists"));
 
   if (baseVersionstamp) {
@@ -148,7 +162,11 @@ const hasUnknownReadConflicts = async (
   query = query.where((eb) =>
     eb.or(
       grouped.map((group) =>
-        eb.and([eb("schema", "=", group.schema), eb("table", "=", group.table)]),
+        eb.and([
+          eb("_shard", "=", group.shard ?? ""),
+          eb("schema", "=", group.schema),
+          eb("table", "=", group.table),
+        ]),
       ),
     ),
   );
@@ -190,6 +208,7 @@ const hasScopeConflicts = async (
 
     query = query.leftJoin(`${OUTBOX_MUTATIONS_TABLE} as ${mutationAlias}`, (join) => {
       let on = join
+        .on(`${mutationAlias}._shard`, "=", scope.shard ?? "")
         .on(`${mutationAlias}.schema`, "=", scope.schema)
         .on(`${mutationAlias}.table`, "=", alias.table.name)
         .onRef(`${mutationAlias}.externalId`, "=", `${alias.alias}.${columnName}`);

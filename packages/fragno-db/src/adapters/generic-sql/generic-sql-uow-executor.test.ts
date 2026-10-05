@@ -65,6 +65,7 @@ const outboxExecutorSchema = schema("outbox_executor", (s) =>
 const outboxMutationBatch = (query: CompiledQuery): CompiledMutation<CompiledQuery>[] => {
   const operation = {
     type: "update" as const,
+    shard: null,
     schema: outboxExecutorSchema,
     table: "records" as const,
     id: "record-1",
@@ -118,11 +119,12 @@ describe("compileOutboxVersionReservationPlan", () => {
     const dialect = new MysqlDialect({ pool: {} as never });
     const plan = compileOutboxVersionReservationPlan(new MySQL2DriverConfig(), dialect, {
       id: "settings-id",
+      shard: null,
       key: "fragno-db-settings.outbox_version",
     });
 
     expect(plan.reservationQuery.sql).toContain(
-      "insert into `fragno_db_settings` (`id`, `key`, `value`)",
+      "insert into `fragno_db_settings` (`id`, `_shard`, `key`, `value`)",
     );
     expect(plan.reservationQuery.sql).toContain(
       "on duplicate key update `value` = LAST_INSERT_ID(cast(`value` as unsigned) + 1)",

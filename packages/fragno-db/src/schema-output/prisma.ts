@@ -12,7 +12,13 @@ import {
   type SqlNamingStrategy,
 } from "../naming/sql-naming";
 import type { AnyColumn, AnySchema, AnyTable, Relation } from "../schema/create";
-import { getTableForeignKey, getTableRelations } from "../schema/create";
+import {
+  getPhysicalIndexColumnNames,
+  getShardExternalIdIndexName,
+  getShardInternalIdIndexName,
+  getTableForeignKey,
+  getTableRelations,
+} from "../schema/create";
 import { parseVarchar } from "../util/parse";
 
 export interface GeneratePrismaSchemaOptions {
@@ -92,7 +98,7 @@ function getForeignKeyMapName(
   _namespace: string | null,
   resolver?: NamingResolver,
 ): string {
-  const localColumnName = relation.on[0]?.[0];
+  const localColumnName = relation.on.find(([columnName]) => columnName !== "_shard")?.[0];
   const foreignKey = localColumnName ? getTableForeignKey(table, localColumnName) : undefined;
   const referenceName = foreignKey?.name ?? relation.name;
 
@@ -343,7 +349,7 @@ function generateColumnFields(
     }
 
     if (column.role === "external-id") {
-      attributes.push("@unique", "@default(cuid())");
+      attributes.push("@default(cuid())");
     }
 
     const defaultValue = getColumnDefault(column, provider, sqliteStorageMode);
@@ -508,10 +514,21 @@ function generateModel(
     .sort((a, b) => a.name.localeCompare(b.name));
 
   for (const index of sortedIndexes) {
-    const fields = index.columnNames.map((name) => fieldNameByColumn.get(name) ?? name).join(", ");
+    const fields = getPhysicalIndexColumnNames(table, index.name)
+      .map((name) => fieldNameByColumn.get(name) ?? name)
+      .join(", ");
     const mapName = getIndexMapName(index.name, table.name, namespace, resolver, index.unique);
     const directive = index.unique ? "@@unique" : "@@index";
     indexLines.push(`  ${directive}([${fields}], map: "${mapName}")`);
+  }
+
+  for (const [indexName, columnNames] of [
+    [getShardExternalIdIndexName(table), getPhysicalIndexColumnNames(table, "primary")],
+    [getShardInternalIdIndexName(table), ["_shard", "_internalId"]],
+  ] as const) {
+    const fields = columnNames.map((name) => fieldNameByColumn.get(name) ?? name).join(", ");
+    const mapName = getIndexMapName(indexName, table.name, namespace, resolver, true);
+    indexLines.push(`  @@unique([${fields}], map: "${mapName}")`);
   }
 
   indexLines.push(`  @@map("${physicalName}")`);

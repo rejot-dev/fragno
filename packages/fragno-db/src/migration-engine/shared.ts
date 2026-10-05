@@ -36,7 +36,7 @@ export interface ColumnInfo {
     | "binary"
     | `varchar(${number})`;
   isNullable: boolean;
-  role: "external-id" | "internal-id" | "version" | "reference" | "regular";
+  role: "external-id" | "sharded-external-id" | "internal-id" | "version" | "reference" | "regular";
   default?: { value: unknown } | { dbSpecial: "now" } | { runtime: "cuid" | "now" };
 }
 

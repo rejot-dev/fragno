@@ -72,7 +72,11 @@ export class MySQLSQLGenerator extends SQLGenerator {
   ): CompiledQuery | CompiledQuery[] {
     const col = operation.value;
 
-    if (col.role === "external-id" || col.role === "internal-id") {
+    if (
+      col.role === "external-id" ||
+      col.role === "sharded-external-id" ||
+      col.role === "internal-id"
+    ) {
       throw new Error(errors.IdColumnUpdate);
     }
 

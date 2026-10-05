@@ -73,6 +73,7 @@ export class UnitOfWorkEncoder {
     values: Record<string, unknown>;
     table: AnyTable;
     generateDefaults: boolean;
+    referenceShard: string | null;
   }): Record<string, unknown> {
     // Step 1: Resolution - Resolve FragnoId/FragnoReference and generate defaults
     const resolved = encodeValues(
@@ -81,6 +82,7 @@ export class UnitOfWorkEncoder {
       options.generateDefaults,
       {},
       this.#resolver,
+      options.referenceShard,
     );
 
     // Step 2: Reference Processing - Convert external IDs to subqueries

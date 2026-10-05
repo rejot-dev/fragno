@@ -131,10 +131,10 @@ describe("read tracking", () => {
     const keys = collectReadKeys(operations, results);
     expect(keys).toEqual(
       expect.arrayContaining([
-        { schema: "tenant", table: "comments", externalId: "c1" },
-        { schema: "tenant", table: "posts", externalId: "p1" },
-        { schema: "tenant", table: "users", externalId: "a1" },
-        { schema: "tenant", table: "users", externalId: "u2" },
+        { shard: null, schema: "tenant", table: "comments", externalId: "c1" },
+        { shard: null, schema: "tenant", table: "posts", externalId: "p1" },
+        { shard: null, schema: "tenant", table: "users", externalId: "a1" },
+        { shard: null, schema: "tenant", table: "users", externalId: "u2" },
       ]),
     );
 
@@ -218,10 +218,10 @@ describe("read tracking", () => {
     const keys = collectReadKeys(operations, results);
     expect(keys).toEqual(
       expect.arrayContaining([
-        { schema: "tenant", table: "comments", externalId: "c1" },
-        { schema: "tenant", table: "posts", externalId: "p1" },
-        { schema: "tenant", table: "users", externalId: "a1" },
-        { schema: "tenant", table: "users", externalId: "u2" },
+        { shard: null, schema: "tenant", table: "comments", externalId: "c1" },
+        { shard: null, schema: "tenant", table: "posts", externalId: "p1" },
+        { shard: null, schema: "tenant", table: "users", externalId: "a1" },
+        { shard: null, schema: "tenant", table: "users", externalId: "u2" },
       ]),
     );
 
@@ -260,8 +260,8 @@ describe("read tracking", () => {
     expect(keys).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ table: "users", schema: "tenant" }),
-        { table: "users", schema: "tenant", externalId: "bulk-1" },
-        { table: "users", schema: "tenant", externalId: "bulk-2" },
+        { shard: null, table: "users", schema: "tenant", externalId: "bulk-1" },
+        { shard: null, table: "users", schema: "tenant", externalId: "bulk-2" },
       ]),
     );
   });

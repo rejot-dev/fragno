@@ -12,6 +12,7 @@ describe("buildOutboxInsertDiagnostics", () => {
       operations: [
         {
           op: "create",
+          shard: null,
           schema: "workflows",
           table: "workflow_step_emission",
           externalId: "emission-large",
@@ -26,6 +27,7 @@ describe("buildOutboxInsertDiagnostics", () => {
         },
         {
           op: "update",
+          shard: null,
           schema: "workflows",
           table: "workflow_step",
           externalId: "step-small",

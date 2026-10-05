@@ -20,14 +20,21 @@ const resolveExternalIdToInternalId = (
   tableStore: InMemoryTableStore,
   table: AnyTable,
   externalId: string,
+  shard: string | null,
   resolver?: NamingResolver,
 ): bigint | undefined => {
   const idColumnName = table.getIdColumn().name;
   const physicalIdColumnName = resolver
     ? resolver.getColumnName(table.name, idColumnName)
     : idColumnName;
+  const physicalShardColumnName = resolver
+    ? resolver.getColumnName(table.name, "_shard")
+    : "_shard";
   for (const [internalId, row] of tableStore.rows) {
-    if (row[physicalIdColumnName] === externalId) {
+    if (
+      row[physicalIdColumnName] === externalId &&
+      (shard === null || row[physicalShardColumnName] === shard)
+    ) {
       return internalId;
     }
   }
@@ -44,6 +51,7 @@ export const resolveReferenceSubquery = (
     tableStore,
     reference.referencedTable,
     reference.externalIdValue,
+    reference.shard,
     resolver,
   );
   return resolved ?? null;

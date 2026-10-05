@@ -1,6 +1,7 @@
 import type { AnySchema, AnyTable } from "../schema/create";
 import type { Condition } from "./condition-builder";
 import { createIndexedBuilder } from "./condition-builder";
+import type { MutationOperation } from "./unit-of-work/mutation-recorder";
 import type {
   CompiledQueryTreeChildNode,
   CompiledQueryTreeRootNode,
@@ -12,6 +13,8 @@ export type QueryPolicyController<TSchema extends AnySchema> = {
     tableName: TTableName,
     build: (builder: IndexedConditionBuilder<TSchema["tables"][TTableName]>) => Condition | boolean,
   ): void;
+  /** Scope every database operation in the request to one row shard. */
+  setRowShard(shard: string): void;
 };
 
 type ReadQueryPolicy = {
@@ -24,11 +27,39 @@ type ReadQueryPolicy = {
 type ReadPoliciesByTable = Map<string, Condition[]>;
 type ReadPoliciesByNamespace = Map<string | null, ReadPoliciesByTable>;
 
-/** Request-scoped read predicates added to queries before adapter compilation. */
+/** Request-scoped predicates applied before database operations reach an adapter. */
 export class QueryPolicySet {
   readonly #readPolicies = new WeakMap<AnySchema, ReadPoliciesByNamespace>();
+  #rowShard: string | null = null;
+  #frozen = false;
+
+  freeze(): void {
+    this.#frozen = true;
+  }
+
+  setRowShard(shard: string): void {
+    if (this.#frozen) {
+      throw new Error("Query policies cannot change after a database operation is recorded.");
+    }
+    if (shard.length === 0) {
+      throw new Error("Row shard must be a non-empty string.");
+    }
+    if (this.#rowShard !== null && this.#rowShard !== shard) {
+      throw new Error(
+        `Database shard scope conflict: the request is already scoped to "${this.#rowShard}".`,
+      );
+    }
+    this.#rowShard = shard;
+  }
+
+  getRowShard(): string | null {
+    return this.#rowShard;
+  }
 
   addRead(policy: ReadQueryPolicy): void {
+    if (this.#frozen) {
+      throw new Error("Query policies cannot change after a database operation is recorded.");
+    }
     let byNamespace = this.#readPolicies.get(policy.schema);
     if (!byNamespace) {
       byNamespace = new Map();
@@ -51,12 +82,30 @@ export class QueryPolicySet {
     namespace: string | null | undefined,
     tableName: string,
   ): readonly Condition[] {
-    return (
+    const configured =
       this.#readPolicies
         .get(schema)
         ?.get(namespace ?? null)
-        ?.get(tableName) ?? []
-    );
+        ?.get(tableName) ?? [];
+    if (this.#rowShard === null) {
+      return configured;
+    }
+
+    const table = schema.tables[tableName];
+    const shardColumn = table?.columns["_shard"];
+    if (!table || !shardColumn) {
+      throw new Error(`Table ${tableName} does not define the required _shard column.`);
+    }
+
+    return [
+      ...configured,
+      {
+        type: "compare",
+        a: shardColumn,
+        operator: "=",
+        b: this.#rowShard,
+      },
+    ];
   }
 }
 
@@ -110,6 +159,9 @@ export function createQueryPolicyController<TSchema extends AnySchema>(
         tableName,
         condition,
       });
+    },
+    setRowShard(shard: string) {
+      getPolicySet().setRowShard(shard);
     },
   };
 }
@@ -180,6 +232,45 @@ function applyRootReadQueryPolicies(
     ...root,
     where: combineConditions(root.where, readPolicies),
     children,
+  };
+}
+
+export function applyWriteQueryPolicies(
+  operation: MutationOperation<AnySchema>,
+  policies: QueryPolicySet,
+): MutationOperation<AnySchema> {
+  const shard = policies.getRowShard();
+  if (shard === null) {
+    return operation;
+  }
+  if (operation.shard !== null && operation.shard !== shard) {
+    throw new Error(
+      `Database shard scope conflict: mutation is scoped to "${operation.shard}" instead of "${shard}".`,
+    );
+  }
+
+  if (operation.type !== "create") {
+    if (
+      operation.type === "update" &&
+      Object.prototype.hasOwnProperty.call(operation.set, "_shard")
+    ) {
+      throw new Error("Update mutation cannot change the active row shard.");
+    }
+    return { ...operation, shard };
+  }
+
+  const providedShard = (operation.values as Record<string, unknown>)["_shard"];
+  if (providedShard !== undefined && providedShard !== shard) {
+    throw new Error(`Create mutation cannot override the active row shard "${shard}".`);
+  }
+
+  return {
+    ...operation,
+    shard,
+    values: {
+      ...operation.values,
+      _shard: shard,
+    },
   };
 }
 

@@ -397,7 +397,11 @@ export class SQLiteSQLGenerator extends SQLGenerator {
         continue;
       }
       const col = columnOp.value;
-      if (col.role === "external-id" || col.role === "internal-id") {
+      if (
+        col.role === "external-id" ||
+        col.role === "sharded-external-id" ||
+        col.role === "internal-id"
+      ) {
         throw new Error(errors.IdColumnUpdate);
       }
     }

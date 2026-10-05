@@ -471,11 +471,11 @@ describe("PreparedMigrations - Integration", () => {
     await prepared.execute(0, 1);
 
     assert(transactionStarted);
-    assert(executedStatements.length === 2);
-    expect(executedStatements[0]).toMatchInlineSnapshot(
-      `"create table "users_test" ("id" varchar(128) not null unique, "name" varchar(191) not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null)"`,
-    );
-    expect(executedStatements[1]).toMatchInlineSnapshot(
+    assert(executedStatements.length === 4);
+    expect(executedStatements[0]).toContain('create table "users_test"');
+    expect(executedStatements[1]).toContain('on "users_test" ("_shard", "id")');
+    expect(executedStatements[2]).toContain('on "users_test" ("_shard", "_internalId")');
+    expect(executedStatements[3]).toMatchInlineSnapshot(
       `"insert into "fragno_db_settings" ("id", "key", "value") values ('BflimUWc1NbCMMDD9SM3gQ', 'test.schema_version', '1')"`,
     );
   });
@@ -514,8 +514,8 @@ describe("PreparedMigrations - Integration", () => {
 
     await prepared.execute(0, 1, { updateVersionInMigration: false });
 
-    // Should only have the create table statement, no version update
-    assert(executedStatements.length === 1);
+    // The table and its two system indexes remain; only the version update is omitted.
+    assert(executedStatements.length === 3);
     expect(executedStatements[0]).toContain('create table "users_test"');
   });
 
@@ -627,13 +627,17 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
 
     const sql = prepared.getSQL(0, 2, { updateVersionInMigration: true });
     expect(sql).toMatchInlineSnapshot(`
-      "create table "users_test" ("id" varchar(128) not null unique, "name" varchar(191) not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
+      "create table "users_test" ("id" varchar(128) not null, "name" varchar(191) not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null, "_shard" varchar(191) default '' not null);
+
+      create unique index "uidx_users__fragno_users_shard_external_id_test_eb397a87" on "users_test" ("_shard", "id");
+
+      create unique index "uidx_users__fragno_users_shard_internal_id_test_c1c795ff" on "users_test" ("_shard", "_internalId");
 
       alter table "users_test" add column "age" integer;
 
-      create index "idx_users_name_idx_test_92db5054" on "users_test" ("name");
+      create index "idx_users_name_idx_test_92db5054" on "users_test" ("_shard", "name");
 
-      create index "idx_users_age_idx_test_1c69311d" on "users_test" ("age");
+      create index "idx_users_age_idx_test_1c69311d" on "users_test" ("_shard", "age");
 
       insert into "fragno_db_settings" ("id", "key", "value") values ('BflimUWc1NbCMMDD9SM3gQ', 'test.schema_version', '2');"
     `);
@@ -649,17 +653,25 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
 
     const sql = prepared.getSQL(0, 3, { updateVersionInMigration: true });
     expect(sql).toMatchInlineSnapshot(`
-      "create table "users_test" ("id" varchar(128) not null unique, "name" varchar(191) not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
+      "create table "users_test" ("id" varchar(128) not null, "name" varchar(191) not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null, "_shard" varchar(191) default '' not null);
+
+      create unique index "uidx_users__fragno_users_shard_external_id_test_eb397a87" on "users_test" ("_shard", "id");
+
+      create unique index "uidx_users__fragno_users_shard_internal_id_test_c1c795ff" on "users_test" ("_shard", "_internalId");
 
       alter table "users_test" add column "age" integer;
 
-      create index "idx_users_name_idx_test_92db5054" on "users_test" ("name");
+      create index "idx_users_name_idx_test_92db5054" on "users_test" ("_shard", "name");
 
-      create index "idx_users_age_idx_test_1c69311d" on "users_test" ("age");
+      create index "idx_users_age_idx_test_1c69311d" on "users_test" ("_shard", "age");
 
-      create table "posts_test" ("id" varchar(128) not null unique, "title" varchar(191) not null, "authorId" bigint not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
+      create table "posts_test" ("id" varchar(128) not null, "title" varchar(191) not null, "authorId" bigint not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null, "_shard" varchar(191) default '' not null);
 
-      alter table "posts_test" add constraint "fk_posts_users_posts_authorId_fk_test_96f92407" foreign key ("authorId") references "users_test" ("_internalId") on delete restrict on update restrict;
+      create unique index "uidx_posts__fragno_posts_shard_external_id_test_3723cd06" on "posts_test" ("_shard", "id");
+
+      create unique index "uidx_posts__fragno_posts_shard_internal_id_test_d3a25c58" on "posts_test" ("_shard", "_internalId");
+
+      alter table "posts_test" add constraint "fk_posts_users_posts_authorId_fk_test_96f92407" foreign key ("_shard", "authorId") references "users_test" ("_shard", "_internalId") on delete restrict on update restrict;
 
       insert into "fragno_db_settings" ("id", "key", "value") values ('BflimUWc1NbCMMDD9SM3gQ', 'test.schema_version', '3');"
     `);
@@ -677,9 +689,9 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
     expect(sql).toMatchInlineSnapshot(`
       "alter table "users_test" add column "age" integer;
 
-      create index "idx_users_name_idx_test_92db5054" on "users_test" ("name");
+      create index "idx_users_name_idx_test_92db5054" on "users_test" ("_shard", "name");
 
-      create index "idx_users_age_idx_test_1c69311d" on "users_test" ("age");
+      create index "idx_users_age_idx_test_1c69311d" on "users_test" ("_shard", "age");
 
       update "fragno_db_settings" set "value" = '2' where "key" = 'test.schema_version';"
     `);
@@ -695,9 +707,13 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
 
     const sql = prepared.getSQL(2, 3, { updateVersionInMigration: true });
     expect(sql).toMatchInlineSnapshot(`
-      "create table "posts_test" ("id" varchar(128) not null unique, "title" varchar(191) not null, "authorId" bigint not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);
+      "create table "posts_test" ("id" varchar(128) not null, "title" varchar(191) not null, "authorId" bigint not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null, "_shard" varchar(191) default '' not null);
 
-      alter table "posts_test" add constraint "fk_posts_users_posts_authorId_fk_test_96f92407" foreign key ("authorId") references "users_test" ("_internalId") on delete restrict on update restrict;
+      create unique index "uidx_posts__fragno_posts_shard_external_id_test_3723cd06" on "posts_test" ("_shard", "id");
+
+      create unique index "uidx_posts__fragno_posts_shard_internal_id_test_d3a25c58" on "posts_test" ("_shard", "_internalId");
+
+      alter table "posts_test" add constraint "fk_posts_users_posts_authorId_fk_test_96f92407" foreign key ("_shard", "authorId") references "users_test" ("_shard", "_internalId") on delete restrict on update restrict;
 
       update "fragno_db_settings" set "value" = '3' where "key" = 'test.schema_version';"
     `);
@@ -715,15 +731,23 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
     expect(sql).toMatchInlineSnapshot(`
       "PRAGMA defer_foreign_keys = ON;
 
-      create table "users_test" ("id" text not null unique, "name" text not null, "_internalId" integer not null primary key autoincrement, "_version" integer default 0 not null);
+      create table "users_test" ("id" text not null, "name" text not null, "_internalId" integer not null primary key autoincrement, "_version" integer default 0 not null, "_shard" text default '' not null);
+
+      create unique index "uidx_users__fragno_users_shard_external_id_test_eb397a87" on "users_test" ("_shard", "id");
+
+      create unique index "uidx_users__fragno_users_shard_internal_id_test_c1c795ff" on "users_test" ("_shard", "_internalId");
 
       alter table "users_test" add column "age" integer;
 
-      create index "idx_users_name_idx_test_92db5054" on "users_test" ("name");
+      create index "idx_users_name_idx_test_92db5054" on "users_test" ("_shard", "name");
 
-      create index "idx_users_age_idx_test_1c69311d" on "users_test" ("age");
+      create index "idx_users_age_idx_test_1c69311d" on "users_test" ("_shard", "age");
 
-      create table "posts_test" ("id" text not null unique, "title" text not null, "authorId" integer not null, "_internalId" integer not null primary key autoincrement, "_version" integer default 0 not null, foreign key ("authorId") references "users_test" ("_internalId") on delete restrict on update restrict);
+      create table "posts_test" ("id" text not null, "title" text not null, "authorId" integer not null, "_internalId" integer not null primary key autoincrement, "_version" integer default 0 not null, "_shard" text default '' not null, foreign key ("_shard", "authorId") references "users_test" ("_shard", "_internalId") on delete restrict on update restrict);
+
+      create unique index "uidx_posts__fragno_posts_shard_external_id_test_3723cd06" on "posts_test" ("_shard", "id");
+
+      create unique index "uidx_posts__fragno_posts_shard_internal_id_test_d3a25c58" on "posts_test" ("_shard", "_internalId");
 
       insert into "fragno_db_settings" ("id", "key", "value") values ('BflimUWc1NbCMMDD9SM3gQ', 'test.schema_version', '3');"
     `);
@@ -755,17 +779,25 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
     expect(sql).toMatchInlineSnapshot(`
       "SET FOREIGN_KEY_CHECKS = 0;
 
-      create table \`users_test\` (\`id\` varchar(128) not null unique, \`name\` varchar(191) not null, \`_internalId\` bigint not null  auto_increment, \`_version\` integer default 0 not null, constraint \`users_test__internalId\` primary key (\`_internalId\`));
+      create table \`users_test\` (\`id\` varchar(128) not null, \`name\` varchar(191) not null, \`_internalId\` bigint not null  auto_increment, \`_version\` integer default 0 not null, \`_shard\` varchar(191) default '' not null, constraint \`users_test__internalId\` primary key (\`_internalId\`));
+
+      create unique index \`uidx_users__fragno_users_shard_external_id_test_eb397a87\` on \`users_test\` (\`_shard\`, \`id\`);
+
+      create unique index \`uidx_users__fragno_users_shard_internal_id_test_c1c795ff\` on \`users_test\` (\`_shard\`, \`_internalId\`);
 
       alter table \`users_test\` add column \`age\` integer;
 
-      create index \`idx_users_name_idx_test_92db5054\` on \`users_test\` (\`name\`);
+      create index \`idx_users_name_idx_test_92db5054\` on \`users_test\` (\`_shard\`, \`name\`);
 
-      create index \`idx_users_age_idx_test_1c69311d\` on \`users_test\` (\`age\`);
+      create index \`idx_users_age_idx_test_1c69311d\` on \`users_test\` (\`_shard\`, \`age\`);
 
-      create table \`posts_test\` (\`id\` varchar(128) not null unique, \`title\` varchar(191) not null, \`authorId\` bigint not null, \`_internalId\` bigint not null  auto_increment, \`_version\` integer default 0 not null, constraint \`posts_test__internalId\` primary key (\`_internalId\`));
+      create table \`posts_test\` (\`id\` varchar(128) not null, \`title\` varchar(191) not null, \`authorId\` bigint not null, \`_internalId\` bigint not null  auto_increment, \`_version\` integer default 0 not null, \`_shard\` varchar(191) default '' not null, constraint \`posts_test__internalId\` primary key (\`_internalId\`));
 
-      alter table \`posts_test\` add constraint \`fk_posts_users_posts_authorId_fk_test_96f92407\` foreign key (\`authorId\`) references \`users_test\` (\`_internalId\`) on delete restrict on update restrict;
+      create unique index \`uidx_posts__fragno_posts_shard_external_id_test_3723cd06\` on \`posts_test\` (\`_shard\`, \`id\`);
+
+      create unique index \`uidx_posts__fragno_posts_shard_internal_id_test_d3a25c58\` on \`posts_test\` (\`_shard\`, \`_internalId\`);
+
+      alter table \`posts_test\` add constraint \`fk_posts_users_posts_authorId_fk_test_96f92407\` foreign key (\`_shard\`, \`authorId\`) references \`users_test\` (\`_shard\`, \`_internalId\`) on delete restrict on update restrict;
 
       SET FOREIGN_KEY_CHECKS = 1;
 
@@ -819,13 +851,17 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
 
       PRAGMA foreign_keys = OFF;
 
-      create table "users_nullable__fragno_tmp_414fdd" ("id" text not null unique, "name" text, "_internalId" integer not null primary key autoincrement, "_version" integer default 0 not null);
+      create table "users_nullable__fragno_tmp_414fdd" ("id" text not null, "name" text, "_internalId" integer not null primary key autoincrement, "_version" integer default 0 not null, "_shard" text default '' not null);
 
-      insert into "users_nullable__fragno_tmp_414fdd" ("id", "name", "_internalId", "_version") select "id", "name", "_internalId", "_version" from "users_nullable";
+      insert into "users_nullable__fragno_tmp_414fdd" ("id", "name", "_internalId", "_version", "_shard") select "id", "name", "_internalId", "_version", "_shard" from "users_nullable";
 
       drop table "users_nullable";
 
       alter table "users_nullable__fragno_tmp_414fdd" rename to "users_nullable";
+
+      create unique index "uidx_users__fragno_users_shard_external_id_nullable_5ce23cd5" on "users_nullable" ("_shard", "id");
+
+      create unique index "uidx_users__fragno_users_shard_internal_id_nullable_bda9926c" on "users_nullable" ("_shard", "_internalId");
 
       PRAGMA foreign_keys = ON;"
     `);
@@ -842,8 +878,8 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
     const compiled = prepared.compile(0, 2, { updateVersionInMigration: true });
     expect(compiled.statements).toBeDefined();
     expect(compiled.statements.length).toBeGreaterThan(0);
-    // Should have: create table, add column, 2 indexes, version insert
-    assert(compiled.statements.length === 5);
+    // Create table, 2 system indexes, alter table, 2 author indexes, version insert.
+    assert(compiled.statements.length === 7);
   });
 
   test("getSQL with updateVersionInMigration=false excludes version statement", () => {
@@ -857,7 +893,13 @@ describe("PreparedMigrations - Multi-step Migration Scenarios", () => {
     const sql = prepared.getSQL(0, 1, { updateVersionInMigration: false });
     expect(sql).not.toContain("fragno_db_settings");
     expect(sql).toMatchInlineSnapshot(
-      `"create table "users_test" ("id" varchar(128) not null unique, "name" varchar(191) not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null);"`,
+      `
+      "create table "users_test" ("id" varchar(128) not null, "name" varchar(191) not null, "_internalId" bigserial not null primary key, "_version" integer default 0 not null, "_shard" varchar(191) default '' not null);
+
+      create unique index "uidx_users__fragno_users_shard_external_id_test_eb397a87" on "users_test" ("_shard", "id");
+
+      create unique index "uidx_users__fragno_users_shard_internal_id_test_c1c795ff" on "users_test" ("_shard", "_internalId");"
+    `,
     );
   });
 });

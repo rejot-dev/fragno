@@ -66,33 +66,39 @@ describe("generateDrizzleSchema", () => {
         const schema_test = pgSchema("test");
 
         export const users_test = schema_test.table("users", {
-          id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
+          id: varchar("id", { length: 128 }).notNull().$defaultFn(() => createId()),
           name: varchar("name", { length: 191 }).notNull(),
           email: varchar("email", { length: 191 }).notNull(),
           age: integer("age"),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
-          _version: integer("_version").notNull().default(0)
+          _version: integer("_version").notNull().default(0),
+          _shard: varchar("_shard", { length: 191 }).notNull().default("")
         }, (table) => [
-          uniqueIndex("idx_email").on(table.email),
-          index("idx_name").on(table.name)
+          uniqueIndex("idx_email").on(table._shard, table.email),
+          index("idx_name").on(table._shard, table.name),
+          uniqueIndex("_fragno_users_shard_external_id").on(table._shard, table.id),
+          uniqueIndex("_fragno_users_shard_internal_id").on(table._shard, table._internalId)
         ])
 
         export const posts_test = schema_test.table("posts", {
-          id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
+          id: varchar("id", { length: 128 }).notNull().$defaultFn(() => createId()),
           title: varchar("title", { length: 191 }).notNull(),
           content: text("content").notNull(),
           userId: bigint("userId", { mode: "number" }).notNull(),
           viewCount: integer("viewCount").notNull().default(0),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
-          _version: integer("_version").notNull().default(0)
+          _version: integer("_version").notNull().default(0),
+          _shard: varchar("_shard", { length: 191 }).notNull().default("")
         }, (table) => [
           foreignKey({
-            columns: [table.userId],
-            foreignColumns: [users_test._internalId],
+            columns: [table._shard, table.userId],
+            foreignColumns: [users_test._shard, users_test._internalId],
             name: "fk_posts_users_posts_userId_fk"
           }),
-          index("idx_user").on(table.userId),
-          index("idx_title").on(table.title)
+          index("idx_user").on(table._shard, table.userId),
+          index("idx_title").on(table._shard, table.title),
+          uniqueIndex("_fragno_posts_shard_external_id").on(table._shard, table.id),
+          uniqueIndex("_fragno_posts_shard_internal_id").on(table._shard, table._internalId)
         ])
 
         export const users_testRelations = relations(users_test, ({ many }) => ({
@@ -104,8 +110,8 @@ describe("generateDrizzleSchema", () => {
         export const posts_testRelations = relations(posts_test, ({ one }) => ({
           user: one(users_test, {
             relationName: "posts_userId",
-            fields: [posts_test.userId],
-            references: [users_test._internalId]
+            fields: [posts_test._shard, posts_test.userId],
+            references: [users_test._shard, users_test._internalId]
           })
         }));
 
@@ -137,33 +143,39 @@ describe("generateDrizzleSchema", () => {
         // ============================================================================
 
         export const users_test = mysqlTable("users_test", {
-          id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
+          id: varchar("id", { length: 128 }).notNull().$defaultFn(() => createId()),
           name: varchar("name", { length: 191 }).notNull(),
           email: varchar("email", { length: 191 }).notNull(),
           age: int("age"),
           _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
-          _version: int("_version").notNull().default(0)
+          _version: int("_version").notNull().default(0),
+          _shard: varchar("_shard", { length: 191 }).notNull().default("")
         }, (table) => [
-          uniqueIndex("uidx_users_idx_email_test_3d974845").on(table.email),
-          index("idx_users_idx_name_test_7f36c497").on(table.name)
+          uniqueIndex("uidx_users_idx_email_test_3d974845").on(table._shard, table.email),
+          index("idx_users_idx_name_test_7f36c497").on(table._shard, table.name),
+          uniqueIndex("uidx_users__fragno_users_shard_external_id_test_eb397a87").on(table._shard, table.id),
+          uniqueIndex("uidx_users__fragno_users_shard_internal_id_test_c1c795ff").on(table._shard, table._internalId)
         ])
 
         export const posts_test = mysqlTable("posts_test", {
-          id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
+          id: varchar("id", { length: 128 }).notNull().$defaultFn(() => createId()),
           title: varchar("title", { length: 191 }).notNull(),
           content: text("content").notNull(),
           userId: bigint("userId", { mode: "number" }).notNull(),
           viewCount: int("viewCount").notNull().default(0),
           _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
-          _version: int("_version").notNull().default(0)
+          _version: int("_version").notNull().default(0),
+          _shard: varchar("_shard", { length: 191 }).notNull().default("")
         }, (table) => [
           foreignKey({
-            columns: [table.userId],
-            foreignColumns: [users_test._internalId],
+            columns: [table._shard, table.userId],
+            foreignColumns: [users_test._shard, users_test._internalId],
             name: "fk_posts_users_posts_userId_fk_test_21435475"
           }),
-          index("idx_posts_idx_user_test_4a5c5c19").on(table.userId),
-          index("idx_posts_idx_title_test_00e97ff4").on(table.title)
+          index("idx_posts_idx_user_test_4a5c5c19").on(table._shard, table.userId),
+          index("idx_posts_idx_title_test_00e97ff4").on(table._shard, table.title),
+          uniqueIndex("uidx_posts__fragno_posts_shard_external_id_test_3723cd06").on(table._shard, table.id),
+          uniqueIndex("uidx_posts__fragno_posts_shard_internal_id_test_d3a25c58").on(table._shard, table._internalId)
         ])
 
         export const users_testRelations = relations(users_test, ({ many }) => ({
@@ -175,8 +187,8 @@ describe("generateDrizzleSchema", () => {
         export const posts_testRelations = relations(posts_test, ({ one }) => ({
           user: one(users_test, {
             relationName: "posts_userId",
-            fields: [posts_test.userId],
-            references: [users_test._internalId]
+            fields: [posts_test._shard, posts_test.userId],
+            references: [users_test._shard, users_test._internalId]
           })
         }));
 
@@ -211,35 +223,39 @@ describe("generateDrizzleSchema", () => {
         // ============================================================================
 
         export const users_test = sqliteTable("users_test", {
-          id: text("id").notNull().unique().$defaultFn(() => createId()),
+          id: text("id").notNull().$defaultFn(() => createId()),
           name: text("name").notNull(),
           email: text("email").notNull(),
           age: integer("age"),
           _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
-          _version: integer("_version").notNull().default(0)
+          _version: integer("_version").notNull().default(0),
+          _shard: text("_shard").notNull().default("")
         }, (table) => [
-          uniqueIndex("uidx_users_idx_email_test_3d974845").on(table.email),
-          index("idx_users_idx_name_test_7f36c497").on(table.name),
-          uniqueIndex("uidx_users_idx_users_external_id_test_8eaf053f").on(table.id)
+          uniqueIndex("uidx_users_idx_email_test_3d974845").on(table._shard, table.email),
+          index("idx_users_idx_name_test_7f36c497").on(table._shard, table.name),
+          uniqueIndex("uidx_users__fragno_users_shard_external_id_test_eb397a87").on(table._shard, table.id),
+          uniqueIndex("uidx_users__fragno_users_shard_internal_id_test_c1c795ff").on(table._shard, table._internalId)
         ])
 
         export const posts_test = sqliteTable("posts_test", {
-          id: text("id").notNull().unique().$defaultFn(() => createId()),
+          id: text("id").notNull().$defaultFn(() => createId()),
           title: text("title").notNull(),
           content: text("content").notNull(),
           userId: integer("userId").notNull(),
           viewCount: integer("viewCount").notNull().default(0),
           _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
-          _version: integer("_version").notNull().default(0)
+          _version: integer("_version").notNull().default(0),
+          _shard: text("_shard").notNull().default("")
         }, (table) => [
           foreignKey({
-            columns: [table.userId],
-            foreignColumns: [users_test._internalId],
+            columns: [table._shard, table.userId],
+            foreignColumns: [users_test._shard, users_test._internalId],
             name: "fk_posts_users_posts_userId_fk_test_21435475"
           }),
-          index("idx_posts_idx_user_test_4a5c5c19").on(table.userId),
-          index("idx_posts_idx_title_test_00e97ff4").on(table.title),
-          uniqueIndex("uidx_posts_idx_posts_external_id_test_80487638").on(table.id)
+          index("idx_posts_idx_user_test_4a5c5c19").on(table._shard, table.userId),
+          index("idx_posts_idx_title_test_00e97ff4").on(table._shard, table.title),
+          uniqueIndex("uidx_posts__fragno_posts_shard_external_id_test_3723cd06").on(table._shard, table.id),
+          uniqueIndex("uidx_posts__fragno_posts_shard_internal_id_test_d3a25c58").on(table._shard, table._internalId)
         ])
 
         export const users_testRelations = relations(users_test, ({ many }) => ({
@@ -251,8 +267,8 @@ describe("generateDrizzleSchema", () => {
         export const posts_testRelations = relations(posts_test, ({ one }) => ({
           user: one(users_test, {
             relationName: "posts_userId",
-            fields: [posts_test.userId],
-            references: [users_test._internalId]
+            fields: [posts_test._shard, posts_test.userId],
+            references: [users_test._shard, users_test._internalId]
           })
         }));
 
@@ -287,7 +303,7 @@ describe("generateDrizzleSchema", () => {
         "postgresql",
       );
       expect(generated).toMatchInlineSnapshot(`
-        "import { pgSchema, varchar, timestamp, bigserial, integer } from "drizzle-orm/pg-core"
+        "import { pgSchema, varchar, timestamp, bigserial, integer, uniqueIndex } from "drizzle-orm/pg-core"
         import { createId } from "@fragno-dev/db/id"
 
         // ============================================================================
@@ -297,11 +313,15 @@ describe("generateDrizzleSchema", () => {
         const schema_test = pgSchema("test");
 
         export const events_test = schema_test.table("events", {
-          id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
+          id: varchar("id", { length: 128 }).notNull().$defaultFn(() => createId()),
           createdAt: timestamp("createdAt").notNull().$defaultFn(() => new Date()),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
-          _version: integer("_version").notNull().default(0)
-        })
+          _version: integer("_version").notNull().default(0),
+          _shard: varchar("_shard", { length: 191 }).notNull().default("")
+        }, (table) => [
+          uniqueIndex("_fragno_events_shard_external_id").on(table._shard, table.id),
+          uniqueIndex("_fragno_events_shard_internal_id").on(table._shard, table._internalId)
+        ])
 
         export const test_schema = {
           events_test: events_test,
@@ -326,7 +346,7 @@ describe("generateDrizzleSchema", () => {
         "postgresql",
       );
       expect(generated).toMatchInlineSnapshot(`
-        "import { pgSchema, varchar, timestamp, bigserial, integer } from "drizzle-orm/pg-core"
+        "import { pgSchema, varchar, timestamp, bigserial, integer, uniqueIndex } from "drizzle-orm/pg-core"
         import { createId } from "@fragno-dev/db/id"
 
         // ============================================================================
@@ -336,11 +356,15 @@ describe("generateDrizzleSchema", () => {
         const schema_test = pgSchema("test");
 
         export const events_test = schema_test.table("events", {
-          id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
+          id: varchar("id", { length: 128 }).notNull().$defaultFn(() => createId()),
           createdAt: timestamp("createdAt").notNull().defaultNow(),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
-          _version: integer("_version").notNull().default(0)
-        })
+          _version: integer("_version").notNull().default(0),
+          _shard: varchar("_shard", { length: 191 }).notNull().default("")
+        }, (table) => [
+          uniqueIndex("_fragno_events_shard_external_id").on(table._shard, table.id),
+          uniqueIndex("_fragno_events_shard_internal_id").on(table._shard, table._internalId)
+        ])
 
         export const test_schema = {
           events_test: events_test,
@@ -385,7 +409,7 @@ describe("generateDrizzleSchema", () => {
         "postgresql",
       );
       expect(generated).toMatchInlineSnapshot(`
-        "import { pgSchema, varchar, customType, bigserial, integer } from "drizzle-orm/pg-core"
+        "import { pgSchema, varchar, customType, bigserial, integer, uniqueIndex } from "drizzle-orm/pg-core"
         import { createId } from "@fragno-dev/db/id"
         const customBinary = customType<
           {
@@ -411,11 +435,15 @@ describe("generateDrizzleSchema", () => {
         const schema_test = pgSchema("test");
 
         export const files_test = schema_test.table("files", {
-          id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
+          id: varchar("id", { length: 128 }).notNull().$defaultFn(() => createId()),
           data: customBinary("data").notNull(),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
-          _version: integer("_version").notNull().default(0)
-        })
+          _version: integer("_version").notNull().default(0),
+          _shard: varchar("_shard", { length: 191 }).notNull().default("")
+        }, (table) => [
+          uniqueIndex("_fragno_files_shard_external_id").on(table._shard, table.id),
+          uniqueIndex("_fragno_files_shard_internal_id").on(table._shard, table._internalId)
+        ])
 
         export const test_schema = {
           files_test: files_test,
@@ -447,7 +475,7 @@ describe("generateDrizzleSchema", () => {
         "postgresql",
       );
       expect(generated).toMatchInlineSnapshot(`
-        "import { pgSchema, varchar, bigserial, integer, bigint, foreignKey, index } from "drizzle-orm/pg-core"
+        "import { pgSchema, varchar, bigserial, integer, uniqueIndex, bigint, foreignKey, index } from "drizzle-orm/pg-core"
         import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
 
@@ -458,25 +486,32 @@ describe("generateDrizzleSchema", () => {
         const schema_test = pgSchema("test");
 
         export const users_test = schema_test.table("users", {
-          id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
+          id: varchar("id", { length: 128 }).notNull().$defaultFn(() => createId()),
           name: varchar("name", { length: 191 }).notNull(),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
-          _version: integer("_version").notNull().default(0)
-        })
+          _version: integer("_version").notNull().default(0),
+          _shard: varchar("_shard", { length: 191 }).notNull().default("")
+        }, (table) => [
+          uniqueIndex("_fragno_users_shard_external_id").on(table._shard, table.id),
+          uniqueIndex("_fragno_users_shard_internal_id").on(table._shard, table._internalId)
+        ])
 
         export const posts_test = schema_test.table("posts", {
-          id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
+          id: varchar("id", { length: 128 }).notNull().$defaultFn(() => createId()),
           title: varchar("title", { length: 191 }).notNull(),
           userId: bigint("userId", { mode: "number" }).notNull(),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
-          _version: integer("_version").notNull().default(0)
+          _version: integer("_version").notNull().default(0),
+          _shard: varchar("_shard", { length: 191 }).notNull().default("")
         }, (table) => [
           foreignKey({
-            columns: [table.userId],
-            foreignColumns: [users_test._internalId],
+            columns: [table._shard, table.userId],
+            foreignColumns: [users_test._shard, users_test._internalId],
             name: "fk_posts_users_posts_userId_fk"
           }),
-          index("idx_user").on(table.userId)
+          index("idx_user").on(table._shard, table.userId),
+          uniqueIndex("_fragno_posts_shard_external_id").on(table._shard, table.id),
+          uniqueIndex("_fragno_posts_shard_internal_id").on(table._shard, table._internalId)
         ])
 
         export const users_testRelations = relations(users_test, ({ many }) => ({
@@ -488,8 +523,8 @@ describe("generateDrizzleSchema", () => {
         export const posts_testRelations = relations(posts_test, ({ one }) => ({
           user: one(users_test, {
             relationName: "posts_userId",
-            fields: [posts_test.userId],
-            references: [users_test._internalId]
+            fields: [posts_test._shard, posts_test.userId],
+            references: [users_test._shard, users_test._internalId]
           })
         }));
 
@@ -513,7 +548,7 @@ describe("generateDrizzleSchema", () => {
         "mysql",
       );
       expect(generated).toMatchInlineSnapshot(`
-        "import { mysqlTable, varchar, bigint, int, foreignKey, index } from "drizzle-orm/mysql-core"
+        "import { mysqlTable, varchar, bigint, int, uniqueIndex, foreignKey, index } from "drizzle-orm/mysql-core"
         import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
 
@@ -522,25 +557,32 @@ describe("generateDrizzleSchema", () => {
         // ============================================================================
 
         export const users_test = mysqlTable("users_test", {
-          id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
+          id: varchar("id", { length: 128 }).notNull().$defaultFn(() => createId()),
           name: varchar("name", { length: 191 }).notNull(),
           _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
-          _version: int("_version").notNull().default(0)
-        })
+          _version: int("_version").notNull().default(0),
+          _shard: varchar("_shard", { length: 191 }).notNull().default("")
+        }, (table) => [
+          uniqueIndex("uidx_users__fragno_users_shard_external_id_test_eb397a87").on(table._shard, table.id),
+          uniqueIndex("uidx_users__fragno_users_shard_internal_id_test_c1c795ff").on(table._shard, table._internalId)
+        ])
 
         export const posts_test = mysqlTable("posts_test", {
-          id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
+          id: varchar("id", { length: 128 }).notNull().$defaultFn(() => createId()),
           title: varchar("title", { length: 191 }).notNull(),
           userId: bigint("userId", { mode: "number" }).notNull(),
           _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
-          _version: int("_version").notNull().default(0)
+          _version: int("_version").notNull().default(0),
+          _shard: varchar("_shard", { length: 191 }).notNull().default("")
         }, (table) => [
           foreignKey({
-            columns: [table.userId],
-            foreignColumns: [users_test._internalId],
+            columns: [table._shard, table.userId],
+            foreignColumns: [users_test._shard, users_test._internalId],
             name: "fk_posts_users_posts_userId_fk_test_21435475"
           }),
-          index("idx_posts_idx_user_test_4a5c5c19").on(table.userId)
+          index("idx_posts_idx_user_test_4a5c5c19").on(table._shard, table.userId),
+          uniqueIndex("uidx_posts__fragno_posts_shard_external_id_test_3723cd06").on(table._shard, table.id),
+          uniqueIndex("uidx_posts__fragno_posts_shard_internal_id_test_d3a25c58").on(table._shard, table._internalId)
         ])
 
         export const users_testRelations = relations(users_test, ({ many }) => ({
@@ -552,8 +594,8 @@ describe("generateDrizzleSchema", () => {
         export const posts_testRelations = relations(posts_test, ({ one }) => ({
           user: one(users_test, {
             relationName: "posts_userId",
-            fields: [posts_test.userId],
-            references: [users_test._internalId]
+            fields: [posts_test._shard, posts_test.userId],
+            references: [users_test._shard, users_test._internalId]
           })
         }));
 
@@ -586,28 +628,32 @@ describe("generateDrizzleSchema", () => {
         // ============================================================================
 
         export const users_test = sqliteTable("users_test", {
-          id: text("id").notNull().unique().$defaultFn(() => createId()),
+          id: text("id").notNull().$defaultFn(() => createId()),
           name: text("name").notNull(),
           _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
-          _version: integer("_version").notNull().default(0)
+          _version: integer("_version").notNull().default(0),
+          _shard: text("_shard").notNull().default("")
         }, (table) => [
-          uniqueIndex("uidx_users_idx_users_external_id_test_8eaf053f").on(table.id)
+          uniqueIndex("uidx_users__fragno_users_shard_external_id_test_eb397a87").on(table._shard, table.id),
+          uniqueIndex("uidx_users__fragno_users_shard_internal_id_test_c1c795ff").on(table._shard, table._internalId)
         ])
 
         export const posts_test = sqliteTable("posts_test", {
-          id: text("id").notNull().unique().$defaultFn(() => createId()),
+          id: text("id").notNull().$defaultFn(() => createId()),
           title: text("title").notNull(),
           userId: integer("userId").notNull(),
           _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
-          _version: integer("_version").notNull().default(0)
+          _version: integer("_version").notNull().default(0),
+          _shard: text("_shard").notNull().default("")
         }, (table) => [
           foreignKey({
-            columns: [table.userId],
-            foreignColumns: [users_test._internalId],
+            columns: [table._shard, table.userId],
+            foreignColumns: [users_test._shard, users_test._internalId],
             name: "fk_posts_users_posts_userId_fk_test_21435475"
           }),
-          index("idx_posts_idx_user_test_4a5c5c19").on(table.userId),
-          uniqueIndex("uidx_posts_idx_posts_external_id_test_80487638").on(table.id)
+          index("idx_posts_idx_user_test_4a5c5c19").on(table._shard, table.userId),
+          uniqueIndex("uidx_posts__fragno_posts_shard_external_id_test_3723cd06").on(table._shard, table.id),
+          uniqueIndex("uidx_posts__fragno_posts_shard_internal_id_test_d3a25c58").on(table._shard, table._internalId)
         ])
 
         export const users_testRelations = relations(users_test, ({ many }) => ({
@@ -619,8 +665,8 @@ describe("generateDrizzleSchema", () => {
         export const posts_testRelations = relations(posts_test, ({ one }) => ({
           user: one(users_test, {
             relationName: "posts_userId",
-            fields: [posts_test.userId],
-            references: [users_test._internalId]
+            fields: [posts_test._shard, posts_test.userId],
+            references: [users_test._shard, users_test._internalId]
           })
         }));
 
@@ -673,7 +719,7 @@ describe("generateDrizzleSchema", () => {
       // Should have schema export
       expect(generated).toContain("export const test_schema = {");
       expect(generated).toMatchInlineSnapshot(`
-        "import { pgSchema, varchar, bigserial, integer, bigint, foreignKey } from "drizzle-orm/pg-core"
+        "import { pgSchema, varchar, bigserial, integer, uniqueIndex, bigint, foreignKey } from "drizzle-orm/pg-core"
         import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
 
@@ -684,24 +730,31 @@ describe("generateDrizzleSchema", () => {
         const schema_test = pgSchema("test");
 
         export const categories_test = schema_test.table("categories", {
-          id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
+          id: varchar("id", { length: 128 }).notNull().$defaultFn(() => createId()),
           name: varchar("name", { length: 191 }).notNull(),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
-          _version: integer("_version").notNull().default(0)
-        })
+          _version: integer("_version").notNull().default(0),
+          _shard: varchar("_shard", { length: 191 }).notNull().default("")
+        }, (table) => [
+          uniqueIndex("_fragno_categories_shard_external_id").on(table._shard, table.id),
+          uniqueIndex("_fragno_categories_shard_internal_id").on(table._shard, table._internalId)
+        ])
 
         export const products_test = schema_test.table("products", {
-          id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
+          id: varchar("id", { length: 128 }).notNull().$defaultFn(() => createId()),
           name: varchar("name", { length: 191 }).notNull(),
           categoryId: bigint("categoryId", { mode: "number" }).notNull(),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
-          _version: integer("_version").notNull().default(0)
+          _version: integer("_version").notNull().default(0),
+          _shard: varchar("_shard", { length: 191 }).notNull().default("")
         }, (table) => [
           foreignKey({
-            columns: [table.categoryId],
-            foreignColumns: [categories_test._internalId],
+            columns: [table._shard, table.categoryId],
+            foreignColumns: [categories_test._shard, categories_test._internalId],
             name: "fk_products_categories_products_categoryId_fk"
-          })
+          }),
+          uniqueIndex("_fragno_products_shard_external_id").on(table._shard, table.id),
+          uniqueIndex("_fragno_products_shard_internal_id").on(table._shard, table._internalId)
         ])
 
         export const categories_testRelations = relations(categories_test, ({ many }) => ({
@@ -713,8 +766,8 @@ describe("generateDrizzleSchema", () => {
         export const products_testRelations = relations(products_test, ({ one }) => ({
           category: one(categories_test, {
             relationName: "products_categoryId",
-            fields: [products_test.categoryId],
-            references: [categories_test._internalId]
+            fields: [products_test._shard, products_test.categoryId],
+            references: [categories_test._shard, categories_test._internalId]
           })
         }));
 
@@ -756,7 +809,7 @@ describe("generateDrizzleSchema", () => {
       expect(fkMatches).toHaveLength(1);
 
       expect(generated).toMatchInlineSnapshot(`
-        "import { pgSchema, varchar, bigint, bigserial, integer, foreignKey } from "drizzle-orm/pg-core"
+        "import { pgSchema, varchar, bigint, bigserial, integer, foreignKey, uniqueIndex } from "drizzle-orm/pg-core"
         import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
 
@@ -767,24 +820,27 @@ describe("generateDrizzleSchema", () => {
         const schema_test = pgSchema("test");
 
         export const category_test = schema_test.table("category", {
-          id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
+          id: varchar("id", { length: 128 }).notNull().$defaultFn(() => createId()),
           name: varchar("name", { length: 191 }).notNull(),
           parentId: bigint("parentId", { mode: "number" }),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
-          _version: integer("_version").notNull().default(0)
+          _version: integer("_version").notNull().default(0),
+          _shard: varchar("_shard", { length: 191 }).notNull().default("")
         }, (table) => [
           foreignKey({
-            columns: [table.parentId],
-            foreignColumns: [table._internalId],
+            columns: [table._shard, table.parentId],
+            foreignColumns: [table._shard, table._internalId],
             name: "fk_category_category_category_parentId_fk"
-          })
+          }),
+          uniqueIndex("_fragno_category_shard_external_id").on(table._shard, table.id),
+          uniqueIndex("_fragno_category_shard_internal_id").on(table._shard, table._internalId)
         ])
 
         export const category_testRelations = relations(category_test, ({ one, many }) => ({
           parent: one(category_test, {
             relationName: "category_parentId",
-            fields: [category_test.parentId],
-            references: [category_test._internalId]
+            fields: [category_test._shard, category_test.parentId],
+            references: [category_test._shard, category_test._internalId]
           }),
           categoryList: many(category_test, {
             relationName: "category_parentId"
@@ -845,7 +901,7 @@ describe("generateDrizzleSchema", () => {
         "postgresql",
       );
       expect(generated).toMatchInlineSnapshot(`
-        "import { pgSchema, varchar, text, bigint, bigserial, integer, foreignKey, index } from "drizzle-orm/pg-core"
+        "import { pgSchema, varchar, text, bigint, bigserial, integer, foreignKey, index, uniqueIndex } from "drizzle-orm/pg-core"
         import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
 
@@ -856,25 +912,28 @@ describe("generateDrizzleSchema", () => {
         const schema_test = pgSchema("test");
 
         export const comment_test = schema_test.table("comment", {
-          id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
+          id: varchar("id", { length: 128 }).notNull().$defaultFn(() => createId()),
           content: text("content").notNull(),
           parentId: bigint("parentId", { mode: "number" }),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
-          _version: integer("_version").notNull().default(0)
+          _version: integer("_version").notNull().default(0),
+          _shard: varchar("_shard", { length: 191 }).notNull().default("")
         }, (table) => [
           foreignKey({
-            columns: [table.parentId],
-            foreignColumns: [table._internalId],
+            columns: [table._shard, table.parentId],
+            foreignColumns: [table._shard, table._internalId],
             name: "fk_comment_comment_comment_parentId_fk"
           }),
-          index("idx_parent").on(table.parentId)
+          index("idx_parent").on(table._shard, table.parentId),
+          uniqueIndex("_fragno_comment_shard_external_id").on(table._shard, table.id),
+          uniqueIndex("_fragno_comment_shard_internal_id").on(table._shard, table._internalId)
         ])
 
         export const comment_testRelations = relations(comment_test, ({ one, many }) => ({
           parent: one(comment_test, {
             relationName: "comment_parentId",
-            fields: [comment_test.parentId],
-            references: [comment_test._internalId]
+            fields: [comment_test._shard, comment_test.parentId],
+            references: [comment_test._shard, comment_test._internalId]
           }),
           commentList: many(comment_test, {
             relationName: "comment_parentId"
@@ -897,7 +956,7 @@ describe("generateDrizzleSchema", () => {
         "mysql",
       );
       expect(generated).toMatchInlineSnapshot(`
-        "import { mysqlTable, varchar, text, bigint, int, foreignKey, index } from "drizzle-orm/mysql-core"
+        "import { mysqlTable, varchar, text, bigint, int, foreignKey, index, uniqueIndex } from "drizzle-orm/mysql-core"
         import { createId } from "@fragno-dev/db/id"
         import { relations } from "drizzle-orm"
 
@@ -906,25 +965,28 @@ describe("generateDrizzleSchema", () => {
         // ============================================================================
 
         export const comment_test = mysqlTable("comment_test", {
-          id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
+          id: varchar("id", { length: 128 }).notNull().$defaultFn(() => createId()),
           content: text("content").notNull(),
           parentId: bigint("parentId", { mode: "number" }),
           _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
-          _version: int("_version").notNull().default(0)
+          _version: int("_version").notNull().default(0),
+          _shard: varchar("_shard", { length: 191 }).notNull().default("")
         }, (table) => [
           foreignKey({
-            columns: [table.parentId],
-            foreignColumns: [table._internalId],
+            columns: [table._shard, table.parentId],
+            foreignColumns: [table._shard, table._internalId],
             name: "fk_comment_comment_comment_parentId_fk_test_ae280411"
           }),
-          index("idx_comment_idx_parent_test_3c264dbc").on(table.parentId)
+          index("idx_comment_idx_parent_test_3c264dbc").on(table._shard, table.parentId),
+          uniqueIndex("uidx_comment__fragno_comment_shard_external_id_test_99031481").on(table._shard, table.id),
+          uniqueIndex("uidx_comment__fragno_comment_shard_internal_id_test_11a73368").on(table._shard, table._internalId)
         ])
 
         export const comment_testRelations = relations(comment_test, ({ one, many }) => ({
           parent: one(comment_test, {
             relationName: "comment_parentId",
-            fields: [comment_test.parentId],
-            references: [comment_test._internalId]
+            fields: [comment_test._shard, comment_test.parentId],
+            references: [comment_test._shard, comment_test._internalId]
           }),
           commentList: many(comment_test, {
             relationName: "comment_parentId"
@@ -956,26 +1018,28 @@ describe("generateDrizzleSchema", () => {
         // ============================================================================
 
         export const comment_test = sqliteTable("comment_test", {
-          id: text("id").notNull().unique().$defaultFn(() => createId()),
+          id: text("id").notNull().$defaultFn(() => createId()),
           content: text("content").notNull(),
           parentId: integer("parentId"),
           _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
-          _version: integer("_version").notNull().default(0)
+          _version: integer("_version").notNull().default(0),
+          _shard: text("_shard").notNull().default("")
         }, (table) => [
           foreignKey({
-            columns: [table.parentId],
-            foreignColumns: [table._internalId],
+            columns: [table._shard, table.parentId],
+            foreignColumns: [table._shard, table._internalId],
             name: "fk_comment_comment_comment_parentId_fk_test_ae280411"
           }),
-          index("idx_comment_idx_parent_test_3c264dbc").on(table.parentId),
-          uniqueIndex("uidx_comment_idx_comment_external_id_test_6a1c2b8f").on(table.id)
+          index("idx_comment_idx_parent_test_3c264dbc").on(table._shard, table.parentId),
+          uniqueIndex("uidx_comment__fragno_comment_shard_external_id_test_99031481").on(table._shard, table.id),
+          uniqueIndex("uidx_comment__fragno_comment_shard_internal_id_test_11a73368").on(table._shard, table._internalId)
         ])
 
         export const comment_testRelations = relations(comment_test, ({ one, many }) => ({
           parent: one(comment_test, {
             relationName: "comment_parentId",
-            fields: [comment_test.parentId],
-            references: [comment_test._internalId]
+            fields: [comment_test._shard, comment_test.parentId],
+            references: [comment_test._shard, comment_test._internalId]
           }),
           commentList: many(comment_test, {
             relationName: "comment_parentId"
@@ -1013,9 +1077,11 @@ describe("generateDrizzleSchema", () => {
       expect(generated).toMatch(/name: "fk_posts_users_posts_userId_fk"/);
 
       // Relations should reference sanitized table names
-      expect(generated).toContain("foreignColumns: [users_auth_db._internalId]");
-      expect(generated).toContain("fields: [posts_auth_db.userId]");
-      expect(generated).toContain("references: [users_auth_db._internalId]");
+      expect(generated).toContain(
+        "foreignColumns: [users_auth_db._shard, users_auth_db._internalId]",
+      );
+      expect(generated).toContain("fields: [posts_auth_db._shard, posts_auth_db.userId]");
+      expect(generated).toContain("references: [users_auth_db._shard, users_auth_db._internalId]");
 
       // Schema export should use sanitized keys
       expect(generated).toContain("export const auth_db_schema = {");
@@ -1057,12 +1123,18 @@ describe("generateDrizzleSchema", () => {
       expect(generated).toContain("export const posts_my_fragment_v2 =");
 
       // Foreign key should reference sanitized table name
-      expect(generated).toContain("foreignColumns: [users_my_fragment_v2._internalId]");
+      expect(generated).toContain(
+        "foreignColumns: [users_my_fragment_v2._shard, users_my_fragment_v2._internalId]",
+      );
 
       // Relations should also use sanitized names
       expect(generated).toContain("user: one(users_my_fragment_v2");
-      expect(generated).toContain("fields: [posts_my_fragment_v2.userId]");
-      expect(generated).toContain("references: [users_my_fragment_v2._internalId]");
+      expect(generated).toContain(
+        "fields: [posts_my_fragment_v2._shard, posts_my_fragment_v2.userId]",
+      );
+      expect(generated).toContain(
+        "references: [users_my_fragment_v2._shard, users_my_fragment_v2._internalId]",
+      );
 
       // Physical table names use logical names with schema scoping
       expect(generated).toContain('const schema_my_fragment_v2 = pgSchema("my-fragment-v2");');
@@ -1081,33 +1153,39 @@ describe("generateDrizzleSchema", () => {
         const schema_my_fragment_v2 = pgSchema("my-fragment-v2");
 
         export const users_my_fragment_v2 = schema_my_fragment_v2.table("users", {
-          id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
+          id: varchar("id", { length: 128 }).notNull().$defaultFn(() => createId()),
           name: varchar("name", { length: 191 }).notNull(),
           email: varchar("email", { length: 191 }).notNull(),
           age: integer("age"),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
-          _version: integer("_version").notNull().default(0)
+          _version: integer("_version").notNull().default(0),
+          _shard: varchar("_shard", { length: 191 }).notNull().default("")
         }, (table) => [
-          uniqueIndex("idx_email").on(table.email),
-          index("idx_name").on(table.name)
+          uniqueIndex("idx_email").on(table._shard, table.email),
+          index("idx_name").on(table._shard, table.name),
+          uniqueIndex("_fragno_users_shard_external_id").on(table._shard, table.id),
+          uniqueIndex("_fragno_users_shard_internal_id").on(table._shard, table._internalId)
         ])
 
         export const posts_my_fragment_v2 = schema_my_fragment_v2.table("posts", {
-          id: varchar("id", { length: 128 }).notNull().unique().$defaultFn(() => createId()),
+          id: varchar("id", { length: 128 }).notNull().$defaultFn(() => createId()),
           title: varchar("title", { length: 191 }).notNull(),
           content: text("content").notNull(),
           userId: bigint("userId", { mode: "number" }).notNull(),
           viewCount: integer("viewCount").notNull().default(0),
           _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
-          _version: integer("_version").notNull().default(0)
+          _version: integer("_version").notNull().default(0),
+          _shard: varchar("_shard", { length: 191 }).notNull().default("")
         }, (table) => [
           foreignKey({
-            columns: [table.userId],
-            foreignColumns: [users_my_fragment_v2._internalId],
+            columns: [table._shard, table.userId],
+            foreignColumns: [users_my_fragment_v2._shard, users_my_fragment_v2._internalId],
             name: "fk_posts_users_posts_userId_fk"
           }),
-          index("idx_user").on(table.userId),
-          index("idx_title").on(table.title)
+          index("idx_user").on(table._shard, table.userId),
+          index("idx_title").on(table._shard, table.title),
+          uniqueIndex("_fragno_posts_shard_external_id").on(table._shard, table.id),
+          uniqueIndex("_fragno_posts_shard_internal_id").on(table._shard, table._internalId)
         ])
 
         export const users_my_fragment_v2Relations = relations(users_my_fragment_v2, ({ many }) => ({
@@ -1119,8 +1197,8 @@ describe("generateDrizzleSchema", () => {
         export const posts_my_fragment_v2Relations = relations(posts_my_fragment_v2, ({ one }) => ({
           user: one(users_my_fragment_v2, {
             relationName: "posts_userId",
-            fields: [posts_my_fragment_v2.userId],
-            references: [users_my_fragment_v2._internalId]
+            fields: [posts_my_fragment_v2._shard, posts_my_fragment_v2.userId],
+            references: [users_my_fragment_v2._shard, users_my_fragment_v2._internalId]
           })
         }));
 

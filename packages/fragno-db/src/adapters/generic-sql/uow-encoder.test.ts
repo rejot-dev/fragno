@@ -47,6 +47,7 @@ describe("UnitOfWorkEncoder", () => {
         values: { createdAt: date },
         table: usersTable,
         generateDefaults: false,
+        referenceShard: null,
       });
 
       expect(result).toEqual({ createdAt: date.getTime() });
@@ -57,6 +58,7 @@ describe("UnitOfWorkEncoder", () => {
         values: { isActive: true },
         table: usersTable,
         generateDefaults: false,
+        referenceShard: null,
       });
 
       expect(result).toEqual({ isActive: 1 });
@@ -67,6 +69,7 @@ describe("UnitOfWorkEncoder", () => {
         values: { userId: BigInt(456) },
         table: postsTable,
         generateDefaults: false,
+        referenceShard: null,
       });
 
       // Reference columns should be converted to Number for SQLite
@@ -84,6 +87,7 @@ describe("UnitOfWorkEncoder", () => {
         },
         table: usersTable,
         generateDefaults: false,
+        referenceShard: null,
       });
 
       expect(result).toEqual({
@@ -99,6 +103,7 @@ describe("UnitOfWorkEncoder", () => {
         values: { age: null },
         table: usersTable,
         generateDefaults: false,
+        referenceShard: null,
       });
 
       expect(result).toEqual({ age: null });
@@ -109,6 +114,7 @@ describe("UnitOfWorkEncoder", () => {
         values: { title: "Test" },
         table: postsTable,
         generateDefaults: true,
+        referenceShard: null,
       });
 
       // Should have generated an ID
@@ -133,6 +139,7 @@ describe("UnitOfWorkEncoder", () => {
         values: { birthDate: dbNow() },
         table: usersTable,
         generateDefaults: false,
+        referenceShard: null,
       });
 
       const query = sqliteDb
@@ -159,6 +166,7 @@ describe("UnitOfWorkEncoder", () => {
         values: { createdAt: date },
         table: usersTable,
         generateDefaults: false,
+        referenceShard: null,
       });
 
       expect(result).toEqual({ createdAt: date });
@@ -169,6 +177,7 @@ describe("UnitOfWorkEncoder", () => {
         values: { isActive: true },
         table: usersTable,
         generateDefaults: false,
+        referenceShard: null,
       });
 
       expect(result).toEqual({ isActive: true });
@@ -179,6 +188,7 @@ describe("UnitOfWorkEncoder", () => {
         values: { userId: BigInt(456) },
         table: postsTable,
         generateDefaults: false,
+        referenceShard: null,
       });
 
       expect(result).toEqual({ userId: BigInt(456) });
@@ -198,6 +208,7 @@ describe("UnitOfWorkEncoder", () => {
         values: { createdAt: date },
         table: usersTable,
         generateDefaults: false,
+        referenceShard: null,
       });
 
       expect(result).toEqual({ createdAt: date });
@@ -208,6 +219,7 @@ describe("UnitOfWorkEncoder", () => {
         values: { isActive: true },
         table: usersTable,
         generateDefaults: false,
+        referenceShard: null,
       });
 
       expect(result).toEqual({ isActive: true });

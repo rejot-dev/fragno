@@ -71,6 +71,7 @@ export interface CountCompilerOptions {
 export interface UpdateCompilerOptions {
   where?: Condition;
   set: Record<string, unknown>;
+  referenceShard: string | null;
   /**
    * Whether to add RETURNING clause to the UPDATE query.
    * Used for version conflict detection when driver supports RETURNING but not affected rows.
@@ -260,12 +261,17 @@ export abstract class SQLQueryCompiler {
   /**
    * Compile a CREATE (INSERT) query.
    */
-  compileCreate(table: AnyTable, values: Record<string, unknown>): CompiledQuery {
+  compileCreate(
+    table: AnyTable,
+    values: Record<string, unknown>,
+    referenceShard: string | null,
+  ): CompiledQuery {
     // Encode application values to database format (resolves FragnoId, generates defaults, serializes)
     const encodedValues = this.encoder.encodeForDatabase({
       values,
       table,
       generateDefaults: true,
+      referenceShard,
     });
 
     let insert: AnyInsertQueryBuilder = this.db
@@ -293,6 +299,7 @@ export abstract class SQLQueryCompiler {
       values: options.set,
       table,
       generateDefaults: false,
+      referenceShard: options.referenceShard,
     });
 
     // Add version increment (must be added after encoding, as a raw SQL expression)

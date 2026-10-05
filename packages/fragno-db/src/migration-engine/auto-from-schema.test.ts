@@ -23,7 +23,7 @@ describe("generateMigrationFromSchema", () => {
     // We want to generate the migration for version 1 -> 2
     const operations = generateMigrationFromSchema(mySchema, 1, 2);
 
-    expect(operations).toHaveLength(1);
+    expect(operations).toHaveLength(3);
     expect(operations[0]).toMatchObject({
       type: "create-table",
       name: "posts",
@@ -52,7 +52,7 @@ describe("generateMigrationFromSchema", () => {
     // Generate migrations from version 0 to 3 (all three tables)
     const operations = generateMigrationFromSchema(mySchema, 0, 3);
 
-    expect(operations).toHaveLength(3);
+    expect(operations).toHaveLength(9);
     expect(operations[0]).toMatchObject({
       type: "create-table",
       name: "users",
@@ -61,7 +61,7 @@ describe("generateMigrationFromSchema", () => {
         expect.objectContaining({ name: "name" }),
       ]),
     });
-    expect(operations[1]).toMatchObject({
+    expect(operations[3]).toMatchObject({
       type: "create-table",
       name: "posts",
       columns: expect.arrayContaining([
@@ -69,7 +69,7 @@ describe("generateMigrationFromSchema", () => {
         expect.objectContaining({ name: "title" }),
       ]),
     });
-    expect(operations[2]).toMatchObject({
+    expect(operations[6]).toMatchObject({
       type: "create-table",
       name: "comments",
       columns: expect.arrayContaining([
@@ -94,7 +94,7 @@ describe("generateMigrationFromSchema", () => {
 
     const operations = generateMigrationFromSchema(mySchema, 1, 2);
 
-    expect(operations).toHaveLength(2);
+    expect(operations).toHaveLength(4);
     expect(operations[0]).toMatchObject({
       type: "create-table",
       name: "posts",
@@ -109,8 +109,8 @@ describe("generateMigrationFromSchema", () => {
       expect(fkOp.value).toMatchObject({
         name: "posts_authorId_fk",
         referencedTable: "users",
-        columns: ["authorId"],
-        referencedColumns: ["_internalId"],
+        columns: ["_shard", "authorId"],
+        referencedColumns: ["_shard", "_internalId"],
       });
     }
   });
@@ -128,13 +128,13 @@ describe("generateMigrationFromSchema", () => {
 
     const operations = generateMigrationFromSchema(mySchema, 0, 2);
 
-    expect(operations).toHaveLength(2);
+    expect(operations).toHaveLength(4);
     assert(operations[0].type === "create-table");
-    expect(operations[1]).toMatchObject({
+    expect(operations[3]).toMatchObject({
       type: "add-index",
       table: "users",
       name: "idx_email",
-      columns: ["email"],
+      columns: ["_shard", "email"],
       unique: true,
     });
   });
@@ -179,7 +179,7 @@ describe("generateMigrationFromSchema", () => {
     });
 
     const operationsV1 = generateMigrationFromSchema(mySchema, 0, 1);
-    expect(operationsV1).toHaveLength(1);
+    expect(operationsV1).toHaveLength(3);
     assert(operationsV1[0].type === "create-table");
     const createOp = operationsV1[0] as Extract<
       (typeof operationsV1)[number],
@@ -190,7 +190,7 @@ describe("generateMigrationFromSchema", () => {
     assert(!nameColumn?.isNullable);
 
     const operationsV2 = generateMigrationFromSchema(mySchema, 0, 2);
-    expect(operationsV2).toHaveLength(2);
+    expect(operationsV2).toHaveLength(4);
     const createOpV2 = operationsV2[0] as Extract<
       (typeof operationsV2)[number],
       { type: "create-table" }
@@ -216,10 +216,16 @@ describe("generateMigrationFromSchema", () => {
     // Generate all migrations from scratch
     const operations = generateMigrationFromSchema(mySchema, 0, 2);
 
-    expect(operations).toHaveLength(3);
-    assert(operations[0].type === "create-table");
-    assert(operations[1].type === "create-table");
-    assert(operations[2].type === "add-foreign-key");
+    expect(operations).toHaveLength(7);
+    expect(operations.map((operation) => operation.type)).toEqual([
+      "create-table",
+      "add-index",
+      "add-index",
+      "create-table",
+      "add-foreign-key",
+      "add-index",
+      "add-index",
+    ]);
   });
 
   it("should generate mixed operations for tables, indexes, and foreign keys", () => {
@@ -241,11 +247,17 @@ describe("generateMigrationFromSchema", () => {
     // Generate all migrations from scratch
     const operations = generateMigrationFromSchema(mySchema, 0, 3);
 
-    expect(operations).toHaveLength(4);
-    assert(operations[0].type === "create-table");
-    assert(operations[1].type === "add-index");
-    assert(operations[2].type === "create-table");
-    assert(operations[3].type === "add-foreign-key");
+    expect(operations).toHaveLength(8);
+    expect(operations.map((operation) => operation.type)).toEqual([
+      "create-table",
+      "add-index",
+      "add-index",
+      "add-index",
+      "create-table",
+      "add-foreign-key",
+      "add-index",
+      "add-index",
+    ]);
   });
 
   it("should generate no operations when version range is empty", () => {
@@ -318,7 +330,11 @@ describe("generateMigrationFromSchema", () => {
     expect(operations.map((o) => o.type)).toEqual([
       "create-table",
       "add-foreign-key",
+      "add-index",
+      "add-index",
       "create-table",
+      "add-index",
+      "add-index",
       "alter-table",
       "add-index",
     ]);

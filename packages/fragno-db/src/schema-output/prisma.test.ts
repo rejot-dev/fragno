@@ -126,7 +126,7 @@ describe("generatePrismaSchema", () => {
       // Namespaces: blog
 
       model FragnoDbOutbox {
-        id String @unique @default(cuid())
+        id String @default(cuid())
         versionstamp String
         uowId String
         payload Json
@@ -134,13 +134,16 @@ describe("generatePrismaSchema", () => {
         createdAt DateTime @default(now())
         _internalId Int @id @default(autoincrement())
         _version Int @default(0)
-        @@index([uowId], map: "idx_fragno_db_outbox_idx_outbox_uow_733c7f90")
-        @@unique([versionstamp], map: "uidx_fragno_db_outbox_idx_outbox_versionstamp_37972a68")
+        _shard String @default("")
+        @@index([_shard, uowId], map: "idx_fragno_db_outbox_idx_outbox_uow_733c7f90")
+        @@unique([_shard, versionstamp], map: "uidx_fragno_db_outbox_idx_outbox_versionstamp_37972a68")
+        @@unique([_shard, id], map: "uidx_fragno_db_outbox__fragno_fragno_db_outbox_shard_ex316604b3")
+        @@unique([_shard, _internalId], map: "uidx_fragno_db_outbox__fragno_fragno_db_outbox_shard_in05b5be19")
         @@map("fragno_db_outbox")
       }
 
       model FragnoDbOutboxMutations {
-        id String @unique @default(cuid())
+        id String @default(cuid())
         entryVersionstamp String
         mutationVersionstamp String
         uowId String
@@ -151,26 +154,32 @@ describe("generatePrismaSchema", () => {
         createdAt DateTime @default(now())
         _internalId Int @id @default(autoincrement())
         _version Int @default(0)
+        _shard String @default("")
         payload Json
-        @@index([entryVersionstamp], map: "idx_fragno_db_outbox_mutations_idx_outbox_mutations_entf896150d")
-        @@index([entryVersionstamp, mutationVersionstamp], map: "idx_fragno_db_outbox_mutations_idx_outbox_mutations_entea64c823")
-        @@index([schema, table, externalId, entryVersionstamp], map: "idx_fragno_db_outbox_mutations_idx_outbox_mutations_key16922fb2")
-        @@index([uowId], map: "idx_fragno_db_outbox_mutations_idx_outbox_mutations_uowa7a0749c")
+        @@index([_shard, entryVersionstamp], map: "idx_fragno_db_outbox_mutations_idx_outbox_mutations_entf896150d")
+        @@index([_shard, entryVersionstamp, mutationVersionstamp], map: "idx_fragno_db_outbox_mutations_idx_outbox_mutations_entea64c823")
+        @@index([_shard, schema, table, externalId, entryVersionstamp], map: "idx_fragno_db_outbox_mutations_idx_outbox_mutations_key16922fb2")
+        @@index([_shard, uowId], map: "idx_fragno_db_outbox_mutations_idx_outbox_mutations_uowa7a0749c")
+        @@unique([_shard, id], map: "uidx_fragno_db_outbox_mutations__fragno_fragno_db_outbo4efa558a")
+        @@unique([_shard, _internalId], map: "uidx_fragno_db_outbox_mutations__fragno_fragno_db_outbo153d0338")
         @@map("fragno_db_outbox_mutations")
       }
 
       model FragnoDbSettings {
-        id String @unique @default(cuid())
+        id String @default(cuid())
         key String
         value String
         _internalId Int @id @default(autoincrement())
         _version Int @default(0)
-        @@unique([key], map: "uidx_fragno_db_settings_unique_key_09269db3")
+        _shard String @default("")
+        @@unique([_shard, key], map: "uidx_fragno_db_settings_unique_key_09269db3")
+        @@unique([_shard, id], map: "uidx_fragno_db_settings__fragno_fragno_db_settings_sharad08018c")
+        @@unique([_shard, _internalId], map: "uidx_fragno_db_settings__fragno_fragno_db_settings_shar72e2f194")
         @@map("fragno_db_settings")
       }
 
       model FragnoDbSyncRequests {
-        id String @unique @default(cuid())
+        id String @default(cuid())
         requestId String
         status String
         confirmedCommandIds Json
@@ -180,12 +189,15 @@ describe("generatePrismaSchema", () => {
         createdAt DateTime @default(now())
         _internalId Int @id @default(autoincrement())
         _version Int @default(0)
-        @@unique([requestId], map: "uidx_fragno_db_sync_requests_idx_sync_request_id_a352b2bb")
+        _shard String @default("")
+        @@unique([_shard, requestId], map: "uidx_fragno_db_sync_requests_idx_sync_request_id_a352b2bb")
+        @@unique([_shard, id], map: "uidx_fragno_db_sync_requests__fragno_fragno_db_sync_reqc4d044dd")
+        @@unique([_shard, _internalId], map: "uidx_fragno_db_sync_requests__fragno_fragno_db_sync_reqf174efb0")
         @@map("fragno_db_sync_requests")
       }
 
       model FragnoHooks {
-        id String @unique @default(cuid())
+        id String @default(cuid())
         namespace String
         hookName String
         payload Json
@@ -199,30 +211,36 @@ describe("generatePrismaSchema", () => {
         nonce String
         _internalId Int @id @default(autoincrement())
         _version Int @default(0)
+        _shard String @default("")
         propagationContext Json?
-        @@index([namespace, createdAt, id], map: "idx_fragno_hooks_idx_namespace_created_at_e489a066")
-        @@index([namespace, status, lastAttemptAt], map: "idx_fragno_hooks_idx_namespace_status_last_attempt_f6aacab3")
-        @@index([namespace, status, nextRetryAt], map: "idx_fragno_hooks_idx_namespace_status_retry_b66b1168")
-        @@index([nonce], map: "idx_fragno_hooks_idx_nonce_90c97cf1")
+        @@index([_shard, namespace, createdAt, id], map: "idx_fragno_hooks_idx_namespace_created_at_e489a066")
+        @@index([_shard, namespace, status, lastAttemptAt], map: "idx_fragno_hooks_idx_namespace_status_last_attempt_f6aacab3")
+        @@index([_shard, namespace, status, nextRetryAt], map: "idx_fragno_hooks_idx_namespace_status_retry_b66b1168")
+        @@index([_shard, nonce], map: "idx_fragno_hooks_idx_nonce_90c97cf1")
+        @@unique([_shard, id], map: "uidx_fragno_hooks__fragno_fragno_hooks_shard_external_ide396e3b")
+        @@unique([_shard, _internalId], map: "uidx_fragno_hooks__fragno_fragno_hooks_shard_internal_i9c5d8377")
         @@map("fragno_hooks")
       }
 
       model Posts_blog {
-        id String @unique @default(cuid())
+        id String @default(cuid())
         title String
         authorId Int
         editorId Int?
         publishedAt DateTime?
         _internalId Int @id @default(autoincrement())
         _version Int @default(0)
-        author Users_blog @relation("blog_posts_author_users", fields: [authorId], references: [_internalId], map: "fk_posts_users_posts_authorId_fk_blog_7969e40f")
-        editor Users_blog? @relation("blog_posts_editor_users", fields: [editorId], references: [_internalId], map: "fk_posts_users_posts_editorId_fk_blog_3e07e080")
-        @@index([title], map: "idx_posts_idx_title_blog_f90cbb7e")
+        _shard String @default("")
+        author Users_blog @relation("blog_posts_author_users", fields: [_shard, authorId], references: [_shard, _internalId], map: "fk_posts_users_posts_authorId_fk_blog_7969e40f")
+        editor Users_blog? @relation("blog_posts_editor_users", fields: [_shard, editorId], references: [_shard, _internalId], map: "fk_posts_users_posts_editorId_fk_blog_3e07e080")
+        @@index([_shard, title], map: "idx_posts_idx_title_blog_f90cbb7e")
+        @@unique([_shard, id], map: "uidx_posts__fragno_posts_shard_external_id_blog_1548d897")
+        @@unique([_shard, _internalId], map: "uidx_posts__fragno_posts_shard_internal_id_blog_68dfcd25")
         @@map("posts_blog")
       }
 
       model Users_blog {
-        id String @unique @default(cuid())
+        id String @default(cuid())
         email String
         createdAt DateTime @default(now())
         birthDate DateTime?
@@ -232,11 +250,14 @@ describe("generatePrismaSchema", () => {
         invitedBy Int?
         _internalId Int @id @default(autoincrement())
         _version Int @default(0)
-        invitedBy_1 Users_blog? @relation("blog_users_invitedBy_users", fields: [invitedBy], references: [_internalId], map: "fk_users_users_users_invitedBy_fk_blog_2f6bd5fd")
+        _shard String @default("")
+        invitedBy_1 Users_blog? @relation("blog_users_invitedBy_users", fields: [_shard, invitedBy], references: [_shard, _internalId], map: "fk_users_users_users_invitedBy_fk_blog_2f6bd5fd")
         posts Posts_blog[] @relation("blog_posts_author_users")
         posts_editor Posts_blog[] @relation("blog_posts_editor_users")
         users Users_blog[] @relation("blog_users_invitedBy_users")
-        @@unique([email], map: "uidx_users_idx_email_blog_4468050e")
+        @@unique([_shard, email], map: "uidx_users_idx_email_blog_4468050e")
+        @@unique([_shard, id], map: "uidx_users__fragno_users_shard_external_id_blog_347b9685")
+        @@unique([_shard, _internalId], map: "uidx_users__fragno_users_shard_internal_id_blog_1020970d")
         @@map("users_blog")
       }"
     `);
@@ -278,7 +299,7 @@ describe("generatePrismaSchema", () => {
       // Namespaces: blog
 
       model FragnoDbOutbox {
-        id String @unique @default(cuid())
+        id String @default(cuid())
         versionstamp String
         uowId String
         payload Json
@@ -286,13 +307,16 @@ describe("generatePrismaSchema", () => {
         createdAt Int @default(dbgenerated("CURRENT_TIMESTAMP"))
         _internalId Int @id @default(autoincrement())
         _version Int @default(0)
-        @@index([uowId], map: "idx_fragno_db_outbox_idx_outbox_uow_733c7f90")
-        @@unique([versionstamp], map: "uidx_fragno_db_outbox_idx_outbox_versionstamp_37972a68")
+        _shard String @default("")
+        @@index([_shard, uowId], map: "idx_fragno_db_outbox_idx_outbox_uow_733c7f90")
+        @@unique([_shard, versionstamp], map: "uidx_fragno_db_outbox_idx_outbox_versionstamp_37972a68")
+        @@unique([_shard, id], map: "uidx_fragno_db_outbox__fragno_fragno_db_outbox_shard_ex316604b3")
+        @@unique([_shard, _internalId], map: "uidx_fragno_db_outbox__fragno_fragno_db_outbox_shard_in05b5be19")
         @@map("fragno_db_outbox")
       }
 
       model FragnoDbOutboxMutations {
-        id String @unique @default(cuid())
+        id String @default(cuid())
         entryVersionstamp String
         mutationVersionstamp String
         uowId String
@@ -303,26 +327,32 @@ describe("generatePrismaSchema", () => {
         createdAt Int @default(dbgenerated("CURRENT_TIMESTAMP"))
         _internalId Int @id @default(autoincrement())
         _version Int @default(0)
+        _shard String @default("")
         payload Json
-        @@index([entryVersionstamp], map: "idx_fragno_db_outbox_mutations_idx_outbox_mutations_entf896150d")
-        @@index([entryVersionstamp, mutationVersionstamp], map: "idx_fragno_db_outbox_mutations_idx_outbox_mutations_entea64c823")
-        @@index([schema, table, externalId, entryVersionstamp], map: "idx_fragno_db_outbox_mutations_idx_outbox_mutations_key16922fb2")
-        @@index([uowId], map: "idx_fragno_db_outbox_mutations_idx_outbox_mutations_uowa7a0749c")
+        @@index([_shard, entryVersionstamp], map: "idx_fragno_db_outbox_mutations_idx_outbox_mutations_entf896150d")
+        @@index([_shard, entryVersionstamp, mutationVersionstamp], map: "idx_fragno_db_outbox_mutations_idx_outbox_mutations_entea64c823")
+        @@index([_shard, schema, table, externalId, entryVersionstamp], map: "idx_fragno_db_outbox_mutations_idx_outbox_mutations_key16922fb2")
+        @@index([_shard, uowId], map: "idx_fragno_db_outbox_mutations_idx_outbox_mutations_uowa7a0749c")
+        @@unique([_shard, id], map: "uidx_fragno_db_outbox_mutations__fragno_fragno_db_outbo4efa558a")
+        @@unique([_shard, _internalId], map: "uidx_fragno_db_outbox_mutations__fragno_fragno_db_outbo153d0338")
         @@map("fragno_db_outbox_mutations")
       }
 
       model FragnoDbSettings {
-        id String @unique @default(cuid())
+        id String @default(cuid())
         key String
         value String
         _internalId Int @id @default(autoincrement())
         _version Int @default(0)
-        @@unique([key], map: "uidx_fragno_db_settings_unique_key_09269db3")
+        _shard String @default("")
+        @@unique([_shard, key], map: "uidx_fragno_db_settings_unique_key_09269db3")
+        @@unique([_shard, id], map: "uidx_fragno_db_settings__fragno_fragno_db_settings_sharad08018c")
+        @@unique([_shard, _internalId], map: "uidx_fragno_db_settings__fragno_fragno_db_settings_shar72e2f194")
         @@map("fragno_db_settings")
       }
 
       model FragnoDbSyncRequests {
-        id String @unique @default(cuid())
+        id String @default(cuid())
         requestId String
         status String
         confirmedCommandIds Json
@@ -332,12 +362,15 @@ describe("generatePrismaSchema", () => {
         createdAt Int @default(dbgenerated("CURRENT_TIMESTAMP"))
         _internalId Int @id @default(autoincrement())
         _version Int @default(0)
-        @@unique([requestId], map: "uidx_fragno_db_sync_requests_idx_sync_request_id_a352b2bb")
+        _shard String @default("")
+        @@unique([_shard, requestId], map: "uidx_fragno_db_sync_requests_idx_sync_request_id_a352b2bb")
+        @@unique([_shard, id], map: "uidx_fragno_db_sync_requests__fragno_fragno_db_sync_reqc4d044dd")
+        @@unique([_shard, _internalId], map: "uidx_fragno_db_sync_requests__fragno_fragno_db_sync_reqf174efb0")
         @@map("fragno_db_sync_requests")
       }
 
       model FragnoHooks {
-        id String @unique @default(cuid())
+        id String @default(cuid())
         namespace String
         hookName String
         payload Json
@@ -351,30 +384,36 @@ describe("generatePrismaSchema", () => {
         nonce String
         _internalId Int @id @default(autoincrement())
         _version Int @default(0)
+        _shard String @default("")
         propagationContext Json?
-        @@index([namespace, createdAt, id], map: "idx_fragno_hooks_idx_namespace_created_at_e489a066")
-        @@index([namespace, status, lastAttemptAt], map: "idx_fragno_hooks_idx_namespace_status_last_attempt_f6aacab3")
-        @@index([namespace, status, nextRetryAt], map: "idx_fragno_hooks_idx_namespace_status_retry_b66b1168")
-        @@index([nonce], map: "idx_fragno_hooks_idx_nonce_90c97cf1")
+        @@index([_shard, namespace, createdAt, id], map: "idx_fragno_hooks_idx_namespace_created_at_e489a066")
+        @@index([_shard, namespace, status, lastAttemptAt], map: "idx_fragno_hooks_idx_namespace_status_last_attempt_f6aacab3")
+        @@index([_shard, namespace, status, nextRetryAt], map: "idx_fragno_hooks_idx_namespace_status_retry_b66b1168")
+        @@index([_shard, nonce], map: "idx_fragno_hooks_idx_nonce_90c97cf1")
+        @@unique([_shard, id], map: "uidx_fragno_hooks__fragno_fragno_hooks_shard_external_ide396e3b")
+        @@unique([_shard, _internalId], map: "uidx_fragno_hooks__fragno_fragno_hooks_shard_internal_i9c5d8377")
         @@map("fragno_hooks")
       }
 
       model Posts_blog {
-        id String @unique @default(cuid())
+        id String @default(cuid())
         title String
         authorId Int
         editorId Int?
         publishedAt Int?
         _internalId Int @id @default(autoincrement())
         _version Int @default(0)
-        author Users_blog @relation("blog_posts_author_users", fields: [authorId], references: [_internalId], map: "fk_posts_users_posts_authorId_fk_blog_7969e40f")
-        editor Users_blog? @relation("blog_posts_editor_users", fields: [editorId], references: [_internalId], map: "fk_posts_users_posts_editorId_fk_blog_3e07e080")
-        @@index([title], map: "idx_posts_idx_title_blog_f90cbb7e")
+        _shard String @default("")
+        author Users_blog @relation("blog_posts_author_users", fields: [_shard, authorId], references: [_shard, _internalId], map: "fk_posts_users_posts_authorId_fk_blog_7969e40f")
+        editor Users_blog? @relation("blog_posts_editor_users", fields: [_shard, editorId], references: [_shard, _internalId], map: "fk_posts_users_posts_editorId_fk_blog_3e07e080")
+        @@index([_shard, title], map: "idx_posts_idx_title_blog_f90cbb7e")
+        @@unique([_shard, id], map: "uidx_posts__fragno_posts_shard_external_id_blog_1548d897")
+        @@unique([_shard, _internalId], map: "uidx_posts__fragno_posts_shard_internal_id_blog_68dfcd25")
         @@map("posts_blog")
       }
 
       model Users_blog {
-        id String @unique @default(cuid())
+        id String @default(cuid())
         email String
         createdAt Int @default(dbgenerated("CURRENT_TIMESTAMP"))
         birthDate Int?
@@ -384,11 +423,14 @@ describe("generatePrismaSchema", () => {
         invitedBy Int?
         _internalId Int @id @default(autoincrement())
         _version Int @default(0)
-        invitedBy_1 Users_blog? @relation("blog_users_invitedBy_users", fields: [invitedBy], references: [_internalId], map: "fk_users_users_users_invitedBy_fk_blog_2f6bd5fd")
+        _shard String @default("")
+        invitedBy_1 Users_blog? @relation("blog_users_invitedBy_users", fields: [_shard, invitedBy], references: [_shard, _internalId], map: "fk_users_users_users_invitedBy_fk_blog_2f6bd5fd")
         posts Posts_blog[] @relation("blog_posts_author_users")
         posts_editor Posts_blog[] @relation("blog_posts_editor_users")
         users Users_blog[] @relation("blog_users_invitedBy_users")
-        @@unique([email], map: "uidx_users_idx_email_blog_4468050e")
+        @@unique([_shard, email], map: "uidx_users_idx_email_blog_4468050e")
+        @@unique([_shard, id], map: "uidx_users__fragno_users_shard_external_id_blog_347b9685")
+        @@unique([_shard, _internalId], map: "uidx_users__fragno_users_shard_internal_id_blog_1020970d")
         @@map("users_blog")
       }"
     `);
@@ -435,7 +477,7 @@ describe("generatePrismaSchema", () => {
       // Namespaces: blog
 
       model FragnoDbOutbox {
-        id String @unique @default(cuid()) @db.VarChar(128)
+        id String @default(cuid()) @db.VarChar(128)
         versionstamp String @db.VarChar(191)
         uowId String @db.VarChar(191)
         payload Json @db.Json
@@ -443,13 +485,16 @@ describe("generatePrismaSchema", () => {
         createdAt DateTime @default(now())
         _internalId BigInt @id @default(autoincrement())
         _version Int @default(0)
-        @@index([uowId], map: "idx_outbox_uow")
-        @@unique([versionstamp], map: "idx_outbox_versionstamp")
+        _shard String @default("") @db.VarChar(191)
+        @@index([_shard, uowId], map: "idx_outbox_uow")
+        @@unique([_shard, versionstamp], map: "idx_outbox_versionstamp")
+        @@unique([_shard, id], map: "_fragno_fragno_db_outbox_shard_external_id")
+        @@unique([_shard, _internalId], map: "_fragno_fragno_db_outbox_shard_internal_id")
         @@map("fragno_db_outbox")
       }
 
       model FragnoDbOutboxMutations {
-        id String @unique @default(cuid()) @db.VarChar(128)
+        id String @default(cuid()) @db.VarChar(128)
         entryVersionstamp String @db.VarChar(191)
         mutationVersionstamp String @db.VarChar(191)
         uowId String @db.VarChar(191)
@@ -460,26 +505,32 @@ describe("generatePrismaSchema", () => {
         createdAt DateTime @default(now())
         _internalId BigInt @id @default(autoincrement())
         _version Int @default(0)
+        _shard String @default("") @db.VarChar(191)
         payload Json @db.Json
-        @@index([entryVersionstamp], map: "idx_outbox_mutations_entry")
-        @@index([entryVersionstamp, mutationVersionstamp], map: "idx_outbox_mutations_entry_order")
-        @@index([schema, table, externalId, entryVersionstamp], map: "idx_outbox_mutations_key")
-        @@index([uowId], map: "idx_outbox_mutations_uow")
+        @@index([_shard, entryVersionstamp], map: "idx_outbox_mutations_entry")
+        @@index([_shard, entryVersionstamp, mutationVersionstamp], map: "idx_outbox_mutations_entry_order")
+        @@index([_shard, schema, table, externalId, entryVersionstamp], map: "idx_outbox_mutations_key")
+        @@index([_shard, uowId], map: "idx_outbox_mutations_uow")
+        @@unique([_shard, id], map: "_fragno_fragno_db_outbox_mutations_shard_external_id")
+        @@unique([_shard, _internalId], map: "_fragno_fragno_db_outbox_mutations_shard_internal_id")
         @@map("fragno_db_outbox_mutations")
       }
 
       model FragnoDbSettings {
-        id String @unique @default(cuid()) @db.VarChar(128)
+        id String @default(cuid()) @db.VarChar(128)
         key String @db.VarChar(191)
         value String @db.Text
         _internalId BigInt @id @default(autoincrement())
         _version Int @default(0)
-        @@unique([key], map: "unique_key")
+        _shard String @default("") @db.VarChar(191)
+        @@unique([_shard, key], map: "unique_key")
+        @@unique([_shard, id], map: "_fragno_fragno_db_settings_shard_external_id")
+        @@unique([_shard, _internalId], map: "_fragno_fragno_db_settings_shard_internal_id")
         @@map("fragno_db_settings")
       }
 
       model FragnoDbSyncRequests {
-        id String @unique @default(cuid()) @db.VarChar(128)
+        id String @default(cuid()) @db.VarChar(128)
         requestId String @db.VarChar(191)
         status String @db.VarChar(191)
         confirmedCommandIds Json @db.Json
@@ -489,12 +540,15 @@ describe("generatePrismaSchema", () => {
         createdAt DateTime @default(now())
         _internalId BigInt @id @default(autoincrement())
         _version Int @default(0)
-        @@unique([requestId], map: "idx_sync_request_id")
+        _shard String @default("") @db.VarChar(191)
+        @@unique([_shard, requestId], map: "idx_sync_request_id")
+        @@unique([_shard, id], map: "_fragno_fragno_db_sync_requests_shard_external_id")
+        @@unique([_shard, _internalId], map: "_fragno_fragno_db_sync_requests_shard_internal_id")
         @@map("fragno_db_sync_requests")
       }
 
       model FragnoHooks {
-        id String @unique @default(cuid()) @db.VarChar(128)
+        id String @default(cuid()) @db.VarChar(128)
         namespace String @db.VarChar(191)
         hookName String @db.VarChar(191)
         payload Json @db.Json
@@ -508,30 +562,36 @@ describe("generatePrismaSchema", () => {
         nonce String @db.VarChar(191)
         _internalId BigInt @id @default(autoincrement())
         _version Int @default(0)
+        _shard String @default("") @db.VarChar(191)
         propagationContext Json? @db.Json
-        @@index([namespace, createdAt, id], map: "idx_namespace_created_at")
-        @@index([namespace, status, lastAttemptAt], map: "idx_namespace_status_last_attempt")
-        @@index([namespace, status, nextRetryAt], map: "idx_namespace_status_retry")
-        @@index([nonce], map: "idx_nonce")
+        @@index([_shard, namespace, createdAt, id], map: "idx_namespace_created_at")
+        @@index([_shard, namespace, status, lastAttemptAt], map: "idx_namespace_status_last_attempt")
+        @@index([_shard, namespace, status, nextRetryAt], map: "idx_namespace_status_retry")
+        @@index([_shard, nonce], map: "idx_nonce")
+        @@unique([_shard, id], map: "_fragno_fragno_hooks_shard_external_id")
+        @@unique([_shard, _internalId], map: "_fragno_fragno_hooks_shard_internal_id")
         @@map("fragno_hooks")
       }
 
       model Posts_blog {
-        id String @unique @default(cuid()) @db.VarChar(128)
+        id String @default(cuid()) @db.VarChar(128)
         title String @db.VarChar(191)
         authorId BigInt
         editorId BigInt?
         publishedAt DateTime?
         _internalId BigInt @id @default(autoincrement())
         _version Int @default(0)
-        author Users_blog @relation("blog_posts_author_users", fields: [authorId], references: [_internalId], map: "fk_posts_users_posts_authorId_fk")
-        editor Users_blog? @relation("blog_posts_editor_users", fields: [editorId], references: [_internalId], map: "fk_posts_users_posts_editorId_fk")
-        @@index([title], map: "idx_title")
+        _shard String @default("") @db.VarChar(191)
+        author Users_blog @relation("blog_posts_author_users", fields: [_shard, authorId], references: [_shard, _internalId], map: "fk_posts_users_posts_authorId_fk")
+        editor Users_blog? @relation("blog_posts_editor_users", fields: [_shard, editorId], references: [_shard, _internalId], map: "fk_posts_users_posts_editorId_fk")
+        @@index([_shard, title], map: "idx_title")
+        @@unique([_shard, id], map: "_fragno_posts_shard_external_id")
+        @@unique([_shard, _internalId], map: "_fragno_posts_shard_internal_id")
         @@map("posts")
       }
 
       model Users_blog {
-        id String @unique @default(cuid()) @db.VarChar(128)
+        id String @default(cuid()) @db.VarChar(128)
         email String @db.VarChar(191)
         createdAt DateTime @default(now())
         birthDate DateTime? @db.Date
@@ -541,11 +601,14 @@ describe("generatePrismaSchema", () => {
         invitedBy BigInt?
         _internalId BigInt @id @default(autoincrement())
         _version Int @default(0)
-        invitedBy_1 Users_blog? @relation("blog_users_invitedBy_users", fields: [invitedBy], references: [_internalId], map: "fk_users_users_users_invitedBy_fk")
+        _shard String @default("") @db.VarChar(191)
+        invitedBy_1 Users_blog? @relation("blog_users_invitedBy_users", fields: [_shard, invitedBy], references: [_shard, _internalId], map: "fk_users_users_users_invitedBy_fk")
         posts Posts_blog[] @relation("blog_posts_author_users")
         posts_editor Posts_blog[] @relation("blog_posts_editor_users")
         users Users_blog[] @relation("blog_users_invitedBy_users")
-        @@unique([email], map: "idx_email")
+        @@unique([_shard, email], map: "idx_email")
+        @@unique([_shard, id], map: "_fragno_users_shard_external_id")
+        @@unique([_shard, _internalId], map: "_fragno_users_shard_internal_id")
         @@map("users")
       }"
     `);
@@ -564,12 +627,15 @@ describe("generatePrismaSchema", () => {
       // Namespaces: my-app
 
       model UserProfiles_my_app {
-        id String @unique @default(cuid())
+        id String @default(cuid())
         user_id String @map("user-id")
         display_name String? @map("display name")
         _internalId Int @id @default(autoincrement())
         _version Int @default(0)
-        @@index([user_id], map: "idx_user-profiles_user-id-index_my-app_c295d8f4")
+        _shard String @default("")
+        @@index([_shard, user_id], map: "idx_user-profiles_user-id-index_my-app_c295d8f4")
+        @@unique([_shard, id], map: "uidx_user-profiles__fragno_user-profiles_shard_external31b87c7e")
+        @@unique([_shard, _internalId], map: "uidx_user-profiles__fragno_user-profiles_shard_internal5f547362")
         @@map("user-profiles_my-app")
       }"
     `);
@@ -587,12 +653,15 @@ describe("generatePrismaSchema", () => {
       // Namespaces: my-app
 
       model UserProfiles_my_app {
-        id String @unique @default(cuid()) @db.VarChar(128)
+        id String @default(cuid()) @db.VarChar(128)
         user_id String @db.VarChar(191) @map("user-id")
         display_name String? @db.VarChar(191) @map("display name")
         _internalId BigInt @id @default(autoincrement())
         _version Int @default(0)
-        @@index([user_id], map: "user-id-index")
+        _shard String @default("") @db.VarChar(191)
+        @@index([_shard, user_id], map: "user-id-index")
+        @@unique([_shard, id], map: "_fragno_user-profiles_shard_external_id")
+        @@unique([_shard, _internalId], map: "_fragno_user-profiles_shard_internal_id")
         @@map("user-profiles")
       }"
     `);

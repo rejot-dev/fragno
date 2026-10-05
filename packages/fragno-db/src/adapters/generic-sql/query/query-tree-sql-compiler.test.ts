@@ -52,11 +52,11 @@ describe("QueryTreeSQLCompiler", () => {
     const query = compiler.compile(root);
 
     expect(query.sql.replace(/[ \t]+$/gm, "")).toMatchInlineSnapshot(`
-      "select "_fragno_root"."id" as "id", "_fragno_root"."happenedOn" as "happenedOn", "_fragno_root"."createdAt" as "createdAt", "_fragno_root"."_internalId" as "_internalId", "_fragno_root"."_version" as "_version",
+      "select "_fragno_root"."id" as "id", "_fragno_root"."happenedOn" as "happenedOn", "_fragno_root"."createdAt" as "createdAt", "_fragno_root"."_internalId" as "_internalId", "_fragno_root"."_version" as "_version", "_fragno_root"."_shard" as "_shard",
                 coalesce(
                   (
                     select json_group_array(json("_fragno_agg"."_fragno_item"))
-                    from ((select json_object('id', "_fragno__outboxMutations_0"."id", '_internalId', "_fragno__outboxMutations_0"."_internalId", '_version', "_fragno__outboxMutations_0"."_version") as "_fragno_item" from "fragno_db_outbox_mutations" as "_fragno__outboxMutations_0" where ("_fragno__outboxMutations_0"."schema" = ? and "_fragno__outboxMutations_0"."table" = ? and "_fragno__outboxMutations_0"."externalId" = "_fragno_root"."id"))) as _fragno_agg
+                    from ((select json_object('id', "_fragno__outboxMutations_0"."id", '_internalId', "_fragno__outboxMutations_0"."_internalId", '_version', "_fragno__outboxMutations_0"."_version", '_shard', "_fragno__outboxMutations_0"."_shard") as "_fragno_item" from "fragno_db_outbox_mutations" as "_fragno__outboxMutations_0" where ("_fragno__outboxMutations_0"."_shard" = "_fragno_root"."_shard" and "_fragno__outboxMutations_0"."schema" = ? and "_fragno__outboxMutations_0"."table" = ? and "_fragno__outboxMutations_0"."externalId" = "_fragno_root"."id"))) as _fragno_agg
                   ),
                   json('[]')
                 )

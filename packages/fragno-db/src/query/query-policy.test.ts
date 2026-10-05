@@ -276,6 +276,43 @@ function instantiatePolicyFragment(
     .build();
 }
 
+async function createDocumentInShard(
+  fragment: ReturnType<typeof instantiatePolicyFragment>,
+  shard: string,
+  options: { organizationId: string; documentId: string; title: string },
+): Promise<void> {
+  await fragment.inContext(async function () {
+    fragment.$internal.deps.queryPolicies.setRowShard(shard);
+    await this.handlerTx()
+      .mutate(({ forSchema }) => {
+        const uow = forSchema(policySchema);
+        uow.create("organizations", { id: options.organizationId, name: shard });
+        uow.create("documents", {
+          id: options.documentId,
+          organizationId: options.organizationId,
+          ownerId: "owner-a",
+          title: options.title,
+        });
+      })
+      .execute();
+  });
+}
+
+async function listDocumentTitlesInShard(
+  fragment: ReturnType<typeof instantiatePolicyFragment>,
+  shard: string,
+): Promise<string[]> {
+  return await fragment.inContext(async function () {
+    fragment.$internal.deps.queryPolicies.setRowShard(shard);
+    const [documents] = await this.handlerTx()
+      .retrieve(({ forSchema }) =>
+        forSchema(policySchema).find("documents", (builder) => builder.whereIndex("primary")),
+      )
+      .execute();
+    return documents.map((document) => document.title);
+  });
+}
+
 test("middleware read query policies apply to roots, counts, and query-tree children", async () => {
   const fragment = instantiatePolicyFragment();
   await seedPolicyDocuments(fragment);
@@ -705,6 +742,106 @@ test("read policy types reject predicates on unindexed columns", () => {
   ).toThrow('Column "title" is not indexed');
 });
 
+test("row shard policies reject conflicting request scopes", () => {
+  const policies = new QueryPolicySet();
+  policies.setRowShard("tenant-a");
+  policies.setRowShard("tenant-a");
+
+  expect(() => policies.setRowShard("tenant-b")).toThrow(
+    'Database shard scope conflict: the request is already scoped to "tenant-a".',
+  );
+  expect(() => new QueryPolicySet().setRowShard("")).toThrow(
+    "Row shard must be a non-empty string.",
+  );
+});
+
+test("row shard policies scope creates, reads, updates, and deletes", async () => {
+  const fragment = instantiatePolicyFragment();
+  await createDocumentInShard(fragment, "tenant-a", {
+    organizationId: "shared-organization",
+    documentId: "shared-document",
+    title: "Tenant A",
+  });
+  await createDocumentInShard(fragment, "tenant-b", {
+    organizationId: "shared-organization",
+    documentId: "shared-document",
+    title: "Tenant B",
+  });
+
+  expect(await listDocumentTitlesInShard(fragment, "tenant-a")).toEqual(["Tenant A"]);
+  expect(await listDocumentTitlesInShard(fragment, "tenant-b")).toEqual(["Tenant B"]);
+
+  await fragment.inContext(async function () {
+    fragment.$internal.deps.queryPolicies.setRowShard("tenant-a");
+    await this.handlerTx()
+      .mutate(({ forSchema }) =>
+        forSchema(policySchema).update("documents", "shared-document", (builder) =>
+          builder.set({ title: "Tenant A updated" }),
+        ),
+      )
+      .execute();
+  });
+  await fragment.inContext(async function () {
+    fragment.$internal.deps.queryPolicies.setRowShard("tenant-b");
+    await this.handlerTx()
+      .mutate(({ forSchema }) =>
+        forSchema(policySchema).deleteMany("documents", ["shared-document"]),
+      )
+      .execute();
+  });
+
+  expect(await listDocumentTitlesInShard(fragment, "tenant-a")).toEqual(["Tenant A updated"]);
+  expect(await listDocumentTitlesInShard(fragment, "tenant-b")).toEqual([]);
+});
+
+test("row shard policies prevent cross-shard reference resolution", async () => {
+  const fragment = instantiatePolicyFragment();
+  await fragment.inContext(async function () {
+    fragment.$internal.deps.queryPolicies.setRowShard("tenant-a");
+    await this.handlerTx()
+      .mutate(({ forSchema }) =>
+        forSchema(policySchema).create("organizations", {
+          id: "tenant-a-organization",
+          name: "Tenant A",
+        }),
+      )
+      .execute();
+  });
+
+  await expect(
+    fragment.inContext(async function () {
+      fragment.$internal.deps.queryPolicies.setRowShard("tenant-b");
+      await this.handlerTx()
+        .mutate(({ forSchema }) =>
+          forSchema(policySchema).create("documents", {
+            id: "tenant-b-document",
+            organizationId: "tenant-a-organization",
+            ownerId: "owner-a",
+            title: "Invalid reference",
+          }),
+        )
+        .execute();
+    }),
+  ).rejects.toThrow("Foreign key constraint violation");
+});
+
+test("query policies cannot change after an operation is recorded", async () => {
+  const fragment = instantiatePolicyFragment();
+
+  await fragment.inContext(async () => {
+    const policies = fragment.$internal.deps.queryPolicies;
+    policies.setRowShard("tenant-a");
+    fragment.$internal.deps
+      .createUnitOfWork()
+      .forSchema(policySchema)
+      .find("documents", (builder) => builder.whereIndex("primary"));
+
+    expect(() => policies.setRowShard("tenant-a")).toThrow(
+      "Query policies cannot change after a database operation is recorded.",
+    );
+  });
+});
+
 test("read policies do not affect create, update, or delete operations", async () => {
   const adapter = new InMemoryAdapter();
   const protectedFragment = instantiatePolicyFragment(adapter);
@@ -805,6 +942,27 @@ async function createSqlPolicyFragment() {
   });
   return { adapter, fragment: instantiatePolicyFragment(adapter) };
 }
+
+test("row shard writes compile and execute through a SQL adapter", async () => {
+  const { adapter, fragment } = await createSqlPolicyFragment();
+  try {
+    await createDocumentInShard(fragment, "tenant-a", {
+      organizationId: "shared-organization",
+      documentId: "shared-document",
+      title: "Tenant A",
+    });
+    await createDocumentInShard(fragment, "tenant-b", {
+      organizationId: "shared-organization",
+      documentId: "shared-document",
+      title: "Tenant B",
+    });
+
+    expect(await listDocumentTitlesInShard(fragment, "tenant-a")).toEqual(["Tenant A"]);
+    expect(await listDocumentTitlesInShard(fragment, "tenant-b")).toEqual(["Tenant B"]);
+  } finally {
+    await adapter.close();
+  }
+});
 
 test("read policies compile and execute through a SQL adapter", async () => {
   const { adapter, fragment } = await createSqlPolicyFragment();

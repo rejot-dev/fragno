@@ -247,9 +247,9 @@ const STATEMENT_NORMALIZATION_RULES: StatementNormalizationRule[] = [
       let match: RegExpExecArray | null;
       while ((match = fkRegex.exec(sql))) {
         const constraintName = match[1]?.trim();
-        const columns = match[2].replace(/\s+/g, " ").trim();
+        const columns = match[2].replace(/\s*,\s*/g, ",").trim();
         const referencedTable = match[3].trim();
-        const referencedColumns = match[4].replace(/\s+/g, " ").trim();
+        const referencedColumns = match[4].replace(/\s*,\s*/g, ",").trim();
         const onDelete = (match[5] ?? "restrict").trim();
         const onUpdate = (match[6] ?? "restrict").trim();
         ctx.foreignKeys.add(
@@ -285,7 +285,7 @@ const STATEMENT_NORMALIZATION_RULES: StatementNormalizationRule[] = [
       while ((match = referencesRegex.exec(sql))) {
         const columnName = match[1].trim();
         const referencedTable = match[3].trim();
-        const referencedColumns = match[4].replace(/\s+/g, " ").trim();
+        const referencedColumns = match[4].replace(/\s*,\s*/g, ",").trim();
         const onDelete = (match[5] ?? "restrict").trim();
         const onUpdate = (match[6] ?? "restrict").trim();
         ctx.foreignKeys.add(
@@ -327,9 +327,9 @@ const STATEMENT_NORMALIZATION_RULES: StatementNormalizationRule[] = [
         let match: RegExpExecArray | null;
         while ((match = fkRegex.exec(sql))) {
           const constraintName = match[1]?.trim();
-          const columns = match[2].replace(/\s+/g, " ").trim();
+          const columns = match[2].replace(/\s*,\s*/g, ",").trim();
           const referencedTable = match[3].trim();
-          const referencedColumns = match[4].replace(/\s+/g, " ").trim();
+          const referencedColumns = match[4].replace(/\s*,\s*/g, ",").trim();
           const onDelete = (match[5] ?? "restrict").trim();
           const onUpdate = (match[6] ?? "restrict").trim();
           ctx.foreignKeys.add(

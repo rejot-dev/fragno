@@ -1,6 +1,12 @@
 import type { NamingResolver } from "../../naming/sql-naming";
 import { createSQLSerializer } from "../../query/serialize/create-sql-serializer";
-import type { AnyColumn, AnySchema, AnyTable } from "../../schema/create";
+import {
+  getPhysicalIndexColumnNames,
+  getShardInternalIdIndexName,
+  type AnyColumn,
+  type AnySchema,
+  type AnyTable,
+} from "../../schema/create";
 import { SQLocalDriverConfig } from "../generic-sql/driver-config";
 import { SortedArrayIndex } from "./sorted-array-index";
 import { compareNormalizedValues } from "./value-comparison";
@@ -66,15 +72,9 @@ const createTableIndexes = (
 ): Map<string, InMemoryIndexStore> => {
   const indexes = new Map<string, InMemoryIndexStore>();
   const primaryIndex = table.indexes["_primary"];
-  const primaryColumnNames = primaryIndex
-    ? primaryIndex.columnNames.map((columnName) =>
-        resolver ? resolver.getColumnName(table.name, columnName) : columnName,
-      )
-    : [
-        resolver
-          ? resolver.getColumnName(table.name, table.getIdColumn().name)
-          : table.getIdColumn().name,
-      ];
+  const primaryColumnNames = getPhysicalIndexColumnNames(table, "primary").map((columnName) =>
+    resolver ? resolver.getColumnName(table.name, columnName) : columnName,
+  );
   const primaryDefinition: InMemoryIndexDefinition = {
     name: "_primary",
     columnNames: primaryColumnNames,
@@ -87,7 +87,7 @@ const createTableIndexes = (
       uniqueConstraint: {
         table: table.name,
         constraint: "primary",
-        columns: [table.getIdColumn().name],
+        columns: getPhysicalIndexColumnNames(table, "primary"),
       },
     }),
   });
@@ -99,7 +99,7 @@ const createTableIndexes = (
     indexes.set(name, {
       definition: {
         name,
-        columnNames: index.columnNames.map((columnName) =>
+        columnNames: getPhysicalIndexColumnNames(table, name).map((columnName) =>
           resolver ? resolver.getColumnName(table.name, columnName) : columnName,
         ),
         unique: index.unique,
@@ -109,11 +109,31 @@ const createTableIndexes = (
         uniqueConstraint: {
           table: table.name,
           constraint: name,
-          columns: [...index.columnNames],
+          columns: getPhysicalIndexColumnNames(table, name),
         },
       }),
     });
   }
+
+  const shardInternalIdIndexName = getShardInternalIdIndexName(table);
+  const shardInternalIdColumnNames = ["_shard", "_internalId"].map((columnName) =>
+    resolver ? resolver.getColumnName(table.name, columnName) : columnName,
+  );
+  indexes.set(shardInternalIdIndexName, {
+    definition: {
+      name: shardInternalIdIndexName,
+      columnNames: shardInternalIdColumnNames,
+      unique: true,
+    },
+    index: new SortedArrayIndex(compareNormalizedValues, {
+      unique: true,
+      uniqueConstraint: {
+        table: table.name,
+        constraint: shardInternalIdIndexName,
+        columns: ["_shard", "_internalId"],
+      },
+    }),
+  });
 
   return indexes;
 };

@@ -82,6 +82,13 @@ export async function executeMutation(
 
   const createdInternalIds: (bigint | null)[] = [];
   const resultInterpreter = new ResultInterpreter(driverConfig);
+  const operationShards = new Set(
+    mutationBatch.flatMap((mutation) => (mutation.operation ? [mutation.operation.shard] : [])),
+  );
+  if (operationShards.size > 1) {
+    throw new Error("A Unit of Work cannot contain mutations from multiple row shards.");
+  }
+  const mutationShard = operationShards.values().next().value ?? null;
   const outboxEnabled = options.outbox?.enabled ?? false;
   const shouldInclude = options.outbox?.shouldInclude;
   const namingStrategy = options.namingStrategy ?? driverConfig.defaultNamingStrategy;
@@ -104,7 +111,7 @@ export async function executeMutation(
   );
   const outboxPlan =
     outboxOperations.length > 0 || outboxNotifications.length > 0
-      ? buildOutboxPlan(outboxOperations, outboxNotifications)
+      ? buildOutboxPlan(outboxOperations, outboxNotifications, mutationShard)
       : null;
   const shouldWriteOutbox = outboxEnabled && outboxPlan !== null && outboxPlan.drafts.length > 0;
   let failedOutboxInsert: OutboxInsertDiagnosticContext | undefined;
@@ -114,7 +121,12 @@ export async function executeMutation(
       let outboxReservation: ReservedOutboxVersion | null = null;
 
       if (shouldWriteOutbox) {
-        outboxReservation = await reserveOutboxVersion(tx, driverConfig, options.dialect);
+        outboxReservation = await reserveOutboxVersion(
+          tx,
+          driverConfig,
+          options.dialect,
+          outboxPlan?.shard ?? null,
+        );
       }
 
       for (const compiledMutation of mutationBatch) {
@@ -225,6 +237,7 @@ export async function executeMutation(
         };
         await insertOutboxRow(tx, driverConfig, {
           id: outboxRowId,
+          shard: outboxPlan.shard,
           versionstamp,
           uowId,
           payload: entryPayloadSerialized,
@@ -303,10 +316,11 @@ type OutboxVersionReservationPlan = {
 export function compileOutboxVersionReservationPlan(
   driverConfig: DriverConfig,
   dialect: Dialect,
-  values: { id: string; key: string },
+  values: { id: string; shard: string | null; key: string },
 ): OutboxVersionReservationPlan {
   const settingsTable = sqlRef(SETTINGS_TABLE_NAME);
   const idColumn = sqlRef("id");
+  const shardColumn = sqlRef("_shard");
   const keyColumn = sqlRef("key");
   const valueColumn = sqlRef("value");
   const qualifiedValueColumn = sqlRef(`${SETTINGS_TABLE_NAME}.value`);
@@ -317,16 +331,16 @@ export function compileOutboxVersionReservationPlan(
       const reservationQuery =
         driverConfig.databaseType === "postgresql"
           ? sql`
-              insert into ${settingsTable} (${idColumn}, ${keyColumn}, ${valueColumn})
-              values (${values.id}, ${values.key}, '0')
-              on conflict (${keyColumn}) do update
+              insert into ${settingsTable} (${idColumn}, ${shardColumn}, ${keyColumn}, ${valueColumn})
+              values (${values.id}, ${values.shard ?? ""}, ${values.key}, '0')
+              on conflict (${shardColumn}, ${keyColumn}) do update
                 set ${valueColumn} = (${qualifiedValueColumn}::bigint + 1)::text
               returning ${valueColumn}, floor(extract(epoch from CURRENT_TIMESTAMP) * 1000)::bigint as ${nowMsColumn};
             `
           : sql`
-              insert into ${settingsTable} (${idColumn}, ${keyColumn}, ${valueColumn})
-              values (${values.id}, ${values.key}, '0')
-              on conflict (${keyColumn}) do update
+              insert into ${settingsTable} (${idColumn}, ${shardColumn}, ${keyColumn}, ${valueColumn})
+              values (${values.id}, ${values.shard ?? ""}, ${values.key}, '0')
+              on conflict (${shardColumn}, ${keyColumn}) do update
                 set ${valueColumn} = cast(${qualifiedValueColumn} as integer) + 1
               returning ${valueColumn}, cast((julianday('now') - 2440587.5) * 86400000 as integer) as ${nowMsColumn};
             `;
@@ -339,13 +353,13 @@ export function compileOutboxVersionReservationPlan(
           ? sql`
               update ${settingsTable}
               set ${valueColumn} = (${qualifiedValueColumn}::bigint + 1)::text
-              where ${keyColumn} = ${values.key}
+              where ${shardColumn} = ${values.shard ?? ""} and ${keyColumn} = ${values.key}
               returning ${valueColumn}, floor(extract(epoch from CURRENT_TIMESTAMP) * 1000)::bigint as ${nowMsColumn};
             `
           : sql`
               update ${settingsTable}
               set ${valueColumn} = cast(${qualifiedValueColumn} as integer) + 1
-              where ${keyColumn} = ${values.key}
+              where ${shardColumn} = ${values.shard ?? ""} and ${keyColumn} = ${values.key}
               returning ${valueColumn}, cast((julianday('now') - 2440587.5) * 86400000 as integer) as ${nowMsColumn};
             `;
 
@@ -353,8 +367,8 @@ export function compileOutboxVersionReservationPlan(
     }
     case "insert-on-duplicate-last-insert-id": {
       const reservationQuery = sql`
-        insert into ${settingsTable} (${idColumn}, ${keyColumn}, ${valueColumn})
-        values (${values.id}, ${values.key}, LAST_INSERT_ID(0))
+        insert into ${settingsTable} (${idColumn}, ${shardColumn}, ${keyColumn}, ${valueColumn})
+        values (${values.id}, ${values.shard ?? ""}, ${values.key}, LAST_INSERT_ID(0))
         on duplicate key update ${valueColumn} = LAST_INSERT_ID(cast(${valueColumn} as unsigned) + 1);
       `;
       const resultQuery = sql`
@@ -376,9 +390,11 @@ async function reserveOutboxVersion(
   tx: SqlDriverAdapter,
   driverConfig: DriverConfig,
   dialect: Dialect,
+  shard: string | null,
 ): Promise<ReservedOutboxVersion> {
   const plan = compileOutboxVersionReservationPlan(driverConfig, dialect, {
     id: createId(),
+    shard,
     key: `${SETTINGS_NAMESPACE}.outbox_version`,
   });
   const reservationResult = await tx.executeQuery(plan.reservationQuery);
@@ -465,17 +481,18 @@ async function insertOutboxRow(
   driverConfig: DriverConfig,
   options: {
     id: string;
+    shard: string | null;
     versionstamp: string;
     uowId: string;
     payload: { json: unknown; meta?: Record<string, unknown> };
     refMap?: OutboxRefMap;
   },
 ): Promise<void> {
-  const { id, versionstamp, uowId, payload, refMap } = options;
+  const { id, shard, versionstamp, uowId, payload, refMap } = options;
   const refMapValue = refMap ?? null;
   const serializer = createSQLSerializer(driverConfig);
   const outboxTable = internalSchema.tables.fragno_db_outbox;
-  const values = { id, versionstamp, uowId, payload, refMap: refMapValue };
+  const values = { id, _shard: shard ?? "", versionstamp, uowId, payload, refMap: refMapValue };
   const serializedValues: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(values)) {
     const col = outboxTable.getColumnByName(key);
@@ -517,6 +534,7 @@ async function insertOutboxMutationRows(
       .map((operation) => {
         const values = {
           id: createId(),
+          _shard: operation.shard ?? "",
           entryVersionstamp: options.entryVersionstamp,
           mutationVersionstamp: operation.versionstamp,
           uowId: options.uowId,

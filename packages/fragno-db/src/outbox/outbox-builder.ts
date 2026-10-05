@@ -20,6 +20,7 @@ type OutboxOperationDraft = OutboxOperation extends infer T
   : never;
 
 export type OutboxPlan = {
+  shard: string | null;
   drafts: OutboxOperationDraft[];
   lookups: OutboxRefLookup[];
 };
@@ -27,9 +28,15 @@ export type OutboxPlan = {
 export function buildOutboxPlan(
   operations: MutationOperation<AnySchema>[],
   notifications: readonly OutboxTruncateNotificationDraft[] = [],
+  notificationShard: string | null = operations[0]?.shard ?? null,
 ): OutboxPlan {
   const drafts: OutboxOperationDraft[] = [];
   const lookups: OutboxRefLookup[] = [];
+  const mutationShards = new Set(operations.map((operation) => operation.shard));
+  if (mutationShards.size > 1) {
+    throw new Error("Outbox plan cannot contain mutations from multiple row shards.");
+  }
+  const shard = operations[0]?.shard ?? notificationShard;
 
   for (const op of operations) {
     if (op.type === "check" || op.type === "check-absent") {
@@ -48,6 +55,7 @@ export function buildOutboxPlan(
     if (op.type === "create") {
       drafts.push({
         op: "create",
+        shard: op.shard,
         schema: schemaName,
         namespace,
         table: op.table,
@@ -68,6 +76,7 @@ export function buildOutboxPlan(
 
       drafts.push({
         op: "update",
+        shard: op.shard,
         schema: schemaName,
         namespace,
         table: op.table,
@@ -93,6 +102,7 @@ export function buildOutboxPlan(
 
       drafts.push({
         op: "delete",
+        shard: op.shard,
         schema: schemaName,
         namespace,
         table: op.table,
@@ -107,6 +117,7 @@ export function buildOutboxPlan(
         const checkVersion = op.checkVersion && id instanceof FragnoId ? id.version : undefined;
         drafts.push({
           op: "delete",
+          shard: op.shard,
           schema: schemaName,
           namespace,
           table: op.table,
@@ -117,9 +128,9 @@ export function buildOutboxPlan(
     }
   }
 
-  drafts.push(...notifications);
+  drafts.push(...notifications.map((notification) => ({ ...notification, shard })));
 
-  return { drafts, lookups };
+  return { shard, drafts, lookups };
 }
 
 export function finalizeOutboxPayload(

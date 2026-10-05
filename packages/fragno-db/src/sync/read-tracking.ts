@@ -12,17 +12,43 @@ import type { AnySchema, AnyTable } from "../schema/create";
 import { FragnoId } from "../schema/create";
 
 export type ReadKey = {
+  shard: string | null;
   schema: string;
   table: string;
   externalId: string;
 };
 
 export type ReadScope = {
+  shard: string | null;
   schema: string;
   table: AnyTable;
   indexName: string;
   condition?: Condition;
 };
+
+function getConditionRowShard(condition: Condition | undefined): string | null {
+  if (!condition) {
+    return null;
+  }
+  if (condition.type === "compare") {
+    return condition.a.name === "_shard" &&
+      condition.operator === "=" &&
+      typeof condition.b === "string"
+      ? condition.b
+      : null;
+  }
+  if (condition.type === "not") {
+    return null;
+  }
+
+  for (const item of condition.items) {
+    const shard = getConditionRowShard(item);
+    if (shard !== null) {
+      return shard;
+    }
+  }
+  return null;
+}
 
 const isCursorResult = (value: unknown): value is CursorResult<unknown> => {
   if (!value || typeof value !== "object") {
@@ -55,6 +81,7 @@ const collectKeyFromRecord = (
   record: unknown,
   table: AnyTable,
   schemaName: string,
+  shard: string | null,
   output: ReadKey[],
 ): void => {
   if (!record || typeof record !== "object") {
@@ -62,7 +89,7 @@ const collectKeyFromRecord = (
   }
   const externalId = getExternalId((record as Record<string, unknown>)[table.getIdColumn().name]);
   if (externalId !== undefined) {
-    output.push({ schema: schemaName, table: table.name, externalId });
+    output.push({ shard, schema: schemaName, table: table.name, externalId });
   }
 };
 
@@ -79,7 +106,12 @@ const collectKeysFromQueryTreeRecord = (
   const idKey = node.table.getIdColumn().name;
   const externalId = getExternalId((record as Record<string, unknown>)[idKey]);
   if (externalId !== undefined) {
-    output.push({ schema: schemaName, table: node.table.name, externalId });
+    output.push({
+      shard: getConditionRowShard(node.where),
+      schema: schemaName,
+      table: node.table.name,
+      externalId,
+    });
   }
 
   for (const child of node.children) {
@@ -166,6 +198,7 @@ export const collectReadScopes = (
       }
 
       scopes.push({
+        shard: getConditionRowShard(condition === true ? undefined : condition),
         schema: schemaName,
         table: op.table,
         indexName: op.indexName,
@@ -186,6 +219,7 @@ export const collectReadScopes = (
       }
 
       scopes.push({
+        shard: getConditionRowShard(condition === true ? undefined : condition),
         schema: schemaName,
         table: op.table,
         indexName: op.indexName,
@@ -224,7 +258,16 @@ export const collectReadKeys = (
       if (op.options.queryTree) {
         collectKeysFromQueryTreeRecord(record, op.options.queryTree, schemaName, keys);
       } else {
-        collectKeyFromRecord(record, op.table, schemaName, keys);
+        const condition = op.options.where
+          ? buildCondition(op.table.columns, op.options.where)
+          : undefined;
+        collectKeyFromRecord(
+          record,
+          op.table,
+          schemaName,
+          condition === false || condition === true ? null : getConditionRowShard(condition),
+          keys,
+        );
       }
     }
   }
@@ -246,6 +289,7 @@ export const collectWriteKeys = (
 
     if (op.type === "create") {
       keys.push({
+        shard: op.shard,
         schema: schemaName,
         table: op.table,
         externalId: op.generatedExternalId,
@@ -258,6 +302,7 @@ export const collectWriteKeys = (
         const externalId = getExternalId(id);
         if (externalId !== undefined) {
           keys.push({
+            shard: op.shard,
             schema: schemaName,
             table: op.table,
             externalId,
@@ -270,6 +315,7 @@ export const collectWriteKeys = (
     const externalId = getExternalId(op.id);
     if (externalId !== undefined) {
       keys.push({
+        shard: op.shard,
         schema: schemaName,
         table: op.table,
         externalId,

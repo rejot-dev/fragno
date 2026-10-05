@@ -289,7 +289,7 @@ export function generateMigrationFromSchema(
       name: columnName,
       type: col.type,
       isNullable: col.isNullable,
-      role: col.role,
+      role: col.role === "external-id" ? "sharded-external-id" : col.role,
       default: col.default
         ? "value" in col.default
           ? { value: col.default.value }

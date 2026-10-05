@@ -85,7 +85,7 @@ describe("SQLQueryCompiler", () => {
       });
 
       expect(query.sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" limit ?"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard" from "users" limit ?"`,
       );
     });
 
@@ -102,7 +102,7 @@ describe("SQLQueryCompiler", () => {
       });
 
       expect(query.sql).toMatchInlineSnapshot(
-        `"select "users"."email" as "email", "users"."id" as "id", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" limit ?"`,
+        `"select "users"."email" as "email", "users"."id" as "id", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard" from "users" limit ?"`,
       );
     });
 
@@ -119,7 +119,7 @@ describe("SQLQueryCompiler", () => {
       });
 
       expect(query.sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" order by "users"."name" asc limit ?"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard" from "users" order by "users"."name" asc limit ?"`,
       );
     });
 
@@ -129,11 +129,15 @@ describe("SQLQueryCompiler", () => {
       });
       const compiler = new PostgreSQLQueryCompiler(db, new NodePostgresDriverConfig());
 
-      const query = compiler.compileCreate(testSchema.tables.users, {
-        name: "John",
-        email: "john@example.com",
-        age: 30,
-      });
+      const query = compiler.compileCreate(
+        testSchema.tables.users,
+        {
+          name: "John",
+          email: "john@example.com",
+          age: 30,
+        },
+        null,
+      );
 
       expect(query.sql).toMatchInlineSnapshot(
         `"insert into "users" ("id", "name", "email", "age") values (?, ?, ?, ?) returning "users"."_internalId" as "_internalId""`,
@@ -148,6 +152,7 @@ describe("SQLQueryCompiler", () => {
 
       const query = compiler.compileUpdate(testSchema.tables.users, {
         set: { name: "Jane" },
+        referenceShard: null,
         where: {
           type: "compare",
           a: testSchema.tables.users.columns.id,
@@ -200,11 +205,15 @@ describe("SQLQueryCompiler", () => {
       });
       const compiler = new MySQLQueryCompiler(db, new MySQL2DriverConfig());
 
-      const query = compiler.compileCreate(testSchema.tables.users, {
-        name: "John",
-        email: "john@example.com",
-        age: 30,
-      });
+      const query = compiler.compileCreate(
+        testSchema.tables.users,
+        {
+          name: "John",
+          email: "john@example.com",
+          age: 30,
+        },
+        null,
+      );
 
       expect(query.sql).toMatchInlineSnapshot(
         `"insert into "users" ("id", "name", "email", "age") values (?, ?, ?, ?)"`,
@@ -220,11 +229,15 @@ describe("SQLQueryCompiler", () => {
       });
       const compiler = new SQLiteQueryCompiler(db, new BetterSQLite3DriverConfig());
 
-      const query = compiler.compileCreate(testSchema.tables.users, {
-        name: "John",
-        email: "john@example.com",
-        age: 30,
-      });
+      const query = compiler.compileCreate(
+        testSchema.tables.users,
+        {
+          name: "John",
+          email: "john@example.com",
+          age: 30,
+        },
+        null,
+      );
 
       expect(query.sql).toMatchInlineSnapshot(
         `"insert into "users" ("id", "name", "email", "age") values (?, ?, ?, ?) returning "users"."_internalId" as "_internalId""`,
@@ -265,6 +278,7 @@ describe("SQLQueryCompiler", () => {
 
       const query = compiler.compileUpdate(testSchema.tables.users, {
         set: { name: "Jane" },
+        referenceShard: null,
         where: {
           type: "compare",
           a: testSchema.tables.users.columns.id,

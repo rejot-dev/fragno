@@ -350,11 +350,17 @@ export function processReferenceSubqueries(
         : internalIdCol;
       const idColumnName = resolver ? resolver.getColumnName(refTable.name, idCol) : idCol;
 
-      processed[key] = kysely
+      let query = kysely
         .selectFrom(tableName)
         .select(internalIdColumnName)
-        .where(idColumnName, "=", externalId)
-        .limit(1);
+        .where(idColumnName, "=", externalId);
+      if (value.shard !== null) {
+        const shardColumnName = resolver
+          ? resolver.getColumnName(refTable.name, "_shard")
+          : "_shard";
+        query = query.where(shardColumnName, "=", value.shard);
+      }
+      processed[key] = query.limit(1);
     } else {
       processed[key] = value;
     }

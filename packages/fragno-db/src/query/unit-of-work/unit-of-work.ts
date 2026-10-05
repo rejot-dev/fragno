@@ -8,7 +8,11 @@ import type { Condition, ConditionBuilder } from "../condition-builder";
 import type { Cursor, CursorResult } from "../cursor";
 import type { DbInterval, DbIntervalInput, DbNow } from "../db-now";
 import type { SelectClause, TableToInsertValues, SelectResult } from "../mod";
-import { applyReadQueryPolicies, type QueryPolicySet } from "../query-policy";
+import {
+  applyReadQueryPolicies,
+  applyWriteQueryPolicies,
+  type QueryPolicySet,
+} from "../query-policy";
 import type { CheckAbsentIndexName, CheckAbsentIndexValues } from "./check-absent";
 import {
   DeleteBuilder,
@@ -1132,6 +1136,7 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
       );
     }
     const operation = this.#queryPolicies ? applyReadQueryPolicies(op, this.#queryPolicies) : op;
+    this.#queryPolicies?.freeze();
     this.#retrievalOps.push(operation);
     return this.#retrievalOps.length - 1;
   }
@@ -1144,7 +1149,9 @@ export class UnitOfWork<const TRawInput = unknown> implements IUnitOfWork {
     if (this.state === "executed") {
       throw new Error(`Cannot add mutation operation in executed state.`);
     }
-    this.#mutationOps.push(op);
+    const operation = this.#queryPolicies ? applyWriteQueryPolicies(op, this.#queryPolicies) : op;
+    this.#queryPolicies?.freeze();
+    this.#mutationOps.push(operation);
   }
 
   notifyOutboxTruncate(notification: OutboxTruncateNotificationDraft): void {
@@ -1248,6 +1255,7 @@ export class TypedOutboxNotifier<const TSchema extends AnySchema> {
   deleteMutation(id: FragnoId | string): void {
     this.#uow.addMutationOperation({
       type: "delete",
+      shard: null,
       schema: internalSchema,
       namespace: null,
       table: "fragno_db_outbox_mutations",
@@ -1264,6 +1272,7 @@ export class TypedOutboxNotifier<const TSchema extends AnySchema> {
     }
     this.#uow.addMutationOperation({
       type: "delete-many",
+      shard: null,
       schema: internalSchema,
       namespace: null,
       table: "fragno_db_outbox_mutations",

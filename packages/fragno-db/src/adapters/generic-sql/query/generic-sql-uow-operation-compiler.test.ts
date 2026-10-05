@@ -126,6 +126,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
     });
     const alphaCreate = compiler.compileCreate({
       type: "create",
+      shard: null,
       schema: testSchema,
       namespace: "tenant_alpha",
       table: "users",
@@ -134,6 +135,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
     });
     const betaCreate = compiler.compileCreate({
       type: "create",
+      shard: null,
       schema: testSchema,
       namespace: "tenant_beta",
       table: "users",
@@ -142,6 +144,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
     });
     const otherSchemaCreate = compiler.compileCreate({
       type: "create",
+      shard: null,
       schema: customIdSchema,
       namespace: "tenant_alpha",
       table: "products",
@@ -223,7 +226,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
     expect(result).not.toBeNull();
     expect(result!.sql).toMatchInlineSnapshot(
-      `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" limit ?"`,
+      `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard" from "users" limit ?"`,
     );
   });
 
@@ -232,6 +235,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
     const result = compiler.compileCreate({
       type: "create",
+      shard: null,
       schema: testSchema,
       table: "users",
       values: {
@@ -266,6 +270,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
     const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
     const operation = {
       type: "create" as const,
+      shard: null,
       schema: runtimeSchema,
       table: "records" as const,
       values: { id: "record-1", label: "Record" },
@@ -290,6 +295,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
     const result = compiler.compileUpdate({
       type: "update",
+      shard: null,
       schema: testSchema,
       table: "users",
       id: "user123",
@@ -311,6 +317,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
     const result = compiler.compileUpdate({
       type: "update",
+      shard: null,
       schema: testSchema,
       table: "users",
       id: new FragnoId({ externalId: "user123", internalId: 1n, version: 5 }),
@@ -332,6 +339,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
     const result = compiler.compileDelete({
       type: "delete",
+      shard: null,
       schema: testSchema,
       table: "users",
       id: "user123",
@@ -348,6 +356,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
     const result = compiler.compileDeleteMany({
       type: "delete-many",
+      shard: null,
       schema: testSchema,
       table: "users",
       ids: ["user123", "user456"],
@@ -362,11 +371,32 @@ describe("GenericSQLUOWOperationCompiler", () => {
     expect(compiled?.expectedAffectedRows).toBeNull();
   });
 
+  test("compileDeleteMany scopes every chunk to the row shard", () => {
+    const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
+
+    const result = compiler.compileDeleteMany({
+      type: "delete-many",
+      shard: "tenant-a",
+      schema: testSchema,
+      table: "users",
+      ids: ["user123", "user456"],
+      checkVersion: false,
+      omitOutbox: false,
+    });
+
+    const [compiled] = Array.isArray(result) ? result : result ? [result] : [];
+    expect(compiled?.query.sql).toMatchInlineSnapshot(
+      `"delete from "users" where ("users"."id" in (?, ?) and "users"."_shard" = ?)"`,
+    );
+    expect(compiled?.query.parameters).toEqual(["user123", "user456", "tenant-a"]);
+  });
+
   test("compileDeleteMany operation with per-row version checks", () => {
     const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
 
     const result = compiler.compileDeleteMany({
       type: "delete-many",
+      shard: null,
       schema: testSchema,
       table: "users",
       ids: [
@@ -390,6 +420,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
     const result = compiler.compileDeleteMany({
       type: "delete-many",
+      shard: null,
       schema: testSchema,
       table: "users",
       ids,
@@ -416,6 +447,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
     const result = compiler.compileDeleteMany({
       type: "delete-many",
+      shard: null,
       schema: testSchema,
       table: "users",
       ids,
@@ -437,6 +469,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
     const result = compiler.compileCheck({
       type: "check",
+      shard: null,
       schema: testSchema,
       table: "users",
       id: new FragnoId({ externalId: "user123", internalId: 1n, version: 5 }),
@@ -454,6 +487,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
     const result = compiler.compileCheckAbsent({
       type: "check-absent",
+      shard: null,
       schema: testSchema,
       table: "users",
       indexName: "idx_name_email",
@@ -471,6 +505,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
     const result = compiler.compileCheckAbsent({
       type: "check-absent",
+      shard: null,
       schema: testSchema,
       table: "users",
       indexName: "_primary",
@@ -489,6 +524,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       const result = compiler.compileCreate({
         type: "create",
+        shard: null,
         schema: testSchema,
         table: "users",
         values: {
@@ -509,6 +545,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       const result = compiler.compileCreate({
         type: "create",
+        shard: null,
         schema: testSchema,
         table: "users",
         values: {
@@ -531,6 +568,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       const result = compiler.compileCreate({
         type: "create",
+        shard: null,
         schema: testSchema,
         table: "posts",
         values: {
@@ -552,6 +590,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       const result = compiler.compileCreate({
         type: "create",
+        shard: null,
         schema: testSchema,
         table: "posts",
         values: {
@@ -577,6 +616,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       const result = compiler.compileUpdate({
         type: "update",
+        shard: null,
         schema: testSchema,
         table: "posts",
         id: "post-123",
@@ -597,6 +637,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       const result = compiler.compileUpdate({
         type: "update",
+        shard: null,
         schema: testSchema,
         table: "posts",
         id: "post-123",
@@ -619,6 +660,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       const result = compiler.compileUpdate({
         type: "update",
+        shard: null,
         schema: testSchema,
         table: "users",
         id: "user-123",
@@ -643,6 +685,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       const result = compiler.compileDelete({
         type: "delete",
+        shard: null,
         schema: testSchema,
         table: "users",
         id: new FragnoId({ externalId: "user123", internalId: 1n, version: 5 }),
@@ -675,7 +718,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" limit ?"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard" from "users" limit ?"`,
       );
     });
 
@@ -697,7 +740,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where "users"."age" > ? limit ?"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard" from "users" where "users"."age" > ? limit ?"`,
       );
     });
 
@@ -719,7 +762,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where ("users"."isActive" = ? and "users"."age" >= ?) limit ?"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard" from "users" where ("users"."isActive" = ? and "users"."age" >= ?) limit ?"`,
       );
     });
   });
@@ -730,6 +773,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       const result = compiler.compileCreate({
         type: "create",
+        shard: null,
         schema: customIdSchema,
         table: "products",
         values: {
@@ -762,7 +806,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "products"."productId" as "productId", "products"."name" as "name", "products"."_internalId" as "_internalId", "products"."_version" as "_version" from "products" limit ?"`,
+        `"select "products"."productId" as "productId", "products"."name" as "name", "products"."_internalId" as "_internalId", "products"."_version" as "_version", "products"."_shard" as "_shard" from "products" limit ?"`,
       );
     });
 
@@ -784,7 +828,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "products"."productId" as "productId", "products"."name" as "name", "products"."price" as "price", "products"."_internalId" as "_internalId", "products"."_version" as "_version" from "products" where "products"."productId" = ? limit ?"`,
+        `"select "products"."productId" as "productId", "products"."name" as "name", "products"."price" as "price", "products"."_internalId" as "_internalId", "products"."_version" as "_version", "products"."_shard" as "_shard" from "products" where "products"."productId" = ? limit ?"`,
       );
     });
 
@@ -793,6 +837,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       const result = compiler.compileUpdate({
         type: "update",
+        shard: null,
         schema: customIdSchema,
         table: "products",
         id: "prod-456",
@@ -826,7 +871,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "orders"."orderId" as "orderId", "orders"."productRef" as "productRef", "orders"."quantity" as "quantity", "orders"."_internalId" as "_internalId", "orders"."_version" as "_version" from "orders" where "orders"."orderId" = ? limit ?"`,
+        `"select "orders"."orderId" as "orderId", "orders"."productRef" as "productRef", "orders"."quantity" as "quantity", "orders"."_internalId" as "_internalId", "orders"."_version" as "_version", "orders"."_shard" as "_shard" from "orders" where "orders"."orderId" = ? limit ?"`,
       );
     });
   });
@@ -849,7 +894,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "users"."name" as "name", "users"."email" as "email", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" limit ?"`,
+        `"select "users"."name" as "name", "users"."email" as "email", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard" from "users" limit ?"`,
       );
     });
 
@@ -870,7 +915,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" limit ?"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard" from "users" limit ?"`,
       );
     });
   });
@@ -893,7 +938,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" limit ?"`,
+        `"select "users"."id" as "id", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard" from "users" limit ?"`,
       );
     });
 
@@ -915,7 +960,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where "users"."id" = ? limit ?"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard" from "users" where "users"."id" = ? limit ?"`,
       );
     });
   });
@@ -938,7 +983,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" order by "users"."id" desc"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard" from "users" order by "users"."id" desc"`,
       );
     });
 
@@ -959,7 +1004,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" order by "users"."name" asc"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard" from "users" order by "users"."name" asc"`,
       );
     });
 
@@ -982,7 +1027,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."age" as "age", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where "users"."age" > ? order by "users"."age" desc limit ?"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."age" as "age", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard" from "users" where "users"."age" > ? order by "users"."age" desc limit ?"`,
       );
     });
   });
@@ -1013,7 +1058,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where "users"."name" > ? order by "users"."name" asc limit ?"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard" from "users" where "users"."name" > ? order by "users"."name" asc limit ?"`,
       );
       expect(result!.parameters).toEqual(["Alice", 10]);
     });
@@ -1043,7 +1088,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where "users"."name" > ? order by "users"."name" desc limit ?"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard" from "users" where "users"."name" > ? order by "users"."name" desc limit ?"`,
       );
       expect(result!.parameters).toEqual(["Bob", 10]);
     });
@@ -1074,7 +1119,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where ("users"."isActive" = ? and "users"."name" > ?) order by "users"."name" asc limit ?"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard" from "users" where ("users"."isActive" = ? and "users"."name" > ?) order by "users"."name" asc limit ?"`,
       );
       expect(result!.parameters).toEqual([1, "Alice", 5]);
     });
@@ -1105,7 +1150,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where ("users"."name" < ? or ("users"."name" = ? and "users"."createdAt" < ?) or ("users"."name" = ? and "users"."createdAt" = ? and "users"."id" < ?)) order by "users"."name" desc, "users"."createdAt" desc, "users"."id" desc limit ?"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard" from "users" where ("users"."name" < ? or ("users"."name" = ? and "users"."createdAt" < ?) or ("users"."name" = ? and "users"."createdAt" = ? and "users"."id" < ?)) order by "users"."name" desc, "users"."createdAt" desc, "users"."id" desc limit ?"`,
       );
       expect(result!.parameters).toEqual([
         "Alice",
@@ -1138,7 +1183,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where ("users"."age" > ? and "users"."isActive" = ?) limit ?"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard" from "users" where ("users"."age" > ? and "users"."isActive" = ?) limit ?"`,
       );
     });
 
@@ -1160,7 +1205,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where ("users"."name" = ? or "users"."name" = ?) limit ?"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard" from "users" where ("users"."name" = ? or "users"."name" = ?) limit ?"`,
       );
       expect(result!.parameters).toEqual(["Alice", "Bob", 10]);
     });
@@ -1187,7 +1232,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where ("users"."isActive" = ? and ("users"."name" = ? or "users"."name" = ?)) limit ?"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard" from "users" where ("users"."isActive" = ? and ("users"."name" = ? or "users"."name" = ?)) limit ?"`,
       );
       expect(result!.parameters).toEqual([1, "Alice", "Bob", 10]);
     });
@@ -1231,7 +1276,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" limit ?"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard" from "users" limit ?"`,
       );
     });
 
@@ -1272,7 +1317,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where "users"."email" like ? limit ?"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard" from "users" where "users"."email" like ? limit ?"`,
       );
       expect(result!.parameters).toEqual(["%@example.com%", 10]);
     });
@@ -1295,7 +1340,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version" from "users" where "users"."name" like ? limit ?"`,
+        `"select "users"."id" as "id", "users"."name" as "name", "users"."email" as "email", "users"."age" as "age", "users"."isActive" as "isActive", "users"."createdAt" as "createdAt", "users"."invitedBy" as "invitedBy", "users"."_internalId" as "_internalId", "users"."_version" as "_version", "users"."_shard" as "_shard" from "users" where "users"."name" like ? limit ?"`,
       );
       expect(result!.parameters).toEqual(["John%", 10]);
     });
@@ -1309,6 +1354,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       const result = compiler.compileCreate({
         type: "create",
+        shard: null,
         schema: testSchema,
         table: "users",
         values: {
@@ -1329,6 +1375,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       const result = compiler.compileCreate({
         type: "create",
+        shard: null,
         schema: testSchema,
         table: "posts",
         values: {
@@ -1350,6 +1397,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       const result = compiler.compileUpdate({
         type: "update",
+        shard: null,
         schema: testSchema,
         table: "users",
         id: new FragnoId({ externalId: "user123", internalId: 1n, version: 5 }),
@@ -1389,7 +1437,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       expect(result).not.toBeNull();
       expect(result!.sql).toMatchInlineSnapshot(
-        `"select \`users\`.\`id\` as \`id\`, \`users\`.\`name\` as \`name\`, \`users\`.\`_internalId\` as \`_internalId\`, \`users\`.\`_version\` as \`_version\` from \`users\` where \`users\`.\`name\` > ? order by \`users\`.\`name\` asc limit ?"`,
+        `"select \`users\`.\`id\` as \`id\`, \`users\`.\`name\` as \`name\`, \`users\`.\`_internalId\` as \`_internalId\`, \`users\`.\`_version\` as \`_version\`, \`users\`.\`_shard\` as \`_shard\` from \`users\` where \`users\`.\`name\` > ? order by \`users\`.\`name\` asc limit ?"`,
       );
     });
 
@@ -1398,6 +1446,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
       const result = compiler.compileCheck({
         type: "check",
+        shard: null,
         schema: testSchema,
         table: "users",
         id: new FragnoId({ externalId: "user123", internalId: 1n, version: 5 }),

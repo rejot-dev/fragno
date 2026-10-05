@@ -16,10 +16,12 @@ import {
 export class ReferenceSubquery {
   readonly #referencedTable: AnyTable;
   readonly #externalIdValue: string;
+  readonly #shard: string | null;
 
-  constructor(referencedTable: AnyTable, externalIdValue: string) {
+  constructor(referencedTable: AnyTable, externalIdValue: string, shard: string | null = null) {
     this.#referencedTable = referencedTable;
     this.#externalIdValue = externalIdValue;
+    this.#shard = shard;
   }
 
   get referencedTable() {
@@ -28,6 +30,10 @@ export class ReferenceSubquery {
 
   get externalIdValue() {
     return this.#externalIdValue;
+  }
+
+  get shard() {
+    return this.#shard;
   }
 }
 
@@ -114,6 +120,7 @@ export function encodeValues(
   generateDefault: boolean,
   runtimeDefaults: RuntimeDefaultContext = {},
   resolver?: NamingResolver,
+  referenceShard: string | null = null,
 ): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   const resolvedValues = generateDefault
@@ -161,6 +168,7 @@ export function encodeValues(
             result[physicalColumnName] = new ReferenceSubquery(
               foreignKey.referencedTable,
               externalIdForSubquery!,
+              referenceShard,
             );
             continue;
           }
@@ -190,8 +198,9 @@ export function encodeValuesWithDbDefaults(
   table: AnyTable,
   runtimeDefaults: RuntimeDefaultContext = {},
   resolver?: NamingResolver,
+  referenceShard: string | null = null,
 ): Record<string, unknown> {
-  const resolved = encodeValues(values, table, true, runtimeDefaults, resolver);
+  const resolved = encodeValues(values, table, true, runtimeDefaults, resolver, referenceShard);
 
   for (const columnKey of Object.keys(table.columns)) {
     const column = table.columns[columnKey];

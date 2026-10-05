@@ -79,6 +79,28 @@ export interface Index<
   unique: boolean;
 }
 
+const SHARD_COLUMN_NAME = "_shard" as const;
+
+/** Physical indexes always start with the hidden shard column. */
+export function getPhysicalIndexColumnNames(table: AnyTable, indexName: string): string[] {
+  const logicalColumnNames =
+    indexName === "primary"
+      ? [table.getIdColumn().name]
+      : [...(table.indexes[indexName]?.columnNames ?? [])];
+  if (indexName !== "primary" && !table.indexes[indexName]) {
+    throw new Error(`Index "${indexName}" not found on table "${table.name}".`);
+  }
+  return [SHARD_COLUMN_NAME, ...logicalColumnNames.filter((name) => name !== SHARD_COLUMN_NAME)];
+}
+
+export function getShardExternalIdIndexName(table: AnyTable): string {
+  return `_fragno_${table.name}_shard_external_id`;
+}
+
+export function getShardInternalIdIndexName(table: AnyTable): string {
+  return `_fragno_${table.name}_shard_internal_id`;
+}
+
 export interface Relation<TRelationType extends RelationType = RelationType> {
   id: string;
   name: string;
@@ -548,6 +570,10 @@ export function versionColumn(): VersionColumn<null, number> {
   return col;
 }
 
+function shardColumn(): Column<"string", null, null> {
+  return column("string").defaultTo("").hidden();
+}
+
 /**
  * FragnoId represents a unified ID object that can contain external ID, internal ID, or both.
  * @internal
@@ -700,9 +726,9 @@ function createForeignKeySubOperation(
   return {
     type: "add-foreign-key",
     name: getForeignKeyOperationName(tableName, columnName),
-    columns: [columnName],
+    columns: [SHARD_COLUMN_NAME, columnName],
     referencedTable: column.referenceTableName!,
-    referencedColumns: ["_internalId"],
+    referencedColumns: [SHARD_COLUMN_NAME, "_internalId"],
   };
 }
 
@@ -882,7 +908,7 @@ export class TableBuilder<
 
     // TODO: Throw if user manually added version/internalId columns
 
-    // Auto-add _internalId and _version columns if not already present
+    // Auto-add system columns if not already present.
     if (!this.#columns["_internalId"]) {
       const col = internalIdColumn();
       col.name = "_internalId";
@@ -895,6 +921,13 @@ export class TableBuilder<
       col.name = "_version";
       // Safe: we're adding system columns to the internal columns object
       (this.#columns as Record<string, AnyColumn>)["_version"] = col;
+    }
+
+    if (!this.#columns["_shard"]) {
+      const col = shardColumn();
+      col.name = "_shard";
+      // Safe: we're adding system columns to the internal columns object
+      (this.#columns as Record<string, AnyColumn>)["_shard"] = col;
     }
 
     const table: Table<TColumns, TIndexes> = {
@@ -1143,8 +1176,18 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
     const tableBuilder = new TableBuilder<{}, {}>(name);
     const result = callback(tableBuilder);
     const builtTable = result.build();
-    const indexNames = result.getIndexes().map((idx) => idx.name);
+    const authorIndexNames = result.getIndexes().map((idx) => idx.name);
+    const systemIndexNames = [
+      getShardExternalIdIndexName(builtTable),
+      getShardInternalIdIndexName(builtTable),
+    ];
+    const indexNames = [...systemIndexNames, ...authorIndexNames];
 
+    for (const indexName of authorIndexNames) {
+      if (systemIndexNames.includes(indexName)) {
+        throw new Error(`Index name "${indexName}" is reserved by Fragno.`);
+      }
+    }
     for (const indexName of indexNames) {
       if (this.#indexNames.has(indexName)) {
         throw new Error(
@@ -1170,7 +1213,7 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
       }
     }
 
-    // Add system columns (_internalId and _version) that were auto-added
+    // Add system columns that were auto-added.
     if (builtTable.columns["_internalId"]) {
       subOperations.push({
         type: "add-column",
@@ -1185,13 +1228,34 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
         column: cloneColumn(builtTable.columns["_version"]),
       });
     }
+    if (builtTable.columns["_shard"]) {
+      subOperations.push({
+        type: "add-column",
+        columnName: "_shard",
+        column: cloneColumn(builtTable.columns["_shard"]),
+      });
+    }
 
-    // Add indexes from builder
+    // Physical indexes include the shard prefix while author-facing definitions stay unchanged.
+    subOperations.push(
+      {
+        type: "add-index",
+        name: getShardExternalIdIndexName(builtTable),
+        columns: getPhysicalIndexColumnNames(builtTable, "primary"),
+        unique: true,
+      },
+      {
+        type: "add-index",
+        name: getShardInternalIdIndexName(builtTable),
+        columns: [SHARD_COLUMN_NAME, "_internalId"],
+        unique: true,
+      },
+    );
     for (const idx of result.getIndexes()) {
       subOperations.push({
         type: "add-index",
         name: idx.name,
-        columns: idx.columns.map((c) => c.name),
+        columns: getPhysicalIndexColumnNames(builtTable, idx.name),
         unique: idx.unique,
       });
     }
@@ -1324,7 +1388,7 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
         subOperations.push({
           type: "add-index",
           name: idx.name,
-          columns: idx.columns.map((c) => c.name),
+          columns: getPhysicalIndexColumnNames(newTable, idx.name),
           unique: idx.unique,
         });
       }
@@ -1411,7 +1475,10 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
           foreignKey: true,
           table: referencedTable,
           referencer: table,
-          on: [[columnName, referencedIdColumn.name]],
+          on: [
+            [SHARD_COLUMN_NAME, SHARD_COLUMN_NAME],
+            [columnName, referencedIdColumn.name],
+          ],
         };
       }
 

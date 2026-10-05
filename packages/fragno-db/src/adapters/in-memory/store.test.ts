@@ -35,8 +35,8 @@ describe("in-memory store", () => {
     assert(postsTable?.rows.size === 0);
     assert(usersTable?.nextInternalId === 1n);
     assert(postsTable?.nextInternalId === 1n);
-    assert(usersTable?.indexes.size === 2);
-    assert(postsTable?.indexes.size === 2);
+    assert(usersTable?.indexes.size === 3);
+    assert(postsTable?.indexes.size === 3);
     assert(usersTable?.indexes.has("_primary"));
     assert(postsTable?.indexes.has("_primary"));
 
@@ -44,11 +44,11 @@ describe("in-memory store", () => {
     const usersNameIdx = usersTable?.indexes.get("name_idx");
     const postsUserIdx = postsTable?.indexes.get("user_idx");
 
-    expect(usersPrimary?.definition.columnNames).toEqual(["id"]);
+    expect(usersPrimary?.definition.columnNames).toEqual(["_shard", "id"]);
     assert(usersPrimary?.definition.unique);
-    expect(usersNameIdx?.definition.columnNames).toEqual(["name"]);
+    expect(usersNameIdx?.definition.columnNames).toEqual(["_shard", "name"]);
     assert(!usersNameIdx?.definition.unique);
-    expect(postsUserIdx?.definition.columnNames).toEqual(["userId"]);
+    expect(postsUserIdx?.definition.columnNames).toEqual(["_shard", "userId"]);
     assert(postsUserIdx?.definition.unique);
   });
 

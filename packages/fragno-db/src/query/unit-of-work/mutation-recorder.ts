@@ -32,7 +32,10 @@ export interface CreateOptions {
 export type MutationOperation<
   TSchema extends AnySchema,
   TTable extends AnyTable = TSchema["tables"][keyof TSchema["tables"]],
-> =
+> = {
+  /** Row shard enforced by adapters. Null means the operation is unrestricted. */
+  shard: string | null;
+} & (
   | {
       type: "update";
       schema: TSchema;
@@ -84,7 +87,8 @@ export type MutationOperation<
       table: TTable["name"];
       indexName: string;
       values: Record<string, unknown>;
-    };
+    }
+);
 
 export type RecordMutationOperation = (operation: MutationOperation<AnySchema>) => void;
 
@@ -170,6 +174,7 @@ export class SchemaMutationRecorder<TSchema extends AnySchema> {
 
     this.#record({
       type: "create",
+      shard: null,
       schema: this.#schema,
       namespace: this.#namespace,
       table: tableName,
@@ -196,6 +201,7 @@ export class SchemaMutationRecorder<TSchema extends AnySchema> {
 
     this.#record({
       type: "update",
+      shard: null,
       schema: this.#schema,
       namespace: this.#namespace,
       table: tableName,
@@ -217,6 +223,7 @@ export class SchemaMutationRecorder<TSchema extends AnySchema> {
 
     this.#record({
       type: "delete",
+      shard: null,
       schema: this.#schema,
       namespace: this.#namespace,
       table: tableName,
@@ -250,6 +257,7 @@ export class SchemaMutationRecorder<TSchema extends AnySchema> {
 
     this.#record({
       type: "delete-many",
+      shard: null,
       schema: this.#schema,
       namespace: this.#namespace,
       table: tableName,
@@ -262,6 +270,7 @@ export class SchemaMutationRecorder<TSchema extends AnySchema> {
   check(tableName: keyof TSchema["tables"] & string, id: FragnoId): void {
     this.#record({
       type: "check",
+      shard: null,
       schema: this.#schema,
       namespace: this.#namespace,
       table: tableName,
@@ -286,6 +295,7 @@ export class SchemaMutationRecorder<TSchema extends AnySchema> {
 
     this.#record({
       type: "check-absent",
+      shard: null,
       schema: this.#schema,
       namespace: this.#namespace,
       table: tableName,

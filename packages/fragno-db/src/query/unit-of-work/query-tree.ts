@@ -638,8 +638,20 @@ export class QueryTreeFindBuilder<
 
     const mutationsTable = internalSchema.tables.fragno_db_outbox_mutations;
     const outboxIndexName = "idx_outbox_mutations_key";
+    const mutationShardColumn = (mutationsTable.columns as Record<string, AnyColumn>)["_shard"];
+    const parentShardColumn = this.#table.columns["_shard"];
+    if (!mutationShardColumn || !parentShardColumn) {
+      throw new Error("Outbox mutation correlation requires _shard columns.");
+    }
+    const shardCondition: Condition = {
+      type: "compare",
+      a: mutationShardColumn,
+      operator: "=",
+      b: new ParentColumnRef(parentShardColumn),
+    };
     const onIndex = buildCorrelatedCondition(mutationsTable, this.#table, outboxIndexName, (eb) =>
       eb.and(
+        shardCondition,
         eb("schema", "=", this.#namespace ?? ""),
         eb("table", "=", this.#tableName),
         eb("externalId", "=", eb.parent(this.#table.getIdColumn().name)),

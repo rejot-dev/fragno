@@ -26,6 +26,7 @@ export type OutboxTruncateMatch = Partial<Record<string, OutboxMatchScalar>>;
 
 export type OutboxTruncateNotification = {
   op: "truncate";
+  shard: string | null;
   schema: string;
   namespace?: string;
   table: string;
@@ -51,11 +52,15 @@ export type OutboxMatch<TTable extends AnyTable> = Partial<{
       : K]: OutboxColumnMatchValue<TTable["columns"][K]>;
 }>;
 
-export type OutboxTruncateNotificationDraft = Omit<OutboxTruncateNotification, "versionstamp">;
+export type OutboxTruncateNotificationDraft = Omit<
+  OutboxTruncateNotification,
+  "versionstamp" | "shard"
+>;
 
 export type OutboxMutation =
   | {
       op: "create";
+      shard: string | null;
       schema: string;
       namespace?: string;
       table: string;
@@ -65,6 +70,7 @@ export type OutboxMutation =
     }
   | {
       op: "update";
+      shard: string | null;
       schema: string;
       namespace?: string;
       table: string;
@@ -75,6 +81,7 @@ export type OutboxMutation =
     }
   | {
       op: "delete";
+      shard: string | null;
       schema: string;
       namespace?: string;
       table: string;

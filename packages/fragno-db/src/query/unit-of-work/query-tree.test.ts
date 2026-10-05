@@ -38,6 +38,7 @@ describe("QueryTreeFindBuilder.withOutboxMutations", () => {
     expect(child?.onIndex).toMatchObject({
       type: "and",
       items: [
+        { type: "compare", a: expect.objectContaining({ name: "_shard" }) },
         { type: "compare", a: expect.objectContaining({ name: "schema" }), b: "tenant" },
         { type: "compare", a: expect.objectContaining({ name: "table" }), b: "events" },
         {
@@ -48,7 +49,7 @@ describe("QueryTreeFindBuilder.withOutboxMutations", () => {
     });
 
     const externalIdComparison =
-      child?.onIndex?.type === "and" ? child.onIndex.items[2] : undefined;
+      child?.onIndex?.type === "and" ? child.onIndex.items[3] : undefined;
     assert(externalIdComparison?.type === "compare");
     if (externalIdComparison?.type !== "compare") {
       throw new Error("Expected an external-ID correlation.");
@@ -75,6 +76,6 @@ describe("QueryTreeFindBuilder.withOutboxMutations", () => {
     if (onIndex?.type !== "and") {
       throw new Error("Expected an indexed outbox correlation.");
     }
-    expect(onIndex.items[0]).toMatchObject({ type: "compare", b: "" });
+    expect(onIndex.items[1]).toMatchObject({ type: "compare", b: "" });
   });
 });

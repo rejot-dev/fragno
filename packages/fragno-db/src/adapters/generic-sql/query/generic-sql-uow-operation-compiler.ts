@@ -12,7 +12,7 @@ import type {
   CompiledMutationResult,
 } from "../../../query/unit-of-work/unit-of-work";
 import { materializeRuntimeCreateValues } from "../../../query/value-encoding";
-import type { AnyColumn, AnySchema } from "../../../schema/create";
+import type { AnyColumn, AnySchema, AnyTable } from "../../../schema/create";
 import { UOWOperationCompiler } from "../../shared/uow-operation-compiler";
 import type { DriverConfig } from "../driver-config";
 import { createColdKysely } from "../migration/cold-kysely";
@@ -28,6 +28,34 @@ type ScopedCompilers = {
   sql: SQLQueryCompiler | null;
   queryTree: QueryTreeSQLCompiler | null;
 };
+
+function combineWriteShardCondition(
+  table: AnyTable,
+  condition: Condition,
+  shard: string | null,
+): Condition {
+  if (shard === null) {
+    return condition;
+  }
+
+  const shardColumn = table.columns["_shard"];
+  if (!shardColumn) {
+    throw new Error(`Table ${table.name} does not define the required _shard column.`);
+  }
+
+  return {
+    type: "and",
+    items: [
+      condition,
+      {
+        type: "compare",
+        a: shardColumn,
+        operator: "=",
+        b: shard,
+      },
+    ],
+  };
+}
 
 /**
  * Generic SQL UOW Operation Compiler.
@@ -233,15 +261,17 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
     const table = this.getTable(op.schema, op.table);
     const idColumnName = table.getIdColumn().name;
     const operationValues = op.values as Record<string, unknown>;
+    const valuesWithShard =
+      op.shard === null ? operationValues : { ...operationValues, _shard: op.shard };
     const createValues =
-      operationValues[idColumnName] === undefined
-        ? { ...operationValues, [idColumnName]: op.generatedExternalId }
-        : operationValues;
+      valuesWithShard[idColumnName] === undefined
+        ? { ...valuesWithShard, [idColumnName]: op.generatedExternalId }
+        : valuesWithShard;
     const materializedValues = materializeRuntimeCreateValues(createValues, table);
     const materializedOperation = { ...op, values: materializedValues };
 
     return {
-      query: sqlCompiler.compileCreate(table, materializedValues),
+      query: sqlCompiler.compileCreate(table, materializedValues, op.shard),
       operation: op,
       materializedOperation,
       op: "create",
@@ -257,6 +287,9 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
     const table = this.getTable(op.schema, op.table);
     const idColumn = table.getIdColumn();
     const versionColumn = table.getVersionColumn();
+    if (Object.prototype.hasOwnProperty.call(op.set, "_shard")) {
+      throw new Error("Update mutation cannot change a row shard.");
+    }
 
     const externalId = this.getExternalId(op.id);
     const versionToCheck = this.getVersionToCheck(op.id, op.checkVersion);
@@ -273,8 +306,11 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
       return null;
     }
 
-    const conditions: Condition | undefined =
-      conditionsResult === true ? undefined : conditionsResult;
+    const baseCondition = conditionsResult === true ? undefined : conditionsResult;
+    if (!baseCondition) {
+      throw new Error("Update condition must identify a row.");
+    }
+    const conditions = combineWriteShardCondition(table, baseCondition, op.shard);
 
     // Determine if we should use RETURNING-based checking
     // Use RETURNING when driver supports it but doesn't support affected rows reporting
@@ -287,6 +323,7 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
       set: op.set,
       where: conditions,
       returning: useReturningForCheck,
+      referenceShard: op.shard,
     });
 
     return {
@@ -321,8 +358,11 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
       return null;
     }
 
-    const conditions: Condition | undefined =
-      conditionsResult === true ? undefined : conditionsResult;
+    const baseCondition = conditionsResult === true ? undefined : conditionsResult;
+    if (!baseCondition) {
+      throw new Error("Delete condition must identify a row.");
+    }
+    const conditions = combineWriteShardCondition(table, baseCondition, op.shard);
 
     // Determine if we should use RETURNING-based checking
     // Use RETURNING when driver supports it but doesn't support affected rows reporting
@@ -369,7 +409,7 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
       versions.length > 0 && versions.every((version) => version === versions[0])
         ? versions[0]
         : null;
-    const fixedParameterCount = sharedVersion === null ? 0 : 1;
+    const fixedParameterCount = (sharedVersion === null ? 0 : 1) + (op.shard === null ? 0 : 1);
     const parametersPerId = op.checkVersion && sharedVersion === null ? 2 : 1;
     const maxIdsPerStatement = Number.isFinite(this.driverConfig.maxParametersPerQuery)
       ? Math.floor(
@@ -428,8 +468,11 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
         continue;
       }
 
-      const conditions: Condition | undefined =
-        conditionsResult === true ? undefined : conditionsResult;
+      const baseCondition = conditionsResult === true ? undefined : conditionsResult;
+      if (!baseCondition) {
+        throw new Error("Bulk delete condition must identify at least one row.");
+      }
+      const conditions = combineWriteShardCondition(table, baseCondition, op.shard);
       const expectedRows = op.checkVersion ? ids.length : null;
       compiled.push({
         query: sqlCompiler.compileDelete(table, {
@@ -468,7 +511,10 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
     }
 
     return {
-      query: sqlCompiler.compileCheck(table, condition),
+      query: sqlCompiler.compileCheck(
+        table,
+        combineWriteShardCondition(table, condition, op.shard),
+      ),
       operation: op,
       op: "check",
       expectedAffectedRows: null,
@@ -488,7 +534,10 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
     );
 
     return {
-      query: sqlCompiler.compileCheck(table, condition),
+      query: sqlCompiler.compileCheck(
+        table,
+        combineWriteShardCondition(table, condition, op.shard),
+      ),
       operation: op,
       op: "check-absent",
       expectedAffectedRows: null,

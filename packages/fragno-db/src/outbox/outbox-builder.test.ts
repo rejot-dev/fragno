@@ -41,6 +41,7 @@ function createOperation(
 ): MutationOperation<AnySchema> & { type: "create" } {
   return {
     type: "create",
+    shard: null,
     schema: defaultsSchema,
     namespace: defaultsSchema.name,
     table: "records",
@@ -50,10 +51,27 @@ function createOperation(
 }
 
 describe("buildOutboxPlan", () => {
+  it("carries the row shard on the outbox envelope", () => {
+    const operation = createOperation({ id: "record-1", label: "Record" });
+    operation.shard = "tenant-a";
+    const plan = buildOutboxPlan([operation]);
+    const payload = finalizeOutboxPayload(plan, 1n, {
+      now: new Date("2026-08-31T12:00:00.000Z"),
+    });
+
+    assert(plan.shard === "tenant-a");
+    expect(payload.operations[0]).toMatchObject({
+      op: "create",
+      shard: "tenant-a",
+      externalId: "record-1",
+    });
+  });
+
   it("excludes concurrency assertions", () => {
     const plan = buildOutboxPlan([
       {
         type: "check-absent",
+        shard: null,
         schema: defaultsSchema,
         table: "records",
         indexName: "idx_label",
@@ -61,7 +79,7 @@ describe("buildOutboxPlan", () => {
       },
     ]);
 
-    expect(plan).toEqual({ drafts: [], lookups: [] });
+    expect(plan).toEqual({ shard: null, drafts: [], lookups: [] });
   });
 
   it("omits source deletes and preserves duplicate truncate notifications", () => {
@@ -77,6 +95,7 @@ describe("buildOutboxPlan", () => {
       [
         {
           type: "delete",
+          shard: null,
           schema: defaultsSchema,
           namespace: defaultsSchema.name,
           table: "records",
@@ -111,6 +130,7 @@ describe("buildOutboxPlan", () => {
     const plan = buildOutboxPlan([
       {
         type: "delete-many",
+        shard: "tenant-a",
         schema: defaultsSchema,
         namespace: defaultsSchema.name,
         table: "records",
@@ -126,12 +146,14 @@ describe("buildOutboxPlan", () => {
     expect(finalizeOutboxPayload(plan, 1n, { now: new Date() }).operations).toEqual([
       expect.objectContaining({
         op: "delete",
+        shard: "tenant-a",
         table: "records",
         externalId: "record-1",
         checkVersion: 3,
       }),
       expect.objectContaining({
         op: "delete",
+        shard: "tenant-a",
         table: "records",
         externalId: "record-2",
         checkVersion: 7,

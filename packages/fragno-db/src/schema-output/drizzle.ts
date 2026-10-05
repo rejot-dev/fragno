@@ -15,6 +15,9 @@ import {
   type AnyTable,
   type Relation,
   InternalIdColumn,
+  getPhysicalIndexColumnNames,
+  getShardExternalIdIndexName,
+  getShardInternalIdIndexName,
   getTableForeignKey,
   getTableRelations,
 } from "../schema/create";
@@ -331,11 +334,6 @@ function generateColumnDefinition(
     parts.push("notNull()");
   }
 
-  // External IDs are unique by definition in Fragno's SQL migrations.
-  if (column.role === "external-id") {
-    parts.push("unique()");
-  }
-
   // Default values
   if (column.default) {
     if ("value" in column.default) {
@@ -434,7 +432,7 @@ function generateForeignKeys(
     }
 
     ctx.imports.addImport("foreignKey", ctx.importSource);
-    const localColumnName = relation.on[0]?.[0];
+    const localColumnName = relation.on.find(([columnName]) => columnName !== "_shard")?.[0];
     const foreignKey = localColumnName ? getTableForeignKey(table, localColumnName) : undefined;
     const referenceName = foreignKey?.name ?? relation.name;
     // Include namespace in FK name to avoid collisions
@@ -465,7 +463,9 @@ function generateIndexes(
   const indexes: string[] = [];
 
   for (const idx of Object.values(table.indexes)) {
-    const columns = idx.columns.map((col) => `table.${col.name}`).join(", ");
+    const columns = getPhysicalIndexColumnNames(table, idx.name)
+      .map((columnName) => `table.${columnName}`)
+      .join(", ");
 
     const indexName = resolver
       ? idx.unique
@@ -484,6 +484,21 @@ function generateIndexes(
     }
   }
 
+  for (const [indexName, columnNames] of [
+    [getShardExternalIdIndexName(table), getPhysicalIndexColumnNames(table, "primary")],
+    [getShardInternalIdIndexName(table), ["_shard", "_internalId"]],
+  ] as const) {
+    const physicalIndexName = resolver
+      ? resolver.getUniqueIndexName(indexName, table.name)
+      : namespace
+        ? `${indexName}_${namespace}`
+        : indexName;
+    ctx.imports.addImport("uniqueIndex", ctx.importSource);
+    indexes.push(
+      `uniqueIndex("${physicalIndexName}").on(${columnNames.map((name) => `table.${name}`).join(", ")})`,
+    );
+  }
+
   return indexes;
 }
 
@@ -493,27 +508,10 @@ function generateTableConstraints(
   namespace?: string | null,
   resolver?: NamingResolver,
 ): string[] {
-  const constraints: string[] = [
+  return [
     ...generateForeignKeys(ctx, table, namespace, resolver),
     ...generateIndexes(ctx, table, namespace, resolver),
   ];
-
-  if (ctx.provider === "sqlite") {
-    const externalIdColumn = Object.values(table.columns).find(
-      (column) => column.role === "external-id",
-    );
-    if (externalIdColumn) {
-      const indexName = resolver
-        ? resolver.getUniqueIndexName(`idx_${table.name}_external_id`, table.name)
-        : namespace
-          ? `idx_${table.name}_external_id_${namespace}`
-          : `idx_${table.name}_external_id`;
-      ctx.imports.addImport("uniqueIndex", ctx.importSource);
-      constraints.push(`uniqueIndex("${indexName}").on(table.${externalIdColumn.name})`);
-    }
-  }
-
-  return constraints;
 }
 
 // ============================================================================
