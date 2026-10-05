@@ -1,3 +1,4 @@
+import { isActiveOrganizationMember } from "@/backoffice-runtime/authority-resolver";
 import {
   backofficeContextScopesEqual,
   type BackofficeExecutionContext,
@@ -37,6 +38,10 @@ export const createEventRuntime = (options: CreateEventRuntimeOptions): EventRun
         ownerScope: currentScope,
         targetScope: resolvedTargetScope,
         operation: "automation.forward-event",
+        organizationHasActiveMember: async (input) =>
+          isActiveOrganizationMember(
+            await options.objects.auth.singleton().commands.getUserAuthorityFacts(input),
+          ),
       });
       options.kernel.assertScopedContextAccess(options.execution, resolvedTargetScope);
     }

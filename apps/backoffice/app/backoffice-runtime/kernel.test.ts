@@ -708,11 +708,15 @@ describe("BackofficeKernel.assertScopedContextAccess", () => {
 
 describe("BackofficeKernel.assertScopeAllowedByOwner", () => {
   test("allows organization and project scopes owned by the organization", async () => {
+    const organizationHasActiveMember = async () => {
+      throw new Error("membership lookup must not run for scopes owned by the organization");
+    };
     await expect(
       scopeKernel.assertScopeAllowedByOwner({
         ownerScope: { kind: "org", orgId: "org-1" },
         targetScope: { kind: "org", orgId: "org-1" },
         operation: "automation.forward-event",
+        organizationHasActiveMember,
       }),
     ).resolves.toBeUndefined();
     await expect(
@@ -720,18 +724,48 @@ describe("BackofficeKernel.assertScopeAllowedByOwner", () => {
         ownerScope: { kind: "org", orgId: "org-1" },
         targetScope: { kind: "project", orgId: "org-1", projectId: "project-1" },
         operation: "automation.forward-event",
+        organizationHasActiveMember,
       }),
     ).resolves.toBeUndefined();
   });
 
-  test("allows user scopes pending organization membership enforcement", async () => {
+  test("allows a user scope only when the user is an active member of the owner organization", async () => {
+    const memberships = new Map([["org-1:user-1", true]]);
+    const organizationHasActiveMember = async (input: { organizationId: string; userId: string }) =>
+      memberships.get(`${input.organizationId}:${input.userId}`) ?? false;
+
     await expect(
       scopeKernel.assertScopeAllowedByOwner({
         ownerScope: { kind: "org", orgId: "org-1" },
         targetScope: { kind: "user", userId: "user-1" },
         operation: "automation.forward-event",
+        organizationHasActiveMember,
       }),
     ).resolves.toBeUndefined();
+
+    await expect(
+      scopeKernel.assertScopeAllowedByOwner({
+        ownerScope: { kind: "org", orgId: "org-1" },
+        targetScope: { kind: "user", userId: "user-2" },
+        operation: "automation.forward-event",
+        organizationHasActiveMember,
+      }),
+    ).rejects.toThrow(BackofficeForbiddenError);
+  });
+
+  test("fails closed when the membership lookup is unavailable", async () => {
+    const organizationHasActiveMember = async (): Promise<boolean> => {
+      throw new Error("Auth membership lookup unavailable.");
+    };
+
+    await expect(
+      scopeKernel.assertScopeAllowedByOwner({
+        ownerScope: { kind: "org", orgId: "org-1" },
+        targetScope: { kind: "user", userId: "user-1" },
+        operation: "automation.forward-event",
+        organizationHasActiveMember,
+      }),
+    ).rejects.toMatchObject({ reason: "authority-unavailable" });
   });
 
   test.each([
@@ -744,6 +778,7 @@ describe("BackofficeKernel.assertScopeAllowedByOwner", () => {
         ownerScope: { kind: "org", orgId: "org-1" },
         targetScope,
         operation: "automation.forward-event",
+        organizationHasActiveMember: async () => false,
       }),
     ).rejects.toThrow(BackofficeForbiddenError);
   });

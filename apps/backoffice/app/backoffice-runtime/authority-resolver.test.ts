@@ -4,6 +4,7 @@ import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 
 import {
   createBackofficeAuthorityResolver,
+  isActiveOrganizationMember,
   type BackofficeIdentityDirectory,
   withBackofficeActorCapabilityGrants,
 } from "./authority-resolver";
@@ -349,5 +350,20 @@ describe("createBackofficeAuthorityResolver", () => {
         execution: organizationExecution,
       }),
     ).resolves.toEqual([]);
+  });
+});
+
+describe("isActiveOrganizationMember", () => {
+  test("requires a live user with a membership row", async () => {
+    assert(isActiveOrganizationMember({ active: true, role: "user", organizationMember: true }));
+  });
+
+  test("rejects banned members even when the membership row survives", async () => {
+    assert(!isActiveOrganizationMember({ active: false, role: "user", organizationMember: true }));
+  });
+
+  test("rejects missing users and active non-members", async () => {
+    assert(!isActiveOrganizationMember({ active: false, role: null, organizationMember: false }));
+    assert(!isActiveOrganizationMember({ active: true, role: "user", organizationMember: false }));
   });
 });

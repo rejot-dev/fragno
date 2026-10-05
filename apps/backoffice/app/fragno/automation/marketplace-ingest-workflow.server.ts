@@ -8,6 +8,7 @@ import { z } from "zod";
 
 import { createWorkflowsFragment } from "@fragno-dev/workflows";
 
+import { isActiveOrganizationMember } from "@/backoffice-runtime/authority-resolver";
 import {
   createBackofficeServiceExecution,
   createBackofficeSystemExecution,
@@ -279,11 +280,12 @@ export const defineMarketplaceIngestWorkflow = (config: MarketplaceIngestWorkflo
                     automationFragment.services.resolveProjectForExecution({ projectId }),
                   ),
                 ),
-              organizationHasMember: async (userId) =>
-                await runtime.objects.auth.singleton().commands.hasOrganizationMember({
-                  organizationId,
-                  userId,
-                }),
+              organizationHasActiveMember: async (userId) =>
+                isActiveOrganizationMember(
+                  await runtime.objects.auth
+                    .singleton()
+                    .commands.getUserAuthorityFacts({ organizationId, userId }),
+                ),
             });
           } catch (error) {
             if (error instanceof MarketplaceIngestionTargetAccessError) {

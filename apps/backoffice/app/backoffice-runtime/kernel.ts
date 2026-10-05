@@ -584,10 +584,15 @@ export class BackofficeKernel {
     ownerScope,
     targetScope,
     operation,
+    organizationHasActiveMember,
   }: {
     ownerScope: BackofficeContextScope;
     targetScope: BackofficeContextScope;
     operation: BackofficeScopeOperation;
+    organizationHasActiveMember: (input: {
+      organizationId: string;
+      userId: string;
+    }) => Promise<boolean>;
   }) {
     const deny = () => {
       const ownerLabel =
@@ -609,11 +614,22 @@ export class BackofficeKernel {
         ) {
           return;
         }
-        // TODO: Check the Auth membership table before allowing an org-owned object to use a
-        // user scope. Keeping this decision in the kernel means Billing does not need to own
-        // membership rules when that lookup becomes available.
         if (targetScope.kind === "user") {
-          return;
+          let isActiveMember: boolean;
+          try {
+            isActiveMember = await organizationHasActiveMember({
+              organizationId: ownerScope.orgId,
+              userId: targetScope.userId,
+            });
+          } catch {
+            throw new BackofficeForbiddenError(
+              "Backoffice authority resolution is unavailable.",
+              "authority-unavailable",
+            );
+          }
+          if (isActiveMember) {
+            return;
+          }
         }
         deny();
         return;

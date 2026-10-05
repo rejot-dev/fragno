@@ -1081,13 +1081,17 @@ describe("Automations object scope binding", () => {
       objectFactories: {
         AUTH: () =>
           ({
-            hasOrganizationMember: async ({
+            getUserAuthorityFacts: async ({
               organizationId,
               userId,
             }: {
               organizationId: string;
               userId: string;
-            }) => organizationId === "org-1" && userId === "user-1",
+            }) => ({
+              active: true,
+              role: "user",
+              organizationMember: organizationId === "org-1" && userId === "user-1",
+            }),
           }) as never,
       },
     });
@@ -1146,15 +1150,89 @@ describe("Automations object scope binding", () => {
     }
   });
 
+  test("rejects marketplace ingestion into a banned member's user workspace", async () => {
+    const runtime = await createInMemoryBackofficeRuntime();
+
+    try {
+      const auth = runtime.objects.auth.singleton();
+      const organizationId = "ingestion-org";
+      const memberUserId = "ingestion-member";
+      await auth.commands.applyScenarioFixture({
+        users: [
+          {
+            id: "ingestion-owner",
+            email: "ingestion-owner@example.com",
+            role: "user",
+            status: "active",
+          },
+          {
+            id: memberUserId,
+            email: "ingestion-member@example.com",
+            role: "user",
+            status: "active",
+          },
+        ],
+        organizations: [
+          {
+            id: organizationId,
+            name: "Ingestion Org",
+            slug: "ingestion-org",
+            ownerUserId: "ingestion-owner",
+            ownerRoles: ["owner"],
+          },
+        ],
+        members: [{ organizationId, userId: memberUserId, roles: ["member"] }],
+      });
+      await auth.commands.applyScenarioFixture({
+        users: [
+          {
+            id: memberUserId,
+            email: "ingestion-member@example.com",
+            role: "user",
+            status: "banned",
+          },
+        ],
+      });
+
+      // The ban retains the member row, so a row-existence check would still pass here.
+      await expect(
+        auth.commands.hasOrganizationMember({ organizationId, userId: memberUserId }),
+      ).resolves.toBe(true);
+
+      await expect(
+        runtime.objects.automations.forOrg(organizationId).commands.requestMarketplaceIngestion(
+          {
+            listingId: marketplaceListingId({
+              ownerScope: { kind: "system" },
+              slug: "telegram-test-command",
+            }),
+            targetScope: { kind: "user", userId: memberUserId },
+            version: USER_WORKSPACE_INGESTION_TEST_VERSION,
+          },
+          {
+            execution: createBackofficeSystemExecution({ kind: "org", orgId: organizationId }),
+            propagationContext: null,
+          },
+        ),
+      ).rejects.toThrow("Marketplace ingestion user target is not a member of the organization.");
+    } finally {
+      await runtime.cleanup();
+    }
+  });
+
   test("revalidates user workspace membership inside the ingestion workflow", async () => {
     let membershipChecks = 0;
     const runtime = await createInMemoryBackofficeRuntime({
       objectFactories: {
         AUTH: () =>
           ({
-            hasOrganizationMember: async () => {
+            getUserAuthorityFacts: async () => {
               membershipChecks += 1;
-              return membershipChecks === 1;
+              return {
+                active: true,
+                role: "user",
+                organizationMember: membershipChecks === 1,
+              };
             },
           }) as never,
       },
