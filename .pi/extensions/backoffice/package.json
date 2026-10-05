@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "types:check": "tsc --noEmit",
+    "test": "vitest run index.test.ts",
     "format:package": "node ../../../scripts/run-package-quality.mjs format",
     "format:check:package": "node ../../../scripts/run-package-quality.mjs format:check",
     "lint:package": "node ../../../scripts/run-package-quality.mjs lint",
@@ -17,9 +18,11 @@
     "typebox": "1.1.38"
   },
   "devDependencies": {
+    "@earendil-works/pi-ai": "1.0.0",
     "@fragno-private/typescript-config": "workspace:*",
     "@types/node": "^22.19.7",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   },
   "pi": {
     "extensions": [

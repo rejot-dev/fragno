@@ -5,6 +5,6 @@
     "rootDir": ".",
     "allowImportingTsExtensions": true
   },
-  "include": ["index.ts"],
+  "include": ["index.ts", "index.test.ts"],
   "exclude": ["node_modules"]
 }
