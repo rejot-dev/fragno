@@ -1328,6 +1328,75 @@
     ]
   },
   {
+    "command": "events.list",
+    "summary": "events.list lists stored automation events in the current scope, newest first.",
+    "options": [
+      {
+        "name": "limit",
+        "valueRequired": true,
+        "valueName": "number",
+        "description": "Page size (1–500; defaults to 100)."
+      },
+      {
+        "name": "cursor",
+        "valueRequired": true,
+        "valueName": "cursor",
+        "description": "Cursor returned by the previous page."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "events.get",
+    "summary": "events.get shows a stored automation event, including its payload and actors.",
+    "options": [
+      {
+        "name": "id",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "id",
+        "description": "Stored event id."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
     "command": "events.catalog.list",
     "summary": "events.catalog.list lists known automation event source/type pairs.",
     "options": [

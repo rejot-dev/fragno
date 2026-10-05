@@ -42,6 +42,7 @@ import { createAdminRuntime } from "@/fragno/runtime-tools/families/admin-runtim
 import { createApiRuntime } from "@/fragno/runtime-tools/families/api-runtime";
 import { createBackofficeCapabilitiesRuntime } from "@/fragno/runtime-tools/families/backoffice-capabilities";
 import { createCloudflareRuntime } from "@/fragno/runtime-tools/families/cloudflare-runtime";
+import { createEventCatalogRuntime } from "@/fragno/runtime-tools/families/event-catalog";
 import { createEventRuntime } from "@/fragno/runtime-tools/families/event-runtime";
 import { createFormsRuntime } from "@/fragno/runtime-tools/families/forms-runtime";
 import { createGitHubRuntime } from "@/fragno/runtime-tools/families/github-runtime";
@@ -228,6 +229,9 @@ export const createRouteBackedRuntimeContext = ({
             runtimeToolNamespacesByCapability: getRuntimeToolNamespacesByCapability(),
           }),
         }
+      : null,
+    eventCatalog: isBackofficeRoutableScope(execution.scope)
+      ? { runtime: createEventCatalogRuntime({ objects: runtime.objects, scope: execution.scope }) }
       : null,
     automation: null,
     cloudflare: runtime.config.bindings.cloudflare

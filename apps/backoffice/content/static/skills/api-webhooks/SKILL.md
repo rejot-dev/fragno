@@ -114,8 +114,9 @@ required fields.
 
 ### 4. Route accepted deliveries
 
-Accepted deliveries first produce `api.webhook.received`. Create one reclassification route for each
-cataloged provider event.
+Accepted deliveries first produce `api.webhook.received`. For reclassification or cross-scope
+forwarding, read `/static/skills/building-automations/references/event-routing.md` before authoring
+the routes. Create one reclassification route for each cataloged provider event.
 
 Every route must be endpoint-scoped. When the provider carries multiple event types, also match its
 event discriminator. Without the endpoint matcher, a route consumes deliveries from every API
@@ -271,8 +272,14 @@ return webhook.publicUrl;
 
 ### 6. Verify end-to-end
 
-Tell the user when the endpoint is ready for a provider test delivery. Send a representative
-delivery when possible, then inspect both queues:
+Tell the user when the endpoint is ready for a provider test delivery. For delivery verification,
+read `/static/skills/building-automations/references/event-routing.md`. Send a representative
+delivery when possible, then use `events.list` / `events.get` to inspect the original
+`api.webhook.received` and every expected reclassified event in the endpoint's scope. Match the
+original record to this endpoint and delivery, and check each reclassified payload against its
+catalog schema and route projection.
+
+Correlate those stored records with both hook queues:
 
 ```js
 const [apiHooks, automationHooks] = await Promise.all([
@@ -285,9 +292,9 @@ Verification is complete only when:
 
 1. the endpoint returns an accepted response;
 2. the matching `onWebhookReceived` API hook completes;
-3. the original `api.webhook.received` automation event completes;
-4. each expected reclassified `<endpointId>.<eventType>` event completes without projection or
-   schema errors.
+3. the matching original `api.webhook.received` record is stored and its ingestion hook completes;
+4. every expected reclassified `<endpointId>.<eventType>` record has the projected payload and its
+   ingestion hook completes without projection or schema errors.
 
 A `202 Accepted` response or a pending automation hook is intermediate evidence, not completion.
 When a hook fails, inspect its exact projection or schema error, repair the route, send a new unique
@@ -302,7 +309,7 @@ Finish every webhook setup with one inventory containing:
 - every registered `source.eventType`;
 - every route as `trigger → destination`, including endpoint and discriminator matchers;
 - authentication and verification mode, without secret values;
-- end-to-end verification status.
+- end-to-end verification status, including matching stored event IDs and correlated hook outcomes.
 
 If the endpoint remains a draft, list the missing inputs required for activation. If no provider
 events were registered, state that explicitly.

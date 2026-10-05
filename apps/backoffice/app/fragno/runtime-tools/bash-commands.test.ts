@@ -11,6 +11,8 @@ import {
   type BackofficeCapabilitiesRuntime,
 } from "./families/backoffice-capabilities";
 import { eventRuntimeTools, type EventRuntime } from "./families/event";
+import { eventCatalogRuntimeTools, type EventCatalogRuntime } from "./families/event-catalog";
+import { createUnavailableEventRuntime } from "./families/event-runtime";
 import {
   createBackofficeBashCommands,
   createTrustedSystemBackofficeToolContext,
@@ -158,6 +160,7 @@ describe("createBackofficeBashCommands", () => {
     const calls: unknown[] = [];
     const commandCallsResult: { command: string; output: string; exitCode: number }[] = [];
     const eventRuntime: EventRuntime = {
+      ...createUnavailableEventRuntime(),
       emitEvent: async (input) => {
         calls.push(["emitEvent", input]);
         return {
@@ -204,6 +207,7 @@ describe("createBackofficeBashCommands", () => {
   test("rejects invalid event target scopes before executing the event runtime", async () => {
     const calls: unknown[] = [];
     const eventRuntime: EventRuntime = {
+      ...createUnavailableEventRuntime(),
       emitEvent: async (input) => {
         calls.push(input);
         return {
@@ -320,9 +324,9 @@ describe("createBackofficeBashCommands", () => {
     const bash = new Bash({
       fs: new InMemoryFs(),
       customCommands: createBackofficeBashCommands({
-        tools: eventRuntimeTools,
+        tools: eventCatalogRuntimeTools,
         context: createTrustedSystemBackofficeToolContext({
-          runtimes: { backoffice: backofficeRuntime },
+          runtimes: { eventCatalog: backofficeRuntime },
         }),
         commandCallsResult: [],
       }),
@@ -453,8 +457,8 @@ describe("createBackofficeBashCommands", () => {
 });
 
 const createBackofficeRuntime = (
-  overrides: Partial<BackofficeCapabilitiesRuntime> = {},
-): BackofficeCapabilitiesRuntime => ({
+  overrides: Partial<BackofficeCapabilitiesRuntime & EventCatalogRuntime> = {},
+): BackofficeCapabilitiesRuntime & EventCatalogRuntime => ({
   listCapabilities: async () => [],
   listHookScopes: async () => [],
   listConnections: async () => [],

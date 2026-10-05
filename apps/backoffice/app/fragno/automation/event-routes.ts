@@ -8,6 +8,33 @@ export const automationEventRoutes = defineRoutes(automationFragmentDefinition).
   ({ defineRoute, services }) => [
     defineRoute({
       method: "GET",
+      path: "/events/:eventId",
+      outputSchema: automationEventListResultSchema.shape.events.element,
+      handler: async function ({ pathParams }, { json, error }) {
+        const event = await this.handlerTx()
+          .withServiceCalls(() => [services.getEvent({ id: pathParams.eventId })] as const)
+          .transform(({ serviceResult: [event] }) => event)
+          .execute();
+
+        if (!event) {
+          return error({ message: "Automation event not found.", code: "EVENT_NOT_FOUND" }, 404);
+        }
+
+        return json({
+          id: event.id.valueOf(),
+          scope: event.scope,
+          source: event.source,
+          eventType: event.eventType,
+          occurredAt: event.occurredAt.toISOString(),
+          payload: event.payload,
+          actors: event.actors,
+          subject: event.subject ?? null,
+          createdAt: event.createdAt.toISOString(),
+        });
+      },
+    }),
+    defineRoute({
+      method: "GET",
       path: "/events",
       queryParameters: ["limit", "cursor"],
       outputSchema: automationEventListResultSchema,

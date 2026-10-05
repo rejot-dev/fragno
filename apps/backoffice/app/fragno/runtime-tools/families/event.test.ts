@@ -4,28 +4,28 @@ import {
   createTrustedSystemBackofficeToolContext,
   getAvailableRuntimeTools,
 } from "../runtime-tools";
-import { eventCatalogToolFamily, eventFireToolFamily, eventRuntimeTools } from "./event";
+import { eventFireToolFamily, eventReadToolFamily, eventRuntimeTools } from "./event";
+import { eventCatalogToolFamily } from "./event-catalog";
 
 describe("event runtime tools", () => {
   test("derive event bash commands from runtime tools", () => {
     expect(eventRuntimeTools.map((tool) => tool.adapters?.bash?.command)).toEqual([
       "events.fire",
-      "events.catalog.list",
-      "events.catalog.get",
-      "events.catalog.create",
+      "events.list",
+      "events.get",
     ]);
   });
 
   test("only exposes tools backed by an available runtime", () => {
-    const families = [eventFireToolFamily, eventCatalogToolFamily];
+    const families = [eventFireToolFamily, eventReadToolFamily, eventCatalogToolFamily];
     const availableToolIds = (runtimes: Record<string, unknown>) =>
       getAvailableRuntimeTools({
         families,
         context: createTrustedSystemBackofficeToolContext({ runtimes }),
       }).map((tool) => tool.id);
 
-    expect(availableToolIds({ event: {} })).toEqual(["events.fire"]);
-    expect(availableToolIds({ backoffice: {} })).toEqual([
+    expect(availableToolIds({ event: {} })).toEqual(["events.fire", "events.list", "events.get"]);
+    expect(availableToolIds({ eventCatalog: {} })).toEqual([
       "events.catalog.list",
       "events.catalog.get",
       "events.catalog.create",

@@ -15,8 +15,8 @@ import {
   automationEventsCatalogCreateTool,
   automationEventsCatalogGetTool,
   automationEventsCatalogListTool,
-  type BackofficeCapabilitiesRuntime,
-} from "./backoffice-capabilities";
+  type EventCatalogRuntime,
+} from "./event-catalog";
 
 const createWorkflowRuntime = (
   overrides: Partial<AutomationWorkflowRuntime> = {},
@@ -186,28 +186,7 @@ describe("automation runtime tools", () => {
       example: { payload: { text: "hello" } },
     };
     const calls: unknown[] = [];
-    const runtime: BackofficeCapabilitiesRuntime = {
-      listCapabilities: async () => [],
-      listHookScopes: async () => [],
-      listConnections: async () => [],
-      getConnection: async () => {
-        throw new Error("unused");
-      },
-      setupConnection: async () => {
-        throw new Error("unused");
-      },
-      getConnectionSchema: async () => {
-        throw new Error("unused");
-      },
-      verifyConnection: async () => {
-        throw new Error("unused");
-      },
-      resetConnection: async () => {
-        throw new Error("unused");
-      },
-      configureConnection: async () => {
-        throw new Error("unused");
-      },
+    const runtime: EventCatalogRuntime = {
       createAutomationEvent: async () => {
         throw new Error("unused");
       },
@@ -226,7 +205,7 @@ describe("automation runtime tools", () => {
     await expect(
       catalogListTool.execute(
         undefined,
-        createTrustedSystemBackofficeToolContext({ runtimes: { backoffice: runtime } }),
+        createTrustedSystemBackofficeToolContext({ runtimes: { eventCatalog: runtime } }),
       ),
     ).resolves.toEqual([
       {
@@ -250,7 +229,7 @@ describe("automation runtime tools", () => {
     await expect(
       catalogGetTool.execute(
         getInput,
-        createTrustedSystemBackofficeToolContext({ runtimes: { backoffice: runtime } }),
+        createTrustedSystemBackofficeToolContext({ runtimes: { eventCatalog: runtime } }),
       ),
     ).resolves.toMatchObject({
       source: "telegram",
@@ -261,7 +240,7 @@ describe("automation runtime tools", () => {
     await expect(
       catalogGetTool.execute(
         { source: "telegram", eventType: "unknown.event" },
-        createTrustedSystemBackofficeToolContext({ runtimes: { backoffice: runtime } }),
+        createTrustedSystemBackofficeToolContext({ runtimes: { eventCatalog: runtime } }),
       ),
     ).resolves.toBeNull();
 

@@ -25,7 +25,8 @@ import type { AutomationRouterRuntime } from "./families/automations-routing";
 import type { AutomationWorkflowRuntime } from "./families/automations-workflow";
 import type { BackofficeCapabilitiesRuntime } from "./families/backoffice-capabilities";
 import type { CloudflareRuntime } from "./families/cloudflare-runtime";
-import type { EventRuntime } from "./families/event-runtime";
+import type { EventRuntime } from "./families/event";
+import type { EventCatalogRuntime } from "./families/event-catalog";
 import type { FormsRuntime } from "./families/forms-runtime";
 import type { GitHubRuntime } from "./families/github-runtime";
 import type { InternalRuntime } from "./families/internal";
@@ -62,6 +63,7 @@ export type BashHostContext = {
   automation: RegisteredEventBashCommandContext | null;
   cloudflare?: { runtime: CloudflareRuntime } | null;
   event?: { runtime: EventRuntime } | null;
+  eventCatalog?: { runtime: EventCatalogRuntime } | null;
   forms?: { runtime: FormsRuntime } | null;
   github?: { runtime: GitHubRuntime } | null;
   automations: RegisteredAutomationsBashCommandContext | null;

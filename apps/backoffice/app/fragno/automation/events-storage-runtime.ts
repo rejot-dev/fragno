@@ -11,6 +11,16 @@ export const createAutomationEventServices = (
   ) => TService,
 ) =>
   defineService({
+    getEvent(input: { id: string }) {
+      return this.serviceTx(automationFragmentSchema)
+        .retrieve((uow) =>
+          uow.findFirst("automation_event", (b) =>
+            b.whereIndex("primary", (eb) => eb("id", "=", input.id)),
+          ),
+        )
+        .transformRetrieve(([event]) => event ?? null)
+        .build();
+    },
     listEvents(input: { limit?: number; cursor?: Cursor } = {}) {
       const { limit = 100 } = automationEventListInputSchema.parse({ limit: input.limit });
       const cursor = input.cursor;

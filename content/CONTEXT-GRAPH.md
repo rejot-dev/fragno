@@ -3,7 +3,7 @@
 # Backoffice static agent-context graph
 
 - **Static mount:** `/static/`
-- **Files:** 51
+- **Files:** 52
 - **Entry points:** 1 `SYSTEM.md` + 17 skills
 
 ## How context is loaded
@@ -71,6 +71,10 @@
 
 ```text
 /static/skills/api-webhooks/SKILL.md — API Webhooks
+├─ /static/skills/building-automations/references/event-routing.md — Event Routing and Verification [line 118]
+│  ├─ /static/codemode/providers/router.d.ts — router tools [line 3]
+│  └─ /static/codemode/providers/events.d.ts — events tools [line 4]
+└─ /static/skills/building-automations/references/event-routing.md — Event Routing and Verification [line 276] [already expanded]
 ```
 
 ### `building-automations`
@@ -84,7 +88,11 @@
 ├─ /static/codemode/providers/events.d.ts — events tools [line 18]
 ├─ /static/codemode/providers/router.d.ts — router tools [line 19]
 ├─ /static/codemode/workflow-authoring.d.ts — Workflow helpers [line 20]
-└─ /static/codemode/providers/store.d.ts — store tools [line 21]
+├─ /static/codemode/providers/store.d.ts — store tools [line 21]
+├─ /static/skills/building-automations/references/event-routing.md — Event Routing and Verification [line 52]
+│  ├─ /static/codemode/providers/router.d.ts — router tools [line 3] [already expanded]
+│  └─ /static/codemode/providers/events.d.ts — events tools [line 4] [already expanded]
+└─ /static/skills/building-automations/references/event-routing.md — Event Routing and Verification [line 168] [already expanded]
 ```
 
 ### `configuring-integrations`
