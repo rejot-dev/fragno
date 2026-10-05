@@ -86,7 +86,9 @@ export const buildTelegramAutomationEvent = (
     initiator: {
       scope: "external",
       source: AUTOMATION_SOURCES.telegram,
-      type: "chat",
+      // Only a private sender's own conversation can stand for that human identity.
+      // Shared conversations must never reuse a legacy chat-to-user binding.
+      type: payload.fromUserId === payload.chatId ? "chat" : "shared-chat",
       id: payload.chatId,
       role: "initiator",
     },

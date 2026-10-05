@@ -51,6 +51,7 @@ export const BACKOFFICE_PERMISSION = {
     read: { namespace: "hooks", permission: "read" },
   },
   identity: {
+    link: { namespace: "identity", permission: "link" },
     bind: { namespace: "identity", permission: "bind" },
     read: { namespace: "identity", permission: "read" },
     resolve: { namespace: "identity", permission: "resolve" },

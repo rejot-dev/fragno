@@ -4,6 +4,11 @@ import type { AutomationExternalEntityRef } from "./actors";
 
 export type ExternalIdentity = AutomationExternalEntityRef;
 
+/** Telegram conversations shared by several senders cannot confer one human's authority. */
+export function canLinkExternalIdentity(identity: ExternalIdentity): boolean {
+  return identity.source !== "telegram" || identity.type === "chat";
+}
+
 export const externalIdentitySchema: z.ZodType<ExternalIdentity> = z.strictObject({
   scope: z.literal("external"),
   source: z.string().trim().min(1),
@@ -16,7 +21,10 @@ export const getExternalIdentityBindingInputSchema = z.strictObject({
 });
 
 export const bindExternalIdentityInputSchema = z.strictObject({
-  identity: externalIdentitySchema,
+  identity: externalIdentitySchema.refine(
+    canLinkExternalIdentity,
+    "This external identity cannot be linked to a user.",
+  ),
   userId: z.string().trim().min(1),
   verifiedByClaimId: z.string().trim().min(1),
 });

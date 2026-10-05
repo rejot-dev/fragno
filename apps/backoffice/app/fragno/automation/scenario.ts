@@ -11,6 +11,7 @@ import {
   createBackofficeServiceExecution,
   createBackofficeSystemExecution,
   createBackofficeUserExecution,
+  createBackofficeRequestExecution,
   type BackofficeContextScope,
   type BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
@@ -3040,11 +3041,22 @@ const buildStepBuilders = <
             ctx.rememberOrg(orgId);
             const result = await ctx.runtime.objects.otp
               .forOrg(orgId)
-              .commands.confirmIdentityClaim({
-                externalId,
-                code,
-                subjectUserId: input.subjectUserId,
-              });
+              .commands.confirmIdentityClaim(
+                {
+                  externalId,
+                  code,
+                },
+                createBackofficeRequestExecution({
+                  scope: { kind: "org", orgId },
+                  userId: input.subjectUserId,
+                  verifiedRequestAuthority: {
+                    role: "user",
+                    organizationId: orgId,
+                    expiresAt: new Date(Date.now() + 60_000),
+                    scopeRestriction: null,
+                  },
+                }),
+              );
             if (!result.ok) {
               throw new Error(`OTP claim confirmation failed: ${JSON.stringify(result)}`);
             }

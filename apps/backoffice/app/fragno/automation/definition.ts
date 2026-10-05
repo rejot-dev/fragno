@@ -39,7 +39,7 @@ import {
 import { createAutomationEventDefinitionServices } from "./event-definitions-storage-runtime";
 import { createAutomationEventSourceServices } from "./event-sources-storage-runtime";
 import { createAutomationEventServices } from "./events-storage-runtime";
-import { buildExternalIdentityBindingId } from "./external-identities";
+import { buildExternalIdentityBindingId, canLinkExternalIdentity } from "./external-identities";
 import { createExternalIdentityBindingServices } from "./external-identity-bindings-storage-runtime";
 import type { AutomationEventIngestionPayload, AutomationHookUnitOfWork } from "./internal-hooks";
 import { createAutomationMarketplaceIngestionServices } from "./marketplace-ingestions";
@@ -563,7 +563,8 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
       internalIngestEvent: defineHook(async function (payload: AutomationEventIngestionPayload) {
         const event = payload.event;
         const externalIdentityBindingId =
-          event.actors.initiator.scope === "external"
+          event.actors.initiator.scope === "external" &&
+          canLinkExternalIdentity(event.actors.initiator)
             ? buildExternalIdentityBindingId(event.actors.initiator)
             : "";
         const { routes, store, linkedUserId } = await this.handlerTx({

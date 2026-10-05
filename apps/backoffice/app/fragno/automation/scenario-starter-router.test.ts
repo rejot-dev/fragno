@@ -1128,7 +1128,7 @@ describe("starter automation router scenarios", () => {
             messageId: 601,
             chatId: "1001",
             text: "/pi",
-            from: { id: 2_001, firstName: "Ada", username: "ada_lovelace" },
+            from: { id: 1_001, firstName: "Ada", username: "ada_lovelace" },
           }),
 
           then.automation.event({
@@ -1306,7 +1306,7 @@ describe("starter automation router scenarios", () => {
             messageId: 604,
             chatId: "1001",
             text: "/pi",
-            from: { id: 2_001, firstName: "Ada", username: "ada_lovelace" },
+            from: { id: 1_001, firstName: "Ada", username: "ada_lovelace" },
           }),
 
           then.pi.createdSession({
@@ -1408,7 +1408,7 @@ describe("starter automation router scenarios", () => {
             messageId: 605,
             chatId: "1001",
             text: "/pi",
-            from: { id: 2_001, firstName: "Ada", username: "ada_lovelace" },
+            from: { id: 1_001, firstName: "Ada", username: "ada_lovelace" },
           }),
 
           then.telegram.noMessages(),
@@ -1457,7 +1457,7 @@ describe("starter automation router scenarios", () => {
             messageId: 606,
             chatId: "1001",
             text: "/pi",
-            from: { id: 2_001, firstName: "Ada", username: "ada_lovelace" },
+            from: { id: 1_001, firstName: "Ada", username: "ada_lovelace" },
           }),
 
           then.telegram.noMessages(),
@@ -1506,7 +1506,7 @@ describe("starter automation router scenarios", () => {
             messageId: 607,
             chatId: "1001",
             text: "Hello Pi",
-            from: { id: 2_001, firstName: "Ada", username: "ada_lovelace" },
+            from: { id: 1_001, firstName: "Ada", username: "ada_lovelace" },
           }),
 
           then.telegram.noMessages(),
@@ -1555,7 +1555,7 @@ describe("starter automation router scenarios", () => {
             messageId: 608,
             chatId: "1001",
             text: "/help",
-            from: { id: 2_001, firstName: "Ada", username: "ada_lovelace" },
+            from: { id: 1_001, firstName: "Ada", username: "ada_lovelace" },
           }),
 
           then.telegram.noMessages(),
@@ -1709,7 +1709,7 @@ describe("starter automation router scenarios", () => {
             messageId: 602,
             chatId: "1001",
             text: "/pi",
-            from: { id: 2_001, firstName: "Ada", username: "ada_lovelace" },
+            from: { id: 1_001, firstName: "Ada", username: "ada_lovelace" },
           }),
 
           when.telegram.receivesMessage({
@@ -1718,7 +1718,7 @@ describe("starter automation router scenarios", () => {
             messageId: 603,
             chatId: "1001",
             text: "Hello Pi",
-            from: { id: 2_001, firstName: "Ada", username: "ada_lovelace" },
+            from: { id: 1_001, firstName: "Ada", username: "ada_lovelace" },
           }),
 
           then.pi.createdSession({
@@ -1837,7 +1837,7 @@ describe("starter automation router scenarios", () => {
             messageId: 609,
             chatId: "1001",
             text: "/pi",
-            from: { id: 2_001, firstName: "Ada", username: "ada_lovelace" },
+            from: { id: 1_001, firstName: "Ada", username: "ada_lovelace" },
           }),
 
           when.telegram.receivesMessage({
@@ -1846,7 +1846,7 @@ describe("starter automation router scenarios", () => {
             messageId: 610,
             chatId: "1001",
             text: "/pi",
-            from: { id: 2_001, firstName: "Ada", username: "ada_lovelace" },
+            from: { id: 1_001, firstName: "Ada", username: "ada_lovelace" },
           }),
 
           then.assert("assert Pi session creation was reused", (ctx) => {
@@ -1961,7 +1961,7 @@ describe("starter automation router scenarios", () => {
             messageId: 611,
             chatId: "1001",
             text: "/pi",
-            from: { id: 2_001, firstName: "Ada", username: "ada_lovelace" },
+            from: { id: 1_001, firstName: "Ada", username: "ada_lovelace" },
           }),
 
           then.pi.createdSession({
@@ -2065,7 +2065,7 @@ describe("starter automation router scenarios", () => {
             messageId: 614,
             chatId: "1001",
             text: "/pi",
-            from: { id: 2_001, firstName: "Ada", username: "ada_lovelace" },
+            from: { id: 1_001, firstName: "Ada", username: "ada_lovelace" },
           }),
 
           when.telegram.receivesMessage({
@@ -2074,7 +2074,7 @@ describe("starter automation router scenarios", () => {
             messageId: 615,
             chatId: "1001",
             text: "No response expected",
-            from: { id: 2_001, firstName: "Ada", username: "ada_lovelace" },
+            from: { id: 1_001, firstName: "Ada", username: "ada_lovelace" },
           }),
 
           then.telegram.sentChatAction({
@@ -2128,7 +2128,7 @@ describe("starter automation router scenarios", () => {
             messageId: 605,
             chatId: "1001",
             text: "/test",
-            from: { id: 2_001, firstName: "Ada", username: "ada_lovelace" },
+            from: { id: 1_001, firstName: "Ada", username: "ada_lovelace" },
           }),
 
           then.telegram.noMessages(),

@@ -114,7 +114,11 @@ export const buildIdentityClaimCompletedAutomationEvent = (input: {
 });
 
 function isInternalOtpType(type: string): boolean {
-  return type === EMAIL_VERIFICATION_TYPE || type === SIGN_UP_INVITATION_TYPE;
+  return (
+    type === IDENTITY_LINK_TYPE ||
+    type === EMAIL_VERIFICATION_TYPE ||
+    type === SIGN_UP_INVITATION_TYPE
+  );
 }
 
 export function createOtpServer(
@@ -132,7 +136,7 @@ export function createOtpServer(
       }),
       mountRoute: "/api/otp",
     },
-  ).withMiddleware(async function reserveEmailVerificationForInternalRpc(
+  ).withMiddleware(async function reserveInternalOtpTypesForTrustedCommands(
     { ifMatchesRoute },
     { error },
   ) {

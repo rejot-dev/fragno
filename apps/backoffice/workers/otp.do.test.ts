@@ -195,10 +195,13 @@ describe("OTP identity claim completion", () => {
       capturePropagationContext: () => ({ traceId: "trace-1" }),
     } as unknown as HookContext;
 
-    await expect(handleIdentityClaimConfirmed(runtime, payload, context)).rejects.toThrow(
-      "notification unavailable",
-    );
-    await expect(handleIdentityClaimConfirmed(runtime, payload, context)).resolves.toBeUndefined();
+    const ownerScope = { kind: "org" as const, orgId: "org-1" };
+    await expect(
+      handleIdentityClaimConfirmed(runtime, ownerScope, payload, context),
+    ).rejects.toThrow("notification unavailable");
+    await expect(
+      handleIdentityClaimConfirmed(runtime, ownerScope, payload, context),
+    ).resolves.toBeUndefined();
 
     expect(callOrder).toEqual(["bind", "notify", "bind", "notify"]);
     expect(bindExternalIdentity).toHaveBeenNthCalledWith(
@@ -262,7 +265,9 @@ describe("OTP identity claim completion", () => {
       capturePropagationContext: () => ({ traceId: "trace-1" }),
     } as unknown as HookContext;
 
-    await expect(handleIdentityClaimConfirmed(runtime, payload, context)).resolves.toBeUndefined();
+    await expect(
+      handleIdentityClaimConfirmed(runtime, { kind: "org", orgId: "org-1" }, payload, context),
+    ).resolves.toBeUndefined();
 
     expect(bindExternalIdentity).toHaveBeenCalledOnce();
     expect(triggerIngestEvent).not.toHaveBeenCalled();

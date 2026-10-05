@@ -363,6 +363,10 @@ type BackofficePermissionRequirement =
     }
   | {
       namespace: "identity";
+      permission: "link";
+    }
+  | {
+      namespace: "identity";
       permission: "bind";
     }
   | {
