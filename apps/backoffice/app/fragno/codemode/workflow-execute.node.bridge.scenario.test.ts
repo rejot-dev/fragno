@@ -7,8 +7,8 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
 }));
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
+import { createCodemodeNodeExecutor } from "@fragno-dev/codemode/remote/codemode-node-executor";
 import { createCodemodeTestServer } from "@fragno-dev/codemode/testing/codemode-test-server";
-import { createCodemodeNodeExecutor } from "@fragno-dev/codemode/transport/codemode-node-client";
 
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import { createNodeBackofficeRuntimeConfiguration } from "@/backoffice-runtime/node/node-runtime-env";
@@ -209,6 +209,59 @@ test("interruption preserves host retry scheduling without falsely committing to
           status: "errored",
         }),
         then.store.entry({ orgId: "org-1", key: "interrupted-effects", value: "2" }),
+      ],
+      options: { allowErroredWorkflows: true },
+    }),
+  );
+});
+
+test("permanent guest failures bypass the real Node runner's configured retry policy", async () => {
+  const { runtimeEnv: env } = createNodeBackofficeRuntimeConfiguration({
+    bridgeUrl: server.url,
+    bridgeApiKey: server.apiKey,
+    env: {},
+  });
+  const scope = { kind: "org" as const, orgId: "org-1" };
+  const execution = createBackofficeSystemExecution(scope);
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "Cap'n Web preserves non-retryable callback outcomes",
+      env,
+      files: backofficeFiles.workspaceStarter({
+        "automations/remote-permanent.workflow.js": `defineWorkflow({ name: "remote-permanent" }, async (_event, step) => {
+        return await step.do("permanent", { retries: { limit: 3, delay: "1 second" } }, async () => {
+          const previous = await context.current.store.get({ key: "permanent-attempts" });
+          await context.current.store.set({ key: "permanent-attempts", value: String(Number(previous?.value ?? 0) + 1) });
+          const error = new Error("permanent rejection");
+          error.name = "NonRetryableError";
+          throw error;
+        });
+      });`,
+      }),
+      setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
+      steps: ({ when, then }) => [
+        when.workflow.createInstance({
+          orgId: "org-1",
+          path: "/workspace/automations/remote-permanent.workflow.js",
+          remoteWorkflowName: "remote-permanent",
+          instanceId: "remote-permanent-1",
+          event: {
+            id: "permanent-event",
+            scope,
+            source: "scenario",
+            eventType: "remote.permanent.requested",
+            occurredAt: "2026-10-05T00:00:00Z",
+            payload: {},
+            actors: execution.actors,
+          },
+        }),
+        then.workflow.instance({
+          remoteWorkflowName: "remote-permanent",
+          instanceId: "remote-permanent-1",
+          status: "errored",
+        }),
+        when.time.advance("5 seconds"),
+        then.store.entry({ orgId: "org-1", key: "permanent-attempts", value: "1" }),
       ],
       options: { allowErroredWorkflows: true },
     }),

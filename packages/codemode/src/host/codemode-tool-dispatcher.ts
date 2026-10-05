@@ -1,12 +1,9 @@
-import { RpcTarget } from "cloudflare:workers";
+import { RpcTarget } from "capnweb";
 
-import {
-  parseCodemodeValue,
-  sanitizeToolName,
-  stringifyCodemodeValue,
-  type ResolvedProvider,
-} from "../runtime-api";
-import { encodeCodemodeError } from "../transport/codemode-errors";
+import { CODEMODE_LIMITS } from "../codemode-limits";
+import type { CodemodeToolResult } from "../execution/codemode-activation-contract";
+import { encodeCodemodeError } from "../execution/codemode-errors";
+import { sanitizeToolName, type ResolvedProvider } from "../runtime-api";
 
 const RESERVED_PROVIDER_NAMES = new Set([
   "context",
@@ -16,13 +13,7 @@ const RESERVED_PROVIDER_NAMES = new Set([
   "__logs",
   "__logBytes",
   "__captureLog",
-  "__CODEMODE_BINARY_TAG",
-  "__bytesToBase64",
-  "__base64ToBytes",
-  "__encodeCodemodeValue",
-  "__decodeCodemodeValue",
-  "__stringifyForCodemode",
-  "__parseForCodemode",
+  "__codemodeCallbackFailure",
   "__throwCodemodeProviderError",
   "__FRAGNO_CODEMODE_WORKFLOW_TAG",
   "defineWorkflow",
@@ -70,20 +61,20 @@ export class ToolDispatcher extends RpcTarget {
     this.#fns = fns;
   }
 
-  async call(toolName: string, argsJson: string): Promise<string> {
-    if (!Object.hasOwn(this.#fns, toolName)) {
-      return stringifyCodemodeValue({
-        error: encodeCodemodeError(new Error(`Unknown tool: ${toolName}`)),
-      });
-    }
+  async call(toolName: string, args: unknown[]): Promise<CodemodeToolResult> {
     try {
-      const args = parseCodemodeValue(argsJson);
-      if (!Array.isArray(args)) {
+      if (typeof toolName !== "string") {
+        throw new Error("CODEMODE_TOOL_NAME_MUST_BE_STRING");
+      }
+      if (!Object.hasOwn(this.#fns, toolName)) {
+        throw new Error(`Unknown tool: ${toolName}`);
+      }
+      if (!Array.isArray(args) || args.length > CODEMODE_LIMITS.maxEntries) {
         throw new Error("CODEMODE_TOOL_ARGUMENTS_MUST_BE_ARRAY");
       }
-      return stringifyCodemodeValue({ result: await this.#fns[toolName](...(args as unknown[])) });
+      return { status: "ok", value: await this.#fns[toolName](...args) };
     } catch (error) {
-      return stringifyCodemodeValue({ error: encodeCodemodeError(error) });
+      return { status: "error", error: encodeCodemodeError(error) };
     }
   }
 }

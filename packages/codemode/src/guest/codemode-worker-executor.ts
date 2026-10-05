@@ -1,11 +1,11 @@
 import type { WorkerBundle } from "../compiler/worker-bundle";
+import { createCodemodeDispatchers } from "../host/codemode-tool-dispatcher";
 import type {
   CodemodeWorkerEvaluation,
   DynamicWorkerExecutorOptions,
   ExecuteResult,
   ResolvedProvider,
 } from "../runtime-api";
-import { createCodemodeDispatchers } from "./codemode-dispatcher";
 
 /** RPC capabilities passed to a single loaded guest entrypoint. */
 export type DynamicWorkerRpcTargetMap = Record<string, unknown>;

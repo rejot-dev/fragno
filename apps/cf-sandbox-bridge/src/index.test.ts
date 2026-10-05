@@ -3,7 +3,8 @@ import { afterAll, beforeAll, expect, test, assert } from "vitest";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
-import { createCodemodeNodeExecutor } from "@fragno-dev/codemode/transport/codemode-node-client";
+import { createCodemodeHost } from "@fragno-dev/codemode/host/codemode-host-capabilities";
+import { createCodemodeNodeExecutor } from "@fragno-dev/codemode/remote/codemode-node-executor";
 
 import { createCodemodeBridgeTestServer } from "./testing/codemode-bridge-test-server";
 
@@ -26,19 +27,11 @@ test("the deployed container image matches the exact Sandbox SDK dependency", as
   expect(imageVersion).toBe(dependencies["@cloudflare/sandbox"]);
 });
 
-test("codemode is routed before the Sandbox SDK claims /v1", async () => {
+test("codemode execution is routed before the Sandbox SDK fallback", async () => {
   const execute = createCodemodeNodeExecutor(server);
   const result = await execute(
     { kind: "immediate", code: "42", dependencies: {}, providers: [], timeoutMs: 10_000 },
-    {
-      async handle() {
-        throw new Error("No tools are exposed");
-      },
-      close() {},
-      async settle() {
-        return null;
-      },
-    },
+    createCodemodeHost([], null),
   );
   expect(result).toEqual({ status: "completed", value: 42, logs: [], workflowDefinition: null });
 });
@@ -49,12 +42,4 @@ test("Sandbox health and authentication routes retain SDK behavior", async () =>
   expect(await health.json()).toEqual({ ok: true });
   const sandbox = await fetch(new URL("/v1/sandbox", url), { method: "POST" });
   assert(sandbox.status === 401);
-});
-
-test("codemode rejects unauthenticated requests and non-WebSocket upgrades", async () => {
-  const url = new URL("/v1/codemode/execute", server.url.replace(/^ws:/, "http:"));
-  assert((await fetch(url)).status === 401);
-  assert(
-    (await fetch(url, { headers: { authorization: `Bearer ${server.apiKey}` } })).status === 426,
-  );
 });

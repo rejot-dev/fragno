@@ -1,5 +1,5 @@
+import type { CodemodeRemoteExecutor } from "@fragno-dev/codemode/execution/codemode-activation-contract";
 import type { ExecuteResult, ResolvedProvider } from "@fragno-dev/codemode/runtime-api";
-import type { CodemodeRemoteExecutor } from "@fragno-dev/codemode/transport/codemode-protocol";
 
 import { createBackofficeCodemodeRemoteHost } from "./remote-execution-host";
 

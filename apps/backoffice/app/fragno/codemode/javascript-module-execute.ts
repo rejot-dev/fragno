@@ -1,6 +1,6 @@
 import type { CompiledWorker } from "@fragno-dev/codemode/compiler/compile-worker";
-import { DynamicWorkerExecutor } from "@fragno-dev/codemode/worker/codemode-executor";
-import { createCodemodeModuleSource } from "@fragno-dev/codemode/worker/codemode-guest-source";
+import { createCodemodeModuleSource } from "@fragno-dev/codemode/guest/codemode-module-source";
+import { DynamicWorkerExecutor } from "@fragno-dev/codemode/guest/codemode-worker-executor";
 
 import {
   createBackofficeCodemodeResolvedProviders,

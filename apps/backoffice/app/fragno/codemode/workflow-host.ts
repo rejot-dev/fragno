@@ -17,7 +17,6 @@ import type {
   WorkflowStepTx,
   WorkflowStepWorkflowOperation,
 } from "@fragno-dev/workflows/workflow";
-import { RpcTarget } from "cloudflare:workers";
 
 const unsupportedRemoteTxFeature = (feature: string): never => {
   throw new Error(`REMOTE_WORKFLOW_TX_${feature}_UNSUPPORTED`);
@@ -34,9 +33,9 @@ const isWorkflowSuspensionError = (
   return errorName === "RunnerStepSuspended" || errorName === "RemoteWorkflowSuspendedError";
 };
 
-export const returnRemoteWorkflowSuspensionOrThrow = (
+function returnRemoteWorkflowSuspensionOrThrow(
   error: unknown,
-): never | ReturnType<typeof createRemoteWorkflowSuspension> => {
+): never | ReturnType<typeof createRemoteWorkflowSuspension> {
   if (isRemoteWorkflowSuspension(error)) {
     return error;
   }
@@ -44,9 +43,9 @@ export const returnRemoteWorkflowSuspensionOrThrow = (
     return createRemoteWorkflowSuspension(error.reason);
   }
   throw error;
-};
+}
 
-class WorkflowStepTxTarget extends RpcTarget {
+class BackofficeWorkflowTransactionHost {
   readonly #tx: WorkflowStepTx | WorkflowStepConsumeTx;
   readonly #allowedHooks: readonly RemoteWorkflowAllowedHook[];
 
@@ -54,7 +53,6 @@ class WorkflowStepTxTarget extends RpcTarget {
     tx: WorkflowStepTx | WorkflowStepConsumeTx,
     allowedHooks: readonly RemoteWorkflowAllowedHook[],
   ) {
-    super();
     this.#tx = tx;
     this.#allowedHooks = allowedHooks;
   }
@@ -113,13 +111,12 @@ class WorkflowStepTxTarget extends RpcTarget {
   }
 }
 
-/** Host-side RPC target; only the trusted caller supplies permitted remote hook identities. */
-export class WorkflowStepTarget extends RpcTarget {
+/** Trusted workflow adapter; revocable RPC capabilities wrap it before anything reaches the guest. */
+export class BackofficeWorkflowStepHost {
   readonly #host: RemoteWorkflowStepHost;
   readonly #allowedHooks: readonly RemoteWorkflowAllowedHook[];
 
   constructor(host: RemoteWorkflowStepHost, allowedHooks: readonly RemoteWorkflowAllowedHook[]) {
-    super();
     this.#host = host;
     this.#allowedHooks = allowedHooks;
   }
@@ -128,12 +125,18 @@ export class WorkflowStepTarget extends RpcTarget {
     parentScope: RemoteWorkflowStepScope,
     name: string,
     config: WorkflowStepConfig | undefined,
-    callback: (tx: WorkflowStepTxTarget, scope: WorkflowStepIdentity) => Promise<T> | T,
+    callback: (
+      tx: BackofficeWorkflowTransactionHost,
+      scope: WorkflowStepIdentity,
+    ) => Promise<T> | T,
   ): Promise<T> {
     try {
       return await this.#host.do(parentScope, name, config, async (tx, scope) => {
         try {
-          const result = await callback(new WorkflowStepTxTarget(tx, this.#allowedHooks), scope);
+          const result = await callback(
+            new BackofficeWorkflowTransactionHost(tx, this.#allowedHooks),
+            scope,
+          );
           if (isRemoteWorkflowSuspension(result)) {
             throw new RemoteWorkflowSuspendedError(result.reason);
           }
@@ -181,7 +184,7 @@ export class WorkflowStepTarget extends RpcTarget {
       type: string;
       timeout?: WorkflowDuration;
       onConsume?: (
-        tx: WorkflowStepTxTarget,
+        tx: BackofficeWorkflowTransactionHost,
         event: { type: string; payload: Readonly<T>; timestamp: Date },
       ) => Promise<void> | void;
     },
@@ -192,7 +195,10 @@ export class WorkflowStepTarget extends RpcTarget {
         timeout: options.timeout,
         onConsume: options.onConsume
           ? async (tx, event) => {
-              await options.onConsume?.(new WorkflowStepTxTarget(tx, this.#allowedHooks), event);
+              await options.onConsume?.(
+                new BackofficeWorkflowTransactionHost(tx, this.#allowedHooks),
+                event,
+              );
             }
           : undefined,
       });

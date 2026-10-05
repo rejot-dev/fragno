@@ -12,21 +12,29 @@
       "types": "./dist/runtime-api.d.ts",
       "default": "./dist/runtime-api.js"
     },
-    "./worker/codemode-dispatcher": {
-      "types": "./dist/worker/codemode-dispatcher.d.ts",
-      "default": "./dist/worker/codemode-dispatcher.js"
+    "./host/codemode-tool-dispatcher": {
+      "types": "./dist/host/codemode-tool-dispatcher.d.ts",
+      "default": "./dist/host/codemode-tool-dispatcher.js"
     },
-    "./worker/codemode-executor": {
-      "types": "./dist/worker/codemode-executor.d.ts",
-      "default": "./dist/worker/codemode-executor.js"
+    "./guest/codemode-worker-executor": {
+      "types": "./dist/guest/codemode-worker-executor.d.ts",
+      "default": "./dist/guest/codemode-worker-executor.js"
     },
-    "./worker/codemode-guest-source": {
-      "types": "./dist/worker/codemode-guest-source.d.ts",
-      "default": "./dist/worker/codemode-guest-source.js"
+    "./guest/codemode-function-source": {
+      "types": "./dist/guest/codemode-function-source.d.ts",
+      "default": "./dist/guest/codemode-function-source.js"
     },
-    "./worker/workflow-source": {
-      "types": "./dist/worker/workflow-source.d.ts",
-      "default": "./dist/worker/workflow-source.js"
+    "./guest/codemode-module-source": {
+      "types": "./dist/guest/codemode-module-source.d.ts",
+      "default": "./dist/guest/codemode-module-source.js"
+    },
+    "./guest/codemode-guest-api-source": {
+      "types": "./dist/guest/codemode-guest-api-source.d.ts",
+      "default": "./dist/guest/codemode-guest-api-source.js"
+    },
+    "./guest/codemode-workflow-source": {
+      "types": "./dist/guest/codemode-workflow-source.d.ts",
+      "default": "./dist/guest/codemode-workflow-source.js"
     },
     "./compiler/codemode-compiler-admission": {
       "types": "./dist/compiler/codemode-compiler-admission.d.ts",
@@ -48,13 +56,17 @@
       "types": "./dist/compiler/compiler-service-protocol.d.ts",
       "default": "./dist/compiler/compiler-service-protocol.js"
     },
-    "./transport/codemode-protocol": {
-      "types": "./dist/transport/codemode-protocol.d.ts",
-      "default": "./dist/transport/codemode-protocol.js"
+    "./execution/codemode-activation-contract": {
+      "types": "./dist/execution/codemode-activation-contract.d.ts",
+      "default": "./dist/execution/codemode-activation-contract.js"
     },
-    "./transport/codemode-errors": {
-      "types": "./dist/transport/codemode-errors.d.ts",
-      "default": "./dist/transport/codemode-errors.js"
+    "./execution/execute-codemode-activation": {
+      "types": "./dist/execution/execute-codemode-activation.d.ts",
+      "default": "./dist/execution/execute-codemode-activation.js"
+    },
+    "./execution/codemode-errors": {
+      "types": "./dist/execution/codemode-errors.d.ts",
+      "default": "./dist/execution/codemode-errors.js"
     },
     "./transport/codemode-http-authentication": {
       "types": "./dist/transport/codemode-http-authentication.d.ts",
@@ -68,21 +80,21 @@
       "types": "./dist/codemode-limits.d.ts",
       "default": "./dist/codemode-limits.js"
     },
-    "./transport/codemode-peer": {
-      "types": "./dist/transport/codemode-peer.d.ts",
-      "default": "./dist/transport/codemode-peer.js"
+    "./host/codemode-host-capabilities": {
+      "types": "./dist/host/codemode-host-capabilities.d.ts",
+      "default": "./dist/host/codemode-host-capabilities.js"
     },
-    "./transport/codemode-values": {
-      "types": "./dist/transport/codemode-values.d.ts",
-      "default": "./dist/transport/codemode-values.js"
+    "./transport/codemode-websocket-transport": {
+      "types": "./dist/transport/codemode-websocket-transport.d.ts",
+      "default": "./dist/transport/codemode-websocket-transport.js"
     },
-    "./transport/codemode-node-client": {
-      "types": "./dist/transport/codemode-node-client.d.ts",
-      "default": "./dist/transport/codemode-node-client.js"
+    "./remote/codemode-node-executor": {
+      "types": "./dist/remote/codemode-node-executor.d.ts",
+      "default": "./dist/remote/codemode-node-executor.js"
     },
-    "./worker/codemode-worker-session": {
-      "types": "./dist/worker/codemode-worker-session.d.ts",
-      "default": "./dist/worker/codemode-worker-session.js"
+    "./remote/codemode-bridge-session": {
+      "types": "./dist/remote/codemode-bridge-session.d.ts",
+      "default": "./dist/remote/codemode-bridge-session.js"
     }
   },
   "scripts": {
@@ -97,6 +109,7 @@
   },
   "dependencies": {
     "@fragno-dev/workflows": "workspace:*",
+    "capnweb": "0.12.0",
     "ws": "^8.21.3",
     "zod": "^4.5.4"
   },

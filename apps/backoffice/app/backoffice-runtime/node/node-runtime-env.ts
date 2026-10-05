@@ -1,6 +1,6 @@
 import type { WorkerTypeChecker } from "@fragno-dev/codemode/compiler/compile-worker";
 import { createCodemodeCompilerHttpClient } from "@fragno-dev/codemode/compiler/compiler-service-client";
-import { createCodemodeNodeExecutor } from "@fragno-dev/codemode/transport/codemode-node-client";
+import { createCodemodeNodeExecutor } from "@fragno-dev/codemode/remote/codemode-node-executor";
 
 import { createCloudflareSandboxBridgeProvider } from "@/sandbox/cloudflare-sandbox-bridge-provider";
 import { createCloudflareSandboxPhysicalId } from "@/sandbox/cloudflare-sandbox-id";

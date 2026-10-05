@@ -1,12 +1,13 @@
 import { CODEMODE_LIMITS } from "@fragno-dev/codemode/codemode-limits";
-import { decodeCodemodeError } from "@fragno-dev/codemode/transport/codemode-errors";
-import { createCodemodeDispatchers } from "@fragno-dev/codemode/worker/codemode-dispatcher";
+import type { CodemodeStepCapability } from "@fragno-dev/codemode/execution/codemode-activation-contract";
+import { decodeCodemodeError } from "@fragno-dev/codemode/execution/codemode-errors";
+import { createCodemodeProviderProxySource } from "@fragno-dev/codemode/guest/codemode-guest-api-source";
 import {
   DynamicWorkerExecutor,
   type DynamicWorkerRpcCall,
-} from "@fragno-dev/codemode/worker/codemode-executor";
-import { createCodemodeProviderProxySource } from "@fragno-dev/codemode/worker/codemode-guest-source";
-import { createRemoteWorkflowWorkerCode } from "@fragno-dev/codemode/worker/workflow-source";
+} from "@fragno-dev/codemode/guest/codemode-worker-executor";
+import { createCodemodeWorkflowSource } from "@fragno-dev/codemode/guest/codemode-workflow-source";
+import { createCodemodeHost } from "@fragno-dev/codemode/host/codemode-host-capabilities";
 import {
   RemoteWorkflowSuspendedError,
   type RemoteWorkflowAllowedHook,
@@ -27,7 +28,7 @@ import {
   type BackofficeCodemodeEnv,
 } from "./execute";
 import { createBackofficeCodemodeRemoteHost } from "./remote-execution-host";
-import { WorkflowStepTarget } from "./workflow-rpc";
+import { BackofficeWorkflowStepHost } from "./workflow-host";
 
 export type BackofficeCodemodeWorkflowResult<TOutput = unknown> = {
   result?: TOutput;
@@ -40,7 +41,7 @@ type CodemodeWorkflowEvent<TParams> = WorkflowEvent<TParams> & { id?: string };
 type WorkflowWorkerEntrypoint<TParams, TOutput> = {
   run(
     event: CodemodeWorkflowEvent<TParams>,
-    stepTarget: WorkflowStepTarget,
+    stepTarget: CodemodeStepCapability,
     dispatchers: Record<string, unknown>,
   ): DynamicWorkerRpcCall<WorkflowWorkerResult<TOutput>>;
 };
@@ -76,7 +77,7 @@ async function executeBackofficeCodemodeWorkflow<TParams, TOutput>(
     dependencies,
     allowedHooks,
   } = input;
-  const stepTarget = new WorkflowStepTarget(remote, allowedHooks);
+  const stepTarget = new BackofficeWorkflowStepHost(remote, allowedHooks);
   const providers = await createBackofficeCodemodeResolvedProviders({ families, toolContext });
   if ("remoteExecutor" in env) {
     if (globalOutbound) {
@@ -109,17 +110,14 @@ async function executeBackofficeCodemodeWorkflow<TParams, TOutput>(
       host.close();
     }
   }
-  const dispatcherResult = createCodemodeDispatchers(providers);
-  if ("error" in dispatcherResult) {
-    throw new Error(dispatcherResult.error);
-  }
+  const host = createCodemodeHost(providers, stepTarget);
   const executor = new DynamicWorkerExecutor({
     loader: env.LOADER,
     globalOutbound: globalOutbound ?? null,
   });
   const compiled = await resolveBackofficeWorkerCompiler(env)({
     files: {
-      "remote-workflow.js": createRemoteWorkflowWorkerCode({
+      "remote-workflow.js": createCodemodeWorkflowSource({
         code,
         providerProxySource: createCodemodeProviderProxySource(providers),
       }),
@@ -128,23 +126,41 @@ async function executeBackofficeCodemodeWorkflow<TParams, TOutput>(
     dependencies: dependencies ?? {},
     runtime: { compatibilityDate: "2026-05-07", compatibilityFlags: ["nodejs_als"] },
   });
-  const output = await executor.runEntrypoint<
-    WorkflowWorkerEntrypoint<TParams, TOutput>,
-    WorkflowWorkerResult<TOutput>
-  >({
-    bundle: compiled.bundle,
-    rpcTargets: { dispatchers: dispatcherResult.dispatchers, stepTarget },
-    run: (entrypoint, targets) =>
-      entrypoint.run(
-        { ...event, id: event.id ?? event.instanceId },
-        targets.stepTarget as WorkflowStepTarget,
-        targets.dispatchers as Record<string, unknown>,
-      ),
-  });
-  if (!output.ok) {
-    throw new RemoteWorkflowSuspendedError(output.suspension.reason);
+  let outcome:
+    | { type: "completed"; output: WorkflowWorkerResult<TOutput> }
+    | { type: "failed"; error: unknown };
+  let suspension: Awaited<ReturnType<typeof host.settle>>;
+  try {
+    outcome = await executor
+      .runEntrypoint<WorkflowWorkerEntrypoint<TParams, TOutput>, WorkflowWorkerResult<TOutput>>({
+        bundle: compiled.bundle,
+        rpcTargets: host.capabilities,
+        run: (entrypoint, targets) =>
+          entrypoint.run(
+            { ...event, id: event.id ?? event.instanceId },
+            targets.stepTarget as CodemodeStepCapability,
+            targets.dispatchers as Record<string, unknown>,
+          ),
+      })
+      .then(
+        (output) => ({ type: "completed", output }) as const,
+        (error: unknown) => ({ type: "failed", error }) as const,
+      );
+  } finally {
+    host.close();
+    suspension = await host.settle();
   }
-  return output.result;
+  // Host retry and wake decisions survive even when their native RPC response is lost.
+  if (suspension !== null) {
+    throw new RemoteWorkflowSuspendedError(suspension);
+  }
+  if (outcome.type === "failed") {
+    throw outcome.error;
+  }
+  if (!outcome.output.ok) {
+    throw new RemoteWorkflowSuspendedError(outcome.output.suspension.reason);
+  }
+  return outcome.output.result;
 }
 
 /** Runs one activation; suspension stays visible to the workflow runner rather than becoming an error string. */

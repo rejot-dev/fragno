@@ -94,14 +94,36 @@ pnpm --dir apps/cf-sandbox-bridge run dev     # verify locally; stop before depl
 pnpm --dir apps/cf-sandbox-bridge run deploy
 ```
 
+## Control flow and code ownership
+
+```text
+src/
+├── index.ts                            # Cloudflare entrypoints and HTTP router composition
+├── http/
+│   ├── codemode-execution-http-route.ts # authenticate → WebSocket upgrade → bridge session
+│   ├── codemode-compiler-http-routes.ts # authenticate → compile/type-check operation
+│   └── sandbox-lifecycle-http-routes.ts
+└── compiler/
+    ├── codemode-compiler-entrypoint.ts  # named service-binding RPC and compiler fetch handler
+    ├── codemode-compiler-operations.ts  # streamed requests, admission, and settlement cleanup
+    ├── build-worker-project.ts         # dependency installation and bundling
+    └── type-check-project.ts
+```
+
+After upgrade, `@fragno-dev/codemode/remote/codemode-bridge-session` owns the connection.
+`execution/execute-codemode-activation` generates the appropriate guest source, calls this app's
+compiler directly, and invokes one loaded Worker. Immediate functions and modules use `evaluate()`;
+workflows use `run(event, step)`. Node owns workflow persistence and replay, not this bridge.
+
 ## Compiler
 
 The stateless compiler lives in `src/compiler/`:
 
 - `build-worker-project.ts` installs declared dependencies and bundles guest code with esbuild.
 - `type-check-project.ts` checks streamed source files with TypeScript.
-- `codemode-compiler.ts` exposes the private `CodemodeCompiler` RPC entrypoint and public
-  authenticated HTTP routes.
+- `codemode-compiler-entrypoint.ts` exposes the private `CodemodeCompiler` RPC entrypoint.
+- `codemode-compiler-operations.ts` owns the streamed compile/type-check operations shared by RPC
+  and HTTP. Public authentication and routing live in `src/http/codemode-compiler-http-routes.ts`.
 
 WebSocket activations call the compiler directly. Cloudflare Backoffice uses a service binding and
 then executes the returned bundle with its own Worker Loader:
@@ -142,10 +164,11 @@ execution, authentication, and shared admission.
 
 ## Node Backoffice
 
-`GET /v1/codemode/execute` accepts one authenticated WebSocket per activation. It runs in the
-ordinary Worker, before the Sandbox SDK's `/v1/*` router; it adds no Durable Object or migration.
-The embedded compiler builds the guest and `LOADER` runs it in a sealed dynamic Worker. Keep the
-existing Sandbox and WarmPool bindings even when only exercising codemode.
+`GET /v2/codemode/execute` accepts one authenticated Cap'n Web session per activation. It runs in an
+ordinary Worker and adds no Durable Object or migration. The embedded compiler builds the guest and
+`LOADER` runs it in a sealed dynamic Worker. Cap'n Web proxies Node's narrow tool and workflow
+capabilities through native Workers RPC; the bridge has no callback or transaction handle tables.
+Keep the existing Sandbox and WarmPool bindings even when only exercising codemode.
 
 Set Node Backoffice's `CLOUDFLARE_BRIDGE_URL` to this bridge's `https://` origin and
 `CLOUDFLARE_BRIDGE_API_KEY` to its `SANDBOX_API_KEY`. Node uses the HTTP sandbox routes for sandbox
@@ -155,12 +178,15 @@ the WarmPool-assigned Sandbox Durable Object before startup. Local loopback `htt
 Unlike the Sandbox SDK development routes, codemode always fails closed without a configured API
 key.
 
-The shared `@fragno-dev/codemode` package owns protocol v1 and guest runtime generation. Node owns
-all tools, authorization, persistence, workflow retry decisions, and Pi sessions. A disconnect ends
-the activation; there is no reconnect, stored result, or automatic immediate retry. Tool mutations
-already performed are not rolled back. Logs are bounded and returned only at completion. Node and
-the bridge emit `codemode.activation` summaries with the execution/workflow IDs, duration, terminal
-outcome, and bounded message/byte/call counters; summaries exclude source and tool payloads.
+The shared `@fragno-dev/codemode` package owns the execution API v2 and guest runtime generation.
+The initial `execute` RPC requires `protocolVersion: 2`; compiler archives and HTTP compiler routes
+retain their independent v1 format. Deploy this bridge before updating Node callers: execution v1
+has been removed, with no compatibility fallback. Node owns all tools, authorization, persistence,
+workflow retry decisions, and Pi sessions. A disconnect ends the activation; there is no reconnect,
+stored result, or automatic immediate retry. Tool mutations already performed are not rolled back.
+Logs are bounded and returned only at completion. Node and the bridge emit `codemode.activation`
+summaries with the execution/workflow IDs, duration, terminal outcome, and bounded message/byte/call
+counters; summaries exclude source and tool payloads.
 
 Run builds, type checks, and real-workerd tests from the repository root:
 

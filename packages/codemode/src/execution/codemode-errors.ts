@@ -1,7 +1,6 @@
-import { RemoteWorkflowSuspendedError } from "@fragno-dev/workflows/remote-workflow";
 import { NonRetryableError, WaitForEventTimeoutError } from "@fragno-dev/workflows/workflow";
 
-import type { CodemodeWireError } from "./codemode-protocol";
+import type { CodemodeWireError } from "./codemode-activation-contract";
 
 /** Interruption is an unknown outcome, not permission to retry an immediate invocation. */
 export class CodemodeInterruptedError extends Error {
@@ -74,16 +73,4 @@ export function decodeCodemodeError(error: CodemodeWireError): Error {
       break;
   }
   return restoreCodemodeErrorDetails(result, error.details);
-}
-
-/** RPC cannot carry custom Error properties, so workflow proxies return typed suspension values. */
-export async function codemodeHostCall(call: () => Promise<unknown>): Promise<unknown> {
-  try {
-    return await call();
-  } catch (error) {
-    if (error instanceof RemoteWorkflowSuspendedError) {
-      return { __fragnoRemoteWorkflowSuspended: true, reason: error.reason };
-    }
-    throw error;
-  }
 }

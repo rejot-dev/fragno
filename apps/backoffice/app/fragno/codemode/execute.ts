@@ -1,14 +1,14 @@
 import type { CompiledWorker, WorkerCompiler } from "@fragno-dev/codemode/compiler/compile-worker";
 import { createWorkerCompilerServiceClient } from "@fragno-dev/codemode/compiler/compiler-service-client";
+import type { CodemodeRemoteExecutor } from "@fragno-dev/codemode/execution/codemode-activation-contract";
+import { createCodemodeFunctionSource } from "@fragno-dev/codemode/guest/codemode-function-source";
+import { DynamicWorkerExecutor } from "@fragno-dev/codemode/guest/codemode-worker-executor";
 import {
   normalizeCode,
   resolveProvider,
   type ExecuteResult,
   type ResolvedProvider,
 } from "@fragno-dev/codemode/runtime-api";
-import type { CodemodeRemoteExecutor } from "@fragno-dev/codemode/transport/codemode-protocol";
-import { DynamicWorkerExecutor } from "@fragno-dev/codemode/worker/codemode-executor";
-import { createCodemodeExpressionSource } from "@fragno-dev/codemode/worker/codemode-guest-source";
 
 import type { NpmDependencyMap } from "@/backoffice-runtime/dynamic-workers/npm-dependencies";
 import { createMcpCodemodeProviders } from "@/fragno/codemode/mcp-codemode-tools";
@@ -274,7 +274,7 @@ export const runBackofficeCodemode = async ({
     const compile = resolveBackofficeWorkerCompiler(env);
     compiled = await compile({
       files: {
-        "executor.js": createCodemodeExpressionSource(executableCode, providers, timeout),
+        "executor.js": createCodemodeFunctionSource(executableCode, providers, timeout),
       },
       entryPoint: "executor.js",
       dependencies: dependencies ?? {},
