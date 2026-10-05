@@ -1,8 +1,127 @@
 {
   "name": "@fragno-private/backoffice-node-runtime",
   "private": true,
+  "bin": {
+    "backoffice-node-runtime": "./bin/run.js"
+  },
   "type": "module",
+  "exports": {
+    "./node-runtime-gateway": {
+      "types": "./dist/gateway/node-runtime-gateway.d.ts",
+      "default": "./dist/gateway/node-runtime-gateway.js"
+    },
+    "./graft-gateway-directory": {
+      "types": "./dist/gateway/graft-gateway-directory.d.ts",
+      "default": "./dist/gateway/graft-gateway-directory.js"
+    },
+    "./node-runtime-readiness": {
+      "types": "./dist/runtime/node-runtime-readiness.d.ts",
+      "default": "./dist/runtime/node-runtime-readiness.js"
+    },
+    "./graft-sqlite": {
+      "types": "./dist/graft/graft-sqlite.d.ts",
+      "default": "./dist/graft/graft-sqlite.js"
+    },
+    "./graft-worker-directory": {
+      "types": "./dist/graft/graft-worker-directory.d.ts",
+      "default": "./dist/graft/graft-worker-directory.js"
+    },
+    "./graft-control-database": {
+      "types": "./dist/graft/graft-control-database.d.ts",
+      "default": "./dist/graft/graft-control-database.js"
+    },
+    "./graft-control-store": {
+      "types": "./dist/graft/graft-control-store.d.ts",
+      "default": "./dist/graft/graft-control-store.js"
+    },
+    "./graft-node-authority": {
+      "types": "./dist/graft/graft-node-authority.d.ts",
+      "default": "./dist/graft/graft-node-authority.js"
+    },
+    "./graft-database-operations": {
+      "types": "./dist/graft/graft-database-operations.d.ts",
+      "default": "./dist/graft/graft-database-operations.js"
+    },
+    "./graft-object-provisioning": {
+      "types": "./dist/graft/graft-object-provisioning.d.ts",
+      "default": "./dist/graft/graft-object-provisioning.js"
+    },
+    "./graft-runtime-storage": {
+      "types": "./dist/graft/graft-runtime-storage.d.ts",
+      "default": "./dist/graft/graft-runtime-storage.js"
+    },
+    "./node-object-runtime": {
+      "types": "./dist/runtime/node-object-runtime.d.ts",
+      "default": "./dist/runtime/node-object-runtime.js"
+    },
+    "./node-object-runtime-host": {
+      "types": "./dist/runtime/node-object-runtime-host.d.ts",
+      "default": "./dist/runtime/node-object-runtime-host.js"
+    },
+    "./node-peer-rpc": {
+      "types": "./dist/rpc/node-peer-rpc.d.ts",
+      "default": "./dist/rpc/node-peer-rpc.js"
+    },
+    "./node-runtime-object": {
+      "types": "./dist/runtime/node-runtime-object.d.ts",
+      "default": "./dist/runtime/node-runtime-object.js"
+    },
+    "./node-durable-object-state": {
+      "types": "./dist/runtime/node-durable-object-state.d.ts",
+      "default": "./dist/runtime/node-durable-object-state.js"
+    },
+    "./node-durable-object-storage": {
+      "types": "./dist/runtime/node-durable-object-storage.d.ts",
+      "default": "./dist/runtime/node-durable-object-storage.js"
+    },
+    "./node-runtime-clock": {
+      "types": "./dist/runtime/node-runtime-clock.d.ts",
+      "default": "./dist/runtime/node-runtime-clock.js"
+    },
+    "./node-alarm-scheduler": {
+      "types": "./dist/scheduling/node-alarm-scheduler.d.ts",
+      "default": "./dist/scheduling/node-alarm-scheduler.js"
+    },
+    "./node-runtime-scenario": {
+      "types": "./dist/testing/node-runtime-scenario.d.ts",
+      "default": "./dist/testing/node-runtime-scenario.js"
+    },
+    "./node-durable-hooks": {
+      "types": "./dist/scheduling/node-durable-hooks.d.ts",
+      "default": "./dist/scheduling/node-durable-hooks.js"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "cli": "node bin/run.js",
+    "build:watch": "tsdown --watch",
+    "types:check": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest --watch",
+    "format:package": "node ../../scripts/run-package-quality.mjs format",
+    "format:check:package": "node ../../scripts/run-package-quality.mjs format:check",
+    "lint:package": "node ../../scripts/run-package-quality.mjs lint",
+    "lint:fix:package": "node ../../scripts/run-package-quality.mjs lint:fix"
+  },
   "dependencies": {
-    "better-sqlite3": "12.10.0"
+    "@fragno-dev/db": "workspace:*",
+    "@hono/node-server": "1.19.14",
+    "capnweb": "0.12.0",
+    "hono": "4.12.25",
+    "sqlite-graft": "0.2.1",
+    "ws": "8.21.3"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260804.1",
+    "@fragno-private/typescript-config": "workspace:*",
+    "@fragno-private/vitest-config": "workspace:*",
+    "@types/node": "^24.10.9",
+    "@types/ws": "8.18.1",
+    "tsdown": "^0.22.4",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "engines": {
+    "node": "^22.22.0 || >=24.11.0"
   }
 }

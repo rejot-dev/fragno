@@ -1,0 +1,15 @@
+{
+  "extends": "@fragno-private/typescript-config/tsconfig.node.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": ".",
+    "types": ["node", "@cloudflare/workers-types"],
+    "paths": {
+      "@fragno-private/backoffice-node-runtime/graft-control-store": [
+        "./src/graft/graft-control-store.ts"
+      ]
+    }
+  },
+  "include": ["src"],
+  "exclude": ["node_modules", "dist"]
+}

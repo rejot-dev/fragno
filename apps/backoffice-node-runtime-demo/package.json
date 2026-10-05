@@ -1,0 +1,35 @@
+{
+  "name": "@fragno-private/backoffice-node-runtime-demo",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build": "tsdown",
+    "start": "node dist/start-fleet.js",
+    "start:node": "node dist/start-node.js",
+    "start:gateway": "node dist/start-gateway.js",
+    "demo": "node dist/node/node.scenario.js",
+    "test": "node dist/gateway/gateway.scenario.js && node dist/node/node.scenario.js && node dist/fleet/fleet.scenario.js",
+    "types:check": "tsc --noEmit",
+    "format:package": "node ../../scripts/run-package-quality.mjs format",
+    "format:check:package": "node ../../scripts/run-package-quality.mjs format:check",
+    "lint:package": "node ../../scripts/run-package-quality.mjs lint",
+    "lint:fix:package": "node ../../scripts/run-package-quality.mjs lint:fix"
+  },
+  "dependencies": {
+    "@fragno-private/backoffice-node-runtime": "workspace:*",
+    "@hono/node-server": "1.19.14",
+    "capnweb": "0.12.0",
+    "hono": "4.12.25"
+  },
+  "devDependencies": {
+    "@fragno-private/typescript-config": "workspace:*",
+    "@types/node": "^24.10.9",
+    "tsdown": "^0.22.4",
+    "typescript": "catalog:"
+  },
+  "engines": {
+    "node": "^26.10.0"
+  }
+}
