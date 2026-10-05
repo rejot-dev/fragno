@@ -835,6 +835,8 @@ describe("runBackofficeCodemode", () => {
       const projectStore = createRouteBackedAutomationStoreRuntime({
         object: runtime.objects.automations.forProject({ orgId: "org-1", projectId: "project-1" }),
         execution: {
+          kind: "deferred" as const,
+          scopeRestriction: null,
           scope: projectScope,
           actors: { initiator: AUTOMATION_SYSTEM_INITIATOR, principal: null, delegation: [] },
         },
@@ -842,6 +844,8 @@ describe("runBackofficeCodemode", () => {
       const orgStore = createRouteBackedAutomationStoreRuntime({
         object: runtime.objects.automations.forOrg("org-1"),
         execution: {
+          kind: "deferred" as const,
+          scopeRestriction: null,
           scope: orgScope,
           actors: { initiator: AUTOMATION_SYSTEM_INITIATOR, principal: null, delegation: [] },
         },

@@ -2,6 +2,11 @@ import { signJWT } from "better-auth/plugins/jwt";
 import { createLocalJWKSet, errors, jwtVerify, type JSONWebKeySet } from "jose";
 import { z } from "zod";
 
+import {
+  backofficeContextScopeSchema,
+  type BackofficeContextScope,
+} from "@/backoffice-runtime/context";
+
 export const ACCESS_TOKEN_ISSUER = "fragno-backoffice-auth";
 export const ACCESS_TOKEN_AUDIENCE = "fragno-backoffice";
 export const BACKOFFICE_JWT_LIFETIME_SECONDS = 15 * 60;
@@ -14,6 +19,7 @@ export const backofficeJwtPayloadSchema = z.object({
   sub: z.string().min(1),
   email: z.email(),
   globalRole: z.enum(["user", "admin"]),
+  scopeRestriction: backofficeContextScopeSchema.nullable(),
   organization: z
     .object({
       id: z.string().min(1),
@@ -95,6 +101,7 @@ export const issueBackofficeJwt = async (
     userId: string;
     email: string;
     globalRole: "user" | "admin";
+    scopeRestriction: BackofficeContextScope | null;
     organization: { id: string; slug: string; roles: string[] } | null;
   },
 ): Promise<{ token: string; expiresAt: Date }> => {
@@ -112,6 +119,7 @@ export const issueBackofficeJwt = async (
       sub: authority.userId,
       email: authority.email,
       globalRole: authority.globalRole,
+      scopeRestriction: authority.scopeRestriction,
       organization: authority.organization,
       iat: issuedAtEpochSeconds,
       exp: expiresAtEpochSeconds,

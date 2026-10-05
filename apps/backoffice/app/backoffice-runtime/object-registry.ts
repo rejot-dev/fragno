@@ -102,8 +102,6 @@ export type BackofficeRpcContext = Pick<FragnoExecutionContext, "propagationCont
 
 export type BackofficeActionRpcContext = BackofficeRpcContext & {
   execution: BackofficeExecutionContext;
-  /** Signed assertion that the caller already performed the target object's authorization check. */
-  authorization?: "enforce" | "preauthorized";
 };
 
 export type FetchObject = {

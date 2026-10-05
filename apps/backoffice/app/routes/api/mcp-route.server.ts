@@ -13,7 +13,7 @@ export const mcpPublicRoute = {
   internalPrefix: MCP_INTERNAL_PREFIX,
   getObjectForScope: (context, scope) =>
     context.get(BackofficeWorkerContext).runtime.objects.mcp.for(scope),
-  forwardRequest: ({ getObject, request }) => getObject().http.fetch(request),
+  publicIngress: null,
   oauth: {
     internalCallbackPath: MCP_INTERNAL_OAUTH_CALLBACK_PATH,
     invalidResponse: (message) => new Response(message, { status: 502 }),

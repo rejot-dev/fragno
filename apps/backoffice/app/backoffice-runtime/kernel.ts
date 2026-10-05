@@ -1,18 +1,13 @@
-import { automationActorsSchema } from "@/fragno/automation/actors";
-
 import type { BackofficeAuthorityResolver } from "./authority-resolver";
-import {
-  getBackofficeAuthorityRoleGrants,
-  resolveBackofficeInternalServiceAuthorityRole,
-  resolveBackofficeUserAuthorityRole,
-} from "./authority-roles";
+import { resolveBackofficeInternalServiceAuthorityRole } from "./authority-roles";
 import {
   backofficeContextScopesEqual,
-  backofficeVerifiedRequestAuthoritySchema,
+  backofficeExecutionContextSchema,
+  backofficeScopeContains,
+  backofficeExecutionScopeRestriction,
   type BackofficeContextScope,
   type BackofficeExecutionContext,
 } from "./context";
-import { backofficeContextScopeSchema } from "./context-schema";
 import type { BackofficeObjectBindingName } from "./object-registry";
 import {
   backofficeObjectScopePolicy,
@@ -254,9 +249,7 @@ export class BackofficeKernel {
       return [];
     }
 
-    const authorizedActions = execution.userAuthority
-      ? this.#authorizeVerifiedRequestRequirements(execution, requirements)
-      : await this.#authorizeCurrentAuthorityRequirements(execution, requirements);
+    const authorizedActions = await this.#authorizeRequirements(execution, requirements);
     await Promise.all(
       authorizedActions.map(async (action) => {
         await this.#observer.observeAuthorization?.(action);
@@ -265,47 +258,8 @@ export class BackofficeKernel {
     return authorizedActions;
   }
 
-  /** Resolves an immediate request exclusively from its verified JWT authority snapshot. */
-  #authorizeVerifiedRequestRequirements(
-    execution: BackofficeExecutionContext,
-    requirements: readonly BackofficeKernelAuthorizationRequirement[],
-  ): readonly BackofficeKernelAction[] {
-    const trustedExecution = this.#parseExecutionContext(execution);
-    const tokenAuthority = trustedExecution.userAuthority;
-    if (!tokenAuthority || tokenAuthority.expiresAtEpochMs <= Date.now()) {
-      throw new BackofficeForbiddenError(
-        "This request requires unexpired verified access-token authority.",
-        "context-access-denied",
-      );
-    }
-
-    if (trustedExecution.actors.delegation.length > 0) {
-      throw new BackofficeForbiddenError(
-        "Verified user requests cannot carry delegated authority.",
-        "context-access-denied",
-      );
-    }
-
-    const role = resolveBackofficeUserAuthorityRole(tokenAuthority, trustedExecution.scope);
-    const permissions = role ? getBackofficeAuthorityRoleGrants(role) : [];
-    for (const requirement of requirements) {
-      if (!permissions.some((grant) => backofficePermissionsEqual(grant, requirement.operation))) {
-        throw new BackofficeForbiddenError(
-          "The verified access-token role does not have the required permission.",
-          "principal-permission-denied",
-        );
-      }
-    }
-
-    return requirements.map((requirement) => ({
-      execution: trustedExecution,
-      operation: requirement.operation,
-      resource: requirement.resource,
-    }));
-  }
-
-  /** Resolves deferred and internal execution through one current authority resolution pass. */
-  async #authorizeCurrentAuthorityRequirements(
+  /** Both authority sources use the same all-of permission and delegation evaluation. */
+  async #authorizeRequirements(
     execution: BackofficeExecutionContext,
     requirements: readonly BackofficeKernelAuthorizationRequirement[],
   ): Promise<readonly BackofficeKernelAction[]> {
@@ -400,33 +354,32 @@ export class BackofficeKernel {
   }
 
   #parseExecutionContext(execution: BackofficeExecutionContext): BackofficeExecutionContext {
-    const parsedScope = backofficeContextScopeSchema.safeParse(execution.scope);
-    const parsedActors = automationActorsSchema.safeParse(execution.actors);
-    const parsedUserAuthority = execution.userAuthority
-      ? backofficeVerifiedRequestAuthoritySchema.safeParse(execution.userAuthority)
-      : { success: true as const, data: undefined };
-    if (!parsedScope.success || !parsedActors.success || !parsedUserAuthority.success) {
+    const parsed = backofficeExecutionContextSchema.safeParse(execution);
+    if (!parsed.success) {
       throw new BackofficeForbiddenError(
         "Backoffice execution context is invalid.",
         "context-access-denied",
       );
     }
 
-    const trustedExecution = {
-      scope: parsedScope.data,
-      actors: parsedActors.data,
-      ...(parsedUserAuthority.data ? { userAuthority: parsedUserAuthority.data } : {}),
-    } satisfies BackofficeExecutionContext;
+    const trustedExecution = parsed.data;
     this.#assertExecutionContextAccess(trustedExecution);
     return trustedExecution;
   }
 
   #assertExecutionContextAccess(execution: BackofficeExecutionContext) {
+    const restriction = backofficeExecutionScopeRestriction(execution);
+    if (restriction && !backofficeScopeContains(restriction, execution.scope)) {
+      throw new BackofficeForbiddenError(
+        "Execution scope exceeds its retained scope ceiling.",
+        "context-access-denied",
+      );
+    }
     const principal = execution.actors.principal;
     const hasInternalUserPrincipal = principal?.scope === "internal" && principal.type === "user";
 
     if (
-      execution.userAuthority &&
+      execution.kind === "request" &&
       (!hasInternalUserPrincipal || execution.userAuthority.userId !== principal.id)
     ) {
       throw new BackofficeForbiddenError(
@@ -514,6 +467,13 @@ export class BackofficeKernel {
     targetScope: BackofficeContextScope,
   ) {
     const ownerScope = execution.scope;
+    const restriction = backofficeExecutionScopeRestriction(execution);
+    if (restriction && !backofficeScopeContains(restriction, targetScope)) {
+      throw new BackofficeForbiddenError(
+        "Credential scope does not permit the target scope.",
+        "context-access-denied",
+      );
+    }
     if (
       backofficeContextScopesEqual(ownerScope, targetScope) ||
       this.#isTrustedSystemExecution(execution)

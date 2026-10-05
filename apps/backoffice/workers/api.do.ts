@@ -2,8 +2,12 @@ import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloud
 import { DurableObject, RpcTarget } from "cloudflare:workers";
 
 import { backofficeRoutableScopeSchema } from "@/backoffice-runtime/context-schema";
+import { createBackofficeFragmentHttpTransport } from "@/backoffice-runtime/fragment-http-transport";
+import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import {
   backofficeContextScopeFromDurableObjectId,
+  requireBackofficeContextScopeFromDurableObjectId,
+  backofficeObjectScopeFromContextScope,
   type ApiObject,
 } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
@@ -38,24 +42,39 @@ function scopeSubject(scope: BackofficeRoutableScope, subject?: Record<string, u
 
 export class InMemoryApiObject extends RpcTarget implements ApiObject {
   readonly #runtimeServices: BackofficeRuntimeServices;
+  readonly #forwardHttpRequest: ReturnType<typeof createBackofficeFragmentHttpTransport>;
   readonly #host: FragmentDurableObjectHost<ApiConfig, ApiFragment>;
   readonly #scopedRuntime: ScopedFragmentDurableObjectRuntime<ApiFragment, BackofficeRoutableScope>;
 
   constructor({
     state,
+    env,
+    nowEpochMs,
     runtime,
     implementation,
   }: {
     state: BackofficeObjectState;
-    env: object;
+    env: Pick<CloudflareEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">;
+    nowEpochMs: () => number;
     runtime: BackofficeRuntimeServices;
     implementation: BackofficeObjectImplementation;
   }) {
     super();
     this.#runtimeServices = runtime;
+    this.#forwardHttpRequest = createBackofficeFragmentHttpTransport({
+      address: {
+        binding: "API",
+        scope: backofficeObjectScopeFromContextScope(
+          requireBackofficeContextScopeFromDurableObjectId(state.id, "API"),
+        ),
+      },
+      env,
+      nowEpochMs,
+    });
     this.#host = implementation.createFragmentHost({
       name: "API",
-      createRuntime: (config) => createApiServer(config, implementation.fragmentDatabase),
+      createRuntime: (config) =>
+        createApiServer(config, implementation.fragmentDatabase, new BackofficeKernel(runtime)),
       onProcessError: (error) => {
         console.error("API hook processor error", error);
       },
@@ -91,6 +110,7 @@ export class InMemoryApiObject extends RpcTarget implements ApiObject {
         await this.#runtimeServices.objects.automations.for(scope).commands.ingestEvent(
           {
             id: context.hookId.toString(),
+            scopeRestriction: null,
             scope,
             source: "api",
             eventType: "connection.changed",
@@ -113,6 +133,7 @@ export class InMemoryApiObject extends RpcTarget implements ApiObject {
         await this.#runtimeServices.objects.automations.for(scope).commands.ingestEvent(
           {
             id: context.hookId.toString(),
+            scopeRestriction: null,
             scope,
             source: "api",
             eventType: "connection.deleted",
@@ -135,6 +156,7 @@ export class InMemoryApiObject extends RpcTarget implements ApiObject {
         await this.#runtimeServices.objects.automations.for(scope).commands.ingestEvent(
           {
             id: context.hookId.toString(),
+            scopeRestriction: null,
             scope,
             source: "api",
             eventType: "connection.available",
@@ -166,6 +188,7 @@ export class InMemoryApiObject extends RpcTarget implements ApiObject {
         await automations.commands.ingestEvent(
           {
             id: context.hookId.toString(),
+            scopeRestriction: null,
             scope: ownerScope,
             source: "api",
             eventType: "webhook_endpoint.created",
@@ -186,6 +209,7 @@ export class InMemoryApiObject extends RpcTarget implements ApiObject {
         await this.#runtimeServices.objects.automations.for(scope).commands.ingestEvent(
           {
             id: payload.hookId,
+            scopeRestriction: null,
             scope,
             source: "api",
             eventType: "webhook.received",
@@ -220,7 +244,9 @@ export class InMemoryApiObject extends RpcTarget implements ApiObject {
   }
 
   async fetch(request: Request): Promise<Response> {
-    return await this.#host.fetch(await this.#scopedRuntime.getRuntime(), request);
+    return await this.#forwardHttpRequest(request, async (verifiedRequest, options) =>
+      this.#host.fetch(await this.#scopedRuntime.getRuntime(), verifiedRequest, options),
+    );
   }
 }
 

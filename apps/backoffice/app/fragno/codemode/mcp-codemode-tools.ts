@@ -1,6 +1,7 @@
 import type { ToolProvider } from "@fragno-dev/codemode/runtime-api";
 import { z } from "zod";
 
+import { isBackofficeForbiddenError } from "@/backoffice-runtime/kernel";
 import type {
   McpListServersOutput,
   McpRuntime,
@@ -249,7 +250,10 @@ export const createMcpCodemodeProviders = async ({
   try {
     serverList = await runtime.listServers();
   } catch (error) {
-    if (isMcpNotConfiguredError(error)) {
+    if (
+      isMcpNotConfiguredError(error) ||
+      (isBackofficeForbiddenError(error) && error.reason !== "authority-unavailable")
+    ) {
       return [];
     }
     throw error;

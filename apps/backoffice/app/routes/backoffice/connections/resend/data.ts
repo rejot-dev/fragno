@@ -23,6 +23,7 @@ import type {
 } from "@fragno-dev/resend-fragment";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
+import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import type { ResendFragment } from "@/fragno/resend";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
@@ -140,7 +141,10 @@ const createResendRouteCaller = (
     baseUrl: request.url,
     mountRoute: "/api/resend",
     baseHeaders: request.headers,
-    fetch: resendDo.http.fetch.bind(resendDo),
+    fetch: async (outboundRequest) =>
+      resendDo.http.fetchAuthorized(outboundRequest, {
+        execution: await requireBackofficeContext(request, context, target),
+      }),
   }) as unknown as ResendRouteCaller;
 };
 

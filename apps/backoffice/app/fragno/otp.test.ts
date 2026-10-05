@@ -144,6 +144,7 @@ describe("otp identity claim helpers", () => {
       }),
     ).toEqual({
       id: "identity-claim-completed:otp_123",
+      scopeRestriction: null,
       scope: { kind: "org", orgId: "org_123" },
       source: "otp",
       eventType: "identity.claim.completed",

@@ -34,6 +34,7 @@ import {
 } from "@earendil-works/pi-durable";
 
 import {
+  createBackofficeRequestExecution,
   BACKOFFICE_SYSTEM_ACTORS,
   createBackofficeServiceExecution,
   createBackofficeSystemExecution,
@@ -334,6 +335,7 @@ for (const revocation of ["restricted", "disabled", "deleted"] as const) {
         steps: ({ when, then, runner }) => [
           when.automation.ingestEvent({
             id: "linked-pi-message",
+            scopeRestriction: null,
             scope,
             source: "telegram",
             eventType: "message.received",
@@ -552,10 +554,11 @@ test("durable Pi delivers committed model usage to its persisted billing owner",
 
 test("durable Pi persists creator provenance rather than JWT authority and rechecks the billing organization before generation", async () => {
   const scope = { kind: "user", userId: "member" } as const;
-  const execution = createBackofficeUserExecution({
+  const execution = createBackofficeRequestExecution({
     scope,
     userId: "member",
     verifiedRequestAuthority: {
+      scopeRestriction: null,
       role: "user",
       organizationId: "org-1",
       expiresAt: new Date(Date.now() + 60_000),
@@ -743,6 +746,7 @@ for (const revokeBillingAccess of [false, true]) {
                 assert.equal(response.status, 200, await response.clone().text());
                 const stored = await response.json<{ meta: { params: CodemodeWorkflowParams } }>();
                 expect(stored.meta.params.execution).toMatchObject({
+                  scopeRestriction: null,
                   scope,
                   actors: execution.actors,
                   billingOrganizationId: "org-1",
@@ -761,6 +765,7 @@ for (const revokeBillingAccess of [false, true]) {
               );
               for (const classifier of classifiers) {
                 expect(classifier).toMatchObject({
+                  scopeRestriction: null,
                   scope,
                   billingOrganizationId: "org-1",
                   actors: execution.actors,
@@ -1034,6 +1039,7 @@ test("durable Pi scoped codemode handles select a different manager instead of r
           expect(childDirectory.sessions).toHaveLength(1);
           expect(childDirectory.sessions[0]).toMatchObject({
             name: "User child",
+            scopeRestriction: null,
             scope: other.scope,
             actors: execution.actors,
           });

@@ -1,5 +1,6 @@
 import type { LoaderFunctionArgs } from "react-router";
 
+import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { getReson8DurableObject } from "@/worker-runtime/durable-objects";
 
 import { requireApiOrganization } from "./organization.server";
@@ -22,7 +23,9 @@ const forwardToReson8 = async (
   url.searchParams.set("orgId", orgId);
 
   const proxyRequest = new Request(url.toString(), request);
-  return reson8Do.http.fetch(proxyRequest);
+  return reson8Do.http.fetchAuthorized(proxyRequest, {
+    execution: await requireBackofficeContext(request, context, { kind: "org", orgId }),
+  });
 };
 
 /**

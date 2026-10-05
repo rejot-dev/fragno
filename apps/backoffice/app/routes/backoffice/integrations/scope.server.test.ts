@@ -21,6 +21,7 @@ function authenticatedPrincipal(
   return {
     user: { id: "user-1", email: "user@example.com", role: "user" },
     auth: {
+      scopeRestriction: null,
       transport: "cookie",
       expiresAt: new Date("2026-08-25T00:00:00.000Z"),
       organization,

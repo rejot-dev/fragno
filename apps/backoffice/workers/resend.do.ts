@@ -6,7 +6,13 @@ import { isUniqueConstraintError } from "@fragno-dev/db";
 import type { ResendFragmentConfig, ResendSendEmailInput } from "@fragno-dev/resend-fragment";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
-import type { ResendObject } from "@/backoffice-runtime/object-registry";
+import { createBackofficeFragmentHttpTransport } from "@/backoffice-runtime/fragment-http-transport";
+import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import {
+  type ResendObject,
+  requireBackofficeContextScopeFromDurableObjectId,
+  backofficeObjectScopeFromContextScope,
+} from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
@@ -299,6 +305,7 @@ const updateWebhook = async (
 };
 
 export class InMemoryResendObject implements ResendObject {
+  readonly #httpTransport: ReturnType<typeof createBackofficeFragmentHttpTransport>;
   readonly #state: BackofficeObjectState;
   readonly #runtimeServices: BackofficeRuntimeServices;
   readonly #host: BackofficeFragmentDurableObject<
@@ -311,18 +318,31 @@ export class InMemoryResendObject implements ResendObject {
 
   constructor({
     state,
+    env,
+    nowEpochMs,
     runtime,
     implementation,
     createClient = (apiKey) => new ResendClient(apiKey),
     runtimeMode = import.meta.env.MODE,
   }: {
     state: BackofficeObjectState;
-    env?: unknown;
+    env: Pick<CloudflareEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">;
+    nowEpochMs: () => number;
     runtime: BackofficeRuntimeServices;
     implementation: BackofficeObjectImplementation;
     createClient?: (apiKey: string) => ResendClient;
     runtimeMode?: string;
   }) {
+    this.#httpTransport = createBackofficeFragmentHttpTransport({
+      address: {
+        binding: "RESEND",
+        scope: backofficeObjectScopeFromContextScope(
+          requireBackofficeContextScopeFromDurableObjectId(state.id, "RESEND"),
+        ),
+      },
+      env,
+      nowEpochMs,
+    });
     this.#state = state;
     this.#runtimeServices = runtime;
     this.#createClient = createClient;
@@ -342,7 +362,8 @@ export class InMemoryResendObject implements ResendObject {
         defaultHeaders: stored.defaultHeaders,
       }),
       fingerprint: (config) => JSON.stringify(config),
-      createRuntime: (config) => createResendServer(config, implementation.fragmentDatabase),
+      createRuntime: (config) =>
+        createResendServer(config, implementation.fragmentDatabase, new BackofficeKernel(runtime)),
       outbox: {
         dispatch: async (item, { stored }) => {
           if (item.type !== "capability.configured") {
@@ -356,6 +377,7 @@ export class InMemoryResendObject implements ResendObject {
 
           await this.#runtimeServices.objects.automations.for(scope).commands.ingestEvent({
             id: item.id,
+            scopeRestriction: null,
             scope,
             source: "resend",
             eventType: "capability.configured",
@@ -513,7 +535,9 @@ export class InMemoryResendObject implements ResendObject {
   }
 
   async fetch(request: Request): Promise<Response> {
-    return await this.#host.fetch(request);
+    return await this.#httpTransport(request, (verifiedRequest, options) =>
+      this.#host.fetch(verifiedRequest, options),
+    );
   }
 }
 

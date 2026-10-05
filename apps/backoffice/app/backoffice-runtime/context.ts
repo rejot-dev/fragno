@@ -69,6 +69,7 @@ export type BackofficeVerifiedRequestAuthority = Readonly<{
   role: Role;
   organizationId: string | null;
   expiresAtEpochMs: number;
+  scopeRestriction: BackofficeContextScope | null;
 }>;
 
 export const backofficeVerifiedRequestAuthoritySchema: z.ZodType<BackofficeVerifiedRequestAuthority> =
@@ -78,25 +79,88 @@ export const backofficeVerifiedRequestAuthoritySchema: z.ZodType<BackofficeVerif
     role: z.enum(["user", "admin"]),
     organizationId: z.string().trim().min(1).nullable(),
     expiresAtEpochMs: z.number().int().positive(),
+    scopeRestriction: backofficeContextScopeSchema.nullable(),
   });
 
-export type BackofficeExecutionContext = {
+/** Deferred execution persists provenance, never a request's authority snapshot. */
+export type BackofficeDeferredExecution = {
+  kind: "deferred";
   scope: BackofficeContextScope;
+  scopeRestriction: BackofficeContextScope | null;
   actors: AutomationActors;
-  /**
-   * Verified request authority, kept separate from actor provenance and never persisted in events.
-   * Deferred executions omit it and resolve current authority from Auth instead.
-   */
-  userAuthority?: BackofficeVerifiedRequestAuthority;
 };
 
-/** Validates serialized execution provenance at trusted HTTP and storage boundaries. */
+/** Request authority is required and cannot be combined with delegated actors. */
+export type BackofficeRequestExecution = {
+  kind: "request";
+  scope: BackofficeContextScope;
+  actors: AutomationActors & {
+    principal: { scope: "internal"; type: "user"; id: string; role: "principal" };
+    delegation: [];
+  };
+  userAuthority: BackofficeVerifiedRequestAuthority;
+};
+
+export type BackofficeExecutionContext = BackofficeRequestExecution | BackofficeDeferredExecution;
+
+/** Validates execution variants when crossing a serialized trust boundary. */
 export const backofficeExecutionContextSchema: z.ZodType<BackofficeExecutionContext> =
-  z.strictObject({
-    scope: backofficeContextScopeSchema,
-    actors: automationActorsSchema,
-    userAuthority: backofficeVerifiedRequestAuthoritySchema.optional(),
-  });
+  z.discriminatedUnion("kind", [
+    z.strictObject({
+      kind: z.literal("deferred"),
+      scope: backofficeContextScopeSchema,
+      scopeRestriction: backofficeContextScopeSchema.nullable(),
+      actors: automationActorsSchema,
+    }),
+    z.strictObject({
+      kind: z.literal("request"),
+      scope: backofficeContextScopeSchema,
+      actors: automationActorsSchema.and(
+        z.object({
+          principal: z.strictObject({
+            scope: z.literal("internal"),
+            type: z.literal("user"),
+            id: z.string().min(1),
+            role: z.literal("principal"),
+          }),
+          delegation: z.tuple([]),
+        }),
+      ),
+      userAuthority: backofficeVerifiedRequestAuthoritySchema,
+    }),
+  ]);
+
+/** Scope ceilings survive deferral even though request snapshots and token expiry do not. */
+export function backofficeExecutionScopeRestriction(
+  execution: BackofficeExecutionContext,
+): BackofficeContextScope | null {
+  return execution.kind === "request"
+    ? execution.userAuthority.scopeRestriction
+    : execution.scopeRestriction;
+}
+
+/** Scheduling retains the caller's scope ceiling, but resolves user and delegate permissions live. */
+export function deferBackofficeExecution(
+  execution: BackofficeExecutionContext,
+): BackofficeDeferredExecution {
+  return {
+    kind: "deferred",
+    scope: execution.scope,
+    actors: execution.actors,
+    scopeRestriction: backofficeExecutionScopeRestriction(execution),
+  };
+}
+
+/** A credential scope is an upper bound, not a selected organization or navigation preference. */
+export function backofficeScopeContains(
+  restriction: BackofficeContextScope,
+  target: BackofficeContextScope,
+): boolean {
+  return (
+    backofficeContextScopesEqual(restriction, target) ||
+    (restriction.kind === "org" && target.kind === "project" && restriction.orgId === target.orgId)
+  );
+}
 
 export const BACKOFFICE_SYSTEM_ACTORS = {
   initiator: AUTOMATION_SYSTEM_INITIATOR,
@@ -111,49 +175,67 @@ const BACKOFFICE_INTERACTIVE_INITIATOR = {
   role: "initiator",
 } as const satisfies AutomationActors["initiator"];
 
-/** Creates trusted provenance for an authenticated Backoffice user request. */
-export const createBackofficeUserExecution = ({
+/** Names a user for deferred work; permissions are resolved from current identity state. */
+export function createBackofficeUserExecution({
+  scope,
+  userId,
+}: {
+  scope: BackofficeContextScope;
+  userId: string;
+}): BackofficeDeferredExecution {
+  return {
+    kind: "deferred",
+    scope,
+    scopeRestriction: null,
+    actors: {
+      initiator: BACKOFFICE_INTERACTIVE_INITIATOR,
+      principal: { scope: "internal", type: "user", id: userId, role: "principal" },
+      delegation: [],
+    },
+  };
+}
+
+/** Only authentication boundaries may construct a verified request execution. */
+export function createBackofficeRequestExecution({
   scope,
   userId,
   verifiedRequestAuthority,
 }: {
   scope: BackofficeContextScope;
   userId: string;
-  verifiedRequestAuthority?: Readonly<{
+  verifiedRequestAuthority: Readonly<{
     role: Role;
     organizationId: string | null;
     expiresAt: Date;
+    scopeRestriction: BackofficeContextScope | null;
   }>;
-}): BackofficeExecutionContext => ({
-  scope,
-  actors: {
-    initiator: BACKOFFICE_INTERACTIVE_INITIATOR,
-    principal: {
-      scope: "internal",
-      type: "user",
-      id: userId,
-      role: "principal",
+}): BackofficeRequestExecution {
+  return {
+    kind: "request",
+    scope,
+    actors: {
+      initiator: BACKOFFICE_INTERACTIVE_INITIATOR,
+      principal: { scope: "internal", type: "user", id: userId, role: "principal" },
+      delegation: [],
     },
-    delegation: [],
-  },
-  ...(verifiedRequestAuthority
-    ? {
-        userAuthority: {
-          kind: "verified-request-authority" as const,
-          userId,
-          role: verifiedRequestAuthority.role,
-          organizationId: verifiedRequestAuthority.organizationId,
-          expiresAtEpochMs: verifiedRequestAuthority.expiresAt.getTime(),
-        },
-      }
-    : {}),
-});
+    userAuthority: {
+      kind: "verified-request-authority",
+      userId,
+      role: verifiedRequestAuthority.role,
+      organizationId: verifiedRequestAuthority.organizationId,
+      expiresAtEpochMs: verifiedRequestAuthority.expiresAt.getTime(),
+      scopeRestriction: verifiedRequestAuthority.scopeRestriction,
+    },
+  };
+}
 
 /** Creates principal-free provenance for a trusted Backoffice system operation. */
 export const createBackofficeSystemExecution = (
   scope: BackofficeContextScope,
-): BackofficeExecutionContext => ({
+): BackofficeDeferredExecution => ({
+  kind: "deferred",
   scope,
+  scopeRestriction: null,
   actors: BACKOFFICE_SYSTEM_ACTORS,
 });
 
@@ -164,8 +246,10 @@ export const createBackofficeServiceExecution = ({
 }: {
   scope: BackofficeContextScope;
   service: { type: BackofficeInternalServiceAuthorityRole; id: string };
-}): BackofficeExecutionContext => ({
+}): BackofficeDeferredExecution => ({
+  kind: "deferred",
   scope,
+  scopeRestriction: null,
   actors: {
     initiator: AUTOMATION_SYSTEM_INITIATOR,
     principal: {

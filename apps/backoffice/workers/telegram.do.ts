@@ -7,10 +7,15 @@ import {
   backofficeContextScopesEqual,
   type BackofficeContextScope,
 } from "@/backoffice-runtime/context";
+import { authorizeBackofficeFragmentRequest } from "@/backoffice-runtime/fragment-http-authorization";
+import { createBackofficeFragmentHttpTransport } from "@/backoffice-runtime/fragment-http-transport";
+import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import {
   backofficeContextScopeFromDurableObjectId,
+  backofficeObjectScopeFromContextScope,
   type TelegramObject,
 } from "@/backoffice-runtime/object-registry";
+import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import {
@@ -38,6 +43,7 @@ import { createCloudflareBackofficeObjectContext } from "./lib/cloudflare-backof
 
 type TelegramObjectEnv = {
   DOCS_PUBLIC_BASE_URL?: string;
+  BACKOFFICE_INTERNAL_REQUEST_SECRET?: string;
 };
 
 type StoredTelegramConfig = TelegramConfig & {
@@ -293,6 +299,8 @@ export class InMemoryTelegramObject extends RpcTarget implements TelegramObject 
   readonly #env: TelegramObjectEnv;
   readonly #state: BackofficeObjectState;
   readonly #runtime: BackofficeRuntimeServices;
+  readonly #kernel: BackofficeKernel;
+  readonly #nowEpochMs: () => number;
   readonly #api?: TelegramApi;
   readonly #adminApi?: TelegramAdminApi;
   #scope: BackofficeContextScope | null = null;
@@ -307,6 +315,7 @@ export class InMemoryTelegramObject extends RpcTarget implements TelegramObject 
     env,
     runtime,
     implementation,
+    nowEpochMs,
     api,
     adminApi,
   }: {
@@ -314,6 +323,7 @@ export class InMemoryTelegramObject extends RpcTarget implements TelegramObject 
     env?: TelegramObjectEnv;
     runtime: BackofficeRuntimeServices;
     implementation: BackofficeObjectImplementation;
+    nowEpochMs: () => number;
     api?: TelegramApi;
     adminApi?: TelegramAdminApi;
   }) {
@@ -321,6 +331,8 @@ export class InMemoryTelegramObject extends RpcTarget implements TelegramObject 
     this.#env = env ?? {};
     this.#state = state;
     this.#runtime = runtime;
+    this.#kernel = new BackofficeKernel(runtime);
+    this.#nowEpochMs = nowEpochMs;
     this.#api = api;
     this.#scope = backofficeContextScopeFromDurableObjectId(state.id, "TELEGRAM");
     this.#adminApi = adminApi;
@@ -333,7 +345,7 @@ export class InMemoryTelegramObject extends RpcTarget implements TelegramObject 
         apiBaseUrl: stored.apiBaseUrl,
       }),
       createRuntime: (config) =>
-        createTelegramServer(config, implementation.fragmentDatabase, {
+        createTelegramServer(config, implementation.fragmentDatabase, this.#kernel, {
           api: this.#api,
           hooks: {
             onMessageReceived: async (payload, context) => {
@@ -369,6 +381,7 @@ export class InMemoryTelegramObject extends RpcTarget implements TelegramObject 
           const { scope } = stored;
           await this.#runtime.objects.automations.for(scope).commands.ingestEvent({
             id: item.id,
+            scopeRestriction: null,
             scope,
             source: "telegram",
             eventType: "capability.configured",
@@ -463,7 +476,7 @@ export class InMemoryTelegramObject extends RpcTarget implements TelegramObject 
     }
   }
 
-  async #downloadAutomationFile(input: { fileId: string }): Promise<Response> {
+  protected async downloadAutomationFile(input: { fileId: string }): Promise<Response> {
     const { source: config } = this.#host.requireConfigured();
     const metadata = await this.getAutomationFile(input);
     if (!metadata.filePath) {
@@ -579,13 +592,28 @@ export class InMemoryTelegramObject extends RpcTarget implements TelegramObject 
   }
 
   async fetch(request: Request): Promise<Response> {
-    this.#requireScope();
-    const url = new URL(request.url);
-    const automationFileId = telegramAutomationFileIdFromDownloadPath(url.pathname);
-    if (request.method === "GET" && automationFileId) {
-      return await this.#downloadAutomationFile({ fileId: automationFileId });
-    }
-    return await this.#host.fetch(request);
+    const scope = this.#requireScope();
+    const forwardHttpRequest = createBackofficeFragmentHttpTransport({
+      address: { binding: "TELEGRAM", scope: backofficeObjectScopeFromContextScope(scope) },
+      env: this.#env,
+      nowEpochMs: this.#nowEpochMs,
+    });
+    return await forwardHttpRequest(request, async (verifiedRequest, options) => {
+      const automationFileId = telegramAutomationFileIdFromDownloadPath(
+        new URL(verifiedRequest.url).pathname,
+      );
+      if (verifiedRequest.method === "GET" && automationFileId) {
+        // File bytes are an object-owned endpoint, not a Telegram fragment route.
+        const denied = await authorizeBackofficeFragmentRequest(
+          this.#kernel,
+          options.requestContext,
+          BACKOFFICE_PERMISSION.telegram.read,
+          null,
+        );
+        return denied ?? (await this.downloadAutomationFile({ fileId: automationFileId }));
+      }
+      return await this.#host.fetch(verifiedRequest, options);
+    });
   }
 }
 
@@ -594,7 +622,10 @@ export class Telegram extends DurableObject<CloudflareEnv> implements TelegramOb
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
-    this.#object = new InMemoryTelegramObject(createCloudflareBackofficeObjectContext(state, env));
+    this.#object = new InMemoryTelegramObject({
+      ...createCloudflareBackofficeObjectContext(state, env),
+      nowEpochMs: Date.now,
+    });
   }
 
   async alarm() {

@@ -55,33 +55,9 @@ describe("Backoffice internal object requests", () => {
     expect(verified.context).toEqual({
       execution,
       propagationContext: { traceparent: "00-test-trace-test-span-01" },
-      authorization: "enforce",
     });
     assert(verified.requestId === "17079b77-c6f0-4e4e-ae42-dbab28bf62d4");
     assert(!verified.request.headers.has(BACKOFFICE_INTERNAL_CONTEXT_HEADER));
-  });
-
-  test("round-trips a signed preauthorization assertion", async () => {
-    const request = await createAuthorizedBackofficeObjectRequest({
-      request: new Request("https://automations.test/api/workflows/sessions"),
-      address,
-      context: {
-        execution,
-        propagationContext: null,
-        authorization: "preauthorized",
-      },
-      env,
-      nowEpochMs: issuedAtEpochMs,
-    });
-
-    const verified = await verifyAuthorizedBackofficeObjectRequest({
-      request,
-      address,
-      env,
-      nowEpochMs: issuedAtEpochMs + 1_000,
-    });
-
-    assert(verified.context.authorization === "preauthorized");
   });
 
   test("rejects an envelope whose signature was modified", async () => {

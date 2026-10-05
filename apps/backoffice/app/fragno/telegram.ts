@@ -7,7 +7,13 @@ import {
 } from "@fragno-dev/telegram-fragment";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
+import {
+  authorizeBackofficeFragmentRequest,
+  type BackofficeFragmentHttpAccess,
+} from "@/backoffice-runtime/fragment-http-authorization";
 import type { BackofficeFragmentRuntimeOptions } from "@/backoffice-runtime/fragment-runtime";
+import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 
 import type { AutomationKnownEvent } from "./automation/contracts";
 import { AUTOMATION_SOURCES, AUTOMATION_SOURCE_EVENT_TYPES } from "./automation/contracts";
@@ -64,6 +70,7 @@ export const buildTelegramAutomationEvent = (
   eventId = `telegram:${telegramEventScopeId(scope)}:${payload.updateId}:${payload.messageId}`,
 ): AutomationKnownEvent<typeof AUTOMATION_SOURCES.telegram> => ({
   id: eventId,
+  scopeRestriction: null,
   scope,
   source: AUTOMATION_SOURCES.telegram,
   eventType: AUTOMATION_SOURCE_EVENT_TYPES.telegram.messageReceived,
@@ -91,6 +98,7 @@ export const buildTelegramAutomationEvent = (
 export function createTelegramServer(
   config: TelegramConfig,
   runtime: BackofficeFragmentRuntimeOptions,
+  kernel: BackofficeKernel,
   options: TelegramServerOptions = {},
 ): ReturnType<typeof createTelegramFragment> {
   const telegramConfig = createTelegram({
@@ -99,11 +107,53 @@ export function createTelegramServer(
     api: options.api,
   }).build();
 
-  return createTelegramFragment(telegramConfig, {
+  const fragment = createTelegramFragment(telegramConfig, {
     databaseAdapter: runtime.adapters.createAdapter({
       kind: "telegram",
     }),
     mountRoute: "/api/telegram",
+  });
+  return fragment.withMiddleware(async function authorizeTelegramRoutes({
+    ifMatchesRoute,
+    request,
+    requestContext,
+  }) {
+    let access: BackofficeFragmentHttpAccess = null;
+    let resource: { kind: "telegram-chat"; chatId: string } | null = null;
+    await ifMatchesRoute("POST", "/telegram/webhook", ({ path }) => {
+      // Route matching can normalize aliases; only the exact webhook URL is public.
+      if (new URL(request.url).pathname === `${fragment.mountRoute}${path}`) {
+        access = "public-ingress";
+      }
+    });
+    await ifMatchesRoute("GET", "/commands", () => {
+      access = BACKOFFICE_PERMISSION.telegram.read;
+    });
+    await ifMatchesRoute("GET", "/chats", () => {
+      access = BACKOFFICE_PERMISSION.telegram.read;
+    });
+    await ifMatchesRoute("GET", "/chats/:chatId", () => {
+      access = BACKOFFICE_PERMISSION.telegram.read;
+    });
+    await ifMatchesRoute("GET", "/chats/:chatId/messages", () => {
+      access = BACKOFFICE_PERMISSION.telegram.read;
+    });
+    await ifMatchesRoute("POST", "/commands/bind", () => {
+      access = BACKOFFICE_PERMISSION.connections.manage;
+    });
+    await ifMatchesRoute("POST", "/chats/:chatId/send", ({ pathParams }) => {
+      access = BACKOFFICE_PERMISSION.telegram.send;
+      resource = { kind: "telegram-chat", chatId: pathParams.chatId };
+    });
+    await ifMatchesRoute("POST", "/chats/:chatId/actions", ({ pathParams }) => {
+      access = BACKOFFICE_PERMISSION.telegram.send;
+      resource = { kind: "telegram-chat", chatId: pathParams.chatId };
+    });
+    await ifMatchesRoute("POST", "/chats/:chatId/messages/:messageId/edit", ({ pathParams }) => {
+      access = BACKOFFICE_PERMISSION.telegram.send;
+      resource = { kind: "telegram-chat", chatId: pathParams.chatId };
+    });
+    return await authorizeBackofficeFragmentRequest(kernel, requestContext, access, resource);
   });
 }
 

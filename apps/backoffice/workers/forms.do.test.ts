@@ -14,6 +14,8 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
 
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
+import { authorizedBackofficeObjectHttp } from "@/backoffice-runtime/authorized-object-http";
+import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import type { InMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
 import { createInMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
 
@@ -46,7 +48,12 @@ async function listFormsAutomationEvents(runtime: InMemoryBackofficeRuntime) {
 describe("Forms Durable Object events", () => {
   test("preserves form creation and deletion times across delayed durable hook delivery", async () => {
     runtime = await createInMemoryBackofficeRuntime();
-    const forms = runtime.objects.forms.singleton();
+    const forms = {
+      http: authorizedBackofficeObjectHttp(
+        runtime.objects.forms.singleton().http,
+        createBackofficeSystemExecution({ kind: "system" }),
+      ),
+    };
     await runtime.drain();
 
     const createdAt = new Date().toISOString();

@@ -10,6 +10,8 @@ const EMPTY_BASH_HOST_KERNEL = new BackofficeKernel({
 
 export const EMPTY_BASH_HOST_CONTEXT: BashHostContext = {
   execution: {
+    kind: "deferred" as const,
+    scopeRestriction: null,
     scope: { kind: "system" },
     actors: {
       initiator: { scope: "internal", type: "system", id: "backoffice", role: "initiator" },

@@ -1,3 +1,4 @@
+import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { getGitHubDurableObject } from "@/worker-runtime/durable-objects";
 
 import type { Route } from "./+types/github";
@@ -21,7 +22,9 @@ const forwardToGitHub = async (
   url.searchParams.set("orgId", orgId);
 
   const proxyRequest = new Request(url.toString(), request);
-  return githubDo.http.fetch(proxyRequest);
+  return githubDo.http.fetchAuthorized(proxyRequest, {
+    execution: await requireBackofficeContext(request, context, { kind: "org", orgId }),
+  });
 };
 
 /**

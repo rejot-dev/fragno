@@ -68,6 +68,7 @@ const authenticatedMe: BackofficeMeData = {
 const authenticatedPrincipal: BackofficeAuthPrincipal = {
   user: { id: "user-1", email: "user@example.com", role: "user" },
   auth: {
+    scopeRestriction: null,
     transport: "cookie",
     expiresAt,
     organization: { id: "org-1", slug: "acme", roles: ["member"] },
@@ -133,6 +134,7 @@ describe("Backoffice shell request middleware", () => {
         execution: {
           scope: { kind: "project", orgId: "org-1", projectId: "project-1" },
           userAuthority: {
+            scopeRestriction: null,
             kind: "verified-request-authority",
             userId: "user-1",
             organizationId: "org-1",

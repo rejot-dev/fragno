@@ -15,6 +15,7 @@ const issueJwt = async (
   expirationTime: string | number = "15m",
 ) =>
   await new SignJWT({
+    scopeRestriction: null,
     email: "user@example.com",
     globalRole: "admin",
     organization: { id: "org-1", slug: "acme", roles: ["owner"] },

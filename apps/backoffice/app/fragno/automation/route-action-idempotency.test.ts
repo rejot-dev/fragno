@@ -32,6 +32,7 @@ const actors = {
 
 const event: AutomationEvent = {
   id: "route-event-1",
+  scopeRestriction: null,
   scope: { kind: "org", orgId: "org_123" },
   source: "custom",
   eventType: "ready",
@@ -312,6 +313,7 @@ describe("automation route action idempotency", () => {
     expect(response.data.events).toHaveLength(1);
     expect(response.data.events[0]).toMatchObject({
       id: "reclassified:github-issues-opened:route-event-1",
+      scopeRestriction: null,
       scope: event.scope,
       source: "github",
       eventType: "issues.opened",

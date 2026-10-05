@@ -31,6 +31,7 @@ const workflowParams = (orgId: string, instanceId: string, actors: unknown) => (
     type: "event",
     event: {
       id: `event-${instanceId}`,
+      scopeRestriction: null,
       scope: { kind: "org", orgId },
       source: "test",
       eventType: "workflow.ownership",
@@ -41,6 +42,7 @@ const workflowParams = (orgId: string, instanceId: string, actors: unknown) => (
     },
   },
   execution: {
+    scopeRestriction: null,
     scope: { kind: "org", orgId },
     actors,
     billingOrganizationId: "caller-billing-org",
@@ -252,6 +254,7 @@ describe("scenario workflow ownership", () => {
                     meta: { params: { execution: unknown } };
                   }>();
                   expect(stored.meta.params.execution).toEqual({
+                    scopeRestriction: null,
                     scope,
                     actors: execution.actors,
                     capabilityGrants: [],

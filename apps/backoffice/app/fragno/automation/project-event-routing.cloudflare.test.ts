@@ -152,6 +152,7 @@ describe("project automation event routing", () => {
     assert(createRouteResponse.status === 201);
     const event: AutomationEvent = {
       id: "org-event-1",
+      scopeRestriction: null,
       scope: { kind: "org", orgId },
       source: "test",
       eventType: "org.event",
@@ -295,6 +296,7 @@ describe("project automation event routing", () => {
 
     const event: AutomationEvent = {
       id: "org-event-archived",
+      scopeRestriction: null,
       scope: { kind: "org", orgId },
       source: "test",
       eventType: "org.event",

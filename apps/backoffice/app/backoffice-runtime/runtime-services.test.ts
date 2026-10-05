@@ -40,6 +40,8 @@ describe("Backoffice authority runtime wiring", () => {
     await expect(
       new BackofficeKernel(runtime).invoke({
         execution: {
+          kind: "deferred" as const,
+          scopeRestriction: null,
           scope: { kind: "org", orgId: "org-1" },
           actors: {
             initiator: {
@@ -103,6 +105,8 @@ describe("Backoffice authority runtime wiring", () => {
 
       const kernel = new BackofficeKernel(runtime.services);
       const execution = {
+        kind: "deferred" as const,
+        scopeRestriction: null,
         scope: { kind: "org", orgId: organizationId } as const,
         actors: {
           initiator: {

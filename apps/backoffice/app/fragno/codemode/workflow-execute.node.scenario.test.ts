@@ -62,6 +62,7 @@ test("Node checkpoints and replays workflow codemode across fresh Worker WebSock
           instanceId: "remote-checkpointed-1",
           event: {
             id: "remote-event",
+            scopeRestriction: null,
             scope,
             source: "scenario",
             eventType: "remote.workflow.requested",
@@ -126,6 +127,7 @@ test("remote event consumption and sleep resume with Date values intact", async 
           instanceId: "remote-wait-1",
           event: {
             id: "wait-event",
+            scopeRestriction: null,
             scope,
             source: "scenario",
             eventType: "remote.wait.requested",
@@ -190,6 +192,7 @@ test("interruption preserves host retry scheduling without falsely committing to
           instanceId: "remote-interrupted-1",
           event: {
             id: "interrupted-event",
+            scopeRestriction: null,
             scope,
             source: "scenario",
             eventType: "remote.interrupted.requested",

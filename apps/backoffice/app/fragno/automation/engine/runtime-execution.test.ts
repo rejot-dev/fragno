@@ -10,6 +10,7 @@ import type { AutomationEvent } from "../contracts";
 
 const event = {
   id: "event-1",
+  scopeRestriction: null,
   scope: { kind: "org", orgId: "org-1" },
   source: "telegram",
   eventType: "telegram.message.received",
@@ -42,6 +43,8 @@ const delegatedUserAuthority = automationRouteAuthority({
 describe("createAutomationRuntimeExecution", () => {
   test("uses a stable route automation principal without replacing the initiator", () => {
     expect(createAutomationRuntimeExecution({ event, authority: organizationAuthority })).toEqual({
+      kind: "deferred" as const,
+      scopeRestriction: null,
       scope: event.scope,
       actors: {
         initiator: event.actors.initiator,

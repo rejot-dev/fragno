@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
-import { createBackofficeUserExecution } from "@/backoffice-runtime/context";
+import { createBackofficeRequestExecution } from "@/backoffice-runtime/context";
 
 const { readBackofficeAutomationSourceMock } = vi.hoisted(() => ({
   readBackofficeAutomationSourceMock: vi.fn(),
@@ -14,16 +14,17 @@ import { loadAutomationScriptSource } from "./data.server";
 
 const mockContext = { get: () => ({ runtime: { objects: {} }, env: {} }) } as never;
 const verifiedRequestAuthority = {
+  scopeRestriction: null,
   role: "user" as const,
   organizationId: "acme-org",
   expiresAt: new Date("2099-01-01T00:00:00.000Z"),
 };
-const orgExecution = createBackofficeUserExecution({
+const orgExecution = createBackofficeRequestExecution({
   scope: { kind: "org", orgId: "acme-org" },
   userId: "user-1",
   verifiedRequestAuthority,
 });
-const projectExecution = createBackofficeUserExecution({
+const projectExecution = createBackofficeRequestExecution({
   scope: { kind: "project", orgId: "acme-org", projectId: "project-1" },
   userId: "user-1",
   verifiedRequestAuthority,

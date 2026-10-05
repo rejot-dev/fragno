@@ -3,7 +3,10 @@ import type { RouterContextProvider } from "react-router";
 
 import type { ConversationView, EntryRecord, SubmissionRecord } from "@earendil-works/pi-durable";
 
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
+import {
+  backofficeExecutionScopeRestriction,
+  type BackofficeContextScope,
+} from "@/backoffice-runtime/context";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import type {
   PiAgentCompactionStatus,
@@ -203,7 +206,12 @@ export async function createPiManagerSession(
 ): Promise<{ session: PiAgentConfig | null; error: string | null }> {
   const { callRoute, execution } = await createPiManagerRouteCaller(request, context, scope);
   const response = await callRoute("POST", "/sessions", {
-    body: { ...input, requestId: crypto.randomUUID(), actors: execution.actors },
+    body: {
+      ...input,
+      requestId: crypto.randomUUID(),
+      actors: execution.actors,
+      scopeRestriction: backofficeExecutionScopeRestriction(execution),
+    },
   });
   if (response.type === "json") {
     return { session: response.data, error: null };

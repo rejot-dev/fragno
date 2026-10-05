@@ -156,6 +156,7 @@ const createPiRuntime = (): PiManagerRuntime => {
     model: { provider: "openai", modelId: "test-model" },
     instructions: "",
     billingOrganizationId: "org-1",
+    scopeRestriction: null,
     scope: { kind: "org" as const, orgId: "org-1" },
     sessionId: "session-1",
     actors: {
@@ -226,6 +227,7 @@ const createTelegramRuntime = () => ({
 const createAutomationContext = () => ({
   event: {
     id: "event-1",
+    scopeRestriction: null,
     scope: { kind: "org" as const, orgId: "org-1" },
     source: "telegram",
     eventType: "message.received",

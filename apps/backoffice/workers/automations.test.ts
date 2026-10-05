@@ -2,6 +2,7 @@ import { assert, describe, expect, test, vi } from "vitest";
 
 import { unavailableBackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
 import {
+  createBackofficeRequestExecution,
   BACKOFFICE_SYSTEM_ACTORS,
   createBackofficeServiceExecution,
   createBackofficeSystemExecution,
@@ -101,6 +102,7 @@ function createSourceReader(execution: BackofficeExecutionContext) {
 
 const scopedEvent = (orgId: string): AutomationEvent => ({
   id: `github:issue.opened:${orgId}`,
+  scopeRestriction: null,
   scope: { kind: "org", orgId },
   source: "github",
   eventType: "issue.opened",
@@ -123,7 +125,9 @@ const scopedEvent = (orgId: string): AutomationEvent => ({
 describe("readBackofficeAutomationSource", () => {
   test("loads static and system automation files for system automation scope", async () => {
     const execution = {
+      kind: "deferred" as const,
       actors: BACKOFFICE_SYSTEM_ACTORS,
+      scopeRestriction: null,
       scope: { kind: "system" as const },
     };
     const sourceReader = createSourceReader(execution);
@@ -192,6 +196,7 @@ describe("Automations authorized HTTP context", () => {
         },
         event: {
           id: "event-1",
+          scopeRestriction: null,
           scope,
           source: "backoffice",
           eventType: "user.action",
@@ -351,10 +356,11 @@ describe("Automations authorized HTTP context", () => {
 
     try {
       const scope = { kind: "org" as const, orgId: "org-1" };
-      const execution = createBackofficeUserExecution({
+      const execution = createBackofficeRequestExecution({
         scope,
         userId: "user-1",
         verifiedRequestAuthority: {
+          scopeRestriction: null,
           role: "user",
           organizationId: scope.orgId,
           expiresAt: new Date("2099-01-01T00:00:00.000Z"),
@@ -974,6 +980,7 @@ describe("Automations authorized HTTP context", () => {
         },
         trigger: { type: "manual", payload: {} },
         execution: {
+          scopeRestriction: null,
           scope,
           actors: {
             ...systemActors,

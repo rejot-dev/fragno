@@ -9,6 +9,24 @@ export const createMarketplaceFragment = (options: FragnoPublicConfigWithDatabas
     .withConfig({})
     .withRoutes([marketplaceRoutes])
     .withOptions(options)
-    .build();
+    .build()
+    .withMiddleware(async function exposePublishedMarketplaceReads({ ifMatchesRoute }) {
+      let isPublic = false;
+      await ifMatchesRoute("GET", "/listings", () => {
+        isPublic = true;
+      });
+      await ifMatchesRoute("GET", "/listings/:listingId", () => {
+        isPublic = true;
+      });
+      return isPublic
+        ? undefined
+        : Response.json(
+            {
+              code: "FRAGMENT_ROUTE_NOT_EXPOSED",
+              message: "Marketplace HTTP exposes published listings only.",
+            },
+            { status: 404 },
+          );
+    });
 
 export type MarketplaceFragment = ReturnType<typeof createMarketplaceFragment>;

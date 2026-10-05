@@ -182,5 +182,8 @@ export const automationFragmentSchema = schema("automations", (s) => {
         .createIndex("idx_automation_event_source_source", ["source"], {
           unique: true,
         });
-    });
+    })
+    .alterTable("automation_event", (t) =>
+      t.addColumn("scopeRestriction", jsonColumn<AutomationEvent["scope"]>().nullable()),
+    );
 });

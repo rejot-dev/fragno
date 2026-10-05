@@ -31,6 +31,7 @@ function buildSandboxAutomationEvent(
 ): AutomationEvent {
   return {
     id: event.id,
+    scopeRestriction: null,
     scope,
     source: "sandbox",
     eventType: `instance.${event.type}`,

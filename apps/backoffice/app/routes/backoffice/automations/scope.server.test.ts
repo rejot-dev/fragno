@@ -18,6 +18,7 @@ beforeEach(() => {
   requireBackofficePrincipalMock.mockResolvedValue({
     user: { id: "user-1", email: "user@example.com", role: "user" },
     auth: {
+      scopeRestriction: null,
       transport: "cookie",
       expiresAt: new Date("2099-01-01T00:00:00.000Z"),
       organization: { id: "org-123", slug: "acme", roles: ["owner"] },

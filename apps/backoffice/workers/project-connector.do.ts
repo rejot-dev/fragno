@@ -4,8 +4,12 @@ import { DurableObject, RpcTarget } from "cloudflare:workers";
 
 import type { BackofficeRuntimeEnv } from "@/backoffice-runtime/backoffice-runtime-env";
 import { backofficeUserScopeSchema } from "@/backoffice-runtime/context-schema";
+import { createBackofficeFragmentHttpTransport } from "@/backoffice-runtime/fragment-http-transport";
+import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import {
   backofficeContextScopeFromDurableObjectId,
+  requireBackofficeContextScopeFromDurableObjectId,
+  backofficeObjectScopeFromContextScope,
   type ProjectConnectorObject,
 } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
@@ -29,7 +33,7 @@ import {
 
 type ProjectConnectorObjectEnv = Pick<
   BackofficeRuntimeEnv,
-  "OOMOL_CONNECTOR_BASE_URL" | "OOMOL_PROJECT_API_KEY"
+  "OOMOL_CONNECTOR_BASE_URL" | "OOMOL_PROJECT_API_KEY" | "BACKOFFICE_INTERNAL_REQUEST_SECRET"
 >;
 type ConfiguredProjectConnectorObject = {
   host: FragmentDurableObjectHost<ProjectConnectorFragmentConfig, ProjectConnectorFragment>;
@@ -39,19 +43,32 @@ type ConfiguredProjectConnectorObject = {
 /** Isolates provider bindings by the authoritative user, organization, or project object identity. */
 export class InMemoryProjectConnectorObject extends RpcTarget implements ProjectConnectorObject {
   readonly #configured: ConfiguredProjectConnectorObject | null;
+  readonly #forwardHttpRequest: ReturnType<typeof createBackofficeFragmentHttpTransport>;
 
   constructor({
     state,
     env,
+    nowEpochMs,
     runtime,
     implementation,
   }: {
     state: BackofficeObjectState;
     env: ProjectConnectorObjectEnv;
+    nowEpochMs: () => number;
     runtime: BackofficeRuntimeServices;
     implementation: BackofficeObjectImplementation;
   }) {
     super();
+    this.#forwardHttpRequest = createBackofficeFragmentHttpTransport({
+      address: {
+        binding: "PROJECT_CONNECTOR",
+        scope: backofficeObjectScopeFromContextScope(
+          requireBackofficeContextScopeFromDurableObjectId(state.id, "PROJECT_CONNECTOR"),
+        ),
+      },
+      env,
+      nowEpochMs,
+    });
     const baseUrl = env.OOMOL_CONNECTOR_BASE_URL?.trim();
     const apiKey = env.OOMOL_PROJECT_API_KEY?.trim();
     if (!baseUrl || !apiKey) {
@@ -64,7 +81,11 @@ export class InMemoryProjectConnectorObject extends RpcTarget implements Project
     > = implementation.createFragmentHost({
       name: "Connector",
       createRuntime: (config) =>
-        createProjectConnectorServer(config, implementation.fragmentDatabase),
+        createProjectConnectorServer(
+          config,
+          implementation.fragmentDatabase,
+          new BackofficeKernel(runtime),
+        ),
       onProcessError: (error) => {
         console.error("Connector hook processor error", error);
       },
@@ -116,9 +137,9 @@ export class InMemoryProjectConnectorObject extends RpcTarget implements Project
         { status: 400 },
       );
     }
-    return await this.#configured.host.fetch(
-      await this.#configured.scopedRuntime.getRuntime(),
-      request,
+    const { host, scopedRuntime } = this.#configured;
+    return await this.#forwardHttpRequest(request, async (verifiedRequest, options) =>
+      host.fetch(await scopedRuntime.getRuntime(), verifiedRequest, options),
     );
   }
 }

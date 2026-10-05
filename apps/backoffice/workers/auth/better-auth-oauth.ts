@@ -334,7 +334,7 @@ export async function exchangeBackofficeOAuthAccessToken(
 
   const issued = await issueBackofficeJwt(
     { context: authContext } as Parameters<typeof issueBackofficeJwt>[0],
-    grant.authority,
+    { ...grant.authority, scopeRestriction: grant.authority.scope },
   );
   return {
     accessToken: issued.token,

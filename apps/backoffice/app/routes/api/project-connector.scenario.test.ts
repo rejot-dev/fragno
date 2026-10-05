@@ -242,7 +242,7 @@ test("public action requests enforce verified execution permissions before conta
             "GET",
             memberCookie,
           );
-          assert(profile.status === 200);
+          assert(profile.status === 403, await profile.clone().text());
           for (const suffix of ["", "/"]) {
             const denied = await callPublicProjectConnector(
               ctx,
@@ -320,6 +320,16 @@ test("public routes authenticate access tokens and reject foreign or non-user sc
           const userId = z
             .object({ user: z.object({ id: z.string() }) })
             .parse(await session.json()).user.id;
+          await ctx.runtime.objects.auth.singleton().commands.applyScenarioFixture({
+            users: [
+              {
+                id: userId,
+                email: "connector-user@example.test",
+                role: "admin",
+                status: "active",
+              },
+            ],
+          });
           const accessCookie = await issueBackofficeAccessCookie(ctx, sessionCookie, null);
           const scope = `user:${userId}`;
           const anonymous = await callPublicProjectConnector(ctx, scope, "/accounts", "GET", null);
@@ -331,7 +341,7 @@ test("public routes authenticate access tokens and reject foreign or non-user sc
             "GET",
             accessCookie,
           );
-          assert(owned.status === 200);
+          assert(owned.status === 200, await owned.clone().text());
           expect(await owned.json()).toMatchObject({ accounts: [] });
           const foreignUser = await callPublicProjectConnector(
             ctx,

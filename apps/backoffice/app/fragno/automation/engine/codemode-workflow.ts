@@ -59,7 +59,9 @@ const createCodemodeWorkflowContext = async ({
   sourceReader?: AutomationSourceReader;
 }): Promise<AutomationRuntimeHostContext> => {
   const execution: BackofficeExecutionContext = {
+    kind: "deferred",
     scope: params.execution.scope,
+    scopeRestriction: params.execution.scopeRestriction,
     actors: params.execution.actors,
   };
   const kernel = new BackofficeKernel(runtime);
@@ -132,7 +134,9 @@ export const defineCodemodeWorkflow = (config: CodemodeWorkflowConfig) =>
 
       const params = codemodeWorkflowParamsSchema.parse(event.payload);
       const execution: BackofficeExecutionContext = {
+        kind: "deferred",
         scope: params.execution.scope,
+        scopeRestriction: params.execution.scopeRestriction,
         actors: params.execution.actors,
       };
       assertCodemodeCapabilityGrantsBelongToExecution({
@@ -147,6 +151,7 @@ export const defineCodemodeWorkflow = (config: CodemodeWorkflowConfig) =>
           : {
               id: event.instanceId,
               scope: execution.scope,
+              scopeRestriction: execution.scopeRestriction,
               source: "manual",
               eventType: "workflow.started",
               occurredAt: event.timestamp.toISOString(),

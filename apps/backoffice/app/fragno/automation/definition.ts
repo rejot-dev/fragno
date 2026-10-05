@@ -8,7 +8,8 @@ import {
   createBackofficeSystemExecution,
   type BackofficeContextScope,
 } from "@/backoffice-runtime/context";
-import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import { backofficeScopeContains } from "@/backoffice-runtime/context";
+import { BackofficeKernel, BackofficeForbiddenError } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 
 import { automationActorsSchema } from "./actors";
@@ -146,6 +147,7 @@ const ingestAutomationEvent = (
   uow.create("automation_event", {
     id: validatedEvent.id,
     scope: validatedEvent.scope,
+    scopeRestriction: validatedEvent.scopeRestriction,
     source: validatedEvent.source,
     eventType: validatedEvent.eventType,
     occurredAt,
@@ -286,7 +288,14 @@ const handleForwardEventRouteAction = async ({
     throw new Error(`Automation route ${route.id} resolved an empty target user id.`);
   }
 
-  await new BackofficeKernel(runtime).assertScopeAllowedByOwner({
+  const kernel = new BackofficeKernel(runtime);
+  if (event.scopeRestriction && !backofficeScopeContains(event.scopeRestriction, scope)) {
+    throw new BackofficeForbiddenError(
+      "Forwarded event exceeds its retained scope ceiling.",
+      "context-access-denied",
+    );
+  }
+  await kernel.assertScopeAllowedByOwner({
     ownerScope,
     targetScope: scope,
     operation: "automation.forward-event",

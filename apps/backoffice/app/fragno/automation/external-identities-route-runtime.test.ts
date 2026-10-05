@@ -5,6 +5,8 @@ import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import { createRouteBackedAutomationIdentityRuntime } from "./external-identities-route-runtime";
 
 const execution: BackofficeExecutionContext = {
+  kind: "deferred" as const,
+  scopeRestriction: null,
   scope: { kind: "org", orgId: "org-1" },
   actors: {
     initiator: {

@@ -1,6 +1,9 @@
 import { createRouteCaller } from "@fragno-dev/core/api";
 
+import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
+import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectHandle, TelegramObject } from "@/backoffice-runtime/object-registry";
+import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import { telegramAutomationFileDownloadPath } from "@/backoffice-runtime/telegram-file-response";
 import type {
   TelegramRuntime,
@@ -12,6 +15,7 @@ import {
   createOrganizationNotConfiguredMessage,
   isSuccessStatus,
   throwOnRouteRuntimeError,
+  throwOnHttpResponseError,
 } from "../runtime-errors";
 
 export type { TelegramRuntime, TelegramAutomationFileMetadata };
@@ -143,25 +147,47 @@ export const createRouteBackedTelegramRuntime = (
   };
 };
 
-export const createTelegramRuntime = ({
+/** Binds Telegram commands to execution provenance; the receiving object enforces its policy. */
+export function createTelegramRuntime({
   object,
+  execution,
+  kernel,
 }: {
   object: BackofficeObjectHandle<TelegramObject>;
-}): TelegramRuntime => {
+  execution: BackofficeExecutionContext;
+  kernel: BackofficeKernel;
+}): TelegramRuntime {
+  const context = { execution, propagationContext: null };
   const routeBacked = createRouteBackedTelegramRuntime({
     baseUrl: "https://telegram.do",
-    fetch: async (outboundRequest) => object.http.fetch(outboundRequest),
+    fetch: async (outboundRequest) => object.http.fetchAuthorized(outboundRequest, context),
   });
 
   return {
-    getFile: async (input) => object.commands.getAutomationFile(input),
-    downloadFile: async ({ fileId }) =>
-      await object.http.fetch(
+    getFile: async (input) =>
+      await kernel.invoke({
+        execution,
+        operation: BACKOFFICE_PERMISSION.telegram.read,
+        execute: () => object.commands.getAutomationFile(input),
+      }),
+    downloadFile: async ({ fileId }) => {
+      const response = await object.http.fetchAuthorized(
         new Request(`https://telegram.do${telegramAutomationFileDownloadPath(fileId)}`),
-      ),
-    ...routeBacked,
+        context,
+      );
+      if (!response.ok) {
+        await throwOnHttpResponseError(response, {
+          runtimeLabel: "Telegram fragment",
+          label: "telegram.file.download",
+        });
+      }
+      return response;
+    },
+    sendMessage: routeBacked.sendMessage,
+    sendChatAction: routeBacked.sendChatAction,
+    editMessage: routeBacked.editMessage,
   };
-};
+}
 
 export const createUnavailableTelegramRuntime = (
   message = TELEGRAM_NOT_CONFIGURED,

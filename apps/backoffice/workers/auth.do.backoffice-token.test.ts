@@ -143,6 +143,7 @@ describe("Backoffice token exchange", () => {
     );
     assert(verification.ok);
     expect(verification.payload).toMatchObject({
+      scopeRestriction: null,
       sub: user.id,
       email: "token-user@example.com",
       globalRole: "user",

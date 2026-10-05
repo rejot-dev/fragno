@@ -2,8 +2,12 @@ import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloud
 import { DurableObject, RpcTarget } from "cloudflare:workers";
 
 import { backofficeRoutableScopeSchema } from "@/backoffice-runtime/context-schema";
+import { createBackofficeFragmentHttpTransport } from "@/backoffice-runtime/fragment-http-transport";
+import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import {
   backofficeContextScopeFromDurableObjectId,
+  requireBackofficeContextScopeFromDurableObjectId,
+  backofficeObjectScopeFromContextScope,
   type McpObject,
 } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
@@ -28,7 +32,7 @@ import {
   type ScopedFragmentDurableObjectRuntime,
 } from "./lib/scoped-fragment-durable-object";
 
-type McpObjectEnv = object;
+type McpObjectEnv = Pick<CloudflareEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">;
 
 function scopeSubject(scope: BackofficeRoutableScope, serverId?: string) {
   return {
@@ -40,24 +44,39 @@ function scopeSubject(scope: BackofficeRoutableScope, serverId?: string) {
 
 export class InMemoryMcpObject extends RpcTarget implements McpObject {
   readonly #runtimeServices: BackofficeRuntimeServices;
+  readonly #forwardHttpRequest: ReturnType<typeof createBackofficeFragmentHttpTransport>;
   readonly #host: FragmentDurableObjectHost<McpConfig, McpFragment>;
   readonly #scopedRuntime: ScopedFragmentDurableObjectRuntime<McpFragment, BackofficeRoutableScope>;
 
   constructor({
     state,
+    env = {},
+    nowEpochMs,
     runtime,
     implementation,
   }: {
     state: BackofficeObjectState;
     env?: McpObjectEnv;
+    nowEpochMs: () => number;
     runtime: BackofficeRuntimeServices;
     implementation: BackofficeObjectImplementation;
   }) {
     super();
     this.#runtimeServices = runtime;
+    this.#forwardHttpRequest = createBackofficeFragmentHttpTransport({
+      address: {
+        binding: "MCP",
+        scope: backofficeObjectScopeFromContextScope(
+          requireBackofficeContextScopeFromDurableObjectId(state.id, "MCP"),
+        ),
+      },
+      env,
+      nowEpochMs,
+    });
     this.#host = implementation.createFragmentHost({
       name: "MCP",
-      createRuntime: (config) => createMcpServer(config, implementation.fragmentDatabase),
+      createRuntime: (config) =>
+        createMcpServer(config, implementation.fragmentDatabase, new BackofficeKernel(runtime)),
       onProcessError: (error) => {
         console.error("MCP hook processor error", error);
       },
@@ -93,6 +112,7 @@ export class InMemoryMcpObject extends RpcTarget implements McpObject {
         await this.#runtimeServices.objects.automations.for(scope).commands.ingestEvent(
           {
             id: context.hookId.toString(),
+            scopeRestriction: null,
             scope,
             source: "mcp",
             eventType: "server.configuration.changed",
@@ -113,6 +133,7 @@ export class InMemoryMcpObject extends RpcTarget implements McpObject {
         await this.#runtimeServices.objects.automations.for(scope).commands.ingestEvent(
           {
             id: context.hookId.toString(),
+            scopeRestriction: null,
             scope,
             source: "mcp",
             eventType: "server.configuration.deleted",
@@ -144,7 +165,9 @@ export class InMemoryMcpObject extends RpcTarget implements McpObject {
   }
 
   async fetch(request: Request): Promise<Response> {
-    return await this.#host.fetch(await this.#scopedRuntime.getRuntime(), request);
+    return await this.#forwardHttpRequest(request, async (verifiedRequest, options) =>
+      this.#host.fetch(await this.#scopedRuntime.getRuntime(), verifiedRequest, options),
+    );
   }
 }
 

@@ -23,6 +23,7 @@ export const automationEventRoutes = defineRoutes(automationFragmentDefinition).
         return json({
           id: event.id.valueOf(),
           scope: event.scope,
+          scopeRestriction: event.scopeRestriction,
           source: event.source,
           eventType: event.eventType,
           occurredAt: event.occurredAt.toISOString(),
@@ -98,6 +99,7 @@ export const automationEventRoutes = defineRoutes(automationFragmentDefinition).
           events: result.events.map((event) => ({
             id: event.id.valueOf(),
             scope: event.scope,
+            scopeRestriction: event.scopeRestriction,
             source: event.source,
             eventType: event.eventType,
             occurredAt: event.occurredAt.toISOString(),

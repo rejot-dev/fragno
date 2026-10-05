@@ -31,6 +31,7 @@ describe("executeCodemodeAutomation", () => {
   test("runs a .cm.js automation with state.* against Upload", async () => {
     const event: AutomationEvent = {
       id: "event-codemode-1",
+      scopeRestriction: null,
       scope: { kind: "org", orgId: "org-1" },
       source: "test",
       eventType: "message.received",
@@ -89,6 +90,7 @@ describe("executeCodemodeAutomation", () => {
     const runtime = createRecordingAutomationRuntime(calls);
     const event: AutomationEvent = {
       id: "event-codemode-bind-actor",
+      scopeRestriction: null,
       scope: { kind: "org", orgId: "org-1" },
       source: "telegram",
       eventType: "message.received",
@@ -146,6 +148,7 @@ describe("executeCodemodeAutomation", () => {
     const calls: unknown[] = [];
     const event: AutomationEvent = {
       id: "event-codemode-configure-upload",
+      scopeRestriction: null,
       scope: { kind: "org", orgId: "org-1" },
       source: "auth",
       eventType: "organization.created",
@@ -199,6 +202,7 @@ describe("executeCodemodeAutomation", () => {
     const calls: unknown[] = [];
     const event: AutomationEvent = {
       id: "event-workflow-configure-upload",
+      scopeRestriction: null,
       scope: { kind: "org", orgId: "org-1" },
       source: "auth",
       eventType: "organization.created",
@@ -293,6 +297,7 @@ describe("executeCodemodeAutomation", () => {
         },
         trigger: { type: "manual", payload: {} },
         execution: {
+          scopeRestriction: null,
           scope: execution.scope,
           actors: execution.actors,
           capabilityGrants: [
@@ -323,6 +328,7 @@ describe("executeCodemodeAutomation", () => {
     const outboundFetch = vi.fn(async () => new Response("unexpected outbound response"));
     const event: AutomationEvent = {
       id: "event-workflow-egress",
+      scopeRestriction: null,
       scope: { kind: "org", orgId: "org-1" },
       source: "test",
       eventType: "workflow.egress",
@@ -385,6 +391,7 @@ describe("executeCodemodeAutomation", () => {
     const runtime = createRecordingAutomationRuntime(calls);
     const eventFixture: AutomationEvent = {
       id: "event-codemode-emit-event",
+      scopeRestriction: null,
       scope: { kind: "org", orgId: "org-1" },
       source: "telegram",
       eventType: "message.received",
@@ -440,6 +447,7 @@ describe("executeCodemodeAutomation", () => {
     const runtime = createRecordingAutomationRuntime(calls);
     const event: AutomationEvent = {
       id: "event-shared-tool-definition",
+      scopeRestriction: null,
       scope: { kind: "org", orgId: "org-1" },
       source: "telegram",
       eventType: "message.received",
@@ -498,6 +506,7 @@ describe("executeCodemodeAutomation", () => {
     const calls: unknown[] = [];
     const event: AutomationEvent = {
       id: "event-codemode-invalid-tool-call",
+      scopeRestriction: null,
       scope: { kind: "org", orgId: "org-1" },
       source: "telegram",
       eventType: "message.received",

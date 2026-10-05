@@ -2,6 +2,7 @@ import type { WorkerTypeChecker } from "@fragno-dev/codemode/compiler/compile-wo
 
 import { defaultFragnoRuntime } from "@fragno-dev/core";
 
+import { createAutomationRouteAuthorityResolver } from "@/fragno/automation/authority";
 import type { AutomationSourceReader } from "@/fragno/automation/automation-source";
 import type { PiAvailableModel } from "@/fragno/pi-manager/pi-agent-contract";
 import type { CreateSandboxRuntimeProviders } from "@/sandbox/contracts";
@@ -105,13 +106,17 @@ export async function createLocalBackofficeRuntime(
     config,
     authorityResolver:
       options.authorityResolver ??
-      createBackofficeAuthorityResolver(
-        {
-          getUserAuthorityFacts: async (input) =>
-            await objects.auth.singleton().commands.getUserAuthorityFacts(input),
-        },
-        { now: () => objectFactory.now() },
-      ),
+      createAutomationRouteAuthorityResolver({
+        fallbackResolver: createBackofficeAuthorityResolver(
+          {
+            getUserAuthorityFacts: async (input) =>
+              await objects.auth.singleton().commands.getUserAuthorityFacts(input),
+          },
+          { now: () => objectFactory.now() },
+        ),
+        lookupRoute: async ({ scope, routeId }) =>
+          await objects.automations.for(scope).commands.getRouteForAuthority({ id: routeId }),
+      }),
     kernelObserver: options.kernelObserver ?? noopBackofficeKernelObserver,
     codemodeEnv: options.runtimeEnv.codemode,
     workerTypeChecker: options.workerTypeChecker ?? null,

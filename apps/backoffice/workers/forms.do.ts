@@ -1,6 +1,8 @@
 import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { DurableObject, RpcTarget } from "cloudflare:workers";
 
+import { createBackofficeFragmentHttpTransport } from "@/backoffice-runtime/fragment-http-transport";
+import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { FormsObject } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
@@ -21,17 +23,27 @@ export class InMemoryFormsObject extends RpcTarget implements FormsObject {
   readonly #host: FragmentDurableObjectHost<void, FormsFragment>;
   #fragment: FormsFragment | null = null;
 
+  readonly #httpTransport: ReturnType<typeof createBackofficeFragmentHttpTransport>;
+
   constructor({
     state,
+    env,
+    nowEpochMs,
     runtime,
     implementation,
   }: {
     state: BackofficeObjectState;
-    env?: unknown;
+    env: Pick<CloudflareEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">;
+    nowEpochMs: () => number;
     runtime: BackofficeRuntimeServices;
     implementation: BackofficeObjectImplementation;
   }) {
     super();
+    this.#httpTransport = createBackofficeFragmentHttpTransport({
+      address: { binding: "FORMS", scope: { kind: "singleton" } },
+      env,
+      nowEpochMs,
+    });
     this.#host = implementation.createFragmentHost({
       name: "Forms",
       createRuntime: () =>
@@ -41,6 +53,7 @@ export class InMemoryFormsObject extends RpcTarget implements FormsObject {
               await runtime.objects.automations.singleton().commands.ingestEvent(
                 {
                   id: context.hookId.toString(),
+                  scopeRestriction: null,
                   scope: SYSTEM_SCOPE,
                   source: "forms",
                   eventType: "form.created",
@@ -60,6 +73,7 @@ export class InMemoryFormsObject extends RpcTarget implements FormsObject {
               await runtime.objects.automations.singleton().commands.ingestEvent(
                 {
                   id: context.hookId.toString(),
+                  scopeRestriction: null,
                   scope: SYSTEM_SCOPE,
                   source: "forms",
                   eventType: "form.updated",
@@ -80,6 +94,7 @@ export class InMemoryFormsObject extends RpcTarget implements FormsObject {
               await runtime.objects.automations.singleton().commands.ingestEvent(
                 {
                   id: context.hookId.toString(),
+                  scopeRestriction: null,
                   scope: SYSTEM_SCOPE,
                   source: "forms",
                   eventType: "form.deleted",
@@ -99,6 +114,7 @@ export class InMemoryFormsObject extends RpcTarget implements FormsObject {
               await runtime.objects.automations.singleton().commands.ingestEvent(
                 {
                   id: context.hookId.toString(),
+                  scopeRestriction: null,
                   scope: SYSTEM_SCOPE,
                   source: "forms",
                   eventType: "response.submitted",
@@ -116,6 +132,7 @@ export class InMemoryFormsObject extends RpcTarget implements FormsObject {
             },
           },
           implementation.fragmentDatabase,
+          new BackofficeKernel(runtime),
         ),
       onProcessError: (error) => {
         console.error("Forms hook processor error", error);
@@ -150,7 +167,9 @@ export class InMemoryFormsObject extends RpcTarget implements FormsObject {
   }
 
   async fetch(request: Request): Promise<Response> {
-    return await this.#host.fetch(this.#getFragment(), request);
+    return await this.#httpTransport(request, (verifiedRequest, options) =>
+      this.#host.fetch(this.#getFragment(), verifiedRequest, options),
+    );
   }
 }
 

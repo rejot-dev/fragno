@@ -12,6 +12,7 @@ const { DurableObject, RpcTarget } = vi.hoisted(() => {
 
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget }));
 
+import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import { createInMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
 
 import { InMemoryResendObject } from "./resend.do";
@@ -30,8 +31,9 @@ describe("Resend Durable Object", () => {
     }));
     const runtime = await createInMemoryBackofficeRuntime({
       objectFactories: {
-        RESEND: ({ state, env, runtime: runtimeServices, implementation }) =>
+        RESEND: ({ state, env, runtime: runtimeServices, implementation, nowEpochMs }) =>
           new InMemoryResendObject({
+            nowEpochMs,
             state,
             env,
             runtime: runtimeServices,
@@ -70,7 +72,10 @@ describe("Resend Durable Object", () => {
     await resend.commands.queueEmail(email, { idempotencyKey: "auth:user-created:user-1:tx-1" });
     await resend.commands.queueEmail(email, { idempotencyKey: "auth:user-created:user-1:tx-1" });
 
-    const response = await resend.http.fetch(new Request("https://resend.do/api/resend/emails"));
+    const response = await resend.http.fetchAuthorized(
+      new Request("https://resend.do/api/resend/emails"),
+      { execution: createBackofficeSystemExecution({ kind: "system" }) },
+    );
     assert(response.status === 200);
     const body = (await response.json()) as {
       emails: Array<{ subject: string | null }>;

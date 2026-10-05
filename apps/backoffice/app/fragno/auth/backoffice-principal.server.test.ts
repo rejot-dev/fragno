@@ -31,6 +31,7 @@ describe("requireBackofficeContext", () => {
         role: "admin",
       },
       auth: {
+        scopeRestriction: null,
         transport: "cookie",
         expiresAt,
         organization: { id: "org-1", slug: "acme", roles: ["owner"] },
@@ -45,6 +46,7 @@ describe("requireBackofficeContext", () => {
     ).resolves.toMatchObject({
       scope: { kind: "org", orgId: "org-1" },
       userAuthority: {
+        scopeRestriction: null,
         kind: "verified-request-authority",
         userId: "user-1",
         role: "admin",
@@ -61,6 +63,7 @@ describe("requireBackofficeContext", () => {
       principal: {
         user: { id: "user-1", role: "user" },
         auth: {
+          scopeRestriction: null,
           transport: "cookie",
           expiresAt: new Date("2099-01-01T00:00:00.000Z"),
           organization: { id: "org-1", slug: "acme", roles: ["member"] },
@@ -85,6 +88,7 @@ describe("requireBackofficeContext", () => {
       principal: {
         user: { id: "user-1", role: "user" },
         auth: {
+          scopeRestriction: null,
           transport: "cookie",
           expiresAt,
           organization: { id: "org-1", slug: "acme", roles: ["member"] },
@@ -111,6 +115,7 @@ describe("requireBackofficeContext", () => {
       principal: {
         user: { id: "user-1", email: "Developer@Rejot.dev", role: "user" },
         auth: {
+          scopeRestriction: null,
           transport: "bearer",
           expiresAt: new Date("2099-01-01T00:00:00.000Z"),
           organization: { id: "org-1", slug: "acme", roles: ["member"] },
@@ -134,6 +139,7 @@ describe("requireBackofficeContext", () => {
       principal: {
         user: { id: "user-1", email: "user@example.com", role: "user" },
         auth: {
+          scopeRestriction: null,
           transport: "cookie",
           expiresAt: new Date("2099-01-01T00:00:00.000Z"),
           organization: { id: "org-1", slug: "acme", roles: ["member"] },
@@ -158,6 +164,7 @@ describe("requireBackofficeContext", () => {
     requireBackofficePrincipalMock.mockResolvedValue({
       user: { id: "admin-1", email: "admin@example.com", role: "admin" },
       auth: {
+        scopeRestriction: null,
         transport: "cookie",
         expiresAt: new Date("2099-01-01T00:00:00.000Z"),
         organization: null,

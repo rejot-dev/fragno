@@ -32,7 +32,9 @@ beforeEach(() => {
 
   authorizeBackofficeContextMock.mockResolvedValue({ ok: true, headers: [] });
   formsFetchMock.mockResolvedValue(new Response("forwarded"));
-  getFormsDurableObjectMock.mockReturnValue({ http: { fetch: formsFetchMock } });
+  getFormsDurableObjectMock.mockReturnValue({
+    http: { fetch: formsFetchMock, fetchAuthorized: formsFetchMock },
+  });
 });
 
 describe("Forms API authorization", () => {
@@ -87,6 +89,6 @@ describe("Forms API authorization", () => {
 
     assert.equal(response.status, 200);
     assert.equal(response.headers.get("x-backoffice-authorization"), "granted");
-    expect(formsFetchMock).toHaveBeenCalledWith(request);
+    expect(formsFetchMock).toHaveBeenCalledWith(request, { execution: undefined });
   });
 });

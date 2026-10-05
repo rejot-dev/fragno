@@ -266,6 +266,7 @@ export type BackofficeAuthPrincipal = {
   auth: {
     transport: "cookie" | "bearer";
     expiresAt: Date;
+    scopeRestriction: BackofficeContextScope | null;
     organization: { id: string; slug: string; roles: string[] } | null;
   };
 };

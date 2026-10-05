@@ -1,3 +1,4 @@
+import { authorizedBackofficeObjectHttp } from "@/backoffice-runtime/authorized-object-http";
 import {
   backofficeContextScopesEqual,
   type BackofficeExecutionContext,
@@ -208,9 +209,8 @@ export const createRouteBackedRuntimeContext = ({
         runtime,
         kernel,
         execution: {
-          actors: execution.actors,
+          ...execution,
           scope,
-          ...(execution.userAuthority ? { userAuthority: execution.userAuthority } : {}),
         },
         billingOrganizationId,
         emittedEventActors,
@@ -314,13 +314,24 @@ export const createRouteBackedRuntimeContext = ({
       execution.scope.kind === "system" && formsObjects
         ? (() => {
             const object = unavailableObject(() => formsObjects.singleton());
-            return object ? { runtime: createFormsRuntime(object.http) } : null;
+            return object
+              ? {
+                  runtime: createFormsRuntime(
+                    authorizedBackofficeObjectHttp(object.http, execution),
+                  ),
+                }
+              : null;
           })()
         : null,
     github:
       runtime.config.bindings.github && org
         ? {
-            runtime: createGitHubRuntime(runtime.objects.github.forOrg(org.orgId).http),
+            runtime: createGitHubRuntime(
+              authorizedBackofficeObjectHttp(
+                runtime.objects.github.forOrg(org.orgId).http,
+                execution,
+              ),
+            ),
           }
         : null,
     internal: internalScope
@@ -338,21 +349,24 @@ export const createRouteBackedRuntimeContext = ({
             : null;
           return object
             ? {
-                runtime: createApiRuntime(object.http, async () => {
-                  const resolvedScope = await resolveBackofficeRuntimeScope(
-                    execution.scope,
-                    (organizationId) => resolveRuntimeOrganization(runtime, organizationId),
-                  );
-                  if (resolvedScope.kind === "system") {
-                    throw new Error("API public routes require a routable scope.");
-                  }
-                  return apiPublicAddress(
-                    runtime.config.docsPublicBaseUrl,
-                    backofficeRouteScopeSinglePathSegment(
-                      backofficeRouteScopeFromResolvedScope(resolvedScope),
-                    ),
-                  );
-                }),
+                runtime: createApiRuntime(
+                  authorizedBackofficeObjectHttp(object.http, execution),
+                  async () => {
+                    const resolvedScope = await resolveBackofficeRuntimeScope(
+                      execution.scope,
+                      (organizationId) => resolveRuntimeOrganization(runtime, organizationId),
+                    );
+                    if (resolvedScope.kind === "system") {
+                      throw new Error("API public routes require a routable scope.");
+                    }
+                    return apiPublicAddress(
+                      runtime.config.docsPublicBaseUrl,
+                      backofficeRouteScopeSinglePathSegment(
+                        backofficeRouteScopeFromResolvedScope(resolvedScope),
+                      ),
+                    );
+                  },
+                ),
               }
             : null;
         })()
@@ -364,21 +378,24 @@ export const createRouteBackedRuntimeContext = ({
             : null;
           return object
             ? {
-                runtime: createMcpRuntime(object.http, async () => {
-                  const resolvedScope = await resolveBackofficeRuntimeScope(
-                    execution.scope,
-                    (organizationId) => resolveRuntimeOrganization(runtime, organizationId),
-                  );
-                  if (resolvedScope.kind === "system") {
-                    throw new Error("MCP public routes require a routable scope.");
-                  }
-                  return mcpPublicAddress(
-                    runtime.config.docsPublicBaseUrl,
-                    backofficeRouteScopeSinglePathSegment(
-                      backofficeRouteScopeFromResolvedScope(resolvedScope),
-                    ),
-                  );
-                }),
+                runtime: createMcpRuntime(
+                  authorizedBackofficeObjectHttp(object.http, execution),
+                  async () => {
+                    const resolvedScope = await resolveBackofficeRuntimeScope(
+                      execution.scope,
+                      (organizationId) => resolveRuntimeOrganization(runtime, organizationId),
+                    );
+                    if (resolvedScope.kind === "system") {
+                      throw new Error("MCP public routes require a routable scope.");
+                    }
+                    return mcpPublicAddress(
+                      runtime.config.docsPublicBaseUrl,
+                      backofficeRouteScopeSinglePathSegment(
+                        backofficeRouteScopeFromResolvedScope(resolvedScope),
+                      ),
+                    );
+                  },
+                ),
               }
             : null;
         })()
@@ -390,21 +407,24 @@ export const createRouteBackedRuntimeContext = ({
             : null;
           return object
             ? {
-                runtime: createProjectConnectorRuntime(object.http, async () => {
-                  const resolvedScope = await resolveBackofficeRuntimeScope(
-                    execution.scope,
-                    (organizationId) => resolveRuntimeOrganization(runtime, organizationId),
-                  );
-                  if (resolvedScope.kind === "system") {
-                    throw new Error("Connector public routes require a routable scope.");
-                  }
-                  return projectConnectorPublicAddress(
-                    runtime.config.docsPublicBaseUrl,
-                    backofficeRouteScopeSinglePathSegment(
-                      backofficeRouteScopeFromResolvedScope(resolvedScope),
-                    ),
-                  );
-                }),
+                runtime: createProjectConnectorRuntime(
+                  authorizedBackofficeObjectHttp(object.http, execution),
+                  async () => {
+                    const resolvedScope = await resolveBackofficeRuntimeScope(
+                      execution.scope,
+                      (organizationId) => resolveRuntimeOrganization(runtime, organizationId),
+                    );
+                    if (resolvedScope.kind === "system") {
+                      throw new Error("Connector public routes require a routable scope.");
+                    }
+                    return projectConnectorPublicAddress(
+                      runtime.config.docsPublicBaseUrl,
+                      backofficeRouteScopeSinglePathSegment(
+                        backofficeRouteScopeFromResolvedScope(resolvedScope),
+                      ),
+                    );
+                  },
+                ),
               }
             : null;
         })()
@@ -440,7 +460,10 @@ export const createRouteBackedRuntimeContext = ({
       runtime:
         selectedOrg && runtime.config.bindings.reson8
           ? createReson8RouteRuntime({
-              object: kernel.scoped("RESON8", execution.scope, runtime.objects.reson8).http,
+              object: authorizedBackofficeObjectHttp(
+                kernel.scoped("RESON8", execution.scope, runtime.objects.reson8).http,
+                execution,
+              ),
             })
           : createUnavailableReson8Runtime(unavailableMessage("RESON8", execution)),
     },
@@ -448,7 +471,10 @@ export const createRouteBackedRuntimeContext = ({
       runtime:
         selectedOrg && runtime.config.bindings.resend
           ? createResendRouteRuntime({
-              object: kernel.scoped("RESEND", execution.scope, runtime.objects.resend).http,
+              object: authorizedBackofficeObjectHttp(
+                kernel.scoped("RESEND", execution.scope, runtime.objects.resend).http,
+                execution,
+              ),
             })
           : createUnavailableResendRuntime(unavailableMessage("RESEND", execution)),
     },
@@ -497,6 +523,8 @@ export const createRouteBackedRuntimeContext = ({
         ? {
             runtime: createTelegramRuntime({
               object: kernel.scoped("TELEGRAM", execution.scope, runtime.objects.telegram),
+              execution,
+              kernel,
             }),
           }
         : {

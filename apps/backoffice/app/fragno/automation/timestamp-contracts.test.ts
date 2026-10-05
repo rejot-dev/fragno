@@ -49,6 +49,7 @@ describe("automation public timestamp contracts", () => {
     expect(() =>
       normalizeAutomationEventRecord({
         id: "event-1",
+        scopeRestriction: null,
         scope: { kind: "system" },
         source: "custom",
         eventType: "example",

@@ -6,7 +6,13 @@ import {
 } from "@fragno-dev/github-app-fragment";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
-import type { GitHubObject } from "@/backoffice-runtime/object-registry";
+import { createBackofficeFragmentHttpTransport } from "@/backoffice-runtime/fragment-http-transport";
+import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import {
+  type GitHubObject,
+  requireBackofficeContextScopeFromDurableObjectId,
+  backofficeObjectScopeFromContextScope,
+} from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { type DurableHookQueueOptions } from "@/fragno/durable-hooks";
 import {
@@ -29,6 +35,7 @@ type StoredGitHubConfig = {
 };
 
 export class InMemoryGitHubObject implements GitHubObject {
+  readonly #httpTransport: ReturnType<typeof createBackofficeFragmentHttpTransport>;
   readonly #state: BackofficeObjectState;
   readonly #runtimeServices: BackofficeRuntimeServices;
   readonly #host: BackofficeFragmentDurableObject<
@@ -41,14 +48,27 @@ export class InMemoryGitHubObject implements GitHubObject {
   constructor({
     state,
     env,
+    nowEpochMs,
     runtime,
     implementation,
   }: {
     state: BackofficeObjectState;
-    env: Parameters<typeof resolveGitHubConfig>[0];
+    env: Parameters<typeof resolveGitHubConfig>[0] &
+      Pick<CloudflareEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">;
+    nowEpochMs: () => number;
     runtime: BackofficeRuntimeServices;
     implementation: BackofficeObjectImplementation;
   }) {
+    this.#httpTransport = createBackofficeFragmentHttpTransport({
+      address: {
+        binding: "GITHUB",
+        scope: backofficeObjectScopeFromContextScope(
+          requireBackofficeContextScopeFromDurableObjectId(state.id, "GITHUB"),
+        ),
+      },
+      env,
+      nowEpochMs,
+    });
     this.#state = state;
     this.#runtimeServices = runtime;
     this.#configResolution = resolveGitHubConfig(env);
@@ -94,6 +114,7 @@ export class InMemoryGitHubObject implements GitHubObject {
           {
             ...implementation.fragmentDatabase,
           },
+          new BackofficeKernel(runtime),
         ),
     });
 
@@ -254,7 +275,9 @@ export class InMemoryGitHubObject implements GitHubObject {
       );
     }
 
-    return await this.#host.fetch(request);
+    return await this.#httpTransport(request, (verifiedRequest, options) =>
+      this.#host.fetch(verifiedRequest, options),
+    );
   }
 }
 

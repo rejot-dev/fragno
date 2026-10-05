@@ -49,6 +49,7 @@ function principalFromBackofficeJwt(
     user: { id: payload.sub, email: payload.email, role: payload.globalRole },
     auth: {
       transport,
+      scopeRestriction: payload.scopeRestriction,
       expiresAt: new Date(payload.exp * 1_000),
       organization: payload.organization,
     },

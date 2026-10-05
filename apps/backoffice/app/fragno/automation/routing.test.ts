@@ -49,6 +49,7 @@ describe("automation event reclassification", () => {
     const projected = projectAutomationEventPayload(
       {
         id: "event-1",
+        scopeRestriction: null,
         scope: { kind: "org", orgId: "org-1" },
         source: "github",
         eventType: "webhook.received",
@@ -90,6 +91,7 @@ describe("automation event reclassification", () => {
 
 const event = {
   id: "event-1",
+  scopeRestriction: null,
   scope: { kind: "org", orgId: "org-1" },
   source: "test",
   eventType: "created",

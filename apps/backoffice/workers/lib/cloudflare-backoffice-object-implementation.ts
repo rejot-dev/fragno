@@ -40,6 +40,7 @@ export function createCloudflareBackofficeObjectContext(
     state,
     env,
     runtime,
+    nowEpochMs: Date.now,
     implementation: createCloudflareBackofficeObjectImplementation(state, env, runtime),
   };
 }

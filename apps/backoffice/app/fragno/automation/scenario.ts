@@ -34,10 +34,7 @@ import {
   backofficeContextScopeRoutePath,
   type BackofficeRoutableScope,
 } from "@/backoffice-runtime/scope-codec";
-import {
-  createTelegramAutomationFileResponse,
-  telegramAutomationFileIdFromDownloadPath,
-} from "@/backoffice-runtime/telegram-file-response";
+import { createTelegramAutomationFileResponse } from "@/backoffice-runtime/telegram-file-response";
 import { WORKSPACE_STARTER_CONTENT } from "@/files/content/starter";
 import { STATIC_FILE_CONTENT } from "@/files/content/static";
 import { SYSTEM_FILE_CONTENT } from "@/files/content/system";
@@ -1589,6 +1586,8 @@ const getStore = (ctx: BackofficeScenarioContext, orgId: string) => {
   return createRouteBackedAutomationStoreRuntime({
     object: ctx.runtime.objects.automations.forOrg(orgId),
     execution: {
+      kind: "deferred",
+      scopeRestriction: null,
       scope,
       actors: { initiator: AUTOMATION_SYSTEM_INITIATOR, principal: null, delegation: [] },
     },
@@ -1939,6 +1938,7 @@ const buildOrganizationCreatedEvent = (input: OrganizationCreatedInput): Automat
 
   return {
     id: input.eventId ?? `auth:organization.created:${input.id}`,
+    scopeRestriction: null,
     scope: { kind: "org", orgId: input.id },
     source: "auth",
     eventType: "organization.created",
@@ -1972,6 +1972,7 @@ const buildOrganizationCreatedEvent = (input: OrganizationCreatedInput): Automat
 
 const buildCapabilityConfiguredEvent = (input: CapabilityConfiguredInput): AutomationEvent => ({
   id: input.eventId ?? `${input.source ?? input.capabilityId}:capability.configured:${input.orgId}`,
+  scopeRestriction: null,
   scope: { kind: "org", orgId: input.orgId },
   source: input.source ?? input.capabilityId,
   eventType: "capability.configured",
@@ -2000,6 +2001,7 @@ const buildIdentityClaimCompletedEvent = (input: ConfirmClaimInput): AutomationE
 
   return {
     id: input.eventId ?? `identity-claim-completed:${input.otpId}`,
+    scopeRestriction: null,
     scope: { kind: "org", orgId: input.orgId },
     source: "otp",
     eventType: "identity.claim.completed",
@@ -2963,7 +2965,12 @@ const buildStepBuilders = <
               const workflowInput = createCodemodeWorkflowInstanceInput({
                 prepared,
                 trigger: { type: "event", event },
-                execution: execution ?? { scope: event.scope, actors: event.actors },
+                execution: execution ?? {
+                  kind: "deferred",
+                  scopeRestriction: null,
+                  scope: event.scope,
+                  actors: event.actors,
+                },
                 billingOrganizationId: null,
               });
               await getWorkflow(ctx, input.orgId, execution).createInternalInstance(workflowInput);
@@ -4176,7 +4183,7 @@ const createObjectFactories = (fakes: ScenarioFakes): LocalObjectFactoryOverride
   const objectFactories: LocalObjectFactoryOverrides = {};
 
   if (fakes.telegram) {
-    objectFactories.TELEGRAM = ({ state, env, runtime, implementation }) => {
+    objectFactories.TELEGRAM = ({ state, env, runtime, implementation, nowEpochMs }) => {
       const fakeTelegram = fakes.telegram!;
       return new (class extends InMemoryTelegramObject {
         async getAutomationFile(input: {
@@ -4192,12 +4199,11 @@ const createObjectFactories = (fakes: ScenarioFakes): LocalObjectFactoryOverride
           };
         }
 
-        async fetch(request: Request): Promise<Response> {
-          const fileId = telegramAutomationFileIdFromDownloadPath(new URL(request.url).pathname);
-          if (!fileId) {
-            return await super.fetch(request);
-          }
-
+        protected override async downloadAutomationFile({
+          fileId,
+        }: {
+          fileId: string;
+        }): Promise<Response> {
           fakeTelegram.downloadFileCalls.push({ fileId });
           const file = fakeTelegramFile(fakeTelegram, fileId);
           return createTelegramAutomationFileResponse(
@@ -4212,6 +4218,7 @@ const createObjectFactories = (fakes: ScenarioFakes): LocalObjectFactoryOverride
         env,
         runtime,
         implementation,
+        nowEpochMs,
         api: fakeTelegram.api,
         adminApi: fakeTelegram.adminApi,
       });

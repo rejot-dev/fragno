@@ -379,6 +379,7 @@ const dispatchOrganizationEvent = async (
   await runtime.objects.automations.singleton().commands.ingestEvent(
     {
       id: context.hookId.toString(),
+      scopeRestriction: null,
       scope: { kind: "system" },
       source: AUTH_AUTOMATION_SOURCE,
       eventType,

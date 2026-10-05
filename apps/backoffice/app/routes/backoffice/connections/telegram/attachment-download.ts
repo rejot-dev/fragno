@@ -3,6 +3,7 @@ import {
   telegramAutomationFileDownloadPath,
 } from "@/backoffice-runtime/telegram-file-response";
 import { findBackofficeMe } from "@/fragno/auth/auth-server";
+import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import { buildBackofficeLoginPath } from "../../auth-navigation";
@@ -32,9 +33,16 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
   const telegramDo = context
     .get(BackofficeWorkerContext)
     .runtime.objects.telegram.for(integration.scope);
-  const downloadResponse = await telegramDo.http.fetch(
+  const downloadResponse = await telegramDo.http.fetchAuthorized(
     new Request(new URL(telegramAutomationFileDownloadPath(fileId), request.url)),
+    {
+      execution: await requireBackofficeContext(request, context, integration.scope),
+      propagationContext: null,
+    },
   );
+  if (!downloadResponse.ok) {
+    return downloadResponse;
+  }
   const metadata = readTelegramAutomationFileResponse(downloadResponse);
   const filename = buildDownloadFilename(
     requestedFilename,

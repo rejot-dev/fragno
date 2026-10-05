@@ -2,7 +2,13 @@ import { DurableObject } from "cloudflare:workers";
 import { z } from "zod";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
-import type { Reson8Object } from "@/backoffice-runtime/object-registry";
+import { createBackofficeFragmentHttpTransport } from "@/backoffice-runtime/fragment-http-transport";
+import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import {
+  type Reson8Object,
+  requireBackofficeContextScopeFromDurableObjectId,
+  backofficeObjectScopeFromContextScope,
+} from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 import { reson8ConfigureInputSchema } from "@/fragno/backoffice-capabilities/capabilities/reson8";
@@ -90,6 +96,7 @@ const buildRealtimeDiagnosticUrl = () => {
 };
 
 export class InMemoryReson8Object implements Reson8Object {
+  readonly #httpTransport: ReturnType<typeof createBackofficeFragmentHttpTransport>;
   readonly #state: BackofficeObjectState;
   readonly #runtime: BackofficeRuntimeServices;
   readonly #host: BackofficeFragmentDurableObject<StoredReson8Config, Reson8Source, Reson8Fragment>;
@@ -97,16 +104,29 @@ export class InMemoryReson8Object implements Reson8Object {
 
   constructor({
     state,
+    env,
+    nowEpochMs,
     runtime,
     implementation,
     fetch: fetchImpl = fetch,
   }: {
     state: BackofficeObjectState;
-    env?: unknown;
+    env: Pick<CloudflareEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">;
+    nowEpochMs: () => number;
     runtime: BackofficeRuntimeServices;
     implementation: BackofficeObjectImplementation;
     fetch?: typeof fetch;
   }) {
+    this.#httpTransport = createBackofficeFragmentHttpTransport({
+      address: {
+        binding: "RESON8",
+        scope: backofficeObjectScopeFromContextScope(
+          requireBackofficeContextScopeFromDurableObjectId(state.id, "RESON8"),
+        ),
+      },
+      env,
+      nowEpochMs,
+    });
     this.#state = state;
     this.#runtime = runtime;
     this.#fetch = fetchImpl;
@@ -117,7 +137,7 @@ export class InMemoryReson8Object implements Reson8Object {
       isConfigured: (stored): stored is StoredReson8Config =>
         Boolean(stored?.scope && stored.apiKey),
       toSource: (stored) => ({ apiKey: stored.apiKey }),
-      createRuntime: (source) => createReson8Server(source),
+      createRuntime: (source) => createReson8Server(source, new BackofficeKernel(runtime)),
       getMigrationFragments: () => [],
       getHookFragments: () => [],
       outbox: {
@@ -129,6 +149,7 @@ export class InMemoryReson8Object implements Reson8Object {
           const { scope } = stored;
           await this.#runtime.objects.automations.for(scope).commands.ingestEvent({
             id: item.id,
+            scopeRestriction: null,
             scope,
             source: "reson8",
             eventType: "capability.configured",
@@ -293,7 +314,9 @@ export class InMemoryReson8Object implements Reson8Object {
   }
 
   async fetch(request: Request): Promise<Response> {
-    return await this.#host.fetch(request);
+    return await this.#httpTransport(request, (verifiedRequest, options) =>
+      this.#host.fetch(verifiedRequest, options),
+    );
   }
 }
 

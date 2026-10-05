@@ -26,6 +26,7 @@ import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import { backofficeRouteScopeSinglePathSegmentFromParams } from "@/backoffice-runtime/route-scope";
 import { isBackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import type { ApiFragment } from "@/fragno/api";
+import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import {
   apiPublicAddress,
   apiWebhookPublicUrl as buildApiWebhookPublicUrl,
@@ -232,7 +233,11 @@ const createApiRouteCallerForScope = (
   return createRouteCaller<ApiFragment>({
     baseUrl: new URL(request.url).origin,
     mountRoute: "/api/api",
-    fetch: (outboundRequest) => apiObject.http.fetch(outboundRequest),
+    fetch: async (outboundRequest) =>
+      apiObject.http.fetchAuthorized(outboundRequest, {
+        execution: await requireBackofficeContext(request, context, scope),
+        propagationContext: null,
+      }),
   });
 };
 

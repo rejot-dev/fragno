@@ -51,6 +51,7 @@ import { backofficeFiles, defineBackofficeScenario, runBackofficeScenario } from
 
 const systemUnrelatedEvent = {
   id: "github:issue.opened:1",
+  scopeRestriction: null,
   scope: { kind: "org", orgId: "org-1" },
   source: "github",
   eventType: "issue.opened",
@@ -186,6 +187,7 @@ describe("system automation scenarios", () => {
       const systemAutomations = runtime.objects.automations.singleton();
       await systemAutomations.commands.ingestEvent({
         id: `system:auth:organization.created:${orgId}`,
+        scopeRestriction: null,
         scope: { kind: "system" },
         source: "auth",
         eventType: "organization.created",
@@ -237,7 +239,9 @@ describe("system automation scenarios", () => {
       );
 
       const systemExecution = {
+        kind: "deferred" as const,
         actors: BACKOFFICE_SYSTEM_ACTORS,
+        scopeRestriction: null,
         scope: { kind: "org" as const, orgId },
       };
       const fs = createScopedTestFileSystem(runtime, systemExecution);
@@ -316,10 +320,14 @@ describe("system automation scenarios", () => {
           }),
 
           then.assert("project workspace is available without seeded files", async (ctx) => {
-            const fs = createScopedTestFileSystem(ctx.runtime, {
-              actors: BACKOFFICE_SYSTEM_ACTORS,
-              scope: { kind: "project", orgId: "org-1", projectId: ctx.vars.projectId },
-            });
+            const fs = createScopedTestFileSystem(
+              ctx.runtime,
+              createBackofficeSystemExecution({
+                kind: "project",
+                orgId: "org-1",
+                projectId: ctx.vars.projectId,
+              }),
+            );
             await expect(fs.readdir("/workspace")).resolves.toEqual([]);
             await fs.writeFile("/workspace/notes.txt", "project notes");
             await expect(fs.readFile("/workspace/notes.txt")).resolves.toBe("project notes");
@@ -381,6 +389,7 @@ describe("system automation scenarios", () => {
               id: "auth:organization.created:org-1",
             },
             expected: {
+              scopeRestriction: null,
               scope: { kind: "system" },
               source: "auth",
               eventType: "organization.created",
@@ -578,6 +587,7 @@ describe("system automation scenarios", () => {
             async (ctx) => {
               await ctx.runtime.objects.automations.singleton().commands.ingestEvent({
                 id: "auth:organization.created:org-1",
+                scopeRestriction: null,
                 scope: { kind: "system" },
                 source: "auth",
                 eventType: "organization.created",
@@ -615,6 +625,7 @@ describe("system automation scenarios", () => {
           then.assert("ingest auth update through regular singleton routing", async (ctx) => {
             await ctx.runtime.objects.automations.singleton().commands.ingestEvent({
               id: "auth:organization.updated:org-1",
+              scopeRestriction: null,
               scope: { kind: "system" },
               source: "auth",
               eventType: "organization.updated",

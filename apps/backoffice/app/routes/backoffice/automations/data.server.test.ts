@@ -12,6 +12,8 @@ import { deleteAutomationStoreEntry, lookupAutomationProject } from "./data.serv
 
 const scope = { kind: "org" as const, orgId: "org-1" };
 const execution = {
+  kind: "deferred" as const,
+  scopeRestriction: null,
   scope,
   actors: {
     initiator: {

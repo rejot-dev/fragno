@@ -57,6 +57,7 @@ export const piAgentCreationSchema = z.object({
 export const piAgentConfigSchema = piAgentCreationSchema.extend({
   model: piAgentModelSchema,
   scope: backofficeContextScopeSchema,
+  scopeRestriction: backofficeContextScopeSchema.nullable(),
   sessionId: z.string().min(1),
   actors: automationActorsSchema,
 });
