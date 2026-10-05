@@ -35,6 +35,7 @@ import type {
   StarterAutomationRoutesSeedResult,
 } from "@/fragno/automation";
 import type { AutomationActor } from "@/fragno/automation/actors";
+import type { AutomationRouteAuthorityLookup } from "@/fragno/automation/authority";
 import type {
   AutomationEventSource,
   AutomationEventSourceInput,
@@ -308,6 +309,8 @@ export type AutomationsObject = {
     event: AutomationEvent,
     context?: BackofficeRpcContext,
   ): Promise<AutomationIngestResult>;
+  /** Trusted authority lookup; it must not require the permission it is being used to resolve. */
+  getRouteForAuthority(input: { id: string }): ReturnType<AutomationRouteAuthorityLookup>;
   seedStarterAutomationRoutes(): Promise<StarterAutomationRoutesSeedResult>;
   requestStaticMarketplacePublications(input?: {
     force?: boolean;

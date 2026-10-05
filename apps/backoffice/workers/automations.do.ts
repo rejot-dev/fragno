@@ -45,7 +45,10 @@ import type {
   StarterAutomationRoutesSeedResult,
 } from "@/fragno/automation";
 import { BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY } from "@/fragno/automation/actors";
-import { createAutomationRouteAuthorityResolver } from "@/fragno/automation/authority";
+import {
+  createAutomationRouteAuthorityResolver,
+  type AutomationRouteAuthorityLookup,
+} from "@/fragno/automation/authority";
 import type { AutomationSourceReader } from "@/fragno/automation/automation-source";
 import { createAutomationsRuntime, type AutomationsRuntime } from "@/fragno/automation/automations";
 import type {
@@ -242,12 +245,7 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
         fallbackResolver: runtime.authorityResolver,
         lookupRoute: async ({ scope, routeId }) => {
           assertAutomationObjectScope(this.#requireScope(), scope);
-          const { runtime: automationRuntime } = this.#host.requireConfigured(
-            "Automations runtime is not ready for automation authority resolution.",
-          );
-          return await automationRuntime.automationFragment.callServices(() =>
-            automationRuntime.automationFragment.services.getRoute({ id: routeId }),
-          );
+          return await this.getRouteForAuthority({ id: routeId });
         },
       }),
     };
@@ -385,6 +383,17 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
       resource,
       execute: async () => await execute(runtime),
     });
+  }
+
+  /** Reads current route authority for trusted runtimes without recursively authorizing the lookup. */
+  async getRouteForAuthority(input: { id: string }): ReturnType<AutomationRouteAuthorityLookup> {
+    const scope = this.#requireScope();
+    await this.#ensureConfigured({ scope });
+    const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
+    const route = await runtime.automationFragment.callServices(() =>
+      runtime.automationFragment.services.getRoute(input),
+    );
+    return route ? { enabled: route.enabled, action: route.action } : null;
   }
 
   async seedStarterAutomationRoutes(): Promise<StarterAutomationRoutesSeedResult> {
@@ -1094,6 +1103,10 @@ export class Automations extends DurableObject<CloudflareEnv> implements Automat
 
   async ingestEvent(event: AutomationEvent, context?: BackofficeRpcContext) {
     return await this.#object.ingestEvent(event, context);
+  }
+
+  async getRouteForAuthority(input: { id: string }) {
+    return await this.#object.getRouteForAuthority(input);
   }
 
   async seedStarterAutomationRoutes() {

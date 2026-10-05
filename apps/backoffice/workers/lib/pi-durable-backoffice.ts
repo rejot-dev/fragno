@@ -13,6 +13,7 @@ import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
+import { createAutomationRouteAuthorityResolver } from "@/fragno/automation/authority";
 import type { PiAgentConfig } from "@/fragno/pi-manager/pi-agent-contract";
 import { createPiManagerRuntime } from "@/fragno/pi-manager/pi-manager-runtime";
 import { buildBackofficePiSystemPrompt } from "@/fragno/pi/pi-agent-environment";
@@ -33,7 +34,18 @@ export async function createBackofficePiDurableHarnessOptions(input: {
   options: HarnessOptions;
   tasks: readonly AnyTask[];
 }): Promise<HarnessOptions> {
-  const { config, runtime, options, tasks } = input;
+  const { config, options, tasks } = input;
+  // Persisted route actors carry identity, not grants; every model and tool call needs live authority.
+  const runtime: BackofficeRuntimeServices = {
+    ...input.runtime,
+    authorityResolver: createAutomationRouteAuthorityResolver({
+      fallbackResolver: input.runtime.authorityResolver,
+      lookupRoute: async ({ scope, routeId }) =>
+        await input.runtime.objects.automations
+          .for(scope)
+          .commands.getRouteForAuthority({ id: routeId }),
+    }),
+  };
   const kernel = new BackofficeKernel(runtime);
   const execution: BackofficeExecutionContext = { scope: config.scope, actors: config.actors };
   const codemode = runtime.codemodeEnv

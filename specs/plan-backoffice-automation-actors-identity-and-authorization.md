@@ -1190,15 +1190,19 @@ delegation.
 - [x] Remove category-based protection; ordinary routing and default-agent configuration values
       carry no authority and need no category-based security semantics.
 
-`PiObject.fetchWithContext()` is the thin trusted transport that installs execution as Pi fragment
-request context. Public routes verify the JWT before calling this transport. Pi fragment middleware
-uses `kernel.assertAuthorized()` to resolve `pi.read` or `pi.modify`. The kernel selects the token's
-role and organization snapshot without a second Auth lookup when verified request authority is
-present; internal executions without token authority use current-state resolution. Session creation
-persists trusted `AutomationActors` in workflow metadata. Agent and tool execution use the session's
-persisted principal. Raw `fetch()` reaches the same middleware without request context and is
-rejected for protected Pi routes. Automation routing KV and default-agent KV remain ordinary,
-non-authoritative data; trusted Pi session storage owns the execution actor record.
+The current Pi boundary separates the scoped session directory in
+[`workers/pi-manager.do.ts`](../apps/backoffice/workers/pi-manager.do.ts) from asynchronous agent
+execution in [`workers/pi.do.ts`](../apps/backoffice/workers/pi.do.ts). Trusted callers use the
+object handle's `http.fetchAuthorized()` transport; PiManager verifies its signed internal request
+context before installing execution as Pi fragment request context. Public routes verify the JWT
+before using that transport. Pi fragment middleware uses `kernel.assertAuthorized()` to resolve
+`pi.read` or `pi.modify`. The kernel selects the token's role and organization snapshot without a
+second Auth lookup when verified request authority is present; internal executions without token
+authority use current-state resolution. The directory persists trusted `AutomationActors` with the
+session and provisions its durable agent with that configuration. Agent and tool execution use the
+persisted session actors. Unsigned requests cannot supply trusted execution context. Automation
+routing KV and default-agent KV remain ordinary, non-authoritative data; trusted Pi session storage
+owns the execution actor record.
 
 Slice 7 must establish the final effective automation principal used when an automation creates a
 session. Slice 8 completes session-determined tool execution and production/fake boundary parity.
@@ -1281,8 +1285,12 @@ session, but does not become part of the session provenance and cannot replace o
       immutable session actor object before any asynchronous execution begins.
 - [x] Build Bash, codemode, filesystem, and runtime tools exclusively from the persisted session
       actors rather than request context, Pi object service context, or mutable last-caller state.
-- [ ] Resolve current persisted-principal and delegated-agent grants for every sensitive tool
-      action.
+- [x] Resolve current persisted user-principal permissions before every model request and sensitive
+      tool action rather than using a stored permission snapshot.
+- [ ] Resolve persisted automation-route principals and delegates from current owning-scope route
+      state before every model request and sensitive tool action, including after restart.
+- [ ] Resolve Pi assistant-specific capability restrictions independently of user-principal and
+      automation-route authority.
 - [ ] Make production and fake Pi objects implement the same trusted session creation and execution
       behavior.
 
@@ -1300,6 +1308,47 @@ session, but does not become part of the session provenance and cannot replace o
 - [ ] Execute a downstream tool in both production-style and fake Pi adapters and compare the
       complete session actor object.
 - [ ] Prove the fake does not parse an execution header or replace persisted session actors.
+- [ ] Prove linked-user route → Pi session → protected tool execution uses live route grants; after
+      restricting, disabling, or deleting the route, an accepted human prompt cannot bypass the
+      persisted delegate and no further model-provider call occurs.
+- [ ] Prove route → Pi → inline workflow → child Pi preserves the original route delegate and
+      reevaluates its current grants after restart or revocation.
+- [ ] Exercise the Cloudflare adapter for the trusted `getRouteForAuthority()` RPC, including owning
+      scope selection, missing route state, and unavailable authority resolution.
+
+#### Route-authority wiring and regression status
+
+Persisting a route actor establishes identity, not grants. Durable Pi must install
+`createAutomationRouteAuthorityResolver()` over the base user/service resolver when rebuilding its
+harness. It extracts the route ID from `automation-route:<routeId>` and calls the owning scope's
+Automations object through `getRouteForAuthority({ id: routeId })`. This trusted internal RPC reads
+current `{ enabled, action }` state or returns `null`; the resolver interprets that state and the
+kernel still requires the principal and every delegate to grant the operation. The lookup supplies
+the authority needed for authorization, so it cannot itself require that permission. It is not a
+public HTTP endpoint. Actors without a stable route identity use the base resolver.
+
+The route-aware runtime supplies both model and tool authorization. Model requests must be guarded
+at the provider boundary: prompt sections and extension hooks can isolate failures and cannot serve
+as the fail-closed generation check. Session configuration stores actors, never cached route grants.
+
+Inline and saved workflows execute inside Automations, whose runtime already resolves current route
+authority. They inherit their parent's actors and need no route ID of their own. A route descendant
+retains the original route actor; a workflow with only a user/service principal needs no route
+lookup. Child Pi sessions must resolve their inherited actors again before generation and protected
+tool execution.
+
+**Local implementation status as of October 5, 2026:** the durable Pi route-authority fix is
+implemented. The linked-user scenarios in
+[`workers/pi.do.backoffice.scenario.test.ts`](../apps/backoffice/workers/pi.do.backoffice.scenario.test.ts)
+reproduced the production `PI_AGENT_MODEL_REQUEST_FAILED` capability denial before the fix. They now
+prove route → durable Pi → protected store mutation, then restart Automations and restrict, disable,
+or delete the route. An accepted human prompt retains the session delegate and is denied without
+another provider call. These scenarios use the real directory, durable Pi implementation, and SQLite
+storage with a scripted model provider, not a fake Pi object. The related 60-test suite, typecheck,
+focused lint, formatting, and diff checks passed locally. Nested inline-workflow/child-Pi and
+Cloudflare RPC adapter coverage remain pending. Keep the route-authority checklist items and Slice 8
+review gate open until implementation and required boundary coverage land together;
+assistant-specific grants and production/fake parity remain separate work.
 
 **Review gate:** do not merge Pi authority or provenance based only on scenario-fake behavior, and
 do not let either a command caller or the Pi object service identity replace the persisted session
@@ -1544,8 +1593,18 @@ hard to identify.
 - [`apps/backoffice/app/fragno/automation/definition.ts`](../apps/backoffice/app/fragno/automation/definition.ts)
 - [`apps/backoffice/app/fragno/automation/event-routes.ts`](../apps/backoffice/app/fragno/automation/event-routes.ts)
 - [`apps/backoffice/app/fragno/automation/content/starter-routing.ts`](../apps/backoffice/app/fragno/automation/content/starter-routing.ts)
-- [`apps/backoffice/app/fragno/automation/engine/automation-codemode-workflow.ts`](../apps/backoffice/app/fragno/automation/engine/automation-codemode-workflow.ts)
+- [`apps/backoffice/app/fragno/automation/authority.ts`](../apps/backoffice/app/fragno/automation/authority.ts)
+- [`apps/backoffice/app/fragno/automation/engine/codemode-workflow.ts`](../apps/backoffice/app/fragno/automation/engine/codemode-workflow.ts)
 - [`apps/backoffice/app/fragno/runtime-tools/families/event-runtime.ts`](../apps/backoffice/app/fragno/runtime-tools/families/event-runtime.ts)
+
+### Pi session and durable agent authority
+
+- [`apps/backoffice/workers/pi-manager.do.ts`](../apps/backoffice/workers/pi-manager.do.ts)
+- [`apps/backoffice/app/fragno/pi-manager/pi-manager-fragment.ts`](../apps/backoffice/app/fragno/pi-manager/pi-manager-fragment.ts)
+- [`apps/backoffice/app/fragno/pi-manager/pi-agent-contract.ts`](../apps/backoffice/app/fragno/pi-manager/pi-agent-contract.ts)
+- [`apps/backoffice/workers/pi.do.ts`](../apps/backoffice/workers/pi.do.ts)
+- [`apps/backoffice/workers/lib/pi-durable-backoffice.ts`](../apps/backoffice/workers/lib/pi-durable-backoffice.ts)
+- [`apps/backoffice/workers/lib/pi-durable-authorized-models.ts`](../apps/backoffice/workers/lib/pi-durable-authorized-models.ts)
 
 ### Store and identity-linking flow
 
@@ -1566,6 +1625,7 @@ hard to identify.
 ### Scenario testing
 
 - [`apps/backoffice/app/fragno/automation/scenario.ts`](../apps/backoffice/app/fragno/automation/scenario.ts)
+- [`apps/backoffice/workers/pi.do.backoffice.scenario.test.ts`](../apps/backoffice/workers/pi.do.backoffice.scenario.test.ts)
 - [`apps/backoffice/app/fragno/automation/starter-otp-linking.test.ts`](../apps/backoffice/app/fragno/automation/starter-otp-linking.test.ts)
 - [`apps/backoffice/app/fragno/automation/scenario-starter-router.test.ts`](../apps/backoffice/app/fragno/automation/scenario-starter-router.test.ts)
 - [`apps/backoffice/app/files/content/automations.test.ts`](../apps/backoffice/app/files/content/automations.test.ts)

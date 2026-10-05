@@ -41,6 +41,8 @@ import {
 } from "@/backoffice-runtime/context";
 import type { InMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
 import type { LocalObjectFactoryOverrides } from "@/backoffice-runtime/local-object-factory";
+import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
+import { createRouteBackedAutomationRouterRuntime } from "@/fragno/automation/routing-route-runtime";
 import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
 import type { PiAgentConfig } from "@/fragno/pi-manager/pi-agent-contract";
 
@@ -246,6 +248,182 @@ test("durable Pi discovers scoped skills and executes read, search, codemode and
     }),
   );
 });
+
+for (const revocation of ["restricted", "disabled", "deleted"] as const) {
+  test(`durable Pi resolves linked-user route grants and denies model calls after the route is ${revocation}`, async () => {
+    const scope = { kind: "org", orgId: "org-1" } as const;
+    const execution = createBackofficeUserExecution({ scope, userId: "member" });
+    const workflowPath = "/workspace/automations/delegated-pi.workflow.js";
+    let config: PiAgentConfig;
+    let modelCalls = 0;
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        name: `durable Pi live route authority after ${revocation}`,
+        options: { drain: false },
+        objectFactories: scriptedAgents([
+          (context) => {
+            modelCalls += 1;
+            expect(JSON.stringify(context.messages)).toContain("# Backoffice System Guidance");
+            return fauxAssistantMessage(
+              [
+                fauxToolCall("execCodeMode", {
+                  code: `async () => await store.set({ key: "linked-pi/result", value: "written" })`,
+                }),
+              ],
+              { stopReason: "toolUse" },
+            );
+          },
+          (context) => {
+            modelCalls += 1;
+            const result = context.messages.find((message) => message.role === "toolResult");
+            assert(result?.role === "toolResult");
+            expect(result.isError, JSON.stringify(result)).toBe(false);
+            return fauxAssistantMessage("The linked-user agent answered.");
+          },
+        ]),
+        piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
+        setup: ({ given }) => [
+          given.auth.user({ id: "owner", role: "admin" }),
+          given.auth.user({ id: "member", role: "user" }),
+          given.auth.organization({ id: "org-1", ownerUserId: "owner", ownerRoles: ["owner"] }),
+          given.auth.member({ orgId: "org-1", userId: "member", roles: ["member"] }),
+          given.identity.binding({ orgId: "org-1", externalId: "1001", userId: "member" }),
+          given.direct.file({
+            orgId: "org-1",
+            path: workflowPath,
+            content: `defineWorkflow({ name: "delegated-pi" }, async (event, step) => {
+              const session = await step.do("create linked-user agent", async () => await pi.createSession({
+                requestId: "linked-user-agent",
+                name: "Linked-user agent",
+                model: { provider: "faux", modelId: "faux-1" },
+              }));
+              return await step.do("run linked-user agent", async () => await pi.runPrompt({
+                sessionId: session.sessionId,
+                requestId: "route-prompt",
+                content: "Answer on behalf of the linked user.",
+              }));
+            });`,
+          }),
+          given.router.route({
+            orgId: "org-1",
+            id: "telegram-pi-linking",
+            name: "Linked-user Pi",
+            enabled: true,
+            priority: 100,
+            trigger: {
+              kind: "event",
+              source: "telegram",
+              eventType: "message.received",
+              matcher: { path: "$.payload.chatId", op: "eq", value: "1001" },
+            },
+            action: {
+              kind: "start_workflow",
+              authority: { kind: "linked-user", grants: "inherit" },
+              workflowScriptPath: workflowPath,
+              instanceIdTemplate: "linked-pi-${event.id}",
+            },
+          }),
+        ],
+        steps: ({ when, then, runner }) => [
+          when.automation.ingestEvent({
+            id: "linked-pi-message",
+            scope,
+            source: "telegram",
+            eventType: "message.received",
+            occurredAt: "2026-10-04T16:23:00.000Z",
+            payload: { chatId: "1001", messageId: "1", fromUserId: "1001", text: "Hello" },
+            actors: {
+              initiator: {
+                scope: "external",
+                source: "telegram",
+                type: "chat",
+                id: "1001",
+                role: "initiator",
+              },
+              principal: null,
+              delegation: [],
+            },
+            subject: { orgId: "org-1" },
+          }),
+          then.assert(
+            "the durable agent honors its creator's route delegate",
+            async ({ runtime }) => {
+              await runtime.drain();
+              const directory = await (
+                await request(runtime, execution, "/sessions", null)
+              ).json<{ sessions: PiAgentConfig[] }>();
+              expect(directory.sessions).toHaveLength(1);
+              const session = directory.sessions[0];
+              assert(session);
+              config = session;
+              expect(config.actors.principal).toEqual(execution.actors.principal);
+              expect(config.actors.delegation).toEqual([
+                {
+                  scope: "internal",
+                  type: "automation",
+                  id: "automation-route:telegram-pi-linking",
+                  role: "delegate",
+                },
+              ]);
+              const transcript = await view(runtime, execution, config);
+              expect(JSON.stringify(transcript.entries)).toContain(
+                "The linked-user agent answered.",
+              );
+              expect(modelCalls).toBe(2);
+            },
+          ),
+          then.store.entry({ orgId: "org-1", key: "linked-pi/result", value: "written" }),
+          runner.restartObject({ binding: "AUTOMATIONS", scope }),
+          then.assert("revoke the owning route's current authority", async ({ runtime }) => {
+            const router = createRouteBackedAutomationRouterRuntime({
+              object: runtime.objects.automations.for(scope),
+              execution: createBackofficeUserExecution({ scope, userId: "owner" }),
+            });
+            if (revocation === "deleted") {
+              assert(await router.deleteRoute({ id: "telegram-pi-linking" }));
+            } else {
+              await router.updateRoute({
+                id: "telegram-pi-linking",
+                ...(revocation === "disabled"
+                  ? { enabled: false }
+                  : {
+                      action: {
+                        kind: "start_workflow",
+                        authority: {
+                          kind: "linked-user",
+                          grants: [BACKOFFICE_PERMISSION.pi.read],
+                        },
+                        workflowScriptPath: workflowPath,
+                        instanceIdTemplate: "linked-pi-${event.id}",
+                      },
+                    }),
+              });
+            }
+          }),
+          then.assert(
+            "a human prompt cannot bypass the persisted route delegate",
+            async ({ runtime }) => {
+              await prompt(runtime, execution, config);
+              await runtime.drain();
+              const response = await request(
+                runtime,
+                execution,
+                `/sessions/${config.sessionId}/submissions/backoffice-prompt`,
+                null,
+              );
+              expect(await response.json()).toMatchObject({ status: "unanswered" });
+              const transcript = await view(runtime, execution, config);
+              expect(JSON.stringify(transcript.entries)).toContain(
+                "PI_AGENT_MODEL_REQUEST_FAILED: A delegated actor does not have the required capability grant.",
+              );
+              expect(modelCalls).toBe(2);
+            },
+          ),
+        ],
+      }),
+    );
+  });
+}
 
 test("durable Pi delivers committed model usage to its persisted billing owner", async () => {
   const execution = createBackofficeServiceExecution({
