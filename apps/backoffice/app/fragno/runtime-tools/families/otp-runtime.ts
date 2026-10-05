@@ -42,7 +42,7 @@ export const createOtpRuntime = ({
     }
 
     const initiator = execution.actors.initiator;
-    if (initiator.scope !== "external" || !initiator.source) {
+    if (execution.kind !== "deferred" || initiator.scope !== "external" || !initiator.source) {
       throw new Error(
         "otp.identity.create-claim requires a trusted external automation initiator.",
       );
@@ -64,11 +64,7 @@ export const createOtpRuntime = ({
         externalId: actor.id,
       },
       execute: async () =>
-        await object.issueIdentityClaim({
-          scope: { kind: "org", orgId: scope.organization.id },
-          actor,
-          expiresInMinutes: ttlMinutes,
-        }),
+        await object.issueIdentityClaim({ expiresInMinutes: ttlMinutes ?? null }, execution),
     });
 
     return {

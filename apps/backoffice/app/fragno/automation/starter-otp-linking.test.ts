@@ -151,7 +151,7 @@ describe("Telegram Channel OTP linking automation in memory", () => {
             messageId: 501,
             chatId: "1001",
             text: "/start",
-            from: { id: 2_001, firstName: "Ada", username: "ada_lovelace" },
+            from: { id: 1_001, firstName: "Ada", username: "ada_lovelace" },
           }),
 
           then.telegram.sentMessage({
@@ -263,7 +263,7 @@ describe("Telegram Channel OTP linking automation in memory", () => {
             messageId: 501,
             chatId: "1001",
             text: "/start",
-            from: { id: 2_001, firstName: "Ada", username: "ada_lovelace" },
+            from: { id: 1_001, firstName: "Ada", username: "ada_lovelace" },
           }),
           when.telegram.receivesMessage({
             orgId: "org-1",
@@ -271,7 +271,7 @@ describe("Telegram Channel OTP linking automation in memory", () => {
             messageId: 502,
             chatId: "1001",
             text: "/start",
-            from: { id: 2_001, firstName: "Ada", username: "ada_lovelace" },
+            from: { id: 1_001, firstName: "Ada", username: "ada_lovelace" },
           }),
 
           then.assert("assert two claim links were sent", (ctx) => {

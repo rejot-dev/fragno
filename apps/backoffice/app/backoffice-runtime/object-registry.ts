@@ -96,7 +96,12 @@ import type {
 } from "@/fragno/sandbox-manager/contracts";
 import type { SandboxCommandResult, SandboxInstanceStatus } from "@/sandbox/contracts";
 
-import type { BackofficeContextScope, BackofficeExecutionContext } from "./context";
+import type {
+  BackofficeContextScope,
+  BackofficeExecutionContext,
+  BackofficeRequestExecution,
+  BackofficeDeferredExecution,
+} from "./context";
 
 export type BackofficeRpcContext = Pick<FragnoExecutionContext, "propagationContext">;
 
@@ -386,8 +391,18 @@ export type OtpObject = DurableHookCommands & {
   confirmSignUpInvitation(
     input: Parameters<Otp["confirmSignUpInvitation"]>[0],
   ): Promise<AwaitedMethodReturn<Otp, "confirmSignUpInvitation">>;
-  issueIdentityClaim(input: IssueIdentityClaimInput): Promise<IssueIdentityClaimResult>;
-  confirmIdentityClaim(input: unknown): Promise<AwaitedMethodReturn<Otp, "confirmIdentityClaim">>;
+  issueIdentityClaim(
+    input: IssueIdentityClaimInput,
+    execution: BackofficeDeferredExecution,
+  ): Promise<IssueIdentityClaimResult>;
+  getIdentityClaim(input: {
+    externalId: string;
+    code: string;
+  }): Promise<AwaitedMethodReturn<Otp, "getIdentityClaim">>;
+  confirmIdentityClaim(
+    input: { externalId: string; code: string },
+    execution: BackofficeRequestExecution,
+  ): Promise<AwaitedMethodReturn<Otp, "confirmIdentityClaim">>;
 };
 
 export type ResendObject = DurableHookCommands &

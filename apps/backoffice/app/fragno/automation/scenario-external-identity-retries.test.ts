@@ -124,6 +124,7 @@ const whenConfirmedClaimHookRetries = (
 
     await handleIdentityClaimConfirmed(
       ctx.runtime as unknown as BackofficeRuntimeServices,
+      scope,
       payload,
       hookContext,
     );

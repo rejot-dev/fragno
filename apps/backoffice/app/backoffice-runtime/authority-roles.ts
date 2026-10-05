@@ -33,6 +33,7 @@ const USER_AUTHORITY_ROLE_GRANTS = {
     BACKOFFICE_PERMISSION.workflow.read,
   ],
   "organization-member": [
+    BACKOFFICE_PERMISSION.identity.link,
     BACKOFFICE_PERMISSION.api.connectionsRead,
     BACKOFFICE_PERMISSION.capabilities.read,
     BACKOFFICE_PERMISSION.connections.manage,

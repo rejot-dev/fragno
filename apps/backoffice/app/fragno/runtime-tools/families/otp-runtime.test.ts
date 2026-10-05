@@ -72,11 +72,7 @@ describe("createOtpRuntime", () => {
       otpId: "otp-1",
       actor: { scope: "external", source: "telegram", type: "chat", id: "chat-123" },
     });
-    expect(issueIdentityClaim).toHaveBeenCalledWith({
-      scope: { kind: "org", orgId: "org-1" },
-      actor: { scope: "external", source: "telegram", type: "chat", id: "chat-123" },
-      expiresInMinutes: 15,
-    });
+    expect(issueIdentityClaim).toHaveBeenCalledWith({ expiresInMinutes: 15 }, externalExecution);
   });
 
   test("rejects claims without a trusted external initiator", async () => {

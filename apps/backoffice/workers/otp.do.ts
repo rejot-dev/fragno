@@ -3,11 +3,23 @@ import { DurableObject } from "cloudflare:workers";
 import { z } from "zod";
 
 import type { HookContext } from "@fragno-dev/db";
-import type { OtpConfirmedHookPayload } from "@fragno-dev/otp-fragment";
+import { otpSchema, type OtpConfirmedHookPayload } from "@fragno-dev/otp-fragment";
 
-import { createBackofficeServiceExecution } from "@/backoffice-runtime/context";
-import type { OtpObject } from "@/backoffice-runtime/object-registry";
+import {
+  createBackofficeServiceExecution,
+  backofficeContextScopesEqual,
+  type BackofficeRequestExecution,
+  type BackofficeDeferredExecution,
+  type BackofficeContextScope,
+} from "@/backoffice-runtime/context";
+import { BackofficeKernel, BackofficeForbiddenError } from "@/backoffice-runtime/kernel";
+import {
+  requireBackofficeContextScopeFromDurableObjectId,
+  type OtpObject,
+} from "@/backoffice-runtime/object-registry";
+import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
+import { canLinkExternalIdentity } from "@/fragno/automation/external-identities";
 import {
   loadDurableHook,
   loadDurableHookQueue,
@@ -108,15 +120,9 @@ export type ConfirmSignUpInvitationResult =
       reason: "invalid_input" | "invalid" | "expired" | "email_mismatch";
     };
 
+/** Issues an identity claim in the OTP object's owning organization. */
 export type IssueIdentityClaimInput = {
-  scope: { kind: "org"; orgId: string };
-  actor: {
-    scope: "external";
-    source: string;
-    type: string;
-    id: string;
-  };
-  expiresInMinutes?: number;
+  expiresInMinutes: number | null;
 };
 
 export type IssueIdentityClaimResult = {
@@ -130,7 +136,6 @@ export type IssueIdentityClaimResult = {
 export type ConfirmIdentityClaimInput = {
   externalId: string;
   code: string;
-  subjectUserId: string;
 };
 
 export type ConfirmIdentityClaimResult =
@@ -178,29 +183,13 @@ const confirmSignUpInvitationInputSchema = z.object({
   email: z.string().trim().toLowerCase().pipe(z.email()),
 });
 
-const issueIdentityClaimInputSchema = z.object({
-  scope: z.object({
-    kind: z.literal("org"),
-    orgId: z.string().trim().min(1, "An organization scope is required."),
-  }),
-  actor: z.object({
-    scope: z.literal("external"),
-    source: z.string().trim().min(1),
-    type: z.string().trim().min(1),
-    id: z.string().trim().min(1),
-  }),
-  expiresInMinutes: z
-    .number()
-    .refine((value) => Number.isFinite(value), {
-      message: "expiresInMinutes must be finite.",
-    })
-    .optional(),
+const issueIdentityClaimInputSchema = z.strictObject({
+  expiresInMinutes: z.number().int().positive().nullable(),
 });
 
-const confirmIdentityClaimInputSchema = z.object({
+const confirmIdentityClaimInputSchema = z.strictObject({
   externalId: z.string().trim().min(1),
   code: z.string().trim().min(1),
-  subjectUserId: z.string().trim().min(1),
 });
 
 const verifyEmailFromConfirmedOtp = async (
@@ -236,11 +225,21 @@ export const handleEmailVerificationConfirmed = async (
   });
 };
 
-export const handleIdentityClaimConfirmed = async (
+/** Processes identity claim completion only within the OTP object's authoritative owner scope. */
+export async function handleIdentityClaimConfirmed(
   runtime: BackofficeRuntimeServices,
+  ownerScope: BackofficeContextScope,
   payload: OtpConfirmedHookPayload,
   context: HookContext,
-) => {
+) {
+  if (ownerScope.kind !== "org") {
+    console.warn("Ignoring confirmed identity claim OTP outside an organization scope", {
+      otpId: payload.id,
+      ownerScope,
+    });
+    return;
+  }
+
   const claimResult = identityClaimPayloadSchema.safeParse(payload.payload);
   if (!claimResult.success) {
     console.warn("Ignoring confirmed identity claim OTP with invalid payload", {
@@ -264,9 +263,19 @@ export const handleIdentityClaimConfirmed = async (
   }
 
   const claim = claimResult.data;
+  if (claim.orgId !== ownerScope.orgId) {
+    // A persisted claim can predate the public API restriction. Never grant its payload authority
+    // to target a different organization, and do not retry a permanently invalid claim.
+    console.warn("Ignoring confirmed identity claim OTP with mismatched organization", {
+      otpId: payload.id,
+      claimOrgId: claim.orgId,
+      ownerOrgId: ownerScope.orgId,
+    });
+    return;
+  }
+
   const confirmation = confirmationResult.data;
-  const scope = { kind: "org" as const, orgId: claim.orgId };
-  const automations = runtime.objects.automations.for(scope);
+  const automations = runtime.objects.automations.for(ownerScope);
   const propagationContext = context.capturePropagationContext();
 
   const bindingResult = await automations.commands.bindExternalIdentity(
@@ -277,7 +286,7 @@ export const handleIdentityClaimConfirmed = async (
     },
     {
       execution: createBackofficeServiceExecution({
-        scope,
+        scope: ownerScope,
         service: { type: "object", id: "otp" },
       }),
       propagationContext,
@@ -290,7 +299,7 @@ export const handleIdentityClaimConfirmed = async (
 
   await automations.commands.triggerIngestEvent(
     buildIdentityClaimCompletedAutomationEvent({
-      orgId: claim.orgId,
+      orgId: ownerScope.orgId,
       userId: confirmation.subjectUserId,
       otp: payload,
       claim,
@@ -298,10 +307,11 @@ export const handleIdentityClaimConfirmed = async (
     }),
     { propagationContext },
   );
-};
+}
 
 export class InMemoryOtpObject implements OtpObject {
   readonly #runtime: BackofficeRuntimeServices;
+  readonly #ownerScope: BackofficeContextScope;
   readonly #host: FragmentDurableObjectHost<void, OtpFragment>;
   #fragment: OtpFragment | null = null;
 
@@ -316,6 +326,7 @@ export class InMemoryOtpObject implements OtpObject {
     implementation: BackofficeObjectImplementation;
   }) {
     this.#runtime = runtime;
+    this.#ownerScope = requireBackofficeContextScopeFromDurableObjectId(state.id, "OTP");
     this.#host = implementation.createFragmentHost({
       name: "OTP",
       createRuntime: () =>
@@ -344,7 +355,7 @@ export class InMemoryOtpObject implements OtpObject {
         return;
       }
       case IDENTITY_LINK_TYPE: {
-        await handleIdentityClaimConfirmed(this.#runtime, payload, context);
+        await handleIdentityClaimConfirmed(this.#runtime, this.#ownerScope, payload, context);
         return;
       }
       case SIGN_UP_INVITATION_TYPE: {
@@ -358,6 +369,13 @@ export class InMemoryOtpObject implements OtpObject {
       throw new Error("OTP is unavailable.");
     }
     return this.#fragment;
+  }
+
+  #requireIdentityClaimScope(): Extract<BackofficeContextScope, { kind: "org" }> {
+    if (this.#ownerScope.kind !== "org") {
+      throw new Error("Identity claims require an organization-scoped OTP object.");
+    }
+    return this.#ownerScope;
   }
 
   async issueEmailVerification(
@@ -533,22 +551,42 @@ export class InMemoryOtpObject implements OtpObject {
     return { ok: true, invitationId, email: invitation.email };
   }
 
-  async issueIdentityClaim(input: IssueIdentityClaimInput): Promise<IssueIdentityClaimResult> {
+  async issueIdentityClaim(
+    input: IssueIdentityClaimInput,
+    execution: BackofficeDeferredExecution,
+  ): Promise<IssueIdentityClaimResult> {
+    const ownerScope = this.#requireIdentityClaimScope();
+    if (
+      execution.kind !== "deferred" ||
+      !backofficeContextScopesEqual(execution.scope, ownerScope) ||
+      execution.actors.initiator.scope !== "external"
+    ) {
+      throw new BackofficeForbiddenError(
+        "Identity issuance requires trusted external ingress in the owning organization.",
+      );
+    }
+    const initiator = execution.actors.initiator;
+    if (!canLinkExternalIdentity(initiator)) {
+      throw new BackofficeForbiddenError("This external identity cannot be linked to a user.");
+    }
+    const actor = {
+      scope: "external" as const,
+      source: initiator.source,
+      type: initiator.type,
+      id: initiator.id,
+    };
     const parsed = issueIdentityClaimInputSchema.parse(input);
     const fragment = this.#getFragment();
-    const expiresInMinutes =
-      typeof parsed.expiresInMinutes === "number"
-        ? Math.max(1, Math.floor(parsed.expiresInMinutes))
-        : DEFAULT_IDENTITY_LINK_EXPIRY_MINUTES;
+    const expiresInMinutes = parsed.expiresInMinutes ?? DEFAULT_IDENTITY_LINK_EXPIRY_MINUTES;
 
     const issued = await fragment.callServices(() =>
       fragment.services.otp.issueOtp({
-        externalId: parsed.actor.id,
+        externalId: actor.id,
         type: IDENTITY_LINK_TYPE,
         durationMinutes: expiresInMinutes,
         payload: {
-          orgId: parsed.scope.orgId,
-          actor: parsed.actor,
+          orgId: ownerScope.orgId,
+          actor,
         },
       }),
     );
@@ -562,15 +600,62 @@ export class InMemoryOtpObject implements OtpObject {
     };
   }
 
+  async getIdentityClaim(input: ConfirmIdentityClaimInput) {
+    const ownerScope = this.#requireIdentityClaimScope();
+    const parsed = confirmIdentityClaimInputSchema.safeParse(input);
+    if (!parsed.success) {
+      return null;
+    }
+    const { externalId, code } = parsed.data;
+    const claim = await this.#getFragment().inContext(async function () {
+      return await this.handlerTx()
+        .retrieve((uow) =>
+          uow
+            .forSchema(otpSchema)
+            .findFirst("otp", (b) =>
+              b.whereIndex("idx_otp_externalId_type_status_code_expiresAt", (eb) =>
+                eb.and(
+                  eb("externalId", "=", externalId),
+                  eb("type", "=", IDENTITY_LINK_TYPE),
+                  eb("status", "=", "pending"),
+                  eb("code", "=", code.trim().toUpperCase()),
+                  eb("expiresAt", ">", eb.now()),
+                ),
+              ),
+            ),
+        )
+        .transform(({ retrieveResult: [otp] }) =>
+          otp ? identityClaimPayloadSchema.parse(otp.payload) : null,
+        )
+        .execute();
+    });
+    return claim?.orgId === ownerScope.orgId ? { actor: claim.actor } : null;
+  }
+
   async confirmIdentityClaim(
     input: ConfirmIdentityClaimInput,
+    execution: BackofficeRequestExecution,
   ): Promise<ConfirmIdentityClaimResult> {
+    const ownerScope = this.#requireIdentityClaimScope();
+    if (
+      execution.kind !== "request" ||
+      !backofficeContextScopesEqual(execution.scope, ownerScope)
+    ) {
+      throw new BackofficeForbiddenError(
+        "Identity confirmation requires authenticated execution in the owning organization.",
+      );
+    }
+    await new BackofficeKernel(this.#runtime).assertAuthorized({
+      execution,
+      operation: BACKOFFICE_PERMISSION.identity.link,
+    });
     const parsed = confirmIdentityClaimInputSchema.safeParse(input);
     if (!parsed.success) {
       return { ok: false, error: "INVALID_INPUT" };
     }
 
-    const { externalId, code, subjectUserId } = parsed.data;
+    const { externalId, code } = parsed.data;
+    const subjectUserId = execution.actors.principal.id;
     const fragment = this.#getFragment();
     const confirmation = await fragment.callServices(() =>
       fragment.services.otp.confirmOtp(externalId, code, IDENTITY_LINK_TYPE, {
@@ -637,14 +722,22 @@ export class Otp extends DurableObject<CloudflareEnv> implements OtpObject {
     return await this.#object.confirmSignUpInvitation(input);
   }
 
-  async issueIdentityClaim(input: IssueIdentityClaimInput): Promise<IssueIdentityClaimResult> {
-    return await this.#object.issueIdentityClaim(input);
+  async issueIdentityClaim(
+    input: IssueIdentityClaimInput,
+    execution: BackofficeDeferredExecution,
+  ): Promise<IssueIdentityClaimResult> {
+    return await this.#object.issueIdentityClaim(input, execution);
+  }
+
+  async getIdentityClaim(input: ConfirmIdentityClaimInput) {
+    return await this.#object.getIdentityClaim(input);
   }
 
   async confirmIdentityClaim(
     input: ConfirmIdentityClaimInput,
+    execution: BackofficeRequestExecution,
   ): Promise<ConfirmIdentityClaimResult> {
-    return await this.#object.confirmIdentityClaim(input);
+    return await this.#object.confirmIdentityClaim(input, execution);
   }
 
   async getDurableHookQueue(options?: DurableHookQueueOptions) {

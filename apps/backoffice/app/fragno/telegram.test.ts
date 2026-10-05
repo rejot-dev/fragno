@@ -37,7 +37,7 @@ describe("buildTelegramAutomationEvent", () => {
         initiator: {
           scope: "external",
           source: "telegram",
-          type: "chat",
+          type: "shared-chat",
           id: "chat-1",
           role: "initiator",
         },
