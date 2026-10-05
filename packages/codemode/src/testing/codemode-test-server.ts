@@ -115,28 +115,41 @@ export default class JavaScriptTestCompiler extends WorkerEntrypoint {
     port: 0,
     workers: [
       {
-        name: "executor",
-        modules: true,
-        script: worker.outputFiles[0].text,
-        compatibilityDate: "2026-08-01",
-        compatibilityFlags: ["nodejs_compat"],
-        bindings: { API_KEY: apiKey },
-        workerLoaders: { LOADER: {} },
-        serviceBindings: { COMPILER: "compiler" },
+        config: {
+          name: "executor",
+          compatibilityDate: "2026-08-01",
+          compatibilityFlags: ["nodejs_compat"],
+          manifest: {
+            mainModule: "executor.js",
+            modules: { "executor.js": { type: "esm", contents: worker.outputFiles[0].text } },
+          },
+          env: {
+            API_KEY: { type: "text", value: apiKey },
+            LOADER: { type: "worker-loader" },
+            COMPILER: { type: "worker", worker: "compiler" },
+          },
+        },
       },
       {
-        name: "compiler",
-        modules: true,
-        script: compiler.outputFiles[0].text,
-        compatibilityDate: "2026-08-01",
-        compatibilityFlags: ["nodejs_compat"],
-        serviceBindings: {
-          BUILD: async (request) => {
-            const input = await readCompileWorkerServiceRequest(request as unknown as Request);
-            const response = createCompileWorkerServiceResponse(await compile(input));
-            return new MiniflareResponse(await response.arrayBuffer(), {
-              headers: { "content-type": response.headers.get("content-type")! },
-            });
+        config: {
+          name: "compiler",
+          compatibilityDate: "2026-08-01",
+          compatibilityFlags: ["nodejs_compat"],
+          manifest: {
+            mainModule: "compiler.js",
+            modules: { "compiler.js": { type: "esm", contents: compiler.outputFiles[0].text } },
+          },
+          env: {
+            BUILD: {
+              type: "fetcher",
+              async handler(request) {
+                const input = await readCompileWorkerServiceRequest(request as unknown as Request);
+                const response = createCompileWorkerServiceResponse(await compile(input));
+                return new MiniflareResponse(await response.arrayBuffer(), {
+                  headers: { "content-type": response.headers.get("content-type")! },
+                });
+              },
+            },
           },
         },
       },

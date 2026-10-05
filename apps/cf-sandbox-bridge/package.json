@@ -36,16 +36,16 @@
     "hono": "^4.13.0"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20260804.1",
+    "@cloudflare/workers-types": "catalog:",
     "@fragno-private/typescript-config": "workspace:*",
     "@types/node": "^24.10.9",
     "esbuild": "^0.28.1",
-    "miniflare": "^5.20260730.0-alpha",
+    "miniflare": "catalog:",
     "tsx": "^4.21.0",
     "typescript": "catalog:",
     "typescript-runtime": "npm:typescript@6.0.3",
     "vitest": "catalog:",
-    "wrangler": "^4.147.0"
+    "wrangler": "catalog:"
   },
   "engines": {
     "node": "^22.22.0 || >=24.11.0"

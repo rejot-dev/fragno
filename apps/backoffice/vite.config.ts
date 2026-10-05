@@ -103,7 +103,16 @@ export default defineConfig(({ command }) => {
     plugins: [
       cloudflare({
         configPath: "./wrangler.web.jsonc",
-        auxiliaryWorkers: [{ configPath: "./wrangler.jsonc" }],
+        auxiliaryWorkers: [
+          { configPath: "./wrangler.jsonc" },
+          {
+            configPath: "../cf-sandbox-bridge/wrangler.jsonc",
+            // Compilation does not need the bridge's Sandbox containers.
+            config(workerConfig) {
+              workerConfig.dev.enable_containers = false;
+            },
+          },
+        ],
         viteEnvironment: {
           name: "ssr",
         },

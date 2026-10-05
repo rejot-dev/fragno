@@ -105,9 +105,9 @@
   },
   "devDependencies": {
     "@cloudflare/shell": "^0.4.3",
-    "@cloudflare/vite-plugin": "^1.50.0",
-    "@cloudflare/vitest-pool-workers": "^0.20.1",
-    "@cloudflare/workers-types": "^5.20260804.1",
+    "@cloudflare/vite-plugin": "catalog:",
+    "@cloudflare/vitest-plugin": "catalog:",
+    "@cloudflare/workers-types": "catalog:",
     "@fragno-apps/cf-sandbox-bridge": "workspace:*",
     "@fragno-dev/test": "workspace:*",
     "@fragno-private/vitest-config": "workspace:*",
@@ -129,6 +129,6 @@
     "vite": "catalog:",
     "vite-plugin-devtools-json": "^1.0.0",
     "vitest": "catalog:",
-    "wrangler": "^4.118.0"
+    "wrangler": "catalog:"
   }
 }
