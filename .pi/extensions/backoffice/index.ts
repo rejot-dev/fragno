@@ -20,6 +20,7 @@ import {
 import type { JsonValue } from "@earendil-works/pi-ai";
 import {
   createBashToolDefinition,
+  createCodingTools,
   createEditToolDefinition,
   createFindToolDefinition,
   createGrepToolDefinition,
@@ -30,6 +31,7 @@ import {
   DEFAULT_MAX_LINES,
   formatSize,
   getMarkdownTheme,
+  SettingsManager,
   truncateHead,
   withFileMutationQueue,
 } from "@earendil-works/pi-coding-agent";
@@ -37,6 +39,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { Container, Markdown, Text } from "@earendil-works/pi-tui";
 
 const BACKOFFICE_SESSION_ENTRY = "backoffice-session";
+const BACKOFFICE_NORMAL_TOOLS_ENTRY = "backoffice-normal-tools";
 const BACKOFFICE_TOOL_NAMES = [
   "read",
   "search",
@@ -52,6 +55,7 @@ const BACKOFFICE_TOOL_NAMES = [
   "localLs",
 ];
 const CLOUD_BACKOFFICE_URL = "https://backoffice.rejot.dev";
+const BACKOFFICE_EXIT_OPTION = "Exit Backoffice (restore normal Pi)";
 const BACKOFFICE_TOOL_NAMESPACE = {
   name: "backoffice",
   description: "Remote execution and file operations in the active Backoffice scope",
@@ -76,16 +80,39 @@ function isBackofficeSession(value: unknown): value is BackofficeSession {
 }
 
 function findBackofficeSession(ctx: ExtensionContext): BackofficeSession | null {
-  for (const entry of ctx.sessionManager.getEntries().toReversed()) {
+  for (const entry of ctx.sessionManager.getBranch().toReversed()) {
+    if (entry.type !== "custom" || entry.customType !== BACKOFFICE_SESSION_ENTRY) {
+      continue;
+    }
+    if (entry.data === null) {
+      return null;
+    }
+    if (isBackofficeSession(entry.data)) {
+      return entry.data;
+    }
+  }
+  return null;
+}
+
+function findBackofficeNormalTools(ctx: ExtensionContext): string[] | null {
+  for (const entry of ctx.sessionManager.getBranch().toReversed()) {
     if (
       entry.type === "custom" &&
-      entry.customType === BACKOFFICE_SESSION_ENTRY &&
-      isBackofficeSession(entry.data)
+      entry.customType === BACKOFFICE_NORMAL_TOOLS_ENTRY &&
+      Array.isArray(entry.data) &&
+      entry.data.every((name) => typeof name === "string")
     ) {
       return entry.data;
     }
   }
   return null;
+}
+
+function configuredNormalPiTools(pi: ExtensionAPI, ctx: ExtensionContext): string[] {
+  return (
+    SettingsManager.inMemory(pi.getSettings()).getDefaultTools() ??
+    createCodingTools(ctx.cwd).map((tool) => tool.name)
+  );
 }
 
 async function discoverBackofficeRemotes(): Promise<Array<{ label: string; value: string }>> {
@@ -212,13 +239,13 @@ async function executeBackofficeCode(
 
 /** Registers `/backoffice` and tools for Backoffice state, local files, search, and codemode. */
 export default function registerBackofficeExtension(pi: ExtensionAPI) {
-  let toolsRegistered = false;
+  let backofficeToolsActive = false;
 
   function registerBackofficeTools(cwd: string) {
-    if (toolsRegistered) {
+    if (backofficeToolsActive) {
       return;
     }
-    toolsRegistered = true;
+    backofficeToolsActive = true;
 
     const localRead = createReadToolDefinition(cwd);
     pi.registerTool({
@@ -517,14 +544,43 @@ export default function registerBackofficeExtension(pi: ExtensionAPI) {
     });
   }
 
-  pi.on("session_start", (_event, ctx) => {
+  function synchronizeBackofficeMode(ctx: ExtensionContext) {
     const session = findBackofficeSession(ctx);
     if (!session) {
+      const normalTools =
+        findBackofficeNormalTools(ctx) ??
+        (backofficeToolsActive ? configuredNormalPiTools(pi, ctx) : null);
+      if (backofficeToolsActive) {
+        const settings = SettingsManager.inMemory(pi.getSettings());
+        pi.registerTool(
+          createReadToolDefinition(ctx.cwd, { autoResizeImages: settings.getImageAutoResize() }),
+        );
+        backofficeToolsActive = false;
+      }
+      // Saved branch state survives reloads, unlike backofficeToolsActive.
+      if (normalTools !== null) {
+        pi.setActiveTools(normalTools);
+      }
+      ctx.ui.setStatus("backoffice", undefined);
       return;
     }
     registerBackofficeTools(ctx.cwd);
     pi.setActiveTools(BACKOFFICE_TOOL_NAMES);
     ctx.ui.setStatus("backoffice", `backoffice:${new URL(session.baseUrl).host}`);
+  }
+
+  pi.on("session_start", (event, ctx) => {
+    if (findBackofficeSession(ctx) && findBackofficeNormalTools(ctx) === null) {
+      pi.appendEntry(
+        BACKOFFICE_NORMAL_TOOLS_ENTRY,
+        event.reason === "reload" ? configuredNormalPiTools(pi, ctx) : pi.getActiveTools(),
+      );
+    }
+    synchronizeBackofficeMode(ctx);
+  });
+
+  pi.on("session_tree", (_event, ctx) => {
+    synchronizeBackofficeMode(ctx);
   });
 
   pi.on("before_agent_start", (_event, ctx) => {
@@ -533,18 +589,29 @@ export default function registerBackofficeExtension(pi: ExtensionAPI) {
   });
 
   pi.registerCommand("backoffice", {
-    description: "Start a Backoffice-powered session",
+    description: "Start, switch, or exit a Backoffice-powered session",
     handler: async (_args, ctx) => {
       if (!ctx.hasUI) {
         ctx.ui.notify("/backoffice requires an interactive UI.", "error");
         return;
       }
       try {
+        const backofficeEnabled = findBackofficeSession(ctx) !== null;
         const remotes = await discoverBackofficeRemotes();
         const remoteLabel = await ctx.ui.select(
-          "Choose a Backoffice remote",
-          remotes.map((remote) => remote.label),
+          backofficeEnabled ? "Backoffice session" : "Choose a Backoffice remote",
+          [
+            ...(backofficeEnabled ? [BACKOFFICE_EXIT_OPTION] : []),
+            ...remotes.map((remote) => remote.label),
+          ],
         );
+        if (backofficeEnabled && remoteLabel === BACKOFFICE_EXIT_OPTION) {
+          // The exit marker belongs to this branch; the conversation and session stay intact.
+          pi.appendEntry(BACKOFFICE_SESSION_ENTRY, null);
+          synchronizeBackofficeMode(ctx);
+          ctx.ui.notify("Exited Backoffice. Normal Pi tools restored in this session.", "info");
+          return;
+        }
         const baseUrl = remotes.find((remote) => remote.label === remoteLabel)?.value;
         if (!baseUrl) {
           return;
@@ -582,9 +649,13 @@ export default function registerBackofficeExtension(pi: ExtensionAPI) {
           baseUrl,
           scope: parsedScope,
         });
+        const normalTools = backofficeEnabled
+          ? (findBackofficeNormalTools(ctx) ?? configuredNormalPiTools(pi, ctx))
+          : pi.getActiveTools();
         await ctx.newSession({
           parentSession: ctx.sessionManager.getSessionFile(),
           setup: async (sessionManager) => {
+            sessionManager.appendCustomEntry(BACKOFFICE_NORMAL_TOOLS_ENTRY, normalTools);
             sessionManager.appendCustomEntry(BACKOFFICE_SESSION_ENTRY, {
               baseUrl,
               scope,
