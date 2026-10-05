@@ -10,8 +10,8 @@ packages:
 catalog:
   "@earendil-works/pi-agent-core": 0.83.0
   "@earendil-works/pi-ai": 0.83.0
-  "@earendil-works/pi-coding-agent": 0.83.0
-  "@earendil-works/pi-tui": 0.83.0
+  "@earendil-works/pi-coding-agent": 1.0.0
+  "@earendil-works/pi-tui": 1.0.0
   "@types/react": ^19.2.14
   "@types/react-dom": ^19.2.3
   js-tokens: 10.0.0
@@ -53,7 +53,6 @@ minimumReleaseAgeExclude:
   - "@tanstack/db@0.8.1"
   - "@tanstack/node-db-sqlite-persistence@0.2.14"
   - "@tanstack/react-db@0.3.1"
-  - pi-mcp-adapter@2.29.0
 
 patchedDependencies:
   "@cloudflare/worker-bundler@0.2.2": patches/@cloudflare__worker-bundler@0.2.2.patch

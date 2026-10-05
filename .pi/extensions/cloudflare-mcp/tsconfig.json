@@ -3,11 +3,8 @@
   "compilerOptions": {
     "noEmit": true,
     "rootDir": ".",
-    "allowImportingTsExtensions": true,
-    "paths": {
-      "pi-mcp-adapter": ["./pi-mcp-adapter.d.ts"]
-    }
+    "allowImportingTsExtensions": true
   },
-  "include": ["index.ts", "pi-mcp-adapter.d.ts"],
+  "include": ["index.ts", "index.test.ts"],
   "exclude": ["node_modules"]
 }

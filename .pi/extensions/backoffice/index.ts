@@ -17,6 +17,7 @@ import {
   type BackofficeScope,
 } from "@rejot-dev/backoffice-local";
 
+import type { JsonValue } from "@earendil-works/pi-ai";
 import {
   createBashToolDefinition,
   createEditToolDefinition,
@@ -51,6 +52,10 @@ const BACKOFFICE_TOOL_NAMES = [
   "localLs",
 ];
 const CLOUD_BACKOFFICE_URL = "https://backoffice.rejot.dev";
+const BACKOFFICE_TOOL_NAMESPACE = {
+  name: "backoffice",
+  description: "Remote execution and file operations in the active Backoffice scope",
+};
 
 type BackofficeSession = {
   baseUrl: string;
@@ -98,7 +103,7 @@ function unwrapCodemodeResult(response: unknown): unknown {
   if (!response || typeof response !== "object") {
     return response;
   }
-  return (response as Record<string, unknown>)["result"] ?? response;
+  return "result" in response ? (response as Record<string, unknown>)["result"] : response;
 }
 
 type BackofficeToolOutputDetails = {
@@ -193,7 +198,7 @@ async function executeBackofficeCode(
   code: string,
   signal?: AbortSignal,
   dependencies?: Record<string, string>,
-): Promise<unknown> {
+): Promise<JsonValue> {
   return unwrapCodemodeResult(
     await executeBackofficeCodemode({
       baseUrl: session.baseUrl,
@@ -202,7 +207,7 @@ async function executeBackofficeCode(
       ...(dependencies ? { dependencies } : {}),
       ...(signal ? { signal } : {}),
     }),
-  );
+  ) as JsonValue;
 }
 
 /** Registers `/backoffice` and tools for Backoffice state, local files, search, and codemode. */
@@ -268,6 +273,8 @@ export default function registerBackofficeExtension(pi: ExtensionAPI) {
     pi.registerTool({
       name: "read",
       label: "Read",
+      namespace: BACKOFFICE_TOOL_NAMESPACE,
+      outputSchema: Type.String(),
       description: `Read a file from the active Backoffice scope. Output is limited to ${DEFAULT_MAX_LINES} lines or ${formatSize(DEFAULT_MAX_BYTES)}; use offset to continue.`,
       parameters: Type.Object({
         path: Type.String({ description: "Absolute or scope-relative file path." }),
@@ -290,6 +297,7 @@ export default function registerBackofficeExtension(pi: ExtensionAPI) {
         return {
           content: [{ type: "text", text: output.text }],
           details: output.details,
+          structuredContent: result,
         };
       },
     });
@@ -297,6 +305,8 @@ export default function registerBackofficeExtension(pi: ExtensionAPI) {
     pi.registerTool({
       name: "upload",
       label: "Upload",
+      namespace: BACKOFFICE_TOOL_NAMESPACE,
+      outputSchema: Type.Unknown(),
       description:
         "Upload one local file into the persistent /workspace filesystem of the active Backoffice scope.",
       parameters: Type.Object({
@@ -318,7 +328,7 @@ export default function registerBackofficeExtension(pi: ExtensionAPI) {
           throw new Error(`Local upload source is not a file: ${sourcePath}`);
         }
         const fileKey = backofficeWorkspaceFileKey(params.destinationPath);
-        const result = await uploadBackofficeWorkspaceFile({
+        const result = (await uploadBackofficeWorkspaceFile({
           baseUrl: session.baseUrl,
           scope: parseBackofficeScope(session.scope),
           fileKey,
@@ -326,11 +336,12 @@ export default function registerBackofficeExtension(pi: ExtensionAPI) {
           sizeBytes: sourceStat.size,
           contentType: "application/octet-stream",
           signal,
-        });
+        })) as JsonValue;
         const output = boundBackofficeToolOutput(result, null);
         return {
           content: [{ type: "text", text: output.text }],
           details: output.details,
+          structuredContent: result,
         };
       },
     });
@@ -338,6 +349,12 @@ export default function registerBackofficeExtension(pi: ExtensionAPI) {
     pi.registerTool({
       name: "download",
       label: "Download",
+      namespace: BACKOFFICE_TOOL_NAMESPACE,
+      outputSchema: Type.Object({
+        sourcePath: Type.String(),
+        localPath: Type.String(),
+        bytesWritten: Type.Number(),
+      }),
       description:
         "Download one file from the active Backoffice scope's filesystem to the local filesystem, including /workspace and /static files.",
       parameters: Type.Object({
@@ -364,6 +381,7 @@ export default function registerBackofficeExtension(pi: ExtensionAPI) {
           await writeFile(localPath, downloaded);
           return downloaded;
         });
+        const details = { sourcePath, localPath, bytesWritten: content.byteLength };
         return {
           content: [
             {
@@ -371,11 +389,8 @@ export default function registerBackofficeExtension(pi: ExtensionAPI) {
               text: `Downloaded ${sourcePath} to ${localPath} (${formatSize(content.byteLength)}).`,
             },
           ],
-          details: {
-            sourcePath,
-            localPath,
-            bytesWritten: content.byteLength,
-          },
+          details,
+          structuredContent: details,
         };
       },
     });
@@ -383,6 +398,8 @@ export default function registerBackofficeExtension(pi: ExtensionAPI) {
     pi.registerTool({
       name: "search",
       label: "Search",
+      namespace: BACKOFFICE_TOOL_NAMESPACE,
+      outputSchema: Type.Unknown(),
       description: `Search file contents in the active Backoffice scope. Output is limited to ${DEFAULT_MAX_LINES} lines or ${formatSize(DEFAULT_MAX_BYTES)}; use returned cursors to continue.`,
       parameters: Type.Object({
         query: Type.String({ minLength: 1, description: "Text to search for." }),
@@ -422,6 +439,7 @@ export default function registerBackofficeExtension(pi: ExtensionAPI) {
         return {
           content: [{ type: "text", text: output.text }],
           details: output.details,
+          structuredContent: result,
         };
       },
     });
@@ -429,6 +447,8 @@ export default function registerBackofficeExtension(pi: ExtensionAPI) {
     pi.registerTool({
       name: "execCodeMode",
       label: "Exec Code Mode",
+      namespace: BACKOFFICE_TOOL_NAMESPACE,
+      outputSchema: Type.Unknown(),
       description: `Execute one top-level codemode program against the active Backoffice scope. Output is limited to ${DEFAULT_MAX_LINES} lines or ${formatSize(DEFAULT_MAX_BYTES)}; return a smaller projection when truncated.`,
       parameters: Type.Object({
         code: Type.String({
@@ -491,6 +511,7 @@ export default function registerBackofficeExtension(pi: ExtensionAPI) {
         return {
           content: [{ type: "text", text: output.text }],
           details: output.details,
+          structuredContent: result,
         };
       },
     });
