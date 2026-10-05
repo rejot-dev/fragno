@@ -8,16 +8,9 @@ import {
 } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
 import {
-  automationEventDefinitionCreateInputSchema,
-  automationEventDefinitionSchema,
-  type AutomationEventDefinition,
-  type AutomationEventDefinitionCreateInput,
-} from "@/fragno/automation/event-definitions";
-import {
   backofficeCapabilities,
   getBackofficeCapabilityKind,
   getConnectionCapability,
-  listAutomationEventDescriptors,
   listConnectionCapabilities,
   listHookScopes,
   toConnectionVerification,
@@ -32,7 +25,6 @@ import {
   parseCliTokens,
   readOutputOptions,
 } from "@/fragno/runtime-tools/bash-cli";
-import { formatJsonSchemaFields } from "@/lib/zod/zod-formatter";
 
 import {
   defineBackofficeRuntimeTool,
@@ -54,13 +46,6 @@ export type BackofficeCapabilitiesRuntime = {
     payload: unknown;
     origin?: string;
   }): Promise<ConnectionStatus>;
-  listAutomationEvents(): Promise<AutomationEventsCatalogListOutput>;
-  getAutomationEvent(
-    input: AutomationEventCatalogGetInput,
-  ): Promise<AutomationEventCatalogEntry | null>;
-  createAutomationEvent(
-    input: AutomationEventDefinitionCreateInput,
-  ): Promise<AutomationEventDefinition>;
 };
 
 type BackofficeCapabilitiesToolContext = BackofficeToolContext<{
@@ -156,36 +141,6 @@ const connectionSchemaOutputSchema = z.object({
 });
 export type ConnectionSchemaOutput = z.infer<typeof connectionSchemaOutputSchema>;
 
-const automationEventDescriptorSchema = z.object({
-  source: z.string(),
-  eventType: z.string(),
-  label: z.string(),
-  description: z.string().optional(),
-  capabilityId: z.string(),
-  payloadSchema: z.record(z.string(), z.unknown()).optional(),
-  actorSchema: z.record(z.string(), z.unknown()).optional(),
-  subjectSchema: z.record(z.string(), z.unknown()).optional(),
-  example: z.unknown().optional(),
-});
-const automationEventsCatalogListOutputSchema = z.array(
-  automationEventDescriptorSchema.omit({
-    payloadSchema: true,
-    actorSchema: true,
-    subjectSchema: true,
-  }),
-);
-const automationEventCatalogGetInputSchema = z.object({
-  source: z.string().trim().min(1),
-  eventType: z.string().trim().min(1),
-});
-const automationEventCatalogGetOutputSchema = automationEventDescriptorSchema.nullable();
-const automationEventCatalogCreateOutputSchema = automationEventDefinitionSchema;
-export type AutomationEventCatalogEntry = z.infer<typeof automationEventDescriptorSchema>;
-export type AutomationEventsCatalogListOutput = z.infer<
-  typeof automationEventsCatalogListOutputSchema
->;
-export type AutomationEventCatalogGetInput = z.infer<typeof automationEventCatalogGetInputSchema>;
-
 const getRuntime = (context: BackofficeCapabilitiesToolContext) => {
   if (!context.runtimes.backoffice) {
     throw new Error("Backoffice capability runtime is not available in this execution context");
@@ -209,13 +164,6 @@ const parseConfigure = defineCliArgsParser<{ id: string; payload: unknown; origi
     origin: {},
   },
 );
-
-const parseAutomationEventCatalogCreate = (args: string[]) => {
-  const { payload } = defineCliArgsParser<{ payload: unknown }>("events.catalog.create", {
-    payload: { kind: "json", option: "json", required: true },
-  })(args);
-  return payload as AutomationEventDefinitionCreateInput;
-};
 
 type OutputOptions = ReturnType<typeof readOutputOptions>;
 
@@ -384,50 +332,6 @@ const formatConnectionSetup = (data: ConnectionSetupOutput, options: OutputOptio
             `Configure: ${data.configureExample}`,
           ].join("\n") + "\n",
       };
-
-const formatAutomationEventsCatalogList = (
-  data: AutomationEventsCatalogListOutput,
-  options: OutputOptions,
-) =>
-  shouldReturnData(options)
-    ? dataFormat(data)
-    : {
-        stdout: renderTable(
-          ["source", "event type", "capability", "label"],
-          data.map((item) => [item.source, item.eventType, item.capabilityId, item.label]),
-        ),
-      };
-
-const formatAutomationEventCatalogEntry = (
-  data: AutomationEventCatalogEntry | null,
-  options: OutputOptions,
-) => {
-  if (!data) {
-    return { stderr: "Automation event not found", exitCode: 1 };
-  }
-  if (shouldReturnData(options)) {
-    return dataFormat(data);
-  }
-  return {
-    stdout: `${data.source}:${data.eventType}\n${data.description ?? data.label}\n\npayload\n${formatJsonSchemaFields(data.payloadSchema)}\n\nactor\n${formatJsonSchemaFields(data.actorSchema)}\n\nsubject\n${formatJsonSchemaFields(data.subjectSchema)}\n`,
-  };
-};
-
-const formatAutomationEventDefinitionEntry = (
-  data: AutomationEventDefinition,
-  options: OutputOptions,
-) =>
-  formatAutomationEventCatalogEntry(
-    {
-      ...data,
-      description: data.description ?? undefined,
-      payloadSchema: data.payloadSchema ?? undefined,
-      actorSchema: data.actorSchema ?? undefined,
-      subjectSchema: data.subjectSchema ?? undefined,
-      example: data.example ?? undefined,
-    },
-    options,
-  );
 
 const capabilitiesListTool = defineBackofficeRuntimeTool({
   id: "capabilities.list",
@@ -736,113 +640,6 @@ const connectionsConfigureTool = defineBackofficeRuntimeTool({
   },
 });
 
-export const automationEventsCatalogListTool = defineBackofficeRuntimeTool({
-  id: "events.catalog.list",
-  namespace: "events",
-  name: "catalogList",
-  description:
-    "List known automation event source/type pairs from the Backoffice capability registry.",
-  requiredPermissions: ["read"],
-  inputSchema: z.void(),
-  outputSchema: automationEventsCatalogListOutputSchema,
-  execute: async (_input, context: BackofficeCapabilitiesToolContext) =>
-    await getRuntime(context).listAutomationEvents(),
-  adapters: {
-    bash: {
-      command: "events.catalog.list",
-      help: {
-        summary: "events.catalog.list lists known automation event source/type pairs.",
-        options: [],
-        examples: ["events.catalog.list --format json"],
-      },
-      parse: defineNoInputArgsParser("events.catalog.list"),
-      outputOptions: readOutput,
-      format: formatAutomationEventsCatalogList,
-    },
-  },
-});
-
-export const automationEventsCatalogGetTool = defineBackofficeRuntimeTool({
-  id: "events.catalog.get",
-  namespace: "events",
-  name: "catalogGet",
-  description: "Get one automation event descriptor and its JSON schemas.",
-  requiredPermissions: ["read"],
-  inputSchema: automationEventCatalogGetInputSchema,
-  outputSchema: automationEventCatalogGetOutputSchema,
-  execute: async (input, context: BackofficeCapabilitiesToolContext) =>
-    await getRuntime(context).getAutomationEvent(input),
-  adapters: {
-    bash: {
-      command: "events.catalog.get",
-      help: {
-        summary: "events.catalog.get returns one automation event descriptor and its JSON schemas.",
-        options: [
-          {
-            name: "source",
-            required: true,
-            valueRequired: true,
-            valueName: "source",
-            description: "Automation event source.",
-          },
-          {
-            name: "event-type",
-            required: true,
-            valueRequired: true,
-            valueName: "event-type",
-            description: "Automation event type.",
-          },
-        ],
-        examples: [
-          "events.catalog.get --source telegram --event-type message.received",
-          "events.catalog.get --source telegram --event-type message.received --format json",
-        ],
-      },
-      parse: defineCliArgsParser<AutomationEventCatalogGetInput>("events.catalog.get", {
-        source: { required: true },
-        eventType: { required: true },
-      }),
-      outputOptions: readOutput,
-      format: formatAutomationEventCatalogEntry,
-    },
-  },
-});
-
-export const automationEventsCatalogCreateTool = defineBackofficeRuntimeTool({
-  id: "events.catalog.create",
-  namespace: "events",
-  name: "catalogCreate",
-  description: "Create a scoped dynamic automation event definition with optional JSON schemas.",
-  requiredPermissions: ["manage"],
-  inputSchema: automationEventDefinitionCreateInputSchema,
-  outputSchema: automationEventCatalogCreateOutputSchema,
-  execute: async (input, context: BackofficeCapabilitiesToolContext) =>
-    await getRuntime(context).createAutomationEvent(input),
-  adapters: {
-    bash: {
-      command: "events.catalog.create",
-      help: {
-        summary: "events.catalog.create creates a dynamic automation event definition.",
-        options: [
-          {
-            name: "json",
-            required: true,
-            valueRequired: true,
-            valueName: "json",
-            description: "Event definition JSON payload.",
-          },
-        ],
-        examples: [
-          'events.catalog.create --json \'{"source":"custom","eventType":"thing.created","label":"Thing created","payloadSchema":{"type":"object","required":["thingId"],"properties":{"thingId":{"type":"string"}}}}\' --format json',
-        ],
-      },
-      parse: parseAutomationEventCatalogCreate,
-      outputOptions: readOutputWithoutJsonFlag,
-      format: formatAutomationEventDefinitionEntry,
-    },
-  },
-});
-
 export const createBackofficeCapabilitiesRuntime = ({
   objects,
   config,
@@ -1085,49 +882,6 @@ export const createBackofficeCapabilitiesRuntime = ({
         payload: parsedPayload,
       } as BackofficeCapabilityContext & { payload: unknown });
     },
-    listAutomationEvents: async () => {
-      const staticEvents = listAutomationEventDescriptors().map(
-        ({ payloadSchema, actorSchema, subjectSchema, ...event }) => event,
-      );
-      const dynamicEvents = await objects.automations.for(scope).commands.listEventDefinitions();
-
-      return [
-        ...staticEvents,
-        ...dynamicEvents.map(
-          ({ payloadSchema, actorSchema, subjectSchema, description, example, ...event }) => ({
-            ...event,
-            description: description ?? undefined,
-            example: example ?? undefined,
-          }),
-        ),
-      ];
-    },
-    getAutomationEvent: async ({ source, eventType }) => {
-      const staticEvent = listAutomationEventDescriptors().find(
-        (event) => event.source === source && event.eventType === eventType,
-      );
-      if (staticEvent) {
-        return staticEvent;
-      }
-
-      const dynamicEvent = await objects.automations
-        .for(scope)
-        .commands.getEventDefinition({ source, eventType });
-      if (!dynamicEvent) {
-        return null;
-      }
-
-      return {
-        ...dynamicEvent,
-        description: dynamicEvent.description ?? undefined,
-        payloadSchema: dynamicEvent.payloadSchema ?? undefined,
-        actorSchema: dynamicEvent.actorSchema ?? undefined,
-        subjectSchema: dynamicEvent.subjectSchema ?? undefined,
-        example: dynamicEvent.example ?? undefined,
-      };
-    },
-    createAutomationEvent: async (input) =>
-      await objects.automations.for(scope).commands.createEventDefinition(input),
   };
 };
 
@@ -1146,7 +900,7 @@ export const backofficeCapabilitiesRuntimeTools = [
 export const backofficeCapabilitiesToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "backoffice-capabilities",
   permissions: {
-    read: "Read capabilities, hook scopes, connection status, schemas, and catalogs.",
+    read: "Read capabilities, hook scopes, connection status, and schemas.",
     manage: "Set up, verify, configure, and reset capability connections.",
   },
   tools: backofficeCapabilitiesRuntimeTools,

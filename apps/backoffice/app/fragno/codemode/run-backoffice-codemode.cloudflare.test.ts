@@ -25,6 +25,7 @@ import {
 import type { RegisteredAutomationsRuntime } from "@/fragno/runtime-tools/bash-host";
 import { createUnavailableAutomationRouterRuntime } from "@/fragno/runtime-tools/families/automations-routing";
 import { type EventRuntime } from "@/fragno/runtime-tools/families/event";
+import { createUnavailableEventRuntime } from "@/fragno/runtime-tools/families/event-runtime";
 import type { McpRuntime } from "@/fragno/runtime-tools/families/mcp-runtime";
 import { type OtpRuntime } from "@/fragno/runtime-tools/families/otp";
 import { type TelegramRuntime } from "@/fragno/runtime-tools/families/telegram";
@@ -242,6 +243,7 @@ describe("runBackofficeCodemode", () => {
   test("calls event tools through codemode providers", async () => {
     const calls: unknown[] = [];
     const eventRuntime: EventRuntime = {
+      ...createUnavailableEventRuntime(),
       emitEvent: async (input) => {
         calls.push(["emitEvent", input]);
         return {

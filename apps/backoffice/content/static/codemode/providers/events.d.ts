@@ -2,6 +2,10 @@
 type EventsCodemodeProvider = {
   /** Fire an automation event for the current context or a selected target scope. */
   fire(input: EventsFireInput): Promise<EventsFireOutput>;
+  /** List stored automation events in the current scope, newest first. */
+  list(input: EventsListInput): Promise<EventsListOutput>;
+  /** Get one stored automation event by id in the current scope. */
+  get(input: EventsGetInput): Promise<EventsGetOutput>;
   /** List known automation event source/type pairs from the Backoffice capability registry. */
   catalogList(): Promise<EventsCatalogListOutput>;
   /** Get one automation event descriptor and its JSON schemas. */
@@ -59,6 +63,203 @@ type EventsFireOutput = {
   source: string;
   eventType: string;
 };
+type EventsListInput = {
+  limit?: number;
+  cursor?: string;
+};
+type EventsListOutput = {
+  events: {
+    id: string;
+    scope:
+      | {
+          kind: "system";
+        }
+      | {
+          kind: "org";
+          orgId: string;
+        }
+      | {
+          kind: "user";
+          userId: string;
+        }
+      | {
+          kind: "project";
+          orgId: string;
+          projectId: string;
+        };
+    source: string;
+    eventType: string;
+    /** ISO 8601 datetime string. */
+    occurredAt: string;
+    payload: {
+      [key: string]: unknown;
+    };
+    actors: {
+      initiator:
+        | {
+            scope: "internal";
+            type: string;
+            id: string;
+            role: "initiator";
+          }
+        | {
+            scope: "external";
+            source: string;
+            type: string;
+            id: string;
+            role: "initiator";
+          };
+      principal:
+        | {
+            scope: "internal";
+            type: string;
+            id: string;
+            role: "principal";
+          }
+        | {
+            scope: "external";
+            source: string;
+            type: string;
+            id: string;
+            role: "principal";
+          }
+        | null;
+      delegation: (
+        | {
+            scope: "internal";
+            type: string;
+            id: string;
+            role: "delegate";
+          }
+        | {
+            scope: "external";
+            source: string;
+            type: string;
+            id: string;
+            role: "delegate";
+          }
+        | {
+            scope: "internal";
+            type: string;
+            id: string;
+            role: "assistant";
+          }
+        | {
+            scope: "external";
+            source: string;
+            type: string;
+            id: string;
+            role: "assistant";
+          }
+      )[];
+    };
+    subject: {
+      orgId?: string;
+      userId?: string;
+      [key: string]: unknown;
+    } | null;
+    /** ISO 8601 datetime string. */
+    createdAt?: string;
+  }[];
+  nextCursor?: string;
+  hasNextPage: boolean;
+};
+type EventsGetInput = {
+  id: string;
+};
+type EventsGetOutput = {
+  id: string;
+  scope:
+    | {
+        kind: "system";
+      }
+    | {
+        kind: "org";
+        orgId: string;
+      }
+    | {
+        kind: "user";
+        userId: string;
+      }
+    | {
+        kind: "project";
+        orgId: string;
+        projectId: string;
+      };
+  source: string;
+  eventType: string;
+  /** ISO 8601 datetime string. */
+  occurredAt: string;
+  payload: {
+    [key: string]: unknown;
+  };
+  actors: {
+    initiator:
+      | {
+          scope: "internal";
+          type: string;
+          id: string;
+          role: "initiator";
+        }
+      | {
+          scope: "external";
+          source: string;
+          type: string;
+          id: string;
+          role: "initiator";
+        };
+    principal:
+      | {
+          scope: "internal";
+          type: string;
+          id: string;
+          role: "principal";
+        }
+      | {
+          scope: "external";
+          source: string;
+          type: string;
+          id: string;
+          role: "principal";
+        }
+      | null;
+    delegation: (
+      | {
+          scope: "internal";
+          type: string;
+          id: string;
+          role: "delegate";
+        }
+      | {
+          scope: "external";
+          source: string;
+          type: string;
+          id: string;
+          role: "delegate";
+        }
+      | {
+          scope: "internal";
+          type: string;
+          id: string;
+          role: "assistant";
+        }
+      | {
+          scope: "external";
+          source: string;
+          type: string;
+          id: string;
+          role: "assistant";
+        }
+    )[];
+  };
+  subject: {
+    orgId?: string;
+    userId?: string;
+    [key: string]: unknown;
+  } | null;
+  /** ISO 8601 datetime string. */
+  createdAt?: string;
+} | null;
 type EventsCatalogListOutput = {
   source: string;
   eventType: string;

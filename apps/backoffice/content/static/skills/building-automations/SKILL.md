@@ -9,13 +9,13 @@ description:
 # Building Automations
 
 Treat every automation as a route with one **trigger → action**. Event triggers select catalog
-events; scheduled triggers own their cadence. The action starts or signals a saved workflow or
-forwards the event.
+events; scheduled triggers own their cadence. The action starts or signals a saved workflow,
+reclassifies the event, or forwards it to another scope.
 
 ## Required process
 
 1. Read the live declarations before editing:
-   - "/static/codemode/providers/events.d.ts" for the event catalog;
+   - "/static/codemode/providers/events.d.ts" for event definitions and stored delivery inspection;
    - "/static/codemode/providers/router.d.ts" for route schemas and actions;
    - "/static/codemode/workflow-authoring.d.ts" when saving a workflow;
    - "/static/codemode/providers/store.d.ts" only when durable key/value coordination is needed.
@@ -45,7 +45,12 @@ forwards the event.
    - Time-based trigger: route with a `schedule` trigger.
    - New work: `start_workflow`.
    - Resume waiting work: `send_workflow_event`.
+   - Domain event classification: `reclassify_event`.
    - Cross-scope delivery: `forward_event`.
+
+   For reclassification or forwarding, read
+   `/static/skills/building-automations/references/event-routing.md` before choosing the
+   destination, matcher, projection, or scope template.
 
    Use stable, namespaced ids. For `start_workflow`, make `workflowScriptPath` point to a saved file
    containing exactly one statically named `defineWorkflow(...)`. Backoffice validates the authored
@@ -57,7 +62,8 @@ forwards the event.
    and collect the missing values from the user. **Complete when** every provider the automation
    will call is configured or the user has been told exactly what remains missing.
 
-4. Create the required artifacts in dependency order: saved workflow, then route.
+4. Create the required artifacts in dependency order: destination event definitions or saved
+   workflows, then routes.
 
    Save workflow implementations in `/workspace/automations/` with a `.workflow.js` suffix:
 
@@ -157,8 +163,14 @@ forwards the event.
 
 6. Re-read the completed route with `router.get({ id })` and
    `state.readFile({ path: workflowScriptPath })` when saved. Run `connections.verify({ id })` for
-   external providers. **Complete only when** the route trigger, action, workflow name, file path,
-   and connection status all line up end to end.
+   external providers.
+
+   For delivery verification, read `/static/skills/building-automations/references/event-routing.md`
+   and use `events.list` / `events.get` to correlate the triggering event with the route's
+   downstream outcome. **Complete only when** the route trigger, action, workflow name, file path,
+   and connection status line up, and any exercised delivery has matching ingestion and downstream
+   evidence. If no delivery was exercised, report configuration as verified and runtime execution as
+   unverified.
 
 Legacy `router.cm.js` files are outside this topology. Database-backed router rules are the routing
 source of truth; saved workflow files contain the behavior.

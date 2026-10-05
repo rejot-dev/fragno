@@ -26,7 +26,8 @@ import {
   type BackofficeCapabilitiesRuntime,
 } from "./families/backoffice-capabilities";
 import { cloudflareToolFamily, type CloudflareRuntime } from "./families/cloudflare";
-import { eventCatalogToolFamily, eventFireToolFamily, type EventRuntime } from "./families/event";
+import { eventFireToolFamily, eventReadToolFamily, type EventRuntime } from "./families/event";
+import { eventCatalogToolFamily, type EventCatalogRuntime } from "./families/event-catalog";
 import { formsToolFamily, type FormsRuntime } from "./families/forms";
 import { githubToolFamily, type GitHubRuntime } from "./families/github";
 import {
@@ -63,6 +64,7 @@ export type CoreBackofficeRuntimeMap = {
   workflow?: AutomationWorkflowRuntime;
   durableHooks?: DurableHooksRuntime;
   event?: EventRuntime;
+  eventCatalog?: EventCatalogRuntime;
   forms?: FormsRuntime;
   github?: GitHubRuntime;
   cloudflare?: CloudflareRuntime;
@@ -93,6 +95,7 @@ export const runtimeToolFamilies = [
   automationWorkflowToolFamily,
   hooksToolFamily,
   eventFireToolFamily,
+  eventReadToolFamily,
   eventCatalogToolFamily,
   formsToolFamily,
   githubToolFamily,

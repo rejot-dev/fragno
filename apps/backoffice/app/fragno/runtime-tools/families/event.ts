@@ -2,19 +2,23 @@ import { z } from "zod";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import { backofficeContextScopeSchema } from "@/backoffice-runtime/context-schema";
+import {
+  automationEventListInputSchema,
+  automationEventListResultSchema,
+  type AutomationEventRecord,
+} from "@/fragno/automation/events";
 import type { EventEmitArgs } from "@/fragno/runtime-tools/automation-types";
-import { defineCliArgsParser } from "@/fragno/runtime-tools/bash-cli";
+import {
+  defineCliArgsParser,
+  parseCliTokens,
+  readOutputOptions,
+} from "@/fragno/runtime-tools/bash-cli";
 
 import {
   defineBackofficeRuntimeTool,
   defineBackofficeRuntimeToolFamily,
   type BackofficeToolContext,
 } from "../runtime-tools";
-import {
-  automationEventsCatalogCreateTool,
-  automationEventsCatalogGetTool,
-  automationEventsCatalogListTool,
-} from "./backoffice-capabilities";
 
 export type AutomationEmitEventResult = {
   accepted: boolean;
@@ -24,12 +28,19 @@ export type AutomationEmitEventResult = {
   eventType: string;
 };
 
+/** Stored event reads and emission are restricted to the runtime's execution scope. */
 export type EventRuntime = {
   emitEvent: (input: EventEmitArgs) => Promise<AutomationEmitEventResult>;
+  listEvents(input: EventListInput): Promise<z.infer<typeof automationEventListResultSchema>>;
+  getEvent(input: { id: string }): Promise<AutomationEventRecord | null>;
 };
 
+const eventListInputSchema = automationEventListInputSchema.extend({
+  cursor: z.string().trim().min(1).optional(),
+});
+
+type EventListInput = z.infer<typeof eventListInputSchema>;
 type EventToolContext = BackofficeToolContext<{ event?: EventRuntime }>;
-type EventCatalogToolContext = BackofficeToolContext<{ backoffice?: unknown }>;
 
 const eventEmitInputSchema = z.strictObject({
   eventType: z.string().trim().min(1),
@@ -121,12 +132,133 @@ const fireEventTool = defineBackofficeRuntimeTool({
   },
 });
 
-export const eventRuntimeTools = [
-  fireEventTool,
-  automationEventsCatalogListTool,
-  automationEventsCatalogGetTool,
-  automationEventsCatalogCreateTool,
-] as const;
+function readEventOutputOptions(args: string[]) {
+  return readOutputOptions(parseCliTokens(args));
+}
+
+const listEventsTool = defineBackofficeRuntimeTool({
+  id: "events.list",
+  namespace: "events",
+  name: "list",
+  description: "List stored automation events in the current scope, newest first.",
+  requiredPermissions: ["read"],
+  inputSchema: eventListInputSchema,
+  outputSchema: automationEventListResultSchema,
+  execute: async (input, context: EventToolContext) =>
+    await getEventRuntime(context.runtimes.event).listEvents(input),
+  adapters: {
+    bash: {
+      command: "events.list",
+      help: {
+        summary: "events.list lists stored automation events in the current scope, newest first.",
+        options: [
+          {
+            name: "limit",
+            valueRequired: true,
+            valueName: "number",
+            description: "Page size (1–500; defaults to 100).",
+          },
+          {
+            name: "cursor",
+            valueRequired: true,
+            valueName: "cursor",
+            description: "Cursor returned by the previous page.",
+          },
+        ],
+        examples: [
+          "events.list",
+          "events.list --limit 10 --format json",
+          "events.list --cursor '<cursor>'",
+        ],
+      },
+      parse: defineCliArgsParser<EventListInput>("events.list", {
+        limit: { kind: "integer" },
+        cursor: {},
+      }),
+      outputOptions: readEventOutputOptions,
+      format: (result, options) => {
+        if (options.format === "json" || options.print) {
+          return { data: result };
+        }
+        const lines = result.events.length
+          ? [
+              "id\toccurred at\tsource\tevent type",
+              ...result.events.map(
+                (event) => `${event.id}\t${event.occurredAt}\t${event.source}\t${event.eventType}`,
+              ),
+            ]
+          : ["No automation events found."];
+        if (result.hasNextPage && result.nextCursor) {
+          lines.push(`next cursor: ${result.nextCursor}`);
+        }
+        return { stdout: `${lines.join("\n")}\n` };
+      },
+    },
+  },
+});
+
+const getEventTool = defineBackofficeRuntimeTool({
+  id: "events.get",
+  namespace: "events",
+  name: "get",
+  description: "Get one stored automation event by id in the current scope.",
+  requiredPermissions: ["read"],
+  inputSchema: z.object({ id: z.string().trim().min(1) }),
+  outputSchema: automationEventListResultSchema.shape.events.element.nullable(),
+  execute: async (input, context: EventToolContext) =>
+    await getEventRuntime(context.runtimes.event).getEvent(input),
+  adapters: {
+    bash: {
+      command: "events.get",
+      help: {
+        summary: "events.get shows a stored automation event, including its payload and actors.",
+        options: [
+          {
+            name: "id",
+            required: true,
+            valueRequired: true,
+            valueName: "id",
+            description: "Stored event id.",
+          },
+        ],
+        examples: ["events.get --id event-1", "events.get --id event-1 --format json"],
+      },
+      parse: defineCliArgsParser<{ id: string }>("events.get", { id: { required: true } }),
+      outputOptions: readEventOutputOptions,
+      format: (event, options) => {
+        if (!event) {
+          return { stderr: "Automation event not found.\n", exitCode: 1 };
+        }
+        if (options.format === "json" || options.print) {
+          return { data: event };
+        }
+        return {
+          stdout:
+            [
+              `id: ${event.id}`,
+              `source: ${event.source}`,
+              `event type: ${event.eventType}`,
+              `occurred at: ${event.occurredAt}`,
+              ...(event.createdAt ? [`created at: ${event.createdAt}`] : []),
+              `scope: ${JSON.stringify(event.scope)}`,
+              "",
+              "payload",
+              JSON.stringify(event.payload, null, 2),
+              "",
+              "actors",
+              JSON.stringify(event.actors, null, 2),
+              "",
+              "subject",
+              JSON.stringify(event.subject, null, 2),
+            ].join("\n") + "\n",
+        };
+      },
+    },
+  },
+});
+
+/** Event runtime tools expose emission and current-scope stored event reads. */
+export const eventRuntimeTools = [fireEventTool, listEventsTool, getEventTool] as const;
 
 export const eventFireToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "events",
@@ -138,16 +270,10 @@ export const eventFireToolFamily = defineBackofficeRuntimeToolFamily({
   isAvailable: (context: EventToolContext) => !!context.runtimes.event,
 });
 
-export const eventCatalogToolFamily = defineBackofficeRuntimeToolFamily({
+/** Stored event reads use the events.read permission in the current scope. */
+export const eventReadToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "events",
-  permissions: {
-    read: "Read automation event catalog entries.",
-    manage: "Manage dynamic automation event catalog entries.",
-  },
-  tools: [
-    automationEventsCatalogListTool,
-    automationEventsCatalogGetTool,
-    automationEventsCatalogCreateTool,
-  ],
-  isAvailable: (context: EventCatalogToolContext) => !!context.runtimes.backoffice,
+  permissions: { read: "Read stored automation events in the current scope." },
+  tools: [listEventsTool, getEventTool],
+  isAvailable: (context: EventToolContext) => !!context.runtimes.event,
 });
