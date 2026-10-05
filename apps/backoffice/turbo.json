@@ -2,7 +2,8 @@
   "extends": ["//"],
   "tasks": {
     "build": {
-      "dependsOn": ["$TURBO_EXTENDS$", "static:generate"]
+      "dependsOn": ["$TURBO_EXTENDS$", "static:generate"],
+      "inputs": ["$TURBO_DEFAULT$", ".dev.vars"]
     },
     "build:node": {
       "dependsOn": ["$TURBO_EXTENDS$", "static:generate"]
