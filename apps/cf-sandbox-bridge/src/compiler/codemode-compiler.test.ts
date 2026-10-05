@@ -216,8 +216,10 @@ test("named compiler RPC preserves invalid-project errors and unrelated HTTP pat
   assert(
     (await server.requestCompiler(new Request("http://compiler/private-fetch"))).status === 404,
   );
-  const publicResponse = await fetch(new URL("/compile", server.url.replace(/^ws:/, "http:")), {
-    method: "POST",
-  });
+  // Miniflare resets service-binding sockets; its dispatcher avoids racing Node's pooled fetch.
+  const publicResponse = await server.requestBridge(
+    new URL("/compile", server.url.replace(/^ws:/, "http:")).href,
+    { method: "POST" },
+  );
   assert((await publicResponse.text()) === "OK");
 });

@@ -2,7 +2,7 @@ import path from "node:path";
 
 import { defineProject } from "vitest/config";
 
-import { cloudflareTest } from "@cloudflare/vitest-pool-workers";
+import { cloudflareTest } from "@cloudflare/vitest-plugin";
 
 import { docsVitestResolveConfig } from "./vitest.shared";
 

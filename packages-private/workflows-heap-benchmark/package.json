@@ -19,10 +19,10 @@
     "@fragno-dev/workflows": "workspace:*"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20260804.1",
+    "@cloudflare/workers-types": "catalog:",
     "@types/node": "^24.10.9",
     "typescript": "catalog:",
-    "wrangler": "^4.118.0",
+    "wrangler": "catalog:",
     "ws": "^8.21.3"
   }
 }

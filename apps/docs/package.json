@@ -68,9 +68,9 @@
     "zod": "^4.5.4"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "^1.28.0",
-    "@cloudflare/vitest-pool-workers": "^0.13.0",
-    "@cloudflare/workers-types": "^4.20260301.1",
+    "@cloudflare/vite-plugin": "catalog:",
+    "@cloudflare/vitest-plugin": "catalog:",
+    "@cloudflare/workers-types": "catalog:",
     "@fragno-dev/test": "workspace:*",
     "@fragno-private/vitest-config": "workspace:*",
     "@react-router/dev": "^7.12.0",
@@ -89,6 +89,6 @@
     "vite": "catalog:",
     "vite-plugin-devtools-json": "^1.0.0",
     "vitest": "catalog:",
-    "wrangler": "^4.73.0"
+    "wrangler": "catalog:"
   }
 }

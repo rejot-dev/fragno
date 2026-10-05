@@ -1,6 +1,6 @@
 import { mergeConfig, defineProject } from "vitest/config";
 
-import { cloudflareTest } from "@cloudflare/vitest-pool-workers";
+import { cloudflareTest } from "@cloudflare/vitest-plugin";
 import { baseConfig } from "@fragno-private/vitest-config";
 
 import { docsVitestResolveConfig } from "./vitest.shared";

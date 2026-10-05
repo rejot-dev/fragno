@@ -1,5 +1,6 @@
+import { readFile, readdir } from "node:fs/promises";
 import type { ReadableStream as NodeReadableStream } from "node:stream/web";
-import { fileURLToPath, URL } from "node:url";
+import { URL } from "node:url";
 
 import { build } from "esbuild";
 import { Miniflare, type WorkerOptions } from "miniflare";
@@ -7,21 +8,54 @@ import { Miniflare, type WorkerOptions } from "miniflare";
 /** Exercises the built bridge and its private compiler through a separate service-binding caller. */
 export async function createCodemodeBridgeTestServer() {
   // Load the actual Wrangler-built bridge and its Wasm assets, without provisioning containers.
+  const bridgeBuildDirectory = new URL("../../dist/", import.meta.url);
+  const wasmModules = await Promise.all(
+    (await readdir(bridgeBuildDirectory))
+      .filter((moduleName) => moduleName.endsWith(".wasm"))
+      .map(
+        async (moduleName) =>
+          [
+            moduleName,
+            {
+              type: "wasm",
+              contents: new Uint8Array(await readFile(new URL(moduleName, bridgeBuildDirectory))),
+            },
+          ] as const,
+      ),
+  );
+  const apiKey = "codemode-bridge-test-key";
   const bridge = {
-    name: "cf-sandbox-bridge",
-    modules: true,
-    scriptPath: fileURLToPath(new URL("../../dist/index.js", import.meta.url)),
-    modulesRules: [{ type: "CompiledWasm", include: ["**/*.wasm"] }],
-    compatibilityDate: "2026-08-06",
-    compatibilityFlags: [
-      "nodejs_compat",
-      "global_fetch_strictly_public",
-      "enable_request_signal",
-      "request_signal_passthrough",
-    ],
-    bindings: { SANDBOX_API_KEY: "codemode-bridge-test-key" },
-    durableObjects: { Sandbox: "Sandbox", WarmPool: "WarmPool" },
-    workerLoaders: { LOADER: {} },
+    config: {
+      name: "cf-sandbox-bridge",
+      compatibilityDate: "2026-08-06",
+      compatibilityFlags: [
+        "nodejs_compat",
+        "global_fetch_strictly_public",
+        "enable_request_signal",
+        "request_signal_passthrough",
+      ],
+      manifest: {
+        mainModule: "index.js",
+        modules: {
+          "index.js": {
+            type: "esm",
+            contents: await readFile(new URL("index.js", bridgeBuildDirectory), "utf8"),
+          },
+          ...Object.fromEntries(wasmModules),
+        },
+      },
+      exports: {
+        Sandbox: { type: "durable-object", storage: "legacy-kv" },
+        WarmPool: { type: "durable-object", storage: "legacy-kv" },
+        CodemodeCompiler: { type: "worker" },
+      },
+      env: {
+        SANDBOX_API_KEY: { type: "text", value: apiKey },
+        Sandbox: { type: "durable-object", worker: "cf-sandbox-bridge", exportName: "Sandbox" },
+        WarmPool: { type: "durable-object", worker: "cf-sandbox-bridge", exportName: "WarmPool" },
+        LOADER: { type: "worker-loader" },
+      },
+    },
   } satisfies WorkerOptions;
   const caller = await build({
     stdin: {
@@ -59,13 +93,25 @@ export default {
     workers: [
       bridge,
       {
-        name: "compiler-client",
-        modules: true,
-        script: caller.outputFiles[0].text,
-        compatibilityDate: bridge.compatibilityDate,
-        compatibilityFlags: bridge.compatibilityFlags,
-        serviceBindings: { COMPILER: { name: bridge.name, entrypoint: "CodemodeCompiler" } },
-        workerLoaders: { LOADER: {} },
+        config: {
+          name: "compiler-client",
+          compatibilityDate: bridge.config.compatibilityDate,
+          compatibilityFlags: bridge.config.compatibilityFlags,
+          manifest: {
+            mainModule: "compiler-client.js",
+            modules: {
+              "compiler-client.js": { type: "esm", contents: caller.outputFiles[0].text },
+            },
+          },
+          env: {
+            COMPILER: {
+              type: "worker",
+              worker: bridge.config.name,
+              exportName: "CodemodeCompiler",
+            },
+            LOADER: { type: "worker-loader" },
+          },
+        },
       },
     ],
   });
@@ -74,7 +120,8 @@ export default {
     const compiler = await runtime.getWorker("compiler-client");
     return {
       url: ready.href,
-      apiKey: bridge.bindings.SANDBOX_API_KEY,
+      apiKey,
+      requestBridge: runtime.dispatchFetch,
       async requestCompiler(request: Request): Promise<Response> {
         // Miniflare's undici Request is distinct from Node's native Request; forward its stream explicitly.
         const response = await compiler.fetch(request.url, {

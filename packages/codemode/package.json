@@ -100,13 +100,13 @@
     "zod": "^4.5.4"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20260804.1",
+    "@cloudflare/workers-types": "catalog:",
     "@fragno-private/typescript-config": "workspace:*",
     "@fragno-private/vitest-config": "workspace:*",
     "@types/node": "^24.10.9",
     "@types/ws": "^8.18.1",
     "esbuild": "^0.28.1",
-    "miniflare": "^5.20260730.0-alpha",
+    "miniflare": "catalog:",
     "tsdown": "^0.22.4",
     "typescript": "catalog:",
     "vitest": "catalog:"
