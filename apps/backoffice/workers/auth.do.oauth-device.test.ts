@@ -244,6 +244,7 @@ describe("Backoffice OAuth device authorization", () => {
     const verification = await verifyBackofficeJwt(result.accessToken, baseUrl, signedUp.auth.http);
     assert(verification.ok);
     expect(verification.payload).toMatchObject({
+      scopeRestriction: { kind: "org", orgId: signedUp.organizationId },
       sub: signedUp.user.id,
       email: signedUp.user.email,
       globalRole: "user",

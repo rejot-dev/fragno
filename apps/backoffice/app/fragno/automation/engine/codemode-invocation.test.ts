@@ -20,6 +20,7 @@ const execution = createBackofficeUserExecution({
 
 const event: AutomationEvent = {
   id: "invocation-1",
+  scopeRestriction: null,
   scope: execution.scope,
   source: "test",
   eventType: "canonical.requested",
@@ -83,6 +84,7 @@ describe("codemode invocation preparation", () => {
         program: prepared.program,
         trigger: { type: "event", event },
         execution: {
+          scopeRestriction: null,
           scope: execution.scope,
           actors: execution.actors,
           billingOrganizationId: "org-1",

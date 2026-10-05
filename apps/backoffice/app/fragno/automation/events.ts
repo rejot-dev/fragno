@@ -28,6 +28,7 @@ const automationEventSubjectSchema: z.ZodType<AutomationEventSubject> = z
 export const automationEventSchema = z.object({
   id: idSchema,
   scope: backofficeContextScopeSchema,
+  scopeRestriction: backofficeContextScopeSchema.nullable(),
   source: z.string().trim().min(1),
   eventType: z.string().trim().min(1),
   occurredAt: z.iso.datetime(),

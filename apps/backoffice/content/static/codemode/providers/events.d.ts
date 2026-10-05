@@ -87,6 +87,24 @@ type EventsListOutput = {
           orgId: string;
           projectId: string;
         };
+    scopeRestriction:
+      | {
+          kind: "system";
+        }
+      | {
+          kind: "org";
+          orgId: string;
+        }
+      | {
+          kind: "user";
+          userId: string;
+        }
+      | {
+          kind: "project";
+          orgId: string;
+          projectId: string;
+        }
+      | null;
     source: string;
     eventType: string;
     /** ISO 8601 datetime string. */
@@ -186,6 +204,24 @@ type EventsGetOutput = {
         orgId: string;
         projectId: string;
       };
+  scopeRestriction:
+    | {
+        kind: "system";
+      }
+    | {
+        kind: "org";
+        orgId: string;
+      }
+    | {
+        kind: "user";
+        userId: string;
+      }
+    | {
+        kind: "project";
+        orgId: string;
+        projectId: string;
+      }
+    | null;
   source: string;
   eventType: string;
   /** ISO 8601 datetime string. */

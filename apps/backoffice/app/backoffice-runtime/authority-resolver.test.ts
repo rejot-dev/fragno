@@ -60,6 +60,8 @@ const principal = {
 };
 
 const organizationExecution: BackofficeExecutionContext = {
+  kind: "deferred" as const,
+  scopeRestriction: null,
   scope: { kind: "org", orgId: "org-1" },
   actors: {
     initiator: {
@@ -79,6 +81,7 @@ describe("createBackofficeAuthorityResolver", () => {
     const identities = new MemoryIdentityDirectory();
     const resolver = createBackofficeAuthorityResolver(identities, { now: () => 1_000 });
     const accessTokenAuthority = {
+      scopeRestriction: null,
       kind: "verified-request-authority" as const,
       userId: principal.id,
       role: "admin" as const,
@@ -91,6 +94,12 @@ describe("createBackofficeAuthorityResolver", () => {
         principal,
         execution: {
           ...organizationExecution,
+          kind: "request",
+          actors: {
+            ...organizationExecution.actors,
+            principal: { ...principal, type: "user" },
+            delegation: [],
+          },
           userAuthority: accessTokenAuthority,
         },
       }),
@@ -100,6 +109,12 @@ describe("createBackofficeAuthorityResolver", () => {
         principal,
         execution: {
           ...organizationExecution,
+          kind: "request",
+          actors: {
+            ...organizationExecution.actors,
+            principal: { ...principal, type: "user" },
+            delegation: [],
+          },
           scope: { kind: "user", userId: principal.id },
           userAuthority: accessTokenAuthority,
         },
@@ -110,6 +125,12 @@ describe("createBackofficeAuthorityResolver", () => {
         principal,
         execution: {
           ...organizationExecution,
+          kind: "request",
+          actors: {
+            ...organizationExecution.actors,
+            principal: { ...principal, type: "user" },
+            delegation: [],
+          },
           scope: { kind: "system" },
           userAuthority: accessTokenAuthority,
         },
@@ -130,7 +151,14 @@ describe("createBackofficeAuthorityResolver", () => {
         principal,
         execution: {
           ...organizationExecution,
+          kind: "request",
+          actors: {
+            ...organizationExecution.actors,
+            principal: { ...principal, type: "user" },
+            delegation: [],
+          },
           userAuthority: {
+            scopeRestriction: null,
             kind: "verified-request-authority",
             userId: principal.id,
             role: "user",
@@ -175,6 +203,8 @@ describe("createBackofficeAuthorityResolver", () => {
       resolver.resolvePrincipalPermissions({
         principal,
         execution: {
+          kind: "deferred" as const,
+          scopeRestriction: null,
           scope: { kind: "user", userId: "user-1" },
           actors: organizationExecution.actors,
         },
@@ -185,6 +215,8 @@ describe("createBackofficeAuthorityResolver", () => {
       resolver.resolvePrincipalPermissions({
         principal,
         execution: {
+          kind: "deferred" as const,
+          scopeRestriction: null,
           scope: { kind: "user", userId: "user-2" },
           actors: organizationExecution.actors,
         },
@@ -196,6 +228,8 @@ describe("createBackofficeAuthorityResolver", () => {
     const identities = new MemoryIdentityDirectory();
     const resolver = createBackofficeAuthorityResolver(identities);
     const systemExecution: BackofficeExecutionContext = {
+      kind: "deferred" as const,
+      scopeRestriction: null,
       scope: { kind: "system" },
       actors: {
         initiator: {
@@ -239,6 +273,8 @@ describe("createBackofficeAuthorityResolver", () => {
       resolver.resolvePrincipalPermissions({
         principal,
         execution: {
+          kind: "deferred" as const,
+          scopeRestriction: null,
           scope: { kind: "user", userId: principal.id },
           actors: organizationExecution.actors,
         },
@@ -248,6 +284,8 @@ describe("createBackofficeAuthorityResolver", () => {
       resolver.resolvePrincipalPermissions({
         principal,
         execution: {
+          kind: "deferred" as const,
+          scopeRestriction: null,
           scope: { kind: "system" },
           actors: organizationExecution.actors,
         },
@@ -287,6 +325,8 @@ describe("createBackofficeAuthorityResolver", () => {
       resolver.resolvePrincipalPermissions({
         principal: automationPrincipal,
         execution: {
+          kind: "deferred" as const,
+          scopeRestriction: null,
           scope: organizationExecution.scope,
           actors: {
             initiator: {

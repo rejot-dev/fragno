@@ -49,6 +49,7 @@ const telegramMessageEvent = ({
 
   return {
     id,
+    scopeRestriction: null,
     scope: { kind: "org", orgId: "org-1" },
     source: "telegram",
     eventType: "message.received",
@@ -91,6 +92,7 @@ const identityClaimCompletedEvent = ({
 
   return {
     id: `identity-claim-completed:${otpId}`,
+    scopeRestriction: null,
     scope: { kind: "org", orgId: "org-1" },
     source: "otp",
     eventType: "identity.claim.completed",

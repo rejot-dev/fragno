@@ -12,6 +12,7 @@ import {
 
 const event = (input: Partial<AutomationEvent> = {}): AutomationEvent => ({
   id: "event-1",
+  scopeRestriction: null,
   scope: { kind: "org", orgId: "org-1" },
   source: "test",
   eventType: "test.event",

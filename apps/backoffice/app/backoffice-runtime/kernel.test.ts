@@ -21,6 +21,8 @@ const scopeKernel = new BackofficeKernel({
 });
 
 const linkedExecution = {
+  kind: "deferred" as const,
+  scopeRestriction: null,
   scope: { kind: "org", orgId: "org-1" } as const,
   actors: {
     initiator: {
@@ -265,7 +267,14 @@ describe("BackofficeKernel.invoke", () => {
       }).invoke({
         execution: {
           ...linkedExecution,
+          kind: "request",
+          actors: {
+            ...linkedExecution.actors,
+            principal: { scope: "internal", type: "user", id: "user-1", role: "principal" },
+            delegation: [],
+          },
           userAuthority: {
+            scopeRestriction: null,
             kind: "verified-request-authority",
             userId: "user-2",
             role: "user",
@@ -364,6 +373,8 @@ describe("BackofficeKernel.invoke", () => {
     await expect(
       kernel.invoke({
         execution: {
+          kind: "deferred" as const,
+          scopeRestriction: null,
           scope: { kind: "system" },
           actors: {
             initiator: {
@@ -505,6 +516,8 @@ describe("BackofficeKernel.invoke", () => {
 
   test("keeps unlinked bootstrap authority narrow and tied to the initiating identity", async () => {
     const execution = {
+      kind: "deferred" as const,
+      scopeRestriction: null,
       scope: { kind: "org", orgId: "org-1" } as const,
       actors: {
         initiator: {
@@ -575,6 +588,8 @@ describe("BackofficeKernel.assertScopedContextAccess", () => {
 
   test("does not turn a system-initiated service principal into unrestricted system access", () => {
     const serviceExecution = {
+      kind: "deferred" as const,
+      scopeRestriction: null,
       scope: { kind: "org", orgId: "org-1" } as const,
       actors: {
         initiator: {
@@ -605,6 +620,8 @@ describe("BackofficeKernel.assertScopedContextAccess", () => {
     expect(() =>
       scopeKernel.assertScopedContextAccess(
         {
+          kind: "deferred" as const,
+          scopeRestriction: null,
           scope: { kind: "system" },
           actors: {
             initiator: {
@@ -634,6 +651,8 @@ describe("BackofficeKernel.assertScopedContextAccess", () => {
     expect(() =>
       scopeKernel.assertScopedContextAccess(
         {
+          kind: "deferred" as const,
+          scopeRestriction: null,
           scope: { kind: "system" },
           actors: {
             initiator: {
@@ -660,6 +679,8 @@ describe("BackofficeKernel.assertScopedContextAccess", () => {
     expect(() =>
       scopeKernel.assertScopedContextAccess(
         {
+          kind: "deferred" as const,
+          scopeRestriction: null,
           scope: { kind: "system" },
           actors: {
             initiator: {

@@ -236,6 +236,7 @@ const seedLegacyWebhookEndpoints = (): BackofficeScenarioStep => ({
           id: `API:${apiObjectName}`,
         }),
       },
+      new BackofficeKernel(ctx.runtime.services),
     );
     await migrate(api);
 

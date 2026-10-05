@@ -14,6 +14,7 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
 
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
+import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import { createInMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
 import { createBackofficeCapabilitiesRuntime } from "@/fragno/runtime-tools/families/backoffice-capabilities";
 
@@ -34,7 +35,12 @@ describe("API system capability", () => {
     const runtime = await createRuntime();
     const api = runtime.objects.api.forOrg("org-1");
 
-    const response = await api.http.fetch(new Request("https://api.do/api/api/connections"));
+    const response = await api.http.fetchAuthorized(
+      new Request("https://api.do/api/api/connections"),
+      {
+        execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+      },
+    );
     assert(response.ok);
     await expect(response.json()).resolves.toEqual({ connections: [] });
   });
@@ -44,7 +50,7 @@ describe("API system capability", () => {
     const scope = { kind: "org" as const, orgId: "org-1" };
     const api = runtime.objects.api.for(scope);
 
-    const response = await api.http.fetch(
+    const response = await api.http.fetchAuthorized(
       new Request("https://api.do/api/api/webhooks/endpoints/slack", {
         method: "PUT",
         headers: { "content-type": "application/json" },
@@ -56,6 +62,7 @@ describe("API system capability", () => {
           auth: { type: "none" },
         }),
       }),
+      { execution: createBackofficeSystemExecution(scope) },
     );
     assert.equal(response.status, 201);
 

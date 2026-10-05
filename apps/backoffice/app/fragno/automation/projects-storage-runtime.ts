@@ -85,6 +85,7 @@ const triggerProjectEvent = ({
   const projectId = project.id.valueOf();
   const event: AutomationEvent = {
     id: crypto.randomUUID(),
+    scopeRestriction: null,
     scope: ownerScope,
     source: "automations",
     eventType,

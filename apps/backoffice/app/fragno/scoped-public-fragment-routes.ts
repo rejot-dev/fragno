@@ -21,6 +21,35 @@ export const appendBackofficeScopeQuery = (url: URL, scope: BackofficeContextSco
   url.searchParams.set("scope", backofficeContextScopeSinglePathSegment(scope));
 };
 
+/** Decodes only the scope segment, preserving the suffix for exact public ingress matching. */
+export function scopedPublicFragmentPathSuffix({
+  pathname,
+  publicPrefix,
+  scopePathSegment,
+}: {
+  pathname: string;
+  publicPrefix: string;
+  scopePathSegment: string;
+}): string | null {
+  const prefix = `${publicPrefix}/`;
+  if (!pathname.startsWith(prefix)) {
+    return null;
+  }
+
+  const scopedPath = pathname.slice(prefix.length);
+  const separator = scopedPath.indexOf("/");
+  const encodedScopeSegment = separator === -1 ? scopedPath : scopedPath.slice(0, separator);
+  try {
+    if (decodeURIComponent(encodedScopeSegment) !== scopePathSegment) {
+      return null;
+    }
+  } catch {
+    return null;
+  }
+
+  return separator === -1 ? "" : scopedPath.slice(separator);
+}
+
 export const scopedPublicMountPath = ({
   publicPrefix,
   scope,

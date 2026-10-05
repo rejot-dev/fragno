@@ -4,8 +4,11 @@ import type { Context } from "@earendil-works/chord";
 import type { ConversationView, SubmissionRecord } from "@earendil-works/pi-durable";
 
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
-import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
-import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
+import {
+  type BackofficeKernel,
+  BackofficeForbiddenError,
+  isBackofficeForbiddenError,
+} from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 
 import {
@@ -71,6 +74,14 @@ function piManagerRuntimeRequestError(status: number, responseText: string) {
       "message" in parsed &&
       typeof parsed.message === "string"
     ) {
+      const denial = {
+        name: "BackofficeForbiddenError",
+        reason: parsed.code,
+        message: parsed.message,
+      };
+      if ((status === 403 || status === 503) && isBackofficeForbiddenError(denial)) {
+        return new BackofficeForbiddenError(denial.message, denial.reason);
+      }
       return new PiManagerRuntimeRequestError(status, parsed.code, parsed.message);
     }
   } catch {
@@ -132,11 +143,6 @@ export function createPiManagerRuntime(input: {
   }
 
   async function request<T>(route: string, body: unknown): Promise<T> {
-    await input.kernel.assertAuthorized({
-      execution: input.execution,
-      operation: body === null ? BACKOFFICE_PERMISSION.pi.read : BACKOFFICE_PERMISSION.pi.modify,
-      resource: { kind: "pi-session-directory", scope: input.execution.scope },
-    });
     const object = input.kernel.scoped(
       "PI_MANAGER",
       input.execution.scope,
@@ -152,7 +158,6 @@ export function createPiManagerRuntime(input: {
         {
           execution: input.execution,
           propagationContext: null,
-          authorization: "preauthorized",
         },
       ),
     );
@@ -200,19 +205,6 @@ export function createPiManagerRuntime(input: {
         args.billingOrganizationId === undefined
           ? (input.defaultBillingOrganizationId ?? null)
           : args.billingOrganizationId;
-      if (
-        billingOrganizationId !== null &&
-        (input.execution.scope.kind === "user" || input.execution.scope.kind === "system")
-      ) {
-        await input.kernel.assertAuthorized({
-          execution: {
-            ...input.execution,
-            scope: { kind: "org", orgId: billingOrganizationId },
-          },
-          operation: BACKOFFICE_PERMISSION.pi.modify,
-          resource: { kind: "pi-session-billing" },
-        });
-      }
       return await request<PiAgentConfig>("/sessions", {
         requestId: args.requestId?.trim() || createSessionRequestId(),
         name: args.name ?? null,

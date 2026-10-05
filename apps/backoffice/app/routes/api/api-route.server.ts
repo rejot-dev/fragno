@@ -24,8 +24,7 @@ export const apiPublicRoute = {
   internalPrefix: API_INTERNAL_PREFIX,
   getObjectForScope: (context, scope) =>
     context.get(BackofficeWorkerContext).runtime.objects.api.for(scope),
-  forwardRequest: ({ getObject, request }) => getObject().http.fetch(request),
-  isAnonymousRequest: isPublicWebhookReceiveRequest,
+  publicIngress: { kind: "fragment", matches: isPublicWebhookReceiveRequest },
   oauth: {
     internalCallbackPath: API_INTERNAL_OAUTH_CALLBACK_PATH,
     invalidResponse: (message) => new Response(message, { status: 502 }),

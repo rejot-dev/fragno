@@ -1,6 +1,5 @@
 import type { RouterContextProvider } from "react-router";
 
-import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { BackofficeObjectHandle } from "@/backoffice-runtime/object-registry";
 import {
   backofficeRuntimeScopeFromResolvedScope,
@@ -14,7 +13,10 @@ import type { BackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import { authorizeBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
-import { appendBackofficeScopeQuery } from "./scoped-public-fragment-routes";
+import {
+  appendBackofficeScopeQuery,
+  scopedPublicFragmentPathSuffix,
+} from "./scoped-public-fragment-routes";
 
 export type PublicFragmentRoute<TCommands> = {
   publicPrefix: string;
@@ -23,22 +25,20 @@ export type PublicFragmentRoute<TCommands> = {
     context: Readonly<RouterContextProvider>,
     scope: BackofficeRoutableScope,
   ): BackofficeObjectHandle<TCommands>;
-  forwardRequest(input: {
-    context: Readonly<RouterContextProvider>;
-    execution: BackofficeExecutionContext | null;
-    /** Resolves the scoped object only when this request needs object-backed behavior. */
-    getObject: () => BackofficeObjectHandle<TCommands>;
-    request: Request;
-    scopePathSegment: string;
-    routeScope: BackofficeRoutableRouteScope;
-    publicPathSuffix: string;
-  }): Promise<Response>;
+  /** Management forwarding cannot be overridden. Only explicit public ingress is configurable. */
+  publicIngress:
+    | ((
+        | { kind: "fragment" }
+        | {
+            kind: "redirect";
+            redirect(input: {
+              request: Request;
+              routeScope: BackofficeRoutableRouteScope;
+            }): Response;
+          }
+      ) & { matches(request: Request, scope: BackofficeRoutableScope, suffix: string): boolean })
+    | null;
   isScopeSupported?: (scope: BackofficeRoutableScope) => boolean;
-  isAnonymousRequest?: (
-    request: Request,
-    scope: BackofficeRoutableScope,
-    publicPathSuffix: string,
-  ) => boolean;
   oauth?: {
     internalCallbackPath: string;
     invalidResponse: (message: string) => Response;
@@ -52,15 +52,6 @@ export type PublicFragmentRoute<TCommands> = {
     }): Response;
   };
 };
-
-function isScopedOAuthCallbackRequest(
-  request: Request,
-  publicPrefix: string,
-  scopePathSegment: string,
-) {
-  const url = new URL(request.url);
-  return url.pathname === `${publicPrefix}/${encodeURIComponent(scopePathSegment)}/oauth/callback`;
-}
 
 async function readRequiredJsonObject(
   response: Response,
@@ -110,6 +101,7 @@ function parsePublicRouteScope(scopePathSegment: string | undefined) {
   try {
     return {
       ok: true as const,
+      scopePathSegment,
       routeScope: backofficeRouteScopeFromSinglePathSegment(scopePathSegment),
     };
   } catch {
@@ -140,22 +132,17 @@ async function resolvePublicRouteScope(
 async function handleScopedOAuthCallback<TCommands>({
   request,
   context,
-  scopePathSegment,
+  routeScope,
   route,
 }: {
   request: Request;
   context: Readonly<RouterContextProvider>;
-  scopePathSegment: string | undefined;
+  routeScope: BackofficeRoutableRouteScope;
   route: PublicFragmentRoute<TCommands> & {
     oauth: NonNullable<PublicFragmentRoute<TCommands>["oauth"]>;
   };
 }) {
-  const parsed = parsePublicRouteScope(scopePathSegment);
-  if (!parsed.ok) {
-    return new Response("Not Found", { status: 404 });
-  }
-
-  const scope = await resolvePublicRouteScope(context, parsed.routeScope);
+  const scope = await resolvePublicRouteScope(context, routeScope);
   if (!scope || (route.isScopeSupported && !route.isScopeSupported(scope))) {
     return new Response("Not Found", { status: 404 });
   }
@@ -166,21 +153,15 @@ async function handleScopedOAuthCallback<TCommands>({
   callbackUrl.pathname = route.oauth.internalCallbackPath;
   appendBackofficeScopeQuery(callbackUrl, scope);
 
-  const response = await route.forwardRequest({
-    context,
-    getObject: () => route.getObjectForScope(context, scope),
-    request: new Request(callbackUrl.toString(), request),
-    scopePathSegment: scopePathSegment!,
-    routeScope: parsed.routeScope,
-    execution: null,
-    publicPathSuffix: "/oauth/callback",
-  });
+  const response = await route
+    .getObjectForScope(context, scope)
+    .http.fetch(new Request(callbackUrl.toString(), request));
   if (!response.ok) {
     const fragmentError = await readFragmentError(response, "OAuth callback");
     return route.oauth.redirect({
       request,
       scope,
-      routeScope: parsed.routeScope,
+      routeScope,
       status: "error",
       code: fragmentError.code,
       message: fragmentError.message,
@@ -205,7 +186,7 @@ async function handleScopedOAuthCallback<TCommands>({
   return route.oauth.redirect({
     request,
     scope,
-    routeScope: parsed.routeScope,
+    routeScope,
     status: payload.authenticated && payload.mode === "oauth" ? "success" : "error",
   });
 }
@@ -221,56 +202,56 @@ export async function forwardPublicFragmentRequest<TCommands>({
   scopePathSegment: string | undefined;
   route: PublicFragmentRoute<TCommands>;
 }) {
-  if (
-    route.oauth &&
-    scopePathSegment &&
-    isScopedOAuthCallbackRequest(request, route.publicPrefix, scopePathSegment)
-  ) {
-    return handleScopedOAuthCallback({
-      request,
-      context,
-      scopePathSegment,
-      route: { ...route, oauth: route.oauth },
-    });
-  }
-
   const parsed = parsePublicRouteScope(scopePathSegment);
   if (!parsed.ok) {
     return parsed.response;
+  }
+
+  const url = new URL(request.url);
+  const publicPathSuffix = scopedPublicFragmentPathSuffix({
+    pathname: url.pathname,
+    publicPrefix: route.publicPrefix,
+    scopePathSegment: parsed.scopePathSegment,
+  });
+  if (publicPathSuffix === null) {
+    return new Response("Not Found", { status: 404 });
+  }
+  if (route.oauth && request.method === "GET" && publicPathSuffix === "/oauth/callback") {
+    return handleScopedOAuthCallback({
+      request,
+      context,
+      routeScope: parsed.routeScope,
+      route: { ...route, oauth: route.oauth },
+    });
   }
 
   const scope = await resolvePublicRouteScope(context, parsed.routeScope);
   if (!scope || (route.isScopeSupported && !route.isScopeSupported(scope))) {
     return new Response("Not Found", { status: 404 });
   }
-  const url = new URL(request.url);
-  const prefix = `${route.publicPrefix}/${encodeURIComponent(scopePathSegment!)}`;
-  const publicPathSuffix = url.pathname.startsWith(prefix) ? url.pathname.slice(prefix.length) : "";
-  const auth = route.isAnonymousRequest?.(request, scope, publicPathSuffix)
+  const ingress = route.publicIngress;
+  const isPublicIngress = ingress?.matches(request, scope, publicPathSuffix) ?? false;
+  if (isPublicIngress && ingress?.kind === "redirect") {
+    return ingress.redirect({ request, routeScope: parsed.routeScope });
+  }
+  const auth = isPublicIngress
     ? { ok: true as const, execution: null, headers: [] }
     : await authorizeBackofficeContext(request, context, scope);
   if (!auth.ok) {
     return auth.response;
   }
 
-  if (url.pathname.startsWith(prefix)) {
-    url.pathname = `${route.internalPrefix}${publicPathSuffix}`;
-  }
+  url.pathname = `${route.internalPrefix}${publicPathSuffix}`;
   appendBackofficeScopeQuery(url, scope);
 
-  let object: BackofficeObjectHandle<TCommands> | null = null;
-  const response = await route.forwardRequest({
-    context,
-    getObject: () => {
-      object ??= route.getObjectForScope(context, scope);
-      return object;
-    },
-    request: new Request(url.toString(), request),
-    scopePathSegment: scopePathSegment!,
-    routeScope: parsed.routeScope,
-    execution: auth.execution,
-    publicPathSuffix,
-  });
+  const object = route.getObjectForScope(context, scope);
+  const outboundRequest = new Request(url.toString(), request);
+  const response = auth.execution
+    ? await object.http.fetchAuthorized(outboundRequest, {
+        execution: auth.execution,
+        propagationContext: null,
+      })
+    : await object.http.fetch(outboundRequest);
   if (auth.headers.length === 0) {
     return response;
   }

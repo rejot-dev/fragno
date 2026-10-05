@@ -46,6 +46,7 @@ export type AutomationEventSubject = {
 export type AutomationEvent = {
   id: string;
   scope: BackofficeContextScope;
+  scopeRestriction: BackofficeContextScope | null;
   source: string;
   eventType: string;
   occurredAt: string;

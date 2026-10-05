@@ -18,7 +18,9 @@ async function forwardFormsRequest(
     return authorization.response;
   }
 
-  const response = await getFormsDurableObject(context).http.fetch(request);
+  const response = await getFormsDurableObject(context).http.fetchAuthorized(request, {
+    execution: authorization.execution,
+  });
   const headers = new Headers(response.headers);
   for (const [name, value] of authorization.headers) {
     headers.append(name, value);

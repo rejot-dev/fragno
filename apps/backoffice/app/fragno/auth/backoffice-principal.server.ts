@@ -2,9 +2,11 @@ import type { RouterContextProvider } from "react-router";
 
 import { resolveBackofficeUserAuthorityRole } from "@/backoffice-runtime/authority-roles";
 import {
-  createBackofficeUserExecution,
+  createBackofficeRequestExecution,
+  backofficeScopeContains,
   type BackofficeContextScope,
   type BackofficeExecutionContext,
+  type BackofficeRequestExecution,
 } from "@/backoffice-runtime/context";
 import { BackofficeForbiddenError, isBackofficeForbiddenError } from "@/backoffice-runtime/kernel";
 
@@ -15,6 +17,9 @@ const assertAuthenticatedUserCanAccessScope = (
   auth: BackofficeAuthPrincipal,
   scope: BackofficeContextScope,
 ) => {
+  if (auth.auth.scopeRestriction && !backofficeScopeContains(auth.auth.scopeRestriction, scope)) {
+    throw new BackofficeForbiddenError("Credential scope does not permit the requested scope.");
+  }
   const role = resolveBackofficeUserAuthorityRole(
     {
       userId: auth.user.id,
@@ -35,15 +40,16 @@ const assertAuthenticatedUserCanAccessScope = (
 export const createBackofficeExecutionForPrincipal = (
   auth: BackofficeAuthPrincipal,
   scope: BackofficeContextScope,
-): BackofficeExecutionContext => {
+): BackofficeRequestExecution => {
   assertAuthenticatedUserCanAccessScope(auth, scope);
-  return createBackofficeUserExecution({
+  return createBackofficeRequestExecution({
     scope,
     userId: auth.user.id,
     verifiedRequestAuthority: {
       role: auth.user.role,
       organizationId: auth.auth.organization?.id ?? null,
       expiresAt: auth.auth.expiresAt,
+      scopeRestriction: auth.auth.scopeRestriction,
     },
   });
 };
@@ -52,7 +58,7 @@ export const requireBackofficeContext = async (
   request: Request,
   routerContext: Readonly<RouterContextProvider>,
   scope: BackofficeContextScope,
-): Promise<BackofficeExecutionContext> => {
+): Promise<BackofficeRequestExecution> => {
   const auth = await requireBackofficePrincipal(request, routerContext);
   return createBackofficeExecutionForPrincipal(auth, scope);
 };

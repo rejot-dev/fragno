@@ -7,6 +7,8 @@ import type { OtpObject } from "@/backoffice-runtime/object-registry";
 import { createOtpRuntime } from "./otp-runtime";
 
 const externalExecution = {
+  kind: "deferred" as const,
+  scopeRestriction: null,
   scope: { kind: "org", orgId: "org-1" } as const,
   actors: {
     initiator: {
@@ -107,6 +109,8 @@ describe("createOtpRuntime", () => {
       scope: { kind: "org", organization: { id: "org-1", slug: "acme" } },
       kernel,
       execution: {
+        kind: "deferred" as const,
+        scopeRestriction: null,
         scope: { kind: "org", orgId: "org-1" },
         actors: {
           initiator: { scope: "internal", type: "user", id: "user-1", role: "initiator" },

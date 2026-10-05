@@ -33,6 +33,7 @@ import {
 } from "./pi-durable-billing";
 
 const config: PiAgentConfig = {
+  scopeRestriction: null,
   scope: { kind: "project", orgId: "org-1", projectId: "project-1" },
   sessionId: "session-1",
   name: "Billing test",

@@ -92,6 +92,7 @@ const customAutomationEvent = ({
   payload?: Record<string, unknown>;
 }): AutomationEvent => ({
   id,
+  scopeRestriction: null,
   scope: { kind: "org", orgId: "org-1" },
   source,
   eventType,
@@ -161,6 +162,7 @@ const telegramMessageEvent = ({
 
   return {
     id,
+    scopeRestriction: null,
     scope: { kind: "org", orgId: "org-1" },
     source: "telegram",
     eventType: "message.received",

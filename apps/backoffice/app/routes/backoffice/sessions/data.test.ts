@@ -17,6 +17,8 @@ import {
 
 const scope = { kind: "org" as const, orgId: "org-1" };
 const execution = {
+  kind: "deferred" as const,
+  scopeRestriction: null,
   scope,
   actors: {
     initiator: {
@@ -59,6 +61,7 @@ describe("Pi manager session route caller", () => {
       return Response.json(
         {
           ...body,
+          scopeRestriction: null,
           scope,
           sessionId: "session-1",
           actors: execution.actors,

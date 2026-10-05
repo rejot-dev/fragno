@@ -73,7 +73,10 @@ export function createBackofficeTokenPlugin(input: {
             return context.json(grant);
           }
 
-          const issued = await issueBackofficeJwt(context, grant.authority);
+          const issued = await issueBackofficeJwt(context, {
+            ...grant.authority,
+            scopeRestriction: null,
+          });
           context.setCookie(backofficeAccessTokenCookieName(!input.isDevelopment), "", {
             ...backofficeAccessTokenCookieAttributes(!input.isDevelopment),
             maxAge: 0,

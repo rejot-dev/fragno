@@ -6,6 +6,7 @@ import { decodeCursor, withDatabase, type FragnoPublicConfigWithDatabase } from 
 
 import {
   backofficeContextScopesEqual,
+  backofficeExecutionScopeRestriction,
   type BackofficeExecutionContext,
   type BackofficeContextScope,
 } from "@/backoffice-runtime/context";
@@ -39,6 +40,7 @@ const createSessionRequestSchema = piAgentCreationSchema.extend({
 const createSessionSchema = piAgentCreationSchema.extend({
   requestId: z.string().trim().min(1).max(256),
   actors: piAgentConfigSchema.shape.actors,
+  scopeRestriction: piAgentConfigSchema.shape.scopeRestriction,
 });
 const provisionSessionSchema = createSessionSchema.extend({ model: piAgentModelSchema });
 const sessionSchema = piManagerSessionSchema;
@@ -51,31 +53,39 @@ type PiManagerConfig = {
 
 type PiManagerRequestContext = {
   execution: BackofficeExecutionContext;
-  authorization: "enforce" | "preauthorized";
 };
 
 /** Only the session directory lives here; transcripts and tasks belong to agent objects. */
 const piManagerSchema = schema("pi_manager", (s) =>
-  s.addTable("session", (t) =>
-    t
-      .addColumn("id", idColumn())
-      .addColumn("name", column("string").nullable())
-      .addColumn(
-        "model",
-        column("json") as Column<"json", PiAgentConfig["model"], PiAgentConfig["model"]>,
-      )
-      .addColumn("instructions", column("text"))
-      .addColumn("billingOrganizationId", column("string").nullable())
-      .addColumn(
-        "actors",
-        column("json") as Column<"json", PiAgentConfig["actors"], PiAgentConfig["actors"]>,
-      )
-      .addColumn(
-        "createdAt",
-        column("timestamp").defaultTo((b) => b.now()),
-      )
-      .createIndex(SESSION_ORDER_INDEX, ["createdAt", "id"]),
-  ),
+  s
+    .addTable("session", (t) =>
+      t
+        .addColumn("id", idColumn())
+        .addColumn("name", column("string").nullable())
+        .addColumn(
+          "model",
+          column("json") as Column<"json", PiAgentConfig["model"], PiAgentConfig["model"]>,
+        )
+        .addColumn("instructions", column("text"))
+        .addColumn("billingOrganizationId", column("string").nullable())
+        .addColumn(
+          "actors",
+          column("json") as Column<"json", PiAgentConfig["actors"], PiAgentConfig["actors"]>,
+        )
+        .addColumn(
+          "createdAt",
+          column("timestamp").defaultTo((b) => b.now()),
+        )
+        .createIndex(SESSION_ORDER_INDEX, ["createdAt", "id"]),
+    )
+    .alterTable("session", (t) =>
+      t.addColumn(
+        "scopeRestriction",
+        (
+          column("json") as Column<"json", BackofficeContextScope, BackofficeContextScope>
+        ).nullable(),
+      ),
+    ),
 );
 
 /** Execution scope is supplied by the object address, never by a session request body. */
@@ -101,6 +111,7 @@ const piManagerDefinition = defineFragment<PiManagerConfig>("pi-manager")
                   model: existing.model,
                   instructions: existing.instructions,
                   actors: existing.actors,
+                  scopeRestriction: existing.scopeRestriction,
                   billingOrganizationId: existing.billingOrganizationId,
                 },
               } as const;
@@ -131,6 +142,7 @@ const piManagerDefinition = defineFragment<PiManagerConfig>("pi-manager")
                   model: session.model,
                   instructions: session.instructions,
                   actors: session.actors,
+                  scopeRestriction: session.scopeRestriction,
                   billingOrganizationId: session.billingOrganizationId,
                   createdAt: session.createdAt.toISOString(),
                 }
@@ -254,6 +266,7 @@ const piManagerRoutes = defineRoutes(piManagerDefinition).create(
             model: session.model,
             instructions: session.instructions,
             actors: session.actors,
+            scopeRestriction: session.scopeRestriction,
             billingOrganizationId: session.billingOrganizationId,
             createdAt: session.createdAt.toISOString(),
           })),
@@ -578,23 +591,21 @@ export function createPiManagerFragment(
           403,
         );
       }
-      if (requestContext.authorization === "enforce") {
-        try {
-          await kernel.assertAuthorized({
-            execution: requestContext.execution,
-            operation:
-              method === "GET" ? BACKOFFICE_PERMISSION.pi.read : BACKOFFICE_PERMISSION.pi.modify,
-            resource: { kind: "pi-session-directory", scope: config.scope },
-          });
-        } catch (cause) {
-          if (cause instanceof BackofficeForbiddenError) {
-            return error(
-              { code: cause.reason, message: cause.message },
-              cause.reason === "authority-unavailable" ? 503 : 403,
-            );
-          }
-          throw cause;
+      try {
+        await kernel.assertAuthorized({
+          execution: requestContext.execution,
+          operation:
+            method === "GET" ? BACKOFFICE_PERMISSION.pi.read : BACKOFFICE_PERMISSION.pi.modify,
+          resource: { kind: "pi-session-directory", scope: config.scope },
+        });
+      } catch (cause) {
+        if (cause instanceof BackofficeForbiddenError) {
+          return error(
+            { code: cause.reason, message: cause.message },
+            cause.reason === "authority-unavailable" ? 503 : 403,
+          );
         }
+        throw cause;
       }
       return await ifMatchesRoute("POST", "/sessions", async () => {
         const parsed = createSessionRequestSchema.safeParse(requestState.body);
@@ -616,7 +627,6 @@ export function createPiManagerFragment(
           );
         }
         if (
-          requestContext.authorization === "enforce" &&
           billingOrganizationId !== null &&
           (config.scope.kind === "user" || config.scope.kind === "system")
         ) {
@@ -644,6 +654,7 @@ export function createPiManagerFragment(
           requestId: values.requestId ?? crypto.randomUUID(),
           billingOrganizationId,
           actors: requestContext.execution.actors,
+          scopeRestriction: backofficeExecutionScopeRestriction(requestContext.execution),
         });
         return undefined;
       });

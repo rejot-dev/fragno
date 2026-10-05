@@ -22,6 +22,7 @@ describe("buildTelegramAutomationEvent", () => {
 
     expect(event).toEqual({
       id: "telegram:org:org-1:42:chat-1:10",
+      scopeRestriction: null,
       scope: { kind: "org", orgId: "org-1" },
       source: "telegram",
       eventType: "message.received",

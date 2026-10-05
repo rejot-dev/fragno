@@ -14,6 +14,7 @@ import { BackofficeRequestStateContext, type BackofficeRequestState } from "./re
 import { createBackofficeRequestState } from "./request-state.server";
 
 const authenticatedPayload: BackofficeJwtPayload = {
+  scopeRestriction: null,
   sub: "user-1",
   email: "user@example.com",
   globalRole: "admin",

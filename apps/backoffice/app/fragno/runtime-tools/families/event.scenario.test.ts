@@ -34,6 +34,7 @@ test("stored event commands read scoped SQLite records with text, JSON, and curs
             };
             const older = {
               id: "older-event",
+              scopeRestriction: null,
               scope,
               source: "custom",
               eventType: "thing.created",

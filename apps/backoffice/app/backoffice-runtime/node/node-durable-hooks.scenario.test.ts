@@ -11,6 +11,7 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
 }));
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
+import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import {
   createInMemoryBackofficeRuntime,
   type InMemoryBackofficeRuntime,
@@ -64,7 +65,7 @@ test("a separate Node processor completes hooks recorded by the server runtime",
         options: { drain: false, sqliteDataDirectory: directory },
         steps: ({ then }) => [
           then.assert("the server commits a form hook for external processing", async (ctx) => {
-            const response = await ctx.runtime.objects.forms.singleton().http.fetch(
+            const response = await ctx.runtime.objects.forms.singleton().http.fetchAuthorized(
               new Request("https://forms.test/api/forms/admin/forms", {
                 method: "POST",
                 headers: { "content-type": "application/json" },
@@ -76,6 +77,7 @@ test("a separate Node processor completes hooks recorded by the server runtime",
                   dataSchema: { type: "object" },
                 }),
               }),
+              { execution: createBackofficeSystemExecution({ kind: "system" }) },
             );
             assert(response.ok);
 

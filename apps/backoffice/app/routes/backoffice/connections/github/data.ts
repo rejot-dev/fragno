@@ -1,6 +1,7 @@
 import { createRouteCaller } from "@fragno-dev/core/api";
 import type { RouterContextProvider } from "react-router";
 
+import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import type { GitHubFragment } from "@/fragno/github";
 import {
   BACKOFFICE_ADMIN_OBJECT_NAME,
@@ -144,7 +145,12 @@ const createGitHubRouteCaller = (
       await githubDo.commands.ensureAdminConfig(organizationId);
       const url = new URL(outboundRequest.url);
       url.searchParams.set("orgId", organizationId);
-      return await githubDo.http.fetch(new Request(url.toString(), outboundRequest));
+      return await githubDo.http.fetchAuthorized(new Request(url.toString(), outboundRequest), {
+        execution: await requireBackofficeContext(request, context, {
+          kind: "org",
+          orgId: organizationId,
+        }),
+      });
     },
   });
 };

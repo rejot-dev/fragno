@@ -28,7 +28,6 @@ const backofficeInternalContextPayloadSchema = z.strictObject({
   search: z.string(),
   execution: backofficeExecutionContextSchema,
   propagationContext: z.record(z.string(), z.string()).nullable(),
-  authorization: z.enum(["enforce", "preauthorized"]),
   issuedAtEpochMs: z.number().int().nonnegative(),
   expiresAtEpochMs: z.number().int().positive(),
   requestId: z.uuid(),
@@ -39,19 +38,11 @@ type BackofficeInternalContextPayload = z.infer<typeof backofficeInternalContext
 export type BackofficeAuthorizedRequestContext = {
   execution: BackofficeExecutionContext;
   propagationContext: Readonly<Record<string, string>> | null;
-  authorization?: "enforce" | "preauthorized";
-};
-
-type VerifiedBackofficeAuthorizedRequestContext = Omit<
-  BackofficeAuthorizedRequestContext,
-  "authorization"
-> & {
-  authorization: "enforce" | "preauthorized";
 };
 
 export type VerifiedBackofficeInternalRequest = {
   request: Request;
-  context: VerifiedBackofficeAuthorizedRequestContext;
+  context: BackofficeAuthorizedRequestContext;
   requestId: string;
 };
 
@@ -196,7 +187,6 @@ export async function createAuthorizedBackofficeObjectRequest({
     search: url.search,
     execution: context.execution,
     propagationContext: context.propagationContext,
-    authorization: context.authorization ?? "enforce",
     issuedAtEpochMs: nowEpochMs,
     expiresAtEpochMs: nowEpochMs + INTERNAL_CONTEXT_LIFETIME_MS,
     requestId,
@@ -270,7 +260,6 @@ export async function verifyAuthorizedBackofficeObjectRequest({
     context: {
       execution: payload.execution,
       propagationContext: payload.propagationContext,
-      authorization: payload.authorization,
     },
     requestId: payload.requestId,
   };

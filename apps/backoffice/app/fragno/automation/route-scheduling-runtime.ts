@@ -53,6 +53,7 @@ const buildScheduledRouteEvent = ({
   };
   return {
     id: `schedule:${route.id}:${scheduledFor.getTime()}`,
+    scopeRestriction: null,
     scope,
     source: AUTOMATION_SCHEDULE_SOURCE,
     eventType: AUTOMATION_SCHEDULE_EVENT_TYPE,

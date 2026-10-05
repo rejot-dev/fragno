@@ -105,7 +105,6 @@ export class InMemoryPiManagerObject extends RpcTarget {
         propagationContext: verified.context.propagationContext,
         requestContext: {
           execution: verified.context.execution,
-          authorization: verified.context.authorization,
         },
       });
     } catch (cause) {

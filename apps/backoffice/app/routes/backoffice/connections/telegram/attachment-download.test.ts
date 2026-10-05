@@ -1,220 +1,260 @@
-import { beforeEach, describe, expect, it, vi, assert } from "vitest";
+import { assert, describe, expect, test, vi } from "vitest";
 
-const { findBackofficeMeMock, getTelegramDurableObjectMock } = vi.hoisted(() => ({
-  findBackofficeMeMock: vi.fn(),
-  getTelegramDurableObjectMock: vi.fn(),
+import { mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
+const workers = vi.hoisted(() => ({
+  DurableObject: class {},
+  RpcTarget: class {},
+  WorkerEntrypoint: class {},
 }));
+vi.mock("cloudflare:workers", () => workers);
 
-vi.mock("@/fragno/auth/auth-server", () => ({
-  findBackofficeMe: findBackofficeMeMock,
-}));
+import { z } from "zod";
 
-vi.mock("@/worker-runtime/durable-objects", () => ({
-  getTelegramDurableObject: getTelegramDurableObjectMock,
-}));
-
-import { createTelegramAutomationFileResponse } from "@/backoffice-runtime/telegram-file-response";
+import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import {
+  defineBackofficeScenario,
+  runBackofficeScenario,
+  type BackofficeScenarioContext,
+  type BackofficeScenarioDefinitionInput,
+} from "@/fragno/automation/scenario";
+import { setScenarioAuthUserRole } from "@/fragno/automation/scenario-auth";
+import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
 import { buildBackofficeLoginPath } from "../../auth-navigation";
-import {
-  buildDownloadFilename,
-  createContentDisposition,
-  guessContentType,
-  loader,
-} from "./attachment-download";
+import { loader } from "./attachment-download";
 
-function mockTelegramDownload(response: Response) {
-  getTelegramDurableObjectMock.mockReturnValue({
-    commands: {},
-    http: {
-      fetch: vi.fn(async () => response),
-    },
+const orgId = "org_123";
+const downloadPath = "/backoffice/automations/org/fragno/integrations/telegram/attachment-download";
+
+async function runAttachmentScenario(scenario: BackofficeScenarioDefinitionInput) {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "backoffice-telegram-attachment-"));
+  try {
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        ...scenario,
+        options: { ...scenario.options, sqliteDataDirectory: directory },
+      }),
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}
+
+async function authenticateAttachmentUser(
+  ctx: BackofficeScenarioContext,
+  role: "admin" | "user",
+  member: boolean,
+) {
+  const auth = ctx.runtime.objects.auth.singleton();
+  const sessionCookie = ctx.vars.session;
+  assert(typeof sessionCookie === "string");
+  const session = await auth.http.fetch(
+    new Request("https://example.com/api/auth/get-session", {
+      headers: { cookie: sessionCookie },
+    }),
+  );
+  assert(session.ok);
+  const userId = z.object({ user: z.object({ id: z.string() }) }).parse(await session.json())
+    .user.id;
+  if (member) {
+    await auth.commands.applyScenarioFixture({
+      members: [{ organizationId: orgId, userId, roles: ["member"] }],
+    });
+  }
+  if (role === "admin") {
+    await setScenarioAuthUserRole(ctx.runtime, { userId, role });
+  }
+  const exchange = await auth.http.fetch(
+    new Request("https://example.com/api/auth/backoffice-token", {
+      method: "POST",
+      headers: {
+        cookie: sessionCookie,
+        origin: "https://example.com",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ selection: "preferred", organizationId: member ? orgId : null }),
+    }),
+  );
+  assert(exchange.ok, await exchange.clone().text());
+  const cookie = exchange.headers
+    .getSetCookie()
+    .map((value) => value.split(";", 1)[0])
+    .join("; ");
+  assert(cookie);
+  return cookie;
+}
+
+async function downloadAttachment(ctx: BackofficeScenarioContext, query: string, cookie: string) {
+  const url = new URL(`${downloadPath}?${query}`, "https://example.com");
+  const request = new Request(url, { headers: cookie ? { cookie } : {} });
+  return await loader({
+    request,
+    url,
+    pattern:
+      "/backoffice/automations/:scopeKind/:scopeId/integrations/telegram/attachment-download",
+    context: createBackofficeRouterContextProvider(request, {
+      runtime: ctx.runtime.services,
+      kernel: new BackofficeKernel(ctx.runtime.services),
+      env: ctx.runtime.env as unknown as CloudflareEnv,
+      ctx: {} as ExecutionContext,
+    }),
+    params: { scopeKind: "org", scopeId: "fragno" },
   });
 }
 
-describe("telegram attachment download route", () => {
-  beforeEach(() => {
-    findBackofficeMeMock.mockReset();
-    getTelegramDurableObjectMock.mockReset();
-  });
-
-  it("redirects anonymous users to login", async () => {
-    findBackofficeMeMock.mockResolvedValue(null);
-
-    const response = await loader(
-      createLoaderArgs(
-        "https://example.com/backoffice/automations/org/fragno/integrations/telegram/attachment-download?fileId=file-1&kind=voice",
-      ),
-    );
-
-    expect(response).toBeInstanceOf(Response);
-    assert(response.status === 302);
-    expect(response.headers.get("Location")).toBe(
-      `https://example.com${buildBackofficeLoginPath("/backoffice/automations/org/fragno/integrations/telegram/attachment-download?fileId=file-1&kind=voice")}`,
-    );
-  });
-
-  it("downloads Telegram attachment bytes with a file-path-derived filename", async () => {
-    findBackofficeMeMock.mockResolvedValue(createAuthMe());
-    mockTelegramDownload(
-      createTelegramAutomationFileResponse(new Response(new Uint8Array([0, 255, 1, 2])), {
-        fileId: "file-1",
-        fileUniqueId: "unique-1",
-        filePath: "voice/message-1.ogg",
-        fileSize: 4,
-      }),
-    );
-
-    const response = await loader(
-      createLoaderArgs(
-        "https://example.com/backoffice/automations/org/fragno/integrations/telegram/attachment-download?fileId=file-1&kind=voice",
-      ),
-    );
-
-    assert(response.status === 200);
-    assert(response.headers.get("content-type") === "audio/ogg");
-    expect(response.headers.get("content-disposition")).toContain(
-      'attachment; filename="message-1.ogg"',
-    );
-    const body = new Uint8Array(await response.arrayBuffer());
-    expect(body).toEqual(new Uint8Array([0, 255, 1, 2]));
-  });
-
-  it("prefers the original filename from the backoffice attachment when available", async () => {
-    findBackofficeMeMock.mockResolvedValue(createAuthMe());
-    mockTelegramDownload(
-      createTelegramAutomationFileResponse(new Response(new Uint8Array([7, 8, 9])), {
-        fileId: "file-1",
-        fileUniqueId: "unique-1",
-        filePath: "documents/file_123",
-        fileSize: 3,
-      }),
-    );
-
-    const response = await loader(
-      createLoaderArgs(
-        "https://example.com/backoffice/automations/org/fragno/integrations/telegram/attachment-download?fileId=file-1&kind=document&filename=Quarterly%20Report.pdf",
-      ),
-    );
-
-    assert(response.status === 200);
-    expect(response.headers.get("content-disposition")).toContain(
-      'attachment; filename="Quarterly Report.pdf"',
-    );
-    assert(response.headers.get("content-type") === "application/pdf");
-  });
-
-  it("falls back to the attachment kind when Telegram metadata lacks a file path", async () => {
-    findBackofficeMeMock.mockResolvedValue(createAuthMe());
-    mockTelegramDownload(
-      createTelegramAutomationFileResponse(new Response(new Uint8Array([1, 2, 3])), {
-        fileId: "file/with spaces",
-        fileUniqueId: "unique-1",
-        filePath: undefined,
-        fileSize: 3,
-      }),
-    );
-
-    const response = await loader(
-      createLoaderArgs(
-        "https://example.com/backoffice/automations/org/fragno/integrations/telegram/attachment-download?fileId=file%2Fwith%20spaces&kind=voice",
-      ),
-    );
-
-    assert(response.status === 200);
-    expect(response.headers.get("content-disposition")).toContain(
-      'attachment; filename="file-with-spaces.ogg"',
-    );
-    assert(response.headers.get("content-type") === "audio/ogg");
-  });
-
-  it("serves inline disposition when requested for previews", async () => {
-    findBackofficeMeMock.mockResolvedValue(createAuthMe());
-    mockTelegramDownload(
-      createTelegramAutomationFileResponse(new Response(new Uint8Array([1, 2, 3, 4])), {
-        fileId: "file-1",
-        fileUniqueId: "unique-1",
-        filePath: "photos/thumb.jpg",
-        fileSize: 4,
-      }),
-    );
-
-    const response = await loader(
-      createLoaderArgs(
-        "https://example.com/backoffice/automations/org/fragno/integrations/telegram/attachment-download?fileId=file-1&kind=photo&disposition=inline",
-      ),
-    );
-
-    assert(response.status === 200);
-    expect(response.headers.get("content-disposition")).toContain('inline; filename="thumb.jpg"');
-    assert(response.headers.get("content-type") === "image/jpeg");
-  });
-
-  it("returns 404 for users outside the organization", async () => {
-    findBackofficeMeMock.mockResolvedValue({
-      ...createAuthMe(),
-      organizations: [],
-    });
-
-    await expect(
-      loader(
-        createLoaderArgs(
-          "https://example.com/backoffice/automations/org/fragno/integrations/telegram/attachment-download?fileId=file-1&kind=voice",
-        ),
-      ),
-    ).rejects.toMatchObject({
-      status: 404,
+describe("Telegram attachment download scenarios", () => {
+  test("redirects anonymous users to login without downloading a file", async () => {
+    await runAttachmentScenario({
+      name: "Anonymous attachment requests do not reach Telegram",
+      fakes: ({ fake }) => ({ telegram: fake.telegram() }),
+      setup: ({ given }) => [given.organization.exists({ id: orgId, slug: "fragno" })],
+      steps: ({ then }) => [
+        then.assert("login is required before file transport", async (ctx) => {
+          const query = "fileId=file-1&kind=voice";
+          const response = await downloadAttachment(ctx, query, "");
+          assert.equal(response.status, 302);
+          expect(response.headers.get("location")).toBe(
+            `https://example.com${buildBackofficeLoginPath(`${downloadPath}?${query}`)}`,
+          );
+          assert(ctx.fakes.telegram);
+          expect(ctx.fakes.telegram.downloadFileCalls).toEqual([]);
+        }),
+      ],
     });
   });
 
-  it("exposes filename and content-type helpers for attachment rendering", () => {
-    assert(
-      buildDownloadFilename(undefined, "photos/picture.jpg", "file-1", "photo") === "picture.jpg",
-    );
-    assert(
-      buildDownloadFilename("Quarterly Report.pdf", "documents/file_123", "file-1", "document") ===
-        "Quarterly Report.pdf",
-    );
-    assert(buildDownloadFilename(undefined, undefined, "file 1", "voice") === "file-1.ogg");
-    assert(guessContentType("picture.jpg", "photo") === "image/jpeg");
-    assert(guessContentType("voice-note.ogg", "voice") === "audio/ogg");
-    expect(createContentDisposition("voice-note.ogg", "inline")).toContain(
-      'inline; filename="voice-note.ogg"',
-    );
-  });
-});
-
-const createLoaderArgs = (url: string) =>
-  ({
-    request: new Request(url),
-    url: new URL(url),
-    pattern:
-      "/backoffice/automations/:scopeKind/:scopeId/integrations/telegram/attachment-download",
-    context: {
-      get: () => ({
-        runtime: {
-          objects: {
-            telegram: {
-              for: () => getTelegramDurableObjectMock(),
-            },
-          },
-        },
-      }),
-    } as never,
-    params: { scopeKind: "org", scopeId: "fragno" },
-  }) as Parameters<typeof loader>[0];
-
-const createAuthMe = () => ({
-  user: { id: "user_123", email: "dev@fragno.test", role: "admin" },
-  organizations: [
+  for (const input of [
     {
-      organization: { id: "org_123", slug: "fragno", name: "Fragno" },
-      member: { organizationId: "org_123" },
+      name: "downloads bytes with a file-path-derived filename",
+      fileId: "file-1",
+      filePath: "voice/message-1.ogg",
+      bytes: new Uint8Array([0, 255, 1, 2]),
+      query: "fileId=file-1&kind=voice",
+      contentType: "audio/ogg",
+      disposition: 'attachment; filename="message-1.ogg"',
     },
-  ],
-  activeOrganization: {
-    organization: { id: "org_123", slug: "fragno", name: "Fragno" },
-    member: { organizationId: "org_123" },
-  },
-  invitations: [],
+    {
+      name: "prefers the original attachment filename",
+      fileId: "file-1",
+      filePath: "documents/file_123",
+      bytes: new Uint8Array([7, 8, 9]),
+      query: "fileId=file-1&kind=document&filename=Quarterly%20Report.pdf",
+      contentType: "application/pdf",
+      disposition: 'attachment; filename="Quarterly Report.pdf"',
+    },
+    {
+      name: "falls back to attachment kind when file metadata has no path",
+      fileId: "file/with spaces",
+      filePath: null,
+      bytes: new Uint8Array([1, 2, 3]),
+      query: "fileId=file%2Fwith%20spaces&kind=voice",
+      contentType: "audio/ogg",
+      disposition: 'attachment; filename="file-with-spaces.ogg"',
+    },
+    {
+      name: "serves inline disposition for attachment previews",
+      fileId: "file-1",
+      filePath: "photos/thumb.jpg",
+      bytes: new Uint8Array([1, 2, 3, 4]),
+      query: "fileId=file-1&kind=photo&disposition=inline",
+      contentType: "image/jpeg",
+      disposition: 'inline; filename="thumb.jpg"',
+    },
+  ]) {
+    test(input.name, async () => {
+      await runAttachmentScenario({
+        name: input.name,
+        fakes: ({ fake }) => ({
+          telegram: fake.telegram({
+            files: [
+              {
+                fileId: input.fileId,
+                fileUniqueId: "unique-1",
+                filePath: input.filePath,
+                fileSize: input.bytes.byteLength,
+                bytes: input.bytes,
+              },
+            ],
+          }),
+        }),
+        setup: ({ given }) => [
+          given.organization.exists({ id: orgId, slug: "fragno" }),
+          given.telegram.configured({ orgId, botUsername: "fragno_bot" }),
+        ],
+        steps: ({ when, then }) => [
+          when.auth.signUp({
+            email: "attachment-admin@example.test",
+            captureSessionCookieAs: "session",
+          }),
+          then.assert("authenticated UI requests use signed object transport", async (ctx) => {
+            const cookie = await authenticateAttachmentUser(ctx, "admin", true);
+            const response = await downloadAttachment(ctx, input.query, cookie);
+            assert.equal(response.status, 200);
+            expect(response.headers.get("content-type")).toBe(input.contentType);
+            expect(response.headers.get("content-disposition")).toContain(input.disposition);
+            expect(response.headers.get("content-length")).toBe(String(input.bytes.byteLength));
+            expect(new Uint8Array(await response.arrayBuffer())).toEqual(input.bytes);
+            assert(ctx.fakes.telegram);
+            expect(ctx.fakes.telegram.downloadFileCalls).toEqual([{ fileId: input.fileId }]);
+          }),
+        ],
+      });
+    });
+  }
+
+  test("returns 404 for users outside the organization without downloading", async () => {
+    await runAttachmentScenario({
+      name: "Attachment scope resolves only from authenticated memberships",
+      fakes: ({ fake }) => ({ telegram: fake.telegram() }),
+      setup: ({ given }) => [given.organization.exists({ id: orgId, slug: "fragno" })],
+      steps: ({ when, then }) => [
+        when.auth.signUp({
+          email: "attachment-outsider@example.test",
+          captureSessionCookieAs: "session",
+        }),
+        then.assert(
+          "non-members cannot select another organization's Telegram object",
+          async (ctx) => {
+            const cookie = await authenticateAttachmentUser(ctx, "user", false);
+            await expect(
+              downloadAttachment(ctx, "fileId=file-1&kind=voice", cookie),
+            ).rejects.toMatchObject({ status: 404 });
+            assert(ctx.fakes.telegram);
+            expect(ctx.fakes.telegram.downloadFileCalls).toEqual([]);
+          },
+        ),
+      ],
+    });
+  });
+
+  test("returns the object's permission denial rather than treating it as attachment bytes", async () => {
+    await runAttachmentScenario({
+      name: "Attachment downloads require canonical Telegram read permission",
+      fakes: ({ fake }) => ({ telegram: fake.telegram() }),
+      setup: ({ given }) => [
+        given.organization.exists({ id: orgId, slug: "fragno" }),
+        given.telegram.configured({ orgId, botUsername: "fragno_bot" }),
+      ],
+      steps: ({ when, then }) => [
+        when.auth.signUp({
+          email: "attachment-member@example.test",
+          captureSessionCookieAs: "session",
+        }),
+        then.assert(
+          "membership without read permission cannot invoke the transport",
+          async (ctx) => {
+            const cookie = await authenticateAttachmentUser(ctx, "user", true);
+            const response = await downloadAttachment(ctx, "fileId=file-1&kind=voice", cookie);
+            assert.equal(response.status, 403);
+            expect(await response.json()).toMatchObject({ code: "principal-permission-denied" });
+            assert(ctx.fakes.telegram);
+            expect(ctx.fakes.telegram.downloadFileCalls).toEqual([]);
+          },
+        ),
+      ],
+    });
+  });
 });

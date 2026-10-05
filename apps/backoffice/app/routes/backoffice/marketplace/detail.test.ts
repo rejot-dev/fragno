@@ -178,6 +178,8 @@ beforeEach(() => {
   forOrgMock.mockClear();
   findBackofficeMeMock.mockResolvedValue(authenticatedUser);
   requireBackofficeContextMock.mockImplementation(async (_request, _context, scope) => ({
+    kind: "deferred" as const,
+    scopeRestriction: null,
     scope,
     actors: {
       initiator: {

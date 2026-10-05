@@ -7,7 +7,10 @@ import type { DurableHooksInstrumentation } from "@fragno-dev/db/hooks";
 import { defaultFragnoRuntime } from "@fragno-dev/core";
 import { createWorkflowsFragment } from "@fragno-dev/workflows";
 
-import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
+import {
+  backofficeExecutionScopeRestriction,
+  type BackofficeExecutionContext,
+} from "@/backoffice-runtime/context";
 import type { BackofficeFragmentRuntimeOptions } from "@/backoffice-runtime/fragment-runtime";
 import {
   BackofficeKernel,
@@ -91,12 +94,14 @@ const withTrustedWorkflowContext = ({
               event: {
                 ...event,
                 scope: execution.scope,
+                scopeRestriction: backofficeExecutionScopeRestriction(execution),
                 actors: execution.actors,
               },
             }
           : trigger,
       execution: {
         scope: execution.scope,
+        scopeRestriction: backofficeExecutionScopeRestriction(execution),
         actors: execution.actors,
         billingOrganizationId,
         capabilityGrants: [],

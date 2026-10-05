@@ -35,6 +35,7 @@ const automationExecution = (scope: AutomationEvent["scope"]) =>
 
 const createEvent = (overrides: Partial<AutomationEvent> = {}): AutomationEvent => ({
   id: "event-1",
+  scopeRestriction: null,
   scope: { kind: "org", orgId: "org-1" },
   source: "telegram",
   eventType: "message.received",
@@ -243,7 +244,12 @@ describe("createEventRuntime.emitEvent", () => {
     const runtime = createEventRuntime({
       objects,
       kernel: new BackofficeKernel(TEST_KERNEL_RUNTIME),
-      execution: { scope: parentEvent.scope, actors: parentEvent.actors },
+      execution: {
+        kind: "deferred" as const,
+        scopeRestriction: null,
+        scope: parentEvent.scope,
+        actors: parentEvent.actors,
+      },
       parentEvent,
     });
 

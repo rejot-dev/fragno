@@ -10,6 +10,8 @@ import { createRouteBackedAutomationStoreRuntime } from "./bindings-route-runtim
 import { createAutomationsRouteCaller } from "./route-callers";
 
 const execution = {
+  kind: "deferred" as const,
+  scopeRestriction: null,
   scope: { kind: "org", orgId: "org-1" } as const,
   actors: {
     initiator: {

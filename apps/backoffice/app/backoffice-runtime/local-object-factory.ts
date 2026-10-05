@@ -266,8 +266,9 @@ class UnavailableLocalDurableObject {
 const createUnavailableLocalObject = () => new UnavailableLocalDurableObject();
 
 const localObjectFactories = {
-  API: ({ state, env, runtime, implementation }) =>
+  API: ({ state, env, runtime, implementation, nowEpochMs }) =>
     new InMemoryApiObject({
+      nowEpochMs,
       state,
       env,
       runtime,
@@ -280,36 +281,40 @@ const localObjectFactories = {
       runtime,
       database: getAuthDatabase(),
     }),
-  TELEGRAM: ({ state, env, runtime, implementation }) =>
+  TELEGRAM: ({ state, env, runtime, implementation, nowEpochMs }) =>
     new InMemoryTelegramObject({
       state,
       env,
       runtime,
       implementation,
+      nowEpochMs,
     }),
-  RESEND: ({ state, env, runtime, implementation }) =>
+  RESEND: ({ state, env, runtime, implementation, nowEpochMs }) =>
     new InMemoryResendObject({
+      nowEpochMs,
       state,
       env,
       runtime,
       implementation,
     }),
-  RESON8: ({ state, env, runtime, implementation }) =>
+  RESON8: ({ state, env, runtime, implementation, nowEpochMs }) =>
     new InMemoryReson8Object({
+      nowEpochMs,
       state,
       env,
       runtime,
       implementation,
     }),
-  MCP: ({ state, env, runtime, implementation }) =>
+  MCP: ({ state, env, runtime, implementation, nowEpochMs }) =>
     new InMemoryMcpObject({
+      nowEpochMs,
       state,
       env,
       runtime,
       implementation,
     }),
-  PROJECT_CONNECTOR: ({ state, env, runtime, implementation }) =>
-    new InMemoryProjectConnectorObject({ state, env, runtime, implementation }),
+  PROJECT_CONNECTOR: ({ state, env, runtime, implementation, nowEpochMs }) =>
+    new InMemoryProjectConnectorObject({ state, env, runtime, implementation, nowEpochMs }),
   OTP: ({ state, env, runtime, implementation }) =>
     new InMemoryOtpObject({
       state,
@@ -332,8 +337,9 @@ const localObjectFactories = {
       implementation,
       sandboxProviders: createSandboxProviders(state.id.toString()),
     }),
-  GITHUB: ({ state, env, runtime, implementation }) =>
+  GITHUB: ({ state, env, runtime, implementation, nowEpochMs }) =>
     new InMemoryGitHubObject({
+      nowEpochMs,
       state,
       env: env as never,
       runtime,
@@ -351,8 +357,9 @@ const localObjectFactories = {
       env,
       runtime,
     }),
-  FORMS: ({ state, env, runtime, implementation }) =>
+  FORMS: ({ state, env, runtime, implementation, nowEpochMs }) =>
     new InMemoryFormsObject({
+      nowEpochMs,
       state,
       env,
       runtime,
@@ -505,7 +512,6 @@ export class LocalObjectFactory implements BackofficeObjectFactory {
             context: {
               execution: context.execution,
               propagationContext: context.propagationContext ?? null,
-              authorization: context.authorization,
             },
             env: this.env as unknown as CloudflareEnv,
             nowEpochMs: this.now(),

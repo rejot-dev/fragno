@@ -14,6 +14,7 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
 
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
+import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import { createInMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
 
 const runtimes: Array<Awaited<ReturnType<typeof createInMemoryBackofficeRuntime>>> = [];
@@ -33,7 +34,9 @@ describe("MCP system capability", () => {
     const runtime = await createRuntime();
     const mcp = runtime.objects.mcp.forOrg("org-1");
 
-    const response = await mcp.http.fetch(new Request("https://mcp.do/api/mcp/servers"));
+    const response = await mcp.http.fetchAuthorized(new Request("https://mcp.do/api/mcp/servers"), {
+      execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+    });
     assert(response.ok);
     await expect(response.json()).resolves.toEqual({ servers: [] });
   });

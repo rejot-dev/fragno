@@ -202,11 +202,15 @@ const automationActor = <TRole extends "principal" | "delegate">(
 export const createAutomationExecutionFromActors = ({
   scope,
   actors,
+  scopeRestriction,
 }: {
   scope: BackofficeContextScope;
   actors: unknown;
+  scopeRestriction: BackofficeContextScope | null;
 }): BackofficeExecutionContext => ({
+  kind: "deferred",
   scope,
+  scopeRestriction,
   actors: automationActorsSchema.parse(actors),
 });
 
@@ -246,6 +250,9 @@ export const appendAutomationDelegate = ({
   execution: BackofficeExecutionContext;
   delegate: AutomationActors["delegation"][number];
 }): BackofficeExecutionContext => {
+  if (execution.kind === "request") {
+    throw new Error("Delegation requires deferred execution with current authority.");
+  }
   const actorAlreadyPresent = [
     execution.actors.initiator,
     ...(execution.actors.principal ? [execution.actors.principal] : []),
@@ -283,6 +290,7 @@ export const createAutomationRuntimeExecution = ({
     return appendAutomationDelegate({
       execution: createAutomationExecutionFromActors({
         scope: event.scope,
+        scopeRestriction: event.scopeRestriction,
         actors: event.actors,
       }),
       delegate: automationActor(authority.automationId, "delegate"),
@@ -290,7 +298,10 @@ export const createAutomationRuntimeExecution = ({
   }
 
   return {
+    kind: "deferred",
     scope: event.scope,
+    // Organization automation is an explicit transition to the route's own live authority.
+    scopeRestriction: null,
     actors: automationActorsSchema.parse({
       initiator: event.actors.initiator,
       principal: automationActor(authority.automationId, "principal"),

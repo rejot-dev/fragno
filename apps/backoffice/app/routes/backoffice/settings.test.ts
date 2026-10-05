@@ -20,6 +20,7 @@ beforeEach(() => {
       role: "user",
     },
     auth: {
+      scopeRestriction: null,
       transport: "cookie",
       expiresAt: new Date("2027-01-01T00:00:00.000Z"),
       organization: { id: "org-1", slug: "acme", roles: ["member"] },
@@ -78,6 +79,7 @@ describe("Backoffice settings authority inspection", () => {
       execution: expect.objectContaining({
         scope: { kind: "org", orgId: "org-1" },
         userAuthority: {
+          scopeRestriction: null,
           kind: "verified-request-authority",
           userId: "user-1",
           role: "user",
@@ -92,6 +94,7 @@ describe("Backoffice settings authority inspection", () => {
     requireBackofficePrincipalMock.mockResolvedValue({
       user: { id: "admin-1", role: "admin" },
       auth: {
+        scopeRestriction: null,
         transport: "cookie",
         expiresAt: new Date("2027-01-01T00:00:00.000Z"),
         organization: null,

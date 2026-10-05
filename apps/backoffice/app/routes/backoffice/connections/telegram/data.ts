@@ -4,6 +4,7 @@ import type { RouterContextProvider } from "react-router";
 import type { TelegramChatSummary, TelegramMessageSummary } from "@fragno-dev/telegram-fragment";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
+import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import type { TelegramFragment } from "@/fragno/telegram";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
@@ -21,19 +22,27 @@ const getTelegramObject = (context: Readonly<RouterContextProvider>, target: Tel
     : objects.telegram.for(target);
 };
 
-const createTelegramRouteCaller = (
+function createTelegramRouteCaller(
   request: Request,
   context: Readonly<RouterContextProvider>,
   target: TelegramTarget,
-) => {
+) {
   const telegramDo = getTelegramObject(context, target);
   return createRouteCaller<TelegramFragment>({
     baseUrl: request.url,
     mountRoute: "/api/telegram",
     baseHeaders: request.headers,
-    fetch: (outboundRequest) => telegramDo.http.fetch(outboundRequest),
+    fetch: async (outboundRequest) =>
+      await telegramDo.http.fetchAuthorized(outboundRequest, {
+        execution: await requireBackofficeContext(
+          request,
+          context,
+          typeof target === "string" ? { kind: "org", orgId: target } : target,
+        ),
+        propagationContext: null,
+      }),
   });
-};
+}
 
 type TelegramConfigResult = {
   configState: TelegramConfigState | null;

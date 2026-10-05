@@ -1,3 +1,5 @@
+import { BackofficeForbiddenError, isBackofficeForbiddenError } from "@/backoffice-runtime/kernel";
+
 export class NotConfiguredError extends Error {
   constructor(message: string) {
     super(message);
@@ -54,6 +56,10 @@ export const throwOnRouteRuntimeError = (
   },
 ): never => {
   const { code, message } = getRouteErrorInfo(response);
+  const denial = { name: "BackofficeForbiddenError", reason: code, message };
+  if ((response.status === 403 || response.status === 503) && isBackofficeForbiddenError(denial)) {
+    throw new BackofficeForbiddenError(denial.message, denial.reason);
+  }
 
   if (response.status === 400 && code === "NOT_CONFIGURED") {
     throw new NotConfiguredError(
@@ -101,17 +107,6 @@ export const throwOnHttpResponseError = async (
     notConfiguredMessage?: string;
   },
 ): Promise<never> => {
-  const { code, message } = await readResponseErrorInfo(response);
-
-  if (response.status === 400 && code === "NOT_CONFIGURED") {
-    throw new NotConfiguredError(
-      message ?? options.notConfiguredMessage ?? "Service is not configured.",
-    );
-  }
-
-  if (message) {
-    throw new Error(`${options.runtimeLabel} returned ${response.status}: ${message}`);
-  }
-
-  throw new Error(`${options.runtimeLabel} returned ${response.status} (${options.label})`);
+  const error = await readResponseErrorInfo(response);
+  return throwOnRouteRuntimeError({ type: "error", status: response.status, error }, options);
 };

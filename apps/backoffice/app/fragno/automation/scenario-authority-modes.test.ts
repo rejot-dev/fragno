@@ -26,6 +26,7 @@ vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoin
 
 import { automationActorsSchema } from "./actors";
 import type { AutomationEvent } from "./contracts";
+import { CODEMODE_WORKFLOW, codemodeWorkflowParamsSchema } from "./engine/codemode-invocation";
 import { createAutomationsRouteCaller, createWorkflowsRouteCaller } from "./route-callers";
 import { backofficeFiles, defineBackofficeScenario, runBackofficeScenario } from "./scenario";
 
@@ -37,6 +38,7 @@ const authorityEvent = ({
   principal?: AutomationEvent["actors"]["principal"];
 }): AutomationEvent => ({
   id,
+  scopeRestriction: null,
   scope: { kind: "org", orgId: "org-1" },
   source: "authority-test",
   eventType: "authority.requested",
@@ -151,8 +153,8 @@ describe("automation route authority modes", () => {
             });
             assert(response.type === "json");
           }),
-          when.automation.ingestEvent(
-            authorityEvent({
+          when.automation.ingestEvent({
+            ...authorityEvent({
               id: "event-1",
               principal: {
                 scope: "internal",
@@ -161,7 +163,8 @@ describe("automation route authority modes", () => {
                 role: "principal",
               },
             }),
-          ),
+            scopeRestriction: { kind: "org", orgId: "org-1" },
+          }),
           then.workflow.instance({
             remoteWorkflowName: "authority-mode",
             instanceId: "organization-event-1",
@@ -177,6 +180,27 @@ describe("automation route authority modes", () => {
               delegation: [],
             },
           }),
+          then.assert(
+            "organization authority persists an explicit transition from the caller ceiling",
+            async (ctx) => {
+              const response = await ctx.runtime.objects.automations
+                .forOrg("org-1")
+                .http.fetchAuthorized(
+                  new Request(
+                    `https://automations.test/api/workflows/${CODEMODE_WORKFLOW}/instances/organization-event-1`,
+                  ),
+                  { execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }) },
+                );
+              assert(response.ok, await response.clone().text());
+              const record = (await response.json()) as { meta: { params: unknown } };
+              const params = codemodeWorkflowParamsSchema.parse(record.meta.params);
+              expect(params.execution.scopeRestriction).toBeNull();
+              expect(params.execution.actors.principal).toMatchObject({
+                type: "automation",
+                id: "automation-route:organization-authority",
+              });
+            },
+          ),
           then.store.entry({ orgId: "org-1", key: "authority/event-1", value: "written" }),
           when.auth.removeMember({ orgId: "org-1", userId: "creator-1" }),
           when.automation.ingestEvent(
@@ -607,7 +631,7 @@ describe("automation route authority modes", () => {
               ).resolves.toBeUndefined();
               await expect(
                 kernel.assertAuthorized({
-                  execution: { scope, actors },
+                  execution: { kind: "deferred" as const, scopeRestriction: null, scope, actors },
                   operation: BACKOFFICE_PERMISSION.events.emit,
                 }),
               ).rejects.toMatchObject({ reason: "actor-capability-denied" });

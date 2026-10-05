@@ -6,6 +6,7 @@ import {
   isBackofficeRoutableScope,
   type BackofficeRoutableScope,
 } from "@/backoffice-runtime/scope-codec";
+import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import type { McpFragment } from "@/fragno/mcp";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
@@ -119,7 +120,11 @@ const createMcpRouteCallerForScope = (
   return createRouteCaller<McpFragment>({
     baseUrl: new URL(request.url).origin,
     mountRoute: "/api/mcp",
-    fetch: (outboundRequest) => mcpDo.http.fetch(outboundRequest),
+    fetch: async (outboundRequest) =>
+      mcpDo.http.fetchAuthorized(outboundRequest, {
+        execution: await requireBackofficeContext(request, context, scope),
+        propagationContext: null,
+      }),
   });
 };
 

@@ -4,7 +4,13 @@ import {
   type GitHubAppFragmentConfig,
 } from "@fragno-dev/github-app-fragment";
 
+import {
+  authorizeBackofficeFragmentRequest,
+  type BackofficeFragmentHttpAccess,
+} from "@/backoffice-runtime/fragment-http-authorization";
 import type { BackofficeFragmentRuntimeOptions } from "@/backoffice-runtime/fragment-runtime";
+import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 
 import { AUTOMATION_SYSTEM_INITIATOR } from "./automation/actors";
 import type { AutomationEvent } from "./automation/contracts";
@@ -30,12 +36,44 @@ export type GitHubConfig = Pick<
 export function createGitHubServer(
   config: GitHubConfig,
   runtime: BackofficeFragmentRuntimeOptions,
+  kernel: BackofficeKernel,
 ): ReturnType<typeof createGitHubAppFragment> {
   return createGitHubAppFragment(config, {
     databaseAdapter: runtime.adapters.createAdapter({
       kind: "github",
     }),
     mountRoute: "/api/github",
+  }).withMiddleware(async function authorizeGitHubRoutes({ ifMatchesRoute, requestContext }) {
+    let access: BackofficeFragmentHttpAccess = null;
+    await ifMatchesRoute("POST", "/webhooks", () => {
+      access = "public-ingress";
+    });
+    for (const path of [
+      "/installations",
+      "/installations/:installationId/repos",
+      "/repositories/linked",
+      "/repositories/:owner/:repo/pulls",
+    ] as const) {
+      await ifMatchesRoute("GET", path, () => {
+        access = BACKOFFICE_PERMISSION.github.read;
+      });
+    }
+    await ifMatchesRoute("POST", "/repositories/access-token", () => {
+      access = BACKOFFICE_PERMISSION.github.read;
+    });
+    for (const path of [
+      "/installations/:installationId/sync",
+      "/oauth/start",
+      "/oauth/complete",
+      "/repositories/link",
+      "/repositories/unlink",
+      "/repositories/:owner/:repo/pulls/:number/reviews",
+    ] as const) {
+      await ifMatchesRoute("POST", path, () => {
+        access = BACKOFFICE_PERMISSION.connections.manage;
+      });
+    }
+    return await authorizeBackofficeFragmentRequest(kernel, requestContext, access, null);
   });
 }
 
@@ -129,6 +167,7 @@ export const buildGitHubAutomationEvent = ({
 
   return {
     id: meta.hookId,
+    scopeRestriction: null,
     scope: { kind: "org", orgId },
     source: "github",
     eventType: "webhook.received",

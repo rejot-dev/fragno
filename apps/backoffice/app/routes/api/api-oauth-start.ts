@@ -1,34 +1,25 @@
 import { API_OAUTH_REDIRECT_URI_QUERY_PARAMETER } from "@fragno-dev/api-fragment/types";
 
-import type { ApiObject } from "@/backoffice-runtime/object-registry";
-import {
-  forwardPublicFragmentRequest,
-  type PublicFragmentRoute,
-} from "@/fragno/public-fragment-route.server";
+import { forwardPublicFragmentRequest } from "@/fragno/public-fragment-route.server";
 import { apiPublicAddress } from "@/fragno/scoped-public-fragment-routes";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import type { Route } from "./+types/api-oauth-start";
 import { apiPublicRoute } from "./api-route.server";
 
-const apiOAuthStartPublicRoute = {
-  ...apiPublicRoute,
-  forwardRequest: function forwardApiOAuthStart({ context, getObject, request, scopePathSegment }) {
-    const publicOrigin = context.get(BackofficeWorkerContext).runtime.config.docsPublicBaseUrl;
-    const internalUrl = new URL(request.url);
-    internalUrl.searchParams.set(
-      API_OAUTH_REDIRECT_URI_QUERY_PARAMETER,
-      apiPublicAddress(publicOrigin, scopePathSegment).oauthRedirectUri,
-    );
-    return getObject().http.fetch(new Request(internalUrl, request));
-  },
-} satisfies PublicFragmentRoute<ApiObject>;
-
 export async function action({ request, context, params }: Route.ActionArgs) {
+  const url = new URL(request.url);
+  url.searchParams.set(
+    API_OAUTH_REDIRECT_URI_QUERY_PARAMETER,
+    apiPublicAddress(
+      context.get(BackofficeWorkerContext).runtime.config.docsPublicBaseUrl,
+      params.scopeSegment,
+    ).oauthRedirectUri,
+  );
   return forwardPublicFragmentRequest({
-    request,
+    request: new Request(url, request),
     context,
     scopePathSegment: params.scopeSegment,
-    route: apiOAuthStartPublicRoute,
+    route: apiPublicRoute,
   });
 }

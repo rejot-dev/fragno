@@ -53,7 +53,12 @@ vi.mock("@/fragno/durable-hooks", () => ({
   }),
 }));
 
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
+import {
+  createBackofficeSystemExecution,
+  type BackofficeContextScope,
+} from "@/backoffice-runtime/context";
+import { createAuthorizedBackofficeObjectRequest } from "@/backoffice-runtime/internal-object-request";
+import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import {
   backofficeObjectScopeFromContextScope,
   encodeBackofficeObjectAddress,
@@ -199,6 +204,7 @@ describe("Telegram Durable Object", () => {
           createAdapter: expect.any(Function),
         }),
       }),
+      expect.any(BackofficeKernel),
       expect.objectContaining({
         hooks: expect.objectContaining({
           onMessageReceived: expect.any(Function),
@@ -259,7 +265,15 @@ describe("Telegram Durable Object", () => {
     await telegram.setAdminConfig(VALID_PAYLOAD);
 
     const response = await telegram.fetch(
-      new Request("https://example.com/api/telegram/webhook?scope=org:other-org"),
+      await createAuthorizedBackofficeObjectRequest({
+        request: new Request("https://example.com/api/telegram/chats?scope=org:other-org"),
+        address: { binding: "TELEGRAM", scope: { kind: "org", orgId: "acme" } },
+        context: {
+          execution: createBackofficeSystemExecution({ kind: "org", orgId: "acme" }),
+          propagationContext: null,
+        },
+        env: {},
+      }),
     );
 
     await expect(response.json()).resolves.toMatchObject({
@@ -312,7 +326,17 @@ describe("Telegram Durable Object", () => {
     await telegram.setAdminConfig(VALID_PAYLOAD);
 
     const response = await telegram.fetch(
-      new Request(`https://telegram.test${telegramAutomationFileDownloadPath("telegram-file-1")}`),
+      await createAuthorizedBackofficeObjectRequest({
+        request: new Request(
+          `https://telegram.test${telegramAutomationFileDownloadPath("telegram-file-1")}`,
+        ),
+        address: { binding: "TELEGRAM", scope: { kind: "org", orgId: "acme" } },
+        context: {
+          execution: createBackofficeSystemExecution({ kind: "org", orgId: "acme" }),
+          propagationContext: null,
+        },
+        env: {},
+      }),
     );
     expect(response).toBeInstanceOf(Response);
     assert(response.ok);

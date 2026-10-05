@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  createBackofficeRequestExecution,
   createBackofficeServiceExecution,
   createBackofficeSystemExecution,
   createBackofficeUserExecution,
@@ -34,10 +35,11 @@ describe("Backoffice execution context", () => {
     const expiresAt = new Date("2026-07-28T17:00:00.000Z");
 
     expect(
-      createBackofficeUserExecution({
+      createBackofficeRequestExecution({
         scope: { kind: "org", orgId: "org-1" },
         userId: "user-1",
         verifiedRequestAuthority: {
+          scopeRestriction: null,
           role: "admin",
           organizationId: "org-1",
           expiresAt,
@@ -45,6 +47,7 @@ describe("Backoffice execution context", () => {
       }),
     ).toMatchObject({
       userAuthority: {
+        scopeRestriction: null,
         kind: "verified-request-authority",
         userId: "user-1",
         role: "admin",

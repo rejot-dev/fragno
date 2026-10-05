@@ -72,7 +72,6 @@ export class CloudflareDurableObjectFactory implements BackofficeObjectFactory {
               context: {
                 execution: context.execution,
                 propagationContext: context.propagationContext ?? null,
-                authorization: context.authorization,
               },
               env: this.env,
             }),

@@ -62,6 +62,8 @@ export const createTrustedSystemBackofficeToolContext = <
   const createContext = (scope: BackofficeContextScope): BackofficeToolContext<TRuntimes> => ({
     runtimes,
     execution: {
+      kind: "deferred",
+      scopeRestriction: null,
       scope,
       actors: {
         initiator: AUTOMATION_SYSTEM_INITIATOR,

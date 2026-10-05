@@ -1,4 +1,8 @@
-import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
+import {
+  backofficeScopeContains,
+  type BackofficeExecutionContext,
+  type BackofficeRequestExecution,
+} from "@/backoffice-runtime/context";
 import type { Role, UserAuthorityFacts } from "@/fragno/auth/contracts";
 import { automationEntityRefsEqual, type AutomationActors } from "@/fragno/automation/actors";
 import { automationRouteIdFromActor } from "@/fragno/automation/authority";
@@ -96,11 +100,16 @@ const resolveVerifiedRequestAuthorityPermissions = ({
   now,
 }: {
   principal: NonNullable<AutomationActors["principal"]>;
-  execution: BackofficeExecutionContext;
+  execution: BackofficeRequestExecution;
   now: number;
 }): readonly BackofficePermissionRequirement[] => {
   const authority = execution.userAuthority;
-  if (!authority || authority.userId !== principal.id || authority.expiresAtEpochMs <= now) {
+  if (
+    authority.userId !== principal.id ||
+    authority.expiresAtEpochMs <= now ||
+    (authority.scopeRestriction &&
+      !backofficeScopeContains(authority.scopeRestriction, execution.scope))
+  ) {
     return noPermissions;
   }
 
@@ -136,7 +145,7 @@ export const createBackofficeAuthorityResolver = (
         return noPermissions;
       }
 
-      if (execution.userAuthority) {
+      if (execution.kind === "request") {
         return resolveVerifiedRequestAuthorityPermissions({
           principal,
           execution,

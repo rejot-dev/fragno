@@ -8,6 +8,7 @@ import type {
   Reson8PrerecordedTranscription,
 } from "@fragno-dev/reson8-fragment";
 
+import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import type { Reson8Fragment } from "@/fragno/reson8";
 import { getReson8DurableObject } from "@/worker-runtime/durable-objects";
 
@@ -23,7 +24,10 @@ const createReson8RouteCaller = (
     baseUrl: request.url,
     mountRoute: "/api/reson8",
     baseHeaders: request.headers,
-    fetch: reson8Do.http.fetch.bind(reson8Do),
+    fetch: async (outboundRequest) =>
+      reson8Do.http.fetchAuthorized(outboundRequest, {
+        execution: await requireBackofficeContext(request, context, { kind: "org", orgId }),
+      }),
   });
 };
 

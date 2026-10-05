@@ -2,7 +2,10 @@ import { z } from "zod";
 
 import { visualizeWorkflowSource } from "@fragno-dev/workflow-visualizer-tokens";
 
-import { backofficeContextScopesEqual } from "@/backoffice-runtime/context";
+import {
+  backofficeContextScopesEqual,
+  backofficeExecutionScopeRestriction,
+} from "@/backoffice-runtime/context";
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import { backofficeContextScopeSchema } from "@/backoffice-runtime/context-schema";
 import type { NpmDependencyMap } from "@/backoffice-runtime/dynamic-workers/npm-dependencies";
@@ -56,6 +59,7 @@ export type CodemodeWorkflowParams = {
   trigger: CodemodeWorkflowTrigger<AutomationEventPayload>;
   execution: {
     scope: BackofficeExecutionContext["scope"];
+    scopeRestriction: BackofficeExecutionContext["scope"] | null;
     actors: AutomationActors;
     billingOrganizationId: string | null;
     capabilityGrants: readonly CodemodeCapabilityGrant[];
@@ -78,6 +82,7 @@ export const codemodeWorkflowParamsSchema: z.ZodType<CodemodeWorkflowParams> = z
   ]),
   execution: z.strictObject({
     scope: backofficeContextScopeSchema,
+    scopeRestriction: backofficeContextScopeSchema.nullable(),
     actors: automationActorsSchema,
     // Existing workflow snapshots predate billing inheritance and have no selected owner.
     billingOrganizationId: piAgentCreationSchema.shape.billingOrganizationId,
@@ -184,6 +189,7 @@ export function createCodemodeWorkflowInstanceInput<TPayload extends AutomationE
       trigger,
       execution: {
         scope: execution.scope,
+        scopeRestriction: backofficeExecutionScopeRestriction(execution),
         actors: execution.actors,
         billingOrganizationId:
           execution.scope.kind === "org" || execution.scope.kind === "project"

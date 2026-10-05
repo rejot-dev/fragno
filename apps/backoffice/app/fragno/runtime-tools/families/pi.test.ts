@@ -25,6 +25,7 @@ function createManagerSession(sessionId = "session-1") {
     model: { provider: "openai", modelId: "gpt-6-luna" },
     instructions: "Help the support team.",
     billingOrganizationId: null,
+    scopeRestriction: null,
     scope: { kind: "system" as const },
     sessionId,
     actors,

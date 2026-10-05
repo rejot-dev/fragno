@@ -356,6 +356,7 @@ describe("automation routes /routes", () => {
 
     const event: AutomationEvent = {
       id: "custom:ready:org_123",
+      scopeRestriction: null,
       scope: { kind: "system" },
       source: "custom",
       eventType: "ready",
@@ -421,6 +422,7 @@ describe("automation routes /routes", () => {
     await fragment.callServices(() =>
       fragment.services.ingestEvent({
         id: "custom:ready:org_123",
+        scopeRestriction: null,
         scope: { kind: "org", orgId: "org_123" },
         source: "custom",
         eventType: "ready",
@@ -495,6 +497,7 @@ describe("automation routes /routes", () => {
     await systemFragment.callServices(() =>
       systemFragment.services.ingestEvent({
         id: "custom:ready:missing-org",
+        scopeRestriction: null,
         scope: { kind: "system" },
         source: "custom",
         eventType: "ready",
@@ -573,6 +576,7 @@ describe("automation routes /routes", () => {
 
     const event: AutomationEvent = {
       id: "thing-1",
+      scopeRestriction: null,
       scope: { kind: "org", orgId: "org_123" },
       source: "custom",
       eventType: "thing.happened",
@@ -650,6 +654,7 @@ describe("automation routes /routes", () => {
 
     const event: AutomationEvent = {
       id: "signal-1",
+      scopeRestriction: null,
       scope: { kind: "org", orgId: "org_123" },
       source: "custom",
       eventType: "signal.received",
@@ -683,6 +688,7 @@ describe("automation routes /events", () => {
     await fragment.callServices(() =>
       fragment.services.ingestEvent({
         id: "event-list-1",
+        scopeRestriction: null,
         scope: { kind: "org", orgId: "org_123" },
         source: "custom",
         eventType: "ready",
@@ -714,6 +720,7 @@ describe("automation routes /events", () => {
               principal: null,
               delegation: [],
             },
+            scopeRestriction: null,
             scope: { kind: "org", orgId: "org_123" },
             subject: { orgId: "org_123" },
           }),
@@ -728,6 +735,7 @@ describe("automation routes /events", () => {
       await fragment.callServices(() =>
         fragment.services.ingestEvent({
           id,
+          scopeRestriction: null,
           scope: { kind: "org", orgId: "org_123" },
           source: "custom",
           eventType: "ready",
@@ -775,6 +783,7 @@ describe("automation routes /events", () => {
       fragment.callServices(() =>
         fragment.services.ingestEvent({
           id: "event-invalid-timestamp",
+          scopeRestriction: null,
           scope: { kind: "org", orgId: "org_123" },
           source: "custom",
           eventType: "ready",

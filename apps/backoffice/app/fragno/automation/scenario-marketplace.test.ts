@@ -181,6 +181,7 @@ function githubPullRequestWebhookEvent(action: "opened" | "synchronize"): Automa
 
   return {
     id: `github:pull-request:${action}:delivery-1`,
+    scopeRestriction: null,
     scope: { kind: "org", orgId: "org-1" },
     source: "github",
     eventType: "webhook.received",

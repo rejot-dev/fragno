@@ -1,5 +1,6 @@
 import {
   backofficeContextScopesEqual,
+  backofficeExecutionScopeRestriction,
   type BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
@@ -100,6 +101,7 @@ export function createEventRuntime(options: CreateEventRuntimeOptions): EventRun
       const nextEvent: AutomationEvent = {
         id: crypto.randomUUID(),
         scope: resolvedTargetScope,
+        scopeRestriction: backofficeExecutionScopeRestriction(options.execution),
         source: nextSource,
         eventType,
         occurredAt: new Date().toISOString(),
