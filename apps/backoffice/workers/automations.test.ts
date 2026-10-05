@@ -1095,7 +1095,7 @@ describe("Automations object scope binding", () => {
 
     try {
       const automations = runtime.objects.automations.forOrg("org-1");
-      await automations.commands.requestStaticMarketplacePublications();
+      await runtime.objects.automations.singleton().commands.requestStaticMarketplacePublications();
       await runtime.drain();
 
       const listingId = marketplaceListingId({
@@ -1163,7 +1163,7 @@ describe("Automations object scope binding", () => {
 
     try {
       const automations = runtime.objects.automations.forOrg("org-1");
-      await automations.commands.requestStaticMarketplacePublications();
+      await runtime.objects.automations.singleton().commands.requestStaticMarketplacePublications();
       await runtime.drain();
 
       const listingId = marketplaceListingId({

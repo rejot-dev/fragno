@@ -55,7 +55,6 @@ const EXPECTED_DURABLE_STEPS: Record<string, string[]> = {
   "automations/workspace-file-initialization.workflow.js": [
     "configure upload database connection",
     "seed workspace starter files",
-    "seed starter automation routes",
   ],
 };
 
@@ -1724,16 +1723,16 @@ describe("workflow token state machine", () => {
         const user = context.user(event.payload.userId);
         await step.do("scoped providers", async () => {
           await org.internal.filesSeedExecute({});
-          await project.internal.automationsRoutesSeedStarter({});
-          await user.internal.automationsRoutesSeedStarter({});
+          await project.store.get({ key: "settings" });
+          await user.store.get({ key: "settings" });
         });
       });`,
     );
 
     expect(invocationLabels(stepByLabel(snapshot.graph, "scoped providers"))).toEqual([
       "org.internal.filesSeedExecute",
-      "project.internal.automationsRoutesSeedStarter",
-      "user.internal.automationsRoutesSeedStarter",
+      "project.store.get",
+      "user.store.get",
     ]);
   });
 
@@ -1769,7 +1768,7 @@ describe("workflow token state machine", () => {
           source: "telegram",
           eventType: "message.received",
         });
-        return await internal.hooksGet({ fragment: "automations", hookId });
+        return await hooks.get({ fragment: "automations", hookId });
       };`,
     ],
     [

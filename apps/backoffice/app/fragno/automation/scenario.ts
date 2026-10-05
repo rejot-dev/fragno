@@ -144,7 +144,7 @@ export type ScenarioJournal = {
 };
 
 export type BackofficeScenarioCodemodeInput = {
-  orgId: string;
+  scope: BackofficeContextScope;
   code: string;
   label?: string;
   timeout?: number;
@@ -153,7 +153,7 @@ export type BackofficeScenarioCodemodeInput = {
 
 type ScenarioCodemodeRun = {
   label: string;
-  orgId: string;
+  scope: BackofficeContextScope;
   result: BackofficeCodemodeExecuteResult;
 };
 
@@ -1848,10 +1848,12 @@ const runScenarioCodemode = async (
   ctx: BackofficeScenarioContext,
   input: BackofficeScenarioCodemodeInput,
 ) => {
-  ctx.rememberOrg(input.orgId);
+  if (input.scope.kind === "org" || input.scope.kind === "project") {
+    ctx.rememberOrg(input.scope.orgId);
+  }
 
   const kernel = new BackofficeKernel(ctx.runtime.services);
-  const execution = createBackofficeSystemExecution({ kind: "org", orgId: input.orgId });
+  const execution = createBackofficeSystemExecution(input.scope);
   const runtimeContext = createCodemodeRouteBackedRuntimeContext({
     runtime: ctx.runtime.services,
     kernel,
@@ -1873,7 +1875,7 @@ const runScenarioCodemode = async (
 
   ctx.codemodeRuns.push({
     label: input.label ?? "run codemode",
-    orgId: input.orgId,
+    scope: input.scope,
     result,
   });
 
@@ -2449,7 +2451,7 @@ const buildStepBuilders = <
         createStep(
           "given",
           "codemode.run",
-          input.label ?? `setup codemode for ${input.orgId}`,
+          input.label ?? `setup codemode for ${backofficeContextScopeRoutePath(input.scope)}`,
           async (ctx) => {
             await ctx.runCodemode(input);
           },
@@ -2461,7 +2463,7 @@ const buildStepBuilders = <
           `setup store ${input.orgId}:${input.key} through codemode`,
           async (ctx) => {
             await ctx.runCodemode({
-              orgId: input.orgId,
+              scope: { kind: "org", orgId: input.orgId },
               label: `set store ${input.key}`,
               code: `async () => {
   await store.set(${JSON.stringify({
@@ -2480,7 +2482,7 @@ const buildStepBuilders = <
           `setup connection ${input.orgId}:${input.id} through codemode`,
           async (ctx) => {
             await ctx.runCodemode({
-              orgId: input.orgId,
+              scope: { kind: "org", orgId: input.orgId },
               label: `configure connection ${input.id}`,
               code: `async () => {
   await connections.configure(${JSON.stringify({
@@ -2499,7 +2501,7 @@ const buildStepBuilders = <
           `write file ${input.orgId}:${input.path} through codemode`,
           async (ctx) => {
             await ctx.runCodemode({
-              orgId: input.orgId,
+              scope: { kind: "org", orgId: input.orgId },
               label: `write file ${input.path}`,
               code:
                 input.content instanceof Uint8Array
@@ -2712,7 +2714,9 @@ const buildStepBuilders = <
             });
             const automations = ctx.runtime.objects.automations.forOrg(input.targetScope.orgId);
 
-            await automations.commands.requestStaticMarketplacePublications();
+            await ctx.runtime.objects.automations
+              .singleton()
+              .commands.requestStaticMarketplacePublications();
             await ctx.drain();
 
             const requested = await automations.commands.requestMarketplaceIngestion(
@@ -2896,7 +2900,7 @@ const buildStepBuilders = <
         createStep(
           "when",
           "codemode.run",
-          input.label ?? `run codemode for ${input.orgId}`,
+          input.label ?? `run codemode for ${backofficeContextScopeRoutePath(input.scope)}`,
           async (ctx) => {
             await ctx.runCodemode(input);
           },
@@ -4372,7 +4376,7 @@ const collectDiagnostics = async (ctx: BackofficeScenarioContext): Promise<unkno
     files: filesByOrg,
     codemodeRuns: ctx.codemodeRuns.map((run) => ({
       label: run.label,
-      orgId: run.orgId,
+      scope: run.scope,
       error: run.result.error,
       result: run.result.result,
       toolCalls: run.result.toolCalls,

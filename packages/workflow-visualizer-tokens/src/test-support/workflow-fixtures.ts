@@ -414,11 +414,7 @@ export const WORKFLOW_VISUALIZER_FIXTURES: ReadonlyArray<readonly [path: string,
       return await org.internal.filesSeedExecute({});
     });
 
-    const automationRoutes = await step.do("seed starter automation routes", async () => {
-      return await org.internal.automationsRoutesSeedStarter({});
-    });
-
-    return { ...configured, seeded, automationRoutes };
+    return { ...configured, seeded };
   },
 );
 `,

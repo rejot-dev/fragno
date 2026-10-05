@@ -29,7 +29,11 @@ import { cloudflareToolFamily, type CloudflareRuntime } from "./families/cloudfl
 import { eventCatalogToolFamily, eventFireToolFamily, type EventRuntime } from "./families/event";
 import { formsToolFamily, type FormsRuntime } from "./families/forms";
 import { githubToolFamily, type GitHubRuntime } from "./families/github";
-import { internalToolFamily, type InternalRuntime } from "./families/internal";
+import {
+  internalMarketplaceToolFamily,
+  internalWorkspaceToolFamily,
+  type InternalRuntime,
+} from "./families/internal";
 import { javaScriptCheckToolFamily, javaScriptRunToolFamily } from "./families/javascript";
 import type { JavaScriptRuntime } from "./families/javascript-runtime";
 import { mcpToolFamily, type McpRuntime } from "./families/mcp";
@@ -106,7 +110,8 @@ export const runtimeToolFamilies = [
   javaScriptCheckToolFamily,
   javaScriptRunToolFamily,
   uploadToolFamily,
-  internalToolFamily,
+  internalWorkspaceToolFamily,
+  internalMarketplaceToolFamily,
 ] as const satisfies readonly BackofficeRuntimeToolFamily[];
 
 export const getAvailableBackofficeRuntimeTools = (context: BackofficeToolContext) =>

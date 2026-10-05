@@ -45,7 +45,7 @@ describe("scheduled automation route scenario", () => {
         ],
         steps: ({ when, then }) => [
           when.codemode.run({
-            orgId: "org-1",
+            scope: { kind: "org", orgId: "org-1" },
             label: "create scheduled route",
             code: `async () => await router.create({
   id: "daily-digest",

@@ -183,6 +183,12 @@ export const createRouteBackedRuntimeContext = ({
 }: RouteBackedRuntimeContextOptions): InteractiveRuntimeToolContext => {
   const org = ownerOrgScope(execution);
   const selectedOrg = selectedOrgScope(execution);
+  const internalScope =
+    execution.scope.kind === "system"
+      ? execution.scope
+      : org
+        ? { kind: "org" as const, orgId: org.orgId }
+        : null;
   const stateBackend = createExecutionStateBackend({ runtime, kernel, execution });
   const javaScriptStateBackend =
     stateBackend ??
@@ -331,13 +337,11 @@ export const createRouteBackedRuntimeContext = ({
             runtime: createGitHubRuntime(runtime.objects.github.forOrg(org.orgId).http),
           }
         : null,
-    internal: org
+    internal: internalScope
       ? {
           runtime: createInternalRuntime({
             objects: runtime.objects,
-            config: runtime.config,
-            orgId: org.orgId,
-            families: runtimeToolFamilies,
+            scope: internalScope,
           }),
         }
       : null,

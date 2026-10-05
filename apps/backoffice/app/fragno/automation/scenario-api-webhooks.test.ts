@@ -275,7 +275,7 @@ describe("API webhook scenarios", () => {
             ).resolves.toEqual([null, null]);
           }),
           when.codemode.run({
-            orgId: ORG_ID,
+            scope: { kind: "org", orgId: ORG_ID },
             label: "replace a legacy webhook endpoint through PUT",
             code: `async () => await api.createWebhookEndpoint(${JSON.stringify({
               endpointId: LEGACY_PUT_ENDPOINT_ID,
@@ -300,7 +300,7 @@ describe("API webhook scenarios", () => {
             });
           }),
           when.codemode.run({
-            orgId: ORG_ID,
+            scope: { kind: "org", orgId: ORG_ID },
             label: "rename a legacy webhook endpoint through PATCH",
             code: `async () => await api.updateWebhookEndpoint(${JSON.stringify({
               endpointId: LEGACY_PATCH_ENDPOINT_ID,
@@ -321,7 +321,7 @@ describe("API webhook scenarios", () => {
             });
           }),
           when.codemode.run({
-            orgId: ORG_ID,
+            scope: { kind: "org", orgId: ORG_ID },
             label: "disable the PATCH-reconciled endpoint without renaming it",
             code: `async () => await api.updateWebhookEndpoint(${JSON.stringify({
               endpointId: LEGACY_PATCH_ENDPOINT_ID,
@@ -340,7 +340,7 @@ describe("API webhook scenarios", () => {
             });
           }),
           when.codemode.run({
-            orgId: ORG_ID,
+            scope: { kind: "org", orgId: ORG_ID },
             label: "create a fresh webhook endpoint",
             code: `async () => await api.createWebhookEndpoint(${JSON.stringify({
               endpointId: FRESH_ENDPOINT_ID,
@@ -385,7 +385,7 @@ describe("API webhook scenarios", () => {
         setup: ({ given }) => [given.organization.exists({ id: ORG_ID, name: "Ada Labs" })],
         steps: ({ when, then }) => [
           when.codemode.run({
-            orgId: ORG_ID,
+            scope: { kind: "org", orgId: ORG_ID },
             label: "create an active Acme webhook endpoint",
             code: `async () => await api.createWebhookEndpoint(${JSON.stringify({
               endpointId: ACME_ENDPOINT_ID,
@@ -430,7 +430,7 @@ describe("API webhook scenarios", () => {
             },
           }),
           when.codemode.run({
-            orgId: ORG_ID,
+            scope: { kind: "org", orgId: ORG_ID },
             label: "register Acme record-created events under the webhook source",
             code: `async () => await events.catalogCreate(${JSON.stringify({
               source: ACME_ENDPOINT_ID,
@@ -465,7 +465,7 @@ describe("API webhook scenarios", () => {
             });
           }),
           when.codemode.run({
-            orgId: ORG_ID,
+            scope: { kind: "org", orgId: ORG_ID },
             label: "route Acme webhook deliveries into the cataloged event",
             code: `async () => await router.create(${JSON.stringify({
               id: "acme-record-created",
@@ -583,7 +583,7 @@ describe("API webhook scenarios", () => {
         ],
         steps: ({ when, then }) => [
           when.codemode.run({
-            orgId: ORG_ID,
+            scope: { kind: "org", orgId: ORG_ID },
             label: "configure a Slack webhook endpoint through the API runtime tool",
             code: `async () => await api.createWebhookEndpoint(${JSON.stringify({
               endpointId: ENDPOINT_ID,

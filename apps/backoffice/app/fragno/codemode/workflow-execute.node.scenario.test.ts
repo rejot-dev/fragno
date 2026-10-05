@@ -82,7 +82,7 @@ test("Node checkpoints and replays workflow codemode across fresh Worker WebSock
           include: ["first", "second", "third"],
         }),
         when.codemode.run({
-          orgId: "org-1",
+          scope: { kind: "org", orgId: "org-1" },
           code: 'async () => await context.current.store.get({ key: "checkpoint-count" })',
         }),
         then.assert("completed step did not repeat its mutation during replay", (ctx) => {

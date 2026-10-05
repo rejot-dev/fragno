@@ -91,7 +91,7 @@ describe("Backoffice codemode scenarios", () => {
           then.connection.configured({ orgId: "org-1", id: "upload" }),
 
           when.codemode.run({
-            orgId: "org-1",
+            scope: { kind: "org", orgId: "org-1" },
             label: "update upload and write store from codemode",
             code: `async () => {
   await connections.configure({
@@ -149,7 +149,7 @@ describe("Backoffice codemode scenarios", () => {
           then.assert("Telegram configuration fails through the runtime tool", async (ctx) => {
             await expect(
               ctx.runCodemode({
-                orgId: "org-1",
+                scope: { kind: "org", orgId: "org-1" },
                 label: "configure Telegram without a public origin",
                 code: `async () => {
   return await connections.configure({
@@ -185,7 +185,7 @@ describe("Backoffice codemode scenarios", () => {
             then.assert("Telegram configuration rejects the invalid origin", async (ctx) => {
               await expect(
                 ctx.runCodemode({
-                  orgId: "org-1",
+                  scope: { kind: "org", orgId: "org-1" },
                   label: `configure Telegram with public origin ${publicOrigin}`,
                   code: `async () => {
   return await connections.configure({
@@ -215,7 +215,7 @@ describe("Backoffice codemode scenarios", () => {
 
         steps: ({ when, then }) => [
           when.codemode.run({
-            orgId: "org-1",
+            scope: { kind: "org", orgId: "org-1" },
             label: "configure Telegram with only user-supplied fields",
             code: `async () => {
   return await connections.configure({
@@ -249,7 +249,7 @@ describe("Backoffice codemode scenarios", () => {
 
         steps: ({ when, then }) => [
           when.codemode.run({
-            orgId: "org-1",
+            scope: { kind: "org", orgId: "org-1" },
             label: "write store entries from scoped codemode context",
             code: `async () => {
   await context.current.store.set({
@@ -286,7 +286,7 @@ describe("Backoffice codemode scenarios", () => {
 
         steps: ({ when, then }) => [
           when.codemode.run({
-            orgId: "org-1",
+            scope: { kind: "org", orgId: "org-1" },
             label: "use user-scoped MCP from codemode",
             code: `async () => await context.user("scenario-user").mcp.listServers()`,
             assertToolCalls: ["user:mcp.listServers"],
@@ -315,7 +315,7 @@ describe("Backoffice codemode scenarios", () => {
 
         steps: ({ when, then }) => [
           when.codemode.run({
-            orgId: "org-1",
+            scope: { kind: "org", orgId: "org-1" },
             label: "write store entry into org-2 from trusted scenario codemode",
             code: `async () => {
   await context.org("org-2").store.set({
@@ -464,7 +464,7 @@ describe("Backoffice codemode scenarios", () => {
 
         steps: ({ when, then }) => [
           when.codemode.run({
-            orgId: "org-1",
+            scope: { kind: "org", orgId: "org-1" },
             label: "reply to a Resend thread from codemode",
             code: `async () => {
   await resend.replyToThread({

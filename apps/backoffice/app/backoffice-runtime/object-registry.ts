@@ -312,6 +312,7 @@ export type AutomationsObject = {
   /** Trusted authority lookup; it must not require the permission it is being used to resolve. */
   getRouteForAuthority(input: { id: string }): ReturnType<AutomationRouteAuthorityLookup>;
   seedStarterAutomationRoutes(): Promise<StarterAutomationRoutesSeedResult>;
+  /** Only singleton Automations may run bundled marketplace publication workflows. */
   requestStaticMarketplacePublications(input?: {
     force?: boolean;
   }): Promise<MarketplaceStaticPublicationResult>;

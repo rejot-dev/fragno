@@ -150,10 +150,8 @@ test("renders the stable workflow fixture corpus for quick inspection", () => {
     │  returns: { configured: true, id: "upload", provider: "database" }
     ├─ 3. do seed workspace starter files
     │  returns: await org.internal.filesSeedExecute({})
-    ├─ 4. do seed starter automation routes
-    │  returns: await org.internal.automationsRoutesSeedStarter({})
-    └─ 5. terminal final return
-       value: { ...configured, seeded, automationRoutes }"
+    └─ 4. terminal final return
+       value: { ...configured, seeded }"
   `);
 });
 

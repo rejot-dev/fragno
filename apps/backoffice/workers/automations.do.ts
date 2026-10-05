@@ -410,10 +410,8 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
     force?: boolean;
   }): Promise<MarketplaceStaticPublicationResult> {
     const scope = this.#requireScope();
-    if (scope.kind !== "org") {
-      throw new Error(
-        "Static marketplace publication requires an organization Automations object.",
-      );
+    if (scope.kind !== "system") {
+      throw new Error("Static marketplace publication requires the System Automations object.");
     }
 
     await this.#ensureConfigured({ scope });

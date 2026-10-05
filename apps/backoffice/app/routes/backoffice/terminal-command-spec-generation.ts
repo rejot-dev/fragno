@@ -1,9 +1,6 @@
 import type { AutomationCommandOptionSpec } from "@/fragno/runtime-tools/automation-types";
 import { STANDARD_COMMAND_OPTIONS } from "@/fragno/runtime-tools/bash-cli";
-import {
-  createRuntimeToolReferenceContext,
-  createRuntimeToolReferences,
-} from "@/fragno/runtime-tools/reference";
+import { createRuntimeToolReferences } from "@/fragno/runtime-tools/reference";
 import { BACKOFFICE_TERMINAL_SHELL_COMMAND_SPECS } from "@/fragno/runtime-tools/terminal-shell-command-specs";
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 
@@ -15,11 +12,10 @@ function appendStandardCommandOptions(options: readonly AutomationCommandOptionS
   ];
 }
 
-/** Generates client-safe terminal metadata without shipping executable runtime tools to the app. */
+/** Generates terminal metadata for all scopes; executable commands enforce current-context availability. */
 export function generateBackofficeTerminalCommandSpecJson(): string {
   const references = createRuntimeToolReferences({
     families: runtimeToolFamilies,
-    context: createRuntimeToolReferenceContext(),
   });
   const commandSpecs = [
     ...BACKOFFICE_TERMINAL_SHELL_COMMAND_SPECS,
