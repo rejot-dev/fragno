@@ -8,7 +8,7 @@ const containerWorkerConfigUrl = new URL("../dist/rejot_backoffice/wrangler.json
 
 function runPreview() {
   return new Promise((resolve, reject) => {
-    const child = spawn("pnpm", ["exec", "vite", "preview", ...previewArgs], {
+    const child = spawn("pnpm", ["exec", "vite", "preview", "--strictPort=false", ...previewArgs], {
       stdio: "inherit",
     });
     child.once("error", reject);
