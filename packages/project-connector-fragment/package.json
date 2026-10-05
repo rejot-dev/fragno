@@ -1,0 +1,114 @@
+{
+  "name": "@fragno-dev/project-connector-fragment",
+  "version": "0.0.1",
+  "description": "A Fragno fragment for OOMOL Project Connector integrations",
+  "keywords": [
+    "fragno",
+    "project-connector",
+    "react",
+    "solidjs",
+    "svelte",
+    "typescript",
+    "vue"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rejot-dev/fragno.git",
+    "directory": "packages/project-connector-fragment"
+  },
+  "bin": {
+    "fragno-project-connector": "./bin/run.js"
+  },
+  "files": [
+    "dist",
+    "bin"
+  ],
+  "type": "module",
+  "main": "./dist/node/index.js",
+  "module": "./dist/node/index.js",
+  "types": "./dist/node/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/node/index.d.ts",
+      "default": "./dist/node/index.js"
+    },
+    "./cli": {
+      "types": "./dist/cli/cli.d.ts",
+      "default": "./dist/cli/cli.js"
+    },
+    "./definition": {
+      "types": "./dist/node/definition.d.ts",
+      "default": "./dist/node/definition.js"
+    },
+    "./routes": {
+      "types": "./dist/node/routes.d.ts",
+      "default": "./dist/node/routes.js"
+    },
+    "./schema": {
+      "types": "./dist/node/schema.d.ts",
+      "default": "./dist/node/schema.js"
+    },
+    "./testing": {
+      "types": "./dist/node/testing/project-connector-test-gateway.d.ts",
+      "default": "./dist/node/testing/project-connector-test-gateway.js"
+    },
+    "./contracts": {
+      "types": "./dist/node/project-connector-contracts.d.ts",
+      "default": "./dist/node/project-connector-contracts.js"
+    },
+    "./react": {
+      "types": "./dist/browser/client/react.d.ts",
+      "default": "./dist/browser/client/react.js"
+    },
+    "./vue": {
+      "types": "./dist/browser/client/vue.d.ts",
+      "default": "./dist/browser/client/vue.js"
+    },
+    "./svelte": {
+      "types": "./dist/browser/client/svelte.d.ts",
+      "default": "./dist/browser/client/svelte.js"
+    },
+    "./solid": {
+      "types": "./dist/browser/client/solid.d.ts",
+      "default": "./dist/browser/client/solid.js"
+    },
+    "./vanilla": {
+      "types": "./dist/browser/client/vanilla.d.ts",
+      "default": "./dist/browser/client/vanilla.js"
+    }
+  },
+  "scripts": {
+    "types:check": "tsc --noEmit",
+    "build": "tsdown",
+    "cli": "tsx src/cli/cli.ts",
+    "test": "vitest run",
+    "test:watch": "vitest --watch",
+    "format:package": "node ../../scripts/run-package-quality.mjs format",
+    "format:check:package": "node ../../scripts/run-package-quality.mjs format:check",
+    "lint:package": "node ../../scripts/run-package-quality.mjs lint",
+    "lint:fix:package": "node ../../scripts/run-package-quality.mjs lint:fix"
+  },
+  "dependencies": {
+    "@fragno-dev/core": "workspace:*",
+    "@fragno-dev/db": "workspace:*",
+    "@oomol-lab/connector": "^1.2.0",
+    "@standard-schema/spec": "^1.1.0",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@fragno-dev/test": "workspace:*",
+    "@fragno-dev/unplugin-fragno": "workspace:*",
+    "@fragno-private/typescript-config": "workspace:*",
+    "@types/node": "^25.2.2",
+    "tsdown": "^0.22.4",
+    "tsx": "^4.21.0",
+    "vitest": "catalog:"
+  },
+  "peerDependencies": {
+    "react": ">=18.0.0",
+    "solid-js": ">=1.0.0",
+    "svelte": ">=4.0.0",
+    "typescript": "catalog:",
+    "vue": ">=3.0.0"
+  }
+}

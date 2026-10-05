@@ -118,7 +118,7 @@ describe("durable hook selectors", () => {
       createDurableHooksObjectOptions(
         resolveSelection({ scope: { kind: "system" }, objectId: "auth" }),
       ).map((option) => option.id),
-    ).toEqual(["auth", "forms", "automations", "telegram", "otp", "resend", "pi", "workflows"]);
+    ).toEqual(["auth", "forms", "automations", "telegram", "otp", "resend", "workflows"]);
 
     expect(
       createDurableHooksObjectOptions(
@@ -133,7 +133,6 @@ describe("durable hook selectors", () => {
       "mcp",
       "upload",
       "github",
-      "pi",
       "workflows",
     ]);
 
@@ -146,15 +145,7 @@ describe("durable hook selectors", () => {
         objectId: "api",
       }),
     ).map((option) => option.id);
-    expect(userObjects).toEqual([
-      "api",
-      "automations",
-      "telegram",
-      "mcp",
-      "upload",
-      "pi",
-      "workflows",
-    ]);
+    expect(userObjects).toEqual(["api", "automations", "telegram", "mcp", "upload", "workflows"]);
     expect(projectObjects).toEqual(userObjects);
   });
 

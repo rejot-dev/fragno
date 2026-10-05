@@ -29,7 +29,7 @@ let runtime: InMemoryBackofficeRuntime | null = null;
 const event = (overrides: Partial<BillingEventInput> = {}): BillingEventInput => ({
   id: "pi:org-1:hook-1",
   scope: { kind: "org", orgId: "org-1" },
-  source: "pi-harness",
+  source: "pi",
   eventType: "operation.completed",
   occurredAt: "2026-07-16T12:00:00.000Z",
   measurements: [{ meter: "ai.tokens.total", unit: "token", quantity: 100 }],

@@ -54,7 +54,8 @@ describe("Capability contributions", () => {
     ).toMatchObject({
       api: "system",
       mcp: "system",
-      pi: "connection",
+      connector: "system",
+      pi: "system",
       telegram: "connection",
     });
   });

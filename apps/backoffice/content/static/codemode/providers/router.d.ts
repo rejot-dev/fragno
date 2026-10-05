@@ -1,7 +1,7 @@
 // router tools
 type RouterCodemodeProvider = {
   /** List database-backed automation routing rules. */
-  list(input: RouterListInput): Promise<RouterListOutput>;
+  list(): Promise<RouterListOutput>;
   /** Get one database-backed automation routing rule. */
   get(input: RouterGetInput): Promise<RouterGetOutput>;
   /** Create a database-backed automation routing rule. */
@@ -402,6 +402,22 @@ type BackofficePermissionRequirement =
       permission: "tools.call";
     }
   | {
+      namespace: "connector";
+      permission: "providers.read";
+    }
+  | {
+      namespace: "connector";
+      permission: "accounts.read";
+    }
+  | {
+      namespace: "connector";
+      permission: "connections.create";
+    }
+  | {
+      namespace: "connector";
+      permission: "actions.execute";
+    }
+  | {
       namespace: "otp";
       permission: "create";
     }
@@ -572,7 +588,6 @@ type AutomationReclassifyEventActionInput = {
   eventType: string;
   payload: AutomationEventPayloadProjection;
 };
-type RouterListInput = Record<string, unknown>;
 type RouterListOutput = AutomationRoute[];
 type RouterGetInput = {
   id: string;

@@ -66,6 +66,12 @@ export const BACKOFFICE_PERMISSION = {
     serversRead: { namespace: "mcp", permission: "servers.read" },
     toolsCall: { namespace: "mcp", permission: "tools.call" },
   },
+  connector: {
+    providersRead: { namespace: "connector", permission: "providers.read" },
+    accountsRead: { namespace: "connector", permission: "accounts.read" },
+    connectionsCreate: { namespace: "connector", permission: "connections.create" },
+    actionsExecute: { namespace: "connector", permission: "actions.execute" },
+  },
   otp: {
     create: { namespace: "otp", permission: "create" },
   },
@@ -119,6 +125,9 @@ export type BackofficePermissionRequirement = ValueOf<{
 }>;
 
 export type BackofficePermission = BackofficePermissionRequirement["permission"];
+
+/** Internal HTTP response header carrying the canonical permission rejected by authorization. */
+export const BACKOFFICE_REQUIRED_PERMISSION_HEADER = "x-backoffice-required-permission";
 
 const backofficePermissionNamespaces = Object.values(BACKOFFICE_PERMISSION) as readonly Readonly<
   Record<string, BackofficePermissionRequirement>

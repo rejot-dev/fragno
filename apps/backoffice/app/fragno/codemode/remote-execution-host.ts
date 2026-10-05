@@ -14,7 +14,6 @@ import {
 } from "@fragno-dev/workflows/remote-workflow";
 import { z } from "zod";
 
-import type { CodemodeWorkflowAgentTarget } from "./workflow-agent-rpc";
 import type { WorkflowStepTarget } from "./workflow-rpc";
 
 type WorkflowTxTarget = Parameters<Parameters<WorkflowStepTarget["do"]>[3]>[0];
@@ -24,7 +23,7 @@ type Subscription = { txId: number; active: boolean; dispose(): void };
 /** Holds Node-owned authorization and transaction capabilities for exactly one activation. */
 export function createBackofficeCodemodeRemoteHost(
   providers: ResolvedProvider[],
-  workflow: { step: WorkflowStepTarget; agent: CodemodeWorkflowAgentTarget | null } | null,
+  workflow: { step: WorkflowStepTarget } | null,
 ) {
   const result = createCodemodeDispatchers(providers);
   if ("error" in result) {
@@ -161,35 +160,6 @@ export function createBackofficeCodemodeRemoteHost(
                   },
           }),
         );
-      case "agent.prompt": {
-        if (!workflow.agent) {
-          throw new Error("WORKFLOW_AGENT_UNAVAILABLE");
-        }
-        const callbackId = call.callbackId;
-        return unwrapHostOutcome(
-          await workflow.agent.prompt(
-            call.parentScope,
-            call.name,
-            { ...call.input, images: call.input.images ?? undefined },
-            callbackId === null
-              ? null
-              : {
-                  async execute(toolId, toolCallId, input) {
-                    if (closed) {
-                      throw new Error("CODEMODE_HOST_CLOSED");
-                    }
-                    return await guest({
-                      operation: "callback.agentTool",
-                      callbackId,
-                      toolId,
-                      toolCallId,
-                      input,
-                    });
-                  },
-                },
-          ),
-        );
-      }
       case "tx.emit":
       case "tx.previousEmissions":
       case "tx.previousConsumedEvents":
@@ -296,7 +266,6 @@ export function createBackofficeCodemodeRemoteHost(
       for (const txId of transactions.keys()) {
         releaseTransaction(txId);
       }
-      workflow?.agent?.close();
     },
     async settle() {
       await Promise.allSettled(pending);

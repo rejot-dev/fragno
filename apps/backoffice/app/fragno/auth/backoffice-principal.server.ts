@@ -6,7 +6,7 @@ import {
   type BackofficeContextScope,
   type BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
-import { BackofficeForbiddenError } from "@/backoffice-runtime/kernel";
+import { BackofficeForbiddenError, isBackofficeForbiddenError } from "@/backoffice-runtime/kernel";
 
 import {
   authorizeBackofficePrincipal,
@@ -80,7 +80,7 @@ function authorizePrincipalForBackofficeScope(
       headers: authorization.headers,
     };
   } catch (error) {
-    if (error instanceof BackofficeForbiddenError) {
+    if (isBackofficeForbiddenError(error)) {
       return {
         ok: false,
         response: new Response(error.message, {

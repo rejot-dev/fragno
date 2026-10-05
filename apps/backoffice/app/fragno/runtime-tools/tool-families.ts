@@ -1,4 +1,5 @@
 import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
+import type { PiManagerRuntime } from "@/fragno/pi-manager/pi-manager-runtime";
 
 import { codemodeStateToolFamily } from "./codemode-state-runtime";
 import { adminToolFamily, type AdminRuntime } from "./families/admin";
@@ -33,7 +34,9 @@ import { javaScriptCheckToolFamily, javaScriptRunToolFamily } from "./families/j
 import type { JavaScriptRuntime } from "./families/javascript-runtime";
 import { mcpToolFamily, type McpRuntime } from "./families/mcp";
 import { otpToolFamily, type OtpRuntime } from "./families/otp";
-import { piToolFamily, type PiRuntime } from "./families/pi";
+import { piToolFamily } from "./families/pi";
+import { projectConnectorToolFamily } from "./families/project-connector";
+import type { ProjectConnectorRuntime } from "./families/project-connector-runtime";
 import { resendToolFamily, type ResendRuntime } from "./families/resend";
 import { reson8ToolFamily, type Reson8Runtime } from "./families/reson8";
 import { sandboxToolFamily, type SandboxRuntime } from "./families/sandbox";
@@ -62,8 +65,9 @@ export type CoreBackofficeRuntimeMap = {
   internal?: InternalRuntime;
   api?: ApiRuntime;
   mcp?: McpRuntime;
+  projectConnector: ProjectConnectorRuntime | undefined;
   otp?: OtpRuntime;
-  pi?: PiRuntime;
+  pi?: PiManagerRuntime;
   resend?: ResendRuntime;
   reson8?: Reson8Runtime;
   sandbox?: SandboxRuntime;
@@ -73,7 +77,7 @@ export type CoreBackofficeRuntimeMap = {
   web?: WebRuntime;
 };
 
-export type CoreBackofficeToolContext = BackofficeToolContext<CoreBackofficeRuntimeMap>;
+export type CoreBackofficeToolContext = BackofficeToolContext<Partial<CoreBackofficeRuntimeMap>>;
 
 export const runtimeToolFamilies = [
   codemodeStateToolFamily,
@@ -92,6 +96,7 @@ export const runtimeToolFamilies = [
   webToolFamily,
   apiToolFamily,
   mcpToolFamily,
+  projectConnectorToolFamily,
   otpToolFamily,
   piToolFamily,
   resendToolFamily,
@@ -118,6 +123,7 @@ const namespaceCapabilityIds = {
   github: "github",
   api: "api",
   mcp: "mcp",
+  connector: "connector",
   otp: "otp",
   pi: "pi",
   resend: "resend",

@@ -3,7 +3,10 @@ import type {
   BackofficeObjectBindingName,
   BackofficeObjectScopeKind,
 } from "@/backoffice-runtime/object-registry";
-import { isBackofficeObjectScopeAllowed } from "@/backoffice-runtime/object-registry";
+import {
+  isBackofficeObjectAvailableInContext,
+  isBackofficeObjectScopeAllowed,
+} from "@/backoffice-runtime/object-registry";
 import {
   backofficeResolvedScopeFromRuntimeScope,
   backofficeRouteScopeFromResolvedScope,
@@ -30,7 +33,6 @@ export const DURABLE_HOOK_OBJECT_DEFINITIONS = [
   { id: "mcp", binding: "MCP", label: "MCP" },
   { id: "upload", binding: "UPLOAD", label: "Upload" },
   { id: "github", binding: "GITHUB", label: "GitHub" },
-  { id: "pi", binding: "AUTOMATIONS", label: "Pi" },
   { id: "workflows", binding: "AUTOMATIONS", label: "Workflows" },
 ] as const satisfies readonly {
   id: string;
@@ -96,10 +98,6 @@ type Organization = Pick<
 
 type User = Pick<BackofficeMeData["user"], "id" | "email">;
 
-const objectScopeKindFromContextScope = (
-  scope: BackofficeContextScope,
-): BackofficeObjectScopeKind => (scope.kind === "system" ? "singleton" : scope.kind);
-
 const objectScopeKindFromRouteScope = (scope: BackofficeRouteScope): BackofficeObjectScopeKind =>
   scope.kind === "system" ? "singleton" : scope.kind;
 
@@ -113,17 +111,14 @@ export const isDurableHooksObjectAllowedForScope = (
   scope: BackofficeContextScope,
 ) => {
   const definition = getDurableHooksObjectDefinition(objectId);
-  return Boolean(
-    definition &&
-    isBackofficeObjectScopeAllowed(definition.binding, objectScopeKindFromContextScope(scope)),
-  );
+  return Boolean(definition && isBackofficeObjectAvailableInContext(definition.binding, scope));
 };
 
 export const defaultDurableHooksObjectForScope = (
   scope: BackofficeContextScope,
 ): DurableHooksObjectId => {
   const definition = DURABLE_HOOK_OBJECT_DEFINITIONS.find(({ binding }) =>
-    isBackofficeObjectScopeAllowed(binding, objectScopeKindFromContextScope(scope)),
+    isBackofficeObjectAvailableInContext(binding, scope),
   );
   if (!definition) {
     throw new Error(`No durable hook object supports ${scope.kind} scope.`);
@@ -306,11 +301,9 @@ export const createDurableHooksObjectOptions = (
   selection: DurableHooksScopeSelection,
 ): DurableHooksObjectOption[] => {
   const options: DurableHooksObjectOption[] = [];
-  const scopeKind = objectScopeKindFromContextScope(
-    backofficeRuntimeScopeFromResolvedScope(selection.resolvedScope),
-  );
+  const runtimeScope = backofficeRuntimeScopeFromResolvedScope(selection.resolvedScope);
   for (const definition of DURABLE_HOOK_OBJECT_DEFINITIONS) {
-    if (!isBackofficeObjectScopeAllowed(definition.binding, scopeKind)) {
+    if (!isBackofficeObjectAvailableInContext(definition.binding, runtimeScope)) {
       continue;
     }
 
@@ -364,10 +357,6 @@ export const DURABLE_HOOKS_OBJECT_CONFIGURE_META: Partial<
   github: {
     path: (orgSlug) => `/backoffice/automations/org/${orgSlug}/integrations/github/configuration`,
     label: "Configure GitHub",
-  },
-  pi: {
-    path: (orgSlug) => `/backoffice/sessions/${orgSlug}/configuration`,
-    label: "Configure Pi",
   },
   workflows: {
     path: (orgSlug) => `/backoffice/automations/org/${orgSlug}/dashboard`,

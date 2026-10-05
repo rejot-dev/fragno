@@ -35,15 +35,12 @@ RUN --mount=type=cache,id=backoffice-pnpm-store,target=/pnpm/store,sharing=locke
     --prod \
     /runtime
 
-FROM denoland/deno:bin-2.9.7 AS deno
-
 FROM node:26.10.0-bookworm-slim AS runtime
 
 RUN apt-get update \
   && apt-get install --yes --no-install-recommends ca-certificates procps tini \
   && rm -rf /var/lib/apt/lists/*
 
-COPY --from=deno /deno /usr/local/bin/deno
 COPY --from=runtime-dependencies --chown=node:node /runtime/package.json /app/package.json
 COPY --from=runtime-dependencies --chown=node:node /runtime/node_modules /app/node_modules
 COPY --from=builder --chown=node:node /workspace/apps/backoffice/build-node /app/build-node
@@ -56,7 +53,6 @@ ENV HOST=0.0.0.0
 ENV PORT=5173
 ENV DOCS_PUBLIC_BASE_URL=http://backoffice.localhost:5173
 ENV BACKOFFICE_SQLITE_DIR=/data
-ENV DENO_EXECUTABLE=/usr/local/bin/deno
 
 RUN mkdir --parents /data && chown node:node /data
 

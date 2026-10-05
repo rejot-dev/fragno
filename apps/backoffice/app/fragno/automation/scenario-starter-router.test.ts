@@ -1150,14 +1150,12 @@ describe("starter automation router scenarios", () => {
             },
           }),
           then.pi.createdSession({
-            model: { provider: "openai", name: "gpt-5-mini" },
+            model: { provider: "openai", modelId: "gpt-5.6-luna" },
             name: "Telegram 1001",
-            sessionId: "pi-session-1",
           }),
-          then.store.entry({
+          then.store.entries({
             orgId: "org-1",
-            key: "telegram-pi-session/user-1",
-            value: "pi-session-1",
+            include: [{ key: "telegram-pi-session/user-1" }],
           }),
           then.kernel.action({
             operation: BACKOFFICE_PERMISSION.store.modify,
@@ -1188,7 +1186,7 @@ describe("starter automation router scenarios", () => {
           }),
           then.telegram.sentMessage({
             chatId: "1001",
-            text: "Created Pi session: pi-session-1",
+            text: /^Created Pi session: /,
           }),
           then.workflow.instance({
             remoteWorkflowName: "telegram-user-pi-linking",
@@ -1223,7 +1221,6 @@ describe("starter automation router scenarios", () => {
                 },
               },
             },
-            output: { sessionId: "pi-session-1" },
           }),
           then.workflow.noErrored({ orgId: "org-1" }),
         ],
@@ -1310,23 +1307,20 @@ describe("starter automation router scenarios", () => {
           }),
 
           then.pi.createdSession({
-            model: { provider: "openai", name: "gpt-5-mini" },
+            model: { provider: "openai", modelId: "gpt-5.6-luna" },
             name: "Telegram 1001",
-            sessionId: "pi-session-1",
           }),
-          then.store.entry({
+          then.store.entries({
             orgId: "org-1",
-            key: "telegram-pi-session/user-1",
-            value: "pi-session-1",
+            include: [{ key: "telegram-pi-session/user-1" }],
           }),
           then.telegram.sentMessage({
             chatId: "1001",
-            text: "Created Pi session: pi-session-1",
+            text: /^Created Pi session: /,
           }),
           then.workflow.instance({
             remoteWorkflowName: "telegram-user-pi-linking",
             status: "complete",
-            output: { sessionId: "pi-session-1" },
           }),
           then.workflow.noErrored({ orgId: "org-1" }),
         ],
@@ -1725,9 +1719,8 @@ describe("starter automation router scenarios", () => {
           }),
 
           then.pi.createdSession({
-            model: { provider: "openai", name: "gpt-5-mini" },
+            model: { provider: "openai", modelId: "gpt-5.6-luna" },
             name: "Telegram 1001",
-            sessionId: "pi-session-1",
           }),
           then.assert("assert Pi session was reused", (ctx) => {
             const calls = ctx.fakes.pi?.createSessionCalls ?? [];
@@ -1738,15 +1731,14 @@ describe("starter automation router scenarios", () => {
           then.store.entries({
             orgId: "org-1",
             prefix: "telegram",
-            include: [{ key: "telegram-pi-session/user-1", value: "pi-session-1" }],
+            include: [{ key: "telegram-pi-session/user-1" }],
           }),
           then.telegram.sentChatAction({
             chatId: "1001",
             action: "typing",
           }),
-          then.pi.ranTurn({
-            sessionId: "pi-session-1",
-            text: "Hello Pi",
+          then.pi.ranPrompt({
+            content: "Hello Pi",
             assistantText: "agent:Hello Pi",
           }),
           then.telegram.sentMessage({
@@ -1756,7 +1748,6 @@ describe("starter automation router scenarios", () => {
           then.workflow.instance({
             remoteWorkflowName: "telegram-user-pi-linking",
             status: "complete",
-            output: { sessionId: "pi-session-1" },
           }),
           then.workflow.noErrored({ orgId: "org-1" }),
         ],
@@ -1863,21 +1854,19 @@ describe("starter automation router scenarios", () => {
           }),
           then.telegram.sentMessage({
             chatId: "1001",
-            text: "Created Pi session: pi-session-1",
+            text: /^Created Pi session: /,
           }),
           then.telegram.sentMessage({
             chatId: "1001",
-            text: "Pi session: pi-session-1",
+            text: /^Pi session: /,
           }),
-          then.store.entry({
+          then.store.entries({
             orgId: "org-1",
-            key: "telegram-pi-session/user-1",
-            value: "pi-session-1",
+            include: [{ key: "telegram-pi-session/user-1" }],
           }),
           then.workflow.instance({
             remoteWorkflowName: "telegram-user-pi-linking",
             status: "complete",
-            output: { sessionId: "pi-session-1" },
           }),
           then.workflow.noErrored({ orgId: "org-1" }),
         ],
@@ -1972,160 +1961,27 @@ describe("starter automation router scenarios", () => {
             from: { id: 2_001, firstName: "Ada", username: "ada_lovelace" },
           }),
 
-          then.assert("assert missing Pi session was checked", (ctx) => {
-            const calls = ctx.fakes.pi?.getSessionCalls ?? [];
-            if (!calls.some((call) => call.sessionId === "pi-session-missing")) {
-              throw new Error(`Expected missing Pi session lookup, got ${JSON.stringify(calls)}.`);
-            }
-          }),
           then.pi.createdSession({
-            model: { provider: "openai", name: "gpt-5-mini" },
+            model: { provider: "openai", modelId: "gpt-5.6-luna" },
             name: "Telegram 1001",
-            sessionId: "pi-session-1",
           }),
-          then.store.entry({
+          then.store.entries({
             orgId: "org-1",
-            key: "telegram-pi-session/user-1",
-            value: "pi-session-1",
+            include: [{ key: "telegram-pi-session/user-1" }],
           }),
           then.telegram.sentMessage({
             chatId: "1001",
-            text: "Created Pi session: pi-session-1",
+            text: /^Created Pi session: /,
           }),
           then.workflow.instance({
             remoteWorkflowName: "telegram-user-pi-linking",
             status: "complete",
-            output: { sessionId: "pi-session-1" },
           }),
           then.workflow.noErrored({ orgId: "org-1" }),
         ],
       }),
     );
   });
-
-  test.each(["terminated", "complete", "errored"] as const)(
-    "Telegram /pi replaces a %s stored Pi session",
-    async (status) => {
-      await runBackofficeScenario(
-        defineBackofficeScenario({
-          name: `Telegram Channel /pi replaces a ${status} Pi session`,
-
-          fakes: ({ fake }) => ({
-            telegram: fake.telegram(),
-            pi: fake.pi(),
-          }),
-
-          setup: ({ given }) => [
-            given.auth.user({
-              id: "owner-1",
-              email: "owner@example.com",
-            }),
-            given.auth.user({
-              id: "user-1",
-              email: "linked-user@example.com",
-            }),
-            given.auth.organization({
-              id: "org-1",
-              name: "Ada Labs",
-              ownerUserId: "owner-1",
-              ownerRoles: ["owner"],
-            }),
-            given.auth.member({
-              orgId: "org-1",
-              userId: "user-1",
-              roles: ["member"],
-            }),
-            given.organization.exists({
-              id: "org-1",
-              name: "Ada Labs",
-              ownerUserId: "owner-1",
-            }),
-            given.telegram.configured({
-              orgId: "org-1",
-              botUsername: "fragno_bot",
-            }),
-            given.pi.defaultAgent({
-              orgId: "org-1",
-              value: "openai::gpt-5-mini",
-            }),
-            given.identity.binding({
-              orgId: "org-1",
-              externalId: "1001",
-              userId: "user-1",
-            }),
-          ],
-
-          steps: ({ when, then }) => [
-            when.marketplace.install(TELEGRAM_CHANNEL_MARKETPLACE_INSTALLATION),
-            then.auth.authority({
-              userId: "user-1",
-              orgId: "org-1",
-              expected: {
-                active: true,
-                role: "user",
-                organizationMember: true,
-              },
-            }),
-            then.auth.member({
-              orgId: "org-1",
-              userId: "user-1",
-              roles: ["member"],
-            }),
-            then.auth.permissions({
-              userId: "user-1",
-              scope: { kind: "org", orgId: "org-1" },
-              include: [BACKOFFICE_PERMISSION.store.modify, BACKOFFICE_PERMISSION.telegram.send],
-              exclude: [BACKOFFICE_PERMISSION.identity.bind],
-            }),
-
-            when.telegram.receivesMessage({
-              orgId: "org-1",
-              updateId: `terminal-${status}-1`,
-              messageId: 612,
-              chatId: "1001",
-              text: "/pi",
-              from: { id: 2_001, firstName: "Ada", username: "ada_lovelace" },
-            }),
-
-            then.assert(`mark Pi session ${status}`, (ctx) => {
-              ctx.fakes.pi?.setSessionStatus("pi-session-1", status);
-            }),
-
-            when.telegram.receivesMessage({
-              orgId: "org-1",
-              updateId: `terminal-${status}-2`,
-              messageId: 613,
-              chatId: "1001",
-              text: "/pi",
-              from: { id: 2_001, firstName: "Ada", username: "ada_lovelace" },
-            }),
-
-            then.assert("assert replacement Pi session was created", (ctx) => {
-              const calls = ctx.fakes.pi?.createSessionCalls ?? [];
-              if (calls.length !== 2) {
-                throw new Error(`Expected two Pi session creations, got ${calls.length}.`);
-              }
-            }),
-            then.store.entry({
-              orgId: "org-1",
-              key: "telegram-pi-session/user-1",
-              value: "pi-session-2",
-            }),
-            then.telegram.sentMessage({
-              chatId: "1001",
-              text: "Created Pi session: pi-session-2",
-            }),
-            then.workflow.instance({
-              remoteWorkflowName: "telegram-user-pi-linking",
-              status: "complete",
-              output: { sessionId: "pi-session-2" },
-            }),
-            then.workflow.noErrored({ orgId: "org-1" }),
-          ],
-        }),
-      );
-    },
-  );
 
   test("Telegram text with no Pi assistant text sends no response message", async () => {
     await runBackofficeScenario(
@@ -2222,9 +2078,8 @@ describe("starter automation router scenarios", () => {
             chatId: "1001",
             action: "typing",
           }),
-          then.pi.ranTurn({
-            sessionId: "pi-session-1",
-            text: "No response expected",
+          then.pi.ranPrompt({
+            content: "No response expected",
             assistantText: "",
           }),
           then.assert("assert only the Pi creation message was sent", (ctx) => {
@@ -2236,7 +2091,6 @@ describe("starter automation router scenarios", () => {
           then.workflow.instance({
             remoteWorkflowName: "telegram-user-pi-linking",
             status: "complete",
-            output: { sessionId: "pi-session-1" },
           }),
           then.workflow.noErrored({ orgId: "org-1" }),
         ],

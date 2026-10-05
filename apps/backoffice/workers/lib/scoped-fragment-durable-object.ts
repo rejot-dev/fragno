@@ -1,33 +1,30 @@
 import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
-import { z } from "zod";
+import type { z } from "zod";
 
 import {
   backofficeContextScopesEqual,
   type BackofficeContextScope,
 } from "@/backoffice-runtime/context";
-import type { BackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 
 import type { BackofficeObjectState } from "./backoffice-fragment-durable-object";
 
-const storedOwnerScopeSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("org"), orgId: z.string().trim().min(1) }),
-  z.object({
-    kind: z.literal("project"),
-    orgId: z.string().trim().min(1),
-    projectId: z.string().trim().min(1),
-  }),
-  z.object({ kind: z.literal("user"), userId: z.string().trim().min(1) }),
-]);
-
-type ScopedFragmentDurableObjectOptions<TSource, TRuntime> = {
+type ScopedFragmentDurableObjectOptions<
+  TSource,
+  TRuntime,
+  TScope extends BackofficeContextScope,
+> = {
   name: string;
   state: BackofficeObjectState;
   ownerScope: BackofficeContextScope | null;
   host: FragmentDurableObjectHost<TSource, TRuntime>;
-  createSource: (scope: BackofficeRoutableScope) => TSource;
+  scopeSchema: z.ZodType<TScope>;
+  createSource: (scope: TScope) => TSource;
 };
 
-export type ScopedFragmentDurableObjectRuntime<TRuntime> = {
+export type ScopedFragmentDurableObjectRuntime<
+  TRuntime,
+  TScope extends BackofficeContextScope = BackofficeContextScope,
+> = {
   /**
    * Initializes from the named object identity or restores a legacy persisted owner scope.
    *
@@ -35,28 +32,34 @@ export type ScopedFragmentDurableObjectRuntime<TRuntime> = {
    * and alarms cannot observe the object before its durable-hook dispatcher is ready.
    */
   initializeFromOwnerScope(): Promise<void>;
-  requireOwnerScope(): BackofficeRoutableScope;
+  requireOwnerScope(): TScope;
   getRuntime(): Promise<TRuntime>;
   alarm(): Promise<void>;
 };
 
-export function createScopedFragmentDurableObjectRuntime<TSource, TRuntime>({
+export function createScopedFragmentDurableObjectRuntime<
+  TSource,
+  TRuntime,
+  TScope extends BackofficeContextScope,
+>({
   name,
   state,
   ownerScope: initialOwnerScope,
   host,
+  scopeSchema,
   createSource,
 }: ScopedFragmentDurableObjectOptions<
   TSource,
-  TRuntime
->): ScopedFragmentDurableObjectRuntime<TRuntime> {
+  TRuntime,
+  TScope
+>): ScopedFragmentDurableObjectRuntime<TRuntime, TScope> {
   const ownerScopeKey = `${name.toLowerCase()}-owner-scope`;
-  let ownerScope = initialOwnerScope ? storedOwnerScopeSchema.parse(initialOwnerScope) : null;
+  let ownerScope = initialOwnerScope ? scopeSchema.parse(initialOwnerScope) : null;
   let runtime: TRuntime | null = null;
   let initialization: Promise<TRuntime> | null = null;
 
   const initializeForOwnerScope = async (
-    scope: BackofficeRoutableScope,
+    scope: TScope,
     persistScope: boolean,
   ): Promise<TRuntime> => {
     if (runtime) {
@@ -75,7 +78,7 @@ export function createScopedFragmentDurableObjectRuntime<TSource, TRuntime>({
     return await initialization;
   };
 
-  const requireOwnerScope = (): BackofficeRoutableScope => {
+  const requireOwnerScope = (): TScope => {
     if (!ownerScope) {
       throw new Error(`${name} object has not been initialized with scope metadata.`);
     }
@@ -86,7 +89,7 @@ export function createScopedFragmentDurableObjectRuntime<TSource, TRuntime>({
     async initializeFromOwnerScope() {
       const storedScopeValue = await state.storage.get(ownerScopeKey);
       const storedScope =
-        storedScopeValue === undefined ? null : storedOwnerScopeSchema.parse(storedScopeValue);
+        storedScopeValue === undefined ? null : scopeSchema.parse(storedScopeValue);
 
       if (ownerScope) {
         if (storedScope && !backofficeContextScopesEqual(ownerScope, storedScope)) {

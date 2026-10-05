@@ -8,6 +8,7 @@ import { createRequestHandler } from "@react-router/express";
 
 import { BackofficeKernel } from "../../app/backoffice-runtime/kernel";
 import { createLocalBackofficeRuntime } from "../../app/backoffice-runtime/node/local-runtime";
+import { startNodeBackofficeAlarmScheduler } from "../../app/backoffice-runtime/node/node-alarm-scheduler";
 import { createExternallyProcessedNodeBackofficeDurableHooks } from "../../app/backoffice-runtime/node/node-durable-hooks";
 import { shutdownNodeOpenTelemetry } from "../../app/backoffice-runtime/node/node-opentelemetry-lifecycle";
 import { createBackofficeRouterContextProvider } from "../../app/worker-runtime/router-context-provider.server";
@@ -35,6 +36,9 @@ const runtime = await createLocalBackofficeRuntime({
   createSandboxProviders: config.createSandboxProviders,
   durableHooks: createExternallyProcessedNodeBackofficeDurableHooks(),
 });
+// Durable Object alarms must run beside HTTP/RPC object instances. A second process opening the
+// same Pi harness would classify active tasks as crash recovery and repeat in-flight model calls.
+const alarmScheduler = startNodeBackofficeAlarmScheduler(runtime);
 const kernel = new BackofficeKernel(runtime.services);
 const staticDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "client");
 const app = express();
@@ -103,6 +107,7 @@ const listeners = await startNodeBackofficeListeners({
   port: config.port,
 }).catch(async (error: unknown) => {
   try {
+    await alarmScheduler.stop();
     await runtime.cleanup();
   } catch (cleanupError) {
     console.error("Node Backoffice startup cleanup failed", cleanupError);
@@ -124,11 +129,21 @@ function shutdownNodeBackofficeServer(): Promise<void> {
 
   shutdownPromise = (async () => {
     try {
+      console.info("Node Backoffice server shutdown started: closing HTTP listeners");
+      const activeResponseCount = listeners.reduce(
+        (count, listener) => count + listener.activeResponses.size,
+        0,
+      );
+      console.info(`Node Backoffice server closing ${activeResponseCount} active response(s)`);
       await stopNodeBackofficeListeners(listeners);
+      console.info("Node Backoffice server HTTP listeners closed: stopping alarm scheduler");
+      await alarmScheduler.stop();
+      console.info("Node Backoffice server alarm scheduler stopped: cleaning up runtime");
       await runtime.cleanup();
     } finally {
       await shutdownNodeOpenTelemetry();
     }
+    console.info("Node Backoffice server shutdown complete");
   })();
   return shutdownPromise;
 }

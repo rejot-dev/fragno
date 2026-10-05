@@ -26,9 +26,9 @@ describe("runtime-tool workflow catalog", () => {
         await step.do("configure", async () => {
           await internal.filesSeedExecute({});
           await org.internal.filesSeedExecute({});
-          await project.internal.automationsRoutesSeedStarter({});
-          await user.internal.automationsRoutesSeedStarter({});
-          await context.current.internal.automationsRoutesSeedStarter({});
+          await project.internal.automationsRoutesSeedStarter();
+          await user.internal.automationsRoutesSeedStarter();
+          await context.current.internal.automationsRoutesSeedStarter();
           await something.internal.filesSeedExecute({});
         });
       });`,

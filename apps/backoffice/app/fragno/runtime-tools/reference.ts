@@ -271,12 +271,11 @@ const renderCodemodeProviderSection = ({
       reference.codemode;
     const renderedInputType = shouldInlineCodemodeType(inputType) ? inputType : inputTypeName;
     const renderedOutputType = shouldInlineCodemodeType(outputType) ? outputType : outputTypeName;
-    return [
-      renderJSDoc(description, 2),
-      `  ${toolName}(input: ${renderedInputType}): Promise<${renderedOutputType}>;`,
-    ]
-      .filter(Boolean)
-      .join("\n");
+    const signature =
+      inputType.trim() === "void"
+        ? `  ${toolName}(): Promise<${renderedOutputType}>;`
+        : `  ${toolName}(input: ${renderedInputType}): Promise<${renderedOutputType}>;`;
+    return [renderJSDoc(description, 2), signature].filter(Boolean).join("\n");
   });
 
   const providerTypeName = `${pascalCase(namespace)}CodemodeProvider`;

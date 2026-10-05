@@ -19,7 +19,8 @@ vi.mock("@/fragno/automation/read-backoffice-automation-source", () => ({
   readBackofficeAutomationSource: readBackofficeAutomationSourceMock,
 }));
 
-import type { PiRuntime } from "./families/pi-runtime";
+import type { PiManagerRuntime } from "@/fragno/pi-manager/pi-manager-runtime";
+
 import { createRouteBackedRuntimeContext } from "./route-backed-runtime-context";
 
 const createRuntime = (): BackofficeRuntimeServices => {
@@ -58,6 +59,7 @@ const createRuntime = (): BackofficeRuntimeServices => {
         resend: false,
         reson8: false,
         mcp: false,
+        projectConnector: false,
         upload: false,
         github: false,
         githubWebhookRouter: false,
@@ -75,7 +77,7 @@ describe("createRouteBackedRuntimeContext", () => {
 
   test("preserves an injected Pi runtime in scoped child contexts", () => {
     const runtime = createRuntime();
-    const piRuntime = {} as PiRuntime;
+    const piRuntime = {} as PiManagerRuntime;
     const context = createRouteBackedRuntimeContext({
       runtime,
       kernel: new BackofficeKernel(runtime),

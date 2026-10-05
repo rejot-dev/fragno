@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from "vitest";
+import { assert, describe, expect, test, vi } from "vitest";
 
 import type { BackofficeAuthorityResolver } from "./authority-resolver";
 import {
@@ -8,6 +8,8 @@ import {
 import {
   BackofficeForbiddenError,
   BackofficeKernel,
+  isBackofficeForbiddenError,
+  isBackofficeUnavailableError,
   noopBackofficeKernelObserver,
   type BackofficeKernelAction,
   type BackofficeKernelObserver,
@@ -67,6 +69,38 @@ class RecordingKernelObserver implements BackofficeKernelObserver {
     await execute();
   }
 }
+
+describe("Backoffice kernel boundary errors", () => {
+  test("recognizes an unavailable error without constructor identity", () => {
+    assert(
+      isBackofficeUnavailableError({
+        name: "BackofficeUnavailableError",
+        message: "Unavailable",
+      }),
+    );
+  });
+
+  test("recognizes a validated authorization denial without constructor identity", () => {
+    const error: unknown = {
+      name: "BackofficeForbiddenError",
+      message: "Forbidden",
+      reason: "principal-permission-denied",
+    };
+
+    assert(isBackofficeForbiddenError(error));
+    assert(error.reason === "principal-permission-denied");
+  });
+
+  test("rejects malformed cross-boundary authorization errors", () => {
+    assert(
+      !isBackofficeForbiddenError({
+        name: "BackofficeForbiddenError",
+        message: "Forbidden",
+        reason: "invented-reason",
+      }),
+    );
+  });
+});
 
 describe("BackofficeKernel authorization assertions", () => {
   test("observes authorization without running the action execution observer", async () => {

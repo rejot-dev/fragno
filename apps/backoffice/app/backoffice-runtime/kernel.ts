@@ -15,7 +15,10 @@ import {
 } from "./context";
 import { backofficeContextScopeSchema } from "./context-schema";
 import type { BackofficeObjectBindingName } from "./object-registry";
-import { backofficeObjectScopePolicy } from "./object-registry";
+import {
+  backofficeObjectScopePolicy,
+  isBackofficeObjectAvailableInContext,
+} from "./object-registry";
 import { BACKOFFICE_PERMISSION, type BackofficePermissionRequirement } from "./permissions";
 import { backofficeScopeSinglePathSegment } from "./scope-codec";
 
@@ -46,12 +49,20 @@ type BackofficeKernelRuntime = {
   kernelObserver: BackofficeKernelObserver;
 };
 
+export const BACKOFFICE_AUTHORIZATION_DENIAL_REASONS = [
+  "authority-unavailable",
+  "principal-permission-denied",
+  "actor-capability-denied",
+  "context-access-denied",
+  "policy-denied",
+] as const;
+
 export type BackofficeAuthorizationDenialReason =
-  | "authority-unavailable"
-  | "principal-permission-denied"
-  | "actor-capability-denied"
-  | "context-access-denied"
-  | "policy-denied";
+  (typeof BACKOFFICE_AUTHORIZATION_DENIAL_REASONS)[number];
+
+const backofficeAuthorizationDenialReasons = new Set<string>(
+  BACKOFFICE_AUTHORIZATION_DENIAL_REASONS,
+);
 
 export const BACKOFFICE_SCOPE_OPERATIONS = ["automation.forward-event"] as const;
 
@@ -64,6 +75,21 @@ export class BackofficeUnavailableError extends Error {
   }
 }
 
+export type BackofficeUnavailableErrorDetails = Readonly<{
+  message: string;
+}>;
+
+/** Node entrypoints and object calls can cross bundle or RPC boundaries that do not preserve constructors. */
+export function isBackofficeUnavailableError(
+  error: unknown,
+): error is BackofficeUnavailableErrorDetails {
+  if (!error || typeof error !== "object" || Array.isArray(error)) {
+    return false;
+  }
+  const candidate = error as Record<string, unknown>;
+  return candidate.name === "BackofficeUnavailableError" && typeof candidate.message === "string";
+}
+
 export class BackofficeForbiddenError extends Error {
   constructor(
     message = "Forbidden",
@@ -74,8 +100,26 @@ export class BackofficeForbiddenError extends Error {
   }
 }
 
-const objectScopeKind = (scope: BackofficeContextScope) =>
-  scope.kind === "system" ? "singleton" : scope.kind;
+export type BackofficeForbiddenErrorDetails = Readonly<{
+  message: string;
+  reason: BackofficeAuthorizationDenialReason;
+}>;
+
+/** Recognizes authorization denials after constructor identity has been lost across a boundary. */
+export function isBackofficeForbiddenError(
+  error: unknown,
+): error is BackofficeForbiddenErrorDetails {
+  if (!error || typeof error !== "object" || Array.isArray(error)) {
+    return false;
+  }
+  const candidate = error as Record<string, unknown>;
+  return (
+    candidate.name === "BackofficeForbiddenError" &&
+    typeof candidate.message === "string" &&
+    typeof candidate.reason === "string" &&
+    backofficeAuthorizationDenialReasons.has(candidate.reason)
+  );
+}
 
 const backofficePermissionsEqual = (
   grant: BackofficePermissionRequirement,
@@ -458,9 +502,8 @@ export class BackofficeKernel {
   }
 
   assertObjectAvailable(binding: BackofficeObjectBindingName, scope: BackofficeContextScope) {
-    const physicalScope = objectScopeKind(scope);
     const allowed = backofficeObjectScopePolicy[binding];
-    if (!allowed.includes(physicalScope as never)) {
+    if (!isBackofficeObjectAvailableInContext(binding, scope)) {
       throw new BackofficeUnavailableError(
         `${binding} is not available in ${scope.kind} context. Supported scopes: ${allowed.join(", ")}.`,
       );

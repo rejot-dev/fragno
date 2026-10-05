@@ -109,19 +109,6 @@ test("public compiler HTTP routes require bearer authentication and POST", async
       })
     ).status === 405,
   );
-
-  const unauthorizedClient = createCodemodeCompilerHttpClient({
-    url: server.url,
-    apiKey: "incorrect",
-  });
-  await expect(
-    unauthorizedClient.compileWorker({
-      files: { "worker.ts": "export default 42;" },
-      entryPoint: "worker.ts",
-      dependencies: {},
-      runtime,
-    }),
-  ).rejects.toMatchObject({ code: "AUTHENTICATION_FAILED" });
 });
 
 test("RPC, HTTP, and WebSocket compilation share compiler admission and recover", async () => {

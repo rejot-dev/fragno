@@ -44,23 +44,6 @@ const hookIntent = z.strictObject({
   payload: z.unknown(),
   when: z.enum(["success", "terminal-error", "both"]),
 });
-const promptInput = z.strictObject({
-  text: z.string(),
-  images: z
-    .array(z.strictObject({ type: z.literal("image"), data: z.string(), mimeType: name }))
-    .nullable(),
-  tools: z
-    .array(
-      z.strictObject({
-        id: name,
-        name,
-        description: z.string(),
-        parameters: z.record(z.string(), z.unknown()),
-      }),
-    )
-    .max(CODEMODE_LIMITS.maxHandles),
-});
-
 /** Explicit operations accepted by the authoritative Node host; no remote property lookup. */
 export const codemodeHostOperationSchema = z.discriminatedUnion("operation", [
   z.strictObject({
@@ -112,13 +95,6 @@ export const codemodeHostOperationSchema = z.discriminatedUnion("operation", [
     callbackId: handle,
   }),
   z.strictObject({ operation: z.literal("tx.unsubscribe"), txId: handle, subscriptionId: handle }),
-  z.strictObject({
-    operation: z.literal("agent.prompt"),
-    parentScope: scope.nullable(),
-    name,
-    input: promptInput,
-    callbackId: handle.nullable(),
-  }),
 ]);
 
 /** Guest callbacks are capabilities scoped to the step, subscription, or prompt that created them. */
@@ -140,13 +116,6 @@ export const codemodeGuestOperationSchema = z.discriminatedUnion("operation", [
     callbackId: handle,
     deliveryId: handle,
     event: event.extend({ id: name }),
-  }),
-  z.strictObject({
-    operation: z.literal("callback.agentTool"),
-    callbackId: handle,
-    toolId: name,
-    toolCallId: name,
-    input: z.unknown(),
   }),
 ]);
 
@@ -173,7 +142,6 @@ export const codemodeActivationSchema = z.discriminatedUnion("kind", [
     event: z
       .object({ payload: z.unknown(), timestamp: z.date(), instanceId: name, id: name })
       .catchall(z.unknown()),
-    agentAvailable: z.boolean(),
   }),
 ]);
 export type CodemodeActivation = z.infer<typeof codemodeActivationSchema>;
@@ -196,6 +164,12 @@ const errorSchema = z.strictObject({
   kind: z.enum(["error", "non-retryable", "event-timeout", "interrupted"]),
   name: z.string().max(1024),
   message: z.string().max(32_768),
+  details: z
+    .strictObject({
+      status: z.number().int().min(100).max(599),
+      code: z.string().min(1).max(1024),
+    })
+    .nullable(),
 });
 export type CodemodeWireError = z.infer<typeof errorSchema>;
 const callResultSchema = z.discriminatedUnion("status", [

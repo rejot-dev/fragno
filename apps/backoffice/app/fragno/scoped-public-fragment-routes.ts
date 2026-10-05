@@ -9,6 +9,9 @@ export const MCP_PUBLIC_PREFIX = "/api/mcp";
 export const MCP_INTERNAL_PREFIX = "/api/mcp";
 export const MCP_INTERNAL_OAUTH_CALLBACK_PATH = "/api/mcp/oauth/callback";
 
+export const PROJECT_CONNECTOR_PUBLIC_PREFIX = "/api/connector";
+export const PROJECT_CONNECTOR_INTERNAL_PREFIX = "/api/project-connector";
+
 export type ScopedPublicFragmentAddress = {
   baseUrl: string;
   oauthRedirectUri: string;
@@ -48,7 +51,7 @@ export const scopedPublicBaseUrlForPathSegment = ({
 
 function requirePublicFragmentOrigin(
   publicOrigin: string | undefined,
-  fragmentName: "API" | "MCP",
+  fragmentName: "API" | "MCP" | "Connector",
 ): string {
   const normalized = publicOrigin?.trim();
   if (!normalized) {
@@ -111,6 +114,18 @@ export function mcpPublicAddress(
   return scopedPublicFragmentAddress({
     publicOrigin: requirePublicFragmentOrigin(publicOrigin, "MCP"),
     publicPrefix: MCP_PUBLIC_PREFIX,
+    scopePathSegment,
+  });
+}
+
+/** Builds the scope-selected OAuth return destination; tools cannot choose arbitrary return URLs. */
+export function projectConnectorPublicAddress(
+  publicOrigin: string | undefined,
+  scopePathSegment: string,
+): ScopedPublicFragmentAddress {
+  return scopedPublicFragmentAddress({
+    publicOrigin: requirePublicFragmentOrigin(publicOrigin, "Connector"),
+    publicPrefix: PROJECT_CONNECTOR_PUBLIC_PREFIX,
     scopePathSegment,
   });
 }

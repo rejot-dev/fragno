@@ -16,7 +16,11 @@ import type {
   AutomationCommandExecutionResult,
   AutomationCommandOutputOptions,
 } from "@/fragno/runtime-tools/automation-types";
-import { defineCliArgsParser, readOutputOptions } from "@/fragno/runtime-tools/bash-cli";
+import {
+  defineCliArgsParser,
+  defineNoInputArgsParser,
+  readOutputOptions,
+} from "@/fragno/runtime-tools/bash-cli";
 
 import {
   defineBackofficeRuntimeTool,
@@ -170,7 +174,7 @@ const automationRoutesSeedStarterTool = defineBackofficeRuntimeTool({
   name: "automationsRoutesSeedStarter",
   description: "Reconcile the scope-appropriate database-backed starter automation routes.",
   requiredPermissions: ["manage"],
-  inputSchema: z.object({}).optional().default({}),
+  inputSchema: z.void(),
   outputSchema: starterAutomationRoutesSeedOutputSchema,
   execute: async (_input, context: InternalToolContext) =>
     await getRuntime(context).seedStarterAutomationRoutes(),
@@ -183,10 +187,7 @@ const automationRoutesSeedStarterTool = defineBackofficeRuntimeTool({
         options: [],
         examples: ["internal.automations.routes.seed-starter --format json"],
       },
-      parse: defineCliArgsParser<Record<string, never>>(
-        "internal.automations.routes.seed-starter",
-        {},
-      ),
+      parse: defineNoInputArgsParser("internal.automations.routes.seed-starter"),
       outputOptions: (_args, parsed) => readOutputOptions(parsed),
       format: (output, options) =>
         options.format === "json" || options.print

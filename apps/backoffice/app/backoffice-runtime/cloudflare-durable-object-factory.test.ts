@@ -56,10 +56,13 @@ describe("Cloudflare Durable Object factory", () => {
     );
     assert(!requests[0]?.headers.has(BACKOFFICE_INTERNAL_CONTEXT_HEADER));
 
-    await handle.http.fetchAuthorized(new Request("https://automations.test/api/pi/sessions"), {
-      execution,
-      propagationContext: null,
-    });
+    await handle.http.fetchAuthorized(
+      new Request("https://automations.test/api/automations/routes"),
+      {
+        execution,
+        propagationContext: null,
+      },
+    );
     const authorizedRequest = requests[1]!;
     assert(authorizedRequest.headers.has(BACKOFFICE_INTERNAL_CONTEXT_HEADER));
     await expect(

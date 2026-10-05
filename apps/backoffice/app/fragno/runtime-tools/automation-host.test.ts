@@ -3,6 +3,7 @@ import { describe, expect, it, assert } from "vitest";
 import { InMemoryFs } from "just-bash";
 
 import { MasterFileSystem } from "@/files/master-file-system";
+import type { PiManagerRuntime } from "@/fragno/pi-manager/pi-manager-runtime";
 
 import { createInteractiveBashHost } from "./automation-host";
 import type { StoreSetArgs } from "./automation-types";
@@ -10,7 +11,6 @@ import { createBashHost } from "./bash-host";
 import { EMPTY_BASH_HOST_CONTEXT } from "./bash-host.test-utils";
 import { createUnavailableAutomationRouterRuntime } from "./families/automations-routing";
 import type { OtpRuntime } from "./families/otp-runtime";
-import type { PiRuntime } from "./families/pi-runtime";
 import type { ResendRuntime } from "./families/resend-runtime";
 import type { Reson8Runtime } from "./families/reson8-runtime";
 
@@ -149,133 +149,65 @@ const createReson8Runtime = (): Reson8Runtime => ({
   }),
 });
 
-const createPiRuntime = (): PiRuntime => ({
-  createSession: async () => ({
-    id: "session-1",
-    agent: "assistant",
-    workflowName: "interactive-chat-workflow",
-    status: "waiting" as const,
+const createPiRuntime = (): PiManagerRuntime => {
+  const session = {
     name: null,
-    steeringMode: "one-at-a-time" as const,
-    metadata: null,
-    tags: [],
-    createdAt: new Date("2026-01-01T00:00:00.000Z"),
-    updatedAt: new Date("2026-01-01T00:00:00.000Z"),
-  }),
-  getSession: async ({ sessionId }) => ({
-    id: sessionId,
-    model: "assistant",
-    workflowName: "interactive-chat-workflow",
-    agent: { state: { messages: [] } },
-    status: "waiting" as const,
-    name: null,
-    steeringMode: "one-at-a-time" as const,
-    metadata: null,
-    tags: [],
-    createdAt: new Date("2026-01-01T00:00:00.000Z"),
-    updatedAt: new Date("2026-01-01T00:00:00.000Z"),
-    workflow: { status: "waiting" as const },
-  }),
-  listSessions: async () => [
-    {
-      id: "session-1",
-      name: null,
-      status: "waiting" as const,
-      agent: "assistant",
-      workflowName: "interactive-chat-workflow",
-      steeringMode: "one-at-a-time" as const,
-      metadata: null,
-      tags: [],
-      createdAt: new Date("2026-01-01T00:00:00.000Z"),
-      updatedAt: new Date("2026-01-01T00:00:00.000Z"),
-    },
-  ],
-  runTurn: async ({ sessionId, text }) => ({
-    id: sessionId,
-    model: "assistant",
-    workflowName: "interactive-chat-workflow",
-    agent: {
-      state: {
-        messages: [
-          {
-            role: "assistant" as const,
-            content: [{ type: "text" as const, text }],
-            api: "openai-responses",
-            provider: "openai",
-            model: "test-model",
-            usage: {
-              input: 0,
-              output: 0,
-              cacheRead: 0,
-              cacheWrite: 0,
-              totalTokens: 0,
-              cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-            },
-            stopReason: "stop" as const,
-            timestamp: Date.now(),
-          },
-        ],
+    model: { provider: "openai", modelId: "test-model" },
+    instructions: "",
+    billingOrganizationId: "org-1",
+    scope: { kind: "org" as const, orgId: "org-1" },
+    sessionId: "session-1",
+    actors: {
+      initiator: {
+        scope: "internal" as const,
+        type: "service",
+        id: "automation-host-test",
+        role: "initiator" as const,
       },
+      principal: null,
+      delegation: [],
     },
-    status: "waiting" as const,
-    name: null,
-    steeringMode: "one-at-a-time" as const,
-    metadata: null,
-    tags: [],
-    createdAt: new Date("2026-01-01T00:00:00.000Z"),
-    updatedAt: new Date("2026-01-01T00:00:00.000Z"),
-    workflow: { status: "waiting" as const },
-    assistantText: text,
-    commandStatus: "active" as const,
-    stream: [
-      {
-        type: "snapshot" as const,
-        state: {
-          messages: [
-            {
-              role: "assistant" as const,
-              content: [{ type: "text" as const, text }],
-              api: "openai-responses",
-              provider: "openai",
-              model: "test-model",
-              usage: {
-                input: 0,
-                output: 0,
-                cacheRead: 0,
-                cacheWrite: 0,
-                totalTokens: 0,
-                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-              },
-              stopReason: "stop" as const,
-              timestamp: Date.now(),
-            },
-          ],
-        },
-      },
-    ],
-    terminalState: {
-      messages: [
-        {
-          role: "assistant" as const,
-          content: [{ type: "text" as const, text }],
-          api: "openai-responses",
-          provider: "openai",
-          model: "test-model",
-          usage: {
-            input: 0,
-            output: 0,
-            cacheRead: 0,
-            cacheWrite: 0,
-            totalTokens: 0,
-            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-          },
-          stopReason: "stop" as const,
-          timestamp: Date.now(),
-        },
-      ],
-    },
-  }),
-});
+  };
+  const directorySession = { ...session, createdAt: "2026-01-01T00:00:00.000Z" };
+  return {
+    createSession: async () => session,
+    getSession: async () => ({
+      ...directorySession,
+      view: { conversation: { id: 1 } as never, entries: [], docs: {} },
+    }),
+    listSessions: async () => ({
+      sessions: [directorySession],
+      cursor: null,
+      hasNextPage: false,
+    }),
+    submitPrompt: async () => ({ submissionId: 1, requestId: "request-1" }),
+    getSubmission: async () =>
+      ({
+        id: 1,
+        conversationId: 1,
+        requestId: "request-1",
+        type: "input",
+        status: "done",
+        entry: "input-1",
+        answer: "answer-1",
+      }) as never,
+    runPrompt: async ({ content }) => ({
+      ...directorySession,
+      view: { conversation: { id: 1 } as never, entries: [], docs: {} },
+      submission: {
+        id: 1,
+        conversationId: 1,
+        requestId: "request-1",
+        type: "input",
+        status: "done",
+        entry: "input-1",
+        answer: "answer-1",
+      } as never,
+      assistantText: content,
+    }),
+    abortSession: async () => undefined,
+  };
+};
 
 const createTelegramRuntime = () => ({
   getFile: async ({ fileId }: { fileId: string }) => ({

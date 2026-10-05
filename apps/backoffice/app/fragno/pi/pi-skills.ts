@@ -1,7 +1,14 @@
-import type { PiSkillDefinition, PiSkillRegistry } from "@fragno-dev/pi-harness/skills";
-
 import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
 import { parseFrontmatter } from "@/lib/frontmatter";
+
+export type BackofficePiSkillDefinition = {
+  name: string;
+  description: string;
+  body: string;
+  directory: string;
+  location: string;
+};
+export type BackofficePiSkillRegistry = Record<string, BackofficePiSkillDefinition>;
 
 type SkillFrontmatter = { name: string; description: string } & Record<string, unknown>;
 type PiSkillState = Pick<BackofficeStateBackend, "glob" | "readFile">;
@@ -14,7 +21,7 @@ const isUploadNotConfiguredError = (
   "code" in error &&
   error.code === "NOT_CONFIGURED";
 
-const parseStateSkill = (path: string, content: string): PiSkillDefinition => {
+const parseStateSkill = (path: string, content: string): BackofficePiSkillDefinition => {
   const parsed = parseFrontmatter<SkillFrontmatter>(content);
   if (!parsed.ok) {
     throw parsed.error;
@@ -38,7 +45,9 @@ const parseStateSkill = (path: string, content: string): PiSkillDefinition => {
   };
 };
 
-export const loadBackofficePiSkills = async (state: PiSkillState): Promise<PiSkillRegistry> => {
+export const loadBackofficePiSkills = async (
+  state: PiSkillState,
+): Promise<BackofficePiSkillRegistry> => {
   const staticPaths = await state.glob("/static/skills/**/SKILL.md");
   let workspacePaths: string[];
   try {
@@ -52,7 +61,7 @@ export const loadBackofficePiSkills = async (state: PiSkillState): Promise<PiSki
 
   const paths = [...staticPaths, ...workspacePaths];
   const contents = await Promise.all(paths.map((path) => state.readFile(path)));
-  const skills: PiSkillRegistry = {};
+  const skills: BackofficePiSkillRegistry = {};
   for (const [index, path] of paths.entries()) {
     try {
       const skill = parseStateSkill(path, contents[index]);

@@ -5,6 +5,11 @@ import type {
   AutomationsObject,
   BackofficeObjectHandle,
 } from "@/backoffice-runtime/object-registry";
+import {
+  BACKOFFICE_REQUIRED_PERMISSION_HEADER,
+  backofficePermissionRequirementSchema,
+  type BackofficePermissionRequirement,
+} from "@/backoffice-runtime/permissions";
 
 import type {
   AutomationWorkflowRuntime,
@@ -24,12 +29,66 @@ export type PrepareSavedWorkflowInstance = (
 export type RouteBackedAutomationWorkflowRuntime = AutomationWorkflowRuntime &
   InternalAutomationWorkflowRuntime;
 
-const backendError = (response: { status: number; error?: { message?: string } }) =>
-  new Error(
-    response.error?.message
-      ? `Workflows backend returned ${response.status}: ${response.error.message}`
-      : `Workflows backend returned ${response.status}`,
+type WorkflowBackendErrorResponse = {
+  status: number;
+  headers: Headers;
+  error?: { code?: string; message?: string };
+};
+
+/** Stable workflow backend failure fields for runtime tools and durable Pi diagnostics. */
+export class AutomationWorkflowRuntimeRequestError extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: string,
+    message: string,
+    readonly requiredPermission: BackofficePermissionRequirement | null,
+  ) {
+    super(message);
+    this.name = "AutomationWorkflowRuntimeRequestError";
+  }
+
+  static is(cause: unknown): cause is AutomationWorkflowRuntimeRequestError {
+    return (
+      cause instanceof Error &&
+      cause.name === "AutomationWorkflowRuntimeRequestError" &&
+      "status" in cause &&
+      typeof cause.status === "number" &&
+      "code" in cause &&
+      typeof cause.code === "string" &&
+      "requiredPermission" in cause
+    );
+  }
+}
+
+function requiredPermissionFromWorkflowResponse(
+  response: WorkflowBackendErrorResponse,
+): BackofficePermissionRequirement | null {
+  const encodedPermission = response.headers.get(BACKOFFICE_REQUIRED_PERMISSION_HEADER);
+  if (!encodedPermission) {
+    return null;
+  }
+
+  try {
+    const permission = backofficePermissionRequirementSchema.safeParse(
+      JSON.parse(encodedPermission) as unknown,
+    );
+    return permission.success ? permission.data : null;
+  } catch {
+    return null;
+  }
+}
+
+function backendError(response: WorkflowBackendErrorResponse) {
+  const message = response.error?.message
+    ? `Workflows backend returned ${response.status}: ${response.error.message}`
+    : `Workflows backend returned ${response.status}`;
+  return new AutomationWorkflowRuntimeRequestError(
+    response.status,
+    response.error?.code ?? "WORKFLOW_RUNTIME_REQUEST_FAILED",
+    message,
+    requiredPermissionFromWorkflowResponse(response),
   );
+}
 
 const savedWorkflowBackendInstanceMetaSchema = z.object({
   workflowName: z.literal(CODEMODE_WORKFLOW),

@@ -11,6 +11,10 @@ export default [
   route("backoffice/auth/bootstrap", "routes/backoffice/auth-bootstrap.tsx"),
   route("backoffice/sign-up", "routes/backoffice/sign-up.tsx"),
   route("backoffice/verify-email", "routes/backoffice/verify-email.tsx"),
+  route(
+    "backoffice/connections/connector/return/:scopeSegment",
+    "routes/backoffice/connections/project-connector-return.tsx",
+  ),
   layout("layouts/backoffice-layout.tsx", { id: BACKOFFICE_LAYOUT_ROUTE_ID }, [
     ...prefix("backoffice", [
       index("routes/backoffice/index.tsx"),
@@ -236,11 +240,15 @@ export default [
         index("routes/backoffice/sessions/organization-index.tsx"),
         route("sessions", "routes/backoffice/sessions/sessions.tsx", [
           index("routes/backoffice/sessions/sessions-index.tsx"),
-          route(":workflowName/:sessionId", "routes/backoffice/sessions/session-detail.tsx"),
+          route(":sessionId", "routes/backoffice/sessions/session-detail.tsx"),
+          route(":sessionId/view-stream", "routes/backoffice/sessions/session-view-stream.ts"),
+          route(":sessionId/entries", "routes/backoffice/sessions/session-entries.ts"),
+          route(":sessionId/export", "routes/backoffice/sessions/session-export.ts"),
           route(
-            ":workflowName/:sessionId/debug",
-            "routes/backoffice/sessions/debug-session-detail.tsx",
+            ":sessionId/compactions/:taskId",
+            "routes/backoffice/sessions/session-compaction.ts",
           ),
+          route(":sessionId/debug", "routes/backoffice/sessions/debug-session-detail.tsx"),
         ]),
       ]),
       route("files", "routes/backoffice/files/index.tsx"),
@@ -301,6 +309,7 @@ export default [
     route("reson8/:orgSlug/*", "routes/api/reson8.ts"),
     route("mcp/:scopeSegment/servers/:serverSlug/auth/start", "routes/api/mcp-oauth-start.ts"),
     route("mcp/:scopeSegment/*", "routes/api/mcp.ts"),
+    route("connector/:scopeSegment/*", "routes/api/project-connector.ts"),
     route(
       "http/:scopeSegment/connections/:connectionSlug/auth/oauth/start",
       "routes/api/api-oauth-start.ts",
@@ -313,7 +322,6 @@ export default [
     route("upload/:orgSlug/*", "routes/api/upload.ts"),
     route("files-scoped/:scopeKind/:scopeId/workspace", "routes/api/files-scoped-workspace.ts"),
     route("upload-scoped/:scopeKind/:scopeId/*", "routes/api/upload-scoped.ts"),
-    route("pi/:scopeSegment/*", "routes/api/pi.ts"),
     route("workflows/:scopeSegment/*", "routes/api/workflows.ts"),
     route("automations-scoped/:scopeKind/:scopeId/*", "routes/api/automations-scoped.ts"),
     route("marketplace/*", "routes/api/marketplace.ts"),

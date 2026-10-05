@@ -3,8 +3,8 @@
 # Backoffice static agent-context graph
 
 - **Static mount:** `/static/`
-- **Files:** 49
-- **Entry points:** 1 `SYSTEM.md` + 16 skills
+- **Files:** 51
+- **Entry points:** 1 `SYSTEM.md` + 17 skills
 
 ## How context is loaded
 
@@ -38,27 +38,29 @@
    ├─ /static/codemode/providers/web.d.ts — web tools [line 15]
    ├─ /static/codemode/providers/api.d.ts — api tools [line 16]
    ├─ /static/codemode/providers/mcp.d.ts — mcp tools [line 17]
-   ├─ /static/codemode/providers/otp.d.ts — otp tools [line 18]
-   ├─ /static/codemode/providers/pi.d.ts — pi tools [line 19]
-   ├─ /static/codemode/providers/resend.d.ts — resend tools [line 20]
-   ├─ /static/codemode/providers/reson8.d.ts — reson8 tools [line 21]
-   ├─ /static/codemode/providers/sandbox.d.ts — sandbox tools [line 22]
-   ├─ /static/codemode/providers/telegram.d.ts — telegram tools [line 23]
-   ├─ /static/codemode/providers/js.d.ts — js tools [line 24]
-   ├─ /static/codemode/providers/upload.d.ts — upload tools [line 25]
-   └─ /static/codemode/sources/mcp.d.ts — Backoffice domain tool providers [line 26]
+   ├─ /static/codemode/providers/connector.d.ts — connector tools [line 18]
+   ├─ /static/codemode/providers/otp.d.ts — otp tools [line 19]
+   ├─ /static/codemode/providers/pi.d.ts — pi tools [line 20]
+   ├─ /static/codemode/providers/resend.d.ts — resend tools [line 21]
+   ├─ /static/codemode/providers/reson8.d.ts — reson8 tools [line 22]
+   ├─ /static/codemode/providers/sandbox.d.ts — sandbox tools [line 23]
+   ├─ /static/codemode/providers/telegram.d.ts — telegram tools [line 24]
+   ├─ /static/codemode/providers/js.d.ts — js tools [line 25]
+   ├─ /static/codemode/providers/upload.d.ts — upload tools [line 26]
+   └─ /static/codemode/sources/mcp.d.ts — Backoffice domain tool providers [line 27]
 ```
 
 ## Skill entry points
 
 ### `api-connection`
 
-> **Load when:** Configure and use Backoffice API connections. Use when creating outbound HTTP API
-> integrations, configuring OAuth or bearer authentication, starting API OAuth flows, checking auth
-> status, or executing authenticated API requests from automations.
+> **Load when:** Create and use low-level HTTP API connections with api.\*. Use when the user
+> requests a direct API connection, custom HTTP requests, or API authentication setup and status.
+> Named services without a native integration default to Open Connector connections.
 
 ```text
-/static/skills/api-connection/SKILL.md — API Connection
+/static/skills/api-connection/SKILL.md — Low-Level API Connections
+└─ /static/codemode/providers/api.d.ts — api tools [line 11]
 ```
 
 ### `api-webhooks`
@@ -85,26 +87,27 @@
 └─ /static/codemode/providers/store.d.ts — store tools [line 21]
 ```
 
-### `configuring-connections`
+### `configuring-integrations`
 
-> **Load when:** Set up any Backoffice integration, connection, or named provider. Always use for
-> setup requests such as ‘help me set up Reson8’, even when a provider-specific skill also applies;
-> also use when required configuration is missing or connection status must be verified.
+> **Load when:** Configure native Backoffice integrations with dedicated runtime tools, such as
+> Telegram, Resend, Reson8, and Upload. Always load for native integration setup or verification,
+> together with its provider-specific skill. Open Connector and low-level API/MCP connections use
+> their own skills.
 
 ```text
-/static/skills/configuring-connections/SKILL.md — Configuring Connections
-├─ /static/codemode/providers/connections.d.ts — connections tools [line 15]
-├─ /static/skills/telegram-connection/SKILL.md — Telegram Connection [line 29]
-├─ /static/skills/generating-backoffice-uis/SKILL.md — Generating Backoffice UIs [line 34]
+/static/skills/configuring-integrations/SKILL.md — Configuring Integrations
+├─ /static/codemode/providers/connections.d.ts — connections tools [line 19]
+├─ /static/skills/telegram-integration/SKILL.md — Telegram Integration [line 34]
+├─ /static/skills/generating-backoffice-uis/SKILL.md — Generating Backoffice UIs [line 39]
 │  ├─ /static/skills/generating-backoffice-uis/CATALOG.md — Production Component Catalog [line 14]
 │  ├─ /static/skills/generating-backoffice-uis/WORKFLOWS.md — Durable Workflow UI Results [line 24]
 │  │  └─ /static/skills/workflows/SKILL.md — Workflows [line 3]
-│  │     └─ /static/codemode/providers/workflow.d.ts — workflow tools [line 106]
+│  │     └─ /static/codemode/providers/workflow.d.ts — workflow tools [line 92]
 │  ├─ /static/skills/workflows/SKILL.md — Workflows [line 24] [already expanded]
 │  └─ /static/skills/using-prepared-uploads/SKILL.md — Using Prepared Uploads [line 26]
 │     ├─ /static/skills/generating-backoffice-uis/SKILL.md — Generating Backoffice UIs [line 17] [cycle]
 │     └─ /static/codemode/providers/upload.d.ts — upload tools [line 29]
-└─ /static/skills/workflows/SKILL.md — Workflows [line 34] [already expanded]
+└─ /static/skills/workflows/SKILL.md — Workflows [line 39] [already expanded]
 ```
 
 ### `forms`
@@ -128,7 +131,7 @@
 ├─ /static/skills/generating-backoffice-uis/CATALOG.md — Production Component Catalog [line 14]
 ├─ /static/skills/generating-backoffice-uis/WORKFLOWS.md — Durable Workflow UI Results [line 24]
 │  └─ /static/skills/workflows/SKILL.md — Workflows [line 3]
-│     └─ /static/codemode/providers/workflow.d.ts — workflow tools [line 106]
+│     └─ /static/codemode/providers/workflow.d.ts — workflow tools [line 92]
 ├─ /static/skills/workflows/SKILL.md — Workflows [line 24] [already expanded]
 └─ /static/skills/using-prepared-uploads/SKILL.md — Using Prepared Uploads [line 26]
    ├─ /static/skills/generating-backoffice-uis/SKILL.md — Generating Backoffice UIs [line 17] [cycle]
@@ -137,12 +140,26 @@
 
 ### `mcp-connection`
 
-> **Load when:** Configure and use Backoffice MCP servers. Use when registering remote MCP
-> endpoints, authenticating MCP servers with OAuth or bearer tokens, listing MCP tools, or calling
-> MCP tools from automations.
+> **Load when:** Register and use low-level MCP connections with mcp.\*. Use when the user requests
+> MCP or supplies an MCP endpoint, and for server authentication, tool discovery, and MCP tool
+> calls. Named services without a native integration default to Open Connector connections.
 
 ```text
-/static/skills/mcp-connection/SKILL.md — MCP Connection
+/static/skills/mcp-connection/SKILL.md — Low-Level MCP Connections
+└─ /static/codemode/providers/mcp.d.ts — mcp tools [line 11]
+```
+
+### `open-connector-connection`
+
+> **Load when:** Create Open Connector connections for long-tail services without a native
+> Backoffice integration, such as a request to connect Linear or Gmail. Default to this skill unless
+> the user requests a low-level API/MCP connection. Use for provider-config discovery, consent,
+> verified user accounts, and provider actions.
+
+```text
+/static/skills/open-connector-connection/SKILL.md — Open Connector Connections
+├─ /static/codemode/providers/connector.d.ts — connector tools [line 12]
+└─ /static/terminal/terminal-spec.json — terminal-spec.json JSON data [line 95]
 ```
 
 ### `otp-system`
@@ -155,23 +172,24 @@
 /static/skills/otp-system/SKILL.md — OTP System
 ```
 
-### `resend-connection`
+### `resend-integration`
 
-> **Load when:** Configure and automate the Backoffice Resend email capability. Use when setting up
-> Resend delivery, inspecting email threads, replying to emails, or debugging Resend webhooks and
-> durable hooks.
+> **Load when:** Use the native Backoffice Resend integration and resend.\* runtime tools. Load with
+> configuring-integrations for email setup; also use for email threads, replies, Resend webhooks,
+> and durable-hook debugging.
 
 ```text
-/static/skills/resend-connection/SKILL.md — Resend Connection
+/static/skills/resend-integration/SKILL.md — Resend Integration
 ```
 
-### `reson8-connection`
+### `reson8-integration`
 
-> **Load when:** Configure and use the Backoffice Reson8 speech-to-text capability. Use when setting
-> up Reson8, transcribing audio files, or debugging Reson8 runtime availability.
+> **Load when:** Use the native Backoffice Reson8 integration and reson8.\* runtime tools. Load with
+> configuring-integrations for speech-to-text setup; also use for audio transcription and Reson8
+> runtime availability.
 
 ```text
-/static/skills/reson8-connection/SKILL.md — Reson8 Connection
+/static/skills/reson8-integration/SKILL.md — Reson8 Integration
 ```
 
 ### `sandbox`
@@ -184,23 +202,24 @@
 └─ /static/codemode/providers/sandbox.d.ts — sandbox tools [line 15]
 ```
 
-### `telegram-connection`
+### `telegram-integration`
 
-> **Load when:** Configure and automate the Backoffice Telegram bot capability. Use when setting up
-> Telegram, handling events with source "telegram" and eventType "message.received", sending chat
-> replies, downloading Telegram files, or debugging Telegram hooks and runtime tools.
+> **Load when:** Use the native Backoffice Telegram integration and telegram.\* runtime tools. Load
+> with configuring-integrations for bot setup; also use for message.received events, chat replies,
+> Telegram files, and hook debugging.
 
 ```text
-/static/skills/telegram-connection/SKILL.md — Telegram Connection
+/static/skills/telegram-integration/SKILL.md — Telegram Integration
 ```
 
-### `upload-connection`
+### `upload-integration`
 
-> **Load when:** Configure Upload storage providers and inspect Upload hooks. Use when storage
-> configuration, provider selection, or Upload connection health is the task.
+> **Load when:** Configure the native Backoffice Upload integration. Load with
+> configuring-integrations for storage setup, provider selection, and integration health; also use
+> for Upload hook inspection.
 
 ```text
-/static/skills/upload-connection/SKILL.md — Upload Connection
+/static/skills/upload-integration/SKILL.md — Upload Integration
 ```
 
 ### `using-prepared-uploads`
@@ -214,7 +233,7 @@
 │  ├─ /static/skills/generating-backoffice-uis/CATALOG.md — Production Component Catalog [line 14]
 │  ├─ /static/skills/generating-backoffice-uis/WORKFLOWS.md — Durable Workflow UI Results [line 24]
 │  │  └─ /static/skills/workflows/SKILL.md — Workflows [line 3]
-│  │     └─ /static/codemode/providers/workflow.d.ts — workflow tools [line 106]
+│  │     └─ /static/codemode/providers/workflow.d.ts — workflow tools [line 92]
 │  ├─ /static/skills/workflows/SKILL.md — Workflows [line 24] [already expanded]
 │  └─ /static/skills/using-prepared-uploads/SKILL.md — Using Prepared Uploads [line 26] [cycle]
 └─ /static/codemode/providers/upload.d.ts — upload tools [line 29]
@@ -238,10 +257,9 @@
 
 ```text
 /static/skills/workflows/SKILL.md — Workflows
-└─ /static/codemode/providers/workflow.d.ts — workflow tools [line 106]
+└─ /static/codemode/providers/workflow.d.ts — workflow tools [line 92]
 ```
 
 ## Not reachable from `SYSTEM.md` or any `SKILL.md`
 
 - `/static/automations/project-files-configure.workflow.js`
-- `/static/terminal/terminal-spec.json`

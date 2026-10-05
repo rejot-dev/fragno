@@ -1,15 +1,10 @@
-import { ClientOnly } from "@fragno-private/design-system/client-only";
-import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
-import { Suspense, use, useCallback, useState } from "react";
-import { Outlet, useActionData, useNavigation } from "react-router";
+import { useCallback, useEffect, useState } from "react";
+import { Outlet, useActionData, useNavigation, useRevalidator } from "react-router";
 
 import { backofficeRouteScopeFromResolvedScope } from "@/backoffice-runtime/resolved-scope";
 import { backofficeRouteScopePath } from "@/backoffice-runtime/route-scope";
-import { getAutomationBrowserDatabase } from "@/fragno/automation/tanstack/browser-database";
-import { BACKOFFICE_PI_WORKFLOW_NAME } from "@/fragno/pi/pi-shared";
-import type { PiSessionListingState } from "@/fragno/pi/tanstack/session-listing";
-import { usePiSessionListing } from "@/fragno/pi/tanstack/use-session-listing";
 
+import type { PiManagerSessionsResult } from "./data";
 import { NewSessionComposer } from "./new-session-composer";
 import {
   updateSessionWorkspaceStateBySession,
@@ -17,135 +12,59 @@ import {
   type SessionWorkspaceStateUpdate,
 } from "./session-detail/workspace-model";
 import { SessionListSplit } from "./session-list-split";
-import type { PiCreateSessionActionData, PiSessionsOutletContext } from "./session-types";
+import type { PiCreateSessionActionData } from "./session-types";
 import type { PiLayoutContext } from "./shared";
 
-const PI_SESSIONS_LOADING = <PiSessionsLoading />;
+const SESSION_LIST_REFRESH_MS = 10_000;
 
-export function PiSessionsWorkspace({ layoutContext }: { layoutContext: PiLayoutContext }) {
-  if (!layoutContext.persistenceSource) {
-    return <PiSessionsUnavailable layoutContext={layoutContext} />;
-  }
-
-  return (
-    <ClientOnly fallback={PI_SESSIONS_LOADING}>
-      <Suspense fallback={PI_SESSIONS_LOADING}>
-        <SynchronizedPiSessionsWorkspace
-          layoutContext={layoutContext}
-          source={layoutContext.persistenceSource}
-        />
-      </Suspense>
-    </ClientOnly>
-  );
-}
-
-function PiSessionsLoading() {
-  return (
-    <BackofficeSystemState
-      tone="loading"
-      label="Opening sessions"
-      title="Synchronizing…"
-      description="Loading local session state."
-      flush
-    />
-  );
-}
-
-function PiSessionsUnavailable({ layoutContext }: { layoutContext: PiLayoutContext }) {
-  const message =
-    layoutContext.runtimeError ??
-    layoutContext.persistenceError ??
-    (layoutContext.runtimeState?.configured
-      ? "Local session persistence is unavailable."
-      : "Set a Pi provider API key in .dev.vars.");
-
-  return (
-    <BackofficeSystemState
-      tone="empty"
-      label="Unavailable"
-      title="Sessions are not connected."
-      description={message}
-      flush
-    />
-  );
-}
-
-function SynchronizedPiSessionsWorkspace({
+export function PiSessionsWorkspace({
   layoutContext,
-  source,
+  listing,
 }: {
   layoutContext: PiLayoutContext;
-  source: NonNullable<PiLayoutContext["persistenceSource"]>;
-}) {
-  const listingState = usePiSessionListing({
-    source,
-    workflowName: BACKOFFICE_PI_WORKFLOW_NAME,
-  });
-  const { collections: workflowCollections } = use(getAutomationBrowserDatabase(source));
-  const workflowCollectionsError = null;
-
-  if (listingState.status === "synchronizing" && listingState.snapshot.sessions.length === 0) {
-    return <PiSessionsLoading />;
-  }
-
-  return (
-    <PiSessionsWorkspaceView
-      layoutContext={layoutContext}
-      source={source}
-      listingState={listingState}
-      workflowCollections={workflowCollections}
-      workflowCollectionsError={workflowCollectionsError}
-    />
-  );
-}
-
-function PiSessionsWorkspaceView({
-  layoutContext,
-  source,
-  listingState,
-  workflowCollections,
-  workflowCollectionsError,
-}: {
-  layoutContext: PiLayoutContext;
-  source: NonNullable<PiLayoutContext["persistenceSource"]>;
-  listingState: PiSessionListingState;
-  workflowCollections: PiSessionsOutletContext["workflowCollections"];
-  workflowCollectionsError: string | null;
+  listing: PiManagerSessionsResult;
 }) {
   const actionData = useActionData() as PiCreateSessionActionData | undefined;
   const navigation = useNavigation();
-  const { resolvedScope, runtimeState } = layoutContext;
+  const revalidator = useRevalidator();
+  const { resolvedScope, availableModelOptions } = layoutContext;
   const basePath = `/backoffice/sessions/${backofficeRouteScopePath(
     backofficeRouteScopeFromResolvedScope(resolvedScope),
   )}/sessions`;
-  const { sessions, workflowStatuses } = listingState.snapshot;
-  const listingError = listingState.status === "error" ? listingState.error : null;
   const creating =
     navigation.state === "submitting" && navigation.formData?.get("intent") === "create-session";
-  const availableModelOptions = runtimeState?.modelCatalog ?? [];
 
   const [preferredModelOption, setPreferredModelOption] = useState("");
   const [draftPrompt, setDraftPrompt] = useState("");
   const [workspaceStates, setWorkspaceStates] = useState<SessionWorkspaceStateBySession>({});
   const updateWorkspaceState = useCallback(
-    (sessionKey: string, update: SessionWorkspaceStateUpdate) => {
+    (sessionId: string, update: SessionWorkspaceStateUpdate) => {
       setWorkspaceStates((current) =>
-        updateSessionWorkspaceStateBySession(current, sessionKey, update),
+        updateSessionWorkspaceStateBySession(current, sessionId, update),
       );
     },
     [],
   );
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (revalidator.state === "idle") {
+        void revalidator.revalidate();
+      }
+    }, SESSION_LIST_REFRESH_MS);
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [revalidator]);
 
   const selectedModelOption = availableModelOptions.some(
-    (option) => `${option.provider}::${option.name}` === preferredModelOption,
+    (option) => `${option.provider}::${option.modelId}` === preferredModelOption,
   )
     ? preferredModelOption
     : availableModelOptions[0]
-      ? `${availableModelOptions[0].provider}::${availableModelOptions[0].name}`
+      ? `${availableModelOptions[0].provider}::${availableModelOptions[0].modelId}`
       : "";
   const createError =
     actionData?.intent === "create-session" && !actionData.ok ? (actionData.message ?? null) : null;
-
   const startNewSession = useCallback(() => {
     setDraftPrompt("");
   }, []);
@@ -161,9 +80,8 @@ function PiSessionsWorkspaceView({
       selectedModelOption={selectedModelOption}
       onDraftPromptChange={setDraftPrompt}
       onModelChange={setPreferredModelOption}
-      listingError={listingError}
-      sessions={sessions}
-      workflowStatuses={workflowStatuses}
+      listingError={listing.sessionsError}
+      sessions={listing.sessions}
     />
   );
 
@@ -172,14 +90,14 @@ function PiSessionsWorkspaceView({
       <Outlet
         context={{
           resolvedScope,
-          persistenceSource: source,
+          availableModelOptions,
           basePath,
           createSessionPanel,
           startNewSession,
+          sessions: listing.sessions,
+          sessionsError: listing.sessionsError,
           workspaceStates,
           updateWorkspaceState,
-          workflowCollections,
-          workflowCollectionsError,
         }}
       />
     </SessionListSplit>

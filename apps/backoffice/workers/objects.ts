@@ -12,6 +12,9 @@ import { Marketplace } from "./marketplace.do";
 import { Mcp } from "./mcp.do";
 import { Otp } from "./otp.do";
 import { OutboundProxy } from "./outbound-proxy";
+import { PiManager } from "./pi-manager.do";
+import { Pi } from "./pi.do";
+import { ProjectConnectorDurableObject } from "./project-connector.do";
 import { Resend } from "./resend.do";
 import { Reson8 } from "./reson8.do";
 import { SandboxManager } from "./sandbox-manager.do";
@@ -39,7 +42,10 @@ export {
   GitHubWebhookRouter,
   Marketplace,
   Mcp,
+  ProjectConnectorDurableObject,
   Otp,
+  Pi,
+  PiManager,
   OutboundProxy,
   Resend,
   Reson8,

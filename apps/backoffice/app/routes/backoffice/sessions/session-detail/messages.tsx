@@ -66,18 +66,6 @@ export function AssistantMessage({
     }
   };
 
-  if (metadata.kind === "compaction") {
-    return (
-      <CompactionMessage
-        copied={copied}
-        createdAt={createdAt}
-        summary={outputText}
-        tokensBefore={metadata.tokensBefore}
-        onCopy={() => void handleCopy()}
-      />
-    );
-  }
-
   return (
     <MessagePrimitive.Root className={`group relative min-w-0 ${isToolCallOnly ? "mb-3" : "mb-9"}`}>
       {isFinalOutput ? (
@@ -144,58 +132,6 @@ export function AssistantMessage({
           </Button>
         </div>
       ) : null}
-    </MessagePrimitive.Root>
-  );
-}
-
-function CompactionMessage({
-  copied,
-  createdAt,
-  onCopy,
-  summary,
-  tokensBefore,
-}: {
-  copied: boolean;
-  createdAt?: Date;
-  onCopy: () => void;
-  summary: string;
-  tokensBefore?: number;
-}) {
-  return (
-    <MessagePrimitive.Root className="group relative mb-3 min-w-0">
-      <details className="group/compaction overflow-hidden border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)]">
-        <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-3 text-xs font-medium text-[var(--bo-muted)] transition-colors marker:hidden hover:text-[var(--bo-fg)]">
-          <span className="flex min-w-0 items-center gap-2">
-            <span className="size-1.5 shrink-0 bg-[var(--bo-accent)]" />
-            <span>Context compacted</span>
-          </span>
-          <span className="flex shrink-0 items-center gap-3 text-[10px] text-[var(--bo-muted-2)]">
-            {tokensBefore !== undefined ? (
-              <span className="hidden tabular-nums sm:inline">
-                {tokensBefore.toLocaleString()} tokens
-              </span>
-            ) : null}
-            <time className="hidden tabular-nums sm:block">{formatEventTimestamp(createdAt)}</time>
-            <span className="font-medium tracking-[0.1em] uppercase">
-              <span className="group-open/compaction:hidden">View</span>
-              <span className="hidden group-open/compaction:inline">Close</span>
-            </span>
-          </span>
-        </summary>
-        <div className="border-t border-[color:var(--bo-border)] bg-[var(--bo-panel)]">
-          <div className="px-4 py-4 text-sm leading-7 text-[var(--bo-muted)]">
-            <MarkdownText text={summary} className="[&_h2]:text-sm [&_h3]:text-xs" />
-          </div>
-          <footer className="flex min-h-10 items-center justify-between border-t border-[color:var(--bo-border)] px-3">
-            <span className="text-[10px] text-[var(--bo-muted-2)]">
-              Summary used for subsequent turns
-            </span>
-            <Button variant="ghost" onClick={onCopy}>
-              {copied ? "Copied" : "Copy summary"}
-            </Button>
-          </footer>
-        </div>
-      </details>
     </MessagePrimitive.Root>
   );
 }

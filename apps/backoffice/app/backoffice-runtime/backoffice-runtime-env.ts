@@ -20,6 +20,8 @@ export type BackofficeRuntimeEnv = {
   GITHUB_APP_PRIVATE_KEY?: string;
   CLOUDFLARE_WORKERS_ACCOUNT_ID?: string;
   CLOUDFLARE_WORKERS_API_TOKEN?: string;
+  OOMOL_CONNECTOR_BASE_URL?: string;
+  OOMOL_PROJECT_API_KEY?: string;
   OPENAI_API_KEY?: string;
   ANTHROPIC_API_KEY?: string;
   GEMINI_API_KEY?: string;

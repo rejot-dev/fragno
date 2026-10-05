@@ -18,7 +18,7 @@ import type {
 
 type GuestCallback = (call: CodemodeGuestOperation) => Promise<unknown>;
 
-/** Guest callback handles never outlive their owning step, event subscription, or agent prompt. */
+/** Guest callback handles never outlive their owning step or event subscription. */
 export class CodemodeGuestTargets {
   readonly #callbacks = new Map<number, GuestCallback>();
   #nextId = 0;
@@ -58,10 +58,6 @@ export class CodemodeGuestTargets {
     return {
       dispatchers,
       stepTarget: new RemoteCodemodeStep(this),
-      agentTarget:
-        activation.kind === "workflow" && activation.agentAvailable
-          ? new RemoteCodemodeAgent(this)
-          : null,
     };
   }
 }
@@ -270,52 +266,6 @@ class RemoteCodemodeStep extends RpcTarget {
           name,
           eventType: options.type,
           timeout: options.timeout ?? null,
-          callbackId,
-        }),
-      );
-    } finally {
-      if (callbackId !== null) {
-        this.#targets.release(callbackId);
-      }
-    }
-  }
-}
-
-class RemoteCodemodeAgent extends RpcTarget {
-  readonly #targets: CodemodeGuestTargets;
-  constructor(targets: CodemodeGuestTargets) {
-    super();
-    this.#targets = targets;
-  }
-  async prompt(
-    parentScope: RemoteWorkflowStepScope,
-    name: string,
-    input: {
-      text: string;
-      images:
-        | Extract<CodemodeHostOperation, { operation: "agent.prompt" }>["input"]["images"]
-        | undefined;
-      tools:
-        | Extract<CodemodeHostOperation, { operation: "agent.prompt" }>["input"]["tools"]
-        | undefined;
-    },
-    tools: { execute(toolId: string, toolCallId: string, input: unknown): Promise<unknown> } | null,
-  ) {
-    const callbackId = tools
-      ? this.#targets.register(async (call) => {
-          if (call.operation !== "callback.agentTool") {
-            throw new Error("CODEMODE_CALLBACK_KIND_MISMATCH");
-          }
-          return await tools.execute(call.toolId, call.toolCallId, call.input);
-        })
-      : null;
-    try {
-      return await codemodeHostCall(() =>
-        this.#targets.peer.call({
-          operation: "agent.prompt",
-          parentScope,
-          name,
-          input: { text: input.text, images: input.images ?? null, tools: input.tools ?? [] },
           callbackId,
         }),
       );

@@ -1,4 +1,3 @@
-import type { DraftTool } from "@fragno-dev/pi-harness/workflow-session-projection";
 import { Button } from "@fragno-private/design-system/button";
 import { useState } from "react";
 
@@ -6,7 +5,7 @@ import { useAuiState, type ToolCallMessagePartProps } from "@assistant-ui/react"
 
 import { parseBackofficeUiResult, type BackofficeUiParseResult } from "@/backoffice-ui/result";
 
-import { type PiToolCallArtifact } from "./assistant-runtime";
+import { type PiDraftTool, type PiToolCallArtifact } from "./assistant-runtime";
 import { getExecCodeModeResultDetails } from "./exec-code-mode";
 import { ScrollablePre } from "./message-content";
 import { formatJson, getLoadedSkillName, getReadPath } from "./tool-arguments";
@@ -163,7 +162,7 @@ export function ToolCallBlock(props: ToolCallMessagePartProps) {
   );
 }
 
-function toolStatusLabel(draftTool: DraftTool | null) {
+function toolStatusLabel(draftTool: PiDraftTool | null) {
   if (!draftTool || draftTool.status === "running") {
     return "Running";
   }

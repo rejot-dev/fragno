@@ -56,50 +56,36 @@ Use `defineWorkflow` for work that must survive retries, time, or an external co
     **Complete when** the instance is `complete` with observed output, intentionally `waiting` with
     its exact continuation, or `errored` with the failed step and error identified.
 
-### Prompting an agent
+### Prompting a durable Pi agent
 
-When a workflow needs model work, use `step.agent.prompt(name, input)`. One workflow instance owns
-one continuing agent session, so later prompts include the earlier prompt, tool-call, and
-tool-result history. Give every prompt a stable name.
-
-Workflow agents inherit no tools from the authoring Pi session. Define each capability locally with
-`defineTool` and pass the complete tool set to that prompt. Prefer a tool result when the workflow
-needs structured data:
+Use the `pi` runtime tools when a workflow needs model work. Create one durable session with a
+workflow-stable `requestId`, then give every prompt a deterministic `requestId` derived from the
+workflow instance and operation. These keys make external Pi effects safe when a workflow step is
+retried after an uncertain outcome.
 
 ```js
-const classify = defineTool({
-  name: "classify",
-  description: "Return the harmfulness classification.",
-  parameters: {
-    type: "object",
-    additionalProperties: false,
-    required: ["classification", "confidence", "reason"],
-    properties: {
-      classification: { enum: ["harmful", "not harmful", "uncertain"] },
-      confidence: { enum: ["low", "medium", "high"] },
-      reason: { type: "string", maxLength: 1000 },
-    },
-  },
-  execute: async (_toolCallId, result) => result,
+const session = await step.do("create classification agent", async () => {
+  return await pi.createSession({
+    requestId: `${event.instanceId}:classification-agent`,
+    name: "Classification agent",
+    instructions: "Classify text and explain the decision concisely.",
+  });
 });
 
-const response = await step.agent.prompt("classify-text", {
-  text: `Classify this text:\n\n${text}`,
-  tools: [classify],
+const response = await step.do("classify text", async () => {
+  return await pi.runPrompt({
+    sessionId: session.sessionId,
+    requestId: `${event.instanceId}:classify-text`,
+    content: `Classify this text:\n\n${text}`,
+  });
 });
-const classificationResults = response.toolResults.filter(
-  ({ toolName }) => toolName === "classify",
-);
-if (classificationResults.length !== 1) {
-  throw new Error("Expected exactly one classify tool result.");
-}
-const classification = classificationResults[0].result;
+
+const classification = response.assistantText;
 ```
 
-Tool execution is part of the prompt step and can repeat when an attempt fails before commit. Keep
-tools pure and replay-safe. Put external effects in separate `step.do` calls with stable idempotency
-keys. Before branching, confirm that the expected tool ran. When `execute` returns the validated
-tool arguments, use the result properties directly instead of repeating the JSON Schema validation.
+A repeated session creation request returns the original session, and a repeated prompt request
+returns the original durable submission. Keep unrelated external effects in separate `step.do` calls
+with their own stable idempotency keys.
 
 ## Operating an existing workflow
 

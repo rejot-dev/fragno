@@ -1,15 +1,12 @@
-import type {
-  PiOperationCompletedHookPayload,
-  PiSessionDetail,
-} from "@fragno-dev/pi-harness/types";
 import { workflowsSchema } from "@fragno-dev/workflows/schema";
 
 import type { ResendSendEmailInput } from "@fragno-dev/resend-fragment";
 import type { TelegramApi, TelegramMessage } from "@fragno-dev/telegram-fragment";
 
+import type { SubmissionRecord } from "@earendil-works/pi-durable";
+
 import type { BackofficeRuntimeEnv } from "@/backoffice-runtime/backoffice-runtime-env";
 import {
-  backofficeContextScopesEqual,
   createBackofficeServiceExecution,
   createBackofficeSystemExecution,
   createBackofficeUserExecution,
@@ -21,7 +18,6 @@ import {
   type InMemoryBackofficeRuntime,
 } from "@/backoffice-runtime/in-memory-runtime";
 import {
-  BackofficeForbiddenError,
   BackofficeKernel,
   type BackofficeKernelAction,
   type BackofficeKernelObserver,
@@ -29,17 +25,11 @@ import {
 import type { LocalObjectFactoryOverrides } from "@/backoffice-runtime/local-object-factory";
 import type { LocalBackofficeDurableHooks } from "@/backoffice-runtime/node/local-runtime";
 import type {
-  BackofficeActionRpcContext,
   BackofficeObjectAddress,
   BackofficeObjectBindingName,
-  AutomationsObject,
 } from "@/backoffice-runtime/object-registry";
+import type { BackofficePermissionRequirement } from "@/backoffice-runtime/permissions";
 import {
-  BACKOFFICE_PERMISSION,
-  type BackofficePermissionRequirement,
-} from "@/backoffice-runtime/permissions";
-import {
-  backofficeContextScopeFromSinglePathSegment,
   backofficeContextScopeRoutePath,
   type BackofficeRoutableScope,
 } from "@/backoffice-runtime/scope-codec";
@@ -60,7 +50,6 @@ import {
   createAutomationCollections,
   type AutomationCollections,
 } from "@/fragno/automation/tanstack/collections";
-import { recordPiOperationBilling } from "@/fragno/billing/pi";
 import {
   runBackofficeCodemode,
   type BackofficeCodemodeExecuteResult,
@@ -69,29 +58,24 @@ import { isMarketplaceInternalArtifactPath } from "@/fragno/marketplace/artifact
 import type { MarketplaceStaticEntry } from "@/fragno/marketplace/contracts";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
 import { getStaticMarketplaceEntry } from "@/fragno/marketplace/static-entries";
-import {
-  BACKOFFICE_PI_WORKFLOW_NAME,
-  PI_BILLING_ORGANIZATION_ID_METADATA_KEY,
-  type PiModel,
-} from "@/fragno/pi/pi-shared";
-import { createPiCollections, type PiCollections } from "@/fragno/pi/tanstack/collections";
-import { createPiRouteRuntime } from "@/fragno/runtime-tools/families/pi-runtime";
+import type {
+  PiAgent,
+  PiAgentConfig,
+  PiAgentEntryPage,
+  PiAvailableModel,
+} from "@/fragno/pi-manager/pi-agent-contract";
 import type { TelegramAutomationFileMetadata } from "@/fragno/runtime-tools/families/telegram-runtime";
 import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 import type { BackofficeRuntimeToolCall } from "@/fragno/runtime-tools/runtime-tools";
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 import {
-  appendBackofficeScopeQuery,
-  scopedPublicMountPath,
-} from "@/fragno/scoped-public-fragment-routes";
-import {
   createScenarioCollectionDatabase,
   type ScenarioCollectionDatabase,
 } from "@/fragno/tanstack/scenario-collection-database";
 import type { CreateSandboxRuntimeProviders } from "@/sandbox/contracts";
 
-import { InMemoryAutomationsObject } from "../../../workers/automations.do";
+import { InMemoryPiManagerObject } from "../../../workers/pi-manager.do";
 import { InMemoryTelegramObject } from "../../../workers/telegram.do";
 import { listHookScopes } from "../backoffice-capabilities/backoffice-capabilities";
 import {
@@ -201,23 +185,17 @@ type FakeTelegramFile = TelegramAutomationFileMetadata & {
   contentType?: string;
 };
 
-type PiSessionStatus = "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
-
 type FakePiSession = {
-  id: string;
-  name: string | null;
-  status: PiSessionStatus;
-  model: PiModel;
-  workflowName: string;
-  createdAt: string;
-  updatedAt: string;
+  config: PiAgentConfig;
   assistantText: string;
+  answerEntryId: string | null;
+  submissions: Map<string, SubmissionRecord>;
 };
 
 type PiCreateSessionCall = {
-  model: PiModel;
+  model: PiAgentConfig["model"];
   name: string | null;
-  systemMessage?: string;
+  instructions: string;
   sessionId: string;
 };
 
@@ -225,9 +203,9 @@ type PiGetSessionCall = {
   sessionId: string;
 };
 
-type PiRunTurnCall = {
+type PiRunPromptCall = {
   sessionId: string;
-  text: string;
+  content: string;
   assistantText: string;
 };
 
@@ -291,13 +269,12 @@ export type FakeTelegramApi = {
   getFileFixture(fileId: string): FakeTelegramFile | null;
 };
 
-export type FakePiApi = {
+export type FakePiManagerApi = {
   createSessionCalls: PiCreateSessionCall[];
   getSessionCalls: PiGetSessionCall[];
-  runTurnCalls: PiRunTurnCall[];
-  fetch(request: Request): Promise<Response>;
-  fetchAuthorized(request: Request, context: BackofficeActionRpcContext): Promise<Response>;
-  setSessionStatus(sessionId: string, status: PiSessionStatus): void;
+  runPromptCalls: PiRunPromptCall[];
+  agent: PiAgent;
+  recordCreatedSession(config: PiAgentConfig): void;
 };
 
 export type FakeResendApi = {
@@ -314,14 +291,16 @@ export type FakeMcpApi = {
 
 export type ScenarioFakes = {
   telegram?: FakeTelegramApi;
-  pi?: FakePiApi;
+  pi?: FakePiManagerApi;
   resend?: FakeResendApi;
   mcp?: FakeMcpApi;
 };
 
 type ScenarioFakeFactory = {
   telegram(input?: { files?: FakeTelegramFile[] }): FakeTelegramApi;
-  pi(input?: { assistantText?: (input: { sessionId: string; text: string }) => string }): FakePiApi;
+  pi(input?: {
+    assistantText?: (input: { sessionId: string; content: string }) => string;
+  }): FakePiManagerApi;
   resend(input?: { threads?: FakeResendThreadSeed[] }): FakeResendApi;
   mcp(input?: { servers?: FakeMcpServer[] }): FakeMcpApi;
 };
@@ -353,7 +332,6 @@ export type BackofficeScenarioFileSystems = {
 
 export type BackofficeScenarioTanStack = {
   automations: ScenarioCollectionDatabase<AutomationCollections>;
-  pi: ScenarioCollectionDatabase<PiCollections>;
   drainAll(): Promise<void>;
   cleanup(): Promise<void>;
 };
@@ -381,6 +359,7 @@ export type BackofficeScenarioDefinitionInput<TVars extends ScenarioVars = Scena
   vars?: () => TVars;
   fakes?: (ctx: { fake: ScenarioFakeFactory }) => ScenarioFakes;
   objectFactories?: LocalObjectFactoryOverrides;
+  piAvailableModels?: readonly PiAvailableModel[];
   createSandboxProviders?: CreateSandboxRuntimeProviders;
   durableHooks?: LocalBackofficeDurableHooks;
   setup?: (builders: BackofficeScenarioStepBuilders<TVars>) => BackofficeScenarioStep[];
@@ -462,28 +441,15 @@ type TelegramSentChatActionInput = {
 };
 
 type PiCreatedSessionInput = {
-  model?: PiModel;
+  model?: PiAgentConfig["model"];
   name?: string | null;
   sessionId?: string;
 };
 
-type PiRanTurnInput = {
+type PiRanPromptInput = {
   sessionId?: string;
-  text?: string;
+  content?: string;
   assistantText?: string | RegExp;
-};
-
-type PiOperationCompletedInput = {
-  scope: BackofficeContextScope;
-  payload: PiOperationCompletedHookPayload;
-  hookId: string;
-  idempotencyKey: string;
-};
-
-type PiOperationBillingAssertionInput = {
-  hookId: string;
-  recorded: boolean;
-  billingOrganizationId: string | null;
 };
 
 type BillingTrackerAssertionInput = {
@@ -494,8 +460,6 @@ type BillingTrackerAssertionInput = {
   quantity: string;
   eventCount?: string;
 };
-
-const piOperationBillingVarKey = (hookId: string) => `pi-operation-billing:${hookId}`;
 
 type ResendRepliedToThreadInput = {
   threadId?: string;
@@ -542,36 +506,6 @@ type StoreEntriesInput = {
 type PiDefaultAgentInput = {
   orgId: string;
   value: string;
-};
-
-type PiConfiguredInput = {
-  scope: BackofficeContextScope;
-};
-
-type PiCreateStoredSessionInput = {
-  scope: BackofficeContextScope;
-  userId: string;
-  billingOrganizationId?: string;
-  workflowName?: string;
-  model?: PiModel;
-  name?: string;
-  captureSessionIdAs?: string;
-};
-
-type PiPromptStoredSessionInput<TVars extends ScenarioVars = ScenarioVars> = {
-  scope: BackofficeContextScope;
-  userId: string;
-  sessionId: ScenarioValue<TVars, string>;
-  text: string;
-  workflowName?: string;
-};
-
-type PiStoredSessionAssertionInput<TVars extends ScenarioVars = ScenarioVars> = {
-  scope: BackofficeContextScope;
-  userId: string;
-  sessionId: ScenarioValue<TVars, string>;
-  workflowName?: string;
-  workflow: DeepPartial<PiSessionDetail["workflow"]>;
 };
 
 type ConnectionConfiguredInput = {
@@ -837,7 +771,6 @@ export type BackofficeScenarioStepBuilders<TVars extends ScenarioVars = Scenario
       configured(input: TelegramConfiguredInput): BackofficeScenarioStep;
     };
     pi: {
-      configured(input: PiConfiguredInput): BackofficeScenarioStep;
       defaultAgent(input: PiDefaultAgentInput): BackofficeScenarioStep;
     };
     store: {
@@ -888,11 +821,6 @@ export type BackofficeScenarioStepBuilders<TVars extends ScenarioVars = Scenario
     };
     identity: {
       revoke(input: IdentityRevokeInput): BackofficeScenarioStep;
-    };
-    pi: {
-      createSession(input: PiCreateStoredSessionInput): BackofficeScenarioStep;
-      promptSession(input: PiPromptStoredSessionInput<TVars>): BackofficeScenarioStep;
-      operationCompleted(input: PiOperationCompletedInput): BackofficeScenarioStep;
     };
     router: {
       seedStarter(input: RouterSeedStarterInput): BackofficeScenarioStep;
@@ -950,9 +878,7 @@ export type BackofficeScenarioStepBuilders<TVars extends ScenarioVars = Scenario
     };
     pi: {
       createdSession(input: PiCreatedSessionInput): BackofficeScenarioStep;
-      ranTurn(input: PiRanTurnInput): BackofficeScenarioStep;
-      session(input: PiStoredSessionAssertionInput<TVars>): BackofficeScenarioStep;
-      operationBilling(input: PiOperationBillingAssertionInput): BackofficeScenarioStep;
+      ranPrompt(input: PiRanPromptInput): BackofficeScenarioStep;
     };
     billing: {
       tracker(input: BillingTrackerAssertionInput): BackofficeScenarioStep;
@@ -1138,182 +1064,164 @@ const createFakeTelegramApi = (input: { files?: FakeTelegramFile[] } = {}): Fake
   };
 };
 
-const createFakePiApi = (
+const createFakePiManagerApi = (
   options: {
-    assistantText?: (input: { sessionId: string; text: string }) => string;
+    assistantText?: (input: { sessionId: string; content: string }) => string;
   } = {},
-): FakePiApi => {
+): FakePiManagerApi => {
   const createSessionCalls: PiCreateSessionCall[] = [];
   const getSessionCalls: PiGetSessionCall[] = [];
-  const runTurnCalls: PiRunTurnCall[] = [];
+  const runPromptCalls: PiRunPromptCall[] = [];
   const sessions = new Map<string, FakePiSession>();
-  const timestamp = "2026-01-01T00:00:00.000Z";
   const assistantText =
-    options.assistantText ?? ((input: { text: string }) => `agent:${input.text}`);
+    options.assistantText ?? ((input: { content: string }) => `agent:${input.content}`);
 
-  const toSessionDetail = (session: FakePiSession) => ({
-    id: session.id,
-    name: session.name,
-    status: session.status,
-    metadata: { model: session.model },
-    workflowName: session.workflowName,
-    workflow: { status: session.status },
-    agent: {
-      state: {
-        messages: session.assistantText
-          ? [
-              {
-                role: "assistant",
-                content: [{ type: "text", text: session.assistantText }],
-              },
-            ]
-          : [],
-      },
-    },
-    createdAt: session.createdAt,
-    updatedAt: session.updatedAt,
-  });
-
-  const getSessionOrResponse = (sessionId: string) => {
-    const session = sessions.get(sessionId);
+  function requireSession(config: PiAgentConfig) {
+    const session = sessions.get(config.sessionId);
     if (!session) {
-      return Response.json(
-        { message: `Session ${sessionId} not found.`, code: "SESSION_NOT_FOUND" },
-        { status: 404 },
-      );
+      throw new Error(`FAKE_PI_MANAGER_SESSION_NOT_FOUND: ${config.sessionId}`);
     }
     return session;
-  };
+  }
 
-  const handleRequest = async (request: Request): Promise<Response> => {
-    const url = new URL(request.url);
-    const pathname = url.pathname;
-    const sessionMatch =
-      /\/api\/pi\/workflows\/([^/]+)\/sessions(?:\/([^/]+))?(?:\/(commands\/[^/]+\/wait|[^/]+))?$/u.exec(
-        pathname,
-      );
-    const workflowName = sessionMatch?.[1] ?? BACKOFFICE_PI_WORKFLOW_NAME;
-    const sessionId = sessionMatch?.[2] ?? "";
-    const suffix = sessionMatch?.[3] ?? "";
+  function conversationView(session: FakePiSession) {
+    const timestamp = Date.parse("2026-01-01T00:00:00.000Z");
+    return {
+      conversation: { id: 1 },
+      entries: session.answerEntryId
+        ? [
+            {
+              id: session.answerEntryId,
+              conversationId: 1,
+              kind: "assistant",
+              model: [
+                {
+                  role: "assistant",
+                  content: [{ type: "text", text: session.assistantText }],
+                  api: "openai-responses",
+                  provider: session.config.model.provider,
+                  model: session.config.model.modelId,
+                  usage: {
+                    input: 1,
+                    output: 1,
+                    cacheRead: 0,
+                    cacheWrite: 0,
+                    totalTokens: 2,
+                    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+                  },
+                  stopReason: "stop",
+                  timestamp,
+                },
+              ],
+            },
+          ]
+        : [],
+      docs: {},
+    };
+  }
 
-    if (request.method === "POST" && pathname === `/api/pi/workflows/${workflowName}/sessions`) {
-      const body = (await request.json()) as {
-        name?: string | null;
-        metadata?: { model?: PiModel };
-        input?: { systemPrompt?: string };
-      };
-      const id = `pi-session-${sessions.size + 1}`;
-      const model = body.metadata?.model ?? { provider: "openai", name: "gpt-5-mini" };
-      const session: FakePiSession = {
-        id,
-        name: body.name ?? null,
-        status: "waiting",
-        model,
-        workflowName,
-        assistantText: "",
-        createdAt: timestamp,
-        updatedAt: timestamp,
-      };
-      sessions.set(id, session);
-      createSessionCalls.push({
-        model,
-        name: session.name,
-        sessionId: id,
-        ...(body.input?.systemPrompt ? { systemMessage: body.input.systemPrompt } : {}),
-      });
-      return Response.json({
-        id: session.id,
-        name: session.name,
-        metadata: { model: session.model },
-        workflowName: session.workflowName,
-        createdAt: session.createdAt,
-        updatedAt: session.updatedAt,
-      });
-    }
-
-    if (request.method === "GET" && pathname === `/api/pi/workflows/${workflowName}/sessions`) {
-      return Response.json([...sessions.values()]);
-    }
-
-    if (!sessionId) {
-      return Response.json({ message: "Not found", code: "NOT_FOUND" }, { status: 404 });
-    }
-
-    if (request.method === "GET" && !suffix) {
-      getSessionCalls.push({ sessionId });
-    }
-
-    const session = getSessionOrResponse(sessionId);
-    if (session instanceof Response) {
-      return session;
-    }
-
-    if (request.method === "GET" && /^commands\/[^/]+\/wait$/u.test(suffix)) {
-      await new Promise((resolve) => {
-        setTimeout(resolve, 0);
-      });
-      return new Response(null, { status: 204 });
-    }
-
-    if (request.method === "POST" && suffix === "command") {
-      const body = (await request.json()) as { input?: { text?: string } };
-      const text = body.input?.text ?? "";
-      const reply = assistantText({ sessionId, text });
+  const agent: PiAgent = {
+    async submit(config, prompt) {
+      const session = requireSession(config);
+      const reply = assistantText({ sessionId: config.sessionId, content: prompt.content });
+      const submissionId = runPromptCalls.length + 1;
+      const answerEntryId = `answer-${submissionId}`;
       session.assistantText = reply;
-      session.status = "waiting";
-      session.updatedAt = new Date().toISOString();
-      runTurnCalls.push({ sessionId, text, assistantText: reply });
-      return Response.json({
-        accepted: true,
-        commandId: `command-${runTurnCalls.length}`,
-        status: "active",
+      session.answerEntryId = answerEntryId;
+      session.submissions.set(prompt.requestId, {
+        id: submissionId,
+        conversationId: 1,
+        requestId: prompt.requestId,
+        type: "input",
+        status: "done",
+        entry: `input-${submissionId}`,
+        answer: answerEntryId,
+      } as unknown as SubmissionRecord);
+      runPromptCalls.push({
+        sessionId: config.sessionId,
+        content: prompt.content,
+        assistantText: reply,
       });
-    }
-
-    if (request.method === "GET" && !suffix) {
-      return Response.json(toSessionDetail(session));
-    }
-
-    return Response.json({ message: "Not found", code: "NOT_FOUND" }, { status: 404 });
+      return { submissionId, requestId: prompt.requestId };
+    },
+    async getView(config) {
+      const session = requireSession(config);
+      getSessionCalls.push({ sessionId: config.sessionId });
+      return conversationView(session);
+    },
+    async watchView(config) {
+      const session = requireSession(config);
+      const encoded = new TextEncoder().encode(
+        `${JSON.stringify({ type: "snapshot", view: conversationView(session) })}\n`,
+      );
+      return new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(encoded);
+          controller.close();
+        },
+      });
+    },
+    async getSubmission(config, requestId) {
+      return requireSession(config).submissions.get(requestId) ?? null;
+    },
+    async waitForSubmission(config, requestId) {
+      const submission = requireSession(config).submissions.get(requestId);
+      return submission ? { status: "settled", submission } : null;
+    },
+    async listEntries(config) {
+      const view = conversationView(requireSession(config));
+      return {
+        entries: [...view.entries].reverse() as unknown as PiAgentEntryPage["entries"],
+        cursor: null,
+      };
+    },
+    async exportEntries(config) {
+      const session = requireSession(config);
+      const bytes = new TextEncoder().encode(
+        `${JSON.stringify({ type: "pi-durable-session", version: 1, order: "newest-first" })}\n${[
+          ...conversationView(session).entries,
+        ]
+          .reverse()
+          .map((entry) => JSON.stringify({ type: "entry", entry }))
+          .join("\n")}\n`,
+      );
+      return new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(bytes);
+          controller.close();
+        },
+      });
+    },
+    async compact() {
+      return { taskId: 1 };
+    },
+    async getCompaction(_config, taskId) {
+      return { taskId, status: "completed", message: null };
+    },
+    async abort() {},
   };
 
   return {
     createSessionCalls,
     getSessionCalls,
-    runTurnCalls,
-    setSessionStatus: (sessionId, status) => {
-      const session = sessions.get(sessionId);
-      if (!session) {
-        throw new Error(`Fake Pi session not found: ${sessionId}`);
+    runPromptCalls,
+    agent,
+    recordCreatedSession(config) {
+      if (sessions.has(config.sessionId)) {
+        return;
       }
-      session.status = status;
-      session.updatedAt = new Date().toISOString();
-    },
-    fetch: async (request) => {
-      const pathname = new URL(request.url).pathname;
-      if (/\/api\/pi\/workflows\/[^/]+\/sessions(?:\/|$)/u.test(pathname)) {
-        return Response.json(
-          {
-            message: "Pi session routes require trusted action context.",
-            code: "context-access-denied",
-          },
-          { status: 403 },
-        );
-      }
-      return await handleRequest(request);
-    },
-    fetchAuthorized: async (request, context) => {
-      const encodedScope = new URL(request.url).searchParams.get("scope");
-      if (!encodedScope) {
-        throw new Error("Fake Pi requests require an encoded Backoffice scope.");
-      }
-
-      const requestScope = backofficeContextScopeFromSinglePathSegment(encodedScope);
-      if (!backofficeContextScopesEqual(requestScope, context.execution.scope)) {
-        throw new Error("Backoffice object method scope does not match object address scope.");
-      }
-
-      return await handleRequest(request);
+      sessions.set(config.sessionId, {
+        config,
+        assistantText: "",
+        answerEntryId: null,
+        submissions: new Map(),
+      });
+      createSessionCalls.push({
+        model: config.model,
+        name: config.name,
+        instructions: config.instructions,
+        sessionId: config.sessionId,
+      });
     },
   };
 };
@@ -1499,7 +1407,7 @@ const createFakeResendApi = (input: { threads?: FakeResendThreadSeed[] } = {}): 
 
 const createScenarioFakeFactory = (): ScenarioFakeFactory => ({
   telegram: createFakeTelegramApi,
-  pi: createFakePiApi,
+  pi: createFakePiManagerApi,
   resend: createFakeResendApi,
   mcp: createFakeMcpApi,
 });
@@ -1677,24 +1585,6 @@ const createStep = (
   run,
 });
 
-const createScenarioPiRouteUrl = (scope: BackofficeContextScope, pathname: string) => {
-  const url = new URL(`http://scenario.local${pathname}`);
-  appendBackofficeScopeQuery(url, scope);
-  return url;
-};
-
-const getScenarioPiRouteTarget = (
-  ctx: BackofficeScenarioContext,
-  scope: BackofficeContextScope,
-  userId: string,
-) => ({
-  object: ctx.runtime.objects.automations.for(scope),
-  context: {
-    execution: createBackofficeUserExecution({ scope, userId }),
-    propagationContext: null,
-  } satisfies BackofficeActionRpcContext,
-});
-
 const getStore = (ctx: BackofficeScenarioContext, orgId: string) => {
   const scope = { kind: "org" as const, orgId };
   return createRouteBackedAutomationStoreRuntime({
@@ -1751,9 +1641,6 @@ const getHooks = (ctx: BackofficeScenarioContext, orgId: string) =>
 const automationScopedBaseUrl = (scope: BackofficeContextScope) =>
   `http://scenario.local/api/automations-scoped/${backofficeContextScopeRoutePath(scope)}`;
 
-const piScopedBaseUrl = (scope: BackofficeContextScope) =>
-  `http://scenario.local${scopedPublicMountPath({ publicPrefix: "/api/pi", scope })}`;
-
 const internalRouteSuffix = (requestUrl: URL) => {
   const internalPathIndex = requestUrl.pathname.indexOf("/_internal");
   return internalPathIndex >= 0
@@ -1779,23 +1666,6 @@ const createScenarioAutomationTanStackFetch = (
   };
 };
 
-const createScenarioPiTanStackFetch = (
-  runtime: InMemoryBackofficeRuntime,
-  scope: BackofficeContextScope,
-): typeof fetch => {
-  return async (input, init) => {
-    const request = new Request(input, init);
-    const requestUrl = new URL(request.url);
-    const forwardedUrl = new URL(`http://scenario.local/api/pi${internalRouteSuffix(requestUrl)}`);
-    forwardedUrl.search = requestUrl.search;
-    appendBackofficeScopeQuery(forwardedUrl, scope);
-
-    const kernel = new BackofficeKernel(runtime.services);
-    const pi = kernel.scoped("AUTOMATIONS", scope, runtime.objects.automations);
-    return await pi.http.fetch(new Request(forwardedUrl.toString(), request));
-  };
-};
-
 const createScenarioTanStack = (runtime: InMemoryBackofficeRuntime): BackofficeScenarioTanStack => {
   const automations = createScenarioCollectionDatabase({
     name: "Automation collections",
@@ -1805,25 +1675,14 @@ const createScenarioTanStack = (runtime: InMemoryBackofficeRuntime): BackofficeS
     createFetch: (scope) => createScenarioAutomationTanStackFetch(runtime, scope),
     createCollections: createAutomationCollections,
   });
-  const pi = createScenarioCollectionDatabase({
-    name: "Pi collections",
-    schemas: [workflowsSchema] as const,
-    drainRuntime: () => runtime.drain(),
-    baseUrl: piScopedBaseUrl,
-    createFetch: (scope) => createScenarioPiTanStackFetch(runtime, scope),
-    createCollections: createPiCollections,
-  });
-
   return {
     automations,
-    pi,
     drainAll: async () => {
       await runtime.drain();
       await automations.syncAll();
-      await pi.syncAll();
     },
     cleanup: async () => {
-      await Promise.all([automations.cleanup(), pi.cleanup()]);
+      await automations.cleanup();
     },
   };
 };
@@ -2479,21 +2338,6 @@ const buildStepBuilders = <
         ),
     },
     pi: {
-      configured: (input) =>
-        createStep(
-          "given",
-          "pi.configured",
-          `configure persisted Pi runtime for ${backofficeContextScopeRoutePath(input.scope)}`,
-          async (ctx) => {
-            if (ctx.fakes.pi) {
-              throw new Error("Persisted Pi scenarios cannot use fake.pi().");
-            }
-            if (input.scope.kind === "org" || input.scope.kind === "project") {
-              ctx.rememberOrg(input.scope.orgId);
-            }
-            await ctx.runtime.objects.automations.for(input.scope).commands.getPiRuntimeState();
-          },
-        ),
       defaultAgent: (input) =>
         createStep(
           "given",
@@ -2969,109 +2813,6 @@ const buildStepBuilders = <
               },
               { execution: createBackofficeSystemExecution(scope) },
             );
-          },
-        ),
-    },
-    pi: {
-      createSession: (input) =>
-        createStep(
-          "when",
-          "pi.createSession",
-          `create persisted Pi session for ${backofficeContextScopeRoutePath(input.scope)}`,
-          async (ctx) => {
-            if (ctx.fakes.pi) {
-              throw new Error("Persisted Pi scenarios cannot use fake.pi().");
-            }
-            if (input.scope.kind === "org" || input.scope.kind === "project") {
-              ctx.rememberOrg(input.scope.orgId);
-            }
-
-            const workflowName = input.workflowName ?? BACKOFFICE_PI_WORKFLOW_NAME;
-            const { object, context } = getScenarioPiRouteTarget(ctx, input.scope, input.userId);
-            const response = await object.http.fetchAuthorized(
-              new Request(
-                createScenarioPiRouteUrl(
-                  input.scope,
-                  `/api/pi/workflows/${encodeURIComponent(workflowName)}/sessions`,
-                ),
-                {
-                  method: "POST",
-                  headers: { "content-type": "application/json" },
-                  body: JSON.stringify({
-                    name: input.name,
-                    metadata: {
-                      ...(input.billingOrganizationId
-                        ? {
-                            [PI_BILLING_ORGANIZATION_ID_METADATA_KEY]: input.billingOrganizationId,
-                          }
-                        : {}),
-                      model: input.model ?? { provider: "openai", name: "gpt-5.6-luna" },
-                    },
-                    input: {},
-                  }),
-                },
-              ),
-              context,
-            );
-            if (!response.ok) {
-              throw new Error(
-                `Pi session creation failed (${response.status}): ${await response.text()}`,
-              );
-            }
-            const session = (await response.json()) as { id: string };
-            if (input.captureSessionIdAs) {
-              ctx.vars[input.captureSessionIdAs] = session.id;
-            }
-          },
-        ),
-      promptSession: (input) =>
-        createStep(
-          "when",
-          "pi.promptSession",
-          `prompt persisted Pi session in ${backofficeContextScopeRoutePath(input.scope)}`,
-          async (ctx) => {
-            const sessionId = await resolveScenarioValue(
-              ctx as BackofficeScenarioContext<TVars>,
-              input.sessionId,
-            );
-            const workflowName = input.workflowName ?? BACKOFFICE_PI_WORKFLOW_NAME;
-            const { object, context } = getScenarioPiRouteTarget(ctx, input.scope, input.userId);
-            const response = await object.http.fetchAuthorized(
-              new Request(
-                createScenarioPiRouteUrl(
-                  input.scope,
-                  `/api/pi/workflows/${encodeURIComponent(workflowName)}/sessions/${encodeURIComponent(sessionId)}/command`,
-                ),
-                {
-                  method: "POST",
-                  headers: { "content-type": "application/json" },
-                  body: JSON.stringify({ kind: "prompt", input: { text: input.text } }),
-                },
-              ),
-              context,
-            );
-            if (!response.ok) {
-              throw new Error(
-                `Pi session prompt failed (${response.status}): ${await response.text()}`,
-              );
-            }
-          },
-        ),
-      operationCompleted: (input) =>
-        createStep(
-          "when",
-          "pi.operationCompleted",
-          `complete Pi operation ${input.payload.operationId}`,
-          async (ctx) => {
-            ctx.vars[piOperationBillingVarKey(input.hookId)] = await recordPiOperationBilling({
-              ...input,
-              recordEvent: async (organizationId, event) => {
-                ctx.rememberOrg(organizationId);
-                const billing = ctx.runtime.objects.billing.forOrg(organizationId);
-                await ctx.runtime.drain();
-                await billing.commands.recordEvent(event);
-              },
-            });
           },
         ),
     },
@@ -3622,7 +3363,7 @@ const buildStepBuilders = <
               (candidate) =>
                 (!input.model ||
                   (candidate.model.provider === input.model.provider &&
-                    candidate.model.name === input.model.name)) &&
+                    candidate.model.modelId === input.model.modelId)) &&
                 (typeof input.name === "undefined" || candidate.name === input.name) &&
                 (!input.sessionId || candidate.sessionId === input.sessionId),
             );
@@ -3638,13 +3379,13 @@ const buildStepBuilders = <
           },
           { drain: false },
         ),
-      ranTurn: (input) =>
+      ranPrompt: (input) =>
         createStep(
           "then",
-          "pi.ranTurn",
-          "assert Pi turn was run",
+          "pi.ranPrompt",
+          "assert Pi prompt was run",
           (ctx) => {
-            const calls = ctx.fakes.pi?.runTurnCalls ?? [];
+            const calls = ctx.fakes.pi?.runPromptCalls ?? [];
             const call = calls.find((candidate) => {
               const assistantOk =
                 typeof input.assistantText === "undefined"
@@ -3654,65 +3395,15 @@ const buildStepBuilders = <
                     : input.assistantText.test(candidate.assistantText);
               return (
                 (!input.sessionId || candidate.sessionId === input.sessionId) &&
-                (!input.text || candidate.text === input.text) &&
+                (!input.content || candidate.content === input.content) &&
                 assistantOk
               );
             });
             if (!call) {
               throw new Error(
-                `Expected Pi runTurn call was not found. Calls: ${JSON.stringify(calls, null, 2)}`,
+                `Expected Pi runPrompt call was not found. Calls: ${JSON.stringify(calls, null, 2)}`,
               );
             }
-          },
-          { drain: false },
-        ),
-      session: (input) =>
-        createStep(
-          "then",
-          "pi.session",
-          `assert persisted Pi session in ${backofficeContextScopeRoutePath(input.scope)}`,
-          async (ctx) => {
-            const sessionId = await resolveScenarioValue(
-              ctx as BackofficeScenarioContext<TVars>,
-              input.sessionId,
-            );
-            const workflowName = input.workflowName ?? BACKOFFICE_PI_WORKFLOW_NAME;
-            const { object, context } = getScenarioPiRouteTarget(ctx, input.scope, input.userId);
-            const response = await object.http.fetchAuthorized(
-              new Request(
-                createScenarioPiRouteUrl(
-                  input.scope,
-                  `/api/pi/workflows/${encodeURIComponent(workflowName)}/sessions/${encodeURIComponent(sessionId)}`,
-                ),
-              ),
-              context,
-            );
-            if (!response.ok) {
-              throw new Error(
-                `Pi session lookup failed (${response.status}): ${await response.text()}`,
-              );
-            }
-
-            const session = (await response.json()) as PiSessionDetail;
-            assertPartialMatch(session.workflow, input.workflow, "pi.session.workflow");
-          },
-          { drain: false },
-        ),
-      operationBilling: (input) =>
-        createStep(
-          "then",
-          "pi.operationBilling",
-          `assert Pi operation billing ${input.hookId}`,
-          (ctx) => {
-            const actual = ctx.vars[piOperationBillingVarKey(input.hookId)];
-            assertPartialMatch(
-              actual,
-              {
-                recorded: input.recorded,
-                billingOrganizationId: input.billingOrganizationId,
-              },
-              `pi.operationBilling.${input.hookId}`,
-            );
           },
           { drain: false },
         ),
@@ -4520,91 +4211,30 @@ const createObjectFactories = (fakes: ScenarioFakes): LocalObjectFactoryOverride
   }
 
   if (fakes.pi) {
-    objectFactories.AUTOMATIONS = ({
-      state,
-      env,
-      runtime,
-      implementation,
-      nowEpochMs,
-      readAutomationSource,
-    }) => {
-      const object = new InMemoryAutomationsObject({
+    objectFactories.PI_MANAGER = ({ state, env, runtime, implementation, nowEpochMs }) => {
+      const fakePi = fakes.pi!;
+      return new (class extends InMemoryPiManagerObject {
+        async fetch(request: Request): Promise<Response> {
+          const response = await super.fetch(request);
+          if (
+            request.method === "POST" &&
+            new URL(request.url).pathname === "/api/pi-manager/sessions" &&
+            response.ok
+          ) {
+            fakePi.recordCreatedSession(await response.clone().json());
+          }
+          return response;
+        }
+      })({
         state,
         env,
         runtime,
         implementation,
+        agent: () => fakePi.agent,
+        supportedAvailableModels: async () => [
+          { provider: "openai", modelId: "gpt-5.6-luna", label: "GPT-5.6 Luna" },
+        ],
         nowEpochMs,
-        readAutomationSource,
-        createPiRuntime: (execution, kernel) => {
-          const fetchPiAuthorized = async (
-            request: Request,
-            context: BackofficeActionRpcContext,
-          ) => {
-            const sessionRoute =
-              /\/api\/pi\/workflows\/([^/]+)\/sessions(?:\/([^/]+))?(?:\/([^/]+))?$/u.exec(
-                new URL(request.url).pathname,
-              );
-            const operation =
-              sessionRoute && request.method === "GET"
-                ? BACKOFFICE_PERMISSION.pi.read
-                : sessionRoute && request.method === "POST"
-                  ? BACKOFFICE_PERMISSION.pi.modify
-                  : null;
-
-            if (operation) {
-              try {
-                await kernel.assertAuthorized({
-                  execution: context.execution,
-                  operation,
-                  resource: {
-                    kind: sessionRoute?.[2]
-                      ? "pi-session"
-                      : request.method === "POST"
-                        ? "pi-session-create"
-                        : "pi-session-list",
-                    workflowName: sessionRoute?.[1],
-                    sessionId: sessionRoute?.[2],
-                  },
-                });
-              } catch (cause) {
-                if (cause instanceof BackofficeForbiddenError) {
-                  return Response.json(
-                    { message: cause.message, code: cause.reason },
-                    { status: cause.reason === "authority-unavailable" ? 503 : 403 },
-                  );
-                }
-                throw cause;
-              }
-            }
-
-            return await fakes.pi!.fetchAuthorized(request, context);
-          };
-
-          return createPiRouteRuntime({
-            object: {
-              commands: {} as AutomationsObject,
-              http: {
-                fetch: async (request) => await fakes.pi!.fetch(request),
-                fetchAuthorized: fetchPiAuthorized,
-              },
-            },
-            scope: execution.scope,
-            execution,
-          });
-        },
-      });
-
-      return new Proxy(object, {
-        get(target, property) {
-          if (property === "getPiRuntimeState") {
-            return async () => ({ configured: true, modelCatalog: [] });
-          }
-          const value = target[property as keyof typeof target];
-          if (typeof value !== "function") {
-            return value;
-          }
-          return value.bind(target);
-        },
       });
     };
   }
@@ -4756,7 +4386,7 @@ const collectDiagnostics = async (ctx: BackofficeScenarioContext): Promise<unkno
       ? {
           createSessionCalls: ctx.fakes.pi.createSessionCalls,
           getSessionCalls: ctx.fakes.pi.getSessionCalls,
-          runTurnCalls: ctx.fakes.pi.runTurnCalls,
+          runPromptCalls: ctx.fakes.pi.runPromptCalls,
         }
       : null,
   };
@@ -4837,6 +4467,7 @@ export const runBackofficeScenario = async <TVars extends ScenarioVars = Scenari
       ...createObjectFactories(fakes),
       ...scenario.objectFactories,
     },
+    piAvailableModels: scenario.piAvailableModels,
     ...(scenario.durableHooks ? { durableHooks: scenario.durableHooks } : {}),
   });
   const journal: ScenarioJournal = { entries: [] };

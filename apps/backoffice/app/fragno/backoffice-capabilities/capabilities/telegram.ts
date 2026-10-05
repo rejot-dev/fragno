@@ -147,7 +147,7 @@ export const telegramCapability: BackofficeConfigurableConnectionCapability = {
           createDurableHookRepositoryFromCommands(getTelegramDo(objects, orgId).commands),
       },
     ],
-    skillPaths: ["skills/telegram-connection/SKILL.md"],
+    skillPaths: ["skills/telegram-integration/SKILL.md"],
     externalEntities: [telegramAutomationExternalEntities.chat],
     automationEvents: [
       {

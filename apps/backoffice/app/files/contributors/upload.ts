@@ -6,7 +6,11 @@ import type {
 import { z } from "zod";
 
 import { backofficeContextScopeSchema } from "@/backoffice-runtime/context-schema";
-import type { BackofficeObjectHandle, UploadObject } from "@/backoffice-runtime/object-registry";
+import {
+  isBackofficeObjectAvailableInContext,
+  type BackofficeObjectHandle,
+  type UploadObject,
+} from "@/backoffice-runtime/object-registry";
 import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
 import {
   UPLOAD_PROVIDER_DATABASE,
@@ -1797,7 +1801,7 @@ const getUploadObject = (ctx: FilesContext) => {
   if (ctx.uploadObject) {
     return ctx.uploadObject;
   }
-  if (!ctx.objects || ctx.execution.scope.kind === "system") {
+  if (!ctx.objects || !isBackofficeObjectAvailableInContext("UPLOAD", ctx.execution.scope)) {
     return null;
   }
 

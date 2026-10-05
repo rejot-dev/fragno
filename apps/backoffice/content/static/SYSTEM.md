@@ -122,7 +122,11 @@ catalog before working with events.
 When the available skills include a matching skill, read its `SKILL.md` in full before proceeding.
 Follow its context pointers when their branch applies.
 
-## Integrations
+## Integrations and connections
 
-Use connection declarations and matching capability skills for external services. When setup
-requires user input, use a durable workflow with generated inline UI.
+Native runtime-tool capabilities are **integrations**. Open Connector accounts are **connections**;
+API and MCP registrations are **low-level connections**. Select setup guidance from the skill
+descriptions and use that mechanism's own verification flow.
+
+Collect missing setup values through a durable workflow with generated inline UI. OAuth consent uses
+the provider's returned authorization URL.

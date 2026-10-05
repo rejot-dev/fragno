@@ -1,7 +1,7 @@
 // mcp tools
 type McpCodemodeProvider = {
   /** List MCP servers configured for the current organization. */
-  listServers(input: McpListServersInput): Promise<McpListServersOutput>;
+  listServers(): Promise<McpListServersOutput>;
   /** Register a remote streamable HTTP MCP server. */
   createServer(input: McpCreateServerInput): Promise<McpCreateServerOutput>;
   /** Delete an MCP server and its stored auth state. */
@@ -17,7 +17,6 @@ type McpCodemodeProvider = {
 };
 declare const mcp: McpCodemodeProvider;
 
-type McpListServersInput = Record<string, unknown>;
 type McpListServersOutput = {
   servers: {
     slug: string;

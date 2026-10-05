@@ -11,6 +11,45 @@ Compilation and type-checking live in the separately deployed
 Backoffice's own Worker Loader. There is no standalone compiler Worker. For local Cloudflare
 codemode development, start the bridge's `dev` script alongside Backoffice.
 
+## Static agent-context graph
+
+[`content/CONTEXT-GRAPH.md`](../../content/CONTEXT-GRAPH.md) is a generated map of how files in
+`apps/backoffice/content/static/` can enter an agent's context. Use it to review the guidance an
+agent can discover and spot missing references, cycles, repeated expansions, and unreachable files
+when changing system guidance, skills, or codemode declarations.
+
+The graph starts at the automatically injected `SYSTEM.md` and every discoverable `SKILL.md`. Skill
+descriptions explain when to load each skill; nested references represent follow-up reads, not files
+that are all injected upfront. The scanner recursively follows concrete `/static/...` file
+references and relative inline Markdown links, and models `__BACKOFFICE_CODEMODE_DTS__` as an
+expansion through `/static/codemode/system.d.ts`. This is a textual map of checked-in static
+content, not a trace of actual agent reads or a map of workspace skills and dynamic runtime content.
+
+From the repository root, regenerate and stage the graph after changing its inputs:
+
+```bash
+pnpm backoffice:context
+git add content/CONTEXT-GRAPH.md
+```
+
+[`scripts/generate-backoffice-context-graph.ts`](../../scripts/generate-backoffice-context-graph.ts)
+uses the Backoffice context CLI's scanner and formats the result with `.oxfmtrc.json`. Do not edit
+the generated graph manually.
+
+Check the working-tree graph without rewriting it:
+
+```bash
+pnpm backoffice:context:check
+```
+
+Lefthook runs `pnpm backoffice:context:check-staged` after `static:fix` updates generated static
+content, including codemode declarations. Both the working-tree and staged graph must match freshly
+generated content, so regenerating without staging is not enough. If the check fails, regenerate and
+stage the graph again.
+
+See the [Backoffice context CLI README](../backoffice-context-cli/README.md) for parsing rules and
+commands to print ad hoc graphs or inspect another static directory.
+
 ## Build outputs
 
 `pnpm --dir apps/backoffice build` produces:
@@ -49,6 +88,20 @@ ignored by git.
 pnpm --dir apps/backoffice start:node
 ```
 
+To run the local `cf-sandbox-bridge` under the same supervisor, configure its API key and pass
+`--local-bridge`:
+
+```bash
+cp apps/cf-sandbox-bridge/.dev.vars.example apps/cf-sandbox-bridge/.dev.vars
+# Set SANDBOX_API_KEY in apps/cf-sandbox-bridge/.dev.vars.
+pnpm --dir apps/backoffice start:node -- --local-bridge
+```
+
+The flag starts the bridge at `http://127.0.0.1:8787`, copies its `SANDBOX_API_KEY` into
+Backoffice's `CLOUDFLARE_BRIDGE_API_KEY`, and sets `CLOUDFLARE_BRIDGE_URL` in
+`apps/backoffice/.dev.vars`. If Backoffice's file does not exist, it is created from
+`.dev.vars.example`. The supervisor stops the bridge, web server, and processor together.
+
 The local `start:node*` commands run with `NODE_ENV=development`. In this mode, the Node server
 serves the browser SQLite worker's source maps directly from the installed dependency for DevTools;
 they are never copied into build artifacts. Production Node launches use `NODE_ENV=production`, and
@@ -64,7 +117,9 @@ pnpm --dir apps/backoffice docker:build:node
 
 The command prunes the workspace on the host before starting Docker, builds for the local machine's
 native architecture, and reuses persistent pnpm and Turbo BuildKit caches. The final image contains
-only the bundled Node build, its launcher, Deno, and the native SQLite runtime dependency.
+only the bundled Node build, its launcher, and the native SQLite runtime dependency. Codemode,
+TypeScript checking, and sandbox execution use the configured Cloudflare bridge; Deno is not
+bundled.
 
 Deployment targets use AMD64 and require an explicit immutable image tag:
 
@@ -82,6 +137,8 @@ restarting against an existing data volume.
 ```dotenv
 AUTH_ACCESS_TOKEN_SECRET=<strong-random-secret>
 BACKOFFICE_INTERNAL_REQUEST_SECRET=<different-strong-random-secret>
+CLOUDFLARE_BRIDGE_URL=https://cf-sandbox-bridge.rejot.workers.dev/
+CLOUDFLARE_BRIDGE_API_KEY=<bridge-SANDBOX_API_KEY>
 DOCS_PUBLIC_BASE_URL=http://backoffice.localhost:5173
 ```
 

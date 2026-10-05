@@ -10,7 +10,9 @@ import type {
 import {
   BackofficeForbiddenError,
   BackofficeKernel,
+  isBackofficeForbiddenError,
   noopBackofficeKernelObserver,
+  type BackofficeForbiddenErrorDetails,
 } from "@/backoffice-runtime/kernel";
 import {
   isBackofficePermissionRequirement,
@@ -241,9 +243,14 @@ export const getAvailableRuntimeTools = ({
 type CodemodeToolDescriptor = {
   description?: string;
   inputSchema: z.ZodType;
+  inputMode: "none" | "value";
   outputSchema: z.ZodType;
   execute: (input: unknown) => Promise<unknown>;
 };
+
+function runtimeToolInputMode(schema: z.ZodType): CodemodeToolDescriptor["inputMode"] {
+  return schema._zod.def.type === "void" ? "none" : "value";
+}
 
 const summarizeToolValue = (value: unknown) => {
   try {
@@ -262,7 +269,7 @@ const summarizeToolValue = (value: unknown) => {
 function runtimeToolAuthorizationError(
   tool: AnyBackofficeRuntimeTool,
   operation: BackofficePermissionRequirement,
-  cause: BackofficeForbiddenError,
+  cause: BackofficeForbiddenErrorDetails,
 ): BackofficeForbiddenError {
   return new BackofficeForbiddenError(
     [
@@ -299,7 +306,7 @@ const authorizeBackofficeRuntimeTool = async (
         resource,
       });
     } catch (error) {
-      if (error instanceof BackofficeForbiddenError) {
+      if (isBackofficeForbiddenError(error)) {
         throw runtimeToolAuthorizationError(tool, operation, error);
       }
       throw error;
@@ -335,6 +342,7 @@ export const createBackofficeCodemodeProviders = ({
     providerTools[tool.name] = {
       description: tool.description,
       inputSchema: tool.inputSchema,
+      inputMode: runtimeToolInputMode(tool.inputSchema),
       outputSchema: tool.outputSchema,
       execute: async (input) => {
         const call: BackofficeRuntimeToolCall = {

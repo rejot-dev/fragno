@@ -1,12 +1,12 @@
-import type { PiHarnessFrontendAgentMessage } from "@fragno-dev/pi-harness/harness/agent-harness-event-protocol";
-import type {
-  DraftAgentMessage,
-  DraftTool,
-} from "@fragno-dev/pi-harness/workflow-session-projection";
-
 import { parseBackofficeUiResult } from "@/backoffice-ui/result";
 
-import { normalizePiContent, type ToolResultMessage } from "./assistant-runtime";
+import {
+  normalizePiContent,
+  type PiConversationMessage,
+  type PiDraftAgentMessage,
+  type PiDraftTool,
+  type ToolResultMessage,
+} from "./assistant-runtime";
 import { getExecCodeModeResultDetails } from "./exec-code-mode";
 import { getCodeArgumentSource } from "./tool-arguments";
 import { projectWorkflowGraph } from "./workflow-graph-projection";
@@ -20,8 +20,8 @@ export function getSessionWorkflowRunIds({
   draftAgentMessage,
   messages,
 }: {
-  draftAgentMessage: DraftAgentMessage | null;
-  messages: readonly PiHarnessFrontendAgentMessage[];
+  draftAgentMessage: PiDraftAgentMessage | null;
+  messages: readonly PiConversationMessage[];
 }): string[] {
   const runIds = new Set<string>();
   const addRun = (resultMessage: ToolResultMessage | null) => {
@@ -50,8 +50,8 @@ export function projectSessionWorkspaceItems({
   messages,
   startedWorkflowRunIds,
 }: {
-  draftAgentMessage: DraftAgentMessage | null;
-  messages: readonly PiHarnessFrontendAgentMessage[];
+  draftAgentMessage: PiDraftAgentMessage | null;
+  messages: readonly PiConversationMessage[];
   startedWorkflowRunIds: ReadonlySet<string>;
 }): SessionWorkspaceItem[] {
   const items: SessionWorkspaceItem[] = [];
@@ -190,6 +190,6 @@ export function projectSessionWorkspaceItems({
   });
 }
 
-function completedDraftToolResult(draftTool: DraftTool): ToolResultMessage | null {
-  return draftTool.resultMessage ? (draftTool.resultMessage as ToolResultMessage) : null;
+function completedDraftToolResult(draftTool: PiDraftTool): ToolResultMessage | null {
+  return draftTool.resultMessage ? draftTool.resultMessage : null;
 }

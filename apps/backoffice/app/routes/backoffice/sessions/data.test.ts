@@ -8,7 +8,12 @@ vi.mock("@/fragno/auth/backoffice-principal.server", () => ({
   requireBackofficeContext: requireBackofficeContextMock,
 }));
 
-import { createPiSession, fetchPiSessions, sendPiSessionMessage } from "./data";
+import {
+  createPiManagerSession,
+  fetchPiManagerSessions,
+  fetchPiManagerSessionViewStream,
+  submitPiManagerPrompt,
+} from "./data";
 
 const scope = { kind: "org" as const, orgId: "org-1" };
 const execution = {
@@ -35,131 +40,119 @@ beforeEach(() => {
   requireBackofficeContextMock.mockResolvedValue(execution);
 });
 
-describe("Pi session route caller", () => {
-  test("propagates authorization failures while listing sessions", async () => {
+describe("Pi manager session route caller", () => {
+  test("propagates authorization failures before listing sessions", async () => {
     requireBackofficeContextMock.mockRejectedValue(new Response("Forbidden", { status: 403 }));
 
     await expect(
-      fetchPiSessions(
-        new Request("https://backoffice.example/cadence"),
+      fetchPiManagerSessions(
+        new Request("https://backoffice.example/sessions"),
         { get: vi.fn() } as never,
         scope,
       ),
     ).rejects.toMatchObject({ status: 403 });
   });
 
-  test("propagates authorization failures while creating sessions", async () => {
-    requireBackofficeContextMock.mockRejectedValue(new Response("Forbidden", { status: 403 }));
-
-    await expect(
-      createPiSession(
-        new Request("https://backoffice.example/backoffice/sessions/org-1", { method: "POST" }),
-        { get: vi.fn() } as never,
-        scope,
+  test("creates sessions through PI_MANAGER with trusted execution context", async () => {
+    const fetchAuthorized = vi.fn(async (request: Request, _actionContext: unknown) => {
+      const body = (await request.clone().json()) as Record<string, unknown>;
+      return Response.json(
         {
-          metadata: { model: { provider: "openai", name: "gpt-5" } },
-          input: {},
+          ...body,
+          scope,
+          sessionId: "session-1",
+          actors: execution.actors,
         },
-      ),
-    ).rejects.toMatchObject({ status: 403 });
-  });
-
-  test("propagates authorization failures returned by Pi middleware", async () => {
-    const context = {
-      get: () => ({
-        runtime: { objects: { pi: {} } },
-        kernel: {
-          scoped: () => ({
-            commands: {},
-            http: {
-              fetch: async () => new Response(),
-              fetchAuthorized: async () =>
-                Response.json(
-                  { message: "Permission denied", code: "principal-permission-denied" },
-                  { status: 403 },
-                ),
-            },
-          }),
-        },
-      }),
-    };
-
-    await expect(
-      createPiSession(
-        new Request("https://backoffice.example/backoffice/sessions/org-1", { method: "POST" }),
-        context as never,
-        scope,
-        {
-          metadata: { model: { provider: "openai", name: "gpt-5" } },
-          input: {},
-        },
-      ),
-    ).rejects.toMatchObject({ status: 403 });
-  });
-
-  test("propagates authorization failures while sending session commands", async () => {
-    requireBackofficeContextMock.mockRejectedValue(new Response("Forbidden", { status: 403 }));
-
-    await expect(
-      sendPiSessionMessage(
-        new Request("https://backoffice.example/backoffice/sessions/org-1", { method: "POST" }),
-        { get: vi.fn() } as never,
-        scope,
-        "interactive-chat-workflow",
-        "session-1",
-        { text: "Hello" },
-      ),
-    ).rejects.toMatchObject({ status: 403 });
-  });
-
-  test("forwards session creation with trusted execution context", async () => {
-    const fetchAuthorized = vi.fn(async (_request: Request, _context: unknown) =>
-      Response.json({
-        id: "session-1",
-        workflowName: "interactive-chat-workflow",
-        status: "pending",
-      }),
-    );
-    const fetch = vi.fn(async () => new Response());
-    const piObject = {
-      commands: {},
-      http: { fetch, fetchAuthorized },
-    };
-    const kernel = {
-      scoped: vi.fn(() => piObject),
-    };
-    const context = {
-      get: () => ({
-        runtime: { objects: { pi: {} } },
-        kernel,
-      }),
-    };
-    const request = new Request("https://backoffice.example/backoffice/sessions/org-1", {
-      method: "POST",
-      headers: { cookie: "session=test" },
+        { status: 201 },
+      );
     });
+    const manager = { http: { fetchAuthorized } };
+    const kernel = { scoped: vi.fn(() => manager) };
+    const context = {
+      get: () => ({ runtime: { objects: { piManager: {} } }, kernel }),
+    };
+    const request = new Request("https://backoffice.example/sessions", { method: "POST" });
 
     await expect(
-      createPiSession(request, context as never, scope, {
-        metadata: { model: { provider: "openai", name: "gpt-5" } },
-        input: {},
+      createPiManagerSession(request, context as never, scope, {
+        name: "New session",
+        model: { provider: "openai", modelId: "gpt-5.6-luna" },
+        instructions: "",
+        billingOrganizationId: null,
       }),
-    ).resolves.toMatchObject({
-      session: { id: "session-1" },
-      error: null,
-    });
+    ).resolves.toMatchObject({ session: { sessionId: "session-1" }, error: null });
 
-    expect(requireBackofficeContextMock).toHaveBeenCalledWith(request, context, scope);
-    expect(kernel.scoped).toHaveBeenCalledWith("AUTOMATIONS", scope, undefined);
+    expect(kernel.scoped).toHaveBeenCalledWith("PI_MANAGER", scope, {});
     expect(fetchAuthorized).toHaveBeenCalledOnce();
     const [forwardedRequest, actionContext] = fetchAuthorized.mock.calls[0]!;
     assert.instanceOf(forwardedRequest, Request);
-    assert.equal(forwardedRequest.method, "POST");
+    assert.equal(new URL(forwardedRequest.url).pathname, "/api/pi-manager/sessions");
+    await expect(forwardedRequest.clone().json()).resolves.toMatchObject({
+      actors: execution.actors,
+    });
+    expect(actionContext).toEqual({ execution, propagationContext: null });
+  });
+
+  test("opens the durable agent NDJSON stream through authorized PI_MANAGER fetch", async () => {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('{"type":"snapshot","view":{}}\n'));
+        controller.close();
+      },
+    });
+    const fetchAuthorized = vi.fn(
+      async (_request: Request, _actionContext: unknown) => new Response(stream),
+    );
+    const context = {
+      get: () => ({
+        runtime: { objects: { piManager: {} } },
+        kernel: { scoped: () => ({ http: { fetchAuthorized } }) },
+      }),
+    };
+    const request = new Request("https://backoffice.example/sessions/session-1/view-stream");
+
+    const response = await fetchPiManagerSessionViewStream(
+      request,
+      context as never,
+      scope,
+      "session-1",
+    );
+
+    await expect(response.text()).resolves.toBe('{"type":"snapshot","view":{}}\n');
+    const [forwardedRequest, actionContext] = fetchAuthorized.mock.calls[0]!;
     assert.equal(
       new URL(forwardedRequest.url).pathname,
-      "/api/pi/workflows/interactive-chat-workflow/sessions",
+      "/api/pi-manager/sessions/session-1/view-stream",
     );
+    assert.equal(forwardedRequest.headers.get("accept"), "application/x-ndjson");
     expect(actionContext).toEqual({ execution, propagationContext: null });
-    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  test("submits prompts through the durable agent endpoint", async () => {
+    const fetchAuthorized = vi.fn(async (_request: Request, _actionContext: unknown) =>
+      Response.json({ submissionId: 7, requestId: "request-1" }, { status: 202 }),
+    );
+    const context = {
+      get: () => ({
+        runtime: { objects: { piManager: {} } },
+        kernel: { scoped: () => ({ http: { fetchAuthorized } }) },
+      }),
+    };
+
+    await expect(
+      submitPiManagerPrompt(
+        new Request("https://backoffice.example/sessions", { method: "POST" }),
+        context as never,
+        scope,
+        "session-1",
+        { requestId: "request-1", content: "Hello", whenBusy: "followUp" },
+      ),
+    ).resolves.toEqual({ requestId: "request-1", error: null });
+
+    const [forwardedRequest] = fetchAuthorized.mock.calls[0]!;
+    assert.equal(
+      new URL(forwardedRequest.url).pathname,
+      "/api/pi-manager/sessions/session-1/prompts",
+    );
   });
 });

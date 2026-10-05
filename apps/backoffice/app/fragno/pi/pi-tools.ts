@@ -1,16 +1,18 @@
-import type { PiSessionMetadata } from "@fragno-dev/pi-harness/types";
-import { Type, type TSchema } from "typebox";
+import { Type } from "typebox";
 
 import { visualizeWorkflowSource } from "@fragno-dev/workflow-visualizer-tokens";
 
-import type { AgentTool } from "@earendil-works/pi-agent-core";
+import { copyJson, type Context } from "@earendil-works/chord";
+import { defineTool } from "@earendil-works/pi-durable";
 
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
+import type { BackofficePermissionRequirement } from "@/backoffice-runtime/permissions";
 import type { FileSearchMatch } from "@/file-collection/file-collection";
 import {
   createCodemodeWorkflowInstanceInput,
   prepareCodemodeWorkflowInstance,
 } from "@/fragno/automation/engine/codemode-invocation";
+import { AutomationWorkflowRuntimeRequestError } from "@/fragno/automation/workflow-route-runtime";
 import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
 
 import type {
@@ -18,34 +20,16 @@ import type {
   RunBackofficeCodemodeInput,
 } from "../codemode/execute";
 import type {
-  InteractiveRuntimeToolContext,
-  RegisteredAutomationsRuntime,
-} from "../runtime-tools/bash-host";
-import type {
   AutomationWorkflowRuntime,
   InternalAutomationWorkflowRuntime,
   WorkflowCreateInstanceResult,
 } from "../runtime-tools/families/automations-workflow";
-import type { OtpRuntime } from "../runtime-tools/families/otp-runtime";
-import type { PiRuntime } from "../runtime-tools/families/pi";
-import type { ResendRuntime } from "../runtime-tools/families/resend";
-import type { Reson8Runtime } from "../runtime-tools/families/reson8";
-import type { TelegramRuntime } from "../runtime-tools/families/telegram-runtime";
 import { createBackofficeToolContext } from "../runtime-tools/tool-context";
 import {
   runtimeToolFamilies,
   type CoreBackofficeToolContext,
 } from "../runtime-tools/tool-families";
-import { type PiToolId } from "./pi-shared";
-
-export type PiRuntimeToolContext = InteractiveRuntimeToolContext & {
-  automations: { runtime: RegisteredAutomationsRuntime };
-  otp: { runtime: OtpRuntime };
-  pi: { runtime: PiRuntime };
-  reson8: { runtime: Reson8Runtime };
-  resend: { runtime: ResendRuntime };
-  telegram: { runtime: TelegramRuntime };
-};
+import { requirePiStateBackend, type PiRuntimeToolContext } from "./pi-runtime-context";
 
 export type PiCodemodeRuntime = {
   execute(input: Omit<RunBackofficeCodemodeInput, "env">): Promise<BackofficeCodemodeExecuteResult>;
@@ -99,10 +83,6 @@ export const execCodeModeParametersSchema = Type.Object({
     }),
   ),
 });
-
-const defineTool = <TParameters extends TSchema, TDetails>(
-  tool: AgentTool<TParameters, TDetails>,
-): AgentTool<TParameters, TDetails> => tool;
 
 const normalizeReadPath = (path: string) => (path.startsWith("/") ? path : `/${path}`);
 
@@ -255,17 +235,37 @@ export const formatSearchMatches = (matches: readonly SearchMatchWithLineText[])
     .join("\n\n");
 };
 
-const createSearchTool = (state: BackofficeStateBackend): AgentTool =>
-  defineTool({
+type PiToolExecutionOptions = {
+  sessionId: string;
+  authorizeExecution: () => Promise<void>;
+  createRuntimeToolContext: (input: {
+    invocationId: string;
+    context: Context;
+  }) => PiRuntimeToolContext;
+};
+
+function piToolInvocationId(sessionId: string, taskId: string): string {
+  return `${sessionId}:${taskId}`;
+}
+
+function createSearchTool(options: PiToolExecutionOptions) {
+  return defineTool({
     name: "search",
-    label: "Search",
     description: "Search file contents in the current scope.",
     parameters: searchParametersSchema,
-    execute: async (_toolCallId, params, signal) => {
-      if (signal?.aborted) {
+    replay: "safe",
+    async execute(params, api, context) {
+      await options.authorizeExecution();
+      if (context.abortSignal?.aborted) {
         throw new Error("Search aborted.");
       }
 
+      const state = requirePiStateBackend(
+        options.createRuntimeToolContext({
+          invocationId: piToolInvocationId(options.sessionId, String(api.taskId)),
+          context,
+        }),
+      );
       const maxMatches = params.maxMatches ?? 50;
       const searchOptions = {
         caseSensitive: params.caseSensitive,
@@ -339,29 +339,37 @@ const createSearchTool = (state: BackofficeStateBackend): AgentTool =>
             text: `${formatSearchMatches(matches)}${continuation}`,
           },
         ],
-        details: {
+        details: copyJson({
           query: params.query,
           glob: params.glob ?? "**",
           matches,
           cursor,
           hasMore,
-        },
+        }),
       };
     },
   });
+}
 
-const createReadTool = (state: BackofficeStateBackend): AgentTool =>
-  defineTool({
+function createReadTool(options: PiToolExecutionOptions) {
+  return defineTool({
     name: "read",
-    label: "Read",
     description:
       "Read a known skill or TypeScript declaration from the combined Pi session filesystem. Read selected skills in full before applying them.",
     parameters: readParametersSchema,
-    execute: async (_toolCallId, params, signal) => {
-      if (signal?.aborted) {
+    replay: "safe",
+    async execute(params, api, context) {
+      await options.authorizeExecution();
+      if (context.abortSignal?.aborted) {
         throw new Error("Read aborted.");
       }
 
+      const state = requirePiStateBackend(
+        options.createRuntimeToolContext({
+          invocationId: piToolInvocationId(options.sessionId, String(api.taskId)),
+          context,
+        }),
+      );
       const path = normalizeReadPath(params.path);
       const text = applyLineRange(await state.readFile(path), params.offset, params.limit);
       return {
@@ -374,6 +382,7 @@ const createReadTool = (state: BackofficeStateBackend): AgentTool =>
       };
     },
   });
+}
 
 const hashToolCallId = (toolCallId: string) => {
   let first = 0x811c9dc5;
@@ -406,52 +415,75 @@ const formatExecCodeModeText = (result: BackofficeCodemodeExecuteResult) => {
   return lines.join("\n");
 };
 
-const createExecCodeModeTool = (
-  sessionId: string,
-  codemode: PiCodemodeRuntime | undefined,
-  runtimeToolContext: PiRuntimeToolContext | undefined,
-  execution: BackofficeExecutionContext,
-): AgentTool =>
-  defineTool({
+type ExecCodeModeToolOptions = PiToolExecutionOptions & {
+  execution: BackofficeExecutionContext;
+  codemode: PiCodemodeRuntime;
+};
+
+type WorkflowScheduleErrorDetails = {
+  status: number | null;
+  code: string;
+  message: string;
+  requiredPermission: BackofficePermissionRequirement | null;
+};
+
+function serializeWorkflowScheduleError(cause: unknown): WorkflowScheduleErrorDetails {
+  if (AutomationWorkflowRuntimeRequestError.is(cause)) {
+    return {
+      status: cause.status,
+      code: cause.code,
+      message: cause.message,
+      requiredPermission: cause.requiredPermission,
+    };
+  }
+
+  return {
+    status: null,
+    code: "WORKFLOW_SCHEDULING_FAILED",
+    message: cause instanceof Error ? cause.message : String(cause),
+    requiredPermission: null,
+  };
+}
+
+function createExecCodeModeTool(options: ExecCodeModeToolOptions) {
+  return defineTool({
     name: "execCodeMode",
-    label: "Exec Code Mode",
     description: "Execute one top-level codemode program against the current Backoffice context.",
     parameters: execCodeModeParametersSchema,
-    execute: async (toolCallId, params, signal) => {
+    // Codemode can execute arbitrary mutations. An interrupted call must not silently repeat them.
+    replay: "unsafe",
+    async execute(params, api, durableContext) {
+      await options.authorizeExecution();
       const { code, dependencies } = params;
-      if (signal?.aborted) {
+      if (durableContext.abortSignal?.aborted) {
         throw new Error("Codemode execution aborted.");
       }
 
-      if (!codemode) {
-        throw new Error("execCodeMode is not configured for this Pi runtime.");
-      }
-
-      if (!runtimeToolContext) {
-        throw new Error("execCodeMode requires a Backoffice runtime context.");
-      }
-
-      const workflowRuntime = runtimeToolContext.workflow?.runtime ?? codemode.workflow;
+      const taskId = String(api.taskId);
+      const runtimeToolContext = options.createRuntimeToolContext({
+        invocationId: piToolInvocationId(options.sessionId, taskId),
+        context: durableContext,
+      });
+      const workflowRuntime = runtimeToolContext.workflow?.runtime ?? options.codemode.workflow;
       const workflowScheduler =
-        codemode.workflow ??
+        options.codemode.workflow ??
         (workflowRuntime && "createInternalInstance" in workflowRuntime
           ? (workflowRuntime as Pick<InternalAutomationWorkflowRuntime, "createInternalInstance">)
           : undefined);
-      const context: CoreBackofficeToolContext = createBackofficeToolContext({
+      const toolContext: CoreBackofficeToolContext = createBackofficeToolContext({
         ...runtimeToolContext,
         workflow: workflowRuntime ? { runtime: workflowRuntime } : null,
       });
 
-      const result = await codemode.execute({
+      const result = await options.codemode.execute({
         code,
         dependencies,
         families: runtimeToolFamilies,
-        toolContext: context,
+        toolContext,
       });
 
-      // Parse before scheduling so workflow-shaped code remains a successful tool
-      // result even when the durable run cannot be created. The client builds its
-      // own graph projection directly from the submitted source.
+      // Parse before scheduling so workflow-shaped failures retain tool details. The client builds
+      // its graph projection directly from the submitted source even when no run was created.
       const workflowVisualization = visualizeWorkflowSource("codemode", code, {
         fallbackName: result.workflowDefinition?.name,
       });
@@ -459,22 +491,26 @@ const createExecCodeModeTool = (
         (node) => node.kind === "workflow",
       );
 
-      // Try to schedule the durable run, but treat a scheduling/validation failure
-      // as non-fatal: the viewer should still show the workflow the agent wrote.
-      let scheduleError: string | undefined;
+      // Scheduling failures are failed tool results, but still carry the authored workflow for the viewer.
+      let scheduleError: WorkflowScheduleErrorDetails | undefined;
       // The scheduled run's handle, surfaced to the client so the workflow viewer
       // can subscribe to its live progress (history/status + step emissions).
       let runHandle: WorkflowCreateInstanceResult | undefined;
       if (result.workflowDefinition) {
         if (!workflowScheduler) {
-          scheduleError = "execCodeMode workflow definition cannot be scheduled in this runtime.";
+          scheduleError = {
+            status: null,
+            code: "WORKFLOW_SCHEDULER_UNAVAILABLE",
+            message: "execCodeMode workflow definition cannot be scheduled in this runtime.",
+            requiredPermission: null,
+          };
         } else {
           try {
-            const instanceId = hashToolCallId(`${sessionId}--${toolCallId}`);
+            const instanceId = hashToolCallId(`${options.sessionId}--${taskId}`);
             const prepared = prepareCodemodeWorkflowInstance({
               code,
               dependencies,
-              filename: `/pi/${sessionId}/${toolCallId}.workflow.js`,
+              filename: `/pi/${options.sessionId}/${taskId}.workflow.js`,
               instanceId,
             });
             if (prepared.remoteWorkflowName !== result.workflowDefinition.name) {
@@ -485,125 +521,57 @@ const createExecCodeModeTool = (
             const workflowInput = createCodemodeWorkflowInstanceInput({
               prepared,
               trigger: { type: "manual", payload: {} },
-              execution,
+              execution: options.execution,
             });
             const created = await workflowScheduler.createInternalInstance(workflowInput);
             runHandle = { instanceId: created.instanceId };
             result.result = runHandle;
           } catch (error) {
-            scheduleError = error instanceof Error ? error.message : String(error);
+            scheduleError = serializeWorkflowScheduleError(error);
           }
         }
       }
 
       const text = scheduleError
-        ? `${formatExecCodeModeText(result)}\n\nWorkflow could not be scheduled: ${scheduleError}`
+        ? `${formatExecCodeModeText(result)}\n\nWorkflow could not be scheduled: ${scheduleError.message}`
         : formatExecCodeModeText(result);
 
-      // Only a genuine failure with no recognizable workflow is a hard tool error
-      // (a thrown error loses `details`, which would hide the workflow from the
-      // viewer). When the code parsed into a workflow, keep the result successful
-      // and carry the graph, surfacing any run/scheduling error in the text so the
-      // model can still react and retry.
+      // Throw only when there is no workflow graph to preserve. Recognized workflows return an
+      // error result with details so both the viewer and model can inspect the scheduling failure.
       if ((result.error || scheduleError) && !parsedWorkflow) {
         throw new Error(text);
       }
 
       return {
         content: [{ type: "text", text }],
-        details: {
-          ...result,
-          code,
-          outputText: text,
-          // The live run handle so the client can
-          // subscribe to realtime progress. Absent when scheduling failed.
-          ...(runHandle ? { run: runHandle } : {}),
-          ...(scheduleError ? { scheduleError } : {}),
-        },
+        isError: Boolean(result.error || scheduleError),
+        details: copyJson(
+          {
+            ...result,
+            code,
+            outputText: text,
+            // The live run handle so the client can
+            // subscribe to realtime progress. Absent when scheduling failed.
+            ...(runHandle ? { run: runHandle } : {}),
+            ...(scheduleError ? { scheduleError } : {}),
+          },
+          { omitUndefinedProperties: true },
+        ),
       };
     },
   });
+}
 
-export type BackofficePiToolFactory = (input: {
-  sessionId: string;
+export type CreateBackofficePiToolsOptions = PiToolExecutionOptions & {
   execution: BackofficeExecutionContext;
-  metadata?: PiSessionMetadata | null;
-}) => Promise<Partial<Record<PiToolId, AgentTool>>>;
-
-export type PiRuntimeToolContextSource =
-  | PiRuntimeToolContext
-  | ((
-      execution: BackofficeExecutionContext,
-      metadata: PiSessionMetadata | null,
-    ) => PiRuntimeToolContext);
-
-export type CreatePiToolFactoryOptions = {
-  codemode?: PiCodemodeRuntime;
-  runtimeToolContext?: PiRuntimeToolContextSource;
+  codemode: PiCodemodeRuntime;
 };
 
-const resolvePiRuntimeToolContext = (
-  source: PiRuntimeToolContextSource | undefined,
-  execution: BackofficeExecutionContext,
-  metadata: PiSessionMetadata | null,
-) => (typeof source === "function" ? source(execution, metadata) : source);
-
-const requirePiStateBackend = (runtimeToolContext: PiRuntimeToolContext | undefined) => {
-  if (!runtimeToolContext?.stateBackend) {
-    throw new Error("Pi requires a state backend.");
-  }
-  return runtimeToolContext.stateBackend;
-};
-
-export const resolvePiStateBackend = (
-  source: PiRuntimeToolContextSource | undefined,
-  execution: BackofficeExecutionContext,
-  metadata: PiSessionMetadata | null = null,
-) => requirePiStateBackend(resolvePiRuntimeToolContext(source, execution, metadata));
-
-export const createPiToolFactory =
-  ({
-    codemode,
-    runtimeToolContext: runtimeToolContextSource,
-  }: CreatePiToolFactoryOptions): BackofficePiToolFactory =>
-  async ({ sessionId, execution, metadata = null }) => {
-    const runtimeToolContext = resolvePiRuntimeToolContext(
-      runtimeToolContextSource,
-      execution,
-      metadata,
-    );
-    const stateBackend = requirePiStateBackend(runtimeToolContext);
-
-    return {
-      read: createReadTool(stateBackend),
-      search: createSearchTool(stateBackend),
-      execCodeMode: createExecCodeModeTool(sessionId, codemode, runtimeToolContext, execution),
-    };
-  };
-
-export const createPiToolRegistry = (
-  options: CreatePiToolFactoryOptions & { execution: BackofficeExecutionContext },
-) => {
-  const createTools = createPiToolFactory(options);
-  const createSessionTool =
-    (toolId: PiToolId) =>
-    async (context: { session: { id: string } }): Promise<AgentTool> => {
-      const tool = (
-        await createTools({
-          sessionId: context.session.id,
-          execution: options.execution,
-          metadata: null,
-        })
-      )[toolId];
-      if (!tool) {
-        throw new Error(`${toolId} is not configured for this Pi runtime.`);
-      }
-      return tool;
-    };
-
+/** Creates the native durable Pi tools for one agent configuration. */
+export function createBackofficePiTools(options: CreateBackofficePiToolsOptions) {
   return {
-    read: createSessionTool("read"),
-    search: createSessionTool("search"),
-    execCodeMode: createSessionTool("execCodeMode"),
+    execCodeMode: createExecCodeModeTool(options),
+    read: createReadTool(options),
+    search: createSearchTool(options),
   };
-};
+}

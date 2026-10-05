@@ -32,7 +32,8 @@ import type { InternalRuntime } from "./families/internal";
 import type { JavaScriptRuntime } from "./families/javascript-runtime";
 import type { RegisteredMcpCommandContext } from "./families/mcp-runtime";
 import type { RegisteredOtpCommandContext } from "./families/otp-runtime";
-import type { RegisteredPiCommandContext } from "./families/pi-runtime";
+import type { RegisteredPiCommandContext } from "./families/pi";
+import type { ProjectConnectorRuntime } from "./families/project-connector-runtime";
 import type { RegisteredResendCommandContext } from "./families/resend-runtime";
 import type { RegisteredReson8CommandContext } from "./families/reson8-runtime";
 import type { SandboxRuntime } from "./families/sandbox-runtime";
@@ -70,6 +71,7 @@ export type BashHostContext = {
   internal?: { runtime: InternalRuntime } | null;
   api?: RegisteredApiCommandContext | null;
   mcp?: RegisteredMcpCommandContext | null;
+  projectConnector: { runtime: ProjectConnectorRuntime } | null;
   otp: RegisteredOtpCommandContext | null;
   pi: RegisteredPiCommandContext | null;
   reson8: RegisteredReson8CommandContext | null;

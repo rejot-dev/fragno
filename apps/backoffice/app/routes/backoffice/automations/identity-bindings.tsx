@@ -5,7 +5,7 @@ import { useOutletContext, useSearchParams } from "react-router";
 
 import { useLiveQuery } from "@tanstack/react-db";
 
-import { BackofficeForbiddenError } from "@/backoffice-runtime/kernel";
+import { isBackofficeForbiddenError } from "@/backoffice-runtime/kernel";
 import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
@@ -58,7 +58,7 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
       resource: { kind: "external-identity-bindings" },
     });
   } catch (error) {
-    if (error instanceof BackofficeForbiddenError) {
+    if (isBackofficeForbiddenError(error)) {
       throw new Response(error.message, { status: 403 });
     }
     throw error;

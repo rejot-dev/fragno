@@ -23,7 +23,7 @@ catalog:
   vitest: ^4.1.4
 
 overrides:
-  "@earendil-works/pi-ai": 0.83.0
+  "@earendil-works/pi-ai@<1.0.0": 0.83.0
   esbuild@<=0.24.2: ">=0.25.0"
   unicorn-magic: 0.4.0
   zod@^4.0.0: 4.5.4

@@ -87,7 +87,6 @@ import type {
   MarketplacePublishVersionResult,
   MarketplaceUpdateListingInput,
 } from "@/fragno/marketplace/contracts";
-import type { PiRuntimeState } from "@/fragno/pi/pi-shared";
 import type { TelegramAutomationFileMetadata } from "@/fragno/runtime-tools/families/telegram-runtime";
 import type {
   SandboxInstanceRecord,
@@ -102,6 +101,8 @@ export type BackofficeRpcContext = Pick<FragnoExecutionContext, "propagationCont
 
 export type BackofficeActionRpcContext = BackofficeRpcContext & {
   execution: BackofficeExecutionContext;
+  /** Signed assertion that the caller already performed the target object's authorization check. */
+  authorization?: "enforce" | "preauthorized";
 };
 
 export type FetchObject = {
@@ -130,7 +131,7 @@ export type DurableHookCommands = {
   getDurableHook(hookId: string): Promise<DurableHookQueueEntry | null>;
 };
 
-export type AutomationsDurableHookFragment = "automation" | "pi" | "workflows";
+export type AutomationsDurableHookFragment = "automation" | "workflows";
 
 type ScopedObjects<TObject> = {
   singleton(): TObject;
@@ -355,7 +356,6 @@ export type AutomationsObject = {
     projectId?: string;
     slug?: string;
   }): Promise<AutomationProjectExecutionTarget | null>;
-  getPiRuntimeState(): Promise<PiRuntimeState>;
   getDurableHookQueue(
     fragment: AutomationsDurableHookFragment,
     options?: DurableHookQueueOptions,
@@ -400,6 +400,8 @@ export type Reson8Object = AdminConfigurableObject<
   ): Promise<AwaitedMethodReturn<Reson8, "getRealtimeOriginDiagnostic">>;
 };
 export type McpObject = DurableHookCommands;
+/** Connector has HTTP operations only; provider tokens stay upstream. */
+export type ProjectConnectorObject = Record<never, never>;
 export type UploadObject = DurableHookCommands &
   AdminConfigurableObject<AwaitedMethodReturn<Upload, "getAdminConfig">>;
 export type CloudflareObject = Record<never, never>;
@@ -472,6 +474,7 @@ export type BackofficeObjectBindingName =
   | "API"
   | "AUTH"
   | "AUTOMATIONS"
+  | "PI_MANAGER"
   | "BILLING"
   | "MARKETPLACE"
   | "TELEGRAM"
@@ -479,6 +482,7 @@ export type BackofficeObjectBindingName =
   | "RESEND"
   | "RESON8"
   | "MCP"
+  | "PROJECT_CONNECTOR"
   | "UPLOAD"
   | "GITHUB"
   | "GITHUB_WEBHOOK_ROUTER"
@@ -510,6 +514,7 @@ export const backofficeObjectScopePolicy = {
   AUTH: ["singleton"],
 
   AUTOMATIONS: ["singleton", "org", "user", "project"],
+  PI_MANAGER: ["singleton", "org", "user", "project"],
   BILLING: ["org"],
   MARKETPLACE: ["singleton"],
 
@@ -518,6 +523,7 @@ export const backofficeObjectScopePolicy = {
   RESEND: ["singleton", "org"],
   RESON8: ["org"],
   MCP: ["org", "user", "project"],
+  PROJECT_CONNECTOR: ["user"],
   UPLOAD: ["org", "named", "user", "project"],
   GITHUB: ["org"],
 
@@ -536,6 +542,15 @@ export const isBackofficeObjectScopeAllowed = (
   const allowedScopes: readonly BackofficeObjectScopeKind[] = backofficeObjectScopePolicy[binding];
   return allowedScopes.includes(scopeKind);
 };
+
+export const backofficeObjectScopeKindFromContextScope = (
+  scope: BackofficeContextScope,
+): BackofficeObjectScopeKind => (scope.kind === "system" ? "singleton" : scope.kind);
+
+export const isBackofficeObjectAvailableInContext = (
+  binding: BackofficeObjectBindingName,
+  scope: BackofficeContextScope,
+) => isBackofficeObjectScopeAllowed(binding, backofficeObjectScopeKindFromContextScope(scope));
 
 export const assertBackofficeObjectAddressAllowed = (address: BackofficeObjectAddress) => {
   if (!isBackofficeObjectScopeAllowed(address.binding, address.scope.kind)) {
@@ -772,6 +787,7 @@ export const createBackofficeObjectRegistry = (factory: BackofficeObjectFactory)
   auth: scoped(factory, binding<AuthObject>("AUTH")),
 
   automations: scoped(factory, binding<AutomationsObject>("AUTOMATIONS")),
+  piManager: scoped(factory, binding<Record<never, never>>("PI_MANAGER")),
   billing: scoped(factory, binding<BillingObject>("BILLING")),
   marketplace: scoped(factory, binding<MarketplaceObject>("MARKETPLACE")),
   telegram: scoped(factory, binding<TelegramObject>("TELEGRAM")),
@@ -779,6 +795,7 @@ export const createBackofficeObjectRegistry = (factory: BackofficeObjectFactory)
   resend: scoped(factory, binding<ResendObject>("RESEND")),
   reson8: scoped(factory, binding<Reson8Object>("RESON8")),
   mcp: scoped(factory, binding<McpObject>("MCP")),
+  projectConnector: scoped(factory, binding<ProjectConnectorObject>("PROJECT_CONNECTOR")),
   upload: scoped(factory, binding<UploadObject>("UPLOAD")),
   github: scoped(factory, binding<GitHubObject>("GITHUB")),
 

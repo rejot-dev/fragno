@@ -53,6 +53,7 @@
     "AUTH_EMAIL_VERIFICATION_ENABLED": "true",
     "SIGN_UP_INVITATIONS_ENABLED": "true",
     "DOCS_PUBLIC_BASE_URL": "https://backoffice.rejot.dev/",
+    "OOMOL_CONNECTOR_BASE_URL": "https://connector.oomol.com/v1",
   },
   "secrets": {
     "required": [
@@ -68,6 +69,7 @@
       "GITHUB_APP_WEBHOOK_SECRET",
       "GITHUB_APP_PRIVATE_KEY",
       "OPENAI_API_KEY",
+      "OOMOL_PROJECT_API_KEY",
       "CLOUDFLARE_WORKERS_ACCOUNT_ID",
       "CLOUDFLARE_WORKERS_API_TOKEN",
     ],
@@ -141,6 +143,10 @@
         "class_name": "Mcp",
       },
       {
+        "name": "PROJECT_CONNECTOR",
+        "class_name": "ProjectConnectorDurableObject",
+      },
+      {
         "name": "OTP",
         "class_name": "Otp",
       },
@@ -167,6 +173,14 @@
       {
         "name": "AUTOMATIONS",
         "class_name": "Automations",
+      },
+      {
+        "name": "PI",
+        "class_name": "Pi",
+      },
+      {
+        "name": "PI_MANAGER",
+        "class_name": "PiManager",
       },
       {
         "name": "BILLING",
@@ -197,6 +211,7 @@
     "Resend": { "type": "durable-object", "storage": "sqlite" },
     "Reson8": { "type": "durable-object", "storage": "sqlite" },
     "Mcp": { "type": "durable-object", "storage": "sqlite" },
+    "ProjectConnectorDurableObject": { "type": "durable-object", "storage": "sqlite" },
     "Otp": { "type": "durable-object", "storage": "sqlite" },
     "Upload": { "type": "durable-object", "storage": "sqlite" },
     "Sandbox": { "type": "durable-object", "storage": "sqlite" },
@@ -204,6 +219,8 @@
     "GitHub": { "type": "durable-object", "storage": "sqlite" },
     "GitHubWebhookRouter": { "type": "durable-object", "storage": "sqlite" },
     "Automations": { "type": "durable-object", "storage": "sqlite" },
+    "Pi": { "type": "durable-object", "storage": "sqlite" },
+    "PiManager": { "type": "durable-object", "storage": "sqlite" },
     "Billing": { "type": "durable-object", "storage": "sqlite" },
     "Marketplace": { "type": "durable-object", "storage": "sqlite" },
     "Cloudflare": { "type": "durable-object", "storage": "sqlite" },

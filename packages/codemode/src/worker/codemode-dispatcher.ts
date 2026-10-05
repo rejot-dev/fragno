@@ -6,6 +6,7 @@ import {
   stringifyCodemodeValue,
   type ResolvedProvider,
 } from "../runtime-api";
+import { encodeCodemodeError } from "../transport/codemode-errors";
 
 const RESERVED_PROVIDER_NAMES = new Set([
   "context",
@@ -22,6 +23,7 @@ const RESERVED_PROVIDER_NAMES = new Set([
   "__decodeCodemodeValue",
   "__stringifyForCodemode",
   "__parseForCodemode",
+  "__throwCodemodeProviderError",
   "__FRAGNO_CODEMODE_WORKFLOW_TAG",
   "defineWorkflow",
   "__isFragnoCodemodeWorkflowDefinition",
@@ -36,8 +38,6 @@ const RESERVED_PROVIDER_NAMES = new Set([
   "isSuspension",
   "unwrap",
   "unsupported",
-  "defineTool",
-  "WorkflowAgentToolTarget",
   "createRemoteWorkflowStep",
   "RemoteWorkflowEntrypoint",
 ]);
@@ -72,7 +72,9 @@ export class ToolDispatcher extends RpcTarget {
 
   async call(toolName: string, argsJson: string): Promise<string> {
     if (!Object.hasOwn(this.#fns, toolName)) {
-      return stringifyCodemodeValue({ error: `Unknown tool: ${toolName}` });
+      return stringifyCodemodeValue({
+        error: encodeCodemodeError(new Error(`Unknown tool: ${toolName}`)),
+      });
     }
     try {
       const args = parseCodemodeValue(argsJson);
@@ -81,9 +83,7 @@ export class ToolDispatcher extends RpcTarget {
       }
       return stringifyCodemodeValue({ result: await this.#fns[toolName](...(args as unknown[])) });
     } catch (error) {
-      return stringifyCodemodeValue({
-        error: error instanceof Error ? error.message : String(error),
-      });
+      return stringifyCodemodeValue({ error: encodeCodemodeError(error) });
     }
   }
 }

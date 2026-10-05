@@ -3,6 +3,7 @@ import type { WorkerTypeChecker } from "@fragno-dev/codemode/compiler/compile-wo
 import { defaultFragnoRuntime } from "@fragno-dev/core";
 
 import type { AutomationSourceReader } from "@/fragno/automation/automation-source";
+import type { PiAvailableModel } from "@/fragno/pi-manager/pi-agent-contract";
 import type { CreateSandboxRuntimeProviders } from "@/sandbox/contracts";
 
 import {
@@ -51,6 +52,7 @@ export type CreateLocalBackofficeRuntimeOptions = {
   runtimeEnv: BackofficeRuntimeEnv;
   readAutomationSource?: AutomationSourceReader;
   objectFactories?: LocalObjectFactoryOverrides;
+  piAvailableModels?: readonly PiAvailableModel[];
   createSandboxProviders?: CreateSandboxRuntimeProviders;
   authorityResolver?: BackofficeAuthorityResolver;
   kernelObserver?: BackofficeKernelObserver;
@@ -84,6 +86,7 @@ export async function createLocalBackofficeRuntime(
     },
     readAutomationSource: options.readAutomationSource,
     objectFactories: options.objectFactories,
+    piAvailableModels: options.piAvailableModels,
     createSandboxProviders: options.createSandboxProviders,
   });
   const config = objectFactory.createRuntimeConfig();

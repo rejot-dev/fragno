@@ -1,6 +1,6 @@
 import type { ResendThreadMessage, ResendThreadSummary } from "@fragno-dev/resend-fragment";
 
-import { BackofficeUnavailableError } from "@/backoffice-runtime/kernel";
+import { isBackofficeObjectAvailableInContext } from "@/backoffice-runtime/object-registry";
 import {
   NotConfiguredError,
   buildResendThreadMarkdown,
@@ -189,15 +189,11 @@ const createResendRuntime = (ctx: FilesContext): ResendRuntime | null => {
     return null;
   }
 
-  let resendObject;
-  try {
-    resendObject = ctx.kernel.scoped("RESEND", ctx.execution.scope, ctx.objects.resend);
-  } catch (error) {
-    if (error instanceof BackofficeUnavailableError) {
-      return null;
-    }
-    throw error;
+  if (!isBackofficeObjectAvailableInContext("RESEND", ctx.execution.scope)) {
+    return null;
   }
+
+  const resendObject = ctx.kernel.scoped("RESEND", ctx.execution.scope, ctx.objects.resend);
   if (!resendObject.http?.fetch) {
     return null;
   }

@@ -1,15 +1,20 @@
 ---
 name: api-connection
-description:
-  Configure and use Backoffice API connections. Use when creating outbound HTTP API integrations,
-  configuring OAuth or bearer authentication, starting API OAuth flows, checking auth status, or
-  executing authenticated API requests from automations.
+description: >
+  Create and use low-level HTTP API connections with api.*. Use when the user requests a direct API
+  connection, custom HTTP requests, or API authentication setup and status. Named services without a
+  native integration default to Open Connector connections.
 ---
 
-# API Connection
+# Low-Level API Connections
 
-Use this skill for scope-aware outbound HTTP API connections, OAuth PKCE authentication, bearer
-tokens, client credentials, and API requests through Backoffice runtimes.
+Read `/static/codemode/providers/api.d.ts` before executing API calls. This skill registers
+scope-aware outbound HTTP endpoints and their authentication with `api.*`. These low-level
+connections belong to `api.listConnections()`, separately from native integration configuration and
+user-owned Open Connector connections.
+
+Resolve the target API's base URL and authentication requirements from available context or provider
+documentation before creating a connection; a service name alone does not establish them.
 
 # API configuration
 

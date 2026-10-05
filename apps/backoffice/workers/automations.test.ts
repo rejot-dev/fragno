@@ -11,7 +11,10 @@ import {
 import { createInMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
 import { BackofficeKernel, noopBackofficeKernelObserver } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
-import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
+import {
+  BACKOFFICE_PERMISSION,
+  BACKOFFICE_REQUIRED_PERMISSION_HEADER,
+} from "@/backoffice-runtime/permissions";
 import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
 import { createAutomationRuntimeExecution } from "@/fragno/automation/authority";
 import { readAutomationScript } from "@/fragno/automation/automation-source";
@@ -73,6 +76,7 @@ const config: BackofficeRuntimeConfig = {
     resend: false,
     reson8: false,
     mcp: false,
+    projectConnector: false,
     upload: false,
     github: false,
     githubWebhookRouter: false,
@@ -852,16 +856,18 @@ describe("Automations authorized HTTP context", () => {
         },
       });
 
-      await expect(
-        call("POST", "/:workflowName/instances", {
-          pathParams: { workflowName: CODEMODE_WORKFLOW },
-          body: { id: "unauthorized-code", params: {} },
-        }),
-      ).resolves.toMatchObject({
+      const deniedCreation = await call("POST", "/:workflowName/instances", {
+        pathParams: { workflowName: CODEMODE_WORKFLOW },
+        body: { id: "unauthorized-code", params: {} },
+      });
+      expect(deniedCreation).toMatchObject({
         type: "error",
         status: 403,
         error: { code: "principal-permission-denied" },
       });
+      expect(deniedCreation.headers.get(BACKOFFICE_REQUIRED_PERMISSION_HEADER)).toBe(
+        JSON.stringify(BACKOFFICE_PERMISSION.workflow.executeCode),
+      );
       await expect(
         call("POST", "/:workflowName/instances/batch", {
           pathParams: { workflowName: CODEMODE_WORKFLOW },

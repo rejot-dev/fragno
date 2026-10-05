@@ -2,7 +2,8 @@ import {
   backofficeContextScopesEqual,
   type BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
-import { BackofficeUnavailableError, type BackofficeKernel } from "@/backoffice-runtime/kernel";
+import { isBackofficeUnavailableError, type BackofficeKernel } from "@/backoffice-runtime/kernel";
+import { isBackofficeObjectAvailableInContext } from "@/backoffice-runtime/object-registry";
 import {
   backofficeRouteScopeFromResolvedScope,
   resolveBackofficeRuntimeScope,
@@ -33,6 +34,10 @@ import {
   type BackofficeStateBackend,
 } from "@/fragno/codemode/state-backend";
 import { createCodemodeStaticArtifactsResolver } from "@/fragno/codemode/static-codemode-artifacts";
+import {
+  createPiManagerRuntime,
+  type PiManagerRuntime,
+} from "@/fragno/pi-manager/pi-manager-runtime";
 import { createAdminRuntime } from "@/fragno/runtime-tools/families/admin-runtime";
 import { createApiRuntime } from "@/fragno/runtime-tools/families/api-runtime";
 import { createBackofficeCapabilitiesRuntime } from "@/fragno/runtime-tools/families/backoffice-capabilities";
@@ -47,7 +52,7 @@ import {
   createOtpRuntime,
   createUnavailableOtpRuntime,
 } from "@/fragno/runtime-tools/families/otp-runtime";
-import { createPiRouteRuntime, type PiRuntime } from "@/fragno/runtime-tools/families/pi-runtime";
+import { createProjectConnectorRuntime } from "@/fragno/runtime-tools/families/project-connector-runtime";
 import {
   createResendRouteRuntime,
   createUnavailableResendRuntime,
@@ -63,7 +68,11 @@ import {
 } from "@/fragno/runtime-tools/families/telegram-runtime";
 import { createUploadRuntime } from "@/fragno/runtime-tools/families/upload-runtime";
 import { createWebRuntime } from "@/fragno/runtime-tools/families/web-runtime";
-import { apiPublicAddress, mcpPublicAddress } from "@/fragno/scoped-public-fragment-routes";
+import {
+  apiPublicAddress,
+  mcpPublicAddress,
+  projectConnectorPublicAddress,
+} from "@/fragno/scoped-public-fragment-routes";
 
 import type { InteractiveRuntimeToolContext } from "./bash-host";
 import { getRuntimeToolNamespacesByCapability, runtimeToolFamilies } from "./tool-families";
@@ -73,7 +82,10 @@ export type RouteBackedRuntimeContextOptions = {
   kernel: BackofficeKernel;
   execution: BackofficeExecutionContext;
   emittedEventActors?: AutomationActors;
-  pi?: { runtime: PiRuntime } | null;
+  pi?:
+    | { runtime: PiManagerRuntime }
+    | ((execution: BackofficeExecutionContext) => { runtime: PiManagerRuntime })
+    | null;
   workflowSourceReader?: AutomationSourceReader;
 };
 
@@ -135,6 +147,17 @@ const createExecutionStateBackend = ({
   });
 };
 
+const unavailableObject = <T>(resolve: () => T): T | null => {
+  try {
+    return resolve();
+  } catch (error) {
+    if (isBackofficeUnavailableError(error)) {
+      return null;
+    }
+    throw error;
+  }
+};
+
 async function resolveRuntimeOrganization(
   runtime: BackofficeRuntimeServices,
   organizationId: string,
@@ -147,17 +170,6 @@ async function resolveRuntimeOrganization(
   }
   return { id: organization.id, slug: organization.slug };
 }
-
-const unavailableObject = <T>(resolve: () => T): T | null => {
-  try {
-    return resolve();
-  } catch (error) {
-    if (error instanceof BackofficeUnavailableError) {
-      return null;
-    }
-    throw error;
-  }
-};
 
 export const createRouteBackedRuntimeContext = ({
   runtime,
@@ -304,7 +316,10 @@ export const createRouteBackedRuntimeContext = ({
       : null,
     forms:
       execution.scope.kind === "system" && formsObjects
-        ? { runtime: createFormsRuntime(formsObjects.singleton().http) }
+        ? (() => {
+            const object = unavailableObject(() => formsObjects.singleton());
+            return object ? { runtime: createFormsRuntime(object.http) } : null;
+          })()
         : null,
     github:
       runtime.config.bindings.github && org
@@ -324,9 +339,9 @@ export const createRouteBackedRuntimeContext = ({
       : null,
     api: runtime.config.bindings.api
       ? (() => {
-          const object = unavailableObject(() =>
-            kernel.scoped("API", execution.scope, runtime.objects.api),
-          );
+          const object = isBackofficeObjectAvailableInContext("API", execution.scope)
+            ? kernel.scoped("API", execution.scope, runtime.objects.api)
+            : null;
           return object
             ? {
                 runtime: createApiRuntime(object.http, async () => {
@@ -350,9 +365,9 @@ export const createRouteBackedRuntimeContext = ({
       : null,
     mcp: runtime.config.bindings.mcp
       ? (() => {
-          const object = unavailableObject(() =>
-            kernel.scoped("MCP", execution.scope, runtime.objects.mcp),
-          );
+          const object = isBackofficeObjectAvailableInContext("MCP", execution.scope)
+            ? kernel.scoped("MCP", execution.scope, runtime.objects.mcp)
+            : null;
           return object
             ? {
                 runtime: createMcpRuntime(object.http, async () => {
@@ -364,6 +379,32 @@ export const createRouteBackedRuntimeContext = ({
                     throw new Error("MCP public routes require a routable scope.");
                   }
                   return mcpPublicAddress(
+                    runtime.config.docsPublicBaseUrl,
+                    backofficeRouteScopeSinglePathSegment(
+                      backofficeRouteScopeFromResolvedScope(resolvedScope),
+                    ),
+                  );
+                }),
+              }
+            : null;
+        })()
+      : null,
+    projectConnector: runtime.config.bindings.projectConnector
+      ? (() => {
+          const object = isBackofficeObjectAvailableInContext("PROJECT_CONNECTOR", execution.scope)
+            ? kernel.scoped("PROJECT_CONNECTOR", execution.scope, runtime.objects.projectConnector)
+            : null;
+          return object
+            ? {
+                runtime: createProjectConnectorRuntime(object.http, async () => {
+                  const resolvedScope = await resolveBackofficeRuntimeScope(
+                    execution.scope,
+                    (organizationId) => resolveRuntimeOrganization(runtime, organizationId),
+                  );
+                  if (resolvedScope.kind === "system") {
+                    throw new Error("Connector public routes require a routable scope.");
+                  }
+                  return projectConnectorPublicAddress(
                     runtime.config.docsPublicBaseUrl,
                     backofficeRouteScopeSinglePathSegment(
                       backofficeRouteScopeFromResolvedScope(resolvedScope),
@@ -393,26 +434,24 @@ export const createRouteBackedRuntimeContext = ({
           }
         : createUnavailableOtpRuntime(unavailableMessage("OTP", execution)),
     },
-    pi: pi ?? {
-      runtime: createPiRouteRuntime({
-        object: automationsObject,
-        scope: execution.scope,
-        execution,
-      }),
+    pi: (typeof pi === "function" ? pi(execution) : pi) ?? {
+      runtime: createPiManagerRuntime({ runtime, kernel, execution }),
     },
     reson8: {
-      runtime: selectedOrg
-        ? createReson8RouteRuntime({
-            object: kernel.scoped("RESON8", execution.scope, runtime.objects.reson8).http,
-          })
-        : createUnavailableReson8Runtime(unavailableMessage("RESON8", execution)),
+      runtime:
+        selectedOrg && runtime.config.bindings.reson8
+          ? createReson8RouteRuntime({
+              object: kernel.scoped("RESON8", execution.scope, runtime.objects.reson8).http,
+            })
+          : createUnavailableReson8Runtime(unavailableMessage("RESON8", execution)),
     },
     resend: {
-      runtime: selectedOrg
-        ? createResendRouteRuntime({
-            object: kernel.scoped("RESEND", execution.scope, runtime.objects.resend).http,
-          })
-        : createUnavailableResendRuntime(unavailableMessage("RESEND", execution)),
+      runtime:
+        selectedOrg && runtime.config.bindings.resend
+          ? createResendRouteRuntime({
+              object: kernel.scoped("RESEND", execution.scope, runtime.objects.resend).http,
+            })
+          : createUnavailableResendRuntime(unavailableMessage("RESEND", execution)),
     },
     sandbox:
       runtime.config.bindings.sandbox && runtime.config.bindings.automations
@@ -455,7 +494,7 @@ export const createRouteBackedRuntimeContext = ({
           }
         : null,
     telegram:
-      execution.scope.kind === "org"
+      execution.scope.kind === "org" && runtime.config.bindings.telegram
         ? {
             runtime: createTelegramRuntime({
               object: kernel.scoped("TELEGRAM", execution.scope, runtime.objects.telegram),

@@ -82,7 +82,7 @@ export const reson8Capability: BackofficeCapability = {
     eventSources: [],
     actionProviders: ["reson8"],
     hookScopes: [],
-    skillPaths: ["skills/reson8-connection/SKILL.md"],
+    skillPaths: ["skills/reson8-integration/SKILL.md"],
     externalEntities: [],
     automationEvents: [
       {
