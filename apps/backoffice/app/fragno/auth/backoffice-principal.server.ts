@@ -8,11 +8,8 @@ import {
 } from "@/backoffice-runtime/context";
 import { BackofficeForbiddenError, isBackofficeForbiddenError } from "@/backoffice-runtime/kernel";
 
-import {
-  authorizeBackofficePrincipal,
-  requireBackofficePrincipal,
-  type BackofficeAuthPrincipal,
-} from "./request-auth.server";
+import type { BackofficeAuthPrincipal } from "./contracts";
+import { authorizeBackofficePrincipal, requireBackofficePrincipal } from "./request-auth.server";
 
 const assertAuthenticatedUserCanAccessScope = (
   auth: BackofficeAuthPrincipal,

@@ -2,7 +2,7 @@ import { BackofficePageHeader } from "@fragno-private/design-system/page-header"
 import type { Dispatch, SetStateAction } from "react";
 import { isRouteErrorResponse } from "react-router";
 
-import type { BackofficeMeData } from "@/fragno/auth/auth-client";
+import type { BackofficeMeData } from "@/fragno/auth/contracts";
 
 import { AutomationSubpageTabs } from "../../automations/shared";
 import { getRouteErrorMessage, getBackofficeOrganizationNotFound } from "../../route-errors";

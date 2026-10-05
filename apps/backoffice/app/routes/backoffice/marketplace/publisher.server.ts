@@ -1,4 +1,4 @@
-import type { BackofficeMeData } from "@/fragno/auth/auth-client";
+import type { BackofficeMeData } from "@/fragno/auth/contracts";
 import type { MarketplaceOwner } from "@/fragno/marketplace/contracts";
 
 type MarketplaceOrganizationOwner = MarketplaceOwner & {

@@ -4,7 +4,7 @@ import {
   type BackofficeOrganizationIdentity,
   type BackofficeResolvedScope,
 } from "@/backoffice-runtime/resolved-scope";
-import { backofficeMeDataSchema, type BackofficeAuthPrincipal } from "@/fragno/auth/contracts";
+import type { BackofficeAuthPrincipal } from "@/fragno/auth/contracts";
 import {
   resolveBackofficeJwtTransport,
   type ResolvedBackofficeJwtTransport,
@@ -143,7 +143,7 @@ export function createBackofficeRequestState(
     return me
       ? {
           status: "authenticated",
-          me: backofficeMeDataSchema.parse(me),
+          me,
           expiresAt: new Date(authentication.payload.exp * 1_000),
         }
       : { status: "invalid", reason: "invalid" };

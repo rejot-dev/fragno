@@ -48,7 +48,6 @@ export type OrganizationMember = {
 
 export type OrganizationInvitation = {
   id: string;
-  token?: string;
   organizationId: string;
   email: string;
   roles: string[];
@@ -158,7 +157,6 @@ const organizationMemberSchema = z.object({
 
 const organizationInvitationSchema = z.object({
   id: z.string(),
-  token: z.string().optional(),
   organizationId: z.string(),
   email: z.string(),
   roles: z.array(z.string()),

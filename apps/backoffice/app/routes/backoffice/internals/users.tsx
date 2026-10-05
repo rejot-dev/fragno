@@ -2,85 +2,35 @@ import { Button } from "@fragno-private/design-system/button";
 import { cn } from "@fragno-private/design-system/cn";
 import { Input } from "@fragno-private/design-system/input";
 import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
-import { useEffect, useReducer, useState } from "react";
-import { useOutletContext } from "react-router";
+import { useState } from "react";
+import {
+  useLoaderData,
+  useNavigation,
+  useOutletContext,
+  useRevalidator,
+  useSearchParams,
+} from "react-router";
 
 import { authClient } from "@/fragno/auth/auth-client";
+import { loadSystemUsers } from "@/fragno/auth/auth-directory.server";
 
+import type { Route } from "./+types/users";
 import { internalsScopeBasePath } from "./internals-scope";
 import type { InternalsLayoutContext } from "./layout";
 
-const USERS_PAGE_SIZE = 50;
 const GLOBAL_ROLES = ["user", "admin"] as const;
 
-type UsersHook = ReturnType<typeof authClient.useUsers>;
-type SystemUser = NonNullable<UsersHook["data"]>["users"][number];
+export async function loader({ request, context }: Route.LoaderArgs) {
+  return await loadSystemUsers({ request, context });
+}
+
+type SystemUser = Awaited<ReturnType<typeof loader>>["users"][number];
 type GlobalRole = SystemUser["role"];
 
 type ActionNotice = {
   tone: "success" | "error";
   message: string;
 } | null;
-
-type UsersDirectoryState = {
-  search: string;
-  users: SystemUser[];
-  page: number;
-  total: number;
-  totalPages: number;
-  initialized: boolean;
-};
-
-type UsersDirectoryAction =
-  | {
-      type: "resultsReceived";
-      users: SystemUser[];
-      page: number;
-      total: number;
-      totalPages: number;
-    }
-  | { type: "searchChanged"; search: string }
-  | { type: "pageRequested"; page: number }
-  | { type: "userRoleUpdated"; userId: string; role: GlobalRole };
-
-const INITIAL_USERS_DIRECTORY_STATE: UsersDirectoryState = {
-  search: "",
-  users: [],
-  page: 1,
-  total: 0,
-  totalPages: 1,
-  initialized: false,
-};
-
-const usersDirectoryReducer = (
-  state: UsersDirectoryState,
-  action: UsersDirectoryAction,
-): UsersDirectoryState => {
-  switch (action.type) {
-    case "resultsReceived":
-      return {
-        ...state,
-        users: action.users,
-        page: action.page,
-        total: action.total,
-        totalPages: action.totalPages,
-        initialized: true,
-      };
-    case "searchChanged":
-      return { ...INITIAL_USERS_DIRECTORY_STATE, search: action.search };
-    case "pageRequested":
-      return { ...state, page: action.page };
-    case "userRoleUpdated":
-      return {
-        ...state,
-        users: state.users.map((user) =>
-          user.id === action.userId ? { ...user, role: action.role } : user,
-        ),
-      };
-  }
-
-  throw new Error(`Unhandled action type`);
-};
 
 const USER_DATE_FORMATTER = new Intl.DateTimeFormat("en", {
   dateStyle: "medium",
@@ -97,36 +47,11 @@ export function meta() {
 export default function BackofficeInternalUsers() {
   const { me, selectedRouteScope } = useOutletContext<InternalsLayoutContext>();
   const internalsBasePath = internalsScopeBasePath(selectedRouteScope);
-  const [searchInput, setSearchInput] = useState("");
-  const [directory, dispatchDirectory] = useReducer(
-    usersDirectoryReducer,
-    INITIAL_USERS_DIRECTORY_STATE,
-  );
-  const { search, users, page, total, totalPages, initialized } = directory;
-
-  const { data, loading, error } = authClient.useUsers({
-    query: {
-      search: search || undefined,
-      sortBy: "createdAt",
-      sortOrder: "desc",
-      pageSize: String(USERS_PAGE_SIZE),
-      page: String(page),
-    },
-  });
-
-  useEffect(() => {
-    if (!data) {
-      return;
-    }
-
-    dispatchDirectory({
-      type: "resultsReceived",
-      users: data.users,
-      page: data.page,
-      total: data.total,
-      totalPages: data.totalPages,
-    });
-  }, [data]);
+  const { search, users, page, total, totalPages } = useLoaderData<typeof loader>();
+  const [searchInput, setSearchInput] = useState(search);
+  const [, setSearchParams] = useSearchParams();
+  const revalidator = useRevalidator();
+  const loading = useNavigation().state !== "idle";
 
   const runSearch = () => {
     const nextSearch = searchInput.trim();
@@ -134,14 +59,12 @@ export default function BackofficeInternalUsers() {
       return;
     }
 
-    dispatchDirectory({ type: "searchChanged", search: nextSearch });
+    setSearchParams({ search: nextSearch });
   };
 
-  const updateUser = (userId: string, role: GlobalRole) => {
-    dispatchDirectory({ type: "userRoleUpdated", userId, role });
+  const updateUser = () => {
+    void revalidator.revalidate();
   };
-
-  const isInitialLoading = loading && !initialized && users.length === 0;
 
   return (
     <div className="space-y-4">
@@ -198,7 +121,7 @@ export default function BackofficeInternalUsers() {
               disabled={loading}
               onClick={() => {
                 setSearchInput("");
-                dispatchDirectory({ type: "searchChanged", search: "" });
+                setSearchParams({});
               }}
               className="font-semibold text-[var(--bo-fg)] underline underline-offset-4 disabled:opacity-60"
             >
@@ -208,15 +131,7 @@ export default function BackofficeInternalUsers() {
         ) : null}
 
         <div className="mt-4">
-          {isInitialLoading ? (
-            <p role="status" className="py-8 text-center text-sm text-[var(--bo-muted)]">
-              Loading system users…
-            </p>
-          ) : error && users.length === 0 ? (
-            <p role="alert" className="py-8 text-center text-sm text-red-600">
-              {getErrorMessage(error)}
-            </p>
-          ) : users.length === 0 ? (
+          {users.length === 0 ? (
             <p className="py-8 text-center text-sm text-[var(--bo-muted)]">No users found.</p>
           ) : (
             <div className="overflow-x-auto border border-[color:var(--bo-border)]">
@@ -251,13 +166,7 @@ export default function BackofficeInternalUsers() {
             </div>
           )}
 
-          {error && users.length > 0 ? (
-            <p role="alert" className="mt-3 text-xs text-red-600">
-              {getErrorMessage(error)}
-            </p>
-          ) : null}
-
-          {initialized && users.length > 0 ? (
+          {users.length > 0 ? (
             <div className="mt-3 flex items-center justify-between gap-3">
               <p className="text-xs text-[var(--bo-muted-2)]">
                 Page {page} of {totalPages}
@@ -266,7 +175,7 @@ export default function BackofficeInternalUsers() {
                 <Button
                   disabled={loading || page === 1}
                   onClick={() => {
-                    dispatchDirectory({ type: "pageRequested", page: page - 1 });
+                    setSearchParams({ search, page: String(page - 1) });
                   }}
                   variant="secondary"
                 >
@@ -275,7 +184,7 @@ export default function BackofficeInternalUsers() {
                 <Button
                   disabled={loading || page >= totalPages}
                   onClick={() => {
-                    dispatchDirectory({ type: "pageRequested", page: page + 1 });
+                    setSearchParams({ search, page: String(page + 1) });
                   }}
                   variant="secondary"
                 >

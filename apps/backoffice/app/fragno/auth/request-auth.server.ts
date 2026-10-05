@@ -10,8 +10,6 @@ import {
   type BackofficeAuthenticationFailureReason,
 } from "@/worker-runtime/request-state";
 
-export type { BackofficeAuthPrincipal } from "@/fragno/auth/contracts";
-
 function authFailureResponse(
   reason: BackofficeAuthenticationFailureReason,
   headers: Array<[string, string]>,

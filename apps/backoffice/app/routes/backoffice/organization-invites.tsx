@@ -3,9 +3,16 @@ import { cn } from "@fragno-private/design-system/cn";
 import { FormContainer, FormField } from "@fragno-private/design-system/form-container";
 import { Input } from "@fragno-private/design-system/input";
 import { useEffect, useReducer, useState, type SubmitEvent } from "react";
-import { useOutletContext } from "react-router";
+import { useLoaderData, useOutletContext, useRevalidator } from "react-router";
 
 import { authClient } from "@/fragno/auth/auth-client";
+import { loadOrganizationInvitations } from "@/fragno/auth/auth-directory.server";
+
+import type { Route } from "./+types/organization-invites";
+
+export async function loader({ request, context, params }: Route.LoaderArgs) {
+  return await loadOrganizationInvitations({ request, context }, params.orgSlug);
+}
 
 import type { OrganizationLayoutContext } from "./organization-layout";
 import { Notice } from "./organization-shared";
@@ -21,7 +28,6 @@ type InvitationFormState = {
   email: string;
   roles: Array<(typeof ROLE_OPTIONS)[number]>;
   notice: ActionNotice;
-  token: string | null;
   invitationId: string | null;
 };
 
@@ -34,7 +40,6 @@ type InvitationFormAction =
   | {
       type: "submissionSucceeded";
       email: string;
-      token: string | null;
       invitationId: string | null;
     };
 
@@ -42,7 +47,6 @@ const initialInvitationFormState: InvitationFormState = {
   email: "",
   roles: ["member"],
   notice: null,
-  token: null,
   invitationId: null,
 };
 
@@ -63,7 +67,7 @@ function invitationFormReducer(
           : [...state.roles, action.role],
       };
     case "submissionStarted":
-      return { ...state, notice: null, token: null, invitationId: null };
+      return { ...state, notice: null, invitationId: null };
     case "submissionRejected":
       return { ...state, notice: { type: "error", message: action.message } };
     case "submissionSucceeded":
@@ -71,7 +75,6 @@ function invitationFormReducer(
         email: "",
         roles: ["member"],
         notice: { type: "success", message: `Invitation created for ${action.email}.` },
-        token: action.token,
         invitationId: action.invitationId,
       };
     default: {
@@ -124,13 +127,8 @@ export default function BackofficeOrganizationInvites() {
     me.user.role === "admin" || member.roles.some((role) => role === "owner" || role === "admin");
 
   const [origin, setOrigin] = useState("");
-  const {
-    data: invitationsData,
-    loading: invitationsLoading,
-    error: invitationsError,
-  } = authClient.useOrganizationInvitations({
-    path: { organizationId: organization.id },
-  });
+  const invitationsData = useLoaderData<typeof loader>();
+  const revalidator = useRevalidator();
 
   const {
     mutate: inviteMember,
@@ -170,14 +168,11 @@ export default function BackofficeOrganizationInvites() {
         path: { organizationId: organization.id },
         body: { email, roles },
       });
-      const invitation =
-        response && typeof response === "object" && "invitation" in response
-          ? (response as { invitation?: { id?: string; token?: string } }).invitation
-          : undefined;
+      const invitation = response.invitation;
+      await revalidator.revalidate();
       dispatchInviteForm({
         type: "submissionSucceeded",
         email,
-        token: invitation?.token ?? null,
         invitationId: invitation?.id ?? null,
       });
     } catch (error) {
@@ -193,10 +188,9 @@ export default function BackofficeOrganizationInvites() {
   };
 
   const invitations = invitationsData?.invitations ?? [];
-  const inviteLink =
-    inviteForm.token && inviteForm.invitationId
-      ? `${origin || ""}/backoffice/invitations/${inviteForm.invitationId}?token=${inviteForm.token}`
-      : null;
+  const inviteLink = inviteForm.invitationId
+    ? `${origin}/backoffice/invitations/${encodeURIComponent(inviteForm.invitationId)}`
+    : null;
 
   return (
     <div className="space-y-4">
@@ -288,11 +282,7 @@ export default function BackofficeOrganizationInvites() {
         title={`Open invitations (${invitations.length})`}
         description="Track pending invitations for this organization and copy invite links to share."
       >
-        {invitationsLoading ? (
-          <p className="text-sm text-[var(--bo-muted)]">Loading invitations...</p>
-        ) : invitationsError ? (
-          <p className="text-sm text-red-600">{getErrorMessage(invitationsError)}</p>
-        ) : invitations.length === 0 ? (
+        {invitations.length === 0 ? (
           <p className="text-sm text-[var(--bo-muted)]">No pending invitations.</p>
         ) : (
           <div className="overflow-hidden border border-[color:var(--bo-border)]">
@@ -318,7 +308,7 @@ export default function BackofficeOrganizationInvites() {
               </thead>
               <tbody className="divide-y divide-[color:var(--bo-border)] bg-[var(--bo-panel)]">
                 {invitations.map((invitation) => {
-                  const link = `${origin || ""}/backoffice/invitations/${invitation.id}?token=${invitation.token}`;
+                  const link = `${origin || ""}/backoffice/invitations/${encodeURIComponent(invitation.id)}`;
                   return (
                     <tr key={invitation.id} className="text-[var(--bo-muted)]">
                       <td className="px-3 py-2 font-semibold text-[var(--bo-fg)]">

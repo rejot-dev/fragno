@@ -1,85 +1,25 @@
 // @vitest-environment happy-dom
+import { afterEach, assert, describe, expect, test, vi } from "vitest";
 
-import { afterEach, assert, beforeEach, describe, expect, test, vi } from "vitest";
+import { createMemoryRouter, RouterProvider } from "react-router";
 
-import { MemoryRouter, Route, Routes } from "react-router";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 
-import { act, cleanup, render, screen } from "@testing-library/react";
-
-const { respondInvitation, useUserInvitations } = vi.hoisted(() => ({
-  respondInvitation: vi.fn(),
-  useUserInvitations: vi.fn(),
-}));
-
+const { respondInvitation } = vi.hoisted(() => ({ respondInvitation: vi.fn() }));
 vi.mock("@/fragno/auth/auth-client", () => ({
   authClient: {
-    useRespondOrganizationInvitation: () => ({
-      mutate: respondInvitation,
-      loading: false,
-    }),
-    useUserInvitations,
+    useRespondOrganizationInvitation: () => ({ mutate: respondInvitation, loading: false }),
   },
 }));
-
 import BackofficeInvitationAccept from "./invitation-accept";
-
-const invitationId = "invitation-1";
-const invitationToken = "invitation-token";
-
-beforeEach(() => {
-  useUserInvitations.mockReturnValue({
-    data: {
-      invitations: [
-        {
-          invitation: {
-            id: invitationId,
-            organizationId: "organization-1",
-            email: "member@example.com",
-            roles: ["member"],
-            status: "pending",
-            inviterId: "owner-1",
-            expiresAt: new Date("2026-08-21T12:00:00.000Z"),
-            createdAt: new Date("2026-08-20T12:00:00.000Z"),
-            token: invitationToken,
-          },
-          organization: {
-            id: "organization-1",
-            slug: "example-organization",
-            name: "Example Organization",
-          },
-        },
-      ],
-    },
-    loading: false,
-    error: null,
-  });
-});
 
 afterEach(() => {
   cleanup();
   respondInvitation.mockReset();
-  useUserInvitations.mockReset();
 });
 
-function renderInvitation() {
-  return render(
-    <MemoryRouter
-      initialEntries={[
-        `/backoffice/invitations/${invitationId}?token=${encodeURIComponent(invitationToken)}`,
-      ]}
-    >
-      <Routes>
-        <Route
-          path="/backoffice/invitations/:invitationId"
-          element={<BackofficeInvitationAccept />}
-        />
-      </Routes>
-    </MemoryRouter>,
-  );
-}
-
 describe("Backoffice invitation acceptance", () => {
-  test("shows success after the acceptance request completes", async () => {
+  test("requires confirmation and shows success after acceptance completes", async () => {
     let resolveAcceptance: ((value: unknown) => void) | null = null;
     respondInvitation.mockImplementation(
       () =>
@@ -87,23 +27,41 @@ describe("Backoffice invitation acceptance", () => {
           resolveAcceptance = resolve;
         }),
     );
-
-    renderInvitation();
-
-    expect(await screen.findByText("Accepting invitation...")).toBeTruthy();
+    const router = createMemoryRouter(
+      [
+        {
+          path: "/backoffice/invitations/:invitationId",
+          Component: BackofficeInvitationAccept,
+          loader: () => ({
+            invitation: { id: "invitation-1" },
+            organization: {
+              id: "organization-1",
+              slug: "example-organization",
+              name: "Example Organization",
+            },
+          }),
+        },
+      ],
+      { initialEntries: ["/backoffice/invitations/invitation-1"] },
+    );
+    render(<RouterProvider router={router} />);
+    const accept = await screen.findByRole("button", { name: "Accept invitation" });
+    expect(respondInvitation).not.toHaveBeenCalled();
+    fireEvent.click(accept);
     await act(async () => {
       resolveAcceptance?.({ invitation: { organizationId: "organization-1" } });
       await Promise.resolve();
     });
-
     expect(await screen.findByText("Invitation accepted.")).toBeTruthy();
-    expect(screen.queryByText("Accepting invitation...")).toBeNull();
-    const organizationLink = screen.getByRole("link", { name: "Open organization" });
-    const destination = new URL(organizationLink.getAttribute("href") ?? "", "https://example.com");
+    const destination = new URL(
+      screen.getByRole("link", { name: "Open organization" }).getAttribute("href") ?? "",
+      "https://example.com",
+    );
     assert(destination.searchParams.get("organizationId") === "organization-1");
     assert(
       destination.searchParams.get("returnTo") === "/backoffice/organizations/example-organization",
     );
     expect(respondInvitation).toHaveBeenCalledTimes(1);
+    router.dispose();
   });
 });

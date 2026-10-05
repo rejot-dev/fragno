@@ -1,3 +1,26 @@
+import { useSyncExternalStore } from "react";
+
+import type { BackofficeMeData } from "./contracts";
+
+/** A navigation preference never grants access or widens a credential's scope. */
+export function usePreferredOrganization(): string | null {
+  return useSyncExternalStore(
+    subscribeToPreferredOrganization,
+    readPreferredOrganization,
+    () => null,
+  );
+}
+
+/** Discards a saved preference when it no longer belongs to the user's organizations. */
+export function resolvePreferredOrganizationId(
+  me: BackofficeMeData,
+  storedOrganizationId: string | null,
+): string | null {
+  return me.organizations.some((entry) => entry.organization.id === storedOrganizationId)
+    ? storedOrganizationId
+    : (me.activeOrganization?.organization.id ?? me.organizations[0]?.organization.id ?? null);
+}
+
 const ORGANIZATION_PREFERENCE_KEY = "fragno-backoffice-default-organization";
 const ORGANIZATION_PREFERENCE_EVENT = "fragno-backoffice-default-organization-change";
 

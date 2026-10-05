@@ -1,13 +1,19 @@
 import { Button, ButtonLink } from "@fragno-private/design-system/button";
 import { FormContainer } from "@fragno-private/design-system/form-container";
 import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
-import { useMemo, useState, useSyncExternalStore } from "react";
-import { useOutletContext, useRevalidator } from "react-router";
+import { useState } from "react";
+import { useLoaderData, useOutletContext, useRevalidator } from "react-router";
 
 import { authClient } from "@/fragno/auth/auth-client";
+import { loadUserInvitations } from "@/fragno/auth/auth-directory.server";
+import {
+  usePreferredOrganization,
+  resolvePreferredOrganizationId,
+} from "@/fragno/auth/preferred-organization.client";
 import type { BackofficeLayoutContext } from "@/layouts/backoffice-layout";
 import { buildBackofficeOrganizationSwitchPath } from "@/routes/backoffice/auth-navigation";
 
+import type { Route } from "./+types/organizations";
 import { Notice } from "./organization-shared";
 import {
   type ActionNotice,
@@ -21,12 +27,11 @@ import {
   sortOrganizationsByPreference,
 } from "./organizations-preference";
 
-type UserInvitationsHook = ReturnType<typeof authClient.useUserInvitations>;
-
-function subscribeToClientHydration() {
-  return () => {};
+export async function loader({ request, context }: Route.LoaderArgs) {
+  return await loadUserInvitations({ request, context });
 }
-type UserInvitation = NonNullable<UserInvitationsHook["data"]>["invitations"][number];
+
+type UserInvitation = Awaited<ReturnType<typeof loader>>["invitations"][number];
 
 export function meta() {
   return [
@@ -37,48 +42,20 @@ export function meta() {
 
 export default function BackofficeOrganizations() {
   const { me: initialMe } = useOutletContext<BackofficeLayoutContext>();
-  const preference = authClient.usePreferredOrganizationPreference();
+  const storedOrganizationId = usePreferredOrganization();
   const { mutate: switchOrganization, loading: switchingOrganization } =
     authClient.useSwitchOrganization();
   const revalidator = useRevalidator();
-  const initialPreference = useMemo(() => {
-    if (!initialMe) {
-      return null;
-    }
-
-    try {
-      return authClient.preferredOrganization.resolve(
-        initialMe,
-        authClient.preferredOrganization.read(),
-      );
-    } catch {
-      return null;
-    }
-  }, [initialMe]);
-  const {
-    data: userInvitationsData,
-    loading: userInvitationsLoading,
-    error: userInvitationsError,
-  } = authClient.useUserInvitations();
+  const userInvitationsData = useLoaderData<typeof loader>();
   const { mutate: respondInvitation, loading: respondingInvitation } =
     authClient.useRespondOrganizationInvitation();
   const [invitationNotice, setInvitationNotice] = useState<ActionNotice>(null);
   const [preferredOrganizationNotice, setPreferredOrganizationNotice] =
     useState<ActionNotice>(null);
   const [activeInvitationId, setActiveInvitationId] = useState<string | null>(null);
-  const clientPreferencesReady = useSyncExternalStore(
-    subscribeToClientHydration,
-    () => true,
-    () => false,
-  );
   const me = initialMe;
   const organizations = me?.organizations ?? [];
-  const preferredOrganizationId = clientPreferencesReady
-    ? (preference.preferredOrganizationId ??
-      preference.storedOrganizationId ??
-      initialPreference?.resolvedOrganizationId ??
-      me.activeOrganizationId)
-    : me.activeOrganizationId;
+  const preferredOrganizationId = resolvePreferredOrganizationId(me, storedOrganizationId);
   const openInvitations = userInvitationsData?.invitations ?? [];
   const sortedOrganizations = sortOrganizationsByPreference(organizations, preferredOrganizationId);
 
@@ -95,8 +72,9 @@ export default function BackofficeOrganizations() {
     try {
       await respondInvitation({
         path: { invitationId: entry.invitation.id },
-        body: { action, token: entry.invitation.token },
+        body: { action },
       });
+      await revalidator.revalidate();
       setInvitationNotice({
         type: "success",
         message:
@@ -147,11 +125,7 @@ export default function BackofficeOrganizations() {
         title={`Open invitations (${openInvitations.length})`}
         description="Invitations addressed to your account. Accepting adds you to the organization."
       >
-        {userInvitationsLoading ? (
-          <p className="text-sm text-[var(--bo-muted)]">Loading invitations...</p>
-        ) : userInvitationsError ? (
-          <p className="text-sm text-red-600">{getErrorMessage(userInvitationsError)}</p>
-        ) : openInvitations.length === 0 ? (
+        {openInvitations.length === 0 ? (
           <p className="text-sm text-[var(--bo-muted)]">No open invitations.</p>
         ) : (
           <div className="overflow-hidden border border-[color:var(--bo-border)]">

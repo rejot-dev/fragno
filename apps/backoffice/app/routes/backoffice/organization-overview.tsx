@@ -2,7 +2,7 @@ import { Button } from "@fragno-private/design-system/button";
 import { FormContainer, FormField } from "@fragno-private/design-system/form-container";
 import { Input } from "@fragno-private/design-system/input";
 import { useEffect, useState, type SubmitEvent } from "react";
-import { useOutletContext } from "react-router";
+import { useOutletContext, useRevalidator } from "react-router";
 
 import { authClient } from "@/fragno/auth/auth-client";
 
@@ -16,6 +16,7 @@ export function meta() {
 
 export default function BackofficeOrganizationOverview() {
   const { organization, member, me } = useOutletContext<OrganizationLayoutContext>();
+  const revalidator = useRevalidator();
   const currentUserRole = me.user.role;
   const isActive = me.activeOrganization?.organization.id === organization.id;
   const canManageOrganization =
@@ -51,6 +52,7 @@ export default function BackofficeOrganizationOverview() {
         path: { organizationId: organization.id },
         body: { name: nextName },
       });
+      await revalidator.revalidate();
       setNameNotice({ type: "success", message: "Organization name updated." });
     } catch (error) {
       setNameNotice({ type: "error", message: getErrorMessage(error) });

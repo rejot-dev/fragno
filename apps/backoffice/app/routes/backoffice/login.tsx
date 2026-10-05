@@ -9,12 +9,12 @@ import { useState } from "react";
 import { Form, Link, redirect, useActionData, useLoaderData, useNavigation } from "react-router";
 import { z } from "zod";
 
-import { authClient } from "@/fragno/auth/auth-client";
 import {
   callBetterAuth,
   createBackofficeIdentityChangeHeaders,
   getBackofficeMe,
 } from "@/fragno/auth/auth-server";
+import { betterAuthClient } from "@/fragno/auth/better-auth.client";
 import { issueBackofficeTokenResultSchema } from "@/fragno/auth/contracts";
 import { requestEmailVerificationResend } from "@/fragno/auth/email-verification.server";
 import { readPreferredOrganization } from "@/fragno/auth/preferred-organization.client";
@@ -373,7 +373,7 @@ export default function BackofficeLogin() {
         buildBackofficeAuthBootstrapPath(returnTo),
         window.location.origin,
       ).toString();
-      const result = await authClient.signIn.social({
+      const result = await betterAuthClient.signIn.social({
         provider: "github",
         callbackURL,
         disableRedirect: true,
