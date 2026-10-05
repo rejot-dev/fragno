@@ -57,6 +57,7 @@ export async function createCodemodeTestServer(
   const compile = wrapCompiler(compileCodemodeTestWorker);
   const resolveDir = import.meta.dirname;
   const worker = await build({
+    conditions: ["workerd"],
     stdin: {
       resolveDir,
       contents: `
@@ -66,7 +67,8 @@ import {
   readTypeCheckFilesServiceRequest,
 } from "../compiler/compiler-service-protocol";
 import { authenticateCodemodeHttpRequest } from "../transport/codemode-http-authentication";
-import { handleCodemodeWorkerRequest } from "../worker/codemode-worker-session";
+import { CODEMODE_EXECUTION_HTTP_PATH } from "../execution/codemode-activation-contract";
+import { acceptCodemodeBridgeSession } from "../remote/codemode-bridge-session";
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -80,9 +82,16 @@ export default {
       }
       return createTypeCheckFilesServiceResponse({ diagnostics: [] });
     }
-    return await handleCodemodeWorkerRequest(request, env.API_KEY, {
+    const authenticationError = await authenticateCodemodeHttpRequest(request, env.API_KEY);
+    if (authenticationError) return authenticationError;
+    if (url.pathname !== CODEMODE_EXECUTION_HTTP_PATH || url.search) return new Response("Not found", { status: 404 });
+    if (request.method !== "GET") return new Response("Method not allowed", { status: 405, headers: { allow: "GET" } });
+    if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") return new Response("WebSocket upgrade required", { status: 426 });
+    const pair = new WebSocketPair();
+    acceptCodemodeBridgeSession(pair[1], {
       loader: env.LOADER, compile: createWorkerCompilerServiceClient(env.COMPILER),
     }, ctx);
+    return new Response(null, { status: 101, webSocket: pair[0] });
   },
 };`,
     },

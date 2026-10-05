@@ -1,7 +1,7 @@
 import { hasExpectedBearerAuthorization } from "@fragno-dev/codemode/transport/codemode-http-authentication";
 import type { Context, Hono } from "hono";
 
-import type { SandboxBridgeHonoEnv } from "./codemode-http-routes";
+import type { SandboxBridgeHonoEnv } from "./sandbox-bridge-http-env";
 
 type SandboxLifecycleConfiguration = {
   keepAlive?: boolean;

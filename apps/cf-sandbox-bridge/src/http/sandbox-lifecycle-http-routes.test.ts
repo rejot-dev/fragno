@@ -2,7 +2,7 @@ import { assert, expect, test, vi } from "vitest";
 
 import { Hono } from "hono";
 
-import type { SandboxBridgeHonoEnv } from "./codemode-http-routes";
+import type { SandboxBridgeHonoEnv } from "./sandbox-bridge-http-env";
 import { registerSandboxLifecycleHttpRoutes } from "./sandbox-lifecycle-http-routes";
 
 function createSandboxLifecycleRouteTestApp() {

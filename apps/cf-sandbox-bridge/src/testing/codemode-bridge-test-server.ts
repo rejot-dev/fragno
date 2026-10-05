@@ -62,7 +62,7 @@ export async function createCodemodeBridgeTestServer() {
       resolveDir: import.meta.dirname,
       contents: `
 import { readCompileWorkerServiceResponse } from "@fragno-dev/codemode/compiler/compiler-service-protocol";
-import { DynamicWorkerExecutor } from "@fragno-dev/codemode/worker/codemode-executor";
+import { DynamicWorkerExecutor } from "@fragno-dev/codemode/guest/codemode-worker-executor";
 export default {
   async fetch(incoming, env) {
     // Production compiler clients construct fresh protocol requests, without an inbound HTTP AbortSignal.

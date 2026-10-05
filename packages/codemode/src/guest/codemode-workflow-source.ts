@@ -1,9 +1,9 @@
 import { CODEMODE_LIMITS } from "../codemode-limits";
 import { normalizeCode } from "../runtime-api";
-import { CODEMODE_SANDBOX_CODEC_SOURCE } from "./codemode-guest-source";
+import { CODEMODE_GUEST_API_SOURCE } from "./codemode-guest-api-source";
 
 /** Generates the same guest workflow API for local and WebSocket-backed host targets. */
-export function createRemoteWorkflowWorkerCode(input: {
+export function createCodemodeWorkflowSource(input: {
   code: string;
   providerProxySource: string;
 }): string {
@@ -11,7 +11,7 @@ export function createRemoteWorkflowWorkerCode(input: {
   return `
 import { WorkerEntrypoint } from "cloudflare:workers";
 import { AsyncLocalStorage } from "node:async_hooks";
-${CODEMODE_SANDBOX_CODEC_SOURCE}
+${CODEMODE_GUEST_API_SOURCE}
 let __dispatchers = {};
 ${input.providerProxySource}
 const logs = [];
@@ -28,7 +28,11 @@ console.error = (...args) => captureLog("[error] ", args);
 const workflowProgram = (${code});
 const suspensionKey = "__fragnoRemoteWorkflowSuspended";
 const isSuspension = (value) => Boolean(value) && typeof value === "object" && value[suspensionKey] === true && "reason" in value;
-const unwrap = (value) => { if (isSuspension(value)) throw value; return value; };
+const unwrap = (result) => {
+  if (result.status === "suspended") throw { [suspensionKey]: true, reason: result.reason };
+  if (result.status === "error") __throwCodemodeProviderError(result.error);
+  return result.value;
+};
 const unsupported = (name) => () => { throw new Error(name); };
 function createRemoteWorkflowStep(stepTarget) {
   const scopeStorage = new AsyncLocalStorage();
@@ -48,7 +52,19 @@ function createRemoteWorkflowStep(stepTarget) {
       triggerHook: (operation) => queue(target.triggerHook(operation)),
       onEvent: (type, handler) => {
         let active = true;
-        const subscription = Promise.resolve(target.onEvent(type, handler));
+        const subscription = Promise.resolve(target.onEvent(type, async (event) => {
+          if (!active) return { status: "ok", value: false };
+          let consumed = false;
+          let delivering = true;
+          try {
+            await handler({ ...event, consume() {
+              if (!delivering) throw new Error("CODEMODE_EVENT_DELIVERY_ENDED");
+              consumed = true;
+            } });
+            return { status: "ok", value: active && consumed };
+          } catch (error) { return __codemodeCallbackFailure(error); }
+          finally { delivering = false; }
+        }));
         queue(subscription);
         return () => {
           if (!active) return;
@@ -71,30 +87,37 @@ function createRemoteWorkflowStep(stepTarget) {
       const config = typeof configOrCallback === "function" ? undefined : configOrCallback;
       const callback = typeof configOrCallback === "function" ? configOrCallback : maybeCallback;
       if (typeof callback !== "function") throw new Error("WORKFLOW_STEP_CALLBACK_REQUIRED");
-      return unwrap(await stepTarget.do(scopeStorage.getStore() ?? null, name, config, async (target, scope) => {
-        return await scopeStorage.run(scope, async () => {
+      return unwrap(await (scopeStorage.getStore() ?? stepTarget).do(name, config, async (target, scopedStep) => {
+        return await scopeStorage.run(scopedStep, async () => {
           const tx = wrapTx(target);
-          try { return await callback(tx); }
-          catch (error) {
-            if (isSuspension(error)) return error;
-            if (error?.name === "RemoteWorkflowSuspendedError" && error.reason) return { [suspensionKey]: true, reason: error.reason };
-            throw error;
-          } finally { await tx.__flush(); }
+          let value;
+          try {
+            try { value = await callback(tx); }
+            catch (error) {
+              if (isSuspension(error)) value = error;
+              else if (error?.name === "RemoteWorkflowSuspendedError" && error.reason) value = { [suspensionKey]: true, reason: error.reason };
+              else throw error;
+            } finally { await tx.__flush(); }
+            return { status: "ok", value };
+          } catch (error) { return __codemodeCallbackFailure(error); }
         });
       }));
     },
-    sleep: async (name, duration) => unwrap(await stepTarget.sleep(scopeStorage.getStore() ?? null, name, duration)),
-    sleepUntil: async (name, timestamp) => unwrap(await stepTarget.sleepUntil(scopeStorage.getStore() ?? null, name, timestamp)),
+    sleep: async (name, duration) => unwrap(await (scopeStorage.getStore() ?? stepTarget).sleep(name, duration)),
+    sleepUntil: async (name, timestamp) => unwrap(await (scopeStorage.getStore() ?? stepTarget).sleepUntil(name, timestamp)),
     waitForEvent: async (name, options) => {
       const remoteOptions = { type: options.type, timeout: options.timeout };
       if (typeof options.onConsume === "function") {
         remoteOptions.onConsume = async (target, event) => {
           const tx = wrapTx(target);
-          try { await options.onConsume(tx, event); }
-          finally { await tx.__flush(); }
+          try {
+            try { await options.onConsume(tx, event); }
+            finally { await tx.__flush(); }
+            return { status: "ok", value: undefined };
+          } catch (error) { return __codemodeCallbackFailure(error); }
         };
       }
-      return unwrap(await stepTarget.waitForEvent(scopeStorage.getStore() ?? null, name, remoteOptions));
+      return unwrap(await (scopeStorage.getStore() ?? stepTarget).waitForEvent(name, remoteOptions));
     },
   };
 }

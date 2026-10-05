@@ -8,7 +8,8 @@ import {
   readCompileWorkerServiceResponse,
   readTypeCheckFilesServiceResponse,
 } from "@fragno-dev/codemode/compiler/compiler-service-protocol";
-import { createCodemodeNodeExecutor } from "@fragno-dev/codemode/transport/codemode-node-client";
+import { createCodemodeHost } from "@fragno-dev/codemode/host/codemode-host-capabilities";
+import { createCodemodeNodeExecutor } from "@fragno-dev/codemode/remote/codemode-node-executor";
 
 import { createCodemodeBridgeTestServer } from "../testing/codemode-bridge-test-server";
 
@@ -160,15 +161,7 @@ test("RPC, HTTP, and WebSocket compilation share compiler admission and recover"
     providers: [],
     timeoutMs: 10_000,
   };
-  const host = {
-    async handle() {
-      throw new Error("No tools are exposed");
-    },
-    close() {},
-    async settle() {
-      return null;
-    },
-  };
+  const host = () => createCodemodeHost([], null);
   try {
     // The ninth RPC returns only once all eight admitted calls are waiting for file contents.
     await expect(Promise.race(pending)).resolves.toMatchObject({
@@ -206,7 +199,7 @@ test("RPC, HTTP, and WebSocket compilation share compiler admission and recover"
         sourcePaths: ["script.js"],
       }),
     ).rejects.toThrow("CODEMODE_COMPILATION_LIMIT_EXCEEDED");
-    await expect(execute(activation, host)).resolves.toMatchObject({
+    await expect(execute(activation, host())).resolves.toMatchObject({
       status: "failed",
       error: { message: "CODEMODE_COMPILATION_LIMIT_EXCEEDED" },
     });
@@ -218,7 +211,7 @@ test("RPC, HTTP, and WebSocket compilation share compiler admission and recover"
   expect(outcomes.filter((outcome) => outcome.status === "checked")).toHaveLength(
     CODEMODE_LIMITS.maxBridgeCompilations,
   );
-  await expect(execute(activation, host)).resolves.toMatchObject({
+  await expect(execute(activation, host())).resolves.toMatchObject({
     status: "completed",
     value: 42,
   });
