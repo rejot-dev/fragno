@@ -12,6 +12,7 @@ import {
   type FileSearchMatch,
   type FileTreeEntry,
 } from "./file-collection";
+import { inferFileContentType } from "./file-content-type";
 
 const staticFileSearchCursorSchema = z.object({
   version: z.literal(1),
@@ -54,7 +55,7 @@ export function createStaticFileCollection(
       typeof definition === "string" || definition instanceof Uint8Array
         ? { content: definition }
         : definition;
-    const contentType = file.contentType ?? inferContentType(path);
+    const contentType = file.contentType ?? inferFileContentType(path);
     const sizeBytes =
       typeof file.content === "string"
         ? new TextEncoder().encode(file.content).byteLength
@@ -162,35 +163,4 @@ export function createStaticFileCollection(
       };
     },
   };
-}
-
-function inferContentType(path: string): string {
-  const lowerPath = path.toLowerCase();
-
-  if (lowerPath.endsWith(".md") || lowerPath.endsWith(".mdx")) {
-    return "text/markdown";
-  }
-  if (lowerPath.endsWith(".json")) {
-    return "application/json";
-  }
-  if (lowerPath.endsWith(".js") || lowerPath.endsWith(".jsx")) {
-    return "text/javascript";
-  }
-  if (lowerPath.endsWith(".ts") || lowerPath.endsWith(".tsx")) {
-    return "text/typescript";
-  }
-  if (lowerPath.endsWith(".html")) {
-    return "text/html";
-  }
-  if (lowerPath.endsWith(".css")) {
-    return "text/css";
-  }
-  if (lowerPath.endsWith(".yaml") || lowerPath.endsWith(".yml")) {
-    return "application/yaml";
-  }
-  if (lowerPath.endsWith(".txt") || lowerPath.endsWith(".log")) {
-    return "text/plain";
-  }
-
-  return "application/octet-stream";
 }

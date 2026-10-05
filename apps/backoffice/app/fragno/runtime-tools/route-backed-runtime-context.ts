@@ -28,8 +28,8 @@ import { createRouteBackedAutomationIdentityRuntime } from "@/fragno/automation/
 import { readBackofficeAutomationSource } from "@/fragno/automation/read-backoffice-automation-source";
 import { createRouteBackedAutomationRouterRuntime } from "@/fragno/automation/routing-route-runtime";
 import { createRouteBackedAutomationWorkflowRuntime } from "@/fragno/automation/workflow-route-runtime";
+import { createRuntimeStateBackend } from "@/fragno/codemode/runtime-state-backend";
 import {
-  createBackofficeStateBackend,
   createBackofficeSystemStateBackend,
   type BackofficeStateBackend,
 } from "@/fragno/codemode/state-backend";
@@ -127,27 +127,6 @@ function createExecutionStaticFileCollection({
   );
 }
 
-const createExecutionStateBackend = ({
-  runtime,
-  kernel,
-  execution,
-}: Pick<RouteBackedRuntimeContextOptions, "runtime" | "kernel" | "execution">):
-  | BackofficeStateBackend
-  | undefined => {
-  const staticFileCollection = createExecutionStaticFileCollection({ runtime, execution });
-  if (execution.scope.kind === "system") {
-    return createBackofficeSystemStateBackend({ staticFileCollection });
-  }
-  if (!runtime.config.bindings.upload || !isBackofficeRoutableScope(execution.scope)) {
-    return undefined;
-  }
-
-  return createBackofficeStateBackend({
-    uploadObject: kernel.scoped("UPLOAD", execution.scope, runtime.objects.upload).http,
-    staticFileCollection,
-  });
-};
-
 const unavailableObject = <T>(resolve: () => T): T | null => {
   try {
     return resolve();
@@ -189,7 +168,10 @@ export const createRouteBackedRuntimeContext = ({
       : org
         ? { kind: "org" as const, orgId: org.orgId }
         : null;
-  const stateBackend = createExecutionStateBackend({ runtime, kernel, execution });
+  const stateBackend =
+    execution.scope.kind === "system" || runtime.config.bindings.upload
+      ? createRuntimeStateBackend({ runtime, kernel, execution })
+      : undefined;
   const javaScriptStateBackend =
     stateBackend ??
     createBackofficeSystemStateBackend({

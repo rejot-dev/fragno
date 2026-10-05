@@ -1,4 +1,5 @@
 import { createRouteCaller } from "@fragno-dev/core/api";
+import type { PreparedFileWrite, UploadFileWritePrecondition } from "@fragno-dev/upload/types";
 import {
   defineWorkflow,
   NonRetryableError,
@@ -10,7 +11,6 @@ import { createWorkflowsFragment } from "@fragno-dev/workflows";
 
 import {
   createBackofficeServiceExecution,
-  createBackofficeSystemExecution,
   type BackofficeContextScope,
   type BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
@@ -18,16 +18,6 @@ import type { BackofficeObjectHandle, UploadObject } from "@/backoffice-runtime/
 import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import type { BackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
-import {
-  createSystemFilesContext,
-  createUploadFileSystem,
-  emptyStaticFileArtifacts,
-} from "@/files";
-import {
-  UploadFileSystemRequestError,
-  UploadFileWriteConflictError,
-  type PreparedUploadFileWrite,
-} from "@/files/contributors/upload";
 import {
   isMarketplaceInternalArtifactPath,
   MARKETPLACE_INSTALL_WORKFLOW_PATH,
@@ -79,6 +69,8 @@ import {
   type WorkflowCompletedEventPayload,
   withWorkflowCompletionTarget,
 } from "./workflow-completion";
+
+type PreparedWorkspaceWrite = PreparedFileWrite & { precondition: UploadFileWritePrecondition };
 
 const MARKETPLACE_ARTIFACT_LIST_PAGE_SIZE = 500;
 const MARKETPLACE_ARTIFACT_MAX_LIST_PAGES = 5;
@@ -150,32 +142,6 @@ const requestUploadFile = async (callRoute: UploadRouteCaller, fileKey: string) 
     return null;
   }
   return response.data;
-};
-
-type UploadFile = NonNullable<Awaited<ReturnType<typeof requestUploadFile>>>;
-
-const uploadFileMode = (file: Pick<UploadFile, "metadata">): number | null => {
-  const metadata = file.metadata?.__docsFs;
-  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
-    return null;
-  }
-  const mode = (metadata as Record<string, unknown>).mode;
-  return typeof mode === "number" && Number.isInteger(mode) ? mode : null;
-};
-
-const throwMarketplaceUploadFileSystemError = (input: {
-  operation: string;
-  error: unknown;
-}): never => {
-  if (input.error instanceof UploadFileSystemRequestError) {
-    return throwMarketplaceUploadRequestError({
-      operation: input.operation,
-      status: input.error.status,
-      code: input.error.code,
-      message: input.error.message,
-    });
-  }
-  throw input.error;
 };
 
 const assertMarketplaceSourceBytesMatch = async (
@@ -435,7 +401,6 @@ export const defineMarketplaceIngestWorkflow = (config: MarketplaceIngestWorkflo
                   contentType: file.contentType,
                   sizeBytes: file.sizeBytes,
                   checksum,
-                  mode: uploadFileMode(file),
                 });
               }
 
@@ -520,76 +485,54 @@ export const defineMarketplaceIngestWorkflow = (config: MarketplaceIngestWorkflo
         },
       );
 
-      const execution = createBackofficeSystemExecution(input.targetScope);
-      const targetFileSystem = createUploadFileSystem(
-        createSystemFilesContext({
-          objects: runtime.objects,
-          execution,
-          staticFileArtifacts: emptyStaticFileArtifacts,
-        }),
-        {
-          object: destinationObject,
-          provider: UPLOAD_PROVIDER_DATABASE,
-          mountPoint: "/workspace",
-        },
-      );
-      const preparedWrites: PreparedUploadFileWrite[] = [];
+      const preparedWrites: PreparedWorkspaceWrite[] = [];
       for (const planned of workspaceUpdate.writes) {
         const { source } = planned;
-        const targetPath = `/workspace/${source.relativePath}`;
         const stepKey = await sha256Hex(TEXT_ENCODER.encode(source.relativePath));
 
         const uploadSession = await step.do(
           `create marketplace artifact upload ${stepKey}`,
           MARKETPLACE_EXTERNAL_STEP_RETRIES,
           async () => {
-            try {
-              const sourceBytes = await requestMarketplaceArtifactBytes(
-                sourceObject.http,
-                source.fileKey,
-              );
-              await assertMarketplaceSourceBytesMatch(source, sourceBytes);
-              const request = await targetFileSystem.resolveFileWriteUploadRequest(
-                targetPath,
-                sourceBytes,
-                {
-                  contentType: source.contentType,
-                  precondition: planned.precondition,
-                  ...(planned.mode === undefined ? {} : { mode: planned.mode }),
-                },
-              );
-              const response = await destinationUploadRoutes("POST", "/uploads", {
-                body: request.body,
-              });
-              if (response.type === "error") {
-                return throwMarketplaceUploadRouteError({
-                  operation: "Marketplace workspace upload creation",
-                  status: response.status,
-                  error: response.error,
-                });
-              }
-              if (response.type !== "json") {
-                return throwUnexpectedMarketplaceUploadResponse({
-                  operation: "Marketplace workspace upload creation",
-                  status: response.status,
-                });
-              }
-              if (response.status < 200 || response.status >= 300) {
-                return throwUnexpectedMarketplaceUploadResponse({
-                  operation: "Marketplace workspace upload creation",
-                  status: response.status,
-                });
-              }
-              return {
-                uploadId: response.data.uploadId,
-                precondition: request.precondition,
-              };
-            } catch (error) {
-              return throwMarketplaceUploadFileSystemError({
+            const sourceBytes = await requestMarketplaceArtifactBytes(
+              sourceObject.http,
+              source.fileKey,
+            );
+            await assertMarketplaceSourceBytesMatch(source, sourceBytes);
+            const response = await destinationUploadRoutes("POST", "/uploads", {
+              body: {
+                provider: UPLOAD_PROVIDER_DATABASE,
+                fileKey: source.relativePath,
+                filename: source.relativePath.split("/").at(-1)!,
+                sizeBytes: sourceBytes.byteLength,
+                contentType: source.contentType,
+                checksum: source.checksum,
+                publicationMode: "batch",
+              },
+            });
+            if (response.type === "error") {
+              return throwMarketplaceUploadRouteError({
                 operation: "Marketplace workspace upload creation",
-                error,
+                status: response.status,
+                error: response.error,
               });
             }
+            if (response.type !== "json") {
+              return throwUnexpectedMarketplaceUploadResponse({
+                operation: "Marketplace workspace upload creation",
+                status: response.status,
+              });
+            }
+            if (response.status < 200 || response.status >= 300) {
+              return throwUnexpectedMarketplaceUploadResponse({
+                operation: "Marketplace workspace upload creation",
+                status: response.status,
+              });
+            }
+            return {
+              uploadId: response.data.uploadId,
+              precondition: planned.precondition,
+            };
           },
         );
 
@@ -597,52 +540,45 @@ export const defineMarketplaceIngestWorkflow = (config: MarketplaceIngestWorkflo
           `transfer marketplace artifact upload ${stepKey}`,
           MARKETPLACE_EXTERNAL_STEP_RETRIES,
           async () => {
-            try {
-              const sourceBytes = await requestMarketplaceArtifactBytes(
-                sourceObject.http,
-                source.fileKey,
-              );
-              await assertMarketplaceSourceBytesMatch(source, sourceBytes);
-              const response = await destinationUploadRoutes("PUT", "/uploads/:uploadId/content", {
-                pathParams: { uploadId: uploadSession.uploadId },
-                query: { provider: UPLOAD_PROVIDER_DATABASE },
-                headers: { "content-type": "application/octet-stream" },
-                body: new Blob([Uint8Array.from(sourceBytes)]),
-              });
-              if (response.type === "error") {
-                return throwMarketplaceUploadRouteError({
-                  operation: "Marketplace workspace upload transfer",
-                  status: response.status,
-                  error: response.error,
-                });
-              }
-              if (response.type !== "json") {
-                return throwUnexpectedMarketplaceUploadResponse({
-                  operation: "Marketplace workspace upload transfer",
-                  status: response.status,
-                });
-              }
-              if (response.status < 200 || response.status >= 300) {
-                return throwUnexpectedMarketplaceUploadResponse({
-                  operation: "Marketplace workspace upload transfer",
-                  status: response.status,
-                });
-              }
-              if (response.data.kind !== "prepared") {
-                throw new NonRetryableError(
-                  "Marketplace batch upload published before its atomic commit.",
-                );
-              }
-              return {
-                ...response.data.write,
-                precondition: uploadSession.precondition,
-              };
-            } catch (error) {
-              return throwMarketplaceUploadFileSystemError({
+            const sourceBytes = await requestMarketplaceArtifactBytes(
+              sourceObject.http,
+              source.fileKey,
+            );
+            await assertMarketplaceSourceBytesMatch(source, sourceBytes);
+            const response = await destinationUploadRoutes("PUT", "/uploads/:uploadId/content", {
+              pathParams: { uploadId: uploadSession.uploadId },
+              query: { provider: UPLOAD_PROVIDER_DATABASE },
+              headers: { "content-type": "application/octet-stream" },
+              body: new Blob([Uint8Array.from(sourceBytes)]),
+            });
+            if (response.type === "error") {
+              return throwMarketplaceUploadRouteError({
                 operation: "Marketplace workspace upload transfer",
-                error,
+                status: response.status,
+                error: response.error,
               });
             }
+            if (response.type !== "json") {
+              return throwUnexpectedMarketplaceUploadResponse({
+                operation: "Marketplace workspace upload transfer",
+                status: response.status,
+              });
+            }
+            if (response.status < 200 || response.status >= 300) {
+              return throwUnexpectedMarketplaceUploadResponse({
+                operation: "Marketplace workspace upload transfer",
+                status: response.status,
+              });
+            }
+            if (response.data.kind !== "prepared") {
+              throw new NonRetryableError(
+                "Marketplace batch upload published before its atomic commit.",
+              );
+            }
+            return {
+              ...response.data.write,
+              precondition: uploadSession.precondition,
+            };
           },
         );
         preparedWrites.push(prepared);
@@ -660,23 +596,48 @@ export const defineMarketplaceIngestWorkflow = (config: MarketplaceIngestWorkflo
             return [];
           }
 
-          try {
-            return await targetFileSystem.commitPreparedFileWrites({
-              writes: preparedWrites,
-              deletions: workspaceUpdate.deletions,
-              assertions: workspaceUpdate.assertions,
-            });
-          } catch (error) {
-            if (error instanceof UploadFileWriteConflictError) {
+          const response = await destinationUploadRoutes("POST", "/files/commit-prepared", {
+            body: {
+              entries: [
+                ...preparedWrites.map((write) => ({
+                  kind: "write" as const,
+                  uploadId: write.uploadId,
+                  precondition: write.precondition,
+                })),
+                ...workspaceUpdate.deletions.map((deletion) => ({
+                  kind: "delete" as const,
+                  provider: UPLOAD_PROVIDER_DATABASE,
+                  fileKey: deletion.path.slice("/workspace/".length),
+                  precondition: deletion.precondition,
+                })),
+                ...workspaceUpdate.assertions.map((assertion) => ({
+                  kind: "assert" as const,
+                  provider: UPLOAD_PROVIDER_DATABASE,
+                  fileKey: assertion.path.slice("/workspace/".length),
+                  precondition: assertion.precondition,
+                })),
+              ],
+            },
+          });
+          if (response.type === "error") {
+            if (response.error.code === "FILE_PRECONDITION_FAILED") {
               throw new NonRetryableError(
-                `Marketplace ingestion conflicts with concurrently changed workspace files under '/workspace'.`,
+                "Marketplace ingestion conflicts with concurrently changed workspace files under '/workspace'.",
               );
             }
-            return throwMarketplaceUploadFileSystemError({
+            return throwMarketplaceUploadRouteError({
               operation: "Marketplace workspace batch commit",
-              error,
+              status: response.status,
+              error: response.error,
             });
           }
+          if (response.type !== "json") {
+            return throwUnexpectedMarketplaceUploadResponse({
+              operation: "Marketplace workspace batch commit",
+              status: response.status,
+            });
+          }
+          return response.data.files;
         },
       );
 

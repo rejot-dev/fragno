@@ -2,7 +2,7 @@ import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import { backofficeRouteScopeSinglePathSegment } from "@/backoffice-runtime/route-scope";
 import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
-import type { StaticFileArtifactsResolver } from "@/files/types";
+import type { StaticFileArtifactsLoader } from "@/files/content/static";
 import {
   codemodeTypeFilesToStaticArtifacts,
   CODEMODE_MCP_SOURCE_DTS_PATH,
@@ -62,7 +62,7 @@ export function createCodemodeStaticArtifactsResolver({
   objects: BackofficeObjectRegistry;
   config: BackofficeRuntimeConfig;
   execution: BackofficeExecutionContext;
-}): StaticFileArtifactsResolver {
+}): StaticFileArtifactsLoader {
   if (execution.scope.kind === "user" || execution.scope.kind === "system") {
     return async () => ({});
   }

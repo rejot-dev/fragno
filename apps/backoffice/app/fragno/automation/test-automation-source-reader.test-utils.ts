@@ -1,5 +1,4 @@
-import type { IFileSystem } from "@/files";
-import { FileSystemError } from "@/files/fs-errors";
+import type { IFileSystem } from "just-bash";
 
 import type { AutomationSourceReader } from "./automation-source";
 
@@ -13,7 +12,6 @@ export function createTestAutomationSourceReader(
       typeof content === "string" ? content : new TextDecoder().decode(content),
     ]),
   );
-
   return async ({ path }) => {
     const content = contents.get(path);
     if (content === undefined) {
@@ -23,33 +21,25 @@ export function createTestAutomationSourceReader(
   };
 }
 
-/** Snapshots automation source files from a mutable test filesystem. */
+/** Snapshots automation source files without depending on synchronous remote path enumeration. */
 export async function snapshotTestAutomationSourceReader(
   fileSystem: IFileSystem,
 ): Promise<AutomationSourceReader> {
   const files: Record<string, Uint8Array> = {};
-
-  for (const path of fileSystem.getAllPaths()) {
-    if (
-      !path.startsWith("/static/automations/") &&
-      !path.startsWith("/system/automations/") &&
-      !path.startsWith("/workspace/automations/")
-    ) {
-      continue;
+  async function visit(path: string): Promise<void> {
+    if (!(await fileSystem.exists(path))) {
+      return;
     }
-
-    try {
-      const stat = await fileSystem.stat(path);
-      if (stat.isFile) {
-        files[path] = await fileSystem.readFileBuffer(path);
-      }
-    } catch (error) {
-      if (error instanceof FileSystemError && error.code === "ENOENT") {
-        continue;
-      }
-      throw error;
+    if ((await fileSystem.stat(path)).isFile) {
+      files[path] = await fileSystem.readFileBuffer(path);
+      return;
+    }
+    for (const name of await fileSystem.readdir(path)) {
+      await visit(`${path}/${name}`);
     }
   }
-
+  for (const path of ["/static/automations", "/system/automations", "/workspace/automations"]) {
+    await visit(path);
+  }
   return createTestAutomationSourceReader(files);
 }

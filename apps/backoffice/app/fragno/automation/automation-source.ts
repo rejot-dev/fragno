@@ -1,5 +1,5 @@
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
-import { normalizeRelativePath } from "@/files";
+import { normalizeRelativePath } from "@/files/normalize-path";
 
 export const AUTOMATION_STATIC_ROOT = "/static/automations";
 export const AUTOMATION_SYSTEM_ROOT = "/system/automations";

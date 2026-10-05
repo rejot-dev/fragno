@@ -12,7 +12,7 @@ import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import { SIGN_UP_INVITATION_TYPE } from "@/fragno/otp";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
-import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
+import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 import { sha256Hex } from "@/lib/crypto";
 
 import {
@@ -97,8 +97,7 @@ function createSignUpInvitation(input: CreateSignUpInvitationStepInput): Backoff
       const execution = createBackofficeSystemExecution({ kind: "system" });
       const kernel = new BackofficeKernel(ctx.runtime.services);
       const { bash } = createInteractiveBashHost({
-        fs: ctx.files.forOrg(),
-        context: createRouteBackedRuntimeContext({
+        context: createCodemodeRouteBackedRuntimeContext({
           runtime: ctx.runtime.services,
           kernel,
           execution,

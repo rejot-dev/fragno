@@ -1,4 +1,5 @@
 import { workflowsSchema } from "@fragno-dev/workflows/schema";
+import { InMemoryFs, type IFileSystem } from "just-bash";
 
 import type { ResendSendEmailInput } from "@fragno-dev/resend-fragment";
 import type { TelegramApi, TelegramMessage } from "@fragno-dev/telegram-fragment";
@@ -37,13 +38,9 @@ import {
   createTelegramAutomationFileResponse,
   telegramAutomationFileIdFromDownloadPath,
 } from "@/backoffice-runtime/telegram-file-response";
-import {
-  createBackofficeFileSystem,
-  STATIC_FILE_CONTENT,
-  SYSTEM_FILE_CONTENT,
-  WORKSPACE_STARTER_CONTENT,
-} from "@/files";
-import type { MasterFileSystem } from "@/files";
+import { WORKSPACE_STARTER_CONTENT } from "@/files/content/starter";
+import { STATIC_FILE_CONTENT } from "@/files/content/static";
+import { SYSTEM_FILE_CONTENT } from "@/files/content/system";
 import { issueBackofficeTokenResultSchema, type UserAuthorityFacts } from "@/fragno/auth/contracts";
 import { automationFragmentSchema } from "@/fragno/automation/schema";
 import {
@@ -54,6 +51,7 @@ import {
   runBackofficeCodemode,
   type BackofficeCodemodeExecuteResult,
 } from "@/fragno/codemode/execute";
+import { createRuntimeStateBackend } from "@/fragno/codemode/runtime-state-backend";
 import { isMarketplaceInternalArtifactPath } from "@/fragno/marketplace/artifacts";
 import type { MarketplaceStaticEntry } from "@/fragno/marketplace/contracts";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
@@ -67,6 +65,7 @@ import type {
 import type { TelegramAutomationFileMetadata } from "@/fragno/runtime-tools/families/telegram-runtime";
 import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 import type { BackofficeRuntimeToolCall } from "@/fragno/runtime-tools/runtime-tools";
+import { createStateShellFileSystem } from "@/fragno/runtime-tools/state-shell-file-system";
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 import {
@@ -93,7 +92,6 @@ import {
   createCodemodeWorkflowInstanceInput,
   prepareCodemodeWorkflowInstance,
 } from "./engine/codemode-invocation";
-import { createTestMasterFileSystem } from "./engine/test-master-file-system.test-utils";
 import { automationEventListResultSchema } from "./events";
 import type { AutomationRouteDefinition } from "./routing";
 import { createRouteBackedAutomationRouterRuntime } from "./routing-route-runtime";
@@ -315,13 +313,13 @@ type FileDiffEntry = {
 };
 
 type BackofficeScenarioFilePreset = {
-  createFileSystem(): MasterFileSystem;
+  createFileSystem(): IFileSystem;
   snapshot: Record<string, string>;
 };
 
 export type BackofficeScenarioFileSystems = {
-  forOrg(orgId?: string): MasterFileSystem;
-  forProject(projectId: string): MasterFileSystem;
+  forOrg(orgId?: string): IFileSystem;
+  forProject(projectId: string): IFileSystem;
   listOrgIds(): string[];
   rememberOrgPaths(orgId: string, paths: readonly string[]): void;
   diff(
@@ -950,7 +948,7 @@ const mapContentToMountedFiles = (
 const createPreset = (
   files: Record<string, string | Uint8Array>,
 ): BackofficeScenarioFilePreset => ({
-  createFileSystem: () => createTestMasterFileSystem(files),
+  createFileSystem: () => new InMemoryFs(files),
   snapshot: Object.fromEntries(
     Object.entries(files).map(([path, content]) => [
       path,
@@ -1433,7 +1431,7 @@ const createFakeMcpApi = (input: { servers?: FakeMcpServer[] } = {}): FakeMcpApi
   };
 };
 
-const readSnapshotContent = async (fs: MasterFileSystem, path: string): Promise<string | null> => {
+const readSnapshotContent = async (fs: IFileSystem, path: string): Promise<string | null> => {
   try {
     const stat = await fs.stat(path);
     if (!stat.isFile) {
@@ -1451,16 +1449,17 @@ const readSnapshotContent = async (fs: MasterFileSystem, path: string): Promise<
 };
 
 const snapshotFileSystem = async (
-  fs: MasterFileSystem,
+  fs: IFileSystem,
   additionalPaths: readonly string[] = [],
 ): Promise<Record<string, string>> => {
   const snapshot: Record<string, string> = {};
 
   const visitDirectory = async (directory: string): Promise<void> => {
-    const entries = await fs.readdirWithFileTypes(directory);
+    const names = await fs.readdir(directory);
     await Promise.all(
-      entries.map(async (entry) => {
-        const path = fs.resolvePath(directory, entry.name);
+      names.map(async (name) => {
+        const path = fs.resolvePath(directory, name);
+        const entry = await fs.stat(path);
         if (entry.isDirectory) {
           await visitDirectory(path);
           return;
@@ -1520,11 +1519,11 @@ const createScenarioFileSystems = (
   preset: BackofficeScenarioFilePreset,
   orgIds: Set<string>,
 ): BackofficeScenarioFileSystems => {
-  const byOrg = new Map<string, MasterFileSystem>();
-  const byProject = new Map<string, MasterFileSystem>();
+  const byOrg = new Map<string, IFileSystem>();
+  const byProject = new Map<string, IFileSystem>();
   const rememberedOrgPaths = new Map<string, Set<string>>();
 
-  const getScopedFs = (map: Map<string, MasterFileSystem>, key: string) => {
+  const getScopedFs = (map: Map<string, IFileSystem>, key: string) => {
     let fs = map.get(key);
     if (!fs) {
       fs = preset.createFileSystem();
@@ -1727,7 +1726,7 @@ const listInstantiatedHookFragments = (ctx: BackofficeScenarioContext, orgIds: s
     )
     .map((scope) => scope.id);
 
-const fileExists = async (fs: MasterFileSystem, path: string): Promise<boolean> => {
+const fileExists = async (fs: IFileSystem, path: string): Promise<boolean> => {
   try {
     return await fs.exists(path);
   } catch {
@@ -1739,19 +1738,20 @@ const getReadableScenarioFileSystem = async (
   ctx: BackofficeScenarioContext,
   orgId: string,
   path: string,
-): Promise<MasterFileSystem | null> => {
+): Promise<IFileSystem | null> => {
   const scenarioFs = ctx.files.forOrg(orgId);
   if (await fileExists(scenarioFs, path)) {
     return scenarioFs;
   }
 
   const execution = createBackofficeSystemExecution({ kind: "org", orgId });
-  const orgFs = await createBackofficeFileSystem({
-    objects: ctx.runtime.objects,
-    kernel: new BackofficeKernel(ctx.runtime.services),
-    execution,
-    config: ctx.runtime.config,
-  });
+  const orgFs = createStateShellFileSystem(
+    createRuntimeStateBackend({
+      runtime: ctx.runtime.services,
+      kernel: new BackofficeKernel(ctx.runtime.services),
+      execution,
+    }),
+  );
   if (await fileExists(orgFs, path)) {
     return orgFs;
   }
@@ -2752,12 +2752,13 @@ const buildStepBuilders = <
             }
 
             const execution = createBackofficeSystemExecution(input.targetScope);
-            const installedFileSystem = await createBackofficeFileSystem({
-              objects: ctx.runtime.objects,
-              kernel: new BackofficeKernel(ctx.runtime.services),
-              execution,
-              config: ctx.runtime.config,
-            });
+            const installedFileSystem = createStateShellFileSystem(
+              createRuntimeStateBackend({
+                runtime: ctx.runtime.services,
+                kernel: new BackofficeKernel(ctx.runtime.services),
+                execution,
+              }),
+            );
             const scenarioFileSystem =
               input.targetScope.kind === "project"
                 ? ctx.files.forProject(input.targetScope.projectId)
@@ -4349,16 +4350,15 @@ const collectDiagnostics = async (ctx: BackofficeScenarioContext): Promise<unkno
     try {
       const scenarioFs = ctx.files.forOrg(orgId);
       const execution = createBackofficeSystemExecution({ kind: "org", orgId });
-      const orgFs = await createBackofficeFileSystem({
-        objects: ctx.runtime.objects,
+      const state = createRuntimeStateBackend({
+        runtime: ctx.runtime.services,
         kernel: new BackofficeKernel(ctx.runtime.services),
         execution,
-        config: ctx.runtime.config,
       });
       filesByOrg[orgId] = {
         scenarioPaths: scenarioFs.getAllPaths(),
         scenarioDiff: await ctx.files.diff(orgId),
-        orgPaths: orgFs.getAllPaths(),
+        orgPaths: await state.glob("/workspace/**"),
       };
     } catch (cause) {
       filesByOrg[orgId] = cause instanceof Error ? cause.message : String(cause);

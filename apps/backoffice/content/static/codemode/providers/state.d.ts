@@ -90,7 +90,6 @@ type StateStatOutput = {
   size: number;
   /** ISO 8601 datetime string. */
   mtime: string;
-  mode?: number;
 } | null;
 type StateLstatInput = {
   path: string;
@@ -100,7 +99,6 @@ type StateLstatOutput = {
   size: number;
   /** ISO 8601 datetime string. */
   mtime: string;
-  mode?: number;
 } | null;
 type StateMkdirInput = {
   path: string;

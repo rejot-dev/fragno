@@ -616,7 +616,7 @@ describe("BackofficeStateBackend", () => {
   });
 
   describe("directories", () => {
-    test.fails("writeFile rejects an existing virtual directory", async () => {
+    test("writeFile rejects an existing virtual directory", async () => {
       const upload = new MemoryUploadObject({
         "generated/file.txt": "preserved",
       });

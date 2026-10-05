@@ -1,107 +1,22 @@
-import type { IFileSystem } from "@/files/interface";
-import { MasterFileSystem } from "@/files/master-file-system";
-import { createAutomationExecutionFileSystem } from "@/fragno/automation/engine/execution-file-system";
-import {
-  createAutomationRunResult,
-  type AutomationRunResult,
-} from "@/fragno/automation/run-result";
-import type { BackofficeCodemodeEnv } from "@/fragno/codemode/execute";
+import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
 
-import {
-  createBashHost,
-  createInteractiveRuntimeBashHost,
-  type BashHost,
-  type BashHostContext,
-} from "./bash-host";
-
-// ---------------------------------------------------------------------------
-// Automation execution (bash + codemode)
-// ---------------------------------------------------------------------------
+import { createInteractiveRuntimeBashHost, type BashHost, type BashHostContext } from "./bash-host";
+import { createStateShellFileSystem } from "./state-shell-file-system";
 
 export type AutomationScriptHostContext = BashHostContext & {
   automation: NonNullable<BashHostContext["automation"]>;
 };
 
-export const executeBashAutomation = async ({
-  script,
-  context,
-  masterFs,
-}: {
-  script: string;
-  context: AutomationScriptHostContext;
-  masterFs: MasterFileSystem;
-}): Promise<AutomationRunResult<"bash">> => {
-  const executionFs = createAutomationExecutionFileSystem({
-    masterFs,
-    contextFiles: { "event.json": JSON.stringify(context.automation.event) },
-  });
-
-  const { bash, commandCallsResult } = createBashHost({
-    fs: executionFs,
-    env: {},
-    context,
-  });
-  const result = await bash.exec(script);
-
-  return createAutomationRunResult({
-    runtime: "bash",
-    eventId: context.automation.event.id,
-    scriptId: context.automation.binding.scriptId,
-    exitCode: result.exitCode ?? 0,
-    stdout: result.stdout ?? "",
-    stderr: result.stderr ?? "",
-    commandCalls: commandCallsResult,
-  });
-};
-
-export const executeAutomationScript = async ({
-  engine,
-  script,
-  context,
-  masterFs,
-  env,
-}: {
-  engine: "bash" | "codemode";
-  script: string;
-  context: AutomationScriptHostContext;
-  masterFs: MasterFileSystem;
-  env?: BackofficeCodemodeEnv;
-}) => {
-  switch (engine) {
-    case "bash":
-      return executeBashAutomation({ script, context, masterFs });
-    case "codemode": {
-      if (!env) {
-        throw new Error("Codemode automation requires a configured executor.");
-      }
-
-      const { executeCodemodeAutomation } = await import("@/fragno/automation/engine/codemode");
-      return executeCodemodeAutomation({ script, context, env });
-    }
-  }
-
-  throw new Error("Unsupported automation script engine.");
-};
-
-// ---------------------------------------------------------------------------
-// Interactive bash host (dashboard / Pi sessions)
-// ---------------------------------------------------------------------------
-
-export type CreateInteractiveBashHostInput = {
-  fs: IFileSystem;
+type CreateInteractiveBashHostInput = {
   sessionId?: string;
-  context: BashHostContext;
+  context: BashHostContext & { stateBackend: BackofficeStateBackend };
 };
 
-export const createInteractiveBashHost = (input: CreateInteractiveBashHostInput): BashHost => {
-  const fs =
-    input.fs instanceof MasterFileSystem
-      ? createAutomationExecutionFileSystem({ masterFs: input.fs })
-      : input.fs;
-
+/** Runs shell commands against the same scoped state backend as codemode and PI. */
+export function createInteractiveBashHost(input: CreateInteractiveBashHostInput): BashHost {
   return createInteractiveRuntimeBashHost({
-    fs,
+    fs: createStateShellFileSystem(input.context.stateBackend),
     sessionId: input.sessionId,
     context: input.context,
   });
-};
+}

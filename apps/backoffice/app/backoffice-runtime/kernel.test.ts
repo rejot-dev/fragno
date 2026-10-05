@@ -543,34 +543,6 @@ describe("BackofficeKernel.invoke", () => {
   });
 });
 
-describe("BackofficeKernel.resolveFilePrincipal", () => {
-  test("rejects principal-free execution with external delegation", () => {
-    expect(() =>
-      scopeKernel.resolveFilePrincipal({
-        scope: { kind: "org", orgId: "org-1" },
-        actors: {
-          initiator: {
-            scope: "internal",
-            type: "system",
-            id: "backoffice",
-            role: "initiator",
-          },
-          principal: null,
-          delegation: [
-            {
-              scope: "external",
-              source: "telegram",
-              type: "chat",
-              id: "chat-1",
-              role: "delegate",
-            },
-          ],
-        },
-      }),
-    ).toThrow(BackofficeForbiddenError);
-  });
-});
-
 describe("BackofficeKernel.assertScopedContextAccess", () => {
   test("limits a user execution to its organization and own user scope", () => {
     expect(() =>

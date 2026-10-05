@@ -106,16 +106,20 @@ __BACKOFFICE_CODEMODE_DTS__;
 - Product-owned reference files live in `/static/` and are visible to every scope.
 - System-scoped admin automations live in `/system/automations/` and are only visible in
   system/admin contexts.
-- User-editable automations live in `/workspace/automations/`.
-- Automation codemode scripts read event data from `/context/event.json` with `state.readFile` and
+- Scope-owned files live in `/workspace/`; user-editable automations live in
+  `/workspace/automations/`. Switch to project scope to access a project's workspace.
+- Filesystem roots are `/static/`, `/system/`, and `/workspace/`, subject to scope availability.
+- Shell commands use the same state backend as codemode. Files have no POSIX ownership or editable
+  modes; permission changes and links are unsupported. `touch` creates empty files and leaves
+  existing content unchanged. Timestamps are storage-owned; shell timestamp requests are
+  compatibility no-ops.
+- Automation workflows receive the triggering event as the `event` argument to `defineWorkflow` and
   must return JSON-serializable values.
 - Use `state.glob` and `state.readFile` inside codemode for filesystem discovery.
 
 ## Events
 
-Backoffice is event-driven. The last 200 ingested events are available as JSON files in
-`/events/YYYY-MM-DD/`; errors are written as text files in the same directory. Inspect the event
-catalog before working with events.
+Backoffice is event-driven. Use the `events` provider to inspect the event catalog.
 
 ## Skills
 
