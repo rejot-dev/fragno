@@ -81,6 +81,7 @@ export type RouteBackedRuntimeContextOptions = {
   runtime: BackofficeRuntimeServices;
   kernel: BackofficeKernel;
   execution: BackofficeExecutionContext;
+  billingOrganizationId: string | null;
   emittedEventActors?: AutomationActors;
   pi?:
     | { runtime: PiManagerRuntime }
@@ -175,6 +176,7 @@ export const createRouteBackedRuntimeContext = ({
   runtime,
   kernel,
   execution,
+  billingOrganizationId,
   emittedEventActors,
   pi,
   workflowSourceReader,
@@ -221,6 +223,7 @@ export const createRouteBackedRuntimeContext = ({
           scope,
           ...(execution.userAuthority ? { userAuthority: execution.userAuthority } : {}),
         },
+        billingOrganizationId,
         emittedEventActors,
         pi,
         workflowSourceReader: backofficeContextScopesEqual(execution.scope, scope)
@@ -301,6 +304,7 @@ export const createRouteBackedRuntimeContext = ({
             prepared,
             trigger: { type: "manual", payload: payload ?? {} },
             execution,
+            billingOrganizationId,
           });
         },
       }),
@@ -435,7 +439,12 @@ export const createRouteBackedRuntimeContext = ({
         : createUnavailableOtpRuntime(unavailableMessage("OTP", execution)),
     },
     pi: (typeof pi === "function" ? pi(execution) : pi) ?? {
-      runtime: createPiManagerRuntime({ runtime, kernel, execution }),
+      runtime: createPiManagerRuntime({
+        runtime,
+        kernel,
+        execution,
+        defaultBillingOrganizationId: billingOrganizationId,
+      }),
     },
     reson8: {
       runtime:

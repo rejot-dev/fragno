@@ -1765,6 +1765,7 @@ const getConnectionRuntime = (ctx: BackofficeScenarioContext, orgId: string) =>
       runtime: ctx.runtime.services,
       kernel: new BackofficeKernel(ctx.runtime.services),
       execution: createBackofficeSystemExecution({ kind: "org", orgId }),
+      billingOrganizationId: null,
     }),
   ).runtimes.backoffice;
 
@@ -1855,6 +1856,7 @@ const runScenarioCodemode = async (
     runtime: ctx.runtime.services,
     kernel,
     execution,
+    billingOrganizationId: null,
   });
   const toolContext = createBackofficeToolContext(runtimeContext);
   const codemode = ctx.runtime.env.codemode;
@@ -2957,6 +2959,7 @@ const buildStepBuilders = <
                 prepared,
                 trigger: { type: "event", event },
                 execution: execution ?? { scope: event.scope, actors: event.actors },
+                billingOrganizationId: null,
               });
               await getWorkflow(ctx, input.orgId, execution).createInternalInstance(workflowInput);
               return;

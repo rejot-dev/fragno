@@ -25,6 +25,7 @@ import { BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY } from "@/fragno/automation/act
 import { CODEMODE_WORKFLOW } from "@/fragno/automation/engine/codemode-invocation";
 import { defineCodemodeWorkflow } from "@/fragno/automation/engine/codemode-workflow";
 import { listAutomationEventDescriptors } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
+import { piAgentCreationSchema } from "@/fragno/pi-manager/pi-agent-contract";
 
 import { defineMarketplaceIngestWorkflow } from "./marketplace-ingest-workflow.server";
 import { defineMarketplacePublishWorkflow } from "./marketplace-publish-workflow";
@@ -64,10 +65,12 @@ const withTrustedWorkflowContext = ({
   workflowName,
   params,
   execution,
+  billingOrganizationId,
 }: {
   workflowName: string;
   params: Record<string, unknown>;
   execution: BackofficeExecutionContext;
+  billingOrganizationId: string | null;
 }): Record<string, unknown> => {
   if (workflowName === CODEMODE_WORKFLOW) {
     const trigger =
@@ -95,6 +98,7 @@ const withTrustedWorkflowContext = ({
       execution: {
         scope: execution.scope,
         actors: execution.actors,
+        billingOrganizationId,
         capabilityGrants: [],
       },
     };
@@ -295,6 +299,72 @@ export const createAutomationsRuntime = (
       return await authorizeWorkflowOperation(BACKOFFICE_PERMISSION.workflow.executeCode, resource);
     };
 
+    async function prepareAuthorizedWorkflowParams(
+      workflowName: string,
+      params: Record<string, unknown>,
+      execution: BackofficeExecutionContext,
+    ) {
+      let billingOrganizationId: string | null = null;
+      if (workflowName === CODEMODE_WORKFLOW) {
+        // Restart-or-create may ignore the program input; only validate the billing selection here.
+        const parsed = piAgentCreationSchema
+          .pick({ billingOrganizationId: true })
+          .safeParse(
+            execution.scope.kind === "org" || execution.scope.kind === "project"
+              ? { billingOrganizationId: execution.scope.orgId }
+              : (params.execution ?? {}),
+          );
+        if (!parsed.success) {
+          return {
+            type: "error" as const,
+            response: error(
+              { code: "INVALID_WORKFLOW_PARAMS", message: parsed.error.message },
+              400,
+            ),
+          };
+        }
+        billingOrganizationId = parsed.data.billingOrganizationId;
+        if (
+          billingOrganizationId !== null &&
+          (execution.scope.kind === "user" || execution.scope.kind === "system")
+        ) {
+          try {
+            // Billing selection survives the handoff, but never grants access to its organization.
+            await config.kernel.assertAuthorized({
+              execution: { ...execution, scope: { kind: "org", orgId: billingOrganizationId } },
+              operation: BACKOFFICE_PERMISSION.pi.modify,
+              resource: { kind: "workflow-billing", workflowName },
+            });
+          } catch (cause) {
+            if (!isBackofficeForbiddenError(cause)) {
+              throw cause;
+            }
+            return {
+              type: "error" as const,
+              response: error(
+                { message: cause.message, code: cause.reason },
+                AUTOMATIONS_AUTHORIZATION_STATUS_BY_REASON[cause.reason],
+                {
+                  [BACKOFFICE_REQUIRED_PERMISSION_HEADER]: JSON.stringify(
+                    BACKOFFICE_PERMISSION.pi.modify,
+                  ),
+                },
+              ),
+            };
+          }
+        }
+      }
+      return {
+        type: "params" as const,
+        params: withTrustedWorkflowContext({
+          workflowName,
+          params,
+          execution,
+          billingOrganizationId,
+        }),
+      };
+    }
+
     const createResponse = await ifMatchesRoute(
       "POST",
       "/:workflowName/instances",
@@ -322,14 +392,15 @@ export const createAutomationsRuntime = (
           return invalidParamsResponse;
         }
 
-        requestState.setBody({
-          ...values,
-          params: withTrustedWorkflowContext({
-            workflowName: pathParams.workflowName,
-            params,
-            execution: requestContext,
-          }),
-        });
+        const trusted = await prepareAuthorizedWorkflowParams(
+          pathParams.workflowName,
+          params,
+          requestContext,
+        );
+        if (trusted.type === "error") {
+          return trusted.response;
+        }
+        requestState.setBody({ ...values, params: trusted.params });
         return undefined;
       },
     );
@@ -366,16 +437,17 @@ export const createAutomationsRuntime = (
           return invalidParamsResponse;
         }
 
+        const trusted = await prepareAuthorizedWorkflowParams(
+          pathParams.workflowName,
+          params,
+          requestContext,
+        );
+        if (trusted.type === "error") {
+          return trusted.response;
+        }
         requestState.setBody({
           ...values,
-          create: {
-            ...values.create,
-            params: withTrustedWorkflowContext({
-              workflowName: pathParams.workflowName,
-              params,
-              execution: requestContext,
-            }),
-          },
+          create: { ...values.create, params: trusted.params },
         });
         return undefined;
       },
@@ -408,7 +480,8 @@ export const createAutomationsRuntime = (
               ? (instance.params as Record<string, unknown>)
               : {},
         }));
-        for (const { params } of instances) {
+        const trustedInstances = [];
+        for (const { instance, params } of instances) {
           const invalidParamsResponse = rejectDisallowedWorkflowParams(
             pathParams.workflowName,
             params,
@@ -416,19 +489,18 @@ export const createAutomationsRuntime = (
           if (invalidParamsResponse) {
             return invalidParamsResponse;
           }
+          const trusted = await prepareAuthorizedWorkflowParams(
+            pathParams.workflowName,
+            params,
+            requestContext,
+          );
+          if (trusted.type === "error") {
+            return trusted.response;
+          }
+          trustedInstances.push({ ...instance, params: trusted.params });
         }
 
-        requestState.setBody({
-          ...values,
-          instances: instances.map(({ instance, params }) => ({
-            ...instance,
-            params: withTrustedWorkflowContext({
-              workflowName: pathParams.workflowName,
-              params,
-              execution: requestContext,
-            }),
-          })),
-        });
+        requestState.setBody({ ...values, instances: trustedInstances });
         return undefined;
       },
     );

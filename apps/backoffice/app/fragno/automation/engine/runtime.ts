@@ -75,6 +75,7 @@ export const createAutomationRuntime = ({
       runtime,
       kernel,
       execution,
+      billingOrganizationId: null,
     });
     return {
       ...routeBacked.automations.runtime,
@@ -135,6 +136,7 @@ export const createAutomationRuntimeHostContext = ({
         runtime: runtimeServices,
         kernel: backofficeKernel,
         execution,
+        billingOrganizationId: null,
       })
     : null;
 

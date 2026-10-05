@@ -82,6 +82,7 @@ export async function createBackofficePiDurableHarnessOptions(input: {
       runtime,
       kernel,
       execution,
+      billingOrganizationId: config.billingOrganizationId,
       // A factory follows scope changes; a fixed runtime would leak the parent directory into child contexts.
       pi: (scopedExecution) => ({
         runtime: createPiManagerRuntime({
@@ -101,6 +102,7 @@ export async function createBackofficePiDurableHarnessOptions(input: {
     createBackofficePiTools({
       sessionId: config.sessionId,
       execution,
+      billingOrganizationId: config.billingOrganizationId,
       codemode,
       authorizeExecution,
       createRuntimeToolContext: ({ invocationId, context }) =>

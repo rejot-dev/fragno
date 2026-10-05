@@ -197,7 +197,9 @@ export function createPiManagerRuntime(input: {
   const managerRuntime: PiManagerRuntime = {
     async createSession(args) {
       const billingOrganizationId =
-        args.billingOrganizationId ?? input.defaultBillingOrganizationId ?? null;
+        args.billingOrganizationId === undefined
+          ? (input.defaultBillingOrganizationId ?? null)
+          : args.billingOrganizationId;
       if (
         billingOrganizationId !== null &&
         (input.execution.scope.kind === "user" || input.execution.scope.kind === "system")

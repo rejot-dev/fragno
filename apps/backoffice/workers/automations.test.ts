@@ -914,6 +914,7 @@ describe("Automations authorized HTTP context", () => {
         prepared,
         trigger: { type: "manual", payload: {} },
         execution,
+        billingOrganizationId: null,
       }).params;
 
       await expect(

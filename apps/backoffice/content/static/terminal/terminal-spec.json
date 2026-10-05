@@ -3029,7 +3029,7 @@
         "name": "billing-organization-id",
         "valueRequired": true,
         "valueName": "organization-id",
-        "description": "Billing owner required for user-scoped sessions"
+        "description": "Billing owner for user-scoped sessions; omitted child sessions inherit the calling Pi session or workflow's owner"
       },
       {
         "name": "help",

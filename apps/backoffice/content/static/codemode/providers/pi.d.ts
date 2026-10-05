@@ -1,6 +1,6 @@
 // pi tools
 type PiCodemodeProvider = {
-  /** Create a durable Pi agent in the current scoped directory. */
+  /** Create a durable Pi agent in the current scoped directory. User-scoped child sessions inherit the calling Pi session or workflow's billing organization when billingOrganizationId is omitted. */
   createSession(input: PiCreateSessionInput): Promise<PiCreateSessionOutput>;
   /** Get a durable Pi directory record and its conversation view. */
   getSession(input: PiGetSessionInput): Promise<PiGetSessionOutput>;

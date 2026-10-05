@@ -320,6 +320,7 @@ describe("starter automation router scenarios", () => {
               prepared,
               trigger: { type: "event", event },
               execution: createBackofficeSystemExecution(scope),
+              billingOrganizationId: null,
             });
             await workflow.createInternalInstance(workflowInput);
 

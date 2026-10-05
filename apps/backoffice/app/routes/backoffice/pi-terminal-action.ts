@@ -234,6 +234,7 @@ const resolveHelpCommandSpecs = async ({
       runtime,
       kernel,
       execution: execution,
+      billingOrganizationId: null,
     });
     return getAvailablePiTerminalCommandSpecs(createBackofficeToolContext(runtimeContext));
   } catch {
@@ -342,6 +343,7 @@ const handleRunCommand = async ({
         runtime,
         kernel,
         execution: execution,
+        billingOrganizationId: null,
       }),
     });
 

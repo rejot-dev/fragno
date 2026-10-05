@@ -78,6 +78,15 @@ requires its Worker Loader configuration; local execution uses the existing loca
 guidance, codemode declaration guidance, static/workspace skill discovery, session-specific
 instructions, and the default thinking level are owned by durable agents.
 
+Pi tool calls inherit the calling session's billing organization when `pi.createSession` omits
+`billingOrganizationId`. Inline codemode workflows snapshot this billing selection in their
+execution metadata and restore it after suspension, retries, and object restarts. Saved workflows
+started from these contexts inherit the same selection, including nested workflows. Organization and
+project scopes still derive their billing owner from scope; inheritance never changes execution
+scope or actor provenance. Explicit selections for user/system contexts require authorization when
+scheduling a workflow and when creating a session, and generation rechecks current access. Selecting
+a billing organization does not persist permission to use it.
+
 Runtime tools target the scoped manager directly. They expose durable directory operations,
 submission admission and inspection, synchronous prompt execution, and agent cancellation through
 `pi.createSession`, `pi.getSession`, `pi.listSessions`, `pi.submitPrompt`, `pi.getSubmission`,

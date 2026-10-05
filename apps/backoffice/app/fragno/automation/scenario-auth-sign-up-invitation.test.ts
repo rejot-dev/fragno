@@ -102,6 +102,7 @@ function createSignUpInvitation(input: CreateSignUpInvitationStepInput): Backoff
           runtime: ctx.runtime.services,
           kernel,
           execution,
+          billingOrganizationId: null,
         }),
       });
       const result = await bash.exec(

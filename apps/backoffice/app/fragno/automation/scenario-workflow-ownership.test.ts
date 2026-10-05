@@ -43,6 +43,7 @@ const workflowParams = (orgId: string, instanceId: string, actors: unknown) => (
   execution: {
     scope: { kind: "org", orgId },
     actors,
+    billingOrganizationId: "caller-billing-org",
     capabilityGrants: [],
   },
 });
@@ -149,7 +150,11 @@ describe("scenario workflow ownership", () => {
               meta: {
                 params: {
                   trigger: { event: { scope: unknown; actors: unknown } };
-                  execution: { scope: unknown; actors: unknown };
+                  execution: {
+                    scope: unknown;
+                    actors: unknown;
+                    billingOrganizationId: string | null;
+                  };
                 };
               };
             };
@@ -158,7 +163,104 @@ describe("scenario workflow ownership", () => {
             expect(instance.meta.params.trigger.event.actors).toEqual(ownerExecution.actors);
             expect(instance.meta.params.execution.scope).toEqual(scope);
             expect(instance.meta.params.execution.actors).toEqual(ownerExecution.actors);
+            assert.equal(instance.meta.params.execution.billingOrganizationId, "org-1");
           }),
+        ],
+      }),
+    );
+  });
+
+  test("authorizes user-scoped billing selections before single, batch, and restart-or-create persistence", async () => {
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        name: "workflow billing selection authorization",
+        options: { drain: false },
+        setup: ({ given }) => [
+          given.auth.user({ id: "owner", role: "admin" }),
+          given.auth.user({ id: "member", role: "user" }),
+          given.auth.organization({ id: "org-1", ownerUserId: "owner", ownerRoles: ["owner"] }),
+          given.auth.member({ orgId: "org-1", userId: "member", roles: ["member"] }),
+        ],
+        steps: ({ then }) => [
+          then.assert(
+            "only an authorized billing selection is persisted with trusted provenance",
+            async ({ runtime }) => {
+              const scope = { kind: "user", userId: "member" } as const;
+              const execution = createBackofficeUserExecution({ scope, userId: "member" });
+              const object = runtime.objects.automations.for(scope);
+              const forgedActors = createBackofficeUserExecution({ scope, userId: "owner" }).actors;
+              for (const shape of ["single", "batch", "restart-or-create"]) {
+                for (const [billingOrganizationId, expectedStatus] of [
+                  ["foreign-org", 403],
+                  ["", 400],
+                  ["org-1", 200],
+                ] as const) {
+                  const instanceId = `${shape}-${expectedStatus}`;
+                  const params = {
+                    ...workflowParams("forged-org", instanceId, forgedActors),
+                    trigger: { type: "manual", payload: {} },
+                    execution: {
+                      scope: { kind: "org", orgId: "forged-org" },
+                      actors: forgedActors,
+                      capabilityGrants: [],
+                      billingOrganizationId,
+                      userAuthority: { role: "admin" },
+                    },
+                  };
+                  const body =
+                    shape === "batch"
+                      ? {
+                          instances: [{ id: instanceId, params }],
+                          remoteWorkflowName: "ownership-test",
+                        }
+                      : shape === "restart-or-create"
+                        ? {
+                            create: { params, remoteWorkflowName: "ownership-test" },
+                            restart: { precondition: { status: { in: ["complete"] } } },
+                          }
+                        : { id: instanceId, params, remoteWorkflowName: "ownership-test" };
+                  const suffix =
+                    shape === "batch"
+                      ? "/batch"
+                      : shape === "restart-or-create"
+                        ? `/${instanceId}/restart-or-create`
+                        : "";
+                  const created = await object.http.fetchAuthorized(
+                    new Request(
+                      `https://workflows.test/api/workflows/${CODEMODE_WORKFLOW}/instances${suffix}`,
+                      {
+                        method: "POST",
+                        headers: { "content-type": "application/json" },
+                        body: JSON.stringify(body),
+                      },
+                    ),
+                    { execution, propagationContext: null },
+                  );
+                  assert.equal(created.status, expectedStatus, await created.clone().text());
+                  const response = await object.http.fetchAuthorized(
+                    new Request(
+                      `https://workflows.test/api/workflows/${CODEMODE_WORKFLOW}/instances/${instanceId}`,
+                    ),
+                    { execution, propagationContext: null },
+                  );
+                  if (expectedStatus !== 200) {
+                    assert.equal(response.status, 404, await response.clone().text());
+                    continue;
+                  }
+                  assert.equal(response.status, 200, await response.clone().text());
+                  const stored = await response.json<{
+                    meta: { params: { execution: unknown } };
+                  }>();
+                  expect(stored.meta.params.execution).toEqual({
+                    scope,
+                    actors: execution.actors,
+                    capabilityGrants: [],
+                    billingOrganizationId: "org-1",
+                  });
+                }
+              }
+            },
+          ),
         ],
       }),
     );

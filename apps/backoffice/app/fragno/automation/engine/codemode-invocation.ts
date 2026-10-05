@@ -10,6 +10,7 @@ import {
   backofficePermissionRequirementSchema,
   type BackofficePermissionRequirement,
 } from "@/backoffice-runtime/permissions";
+import { piAgentCreationSchema } from "@/fragno/pi-manager/pi-agent-contract";
 
 import {
   automationActorsSchema,
@@ -56,6 +57,7 @@ export type CodemodeWorkflowParams = {
   execution: {
     scope: BackofficeExecutionContext["scope"];
     actors: AutomationActors;
+    billingOrganizationId: string | null;
     capabilityGrants: readonly CodemodeCapabilityGrant[];
   };
 };
@@ -77,6 +79,8 @@ export const codemodeWorkflowParamsSchema: z.ZodType<CodemodeWorkflowParams> = z
   execution: z.strictObject({
     scope: backofficeContextScopeSchema,
     actors: automationActorsSchema,
+    // Existing workflow snapshots predate billing inheritance and have no selected owner.
+    billingOrganizationId: piAgentCreationSchema.shape.billingOrganizationId,
     capabilityGrants: z.array(codemodeCapabilityGrantSchema),
   }),
 });
@@ -154,11 +158,13 @@ export function createCodemodeWorkflowInstanceInput<TPayload extends AutomationE
   prepared,
   trigger,
   execution,
+  billingOrganizationId,
   capabilityGrants = [],
 }: {
   prepared: PreparedCodemodeWorkflowInstance;
   trigger: CodemodeWorkflowTrigger<TPayload>;
   execution: BackofficeExecutionContext;
+  billingOrganizationId: string | null;
   capabilityGrants?: readonly CodemodeCapabilityGrant[];
 }) {
   if (
@@ -179,6 +185,10 @@ export function createCodemodeWorkflowInstanceInput<TPayload extends AutomationE
       execution: {
         scope: execution.scope,
         actors: execution.actors,
+        billingOrganizationId:
+          execution.scope.kind === "org" || execution.scope.kind === "project"
+            ? execution.scope.orgId
+            : billingOrganizationId,
         capabilityGrants,
       },
     } satisfies CodemodeWorkflowParams,

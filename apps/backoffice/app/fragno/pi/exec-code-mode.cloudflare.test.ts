@@ -628,6 +628,7 @@ const createExecCodeModeTool = async ({
   const tool = createBackofficePiTools({
     sessionId: "session-1",
     execution: createPiSystemFileContext().execution,
+    billingOrganizationId: "org-1",
     codemode: { ...createPiCodemodeRuntime(env), workflow: workflowRuntime },
     authorizeExecution: async () => undefined,
     createRuntimeToolContext: () => runtimeToolContext,

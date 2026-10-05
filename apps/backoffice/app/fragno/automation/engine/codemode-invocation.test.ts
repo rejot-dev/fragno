@@ -73,6 +73,7 @@ describe("codemode invocation preparation", () => {
         prepared,
         trigger: { type: "event", event },
         execution,
+        billingOrganizationId: null,
       }),
     ).toEqual({
       workflowName: "codemode-script",
@@ -81,7 +82,12 @@ describe("codemode invocation preparation", () => {
       params: {
         program: prepared.program,
         trigger: { type: "event", event },
-        execution: { scope: execution.scope, actors: execution.actors, capabilityGrants: [] },
+        execution: {
+          scope: execution.scope,
+          actors: execution.actors,
+          billingOrganizationId: "org-1",
+          capabilityGrants: [],
+        },
       },
     });
   });
@@ -96,6 +102,7 @@ describe("codemode invocation preparation", () => {
       prepared,
       trigger: { type: "manual", payload: { requestId: "request-1" } },
       execution,
+      billingOrganizationId: null,
     });
     const completion = { workflowName: "parent-workflow", instanceId: "parent-instance" };
 
@@ -136,6 +143,7 @@ describe("codemode invocation preparation", () => {
           event: { ...event, scope: { kind: "org", orgId: "org-2" } },
         },
         execution,
+        billingOrganizationId: null,
       }),
     ).toThrow("Codemode event and execution scopes must match.");
   });

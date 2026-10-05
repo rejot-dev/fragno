@@ -417,6 +417,7 @@ const formatExecCodeModeText = (result: BackofficeCodemodeExecuteResult) => {
 
 type ExecCodeModeToolOptions = PiToolExecutionOptions & {
   execution: BackofficeExecutionContext;
+  billingOrganizationId: string | null;
   codemode: PiCodemodeRuntime;
 };
 
@@ -522,6 +523,7 @@ function createExecCodeModeTool(options: ExecCodeModeToolOptions) {
               prepared,
               trigger: { type: "manual", payload: {} },
               execution: options.execution,
+              billingOrganizationId: options.billingOrganizationId,
             });
             const created = await workflowScheduler.createInternalInstance(workflowInput);
             runHandle = { instanceId: created.instanceId };
@@ -564,6 +566,7 @@ function createExecCodeModeTool(options: ExecCodeModeToolOptions) {
 
 export type CreateBackofficePiToolsOptions = PiToolExecutionOptions & {
   execution: BackofficeExecutionContext;
+  billingOrganizationId: string | null;
   codemode: PiCodemodeRuntime;
 };
 

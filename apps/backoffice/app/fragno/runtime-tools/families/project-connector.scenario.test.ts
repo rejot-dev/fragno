@@ -187,6 +187,7 @@ test("Connector bash commands use the same user-owned fragment as codemode", asy
               runtime: ctx.runtime.services,
               kernel: new BackofficeKernel(ctx.runtime.services),
               execution,
+              billingOrganizationId: null,
             }),
           });
           const providerHelp = await bash.exec("connector.providers.list --help");
@@ -354,6 +355,7 @@ test("runtime permission failures and unavailable configuration do not contact t
             runtime: ctx.runtime.services,
             kernel: new BackofficeKernel(ctx.runtime.services),
             execution,
+            billingOrganizationId: null,
           }),
         });
         const discovery = await bash.exec("connector.providers.list");

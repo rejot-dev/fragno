@@ -694,6 +694,7 @@ describe("runBackofficeCodemode", () => {
     const routeContext = createRouteBackedRuntimeContext({
       runtime,
       kernel,
+      billingOrganizationId: null,
       execution: createBackofficeUserExecution({
         scope: { kind: "org", orgId: "org-1" },
         userId: "user-1",
@@ -750,6 +751,7 @@ describe("runBackofficeCodemode", () => {
       const routeContext = createRouteBackedRuntimeContext({
         runtime: runtime.services,
         kernel: new BackofficeKernel(runtime.services),
+        billingOrganizationId: null,
         execution: createBackofficeUserExecution({
           scope: { kind: "org", orgId: "org-1" },
           userId: "user-1",
@@ -797,6 +799,7 @@ describe("runBackofficeCodemode", () => {
         runtime: runtime.services,
         kernel,
         execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+        billingOrganizationId: null,
       });
 
       const result = await runBackofficeCodemode({

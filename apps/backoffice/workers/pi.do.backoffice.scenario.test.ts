@@ -36,14 +36,21 @@ import {
 import {
   BACKOFFICE_SYSTEM_ACTORS,
   createBackofficeServiceExecution,
+  createBackofficeSystemExecution,
   createBackofficeUserExecution,
   type BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
 import type { InMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
 import type { LocalObjectFactoryOverrides } from "@/backoffice-runtime/local-object-factory";
 import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
+import type { CodemodeWorkflowParams } from "@/fragno/automation/engine/codemode-invocation";
 import { createRouteBackedAutomationRouterRuntime } from "@/fragno/automation/routing-route-runtime";
-import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
+import {
+  backofficeFiles,
+  defineBackofficeScenario,
+  runBackofficeScenario,
+} from "@/fragno/automation/scenario";
+import { createRouteBackedAutomationWorkflowRuntime } from "@/fragno/automation/workflow-route-runtime";
 import type { PiAgentConfig } from "@/fragno/pi-manager/pi-agent-contract";
 
 import { InMemoryPiObject } from "./pi.do";
@@ -425,6 +432,56 @@ for (const revocation of ["restricted", "disabled", "deleted"] as const) {
   });
 }
 
+test("durable Pi preserves an explicit null child billing owner", async () => {
+  const execution = createBackofficeSystemExecution({ kind: "system" });
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "durable Pi explicit null child billing owner",
+      options: { drain: false },
+      objectFactories: scriptedAgents([
+        fauxAssistantMessage(
+          [
+            fauxToolCall("execCodeMode", {
+              code: `async () => await pi.createSession({
+                requestId: "explicit-null-child",
+                name: "Unbilled child",
+                model: { provider: "faux", modelId: "faux-1" },
+                billingOrganizationId: null,
+              });`,
+            }),
+          ],
+          { stopReason: "toolUse" },
+        ),
+        fauxAssistantMessage("The child session was created."),
+      ]),
+      piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
+      setup: ({ given }) => [given.organization.exists({ id: "org-1" })],
+      steps: ({ then }) => [
+        then.assert("explicit null overrides inherited billing", async ({ runtime }) => {
+          const parent = await createAgent(runtime, execution);
+          await prompt(runtime, execution, parent);
+          await runtime.drain();
+
+          const directory = await (
+            await request(runtime, execution, "/sessions", null)
+          ).json<{ sessions: PiAgentConfig[] }>();
+          expect(directory.sessions).toHaveLength(2);
+          expect(
+            directory.sessions.find((session) => session.sessionId === parent.sessionId),
+          ).toMatchObject({
+            billingOrganizationId: "org-1",
+          });
+          expect(
+            directory.sessions.find((session) => session.name === "Unbilled child"),
+          ).toMatchObject({
+            billingOrganizationId: null,
+          });
+        }),
+      ],
+    }),
+  );
+});
+
 test("durable Pi delivers committed model usage to its persisted billing owner", async () => {
   const execution = createBackofficeServiceExecution({
     scope: { kind: "org", orgId: "org-1" },
@@ -581,6 +638,207 @@ test("durable Pi persists creator provenance rather than JWT authority and reche
     }),
   );
 });
+
+for (const revokeBillingAccess of [false, true]) {
+  test(`durable Pi workflows inherit billing across nested saved workflows and restart${revokeBillingAccess ? " without retaining revoked authority" : ""}`, async () => {
+    const scope = { kind: "user", userId: "member" } as const;
+    const execution = createBackofficeUserExecution({ scope, userId: "member" });
+    const promptOperation = revokeBillingAccess ? "pi.submitPrompt" : "pi.runPrompt";
+    const savedWorkflowCode = `defineWorkflow({ name: "saved-sentence-checker" }, async (event, step) => {
+      const classifier = await step.do("create saved classifier", async () => await pi.createSession({
+        requestId: event.instanceId + ":classifier",
+        name: "Saved classifier",
+        model: { provider: "faux", modelId: "faux-1" },
+      }));
+      await step.waitForEvent("wait for sentence", { type: "sentence" });
+      return await step.do("submit sentence", async () => await ${promptOperation}({
+        sessionId: classifier.sessionId,
+        requestId: event.instanceId + ":sentence",
+        content: "Classify this sentence",
+      }));
+    });`;
+    const workflowCode = `defineWorkflow({ name: "inline-sentence-checker" }, async (event, step) => {
+      const classifier = await step.do("create inline classifier", async () => await pi.createSession({
+        requestId: event.instanceId + ":classifier",
+        name: "Inline classifier",
+        model: { provider: "faux", modelId: "faux-1" },
+      }));
+      await step.do("start nested workflow", async () => await context.current.workflow.createInstance({
+        path: "/workspace/automations/saved-sentence-checker.workflow.js",
+        instanceId: "saved-checker",
+      }));
+      await step.waitForEvent("wait for sentence", { type: "sentence" });
+      return await step.do("submit sentence", async () => await ${promptOperation}({
+        sessionId: classifier.sessionId,
+        requestId: event.instanceId + ":sentence",
+        content: "Classify this sentence",
+      }));
+    });`;
+    let inlineInstanceId: string;
+    let classifiers: PiAgentConfig[];
+    let tokensBeforeResume: { quantity: string; eventCount: string };
+    let classifierCalls = 0;
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        name: `inherited workflow billing${revokeBillingAccess ? " after revocation" : ""}`,
+        files: backofficeFiles.workspaceStarter({
+          "automations/saved-sentence-checker.workflow.js": savedWorkflowCode,
+        }),
+        options: { drain: false },
+        objectFactories: scriptedAgents([
+          (context) => {
+            if (
+              context.messages.filter((message) => message.role === "user").at(-1)?.content ===
+              "Classify this sentence"
+            ) {
+              classifierCalls += 1;
+              return fauxAssistantMessage("Not naughty.");
+            }
+            return fauxAssistantMessage([fauxToolCall("execCodeMode", { code: workflowCode })], {
+              stopReason: "toolUse",
+            });
+          },
+          (context) => {
+            const results = context.messages.filter((message) => message.role === "toolResult");
+            expect(results).toHaveLength(1);
+            expect(results[0]?.isError, JSON.stringify(results)).toBe(false);
+            return fauxAssistantMessage("Sentence checker is waiting.");
+          },
+        ]),
+        piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
+        setup: ({ given }) => [
+          given.auth.user({ id: "owner", role: "admin" }),
+          given.auth.user({ id: "member", role: "user" }),
+          given.auth.organization({ id: "org-1", ownerUserId: "owner", ownerRoles: ["owner"] }),
+          given.auth.member({ orgId: "org-1", userId: "member", roles: ["member"] }),
+        ],
+        steps: ({ when, then, runner }) => [
+          then.assert(
+            "inline and nested workflows persist the parent's billing selection",
+            async ({ runtime }) => {
+              const config = await createAgent(runtime, execution);
+              await prompt(runtime, execution, config);
+              await runtime.drain();
+              const workflow = createRouteBackedAutomationWorkflowRuntime({
+                object: runtime.objects.automations.for(scope),
+                execution,
+              });
+              const instances = await workflow.listInstances({ pageSize: 10 });
+              expect(instances.instances, JSON.stringify(instances)).toHaveLength(2);
+              const inline = instances.instances.find(
+                (instance) => instance.id !== "saved-checker",
+              );
+              assert(inline);
+              inlineInstanceId = inline.id;
+              for (const instance of instances.instances) {
+                assert.equal(instance.details.status, "waiting");
+                const response = await runtime.objects.automations
+                  .for(scope)
+                  .http.fetchAuthorized(
+                    new Request(
+                      `https://automations.test/api/workflows/codemode-script/instances/${instance.id}`,
+                    ),
+                    { execution, propagationContext: null },
+                  );
+                assert.equal(response.status, 200, await response.clone().text());
+                const stored = await response.json<{ meta: { params: CodemodeWorkflowParams } }>();
+                expect(stored.meta.params.execution).toMatchObject({
+                  scope,
+                  actors: execution.actors,
+                  billingOrganizationId: "org-1",
+                });
+                expect(stored.meta.params.execution).not.toHaveProperty("userAuthority");
+              }
+              const directory = await (
+                await request(runtime, execution, "/sessions", null)
+              ).json<{ sessions: PiAgentConfig[] }>();
+              expect(directory.sessions).toHaveLength(3);
+              classifiers = directory.sessions.filter(
+                (session) => session.sessionId !== config.sessionId,
+              );
+              expect(new Set(classifiers.map((session) => session.name))).toEqual(
+                new Set(["Inline classifier", "Saved classifier"]),
+              );
+              for (const classifier of classifiers) {
+                expect(classifier).toMatchObject({
+                  scope,
+                  billingOrganizationId: "org-1",
+                  actors: execution.actors,
+                });
+              }
+              const period = new Date(runtime.now()).toISOString().slice(0, 7);
+              const trackers = await runtime.objects.billing
+                .forOrg("org-1")
+                .commands.getTrackers({ scope, period, pageSize: 100 });
+              const tokens = trackers.trackers.find(
+                (tracker) => tracker.meter === "ai.tokens.total",
+              );
+              assert(tokens);
+              tokensBeforeResume = { quantity: tokens.quantity, eventCount: tokens.eventCount };
+            },
+          ),
+          runner.restartObject({ binding: "AUTOMATIONS", scope }),
+          ...(revokeBillingAccess
+            ? [when.auth.removeMember({ orgId: "org-1", userId: "member" })]
+            : []),
+          then.assert("resumed classifiers use current billing authority", async ({ runtime }) => {
+            const workflow = createRouteBackedAutomationWorkflowRuntime({
+              object: runtime.objects.automations.for(scope),
+              execution,
+            });
+            for (const instanceId of [inlineInstanceId, "saved-checker"]) {
+              await workflow.sendEvent({
+                instanceId,
+                type: "sentence",
+                payload: { sentence: "hello" },
+              });
+            }
+            await runtime.drain();
+            for (const instanceId of [inlineInstanceId, "saved-checker"]) {
+              assert.equal((await workflow.getInstance({ instanceId })).details.status, "complete");
+            }
+            for (const classifier of classifiers) {
+              const instanceId =
+                classifier.name === "Inline classifier" ? inlineInstanceId : "saved-checker";
+              const submission = await (
+                await request(
+                  runtime,
+                  execution,
+                  `/sessions/${classifier.sessionId}/submissions/${instanceId}:sentence`,
+                  null,
+                )
+              ).json();
+              expect(submission).toMatchObject({
+                status: revokeBillingAccess ? "unanswered" : "done",
+              });
+              const transcript = await view(runtime, execution, classifier);
+              if (revokeBillingAccess) {
+                expect(JSON.stringify(transcript.entries)).not.toContain("Not naughty.");
+              } else {
+                expect(JSON.stringify(transcript.entries)).toContain("Not naughty.");
+              }
+            }
+            expect(classifierCalls).toBe(revokeBillingAccess ? 0 : 2);
+            const period = new Date(runtime.now()).toISOString().slice(0, 7);
+            const trackers = await runtime.objects.billing
+              .forOrg("org-1")
+              .commands.getTrackers({ scope, period, pageSize: 100 });
+            const tokens = trackers.trackers.find((tracker) => tracker.meter === "ai.tokens.total");
+            assert(tokens);
+            if (revokeBillingAccess) {
+              expect({ quantity: tokens.quantity, eventCount: tokens.eventCount }).toEqual(
+                tokensBeforeResume,
+              );
+            } else {
+              expect(Number(tokens.quantity)).toBeGreaterThan(Number(tokensBeforeResume.quantity));
+              expect(Number(tokens.eventCount)).toBe(Number(tokensBeforeResume.eventCount) + 2);
+            }
+          }),
+        ],
+      }),
+    );
+  });
+}
 
 test("durable Pi restores scoped tools and reports interrupted codemode without repeating its mutation", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "pi-codemode-recovery-"));

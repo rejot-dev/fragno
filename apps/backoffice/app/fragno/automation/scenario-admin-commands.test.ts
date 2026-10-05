@@ -35,6 +35,7 @@ async function createSystemTerminalBash(ctx: BackofficeScenarioContext) {
       runtime: ctx.runtime.services,
       kernel,
       execution,
+      billingOrganizationId: null,
     }),
   }).bash;
 }

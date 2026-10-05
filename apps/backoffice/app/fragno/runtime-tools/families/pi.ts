@@ -161,7 +161,8 @@ const sessionCreateTool = defineBackofficeRuntimeTool({
   id: "pi.session.create",
   namespace: "pi",
   name: "createSession",
-  description: "Create a durable Pi agent in the current scoped directory.",
+  description:
+    "Create a durable Pi agent in the current scoped directory. User-scoped child sessions inherit the calling Pi session or workflow's billing organization when billingOrganizationId is omitted.",
   requiredPermissions: ["modify"],
   inputSchema: sessionCreateInputSchema,
   outputSchema: piRuntimeSessionOutputSchema,
@@ -199,7 +200,8 @@ const sessionCreateTool = defineBackofficeRuntimeTool({
             name: "billing-organization-id",
             valueRequired: true,
             valueName: "organization-id",
-            description: "Billing owner required for user-scoped sessions",
+            description:
+              "Billing owner for user-scoped sessions; omitted child sessions inherit the calling Pi session or workflow's owner",
           },
         ],
         examples: [
