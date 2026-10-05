@@ -215,7 +215,7 @@ async function exchangeSignedInSessionForBackofficeJwt(
   preferredOrganizationId: string | null,
 ): Promise<{
   response: Response;
-  organizationId: string | null;
+  organizationSlug: string | null;
 }> {
   const headers = new Headers(request.headers);
   headers.set("cookie", mergeRequestCookiesWithResponseCookies(request, signInResponse));
@@ -235,7 +235,7 @@ async function exchangeSignedInSessionForBackofficeJwt(
         throw new Error(await readBackofficeSessionExchangeErrorMessage(response));
       }
       const result = issueBackofficeTokenResultSchema.parse(await response.clone().json());
-      return { response, organizationId: result.organization?.id ?? null };
+      return { response, organizationSlug: result.organization?.slug ?? null };
     }
 
     const provisioning = organizationProvisioningResponseSchema.parse(await response.json());
@@ -327,7 +327,7 @@ export async function action({ request, context, url }: Route.ActionArgs) {
     for (const setCookie of getSetCookieHeaders(exchange.response.headers)) {
       headers.append("Set-Cookie", setCookie);
     }
-    return redirect(retargetBackofficeOrganizationReturnTo(returnTo, exchange.organizationId), {
+    return redirect(retargetBackofficeOrganizationReturnTo(returnTo, exchange.organizationSlug), {
       headers,
     });
   } catch (error) {
