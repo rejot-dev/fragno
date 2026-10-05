@@ -16,7 +16,7 @@ test("in-memory codemode returns host-realm values through a Backoffice scenario
       setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
       steps: ({ when, then }) => [
         when.codemode.run({
-          orgId: "org-1",
+          scope: { kind: "org", orgId: "org-1" },
           code: `async () => ({ logged: true, nested: { value: 1 } })`,
         }),
         then.assert("the result is detached into the host realm", ({ codemodeRuns }) => {

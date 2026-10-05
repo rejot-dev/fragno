@@ -86,7 +86,7 @@ test("an anonymous OAuth browser return cannot create or forge a Connector accou
     ],
     steps: ({ when, then }) => [
       when.codemode.run({
-        orgId: "org-1",
+        scope: { kind: "org", orgId: "org-1" },
         label: "start provider OAuth",
         code: 'async () => await context.user("user-1").connector.connect({ service: "gmail", connectionName: "work" })',
       }),
@@ -137,7 +137,7 @@ test("an anonymous OAuth browser return cannot create or forge a Connector accou
           );
           assert(organizationCallback.status === 404);
           const before = await ctx.runCodemode({
-            orgId: "org-1",
+            scope: { kind: "org", orgId: "org-1" },
             label: "list before gateway confirmation",
             code: 'async () => await context.user("user-1").connector.listAccounts()',
           });
@@ -168,13 +168,13 @@ test("an anonymous OAuth browser return cannot create or forge a Connector accou
             null,
           );
           const afterReturn = await ctx.runCodemode({
-            orgId: "org-1",
+            scope: { kind: "org", orgId: "org-1" },
             label: "callback still did not persist",
             code: 'async () => await context.user("user-1").connector.listAccounts()',
           });
           expect(afterReturn.result).toMatchObject({ accounts: [] });
           const verified = await ctx.runCodemode({
-            orgId: "org-1",
+            scope: { kind: "org", orgId: "org-1" },
             label: "perform authorized gateway refresh",
             code: `async () => { const connector = context.user("user-1").connector; return { connection: await connector.refreshConnection({ requestId: ${JSON.stringify(connection.id)} }), accounts: await connector.listAccounts() }; }`,
           });
@@ -224,14 +224,14 @@ test("public action requests enforce verified execution permissions before conta
         ];
         for (const scope of scopes) {
           const started = await ctx.runCodemode({
-            orgId: "org-1",
+            scope: { kind: "org", orgId: "org-1" },
             label: `start consent for ${scope.accountId}`,
             code: `async () => await ${scope.provider}.connect({ service: "gmail", connectionName: "work" })`,
           });
           const connection = projectConnectorConnectionSchema.parse(started.result);
           gateway.authorize(connection.id, scope.accountId);
           await ctx.runCodemode({
-            orgId: "org-1",
+            scope: { kind: "org", orgId: "org-1" },
             label: `verify ${scope.accountId}`,
             code: `async () => await ${scope.provider}.refreshConnection({ requestId: ${JSON.stringify(connection.id)} })`,
           });

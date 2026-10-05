@@ -3887,6 +3887,56 @@
     ]
   },
   {
+    "command": "js.check",
+    "summary": "js.check checks a standalone /static or /workspace JavaScript file with TypeScript.",
+    "options": [
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "js.run",
+    "summary": "js.run executes top-level statements in a standalone saved JavaScript ES module.",
+    "options": [
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
     "command": "upload.prepared.read",
     "summary": "Read one prepared upload as UTF-8, base64, or bytes.",
     "options": [
@@ -4024,120 +4074,12 @@
     ]
   },
   {
-    "command": "internal.automations.routes.seed-starter",
-    "summary": "internal.automations.routes.seed-starter reconciles starter routes for the current scope.",
-    "options": [
-      {
-        "name": "help",
-        "description": "Show this help text",
-        "valueRequired": false,
-        "valueName": ""
-      },
-      {
-        "name": "print",
-        "description": "Extract a nested JSON field (kebab-case path) from command result",
-        "valueRequired": true,
-        "valueName": "selector",
-        "required": false
-      },
-      {
-        "name": "format",
-        "description": "Output format: text (default) or json",
-        "valueRequired": true,
-        "valueName": "format"
-      }
-    ]
-  },
-  {
     "command": "internal.marketplace.push",
-    "summary": "internal.marketplace.push publishes the bundled static marketplace entries.",
+    "summary": "internal.marketplace.push publishes the bundled static marketplace entries from System context.",
     "options": [
       {
         "name": "force",
         "description": "Publish with fresh workflow IDs and overwrite existing artifact files."
-      },
-      {
-        "name": "help",
-        "description": "Show this help text",
-        "valueRequired": false,
-        "valueName": ""
-      },
-      {
-        "name": "print",
-        "description": "Extract a nested JSON field (kebab-case path) from command result",
-        "valueRequired": true,
-        "valueName": "selector",
-        "required": false
-      },
-      {
-        "name": "format",
-        "description": "Output format: text (default) or json",
-        "valueRequired": true,
-        "valueName": "format"
-      }
-    ]
-  },
-  {
-    "command": "internal.hooks.list",
-    "summary": "internal.hooks.list lists durable hook queue entries.",
-    "options": [
-      {
-        "name": "fragment",
-        "required": true,
-        "valueRequired": true,
-        "valueName": "fragment",
-        "description": "Fragment scope, e.g. automations."
-      },
-      {
-        "name": "cursor",
-        "valueRequired": true,
-        "valueName": "cursor",
-        "description": "Optional pagination cursor."
-      },
-      {
-        "name": "page-size",
-        "valueRequired": true,
-        "valueName": "number",
-        "description": "Optional page size."
-      },
-      {
-        "name": "help",
-        "description": "Show this help text",
-        "valueRequired": false,
-        "valueName": ""
-      },
-      {
-        "name": "print",
-        "description": "Extract a nested JSON field (kebab-case path) from command result",
-        "valueRequired": true,
-        "valueName": "selector",
-        "required": false
-      },
-      {
-        "name": "format",
-        "description": "Output format: text (default) or json",
-        "valueRequired": true,
-        "valueName": "format"
-      }
-    ]
-  },
-  {
-    "command": "internal.hooks.get",
-    "summary": "internal.hooks.get returns one durable hook entry by id.",
-    "options": [
-      {
-        "name": "fragment",
-        "required": true,
-        "valueRequired": true,
-        "valueName": "fragment",
-        "description": "Fragment scope."
-      },
-      {
-        "name": "hook-id",
-        "required": true,
-        "valueRequired": true,
-        "valueName": "id",
-        "description": "Durable hook id."
       },
       {
         "name": "help",

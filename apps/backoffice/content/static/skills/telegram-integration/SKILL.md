@@ -60,11 +60,11 @@ Payload fields:
 - `attachments`: optional attachment metadata. Voice notes and files are represented here, not as
   raw Telegram `message.voice` fields.
 
-When reading a queued ingest hook through `internal.hooksGet({ fragment: "automations", hookId })`,
-the normalized Telegram payload is inside the event envelope:
+When reading a queued ingest hook through `hooks.get({ fragment: "automations", hookId })`, the
+normalized Telegram payload is inside the event envelope:
 
 ```js
-const entry = await internal.hooksGet({ fragment: "automations", hookId });
+const entry = await hooks.get({ fragment: "automations", hookId });
 const payload = entry?.payload?.payload;
 const attachments = payload?.attachments ?? [];
 ```

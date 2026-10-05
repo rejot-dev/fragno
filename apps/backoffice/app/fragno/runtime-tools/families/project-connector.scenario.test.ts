@@ -27,7 +27,7 @@ test("user-scoped codemode verifies OAuth before SQLite bindings, profiles, and 
     ],
     steps: ({ when, then }) => [
       when.codemode.run({
-        orgId: "org-1",
+        scope: { kind: "org", orgId: "org-1" },
         label: "discover the configured provider and start Gmail consent",
         code: `async () => {
           const connector = context.user("user-1").connector;
@@ -60,7 +60,7 @@ test("user-scoped codemode verifies OAuth before SQLite bindings, profiles, and 
             },
           ]);
           const pending = await ctx.runCodemode({
-            orgId: "org-1",
+            scope: { kind: "org", orgId: "org-1" },
             label: "check before consent",
             code: `async () => { const connector = context.user("user-1").connector; return { connection: await connector.refreshConnection({ requestId: ${JSON.stringify(request.id)} }), accounts: await connector.listAccounts() }; }`,
           });
@@ -70,7 +70,7 @@ test("user-scoped codemode verifies OAuth before SQLite bindings, profiles, and 
           });
           gateway.authorize(request.id, "gmail-account");
           const connected = await ctx.runCodemode({
-            orgId: "org-1",
+            scope: { kind: "org", orgId: "org-1" },
             label: "verify consent and provider identity",
             code: `async () => { const connector = context.user("user-1").connector; return { connection: await connector.refreshConnection({ requestId: ${JSON.stringify(request.id)} }), accounts: await connector.listAccounts(), profile: await connector.getProfile({ accountId: "gmail-account" }) }; }`,
           });
@@ -84,7 +84,7 @@ test("user-scoped codemode verifies OAuth before SQLite bindings, profiles, and 
             scope: { kind: "user", userId: "user-1" },
           });
           const restored = await ctx.runCodemode({
-            orgId: "org-1",
+            scope: { kind: "org", orgId: "org-1" },
             label: "read bindings after object restart",
             code: 'async () => await context.user("user-1").connector.listAccounts()',
           });
@@ -92,7 +92,7 @@ test("user-scoped codemode verifies OAuth before SQLite bindings, profiles, and 
             accounts: [{ id: "gmail-account", externalUserId: "user:user-1" }],
           });
           const execution = await ctx.runCodemode({
-            orgId: "org-1",
+            scope: { kind: "org", orgId: "org-1" },
             label: "execute explicit read-only action",
             code: 'async () => await context.user("user-1").connector.executeAction({ accountId: "gmail-account", actionId: "gmail.search_threads", input: { query: "is:unread" } })',
           });
@@ -112,7 +112,7 @@ test("user-scoped codemode verifies OAuth before SQLite bindings, profiles, and 
           gateway.control.actionFailure = "text";
           await expect(
             ctx.runCodemode({
-              orgId: "org-1",
+              scope: { kind: "org", orgId: "org-1" },
               label: "provider failure must not retry an action",
               code: 'async () => await context.user("user-1").connector.executeAction({ accountId: "gmail-account", actionId: "gmail.search_threads", input: {} })',
             }),
@@ -133,20 +133,20 @@ test("Connector bindings are isolated between user owners", async () => {
     steps: ({ then }) => [
       then.assert("one user cannot read or refresh another user's binding", async (ctx) => {
         const started = await ctx.runCodemode({
-          orgId: "org-1",
+          scope: { kind: "org", orgId: "org-1" },
           label: "start user OAuth",
           code: 'async () => await context.user("user-1").connector.connect({ service: "gmail", connectionName: "personal" })',
         });
         const request = projectConnectorConnectionSchema.parse(started.result);
         gateway.authorize(request.id, "private-account");
         await ctx.runCodemode({
-          orgId: "org-1",
+          scope: { kind: "org", orgId: "org-1" },
           label: "bind user account",
           code: `async () => await context.user("user-1").connector.refreshConnection({ requestId: ${JSON.stringify(request.id)} })`,
         });
 
         const accounts = await ctx.runCodemode({
-          orgId: "org-1",
+          scope: { kind: "org", orgId: "org-1" },
           label: "list user-owned accounts",
           code: 'async () => ({ owner: await context.user("user-1").connector.listAccounts(), other: await context.user("user-2").connector.listAccounts() })',
         });
@@ -156,7 +156,7 @@ test("Connector bindings are isolated between user owners", async () => {
         });
         await expect(
           ctx.runCodemode({
-            orgId: "org-1",
+            scope: { kind: "org", orgId: "org-1" },
             label: "reject another user's request",
             code: `async () => await context.user("user-2").connector.refreshConnection({ requestId: ${JSON.stringify(request.id)} })`,
           }),
@@ -392,21 +392,21 @@ test("missing project credentials return an actionable configuration error witho
       then.assert("the scope is available but not falsely authenticated", async (ctx) => {
         await expect(
           ctx.runCodemode({
-            orgId: "org-1",
+            scope: { kind: "org", orgId: "org-1" },
             label: "check missing connector key",
             code: 'async () => await context.user("user-1").connector.check()',
           }),
         ).rejects.toThrow("Connector is not configured.");
         await expect(
           ctx.runCodemode({
-            orgId: "org-1",
+            scope: { kind: "org", orgId: "org-1" },
             label: "discover providers with a missing connector key",
             code: 'async () => await context.user("user-1").connector.listProviderConfigs()',
           }),
         ).rejects.toThrow("Connector is not configured.");
         await expect(
           ctx.runCodemode({
-            orgId: "org-1",
+            scope: { kind: "org", orgId: "org-1" },
             label: "discover provider actions with a missing connector key",
             code: 'async () => await context.user("user-1").connector.listProviderActions({ providerConfigId: "gmail-provider" })',
           }),

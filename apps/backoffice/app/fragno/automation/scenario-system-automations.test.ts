@@ -429,7 +429,7 @@ describe("system automation scenarios", () => {
 
           then.workflow.steps({
             remoteWorkflowName: "workspace-file-initialization",
-            include: ["seed workspace starter files", "seed starter automation routes"],
+            include: ["seed workspace starter files"],
           }),
 
           then.assert("workspace initialization workflow runs in system scope", async (ctx) => {
@@ -510,7 +510,7 @@ describe("system automation scenarios", () => {
             exclude: [BACKOFFICE_PERMISSION.identity.bind],
           }),
           then.assert(
-            "workspace automations directory is writable through dashboard bash",
+            "members can edit workspace files and inspect hooks through dashboard bash",
             async (ctx) => {
               const orgId = "org-1";
               const kernel = new BackofficeKernel({
@@ -542,6 +542,28 @@ describe("system automation scenarios", () => {
                 { cwd: "/" },
               );
               assert(result.exitCode === 0);
+
+              const listResult = await bash.exec("hooks.list --fragment automations --format json");
+              assert(listResult.exitCode === 0, listResult.stderr);
+              const queue = JSON.parse(listResult.stdout) as {
+                items: Array<{ id: string; hookName: string }>;
+              };
+              expect(queue.items).toContainEqual(
+                expect.objectContaining({
+                  id: "org:auth:organization.created:org-1",
+                  hookName: "internalIngestEvent",
+                }),
+              );
+
+              const getResult = await bash.exec(
+                "hooks.get --fragment automations --hook-id org:auth:organization.created:org-1 --format json",
+              );
+              assert(getResult.exitCode === 0, getResult.stderr);
+              expect(JSON.parse(getResult.stdout)).toMatchObject({
+                id: "org:auth:organization.created:org-1",
+                hookName: "internalIngestEvent",
+                status: "completed",
+              });
             },
           ),
           then.files.contains({
@@ -554,7 +576,7 @@ describe("system automation scenarios", () => {
     );
   });
 
-  test("auth organization.updated is forwarded to the org automation queue after creation initializes routes", async () => {
+  test("auth organization.updated is forwarded to the org automation queue after workspace initialization", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         name: "production auth organization updates enqueue organization automation events after creation bootstrap",

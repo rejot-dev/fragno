@@ -62,11 +62,11 @@ describe("runtime tool authorization", () => {
   test("requires every declared permission before executing a tool", async () => {
     const execute = vi.fn(async () => ({ ok: true }));
     const tool = defineBackofficeRuntimeTool({
-      id: "internal.test.manage",
-      namespace: "internal",
-      name: "testManage",
-      description: "Test internal permissions.",
-      requiredPermissions: ["read", "manage"],
+      id: "store.test.modify",
+      namespace: "store",
+      name: "testModify",
+      description: "Test store permissions.",
+      requiredPermissions: ["read", "modify"],
       inputSchema: z.object({}),
       outputSchema: z.object({ ok: z.boolean() }),
       execute,
@@ -76,13 +76,13 @@ describe("runtime tool authorization", () => {
       executeBackofficeRuntimeTool(
         tool,
         {},
-        createToolContext({ grants: [{ namespace: "internal", permission: "read" }] }),
+        createToolContext({ grants: [{ namespace: "store", permission: "read" }] }),
       ),
     ).rejects.toMatchObject({
       message: [
-        "Permission denied for internal.testManage.",
-        "Action: Test internal permissions.",
-        "Required permission: internal.manage.",
+        "Permission denied for store.testModify.",
+        "Action: Test store permissions.",
+        "Required permission: store.modify.",
         "Reason: The current principal does not have the required permission.",
       ].join("\n"),
       reason: "principal-permission-denied",

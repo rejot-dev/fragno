@@ -129,9 +129,9 @@ export const defineMarketplacePublishWorkflow = (config: MarketplacePublishWorkf
       checkpoint: "step",
     },
     async (event, step) => {
-      if (config.ownerScope.kind !== "org") {
+      if (config.ownerScope.kind !== "system") {
         throw new NonRetryableError(
-          "Marketplace publication workflows require an organization Automations object.",
+          "Marketplace publication workflows require the System Automations object.",
         );
       }
       const runtime = config.runtime;

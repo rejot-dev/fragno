@@ -329,12 +329,9 @@ const createMarketplacePublicationWorkflow = async (
     version,
   });
   const workflows = createWorkflowsRouteCaller({
-    object: ctx.runtime.objects.automations.forOrg("org-1"),
+    object: ctx.runtime.objects.automations.singleton(),
     context: {
-      execution: createBackofficeSystemExecution({
-        kind: "org",
-        orgId: "org-1",
-      }),
+      execution: createBackofficeSystemExecution({ kind: "system" }),
       propagationContext: null,
     },
   });
@@ -377,13 +374,13 @@ describe("marketplace scenarios", { concurrent: false }, () => {
         steps: ({ then, runner }) => [
           then.assert("the normal publication is requested", async (ctx) => {
             await ctx.runtime.objects.automations
-              .forOrg("org-1")
+              .singleton()
               .commands.requestStaticMarketplacePublications();
           }),
           runner.drain(),
           then.assert("the forced publication uses fresh workflow IDs", async (ctx) => {
             const forced = await ctx.runtime.objects.automations
-              .forOrg("org-1")
+              .singleton()
               .commands.requestStaticMarketplacePublications({ force: true });
             expect(forced.publications[0]).toMatchObject({
               state: "requested",
@@ -429,7 +426,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
         steps: ({ when, then, runner }) => [
           then.assert("publish the built-in Marketplace channels", async (ctx) => {
             await ctx.runtime.objects.automations
-              .forOrg("org-1")
+              .singleton()
               .commands.requestStaticMarketplacePublications();
           }),
           runner.drain(),
@@ -841,7 +838,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           runner.drain(),
           then.assert("publish the built-in Marketplace channels", async (ctx) => {
             await ctx.runtime.objects.automations
-              .forOrg("org-1")
+              .singleton()
               .commands.requestStaticMarketplacePublications();
           }),
           runner.drain(),
@@ -925,7 +922,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
 
         steps: ({ when, then, runner }) => [
           when.codemode.run({
-            orgId: "org-1",
+            scope: { kind: "system" },
             label: "publish the bundled marketplace artifact",
             code: "async () => await internal.marketplacePush({})",
             assertToolCalls: ["internal.marketplace.push"],
@@ -1089,7 +1086,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
         steps: ({ then, runner }) => [
           then.assert("the Marketplace artifact is published", async (ctx) => {
             await ctx.runtime.objects.automations
-              .forOrg("org-1")
+              .singleton()
               .commands.requestStaticMarketplacePublications();
           }),
           runner.drain(),
@@ -1212,7 +1209,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             steps: ({ then, runner }) => [
               then.assert("publish the Marketplace artifact", async (ctx) => {
                 await ctx.runtime.objects.automations
-                  .forOrg("org-1")
+                  .singleton()
                   .commands.requestStaticMarketplacePublications();
               }),
               runner.drain(),
@@ -1296,7 +1293,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
         steps: ({ then, runner }) => [
           then.assert("the Marketplace artifact is published", async (ctx) => {
             await ctx.runtime.objects.automations
-              .forOrg("org-1")
+              .singleton()
               .commands.requestStaticMarketplacePublications();
           }),
           runner.drain(),
@@ -1525,7 +1522,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ when, then, runner }) => [
           when.codemode.run({
-            orgId: "org-1",
+            scope: { kind: "system" },
             label: "publish the bundled marketplace artifact",
             code: "async () => await internal.marketplacePush({})",
             assertToolCalls: ["internal.marketplace.push"],
@@ -1614,7 +1611,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ when, then, runner }) => [
           when.codemode.run({
-            orgId: "org-1",
+            scope: { kind: "system" },
             label: "publish the bundled marketplace artifact",
             code: "async () => await internal.marketplacePush({})",
             assertToolCalls: ["internal.marketplace.push"],
@@ -2019,7 +2016,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ when, then, runner }) => [
           when.codemode.run({
-            orgId: "org-1",
+            scope: { kind: "system" },
             label: "publish the bundled marketplace artifact",
             code: "async () => await internal.marketplacePush({})",
             assertToolCalls: ["internal.marketplace.push"],
@@ -2117,7 +2114,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ when, then, runner }) => [
           when.codemode.run({
-            orgId: "org-1",
+            scope: { kind: "system" },
             label: "publish both bundled Marketplace versions",
             code: "async () => await internal.marketplacePush({})",
             assertToolCalls: ["internal.marketplace.push"],
@@ -2255,7 +2252,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             }),
             runner.restartObject({
               binding: "AUTOMATIONS",
-              scope: { kind: "org", orgId: "org-1" },
+              scope: { kind: "singleton" },
             }),
             when.time.advance("1 s"),
             then.workflow.instance({
@@ -2354,7 +2351,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           }),
           runner.restartObject({
             binding: "AUTOMATIONS",
-            scope: { kind: "org", orgId: "org-1" },
+            scope: { kind: "singleton" },
           }),
           when.time.advance("1 s"),
           then.workflow.instance({
@@ -2435,7 +2432,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           }),
           runner.restartObject({
             binding: "AUTOMATIONS",
-            scope: { kind: "org", orgId: "org-1" },
+            scope: { kind: "singleton" },
           }),
           when.time.advance("1 s"),
           then.workflow.instance({
@@ -2570,7 +2567,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           }),
           runner.restartObject({
             binding: "AUTOMATIONS",
-            scope: { kind: "org", orgId: "org-1" },
+            scope: { kind: "singleton" },
           }),
           when.time.advance("1 s"),
           then.workflow.instance({
@@ -2655,7 +2652,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           ),
           runner.restartObject({
             binding: "AUTOMATIONS",
-            scope: { kind: "org", orgId: "org-1" },
+            scope: { kind: "singleton" },
           }),
           when.time.advance("1 s"),
           then.workflow.instance({
@@ -2797,7 +2794,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ when, then, runner }) => [
           when.codemode.run({
-            orgId: "org-1",
+            scope: { kind: "system" },
             label: "publish the bundled marketplace artifact",
             code: "async () => await internal.marketplacePush({})",
             assertToolCalls: ["internal.marketplace.push"],
@@ -3570,7 +3567,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ when, then, runner }) => [
           when.codemode.run({
-            orgId: "org-1",
+            scope: { kind: "system" },
             label: "publish the bundled marketplace artifact",
             code: "async () => await internal.marketplacePush({})",
             assertToolCalls: ["internal.marketplace.push"],
@@ -3677,7 +3674,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
 
         steps: ({ when, then }) => [
           when.codemode.run({
-            orgId: "org-1",
+            scope: { kind: "system" },
             label: "publish the bundled marketplace artifact",
             code: "async () => await internal.marketplacePush({})",
             assertToolCalls: ["internal.marketplace.push"],
@@ -3698,7 +3695,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
 
             await expect(
               ctx.runtime.objects.automations
-                .forOrg("org-1")
+                .singleton()
                 .commands.requestStaticMarketplacePublications(),
             ).rejects.toMatchObject({ code: "MARKETPLACE_LISTING_ARCHIVED" });
 

@@ -7,13 +7,18 @@ import {
   SYSTEM_AUTOMATION_SCRIPT_PATHS,
 } from "@/files/content/system-automations";
 
-import { internalToolFamily } from "./families/internal";
+import { automationStoreToolFamily } from "./families/automations-bindings";
+import { internalMarketplaceToolFamily, internalWorkspaceToolFamily } from "./families/internal";
 import {
   createRuntimeToolWorkflowCatalog,
   resolveWorkflowRuntimeToolCalls,
 } from "./workflow-catalog";
 
-const internalCatalog = createRuntimeToolWorkflowCatalog([internalToolFamily]);
+const runtimeToolCatalog = createRuntimeToolWorkflowCatalog([
+  internalWorkspaceToolFamily,
+  internalMarketplaceToolFamily,
+  automationStoreToolFamily,
+]);
 
 describe("runtime-tool workflow catalog", () => {
   it("links direct and supported scoped provider calls to their durable steps", () => {
@@ -26,9 +31,9 @@ describe("runtime-tool workflow catalog", () => {
         await step.do("configure", async () => {
           await internal.filesSeedExecute({});
           await org.internal.filesSeedExecute({});
-          await project.internal.automationsRoutesSeedStarter();
-          await user.internal.automationsRoutesSeedStarter();
-          await context.current.internal.automationsRoutesSeedStarter();
+          await project.internal.filesSeedExecute({});
+          await user.store.get({ key: "settings" });
+          await context.current.internal.marketplacePush({});
           await something.internal.filesSeedExecute({});
         });
       });`,
@@ -38,7 +43,7 @@ describe("runtime-tool workflow catalog", () => {
 
     const callsByStepId = resolveWorkflowRuntimeToolCalls({
       visualization,
-      catalog: internalCatalog,
+      catalog: runtimeToolCatalog,
     });
 
     expect(
@@ -48,9 +53,9 @@ describe("runtime-tool workflow catalog", () => {
     ).toEqual([
       { qualifiedName: "internal.filesSeedExecute", scope: "current" },
       { qualifiedName: "internal.filesSeedExecute", scope: "org" },
-      { qualifiedName: "internal.automationsRoutesSeedStarter", scope: "project" },
-      { qualifiedName: "internal.automationsRoutesSeedStarter", scope: "user" },
-      { qualifiedName: "internal.automationsRoutesSeedStarter", scope: "current" },
+      { qualifiedName: "internal.filesSeedExecute", scope: "project" },
+      { qualifiedName: "store.get", scope: "user" },
+      { qualifiedName: "internal.marketplacePush", scope: "current" },
     ]);
   });
 
@@ -66,7 +71,7 @@ describe("runtime-tool workflow catalog", () => {
 
     const callsByStepId = resolveWorkflowRuntimeToolCalls({
       visualization,
-      catalog: internalCatalog,
+      catalog: runtimeToolCatalog,
     });
 
     expect(
@@ -78,7 +83,7 @@ describe("runtime-tool workflow catalog", () => {
 
   it("rejects duplicate source-level runtime-tool references", () => {
     expect(() =>
-      createRuntimeToolWorkflowCatalog([internalToolFamily, internalToolFamily]),
+      createRuntimeToolWorkflowCatalog([internalWorkspaceToolFamily, internalWorkspaceToolFamily]),
     ).toThrow("share workflow reference 'internal.filesSeedExecute'");
   });
 });

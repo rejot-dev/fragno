@@ -58,7 +58,6 @@ export const BACKOFFICE_PERMISSION = {
   },
   internal: {
     manage: { namespace: "internal", permission: "manage" },
-    read: { namespace: "internal", permission: "read" },
   },
   mcp: {
     serversCreate: { namespace: "mcp", permission: "servers.create" },

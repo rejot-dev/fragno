@@ -20,11 +20,7 @@ export const SYSTEM_AUTOMATION_CONTENT: Record<string, FileContent> = {
       return await org.internal.filesSeedExecute({});
     });
 
-    const automationRoutes = await step.do("seed starter automation routes", async () => {
-      return await org.internal.automationsRoutesSeedStarter();
-    });
-
-    return { seeded, automationRoutes };
+    return { seeded };
   },
 );
 `,

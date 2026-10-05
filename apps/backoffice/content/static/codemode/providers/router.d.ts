@@ -382,10 +382,6 @@ type BackofficePermissionRequirement =
       permission: "manage";
     }
   | {
-      namespace: "internal";
-      permission: "read";
-    }
-  | {
       namespace: "mcp";
       permission: "servers.create";
     }
