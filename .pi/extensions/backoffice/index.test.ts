@@ -12,14 +12,20 @@ import {
   fauxToolCall,
 } from "@earendil-works/pi-ai/providers/faux";
 
+import { getSystemMessageText } from "@earendil-works/pi-ai";
 import {
   createAgentSession,
+  createAgentSessionFromServices,
+  createAgentSessionRuntime,
+  createAgentSessionServices,
   createCodemodeExtension,
   DefaultResourceLoader,
   ModelRuntime,
   SessionManager,
   SettingsManager,
   type AgentSession,
+  type CreateAgentSessionRuntimeFactory,
+  type ExtensionUIContext,
 } from "@earendil-works/pi-coding-agent";
 
 let directory: string;
@@ -258,6 +264,224 @@ describe("Backoffice extension scenarios", () => {
     expect(text).toContain("Codemode execution failed:");
     expect(text).toContain("remote scenario failure");
   });
+
+  test("exits in place, preserving bug investigation context and restoring normal tools across reload", async () => {
+    const modelRuntime = await ModelRuntime.create({
+      authPath: join(directory, "pi-auth.json"),
+      modelsPath: null,
+      refreshOnCreate: false,
+    });
+    modelRuntime.registerNativeProvider(faux.provider);
+    const createRuntime: CreateAgentSessionRuntimeFactory = async (options) => {
+      const services = await createAgentSessionServices({
+        cwd: options.cwd,
+        agentDir: options.agentDir,
+        settingsManager: SettingsManager.inMemory({ defaultTools: ["+codemode"] }),
+        modelRuntime,
+        resourceLoaderOptions: {
+          noSkills: true,
+          noPromptTemplates: true,
+          noThemes: true,
+          noContextFiles: true,
+          extensionFactories: [createCodemodeExtension(), registerBackofficeExtension],
+        },
+      });
+      return {
+        ...(await createAgentSessionFromServices({
+          services,
+          model: faux.getModel(),
+          sessionManager: options.sessionManager,
+          sessionStartEvent: options.sessionStartEvent,
+        })),
+        services,
+        diagnostics: services.diagnostics,
+      };
+    };
+    const runtime = await createAgentSessionRuntime(createRuntime, {
+      cwd: directory,
+      agentDir: directory,
+      sessionManager: session.sessionManager,
+    });
+    const selections = [undefined, "Exit Backoffice (restore normal Pi)", undefined];
+    const menus: string[][] = [];
+    const notifications: string[] = [];
+    const statuses = new Map<string, string>();
+    const uiContext: ExtensionUIContext = {
+      ...runtime.session.extensionRunner.getUIContext(),
+      select: async (_title, options) => {
+        menus.push([...options]);
+        return selections.shift();
+      },
+      notify: (message) => {
+        notifications.push(message);
+      },
+      setStatus: (key, text) => {
+        if (text === undefined) {
+          statuses.delete(key);
+        } else {
+          statuses.set(key, text);
+        }
+      },
+    };
+    async function bindSession(activeSession: AgentSession) {
+      await activeSession.bindExtensions({
+        mode: "tui",
+        uiContext,
+        commandContextActions: {
+          waitForIdle: () => activeSession.waitForIdle(),
+          newSession: (options) => runtime.newSession(options),
+          fork: (entryId, options) => runtime.fork(entryId, options),
+          navigateTree: (entryId, options) => activeSession.navigateTree(entryId, options),
+          switchSession: (path, options) => runtime.switchSession(path, options),
+          reload: () => activeSession.reload(),
+        },
+      });
+    }
+    runtime.setRebindSession(bindSession);
+    try {
+      await bindSession(runtime.session);
+      const originalSession = runtime.session;
+      const backofficeSessionId = runtime.session.sessionId;
+      const diagnosis = "Found a Backoffice bug; fix it in the local workspace.";
+      faux.setResponses([
+        fauxAssistantMessage(
+          [fauxToolCall("execCodeMode", { code: 'async () => "Backoffice bug reproduced"' })],
+          { stopReason: "toolUse" },
+        ),
+        fauxAssistantMessage(diagnosis),
+      ]);
+      await runtime.session.prompt("Investigate the Backoffice bug.");
+      const historyBeforeExit = [...runtime.session.messages];
+      const backofficeLeafId = runtime.session.sessionManager.getLeafId();
+      assert(backofficeLeafId);
+      assert(statuses.has("backoffice"));
+      await runtime.session.prompt("/backoffice");
+      assert(runtime.session.sessionId === backofficeSessionId);
+      expect(runtime.session.getActiveToolNames()).toContain("execCodeMode");
+      assert(statuses.has("backoffice"));
+
+      await runtime.session.prompt("/backoffice");
+      expect(runtime.session).toBe(originalSession);
+      assert(runtime.session.sessionId === backofficeSessionId);
+      expect(runtime.session.messages).toEqual(historyBeforeExit);
+      assert(menus[0]?.[0] === "Exit Backoffice (restore normal Pi)");
+      assert(menus[1]?.[0] === "Exit Backoffice (restore normal Pi)");
+      expect(new Set(runtime.session.getActiveToolNames())).toEqual(
+        new Set(["read", "bash", "edit", "write", "codemode"]),
+      );
+      assert(!statuses.has("backoffice"));
+      expect(notifications).toContain(
+        "Exited Backoffice. Normal Pi tools restored in this session.",
+      );
+      await runtime.session.reload();
+      expect(runtime.session).toBe(originalSession);
+      assert(runtime.session.sessionId === backofficeSessionId);
+      expect(runtime.session.messages).toEqual(historyBeforeExit);
+      expect(new Set(runtime.session.getActiveToolNames())).toEqual(
+        new Set(["read", "bash", "edit", "write", "codemode"]),
+      );
+      const { systemPromptOptions } = await runtime.session.extensionRunner.emitBeforeAgentStart(
+        "Read a local file",
+        undefined,
+        { cwd: directory },
+      );
+      expect(systemPromptOptions.forceSystemPrompt).toBeUndefined();
+      faux.setResponses([
+        (context) => {
+          assert(
+            context.messages.some(
+              (message) =>
+                message.role === "assistant" &&
+                message.content.some((block) => block.type === "text" && block.text === diagnosis),
+            ),
+          );
+          const leadingPrompt = context.messages[0];
+          assert(leadingPrompt?.role === "system");
+          expect(getSystemMessageText(leadingPrompt)).not.toContain(
+            "Follow the scoped Backoffice instructions.",
+          );
+          return fauxAssistantMessage([fauxToolCall("read", { path: "document.txt" })], {
+            stopReason: "toolUse",
+          });
+        },
+        fauxAssistantMessage("Normal Pi session."),
+      ]);
+      await runtime.session.prompt("Read the local document.");
+      const result = runtime.session.messages.find(
+        (message) => message.role === "toolResult" && message.toolName === "read",
+      );
+      expect(result).toMatchObject({
+        isError: false,
+        content: [{ type: "text", text: "local-only content" }],
+      });
+      const normalSessionId = runtime.session.sessionId;
+      await runtime.session.prompt("/backoffice");
+      expect(menus[2]).not.toContain("Exit Backoffice (restore normal Pi)");
+      assert(runtime.session.sessionId === normalSessionId);
+
+      const normalLeafId = runtime.session.sessionManager.getLeafId();
+      assert(normalLeafId);
+      await runtime.session.navigateTree(backofficeLeafId, { summarize: false });
+      expect(runtime.session.getActiveToolNames()).toContain("execCodeMode");
+      expect(runtime.session.getActiveToolNames()).not.toContain("codemode");
+      assert(statuses.has("backoffice"));
+      expect(runtime.session.getToolDefinition("read")?.description).toContain(
+        "active Backoffice scope",
+      );
+      await runtime.session.navigateTree(normalLeafId, { summarize: false });
+      expect(new Set(runtime.session.getActiveToolNames())).toEqual(
+        new Set(["read", "bash", "edit", "write", "codemode"]),
+      );
+      assert(!statuses.has("backoffice"));
+      expect(runtime.session.getToolDefinition("read")?.description).not.toContain(
+        "active Backoffice scope",
+      );
+    } finally {
+      await runtime.dispose();
+    }
+  });
+
+  test.each([
+    { reason: "reload", normalTools: ["read", "grep"] },
+    { reason: "resume", normalTools: ["read", "grep"] },
+    { reason: "reload", normalTools: [] },
+    { reason: "resume", normalTools: [] },
+  ] as const)(
+    "restores saved tools $normalTools on fresh-runtime $reason after exiting Backoffice",
+    async ({ reason, normalTools }) => {
+      session.sessionManager.appendCustomEntry("backoffice-normal-tools", [...normalTools]);
+      session.sessionManager.appendCustomEntry("backoffice-session", null);
+      const services = await createAgentSessionServices({
+        cwd: directory,
+        agentDir: directory,
+        settingsManager: SettingsManager.inMemory({ defaultTools: ["+codemode"] }),
+        modelRuntime: session.modelRuntime,
+        resourceLoaderOptions: {
+          noSkills: true,
+          noPromptTemplates: true,
+          noThemes: true,
+          noContextFiles: true,
+          extensionFactories: [createCodemodeExtension(), registerBackofficeExtension],
+        },
+      });
+      const { session: restoredSession } = await createAgentSessionFromServices({
+        services,
+        model: faux.getModel(),
+        sessionManager: session.sessionManager,
+        sessionStartEvent: { type: "session_start", reason },
+      });
+      try {
+        await restoredSession.bindExtensions({});
+        expect(new Set(restoredSession.getActiveToolNames())).toEqual(new Set(normalTools));
+        expect(restoredSession.getToolDefinition("read")?.description).not.toContain(
+          "active Backoffice scope",
+        );
+      } finally {
+        await restoredSession.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
+        restoredSession.dispose();
+      }
+    },
+  );
 
   test("keeps Backoffice's sole executor and scoped prompt despite global native codemode settings", async () => {
     expect(session.getActiveToolNames()).toContain("execCodeMode");
