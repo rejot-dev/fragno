@@ -9,8 +9,8 @@ import {
 } from "@/backoffice-runtime/resolved-scope";
 import { requireBackofficeRouteScopeFromParams } from "@/backoffice-runtime/route-scope";
 import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
-import type { BackofficeMeData } from "@/fragno/auth/auth-client";
 import { findBackofficeMe } from "@/fragno/auth/auth-server";
+import type { BackofficeMeData } from "@/fragno/auth/contracts";
 
 import type { AutomationProjectRecord } from "../automations/data";
 import {

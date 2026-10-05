@@ -18,7 +18,7 @@ import {
   type BackofficeRouteScope,
 } from "@/backoffice-runtime/route-scope";
 import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
-import type { BackofficeMeData } from "@/fragno/auth/auth-client";
+import type { BackofficeMeData } from "@/fragno/auth/contracts";
 
 import { internalsScopeBasePath } from "./internals-scope";
 

@@ -1,6 +1,6 @@
 import type { Dispatch, SetStateAction } from "react";
 
-import type { BackofficeMeData } from "@/fragno/auth/auth-client";
+import type { BackofficeMeData } from "@/fragno/auth/contracts";
 import type { UploadAdminConfigResponse } from "@/fragno/upload";
 import type { UploadCollectionSource } from "@/fragno/upload/tanstack/browser-database";
 

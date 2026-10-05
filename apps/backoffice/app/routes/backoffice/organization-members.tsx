@@ -3,17 +3,26 @@ import { cn } from "@fragno-private/design-system/cn";
 import { FormContainer } from "@fragno-private/design-system/form-container";
 import { Input } from "@fragno-private/design-system/input";
 import { useEffect, useMemo, useState } from "react";
-import { useOutletContext } from "react-router";
+import {
+  useLoaderData,
+  useNavigation,
+  useOutletContext,
+  useRevalidator,
+  useSearchParams,
+} from "react-router";
 
 import { authClient } from "@/fragno/auth/auth-client";
+import { loadOrganizationMembers } from "@/fragno/auth/auth-directory.server";
 
+import type { Route } from "./+types/organization-members";
 import type { OrganizationLayoutContext } from "./organization-layout";
 import { ROLE_OPTIONS, formatDate, formatRoles, getErrorMessage } from "./organization-utils";
 
-const MEMBER_PAGE_SIZE = 25;
+export async function loader({ request, context, params }: Route.LoaderArgs) {
+  return await loadOrganizationMembers({ request, context }, params.orgSlug);
+}
 
-type OrganizationMembersHook = ReturnType<typeof authClient.useOrganizationMembers>;
-type OrganizationMember = NonNullable<OrganizationMembersHook["data"]>["members"][number];
+type OrganizationMember = Awaited<ReturnType<typeof loader>>["members"][number];
 
 type ActionNotice = {
   type: "success" | "error";
@@ -30,54 +39,34 @@ export default function BackofficeOrganizationMembers() {
   const canManageMembers =
     me.user.role === "admin" || member.roles.some((role) => role === "owner" || role === "admin");
 
-  const [membersPage, setMembersPage] = useState(1);
-  const [members, setMembers] = useState<OrganizationMember[]>([]);
+  const membersData = useLoaderData<typeof loader>();
+  const members = membersData.members;
+  const membersPage = membersData.page;
+  const membersLoading = useNavigation().state !== "idle";
+  const [, setSearchParams] = useSearchParams();
+  const revalidator = useRevalidator();
   const [memberSearch, setMemberSearch] = useState("");
-
-  const {
-    data: membersData,
-    loading: membersLoading,
-    error: membersError,
-  } = authClient.useOrganizationMembers({
-    path: { organizationId: organization.id },
-    query: {
-      pageSize: String(MEMBER_PAGE_SIZE),
-      page: String(membersPage),
-    },
-  });
 
   const { mutate: updateMemberRoles } = authClient.useUpdateOrganizationMemberRoles();
   const { mutate: removeMember } = authClient.useRemoveOrganizationMember();
 
   useEffect(() => {
-    setMembersPage(1);
-    setMembers([]);
     setMemberSearch("");
   }, [organization.id]);
-
-  useEffect(() => {
-    if (!membersData) {
-      return;
-    }
-
-    setMembers(membersData.members);
-  }, [membersData]);
 
   const handleUpdateMemberRoles = async (memberId: string, roles: string[]) => {
     await updateMemberRoles({
       path: { organizationId: organization.id, memberId },
       body: { roles },
     });
-    setMembers((prev) =>
-      prev.map((entry) => (entry.id === memberId ? { ...entry, roles } : entry)),
-    );
+    await revalidator.revalidate();
   };
 
   const handleRemoveMember = async (memberId: string) => {
     await removeMember({
       path: { organizationId: organization.id, memberId },
     });
-    setMembers((prev) => prev.filter((entry) => entry.id !== memberId));
+    await revalidator.revalidate();
   };
 
   const filteredMembers = useMemo(() => {
@@ -93,7 +82,6 @@ export default function BackofficeOrganizationMembers() {
     );
   }, [memberSearch, members]);
 
-  const isInitialMembersLoading = membersLoading && members.length === 0;
   const hasMemberSearch = memberSearch.trim().length > 0;
 
   return (
@@ -127,11 +115,7 @@ export default function BackofficeOrganizationMembers() {
             </span>
           </div>
 
-          {isInitialMembersLoading ? (
-            <p className="text-sm text-[var(--bo-muted)]">Loading members...</p>
-          ) : membersError && members.length === 0 ? (
-            <p className="text-sm text-red-600">{getErrorMessage(membersError)}</p>
-          ) : filteredMembers.length === 0 ? (
+          {filteredMembers.length === 0 ? (
             <p className="text-sm text-[var(--bo-muted)]">
               {hasMemberSearch ? "No members match your search." : "No members found."}
             </p>
@@ -170,16 +154,12 @@ export default function BackofficeOrganizationMembers() {
             </div>
           )}
 
-          {membersError && members.length > 0 ? (
-            <p className="text-xs text-red-600">{getErrorMessage(membersError)}</p>
-          ) : null}
-
           <div className="flex items-center justify-end gap-2">
             <Button
               variant="secondary"
               type="button"
               onClick={() => {
-                setMembersPage((page) => Math.max(1, page - 1));
+                setSearchParams({ page: String(Math.max(1, membersPage - 1)) });
               }}
               disabled={membersLoading || membersPage === 1}
             >
@@ -189,7 +169,7 @@ export default function BackofficeOrganizationMembers() {
               variant="secondary"
               type="button"
               onClick={() => {
-                setMembersPage((page) => page + 1);
+                setSearchParams({ page: String(membersPage + 1) });
               }}
               disabled={membersLoading || membersPage >= (membersData?.totalPages ?? 1)}
             >
