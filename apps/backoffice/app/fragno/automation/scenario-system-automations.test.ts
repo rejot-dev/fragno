@@ -1,33 +1,29 @@
 import { describe, expect, test, vi, assert } from "vitest";
 
-import { unavailableBackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
 import {
   BACKOFFICE_SYSTEM_ACTORS,
   createBackofficeSystemExecution,
   createBackofficeUserExecution,
 } from "@/backoffice-runtime/context";
+import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import {
   createInMemoryBackofficeRuntime,
   type InMemoryBackofficeRuntime,
 } from "@/backoffice-runtime/in-memory-runtime";
 import { BackofficeKernel, noopBackofficeKernelObserver } from "@/backoffice-runtime/kernel";
 import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
-import {
-  createBackofficeFileSystem,
-  createMasterFileSystem,
-  createSystemFilesContext,
-} from "@/files";
-import { createCodemodeStaticArtifactsResolver } from "@/fragno/codemode/static-codemode-artifacts";
+import { createRuntimeStateBackend } from "@/fragno/codemode/runtime-state-backend";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
-import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
+import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
+import { createStateShellFileSystem } from "@/fragno/runtime-tools/state-shell-file-system";
 
 import type { AutomationEvent } from "./contracts";
+import { readBackofficeAutomationSource } from "./read-backoffice-automation-source";
 import {
   setUpScenarioAuthMember,
   setUpScenarioAuthOrganization,
   setUpScenarioAuthUser,
 } from "./scenario-auth";
-import { snapshotTestAutomationSourceReader } from "./test-automation-source-reader.test-utils";
 import { createRouteBackedAutomationWorkflowRuntime } from "./workflow-route-runtime";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
@@ -75,6 +71,19 @@ const systemUnrelatedEvent = {
   },
   subject: { orgId: "org-1" },
 } satisfies AutomationEvent;
+
+function createScopedTestFileSystem(
+  runtime: InMemoryBackofficeRuntime,
+  execution: BackofficeExecutionContext,
+) {
+  return createStateShellFileSystem(
+    createRuntimeStateBackend({
+      runtime: runtime.services,
+      kernel: new BackofficeKernel(runtime.services),
+      execution,
+    }),
+  );
+}
 
 describe("system automation scenarios", () => {
   test("sign-up reaches automation ingestion through transactional auth hooks", async () => {
@@ -143,22 +152,14 @@ describe("system automation scenarios", () => {
     const orgId = "org-real";
     let runtime!: InMemoryBackofficeRuntime;
     runtime = await createInMemoryBackofficeRuntime({
-      readAutomationSource: async ({ execution, path }) => {
-        const readSource = await snapshotTestAutomationSourceReader(
-          await createMasterFileSystem(
-            createSystemFilesContext({
-              objects: runtime.objects,
-              execution,
-              staticFileArtifacts: createCodemodeStaticArtifactsResolver({
-                objects: runtime.objects,
-                config: runtime.config,
-                execution,
-              }),
-            }),
-          ),
-        );
-        return await readSource({ execution, path });
-      },
+      readAutomationSource: ({ execution, path }) =>
+        readBackofficeAutomationSource({
+          objects: runtime.objects,
+          config: runtime.config,
+          kernel: new BackofficeKernel(runtime.services),
+          execution,
+          path,
+        }),
     });
 
     try {
@@ -239,24 +240,13 @@ describe("system automation scenarios", () => {
         actors: BACKOFFICE_SYSTEM_ACTORS,
         scope: { kind: "org" as const, orgId },
       };
-      const fs = await createBackofficeFileSystem({
-        objects: runtime.objects,
-        kernel: new BackofficeKernel({
-          authorityResolver: unavailableBackofficeAuthorityResolver,
-          kernelObserver: noopBackofficeKernelObserver,
-        }),
-        execution: systemExecution,
-        config: runtime.config,
-      });
+      const fs = createScopedTestFileSystem(runtime, systemExecution);
       await expect(fs.readFile("/workspace/AGENTS.md")).resolves.toContain("Workspace guidance");
       await expect(fs.readFile("/static/codemode/providers/capabilities.d.ts")).resolves.toContain(
         "declare const capabilities",
       );
 
-      // Regression: an org member (not root) must be able to edit a seeded
-      // workspace automation. Seeded files are group-owned by the org, so the
-      // member's group-write bit applies instead of the read-only "other" bits
-      // that previously failed their save with EACCES.
+      // Seeded files are ordinary scope-owned state, editable by authorized org members.
       const memberExecution = createBackofficeUserExecution({
         scope: { kind: "org", orgId },
         userId: "user-1",
@@ -270,13 +260,7 @@ describe("system automation scenarios", () => {
         }),
       ).resolves.toContainEqual(BACKOFFICE_PERMISSION.store.modify);
 
-      const memberFs = await createMasterFileSystem(
-        createSystemFilesContext({
-          objects: runtime.objects,
-          execution: memberExecution,
-          staticFileArtifacts: () => ({}),
-        }),
-      );
+      const memberFs = createScopedTestFileSystem(runtime, memberExecution);
       const workspaceNotesPath = "/workspace/input/notes.md";
       await expect(
         memberFs.writeFile(workspaceNotesPath, "# Edited by org member\n"),
@@ -332,21 +316,13 @@ describe("system automation scenarios", () => {
           }),
 
           then.assert("project workspace is available without seeded files", async (ctx) => {
-            const fs = await createMasterFileSystem(
-              createSystemFilesContext({
-                objects: ctx.runtime.objects,
-                execution: {
-                  actors: BACKOFFICE_SYSTEM_ACTORS,
-                  scope: { kind: "org", orgId: "org-1" },
-                },
-                staticFileArtifacts: () => ({}),
-              }),
-            );
-            await expect(fs.readdir("/projects/alpha-project")).resolves.toEqual([]);
-            await fs.writeFile("/projects/alpha-project/notes.txt", "project notes");
-            await expect(fs.readFile("/projects/alpha-project/notes.txt")).resolves.toBe(
-              "project notes",
-            );
+            const fs = createScopedTestFileSystem(ctx.runtime, {
+              actors: BACKOFFICE_SYSTEM_ACTORS,
+              scope: { kind: "project", orgId: "org-1", projectId: ctx.vars.projectId },
+            });
+            await expect(fs.readdir("/workspace")).resolves.toEqual([]);
+            await fs.writeFile("/workspace/notes.txt", "project notes");
+            await expect(fs.readFile("/workspace/notes.txt")).resolves.toBe("project notes");
 
             const config = await ctx.runtime.objects.upload
               .forProject({ orgId: "org-1", projectId: ctx.vars.projectId })
@@ -521,15 +497,9 @@ describe("system automation scenarios", () => {
                 scope: { kind: "org", orgId },
                 userId: "scenario-user",
               });
-              const fs = await createBackofficeFileSystem({
-                objects: ctx.runtime.objects,
-                kernel,
-                execution,
-                config: ctx.runtime.config,
-              });
+              const fs = createScopedTestFileSystem(ctx.runtime, execution);
               const { bash } = createInteractiveBashHost({
-                fs,
-                context: createRouteBackedRuntimeContext({
+                context: createCodemodeRouteBackedRuntimeContext({
                   runtime: ctx.runtime.services,
                   kernel,
                   execution,
@@ -537,8 +507,23 @@ describe("system automation scenarios", () => {
                 }),
               });
 
+              const roots = await bash.exec("ls /", { cwd: "/" });
+              expect(roots.exitCode, roots.stderr).toBe(0);
+              expect(roots.stdout.trim().split(/\s+/u)).toEqual(["static", "workspace"]);
+              for (const path of [
+                "/events",
+                "/resend",
+                "/projects",
+                "/tmp",
+                "/r2",
+                "/r2-remote",
+                "/dev",
+              ]) {
+                await expect(fs.exists(path)).resolves.toBe(false);
+              }
+
               const result = await bash.exec(
-                "touch /workspace/automations/writable-check.workflow.js && echo 'writable: true' > /workspace/automations/writable-check.workflow.js",
+                "echo 'writable: true' > /workspace/automations/writable-check.workflow.js",
                 { cwd: "/" },
               );
               assert(result.exitCode === 0);

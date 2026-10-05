@@ -17,14 +17,15 @@ import {
   MemoryUploadObject,
   createTestStateBackend,
 } from "@/fragno/codemode/state-backend.test-utils";
-import { executeBashAutomation } from "@/fragno/runtime-tools/automation-host";
+import { createBashHost } from "@/fragno/runtime-tools/bash-host";
 import { EMPTY_BASH_HOST_CONTEXT } from "@/fragno/runtime-tools/bash-host.test-utils";
 import { createUnavailableAutomationRouterRuntime } from "@/fragno/runtime-tools/families/automations-routing";
 import type { BackofficeCapabilitiesRuntime } from "@/fragno/runtime-tools/families/backoffice-capabilities";
+import { createUnavailableEventRuntime } from "@/fragno/runtime-tools/families/event-runtime";
+import { createStateShellFileSystem } from "@/fragno/runtime-tools/state-shell-file-system";
 
 import { executeCodemodeAutomation, executeWorkflowCodemodeAutomation } from "./codemode";
 import { defineCodemodeWorkflow } from "./codemode-workflow";
-import { createTestMasterFileSystem } from "./test-master-file-system.test-utils";
 
 describe("executeCodemodeAutomation", () => {
   test("runs a .cm.js automation with state.* against Upload", async () => {
@@ -452,11 +453,11 @@ describe("executeCodemodeAutomation", () => {
     };
     const context = createAutomationContext(event, runtime);
 
-    const bashResult = await executeBashAutomation({
+    const { bash } = createBashHost({
       context,
-      masterFs: createTestMasterFileSystem({}),
-      script: "store.set --key telegram/bash-chat --value user-bash",
+      fs: createStateShellFileSystem(context.stateBackend!),
     });
+    const bashResult = await bash.exec("store.set --key telegram/bash-chat --value user-bash");
     const codemodeResult = await executeCodemodeAutomation({
       env,
       context,
@@ -468,12 +469,7 @@ describe("executeCodemodeAutomation", () => {
       }`,
     });
 
-    expect(bashResult).toMatchObject({
-      runtime: "bash",
-      exitCode: 0,
-      logs: [],
-      toolCalls: [],
-    });
+    expect(bashResult).toMatchObject({ exitCode: 0 });
     expect(codemodeResult).toMatchObject({
       runtime: "codemode",
       exitCode: 0,
@@ -584,6 +580,7 @@ const createAutomationContext = (
 
 const createUnusedAutomationRuntime = (): AutomationRuntime => ({
   ...createUnavailableAutomationRouterRuntime(),
+  ...createUnavailableEventRuntime(),
   get: async () => {
     throw new Error("get should not be called in this test.");
   },
@@ -632,6 +629,7 @@ const createRecordingBackofficeRuntime = (calls: unknown[]): BackofficeCapabilit
 
 const createRecordingAutomationRuntime = (calls: unknown[]): AutomationRuntime => ({
   ...createUnavailableAutomationRouterRuntime(),
+  ...createUnavailableEventRuntime(),
   get: async (input) => {
     calls.push(["get", input]);
     return null;

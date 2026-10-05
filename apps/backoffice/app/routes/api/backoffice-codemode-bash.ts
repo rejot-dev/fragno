@@ -1,10 +1,9 @@
 import { z } from "zod";
 
 import { requireBackofficeContextScopeFromRouteParams } from "@/backoffice-runtime/scope-codec";
-import { createBackofficeFileSystem } from "@/files/create-file-system";
 import { authorizeBackofficeCodemodeContext } from "@/fragno/auth/backoffice-principal.server";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
-import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
+import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import {
@@ -61,15 +60,8 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   const timeoutMs = body.timeout ?? DASHBOARD_COMMAND_TIMEOUT_MS;
 
   const { runtime, kernel } = context.get(BackofficeWorkerContext);
-  const fs = await createBackofficeFileSystem({
-    objects: runtime.objects,
-    kernel,
-    execution,
-    config: runtime.config,
-  });
   const { bash, commandCallsResult } = createInteractiveBashHost({
-    fs,
-    context: createRouteBackedRuntimeContext({
+    context: createCodemodeRouteBackedRuntimeContext({
       runtime,
       kernel,
       execution: execution,

@@ -79,7 +79,10 @@ describe("internal maintenance scope scenarios", () => {
               }),
               billingOrganizationId: null,
             });
-            const { bash } = createInteractiveBashHost({ fs: ctx.files.forOrg(), context });
+            assert(context.stateBackend);
+            const { bash } = createInteractiveBashHost({
+              context: { ...context, stateBackend: context.stateBackend },
+            });
             const result = await bash.exec("internal.marketplace.push --format json");
             assert(result.exitCode === 0, result.stderr);
             const repeated = marketplaceStaticPublicationResultSchema.parse(
@@ -144,9 +147,9 @@ describe("internal maintenance scope scenarios", () => {
                 execution,
                 billingOrganizationId: null,
               });
+              assert(context.stateBackend);
               const { bash } = createInteractiveBashHost({
-                fs: ctx.files.forOrg("org-1"),
-                context,
+                context: { ...context, stateBackend: context.stateBackend },
               });
               const result = await bash.exec("internal.marketplace.push --format json");
               expect(result.exitCode).not.toBe(0);
@@ -225,7 +228,10 @@ describe("internal maintenance scope scenarios", () => {
               }),
               billingOrganizationId: null,
             });
-            const { bash } = createInteractiveBashHost({ fs: ctx.files.forOrg(), context });
+            assert(context.stateBackend);
+            const { bash } = createInteractiveBashHost({
+              context: { ...context, stateBackend: context.stateBackend },
+            });
             const result = await bash.exec("internal.marketplace.push --format json");
             expect(result.exitCode).not.toBe(0);
             expect(result.stderr).toContain("Required permission: internal.manage.");

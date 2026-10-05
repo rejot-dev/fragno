@@ -24,6 +24,7 @@ import type {
   FileTree,
   FileTreeEntry,
 } from "@/file-collection/file-collection";
+import { inferFileContentType } from "@/file-collection/file-content-type";
 import { systemFileCollection } from "@/files/content/system";
 import { UPLOAD_PROVIDER_DATABASE } from "@/fragno/upload";
 import { createUploadRouteCaller, type UploadRouteCaller } from "@/fragno/upload-server";
@@ -76,7 +77,6 @@ type StateStat = {
   type: "file" | "directory";
   size: number;
   mtime: Date;
-  mode?: number;
 };
 
 type StateDirent = {
@@ -238,7 +238,7 @@ class SystemStaticStateBackend implements BackofficeStateBackend {
 
   async stat(path: string): Promise<StateStat | null> {
     if (isStateRoot(path)) {
-      return { type: "directory", size: 0, mtime: new Date(0), mode: 0o555 };
+      return { type: "directory", size: 0, mtime: new Date(0) };
     }
     const resolved = this.#resolvePath(path);
     const entry = await this.#getEntry(resolved);
@@ -249,7 +249,6 @@ class SystemStaticStateBackend implements BackofficeStateBackend {
       type: entry.kind,
       size: entry.kind === "file" ? (entry.sizeBytes ?? 0) : 0,
       mtime: entry.updatedAt ? new Date(entry.updatedAt) : new Date(0),
-      mode: entry.kind === "directory" ? 0o555 : 0o444,
     };
   }
 
@@ -470,8 +469,11 @@ class SystemStaticStateBackend implements BackofficeStateBackend {
     if (staticRelativePath !== null) {
       return { kind: "static", absolutePath, relativePath: staticRelativePath };
     }
-    throw new Error(
-      `State path '${path}' is outside '${this.#system.mountPoint}' and '${this.#static.mountPoint}'.`,
+    throw Object.assign(
+      new Error(
+        `State path '${path}' is outside '${this.#system.mountPoint}' and '${this.#static.mountPoint}'.`,
+      ),
+      { code: "ENOENT" },
     );
   }
 
@@ -548,7 +550,7 @@ class UploadStaticStateBackend implements BackofficeStateBackend {
 
   async stat(path: string): Promise<StateStat | null> {
     if (isStateRoot(path)) {
-      return { type: "directory", size: 0, mtime: new Date(0), mode: 0o555 };
+      return { type: "directory", size: 0, mtime: new Date(0) };
     }
     const resolved = this.#resolvePath(path);
     const entry = await this.#getEntry(resolved);
@@ -560,14 +562,6 @@ class UploadStaticStateBackend implements BackofficeStateBackend {
       type: entry.kind,
       size: entry.kind === "file" ? (entry.sizeBytes ?? 0) : 0,
       mtime: entry.updatedAt ? new Date(entry.updatedAt) : new Date(0),
-      mode:
-        entry.kind === "directory"
-          ? resolved.kind === "static"
-            ? 0o555
-            : 0o775
-          : resolved.kind === "static"
-            ? 0o444
-            : 0o664,
     };
   }
 
@@ -702,7 +696,7 @@ class UploadStaticStateBackend implements BackofficeStateBackend {
     const preparedUploadId = await this.#prepareUploadFile(
       destination,
       content,
-      sourceEntry.contentType ?? inferContentType(destination.relativePath),
+      sourceEntry.contentType ?? inferFileContentType(destination.relativePath),
     );
     const sourceRevision = requireContentRevision(sourceEntry, source.absolutePath, "mv");
     const destinationPrecondition: UploadWritePrecondition = destinationEntry
@@ -935,7 +929,7 @@ class UploadStaticStateBackend implements BackofficeStateBackend {
 
   async #writeUploadFile(path: string, content: string | Uint8Array): Promise<void> {
     const resolved = this.#resolveWritableUploadPath(path, "write");
-    // FIXME: Reject writes to virtual directories before creating an Upload file.
+    await this.#assertWritableFilePath(resolved, "write");
     await this.#writeResolvedUploadFile(resolved, content);
   }
 
@@ -1021,6 +1015,7 @@ class UploadStaticStateBackend implements BackofficeStateBackend {
 
     const prepared = await this.#upload.routes("PUT", "/uploads/:uploadId/content", {
       pathParams: { uploadId: created.data.uploadId },
+      headers: { "content-type": "application/octet-stream" },
       body: new Blob([Uint8Array.from(content)]).stream(),
     });
     if (prepared.type === "error") {
@@ -1044,7 +1039,7 @@ class UploadStaticStateBackend implements BackofficeStateBackend {
     }
 
     const form = new FormData();
-    const contentType = inferContentType(resolved.relativePath);
+    const contentType = inferFileContentType(resolved.relativePath);
     const body = typeof content === "string" ? content : Uint8Array.from(content);
     form.set("provider", this.#upload.provider);
     form.set("fileKey", this.#toUploadKey(resolved.relativePath));
@@ -1189,8 +1184,11 @@ class UploadStaticStateBackend implements BackofficeStateBackend {
       return { kind: "static", absolutePath, relativePath: staticRelativePath };
     }
 
-    throw new Error(
-      `State path '${path}' is outside '${this.#upload.mountPoint}' and '${this.#static.mountPoint}'.`,
+    throw Object.assign(
+      new Error(
+        `State path '${path}' is outside '${this.#upload.mountPoint}' and '${this.#static.mountPoint}'.`,
+      ),
+      { code: "ENOENT" },
     );
   }
 
@@ -1219,8 +1217,9 @@ const joinMountPath = (mountPoint: string, relativePath: string): string =>
 const isDirectoryMarkerEntry = (entry: FileTreeEntry): boolean =>
   entry.kind === "directory" && entry.metadata?.__docsDirectoryMarker === true;
 
-const stateError = (code: string, operation: string, path: string): Error =>
-  new Error(`${code}: ${operation} '${path}'`);
+function stateError(code: string, operation: string, path: string): Error {
+  return Object.assign(new Error(`${code}: ${operation} '${path}'`), { code });
+}
 
 const requireContentRevision = (
   entry: UploadFileEntry,
@@ -1360,33 +1359,4 @@ const searchStateContent = (
     });
   }
   return matches;
-};
-
-const inferContentType = (path: string): string => {
-  const extension = posix.extname(path).toLowerCase();
-  switch (extension) {
-    case ".md":
-    case ".mdx":
-      return "text/markdown";
-    case ".json":
-      return "application/json";
-    case ".js":
-    case ".jsx":
-      return "text/javascript";
-    case ".ts":
-    case ".tsx":
-      return "text/typescript";
-    case ".html":
-      return "text/html";
-    case ".css":
-      return "text/css";
-    case ".yaml":
-    case ".yml":
-      return "application/yaml";
-    case ".txt":
-    case ".log":
-      return "text/plain";
-    default:
-      return "application/octet-stream";
-  }
 };

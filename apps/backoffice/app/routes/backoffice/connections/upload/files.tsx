@@ -31,7 +31,7 @@ import {
 import { Collapsible, Progress } from "@base-ui/react";
 import { eq, useLiveQuery } from "@tanstack/react-db";
 
-import { isUploadDirectoryMarker } from "@/files/contributors/upload-markers";
+import { isUploadDirectoryMarker } from "@/file-collection/create-upload-file-tree";
 import {
   UPLOAD_PROVIDER_DATABASE,
   UPLOAD_PROVIDER_R2,

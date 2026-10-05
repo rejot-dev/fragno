@@ -10,9 +10,8 @@ vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoin
 
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
-import { createBackofficeFileSystem } from "@/files";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
-import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
+import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 
 import {
   defineBackofficeScenario,
@@ -23,15 +22,8 @@ import {
 async function createSystemTerminalBash(ctx: BackofficeScenarioContext) {
   const execution = createBackofficeSystemExecution({ kind: "system" });
   const kernel = new BackofficeKernel(ctx.runtime.services);
-  const fileSystem = await createBackofficeFileSystem({
-    objects: ctx.runtime.objects,
-    kernel,
-    execution,
-    config: ctx.runtime.config,
-  });
   return createInteractiveBashHost({
-    fs: fileSystem,
-    context: createRouteBackedRuntimeContext({
+    context: createCodemodeRouteBackedRuntimeContext({
       runtime: ctx.runtime.services,
       kernel,
       execution,
@@ -48,6 +40,10 @@ describe("system admin command scenarios", () => {
         steps: ({ then }) => [
           then.assert("system admin command help is available", async (ctx) => {
             const bash = await createSystemTerminalBash(ctx);
+            const roots = await bash.exec("ls /", { cwd: "/" });
+            assert.equal(roots.exitCode, 0, roots.stderr);
+            assert.deepEqual(roots.stdout.trim().split(/\s+/u), ["static", "system"]);
+
             const help = await bash.exec("admin.organisation.create --help");
 
             assert.equal(help.exitCode, 0, help.stderr);

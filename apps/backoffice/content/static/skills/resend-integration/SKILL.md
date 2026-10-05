@@ -34,8 +34,6 @@ Cataloged automation events:
 
 Resend maintains email thread state and hook work behind the `resend` hook scope.
 
-The `/resend` filesystem also exposes email thread snapshots as Markdown files, one file per thread.
-
 # Resend tools
 
 Resend tools can:
@@ -45,5 +43,4 @@ Resend tools can:
 - send a plain-text reply to an existing thread.
 
 Use codemode first. The `resend` provider exposes thread snapshot, thread listing, and reply
-functions. Use `/resend` when reading existing thread context as files is more convenient than
-calling provider functions.
+functions. Read `/static/codemode/providers/resend.d.ts` for the thread snapshot API.

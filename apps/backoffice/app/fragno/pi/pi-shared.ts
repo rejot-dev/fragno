@@ -1,4 +1,4 @@
-import { STATIC_FILE_CONTENT } from "@/files";
+import { STATIC_FILE_CONTENT } from "@/files/content/static";
 
 export type PiThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
 

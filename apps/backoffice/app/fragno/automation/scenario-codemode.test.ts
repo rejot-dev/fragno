@@ -20,7 +20,7 @@ vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoin
 import { createBackofficeServiceExecution } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
-import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
+import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 
 import { backofficeFiles, defineBackofficeScenario, runBackofficeScenario } from "./scenario";
 
@@ -53,8 +53,7 @@ describe("Backoffice codemode scenarios", () => {
             });
             const kernel = new BackofficeKernel(ctx.runtime.services);
             const { bash } = createInteractiveBashHost({
-              fs: ctx.files.forProject(projectId),
-              context: createRouteBackedRuntimeContext({
+              context: createCodemodeRouteBackedRuntimeContext({
                 runtime: ctx.runtime.services,
                 kernel,
                 execution,

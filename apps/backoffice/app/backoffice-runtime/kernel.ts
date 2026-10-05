@@ -1,4 +1,3 @@
-import { resolveExecutionFilePrincipal, type FilePrincipal } from "@/files/permissions";
 import { automationActorsSchema } from "@/fragno/automation/actors";
 
 import type { BackofficeAuthorityResolver } from "./authority-resolver";
@@ -508,25 +507,6 @@ export class BackofficeKernel {
         `${binding} is not available in ${scope.kind} context. Supported scopes: ${allowed.join(", ")}.`,
       );
     }
-  }
-
-  resolveFilePrincipal(execution: BackofficeExecutionContext): FilePrincipal {
-    const trustedExecution = this.#parseExecutionContext(execution);
-    if (!trustedExecution.actors.principal && !this.#isTrustedSystemExecution(trustedExecution)) {
-      throw new BackofficeForbiddenError(
-        "Filesystem access requires an internal principal or trusted system execution.",
-        "context-access-denied",
-      );
-    }
-
-    const filePrincipal = resolveExecutionFilePrincipal(trustedExecution);
-    if (!filePrincipal) {
-      throw new BackofficeForbiddenError(
-        "Filesystem access requires an internal principal or trusted system execution.",
-        "context-access-denied",
-      );
-    }
-    return filePrincipal;
   }
 
   assertScopedContextAccess(

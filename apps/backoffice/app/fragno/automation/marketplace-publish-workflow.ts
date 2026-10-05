@@ -39,13 +39,6 @@ const MARKETPLACE_UPLOAD_ORIGIN = "https://marketplace-upload.internal";
 const MARKETPLACE_EXTERNAL_STEP_RETRIES = {
   retries: { limit: 3, delay: "1 s", backoff: "exponential" },
 } as const;
-const MARKETPLACE_ARTIFACT_FILE_METADATA = {
-  __docsFs: {
-    owner: { kind: "root" },
-    group: { kind: "root" },
-    mode: 0o664,
-  },
-} as const;
 
 type PreparedMarketplaceArtifactWrite = PreparedFileWrite & {
   precondition?: UploadFileWritePrecondition;
@@ -259,7 +252,6 @@ export const defineMarketplacePublishWorkflow = (config: MarketplacePublishWorkf
                 sizeBytes: file.sizeBytes,
                 contentType: file.contentType,
                 checksum: file.checksum,
-                metadata: MARKETPLACE_ARTIFACT_FILE_METADATA,
                 publicationMode: "batch",
               },
             });

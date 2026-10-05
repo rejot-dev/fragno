@@ -1,6 +1,4 @@
-import type { FileContent } from "../interface";
-
-export const WORKSPACE_STARTER_CONTENT: Record<string, FileContent> = {
+export const WORKSPACE_STARTER_CONTENT: Record<string, string | Uint8Array> = {
   "AGENTS.md": `# Workspace guidance
 
 This is the editable organization workspace. User-owned automations live in \`/workspace/automations/\` and may be changed freely.

@@ -15,7 +15,7 @@ import {
 } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
-import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
+import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 
 import { runProjectConnectorScenario } from "./project-connector-scenario.test-utils";
 
@@ -182,8 +182,7 @@ test("Connector bash commands use the same user-owned fragment as codemode", asy
             service: { type: "automation", id: "connector-shell" },
           });
           const { bash } = createInteractiveBashHost({
-            fs: ctx.files.forOrg("org-1"),
-            context: createRouteBackedRuntimeContext({
+            context: createCodemodeRouteBackedRuntimeContext({
               runtime: ctx.runtime.services,
               kernel: new BackofficeKernel(ctx.runtime.services),
               execution,
@@ -350,8 +349,7 @@ test("runtime permission failures and unavailable configuration do not contact t
           userId: "member-1",
         });
         const { bash } = createInteractiveBashHost({
-          fs: ctx.files.forOrg("org-1"),
-          context: createRouteBackedRuntimeContext({
+          context: createCodemodeRouteBackedRuntimeContext({
             runtime: ctx.runtime.services,
             kernel: new BackofficeKernel(ctx.runtime.services),
             execution,

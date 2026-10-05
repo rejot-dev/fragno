@@ -9,13 +9,17 @@
  * from the client bundle.
  */
 
+import type { IFileSystem } from "just-bash";
 import type { RouterContextProvider } from "react-router";
 
-import type { IFileSystem } from "@/files";
-import { createBackofficeFileSystem } from "@/files/create-file-system";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
+import { createRuntimeStateBackend } from "@/fragno/codemode/runtime-state-backend";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
-import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
+import {
+  createRouteBackedRuntimeContext,
+  createCodemodeRouteBackedRuntimeContext,
+} from "@/fragno/runtime-tools/route-backed-runtime-context";
+import { createStateShellFileSystem } from "@/fragno/runtime-tools/state-shell-file-system";
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
@@ -168,12 +172,9 @@ const handlePathAutocomplete = async ({
       kind: "org",
       orgId: activeOrg.id,
     });
-    const fileSystem = await createBackofficeFileSystem({
-      objects: runtime.objects,
-      kernel,
-      execution,
-      config: runtime.config,
-    });
+    const fileSystem = createStateShellFileSystem(
+      createRuntimeStateBackend({ runtime, kernel, execution }),
+    );
     return {
       ...autocompleteRequest,
       ok: true,
@@ -331,15 +332,8 @@ const handleRunCommand = async ({
       kind: "org",
       orgId: activeOrg.id,
     });
-    const fileSystem = await createBackofficeFileSystem({
-      objects: runtime.objects,
-      kernel,
-      execution,
-      config: runtime.config,
-    });
     const { bash } = createInteractiveBashHost({
-      fs: fileSystem,
-      context: createRouteBackedRuntimeContext({
+      context: createCodemodeRouteBackedRuntimeContext({
         runtime,
         kernel,
         execution: execution,

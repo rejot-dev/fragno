@@ -132,8 +132,8 @@ const browserRunCaptureTool = defineBackofficeRuntimeTool({
           },
         ],
         examples: [
-          `cloudflare.browser-run.capture --action screenshot --input-json '{"url":"https://example.com"}' > /tmp/page.png`,
-          `cloudflare.browser-run.capture --action pdf --input-json '{"url":"https://example.com"}' --output /tmp/page.pdf`,
+          `cloudflare.browser-run.capture --action screenshot --input-json '{"url":"https://example.com"}' > /workspace/page.png`,
+          `cloudflare.browser-run.capture --action pdf --input-json '{"url":"https://example.com"}' --output /workspace/page.pdf`,
         ],
       },
       parse: parseCapture,

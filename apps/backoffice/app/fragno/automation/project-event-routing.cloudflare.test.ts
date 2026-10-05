@@ -7,13 +7,15 @@ import {
   createBackofficeSystemExecution,
   createBackofficeUserExecution,
 } from "@/backoffice-runtime/context";
+import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import {
   createInMemoryBackofficeRuntime,
   type InMemoryBackofficeRuntime,
 } from "@/backoffice-runtime/in-memory-runtime";
 import { BackofficeKernel, noopBackofficeKernelObserver } from "@/backoffice-runtime/kernel";
-import { createMasterFileSystem, createSystemFilesContext } from "@/files";
+import { createRuntimeStateBackend } from "@/fragno/codemode/runtime-state-backend";
 import { createEventRuntime } from "@/fragno/runtime-tools/families/event-runtime";
+import { createStateShellFileSystem } from "@/fragno/runtime-tools/state-shell-file-system";
 
 import { AUTOMATION_SYSTEM_INITIATOR } from "./actors";
 import { createAutomationRuntimeExecution } from "./authority";
@@ -49,6 +51,19 @@ const idValue = (id: unknown): string => {
   return String(id);
 };
 
+function createScopedTestFileSystem(
+  runtime: InMemoryBackofficeRuntime,
+  execution: BackofficeExecutionContext,
+) {
+  return createStateShellFileSystem(
+    createRuntimeStateBackend({
+      runtime: runtime.services,
+      kernel: new BackofficeKernel(runtime.services),
+      execution,
+    }),
+  );
+}
+
 describe("project automation event routing", () => {
   let runtime: InMemoryBackofficeRuntime | null = null;
 
@@ -83,14 +98,11 @@ describe("project automation event routing", () => {
     }
 
     const projectId = idValue(createProjectResponse.data.id);
-    const projectFileSystem = await createMasterFileSystem(
-      createSystemFilesContext({
-        objects: runtime.objects,
-        execution: createBackofficeUserExecution({
-          scope: { kind: "project", orgId, projectId },
-          userId: "user-1",
-        }),
-        staticFileArtifacts: () => ({}),
+    const projectFileSystem = createScopedTestFileSystem(
+      runtime,
+      createBackofficeUserExecution({
+        scope: { kind: "project", orgId, projectId },
+        userId: "user-1",
       }),
     );
     await projectFileSystem.mkdir("/workspace/automations", { recursive: true });
@@ -201,7 +213,7 @@ describe("project automation event routing", () => {
     );
   });
 
-  test("emits project.created hooks and mounts project workspaces by slug", async () => {
+  test("emits project.created hooks and isolates project-scoped workspaces", async () => {
     const orgId = "org-1";
     runtime = await createInMemoryBackofficeRuntime({ env: { codemode: env } });
 
@@ -237,33 +249,28 @@ describe("project automation event routing", () => {
       ]),
     );
 
-    const fs = await createMasterFileSystem(
-      createSystemFilesContext({
-        objects: runtime.objects,
-        execution: createBackofficeUserExecution({
-          scope: { kind: "org", orgId },
-          userId: "user-1",
-        }),
-
-        staticFileArtifacts: () => ({}),
+    const fs = createScopedTestFileSystem(
+      runtime,
+      createBackofficeUserExecution({
+        scope: { kind: "org", orgId },
+        userId: "user-1",
       }),
     );
-    await expect(fs.readdir("/projects")).resolves.toEqual(["mounted-plan"]);
-    await fs.writeFile("/projects/mounted-plan/notes.txt", "project notes");
-    await expect(fs.readFile("/projects/mounted-plan/notes.txt")).resolves.toBe("project notes");
+    await expect(fs.readdir("/")).resolves.toEqual(["static", "workspace"]);
+    await fs.writeFile("/workspace/notes.txt", "org notes");
 
-    const projectFs = await createMasterFileSystem(
-      createSystemFilesContext({
-        objects: runtime.objects,
-        execution: createBackofficeUserExecution({
-          scope: { kind: "project", orgId, projectId },
-          userId: "user-1",
-        }),
-
-        staticFileArtifacts: () => ({}),
+    const projectFs = createScopedTestFileSystem(
+      runtime,
+      createBackofficeUserExecution({
+        scope: { kind: "project", orgId, projectId },
+        userId: "user-1",
       }),
     );
+    await expect(projectFs.readdir("/")).resolves.toEqual(["static", "workspace"]);
+    await expect(projectFs.readdir("/workspace")).resolves.toEqual([]);
+    await projectFs.writeFile("/workspace/notes.txt", "project notes");
     await expect(projectFs.readFile("/workspace/notes.txt")).resolves.toBe("project notes");
+    await expect(fs.readFile("/workspace/notes.txt")).resolves.toBe("org notes");
   });
 
   test("does not instantiate project automations for archived projects", async () => {

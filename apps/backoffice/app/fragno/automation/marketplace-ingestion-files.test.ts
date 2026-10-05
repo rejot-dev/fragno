@@ -7,17 +7,12 @@ import {
   type MarketplaceWorkspaceTargetFile,
 } from "./marketplace-ingestion-files";
 
-const sourceFile = (
-  relativePath: string,
-  checksum: string,
-  mode: number | null = 0o755,
-): MarketplaceIngestionSourceFile => ({
+const sourceFile = (relativePath: string, checksum: string): MarketplaceIngestionSourceFile => ({
   fileKey: `1.0.0/${relativePath}`,
   relativePath,
   contentType: "text/plain",
   sizeBytes: 10,
   checksum: { algo: "sha256", value: checksum },
-  mode,
 });
 
 const targetFile = (revision: number, checksum: string): MarketplaceWorkspaceTargetFile => ({
@@ -27,7 +22,7 @@ const targetFile = (revision: number, checksum: string): MarketplaceWorkspaceTar
 });
 
 describe("planMarketplaceWorkspaceUpdate", () => {
-  test("creates files added by the requested version with their source mode", () => {
+  test("creates files added by the requested version", () => {
     const requestedSource = sourceFile("commands/new.ts", "new");
 
     expect(
@@ -42,7 +37,7 @@ describe("planMarketplaceWorkspaceUpdate", () => {
         ],
       }),
     ).toEqual({
-      writes: [{ source: requestedSource, precondition: { kind: "absent" }, mode: 0o755 }],
+      writes: [{ source: requestedSource, precondition: { kind: "absent" } }],
       deletions: [],
       assertions: [],
     });
@@ -74,9 +69,9 @@ describe("planMarketplaceWorkspaceUpdate", () => {
     });
   });
 
-  test("replaces files that still match the installed version without replacing their mode", () => {
+  test("replaces files that still match the installed version", () => {
     const requestedSource = sourceFile("commands/current.ts", "next");
-    const installedSource = sourceFile("commands/current.ts", "installed", 0o700);
+    const installedSource = sourceFile("commands/current.ts", "installed");
 
     expect(
       planMarketplaceWorkspaceUpdate({

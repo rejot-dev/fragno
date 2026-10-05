@@ -1,10 +1,12 @@
+import type { UploadFileWritePrecondition } from "@fragno-dev/upload/types";
+
 import type { UploadChecksum } from "@fragno-dev/upload";
 
-import type {
-  UploadFileAssertion,
-  UploadFileDeletion,
-  UploadFileWritePrecondition,
-} from "@/files/contributors/upload";
+type WorkspaceFileAssertion = { path: string; precondition: UploadFileWritePrecondition };
+type WorkspaceFileDeletion = {
+  path: string;
+  precondition: Extract<UploadFileWritePrecondition, { kind: "revision" }>;
+};
 
 export type MarketplaceIngestionSourceFile = {
   fileKey: string;
@@ -12,7 +14,6 @@ export type MarketplaceIngestionSourceFile = {
   contentType: string;
   sizeBytes: number;
   checksum: UploadChecksum;
-  mode: number | null;
 };
 
 export type MarketplaceWorkspaceTargetFile = {
@@ -31,13 +32,12 @@ export type MarketplaceWorkspaceFileObservation = {
 export type MarketplaceWorkspaceWrite = {
   source: MarketplaceIngestionSourceFile;
   precondition: UploadFileWritePrecondition;
-  mode?: number;
 };
 
 export type MarketplaceWorkspaceUpdatePlan = {
   writes: MarketplaceWorkspaceWrite[];
-  deletions: UploadFileDeletion[];
-  assertions: UploadFileAssertion[];
+  deletions: WorkspaceFileDeletion[];
+  assertions: WorkspaceFileAssertion[];
 };
 
 export class MarketplaceWorkspaceFileConflictError extends Error {
@@ -59,8 +59,8 @@ export const planMarketplaceWorkspaceUpdate = (input: {
   observations: MarketplaceWorkspaceFileObservation[];
 }): MarketplaceWorkspaceUpdatePlan => {
   const writes: MarketplaceWorkspaceWrite[] = [];
-  const deletions: UploadFileDeletion[] = [];
-  const assertions: UploadFileAssertion[] = [];
+  const deletions: WorkspaceFileDeletion[] = [];
+  const assertions: WorkspaceFileAssertion[] = [];
 
   for (const { relativePath, requestedSource, installedSource, target } of input.observations) {
     const path = `/workspace/${relativePath}`;
@@ -87,7 +87,6 @@ export const planMarketplaceWorkspaceUpdate = (input: {
       writes.push({
         source: requestedSource,
         precondition: { kind: "absent" },
-        ...(requestedSource.mode === null ? {} : { mode: requestedSource.mode }),
       });
       continue;
     }

@@ -85,7 +85,10 @@ function serializeDate(value: string | Date | null | undefined): string | null {
   return value instanceof Date ? value.toISOString() : (value ?? null);
 }
 
-function isUploadDirectoryMarker(record: UploadFileTreeRecord): boolean {
+/** Recognizes persisted directory markers so upload consumers never present them as user files. */
+export function isUploadDirectoryMarker(
+  record: Pick<UploadFileTreeRecord, "fileKey" | "contentType" | "metadata">,
+): boolean {
   if (!record.fileKey.endsWith("/.fragno/dir-marker")) {
     return false;
   }

@@ -2,7 +2,7 @@ import { describe, expect, it, assert } from "vitest";
 
 import { InMemoryFs } from "just-bash";
 
-import { MasterFileSystem } from "@/files/master-file-system";
+import { createTestStateBackend } from "@/fragno/codemode/state-backend.test-utils";
 import type { PiManagerRuntime } from "@/fragno/pi-manager/pi-manager-runtime";
 
 import { createInteractiveBashHost } from "./automation-host";
@@ -10,6 +10,7 @@ import type { StoreSetArgs } from "./automation-types";
 import { createBashHost } from "./bash-host";
 import { EMPTY_BASH_HOST_CONTEXT } from "./bash-host.test-utils";
 import { createUnavailableAutomationRouterRuntime } from "./families/automations-routing";
+import { createUnavailableEventRuntime } from "./families/event-runtime";
 import type { OtpRuntime } from "./families/otp-runtime";
 import type { ResendRuntime } from "./families/resend-runtime";
 import type { Reson8Runtime } from "./families/reson8-runtime";
@@ -250,6 +251,7 @@ const createAutomationContext = () => ({
   },
   idempotencyKey: "idem-1",
   runtime: {
+    ...createUnavailableEventRuntime(),
     emitEvent: async ({ eventType, source }: { eventType: string; source?: string }) => ({
       accepted: true,
       eventId: "emitted-1",
@@ -261,24 +263,11 @@ const createAutomationContext = () => ({
 });
 
 describe("interactive bash host", () => {
-  it("mounts /dev/null for dashboard-style commands backed by a master filesystem", async () => {
-    const { bash } = createInteractiveBashHost({
-      fs: new MasterFileSystem({ mounts: [] }),
-      context: EMPTY_BASH_HOST_CONTEXT,
-    });
-
-    const result = await bash.exec("echo discarded >/dev/null && echo kept");
-
-    assert(result.exitCode === 0);
-    assert(result.stdout === "kept\n");
-    assert(result.stderr === "");
-  });
-
   it("explains when a known command requires a different scope", async () => {
     const { bash, commandCallsResult } = createInteractiveBashHost({
-      fs: new InMemoryFs(),
       context: {
         ...EMPTY_BASH_HOST_CONTEXT,
+        stateBackend: createTestStateBackend(),
         execution: {
           ...EMPTY_BASH_HOST_CONTEXT.execution,
           scope: { kind: "org", orgId: "org-1" },

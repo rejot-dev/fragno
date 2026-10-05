@@ -84,7 +84,6 @@ const statOutputSchema = z
     type: z.enum(["file", "directory"]),
     size: z.number(),
     mtime: z.date(),
-    mode: z.number().optional(),
   })
   .nullable();
 const textMatchSchema = z.strictObject({

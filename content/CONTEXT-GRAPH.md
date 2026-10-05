@@ -180,6 +180,7 @@
 
 ```text
 /static/skills/resend-integration/SKILL.md — Resend Integration
+└─ /static/codemode/providers/resend.d.ts — resend tools [line 46]
 ```
 
 ### `reson8-integration`
