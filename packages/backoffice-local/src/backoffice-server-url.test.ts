@@ -33,7 +33,9 @@ describe("secure Backoffice server URLs", () => {
   test.each([
     ["https://backoffice.example", "https://backoffice.example"],
     ["https://backoffice.example:8443/", "https://backoffice.example:8443"],
-    ["http://localhost:5173", "http://localhost:5173"],
+    ["http://localhost:5173", "http://127.0.0.1:5173"],
+    ["http://127.0.0.1:5173", "http://127.0.0.1:5173"],
+    ["https://localhost:5173", "https://localhost:5173"],
     ["http://workspace.localhost:5173", "http://workspace.localhost:5173"],
     ["http://127.12.34.56:5173", "http://127.12.34.56:5173"],
     ["http://[::1]:5173", "http://[::1]:5173"],

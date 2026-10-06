@@ -354,7 +354,7 @@ function isBackofficeHealthResponse(status: number, body: unknown): boolean {
 export async function findBackofficeServers(): Promise<BackofficeServerCandidate[]> {
   const candidates = [];
   for (const port of ports) {
-    const baseUrl = `http://localhost:${port}`;
+    const baseUrl = resolveSecureBackofficeBaseUrl(`http://localhost:${port}`);
     try {
       const response = await fetchBackofficeWithoutRedirect(`${baseUrl}/api/auth/ok`, {});
       const body = await readJsonResponse(response);
