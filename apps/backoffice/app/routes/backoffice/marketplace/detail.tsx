@@ -20,7 +20,7 @@ import type { BackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import type { BackofficeMeData } from "@/fragno/auth/contracts";
-import { buildMarketplaceIngestionWorkflowInstanceId } from "@/fragno/automation/marketplace-ingest-identity";
+import { buildMarketplacePackageInstallWorkflowInstanceId } from "@/fragno/automation/marketplace-package-install-identity";
 import { fetchAutomationCollectionSource } from "@/fragno/automation/tanstack/server";
 import {
   MARKETPLACE_LOCK_PATH,
@@ -267,7 +267,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     installationReference: persistedInstallation
       ? {
           ...persistedInstallation,
-          workflowInstanceId: await buildMarketplaceIngestionWorkflowInstanceId({
+          workflowInstanceId: await buildMarketplacePackageInstallWorkflowInstanceId({
             targetScope: selectedScope,
             listingId: listingIdResult.data,
             installationRoot: persistedInstallation.installationRoot,

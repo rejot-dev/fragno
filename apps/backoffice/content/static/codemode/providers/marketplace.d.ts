@@ -4,6 +4,8 @@ type MarketplaceCodemodeProvider = {
   search(input: MarketplaceSearchInput): Promise<MarketplaceSearchOutput>;
   /** Inspect published package metadata and cursor-paginated releases. */
   view(input: MarketplaceViewInput): Promise<MarketplaceViewOutput>;
+  /** Publish a captured package from a root manifest.json containing name @<organization-slug>/<package-slug>. Versions are immutable by default; System may explicitly replace them. Dry runs write nothing. Author and version overrides require System context. */
+  publish(input: MarketplacePublishInput): Promise<MarketplacePublishOutput>;
 };
 declare const marketplace: MarketplaceCodemodeProvider;
 
@@ -53,3 +55,54 @@ type MarketplaceViewOutput = {
   nextVersionCursor?: string;
   hasNextVersionPage: boolean;
 };
+type MarketplacePublishInput = {
+  packageRoot: string;
+  dryRun?: boolean;
+  skipAuthorCheck?: boolean;
+  skipVersionCheck?: boolean;
+};
+type MarketplacePublishOutput =
+  | {
+      name: string;
+      listingId: string;
+      version: string;
+      snapshotId: string;
+      owner: {
+        scope: {
+          kind: "org";
+          orgId: string;
+        };
+        publisherName: string;
+      };
+      files: {
+        relativePath: string;
+        sizeBytes: number;
+        checksum: string;
+      }[];
+      sizeBytes: number;
+      state: "preview";
+    }
+  | {
+      name: string;
+      listingId: string;
+      version: string;
+      snapshotId: string;
+      owner: {
+        scope: {
+          kind: "org";
+          orgId: string;
+        };
+        publisherName: string;
+      };
+      files: {
+        relativePath: string;
+        sizeBytes: number;
+        checksum: string;
+      }[];
+      sizeBytes: number;
+      state: "requested" | "published";
+      workflowInstanceId: string;
+      workflowScope: {
+        kind: "system";
+      };
+    };

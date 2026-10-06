@@ -7,7 +7,6 @@ import {
   marketplaceSlugSchema,
   marketplaceVersionSchema,
 } from "./contracts";
-import { compareMarketplaceVersions } from "./version";
 
 export const marketplaceManifestSchema = z.object({
   owner: marketplaceOwnerSchema,
@@ -100,14 +99,3 @@ export const getStaticMarketplaceEntry = (input: {
   staticMarketplaceVersions.find(
     (entry) => entry.slug === input.slug && entry.version === input.version,
   ) ?? null;
-
-export const getNextStaticMarketplaceEntry = (input: {
-  slug: string;
-  version: string;
-}): MarketplaceStaticArtifactEntry | null =>
-  staticMarketplaceVersions
-    .filter(
-      (entry) =>
-        entry.slug === input.slug && compareMarketplaceVersions(entry.version, input.version) > 0,
-    )
-    .sort((left, right) => compareMarketplaceVersions(left.version, right.version))[0] ?? null;

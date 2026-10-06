@@ -39,6 +39,12 @@ import {
   marketplaceVersionId,
 } from "./owner";
 import {
+  type MarketplacePackagePublishRequest,
+  type MarketplacePackagePublishIntent,
+  type MarketplacePackagePublishPlan,
+  type MarketplaceVersionPublishState,
+} from "./package-publishing";
+import {
   decodeMarketplaceListingCursor,
   decodeMarketplaceOwnedListingCursor,
   decodeMarketplaceOwnedVersionCursor,
@@ -107,6 +113,52 @@ export class MarketplaceVersionTransitionError extends MarketplaceDomainError {
     );
     this.name = "MarketplaceVersionTransitionError";
   }
+}
+
+export class MarketplacePublicationConflictError extends MarketplaceDomainError {
+  constructor(message: string) {
+    super("MARKETPLACE_PUBLICATION_CONFLICT", message);
+    this.name = "MarketplacePublicationConflictError";
+  }
+}
+
+function planMarketplacePackagePublication(
+  intent: MarketplacePackagePublishIntent,
+  listing: { status: string; latestPublishedVersion: string | null } | null,
+  version: {
+    id: { version: number };
+    status: string;
+    publish: MarketplaceVersionPublishState | null;
+  } | null,
+): MarketplacePackagePublishPlan {
+  const { version: requestedVersion, slug: name, snapshotId } = intent.release;
+  if (listing?.status === "archived") {
+    throw new MarketplaceListingArchivedError(name);
+  }
+  const publish = version?.publish;
+  if (version && publish && publish.state !== "failed" && publish.snapshotId === snapshotId) {
+    return publish.state === "published"
+      ? {
+          state: "published",
+          workflowInstanceId: publish.workflowInstanceId,
+          expectedVersionRevision: version.id.version,
+        }
+      : { state: "requested", workflowInstanceId: publish.workflowInstanceId };
+  }
+  if (publish?.state === "publishing") {
+    throw new MarketplacePublicationConflictError(
+      "Marketplace release is already being published. Wait for its workflow to finish or terminate it before submitting a replacement.",
+    );
+  }
+  if (
+    !intent.skipVersionCheck &&
+    (version?.status === "published" ||
+      (listing?.latestPublishedVersion &&
+        compareMarketplaceVersions(requestedVersion, listing.latestPublishedVersion) <= 0))
+  ) {
+    throw new MarketplaceVersionTransitionError(name, requestedVersion);
+  }
+  return { state: "new", expectedVersionRevision: version?.id.version ?? null };
 }
 
 const assertOwnerOwnsListing = (
@@ -287,7 +339,9 @@ export const marketplaceFragmentDefinition = defineFragment("marketplace")
               slug: marketplaceListingSlug(listing.id.externalId),
               listingStatus: listing.status,
               uploadName: marketplaceArtifactUploadName(listing.id.externalId),
-              versions: versions.map((version) => version.version),
+              versions: versions
+                .map((version) => version.version)
+                .sort((left, right) => compareMarketplaceVersions(right, left)),
             };
           })
           .build();
@@ -882,6 +936,246 @@ export const marketplaceFragmentDefinition = defineFragment("marketplace")
               version: input.version,
               published: true,
             } satisfies MarketplacePublishVersionResult;
+          })
+          .build();
+      },
+
+      planPackagePublish: function (rawIntent: MarketplacePackagePublishIntent) {
+        const { release: intent } = rawIntent;
+        const versionId = marketplaceVersionId({
+          listingId: intent.listingId,
+          version: intent.version,
+        });
+        return this.serviceTx(marketplaceFragmentSchema)
+          .retrieve((uow) =>
+            uow
+              .findFirst("marketplace_listing", (b) =>
+                b.whereIndex("primary", (eb) => eb("id", "=", intent.listingId)),
+              )
+              .findFirst("marketplace_version", (b) =>
+                b.whereIndex("primary", (eb) => eb("id", "=", versionId)),
+              ),
+          )
+          .transformRetrieve(([listing, version]) =>
+            planMarketplacePackagePublication(rawIntent, listing, version),
+          )
+          .build();
+      },
+
+      beginPackagePublish: function (request: MarketplacePackagePublishRequest) {
+        const { workflowInstanceId } = request;
+        const { release: intent } = request.intent;
+        const { slug } = intent;
+        const versionId = marketplaceVersionId({
+          listingId: intent.listingId,
+          version: intent.version,
+        });
+        return this.serviceTx(marketplaceFragmentSchema)
+          .retrieve((uow) =>
+            uow
+              .findFirst("marketplace_listing", (b) =>
+                b.whereIndex("primary", (eb) => eb("id", "=", intent.listingId)),
+              )
+              .findFirst("marketplace_version", (b) =>
+                b.whereIndex("primary", (eb) => eb("id", "=", versionId)),
+              )
+              .find("marketplace_listing_owner", (b) =>
+                b.whereIndex("idx_marketplace_listing_owner_listingId_ownerKey", (eb) =>
+                  eb("listingId", "=", intent.listingId),
+                ),
+              ),
+          )
+          .mutate(
+            ({ uow, retrieveResult: [listing, version, owners] }): "publishing" | "published" => {
+              if (listing?.status === "archived") {
+                throw new MarketplaceListingArchivedError(slug);
+              }
+              if (listing) {
+                assertOwnerOwnsListing(owners, intent.owner, slug);
+              }
+              const currentPublish = version?.publish;
+              if (version && currentPublish?.workflowInstanceId === workflowInstanceId) {
+                if (currentPublish.state === "failed") {
+                  uow.update("marketplace_version", version.id, (b) =>
+                    b.set({ publish: { ...currentPublish, state: "publishing" } }).check(),
+                  );
+                  return "publishing";
+                }
+                return currentPublish.state;
+              }
+              if (
+                (version?.id.version ?? null) !== request.expectedVersionRevision ||
+                version?.publish?.state === "publishing"
+              ) {
+                throw new MarketplacePublicationConflictError(
+                  "Marketplace release changed after publication was prepared. Submit a new publication.",
+                );
+              }
+              planMarketplacePackagePublication(request.intent, listing, version);
+              const now = uow.now();
+              if (!listing) {
+                const { category, ...metadata } = intent.metadata;
+                uow.checkAbsent("marketplace_listing", "primary", { id: intent.listingId });
+                uow.create(
+                  "marketplace_listing",
+                  {
+                    id: intent.listingId,
+                    publisherName: intent.owner.publisherName,
+                    metadata,
+                    category,
+                    status: "draft",
+                    latestPublishedVersion: null,
+                    publishedAt: null,
+                    createdAt: now,
+                    updatedAt: now,
+                  },
+                  { retryOnUniqueConflict: ({ error }) => error.kind === "unique" },
+                );
+                uow.create("marketplace_listing_owner", {
+                  id: intent.listingId,
+                  listingId: intent.listingId,
+                  ownerKey: marketplaceOwnerKey(intent.owner.scope),
+                  ownerScope: intent.owner.scope,
+                  listingStatus: "draft",
+                  listingUpdatedAt: now,
+                  createdAt: now,
+                });
+              }
+              const publish: MarketplaceVersionPublishState = {
+                state: "publishing",
+                workflowInstanceId,
+                snapshotId: intent.snapshotId,
+              };
+              if (version) {
+                uow.update("marketplace_version", version.id, (b) => b.set({ publish }).check());
+              } else {
+                uow.checkAbsent("marketplace_version", "primary", { id: versionId });
+                uow.create(
+                  "marketplace_version",
+                  {
+                    id: versionId,
+                    listingId: intent.listingId,
+                    version: intent.version,
+                    status: "draft",
+                    publishedAt: null,
+                    createdAt: now,
+                    publish,
+                  },
+                  { retryOnUniqueConflict: ({ error }) => error.kind === "unique" },
+                );
+              }
+              return "publishing";
+            },
+          )
+          .build();
+      },
+
+      failPackagePublish: function (input: {
+        listingId: string;
+        version: string;
+        workflowInstanceId: string;
+      }) {
+        const versionId = marketplaceVersionId(input);
+        return this.serviceTx(marketplaceFragmentSchema)
+          .retrieve((uow) =>
+            uow.findFirst("marketplace_version", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", versionId)),
+            ),
+          )
+          .mutate(({ uow, retrieveResult: [version] }) => {
+            const publish = version?.publish;
+            if (
+              version &&
+              publish?.workflowInstanceId === input.workflowInstanceId &&
+              publish.state === "publishing"
+            ) {
+              uow.update("marketplace_version", version.id, (b) =>
+                b.set({ publish: { ...publish, state: "failed" } }).check(),
+              );
+            }
+          })
+          .build();
+      },
+
+      completePackagePublish: function (request: MarketplacePackagePublishRequest) {
+        const { release: intent } = request.intent;
+        const { version: requestedVersion, slug } = intent;
+        const versionId = marketplaceVersionId({
+          listingId: intent.listingId,
+          version: requestedVersion,
+        });
+        const publish: MarketplaceVersionPublishState = {
+          state: "published",
+          workflowInstanceId: request.workflowInstanceId,
+          snapshotId: intent.snapshotId,
+        };
+        return this.serviceTx(marketplaceFragmentSchema)
+          .retrieve((uow) =>
+            uow
+              .findFirst("marketplace_listing", (b) =>
+                b.whereIndex("primary", (eb) => eb("id", "=", intent.listingId)),
+              )
+              .findFirst("marketplace_version", (b) =>
+                b.whereIndex("primary", (eb) => eb("id", "=", versionId)),
+              )
+              .find("marketplace_listing_owner", (b) =>
+                b.whereIndex("idx_marketplace_listing_owner_listingId_ownerKey", (eb) =>
+                  eb("listingId", "=", intent.listingId),
+                ),
+              ),
+          )
+          .mutate(({ uow, retrieveResult: [listing, version, owners] }) => {
+            if (
+              !version ||
+              version.publish?.workflowInstanceId !== request.workflowInstanceId ||
+              version.publish.state === "failed"
+            ) {
+              throw new MarketplacePublicationConflictError(
+                "Marketplace release changed after publication was prepared. Submit a new publication.",
+              );
+            }
+            if (version.publish.state === "published") {
+              return;
+            }
+            if (!listing) {
+              throw new MarketplaceListingNotFoundError(slug);
+            }
+            if (listing.status === "archived") {
+              throw new MarketplaceListingArchivedError(slug);
+            }
+            assertOwnerOwnsListing(owners, intent.owner, slug);
+            const now = uow.now();
+            const { category, ...metadata } = intent.metadata;
+            const isLatest =
+              !listing.latestPublishedVersion ||
+              compareMarketplaceVersions(requestedVersion, listing.latestPublishedVersion) >= 0;
+            uow.update("marketplace_listing", listing.id, (b) =>
+              b
+                .set({
+                  ...(isLatest
+                    ? {
+                        publisherName: intent.owner.publisherName,
+                        metadata,
+                        category,
+                        latestPublishedVersion: requestedVersion,
+                      }
+                    : {}),
+                  status: "published",
+                  publishedAt: listing.publishedAt ?? now,
+                  updatedAt: now,
+                })
+                .check(),
+            );
+            for (const owner of owners) {
+              uow.update("marketplace_listing_owner", owner.id, (b) =>
+                b.set({ listingStatus: "published", listingUpdatedAt: now }).check(),
+              );
+            }
+            uow.update("marketplace_version", version.id, (b) =>
+              b
+                .set({ publish, status: "published", publishedAt: version.publishedAt ?? now })
+                .check(),
+            );
           })
           .build();
       },

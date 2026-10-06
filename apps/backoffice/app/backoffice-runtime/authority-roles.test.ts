@@ -50,12 +50,14 @@ describe("Backoffice authority role grants", () => {
 
   test("grants identity administration to trusted objects", () => {
     expect(BACKOFFICE_AUTHORITY_ROLE_GRANTS.object).toEqual([
+      BACKOFFICE_PERMISSION.marketplace.publish,
       BACKOFFICE_PERMISSION.identity.bind,
       BACKOFFICE_PERMISSION.identity.resolve,
       BACKOFFICE_PERMISSION.identity.revoke,
       ...currentKernelPermissions,
     ]);
     expect(BACKOFFICE_AUTHORITY_ROLE_GRANTS.system).toEqual([
+      BACKOFFICE_PERMISSION.marketplace.publish,
       BACKOFFICE_PERMISSION.identity.bind,
       BACKOFFICE_PERMISSION.identity.resolve,
       BACKOFFICE_PERMISSION.identity.revoke,
@@ -82,12 +84,16 @@ describe("Backoffice authority role grants", () => {
   });
 
   test("user owners can author and execute user-scoped codemode workflows", () => {
-    expect(BACKOFFICE_AUTHORITY_ROLE_GRANTS["user-owner"]).toEqual(automationAuthoringPermissions);
+    expect(BACKOFFICE_AUTHORITY_ROLE_GRANTS["user-owner"]).toEqual([
+      BACKOFFICE_PERMISSION.marketplace.publish,
+      ...automationAuthoringPermissions,
+    ]);
   });
 
   test("organization members can author and execute organization-scoped codemode workflows", () => {
     expect(BACKOFFICE_AUTHORITY_ROLE_GRANTS["organization-member"]).toEqual([
       BACKOFFICE_PERMISSION.identity.link,
+      BACKOFFICE_PERMISSION.marketplace.publish,
       BACKOFFICE_PERMISSION.api.connectionsRead,
       BACKOFFICE_PERMISSION.capabilities.read,
       BACKOFFICE_PERMISSION.connections.manage,
@@ -108,7 +114,10 @@ describe("Backoffice authority role grants", () => {
   });
 
   test("agents receive the currently adopted workflow permissions", () => {
-    expect(BACKOFFICE_AUTHORITY_ROLE_GRANTS.agent).toEqual(currentKernelPermissions);
+    expect(BACKOFFICE_AUTHORITY_ROLE_GRANTS.agent).toEqual([
+      BACKOFFICE_PERMISSION.marketplace.publish,
+      ...currentKernelPermissions,
+    ]);
   });
 
   test("keeps organization administration out of constrained authority roles", () => {

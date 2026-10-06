@@ -21,15 +21,17 @@ import {
   type BackofficeContextScope,
 } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
-import { MARKETPLACE_PUBLISH_WORKFLOW_NAME } from "@/fragno/automation/marketplace-publish-workflow";
+import { MARKETPLACE_PACKAGE_PUBLISH_WORKFLOW_NAME } from "@/fragno/automation/marketplace-package-publish-workflow";
 import {
   backofficeFiles,
   defineBackofficeScenario,
   runBackofficeScenario,
 } from "@/fragno/automation/scenario";
 import { createRouteBackedAutomationWorkflowRuntime } from "@/fragno/automation/workflow-route-runtime";
+import { captureBundledMarketplaceRelease } from "@/fragno/marketplace/bundled-release";
 import { marketplaceStaticPublicationResultSchema } from "@/fragno/marketplace/contracts";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
+import { marketplaceReleaseArtifactFiles } from "@/fragno/marketplace/release-snapshot";
 import { listStaticMarketplaceEntries } from "@/fragno/marketplace/static-entries";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
@@ -96,7 +98,7 @@ describe("internal maintenance scope scenarios", () => {
               execution: createBackofficeSystemExecution({ kind: "system" }),
             });
             const instances = await workflow.listInternalInstances({
-              workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME,
+              workflowName: MARKETPLACE_PACKAGE_PUBLISH_WORKFLOW_NAME,
               pageSize: 100,
             });
             expect(instances.instances).toHaveLength(entries.length);
@@ -128,6 +130,13 @@ describe("internal maintenance scope scenarios", () => {
             captureIdAs: "projectId",
           }),
           then.assert("tools and object commands reject non-System publication", async (ctx) => {
+            const entry = listStaticMarketplaceEntries().find(
+              (entry) => entry.slug === "telegram-test-command" && entry.version === "1.0.0",
+            );
+            assert(entry);
+            const release = await captureBundledMarketplaceRelease(entry);
+            const files = await marketplaceReleaseArtifactFiles(release);
+            const publisherExecution = createBackofficeSystemExecution({ kind: "system" });
             const scopes: BackofficeContextScope[] = [
               { kind: "org", orgId: "org-1" },
               { kind: "project", orgId: "org-1", projectId: ctx.vars.projectId },
@@ -161,15 +170,38 @@ describe("internal maintenance scope scenarios", () => {
                   createBackofficeToolContext(context),
                 ),
               ).rejects.toThrow("Static marketplace publication requires System context.");
+              await expect(
+                ctx.runtime.objects.marketplace
+                  .singleton()
+                  .commands.publishRelease(
+                    { release, dryRun: false, skipAuthorCheck: false, skipVersionCheck: false },
+                    { execution, propagationContext: null },
+                  ),
+              ).rejects.toThrow("System-owned Marketplace releases require System context.");
               const object = ctx.runtime.objects.automations.for(scope);
               await expect(object.commands.requestStaticMarketplacePublications()).rejects.toThrow(
                 "Static marketplace publication requires the System Automations object.",
               );
               const workflow = createRouteBackedAutomationWorkflowRuntime({ object, execution });
               await workflow.createInternalInstance({
-                workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME,
+                workflowName: MARKETPLACE_PACKAGE_PUBLISH_WORKFLOW_NAME,
                 instanceId: `invalid-publication-${scope.kind}`,
-                params: { slug: "telegram-test-command", version: "1.0.0" },
+                params: {
+                  request: {
+                    workflowInstanceId: `invalid-publication-${scope.kind}`,
+                    intent: {
+                      release,
+                      execution: publisherExecution,
+                      skipAuthorCheck: false,
+                      skipVersionCheck: true,
+                    },
+                    expectedVersionRevision: null,
+                    expectedFiles: files.map((file) => ({
+                      fileKey: `1.0.0/${file.relativePath}`,
+                      precondition: { kind: "absent" },
+                    })),
+                  },
+                },
               });
             }
           }),
@@ -188,7 +220,7 @@ describe("internal maintenance scope scenarios", () => {
                   execution: createBackofficeSystemExecution(scope),
                 });
                 const instance = await workflow.getInternalInstance({
-                  workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME,
+                  workflowName: MARKETPLACE_PACKAGE_PUBLISH_WORKFLOW_NAME,
                   instanceId: `invalid-publication-${scope.kind}`,
                 });
                 expect(instance.details).toMatchObject({

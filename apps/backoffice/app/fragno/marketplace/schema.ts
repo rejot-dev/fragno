@@ -7,6 +7,7 @@ import type {
   MarketplaceOwnerScope,
   MarketplaceVersionStatus,
 } from "./contracts";
+import type { MarketplaceVersionPublishState } from "./package-publishing";
 
 const jsonColumn = <T>() => column("json") as Column<"json", T, T>;
 const categoryColumn = () =>
@@ -96,5 +97,8 @@ export const marketplaceFragmentSchema = schema("marketplace", (s) =>
           "createdAt",
           "id",
         ]),
+    )
+    .alterTable("marketplace_version", (t) =>
+      t.addColumn("publish", jsonColumn<MarketplaceVersionPublishState>().nullable()),
     ),
 );

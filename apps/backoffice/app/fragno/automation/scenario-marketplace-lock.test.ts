@@ -24,9 +24,9 @@ import { sha256Hex } from "@/lib/crypto";
 
 import { InMemoryUploadObject } from "../../../workers/upload.do";
 import {
-  buildMarketplaceIngestionWorkflowInstanceId,
-  MARKETPLACE_INGEST_WORKFLOW_NAME,
-} from "./marketplace-ingest-identity";
+  buildMarketplacePackageInstallWorkflowInstanceId,
+  MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
+} from "./marketplace-package-install-identity";
 import { createWorkflowsRouteCaller } from "./route-callers";
 import {
   defineBackofficeScenario,
@@ -114,7 +114,7 @@ function publishedWorkflowSource(version: string) {
 describe("marketplace lock scenarios", () => {
   test("installs files and the installer into the requested nested directory", async () => {
     const installationRoot = "/workspace/packages/telegram";
-    const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
+    const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
       targetScope: TARGET_SCOPE,
       installationRoot,
       listingId: LISTING_ID,
@@ -138,7 +138,7 @@ describe("marketplace lock scenarios", () => {
           }),
           runner.drain(),
           then.workflow.instance({
-            workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
+            workflowName: MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
             instanceId: workflowInstanceId,
             status: "complete",
           }),
@@ -235,7 +235,7 @@ describe("marketplace lock scenarios", () => {
 
   test("does not upgrade an existing installation, but allows another version at a different root", async () => {
     const installationRoot = "/workspace/first";
-    const newerWorkflowId = await buildMarketplaceIngestionWorkflowInstanceId({
+    const newerWorkflowId = await buildMarketplacePackageInstallWorkflowInstanceId({
       targetScope: TARGET_SCOPE,
       installationRoot,
       listingId: LISTING_ID,
@@ -265,7 +265,7 @@ describe("marketplace lock scenarios", () => {
           }),
           runner.drain(),
           then.workflow.instance({
-            workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
+            workflowName: MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
             instanceId: newerWorkflowId,
             status: "errored",
           }),
@@ -330,7 +330,7 @@ describe("marketplace lock scenarios", () => {
     "preserves invalid lock content and rejects installation before writing files: %s",
     async (content) => {
       const installationRoot = "/workspace/locked";
-      const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
+      const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
         targetScope: TARGET_SCOPE,
         installationRoot,
         listingId: LISTING_ID,
@@ -359,7 +359,7 @@ describe("marketplace lock scenarios", () => {
             }),
             runner.drain(),
             then.workflow.instance({
-              workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
+              workflowName: MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
               instanceId: workflowInstanceId,
               status: "errored",
             }),
@@ -385,7 +385,7 @@ describe("marketplace lock scenarios", () => {
     const installationRoot = "/workspace/atomic";
     const matchingFile = "automations/telegram-user-linking.workflow.js";
     const missingFile = "automations/telegram-user-pi-linking.workflow.js";
-    const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
+    const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
       targetScope: TARGET_SCOPE,
       installationRoot,
       listingId: TELEGRAM_CHANNEL_ID,
@@ -442,7 +442,7 @@ describe("marketplace lock scenarios", () => {
           }),
           runner.drain(),
           then.workflow.instance({
-            workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
+            workflowName: MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
             instanceId: workflowInstanceId,
             status: "errored",
           }),
@@ -468,7 +468,7 @@ describe("marketplace lock scenarios", () => {
     "refuses an artifact that would overwrite or use the root lock as a directory: %s",
     async (relativePath) => {
       const installationRoot = "/workspace";
-      const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
+      const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
         targetScope: TARGET_SCOPE,
         installationRoot,
         listingId: LISTING_ID,
@@ -498,7 +498,7 @@ describe("marketplace lock scenarios", () => {
             }),
             runner.drain(),
             then.workflow.instance({
-              workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
+              workflowName: MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
               instanceId: workflowInstanceId,
               status: "errored",
             }),
@@ -521,7 +521,7 @@ describe("marketplace lock scenarios", () => {
 
   test("replays a successful lock write after losing its commit response", async () => {
     const installationRoot = "/workspace/replay";
-    const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
+    const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
       targetScope: TARGET_SCOPE,
       installationRoot,
       listingId: LISTING_ID,
@@ -565,7 +565,7 @@ describe("marketplace lock scenarios", () => {
           }),
           runner.drain(),
           then.workflow.instance({
-            workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
+            workflowName: MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
             instanceId: workflowInstanceId,
             status: "waiting",
           }),
@@ -577,7 +577,7 @@ describe("marketplace lock scenarios", () => {
           runner.restartObject({ binding: "AUTOMATIONS", scope: TARGET_SCOPE }),
           when.time.advance("1 s"),
           then.workflow.instance({
-            workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
+            workflowName: MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
             instanceId: workflowInstanceId,
             status: "complete",
           }),
@@ -594,7 +594,7 @@ describe("marketplace lock scenarios", () => {
 
   test("merges a concurrently written lock entry after a revision conflict", async () => {
     const installationRoot = "/workspace/concurrent";
-    const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
+    const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
       targetScope: TARGET_SCOPE,
       installationRoot,
       listingId: LISTING_ID,
@@ -650,14 +650,14 @@ describe("marketplace lock scenarios", () => {
           }),
           runner.drain(),
           then.workflow.instance({
-            workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
+            workflowName: MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
             instanceId: workflowInstanceId,
             status: "waiting",
           }),
           runner.restartObject({ binding: "AUTOMATIONS", scope: TARGET_SCOPE }),
           when.time.advance("1 s"),
           then.workflow.instance({
-            workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
+            workflowName: MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
             instanceId: workflowInstanceId,
             status: "complete",
           }),
@@ -703,7 +703,7 @@ describe("marketplace lock scenarios", () => {
                 },
               });
               const response = await workflows("POST", "/:workflowName/instances", {
-                pathParams: { workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME },
+                pathParams: { workflowName: MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME },
                 body: {
                   id: "invalid-install-path",
                   params: {
@@ -723,7 +723,7 @@ describe("marketplace lock scenarios", () => {
               assert(response.error.code === "WORKFLOW_PARAMS_INVALID");
               const instance = await workflows("GET", "/:workflowName/instances/:instanceId", {
                 pathParams: {
-                  workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
+                  workflowName: MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
                   instanceId: "invalid-install-path",
                 },
               });

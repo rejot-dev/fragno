@@ -96,6 +96,13 @@ import type {
   MarketplacePublishVersionResult,
   MarketplaceUpdateListingInput,
 } from "@/fragno/marketplace/contracts";
+import type {
+  MarketplacePublishPackageInput,
+  MarketplacePublishReleaseInput,
+  MarketplacePublishReleaseResult,
+  MarketplacePackagePublishRequest,
+  MarketplacePublishResult,
+} from "@/fragno/marketplace/package-publishing";
 import type { TelegramAutomationFileMetadata } from "@/fragno/runtime-tools/families/telegram-runtime";
 import type {
   SandboxInstanceRecord,
@@ -286,6 +293,27 @@ export type BillingObject = {
 };
 
 export type MarketplaceObject = {
+  publishRelease(
+    input: MarketplacePublishReleaseInput,
+    context: BackofficeActionRpcContext,
+  ): Promise<MarketplacePublishReleaseResult>;
+  publishPackage(
+    input: MarketplacePublishPackageInput,
+    context: BackofficeActionRpcContext,
+  ): Promise<MarketplacePublishResult>;
+  beginPackagePublish(
+    request: MarketplacePackagePublishRequest,
+    context: BackofficeActionRpcContext,
+  ): Promise<"publishing" | "published">;
+  completePackagePublish(
+    request: MarketplacePackagePublishRequest,
+    context: BackofficeActionRpcContext,
+  ): Promise<void>;
+  failPackagePublish(input: {
+    listingId: string;
+    version: string;
+    workflowInstanceId: string;
+  }): Promise<void>;
   listPublishedListings(input?: MarketplaceListingPageInput): Promise<MarketplaceListingPage>;
   getPublishedListing(
     input: MarketplacePublishedListingInput,
@@ -321,6 +349,11 @@ export type MarketplaceObject = {
 };
 
 export type AutomationsObject = {
+  /** Captured bytes become immutable workflow input; returns whether this call created the instance. */
+  requestMarketplacePackagePublish(
+    request: MarketplacePackagePublishRequest,
+    context: BackofficeActionRpcContext,
+  ): Promise<boolean>;
   triggerIngestEvent(
     event: AutomationEvent,
     context?: BackofficeRpcContext,

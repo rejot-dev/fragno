@@ -9,9 +9,9 @@ import {
 import { sendBackofficeWorkflowEvent } from "@/backoffice-ui/workflow-events.client";
 import { CODEMODE_WORKFLOW } from "@/fragno/automation/engine/codemode-invocation";
 import {
-  MARKETPLACE_INGEST_WORKFLOW_NAME,
+  MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
   marketplaceInstallationWorkflowInstanceId,
-} from "@/fragno/automation/marketplace-ingest-identity";
+} from "@/fragno/automation/marketplace-package-install-identity";
 import {
   getAutomationBrowserDatabase,
   type AutomationCollectionSource,
@@ -93,7 +93,7 @@ function SynchronizedMarketplaceInstallationWorkflow({
     collections,
     selector: {
       type: "instance",
-      workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
+      workflowName: MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
       instanceId: ingestionWorkflowInstanceId,
     },
   });

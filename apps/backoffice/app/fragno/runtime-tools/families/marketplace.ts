@@ -4,6 +4,10 @@ import {
   marketplaceListingDetailSchema,
   marketplacePublishedListingInputSchema,
 } from "@/fragno/marketplace/contracts";
+import {
+  marketplacePublishInputSchema,
+  marketplacePublishResultSchema,
+} from "@/fragno/marketplace/package-publishing";
 import { defineCliArgsParser } from "@/fragno/runtime-tools/bash-cli";
 
 import {
@@ -156,10 +160,84 @@ const marketplaceViewTool = defineBackofficeRuntimeTool({
   },
 });
 
-/** Registry discovery is independent of the selected workspace's installation tools. */
+const marketplacePublishTool = defineBackofficeRuntimeTool({
+  id: "marketplace.publish",
+  namespace: "marketplace",
+  name: "publish",
+  description:
+    "Publish a captured package from a root manifest.json containing name @<organization-slug>/<package-slug>. Versions are immutable by default; System may explicitly replace them. Dry runs write nothing. Author and version overrides require System context.",
+  requiredPermissions: ["publish"],
+  inputSchema: marketplacePublishInputSchema,
+  outputSchema: marketplacePublishResultSchema,
+  execute: async (input, context: MarketplaceToolContext) =>
+    await getMarketplaceRuntime(context).publish(input),
+  adapters: {
+    bash: {
+      command: "marketplace.publish",
+      help: {
+        summary:
+          "Publish the package identified by its root manifest.json. The accepted snapshot is published asynchronously.",
+        options: [
+          {
+            name: "package-root",
+            required: true,
+            valueRequired: true,
+            description: "Absolute package directory in the current filesystem.",
+          },
+          {
+            name: "dry-run",
+            description:
+              "Validate owner, version, and selected files without staging or publishing.",
+          },
+          {
+            name: "skip-author-check",
+            description: "System only: publish without organization membership.",
+          },
+          {
+            name: "skip-version-check",
+            description: "System only: allow older releases and replacement of existing versions.",
+          },
+        ],
+        examples: [
+          "marketplace.publish --package-root /workspace/packages/telegram --dry-run",
+          "marketplace.publish --package-root /workspace/packages/telegram --format json",
+        ],
+      },
+      parse: defineCliArgsParser<z.input<typeof marketplacePublishInputSchema>>(
+        "marketplace.publish",
+        {
+          packageRoot: { required: true },
+          dryRun: { kind: "boolean" },
+          skipAuthorCheck: { kind: "boolean" },
+          skipVersionCheck: { kind: "boolean" },
+        },
+      ),
+      format: (result, options) =>
+        options.format === "json" || options.print
+          ? { data: result }
+          : {
+              stdout:
+                `${result.state}\t${result.name}@${result.version}\t${result.listingId}\n` +
+                result.files
+                  .map(
+                    (file) => `${file.relativePath}\t${file.sizeBytes} bytes\t${file.checksum}\n`,
+                  )
+                  .join("") +
+                (result.state === "preview"
+                  ? ""
+                  : `Workflow: ${result.workflowInstanceId} (System)\n`),
+            },
+    },
+  },
+});
+
+/** Registry publishing uses the source filesystem; installation remains a workspace operation. */
 export const marketplaceToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "marketplace",
-  permissions: { read: "Discover published Marketplace packages and releases." },
-  tools: [marketplaceSearchTool, marketplaceViewTool],
+  permissions: {
+    read: "Discover published Marketplace packages and releases.",
+    publish: "Publish packages for an organization; publishing overrides require System context.",
+  },
+  tools: [marketplaceSearchTool, marketplaceViewTool, marketplacePublishTool],
   isAvailable: (context: MarketplaceToolContext) => !!context.runtimes.marketplace,
 });

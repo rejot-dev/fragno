@@ -137,7 +137,7 @@ describe("Marketplace artifact files", () => {
     });
   });
 
-  test("rejects artifact trees larger than one Upload page", async () => {
+  test("paginates shared listing storage across Upload metadata pages", async () => {
     const overflowFiles = Array.from({ length: 501 }, (_, index) =>
       createFile(`2.0.0/generated/file-${index}.txt`, "text/plain", `${index}`),
     );
@@ -149,11 +149,11 @@ describe("Marketplace artifact files", () => {
       requestedVersion: "2.0.0",
     });
 
-    expect(result).toEqual({
-      state: "error",
-      message: "Upload file listing exceeded its 1-page retrieval limit.",
-    });
-    assert(requests.length === 1);
+    assert(result.state === "ready");
+    expect(result.fileTree.entries.map((entry) => entry.path)).toContain(
+      "2.0.0/generated/file-500.txt",
+    );
+    assert(requests.length === 2);
   }, 30_000);
 
   test("rejects artifact exploration for an unpublished manifest", async () => {

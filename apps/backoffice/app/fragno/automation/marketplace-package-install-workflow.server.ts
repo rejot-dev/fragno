@@ -45,10 +45,6 @@ import {
 } from "./engine/codemode-invocation";
 import type { createAutomationFragment } from "./index";
 import {
-  MARKETPLACE_INGEST_WORKFLOW_NAME,
-  marketplaceInstallationWorkflowInstanceId,
-} from "./marketplace-ingest-identity";
-import {
   marketplaceFileContentsMatch,
   MarketplaceWorkspaceFileConflictError,
   planMarketplaceWorkspaceInstallation,
@@ -63,6 +59,10 @@ import {
   marketplaceIngestionWorkflowInputSchema,
   resolveMarketplaceIngestionArtifactVersion,
 } from "./marketplace-ingestions";
+import {
+  MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
+  marketplaceInstallationWorkflowInstanceId,
+} from "./marketplace-package-install-identity";
 import {
   throwMarketplaceUploadRequestError,
   throwMarketplaceUploadRouteError,
@@ -84,7 +84,7 @@ const MARKETPLACE_EXTERNAL_STEP_RETRIES = {
   retries: { limit: 3, delay: "1 s", backoff: "exponential" },
 } as const;
 
-const marketplaceIngestWorkflowOutputSchema = z.object({
+const marketplacePackageInstallWorkflowOutputSchema = z.object({
   listingId: marketplaceListingIdSchema,
   version: marketplaceVersionSchema,
   workflowInstanceId: z.string(),
@@ -175,7 +175,7 @@ type MarketplaceWorkflowsFragment = Pick<
   "callServices" | "services"
 >;
 
-type MarketplaceIngestWorkflowConfig = {
+type MarketplacePackageInstallWorkflowConfig = {
   ownerScope: BackofficeContextScope;
   env?: CloudflareEnv;
   runtime?: BackofficeRuntimeServices;
@@ -221,12 +221,15 @@ async function readMarketplaceLockFile(input: {
   return { lock, revision: file?.revision ?? null, existing: existing ?? null };
 }
 
-export const defineMarketplaceIngestWorkflow = (config: MarketplaceIngestWorkflowConfig) =>
-  defineWorkflow(
+/** Install published package files, run optional setup, and record success in the workspace lock. */
+export function defineMarketplacePackageInstallWorkflow(
+  config: MarketplacePackageInstallWorkflowConfig,
+) {
+  return defineWorkflow(
     {
-      name: MARKETPLACE_INGEST_WORKFLOW_NAME,
+      name: MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
       schema: marketplaceIngestionWorkflowInputSchema,
-      outputSchema: marketplaceIngestWorkflowOutputSchema,
+      outputSchema: marketplacePackageInstallWorkflowOutputSchema,
       checkpoint: "step",
     },
     async (event, step) => {
@@ -326,13 +329,14 @@ export const defineMarketplaceIngestWorkflow = (config: MarketplaceIngestWorkflo
             listingId: resolvedArtifact.manifest.listingId,
             version: resolvedArtifact.version,
             uploadName: resolvedArtifact.manifest.uploadName,
+            filePrefix: `${resolvedArtifact.version}/`,
           };
         },
       );
 
       const sourceObject = runtime.objects.upload.forName(artifact.uploadName);
       const sourceUploadRoutes = createUploadRouteCaller(sourceObject.http);
-      const artifactPrefix = `${artifact.version}/`;
+      const artifactPrefix = artifact.filePrefix;
       const requestedArtifactFiles: MarketplaceIngestionSourceFile[] = [];
       let cursor: string | undefined;
       let listingComplete = false;
@@ -743,7 +747,7 @@ export const defineMarketplaceIngestWorkflow = (config: MarketplaceIngestWorkflo
                 create: {
                   remoteWorkflowName: workflowInput.remoteWorkflowName,
                   params: withWorkflowCompletionTarget(workflowInput.params, {
-                    workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
+                    workflowName: MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
                     instanceId: event.instanceId,
                   }),
                 },
@@ -811,14 +815,14 @@ export const defineMarketplaceIngestWorkflow = (config: MarketplaceIngestWorkflo
           if (response.error.code === "FILE_PRECONDITION_FAILED") {
             throw new Error("Marketplace lock file changed concurrently.");
           }
-          return throwMarketplaceUploadRouteError({
+          throwMarketplaceUploadRouteError({
             operation: "Marketplace lock file write",
             status: response.status,
             error: response.error,
           });
         }
         if (response.type !== "json" || response.status < 200 || response.status >= 300) {
-          return throwUnexpectedMarketplaceUploadResponse({
+          throwUnexpectedMarketplaceUploadResponse({
             operation: "Marketplace lock file write",
             status: response.status,
           });
@@ -832,3 +836,4 @@ export const defineMarketplaceIngestWorkflow = (config: MarketplaceIngestWorkflo
       };
     },
   );
+}

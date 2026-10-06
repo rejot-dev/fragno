@@ -16,7 +16,7 @@ import {
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import { createBackofficeExecutionForPrincipal } from "@/fragno/auth/backoffice-principal.server";
 import { CODEMODE_WORKFLOW } from "@/fragno/automation/engine/codemode-invocation";
-import { MARKETPLACE_INGEST_WORKFLOW_NAME } from "@/fragno/automation/marketplace-ingest-identity";
+import { MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME } from "@/fragno/automation/marketplace-package-install-identity";
 import {
   defineBackofficeScenario,
   runBackofficeScenario,
@@ -409,7 +409,7 @@ describe("Workspace package runtime scenarios", () => {
               execution: createBackofficeSystemExecution(ORG_SCOPE),
             });
             const instance = await workflow.getInternalInstance({
-              workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
+              workflowName: MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
               instanceId: ctx.vars.instanceId,
             });
             assert(instance.details.status === "errored");

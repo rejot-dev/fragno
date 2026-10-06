@@ -30,8 +30,12 @@ import { defineCodemodeWorkflow } from "@/fragno/automation/engine/codemode-work
 import { listAutomationEventDescriptors } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 import { piAgentCreationSchema } from "@/fragno/pi-manager/pi-agent-contract";
 
-import { defineMarketplaceIngestWorkflow } from "./marketplace-ingest-workflow.server";
-import { defineMarketplacePublishWorkflow } from "./marketplace-publish-workflow";
+import { defineMarketplacePackageInstallWorkflow } from "./marketplace-package-install-workflow.server";
+import {
+  defineMarketplacePackagePublishWorkflow,
+  MARKETPLACE_PACKAGE_PUBLISH_WORKFLOW_NAME,
+  type MarketplacePackagePublishWorkflowParams,
+} from "./marketplace-package-publish-workflow";
 import {
   AutomationRouteMutationAuthorizationError,
   setAutomationRouteMutationActionAuthorizer,
@@ -143,11 +147,11 @@ export const createAutomationsRuntime = (
           ...config,
           env: config.runtime?.codemodeEnv ?? undefined,
         }),
-        MARKETPLACE_PUBLISH: defineMarketplacePublishWorkflow({
+        MARKETPLACE_PACKAGE_PUBLISH: defineMarketplacePackagePublishWorkflow({
           ownerScope: config.ownerScope,
           runtime: config.runtime,
         }),
-        MARKETPLACE_INGEST: defineMarketplaceIngestWorkflow({
+        MARKETPLACE_PACKAGE_INSTALL: defineMarketplacePackageInstallWorkflow({
           ownerScope: config.ownerScope,
           env: config.env,
           runtime: config.runtime,
@@ -157,6 +161,28 @@ export const createAutomationsRuntime = (
       },
       runtime: config.runtime?.fragnoRuntime ?? defaultFragnoRuntime,
       onWorkflowTerminal: async function notifyWorkflowOwnerOfTerminalInstance(payload) {
+        if (
+          config.ownerScope.kind === "system" &&
+          payload.workflowName === MARKETPLACE_PACKAGE_PUBLISH_WORKFLOW_NAME &&
+          (payload.status === "errored" || payload.status === "terminated") &&
+          config.runtime
+        ) {
+          const params = payload.params as MarketplacePackagePublishWorkflowParams;
+          const current = await workflowsFragment.callServices(() =>
+            workflowsFragment.services.getInstanceStatus(payload.workflowName, payload.instanceId),
+          );
+          // A delayed terminal hook from an earlier run must not release a restarted publisher.
+          if (
+            current.runGeneration === payload.runGeneration &&
+            current.status === payload.status
+          ) {
+            await config.runtime.objects.marketplace.singleton().commands.failPackagePublish({
+              listingId: params.request.intent.release.listingId,
+              version: params.request.intent.release.version,
+              workflowInstanceId: payload.instanceId,
+            });
+          }
+        }
         const completionTarget = parseWorkflowCompletionTarget(payload.params);
         if (!completionTarget) {
           return;

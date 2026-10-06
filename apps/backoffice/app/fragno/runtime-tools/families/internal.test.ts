@@ -10,7 +10,7 @@ const failedPublication: MarketplaceStaticPublicationResult = {
       listingId: "system#telegram-test-command",
       slug: "telegram-test-command",
       version: "1.0.0",
-      workflowInstanceId: "marketplace-publish-failed",
+      workflowInstanceId: "marketplace-package-publish-failed",
       state: "failed",
       workflowStatus: "errored",
       error: {
@@ -24,7 +24,7 @@ const failedPublication: MarketplaceStaticPublicationResult = {
 describe("formatMarketplacePushOutput", () => {
   test("prints terminal workflow failures and exits unsuccessfully", () => {
     expect(formatMarketplacePushOutput(failedPublication, { format: "text" })).toEqual({
-      stdout: "failed\tsystem#telegram-test-command@1.0.0\tmarketplace-publish-failed\n",
+      stdout: "failed\tsystem#telegram-test-command@1.0.0\tmarketplace-package-publish-failed\n",
       stderr:
         "system#telegram-test-command@1.0.0: NonRetryableError: Static marketplace publication failed.\n",
       exitCode: 1,

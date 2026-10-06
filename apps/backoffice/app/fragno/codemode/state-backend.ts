@@ -20,6 +20,7 @@ import {
 import { createUploadFileTree } from "@/file-collection/create-upload-file-tree";
 import type {
   FileCollection,
+  FileContent,
   FileSearchMatch,
   FileTree,
   FileTreeEntry,
@@ -124,8 +125,10 @@ type StateBackendMounts = {
 };
 
 export interface BackofficeStateBackend {
+  /** Refresh cached metadata when an operation must detect writes from other executions. */
+  refreshMetadata(): void;
   readFile(path: string): Promise<string>;
-  readFileBytes(path: string): Promise<Uint8Array>;
+  readFileBytes(path: string, maxBytes?: number): Promise<Uint8Array>;
   writeFile(path: string, content: string): Promise<void>;
   writeFileBytes(path: string, content: Uint8Array): Promise<void>;
   appendFile(path: string, content: string | Uint8Array): Promise<void>;
@@ -200,7 +203,46 @@ export const createBackofficeSystemStateBackend = (input: {
     static: { mountPoint: STATIC_MOUNT_POINT, collection: input.staticFileCollection },
   });
 
+async function readStateFileBytes(content: FileContent, maxBytes: number): Promise<Uint8Array> {
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) {
+    throw new Error("State file byte limit must be a nonnegative safe integer.");
+  }
+  if (content.sizeBytes !== null && content.sizeBytes > maxBytes) {
+    await content.body.cancel();
+    throw new Error(`State file exceeds its ${maxBytes} byte read limit.`);
+  }
+  const reader = content.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) {
+        break;
+      }
+      size += chunk.value.length;
+      if (size > maxBytes) {
+        await reader.cancel();
+        throw new Error(`State file exceeds its ${maxBytes} byte read limit.`);
+      }
+      chunks.push(chunk.value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return bytes;
+}
+
 class SystemStaticStateBackend implements BackofficeStateBackend {
+  refreshMetadata(): void {
+    // System and static mounts are immutable within this runtime.
+  }
   readonly #system: StateMount;
   readonly #static: StateMount;
 
@@ -213,8 +255,8 @@ class SystemStaticStateBackend implements BackofficeStateBackend {
     return await new Response((await this.#getFile(path)).body).text();
   }
 
-  async readFileBytes(path: string): Promise<Uint8Array> {
-    return new Uint8Array(await new Response((await this.#getFile(path)).body).arrayBuffer());
+  async readFileBytes(path: string, maxBytes = Number.MAX_SAFE_INTEGER): Promise<Uint8Array> {
+    return await readStateFileBytes(await this.#getFile(path), maxBytes);
   }
 
   async writeFile(path: string, _content: string): Promise<void> {
@@ -486,6 +528,9 @@ class SystemStaticStateBackend implements BackofficeStateBackend {
 }
 
 class UploadStaticStateBackend implements BackofficeStateBackend {
+  refreshMetadata(): void {
+    this.#uploadTreePromise = undefined;
+  }
   readonly #upload: UploadStateMount;
   readonly #static: StateMount;
   #uploadTreePromise: Promise<FileTree> | undefined;
@@ -500,9 +545,8 @@ class UploadStaticStateBackend implements BackofficeStateBackend {
     return await new Response(content.body).text();
   }
 
-  async readFileBytes(path: string): Promise<Uint8Array> {
-    const content = await this.#getFile(path);
-    return new Uint8Array(await new Response(content.body).arrayBuffer());
+  async readFileBytes(path: string, maxBytes = Number.MAX_SAFE_INTEGER): Promise<Uint8Array> {
+    return await readStateFileBytes(await this.#getFile(path), maxBytes);
   }
 
   async writeFile(path: string, content: string): Promise<void> {

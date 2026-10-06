@@ -1,9 +1,33 @@
+import type { UploadFileTreeRecord } from "@/file-collection/create-upload-file-tree";
 import { bytesToHex } from "@/lib/crypto";
 
 import type { MarketplaceStaticEntry } from "./contracts";
 import { marketplaceListingIdSchema, marketplaceVersionSchema } from "./contracts";
 
 const TEXT_ENCODER = new TextEncoder();
+
+/** Exact inventories recognize committed package files without repeating external writes. */
+export function marketplaceArtifactFileInventoryMatches(
+  expected: readonly {
+    fileKey: string;
+    sizeBytes: number;
+    checksum: { algo: "sha256"; value: string };
+  }[],
+  actual: readonly UploadFileTreeRecord[],
+): boolean {
+  if (actual.length !== expected.length) {
+    return false;
+  }
+  const actualByKey = new Map(actual.map((file) => [file.fileKey, file]));
+  return expected.every((file) => {
+    const stored = actualByKey.get(file.fileKey);
+    return (
+      stored?.sizeBytes === file.sizeBytes &&
+      stored.checksum?.algo === file.checksum.algo &&
+      stored.checksum.value === file.checksum.value
+    );
+  });
+}
 
 export const MARKETPLACE_INSTALL_WORKFLOW_PATH = ".marketplace/install.workflow.js";
 export const isMarketplaceInternalArtifactPath = (relativePath: string) =>
