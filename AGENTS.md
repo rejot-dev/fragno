@@ -41,8 +41,8 @@ Use canonical definitions and direct imports.
 ## Product principles
 
 - **Scenario Testing** Test through real SQLite operations, routes, client-store updates, and final-state
-  assertions. We test through "scenarios", specifically built test DSLs that allow us to test real
-  user flows. Real end-to-end, but within a process.
+  assertions. We test through "scenarios" (setup, steps, assert), specifically built test DSLs that allow us to test real
+  user flows. Real end-to-end, but within a process. If the tests are simple enough to not need steps, we should NOT have the test at all.
 - **Primitive-first.** Build reusable primitives, not application conveniences.
 
 ## Fragno's constraints:
