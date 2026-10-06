@@ -811,14 +811,14 @@ export const defineMarketplaceIngestWorkflow = (config: MarketplaceIngestWorkflo
           if (response.error.code === "FILE_PRECONDITION_FAILED") {
             throw new Error("Marketplace lock file changed concurrently.");
           }
-          throwMarketplaceUploadRouteError({
+          return throwMarketplaceUploadRouteError({
             operation: "Marketplace lock file write",
             status: response.status,
             error: response.error,
           });
         }
         if (response.type !== "json" || response.status < 200 || response.status >= 300) {
-          throwUnexpectedMarketplaceUploadResponse({
+          return throwUnexpectedMarketplaceUploadResponse({
             operation: "Marketplace lock file write",
             status: response.status,
           });
