@@ -245,12 +245,13 @@ const renderJsonSchemaType = (
     return "unknown";
   }
 
-  if (schema.$ref) {
-    return resolveRefType(schema.$ref, context);
-  }
-
+  // An explicit shared type also overrides references emitted for recursive Zod schemas.
   if (schema.codemodeType?.trim()) {
     return schema.codemodeType.trim();
+  }
+
+  if (schema.$ref) {
+    return resolveRefType(schema.$ref, context);
   }
 
   if (schema.const !== undefined) {
