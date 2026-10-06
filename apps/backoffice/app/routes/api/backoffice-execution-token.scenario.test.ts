@@ -300,6 +300,48 @@ describe("Backoffice execution token SQLite scenarios", () => {
     });
   });
 
+  test("registered and installed external apps cannot inherit first-party user authority, even for an administrator", async () => {
+    await runExecutionTokenScenario(async (ctx) => {
+      const { user, organization } = await authorizeFirstPartyClient(ctx);
+      const auth = ctx.runtime.objects.auth.singleton().commands;
+      await auth.applyScenarioFixture({
+        users: [{ id: user.id, email: user.email, role: "admin", status: "active" }],
+      });
+      const created = await authRequest(ctx, "/oauth2/create-client", {
+        client_name: "Fragno Backoffice Codemode",
+        software_id: "fragno-backoffice-codemode",
+        scope: "openid offline_access backoffice",
+        token_endpoint_auth_method: "none",
+        application_type: "native",
+        grant_types: [deviceGrant, "refresh_token"],
+      });
+      assert(created.ok, await created.clone().text());
+      const client = z.object({ client_id: z.string() }).parse(await created.json());
+      const requestedPermissions = [{ namespace: "events" as const, permission: "emit" as const }];
+      const registered = await ctx.runtime.objects.apps
+        .singleton()
+        .commands.registerApp({ oauthClientId: client.client_id, requestedPermissions });
+      assert(registered.ok);
+      const installed = await ctx.runtime.objects.appInstallations
+        .forOrg(organization.id)
+        .commands.installApp({
+          appId: registered.value.appId,
+          grantedPermissions: requestedPermissions,
+          installedByUserId: user.id,
+        });
+      assert(installed.ok);
+      const token = await authorizeOAuthDevice(ctx, {
+        clientId: client.client_id,
+        scopes: "openid offline_access backoffice",
+      });
+      for (const scope of [{ kind: "org", orgId: organization.id }, { kind: "system" }]) {
+        const response = await requestExecutionToken(ctx, exchangeRequest(token, scope));
+        assert.equal(response.status, 401);
+        expect(await response.json()).toMatchObject({ error: "authentication_failed" });
+      }
+    });
+  });
+
   test("existing OAuth tokens do not preserve revoked user roles or organization membership at exchange", async () => {
     await runExecutionTokenScenario(async (ctx) => {
       const { token, user, organization } = await authorizeFirstPartyClient(ctx);

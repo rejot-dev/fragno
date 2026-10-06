@@ -43,6 +43,14 @@ import {
   type BackofficeExecutionTokenExchangeInput,
   type BackofficeExecutionTokenResult,
 } from "@/fragno/auth/execution-token";
+import {
+  backofficeOAuthClientCreateInputSchema,
+  backofficeOAuthClientListInputSchema,
+  type BackofficeOAuthClientCreateInput,
+  type BackofficeOAuthClientCreateResult,
+  type BackofficeOAuthClientListInput,
+  type BackofficeOAuthClientPage,
+} from "@/fragno/auth/oauth-client";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 import {
   AUTH_AUTOMATION_EVENT_ORGANIZATION_CREATED,
@@ -71,8 +79,10 @@ import {
   BACKOFFICE_BETTER_AUTH_SCHEMA_VERSION,
 } from "./auth/better-auth-migrations";
 import {
+  createBackofficeAdminOAuthClient,
   getBackofficeCliOAuthConfig,
   initializeBackofficeCodemodeOAuthClient,
+  listBackofficeOAuthClients,
   resolveBackofficeCodemodeExecutionPolicy,
 } from "./auth/better-auth-oauth";
 import { createBackofficeTokenPlugin } from "./auth/better-auth-plugin";
@@ -833,6 +843,17 @@ export class InMemoryAuthObject implements AuthObject {
     });
   }
 
+  async #isUserAdministrator(userId: string): Promise<boolean> {
+    const user = await this.#database
+      .selectFrom("user")
+      .select(["role", "banned"])
+      .where("id", "=", userId)
+      .executeTakeFirst();
+    return (
+      user !== undefined && normalizeRole(user.role) === "admin" && !normalizeBoolean(user.banned)
+    );
+  }
+
   #createOptions(baseURL: string): BetterAuthOptions {
     const runtime = this.#runtime;
     const emailVerification = runtime.config.authEmailVerification;
@@ -840,6 +861,7 @@ export class InMemoryAuthObject implements AuthObject {
     const isDevelopment = import.meta.env.MODE === "development";
     const schemaPlugins = createBackofficeBetterAuthSchemaPlugins({
       baseURL,
+      isUserAdministrator: async (userId) => await this.#isUserAdministrator(userId),
       organizationHooks: {
         async beforeCreateOrganization({ organization: nextOrganization, user }) {
           return {
@@ -1240,6 +1262,44 @@ export class InMemoryAuthObject implements AuthObject {
   }): Promise<BackofficeMeData | null> {
     const { adapter } = await this.#authContext();
     return await buildBackofficeMe(adapter, input);
+  }
+
+  /** Creates Auth-owned credentials; the caller identity comes from the authorized runtime tool. */
+  async createAdminOAuthClient(
+    input: BackofficeOAuthClientCreateInput & { administratorUserId: string },
+  ): Promise<BackofficeOAuthClientCreateResult> {
+    const parsed = backofficeOAuthClientCreateInputSchema
+      .extend({ administratorUserId: z.string().min(1) })
+      .parse(input);
+    await this.#ready;
+    // Endpoint session injection is confined to this instance, never the cached HTTP Auth instances.
+    const auth = betterAuth(this.#createOptions("http://localhost"));
+    return await createBackofficeAdminOAuthClient(auth, parsed);
+  }
+
+  /** Global catalog access checks live administrator authority before reading Auth client metadata. */
+  async listAdminOAuthClients(
+    input: BackofficeOAuthClientListInput & { administratorUserId: string },
+  ): Promise<BackofficeOAuthClientPage> {
+    const parsed = backofficeOAuthClientListInputSchema
+      .extend({ administratorUserId: z.string().min(1) })
+      .parse(input);
+    await this.#ready;
+    if (!(await this.#isUserAdministrator(parsed.administratorUserId))) {
+      throw new Error("Admin OAuth client listing requires an active administrator user.");
+    }
+    return await listBackofficeOAuthClients(this.#getAuth("http://localhost"), parsed);
+  }
+
+  /** Internal identity lookup for app registration; never exposes OAuth client credentials. */
+  async hasOAuthClient(input: { clientId: string }): Promise<boolean> {
+    const clientId = z.string().min(1).max(191).parse(input.clientId);
+    const { adapter } = await this.#authContext();
+    const client = await adapter.findOne<{ clientId: string }>({
+      model: "oauthClient",
+      where: [{ field: "clientId", value: clientId }],
+    });
+    return client !== null;
   }
 
   async getBackofficeCliOAuthConfig(input: {
@@ -1753,6 +1813,22 @@ export class Auth extends DurableObject<CloudflareEnv> implements AuthObject {
     activeOrganizationId: string | null;
   }): Promise<BackofficeMeData | null> {
     return await this.#object.getBackofficeMe(input);
+  }
+
+  async createAdminOAuthClient(
+    input: BackofficeOAuthClientCreateInput & { administratorUserId: string },
+  ): Promise<BackofficeOAuthClientCreateResult> {
+    return await this.#object.createAdminOAuthClient(input);
+  }
+
+  async listAdminOAuthClients(
+    input: BackofficeOAuthClientListInput & { administratorUserId: string },
+  ): Promise<BackofficeOAuthClientPage> {
+    return await this.#object.listAdminOAuthClients(input);
+  }
+
+  async hasOAuthClient(input: { clientId: string }): Promise<boolean> {
+    return await this.#object.hasOAuthClient(input);
   }
 
   async getBackofficeCliOAuthConfig(input: {

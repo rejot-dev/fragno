@@ -4,7 +4,15 @@ import { createAdminRuntime } from "./admin-runtime";
 
 function createAdminRuntimeDependencies() {
   return {
+    apps: null,
     auth: {
+      hasOAuthClient: async () => false,
+      listAdminOAuthClients: async () => ({ clients: [], nextCursor: null, hasNextPage: false }),
+      createAdminOAuthClient: async () => ({
+        clientType: "public" as const,
+        clientId: "client-1",
+        clientSecret: null,
+      }),
       createAdminOrganization: async (input: { name: string; slug: string }) => ({
         organizationId: "org-1",
         name: input.name,

@@ -9,6 +9,8 @@ import type { Upload } from "workers/upload.do";
 import type { FragnoExecutionContext } from "@fragno-dev/core";
 import type { ResendSendEmailInput } from "@fragno-dev/resend-fragment";
 
+import type { BackofficeAppInstallationsCommands } from "@/fragno/app-installations/contracts";
+import type { BackofficeAppsCommands } from "@/fragno/apps/contracts";
 import type {
   BackofficeCliOAuthConfig,
   BackofficeMeData,
@@ -22,6 +24,12 @@ import type {
   BackofficeExecutionTokenExchangeInput,
   BackofficeExecutionTokenResult,
 } from "@/fragno/auth/execution-token";
+import type {
+  BackofficeOAuthClientCreateInput,
+  BackofficeOAuthClientCreateResult,
+  BackofficeOAuthClientListInput,
+  BackofficeOAuthClientPage,
+} from "@/fragno/auth/oauth-client";
 import type {
   AutomationEvent,
   AutomationEventDefinition,
@@ -209,6 +217,16 @@ export type AuthObject = DurableHookCommands & {
     userId: string;
     activeOrganizationId: string | null;
   }): Promise<BackofficeMeData | null>;
+  /** Creates an OAuth client owned by the administrator principal, not an organization installation. */
+  createAdminOAuthClient(
+    input: BackofficeOAuthClientCreateInput & { administratorUserId: string },
+  ): Promise<BackofficeOAuthClientCreateResult>;
+  /** Reads the global, credential-free OAuth catalog under live administrator authority. */
+  listAdminOAuthClients(
+    input: BackofficeOAuthClientListInput & { administratorUserId: string },
+  ): Promise<BackofficeOAuthClientPage>;
+  /** Checks Auth-owned OAuth client identity without exposing credentials. */
+  hasOAuthClient(input: { clientId: string }): Promise<boolean>;
   getBackofficeCliOAuthConfig(input: { requestUrl: string }): Promise<BackofficeCliOAuthConfig>;
   /** Exchanges OAuth identity under a server-controlled execution policy, not app registration alone. */
   exchangeBackofficeExecutionToken(
@@ -481,6 +499,8 @@ export type GitHubWebhookRouterObject = {
 };
 
 export type BackofficeObjectBindingName =
+  | "APPS"
+  | "APP_INSTALLATIONS"
   | "API"
   | "AUTH"
   | "AUTOMATIONS"
@@ -522,6 +542,8 @@ export type BackofficeObjectScopeKind = BackofficeObjectScope["kind"];
 export const backofficeObjectScopePolicy = {
   API: ["org", "user", "project"],
   AUTH: ["singleton"],
+  APPS: ["singleton"],
+  APP_INSTALLATIONS: ["org"],
 
   AUTOMATIONS: ["singleton", "org", "user", "project"],
   PI_MANAGER: ["singleton", "org", "user", "project"],
@@ -795,6 +817,11 @@ const scoped = <TCommands>(
 export const createBackofficeObjectRegistry = (factory: BackofficeObjectFactory) => ({
   api: scoped(factory, binding<ApiObject>("API")),
   auth: scoped(factory, binding<AuthObject>("AUTH")),
+  apps: scoped(factory, binding<BackofficeAppsCommands>("APPS")),
+  appInstallations: scoped(
+    factory,
+    binding<BackofficeAppInstallationsCommands>("APP_INSTALLATIONS"),
+  ),
 
   automations: scoped(factory, binding<AutomationsObject>("AUTOMATIONS")),
   piManager: scoped(factory, binding<Record<never, never>>("PI_MANAGER")),

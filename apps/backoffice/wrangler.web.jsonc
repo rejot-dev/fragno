@@ -137,6 +137,16 @@
         "script_name": "rejot-backoffice",
       },
       {
+        "name": "APPS",
+        "class_name": "Apps",
+        "script_name": "rejot-backoffice",
+      },
+      {
+        "name": "APP_INSTALLATIONS",
+        "class_name": "AppInstallations",
+        "script_name": "rejot-backoffice",
+      },
+      {
         "name": "CLOUDFLARE",
         "class_name": "Cloudflare",
         "script_name": "rejot-backoffice",

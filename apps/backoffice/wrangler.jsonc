@@ -128,6 +128,14 @@
         "class_name": "Auth",
       },
       {
+        "name": "APPS",
+        "class_name": "Apps",
+      },
+      {
+        "name": "APP_INSTALLATIONS",
+        "class_name": "AppInstallations",
+      },
+      {
         "name": "TELEGRAM",
         "class_name": "Telegram",
       },
@@ -208,6 +216,8 @@
   "exports": {
     "Api": { "type": "durable-object", "storage": "sqlite" },
     "Auth": { "type": "durable-object", "storage": "sqlite" },
+    "Apps": { "type": "durable-object", "storage": "sqlite" },
+    "AppInstallations": { "type": "durable-object", "storage": "sqlite" },
     "Telegram": { "type": "durable-object", "storage": "sqlite" },
     "Resend": { "type": "durable-object", "storage": "sqlite" },
     "Reson8": { "type": "durable-object", "storage": "sqlite" },

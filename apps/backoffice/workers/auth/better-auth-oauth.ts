@@ -1,5 +1,7 @@
 import { betterAuth, type BetterAuthPlugin } from "better-auth";
 
+import { Cursor, decodeCursor } from "@fragno-dev/db";
+
 import {
   DEVICE_CODE_GRANT_TYPE,
   oauthDeviceAuthorization,
@@ -8,6 +10,14 @@ import {
 } from "@better-auth/oauth-provider";
 
 import type { BackofficeCliOAuthConfig } from "@/fragno/auth/contracts";
+import {
+  BACKOFFICE_OAUTH_SCOPES,
+  type BackofficeOAuthClientCreateInput,
+  type BackofficeOAuthClientCreateResult,
+  type BackofficeOAuthClientListInput,
+  type BackofficeOAuthClientPage,
+  type BackofficeOAuthClientSummary,
+} from "@/fragno/auth/oauth-client";
 
 import type { BackofficeOAuthExecutionPolicy } from "./backoffice-execution-token";
 
@@ -26,10 +36,12 @@ type AdminCreateOAuthClientEndpoint = (input: {
   body: {
     scope: string;
     client_name: string;
-    software_id: string;
-    token_endpoint_auth_method: "none";
-    application_type: "native";
+    software_id?: string;
+    redirect_uris?: string[];
+    token_endpoint_auth_method: "none" | "client_secret_basic";
+    application_type: "native" | "web";
     grant_types: string[];
+    require_pkce?: boolean;
   };
 }) => Promise<OAuthClientAdministrativeResponse>;
 type StoreOAuthClient = {
@@ -107,7 +119,11 @@ async function ensureBackofficeCodemodeOAuthClient(
   const adapter = authContext.adapter;
   const existingClient = await adapter.findOne<StoreOAuthClient>({
     model: "oauthClient",
-    where: [{ field: "softwareId", value: BACKOFFICE_CODEMODE_OAUTH_SOFTWARE_ID }],
+    // Managed clients can claim the same software metadata, but not the bootstrap reference owner.
+    where: [
+      { field: "softwareId", value: BACKOFFICE_CODEMODE_OAUTH_SOFTWARE_ID },
+      { field: "referenceId", value: BACKOFFICE_CODEMODE_OAUTH_SOFTWARE_ID },
+    ],
   });
   if (existingClient) {
     return existingClient;
@@ -176,14 +192,27 @@ async function loadBackofficeCodemodeOAuth(
   return { authContext, client };
 }
 
-export function createBackofficeOAuthPlugins(): BetterAuthPlugin[] {
+/** Restricts managed OAuth client operations using live global administrator authority. */
+export function createBackofficeOAuthPlugins(input: {
+  isUserAdministrator: ((userId: string) => Promise<boolean>) | null;
+}): BetterAuthPlugin[] {
   return [
     oauthProvider({
       loginPage: "/backoffice/login",
       consentPage: "/backoffice/oauth/consent",
-      scopes: [...BACKOFFICE_CODEMODE_OAUTH_SCOPES],
+      scopes: [...BACKOFFICE_OAUTH_SCOPES],
       enforcePerClientResources: false,
       allowDynamicClientRegistration: false,
+      clientPrivileges: async function authorizeOAuthClientManagement({ action, user }) {
+        if (!user) {
+          return false;
+        }
+        // This server-only bootstrap has no persisted user or session. It may only create its client.
+        if (user.id === BACKOFFICE_CODEMODE_OAUTH_BOOTSTRAP_SUBJECT) {
+          return action === "create";
+        }
+        return input.isUserAdministrator !== null && (await input.isUserAdministrator(user.id));
+      },
       clientReference: ({ user }) =>
         user?.id === BACKOFFICE_CODEMODE_OAUTH_BOOTSTRAP_SUBJECT
           ? BACKOFFICE_CODEMODE_OAUTH_SOFTWARE_ID
@@ -194,6 +223,129 @@ export function createBackofficeOAuthPlugins(): BetterAuthPlugin[] {
       generateUserCode: generateBackofficeDeviceUserCode,
     }),
   ];
+}
+
+function decodeOAuthClientListCursor(input: BackofficeOAuthClientListInput): string | null {
+  if (input.cursor === null) {
+    return null;
+  }
+  try {
+    const cursor = decodeCursor(input.cursor);
+    if (
+      cursor.indexName !== "oauthClient.clientId" ||
+      cursor.orderDirection !== "asc" ||
+      cursor.pageSize !== input.pageSize ||
+      typeof cursor.indexValues.clientId !== "string" ||
+      cursor.indexValues.clientId.length === 0
+    ) {
+      throw new Error("Cursor does not match the OAuth client catalog.");
+    }
+    return cursor.indexValues.clientId;
+  } catch {
+    throw new Error("Admin OAuth client listing cursor is invalid.");
+  }
+}
+
+/** Reads a bounded global metadata projection through Auth, without selecting credential columns. */
+export async function listBackofficeOAuthClients(
+  auth: BetterAuthInstance,
+  input: BackofficeOAuthClientListInput,
+): Promise<BackofficeOAuthClientPage> {
+  const afterClientId = decodeOAuthClientListCursor(input);
+  const { adapter } = await getAuthContext(auth);
+  const rows = await adapter.findMany<BackofficeOAuthClientSummary>({
+    model: "oauthClient",
+    select: [
+      "clientId",
+      "name",
+      "redirectUris",
+      "scopes",
+      "tokenEndpointAuthMethod",
+      "userId",
+      "referenceId",
+      "disabled",
+    ],
+    where:
+      afterClientId === null ? [] : [{ field: "clientId", operator: "gt", value: afterClientId }],
+    sortBy: { field: "clientId", direction: "asc" },
+    limit: input.pageSize + 1,
+  });
+  const hasNextPage = rows.length > input.pageSize;
+  const clients = rows.slice(0, input.pageSize).map((client) => ({
+    clientId: client.clientId,
+    name: client.name,
+    redirectUris: client.redirectUris,
+    scopes: client.scopes,
+    tokenEndpointAuthMethod: client.tokenEndpointAuthMethod,
+    userId: client.userId,
+    referenceId: client.referenceId,
+    disabled: client.disabled,
+  }));
+  return {
+    clients,
+    hasNextPage,
+    nextCursor: hasNextPage
+      ? new Cursor({
+          indexName: "oauthClient.clientId",
+          orderDirection: "asc",
+          pageSize: input.pageSize,
+          indexValues: { clientId: clients[clients.length - 1].clientId },
+        }).encode()
+      : null,
+  };
+}
+
+/** Uses an isolated Auth instance so synthetic server session state cannot leak to HTTP requests. */
+export async function createBackofficeAdminOAuthClient(
+  auth: BetterAuthInstance,
+  input: BackofficeOAuthClientCreateInput & { administratorUserId: string },
+): Promise<BackofficeOAuthClientCreateResult> {
+  const authContext = await getAuthContext(auth);
+  const user = await authContext.internalAdapter.findUserById(input.administratorUserId);
+  if (!user) {
+    throw new Error("Admin OAuth client creation requires an existing administrator user.");
+  }
+  const now = new Date();
+  authContext.session = {
+    user,
+    session: {
+      id: "backoffice-admin-oauth-client-create",
+      token: "backoffice-admin-oauth-client-create",
+      userId: user.id,
+      expiresAt: new Date(now.getTime() + 60_000),
+      createdAt: now,
+      updatedAt: now,
+      ipAddress: null,
+      userAgent: null,
+    },
+  };
+  const createClient = getAdminCreateOAuthClientEndpoint(auth);
+  try {
+    const client = await createClient({
+      headers: new Headers(),
+      body: {
+        client_name: input.name,
+        redirect_uris: input.redirectUris,
+        scope: input.scopes.join(" "),
+        token_endpoint_auth_method: input.clientType === "public" ? "none" : "client_secret_basic",
+        application_type: input.applicationType,
+        require_pkce: true,
+        grant_types: input.scopes.includes("offline_access")
+          ? ["authorization_code", "refresh_token"]
+          : ["authorization_code"],
+      },
+    });
+    return input.clientType === "public"
+      ? { clientType: "public", clientId: client.client_id, clientSecret: null }
+      : {
+          clientType: "confidential",
+          clientId: client.client_id,
+          // Better Auth's optional secret field covers public clients; confidential creation returns it.
+          clientSecret: client.client_secret!,
+        };
+  } finally {
+    authContext.session = null;
+  }
 }
 
 export async function initializeBackofficeCodemodeOAuthClient(

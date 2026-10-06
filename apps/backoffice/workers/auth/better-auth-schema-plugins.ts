@@ -14,6 +14,7 @@ export const BACKOFFICE_ORGANIZATION_OWNER_ROLE = "owner";
 export function createBackofficeBetterAuthSchemaPlugins(input: {
   baseURL: string;
   organizationHooks: BetterAuthOrganizationHooks | null;
+  isUserAdministrator: ((userId: string) => Promise<boolean>) | null;
 }): BetterAuthPlugin[] {
   const organizationOptions = {
     allowUserToCreateOrganization: true,
@@ -42,6 +43,6 @@ export function createBackofficeBetterAuthSchemaPlugins(input: {
         expirationTime: "15m",
       },
     }),
-    ...createBackofficeOAuthPlugins(),
+    ...createBackofficeOAuthPlugins({ isUserAdministrator: input.isUserAdministrator }),
   ];
 }
