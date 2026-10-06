@@ -10,6 +10,7 @@
   "scripts": {
     "auth:migration:generate": "auth generate --config scripts/better-auth-cli.ts --output workers/auth/migrations/better-auth.sql --yes",
     "admin:grant": "bash scripts/grant-admin.sh",
+    "oauth:test": "node scripts/test-oauth-client.mjs",
     "build": "react-router build",
     "build:node": "BACKOFFICE_TARGET=node react-router build --config vite.node.config.ts && vite build --config vite.node-server.config.ts",
     "docker:prune:node": "rm -rf .docker-node && turbo prune @fragno-apps/backoffice-rr @fragno-private/backoffice-node-runtime --docker --out-dir=apps/backoffice/.docker-node && cp ../../.oxfmtrc.json .docker-node/.oxfmtrc.json",
