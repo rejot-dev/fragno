@@ -70,6 +70,8 @@ export function useWorkflowRunRecords({
           status: instance.status,
           params: instance.params,
           output: instance.output,
+          errorName: instance.errorName,
+          errorMessage: instance.errorMessage,
           createdAt: instance.createdAt,
           updatedAt: instance.updatedAt,
           workflowSteps: toArray(

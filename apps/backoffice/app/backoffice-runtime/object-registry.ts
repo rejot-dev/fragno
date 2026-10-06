@@ -26,9 +26,6 @@ import type {
   AutomationEventDefinitionUpdateInput,
   AutomationIngestResult,
   AutomationProjectExecutionTarget,
-  MarketplaceIngestionListInput,
-  MarketplaceIngestionLookupInput,
-  MarketplaceIngestionRecord,
   MarketplaceIngestionRequestInput,
   MarketplaceIngestionRequestResult,
   MarketplaceIngestionRestartResult,
@@ -324,12 +321,6 @@ export type AutomationsObject = {
     input: MarketplaceIngestionRequestInput,
     context: BackofficeActionRpcContext,
   ): Promise<MarketplaceIngestionRestartResult>;
-  getMarketplaceIngestion(
-    input: MarketplaceIngestionLookupInput,
-  ): Promise<MarketplaceIngestionRecord | null>;
-  listMarketplaceIngestions(
-    input?: MarketplaceIngestionListInput,
-  ): Promise<MarketplaceIngestionRecord[]>;
   bindExternalIdentity(
     input: BindExternalIdentityInput,
     context: BackofficeActionRpcContext,

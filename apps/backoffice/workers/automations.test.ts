@@ -1105,6 +1105,7 @@ describe("Automations object scope binding", () => {
       await expect(
         automations.commands.requestMarketplaceIngestion(
           {
+            installationRoot: "/workspace",
             listingId,
             targetScope: { kind: "user", userId: "user-1" },
             version: USER_WORKSPACE_INGESTION_TEST_VERSION,
@@ -1120,12 +1121,22 @@ describe("Automations object scope binding", () => {
       });
       await runtime.drain();
 
-      await expect(
-        automations.commands.getMarketplaceIngestion({
-          targetScope: { kind: "user", userId: "user-1" },
-          listingId,
-        }),
-      ).resolves.toMatchObject({ version: USER_WORKSPACE_INGESTION_TEST_VERSION });
+      const lockUrl = new URL("https://upload.test/api/upload/files/by-key/content");
+      lockUrl.searchParams.set("provider", "database");
+      lockUrl.searchParams.set("key", "marketplace-lock.json");
+      const lock = await runtime.objects.upload
+        .forUser({ userId: "user-1" })
+        .http.fetch(new Request(lockUrl));
+      assert(lock.ok);
+      await expect(lock.json()).resolves.toEqual({
+        entries: [
+          {
+            listingId,
+            version: USER_WORKSPACE_INGESTION_TEST_VERSION,
+            installationRoot: "/workspace",
+          },
+        ],
+      });
 
       const contentUrl = new URL("https://upload.test/api/upload/files/by-key/content");
       contentUrl.searchParams.set("provider", "database");
@@ -1171,6 +1182,7 @@ describe("Automations object scope binding", () => {
         slug: "telegram-test-command",
       });
       const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
+        installationRoot: "/workspace",
         targetScope: { kind: "user", userId: "user-1" },
         listingId,
         version: USER_WORKSPACE_INGESTION_TEST_VERSION,
@@ -1178,6 +1190,7 @@ describe("Automations object scope binding", () => {
       await expect(
         automations.commands.requestMarketplaceIngestion(
           {
+            installationRoot: "/workspace",
             listingId,
             targetScope: { kind: "user", userId: "user-1" },
             version: USER_WORKSPACE_INGESTION_TEST_VERSION,
@@ -1214,12 +1227,13 @@ describe("Automations object scope binding", () => {
           message: "Marketplace ingestion user target is not a member of the organization.",
         },
       });
-      await expect(
-        automations.commands.getMarketplaceIngestion({
-          targetScope: { kind: "user", userId: "user-1" },
-          listingId,
-        }),
-      ).resolves.toBeNull();
+      const lockUrl = new URL("https://upload.test/api/upload/files/by-key/content");
+      lockUrl.searchParams.set("provider", "database");
+      lockUrl.searchParams.set("key", "marketplace-lock.json");
+      const lock = await runtime.objects.upload
+        .forUser({ userId: "user-1" })
+        .http.fetch(new Request(lockUrl));
+      assert(lock.status === 404);
       expect(membershipChecks).toBe(2);
     } finally {
       await runtime.cleanup();
@@ -1233,6 +1247,7 @@ describe("Automations object scope binding", () => {
       await expect(
         runtime.objects.automations.forOrg("org-1").commands.requestMarketplaceIngestion(
           {
+            installationRoot: "/workspace",
             listingId: marketplaceListingId({
               ownerScope: { kind: "system" },
               slug: "telegram-test-command",

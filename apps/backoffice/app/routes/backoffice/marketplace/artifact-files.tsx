@@ -5,36 +5,20 @@ import { Link, useFetcher, useLocation } from "react-router";
 import { Streamdown } from "streamdown";
 
 import {
-  visualizeWorkflowSource,
-  type WorkflowVisualizationSnapshot,
-} from "@fragno-dev/workflow-visualizer-tokens";
-
-import {
   FilesExplorerView,
   type FilesExplorerSource,
 } from "@/components/backoffice/files-explorer";
+import { WorkflowFilePreview } from "@/components/backoffice/files-explorer/content-renderers";
 import type { FileTreeEntry } from "@/file-collection/file-collection";
-import type { ResolvedWorkflowRuntimeToolCall } from "@/fragno/runtime-tools/workflow-catalog";
+import { MARKETPLACE_INSTALL_WORKFLOW_PATH } from "@/fragno/marketplace/artifacts";
 
-import { ScriptWorkflowGraph } from "../automations/script-view/workflow-graph";
-import { AutomationSubpageTabs } from "../automations/shared";
 import {
   MARKETPLACE_ARTIFACT_ROOT_PATH,
   type MarketplaceArtifactExplorerData,
   type MarketplaceArtifactSelectedContent,
-  type MarketplaceArtifactWorkflowSource,
 } from "./artifact-files-model";
-
-type MarketplaceArtifactTab = "overview" | "workflows" | "files";
+import { marketplacePackageTabFromSearch, type MarketplacePackageTab } from "./package-tabs";
 type ReadyArtifactData = Extract<MarketplaceArtifactExplorerData, { state: "ready" }>;
-
-type VisualizedMarketplaceArtifactWorkflow = {
-  path: string;
-  visualization: WorkflowVisualizationSnapshot;
-};
-
-const EMPTY_RUNTIME_TOOL_CALLS: ReadonlyMap<string, readonly ResolvedWorkflowRuntimeToolCall[]> =
-  new Map();
 
 export function MarketplaceArtifactFiles({
   data,
@@ -45,7 +29,7 @@ export function MarketplaceArtifactFiles({
 }) {
   if (data.state !== "ready") {
     return (
-      <section className="bo-panel-surface bg-[var(--bo-panel)] p-5 md:p-6">
+      <section className="mt-5">
         <h3 className="text-lg font-semibold tracking-tight text-balance text-[var(--bo-fg)]">
           Package contents unavailable
         </h3>
@@ -71,11 +55,7 @@ function ReadyMarketplaceArtifactFiles({
   const location = useLocation();
   const overview = useFetcher<string>();
   const [requestedOverviewPath, setRequestedOverviewPath] = useState<string | null>(null);
-  const requestedTab = new URLSearchParams(location.search).get("artifactTab");
-  const activeTab: MarketplaceArtifactTab =
-    requestedTab === "overview" || requestedTab === "workflows" || requestedTab === "files"
-      ? requestedTab
-      : "overview";
+  const activeTab = marketplacePackageTabFromSearch(location.search);
   const overviewPath =
     findMarketplaceArtifactEntry(data, "README.md")?.kind === "file"
       ? `${MARKETPLACE_ARTIFACT_ROOT_PATH}/README.md`
@@ -99,21 +79,9 @@ function ReadyMarketplaceArtifactFiles({
       void overview.load(overviewResourcePath);
     }
   }, [activeTab, overview, overviewResourcePath, requestedOverviewPath]);
-  const tabs = (["overview", "workflows", "files"] as const).map((tab) => ({
-    id: tab,
-    label: tab === "overview" ? "Overview" : tab === "workflows" ? "Workflows" : "Files",
-    to: buildArtifactTabPath(location.pathname, location.search, tab),
-    onSelect: tab === "overview" ? loadOverview : undefined,
-  }));
 
   return (
-    <section className="bo-panel-surface bg-[var(--bo-panel)] p-5 md:p-6">
-      <AutomationSubpageTabs
-        tabs={tabs}
-        activeTab={activeTab}
-        ariaLabel="Marketplace package sections"
-      />
-
+    <>
       {activeTab === "overview" ? (
         <MarketplaceArtifactOverview
           path={overviewPath}
@@ -131,7 +99,7 @@ function ReadyMarketplaceArtifactFiles({
       ) : (
         <MarketplaceArtifactExplorer data={data} selectedContent={selectedContent} />
       )}
-    </section>
+    </>
   );
 }
 
@@ -224,7 +192,12 @@ function MarketplaceArtifactWorkflows({
   selectedContent: MarketplaceArtifactSelectedContent | null;
 }) {
   const location = useLocation();
+  const installationWorkflowPath = `${MARKETPLACE_ARTIFACT_ROOT_PATH}/${data.selectedVersion}/${MARKETPLACE_INSTALL_WORKFLOW_PATH}`;
   const workflowPaths = useMemo(() => {
+    const installer = findMarketplaceArtifactEntry(
+      data,
+      `${data.selectedVersion}/${MARKETPLACE_INSTALL_WORKFLOW_PATH}`,
+    );
     const workflowPathPrefix = `${data.selectedVersion}/automations/`;
     const paths: string[] = [];
 
@@ -238,8 +211,9 @@ function MarketplaceArtifactWorkflows({
       }
     }
 
-    return paths.sort((left, right) => left.localeCompare(right));
-  }, [data.fileTree.entries, data.selectedVersion]);
+    const sortedPaths = paths.sort((left, right) => left.localeCompare(right));
+    return installer?.kind === "file" ? [installationWorkflowPath, ...sortedPaths] : sortedPaths;
+  }, [data, installationWorkflowPath]);
   const requestedPath = new URLSearchParams(location.search).get("artifactPath")?.trim();
   const selectedPath =
     requestedPath && workflowPaths.includes(requestedPath) ? requestedPath : null;
@@ -252,11 +226,6 @@ function MarketplaceArtifactWorkflows({
       />
     );
   }
-
-  const workflowSource: MarketplaceArtifactWorkflowSource | null =
-    selectedPath && selectedContent?.path === selectedPath
-      ? { path: selectedPath, source: selectedContent.text }
-      : null;
 
   return (
     <div className="mt-5">
@@ -282,7 +251,9 @@ function MarketplaceArtifactWorkflows({
               preventScrollReset
               className={underlineTabClassName(selected ? "selected" : "idle")}
             >
-              {path.split("/").at(-1)}
+              {path === installationWorkflowPath
+                ? MARKETPLACE_INSTALL_WORKFLOW_PATH
+                : path.split("/").at(-1)}
             </Link>
           );
         })}
@@ -290,68 +261,32 @@ function MarketplaceArtifactWorkflows({
 
       {!selectedPath ? (
         <MarketplaceArtifactMessage title="Select a workflow" />
-      ) : workflowSource ? (
-        <MarketplaceArtifactWorkflowGraphs workflows={[workflowSource]} />
+      ) : selectedContent?.path === selectedPath ? (
+        <section className="mt-5 overflow-hidden shadow-[0_0_0_1px_var(--bo-border)]">
+          <div className="border-b border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2.5">
+            <p
+              className="truncate font-mono text-[10px] text-[var(--bo-muted)]"
+              title={selectedPath}
+            >
+              {selectedPath}
+            </p>
+          </div>
+          <div className="h-[36rem] max-h-[calc(100vh-10rem)] min-h-64 p-3">
+            <WorkflowFilePreview
+              key={selectedPath}
+              preview={{
+                title: selectedPath,
+                contentType: "text/javascript",
+                metadata: null,
+                textContent: selectedContent.text,
+                workflowRouting: { status: "unavailable" },
+              }}
+            />
+          </div>
+        </section>
       ) : (
         <MarketplaceArtifactMessage title="Workflow source unavailable" />
       )}
-    </div>
-  );
-}
-
-export function MarketplaceArtifactWorkflowGraphs({
-  workflows: workflowSources,
-}: {
-  workflows: readonly MarketplaceArtifactWorkflowSource[];
-}) {
-  const workflows = useMemo(
-    () =>
-      workflowSources.flatMap((workflow): VisualizedMarketplaceArtifactWorkflow[] => {
-        const visualization = visualizeWorkflowSource(workflow.path, workflow.source, {
-          fallbackName: workflow.path
-            .split("/")
-            .at(-1)
-            ?.replace(/\.workflow\.js$/iu, ""),
-        });
-        return visualization.graph.nodes.some((node) => node.kind === "workflow")
-          ? [{ path: workflow.path, visualization }]
-          : [];
-      }),
-    [workflowSources],
-  );
-
-  if (workflows.length === 0) {
-    return (
-      <MarketplaceArtifactMessage
-        title="No workflow definition found"
-        description="This file does not contain a direct defineWorkflow() call."
-      />
-    );
-  }
-
-  return (
-    <div className="mt-5 space-y-5">
-      {workflows.map((workflow) => (
-        <section
-          key={workflow.path}
-          className="overflow-hidden shadow-[0_0_0_1px_var(--bo-border)]"
-        >
-          <div className="flex min-h-11 items-center justify-between gap-3 border-b border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-2.5">
-            <p className="min-w-0 truncate font-mono text-[10px] text-[var(--bo-muted)]">
-              {workflow.path}
-            </p>
-            <span className="shrink-0 text-[9px] font-semibold tracking-[0.16em] text-[var(--bo-muted-2)] uppercase">
-              Workflow graph
-            </span>
-          </div>
-          <ScriptWorkflowGraph
-            visualization={workflow.visualization}
-            detailMode="simple"
-            runtimeToolCallsByStepId={EMPTY_RUNTIME_TOOL_CALLS}
-            selectedRun={null}
-          />
-        </section>
-      ))}
     </div>
   );
 }
@@ -393,7 +328,7 @@ function MarketplaceArtifactOverview({
     <article className="mt-5">
       <Streamdown
         mode="streaming"
-        className="bo-session-markdown max-w-4xl text-sm leading-7 text-pretty"
+        className="bo-session-markdown max-w-4xl text-sm leading-7 text-pretty [&_h1]:text-2xl [&_h2]:text-xl"
         controls={{ code: true, table: true }}
         skipHtml
       >
@@ -451,24 +386,10 @@ function findMarketplaceArtifactEntry(
   return data.fileTree.entries.find((entry) => entry.path === relativePath);
 }
 
-function buildArtifactTabPath(
-  pathname: string,
-  currentSearch: string,
-  tab: MarketplaceArtifactTab,
-): string {
-  const search = new URLSearchParams(currentSearch);
-  search.set("artifactTab", tab);
-  if (tab === "overview") {
-    search.delete("artifactPath");
-    search.delete("artifactContent");
-  }
-  return `${pathname}?${search}`;
-}
-
 function buildArtifactSelectionPath(
   pathname: string,
   currentSearch: string,
-  tab: Extract<MarketplaceArtifactTab, "files" | "workflows">,
+  tab: Extract<MarketplacePackageTab, "files" | "workflows">,
   path: string,
   loadTextContent: boolean,
 ): string {

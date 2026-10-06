@@ -1,6 +1,6 @@
-import { IconButton } from "@fragno-private/design-system/button";
+import { Button, ButtonLink, IconButton } from "@fragno-private/design-system/button";
 import { Icon } from "@fragno-private/design-system/icon";
-import { use, useState, type ReactNode } from "react";
+import { use, type ReactNode } from "react";
 
 import {
   backofficeRuntimeScopeFromResolvedScope,
@@ -33,6 +33,7 @@ export function MarketplaceInstallationWorkflow({
   collectionSource,
   fallback,
   ingestionWorkflowInstanceId,
+  installedFolderHref,
   onClose,
   requested,
   targetScope,
@@ -40,13 +41,14 @@ export function MarketplaceInstallationWorkflow({
   collectionSource: AutomationCollectionSource | null;
   fallback: ReactNode;
   ingestionWorkflowInstanceId: string;
+  installedFolderHref: string;
   onClose: () => void;
   requested: boolean;
   targetScope: BackofficeRoutableResolvedScope;
 }) {
   if (!collectionSource) {
     return requested ? (
-      <InstallationWorkflowSurface state="failed" onClose={null}>
+      <InstallationWorkflowSurface state="failed" onClose={onClose}>
         <InstallationWorkflowNotice message="Workflow synchronization is unavailable." />
       </InstallationWorkflowSurface>
     ) : (
@@ -60,6 +62,7 @@ export function MarketplaceInstallationWorkflow({
       collectionSource={collectionSource}
       fallback={fallback}
       ingestionWorkflowInstanceId={ingestionWorkflowInstanceId}
+      installedFolderHref={installedFolderHref}
       onClose={onClose}
       requested={requested}
       targetScope={targetScope}
@@ -71,6 +74,7 @@ function SynchronizedMarketplaceInstallationWorkflow({
   collectionSource,
   fallback,
   ingestionWorkflowInstanceId,
+  installedFolderHref,
   onClose,
   requested,
   targetScope,
@@ -78,11 +82,11 @@ function SynchronizedMarketplaceInstallationWorkflow({
   collectionSource: AutomationCollectionSource;
   fallback: ReactNode;
   ingestionWorkflowInstanceId: string;
+  installedFolderHref: string;
   onClose: () => void;
   requested: boolean;
   targetScope: BackofficeRoutableResolvedScope;
 }) {
-  const [resultDismissed, setResultDismissed] = useState(false);
   const database = use(getAutomationBrowserDatabase(collectionSource));
   const collections = database.collections;
   const ingestionRecords = useWorkflowRunRecords({
@@ -115,17 +119,9 @@ function SynchronizedMarketplaceInstallationWorkflow({
     installerStatus: installer?.status ?? null,
   });
 
-  function closeInstallationResult() {
-    setResultDismissed(true);
-    onClose();
-  }
-
-  if (resultDismissed && ingestion?.status === "complete") {
-    return fallback;
-  }
   if (synchronizationError) {
     return (
-      <InstallationWorkflowSurface state="failed" onClose={null}>
+      <InstallationWorkflowSurface state="failed" onClose={onClose}>
         <InstallationWorkflowNotice message={synchronizationError} />
       </InstallationWorkflowSurface>
     );
@@ -139,30 +135,29 @@ function SynchronizedMarketplaceInstallationWorkflow({
       fallback
     );
   }
+  if (ingestion.status === "errored" || ingestion.status === "terminated") {
+    return (
+      <InstallationWorkflowSurface state="failed" onClose={onClose}>
+        <InstallationWorkflowNotice message={marketplaceInstallationFailureMessage(ingestion)} />
+      </InstallationWorkflowSurface>
+    );
+  }
   if (!installer) {
     if (ingestion.status === "complete") {
       return requested ? (
-        <InstallationWorkflowSurface state="complete" onClose={closeInstallationResult}>
+        <InstallationWorkflowSurface state="complete" onClose={onClose}>
           <InstallationWorkflowNotice message="Installation complete." />
+          <ButtonLink to={installedFolderHref} variant="secondary" className="mt-4">
+            Open folder
+          </ButtonLink>
         </InstallationWorkflowSurface>
       ) : (
         fallback
       );
     }
     return showInstallationStatus ? (
-      <InstallationWorkflowSurface
-        state={
-          ingestion.status === "errored" || ingestion.status === "terminated" ? "failed" : "running"
-        }
-        onClose={null}
-      >
-        <InstallationWorkflowNotice
-          message={
-            ingestion.status === "errored" || ingestion.status === "terminated"
-              ? `Installation ${ingestion.status}.`
-              : "Preparing installation workflow…"
-          }
-        />
+      <InstallationWorkflowSurface state="running" onClose={null}>
+        <InstallationWorkflowNotice message="Preparing installation workflow…" />
       </InstallationWorkflowSurface>
     ) : (
       fallback
@@ -176,15 +171,19 @@ function SynchronizedMarketplaceInstallationWorkflow({
   return (
     <InstallationWorkflowSurface
       state={
-        ingestion.status === "errored" || ingestion.status === "terminated"
-          ? "failed"
-          : ingestion.status === "complete"
-            ? "complete"
-            : installer.status === "errored" || installer.status === "terminated"
-              ? "failed"
-              : "running"
+        ingestion.status === "complete"
+          ? "complete"
+          : installer.status === "errored" || installer.status === "terminated"
+            ? "failed"
+            : "running"
       }
-      onClose={ingestion.status === "complete" ? closeInstallationResult : null}
+      onClose={
+        ingestion.status === "complete" ||
+        installer.status === "errored" ||
+        installer.status === "terminated"
+          ? onClose
+          : null
+      }
     >
       {ingestionInProgress && installer.status === "complete" && !generatedUi ? (
         <InstallationWorkflowNotice message="Finalizing installation…" />
@@ -195,6 +194,11 @@ function SynchronizedMarketplaceInstallationWorkflow({
           targetScope={targetScope}
         />
       )}
+      {ingestion.status === "complete" ? (
+        <ButtonLink to={installedFolderHref} variant="secondary" className="mt-4">
+          Open folder
+        </ButtonLink>
+      ) : null}
     </InstallationWorkflowSurface>
   );
 }
@@ -216,7 +220,7 @@ export function MarketplaceInstallerGeneratedUi({
     return <InstallationWorkflowNotice message="Installation complete." />;
   }
   if (instance.status === "errored" || instance.status === "terminated") {
-    return <InstallationWorkflowNotice message={`Installer ${instance.status}.`} />;
+    return <InstallationWorkflowNotice message={marketplaceInstallationFailureMessage(instance)} />;
   }
   if (!generatedUi) {
     return <InstallationWorkflowNotice message="Installer is running…" />;
@@ -285,7 +289,7 @@ function InstallationWorkflowSurface({
           };
 
   return (
-    <section className="bo-panel-surface min-h-80 bg-[var(--bo-panel)] p-5 md:p-7">
+    <section className="min-w-0">
       <div className="mb-5 flex items-center justify-between gap-4 border-b border-[color:var(--bo-border)] pb-4">
         <div>
           <p className="text-[9px] font-semibold tracking-[0.16em] text-[var(--bo-muted-2)] uppercase">
@@ -309,16 +313,28 @@ function InstallationWorkflowSurface({
         </div>
       </div>
       {children}
+      {state === "failed" && onClose ? (
+        <Button type="button" variant="secondary" onClick={onClose} className="mt-4">
+          Back to install form
+        </Button>
+      ) : null}
     </section>
   );
 }
 
 function InstallationWorkflowNotice({ message }: { message: string }) {
   return (
-    <p aria-live="polite" className="text-sm leading-6 text-pretty text-[var(--bo-muted)]">
+    <p
+      aria-live="polite"
+      className="text-sm leading-6 text-pretty break-words whitespace-pre-wrap text-[var(--bo-muted)]"
+    >
       {message}
     </p>
   );
+}
+
+function marketplaceInstallationFailureMessage(instance: AutomationWorkflowRun): string {
+  return instance.errorMessage ?? instance.errorName ?? `Installation ${instance.status}.`;
 }
 
 function isWorkflowInProgress(status: AutomationWorkflowRun["status"]): boolean {

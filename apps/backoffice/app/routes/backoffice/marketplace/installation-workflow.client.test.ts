@@ -9,7 +9,10 @@ import {
   selectMarketplaceInstallationGeneratedUi,
   shouldShowMarketplaceInstallationStatus,
 } from "./installation-workflow-presentation";
-import { MarketplaceInstallerGeneratedUi } from "./installation-workflow.client";
+import {
+  MarketplaceInstallationWorkflow,
+  MarketplaceInstallerGeneratedUi,
+} from "./installation-workflow.client";
 
 const generatedUi = (label: string) => ({
   $ui: {
@@ -36,6 +39,8 @@ const workflowRun = (input: Partial<AutomationWorkflowRun> = {}): AutomationWork
   status: "waiting",
   workflowScriptPath: ".marketplace/install.workflow.js",
   output: null,
+  errorName: null,
+  errorMessage: null,
   createdAt: "2026-08-11T10:00:00.000Z",
   updatedAt: "2026-08-11T10:00:01.000Z",
   workflowSteps: [],
@@ -45,6 +50,22 @@ const workflowRun = (input: Partial<AutomationWorkflowRun> = {}): AutomationWork
 });
 
 describe("Marketplace installation status visibility", () => {
+  test("failed installation surfaces offer a path back to the form", () => {
+    const markup = renderToStaticMarkup(
+      createElement(MarketplaceInstallationWorkflow, {
+        collectionSource: null,
+        fallback: null,
+        ingestionWorkflowInstanceId: "failed-installation",
+        installedFolderHref: "/files",
+        onClose: () => {},
+        requested: true,
+        targetScope: { kind: "org", organization: { id: "org-1", slug: "acme" } },
+      }),
+    );
+    assert(markup.includes("Workflow synchronization is unavailable."));
+    assert(markup.includes("Back to install form"));
+    assert(markup.includes("Close installation result"));
+  });
   test("surfaces synchronization failures without a local installation request", () => {
     assert(
       shouldShowMarketplaceInstallationStatus({

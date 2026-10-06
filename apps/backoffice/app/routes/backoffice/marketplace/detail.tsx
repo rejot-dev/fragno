@@ -1,30 +1,31 @@
 import { Button, ButtonLink } from "@fragno-private/design-system/button";
 import { ClientOnly } from "@fragno-private/design-system/client-only";
 import { Icon } from "@fragno-private/design-system/icon";
+import { Input } from "@fragno-private/design-system/input";
 import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
-import { Suspense } from "react";
+import { Suspense, useState } from "react";
 import {
-  Form,
   Link,
   Outlet,
   redirect,
   useActionData,
+  useFetcher,
   useLocation,
   useNavigate,
-  useNavigation,
   useOutletContext,
   type ShouldRevalidateFunctionArgs,
 } from "react-router";
 
-import {
-  backofficeScopeSinglePathSegment,
-  type BackofficeRoutableScope,
-} from "@/backoffice-runtime/scope-codec";
+import type { BackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import type { BackofficeMeData } from "@/fragno/auth/contracts";
 import { buildMarketplaceIngestionWorkflowInstanceId } from "@/fragno/automation/marketplace-ingest-identity";
 import { fetchAutomationCollectionSource } from "@/fragno/automation/tanstack/server";
+import {
+  MARKETPLACE_LOCK_PATH,
+  marketplaceInstallationRootSchema,
+} from "@/fragno/marketplace/marketplace-lock";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
 import {
   decodeMarketplacePublishedVersionCursor,
@@ -33,9 +34,15 @@ import {
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import { buildBackofficeLoginPath } from "../auth-navigation";
+import { filesExplorerPath } from "../files/scope";
 import type { Route } from "./+types/detail";
 import type { MarketplaceArtifactExplorerData } from "./artifact-files-model";
 import { loadPublishedMarketplaceArtifactExplorer } from "./artifact-files.server";
+import {
+  buildMarketplaceInstallationPath,
+  readMarketplaceInstallationReference,
+  type MarketplaceInstallationReference,
+} from "./installation-reference";
 import { MarketplaceInstallationWorkflow } from "./installation-workflow.client";
 import type { MarketplaceLayoutContext } from "./layout-context";
 import {
@@ -44,6 +51,11 @@ import {
   marketplaceListingPath,
   marketplaceListingRefSchema,
 } from "./navigation";
+import {
+  buildMarketplacePackageTabPath,
+  marketplacePackageTabFromSearch,
+  MarketplacePackageTabs,
+} from "./package-tabs";
 import { marketplaceRuntimeScopeFromRouteParams } from "./scope";
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
@@ -79,15 +91,7 @@ function sortMarketplaceVersionsNewestFirst(
     .map(({ version }) => version);
 }
 
-type IngestionActionData =
-  | { ok: false; message: string }
-  | {
-      ok: true;
-      action: "created" | "restarted" | "unchanged";
-      version: string;
-      workflowInstanceId: string;
-      workflowStatus: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
-    };
+type IngestionActionData = { ok: false; message: string };
 
 export type MarketplaceArtifactOutletContext = {
   artifactFiles: MarketplaceArtifactExplorerData;
@@ -104,6 +108,7 @@ type MarketplaceInstallationTarget =
 const resolveMarketplaceInstallationTarget = (
   me: BackofficeMeData,
   targetScope: BackofficeRoutableScope,
+  installationOrganizationId: string | null,
 ): MarketplaceInstallationTarget => {
   if (targetScope.kind === "user") {
     if (targetScope.userId !== me.user.id) {
@@ -114,9 +119,13 @@ const resolveMarketplaceInstallationTarget = (
     }
 
     const activeOrganizationId = me.activeOrganization?.organization.id;
-    const installationOrganization =
-      me.organizations.find(({ organization }) => organization.id === activeOrganizationId) ??
-      me.organizations[0];
+    const installationOrganization = installationOrganizationId
+      ? me.organizations.find(({ organization }) => organization.id === installationOrganizationId)
+      : (me.organizations.find(({ organization }) => organization.id === activeOrganizationId) ??
+        me.organizations[0]);
+    if (installationOrganizationId && !installationOrganization) {
+      return { state: "forbidden", message: "The installation organization is not available." };
+    }
     return installationOrganization
       ? {
           state: "ready",
@@ -130,7 +139,10 @@ const resolveMarketplaceInstallationTarget = (
   }
 
   const organizationId = targetScope.orgId;
-  if (!me.organizations.some(({ organization }) => organization.id === organizationId)) {
+  if (
+    (installationOrganizationId !== null && installationOrganizationId !== organizationId) ||
+    !me.organizations.some(({ organization }) => organization.id === organizationId)
+  ) {
     return {
       state: "forbidden",
       message: "The selected Marketplace scope is not available.",
@@ -172,7 +184,19 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     params,
     me.organizations.map(({ organization }) => organization),
   );
-  const installationTarget = resolveMarketplaceInstallationTarget(me, selectedScope);
+  let persistedInstallation: MarketplaceInstallationReference | null;
+  try {
+    persistedInstallation = readMarketplaceInstallationReference(url.search);
+  } catch (error) {
+    throw new Response(error instanceof Error ? error.message : "Invalid installation reference.", {
+      status: 400,
+    });
+  }
+  const installationTarget = resolveMarketplaceInstallationTarget(
+    me,
+    selectedScope,
+    persistedInstallation?.organizationId ?? null,
+  );
   if (installationTarget.state === "forbidden") {
     throw new Response("Not Found", { status: 404 });
   }
@@ -221,8 +245,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
           ({ organization }) => organization.id === installationTarget.organizationId,
         )?.organization
       : null;
-  const selectedTargetScopeKey = backofficeScopeSinglePathSegment(selectedScope);
-  const [artifactFiles, ingestions, installationCollectionSource] = await Promise.all([
+  const [artifactFiles, installationCollectionSource] = await Promise.all([
     loadPublishedMarketplaceArtifactExplorer({
       manifest: artifactManifest,
       objects: runtime.objects,
@@ -230,46 +253,29 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
       requestedVersion: url.searchParams.get("artifactVersion")?.trim() || undefined,
     }),
     installationOrganization
-      ? runtime.objects.automations
-          .forOrg(installationOrganization.id)
-          .commands.listMarketplaceIngestions({ targetScope: selectedScope })
-          .then((records) =>
-            records.filter(
-              (ingestion) =>
-                ingestion.listingId === detail.listing.listingId &&
-                ingestion.targetScopeKey === selectedTargetScopeKey,
-            ),
-          )
-      : Promise.resolve([]),
-    installationOrganization
       ? fetchAutomationCollectionSource(request, context, {
           kind: "org",
           organization: installationOrganization,
         })
       : Promise.resolve(null),
   ]);
-  const selectedInstallationVersion =
-    artifactFiles.state === "ready" ? artifactFiles.selectedVersion : detail.listing.latestVersion;
-  const installationWorkflowInstanceId = installationOrganization
-    ? await buildMarketplaceIngestionWorkflowInstanceId({
-        targetScope: selectedScope,
-        listingId: detail.listing.listingId,
-        version: selectedInstallationVersion,
-      })
-    : null;
 
   return {
     ...detail,
     manageOrganizationSlug: manageableOrganization?.organization.slug ?? null,
     installationCollectionSource,
-    installationWorkflowInstanceId,
+    installationReference: persistedInstallation
+      ? {
+          ...persistedInstallation,
+          workflowInstanceId: await buildMarketplaceIngestionWorkflowInstanceId({
+            targetScope: selectedScope,
+            listingId: listingIdResult.data,
+            installationRoot: persistedInstallation.installationRoot,
+            version: persistedInstallation.version,
+          }),
+        }
+      : null,
     artifactFiles,
-    ingestions: ingestions.map((ingestion) => ({
-      ...ingestion,
-      organizationName: installationOrganization?.name ?? installationOrganization?.id ?? "",
-      latestVersion: detail.listing.latestVersion,
-      outOfDate: ingestion.version !== detail.listing.latestVersion,
-    })),
   };
 }
 
@@ -288,7 +294,7 @@ export async function action({ request, params, context, url }: Route.ActionArgs
     params,
     me.organizations.map(({ organization }) => organization),
   );
-  const installationTarget = resolveMarketplaceInstallationTarget(me, targetScope);
+  const installationTarget = resolveMarketplaceInstallationTarget(me, targetScope, null);
   if (installationTarget.state !== "ready") {
     return {
       ok: false,
@@ -311,21 +317,31 @@ export async function action({ request, params, context, url }: Route.ActionArgs
       return { ok: false, message: "A Marketplace version is required." };
     }
 
+    const installationRootResult = marketplaceInstallationRootSchema.safeParse(
+      formData.get("installationRoot"),
+    );
+    if (!installationRootResult.success) {
+      return {
+        ok: false,
+        message: installationRootResult.error.issues[0].message,
+      } satisfies IngestionActionData;
+    }
     const result = await automations.restartMarketplaceIngestion(
       {
         listingId: listingIdResult.data,
         targetScope: installationTarget.targetScope,
+        installationRoot: installationRootResult.data,
         version,
       },
       { execution, propagationContext: null },
     );
-    return {
-      ok: true,
-      action: result.action,
-      version: result.version,
-      workflowInstanceId: result.workflowInstanceId,
-      workflowStatus: result.workflowStatus,
-    } satisfies IngestionActionData;
+    return redirect(
+      buildMarketplaceInstallationPath(url.pathname, url.search, {
+        organizationId: installationTarget.organizationId,
+        installationRoot: installationRootResult.data,
+        version: result.version,
+      }),
+    );
   } catch (error) {
     return {
       ok: false,
@@ -338,7 +354,13 @@ export function meta({ loaderData }: Route.MetaArgs) {
   return [{ title: loaderData ? `${loaderData.listing.name} · Marketplace` : "Marketplace" }];
 }
 
-export default function BackofficeMarketplaceDetail({ loaderData }: Route.ComponentProps) {
+export default function BackofficeMarketplaceDetail(props: Route.ComponentProps) {
+  const location = useLocation();
+  // Changing sections or releases keeps the installation draft; changing listings starts fresh.
+  return <MarketplaceListingDetail key={location.pathname} {...props} />;
+}
+
+function MarketplaceListingDetail({ loaderData }: Route.ComponentProps) {
   const { selectedScope } = useOutletContext<MarketplaceLayoutContext>();
   const {
     listing,
@@ -347,15 +369,25 @@ export default function BackofficeMarketplaceDetail({ loaderData }: Route.Compon
     nextVersionCursor,
     hasNextVersionPage,
     installationCollectionSource,
-    installationWorkflowInstanceId,
+    installationReference,
     artifactFiles,
-    ingestions,
   } = loaderData;
-  const actionData = useActionData<IngestionActionData>();
-  const navigation = useNavigation();
+  const installation = useFetcher<IngestionActionData>();
+  const navigationActionData = useActionData<IngestionActionData>();
+  const actionData = installation.data ?? navigationActionData;
+  const [installationRoot, setInstallationRoot] = useState(
+    installationReference?.installationRoot ?? `/workspace/${listing.slug}`,
+  );
+  const [installationPathError, setInstallationPathError] = useState<string | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
   const search = new URLSearchParams(location.search);
+  const activeTab = marketplacePackageTabFromSearch(location.search);
+  const installationTabPath = buildMarketplacePackageTabPath(
+    location.pathname,
+    location.search,
+    "install",
+  );
   const selectedArtifactVersion =
     artifactFiles.state === "ready" ? artifactFiles.selectedVersion : listing.latestVersion;
   const installationVersion = selectedArtifactVersion;
@@ -369,32 +401,25 @@ export default function BackofficeMarketplaceDetail({ loaderData }: Route.Compon
     ? publishedVersionParam
     : null;
   const reusedPublication = publishedVersion !== null && search.get("reused") === "1";
-  const hasOutdatedIngestion = ingestions.some((ingestion) => ingestion.outOfDate);
-  const installationActionLabel = hasOutdatedIngestion
-    ? "Update"
-    : ingestions.length
-      ? "Reinstall"
-      : "Install";
-  const observedInstallationWorkflowInstanceId =
-    actionData?.ok === true ? actionData.workflowInstanceId : installationWorkflowInstanceId;
-
-  const installedRelease = ingestions[0] ?? null;
   const artifactContent = (
     <Outlet context={{ artifactFiles } satisfies MarketplaceArtifactOutletContext} />
   );
 
   function closeInstallationResult() {
-    const overviewSearch = new URLSearchParams(location.search);
-    overviewSearch.set("artifactTab", "overview");
-    overviewSearch.delete("artifactPath");
-    overviewSearch.delete("artifactContent");
-    void navigate(`${location.pathname}?${overviewSearch}`, { preventScrollReset: true });
+    if (installationReference) {
+      setInstallationRoot(installationReference.installationRoot);
+    }
+    setInstallationPathError(null);
+    void navigate(buildMarketplaceInstallationPath(location.pathname, location.search, null), {
+      preventScrollReset: true,
+      replace: true,
+    });
   }
 
   return (
     <div className="w-full space-y-5">
       <header className="bo-panel-surface bg-[var(--bo-panel)] p-5 md:p-7">
-        <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
+        <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2.5">
               <span className="bo-product-code">PKG</span>
@@ -402,19 +427,16 @@ export default function BackofficeMarketplaceDetail({ loaderData }: Route.Compon
                 {listing.category}
               </p>
             </div>
-            <h2 className="mt-3 max-w-4xl text-3xl font-semibold tracking-[-0.035em] text-balance text-[var(--bo-fg)] md:text-4xl">
+            <h2 className="mt-3 max-w-3xl text-2xl font-semibold tracking-[-0.025em] text-balance text-[var(--bo-fg)] md:text-3xl">
               {listing.name}
             </h2>
-            <p className="mt-3 max-w-3xl text-[15px] leading-7 text-pretty text-[var(--bo-muted)]">
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-pretty text-[var(--bo-muted)]">
               {listing.summary}
             </p>
             {listing.tags.length ? (
-              <div className="mt-5 flex flex-wrap gap-2">
+              <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1">
                 {listing.tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="bg-[var(--bo-panel-2)] px-2.5 py-1 font-mono text-[10px] text-[var(--bo-muted)] shadow-[inset_0_0_0_1px_var(--bo-border)]"
-                  >
+                  <span key={tag} className="font-mono text-xs text-[var(--bo-muted-2)]">
                     #{tag}
                   </span>
                 ))}
@@ -422,68 +444,14 @@ export default function BackofficeMarketplaceDetail({ loaderData }: Route.Compon
             ) : null}
           </div>
 
-          <div className="flex shrink-0 flex-col gap-3 xl:items-end">
-            {manageOrganizationSlug ? (
-              <ButtonLink
-                to={marketplaceListingManagePath({
-                  listingId: listing.listingId,
-                  organizationSlug: manageOrganizationSlug,
-                })}
-                variant="secondary"
-                className="self-start xl:self-end"
-              >
-                Manage listing
-              </ButtonLink>
-            ) : null}
-
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-end">
-              <VersionHistoryDropdown
-                versions={installationVersions}
-                selectedVersion={selectedArtifactVersion}
-                latestVersion={listing.latestVersion}
-                selectedScope={selectedScope}
-                listingId={listing.listingId}
-                pathname={location.pathname}
-                search={location.search}
-                nextVersionCursor={nextVersionCursor}
-                hasNextVersionPage={hasNextVersionPage}
-              />
-
-              {installationCollectionSource ? (
-                <div className="flex min-h-11 items-center justify-between gap-3 sm:justify-end">
-                  <div className="min-w-0 text-left sm:max-w-52 sm:text-right">
-                    <p className="text-[9px] font-semibold tracking-[0.14em] text-[var(--bo-muted-2)] uppercase">
-                      Install into
-                    </p>
-                    <p className="mt-1 truncate text-sm font-medium text-[var(--bo-fg)]">
-                      {selectedScope.label}
-                    </p>
-                    {installedRelease ? (
-                      <p className="mt-1 text-[9px] text-[var(--bo-muted-2)]">
-                        v{installedRelease.version}
-                        {installedRelease.outOfDate ? " · update available" : " · current"}
-                      </p>
-                    ) : null}
-                  </div>
-                  <Form method="post">
-                    <input type="hidden" name="version" value={installationVersion} />
-                    <Button
-                      type="submit"
-                      disabled={navigation.state !== "idle"}
-                      variant="solid"
-                      className="shrink-0"
-                    >
-                      {navigation.state === "submitting" ? "Starting…" : installationActionLabel}
-                    </Button>
-                  </Form>
-                </div>
-              ) : (
-                <p className="max-w-xs text-sm leading-6 text-pretty text-[var(--bo-muted)]">
-                  Join an organization to install into {selectedScope.label}.
-                </p>
-              )}
-            </div>
-          </div>
+          <ButtonLink
+            to={installationTabPath}
+            variant="solid"
+            preventScrollReset
+            className="shrink-0 self-start"
+          >
+            Install
+          </ButtonLink>
         </div>
 
         {publishedVersion ? (
@@ -496,47 +464,170 @@ export default function BackofficeMarketplaceDetail({ loaderData }: Route.Compon
           </div>
         ) : null}
 
-        <div className="mt-6">
-          <dl className="grid gap-px bg-[var(--bo-border)] shadow-[0_0_0_1px_var(--bo-border)] sm:grid-cols-3">
-            <ReleaseFact label="Latest version" value={listing.latestVersion} mono />
-            <ReleaseFact label="Published" value={formatDate(listing.publishedAt)} />
-            <ReleaseFact label="Publisher" value={listing.publisherName} />
-          </dl>
+        <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-[var(--bo-muted)]">
+          <span>
+            Published by{" "}
+            <span className="font-medium text-[var(--bo-fg)]">{listing.publisherName}</span>
+          </span>
+          <span>Updated {formatDate(listing.updatedAt)}</span>
+          <VersionHistoryDropdown
+            versions={installationVersions}
+            selectedVersion={selectedArtifactVersion}
+            latestVersion={listing.latestVersion}
+            selectedScope={selectedScope}
+            listingId={listing.listingId}
+            pathname={location.pathname}
+            search={location.search}
+            nextVersionCursor={nextVersionCursor}
+            hasNextVersionPage={hasNextVersionPage}
+          />
+          {manageOrganizationSlug ? (
+            <Link
+              to={marketplaceListingManagePath({
+                listingId: listing.listingId,
+                organizationSlug: manageOrganizationSlug,
+              })}
+              className="font-medium underline-offset-4 hover:text-[var(--bo-fg)] hover:underline"
+            >
+              Manage listing
+            </Link>
+          ) : null}
         </div>
       </header>
 
-      <main className="min-w-0">
-        {navigation.state === "submitting" ? (
-          <InstallationStartingSurface scopeLabel={selectedScope.label} />
-        ) : actionData?.ok === false ? (
-          <InstallationFailureSurface message={actionData.message} />
-        ) : installationCollectionSource && observedInstallationWorkflowInstanceId ? (
-          <ClientOnly fallback={artifactContent}>
-            {() => (
-              <Suspense
-                fallback={
-                  actionData?.ok ? (
-                    <InstallationStartingSurface scopeLabel={selectedScope.label} />
-                  ) : (
-                    artifactContent
-                  )
-                }
-              >
-                <MarketplaceInstallationWorkflow
-                  collectionSource={installationCollectionSource}
-                  fallback={artifactContent}
-                  ingestionWorkflowInstanceId={observedInstallationWorkflowInstanceId}
-                  onClose={closeInstallationResult}
-                  requested={actionData?.ok === true}
-                  targetScope={selectedScope}
-                />
-              </Suspense>
-            )}
-          </ClientOnly>
-        ) : (
+      <section className="bo-panel-surface min-w-0 bg-[var(--bo-panel)] p-5 md:p-7">
+        <MarketplacePackageTabs />
+        {activeTab !== "install" ? (
           artifactContent
+        ) : (
+          <div className="mt-6">
+            {installation.state !== "idle" ? (
+              <InstallationStartingSurface scopeLabel={selectedScope.label} />
+            ) : installationCollectionSource && installationReference ? (
+              <ClientOnly
+                fallback={<InstallationStartingSurface scopeLabel={selectedScope.label} />}
+              >
+                {() => (
+                  <Suspense
+                    fallback={<InstallationStartingSurface scopeLabel={selectedScope.label} />}
+                  >
+                    <MarketplaceInstallationWorkflow
+                      collectionSource={installationCollectionSource}
+                      fallback={null}
+                      ingestionWorkflowInstanceId={installationReference.workflowInstanceId}
+                      onClose={closeInstallationResult}
+                      requested={true}
+                      installedFolderHref={filesExplorerPath(
+                        selectedScope,
+                        installationReference.installationRoot,
+                      )}
+                      targetScope={selectedScope}
+                    />
+                  </Suspense>
+                )}
+              </ClientOnly>
+            ) : (
+              <div className="max-w-2xl">
+                <h3 className="text-lg font-semibold tracking-tight text-[var(--bo-fg)]">
+                  Install package
+                </h3>
+                <p className="mt-1 text-sm leading-6 text-pretty text-[var(--bo-muted)]">
+                  Choose where to install this release in your workspace.
+                </p>
+                <dl className="mt-5 grid grid-cols-2 gap-4 border-y border-[color:var(--bo-border)] py-4 text-sm">
+                  <div className="min-w-0">
+                    <dt className="text-xs text-[var(--bo-muted)]">Workspace</dt>
+                    <dd className="mt-1 font-medium break-words text-[var(--bo-fg)]">
+                      {selectedScope.label}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-[var(--bo-muted)]">Version</dt>
+                    <dd className="mt-1 font-mono text-[var(--bo-fg)]">v{installationVersion}</dd>
+                  </div>
+                </dl>
+                {installationCollectionSource ? (
+                  <installation.Form
+                    method="post"
+                    action={installationTabPath}
+                    className="mt-5"
+                    onSubmit={(event) => {
+                      const path = marketplaceInstallationRootSchema.safeParse(installationRoot);
+                      if (!path.success) {
+                        event.preventDefault();
+                        setInstallationPathError(path.error.issues[0].message);
+                        return;
+                      }
+                      setInstallationPathError(null);
+                    }}
+                  >
+                    <input type="hidden" name="version" value={installationVersion} />
+                    <label
+                      htmlFor="marketplace-installation-root"
+                      className="block text-sm font-medium text-[var(--bo-fg)]"
+                    >
+                      Install folder
+                    </label>
+                    <Input
+                      id="marketplace-installation-root"
+                      name="installationRoot"
+                      value={installationRoot}
+                      onChange={(event) => {
+                        setInstallationRoot(event.currentTarget.value);
+                        setInstallationPathError(null);
+                      }}
+                      autoComplete="off"
+                      spellCheck={false}
+                      required
+                      aria-invalid={installationPathError !== null}
+                      aria-describedby="marketplace-installation-path-help marketplace-installation-path-error"
+                      className="mt-2 w-full font-mono text-sm"
+                    />
+                    <p
+                      id="marketplace-installation-path-help"
+                      className="mt-2 text-xs leading-5 text-pretty text-[var(--bo-muted)]"
+                    >
+                      Use a folder under <code>/workspace</code>. Successful installs record this
+                      release and folder in <code>{MARKETPLACE_LOCK_PATH}</code>. Conflicting files
+                      stop installation.
+                    </p>
+                    <p
+                      id="marketplace-installation-path-error"
+                      role={installationPathError ? "alert" : undefined}
+                      className="mt-2 text-xs text-[var(--bo-failed)]"
+                    >
+                      {installationPathError}
+                    </p>
+                    <div className="mt-5 flex items-center gap-3">
+                      <Button type="submit" variant="solid">
+                        Install
+                      </Button>
+                      <ButtonLink
+                        to={buildMarketplacePackageTabPath(
+                          location.pathname,
+                          location.search,
+                          "overview",
+                        )}
+                        variant="ghost"
+                        preventScrollReset
+                      >
+                        Cancel
+                      </ButtonLink>
+                    </div>
+                    {actionData?.ok === false ? (
+                      <InstallationFailureSurface message={actionData.message} />
+                    ) : null}
+                  </installation.Form>
+                ) : (
+                  <p className="mt-5 text-sm text-[var(--bo-muted)]">
+                    Join an organization to install into {selectedScope.label}.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
         )}
-      </main>
+      </section>
     </div>
   );
 }
@@ -563,22 +654,18 @@ function VersionHistoryDropdown({
   hasNextVersionPage: boolean;
 }) {
   return (
-    <details className="group relative">
-      <summary className="flex min-h-11 min-w-36 cursor-pointer list-none items-center justify-end gap-2 px-1 text-left transition-[scale,color] duration-150 ease-out hover:text-[var(--bo-accent-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none active:scale-[0.96] sm:text-right [&::-webkit-details-marker]:hidden">
-        <span>
-          <span className="block text-[9px] font-semibold tracking-[0.14em] text-[var(--bo-muted-2)] uppercase">
-            Version history
-          </span>
-          <span className="mt-1 block text-sm font-medium text-[var(--bo-fg)]">
-            v{selectedVersion}
-          </span>
-        </span>
+    <details className="group relative w-full sm:w-auto">
+      <summary
+        aria-label={`Version history. Selected version v${selectedVersion}`}
+        className="flex min-h-10 w-fit cursor-pointer list-none items-center gap-2 rounded-[4px] bg-[var(--bo-panel-2)] px-3 font-mono text-xs font-medium text-[var(--bo-fg)] transition-colors duration-150 hover:bg-[var(--bo-selected-bg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none [&::-webkit-details-marker]:hidden"
+      >
+        <span>v{selectedVersion}</span>
         <Icon
           name="chevron-down"
           className="size-3.5 text-[var(--bo-muted-2)] transition-transform duration-150 ease-out group-open:rotate-180"
         />
       </summary>
-      <div className="absolute top-full right-0 z-30 mt-2 w-[min(20rem,calc(100vw-2rem))] bg-[var(--bo-panel)] p-2 shadow-[0_18px_48px_rgba(0,0,0,0.18),0_0_0_1px_var(--bo-border-strong)]">
+      <div className="absolute top-full left-0 z-30 mt-2 w-[min(20rem,calc(100vw-4rem))] rounded-[4px] bg-[var(--bo-panel)] p-2 shadow-[0_18px_48px_rgba(0,0,0,0.18),0_0_0_1px_var(--bo-border-strong)] sm:right-0 sm:left-auto">
         <div className="max-h-80 space-y-1 overflow-y-auto">
           {versions.map((version) => {
             const isLatest = version.version === latestVersion;
@@ -626,52 +713,25 @@ function VersionHistoryDropdown({
 
 function InstallationStartingSurface({ scopeLabel }: { scopeLabel: string }) {
   return (
-    <section className="bo-panel-surface flex min-h-80 items-center justify-center bg-[var(--bo-panel)] p-6 text-center md:p-10">
-      <div className="max-w-md">
-        <span className="mx-auto block size-2 animate-pulse rounded-full bg-[var(--bo-accent)] motion-reduce:animate-none" />
-        <h3 className="mt-5 text-lg font-semibold tracking-tight text-balance text-[var(--bo-fg)]">
-          Starting installation
-        </h3>
-        <p className="mt-2 text-sm leading-6 text-pretty text-[var(--bo-muted)]">
-          Preparing the selected release for {scopeLabel}.
-        </p>
-      </div>
+    <section aria-live="polite">
+      <h3 className="text-lg font-semibold tracking-tight text-[var(--bo-fg)]">
+        Starting installation
+      </h3>
+      <p className="mt-1 text-sm leading-6 text-pretty text-[var(--bo-muted)]">
+        Preparing the selected release for {scopeLabel}.
+      </p>
     </section>
   );
 }
 
 function InstallationFailureSurface({ message }: { message: string }) {
   return (
-    <section className="bo-panel-surface flex min-h-80 items-center justify-center bg-[var(--bo-panel)] p-6 text-center md:p-10">
-      <div className="max-w-md">
-        <span className="mx-auto block size-2 rounded-full bg-[var(--bo-failed)]" />
-        <h3 className="mt-5 text-lg font-semibold tracking-tight text-balance text-[var(--bo-fg)]">
-          Installation could not start
-        </h3>
-        <p className="mt-2 text-sm leading-6 text-pretty text-[var(--bo-failed)]">{message}</p>
-      </div>
-    </section>
-  );
-}
-
-function ReleaseFact({
-  label,
-  value,
-  mono = false,
-}: {
-  label: string;
-  value: string;
-  mono?: boolean;
-}) {
-  return (
-    <div className="min-w-0 bg-[var(--bo-panel-2)] px-4 py-3.5">
-      <dt className="text-[9px] tracking-[0.14em] text-[var(--bo-muted-2)] uppercase">{label}</dt>
-      <dd
-        className={`mt-1 truncate text-sm text-[var(--bo-fg)] ${mono ? "font-mono font-semibold" : "font-medium"}`}
-        title={value}
-      >
-        {value}
-      </dd>
+    <div
+      role="alert"
+      className="mt-4 rounded-[4px] bg-[var(--bo-failed-bg)] p-4 text-sm text-[var(--bo-failed)]"
+    >
+      <p className="font-medium">Installation could not start</p>
+      <p className="mt-1 leading-6 text-pretty">{message}</p>
     </div>
   );
 }

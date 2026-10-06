@@ -9,7 +9,6 @@ const {
   requireBackofficeContextMock,
   getPublishedListingMock,
   getArtifactManifestMock,
-  listMarketplaceIngestionsMock,
   restartMarketplaceIngestionMock,
   fetchAutomationCollectionSourceMock,
   loadPublishedMarketplaceArtifactExplorerMock,
@@ -18,7 +17,6 @@ const {
   requireBackofficeContextMock: vi.fn(),
   getPublishedListingMock: vi.fn(),
   getArtifactManifestMock: vi.fn(),
-  listMarketplaceIngestionsMock: vi.fn(),
   restartMarketplaceIngestionMock: vi.fn(),
   fetchAutomationCollectionSourceMock: vi.fn(),
   loadPublishedMarketplaceArtifactExplorerMock: vi.fn(),
@@ -57,6 +55,11 @@ import { buildMarketplaceIngestionWorkflowInstanceId } from "@/fragno/automation
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
 
 import BackofficeMarketplaceDetail, { action, loader, shouldRevalidate } from "./detail";
+import {
+  buildMarketplaceInstallationPath,
+  readMarketplaceInstallationReference,
+  type MarketplaceInstallationReference,
+} from "./installation-reference";
 import { buildArtifactVersionPath, marketplaceListingRef } from "./navigation";
 
 const listingId = marketplaceListingId({
@@ -64,22 +67,18 @@ const listingId = marketplaceListingId({
   slug: "telegram-test-command",
 });
 const listingRef = marketplaceListingRef(listingId);
-type IngestionActionDataFixture =
-  | { ok: false; message: string }
-  | {
-      ok: true;
-      action: "created" | "restarted" | "unchanged";
-      version: string;
-      workflowInstanceId: string;
-      workflowStatus: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
-    };
+type IngestionActionDataFixture = { ok: false; message: string };
+const installationReference = {
+  organizationId: "org-1",
+  version: "1.3.0",
+  installationRoot: "/workspace/custom-telegram",
+} satisfies MarketplaceInstallationReference;
 const authenticatedUser = {
   user: { id: "user-1", email: "ada@example.com" },
   organizations: [{ organization: { id: "org-1", slug: "ada-labs", name: "Ada Labs" } }],
   activeOrganization: { organization: { id: "org-1", slug: "ada-labs", name: "Ada Labs" } },
 };
 const automations = {
-  listMarketplaceIngestions: listMarketplaceIngestionsMock,
   restartMarketplaceIngestion: restartMarketplaceIngestionMock,
 };
 const forOrgMock = vi.fn(() => ({ commands: automations }));
@@ -112,6 +111,7 @@ function routeScopeForTest(scope: BackofficeRoutableScope): BackofficeRoutableRo
 const runLoader = (
   scope: BackofficeRoutableScope = { kind: "org", orgId: "org-1" },
   artifactVersion?: string,
+  installation?: MarketplaceInstallationReference,
 ) => {
   const routeScope = routeScopeForTest(scope);
   const routePath = backofficeRouteScopePath(routeScope);
@@ -120,6 +120,9 @@ const runLoader = (
   );
   if (artifactVersion) {
     url.searchParams.set("artifactVersion", artifactVersion);
+  }
+  if (installation) {
+    url.searchParams.set("installation", JSON.stringify(installation));
   }
   return loader({
     request: new Request(url),
@@ -145,6 +148,7 @@ const runAction = (input: {
     `https://example.test/backoffice/marketplace/${routePath}/marketplace/${listingRef}`,
   );
   const formData = new FormData();
+  formData.set("installationRoot", "/workspace/telegram-test-command");
   if (input.version) {
     formData.set("version", input.version);
   }
@@ -171,7 +175,6 @@ beforeEach(() => {
   requireBackofficeContextMock.mockReset();
   getPublishedListingMock.mockReset();
   getArtifactManifestMock.mockReset();
-  listMarketplaceIngestionsMock.mockReset();
   restartMarketplaceIngestionMock.mockReset();
   fetchAutomationCollectionSourceMock.mockReset();
   loadPublishedMarketplaceArtifactExplorerMock.mockReset();
@@ -206,7 +209,6 @@ beforeEach(() => {
     hasNextVersionPage: false,
   });
   getArtifactManifestMock.mockResolvedValue(null);
-  listMarketplaceIngestionsMock.mockResolvedValue([]);
   fetchAutomationCollectionSourceMock.mockImplementation(
     async (_request, _context, resolvedScope) => ({
       resolvedScope,
@@ -235,38 +237,11 @@ describe("marketplace detail loader", () => {
         { organization: { id: "org-2", slug: "second-labs", name: "Second Labs" } },
       ],
     });
-    listMarketplaceIngestionsMock.mockResolvedValueOnce([
-      {
-        id: "selected-installation",
-        listingId,
-        targetScopeKey: backofficeScopeSinglePathSegment({ kind: "org", orgId: "org-2" }),
-        version: "1.0.0",
-      },
-      {
-        id: "other-scope",
-        listingId,
-        targetScopeKey: backofficeScopeSinglePathSegment({ kind: "org", orgId: "org-1" }),
-        version: "1.0.0",
-      },
-    ]);
-
     const result = await runLoader({ kind: "org", orgId: "org-2" });
 
     assert(!(result instanceof Response));
     assert(result.installationCollectionSource?.resolvedScope.kind === "org");
     assert(result.installationCollectionSource.resolvedScope.organization.id === "org-2");
-    expect(result.ingestions).toEqual([
-      expect.objectContaining({
-        id: "selected-installation",
-        organizationName: "Second Labs",
-        latestVersion: "2.0.0",
-        outOfDate: true,
-      }),
-    ]);
-    expect(forOrgMock).toHaveBeenCalledWith("org-2");
-    expect(listMarketplaceIngestionsMock).toHaveBeenCalledWith({
-      targetScope: { kind: "org", orgId: "org-2" },
-    });
   });
 
   test("uses the selected project's organization as the workflow coordinator", async () => {
@@ -279,7 +254,6 @@ describe("marketplace detail loader", () => {
     assert(!(result instanceof Response));
     assert(result.installationCollectionSource?.resolvedScope.kind === "org");
     assert(result.installationCollectionSource.resolvedScope.organization.id === "org-1");
-    expect(forOrgMock).toHaveBeenCalledWith("org-1");
   });
 
   test("uses the active organization to coordinate a personal-scope installation", async () => {
@@ -288,7 +262,6 @@ describe("marketplace detail loader", () => {
     assert(!(result instanceof Response));
     assert(result.installationCollectionSource?.resolvedScope.kind === "org");
     assert(result.installationCollectionSource.resolvedScope.organization.id === "org-1");
-    expect(forOrgMock).toHaveBeenCalledWith("org-1");
   });
 
   test("disables personal-scope installation when the user has no organization", async () => {
@@ -305,7 +278,7 @@ describe("marketplace detail loader", () => {
     expect(forOrgMock).not.toHaveBeenCalled();
   });
 
-  test("uses a validated artifact version outside the current page for the workflow identity", async () => {
+  test("loads a validated artifact version outside the current page", async () => {
     loadPublishedMarketplaceArtifactExplorerMock.mockResolvedValueOnce({
       state: "ready",
       fileTree: { entries: [] },
@@ -315,13 +288,78 @@ describe("marketplace detail loader", () => {
     const result = await runLoader({ kind: "org", orgId: "org-1" }, "1.0.0");
 
     assert(!(result instanceof Response));
-    expect(result.installationWorkflowInstanceId).toBe(
-      await buildMarketplaceIngestionWorkflowInstanceId({
-        targetScope: { kind: "org", orgId: "org-1" },
+    assert(result.artifactFiles.state === "ready");
+    assert(result.artifactFiles.selectedVersion === "1.0.0");
+  });
+
+  test.each([
+    { kind: "org", orgId: "org-1" },
+    { kind: "project", orgId: "org-1", projectId: "project-1" },
+    { kind: "user", userId: "user-1" },
+  ] as const)("recovers an interactive installation on reload in $kind scope", async (scope) => {
+    const result = await runLoader(scope, installationReference.version, installationReference);
+    assert(!(result instanceof Response));
+    expect(result.installationReference).toEqual({
+      ...installationReference,
+      workflowInstanceId: await buildMarketplaceIngestionWorkflowInstanceId({
+        targetScope: scope,
         listingId,
-        version: "1.0.0",
+        installationRoot: installationReference.installationRoot,
+        version: installationReference.version,
       }),
+    });
+    expect(restartMarketplaceIngestionMock).not.toHaveBeenCalled();
+  });
+
+  test("personal reload keeps the original coordinator after the active organization changes", async () => {
+    findBackofficeMeMock.mockResolvedValueOnce({
+      ...authenticatedUser,
+      organizations: [
+        ...authenticatedUser.organizations,
+        { organization: { id: "org-2", slug: "second-labs", name: "Second Labs" } },
+      ],
+      activeOrganization: {
+        organization: { id: "org-2", slug: "second-labs", name: "Second Labs" },
+      },
+    });
+    const result = await runLoader(
+      { kind: "user", userId: "user-1" },
+      undefined,
+      installationReference,
     );
+    assert(!(result instanceof Response));
+    assert(result.installationCollectionSource?.resolvedScope.kind === "org");
+    assert(result.installationCollectionSource.resolvedScope.organization.id === "org-1");
+  });
+
+  test("rejects a persisted coordinator outside the destination organization", async () => {
+    const response = await runLoader({ kind: "org", orgId: "org-1" }, undefined, {
+      ...installationReference,
+      organizationId: "org-other",
+    }).catch((error: unknown) => error);
+    assert(response instanceof Response);
+    assert(response.status === 404);
+    expect(fetchAutomationCollectionSourceMock).not.toHaveBeenCalled();
+  });
+
+  test("rejects a persisted personal coordinator after membership is removed", async () => {
+    const response = await runLoader({ kind: "user", userId: "user-1" }, undefined, {
+      ...installationReference,
+      organizationId: "org-other",
+    }).catch((error: unknown) => error);
+    assert(response instanceof Response);
+    assert(response.status === 404);
+    expect(fetchAutomationCollectionSourceMock).not.toHaveBeenCalled();
+  });
+
+  test("rejects invalid persisted installation paths before loading workflow data", async () => {
+    const response = await runLoader({ kind: "org", orgId: "org-1" }, undefined, {
+      ...installationReference,
+      installationRoot: "/workspace/../private",
+    }).catch((error: unknown) => error);
+    assert(response instanceof Response);
+    assert(response.status === 400);
+    expect(fetchAutomationCollectionSourceMock).not.toHaveBeenCalled();
   });
 
   test("propagates workflow synchronization failures", async () => {
@@ -344,13 +382,49 @@ describe("marketplace detail loader", () => {
 });
 
 describe("marketplace artifact version navigation", () => {
-  test("moves version and installation controls into the package header", () => {
+  test("tab and version navigation retain the persisted installer until dismissal", () => {
+    const path = buildMarketplaceInstallationPath(
+      "/marketplace",
+      "?artifactPath=/artifact/1.0.0/file",
+      installationReference,
+    );
+    const initial = new URL(path, "https://example.test");
+    const switched = buildArtifactVersionPath(
+      initial.pathname,
+      initial.search,
+      installationReference.version,
+      "2.0.0",
+    );
+    const switchedUrl = new URL(switched, "https://example.test");
+    expect(readMarketplaceInstallationReference(switchedUrl.search)).toEqual(installationReference);
+    const closed = new URL(
+      buildMarketplaceInstallationPath(switchedUrl.pathname, switchedUrl.search, null),
+      "https://example.test",
+    );
+    assert(readMarketplaceInstallationReference(closed.search) === null);
+    assert(closed.searchParams.get("artifactTab") === "install");
+    assert(closed.searchParams.get("artifactVersion") === "2.0.0");
+    const markup = renderMarketplaceDetail("2.0.0", undefined, undefined, "install");
+    assert(markup.includes('name="installationRoot"'));
+    assert(!markup.includes("observing:"));
+  });
+  test("keeps a simple header action and puts installation controls in their own tab", () => {
     const markup = renderMarketplaceDetail("2.0.0");
-
     assert(markup.includes("Version history"));
-    assert(markup.includes("Install into"));
-    assert(markup.includes(">Install</button>"));
-    assert(!markup.includes("Workspace installation"));
+    assert(markup.includes('aria-label="Marketplace package sections"'));
+    assert(markup.includes("Overview"));
+    assert(markup.includes("Workflows"));
+    assert(markup.includes("Files"));
+    assert(markup.includes(">Install</a>"));
+    assert(!markup.includes('name="installationRoot"'));
+    assert(!markup.includes("Latest version"));
+
+    const installMarkup = renderMarketplaceDetail("2.0.0", undefined, undefined, "install");
+    assert(installMarkup.includes('name="installationRoot"'));
+    assert(installMarkup.includes('value="/workspace/telegram-test-command"'));
+    assert(installMarkup.includes("marketplace-lock.json"));
+    assert(installMarkup.includes(">Install</button>"));
+    assert(installMarkup.includes("Ada Labs"));
   });
 
   test("offers the selected artifact version when it is outside the current page", () => {
@@ -378,16 +452,13 @@ describe("marketplace artifact version navigation", () => {
     assert(versionMenu.indexOf("v1.5.0") < versionMenu.indexOf("v1.0.0"));
   });
 
-  test("observes the workflow started by the submitted release", () => {
-    const markup = renderMarketplaceDetail("1.0.0", {
-      ok: true,
-      action: "created",
-      version: "2.0.0",
-      workflowInstanceId: "submitted-workflow-id",
-      workflowStatus: "active",
+  test("observes the persisted installation without any transient action data", () => {
+    const markup = renderMarketplaceDetail("1.0.0", undefined, undefined, "install", {
+      ...installationReference,
+      workflowInstanceId: "persisted-workflow-id",
     });
 
-    assert(markup.includes("observing:submitted-workflow-id"));
+    assert(markup.includes("observing:persisted-workflow-id"));
     assert(!markup.includes("observing:loader-workflow-id"));
     assert(!markup.includes("Installation workflow started"));
   });
@@ -496,6 +567,8 @@ function renderMarketplaceDetail(
   selectedVersion: string,
   actionData?: IngestionActionDataFixture,
   versionHistory = [{ version: "2.0.0", publishedAt: "2026-01-01T00:00:00.000Z" }],
+  tab: "overview" | "install" = actionData ? "install" : "overview",
+  installation: (MarketplaceInstallationReference & { workflowInstanceId: string }) | null = null,
 ): string {
   const loaderData = {
     listing: {
@@ -513,6 +586,7 @@ function renderMarketplaceDetail(
       updatedAt: "2026-01-01T00:00:00.000Z",
     },
     versions: versionHistory,
+    installationReference: installation,
     nextVersionCursor: undefined,
     hasNextVersionPage: false,
     manageOrganizationId: null,
@@ -520,13 +594,11 @@ function renderMarketplaceDetail(
       resolvedScope: { kind: "org", organization: { id: "org-1", slug: "acme" } },
       adapterIdentity: "automations-test-adapter",
     },
-    installationWorkflowInstanceId: "loader-workflow-id",
     artifactFiles: {
       state: "ready",
       fileTree: { entries: [] },
       selectedVersion,
     },
-    ingestions: [],
   };
   const router = createMemoryRouter(
     [
@@ -550,7 +622,7 @@ function renderMarketplaceDetail(
       },
     ],
     {
-      initialEntries: [`/marketplace?artifactVersion=${selectedVersion}`],
+      initialEntries: [`/marketplace?artifactVersion=${selectedVersion}&artifactTab=${tab}`],
       ...(actionData
         ? {
             hydrationData: {
@@ -569,22 +641,53 @@ describe("marketplace ingestion action", () => {
   test("starts the full ingestion workflow through its owning service", async () => {
     const result = await runAction({ version: "1.0.0" });
 
-    expect(result).toEqual({
-      ok: true,
-      action: "created",
+    assert(result instanceof Response);
+    assert(result.status === 302);
+    const destination = new URL(result.headers.get("Location")!, "https://example.test");
+    expect(readMarketplaceInstallationReference(destination.search)).toEqual({
+      organizationId: "org-1",
       version: "1.0.0",
-      workflowInstanceId: "marketplace-ingest-1",
-      workflowStatus: "active",
+      installationRoot: "/workspace/telegram-test-command",
     });
+    assert(destination.searchParams.get("artifactTab") === "install");
     expect(forOrgMock).toHaveBeenCalledWith("org-1");
     expect(restartMarketplaceIngestionMock).toHaveBeenCalledWith(
       {
         listingId,
         targetScope: { kind: "org", orgId: "org-1" },
+        installationRoot: "/workspace/telegram-test-command",
         version: "1.0.0",
       },
       expect.objectContaining({ propagationContext: null }),
     );
+  });
+
+  test("persists the exact release, canonical folder, and personal coordinator after starting", async () => {
+    restartMarketplaceIngestionMock.mockResolvedValueOnce({
+      listingId,
+      version: "1.3.0",
+      workflowInstanceId: "marketplace-ingest-1",
+      action: "created",
+      workflowStatus: "active",
+    });
+    const result = await runAction({
+      scope: { kind: "user", userId: "user-1" },
+      version: "1.3.0",
+      extraFormEntries: { installationRoot: " /workspace/custom-telegram/ " },
+    });
+    assert(result instanceof Response);
+    const destination = new URL(result.headers.get("Location")!, "https://example.test");
+    const reference = readMarketplaceInstallationReference(destination.search);
+    expect(reference).toEqual(installationReference);
+    assert(destination.searchParams.get("artifactVersion") === "1.3.0");
+    assert(reference);
+    const reloaded = await runLoader(
+      { kind: "user", userId: "user-1" },
+      reference.version,
+      reference,
+    );
+    assert(!(reloaded instanceof Response));
+    expect(reloaded.installationReference).toMatchObject(installationReference);
   });
 
   test("ignores forged destination fields and trusts the selected route scope", async () => {
@@ -627,12 +730,15 @@ describe("marketplace ingestion action", () => {
 
     const result = await runAction({ version: "1.0.0" });
 
-    expect(result).toEqual({
-      ok: true,
-      action: "restarted",
+    assert(result instanceof Response);
+    expect(
+      readMarketplaceInstallationReference(
+        new URL(result.headers.get("Location")!, "https://example.test").search,
+      ),
+    ).toEqual({
+      organizationId: "org-1",
       version: "1.0.0",
-      workflowInstanceId: "marketplace-ingest-1",
-      workflowStatus: "active",
+      installationRoot: "/workspace/telegram-test-command",
     });
   });
 

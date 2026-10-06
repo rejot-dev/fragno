@@ -23,9 +23,6 @@ export type AutomationCollections = {
   eventSources: TableCollection<
     (typeof automationFragmentSchema.tables)["automation_event_source"]
   >;
-  marketplaceIngestions: TableCollection<
-    (typeof automationFragmentSchema.tables)["marketplace_ingestion"]
-  >;
   eventDefinitions: TableCollection<
     (typeof automationFragmentSchema.tables)["automation_event_definition"]
   >;
@@ -55,10 +52,6 @@ export function createAutomationCollections(
     ),
     events: coordinator.collection(automationFragmentSchema, "automation_event"),
     eventSources: coordinator.collection(automationFragmentSchema, "automation_event_source"),
-    marketplaceIngestions: coordinator.collection(
-      automationFragmentSchema,
-      "marketplace_ingestion",
-    ),
     eventDefinitions: coordinator.collection(
       automationFragmentSchema,
       "automation_event_definition",

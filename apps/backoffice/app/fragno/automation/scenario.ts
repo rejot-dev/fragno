@@ -54,6 +54,10 @@ import {
 import { createRuntimeStateBackend } from "@/fragno/codemode/runtime-state-backend";
 import { isMarketplaceInternalArtifactPath } from "@/fragno/marketplace/artifacts";
 import type { MarketplaceStaticEntry } from "@/fragno/marketplace/contracts";
+import {
+  MARKETPLACE_LOCK_PATH,
+  marketplaceLockSchema,
+} from "@/fragno/marketplace/marketplace-lock";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
 import { getStaticMarketplaceEntry } from "@/fragno/marketplace/static-entries";
 import type {
@@ -2724,6 +2728,7 @@ const buildStepBuilders = <
                 listingId,
                 version: entry.version,
                 targetScope: input.targetScope,
+                installationRoot: "/workspace",
               },
               {
                 execution: createBackofficeSystemExecution({
@@ -2741,16 +2746,6 @@ const buildStepBuilders = <
 
             await ctx.drain();
 
-            const installed = await automations.commands.getMarketplaceIngestion({
-              listingId,
-              targetScope: input.targetScope,
-            });
-            if (installed?.version !== entry.version) {
-              throw new Error(
-                `Scenario Marketplace installation did not complete for '${listingId}@${entry.version}'.`,
-              );
-            }
-
             const execution = createBackofficeSystemExecution(input.targetScope);
             const installedFileSystem = createStateShellFileSystem(
               createRuntimeStateBackend({
@@ -2759,6 +2754,21 @@ const buildStepBuilders = <
                 execution,
               }),
             );
+            const lock = marketplaceLockSchema.parse(
+              JSON.parse(await installedFileSystem.readFile(MARKETPLACE_LOCK_PATH)),
+            );
+            if (
+              !lock.entries.some(
+                (installed) =>
+                  installed.listingId === listingId &&
+                  installed.version === entry.version &&
+                  installed.installationRoot === "/workspace",
+              )
+            ) {
+              throw new Error(
+                `Scenario Marketplace installation did not complete for '${listingId}@${entry.version}'.`,
+              );
+            }
             const scenarioFileSystem =
               input.targetScope.kind === "project"
                 ? ctx.files.forProject(input.targetScope.projectId)

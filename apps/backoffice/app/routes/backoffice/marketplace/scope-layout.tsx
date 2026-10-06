@@ -15,14 +15,11 @@ import {
   type MarketplaceTab,
 } from "./scope";
 
-const MARKETPLACE_TABS = [
-  { id: "marketplace" as const, label: "Marketplace" },
-  { id: "installed" as const, label: "Installed" },
-];
+const MARKETPLACE_TABS = [{ id: "marketplace" as const, label: "Marketplace" }];
 
 const currentTabFromPath = (pathname: string): MarketplaceTab => {
   const segment = pathname.replace(/\/+$/u, "").split("/").at(-1);
-  if (segment === "installed" || segment === "my-listings") {
+  if (segment === "my-listings") {
     return segment;
   }
   return "marketplace";

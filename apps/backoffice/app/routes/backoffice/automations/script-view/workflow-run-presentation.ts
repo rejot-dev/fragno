@@ -62,6 +62,8 @@ export type AutomationWorkflowRun = {
   status: string;
   workflowScriptPath: string | null;
   output: unknown;
+  errorName: string | null;
+  errorMessage: string | null;
   createdAt: WorkflowRunTimestamp;
   updatedAt: WorkflowRunTimestamp;
   workflowSteps: readonly WorkflowRunStep[];

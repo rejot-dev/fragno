@@ -41,7 +41,6 @@ import { createAutomationEventServices } from "./events-storage-runtime";
 import { buildExternalIdentityBindingId } from "./external-identities";
 import { createExternalIdentityBindingServices } from "./external-identity-bindings-storage-runtime";
 import type { AutomationEventIngestionPayload, AutomationHookUnitOfWork } from "./internal-hooks";
-import { createAutomationMarketplaceIngestionServices } from "./marketplace-ingestions";
 import { createAutomationProjectServices } from "./projects-storage-runtime";
 import { dispatchAutomationRouteSchedule } from "./route-scheduling-runtime";
 import {
@@ -414,8 +413,6 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
     const eventServices = createAutomationEventServices(defineService);
     const eventSourceServices = createAutomationEventSourceServices(defineService);
     const eventDefinitionServices = createAutomationEventDefinitionServices(defineService);
-    const marketplaceIngestionServices =
-      createAutomationMarketplaceIngestionServices(defineService);
     const externalIdentityBindingServices = createExternalIdentityBindingServices(defineService);
 
     return defineService({
@@ -425,7 +422,6 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
       ...eventServices,
       ...eventSourceServices,
       ...eventDefinitionServices,
-      ...marketplaceIngestionServices,
       ...externalIdentityBindingServices,
       seedStarterAutomationRoutes: function () {
         return this.serviceTx(automationFragmentSchema)

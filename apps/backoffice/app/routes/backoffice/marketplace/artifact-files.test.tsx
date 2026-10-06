@@ -1,12 +1,15 @@
 import { assert, describe, test } from "vitest";
 
 import { renderToStaticMarkup } from "react-dom/server";
-import { createMemoryRouter, MemoryRouter, RouterProvider } from "react-router";
+import { createMemoryRouter, RouterProvider } from "react-router";
 
 import { createFileTree } from "@/file-collection/create-file-tree";
 
-import { MarketplaceArtifactFiles, MarketplaceArtifactWorkflowGraphs } from "./artifact-files";
-import type { MarketplaceArtifactExplorerData } from "./artifact-files-model";
+import { MarketplaceArtifactFiles } from "./artifact-files";
+import type {
+  MarketplaceArtifactExplorerData,
+  MarketplaceArtifactSelectedContent,
+} from "./artifact-files-model";
 
 const workflowSource = {
   path: "/artifact/1.0.0/automations/daily-report.workflow.js",
@@ -31,13 +34,11 @@ const artifactData: MarketplaceArtifactExplorerData = {
 };
 
 describe("MarketplaceArtifactFiles", () => {
-  test("defaults to the overview tab and omits the old badges", () => {
+  test("defaults to overview content and omits the old badges", () => {
     const markup = renderMarketplaceArtifacts("/backoffice/marketplace/example");
 
     assert(markup.includes("No package overview"));
-    assert(markup.includes("Overview"));
-    assert(markup.includes("Workflows"));
-    assert(markup.includes("Files"));
+    assert(!markup.includes('aria-label="Marketplace package sections"'));
     assert(!markup.includes("Package contents"));
     assert(!markup.includes("Read only"));
     assert(!markup.includes("2 releases"));
@@ -63,10 +64,9 @@ describe("MarketplaceArtifactFiles", () => {
   });
 
   test("parses fetched workflow sources with the shared workflow graph on the client", () => {
-    const markup = renderToStaticMarkup(
-      <MemoryRouter>
-        <MarketplaceArtifactWorkflowGraphs workflows={[workflowSource]} />
-      </MemoryRouter>,
+    const markup = renderMarketplaceArtifacts(
+      `/backoffice/marketplace/example?artifactTab=workflows&artifactPath=${encodeURIComponent(workflowSource.path)}`,
+      { path: workflowSource.path, text: workflowSource.source },
     );
 
     assert(markup.includes('aria-label="Workflow graph"'));
@@ -76,12 +76,15 @@ describe("MarketplaceArtifactFiles", () => {
   });
 });
 
-function renderMarketplaceArtifacts(initialEntry: string): string {
+function renderMarketplaceArtifacts(
+  initialEntry: string,
+  selectedContent: MarketplaceArtifactSelectedContent | null = null,
+): string {
   const router = createMemoryRouter(
     [
       {
         path: "*",
-        element: <MarketplaceArtifactFiles data={artifactData} />,
+        element: <MarketplaceArtifactFiles data={artifactData} selectedContent={selectedContent} />,
       },
     ],
     { initialEntries: [initialEntry] },
