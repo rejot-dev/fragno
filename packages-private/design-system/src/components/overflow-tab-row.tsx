@@ -137,8 +137,9 @@ export function OverflowTabRow({
   const activeTabIsOverflowing = overflowTabs.some((tab) => tab.active);
   const rowGapClassName = variant === "boxed" ? "gap-2" : "gap-4";
 
+  // The invisible measurement row must not widen the document on narrow screens.
   return (
-    <div className="relative">
+    <div className="relative overflow-x-clip">
       <div
         ref={measurementRef}
         aria-hidden="true"
