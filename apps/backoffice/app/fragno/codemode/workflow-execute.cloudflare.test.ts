@@ -39,13 +39,17 @@ const createSystemWorkflowOptions = () => ({
 });
 
 describe("codemode workflow execution", () => {
-  test("checkpoints remote workflow progress between sequential top-level steps", async () => {
+  test("checkpoints nested steps without repeating committed effects across runner restarts", async () => {
     const Workflow = defineRemoteWorkflow(
       { name: "codemode-checkpointed", checkpoint: "step" },
       defineCodemodeWorkflowRun<undefined, number>(
         `async (_event, step) => {
-          const first = await step.do("first", async () => 1);
-          const second = await step.do("second", async () => first + 1);
+          const first = await step.do("first", async (tx) => {
+            tx.emit({ phase: "checkpoint-effect" });
+            return 1;
+          });
+          const second = await step.do("second", async () =>
+            await step.do("first", async () => first + 1));
           return await step.do("third", async () => second + 1);
         }`,
         env,
@@ -54,41 +58,56 @@ describe("codemode workflow execution", () => {
     );
     const harness = await createHarness({ WORKFLOW: Workflow });
 
-    const instanceId = await harness.createInstance("WORKFLOW", {
-      id: "codemode-checkpointed-1",
-      remoteWorkflowName: "codemode-checkpointed-body",
-    });
+    try {
+      const instanceId = await harness.createInstance("WORKFLOW", {
+        id: "codemode-checkpointed-1",
+        remoteWorkflowName: "codemode-checkpointed-body",
+      });
 
-    await harness.tick({
-      workflowName: "codemode-checkpointed",
-      instanceId,
-      reason: "create",
-    });
-    expect((await harness.getHistory("WORKFLOW", instanceId)).steps).toMatchObject([
-      { stepKey: "do:first", status: "completed", result: 1 },
-    ]);
+      await harness.tick({
+        workflowName: "codemode-checkpointed",
+        instanceId,
+        reason: "create",
+      });
+      expect((await harness.getHistory("WORKFLOW", instanceId)).steps).toMatchObject([
+        { stepKey: "do:first", status: "completed", result: 1 },
+      ]);
 
-    await harness.restart();
-    await harness.tick({
-      workflowName: "codemode-checkpointed",
-      instanceId,
-      reason: "wake",
-    });
-    expect((await harness.getHistory("WORKFLOW", instanceId)).steps).toMatchObject([
-      { stepKey: "do:first", status: "completed", result: 1 },
-      { stepKey: "do:second", status: "completed", result: 2 },
-    ]);
+      await harness.restart();
+      await harness.tick({
+        workflowName: "codemode-checkpointed",
+        instanceId,
+        reason: "wake",
+      });
+      expect((await harness.getHistory("WORKFLOW", instanceId)).steps).toMatchObject([
+        { stepKey: "do:first", status: "completed", result: 1 },
+        { stepKey: "do:second", status: "completed", result: 2 },
+        { stepKey: "do:second>do:first", parentStepKey: "do:second", depth: 1, result: 2 },
+      ]);
 
-    await harness.restart();
-    await harness.tick({
-      workflowName: "codemode-checkpointed",
-      instanceId,
-      reason: "wake",
-    });
-    await expect(harness.getStatus("WORKFLOW", instanceId)).resolves.toMatchObject({
-      status: "complete",
-      output: 3,
-    });
+      await harness.restart();
+      await harness.tick({
+        workflowName: "codemode-checkpointed",
+        instanceId,
+        reason: "wake",
+      });
+      await expect(harness.getStatus("WORKFLOW", instanceId)).resolves.toMatchObject({
+        status: "complete",
+        output: 3,
+      });
+      const history = await harness.getHistory("WORKFLOW", instanceId);
+      expect(history.steps.map((step) => step.stepKey)).toEqual([
+        "do:first",
+        "do:second",
+        "do:second>do:first",
+        "do:third",
+      ]);
+      expect(history.emissions.filter((emission) => emission.actor === "user")).toEqual([
+        expect.objectContaining({ stepKey: "do:first", payload: { phase: "checkpoint-effect" } }),
+      ]);
+    } finally {
+      await harness.test.cleanup();
+    }
   });
 
   test("runs a workflow end-to-end in a dynamic worker with real runner steps", async () => {
@@ -539,13 +558,22 @@ describe("codemode workflow execution", () => {
     );
   });
 
-  test("suspends and resumes a codemode workflow through waitForEvent", async () => {
+  test("consumes events with Date values intact and resumes after a durable sleep", async () => {
     const Workflow = defineRemoteWorkflow(
       { name: "codemode-e2e-wait" },
-      defineCodemodeWorkflowRun<unknown, { approved: boolean }>(
-        `async (_event, step) => {
-          const approval = await step.waitForEvent("approval", { type: "approval" });
-          return { approved: approval.payload.approved };
+      defineCodemodeWorkflowRun<unknown, { approved: boolean; preservedDate: boolean }>(
+        `async (event, step) => {
+          const approval = await step.waitForEvent("approval", {
+            type: "approval",
+            onConsume: async (tx, received) => {
+              tx.emit({ timestamp: received.timestamp.toISOString() });
+            },
+          });
+          await step.sleepUntil("cooldown", new Date(event.timestamp.getTime() + 1000));
+          return await step.do("save approval", async () => ({
+            approved: approval.payload.approved,
+            preservedDate: approval.timestamp instanceof Date,
+          }));
         }`,
         env,
         createSystemWorkflowOptions(),
@@ -553,53 +581,85 @@ describe("codemode workflow execution", () => {
     );
     const harness = await createHarness({ WORKFLOW: Workflow });
 
-    const instanceId = await harness.createInstance("WORKFLOW", {
-      id: "codemode-e2e-wait-1",
-      remoteWorkflowName: "codemode-e2e-wait-body",
-    });
-    await harness.runUntilIdle({
-      workflowName: "codemode-e2e-wait",
-      instanceId,
-      reason: "create",
-    });
+    try {
+      const instanceId = await harness.createInstance("WORKFLOW", {
+        id: "codemode-e2e-wait-1",
+        remoteWorkflowName: "codemode-e2e-wait-body",
+      });
+      await harness.runUntilIdle({
+        workflowName: "codemode-e2e-wait",
+        instanceId,
+        reason: "create",
+      });
 
-    const waitingStatus = await harness.getStatus("WORKFLOW", instanceId);
-    expect(waitingStatus).toMatchObject({
-      status: "waiting",
-    });
-    let history = await harness.getHistory("WORKFLOW", instanceId);
-    expect(history.steps).toEqual([
-      expect.objectContaining({
-        stepKey: "waitForEvent:approval",
+      await expect(harness.getStatus("WORKFLOW", instanceId)).resolves.toMatchObject({
         status: "waiting",
-        waitEventType: "approval",
-      }),
-    ]);
-
-    await harness.sendEvent("WORKFLOW", instanceId, {
-      type: "approval",
-      payload: { approved: true },
-    });
-    await harness.runUntilIdle({
-      workflowName: "codemode-e2e-wait",
-      instanceId,
-      reason: "event",
-    });
-
-    await expect(harness.getStatus("WORKFLOW", instanceId)).resolves.toMatchObject({
-      status: "complete",
-      output: { approved: true },
-    });
-    history = await harness.getHistory("WORKFLOW", instanceId);
-    expect(history.events).toEqual(
-      expect.arrayContaining([
+      });
+      expect((await harness.getHistory("WORKFLOW", instanceId)).steps).toEqual([
         expect.objectContaining({
-          type: "approval",
-          payload: { approved: true },
-          consumedByStepKey: "waitForEvent:approval",
+          stepKey: "waitForEvent:approval",
+          status: "waiting",
+          waitEventType: "approval",
         }),
-      ]),
-    );
+      ]);
+
+      const receivedAt = harness.clock.now().toISOString();
+      await harness.sendEvent("WORKFLOW", instanceId, {
+        type: "approval",
+        payload: { approved: true },
+      });
+      await harness.runUntilIdle({
+        workflowName: "codemode-e2e-wait",
+        instanceId,
+        reason: "event",
+      });
+      await expect(harness.getStatus("WORKFLOW", instanceId)).resolves.toMatchObject({
+        status: "waiting",
+      });
+      const waitingHistory = await harness.getHistory("WORKFLOW", instanceId);
+      expect(waitingHistory.steps).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ stepKey: "waitForEvent:approval", status: "completed" }),
+          expect.objectContaining({ stepKey: "sleep:cooldown", status: "waiting" }),
+        ]),
+      );
+      expect(waitingHistory.emissions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ actor: "user", payload: { timestamp: receivedAt } }),
+        ]),
+      );
+
+      harness.clock.advanceBy("2 seconds");
+      await harness.restart();
+      await harness.runUntilIdle({
+        workflowName: "codemode-e2e-wait",
+        instanceId,
+        reason: "wake",
+      });
+
+      await expect(harness.getStatus("WORKFLOW", instanceId)).resolves.toMatchObject({
+        status: "complete",
+        output: { approved: true, preservedDate: true },
+      });
+      const history = await harness.getHistory("WORKFLOW", instanceId);
+      expect(history.events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: "approval",
+            payload: { approved: true },
+            consumedByStepKey: "waitForEvent:approval",
+          }),
+        ]),
+      );
+      expect(history.steps).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ stepKey: "sleep:cooldown", status: "completed" }),
+          expect.objectContaining({ stepKey: "do:save approval", status: "completed" }),
+        ]),
+      );
+    } finally {
+      await harness.test.cleanup();
+    }
   });
 
   test("codemode workflow step tx can create another workflow instance", async () => {

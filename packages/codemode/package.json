@@ -89,6 +89,7 @@
     "build": "tsdown",
     "types:check": "tsc --noEmit",
     "test": "vitest run",
+    "test:bridge": "vitest run --config vitest.bridge.config.ts",
     "format:package": "node ../../scripts/run-package-quality.mjs format",
     "format:check:package": "node ../../scripts/run-package-quality.mjs format:check",
     "lint:package": "node ../../scripts/run-package-quality.mjs lint",

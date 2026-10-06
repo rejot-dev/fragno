@@ -109,6 +109,21 @@ test("public compiler HTTP routes require bearer authentication and POST", async
       })
     ).status === 405,
   );
+  const unauthorizedCompiler = createCodemodeCompilerHttpClient({
+    url: server.url,
+    apiKey: "incorrect-api-key",
+  });
+  await expect(
+    unauthorizedCompiler.compileWorker({
+      files: { "worker.ts": "export default 42;", "payload.txt": "x".repeat(8 * 1024 * 1024) },
+      entryPoint: "worker.ts",
+      dependencies: {},
+      runtime,
+    }),
+  ).rejects.toMatchObject({
+    name: "CodemodeHttpAuthenticationError",
+    code: "AUTHENTICATION_FAILED",
+  });
 });
 
 test("RPC, HTTP, and WebSocket compilation share compiler admission and recover", async () => {
@@ -160,28 +175,35 @@ test("RPC, HTTP, and WebSocket compilation share compiler admission and recover"
       status: "rejected",
       error: { message: "CODEMODE_COMPILATION_LIMIT_EXCEEDED" },
     });
-    const compileRequest = createCompileWorkerServiceRequest({
+    const compileInput = {
       files: { "worker.ts": "export default 42;" },
       entryPoint: "worker.ts",
       dependencies: {},
       runtime,
-    });
+    };
+    const compileRequest = createCompileWorkerServiceRequest(compileInput);
     const response = await server.requestCompiler(
       new Request("http://compiler/compile", compileRequest),
     );
     await expect(readCompileWorkerServiceResponse(response)).rejects.toThrow(
       "CODEMODE_COMPILATION_LIMIT_EXCEEDED",
     );
-    const httpCompiler = createCodemodeCompilerHttpClient({
-      url: server.url,
-      apiKey: server.apiKey,
-    });
+    const httpCompiler = createCodemodeCompilerHttpClient(server);
+    // Keep the upload larger than socket buffers so rejecting an unread body exposes EPIPE.
+    const uploadContent = "x".repeat(8 * 1024 * 1024);
     await expect(
       httpCompiler.compileWorker({
-        files: { "worker.ts": "export default 42;" },
-        entryPoint: "worker.ts",
-        dependencies: {},
-        runtime,
+        ...compileInput,
+        files: { ...compileInput.files, "payload.txt": uploadContent },
+      }),
+    ).rejects.toThrow("CODEMODE_COMPILATION_LIMIT_EXCEEDED");
+    await expect(
+      httpCompiler.typeCheckFiles({
+        files: [
+          { path: "script.js", read: async () => "const value = 42;" },
+          { path: "payload.txt", read: async () => uploadContent },
+        ],
+        sourcePaths: ["script.js"],
       }),
     ).rejects.toThrow("CODEMODE_COMPILATION_LIMIT_EXCEEDED");
     await expect(execute(activation, host)).resolves.toMatchObject({
@@ -218,8 +240,7 @@ test("named compiler RPC preserves invalid-project errors and unrelated HTTP pat
   );
   // Miniflare resets service-binding sockets; its dispatcher avoids racing Node's pooled fetch.
   const publicResponse = await server.requestBridge(
-    new URL("/compile", server.url.replace(/^ws:/, "http:")).href,
-    { method: "POST" },
+    new Request(new URL("/compile", server.url), { method: "POST" }),
   );
   assert((await publicResponse.text()) === "OK");
 });

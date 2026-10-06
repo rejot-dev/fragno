@@ -35,6 +35,7 @@
     "types:check:watch": "tsc -b --noEmit --watch",
     "types:generate": "wrangler types --config wrangler.jsonc --env-interface CloudflareEnv --env-file .dev.vars.example && react-router typegen",
     "test": "vitest run",
+    "test:bridge": "vitest run --config vitest.bridge.config.ts",
     "test:watch": "vitest --watch",
     "test:coverage": "vitest run --coverage",
     "format:package": "node ../../scripts/run-package-quality.mjs format",

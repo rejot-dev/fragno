@@ -39,6 +39,22 @@ Cloudflare tests use `tests/wrangler.vitest.jsonc` with deterministic test bindi
 bindings. Keep that directory free of `.dev.vars` and `.env` files: Wrangler resolves development
 secrets beside its configuration, and local credentials must not affect cached tests.
 
+Ordinary tests do not start the Codemode HTTP/WebSocket bridge. Shared Codemode execution coverage
+uses the local Cloudflare test pool's Worker Loader and the in-process compiler from
+`workers/vitest-compiler-setup.ts`. Pure Codemode helpers are tested in the owning package under
+Node.
+
+Node-specific bridge transport and recovery scenarios are opt-in. Run them together with the
+Codemode package's bridge lifecycle tests when changing that boundary:
+
+```bash
+pnpm exec turbo run test:bridge --filter=@fragno-apps/backoffice-rr --filter=@fragno-dev/codemode --output-logs=errors-only
+```
+
+This explicit task starts a local workerd bridge; it does not require a separately running or
+deployed bridge. These scenarios remain separate because direct Cloudflare RPC does not test Node's
+WebSocket/HTTP transport, authentication, or interrupted activation recovery.
+
 Coverage is disabled for ordinary test runs. Generate Backoffice-specific coverage separately:
 
 ```bash

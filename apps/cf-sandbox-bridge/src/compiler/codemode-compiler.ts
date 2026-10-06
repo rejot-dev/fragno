@@ -62,17 +62,25 @@ export async function handleCodemodeCompilerHttpRequest(
     return null;
   }
 
-  const authenticationError = await authenticateCodemodeHttpRequest(request, apiKey);
-  if (authenticationError) {
-    return authenticationError;
+  try {
+    const authenticationError = await authenticateCodemodeHttpRequest(request, apiKey);
+    if (authenticationError) {
+      return authenticationError;
+    }
+    if (url.search) {
+      return new Response("Not found", { status: 404 });
+    }
+    if (request.method !== "POST") {
+      return new Response("Method not allowed", { status: 405, headers: { allow: "POST" } });
+    }
+    return await operation(request, ctx);
+  } finally {
+    // Returning before an unread HTTP upload finishes can replace the error response with
+    // write EPIPE in streaming Node clients. Discard it without buffering or compiling it.
+    if (request.body && !request.bodyUsed) {
+      await request.body.pipeTo(new WritableStream());
+    }
   }
-  if (url.search) {
-    return new Response("Not found", { status: 404 });
-  }
-  if (request.method !== "POST") {
-    return new Response("Method not allowed", { status: 405, headers: { allow: "POST" } });
-  }
-  return await operation(request, ctx);
 }
 
 /** Named RPC entrypoint sharing compiler admission with HTTP and WebSocket activations. */

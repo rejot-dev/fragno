@@ -32,6 +32,10 @@
       "dependsOn": ["build"],
       "outputs": []
     },
+    "test:bridge": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
     "test:watch": {
       "cache": false,
       "persistent": true

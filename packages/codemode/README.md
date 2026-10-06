@@ -87,6 +87,28 @@ persistent references.
 There is no Node-local Deno fallback. Keeping the guest source generation here prevents the local
 and remote paths from independently defining what `step.do`, tool calls, or module execution mean.
 
+## Tests
+
+Ordinary package tests run under Node without starting a workerd bridge:
+
+```sh
+pnpm exec turbo run test --filter=@fragno-dev/codemode --output-logs=errors-only
+```
+
+Pure helpers, codecs, and transport contracts live beside their implementations. Backoffice's
+Cloudflare test pool exercises actual guest execution directly through its local Worker Loader.
+
+Real bridge lifecycle tests are colocated as `*.bridge.test.ts` and run only through the explicit
+bridge task:
+
+```sh
+pnpm exec turbo run test:bridge --filter=@fragno-dev/codemode --output-logs=errors-only
+```
+
+That task starts the local test bridge and preserves coverage for authenticated WebSockets,
+bidirectional callbacks, compilation admission, interruption, and cleanup. Ordinary `test` runs do
+not collect these files, so their setup cannot start the bridge implicitly.
+
 ## Code map
 
 ```text

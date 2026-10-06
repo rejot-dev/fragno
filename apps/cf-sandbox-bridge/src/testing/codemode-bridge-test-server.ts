@@ -121,7 +121,15 @@ export default {
     return {
       url: ready.href,
       apiKey,
-      requestBridge: runtime.dispatchFetch,
+      async requestBridge(request: Request): Promise<Response> {
+        const response = await runtime.dispatchFetch(request.url, {
+          method: request.method,
+          headers: [...request.headers],
+          body: request.body as NodeReadableStream<Uint8Array> | null,
+          duplex: "half",
+        });
+        return response as unknown as Response;
+      },
       async requestCompiler(request: Request): Promise<Response> {
         // Miniflare's undici Request is distinct from Node's native Request; forward its stream explicitly.
         const response = await compiler.fetch(request.url, {

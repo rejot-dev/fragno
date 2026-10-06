@@ -17,6 +17,11 @@ export default defineProject({
       "workers/**/*.test.ts",
       "scripts/**/*.test.ts",
     ],
-    exclude: ["app/**/*.cloudflare.test.ts", "workers/**/*.cloudflare.test.ts"],
+    // Bridge transport coverage is opt-in; ordinary scenarios do not start a workerd bridge server.
+    exclude: [
+      "app/**/*.cloudflare.test.ts",
+      "workers/**/*.cloudflare.test.ts",
+      "**/*.bridge.scenario.test.ts",
+    ],
   },
 });
