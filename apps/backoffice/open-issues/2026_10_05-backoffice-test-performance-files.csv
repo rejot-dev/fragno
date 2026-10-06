@@ -1,0 +1,317 @@
+path,project,category,test_count,baseline_status,baseline_body_ms,repeat_body_ms,node_only_body_ms,repeat_tests_and_hooks_ms,repeat_setup_ms,repeat_import_ms,repeat_environment_ms,repeat_prepare_ms,suite_usefulness_1_to_5
+app/fragno/automation/scenario-marketplace.test.ts,node,Automation / Marketplace / Telegram scenarios,35,passed,10371.914,8680.888,18381.907,8682.797,0,8292.323,0.045,9.023,5
+app/fragno/automation/scenario-starter-router.test.ts,node,Automation / Marketplace / Telegram scenarios,23,passed,8121.824,7810.629,16193.746,7812.503,0,5908.237,0.039,5.441,5
+app/fragno/codemode/workflow-execute.cloudflare.test.ts,cloudflare,Codemode / Pi execution and durability,14,passed,7179,15456,n/a,15467,18183,6658,0,89,5
+app/fragno/automation/starter-otp-linking.test.ts,node,Automation / Marketplace / Telegram scenarios,6,passed,3800.492,4472.743,7467.72,4473.893,0,1783.211,0.079,4.161,5
+app/fragno/codemode/run-backoffice-codemode.cloudflare.test.ts,cloudflare,Codemode / Pi execution and durability,23,passed,2404,5529,n/a,5532,18283,54840,0,93,5
+workers/pi-manager.do.scenario.test.ts,node,Codemode / Pi execution and durability,7,passed,2268.938,2516.541,3343.003,2534.889,0,1742.18,0.042,4.981,5
+app/routes/backoffice/marketplace/artifact-files.server.test.ts,node,File storage / metadata / pagination,6,passed,1998.775,1707.902,4174.969,1821.133,0,489.359,0.049,5.549,4
+app/fragno/codemode/workflow-execute.node.scenario.test.ts,node,Codemode / Pi execution and durability,3,passed,1997.767,2072.114,2377.037,2250.82,0,1855.724,0.076,5.26,5
+app/file-collection/create-upload-file-collection.test.ts,node,File storage / metadata / pagination,15,passed,1915.96,1783.387,3724.559,1873.655,0,293.972,0.159,4.23,5
+app/fragno/automation/scenario-auth-email-verification.test.ts,node,Automation / Marketplace / Telegram scenarios,6,passed,1715.847,2088.354,1783.505,2089.898,0,1866.269,0.038,3.961,5
+app/fragno/pi/exec-code-mode.cloudflare.test.ts,cloudflare,Codemode / Pi execution and durability,10,passed,1320,1238,n/a,1239,18199,31582,0,95,5
+workers/auth.do.test.ts,node,Auth / identity / OTP,20,passed,1297.308,1914.636,1825.766,1916.576,0,1646.279,0.041,4.727,5
+workers/automations.test.ts,node,Automation / Marketplace / Telegram scenarios,22,passed,1270.06,2220.703,2207.472,2222.784,0,3227.034,0.041,3.918,5
+workers/auth.do.oauth-device.test.ts,node,Auth / identity / OTP,9,passed,1204.123,1213.594,1913.851,1214.447,0,3750.669,0.043,4.009,5
+workers/pi.do.backoffice.scenario.test.ts,node,Codemode / Pi execution and durability,11,passed,1185.485,3397.719,3259.027,3399.351,0,3188.02,0.038,4.791,5
+app/fragno/automation/scenario-system-automations.test.ts,node,Automation / Marketplace / Telegram scenarios,8,passed,1062.086,1893.342,1895.192,1894.453,0,3601.592,0.042,3.769,5
+scripts/node-server/node-server-listeners.scenario.test.ts,node,Runtime / SQLite / transport / observability,2,passed,1044.288,1041.748,1046.606,1042.453,0,123.32,0.046,6.908,4
+app/fragno/automation/internal-ingest-event.test.ts,node,Automation / Marketplace / Telegram scenarios,2,passed,970.662,3022.111,2632.01,3022.958,0,3573.572,0.043,5.759,5
+app/fragno/runtime-tools/families/project-connector.scenario.test.ts,node,Runtime tools / integrations / utilities,5,passed,943.299,2367.553,1626.697,2371.709,0,3622.83,0.041,3.673,5
+app/routes/api/project-connector.scenario.test.ts,node,Runtime tools / integrations / utilities,3,passed,867.28,1940.077,1930.788,1949.834,0,3602.71,0.039,4.137,5
+workers/pi.do.cloudflare.test.ts,cloudflare,Codemode / Pi execution and durability,5,passed,864,920,n/a,923,18185,34422,0,100,5
+scripts/run-worker-release.test.ts,node,Release tooling,6,passed,822.442,1800.279,860.657,1801.155,0,13.944,0.049,5.84,4
+app/fragno/automation/engine/codemode.cloudflare.test.ts,cloudflare,Automation / Marketplace / Telegram scenarios,9,passed,756,1907,n/a,1909,18206,11135,0,93,5
+app/fragno/automation/scenario-codemode.test.ts,node,Automation / Marketplace / Telegram scenarios,13,passed,744.23,2079.235,1355.996,2080.489,0,3950.353,0.043,4.665,5
+app/fragno/runtime-tools/families/internal.scenario.test.ts,node,Runtime tools / integrations / utilities,3,passed,685.368,1623.86,2227.95,1624.806,0,4206.566,0.044,4.516,5
+workers/auth.do.backoffice-token.test.ts,node,Auth / identity / OTP,5,passed,625.871,752.312,584.2,753.113,0,4425.807,0.043,3.897,5
+app/fragno/runtime-tools/state-shell-file-system.scenario.test.ts,node,Runtime tools / integrations / utilities,4,passed,608.486,1004.214,1368.933,1005.116,0,4202.568,0.045,4.14,5
+app/backoffice-runtime/node/sqlite-runtime.scenario.test.ts,node,Runtime / SQLite / transport / observability,13,passed,533.699,1392.993,1150.385,1401.392,0,4205.806,0.043,6.886,5
+app/fragno/automation/scenario-workflow-ownership.test.ts,node,Automation / Marketplace / Telegram scenarios,3,passed,504.441,778.15,474.228,782.419,0,4013.528,0.045,4.107,5
+app/fragno/automation/scenario-auth-sign-up-invitation.test.ts,node,Automation / Marketplace / Telegram scenarios,3,passed,452.379,736.911,577.98,737.852,0,4559.018,0.043,4.415,5
+scripts/node-server/node-server-proxy.scenario.test.ts,node,Runtime / SQLite / transport / observability,1,passed,425.779,947.389,648.092,948.396,0,4431.478,0.043,5.87,5
+workers/otp.do.test.ts,node,Auth / identity / OTP,10,passed,409.811,749.954,514.917,750.948,0,4188.062,0.04,4.892,not-reviewed
+app/backoffice-runtime/node/sqlite-object-coordination.scenario.test.ts,node,Runtime / SQLite / transport / observability,9,passed,389.498,959.868,996.216,961.037,0,4412.322,0.045,8.161,5
+app/fragno/automation/scenario-authority-modes.test.ts,node,Automation / Marketplace / Telegram scenarios,5,passed,386.496,1064.503,1609.112,1065.424,0,4392.727,0.042,3.934,5
+app/routes/api/files-scoped-workspace.scenario.test.ts,node,Runtime tools / integrations / utilities,1,passed,377.196,661.936,690.213,662.547,0,4499.816,0.042,8.726,5
+app/backoffice-ui/demo.test.ts,node,UI / route loaders / presentation,3,passed,352.854,599.514,390.567,600.14,0,1602.945,0.05,5.493,4
+workers/auth.do.cloudflare.test.ts,cloudflare,Auth / identity / OTP,5,passed,326,370,n/a,372,18202,34402,0,73,not-reviewed
+app/backoffice-ui/catalog.test.ts,node,UI / route loaders / presentation,40,passed,320.979,847.759,922.554,882.61,0,614.396,0.043,4.585,4
+app/fragno/automation/scenario-api-webhooks.test.ts,node,Automation / Marketplace / Telegram scenarios,3,passed,269.548,1153.292,1028.986,1154.106,0,5123.675,0.045,5.467,not-reviewed
+app/fragno/automation/scenario-scheduled-route.test.ts,node,Automation / Marketplace / Telegram scenarios,1,passed,265.412,584.678,259.25,586.717,0,4866.583,0.042,4.547,not-reviewed
+app/fragno/automation/scenario-auth-lifecycle.test.ts,node,Automation / Marketplace / Telegram scenarios,1,passed,264.553,712.392,430.918,713.137,0,5045.453,0.046,7.763,not-reviewed
+app/fragno/sandbox-manager/lifecycle-workflow.scenario.test.ts,node,Runtime tools / integrations / utilities,2,passed,241.297,784.967,707.486,786.01,0,1577.96,0.047,8.135,not-reviewed
+app/fragno/runtime-tools/families/event.scenario.test.ts,node,Runtime tools / integrations / utilities,1,passed,233.915,596.58,637.115,597.459,0,5064.084,0.041,4.624,not-reviewed
+app/fragno/runtime-tools/families/javascript.cloudflare.test.ts,cloudflare,Runtime tools / integrations / utilities,1,passed,222,247,n/a,248,18194,5610,0,102,not-reviewed
+app/fragno/runtime-tools/families/event-catalog.scenario.test.ts,node,Runtime tools / integrations / utilities,1,passed,220.721,542.412,335.866,543.643,0,5287.003,0.09,4.25,not-reviewed
+app/routes/backoffice/automations/script-view/workflow-step-card.client.test.tsx,node,UI / route loaders / presentation,3,passed,217.442,437.522,211.702,438.842,0,2951.717,648.414,5.284,not-reviewed
+app/backoffice-runtime/node/sqlite-object-coordination-waiters.scenario.test.ts,node,Runtime / SQLite / transport / observability,3,passed,211.697,300.04,238.039,301.006,0,4694.49,0.051,9.85,not-reviewed
+app/sandbox/cloudflare-sandbox-bridge-provider.test.ts,node,Runtime tools / integrations / utilities,5,passed,205.223,830.933,1037.323,838.244,0,97.148,0.121,5.411,5
+app/backoffice-runtime/node/node-runtime-env.scenario.test.ts,node,Runtime / SQLite / transport / observability,1,passed,202.806,785.423,273.682,960.948,0,4966.765,0.043,4.661,not-reviewed
+app/fragno/automation/project-event-routing.cloudflare.test.ts,cloudflare,Automation / Marketplace / Telegram scenarios,3,passed,199,592,n/a,593,18181,54931,0,104,5
+app/backoffice-ui/data-limits.test.ts,node,UI / route loaders / presentation,3,passed,194.07,387.417,310.389,388.116,0,343.169,0.042,4.098,5
+app/routes/backoffice/marketplace/artifact-files.client.test.tsx,node,UI / route loaders / presentation,6,passed,192.49,376.855,221.108,380.628,0,2731.856,306.207,13.001,not-reviewed
+app/routes/backoffice/connections/project-connector-return.scenario.test.tsx,node,UI / route loaders / presentation,3,passed,189.135,372.518,370.01,373.259,0,4826.335,0.046,73.279,not-reviewed
+app/fragno/automation/scenario-external-identity-retries.test.ts,node,Automation / Marketplace / Telegram scenarios,3,passed,170.947,779.931,354.861,780.747,0,4479.244,0.043,4.836,not-reviewed
+app/components/backoffice/files-explorer/view.test.tsx,node,UI / route loaders / presentation,16,passed,148.331,376.413,170.929,464.673,0,1190.97,488.839,19.531,not-reviewed
+app/sandbox/cloudflare-sandbox-bridge-provider.node.scenario.test.ts,node,Runtime tools / integrations / utilities,1,passed,142.682,860.097,437.711,867.444,0,4668.951,0.043,3.699,not-reviewed
+app/fragno/runtime-tools/reference.test.ts,node,Runtime tools / integrations / utilities,10,passed,133.444,254.082,102.586,256.097,0,1363.745,0.056,4.719,not-reviewed
+app/backoffice-runtime/node/node-durable-hooks.scenario.test.ts,node,Runtime / SQLite / transport / observability,1,passed,128.3,508.246,161.877,509.468,0,4616.478,0.043,4.73,not-reviewed
+app/backoffice-runtime/in-memory-runtime-env.scenario.test.ts,node,Runtime / SQLite / transport / observability,1,passed,127.687,525.401,225.043,526.556,0,4477.277,0.04,4.237,not-reviewed
+app/fragno/automation/scenario-admin-commands.test.ts,node,Automation / Marketplace / Telegram scenarios,2,passed,121.738,518.219,218.878,519.521,0,4584.019,0.044,4.317,not-reviewed
+app/fragno/automation/routes-bindings.test.ts,node,Automation / Marketplace / Telegram scenarios,36,passed,115.419,528.862,186.333,530.425,0,1185.975,0.043,4.26,not-reviewed
+app/fragno/codemode/state-backend.test.ts,node,Codemode / Pi execution and durability,116,passed,114.728,582.875,188.803,585.438,0,1075.687,0.049,6.756,not-reviewed
+app/files/content/static-file-collection.test.ts,node,File storage / metadata / pagination,3,passed,109.025,122.445,48.463,123.98,0,196.643,0.042,5.603,not-reviewed
+app/routes/api/admin-grant.test.ts,node,Runtime tools / integrations / utilities,5,passed,101.234,183.067,195.949,183.81,0,5277.369,0.048,7.021,not-reviewed
+app/backoffice-ui/generated-props.test.ts,node,UI / route loaders / presentation,8,passed,97.976,387.657,68.637,397.442,0,99.612,0.04,5.485,not-reviewed
+app/backoffice-ui/workflow-interaction.client.test.tsx,node,UI / route loaders / presentation,6,passed,96.954,472.295,84.965,473.66,0,567.158,764.24,14.501,not-reviewed
+app/backoffice-runtime/local-object-factory.scenario.test.ts,node,Runtime / SQLite / transport / observability,4,passed,94.436,363.744,151.788,364.983,0,4842.712,0.045,51.179,not-reviewed
+app/fragno/marketplace/marketplace.test.ts,node,Runtime tools / integrations / utilities,16,passed,87.429,344.581,131.308,347.228,0,1063.92,0.048,7.467,not-reviewed
+app/fragno/auth/request-auth.server.test.ts,node,Auth / identity / OTP,7,passed,84.061,175.094,161.844,176.588,0,748.746,0.044,80.015,not-reviewed
+workers/api.do.test.ts,node,Runtime tools / integrations / utilities,3,passed,83.201,263.991,105.301,265.261,0,4373.123,0.041,6.747,not-reviewed
+app/fragno/automation/route-scheduling.test.ts,node,Automation / Marketplace / Telegram scenarios,8,passed,83.095,228.309,174.032,229.163,0,1140.702,0.042,33.373,not-reviewed
+app/routes/backoffice/sessions/session-detail/workspace-panel.client.test.tsx,node,UI / route loaders / presentation,4,passed,80.373,117.85,59.38,119.158,0,1908.943,576.322,6.481,not-reviewed
+app/fragno/automation/scenario-auth-authority.test.ts,node,Automation / Marketplace / Telegram scenarios,1,passed,79.917,361.442,208.235,362.685,0,4787.627,0.042,5.757,not-reviewed
+app/routes/api/forms-api-access.test.ts,node,Runtime tools / integrations / utilities,8,passed,77.469,32.91,16.017,33.705,0,47.219,0.043,9.38,not-reviewed
+app/routes/backoffice/internals/users.client.test.tsx,node,UI / route loaders / presentation,3,passed,76.531,277.829,123.285,282.842,0,551.143,490.224,85.304,not-reviewed
+workers/workflows-runner.cloudflare.test.ts,cloudflare,Runtime / SQLite / transport / observability,1,passed,75,65,n/a,66,18792,33841,0,93,5
+app/fragno/auth/browser-auth.client.test.ts,node,Auth / identity / OTP,8,passed,74.057,97.492,85.298,98.822,0,197.323,0.041,4.675,not-reviewed
+app/routes/backoffice/marketplace/detail.test.ts,node,UI / route loaders / presentation,24,passed,73.14,188.911,40.013,190.348,0,1100.314,0.097,18.611,not-reviewed
+workers/forms.do.test.ts,node,Runtime tools / integrations / utilities,1,passed,65.724,121.829,104.279,124.81,0,4727.766,0.046,26.279,not-reviewed
+app/backoffice-ui/components/file-upload.client.test.tsx,node,UI / route loaders / presentation,2,passed,63.044,103.084,149.3,115.055,0,806.16,453.562,27.493,not-reviewed
+app/fragno/billing/billing.test.ts,node,Runtime tools / integrations / utilities,11,passed,62.25,115.67,72.095,228.249,0,1038.472,0.097,7.132,not-reviewed
+workers/automations-identity-bindings.test.ts,node,Automation / Marketplace / Telegram scenarios,3,passed,62.173,108.086,67.387,109.379,0,4576.339,0.043,3.869,not-reviewed
+app/routes/backoffice/marketplace/index.test.ts,node,UI / route loaders / presentation,2,passed,62.089,89.061,24.859,90.166,0,312.73,0.044,13.545,not-reviewed
+app/fragno/runtime-tools/bash-commands.test.ts,node,Runtime tools / integrations / utilities,17,passed,61.648,66.84,48.749,67.789,0,540.312,0.045,5.742,not-reviewed
+app/routes/backoffice/device.test.ts,node,UI / route loaders / presentation,7,passed,61.151,130.024,72.633,131.535,0,152.945,0.045,37.352,not-reviewed
+app/backoffice-runtime/kernel.test.ts,node,Runtime / SQLite / transport / observability,30,passed,60.423,157.199,68.287,158.615,0,100.806,0.042,3.897,not-reviewed
+workers/lib/backoffice-fragment-durable-object.cloudflare.test.ts,cloudflare,Runtime / SQLite / transport / observability,3,passed,58,81,n/a,82,18205,34415,0,92,5
+app/fragno/automation/route-action-idempotency.test.ts,node,Automation / Marketplace / Telegram scenarios,8,passed,55.774,339.175,87.897,340.836,0,1165.126,0.046,10.026,not-reviewed
+app/components/backoffice/files-explorer/content-renderers.client.test.tsx,node,UI / route loaders / presentation,2,passed,53.567,126.293,154.811,127.924,0,1736.858,364.599,3.758,not-reviewed
+app/routes/backoffice/organization-members.client.test.tsx,node,UI / route loaders / presentation,1,passed,53.022,95.772,85.881,112.279,0,471.332,284.062,4.109,not-reviewed
+app/routes/backoffice/sessions/session-detail/tool-call.client.test.ts,node,UI / route loaders / presentation,4,passed,50.765,212.782,36.63,214.101,0,1136.655,366.095,4.094,not-reviewed
+app/backoffice-ui/result.test.ts,node,UI / route loaders / presentation,27,passed,49.295,98.51,57.864,99.412,0,173.8,0.041,7.561,not-reviewed
+app/fragno/runtime-tools/families/reson8-runtime.test.ts,node,Runtime tools / integrations / utilities,2,passed,46.72,35.936,19.175,37.23,0,33.621,0.045,8.206,not-reviewed
+app/fragno/automation/routing-schemas.test.ts,node,Automation / Marketplace / Telegram scenarios,13,passed,46.162,51.476,57.233,52.288,0,132.8,0.045,6.143,not-reviewed
+app/components/backoffice/files-explorer/content-renderers.test.tsx,node,UI / route loaders / presentation,8,passed,45.038,155.01,63.739,156.202,0,2222.517,0.044,10.535,not-reviewed
+scripts/node-server/node-worker-source-maps.scenario.test.ts,node,Runtime / SQLite / transport / observability,2,passed,43.691,398.797,76.834,399.628,0,158.844,0.063,5.243,not-reviewed
+app/backoffice-runtime/cloudflare-durable-object-factory.test.ts,node,Runtime / SQLite / transport / observability,1,passed,43.5,200.749,21.309,201.42,0,102.37,0.052,7.717,not-reviewed
+app/backoffice-runtime/internal-object-request.test.ts,node,Runtime / SQLite / transport / observability,6,passed,43.338,32.127,78.351,33.863,0,150.063,0.049,7.129,not-reviewed
+app/fragno/sandbox-manager/services.test.ts,node,Runtime tools / integrations / utilities,2,passed,40.921,18.489,14.633,19.199,0,1002.231,0.041,13.219,not-reviewed
+app/fragno/auth/token-lifecycle.test.ts,node,Auth / identity / OTP,7,passed,40.495,131.567,84.988,137.842,0,514.042,0.078,4.993,not-reviewed
+app/fragno/marketplace/routes.test.ts,node,Runtime tools / integrations / utilities,2,passed,39.97,31.831,25.311,33.901,0,1355.323,0.046,4.137,not-reviewed
+app/routes/backoffice/connections/upload/files.test.ts,node,UI / route loaders / presentation,4,passed,39.663,21.034,28.034,21.764,0,956.757,0.043,4.038,not-reviewed
+app/routes/backoffice/files/scope-layout.test.ts,node,UI / route loaders / presentation,2,passed,38.753,59.494,23.56,60.122,0,479.717,0.047,8.498,not-reviewed
+app/routes/backoffice/auth-bootstrap.test.ts,node,UI / route loaders / presentation,8,passed,38.581,27.087,34.192,27.945,0,264.509,0.048,17.234,not-reviewed
+app/routes/backoffice/sign-up.test.ts,node,UI / route loaders / presentation,7,passed,37.896,32.502,18.149,33.199,0,653.66,0.045,8.533,not-reviewed
+app/fragno/runtime-tools/families/event-runtime.test.ts,node,Runtime tools / integrations / utilities,11,passed,37.164,115.396,24.059,118.87,0,1157.214,0.043,8.667,not-reviewed
+app/routes/backoffice/automations/script-view/workflow-graph.test.ts,node,UI / route loaders / presentation,11,passed,36.353,98.695,74.316,100.013,0,854.739,0.044,5.642,not-reviewed
+app/fragno/runtime-tools/families/automations.test.ts,node,Runtime tools / integrations / utilities,16,passed,35.49,79.871,18.277,84.345,0,556.778,0.042,9.606,not-reviewed
+app/routes/api/api.test.ts,node,Runtime tools / integrations / utilities,3,passed,34.68,102.903,19.15,114.897,0,391.689,0.048,8.562,not-reviewed
+app/routes/backoffice/connections/telegram/attachment-download.test.ts,node,UI / route loaders / presentation,7,passed,34.605,32.621,25.902,34.013,0,325.871,0.042,3.875,not-reviewed
+app/routes/api/automations-scoped.test.ts,node,Runtime tools / integrations / utilities,3,passed,34.454,84.622,20.911,85.957,0,310.322,0.071,3.824,not-reviewed
+app/backoffice-runtime/runtime-services.test.ts,node,Runtime / SQLite / transport / observability,13,passed,33.778,142.55,48.171,143.444,0,4409.506,0.049,19.264,not-reviewed
+app/routes/backoffice/marketplace/mine.test.ts,node,UI / route loaders / presentation,2,passed,33.263,24.502,17.085,25.596,0,209.747,0.052,8.028,not-reviewed
+app/routes/backoffice/invitation-accept.client.test.tsx,node,UI / route loaders / presentation,1,passed,32.334,79.733,31.059,80.964,0,471.857,255.561,4.33,not-reviewed
+app/routes/backoffice/sessions/organization-layout.test.ts,node,UI / route loaders / presentation,14,passed,31.337,23.563,15.377,24.854,0,240.071,0.04,7.661,not-reviewed
+app/routes/api/upload-scoped.test.ts,node,Runtime tools / integrations / utilities,1,passed,31.12,51.047,67.016,51.715,0,99.728,0.041,12.245,not-reviewed
+app/routes/backoffice/login.test.ts,node,UI / route loaders / presentation,11,passed,30.957,12.965,21.087,14.277,0,659.654,0.042,4.668,not-reviewed
+app/fragno/runtime-tools/families/upload-runtime.test.ts,node,Runtime tools / integrations / utilities,6,passed,30.708,34.865,32.132,72.075,0,79.81,0.043,8.43,not-reviewed
+workers/lib/pi-durable-billing.test.ts,node,Codemode / Pi execution and durability,3,passed,30.604,39.476,47.571,40.093,0,282.801,0.046,3.9,not-reviewed
+workers/upload.do.test.ts,node,File storage / metadata / pagination,17,passed,29.929,31.702,35.987,32.773,0,785.989,0.071,3.777,not-reviewed
+app/routes/backoffice/verify-email.test.ts,node,UI / route loaders / presentation,8,passed,29.255,72.712,98.939,81.669,0,106.503,0.168,5.298,not-reviewed
+app/fragno/runtime-tools/families/resend-runtime.test.ts,node,Runtime tools / integrations / utilities,7,passed,29.22,125.283,21.342,126.584,0,1634.107,0.045,4.742,not-reviewed
+app/routes/backoffice/sessions/data.test.ts,node,UI / route loaders / presentation,4,passed,28.853,25.044,21.207,26.441,0,73.883,0.042,4.086,not-reviewed
+app/fragno/automation/external-identity-bindings-storage-runtime.test.ts,node,Automation / Marketplace / Telegram scenarios,5,passed,28.744,79.022,17.557,79.706,0,1246.55,0.045,4.856,not-reviewed
+app/routes/backoffice/sessions/session-detail/result-content.test.ts,node,UI / route loaders / presentation,6,passed,28.282,13.319,19.659,23.849,0,800.198,0.048,4.588,not-reviewed
+app/routes/api/backoffice-cli-token.test.ts,node,Runtime tools / integrations / utilities,7,passed,28.153,35.19,25.532,36.729,0,164.777,0.211,5.178,not-reviewed
+workers/marketplace.do.test.ts,node,Runtime tools / integrations / utilities,3,passed,27.861,64.257,91.694,65.589,0,4357.68,0.041,6.359,not-reviewed
+app/routes/backoffice/automations/script-view/workflow-run-presentation.test.ts,node,UI / route loaders / presentation,28,passed,27.718,50.779,24.369,56.583,0,148.235,0.046,4.184,not-reviewed
+app/routes/backoffice/sessions/session-detail/workspace-split.client.test.tsx,node,UI / route loaders / presentation,4,passed,27.152,22.966,68.843,25.718,0,237.023,405.621,11.215,not-reviewed
+app/routes/backoffice/settings.test.ts,node,UI / route loaders / presentation,2,passed,27.12,72.548,27.847,78.533,0,532.708,0.045,18.935,not-reviewed
+workers/telegram.do.test.ts,node,Runtime tools / integrations / utilities,8,passed,27.108,80.955,61.086,82.356,0,805.203,0.042,4.029,not-reviewed
+app/backoffice-runtime/object-registry.test.ts,node,Runtime / SQLite / transport / observability,11,passed,27.074,21.178,40.703,21.973,0,67.826,0.043,6.673,not-reviewed
+app/fragno/runtime-tools/families/mcp-runtime.test.ts,node,Runtime tools / integrations / utilities,1,passed,26.897,33.374,20.394,35.305,0,152.892,0.087,6.644,not-reviewed
+scripts/node-server/node-request-observability.scenario.test.ts,node,Runtime / SQLite / transport / observability,2,passed,26.527,43.801,22.9,44.721,0,470.964,0.049,4.187,not-reviewed
+app/fragno/automation/bindings-route-runtime.test.ts,node,Automation / Marketplace / Telegram scenarios,3,passed,25.928,17.393,28.358,18.312,0,42.735,0.043,9.702,not-reviewed
+app/routes/backoffice/automations/script-view/workflow-step-card.test.ts,node,UI / route loaders / presentation,13,passed,25.765,100.003,128.629,181.675,0,738.414,0.043,4.323,not-reviewed
+app/fragno/runtime-tools/families/telegram-runtime.test.ts,node,Runtime tools / integrations / utilities,9,passed,25.371,134.2,21.219,135.799,0,1564.341,0.042,4.475,not-reviewed
+app/fragno/automation/tanstack/browser-database.test.ts,node,Automation / Marketplace / Telegram scenarios,4,passed,24.859,167.952,24.839,168.65,0,386.147,0.042,6.508,not-reviewed
+app/routes/backoffice/sessions/session-detail/session-header.client.test.tsx,node,UI / route loaders / presentation,1,passed,24.046,139.088,36.322,143.326,0,286.801,456.653,3.559,not-reviewed
+app/fragno/runtime-tools/families/sandbox.test.ts,node,Runtime tools / integrations / utilities,5,passed,23.801,36.81,46.886,37.544,0,337.283,0.042,4.164,not-reviewed
+app/routes/backoffice/marketplace/artifact-selection.test.ts,node,UI / route loaders / presentation,7,passed,23.564,67.57,22.164,68.861,0,1550.496,0.042,6.331,not-reviewed
+workers/billing.do.test.ts,node,Runtime tools / integrations / utilities,4,passed,23.249,107.954,22.675,109.024,0,4619.416,0.046,22.964,not-reviewed
+app/routes/backoffice/marketplace/publish.test.ts,node,UI / route loaders / presentation,5,passed,23.08,22.598,27.164,23.342,0,432.678,0.042,10.226,not-reviewed
+app/fragno/auth/backoffice-principal.server.test.ts,node,Auth / identity / OTP,6,passed,23.002,57.062,22.137,57.832,0,165.408,0.043,4.934,not-reviewed
+app/fragno/runtime-tools/families/cloudflare-runtime.test.ts,node,Runtime tools / integrations / utilities,2,passed,22.593,19.148,15.628,19.831,0,26.733,0.042,13.31,not-reviewed
+app/routes/backoffice/automations/script-view/use-workflow-run.client.test.tsx,node,UI / route loaders / presentation,1,passed,22.412,9.148,8.311,10.328,0,319.999,312.552,106.355,not-reviewed
+app/fragno/runtime-tools/runtime-tools.authorization.test.ts,node,Runtime tools / integrations / utilities,3,passed,22.355,47.657,69.683,49.602,0,288.116,0.043,22.381,not-reviewed
+app/fragno/automation/workflow-route-runtime.test.ts,node,Automation / Marketplace / Telegram scenarios,3,passed,22.136,113.877,21.207,115.701,0,151.909,0.054,3.903,not-reviewed
+workers/auth/better-auth-migrations.test.ts,node,Auth / identity / OTP,3,passed,22.053,65.155,88.477,66.673,0,883.42,0.041,5.555,not-reviewed
+app/lib/zod/zod-formatter.test.ts,node,Runtime tools / integrations / utilities,21,passed,21.866,13.406,12.503,14.267,0,76.47,0.043,4.582,not-reviewed
+app/backoffice-runtime/request-owned-response.test.ts,node,Runtime / SQLite / transport / observability,3,passed,21.456,18.823,31.196,19.474,0,25.717,0.041,15.713,not-reviewed
+app/routes/backoffice/marketplace/installed.test.ts,node,UI / route loaders / presentation,4,passed,21.455,130.112,17.435,130.925,0,322.358,18.44,15.487,not-reviewed
+app/routes/api/mcp.test.ts,node,Runtime tools / integrations / utilities,2,passed,21.303,55.312,20.179,56.004,0,203.258,0.042,4.384,not-reviewed
+app/routes/backoffice/marketplace/scope-layout.test.ts,node,UI / route loaders / presentation,2,passed,20.698,29.903,16.208,30.585,0,451.154,0.042,4.045,not-reviewed
+app/fragno/runtime-tools/families/web-runtime.test.ts,node,Runtime tools / integrations / utilities,2,passed,20.138,20.239,18.75,21.064,0,29.729,0.042,3.942,not-reviewed
+app/fragno/runtime-tools/families/api-runtime.test.ts,node,Runtime tools / integrations / utilities,2,passed,20.067,81.448,19.32,82.613,0,201.181,0.046,6.145,not-reviewed
+workers/resend.do.test.ts,node,Runtime tools / integrations / utilities,1,passed,19.223,22.025,20.705,23.553,0,4482.714,0.087,3.866,not-reviewed
+app/backoffice-ui/renderer.client.test.ts,node,UI / route loaders / presentation,1,passed,19.119,9.951,9.207,11.167,0,626.375,355.567,4.15,not-reviewed
+app/routes/backoffice/sessions/session-detail/tool-workspace-selector.client.test.tsx,node,UI / route loaders / presentation,1,passed,19.01,19.365,40.684,20.804,0,287.166,388.309,3.786,not-reviewed
+app/routes/backoffice/sessions/session-detail/pi-session-view-stream.test.ts,node,UI / route loaders / presentation,1,passed,18.384,36.325,20.822,42.044,0,117.443,0.085,24.538,not-reviewed
+app/routes/backoffice/marketplace/manage.test.ts,node,UI / route loaders / presentation,5,passed,17.733,84.592,44.023,86.069,0,841.739,0.042,7.327,not-reviewed
+app/components/backoffice/shell.client.test.tsx,node,UI / route loaders / presentation,1,passed,17.681,9.164,13.054,10.322,0,262.735,363.096,10.712,not-reviewed
+app/routes/api/upload.test.ts,node,Runtime tools / integrations / utilities,2,passed,17.618,49.518,21.547,50.691,0,52.572,0.043,5.069,not-reviewed
+app/routes/backoffice/automations/script-view/workflow-graph-presentation.test.ts,node,UI / route loaders / presentation,6,passed,17.493,8.053,7.352,8.772,0,44.725,0.043,4.275,not-reviewed
+app/worker-runtime/request-state.server.test.ts,node,Runtime / SQLite / transport / observability,8,passed,16.841,104.33,13.604,105.572,0,376.935,0.04,12.259,not-reviewed
+app/routes/backoffice/marketplace/browse.test.ts,node,UI / route loaders / presentation,2,passed,16.582,20.025,58.009,20.68,0,952.818,0.106,5.49,not-reviewed
+app/routes/api/backoffice-cli-config.test.ts,node,Runtime tools / integrations / utilities,1,passed,16.547,12.428,20.947,13.08,0,75.155,0.045,7.536,not-reviewed
+app/routes/backoffice/sessions/session-detail/workspace-projection.test.ts,node,UI / route loaders / presentation,10,passed,16.453,45.993,17.248,46.779,0,308.893,0.043,8.169,not-reviewed
+app/routes/api/marketplace.test.ts,node,Runtime tools / integrations / utilities,1,passed,15.96,22.162,17.241,22.904,0,31.654,0.041,3.984,not-reviewed
+app/routes/backoffice/marketplace/artifact-files.test.tsx,node,UI / route loaders / presentation,4,passed,15.763,35.124,18.839,109.94,0,1404.933,0.047,5.037,not-reviewed
+app/backoffice-runtime/node/node-runtime-instrumentation.scenario.test.ts,node,Runtime / SQLite / transport / observability,1,passed,14.835,21.128,7.705,21.845,0,368.214,0.042,9.008,not-reviewed
+app/file-collection/create-upload-file-tree.test.ts,node,File storage / metadata / pagination,2,passed,14.654,9.642,8.483,10.591,0,37.779,0.048,6.13,not-reviewed
+workers/mcp.do.test.ts,node,Runtime tools / integrations / utilities,1,passed,14.579,46.858,12.264,56.092,0,4564.481,0.043,4.948,not-reviewed
+app/fragno/backoffice-capabilities/backoffice-capabilities.test.ts,node,Runtime tools / integrations / utilities,6,passed,14.12,6.254,8.001,6.979,0,153.681,0.043,11.268,not-reviewed
+app/routes/api/github-webhooks.test.ts,node,Runtime tools / integrations / utilities,3,passed,13.982,96.223,17.213,97.508,0,4749.674,0.043,5.813,not-reviewed
+app/layouts/backoffice-shell-request.server.test.ts,node,UI / route loaders / presentation,4,passed,13.672,15.74,12.057,16.496,0,803.636,0.046,4.272,not-reviewed
+app/fragno/runtime-tools/route-backed-runtime-context.test.ts,node,Runtime tools / integrations / utilities,4,passed,13.49,14.344,29.217,15.401,0,1777.704,0.1,5.48,not-reviewed
+app/routes/backoffice/route-errors.test.ts,node,UI / route loaders / presentation,2,passed,13.162,54.285,12.459,56.068,0,55.418,0.042,4.866,not-reviewed
+workers/lib/pi-session-store.cloudflare.test.ts,cloudflare,Codemode / Pi execution and durability,2,passed,13,20,n/a,22,18209,34409,0,91,5
+app/files/content/system-file-collection.test.ts,node,File storage / metadata / pagination,1,passed,12.971,44.543,35.88,51.285,0,193.571,0.044,5.862,not-reviewed
+app/fragno/runtime-tools/bash-host.test.ts,node,Runtime tools / integrations / utilities,2,passed,12.776,8.084,10.119,9.251,0,1561.688,0.044,5.366,not-reviewed
+app/fragno/runtime-tools/families/cloudflare.test.ts,node,Runtime tools / integrations / utilities,3,passed,12.365,12.312,16.687,12.974,0,1692.23,0.043,4.164,not-reviewed
+app/layouts/backoffice-layout-ui.client.test.tsx,node,UI / route loaders / presentation,2,passed,12.1,12.854,13.415,14.085,0,552.005,494.594,36.682,not-reviewed
+app/routes/backoffice/marketplace/installation-workflow.client.test.ts,node,UI / route loaders / presentation,9,passed,12.086,51.591,10.878,53.011,0,1014.889,0.041,4.924,not-reviewed
+app/backoffice-ui/renderer.test.ts,node,UI / route loaders / presentation,5,passed,11.692,39.499,8.783,40.291,0,1055.295,2.889,15.295,not-reviewed
+app/fragno/automation/engine/codemode-invocation.test.ts,node,Automation / Marketplace / Telegram scenarios,5,passed,11.674,66.565,6.372,110.369,0,127.24,0.044,4.58,not-reviewed
+app/fragno/automation/event-definitions.test.ts,node,Automation / Marketplace / Telegram scenarios,10,passed,11.527,68.232,9.137,71.07,0,238.174,0.041,3.909,not-reviewed
+app/routes/backoffice/automations/shared.test.ts,node,UI / route loaders / presentation,1,passed,11.512,13.767,11.581,14.426,0,23.171,0.082,5.359,not-reviewed
+app/layouts/backoffice-authenticated-request.server.test.ts,node,UI / route loaders / presentation,2,passed,11.472,73.148,15.059,74.844,0,645.921,0.043,38.81,not-reviewed
+app/fragno/runtime-tools/automation-host.test.ts,node,Runtime tools / integrations / utilities,4,passed,11.388,16.905,19.662,18.064,0,1660.773,0.043,7.393,not-reviewed
+app/fragno/runtime-tools/families/javascript-runtime.test.ts,node,Runtime tools / integrations / utilities,13,passed,10.286,21.579,8.189,22.369,0,276.591,0.046,29.452,not-reviewed
+app/fragno/automation/workflow-completion.test.ts,node,Automation / Marketplace / Telegram scenarios,4,passed,9.942,2.027,1.804,6.663,0,166.831,0.086,4.147,not-reviewed
+app/routes/backoffice/sessions/session-detail/assistant-runtime.test.ts,node,UI / route loaders / presentation,11,passed,9.004,5.844,4.889,7.041,0,34.295,0.042,4.888,not-reviewed
+app/fragno/runtime-tools/families/resend.test.ts,node,Runtime tools / integrations / utilities,4,passed,8.718,5.779,6.939,7.077,0,151.332,0.042,4.745,not-reviewed
+app/backoffice-runtime/node/sqlite-connection-config.scenario.test.ts,node,Runtime / SQLite / transport / observability,1,passed,7.954,7.255,5.197,11.192,0,36.457,0.047,4.048,not-reviewed
+app/backoffice-ui/component-reference-generation.test.ts,node,UI / route loaders / presentation,1,passed,7.932,9.582,6.037,10.226,0,184.61,0.102,3.867,not-reviewed
+app/fragno/backoffice-capabilities/capabilities/telegram.test.ts,node,Runtime tools / integrations / utilities,1,passed,7.903,6.126,9.094,6.829,0,222.005,0.044,5.022,not-reviewed
+app/routes/backoffice/automations/scope.server.test.ts,node,UI / route loaders / presentation,3,passed,7.829,28.385,4.671,29.115,0,147.118,0.04,6.936,not-reviewed
+app/routes/backoffice/integrations/scope.server.test.ts,node,UI / route loaders / presentation,3,passed,7.651,4.729,5.92,5.445,0,194.33,0.041,4.796,not-reviewed
+app/fragno/upload.test.ts,node,File storage / metadata / pagination,12,passed,7.528,4.39,7.878,5.125,0,51.801,0.041,4.064,not-reviewed
+app/fragno/runtime-tools/families/admin.test.ts,node,Runtime tools / integrations / utilities,5,passed,7.513,8.641,8.864,10.014,0,230.828,0.05,4.207,not-reviewed
+app/fragno/runtime-tools/families/forms.test.ts,node,Runtime tools / integrations / utilities,5,passed,7.365,13.634,10.339,14.356,0,269.051,0.043,3.943,not-reviewed
+app/lib/crypto.test.ts,node,Runtime tools / integrations / utilities,3,passed,7.345,7.202,3.826,7.923,0,94.166,0.04,5.487,not-reviewed
+app/routes/backoffice/files/data.test.ts,node,UI / route loaders / presentation,7,passed,7.212,9.025,6.07,10.388,0,1959.821,0.046,4.112,not-reviewed
+app/lib/json-schema/validation.test.ts,node,Runtime tools / integrations / utilities,9,passed,6.785,10.264,7.612,11.681,0,104.27,0.042,3.796,not-reviewed
+app/fragno/automation/timestamp-contracts.test.ts,node,Automation / Marketplace / Telegram scenarios,6,passed,6.657,7.591,5.331,8.837,0,113.401,0.04,6.725,not-reviewed
+app/fragno/runtime-tools/workflow-catalog.test.ts,node,Runtime tools / integrations / utilities,3,passed,6.336,8.226,6.084,8.91,0,1209.931,0.043,3.942,not-reviewed
+app/backoffice-runtime/authority-roles.test.ts,node,Runtime / SQLite / transport / observability,22,passed,6.223,52.703,2.783,53.495,0,72.488,0.044,9.7,not-reviewed
+app/routes/backoffice/automations/data.server.test.ts,node,UI / route loaders / presentation,7,passed,5.851,5.612,7.803,6.91,0,1654.412,0.049,6.505,not-reviewed
+app/fragno/runtime-tools/families/web.test.ts,node,Runtime tools / integrations / utilities,4,passed,5.644,4.831,4.258,5.427,0,266.8,0.043,9.273,not-reviewed
+app/sandbox/cloudflare-sandbox-provider.test.ts,node,Runtime tools / integrations / utilities,6,passed,5.505,4.57,4.039,8.516,0,48.408,0.046,4.238,not-reviewed
+app/routes/backoffice/files/download.test.ts,node,UI / route loaders / presentation,4,passed,5.364,6.28,5.073,6.937,0,1789.062,0.042,15.847,not-reviewed
+app/fragno/automation/actors.test.ts,node,Automation / Marketplace / Telegram scenarios,4,passed,5.224,18.361,5.022,20.476,0,134.268,0.162,10.545,not-reviewed
+app/fragno/runtime-tools/families/upload.test.ts,node,Runtime tools / integrations / utilities,5,passed,5.131,5.774,5.824,6.515,0,222.357,0.042,5.868,not-reviewed
+app/backoffice-runtime/cloudflare-registry.test.ts,node,Runtime / SQLite / transport / observability,3,passed,5.123,3.914,2.358,5.282,0,229.529,0.052,5.198,not-reviewed
+app/fragno/otp.test.ts,node,Auth / identity / OTP,10,passed,5.004,4.744,9.197,5.446,0,954.847,0.044,3.72,not-reviewed
+app/fragno/durable-hooks.test.ts,node,Runtime tools / integrations / utilities,2,passed,4.952,2.123,1.979,3.111,0,801.627,0.045,4.019,not-reviewed
+app/fragno/runtime-tools/families/pi.test.ts,node,Runtime tools / integrations / utilities,5,passed,4.903,4.592,5.439,5.344,0,362.692,0.04,5.367,not-reviewed
+app/sandbox/cloudflare-sandbox-id.test.ts,node,Runtime tools / integrations / utilities,1,passed,4.794,58.628,3.897,59.755,0,62.822,0.043,5.682,not-reviewed
+app/fragno/runtime-tools/families/automations-identities.test.ts,node,Runtime tools / integrations / utilities,6,passed,4.712,5.567,4.267,8.809,0,333.802,0.05,8.552,not-reviewed
+app/fragno/runtime-tools/families/otp-runtime.test.ts,node,Runtime tools / integrations / utilities,2,passed,4.594,4.253,5.823,4.947,0,1042.698,0.042,6.857,not-reviewed
+app/worker-runtime/cloudflare-react-router-instrumentation.test.ts,node,Runtime / SQLite / transport / observability,3,passed,4.344,3.914,1.719,7.508,0,121.879,0.045,7.295,not-reviewed
+app/fragno/runtime-tools/families/telegram.test.ts,node,Runtime tools / integrations / utilities,3,passed,4.34,3.161,2.446,3.967,0,300.065,0.042,9.144,not-reviewed
+app/backoffice-runtime/object-routing-policy.test.ts,node,Runtime / SQLite / transport / observability,7,passed,4.274,5.922,1.621,7.438,0,92.068,0.044,4.143,not-reviewed
+app/backoffice-runtime/dynamic-workers/compile-node-worker.test.ts,node,Runtime / SQLite / transport / observability,2,passed,4.205,3.446,4.016,4.161,0,53.46,0.043,36.353,not-reviewed
+workers/lib/cloudflare-durable-hooks-instrumentation.test.ts,node,Runtime / SQLite / transport / observability,5,passed,4.115,3.904,3.491,4.604,0,101.413,0.044,4.048,not-reviewed
+app/routes/backoffice/internals/durable-hooks-scope.test.ts,node,UI / route loaders / presentation,6,passed,4.068,3.017,4.228,3.773,0,167.046,0.17,9.59,not-reviewed
+app/fragno/automation/engine/runtime-execution.test.ts,node,Automation / Marketplace / Telegram scenarios,7,passed,3.941,3.234,3.031,3.957,0,86.985,0.109,25.287,not-reviewed
+app/fragno/runtime-tools/families/event.test.ts,node,Runtime tools / integrations / utilities,13,passed,3.81,5.643,5.066,7.204,0,567.682,0.086,5.911,not-reviewed
+app/fragno/runtime-tools/families/sandbox-runtime.test.ts,node,Runtime tools / integrations / utilities,2,passed,3.798,5.073,4.961,6.249,0,88.041,0.044,5.235,not-reviewed
+app/backoffice-ui/workflow-events.client.test.ts,node,UI / route loaders / presentation,1,passed,3.722,3.16,70.971,6.311,0,126.747,354.124,3.648,not-reviewed
+workers/lib/scoped-fragment-durable-object.test.ts,node,Runtime / SQLite / transport / observability,2,passed,3.711,4.072,2.865,4.811,0,68.211,0.046,4.448,not-reviewed
+app/routes/backoffice/pi-terminal-specs.test.ts,node,UI / route loaders / presentation,12,passed,3.679,4.438,8.789,7.649,0,1744.717,0.043,10.834,not-reviewed
+app/routes/backoffice/sessions/session-detail/workspace-boundary.test.ts,node,UI / route loaders / presentation,3,passed,3.57,2.569,2.491,3.323,0,21.852,0.043,8.172,2
+app/routes/backoffice/automations/identity-bindings.test.ts,node,UI / route loaders / presentation,2,passed,3.516,3.515,3.382,4.297,0,588.313,0.043,5.411,not-reviewed
+app/routes/backoffice/automations/data.test.ts,node,UI / route loaders / presentation,4,passed,3.502,2.808,1.734,3.524,0,1241.931,0.042,4.369,not-reviewed
+app/fragno/runtime-tools/async-execute.test.ts,node,Runtime tools / integrations / utilities,1,passed,3.443,6.21,5.757,6.884,0,28.543,0.045,6.752,2
+app/fragno/runtime-tools/families/javascript.test.ts,node,Runtime tools / integrations / utilities,2,passed,3.422,11.25,2.407,11.931,0,254.46,0.043,7.428,not-reviewed
+app/fragno/automation/authority.test.ts,node,Automation / Marketplace / Telegram scenarios,8,passed,3.289,2.904,2.923,3.647,0,236.461,0.046,6.303,not-reviewed
+app/backoffice-runtime/local-object-factory.test.ts,node,Runtime / SQLite / transport / observability,5,passed,3.286,3.559,3.054,4.501,0,3271.168,0.042,5.593,not-reviewed
+app/fragno/runtime-tools/families/sandbox-route-runtime.test.ts,node,Runtime tools / integrations / utilities,1,passed,3.27,3.332,9.124,3.983,0,135.922,0.109,3.853,not-reviewed
+app/fragno/marketplace/version.test.ts,node,Runtime tools / integrations / utilities,19,passed,3.21,2.992,3.651,3.781,0,128.979,0.042,8.193,not-reviewed
+app/routes/backoffice/pi-terminal-action.test.ts,node,UI / route loaders / presentation,4,passed,3.188,2.859,2.497,19.583,0,2188.175,0.043,5.71,not-reviewed
+app/fragno/runtime-tools/families/otp.test.ts,node,Runtime tools / integrations / utilities,9,passed,3.111,3.303,2.709,5.062,0,228.194,0.044,3.943,not-reviewed
+app/fragno/codemode/runtime-api.cloudflare.test.ts,cloudflare,Codemode / Pi execution and durability,6,passed,3,7,n/a,7,4525,80,0,39,4
+app/routes/backoffice/marketplace/navigation.test.ts,node,UI / route loaders / presentation,4,passed,2.949,7.235,2.318,7.909,0,257.958,0.099,5.801,not-reviewed
+app/fragno/runtime-tools/families/admin-runtime.test.ts,node,Runtime tools / integrations / utilities,4,passed,2.919,2.762,2.652,3.445,0,14.646,0.044,8.734,not-reviewed
+app/fragno/telegram.test.ts,node,Runtime tools / integrations / utilities,2,passed,2.901,3.997,2.479,5.734,0,982.656,0.043,6.194,not-reviewed
+app/routes/backoffice/dashboard-terminal.test.ts,node,UI / route loaders / presentation,10,passed,2.89,2.673,2.612,3.627,0,59.62,0.044,5.745,not-reviewed
+app/fragno/prepared-upload.test.ts,node,Runtime tools / integrations / utilities,2,passed,2.871,8.815,2.816,10.1,0,134.123,0.046,5.796,not-reviewed
+workers/lib/cloudflare-database-transaction-instrumentation.test.ts,node,Runtime / SQLite / transport / observability,7,passed,2.849,5.724,2.609,7.067,0,27.5,0.045,18.009,not-reviewed
+app/backoffice-runtime/node/node-opentelemetry-lifecycle.scenario.test.ts,node,Runtime / SQLite / transport / observability,2,passed,2.812,4.532,3.062,5.4,0,28.99,0.042,4.065,not-reviewed
+app/components/backoffice/global-workflow-drawer.test.ts,node,UI / route loaders / presentation,2,passed,2.766,0.865,0.633,2.132,0,21.329,0.81,5.063,not-reviewed
+app/backoffice-runtime/context-schema.test.ts,node,Runtime / SQLite / transport / observability,3,passed,2.749,4.384,2.586,5.132,0,106.094,0.045,4.633,not-reviewed
+workers/auth-user-organization.test.ts,node,Auth / identity / OTP,7,passed,2.747,3.945,2.619,4.902,0,23.923,0.042,4.35,not-reviewed
+app/fragno/auth/contracts.test.ts,node,Auth / identity / OTP,4,passed,2.702,1.487,1.458,2.804,0,193.179,0.051,3.836,not-reviewed
+app/routes/backoffice/organizations.test.ts,node,UI / route loaders / presentation,2,passed,2.66,0.98,1.074,1.594,0,27.191,0.044,4.086,not-reviewed
+app/sandbox/sleep-after.test.ts,node,Runtime tools / integrations / utilities,6,passed,2.585,1.606,2.958,3.261,0,35.026,0.04,4.755,not-reviewed
+app/fragno/runtime-tools/families/github.test.ts,node,Runtime tools / integrations / utilities,3,passed,2.582,15.87,3.267,16.474,0,405.918,0.044,5.025,not-reviewed
+app/backoffice-runtime/context.test.ts,node,Runtime / SQLite / transport / observability,3,passed,2.58,11.528,3.673,12.267,0,143.958,0.044,7.401,not-reviewed
+app/fragno/automation/external-identities-route-runtime.test.ts,node,Automation / Marketplace / Telegram scenarios,1,passed,2.564,1.868,1.738,2.507,0,40.582,0.046,3.951,not-reviewed
+app/backoffice-runtime/scope-codec.test.ts,node,Runtime / SQLite / transport / observability,11,passed,2.552,28.123,12.768,95.325,0,75.987,0.042,6.794,not-reviewed
+app/fragno/automation/run-result.test.ts,node,Automation / Marketplace / Telegram scenarios,1,passed,2.411,1.914,1.858,2.538,0,181.564,0.044,11.522,not-reviewed
+app/backoffice-runtime/authority-resolver.test.ts,node,Runtime / SQLite / transport / observability,10,passed,2.395,2.588,2.345,3.337,0,185.43,0.043,4.3,not-reviewed
+app/fragno/runtime-tools/families/reson8.test.ts,node,Runtime tools / integrations / utilities,3,passed,2.334,8.055,2.775,8.781,0,430.188,0.042,26.069,not-reviewed
+app/fragno/automation/automations.test.ts,node,Automation / Marketplace / Telegram scenarios,2,passed,2.301,3.168,2.392,3.77,0,1652.108,0.088,3.922,3
+app/fragno/marketplace/artifacts.test.ts,node,Runtime tools / integrations / utilities,3,passed,2.208,1.745,1.551,2.452,0,136.95,0.049,7.078,not-reviewed
+app/routes/backoffice/connections/telegram/attachment-paths.test.ts,node,UI / route loaders / presentation,2,passed,2.197,1.041,0.908,1.705,0,36.801,0.044,5.069,not-reviewed
+app/fragno/scoped-public-fragment-routes.test.ts,node,Runtime tools / integrations / utilities,11,passed,2.195,2.499,5.256,35.205,0,78.039,0.042,7.648,not-reviewed
+app/fragno/automation/marketplace-ingestions.test.ts,node,Automation / Marketplace / Telegram scenarios,4,passed,2.168,2.947,3.125,3.563,0,157.103,0.042,6.592,not-reviewed
+app/routes/backoffice/automations/script-view/linked-scroll.test.ts,node,UI / route loaders / presentation,3,passed,2.029,0.737,0.754,1.391,0,155.199,0.055,16.135,not-reviewed
+app/backoffice-runtime/in-memory-database-adapters.test.ts,node,Runtime / SQLite / transport / observability,1,passed,2.026,2.468,1.738,3.489,0,559.939,0.051,34.031,not-reviewed
+app/fragno/pi/typebox-failure.cloudflare.test.ts,cloudflare,Codemode / Pi execution and durability,2,passed,2,1,n/a,3,11531,10987,0,41,4
+app/routes/backoffice/auth-navigation.test.ts,node,UI / route loaders / presentation,9,passed,1.92,1.638,1.518,2.624,0,47.558,0.095,4.24,not-reviewed
+app/routes/backoffice/automations/scope-history.test.ts,node,UI / route loaders / presentation,6,passed,1.918,1.346,1.253,2.054,0,227.792,0.042,5.842,not-reviewed
+app/fragno/automation/marketplace-upload-errors.test.ts,node,Automation / Marketplace / Telegram scenarios,9,passed,1.908,2.213,1.918,2.955,0,35.338,0.043,3.809,not-reviewed
+app/backoffice-ui/generated-ui-upload-scope.test.ts,node,UI / route loaders / presentation,5,passed,1.884,2.576,2.925,3.488,0,85.167,0.043,8.903,not-reviewed
+app/fragno/tanstack/browser-collection-database.test.ts,node,Runtime tools / integrations / utilities,4,passed,1.871,3.238,3.476,4.05,0,42.064,0.046,12.824,not-reviewed
+app/backoffice-runtime/route-scope.test.ts,node,Runtime / SQLite / transport / observability,7,passed,1.865,2.068,1.86,14.415,0,123.181,0.048,8.525,not-reviewed
+app/components/backoffice/global-hotkeys.test.ts,node,UI / route loaders / presentation,4,passed,1.827,0.934,0.784,9.89,0,67.048,0.045,4.075,not-reviewed
+app/fragno/automation/routing.test.ts,node,Automation / Marketplace / Telegram scenarios,9,passed,1.822,11.095,1.702,11.853,0,59.351,0.044,3.93,not-reviewed
+workers/lib/cloudflare-fragment-initialization-instrumentation.test.ts,node,Runtime / SQLite / transport / observability,2,passed,1.71,3.223,1.283,5.432,0,76.5,0.261,7.226,not-reviewed
+workers/lib/pi-durable-harness-options.test.ts,node,Codemode / Pi execution and durability,2,passed,1.655,46.195,2.677,47.098,0,488.548,0.045,5.417,not-reviewed
+app/fragno/billing/pi.test.ts,node,Runtime tools / integrations / utilities,2,passed,1.649,16.945,1.526,17.7,0,20.331,0.047,6.093,not-reviewed
+app/routes/backoffice/sessions/session-detail/exec-code-mode.test.ts,node,UI / route loaders / presentation,11,passed,1.609,1.662,1.695,2.328,0,144.802,0.041,5.578,not-reviewed
+app/routes/backoffice/sessions/session-detail/workspace-model.test.ts,node,UI / route loaders / presentation,9,passed,1.595,1.675,8.464,2.434,0,29.588,0.044,47.211,not-reviewed
+app/fragno/automation/marketplace-ingestion-files.test.ts,node,Automation / Marketplace / Telegram scenarios,7,passed,1.574,1.583,1.422,2.213,0,27.98,0.041,14.065,not-reviewed
+app/routes/backoffice/automations/script-view/script-view-mode.test.ts,node,UI / route loaders / presentation,7,passed,1.465,1.609,2.921,2.238,0,142.834,0.04,5.243,not-reviewed
+app/fragno/automation/automation-source.test.ts,node,Automation / Marketplace / Telegram scenarios,2,passed,1.435,1.424,1.311,2.076,0,127.452,0.041,4.224,not-reviewed
+app/fragno/codemode/mcp-codemode-tools.test.ts,node,Codemode / Pi execution and durability,2,passed,1.384,1.471,1.665,2.112,0,253.469,0.043,17.163,not-reviewed
+app/layouts/backoffice-layout.test.ts,node,UI / route loaders / presentation,6,passed,1.348,1.889,1.908,2.582,0,79.878,0.05,7.701,not-reviewed
+workers/lib/pi-durable-authorized-models.test.ts,node,Codemode / Pi execution and durability,1,passed,1.319,1.372,1.276,2.05,0,423.913,0.046,5.185,not-reviewed
+app/routes/backoffice/marketplace/publisher.server.test.ts,node,UI / route loaders / presentation,1,passed,1.315,3.449,0.887,4.145,0,31.269,0.043,4.244,not-reviewed
+app/components/backoffice/scope-switch-path.test.ts,node,UI / route loaders / presentation,14,passed,1.259,28.185,1.14,29.077,0,133.059,0.042,5.331,not-reviewed
+app/backoffice-runtime/permissions.test.ts,node,Runtime / SQLite / transport / observability,2,passed,1.181,2.637,3.842,3.374,0,55.093,0.045,8.793,not-reviewed
+app/fragno/marketplace/static-entries.test.ts,node,Runtime tools / integrations / utilities,1,passed,1.134,1.471,1.59,2.237,0,123.442,0.042,6.927,not-reviewed
+app/transactional-emails/user-email-verification.test.ts,node,Runtime tools / integrations / utilities,1,passed,1.133,1.133,1.081,1.791,0,13.592,0.044,5.829,not-reviewed
+app/file-collection/create-file-tree.test.ts,node,File storage / metadata / pagination,3,passed,1.108,5.609,1.097,6.321,0,47.74,0.043,5.471,not-reviewed
+app/file-collection/resolve-synchronized-file-tree.test.ts,node,File storage / metadata / pagination,3,passed,1.016,1.052,0.959,1.738,0,36.962,0.061,5.569,not-reviewed
+app/fragno/codemode/static-codemode-artifacts.test.ts,node,Codemode / Pi execution and durability,1,passed,1.015,1.087,1.03,1.712,0,223.955,0.045,5.646,not-reviewed
+app/fragno/backoffice-capabilities/capabilities/pi.test.ts,node,Runtime tools / integrations / utilities,1,passed,1.003,1.608,1.013,2.736,0,23.204,0.128,6.992,not-reviewed
+app/fragno/codemode/codemode-executor.cloudflare.test.ts,cloudflare,Codemode / Pi execution and durability,1,passed,1,1,n/a,2,9038,42,0,1897,4
+app/routes/backoffice/files/file-collections.server.test.ts,node,UI / route loaders / presentation,4,passed,0.971,1.16,1.003,1.852,0,942.558,0.043,5.326,not-reviewed
+app/worker-runtime/http-headers.test.ts,node,Runtime / SQLite / transport / observability,3,passed,0.965,1.385,0.986,2.538,0,14.689,0.041,6.101,not-reviewed
+app/fragno/runtime-tools/tool-context.test.ts,node,Runtime tools / integrations / utilities,2,passed,0.957,1.779,0.804,2.709,0,40.878,0.049,3.913,not-reviewed
+app/lib/frontmatter.test.ts,node,Runtime tools / integrations / utilities,1,passed,0.93,23.376,0.809,24.071,0,37.54,0.055,8.326,not-reviewed
+app/fragno/runtime-tools/families/internal.test.ts,node,Runtime tools / integrations / utilities,2,passed,0.923,1.047,0.877,1.707,0,720.394,0.044,6.232,not-reviewed
+app/routes/backoffice/files/scope.test.ts,node,UI / route loaders / presentation,3,passed,0.845,0.839,0.799,1.478,0,137.787,0.04,12.002,not-reviewed
+app/routes/backoffice/automations/route-workflow.test.ts,node,UI / route loaders / presentation,2,passed,0.785,0.843,0.969,1.503,0,186.189,0.048,12.773,not-reviewed
+app/files/content/automations.test.ts,node,File storage / metadata / pagination,1,passed,0.774,1.428,0.771,2.059,0,45.045,0.044,4.922,not-reviewed
+app/routes/backoffice/automations/route-links.test.ts,node,UI / route loaders / presentation,3,passed,0.77,0.858,0.743,1.573,0,145.336,0.041,4.195,not-reviewed
+app/routes/backoffice/connections/upload/organization-layout-state.test.ts,node,UI / route loaders / presentation,5,passed,0.768,0.874,0.761,2.203,0,30.813,0.044,11.598,not-reviewed
+app/routes/backoffice/automations/script-records.test.ts,node,UI / route loaders / presentation,1,passed,0.748,0.949,0.587,5.343,0,24.473,0.042,7.043,not-reviewed
+app/fragno/upload/tanstack/browser-database.test.ts,node,File storage / metadata / pagination,2,passed,0.729,1.7,0.776,2.545,0,244.914,0.046,8.906,not-reviewed
+app/fragno/auth/preferred-organization.client.test.ts,node,Auth / identity / OTP,2,passed,0.659,1.17,0.656,2.353,0,32.617,0.041,7.106,not-reviewed
+app/fragno/automation/definition.test.ts,node,Automation / Marketplace / Telegram scenarios,1,passed,0.5,0.783,0.513,1.362,0,715.261,0.042,6.721,not-reviewed
