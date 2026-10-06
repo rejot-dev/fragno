@@ -137,7 +137,8 @@ export class InMemoryReson8Object implements Reson8Object {
       isConfigured: (stored): stored is StoredReson8Config =>
         Boolean(stored?.scope && stored.apiKey),
       toSource: (stored) => ({ apiKey: stored.apiKey }),
-      createRuntime: (source) => createReson8Server(source, new BackofficeKernel(runtime)),
+      createRuntime: (source) =>
+        createReson8Server(source, new BackofficeKernel(runtime), fetchImpl),
       getMigrationFragments: () => [],
       getHookFragments: () => [],
       outbox: {
