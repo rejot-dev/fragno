@@ -14,10 +14,14 @@ export type Reson8Config = {
 export function createReson8Server(
   config: Reson8Config,
   kernel: BackofficeKernel,
+  fetchImpl: typeof fetch = fetch,
 ): ReturnType<typeof createReson8Fragment> {
-  return createReson8Fragment(config, {
-    mountRoute: "/api/reson8",
-  }).withMiddleware(async function authorizeReson8Routes({ ifMatchesRoute, requestContext }) {
+  return createReson8Fragment(
+    { ...config, fetch: fetchImpl },
+    {
+      mountRoute: "/api/reson8",
+    },
+  ).withMiddleware(async function authorizeReson8Routes({ ifMatchesRoute, requestContext }) {
     let access: BackofficeFragmentHttpAccess = null;
     for (const path of ["/custom-model", "/custom-model/:id"] as const) {
       await ifMatchesRoute("GET", path, () => {
