@@ -59,6 +59,13 @@ export const BACKOFFICE_PERMISSION = {
   internal: {
     manage: { namespace: "internal", permission: "manage" },
   },
+  marketplace: {
+    read: { namespace: "marketplace", permission: "read" },
+  },
+  packages: {
+    read: { namespace: "packages", permission: "read" },
+    install: { namespace: "packages", permission: "install" },
+  },
   mcp: {
     serversCreate: { namespace: "mcp", permission: "servers.create" },
     serversDelete: { namespace: "mcp", permission: "servers.delete" },

@@ -37,8 +37,12 @@ import {
 } from "./families/internal";
 import { javaScriptCheckToolFamily, javaScriptRunToolFamily } from "./families/javascript";
 import type { JavaScriptRuntime } from "./families/javascript-runtime";
+import { marketplaceToolFamily } from "./families/marketplace";
+import type { MarketplaceRuntime } from "./families/marketplace-runtime";
 import { mcpToolFamily, type McpRuntime } from "./families/mcp";
 import { otpToolFamily, type OtpRuntime } from "./families/otp";
+import { packagesToolFamily } from "./families/packages";
+import type { PackagesRuntime } from "./families/packages-runtime";
 import { piToolFamily } from "./families/pi";
 import { projectConnectorToolFamily } from "./families/project-connector";
 import type { ProjectConnectorRuntime } from "./families/project-connector-runtime";
@@ -71,6 +75,8 @@ export type CoreBackofficeRuntimeMap = {
   internal?: InternalRuntime;
   api?: ApiRuntime;
   mcp?: McpRuntime;
+  marketplace: MarketplaceRuntime | undefined;
+  packages: PackagesRuntime | undefined;
   projectConnector: ProjectConnectorRuntime | undefined;
   otp?: OtpRuntime;
   pi?: PiManagerRuntime;
@@ -113,6 +119,8 @@ export const runtimeToolFamilies = [
   javaScriptCheckToolFamily,
   javaScriptRunToolFamily,
   uploadToolFamily,
+  marketplaceToolFamily,
+  packagesToolFamily,
   internalWorkspaceToolFamily,
   internalMarketplaceToolFamily,
 ] as const satisfies readonly BackofficeRuntimeToolFamily[];

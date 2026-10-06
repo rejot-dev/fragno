@@ -24,6 +24,8 @@
 /// <reference path="/static/codemode/providers/telegram.d.ts" />
 /// <reference path="/static/codemode/providers/js.d.ts" />
 /// <reference path="/static/codemode/providers/upload.d.ts" />
+/// <reference path="/static/codemode/providers/marketplace.d.ts" />
+/// <reference path="/static/codemode/providers/packages.d.ts" />
 /// <reference path="/static/codemode/sources/mcp.d.ts" />
 
 // Scoped context handles target a selected Backoffice context.
@@ -58,6 +60,8 @@ interface BackofficeCodemodeScopedProviders {
   telegram: TelegramCodemodeProvider;
   js: JsCodemodeProvider;
   upload: UploadCodemodeProvider;
+  marketplace: MarketplaceCodemodeProvider;
+  packages: PackagesCodemodeProvider;
 }
 declare const context: {
   /** Return the exact scope governing this codemode execution. */

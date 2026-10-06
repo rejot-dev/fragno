@@ -3,7 +3,7 @@
 # Backoffice static agent-context graph
 
 - **Static mount:** `/static/`
-- **Files:** 52
+- **Files:** 54
 - **Entry points:** 1 `SYSTEM.md` + 17 skills
 
 ## How context is loaded
@@ -47,7 +47,9 @@
    ├─ /static/codemode/providers/telegram.d.ts — telegram tools [line 24]
    ├─ /static/codemode/providers/js.d.ts — js tools [line 25]
    ├─ /static/codemode/providers/upload.d.ts — upload tools [line 26]
-   └─ /static/codemode/sources/mcp.d.ts — Backoffice domain tool providers [line 27]
+   ├─ /static/codemode/providers/marketplace.d.ts — marketplace tools [line 27]
+   ├─ /static/codemode/providers/packages.d.ts — packages tools [line 28]
+   └─ /static/codemode/sources/mcp.d.ts — Backoffice domain tool providers [line 29]
 ```
 
 ## Skill entry points

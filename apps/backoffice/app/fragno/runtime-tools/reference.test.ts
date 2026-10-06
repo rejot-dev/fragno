@@ -1,4 +1,7 @@
-import { describe, expect, test, assert } from "vitest";
+// oxlint-disable-next-line typescript/triple-slash-reference -- Published codemode declarations define globals, not an importable module.
+/// <reference path="../../../content/static/codemode/providers/packages.d.ts" />
+
+import { describe, expect, expectTypeOf, test, assert } from "vitest";
 
 import { createCodemodeTypeFiles } from "@/fragno/codemode/codemode-dts";
 
@@ -36,6 +39,15 @@ const findBashFamily = (namespace: string): BackofficeRuntimeToolFamily => {
 };
 
 describe("runtime tool reference generation", () => {
+  test("generated package installation paths can be passed to filesystem tools", () => {
+    expectTypeOf<PackagesInstallOutput["installationRoot"]>().toEqualTypeOf<string>();
+    expectTypeOf<PackagesLsOutput["entries"][number]["installationRoot"]>().toEqualTypeOf<string>();
+    const reference = createRuntimeToolFamilyReference({ family: findBashFamily("packages") });
+    for (const tool of reference.tools) {
+      assert(tool.codemode.outputType.includes("installationRoot: string;"));
+      assert(!tool.codemode.outputType.includes("installationRoot: unknown;"));
+    }
+  });
   test.each([
     {
       namespace: "store",
