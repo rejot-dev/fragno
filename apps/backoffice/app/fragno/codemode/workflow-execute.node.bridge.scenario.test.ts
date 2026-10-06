@@ -170,7 +170,11 @@ test("interruption preserves host retry scheduling without falsely committing to
       name: "interrupted step retries through the Node runner",
       env: {
         codemode: {
-          remoteExecutor: (activation, host) => execute({ ...activation, timeoutMs: 750 }, host),
+          remoteExecutor: (activation, host) =>
+            execute(
+              activation.kind === "module-build" ? activation : { ...activation, timeoutMs: 750 },
+              host,
+            ),
         },
       },
       files: backofficeFiles.workspaceStarter({
@@ -248,6 +252,7 @@ test("permanent guest failures bypass the real Node runner's configured retry po
           event: {
             id: "permanent-event",
             scope,
+            scopeRestriction: null,
             source: "scenario",
             eventType: "remote.permanent.requested",
             occurredAt: "2026-10-05T00:00:00Z",

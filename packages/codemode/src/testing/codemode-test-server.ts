@@ -1,3 +1,5 @@
+import { posix } from "node:path";
+
 import { build } from "esbuild";
 import { Miniflare, Response as MiniflareResponse } from "miniflare";
 
@@ -8,12 +10,16 @@ import type {
 } from "../compiler/compile-worker";
 import {
   createCompileWorkerServiceResponse,
+  createCompilerServiceErrorResponse,
   readCompileWorkerServiceRequest,
 } from "../compiler/compiler-service-protocol";
 import { createWorkerBundle } from "../compiler/worker-bundle";
 
-async function compileCodemodeTestWorker(input: CompileWorkerInput): Promise<CompiledWorker> {
-  if (Object.keys(input.dependencies).length) {
+async function compileCodemodeTestWorker(
+  input: CompileWorkerInput,
+  dependencyResolveDir: string | null,
+): Promise<CompiledWorker> {
+  if (Object.keys(input.dependencies).length && dependencyResolveDir === null) {
     throw new Error("Test compiler does not install npm dependencies.");
   }
   const compiled = await build({
@@ -27,11 +33,33 @@ async function compileCodemodeTestWorker(input: CompileWorkerInput): Promise<Com
       {
         name: "codemode-test-files",
         setup(build) {
-          build.onResolve({ filter: /.*/ }, ({ path }) =>
-            path.startsWith("cloudflare:") || path.startsWith("node:")
-              ? { path, external: true }
-              : { path: path.replace(/^\.\//, ""), namespace: "codemode" },
-          );
+          build.onResolve({ filter: /.*/ }, async (args) => {
+            if (args.path.startsWith("cloudflare:") || args.path.startsWith("node:")) {
+              return { path: args.path, external: true };
+            }
+            if (args.namespace === "file" || args.pluginData === "installed-dependency") {
+              return undefined;
+            }
+            const path = posix.normalize(
+              args.path.startsWith(".")
+                ? posix.join(posix.dirname(args.importer), args.path)
+                : args.path,
+            );
+            if (Object.hasOwn(input.files, path)) {
+              return { path, namespace: "codemode" };
+            }
+            const packageName = args.path.startsWith("@")
+              ? args.path.split("/").slice(0, 2).join("/")
+              : args.path.split("/")[0];
+            if (dependencyResolveDir !== null && Object.hasOwn(input.dependencies, packageName)) {
+              return await build.resolve(args.path, {
+                kind: args.kind,
+                resolveDir: dependencyResolveDir,
+                pluginData: "installed-dependency",
+              });
+            }
+            return { errors: [{ text: `Undeclared test module: ${args.path}` }] };
+          });
           build.onLoad({ filter: /.*/, namespace: "codemode" }, ({ path }) => ({
             contents: input.files[path],
             loader: "js",
@@ -53,8 +81,9 @@ async function compileCodemodeTestWorker(input: CompileWorkerInput): Promise<Com
 /** Real local workerd bridge with WebSocket execution and an authenticated HTTP type-check seam. */
 export async function createCodemodeTestServer(
   wrapCompiler: (compile: WorkerCompiler) => WorkerCompiler = (compile) => compile,
+  dependencyResolveDir: string | null = null,
 ) {
-  const compile = wrapCompiler(compileCodemodeTestWorker);
+  const compile = wrapCompiler((input) => compileCodemodeTestWorker(input, dependencyResolveDir));
   const resolveDir = import.meta.dirname;
   const worker = await build({
     conditions: ["workerd"],
@@ -152,9 +181,17 @@ export default class JavaScriptTestCompiler extends WorkerEntrypoint {
             BUILD: {
               type: "fetcher",
               async handler(request) {
-                const input = await readCompileWorkerServiceRequest(request as unknown as Request);
-                const response = createCompileWorkerServiceResponse(await compile(input));
+                let response: Response;
+                try {
+                  const input = await readCompileWorkerServiceRequest(
+                    request as unknown as Request,
+                  );
+                  response = createCompileWorkerServiceResponse(await compile(input));
+                } catch (error) {
+                  response = createCompilerServiceErrorResponse(error);
+                }
                 return new MiniflareResponse(await response.arrayBuffer(), {
+                  status: response.status,
                   headers: { "content-type": response.headers.get("content-type")! },
                 });
               },

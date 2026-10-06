@@ -1,5 +1,6 @@
 import type { WorkerBundle } from "../compiler/worker-bundle";
 import { createCodemodeDispatchers } from "../host/codemode-tool-dispatcher";
+import { codemodeWorkerEvaluationSchema } from "../runtime-api";
 import type {
   CodemodeWorkerEvaluation,
   DynamicWorkerExecutorOptions,
@@ -118,7 +119,7 @@ export class DynamicWorkerExecutor {
     bundle: WorkerBundle,
     rpcTargets: DynamicWorkerRpcTargetMap,
   ): Promise<CodemodeWorkerEvaluation> {
-    return await this.runEntrypoint<
+    const evaluation = await this.runEntrypoint<
       {
         evaluate(
           rpcTargets: DynamicWorkerRpcTargetMap,
@@ -130,5 +131,6 @@ export class DynamicWorkerExecutor {
       rpcTargets,
       run: (entrypoint, targets) => entrypoint.evaluate(targets),
     });
+    return codemodeWorkerEvaluationSchema.parse(evaluation);
   }
 }

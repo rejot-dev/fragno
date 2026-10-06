@@ -6,6 +6,7 @@ import { RemoteWorkflowSuspendedError } from "@fragno-dev/workflows/remote-workf
 import { NonRetryableError, WaitForEventTimeoutError } from "@fragno-dev/workflows/workflow";
 import { RpcSession } from "capnweb";
 import WebSocket from "ws";
+import { z } from "zod";
 
 import { CODEMODE_LIMITS } from "../codemode-limits";
 import {
@@ -16,6 +17,7 @@ import {
   type CodemodeWorkflowTransactionHost,
 } from "../execution/codemode-activation-contract";
 import { CodemodeInterruptedError } from "../execution/codemode-errors";
+import { codemodeWorkerBundleSchema } from "../execution/codemode-worker-bundle";
 import { createCodemodeHost } from "../host/codemode-host-capabilities";
 import { createCodemodeTestServer } from "../testing/codemode-test-server";
 import {
@@ -111,6 +113,332 @@ const workflowBase = {
     payload: {},
   },
 };
+
+test("module invocation calls exported closures and returns values through registered providers", async () => {
+  const host = providerHost();
+  const result = await execute(
+    {
+      ...base,
+      kind: "module-invoke",
+      code: `const prefix = "module";
+        export default { render: value => prefix + ":" + value };`,
+      invocation: `async module => await store.write(module.default.render("invoked"))`,
+    },
+    host,
+  );
+  expect(result).toMatchObject({ status: "completed", value: "module:invoked" });
+  expect(host.writes).toEqual(["module:invoked"]);
+});
+
+test("generic module bundles accept consumer invocations with fresh inputs and providers when compilation is unavailable", async () => {
+  let available = true;
+  let compilations = 0;
+  const buildServer = await createCodemodeTestServer((compile) => async (input) => {
+    compilations += 1;
+    if (!available) {
+      throw new Error("Compiler unavailable");
+    }
+    return await compile(input);
+  });
+  const run = createCodemodeNodeExecutor(buildServer);
+  const buildHost = providerHost();
+  try {
+    const built = await run(
+      {
+        dependencies: {},
+        kind: "module-build",
+        code: "let calls = 0; export const double = value => value * 2; export default value => `${value}:${calls++}`;",
+      },
+      buildHost,
+    );
+    assert(built.status === "completed");
+    const { bundle } = z.object({ bundle: codemodeWorkerBundleSchema }).parse(built.value);
+    expect(buildHost.writes).toEqual([]);
+    expect(compilations).toBe(1);
+    available = false;
+    for (const value of ["first", "second"]) {
+      const host = providerHost();
+      const output = await run(
+        {
+          kind: "compiled",
+          bundle,
+          invocation: "async (module, input) => await store.write(module.default(input.value))",
+          input: { value },
+          providers: base.providers,
+          timeoutMs: 10_000,
+        },
+        host,
+      );
+      expect(output).toMatchObject({ status: "completed", value: `${value}:0` });
+      expect(host.writes).toEqual([`${value}:0`]);
+    }
+    expect(compilations).toBe(1);
+    expect(
+      await run(
+        {
+          kind: "compiled",
+          bundle,
+          invocation: "(module, input) => module.double(input)",
+          input: 21,
+          providers: [],
+          timeoutMs: 10_000,
+        },
+        createCodemodeHost([], null),
+      ),
+    ).toMatchObject({ status: "completed", value: 42 });
+    const conflictingBundle = {
+      ...bundle,
+      modules: {
+        ...bundle.modules,
+        "__fragno_module_invocation__.js": 'throw new Error("Unlisted module must not execute");',
+      },
+    };
+    expect(
+      await run(
+        {
+          kind: "compiled",
+          bundle: conflictingBundle,
+          invocation: "module => module.double(5)",
+          input: null,
+          providers: [],
+          timeoutMs: 10_000,
+        },
+        createCodemodeHost([], null),
+      ),
+    ).toMatchObject({ status: "completed", value: 10 });
+    expect(compilations).toBe(1);
+  } finally {
+    buildHost.close();
+    await buildServer.close();
+  }
+});
+
+test("oversized module-build results return a failed completion without breaking the RPC session", async () => {
+  let oversized = true;
+  const buildServer = await createCodemodeTestServer((compile) => async (input) => {
+    const compiled = await compile(input);
+    if (!oversized) {
+      return compiled;
+    }
+    return {
+      ...compiled,
+      bundle: {
+        ...compiled.bundle,
+        modules: {
+          ...compiled.bundle.modules,
+          [compiled.bundle.mainModule]:
+            compiled.bundle.modules[compiled.bundle.mainModule] +
+            "\n/*" +
+            "a".repeat(CODEMODE_LIMITS.maxFrameBytes) +
+            "*/",
+        },
+      },
+    };
+  });
+  const build = createCodemodeNodeExecutor(buildServer);
+  try {
+    const result = await build(
+      { kind: "module-build", code: "export default 42;", dependencies: {} },
+      createCodemodeHost([], null),
+    );
+    expect(result).toMatchObject({
+      status: "failed",
+      error: { message: expect.stringContaining("CODEMODE_REMOTE_PAYLOAD_LIMIT_EXCEEDED") },
+    });
+    oversized = false;
+    expect(
+      await build(
+        { kind: "module-build", code: "export default 42;", dependencies: {} },
+        createCodemodeHost([], null),
+      ),
+    ).toMatchObject({ status: "completed" });
+  } finally {
+    await buildServer.close();
+  }
+});
+
+test.each(["resolve", "reject"] as const)(
+  "bridge admission spans completed guests and pending host calls until they %s",
+  async (settlement) => {
+    let compilerCalls = 0;
+    const limitedServer = await createCodemodeTestServer(() => async () => {
+      compilerCalls++;
+      throw new Error("Precompiled execution must not enter the compiler");
+    });
+    const clients = [
+      createCodemodeNodeExecutor(limitedServer),
+      createCodemodeNodeExecutor(limitedServer),
+    ];
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let started = 0;
+    const activation = {
+      kind: "compiled" as const,
+      bundle: codemodeWorkerBundleSchema.parse({
+        mainModule: "script.js",
+        modules: { "script.js": "export default {};" },
+        runtime: { compatibilityDate: "2026-05-07", compatibilityFlags: ["nodejs_compat"] },
+      }),
+      invocation:
+        'async () => { store.write("held").catch(() => {}); await store.write("ready"); return 42; }',
+      input: null,
+      providers: base.providers,
+      timeoutMs: 10_000,
+    };
+    const hosts = Array.from({ length: CODEMODE_LIMITS.maxBridgeActivations }, () =>
+      createCodemodeHost(
+        [
+          {
+            name: "store",
+            fns: {
+              write: async (value) => {
+                if (value === "ready") {
+                  return "ready";
+                }
+                started++;
+                await gate;
+                if (settlement === "reject") {
+                  throw new Error("Delayed host failure");
+                }
+                return "released";
+              },
+            },
+          },
+        ],
+        null,
+      ),
+    );
+    const url = new URL(CODEMODE_EXECUTION_HTTP_PATH, limitedServer.url);
+    url.protocol = "ws:";
+    const sockets = hosts.map(
+      () =>
+        new WebSocket(url.href, { headers: { Authorization: `Bearer ${limitedServer.apiKey}` } }),
+    );
+    const connections = await Promise.all(
+      sockets.map(async (socket, index) => {
+        const host = hosts[index];
+        await once(socket, "open");
+        const transport = new CodemodeWebSocketTransport(
+          socket,
+          () => socket.bufferedAmount,
+          () => host.close(),
+          () => 0,
+        );
+        const session = new RpcSession<CodemodeExecutionCapability>(
+          transport,
+          undefined,
+          CODEMODE_RPC_OPTIONS,
+        );
+        return { host, transport, bridge: session.getRemoteMain() };
+      }),
+    );
+    const running = connections.map(({ host, bridge }) =>
+      bridge.execute(
+        { protocolVersion: 2, executionId: crypto.randomUUID(), activation },
+        host.capabilities,
+      ),
+    );
+    const finished = Promise.allSettled(running);
+    try {
+      for (const result of await finished) {
+        assert(result.status === "fulfilled");
+        expect(result.value).toMatchObject({ status: "completed", value: 42 });
+      }
+      expect(started).toBe(CODEMODE_LIMITS.maxBridgeActivations);
+      expect(
+        await clients[0](
+          { ...activation, providers: [], invocation: "() => 7" },
+          createCodemodeHost([], null),
+        ),
+      ).toMatchObject({
+        status: "failed",
+        error: { message: "CODEMODE_BRIDGE_ACTIVATION_LIMIT_EXCEEDED" },
+      });
+      expect(compilerCalls).toBe(0);
+      release();
+      await Promise.all(hosts.map((host) => host.settle()));
+      expect(
+        await clients[1](
+          { ...activation, providers: [], invocation: "() => 7" },
+          createCodemodeHost([], null),
+        ),
+      ).toMatchObject({ status: "completed", value: 7 });
+      expect(compilerCalls).toBe(0);
+    } finally {
+      release();
+      await finished;
+      for (const { host, transport, bridge } of connections) {
+        host.close();
+        transport.abort(new Error("Test finished"));
+        bridge[Symbol.dispose]();
+      }
+      await Promise.all(hosts.map((host) => host.settle()));
+      await limitedServer.close();
+    }
+  },
+);
+
+test("precompiled guests cannot bypass their host-owned wall deadline", async () => {
+  const host = createCodemodeHost([], null);
+  try {
+    const built = await execute(
+      {
+        dependencies: {},
+        kind: "module-build",
+        code: "export default () => new Promise(() => {});",
+      },
+      host,
+    );
+    assert(built.status === "completed");
+    const { bundle } = z.object({ bundle: codemodeWorkerBundleSchema }).parse(built.value);
+    await expect(
+      execute(
+        {
+          kind: "compiled",
+          bundle,
+          invocation: "module => module.default()",
+          input: null,
+          providers: [],
+          timeoutMs: 100,
+        },
+        createCodemodeHost([], null),
+      ),
+    ).rejects.toThrow("CODEMODE_EXECUTION_INTERRUPTED");
+  } finally {
+    host.close();
+  }
+});
+
+test("module invocation failures do not become successful undefined results", async () => {
+  const result = await execute(
+    {
+      ...base,
+      kind: "module-invoke",
+      code: "export default {};",
+      invocation: "module => module.default.missing()",
+    },
+    providerHost(),
+  );
+  expect(result).toMatchObject({ status: "failed", error: { kind: "error" } });
+});
+
+test("module invocation counts both source and invocation against the source byte limit", async () => {
+  const result = await execute(
+    {
+      ...base,
+      kind: "module-invoke",
+      code: "//" + "a".repeat(CODEMODE_LIMITS.maxSourceBytes / 2),
+      invocation: "//" + "b".repeat(CODEMODE_LIMITS.maxSourceBytes / 2),
+    },
+    providerHost(),
+  );
+  expect(result).toMatchObject({
+    status: "failed",
+    error: { message: "CODEMODE_SOURCE_LIMIT_EXCEEDED" },
+  });
+});
 
 test("the bridge rejects mismatched application versions and accepts only one execution per socket", async () => {
   let compilations = 0;

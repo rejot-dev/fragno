@@ -1,6 +1,10 @@
+const maxFrameBytes = 8 * 1024 * 1024;
+
 /** Hard bounds apply independently on both peers, including before the guest starts. */
 export const CODEMODE_LIMITS = {
-  maxFrameBytes: 8 * 1024 * 1024,
+  maxFrameBytes,
+  // Leave room for the RPC envelope and the host's bounded provider capability table.
+  maxRpcPayloadBytes: maxFrameBytes - 64 * 1024,
   maxQueuedBytes: 16 * 1024 * 1024,
   maxSessionBytes: 64 * 1024 * 1024,
   maxSourceBytes: 1024 * 1024,
@@ -21,6 +25,7 @@ export const CODEMODE_LIMITS = {
   activationTimeoutMs: 125_000,
   hostDrainTimeoutMs: 5_000,
   maxNodeActivations: 32,
+  maxBridgeActivations: 16,
   maxBridgeCompilations: 8,
   cpuMs: 5_000,
   subRequests: 1_000,

@@ -19,7 +19,7 @@ describe("DynamicWorkerExecutor", () => {
   test("disposes the raw dynamic worker RPC call result", async () => {
     const disposeRpcCall = vi.fn();
     const disposeEntrypoint = vi.fn();
-    const response = { result: "done" };
+    const response = { ok: true, result: "done", error: null, logs: [], workflowDefinition: null };
     const rpcCall = Object.assign(Promise.resolve(response), {
       [Symbol.dispose]: disposeRpcCall,
     }) satisfies DynamicWorkerRpcCall<typeof response>;
@@ -34,7 +34,7 @@ describe("DynamicWorkerExecutor", () => {
     } as unknown as WorkerLoader;
     const executor = new DynamicWorkerExecutor({ loader });
 
-    await expect(executor.evaluateWorkerBundle(workerBundle, {})).resolves.toBe(response);
+    await expect(executor.evaluateWorkerBundle(workerBundle, {})).resolves.toEqual(response);
 
     expect(disposeRpcCall).toHaveBeenCalledOnce();
     expect(disposeEntrypoint).toHaveBeenCalledOnce();

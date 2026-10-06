@@ -12,6 +12,7 @@ import {
 } from "../execution/codemode-activation-contract";
 import { CodemodeInterruptedError } from "../execution/codemode-errors";
 import { createCloudflareBridgeWebSocketUrl } from "../transport/cloudflare-bridge-url";
+import { assertCodemodeRpcPayloadSize } from "../transport/codemode-rpc-payload";
 import {
   CODEMODE_RPC_OPTIONS,
   CodemodeWebSocketTransport,
@@ -32,11 +33,19 @@ export function createCodemodeNodeExecutor(config: {
   // Reject invalid header values before reserving activation capacity or opening a socket.
   new Headers(headers);
   return async function executeRemoteCodemode(activation, host): Promise<CodemodeCompletion> {
-    codemodeActivationSchema.parse(activation);
     if (activeNodeActivations >= CODEMODE_LIMITS.maxNodeActivations) {
       throw new Error("CODEMODE_NODE_ACTIVATION_LIMIT_EXCEEDED");
     }
     activeNodeActivations += 1;
+    try {
+      codemodeActivationSchema.parse(activation);
+      if (activation.kind === "compiled") {
+        assertCodemodeRpcPayloadSize(activation);
+      }
+    } catch (error) {
+      activeNodeActivations -= 1;
+      throw error;
+    }
     const executionId = crypto.randomUUID();
     const startedAt = Date.now();
     let outcome: CodemodeCompletion["status"] | "interrupted" = "interrupted";
@@ -83,7 +92,7 @@ export function createCodemodeNodeExecutor(config: {
         transport.abort(new CodemodeInterruptedError("CODEMODE_ACTIVATION_TIMED_OUT"));
       },
       CODEMODE_LIMITS.connectTimeoutMs +
-        (activation.kind === "workflow"
+        (activation.kind === "workflow" || activation.kind === "compiled"
           ? activation.timeoutMs
           : CODEMODE_LIMITS.activationTimeoutMs),
     );

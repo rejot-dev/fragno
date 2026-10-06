@@ -60,6 +60,10 @@
       "types": "./dist/execution/codemode-activation-contract.d.ts",
       "default": "./dist/execution/codemode-activation-contract.js"
     },
+    "./execution/codemode-worker-bundle": {
+      "types": "./dist/execution/codemode-worker-bundle.d.ts",
+      "default": "./dist/execution/codemode-worker-bundle.js"
+    },
     "./execution/execute-codemode-activation": {
       "types": "./dist/execution/execute-codemode-activation.d.ts",
       "default": "./dist/execution/execute-codemode-activation.js"

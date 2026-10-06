@@ -14,10 +14,13 @@ import {
   type CodemodeActivationServices,
 } from "../execution/execute-codemode-activation";
 import { restrictCodemodeProvider } from "../host/codemode-host-capabilities";
+import { assertCodemodeRpcPayloadSize } from "../transport/codemode-rpc-payload";
 import {
   CODEMODE_RPC_OPTIONS,
   CodemodeWebSocketTransport,
 } from "../transport/codemode-websocket-transport";
+import { reserveCodemodeBridgeActivation } from "./codemode-bridge-activation-admission";
+import { createCodemodeBridgeHost } from "./codemode-bridge-host";
 
 /** Accepts one authenticated Cap'n Web session; activation execution owns compilation and guest loading. */
 export function acceptCodemodeBridgeSession(
@@ -87,34 +90,56 @@ export function acceptCodemodeBridgeSession(
         () => {
           transport.abort(new CodemodeInterruptedError("CODEMODE_ACTIVATION_TIMED_OUT"));
         },
-        activation.kind === "workflow" ? activation.timeoutMs : CODEMODE_LIMITS.activationTimeoutMs,
+        activation.kind === "workflow" || activation.kind === "compiled"
+          ? activation.timeoutMs
+          : CODEMODE_LIMITS.activationTimeoutMs,
       );
       // Narrow both providers and tools; host lifecycle methods and original dispatchers stay private.
       const targets: CodemodeCapabilities = {
         dispatchers: Object.fromEntries(
-          activation.providers.map(({ name, tools }) => [
-            name,
-            restrictCodemodeProvider(capabilities.dispatchers[name], tools),
-          ]),
+          (activation.kind === "module-build" ? [] : activation.providers).map(
+            ({ name, tools }) => [
+              name,
+              restrictCodemodeProvider(capabilities.dispatchers[name], tools),
+            ],
+          ),
         ),
         stepTarget: activation.kind === "workflow" ? capabilities.stepTarget : null,
       };
       const task = (async (): Promise<CodemodeCompletion> => {
         try {
-          return await executeCodemodeActivation(
-            activation,
-            services,
-            targets,
-            abort.signal,
-            (error) => {
-              transport.abort(error);
-            },
-          );
+          const host = createCodemodeBridgeHost(targets);
+          const releaseActivation = reserveCodemodeBridgeActivation();
+          function revokeBridgeHost() {
+            host.close();
+          }
+          abort.signal.addEventListener("abort", revokeBridgeHost, { once: true });
+          try {
+            abort.signal.throwIfAborted();
+            const completion = await executeCodemodeActivation(
+              activation,
+              services,
+              host.capabilities,
+              abort.signal,
+              (error) => {
+                transport.abort(error);
+              },
+            );
+            if (activation.kind === "module-build") {
+              assertCodemodeRpcPayloadSize(completion);
+            }
+            return completion;
+          } finally {
+            abort.signal.removeEventListener("abort", revokeBridgeHost);
+            host.close();
+            // Completion can reach Node's bounded drain while this isolate retains its lease.
+            ctx.waitUntil(host.settle().finally(releaseActivation));
+          }
         } catch (error) {
           return { status: "failed", error: encodeCodemodeError(error), logs: [] };
         }
       })();
-      // Compilation retains its admission slot until settlement even after the socket disconnects.
+      // Guest execution and forwarded host calls retain admission until actual bridge-side settlement.
       ctx.waitUntil(task.then(() => {}));
       const completion = await task;
       abort.signal.throwIfAborted();
