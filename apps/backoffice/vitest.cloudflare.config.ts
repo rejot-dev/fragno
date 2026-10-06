@@ -20,11 +20,10 @@ export default defineProject({
       },
     },
     cloudflareTest({
-      // Keep the Workers pool on a minimal test-only Wrangler config so it
-      // does not import the full app worker and every production binding for
-      // each Cloudflare test file.
+      // A separate config directory keeps Wrangler from loading Backoffice's
+      // local .dev.vars or .env files into the cacheable Workers tests.
       remoteBindings: false,
-      wrangler: { configPath: "./wrangler.vitest.jsonc" },
+      wrangler: { configPath: "./tests/wrangler.vitest.jsonc" },
     }),
   ],
   resolve: docsVitestResolveConfig,

@@ -11,6 +11,44 @@ Compilation and type-checking live in the separately deployed
 Backoffice's own Worker Loader. There is no standalone compiler Worker. For local Cloudflare
 codemode development, start the bridge's `dev` script alongside Backoffice.
 
+## Tests
+
+Run Backoffice's Node and Cloudflare suites from the repository root:
+
+```bash
+pnpm exec turbo run test --filter=@fragno-apps/backoffice-rr
+```
+
+Turbo builds workspace dependencies and generates static content before testing. Tests consume
+application source, so they do not require a Backoffice production build. Vitest uses half the
+available CPUs, leaving capacity for other package tasks running alongside it.
+
+Watch application and workspace dependency changes with:
+
+```bash
+pnpm test:watch --filter=@fragno-apps/backoffice-rr
+```
+
+This uses `turbo watch test`: dependencies are rebuilt before the test task reruns. To use Vitest's
+own file watcher instead, run
+`pnpm exec turbo watch test:watch --filter=@fragno-apps/backoffice-rr`; Turbo prepares dependencies
+and restarts the watcher when their inputs change. Running `pnpm --dir apps/backoffice test:watch`
+directly assumes dependency outputs and static content are already current.
+
+Cloudflare tests use `tests/wrangler.vitest.jsonc` with deterministic test bindings and no remote
+bindings. Keep that directory free of `.dev.vars` and `.env` files: Wrangler resolves development
+secrets beside its configuration, and local credentials must not affect cached tests.
+
+Coverage is disabled for ordinary test runs. Generate Backoffice-specific coverage separately:
+
+```bash
+pnpm exec turbo run test:coverage --filter=@fragno-apps/backoffice-rr
+```
+
+The task caches its reports under `apps/backoffice/coverage/`, including the HTML report at
+`coverage/index.html`. The root `pnpm test:coverage` command remains the existing library-package
+coverage aggregation workflow; it does not include Backoffice.
+
 ## Static agent-context graph
 
 [`content/CONTEXT-GRAPH.md`](../../content/CONTEXT-GRAPH.md) is a generated map of how files in

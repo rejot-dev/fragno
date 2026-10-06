@@ -18,6 +18,17 @@
         "content/static/skills/generating-backoffice-uis/CATALOG.md"
       ]
     },
+    "test": {
+      "dependsOn": ["^build", "static:generate"]
+    },
+    "test:watch": {
+      "dependsOn": ["^build", "static:generate"],
+      "interruptible": true
+    },
+    "test:coverage": {
+      "dependsOn": ["^build", "static:generate"],
+      "outputs": ["coverage/**"]
+    },
     "types:generate": {
       "outputs": ["worker-configuration.d.ts", ".react-router/types/**", ".source/**"]
     },
