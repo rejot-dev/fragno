@@ -1099,6 +1099,36 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
         },
       }),
 
+      // Batch snapshots preserve revisions and deleted rows without one lookup per key.
+      defineRoute({
+        method: "POST",
+        path: "/files/snapshots",
+        inputSchema: z.object({
+          provider: providerNamespaceSchema,
+          fileKeys: z.array(z.string().min(1)).min(1).max(500),
+        }),
+        outputSchema: z.object({ files: z.array(fileSnapshotSchema) }),
+        errorCodes,
+        handler: async function ({ input }, { json, error }) {
+          const payload = await input.valid();
+          let fileKeys: string[];
+          try {
+            fileKeys = payload.fileKeys.map((fileKey) => resolveFileKeyInput({ fileKey }).fileKey);
+          } catch (cause) {
+            return handleServiceError(cause, error);
+          }
+          const files = await this.handlerTx()
+            .withServiceCalls(() => [
+              services.findFilesByKeys({ provider: payload.provider, fileKeys }),
+            ])
+            .transform(({ serviceResult: [files] }) =>
+              files.map((file) => ({ ...toFileMetadata(file), revision: file.id.version })),
+            )
+            .execute();
+          return json({ files });
+        },
+      }),
+
       // Complex read endpoints use POST so callers can send structured search options
       // without query-string encoding or URL length limits.
       defineRoute({
