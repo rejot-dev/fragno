@@ -156,6 +156,8 @@ export type BackofficeRuntimeTool<
   getResource?(input: z.output<TInputSchema>): unknown;
   inputSchema: TInputSchema;
   outputSchema: TOutputSchema;
+  /** Secret-bearing output is returned to the caller but omitted from tool-call records. */
+  resultLogging: "summary" | "redacted";
   execute(input: z.output<TInputSchema>, context: TContext): Promise<z.output<TOutputSchema>>;
   adapters?: BackofficeRuntimeToolAdapters<TInputSchema, TOutputSchema, TContext, TBashInput>;
   reference?: BackofficeRuntimeToolReferenceHints;
@@ -171,14 +173,18 @@ export type BackofficeRuntimeToolFamily = {
   isAvailable?: (context: BackofficeToolContext) => boolean;
 };
 
-export const defineBackofficeRuntimeTool = <
+export function defineBackofficeRuntimeTool<
   TInputSchema extends z.ZodType,
   TOutputSchema extends z.ZodType,
   TContext extends BackofficeToolContext = BackofficeToolContext,
   TBashInput = z.input<TInputSchema>,
 >(
-  tool: BackofficeRuntimeTool<TInputSchema, TOutputSchema, TContext, TBashInput>,
-): BackofficeRuntimeTool<TInputSchema, TOutputSchema, TContext, TBashInput> => {
+  tool: Omit<
+    BackofficeRuntimeTool<TInputSchema, TOutputSchema, TContext, TBashInput>,
+    "resultLogging"
+  >,
+  resultLogging: "summary" | "redacted" = "summary",
+): BackofficeRuntimeTool<TInputSchema, TOutputSchema, TContext, TBashInput> {
   const authorizationNamespace = tool.authorizationNamespace ?? tool.namespace;
   for (const permission of tool.requiredPermissions) {
     if (!isBackofficePermissionRequirement({ namespace: authorizationNamespace, permission })) {
@@ -187,8 +193,8 @@ export const defineBackofficeRuntimeTool = <
       );
     }
   }
-  return tool;
-};
+  return { ...tool, resultLogging };
+}
 
 export const defineBackofficeRuntimeToolFamily = <
   TContext extends BackofficeToolContext = BackofficeToolContext,
@@ -316,16 +322,17 @@ const authorizeBackofficeRuntimeTool = async (
   }
 };
 
-export const executeBackofficeRuntimeTool = async (
-  tool: AnyBackofficeRuntimeTool,
+/** Authorizes each invocation and returns the output established by the selected tool's schema. */
+export async function executeBackofficeRuntimeTool<TTool extends AnyBackofficeRuntimeTool>(
+  tool: TTool,
   input: unknown,
   context: BackofficeToolContext,
-): Promise<unknown> => {
+): Promise<z.output<TTool["outputSchema"]>> {
   const parsedInput = tool.inputSchema.parse(input);
   await authorizeBackofficeRuntimeTool(tool, parsedInput, context);
   const output = await tool.execute(parsedInput, context);
-  return tool.outputSchema.parse(output);
-};
+  return tool.outputSchema.parse(output) as z.output<TTool["outputSchema"]>;
+}
 
 export const createBackofficeCodemodeProviders = ({
   tools,
@@ -357,7 +364,8 @@ export const createBackofficeCodemodeProviders = ({
 
         try {
           const output = await executeBackofficeRuntimeTool(tool, input, context);
-          call.resultSummary = summarizeToolValue(output);
+          call.resultSummary =
+            tool.resultLogging === "redacted" ? "[redacted]" : summarizeToolValue(output);
           toolCalls?.push(call);
           return output;
         } catch (error) {
@@ -442,7 +450,12 @@ export const createBackofficeBashCommands = ({
 
         commandCallsResult.push({
           command: bash.command,
-          output: result.stdoutEncoding === "binary" ? "<binary>" : stdout.replace(/\n$/, ""),
+          output:
+            tool.resultLogging === "redacted"
+              ? "[redacted]"
+              : result.stdoutEncoding === "binary"
+                ? "<binary>"
+                : stdout.replace(/\n$/, ""),
           exitCode,
         });
 

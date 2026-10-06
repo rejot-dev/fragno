@@ -119,7 +119,7 @@ const callScopedTool = async (
   };
   try {
     const output = await executeBackofficeRuntimeTool(tool, input.args[0], scopedContext);
-    call.resultSummary = JSON.stringify(output);
+    call.resultSummary = tool.resultLogging === "redacted" ? "[redacted]" : JSON.stringify(output);
     toolCalls?.push(call);
     return output;
   } catch (error) {

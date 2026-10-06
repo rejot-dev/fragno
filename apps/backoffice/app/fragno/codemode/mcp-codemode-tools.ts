@@ -12,6 +12,7 @@ import { NotConfiguredError } from "@/fragno/runtime-tools/runtime-errors";
 import {
   createBackofficeCodemodeProviders,
   type AnyBackofficeRuntimeTool,
+  defineBackofficeRuntimeTool,
   type BackofficeRuntimeToolCall,
   type BackofficeToolContext,
 } from "@/fragno/runtime-tools/runtime-tools";
@@ -216,23 +217,25 @@ const createMcpCodemodeRuntimeTools = ({
   servers: readonly McpCodemodeServer[];
 }): AnyBackofficeRuntimeTool[] =>
   servers.flatMap((server) =>
-    server.tools.map((tool) => ({
-      id: `mcp.${server.slug}.${tool.originalName}`,
-      namespace: server.providerName,
-      name: tool.codemodeName,
-      authorizationNamespace: "mcp",
-      description: tool.description,
-      requiredPermissions: ["tools.call"],
-      getResource: () => ({ slug: server.slug, toolName: tool.originalName }),
-      inputSchema: z.record(z.string(), z.unknown()).optional().default({}),
-      outputSchema: z.record(z.string(), z.unknown()),
-      execute: async (input) =>
-        await runtime.callTool({
-          slug: server.slug,
-          name: tool.originalName,
-          arguments: input as Record<string, unknown>,
-        }),
-    })),
+    server.tools.map((tool) =>
+      defineBackofficeRuntimeTool({
+        id: `mcp.${server.slug}.${tool.originalName}`,
+        namespace: server.providerName,
+        name: tool.codemodeName,
+        authorizationNamespace: "mcp",
+        description: tool.description,
+        requiredPermissions: ["tools.call"],
+        getResource: () => ({ slug: server.slug, toolName: tool.originalName }),
+        inputSchema: z.record(z.string(), z.unknown()).optional().default({}),
+        outputSchema: z.record(z.string(), z.unknown()),
+        execute: async (input) =>
+          await runtime.callTool({
+            slug: server.slug,
+            name: tool.originalName,
+            arguments: input,
+          }),
+      }),
+    ),
   );
 
 const isMcpNotConfiguredError = (error: unknown) => error instanceof NotConfiguredError;

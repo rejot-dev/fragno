@@ -243,24 +243,15 @@ const readNonNegativeIntegerOption = (
   return value;
 };
 
-const readJsonOption = (
-  parsed: ParsedCliTokens,
-  name: string,
-  required = false,
-): Record<string, unknown> | undefined => {
+const readJsonOption = (parsed: ParsedCliTokens, name: string, required = false): unknown => {
   const raw = readStringOption(parsed, name, required);
   if (typeof raw === "undefined") {
     return undefined;
   }
 
   try {
-    const result: unknown = JSON.parse(raw);
-
-    if (typeof result !== "object" || result === null || Array.isArray(result)) {
-      throw new Error(`--${name} must be a JSON object`);
-    }
-
-    return result as Record<string, unknown>;
+    // The tool schema owns the JSON shape: app permissions, for example, require an array.
+    return JSON.parse(raw) as unknown;
   } catch {
     throw new Error(`--${name} must be valid JSON`);
   }
@@ -324,7 +315,7 @@ export type CliArgsField<TValue> = {
   required?: boolean;
   defaultValue?: TValue;
   read?: (parsed: ParsedCliTokens, optionName: string, required: boolean) => TValue | undefined;
-  transform?: (value: NonNullable<TValue>, parsed: ParsedCliTokens) => TValue | undefined;
+  transform?: (value: Exclude<TValue, undefined>, parsed: ParsedCliTokens) => TValue | undefined;
 };
 
 export type CliArgsFieldMap<TArgs extends object> = {
@@ -355,7 +346,7 @@ const readCliArgsField = <TValue>(
                 ? readJsonOption(parsed, optionName, required)
                 : readStringOption(parsed, optionName, required);
 
-  const value = (rawValue ?? field.defaultValue) as TValue | undefined;
+  const value = (rawValue === undefined ? field.defaultValue : rawValue) as TValue | undefined;
   if (typeof value === "undefined") {
     if (required) {
       throw new Error(`Missing required option --${optionName}`);
@@ -364,7 +355,7 @@ const readCliArgsField = <TValue>(
   }
 
   return field.transform
-    ? field.transform(value as NonNullable<TValue>, parsed)
+    ? field.transform(value as Exclude<TValue, undefined>, parsed)
     : (value as TValue);
 };
 
