@@ -1,4 +1,9 @@
-import { DurableObject } from "cloudflare:workers";
+import { buildWorkerProject } from "@fragno-apps/cf-sandbox-bridge/compiler/build-worker-project";
+import {
+  createCompileWorkerServiceResponse,
+  readCompileWorkerServiceRequest,
+} from "@fragno-dev/codemode/compiler/compiler-service-protocol";
+import { DurableObject, WorkerEntrypoint } from "cloudflare:workers";
 
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import type { BackofficeMeData } from "@/fragno/auth/contracts";
@@ -45,6 +50,16 @@ export default {
     return new Response("Backoffice Vitest worker");
   },
 };
+
+/** Real streamed compiler RPC for dependency-free Pi extension gate scenarios. */
+export class PiWorkspaceExtensionCompiler extends WorkerEntrypoint {
+  async compileWorker(request: Request): Promise<Response> {
+    const input = await readCompileWorkerServiceRequest(request);
+    // These scenarios use plain exported objects; npm installation would obscure the gate regression.
+    const compiled = await buildWorkerProject({ ...input, dependencies: {} });
+    return createCompileWorkerServiceResponse(compiled);
+  }
+}
 
 export class OutboxHarnessDurableObject extends DurableObject {
   async alarm() {}

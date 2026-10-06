@@ -9,6 +9,7 @@ import { env } from "cloudflare:workers";
 import { createRegistry, Harness, type ConversationView } from "@earendil-works/pi-durable";
 
 import {
+  BACKOFFICE_SYSTEM_ACTORS,
   createBackofficeServiceExecution,
   createBackofficeSystemExecution,
   type BackofficeContextScope,
@@ -18,6 +19,7 @@ import {
   backofficeObjectScopeFromContextScope,
   encodeBackofficeObjectAddress,
 } from "@/backoffice-runtime/object-registry";
+import { createCloudflareDurableObjectRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import {
   piAgentConfigSchema,
   piAgentObjectName,
@@ -25,7 +27,7 @@ import {
 } from "@/fragno/pi-manager/pi-agent-contract";
 
 import { openPiSessionStore } from "./lib/pi-session-store";
-import type { Pi } from "./pi.do";
+import { InMemoryPiObject, type Pi } from "./pi.do";
 
 function manager(organizationId: string) {
   return (env as CloudflareEnv).PI_MANAGER.getByName(
@@ -316,6 +318,75 @@ describe("Pi durable agent scenarios", () => {
       expect(await state.storage.getAlarm()).toBeNull();
     });
   });
+
+  test.each(["view", "alarm"] as const)(
+    "a cold startup failure does not prevent a later %s from reopening the session",
+    async (retryThrough) => {
+      const config: PiAgentConfig = {
+        scope: { kind: "org", orgId: `pi-startup-retry-${crypto.randomUUID()}` },
+        sessionId: crypto.randomUUID(),
+        name: "Recovering startup",
+        model: { provider: "faux", modelId: "faux-1" },
+        instructions: "Recover after the storage connection fails.",
+        actors: BACKOFFICE_SYSTEM_ACTORS,
+        billingOrganizationId: null,
+        scopeRestriction: null,
+      };
+      const testEnv = env as CloudflareEnv;
+      const stub = testEnv.PI.getByName(piAgentObjectName(config));
+      await runInDurableObject(stub, async (_instance, state) => {
+        await state.storage.put("pi-agent-config", piAgentConfigSchema.parse(config));
+        const startupError = new Error("PI_STARTUP_STORAGE_TEMPORARILY_UNAVAILABLE");
+        const reports: unknown[] = [];
+        let storageAttempts = 0;
+        const faux = fauxProvider();
+        faux.setResponses([fauxAssistantMessage("Recovered after startup.")]);
+        const models = createModels();
+        models.setProvider(faux.provider);
+        const object = new InMemoryPiObject({
+          state,
+          runtime: createCloudflareDurableObjectRuntimeServices(testEnv, state),
+          options: { models, registry: createRegistry(), onReport: (error) => reports.push(error) },
+          openStorage: async () => {
+            storageAttempts += 1;
+            if (storageAttempts === 1) {
+              throw startupError;
+            }
+            return await openPiSessionStore(state.storage);
+          },
+          idFromConfig: (input) => testEnv.PI.idFromName(piAgentObjectName(input)),
+          nowEpochMs: Date.now,
+        });
+        try {
+          await expect(object.getView(config)).rejects.toThrow(startupError.message);
+          if (retryThrough === "alarm") {
+            await object.alarm();
+          }
+          await expect(object.getView(config)).resolves.toMatchObject({ entries: [] });
+          expect(reports).toEqual([startupError]);
+          await expect(state.storage.get("pi-agent-config")).resolves.toEqual(config);
+
+          await object.submit(config, {
+            requestId: "startup-recovered",
+            content: "Finish the recovered session.",
+            whenBusy: "followUp",
+          });
+          expect(await state.storage.getAlarm()).not.toBeNull();
+          await object.alarm();
+          expect(JSON.stringify(await object.getView(config))).toContain(
+            "Recovered after startup.",
+          );
+          await expect(object.getSubmission(config, "startup-recovered")).resolves.toMatchObject({
+            status: "done",
+          });
+          expect(await state.storage.getAlarm()).toBeNull();
+          expect(reports).toEqual([startupError]);
+        } finally {
+          await object.close();
+        }
+      });
+    },
+  );
 
   test("rejects unsigned and wrong-scope requests and cannot hand off another org's session", async () => {
     const organizationId = `pi-owner-${crypto.randomUUID()}`;
