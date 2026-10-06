@@ -8,13 +8,15 @@ import {
   type BackofficeCodemodeEnv,
   type BackofficeCodemodeExecuteResult,
 } from "@/fragno/codemode/execute";
+import type { JavaScriptModuleProgram } from "@/fragno/runtime-tools/families/javascript-runtime";
 import type { BackofficeRuntimeToolFamily } from "@/fragno/runtime-tools/runtime-tools";
 import type { CoreBackofficeToolContext } from "@/fragno/runtime-tools/tool-families";
 
+import { executeBackofficeCompiledModule } from "./compiled-module-execute";
 import { runBackofficeRemoteImmediate } from "./remote-immediate-execute";
 
 export type RunBackofficeJavaScriptModuleInput = {
-  code: string;
+  program: JavaScriptModuleProgram;
   env: BackofficeCodemodeEnv;
   timeout?: number;
   families: readonly BackofficeRuntimeToolFamily[];
@@ -22,9 +24,9 @@ export type RunBackofficeJavaScriptModuleInput = {
   globalOutbound?: Fetcher | null;
 };
 
-/** Executes a JavaScript file as an ES module without invoking any exported value. */
+/** Executes source or a compiled main module without invoking exports; startup failures are not rewritten. */
 export async function runBackofficeJavaScriptModule({
-  code,
+  program,
   env,
   timeout,
   families,
@@ -37,6 +39,23 @@ export async function runBackofficeJavaScriptModule({
     toolContext,
     toolCalls,
   });
+  if (program.kind === "bundle") {
+    const completion = await executeBackofficeCompiledModule({
+      bundle: program.bundle,
+      invocation: null,
+      input: null,
+      providers,
+      env,
+      signal: null,
+    });
+    if (completion.status === "suspended") {
+      throw new Error("CODEMODE_MODULE_INVOCATION_CANNOT_SUSPEND");
+    }
+    return completion.status === "failed"
+      ? { result: undefined, error: completion.error.message, logs: completion.logs, toolCalls }
+      : { result: undefined, logs: completion.logs, toolCalls };
+  }
+  const { code } = program;
   if ("remoteExecutor" in env) {
     if (globalOutbound) {
       throw new Error("CODEMODE_REMOTE_EGRESS_UNSUPPORTED");

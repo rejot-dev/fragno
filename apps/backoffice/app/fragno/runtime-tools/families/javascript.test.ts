@@ -7,6 +7,7 @@ import type { JavaScriptRuntime } from "./javascript-runtime";
 
 function createJavaScriptTestRuntime(): JavaScriptRuntime {
   return {
+    buildFile: null,
     checkFile: vi.fn(async ({ path }) => ({
       path,
       valid: false,

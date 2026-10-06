@@ -39,7 +39,11 @@ import {
   internalWorkspaceToolFamily,
   type InternalRuntime,
 } from "./families/internal";
-import { javaScriptCheckToolFamily, javaScriptRunToolFamily } from "./families/javascript";
+import {
+  javaScriptBuildToolFamily,
+  javaScriptCheckToolFamily,
+  javaScriptRunToolFamily,
+} from "./families/javascript";
 import type { JavaScriptRuntime } from "./families/javascript-runtime";
 import { marketplaceToolFamily } from "./families/marketplace";
 import type { MarketplaceRuntime } from "./families/marketplace-runtime";
@@ -121,6 +125,7 @@ export const runtimeToolFamilies = [
   telegramToolFamily,
   javaScriptCheckToolFamily,
   javaScriptRunToolFamily,
+  javaScriptBuildToolFamily,
   uploadToolFamily,
   marketplaceToolFamily,
   packagesToolFamily,

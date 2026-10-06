@@ -260,7 +260,10 @@ describe("createJavaScriptRuntime", () => {
       path: "/workspace/scripts/example.js",
       logs: ["running"],
     });
-    expect(executeModule).toHaveBeenCalledWith("console.log('done');", toolContext);
+    expect(executeModule).toHaveBeenCalledWith(
+      { kind: "source", code: "console.log('done');" },
+      toolContext,
+    );
   });
 
   test("rejects imports before running a saved JavaScript module", async () => {

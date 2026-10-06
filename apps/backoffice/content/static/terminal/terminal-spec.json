@@ -4304,8 +4304,40 @@
   },
   {
     "command": "js.run",
-    "summary": "js.run executes top-level statements in a standalone saved JavaScript ES module.",
+    "summary": "js.run executes top-level statements in JavaScript source or a built module artifact.",
     "options": [
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "js.build",
+    "summary": "js.build bundles a JavaScript ES module without executing it.",
+    "options": [
+      {
+        "name": "out",
+        "valueName": "path",
+        "required": true,
+        "valueRequired": true,
+        "description": "Output JSON module artifact under /workspace."
+      },
       {
         "name": "help",
         "description": "Show this help text",

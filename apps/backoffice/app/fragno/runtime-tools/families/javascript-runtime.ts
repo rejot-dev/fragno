@@ -1,11 +1,14 @@
+import { CODEMODE_LIMITS } from "@fragno-dev/codemode/codemode-limits";
 import type {
   TypeCheckDiagnostic,
   WorkerTypeChecker,
 } from "@fragno-dev/codemode/compiler/compile-worker";
+import type { WorkerBundle } from "@fragno-dev/codemode/compiler/worker-bundle";
 import jsTokens, { type Token } from "js-tokens";
 
 import { isPathWithin, normalizeAbsolutePath } from "@/files/normalize-path";
 import type { BackofficeCodemodeExecuteResult } from "@/fragno/codemode/execute";
+import { javaScriptModuleArtifactSchema } from "@/fragno/codemode/javascript-module-artifact";
 import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
 import type { CoreBackofficeToolContext } from "@/fragno/runtime-tools/tool-families";
 
@@ -42,12 +45,24 @@ export type JavaScriptRunFileOutput =
       logs: string[];
     };
 
+export type JavaScriptBuildFileInput = { path: string; out: string };
+
+export type JavaScriptBuildFileOutput =
+  | { status: "success"; path: string; artifactPath: string; warnings: string[] }
+  | { status: "error"; path: string; artifactPath: string; error: string };
+
+/** Source requires compilation; a validated bundle must run without consulting a compiler. */
+export type JavaScriptModuleProgram =
+  | { kind: "source"; code: string }
+  | { kind: "bundle"; bundle: WorkerBundle };
+
 export type JavaScriptModuleExecutor = (
-  code: string,
+  program: JavaScriptModuleProgram,
   toolContext: CoreBackofficeToolContext,
 ) => Promise<BackofficeCodemodeExecuteResult>;
 
 export type JavaScriptRuntime = {
+  buildFile: ((input: JavaScriptBuildFileInput) => Promise<JavaScriptBuildFileOutput>) | null;
   checkFile: ((input: { path: string }) => Promise<JavaScriptCheckFileOutput>) | null;
   runFile:
     | ((
@@ -57,7 +72,7 @@ export type JavaScriptRuntime = {
     | null;
 };
 
-function parseJavaScriptFilePath(path: string) {
+function parseJavaScriptFilePath(path: string, kind: "source" | "run") {
   if (!path.trim().startsWith("/")) {
     throw new Error("JavaScript file path must be absolute.");
   }
@@ -65,8 +80,12 @@ function parseJavaScriptFilePath(path: string) {
   if (!JAVASCRIPT_FILE_ROOTS.some((root) => isPathWithin(normalizedPath, root))) {
     throw new Error("JavaScript file path must be under /static or /workspace.");
   }
-  if (!normalizedPath.endsWith(".js")) {
-    throw new Error("JavaScript file path must identify a .js file.");
+  if (!normalizedPath.endsWith(".js") && (kind === "source" || !normalizedPath.endsWith(".json"))) {
+    throw new Error(
+      kind === "source"
+        ? "JavaScript file path must identify a .js file."
+        : "JavaScript run path must identify a .js source file or .json module artifact.",
+    );
   }
   return normalizedPath;
 }
@@ -199,9 +218,10 @@ export function createJavaScriptRuntime({
   executeModule: JavaScriptModuleExecutor | null;
 }): JavaScriptRuntime {
   return {
+    buildFile: null,
     checkFile: typeCheckFiles
       ? async function checkJavaScriptFile({ path }) {
-          const sourcePath = parseJavaScriptFilePath(path);
+          const sourcePath = parseJavaScriptFilePath(path, "source");
           const stateBackend = await getStateBackend();
           const sourceCode = await stateBackend.readFile(sourcePath);
           const importViolation = findStandaloneJavaScriptImport(sourceCode);
@@ -253,38 +273,48 @@ export function createJavaScriptRuntime({
       : null,
     runFile: executeModule
       ? async function runJavaScriptFile({ path }, toolContext) {
-          const sourcePath = parseJavaScriptFilePath(path);
-          if (sourcePath.endsWith(".workflow.js")) {
+          const sourcePath = parseJavaScriptFilePath(path, "run");
+          try {
+            const stateBackend = await getStateBackend();
+            let program: JavaScriptModuleProgram;
+            if (sourcePath.endsWith(".json")) {
+              const file = await stateBackend.stat(sourcePath);
+              if (file?.type !== "file") {
+                throw new Error(`JAVASCRIPT_RUN_ARTIFACT_MISSING: ${sourcePath}`);
+              }
+              if (file.size > CODEMODE_LIMITS.maxBundleBytes) {
+                throw new Error("JAVASCRIPT_RUN_ARTIFACT_TOO_LARGE");
+              }
+              const { bundle } = javaScriptModuleArtifactSchema.parse(
+                await stateBackend.readJson(sourcePath),
+              );
+              program = { kind: "bundle", bundle };
+            } else {
+              if (sourcePath.endsWith(".workflow.js")) {
+                throw new Error(
+                  "JavaScript run cannot execute a workflow file. Use workflow.instances.create instead.",
+                );
+              }
+              const code = await stateBackend.readFile(sourcePath);
+              const importViolation = findStandaloneJavaScriptImport(code);
+              if (importViolation) {
+                throw new Error(standaloneJavaScriptImportError(sourcePath, importViolation));
+              }
+              program = { kind: "source", code };
+            }
+            const execution = await executeModule(program, toolContext);
+            const logs = execution.logs ?? [];
+            return execution.error
+              ? { status: "error", path: sourcePath, error: execution.error, logs }
+              : { status: "success", path: sourcePath, logs };
+          } catch (error) {
             return {
               status: "error",
               path: sourcePath,
-              error:
-                "JavaScript run cannot execute a workflow file. Use workflow.instances.create instead.",
+              error: error instanceof Error ? error.message : String(error),
               logs: [],
             };
           }
-          const stateBackend = await getStateBackend();
-          const sourceCode = await stateBackend.readFile(sourcePath);
-          const importViolation = findStandaloneJavaScriptImport(sourceCode);
-          if (importViolation) {
-            return {
-              status: "error",
-              path: sourcePath,
-              error: standaloneJavaScriptImportError(sourcePath, importViolation),
-              logs: [],
-            };
-          }
-          const execution = await executeModule(sourceCode, toolContext);
-          const logs = execution.logs ?? [];
-
-          if (execution.error) {
-            return { status: "error", path: sourcePath, error: execution.error, logs };
-          }
-          return {
-            status: "success",
-            path: sourcePath,
-            logs,
-          };
         }
       : null,
   };
