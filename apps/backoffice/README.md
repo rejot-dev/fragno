@@ -65,23 +65,6 @@ The task caches its reports under `apps/backoffice/coverage/`, including the HTM
 `coverage/index.html`. The root `pnpm test:coverage` command remains the existing library-package
 coverage aggregation workflow; it does not include Backoffice.
 
-## Build outputs
-
-`pnpm --dir apps/backoffice build` produces:
-
-```text
-dist/rejot_backoffice/wrangler.json        # rejot-backoffice
-build/server/wrangler.json                  # rejot-backoffice-web
-```
-
-React Router owns the primary Worker build under `build/server`. Cloudflare's Vite plugin builds the
-object host as an independent auxiliary Worker module graph under `dist`.
-
-Use these generated configs for uploads. They point to compiled bundles where Vite has resolved
-virtual modules and raw asset imports. The source configs, `wrangler.jsonc` and
-`wrangler.web.jsonc`, are sufficient when activating versions because activation does not rebuild
-the source.
-
 ## Run on Node with file-backed SQLite
 
 For a file-backed Node instance without Cloudflare bindings, create `apps/backoffice/.dev.vars` from

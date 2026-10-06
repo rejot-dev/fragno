@@ -190,10 +190,7 @@ export const createCloudflareBackofficeRuntimeServices = (
         await objects.automations.for(scope).commands.getRouteForAuthority({ id: routeId }),
     }),
     kernelObserver: options.kernelObserver ?? noopBackofficeKernelObserver,
-    codemodeEnv:
-      env.LOADER && (env.CODEMODE_COMPILER || testCompilerEnv.compileWorker)
-        ? (testCompilerEnv as BackofficeCodemodeEnv)
-        : null,
+    codemodeEnv: env.LOADER ? (testCompilerEnv as BackofficeCodemodeEnv) : null,
     workerTypeChecker: env.CODEMODE_COMPILER
       ? createWorkerTypeCheckerServiceClient(env.CODEMODE_COMPILER)
       : (testCompilerEnv.typeCheckFiles ?? null),

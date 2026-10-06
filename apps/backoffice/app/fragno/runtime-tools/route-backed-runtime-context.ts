@@ -76,6 +76,7 @@ import {
 } from "@/fragno/scoped-public-fragment-routes";
 
 import type { InteractiveRuntimeToolContext } from "./bash-host";
+import { buildJavaScriptModuleFile } from "./families/javascript-build";
 import { getRuntimeToolNamespacesByCapability, runtimeToolFamilies } from "./tool-families";
 
 export type RouteBackedRuntimeContextOptions = {
@@ -185,6 +186,10 @@ export const createRouteBackedRuntimeContext = ({
     runtime.objects.automations,
   );
   const codemodeEnv = runtime.codemodeEnv;
+  const canCompileJavaScript =
+    codemodeEnv !== null &&
+    ("remoteExecutor" in codemodeEnv ||
+      Boolean(codemodeEnv.CODEMODE_COMPILER || codemodeEnv.compileWorker));
 
   const formsObjects = runtime.objects.forms;
 
@@ -517,22 +522,54 @@ export const createRouteBackedRuntimeContext = ({
     javascript:
       runtime.workerTypeChecker || codemodeEnv
         ? {
-            runtime: createJavaScriptRuntime({
-              getStateBackend: async () => javaScriptStateBackend,
-              typeCheckFiles: runtime.workerTypeChecker,
-              executeModule: codemodeEnv
-                ? async (code, toolContext) => {
-                    const { runBackofficeJavaScriptModule } =
-                      await import("@/fragno/codemode/javascript-module-execute");
-                    return await runBackofficeJavaScriptModule({
-                      code,
-                      env: codemodeEnv,
-                      families: runtimeToolFamilies,
-                      toolContext,
-                    });
-                  }
-                : null,
-            }),
+            runtime: {
+              ...createJavaScriptRuntime({
+                getStateBackend: async () => javaScriptStateBackend,
+                typeCheckFiles: runtime.workerTypeChecker,
+                executeModule: codemodeEnv
+                  ? async (program, toolContext) => {
+                      if (program.kind === "source" && !canCompileJavaScript) {
+                        return {
+                          result: undefined,
+                          error:
+                            "JavaScript source execution requires a compiler; run a built JSON module artifact instead.",
+                          logs: [],
+                          toolCalls: [],
+                        };
+                      }
+                      const { runBackofficeJavaScriptModule } =
+                        await import("@/fragno/codemode/javascript-module-execute");
+                      return await runBackofficeJavaScriptModule({
+                        program,
+                        env: codemodeEnv,
+                        families: runtimeToolFamilies,
+                        toolContext,
+                      });
+                    }
+                  : null,
+              }),
+              buildFile:
+                canCompileJavaScript && codemodeEnv && execution.scope.kind !== "system"
+                  ? async (input) => {
+                      try {
+                        const output = await buildJavaScriptModuleFile({
+                          path: input.path,
+                          out: input.out,
+                          state: javaScriptStateBackend,
+                          env: codemodeEnv,
+                        });
+                        return { status: "success", ...output };
+                      } catch (error) {
+                        return {
+                          status: "error",
+                          path: input.path,
+                          artifactPath: input.out,
+                          error: error instanceof Error ? error.message : String(error),
+                        };
+                      }
+                    }
+                  : null,
+            },
           }
         : null,
     upload:

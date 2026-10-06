@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   parseCliTokens,
   readOutputOptions,
+  readStringOption,
   type ParsedCliTokens,
 } from "@/fragno/runtime-tools/bash-cli";
 import {
@@ -12,6 +13,7 @@ import {
 } from "@/fragno/runtime-tools/runtime-tools";
 
 import type {
+  JavaScriptBuildFileOutput,
   JavaScriptCheckFileOutput,
   JavaScriptRunFileOutput,
   JavaScriptRuntime,
@@ -20,6 +22,24 @@ import type {
 const javaScriptFileInputSchema = z.object({
   path: z.string().trim().min(1),
 });
+const javaScriptBuildInputSchema = z.strictObject({
+  path: z.string().trim().min(1),
+  out: z.string().trim().min(1),
+});
+const javaScriptBuildOutputSchema = z.discriminatedUnion("status", [
+  z.strictObject({
+    status: z.literal("success"),
+    path: z.string(),
+    artifactPath: z.string(),
+    warnings: z.array(z.string()),
+  }),
+  z.strictObject({
+    status: z.literal("error"),
+    path: z.string(),
+    artifactPath: z.string(),
+    error: z.string(),
+  }),
+]);
 const javaScriptCheckDiagnosticSchema = z.object({
   code: z.number().int(),
   path: z.string().nullable(),
@@ -71,6 +91,14 @@ function getJavaScriptRunFile(context: JavaScriptToolContext) {
     throw new Error("JavaScript execution is not available in this execution context.");
   }
   return runFile;
+}
+
+function getJavaScriptBuildFile(context: JavaScriptToolContext) {
+  const buildFile = getJavaScriptRuntime(context).buildFile;
+  if (!buildFile) {
+    throw new Error("JavaScript building is not available in this execution context.");
+  }
+  return buildFile;
 }
 
 const STANDARD_JAVASCRIPT_COMMAND_OPTIONS = new Set(["help", "print", "format", "json"]);
@@ -127,6 +155,89 @@ function formatJavaScriptRunOutput(
   return { stdout };
 }
 
+function formatJavaScriptBuildOutput(
+  output: JavaScriptBuildFileOutput,
+  options: ReturnType<typeof readOutputOptions>,
+) {
+  if (options.format === "json" || options.print) {
+    return { data: output, ...(output.status === "error" ? { exitCode: 1 } : {}) };
+  }
+  if (output.status === "error") {
+    return { stderr: `${output.error}\n`, exitCode: 1 };
+  }
+  return {
+    stdout: `${output.artifactPath}\n`,
+    stderr: output.warnings.length ? `${output.warnings.join("\n")}\n` : "",
+  };
+}
+
+const javaScriptBuildTool = defineBackofficeRuntimeTool({
+  id: "js.build",
+  namespace: "js",
+  name: "build",
+  authorizationNamespace: "upload",
+  description:
+    "Compile a saved JavaScript ES module into a reusable JSON artifact under /workspace without executing or activating it. Consumers validate exports.",
+  requiredPermissions: ["read", "modify"],
+  inputSchema: javaScriptBuildInputSchema,
+  outputSchema: javaScriptBuildOutputSchema,
+  execute: async (input, context: JavaScriptToolContext) =>
+    await getJavaScriptBuildFile(context)(input),
+  adapters: {
+    bash: {
+      command: "js.build",
+      help: {
+        summary: "js.build bundles a JavaScript ES module without executing it.",
+        usage: "js.build <file> --out <artifact> [options]",
+        options: [
+          {
+            name: "out",
+            valueName: "path",
+            required: true,
+            valueRequired: true,
+            description: "Output JSON module artifact under /workspace.",
+          },
+        ],
+        examples: [
+          "js.build /workspace/scripts/example.js --out /workspace/.build/example.module.json",
+        ],
+      },
+      parse: (args) => {
+        const parsed = parseCliTokens(args);
+        for (const option of parsed.options.keys()) {
+          if (!STANDARD_JAVASCRIPT_COMMAND_OPTIONS.has(option) && option !== "out") {
+            throw new Error(`js.build does not accept option --${option}`);
+          }
+        }
+        if (parsed.positionals.length !== 1) {
+          throw new Error("js.build requires exactly one JavaScript file path");
+        }
+        return javaScriptBuildInputSchema.parse({
+          path: parsed.positionals[0],
+          out: readStringOption(parsed, "out", true),
+        });
+      },
+      outputOptions: (_args, parsed: ParsedCliTokens) => readOutputOptions(parsed),
+      execute: async ({ input, context, commandOutput, shell }) => {
+        const output = await getJavaScriptBuildFile(context)({
+          ...input,
+          path: shell.fs.resolvePath(shell.cwd, input.path),
+          out: shell.fs.resolvePath(shell.cwd, input.out),
+        });
+        return formatJavaScriptBuildOutput(output, commandOutput);
+      },
+    },
+  },
+});
+
+/** Building requires workspace read and write authority, unlike checking or execution. */
+export const javaScriptBuildToolFamily = defineBackofficeRuntimeToolFamily({
+  namespace: "js",
+  permissions: { read: "Read JavaScript source.", modify: "Publish compiled module artifacts." },
+  tools: [javaScriptBuildTool],
+  isAvailable: (context: JavaScriptToolContext) => Boolean(context.runtimes.javascript?.buildFile),
+});
+
 const javaScriptCheckTool = defineBackofficeRuntimeTool({
   id: "js.check",
   namespace: "js",
@@ -170,7 +281,7 @@ const javaScriptRunTool = defineBackofficeRuntimeTool({
   name: "run",
   authorizationNamespace: "upload",
   description:
-    "Run a standalone saved JavaScript file as an ES module under /static or /workspace.",
+    "Run top-level statements in a saved .js source file or a built .json module artifact under /static or /workspace. Ignores exports; artifacts run without compilation and startup errors are returned.",
   requiredPermissions: ["read"],
   inputSchema: javaScriptFileInputSchema,
   outputSchema: javaScriptRunOutputSchema,
@@ -180,10 +291,15 @@ const javaScriptRunTool = defineBackofficeRuntimeTool({
     bash: {
       command: "js.run",
       help: {
-        summary: "js.run executes top-level statements in a standalone saved JavaScript ES module.",
+        summary:
+          "js.run executes top-level statements in JavaScript source or a built module artifact.",
         usage: "js.run <file> [options]",
         options: [],
-        examples: ["js.run /workspace/scripts/example.js", "js.run scripts/example.js"],
+        examples: [
+          "js.run /workspace/scripts/example.js",
+          "js.run /workspace/.build/example.module.json",
+          "js.run .build/example.module.json",
+        ],
       },
       parse: (args) => parseJavaScriptFileCommand("js.run", args),
       outputOptions: (_args, parsed: ParsedCliTokens) => readOutputOptions(parsed),
@@ -210,11 +326,11 @@ export const javaScriptCheckToolFamily = defineBackofficeRuntimeToolFamily({
     context.runtimes.javascript?.checkFile !== undefined,
 });
 
-/** Runtime tool family for executing saved JavaScript files. */
+/** Runtime tool family for executing JavaScript source and precompiled module artifacts. */
 export const javaScriptRunToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "js",
   permissions: {
-    read: "Read JavaScript source files for execution.",
+    read: "Read JavaScript source or module artifacts for execution.",
   },
   tools: [javaScriptRunTool],
   isAvailable: (context: JavaScriptToolContext) =>

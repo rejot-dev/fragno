@@ -41,9 +41,9 @@ describe("JavaScript file execution in workerd", () => {
     const runtime = createJavaScriptRuntime({
       getStateBackend: async () => createTestJavaScriptStateBackend(fileSystem),
       typeCheckFiles: null,
-      executeModule: async (code, toolContext) =>
+      executeModule: async (program, toolContext) =>
         await runBackofficeJavaScriptModule({
-          code,
+          program,
           env,
           families: runtimeToolFamilies,
           toolContext,
