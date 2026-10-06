@@ -581,7 +581,6 @@ const createAutomationContext = (
     automations: { runtime },
     otp: { runtime: options.otpRuntime ?? runtime },
     pi: options.piRuntime ? { runtime: options.piRuntime } : null,
-    reson8: { runtime: createUnavailableRuntime("reson8") },
     resend: { runtime: createUnavailableRuntime("resend") },
     telegram: { runtime: options.telegramRuntime ?? createUnavailableRuntime("telegram") },
   };

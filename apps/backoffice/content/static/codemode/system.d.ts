@@ -4,6 +4,7 @@
 /// <reference path="/static/codemode/providers/capabilities.d.ts" />
 /// <reference path="/static/codemode/providers/hooks.d.ts" />
 /// <reference path="/static/codemode/providers/connections.d.ts" />
+/// <reference path="/static/codemode/providers/integrations.d.ts" />
 /// <reference path="/static/codemode/providers/store.d.ts" />
 /// <reference path="/static/codemode/providers/identity.d.ts" />
 /// <reference path="/static/codemode/providers/router.d.ts" />
@@ -19,7 +20,6 @@
 /// <reference path="/static/codemode/providers/otp.d.ts" />
 /// <reference path="/static/codemode/providers/pi.d.ts" />
 /// <reference path="/static/codemode/providers/resend.d.ts" />
-/// <reference path="/static/codemode/providers/reson8.d.ts" />
 /// <reference path="/static/codemode/providers/sandbox.d.ts" />
 /// <reference path="/static/codemode/providers/telegram.d.ts" />
 /// <reference path="/static/codemode/providers/js.d.ts" />
@@ -40,6 +40,7 @@ interface BackofficeCodemodeScopedProviders {
   capabilities: CapabilitiesCodemodeProvider;
   hooks: HooksCodemodeProvider;
   connections: ConnectionsCodemodeProvider;
+  integrations: IntegrationsCodemodeProvider;
   store: StoreCodemodeProvider;
   identity: IdentityCodemodeProvider;
   router: RouterCodemodeProvider;
@@ -55,7 +56,6 @@ interface BackofficeCodemodeScopedProviders {
   otp: OtpCodemodeProvider;
   pi: PiCodemodeProvider;
   resend: ResendCodemodeProvider;
-  reson8: Reson8CodemodeProvider;
   sandbox: SandboxCodemodeProvider;
   telegram: TelegramCodemodeProvider;
   js: JsCodemodeProvider;

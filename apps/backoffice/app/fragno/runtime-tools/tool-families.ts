@@ -30,7 +30,10 @@ import { eventFireToolFamily, eventReadToolFamily, type EventRuntime } from "./f
 import { eventCatalogToolFamily, type EventCatalogRuntime } from "./families/event-catalog";
 import { formsToolFamily, type FormsRuntime } from "./families/forms";
 import { githubToolFamily, type GitHubRuntime } from "./families/github";
-import type { IntegrationsRuntime } from "./families/integrations/integration-tools";
+import {
+  integrationsToolFamily,
+  type IntegrationsRuntime,
+} from "./families/integrations/integration-tools";
 import {
   internalMarketplaceToolFamily,
   internalWorkspaceToolFamily,
@@ -48,7 +51,6 @@ import { piToolFamily } from "./families/pi";
 import { projectConnectorToolFamily } from "./families/project-connector";
 import type { ProjectConnectorRuntime } from "./families/project-connector-runtime";
 import { resendToolFamily, type ResendRuntime } from "./families/resend";
-import { reson8ToolFamily, type Reson8Runtime } from "./families/reson8";
 import { sandboxToolFamily, type SandboxRuntime } from "./families/sandbox";
 import { telegramToolFamily, type TelegramRuntime } from "./families/telegram";
 import { uploadToolFamily } from "./families/upload";
@@ -83,7 +85,6 @@ export type CoreBackofficeRuntimeMap = {
   otp?: OtpRuntime;
   pi?: PiManagerRuntime;
   resend?: ResendRuntime;
-  reson8?: Reson8Runtime;
   sandbox?: SandboxRuntime;
   telegram?: TelegramRuntime;
   javascript?: JavaScriptRuntime;
@@ -97,6 +98,7 @@ export const runtimeToolFamilies = [
   codemodeStateToolFamily,
   adminToolFamily,
   backofficeCapabilitiesToolFamily,
+  integrationsToolFamily,
   automationStoreToolFamily,
   automationIdentityToolFamily,
   automationRouterToolFamily,
@@ -115,7 +117,6 @@ export const runtimeToolFamilies = [
   otpToolFamily,
   piToolFamily,
   resendToolFamily,
-  reson8ToolFamily,
   sandboxToolFamily,
   telegramToolFamily,
   javaScriptCheckToolFamily,
@@ -145,7 +146,6 @@ const namespaceCapabilityIds = {
   otp: "otp",
   pi: "pi",
   resend: "resend",
-  reson8: "reson8",
   sandbox: "sandbox",
   telegram: "telegram",
   upload: "upload",

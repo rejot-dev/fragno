@@ -123,20 +123,33 @@ export const parseCliTokens = (args: string[]): ParsedCliTokens => {
   return { options, positionals };
 };
 
+/** Reads an opaque CLI option without changing source-owned identity through whitespace normalization. */
+export function readOpaqueStringOption(
+  parsed: ParsedCliTokens,
+  name: string,
+  required = false,
+): string | undefined {
+  const value = getSingleOption(parsed.options, name);
+  if (typeof value === "boolean") {
+    throw new Error(`--${name} requires a value`);
+  }
+  if (typeof value === "string" && value.length > 0) {
+    return value;
+  }
+  if (required) {
+    throw new Error(`Missing required option --${name}`);
+  }
+  return undefined;
+}
+
 export const readStringOption = (
   parsed: ParsedCliTokens,
   name: string,
   required = false,
 ): string | undefined => {
-  const value = getSingleOption(parsed.options, name);
-  if (typeof value === "boolean") {
-    throw new Error(`--${name} requires a value`);
-  }
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    if (trimmed) {
-      return trimmed;
-    }
+  const value = readOpaqueStringOption(parsed, name)?.trim();
+  if (value) {
+    return value;
   }
   if (required) {
     throw new Error(`Missing required option --${name}`);

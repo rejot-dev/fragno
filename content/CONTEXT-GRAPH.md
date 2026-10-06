@@ -27,22 +27,22 @@
    ├─ /static/codemode/providers/capabilities.d.ts — capabilities tools [line 4]
    ├─ /static/codemode/providers/hooks.d.ts — hooks tools [line 5]
    ├─ /static/codemode/providers/connections.d.ts — connections tools [line 6]
-   ├─ /static/codemode/providers/store.d.ts — store tools [line 7]
-   ├─ /static/codemode/providers/identity.d.ts — identity tools [line 8]
-   ├─ /static/codemode/providers/router.d.ts — router tools [line 9]
-   ├─ /static/codemode/providers/workflow.d.ts — workflow tools [line 10]
-   ├─ /static/codemode/providers/events.d.ts — events tools [line 11]
-   ├─ /static/codemode/providers/forms.d.ts — forms tools [line 12]
-   ├─ /static/codemode/providers/github.d.ts — github tools [line 13]
-   ├─ /static/codemode/providers/cloudflare.d.ts — cloudflare tools [line 14]
-   ├─ /static/codemode/providers/web.d.ts — web tools [line 15]
-   ├─ /static/codemode/providers/api.d.ts — api tools [line 16]
-   ├─ /static/codemode/providers/mcp.d.ts — mcp tools [line 17]
-   ├─ /static/codemode/providers/connector.d.ts — connector tools [line 18]
-   ├─ /static/codemode/providers/otp.d.ts — otp tools [line 19]
-   ├─ /static/codemode/providers/pi.d.ts — pi tools [line 20]
-   ├─ /static/codemode/providers/resend.d.ts — resend tools [line 21]
-   ├─ /static/codemode/providers/reson8.d.ts — reson8 tools [line 22]
+   ├─ /static/codemode/providers/integrations.d.ts — integrations tools [line 7]
+   ├─ /static/codemode/providers/store.d.ts — store tools [line 8]
+   ├─ /static/codemode/providers/identity.d.ts — identity tools [line 9]
+   ├─ /static/codemode/providers/router.d.ts — router tools [line 10]
+   ├─ /static/codemode/providers/workflow.d.ts — workflow tools [line 11]
+   ├─ /static/codemode/providers/events.d.ts — events tools [line 12]
+   ├─ /static/codemode/providers/forms.d.ts — forms tools [line 13]
+   ├─ /static/codemode/providers/github.d.ts — github tools [line 14]
+   ├─ /static/codemode/providers/cloudflare.d.ts — cloudflare tools [line 15]
+   ├─ /static/codemode/providers/web.d.ts — web tools [line 16]
+   ├─ /static/codemode/providers/api.d.ts — api tools [line 17]
+   ├─ /static/codemode/providers/mcp.d.ts — mcp tools [line 18]
+   ├─ /static/codemode/providers/connector.d.ts — connector tools [line 19]
+   ├─ /static/codemode/providers/otp.d.ts — otp tools [line 20]
+   ├─ /static/codemode/providers/pi.d.ts — pi tools [line 21]
+   ├─ /static/codemode/providers/resend.d.ts — resend tools [line 22]
    ├─ /static/codemode/providers/sandbox.d.ts — sandbox tools [line 23]
    ├─ /static/codemode/providers/telegram.d.ts — telegram tools [line 24]
    ├─ /static/codemode/providers/js.d.ts — js tools [line 25]
@@ -99,16 +99,15 @@
 
 ### `configuring-integrations`
 
-> **Load when:** Configure native Backoffice integrations with dedicated runtime tools, such as
-> Telegram, Resend, Reson8, and Upload. Always load for native integration setup or verification,
-> together with its provider-specific skill. Open Connector and low-level API/MCP connections use
-> their own skills.
+> **Load when:** Configure native Backoffice services, such as Telegram, Resend, Reson8, and Upload.
+> Always load for native integration setup or verification, together with its provider-specific
+> skill. Open Connector and low-level API/MCP connections use their own skills.
 
 ```text
 /static/skills/configuring-integrations/SKILL.md — Configuring Integrations
-├─ /static/codemode/providers/connections.d.ts — connections tools [line 19]
-├─ /static/skills/telegram-integration/SKILL.md — Telegram Integration [line 34]
-├─ /static/skills/generating-backoffice-uis/SKILL.md — Generating Backoffice UIs [line 39]
+├─ /static/codemode/providers/connections.d.ts — connections tools [line 20]
+├─ /static/skills/telegram-integration/SKILL.md — Telegram Integration [line 35]
+├─ /static/skills/generating-backoffice-uis/SKILL.md — Generating Backoffice UIs [line 40]
 │  ├─ /static/skills/generating-backoffice-uis/CATALOG.md — Production Component Catalog [line 14]
 │  ├─ /static/skills/generating-backoffice-uis/WORKFLOWS.md — Durable Workflow UI Results [line 24]
 │  │  └─ /static/skills/workflows/SKILL.md — Workflows [line 3]
@@ -117,7 +116,7 @@
 │  └─ /static/skills/using-prepared-uploads/SKILL.md — Using Prepared Uploads [line 26]
 │     ├─ /static/skills/generating-backoffice-uis/SKILL.md — Generating Backoffice UIs [line 17] [cycle]
 │     └─ /static/codemode/providers/upload.d.ts — upload tools [line 29]
-└─ /static/skills/workflows/SKILL.md — Workflows [line 39] [already expanded]
+└─ /static/skills/workflows/SKILL.md — Workflows [line 40] [already expanded]
 ```
 
 ### `forms`
@@ -195,9 +194,9 @@
 
 ### `reson8-integration`
 
-> **Load when:** Use the native Backoffice Reson8 integration and reson8.\* runtime tools. Load with
-> configuring-integrations for speech-to-text setup; also use for audio transcription and Reson8
-> runtime availability.
+> **Load when:** Use Reson8 through integrations.\* for organization-scoped speech-to-text setup,
+> action discovery, prerecorded audio transcription, and live access verification. Load
+> configuring-integrations for the existing organization configuration controls.
 
 ```text
 /static/skills/reson8-integration/SKILL.md — Reson8 Integration

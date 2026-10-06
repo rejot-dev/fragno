@@ -13,7 +13,6 @@ import { createUnavailableAutomationRouterRuntime } from "./families/automations
 import { createUnavailableEventRuntime } from "./families/event-runtime";
 import type { OtpRuntime } from "./families/otp-runtime";
 import type { ResendRuntime } from "./families/resend-runtime";
-import type { Reson8Runtime } from "./families/reson8-runtime";
 
 const automationStoreActor = {
   scope: "external",
@@ -141,12 +140,6 @@ const createResendRuntime = (): ResendRuntime => ({
       createdAt: new Date("2026-01-01T00:00:00.000Z"),
       updatedAt: new Date("2026-01-01T00:00:00.000Z"),
     },
-  }),
-});
-
-const createReson8Runtime = (): Reson8Runtime => ({
-  transcribePrerecorded: async () => ({
-    text: "hello world",
   }),
 });
 
@@ -311,9 +304,6 @@ describe("bash host command assembly", () => {
         pi: {
           runtime: createPiRuntime(),
         },
-        reson8: {
-          runtime: createReson8Runtime(),
-        },
         resend: {
           runtime: createResendRuntime(),
         },
@@ -386,7 +376,6 @@ describe("bash host command assembly", () => {
         automations: null,
         otp: null,
         pi: null,
-        reson8: null,
         resend: null,
         telegram: null,
       },
@@ -417,7 +406,6 @@ describe("bash host command assembly", () => {
         automations: null,
         otp: null,
         pi: null,
-        reson8: null,
         resend: null,
         telegram: {
           runtime: createTelegramRuntime(),

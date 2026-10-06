@@ -47,6 +47,18 @@ const getRouteErrorInfo = (response: RouteErrorResponse) => {
   };
 };
 
+/** Propagates receiving-object authorization failures without classifying provider errors as denials. */
+export function throwOnBackofficeRouteAuthorizationError(response: RouteErrorResponse): void {
+  if (response.status !== 403 && response.status !== 503) {
+    return;
+  }
+  const { code, message } = getRouteErrorInfo(response);
+  const denial = { name: "BackofficeForbiddenError", reason: code, message };
+  if (isBackofficeForbiddenError(denial)) {
+    throw new BackofficeForbiddenError(denial.message, denial.reason);
+  }
+}
+
 export const throwOnRouteRuntimeError = (
   response: RouteErrorResponse,
   options: {
@@ -55,11 +67,8 @@ export const throwOnRouteRuntimeError = (
     notConfiguredMessage?: string;
   },
 ): never => {
+  throwOnBackofficeRouteAuthorizationError(response);
   const { code, message } = getRouteErrorInfo(response);
-  const denial = { name: "BackofficeForbiddenError", reason: code, message };
-  if ((response.status === 403 || response.status === 503) && isBackofficeForbiddenError(denial)) {
-    throw new BackofficeForbiddenError(denial.message, denial.reason);
-  }
 
   if (response.status === 400 && code === "NOT_CONFIGURED") {
     throw new NotConfiguredError(
