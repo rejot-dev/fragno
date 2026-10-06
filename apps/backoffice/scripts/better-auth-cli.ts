@@ -21,6 +21,7 @@ const options: BetterAuthOptions = {
   plugins: createBackofficeBetterAuthSchemaPlugins({
     baseURL: "http://localhost",
     organizationHooks: null,
+    isUserAdministrator: null,
   }),
 };
 

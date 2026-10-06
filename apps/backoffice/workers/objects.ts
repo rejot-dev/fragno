@@ -1,6 +1,8 @@
 import System from "typebox/system";
 
 import { Api } from "./api.do";
+import { AppInstallations } from "./app-installations.do";
+import { Apps } from "./apps.do";
 import { Auth } from "./auth.do";
 import { Automations } from "./automations.do";
 import { Billing } from "./billing.do";
@@ -33,6 +35,8 @@ export default {
 
 export {
   Api,
+  Apps,
+  AppInstallations,
   Auth,
   Automations,
   Billing,

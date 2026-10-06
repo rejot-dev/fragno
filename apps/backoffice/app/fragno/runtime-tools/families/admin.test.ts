@@ -77,6 +77,18 @@ describe("admin runtime tools", () => {
 
   test("delegates organization and membership changes to the admin runtime", async () => {
     const runtime: AdminRuntime = {
+      listOAuthClients: async () => ({ clients: [], nextCursor: null, hasNextPage: false }),
+      createOAuthClient: async () => ({
+        clientType: "public" as const,
+        clientId: "client-1",
+        clientSecret: null,
+      }),
+      createApp: async () => {
+        throw new Error("App creation is not configured in this legacy fixture.");
+      },
+      listApps: async () => {
+        throw new Error("App listing is not configured in this legacy fixture.");
+      },
       createSignUpInvitation: vi.fn(async (input) => ({
         invitationId: "invitation-1",
         email: input.email,

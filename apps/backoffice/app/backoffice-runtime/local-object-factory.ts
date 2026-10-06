@@ -18,6 +18,8 @@ import {
 import type { CreateSandboxRuntimeProviders } from "@/sandbox/contracts";
 
 import { InMemoryApiObject } from "../../workers/api.do";
+import { InMemoryAppInstallationsObject } from "../../workers/app-installations.do";
+import { InMemoryAppsObject } from "../../workers/apps.do";
 import { InMemoryAuthObject } from "../../workers/auth.do";
 import { InMemoryAutomationsObject } from "../../workers/automations.do";
 import { InMemoryBillingObject } from "../../workers/billing.do";
@@ -407,6 +409,9 @@ const localObjectFactories = {
       runtime,
       implementation,
     }),
+  APPS: ({ state, implementation }) => new InMemoryAppsObject({ state, implementation }),
+  APP_INSTALLATIONS: ({ state, runtime, implementation }) =>
+    new InMemoryAppInstallationsObject({ state, runtime, implementation }),
   MARKETPLACE: ({ state, env, runtime, implementation }) =>
     new InMemoryMarketplaceObject({
       state,

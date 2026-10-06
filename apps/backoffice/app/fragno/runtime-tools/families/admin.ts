@@ -4,6 +4,18 @@ import type {
   AdminOrganizationMemberRecord,
   AdminOrganizationRecord,
 } from "@/backoffice-runtime/object-registry";
+import type {
+  BackofficeAppPage,
+  BackofficeAppPageInput,
+  BackofficeAppRegistrationInput,
+  BackofficeAppRegistrationResult,
+} from "@/fragno/apps/contracts";
+import type {
+  BackofficeOAuthClientCreateInput,
+  BackofficeOAuthClientCreateResult,
+  BackofficeOAuthClientListInput,
+  BackofficeOAuthClientPage,
+} from "@/fragno/auth/oauth-client";
 import { defineCliArgsParser } from "@/fragno/runtime-tools/bash-cli";
 
 import {
@@ -11,6 +23,8 @@ import {
   defineBackofficeRuntimeToolFamily,
   type BackofficeToolContext,
 } from "../runtime-tools";
+import { adminAppsRuntimeTools } from "./admin-apps";
+import { adminOAuthClientsRuntimeTools } from "./admin-oauth-clients";
 
 export type AdminSignUpInvitationRecord = {
   invitationId: string;
@@ -20,6 +34,16 @@ export type AdminSignUpInvitationRecord = {
 };
 
 export type AdminRuntime = {
+  createOAuthClient(
+    input: BackofficeOAuthClientCreateInput,
+    administratorUserId: string,
+  ): Promise<BackofficeOAuthClientCreateResult>;
+  listOAuthClients(
+    input: BackofficeOAuthClientListInput,
+    administratorUserId: string,
+  ): Promise<BackofficeOAuthClientPage>;
+  createApp(input: BackofficeAppRegistrationInput): Promise<BackofficeAppRegistrationResult>;
+  listApps(input: BackofficeAppPageInput): Promise<BackofficeAppPage>;
   createSignUpInvitation(input: {
     email: string;
     ttlDays?: number;
@@ -285,11 +309,18 @@ export const adminRuntimeTools = [
   createOrganizationTool,
   addOrganizationMemberTool,
   removeOrganizationMemberTool,
+  ...adminAppsRuntimeTools,
+  ...adminOAuthClientsRuntimeTools,
 ] as const;
 
 export const adminToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "admin",
   permissions: {
+    "apps.manage": "Register apps for existing OAuth clients (System administrators only).",
+    "apps.read": "List global app registrations (System administrators only).",
+    "oauth-clients.manage": "Create Auth-owned OAuth clients (System administrators only).",
+    "oauth-clients.read":
+      "List the global OAuth client catalog without credentials (System administrators only).",
     "sign-up-invitations.manage": "Create links that authorize Backoffice account sign-up.",
     "organizations.manage": "Create organizations and manage organization membership.",
   },

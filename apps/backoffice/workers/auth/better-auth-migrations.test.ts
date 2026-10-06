@@ -81,6 +81,7 @@ describe("Backoffice Better Auth SQL migrations", () => {
       plugins: createBackofficeBetterAuthSchemaPlugins({
         baseURL: "http://localhost",
         organizationHooks: null,
+        isUserAdministrator: null,
       }),
     });
 

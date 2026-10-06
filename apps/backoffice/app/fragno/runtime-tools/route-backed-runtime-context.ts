@@ -197,6 +197,7 @@ export const createRouteBackedRuntimeContext = ({
         ? {
             runtime: createAdminRuntime({
               auth: runtime.objects.auth.singleton().commands,
+              apps: unavailableObject(() => runtime.objects.apps.singleton())?.commands ?? null,
               otp: runtime.config.bindings.otp ? runtime.objects.otp.singleton().commands : null,
               publicBaseUrl: runtime.config.docsPublicBaseUrl ?? null,
             }),
