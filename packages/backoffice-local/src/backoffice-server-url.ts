@@ -38,6 +38,10 @@ export function resolveSecureBackofficeBaseUrl(value: string): string {
     throw new Error("Backoffice server URL must use HTTPS unless it targets a loopback host.");
   }
 
+  // The auth server uses 127.0.0.1 as its local issuer; select that origin before OAuth starts.
+  if (url.protocol === "http:" && url.hostname === "localhost") {
+    url.hostname = "127.0.0.1";
+  }
   return url.origin;
 }
 

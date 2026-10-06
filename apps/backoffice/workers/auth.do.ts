@@ -1010,10 +1010,12 @@ export class InMemoryAuthObject implements AuthObject {
   }
 
   #getAuth(baseURL: string) {
-    let auth = this.#authByBaseUrl.get(baseURL);
+    // HTTP handlers and RPC token exchanges must agree on the issuer for loopback aliases.
+    const origin = resolveAuthBaseUrl(new Request(baseURL));
+    let auth = this.#authByBaseUrl.get(origin);
     if (!auth) {
-      auth = betterAuth(this.#createOptions(baseURL));
-      this.#authByBaseUrl.set(baseURL, auth);
+      auth = betterAuth(this.#createOptions(origin));
+      this.#authByBaseUrl.set(origin, auth);
     }
     return auth;
   }
