@@ -161,6 +161,7 @@ function createPiConversationExportStream(root: Conversation, config: PiAgentCon
 export class InMemoryPiObject extends RpcTarget implements PiAgent {
   readonly #state: BackofficeObjectState;
   readonly #ready: Promise<void>;
+  readonly #startup: Promise<void>;
   readonly #options: HarnessOptions;
   readonly #runtime: BackofficeRuntimeServices;
   readonly #openStorage: () => Promise<Storage>;
@@ -168,6 +169,7 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
   readonly #nowEpochMs: () => number;
   #config: PiAgentConfig | null = null;
   #opened: OpenPiAgent | null = null;
+  #opening: Promise<OpenPiAgent> | null = null;
   #admitting = 0;
 
   constructor({
@@ -199,15 +201,27 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
       }
       this.#assertObjectIdentity(config);
       this.#config = config;
-      const opened = await this.#open(config);
-      const billingTaskId = await this.#ensureBillingDelivery(opened);
-      if (
-        billingTaskId !== null ||
-        (await opened.harness.inspect(BACKGROUND_CONTEXT)).tasks.length > 0
-      ) {
-        await state.storage.setAlarm(this.#nowEpochMs());
-      }
     });
+    // Startup failures must not poison configuration readiness or prevent a later open from retrying.
+    this.#startup = this.#ready
+      .then(async () => {
+        if (!this.#config) {
+          return;
+        }
+        // Compiler RPC consumes caller-owned streams; its pulls need the input gate to be open.
+        const opened = await this.#open(this.#config);
+        const billingTaskId = await this.#ensureBillingDelivery(opened);
+        if (
+          billingTaskId !== null ||
+          (await opened.harness.inspect(BACKGROUND_CONTEXT)).tasks.length > 0
+        ) {
+          await state.storage.setAlarm(this.#nowEpochMs());
+        }
+      })
+      .catch((error: unknown) => {
+        const report = this.#options.onReport ?? console.error;
+        report(error);
+      });
   }
 
   #assertObjectIdentity(config: PiAgentConfig) {
@@ -216,10 +230,24 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
     }
   }
 
-  async #open(config: PiAgentConfig) {
+  async #open(config: PiAgentConfig): Promise<OpenPiAgent> {
     if (this.#opened) {
       return this.#opened;
     }
+    if (this.#opening) {
+      return await this.#opening;
+    }
+    // Once external work leaves the input gate, concurrent requests must still share one storage owner.
+    const opening = this.#openHarness(config);
+    this.#opening = opening;
+    try {
+      return await opening;
+    } finally {
+      this.#opening = null;
+    }
+  }
+
+  async #openHarness(config: PiAgentConfig): Promise<OpenPiAgent> {
     const billingOrganizationId = config.billingOrganizationId;
     // Usage remains in pi.usage and is backfilled when an optional Billing binding is later configured.
     const billingTask =
@@ -283,7 +311,6 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
       // Persist provisioning before opening Pi so a cold start can finish initialization.
       await this.#state.storage.put(AGENT_CONFIG_KEY, config);
       this.#config = config;
-      await this.#open(config);
     });
     return await this.#open(config);
   }
@@ -504,6 +531,8 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
 
   async close(): Promise<void> {
     await this.#ready;
+    await this.#startup;
+    await this.#opening;
     if (this.#opened) {
       await this.#opened.harness.close(BACKGROUND_CONTEXT);
       this.#opened = null;

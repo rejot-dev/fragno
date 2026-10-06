@@ -16,6 +16,13 @@
     "SIGN_UP_INVITATIONS_ENABLED": "true",
     "DOCS_PUBLIC_BASE_URL": "https://backoffice.example/",
   },
+  "services": [
+    {
+      "binding": "PI_EXTENSION_COMPILER",
+      "service": "fragno-back-office-vitest",
+      "entrypoint": "PiWorkspaceExtensionCompiler",
+    },
+  ],
   "worker_loaders": [
     {
       "binding": "LOADER",

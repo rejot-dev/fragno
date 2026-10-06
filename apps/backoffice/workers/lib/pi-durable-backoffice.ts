@@ -22,6 +22,7 @@ import {
 } from "@/fragno/pi/pi-codemode";
 import type { PiRuntimeToolContext } from "@/fragno/pi/pi-runtime-context";
 import { createBackofficePiTools } from "@/fragno/pi/pi-tools";
+import { loadPiWorkspaceExtensions } from "@/fragno/pi/pi-workspace-extensions";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 
 import { createAuthorizedPiDurableModels } from "./pi-durable-authorized-models";
@@ -125,8 +126,25 @@ export async function createBackofficePiDurableHarnessOptions(input: {
       ],
     }),
   );
+  const report =
+    options.onReport ??
+    ((error: unknown) => {
+      console.error(error);
+    });
+  for (const extension of await loadPiWorkspaceExtensions({
+    execution,
+    createRuntimeToolContext: (context, invocationId) =>
+      createToolContext(`${config.sessionId}:${invocationId}`, context),
+    env: runtime.codemodeEnv ?? null,
+    registry: registry.snapshot(),
+    authorizeExecution,
+    report,
+  })) {
+    registry.install(extension);
+  }
   return {
     ...options,
+    onReport: report,
     // Pi isolates failures in prompt sections and hooks, so only the model boundary can fail closed.
     models: createAuthorizedPiDurableModels(options.models, authorizeExecution),
     registry,
