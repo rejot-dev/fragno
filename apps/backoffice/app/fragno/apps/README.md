@@ -124,6 +124,23 @@ internal Codemode bootstrap remains supported and cannot use its synthetic ident
 management actions. Server-side provisioning uses an isolated Auth instance so its synthetic session
 cannot leak into concurrent HTTP requests.
 
+## Review and revoke personal OAuth authorizations
+
+Open **Account menu → Authorized applications**, or **Settings → Authorized applications** at
+`/backoffice/settings/authorized-applications`. This page requires a live browser session and shows
+only that user's grants, including new Codemode device approvals, with client names, IDs, scopes,
+and approval timestamps. It is not an organization installation-management page.
+
+**Revoke access** deletes that user's consent, stored access tokens, refresh tokens, and pending or
+approved device codes for the selected client. Live consent is checked when minting user OAuth
+claims, serving userinfo, and exchanging a first-party OAuth token for Backoffice execution. This
+prevents an already-issued OAuth JWT from obtaining fresh execution credentials after revocation.
+Previously issued self-contained tokens may still be usable by external verifiers until expiry;
+already-issued Backoffice execution JWTs retain their existing maximum 15-minute lifetime.
+
+Device approvals made before consent tracking was added must be repeated once; there is no inferred
+or automatic consent backfill. Reauthorizing after revocation requires a new explicit approval.
+
 ## System admin app runtime tools
 
 `admin.appsCreate` / `admin.apps.create` requires the canonical `admin.apps.manage` permission.

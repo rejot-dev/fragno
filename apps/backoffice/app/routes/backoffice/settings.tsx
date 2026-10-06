@@ -96,6 +96,12 @@ function SettingsHeader() {
               to: "/backoffice/settings",
               active: true,
             },
+            {
+              id: "applications",
+              label: "Authorized applications",
+              to: "/backoffice/settings/authorized-applications",
+              active: false,
+            },
           ]}
           ariaLabel="Settings sections"
         />
