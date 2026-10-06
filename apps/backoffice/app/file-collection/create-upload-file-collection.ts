@@ -134,7 +134,7 @@ export function createUploadFileCollection(input: {
 }
 
 async function toFileContent(response: Response | null): Promise<FileContent | null> {
-  if (response === null || response.status === 404) {
+  if (response === null || response.status === 404 || response.status === 410) {
     return null;
   }
 

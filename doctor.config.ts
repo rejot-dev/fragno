@@ -31,8 +31,8 @@ export default {
       {
         // Durable workflow operations stay sequential so step order and external effects are obvious.
         files: [
-          "app/fragno/automation/marketplace-ingest-workflow.ts",
-          "app/fragno/automation/marketplace-publish-workflow.ts",
+          "app/fragno/automation/marketplace-package-install-workflow.server.ts",
+          "app/fragno/automation/marketplace-package-publish-workflow.ts",
         ],
         rules: ["react-doctor/async-await-in-loop"],
       },

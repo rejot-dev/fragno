@@ -137,7 +137,7 @@ export function formatMarketplacePushOutput(
   const stdout = `${output.publications
     .map(
       (publication) =>
-        `${publication.state}\t${publication.listingId}@${publication.version}\t${publication.workflowInstanceId}`,
+        `${publication.state}\t${publication.listingId}@${publication.version}\t${publication.state === "published" ? "" : publication.workflowInstanceId}`,
     )
     .join("\n")}\n`;
   if (failures.length === 0) {

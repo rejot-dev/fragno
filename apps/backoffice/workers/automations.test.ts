@@ -27,9 +27,9 @@ import {
   prepareCodemodeWorkflowInstance,
 } from "@/fragno/automation/engine/codemode-invocation";
 import {
-  buildMarketplaceIngestionWorkflowInstanceId,
-  MARKETPLACE_INGEST_WORKFLOW_NAME,
-} from "@/fragno/automation/marketplace-ingest-identity";
+  buildMarketplacePackageInstallWorkflowInstanceId,
+  MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
+} from "@/fragno/automation/marketplace-package-install-identity";
 import {
   createAutomationsRouteCaller,
   createWorkflowsRouteCaller,
@@ -1188,7 +1188,7 @@ describe("Automations object scope binding", () => {
         ownerScope: { kind: "system" },
         slug: "telegram-test-command",
       });
-      const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
+      const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
         installationRoot: "/workspace",
         targetScope: { kind: "user", userId: "user-1" },
         listingId,
@@ -1222,7 +1222,7 @@ describe("Automations object scope binding", () => {
       });
       const instance = await workflows("GET", "/:workflowName/instances/:instanceId", {
         pathParams: {
-          workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
+          workflowName: MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
           instanceId: workflowInstanceId,
         },
       });

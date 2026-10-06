@@ -3,8 +3,8 @@
 # Backoffice static agent-context graph
 
 - **Static mount:** `/static/`
-- **Files:** 54
-- **Entry points:** 1 `SYSTEM.md` + 17 skills
+- **Files:** 55
+- **Entry points:** 1 `SYSTEM.md` + 18 skills
 
 ## How context is loaded
 
@@ -145,6 +145,17 @@
 └─ /static/skills/using-prepared-uploads/SKILL.md — Using Prepared Uploads [line 26]
    ├─ /static/skills/generating-backoffice-uis/SKILL.md — Generating Backoffice UIs [line 17] [cycle]
    └─ /static/codemode/providers/upload.d.ts — upload tools [line 29]
+```
+
+### `marketplace-publishing`
+
+> **Load when:** Publish workspace packages to Marketplace. Use when creating package manifests,
+> validating a release with a dry run, requesting publication, or performing System-only backfills
+> and version replacements.
+
+```text
+/static/skills/marketplace-publishing/SKILL.md — Marketplace Publishing
+└─ /static/codemode/providers/marketplace.d.ts — marketplace tools [line 11]
 ```
 
 ### `mcp-connection`

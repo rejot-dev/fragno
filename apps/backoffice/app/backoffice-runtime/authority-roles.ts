@@ -11,6 +11,7 @@ import {
 const USER_AUTHORITY_ROLE_GRANTS = {
   "system-administrator": allBackofficePermissionRequirements,
   "user-owner": [
+    BACKOFFICE_PERMISSION.marketplace.publish,
     BACKOFFICE_PERMISSION.api.connectionsRead,
     BACKOFFICE_PERMISSION.capabilities.read,
     BACKOFFICE_PERMISSION.events.emit,
@@ -37,6 +38,7 @@ const USER_AUTHORITY_ROLE_GRANTS = {
   ],
   "organization-member": [
     BACKOFFICE_PERMISSION.identity.link,
+    BACKOFFICE_PERMISSION.marketplace.publish,
     BACKOFFICE_PERMISSION.api.connectionsRead,
     BACKOFFICE_PERMISSION.capabilities.read,
     BACKOFFICE_PERMISSION.connections.manage,
@@ -77,6 +79,7 @@ const INTERNAL_SERVICE_AUTHORITY_ROLE_GRANTS = {
   // denied by the base resolver and resolved from current route state by the Automations object.
   automation: allBackofficePermissionRequirements,
   agent: [
+    BACKOFFICE_PERMISSION.marketplace.publish,
     BACKOFFICE_PERMISSION.otp.create,
     BACKOFFICE_PERMISSION.store.modify,
     BACKOFFICE_PERMISSION.telegram.send,
@@ -86,6 +89,7 @@ const INTERNAL_SERVICE_AUTHORITY_ROLE_GRANTS = {
   // Runtime capability grants remain the narrower per-execution boundary.
   capability: allBackofficePermissionRequirements,
   object: [
+    BACKOFFICE_PERMISSION.marketplace.publish,
     BACKOFFICE_PERMISSION.identity.bind,
     BACKOFFICE_PERMISSION.identity.resolve,
     BACKOFFICE_PERMISSION.identity.revoke,
@@ -96,6 +100,7 @@ const INTERNAL_SERVICE_AUTHORITY_ROLE_GRANTS = {
     BACKOFFICE_PERMISSION.upload.read,
   ],
   system: [
+    BACKOFFICE_PERMISSION.marketplace.publish,
     BACKOFFICE_PERMISSION.identity.bind,
     BACKOFFICE_PERMISSION.identity.resolve,
     BACKOFFICE_PERMISSION.identity.revoke,

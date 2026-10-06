@@ -51,7 +51,7 @@ import {
   backofficeScopeSinglePathSegment,
   type BackofficeRoutableScope,
 } from "@/backoffice-runtime/scope-codec";
-import { buildMarketplaceIngestionWorkflowInstanceId } from "@/fragno/automation/marketplace-ingest-identity";
+import { buildMarketplacePackageInstallWorkflowInstanceId } from "@/fragno/automation/marketplace-package-install-identity";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
 
 import BackofficeMarketplaceDetail, { action, loader, shouldRevalidate } from "./detail";
@@ -224,7 +224,7 @@ beforeEach(() => {
   restartMarketplaceIngestionMock.mockResolvedValue({
     listingId,
     version: "1.0.0",
-    workflowInstanceId: "marketplace-ingest-1",
+    workflowInstanceId: "marketplace-package-install-1",
     action: "created",
     workflowStatus: "active",
   });
@@ -303,7 +303,7 @@ describe("marketplace detail loader", () => {
     assert(!(result instanceof Response));
     expect(result.installationReference).toEqual({
       ...installationReference,
-      workflowInstanceId: await buildMarketplaceIngestionWorkflowInstanceId({
+      workflowInstanceId: await buildMarketplacePackageInstallWorkflowInstanceId({
         targetScope: scope,
         listingId,
         installationRoot: installationReference.installationRoot,
@@ -668,7 +668,7 @@ describe("marketplace ingestion action", () => {
     restartMarketplaceIngestionMock.mockResolvedValueOnce({
       listingId,
       version: "1.3.0",
-      workflowInstanceId: "marketplace-ingest-1",
+      workflowInstanceId: "marketplace-package-install-1",
       action: "created",
       workflowStatus: "active",
     });
@@ -725,7 +725,7 @@ describe("marketplace ingestion action", () => {
     restartMarketplaceIngestionMock.mockResolvedValueOnce({
       listingId,
       version: "1.0.0",
-      workflowInstanceId: "marketplace-ingest-1",
+      workflowInstanceId: "marketplace-package-install-1",
       action: "restarted",
       workflowStatus: "active",
     });

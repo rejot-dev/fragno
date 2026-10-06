@@ -34,12 +34,12 @@ class NonRetryableMarketplaceUploadRequestError extends NonRetryableError {
   }
 }
 
-export const throwMarketplaceUploadRequestError = (input: {
+export function throwMarketplaceUploadRequestError(input: {
   operation: string;
   status: number;
   code: string | null;
   message: string;
-}): never => {
+}): never {
   if (
     (input.code && RETRYABLE_MARKETPLACE_UPLOAD_ERROR_CODES.has(input.code)) ||
     input.status === 408 ||
@@ -59,7 +59,7 @@ export const throwMarketplaceUploadRequestError = (input: {
     input.code,
     input.message,
   );
-};
+}
 
 type MarketplaceUploadRouteError = {
   code: string;
@@ -82,25 +82,27 @@ const marketplaceUploadRouteErrorMessage = (error: MarketplaceUploadRouteError) 
   return `${error.message}: ${issueDetails.join("; ")}`;
 };
 
-export const throwMarketplaceUploadRouteError = (input: {
+export function throwMarketplaceUploadRouteError(input: {
   operation: string;
   status: number;
   error: MarketplaceUploadRouteError;
-}): never =>
-  throwMarketplaceUploadRequestError({
+}): never {
+  return throwMarketplaceUploadRequestError({
     operation: input.operation,
     status: input.status,
     code: input.error.code,
     message: marketplaceUploadRouteErrorMessage(input.error),
   });
+}
 
-export const throwUnexpectedMarketplaceUploadResponse = (input: {
+export function throwUnexpectedMarketplaceUploadResponse(input: {
   operation: string;
   status: number;
-}): never =>
-  throwMarketplaceUploadRequestError({
+}): never {
+  return throwMarketplaceUploadRequestError({
     operation: input.operation,
     status: input.status,
     code: null,
     message: "Upload returned an unexpected response.",
   });
+}

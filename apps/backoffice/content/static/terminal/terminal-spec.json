@@ -4523,6 +4523,49 @@
     ]
   },
   {
+    "command": "marketplace.publish",
+    "summary": "Publish the package identified by its root manifest.json. The accepted snapshot is published asynchronously.",
+    "options": [
+      {
+        "name": "package-root",
+        "required": true,
+        "valueRequired": true,
+        "description": "Absolute package directory in the current filesystem."
+      },
+      {
+        "name": "dry-run",
+        "description": "Validate owner, version, and selected files without staging or publishing."
+      },
+      {
+        "name": "skip-author-check",
+        "description": "System only: publish without organization membership."
+      },
+      {
+        "name": "skip-version-check",
+        "description": "System only: allow older releases and replacement of existing versions."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
     "command": "packages.install",
     "summary": "Start the existing installation flow in the selected workspace. A created or restarted workflow is not a completed installation.",
     "options": [

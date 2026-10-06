@@ -236,6 +236,10 @@ class UnavailableLocalDurableObject {
     return null;
   }
 
+  async requestMarketplacePackagePublish() {
+    throw new Error("Automations is not configured.");
+  }
+
   async requestStaticMarketplacePublications() {
     throw new Error("Automations is not configured.");
   }

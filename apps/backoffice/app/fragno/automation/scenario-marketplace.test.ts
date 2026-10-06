@@ -26,6 +26,7 @@ import {
   createBackofficeSystemExecution,
   createBackofficeUserExecution,
 } from "@/backoffice-runtime/context";
+import type { BackofficeActionRpcContext } from "@/backoffice-runtime/object-registry";
 import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import type { BackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import {
@@ -41,21 +42,22 @@ import {
   MARKETPLACE_INSTALL_WORKFLOW_PATH,
   marketplaceArtifactUploadName,
 } from "@/fragno/marketplace/artifacts";
-import type { MarketplaceCreateDraftListingInput } from "@/fragno/marketplace/contracts";
+import { captureBundledMarketplaceRelease } from "@/fragno/marketplace/bundled-release";
 import { marketplaceLockSchema } from "@/fragno/marketplace/marketplace-lock";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
-import { STATIC_MARKETPLACE_ENTRIES } from "@/fragno/marketplace/static-entries";
+import type { MarketplacePackagePublishRequest } from "@/fragno/marketplace/package-publishing";
+import {
+  STATIC_MARKETPLACE_ENTRIES,
+  getStaticMarketplaceEntry,
+} from "@/fragno/marketplace/static-entries";
 
 import { InMemoryMarketplaceObject } from "../../../workers/marketplace.do";
 import { InMemoryUploadObject } from "../../../workers/upload.do";
 import {
-  buildMarketplaceIngestionWorkflowInstanceId,
-  MARKETPLACE_INGEST_WORKFLOW_NAME,
-} from "./marketplace-ingest-identity";
-import {
-  buildMarketplacePublicationWorkflowInstanceId,
-  MARKETPLACE_PUBLISH_WORKFLOW_NAME,
-} from "./marketplace-publish-workflow";
+  buildMarketplacePackageInstallWorkflowInstanceId,
+  MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
+} from "./marketplace-package-install-identity";
+import { MARKETPLACE_PACKAGE_PUBLISH_WORKFLOW_NAME } from "./marketplace-package-publish-workflow";
 import { createAutomationsRouteCaller, createWorkflowsRouteCaller } from "./route-callers";
 import {
   defineBackofficeScenario,
@@ -268,26 +270,19 @@ const createMarketplacePublicationWorkflow = async (
   ctx: BackofficeScenarioContext,
   version: string,
 ) => {
-  const workflowInstanceId = buildMarketplacePublicationWorkflowInstanceId({
-    listingId: MARKETPLACE_LISTING_ID,
-    version,
-  });
-  const workflows = createWorkflowsRouteCaller({
-    object: ctx.runtime.objects.automations.singleton(),
-    context: {
-      execution: createBackofficeSystemExecution({ kind: "system" }),
-      propagationContext: null,
+  const entry = getStaticMarketplaceEntry({ slug: "telegram-test-command", version });
+  assert(entry);
+  const result = await ctx.runtime.objects.marketplace.singleton().commands.publishRelease(
+    {
+      release: await captureBundledMarketplaceRelease(entry),
+      dryRun: false,
+      skipAuthorCheck: false,
+      skipVersionCheck: true,
     },
-  });
-  const created = await workflows("POST", "/:workflowName/instances", {
-    pathParams: { workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME },
-    body: {
-      id: workflowInstanceId,
-      params: { slug: "telegram-test-command", version },
-    },
-  });
-  assert(created.type === "json");
-  return workflowInstanceId;
+    { execution: createBackofficeSystemExecution({ kind: "system" }), propagationContext: null },
+  );
+  assert(result.state === "requested");
+  return result.workflowInstanceId;
 };
 
 const writeUploadFile = async (input: {
@@ -310,6 +305,54 @@ const writeUploadFile = async (input: {
 };
 
 describe("marketplace scenarios", { concurrent: false }, () => {
+  test("normal seeding skips published bundled bytes before capture and does not enqueue more workflows", async () => {
+    const files = BASE_STATIC_MARKETPLACE_VERSION.files as Record<string, string>;
+    const original = files[MARKETPLACE_ARTIFACT_FILE_KEY];
+    try {
+      await runBackofficeScenario(
+        defineBackofficeScenario({
+          name: "No capture work for already-published bundled versions",
+          steps: ({ then, runner }) => [
+            then.assert("request the bundled releases", async (ctx) => {
+              const requested = await ctx.runtime.objects.automations
+                .singleton()
+                .commands.requestStaticMarketplacePublications();
+              assert(requested.publications.every((entry) => entry.state === "requested"));
+            }),
+            runner.drain(),
+            then.assert(
+              "skip published releases even when current source bytes cannot be captured",
+              async (ctx) => {
+                files[MARKETPLACE_ARTIFACT_FILE_KEY] = "x".repeat(1_048_577);
+                const result = await ctx.runtime.objects.automations
+                  .singleton()
+                  .commands.requestStaticMarketplacePublications();
+                assert(result.publications.every((entry) => entry.state === "published"));
+                expect(
+                  (
+                    await ctx.runtime.objects.marketplace
+                      .singleton()
+                      .commands.getArtifactManifest({ listingId: MARKETPLACE_LISTING_ID })
+                  )?.versions,
+                ).toContain("1.0.0");
+                const url = new URL("https://upload.test/api/upload/files/by-key/content");
+                url.searchParams.set("provider", "database");
+                url.searchParams.set("key", `1.0.0/${MARKETPLACE_ARTIFACT_FILE_KEY}`);
+                const response = await ctx.runtime.objects.upload
+                  .forName(marketplaceArtifactUploadName(MARKETPLACE_LISTING_ID))
+                  .http.fetch(new Request(url));
+                await expect(response.text()).resolves.toBe(original);
+              },
+            ),
+            runner.drain(),
+          ],
+        }),
+      );
+    } finally {
+      files[MARKETPLACE_ARTIFACT_FILE_KEY] = original;
+    }
+  });
+
   test("force-publishes with fresh workflow IDs and overwrites artifact files", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
@@ -317,26 +360,36 @@ describe("marketplace scenarios", { concurrent: false }, () => {
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ then, runner }) => [
           then.assert("the normal publication is requested", async (ctx) => {
-            await ctx.runtime.objects.automations
+            const requested = await ctx.runtime.objects.automations
               .singleton()
               .commands.requestStaticMarketplacePublications();
-          }),
-          runner.drain(),
-          then.assert("the forced publication uses fresh workflow IDs", async (ctx) => {
-            const forced = await ctx.runtime.objects.automations
-              .singleton()
-              .commands.requestStaticMarketplacePublications({ force: true });
-            expect(forced.publications[0]).toMatchObject({
-              state: "requested",
-              workflowStatus: "active",
-            });
-            expect(forced.publications[0]?.workflowInstanceId).not.toBe(
-              buildMarketplacePublicationWorkflowInstanceId({
-                listingId: MARKETPLACE_LISTING_ID,
-                version: "1.0.0",
-              }),
+            ctx.vars.originalPublicationIds = requested.publications.flatMap((publication) =>
+              publication.state === "requested" ? [publication.workflowInstanceId] : [],
             );
           }),
+          runner.drain(),
+          then.assert(
+            "the forced publication repairs changed files with a fresh workflow",
+            async (ctx) => {
+              await writeUploadFile({
+                content: "Changed outside the publisher",
+                fileKey: `1.0.0/${MARKETPLACE_ARTIFACT_FILE_KEY}`,
+                upload: ctx.runtime.objects.upload.forName(
+                  marketplaceArtifactUploadName(MARKETPLACE_LISTING_ID),
+                ),
+              });
+              const forced = await ctx.runtime.objects.automations
+                .singleton()
+                .commands.requestStaticMarketplacePublications({ force: true });
+              const repair = forced.publications.find(
+                (publication) =>
+                  publication.listingId === MARKETPLACE_LISTING_ID &&
+                  publication.version === "1.0.0",
+              );
+              assert(repair?.state === "requested");
+              expect(ctx.vars.originalPublicationIds).not.toContain(repair.workflowInstanceId);
+            },
+          ),
           runner.drain(),
           then.assert("the overwritten artifacts remain published", async (ctx) => {
             await expect(
@@ -747,7 +800,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
   });
 
   test("configures the Telegram test message through generated installer UI", async () => {
-    const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
+    const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
       installationRoot: "/workspace",
       targetScope: { kind: "org", orgId: "org-1" },
       listingId: MARKETPLACE_LISTING_ID,
@@ -861,7 +914,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             status: "complete",
           }),
           then.workflow.instance({
-            workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
+            workflowName: MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
             instanceId: workflowInstanceId,
             status: "complete",
           }),
@@ -871,7 +924,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
   });
 
   test("denies installer operations outside the untrusted codemode permission ceiling", async () => {
-    const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
+    const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
       installationRoot: "/workspace",
       targetScope: { kind: "org", orgId: "org-1" },
       listingId: MARKETPLACE_LISTING_ID,
@@ -915,7 +968,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                 status: "errored",
               }),
               then.workflow.instance({
-                workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
+                workflowName: MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
                 instanceId: workflowInstanceId,
                 status: "errored",
               }),
@@ -951,7 +1004,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
   });
 
   test("reconciles a Marketplace-owned route while preserving its operational state", async () => {
-    const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
+    const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
       installationRoot: "/workspace",
       targetScope: { kind: "org", orgId: "org-1" },
       listingId: MARKETPLACE_LISTING_ID,
@@ -1037,7 +1090,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           }),
           runner.drain(),
           then.workflow.instance({
-            workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
+            workflowName: MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
             instanceId: workflowInstanceId,
             status: "complete",
             actors: installerExecution.actors,
@@ -1054,7 +1107,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
 
             const ingestion = await workflows("GET", "/:workflowName/instances/:instanceId", {
               pathParams: {
-                workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
+                workflowName: MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
                 instanceId: workflowInstanceId,
               },
             });
@@ -1193,7 +1246,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
   });
 
   test("rejects the unmanaged legacy Telegram route", async () => {
-    const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
+    const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
       installationRoot: "/workspace",
       targetScope: { kind: "org", orgId: "org-1" },
       listingId: MARKETPLACE_LISTING_ID,
@@ -1249,7 +1302,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           }),
           runner.drain(),
           then.workflow.instance({
-            workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
+            workflowName: MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
             instanceId: workflowInstanceId,
             status: "errored",
           }),
@@ -1289,7 +1342,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
   });
 
   test("rejects an unrelated route collision without advancing ingestion", async () => {
-    const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
+    const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
       installationRoot: "/workspace",
       targetScope: { kind: "org", orgId: "org-1" },
       listingId: MARKETPLACE_LISTING_ID,
@@ -1345,7 +1398,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           }),
           runner.drain(),
           then.workflow.instance({
-            workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
+            workflowName: MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
             instanceId: workflowInstanceId,
             status: "errored",
           }),
@@ -1378,7 +1431,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
   });
 
   test("retries a lost ingestion transfer response without creating another upload session", async () => {
-    const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
+    const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
       installationRoot: "/workspace",
       targetScope: { kind: "org", orgId: "org-1" },
       listingId: MARKETPLACE_LISTING_ID,
@@ -1445,7 +1498,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           }),
           runner.drain(),
           then.workflow.instance({
-            workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
+            workflowName: MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
             instanceId: workflowInstanceId,
             status: "waiting",
           }),
@@ -1459,7 +1512,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           }),
           when.time.advance("1 s"),
           then.workflow.instance({
-            workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
+            workflowName: MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
             instanceId: workflowInstanceId,
             status: "complete",
           }),
@@ -1483,7 +1536,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
 
   test("rebuilds a multi-write ingestion batch after a runner restart", async () => {
     await withTwoFileMarketplaceVersions(async () => {
-      const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
+      const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
         installationRoot: "/workspace",
         targetScope: { kind: "org", orgId: "org-1" },
         listingId: MARKETPLACE_LISTING_ID,
@@ -1569,7 +1622,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             }),
             runner.drain(),
             then.workflow.instance({
-              workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
+              workflowName: MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
               instanceId: workflowInstanceId,
               status: "waiting",
             }),
@@ -1593,7 +1646,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             }),
             when.time.advance("1 s"),
             then.workflow.instance({
-              workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
+              workflowName: MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
               instanceId: workflowInstanceId,
               status: "complete",
             }),
@@ -1634,7 +1687,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
   });
 
   test("does not retry permanent typed Upload errors during ingestion", async () => {
-    const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
+    const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
       installationRoot: "/workspace",
       targetScope: { kind: "org", orgId: "org-1" },
       listingId: MARKETPLACE_LISTING_ID,
@@ -1693,7 +1746,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           }),
           runner.drain(),
           then.workflow.instance({
-            workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
+            workflowName: MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
             instanceId: workflowInstanceId,
             status: "errored",
           }),
@@ -1707,7 +1760,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
   });
 
   test("preserves an existing target file and rejects Marketplace ingestion", async () => {
-    const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
+    const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
       installationRoot: "/workspace",
       targetScope: { kind: "org", orgId: "org-1" },
       listingId: MARKETPLACE_LISTING_ID,
@@ -1767,7 +1820,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             });
             const instance = await workflows("GET", "/:workflowName/instances/:instanceId", {
               pathParams: {
-                workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
+                workflowName: MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
                 instanceId: workflowInstanceId,
               },
             });
@@ -1807,7 +1860,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
   });
 
   test("rejects a latest-version ingestion when the legacy starter file matches version 1.0.0", async () => {
-    const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
+    const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
       installationRoot: "/workspace",
       targetScope: { kind: "org", orgId: "org-1" },
       listingId: MARKETPLACE_LISTING_ID,
@@ -1879,7 +1932,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               });
               const instance = await workflows("GET", "/:workflowName/instances/:instanceId", {
                 pathParams: {
-                  workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
+                  workflowName: MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
                   instanceId: workflowInstanceId,
                 },
               });
@@ -1931,12 +1984,15 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           objectFactories: {
             MARKETPLACE: ({ state, env, runtime, implementation }) =>
               new (class extends InMemoryMarketplaceObject {
-                async createDraftListing(input: MarketplaceCreateDraftListingInput) {
+                async beginPackagePublish(
+                  input: MarketplacePackagePublishRequest,
+                  context: BackofficeActionRpcContext,
+                ) {
                   if (rejectReservation) {
                     rejectReservation = false;
                     throw new Error("Temporary Marketplace reservation failure.");
                   }
-                  return await super.createDraftListing(input);
+                  return await super.beginPackagePublish(input, context);
                 }
               })({ state, env, runtime, implementation }),
           },
@@ -1947,14 +2003,10 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             }),
             runner.drain(),
             then.workflow.instance({
-              workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME,
-              instanceId: buildMarketplacePublicationWorkflowInstanceId({
-                listingId: MARKETPLACE_LISTING_ID,
-                version: "1.0.0",
-              }),
+              workflowName: MARKETPLACE_PACKAGE_PUBLISH_WORKFLOW_NAME,
               status: "waiting",
             }),
-            then.assert("the bundled source changes after the snapshot step commits", () => {
+            then.assert("the bundled source changes after capture and acceptance", () => {
               baseEntryFiles[MARKETPLACE_ARTIFACT_FILE_KEY] = "changed after snapshot";
             }),
             runner.restartObject({
@@ -1963,11 +2015,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             }),
             when.time.advance("1 s"),
             then.workflow.instance({
-              workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME,
-              instanceId: buildMarketplacePublicationWorkflowInstanceId({
-                listingId: MARKETPLACE_LISTING_ID,
-                version: "1.0.0",
-              }),
+              workflowName: MARKETPLACE_PACKAGE_PUBLISH_WORKFLOW_NAME,
               status: "complete",
             }),
             then.assert("publication uses the source captured before restart", async (ctx) => {
@@ -2044,11 +2092,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           }),
           runner.drain(),
           then.workflow.instance({
-            workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME,
-            instanceId: buildMarketplacePublicationWorkflowInstanceId({
-              listingId: MARKETPLACE_LISTING_ID,
-              version: "1.0.0",
-            }),
+            workflowName: MARKETPLACE_PACKAGE_PUBLISH_WORKFLOW_NAME,
             status: "waiting",
           }),
           then.assert("the lost response leaves one reusable upload", () => {
@@ -2062,11 +2106,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           }),
           when.time.advance("1 s"),
           then.workflow.instance({
-            workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME,
-            instanceId: buildMarketplacePublicationWorkflowInstanceId({
-              listingId: MARKETPLACE_LISTING_ID,
-              version: "1.0.0",
-            }),
+            workflowName: MARKETPLACE_PACKAGE_PUBLISH_WORKFLOW_NAME,
             status: "complete",
           }),
           then.assert("creation replay reuses the upload before transferring each file", () => {
@@ -2126,11 +2166,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           }),
           runner.drain(),
           then.workflow.instance({
-            workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME,
-            instanceId: buildMarketplacePublicationWorkflowInstanceId({
-              listingId: MARKETPLACE_LISTING_ID,
-              version: "1.0.0",
-            }),
+            workflowName: MARKETPLACE_PACKAGE_PUBLISH_WORKFLOW_NAME,
             status: "waiting",
           }),
           then.assert("the completed create step is not repeated", () => {
@@ -2143,11 +2179,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           }),
           when.time.advance("1 s"),
           then.workflow.instance({
-            workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME,
-            instanceId: buildMarketplacePublicationWorkflowInstanceId({
-              listingId: MARKETPLACE_LISTING_ID,
-              version: "1.0.0",
-            }),
+            workflowName: MARKETPLACE_PACKAGE_PUBLISH_WORKFLOW_NAME,
             status: "complete",
           }),
           then.assert("only the failed transfer step is replayed", async (ctx) => {
@@ -2207,11 +2239,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           }),
           runner.drain(),
           then.workflow.instance({
-            workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME,
-            instanceId: buildMarketplacePublicationWorkflowInstanceId({
-              listingId: MARKETPLACE_LISTING_ID,
-              version: "1.0.0",
-            }),
+            workflowName: MARKETPLACE_PACKAGE_PUBLISH_WORKFLOW_NAME,
             status: "errored",
           }),
           then.assert("the non-retryable Upload code bypasses the retry policy", () => {
@@ -2265,11 +2293,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           }),
           runner.drain(),
           then.workflow.instance({
-            workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME,
-            instanceId: buildMarketplacePublicationWorkflowInstanceId({
-              listingId: MARKETPLACE_LISTING_ID,
-              version: "1.0.0",
-            }),
+            workflowName: MARKETPLACE_PACKAGE_PUBLISH_WORKFLOW_NAME,
             status: "waiting",
           }),
           runner.restartObject({
@@ -2278,11 +2302,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           }),
           when.time.advance("1 s"),
           then.workflow.instance({
-            workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME,
-            instanceId: buildMarketplacePublicationWorkflowInstanceId({
-              listingId: MARKETPLACE_LISTING_ID,
-              version: "1.0.0",
-            }),
+            workflowName: MARKETPLACE_PACKAGE_PUBLISH_WORKFLOW_NAME,
             status: "complete",
           }),
           then.assert("the typed storage failure was retried once", () => {
@@ -2331,11 +2351,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           }),
           runner.drain(),
           then.workflow.instance({
-            workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME,
-            instanceId: buildMarketplacePublicationWorkflowInstanceId({
-              listingId: MARKETPLACE_LISTING_ID,
-              version: "1.0.0",
-            }),
+            workflowName: MARKETPLACE_PACKAGE_PUBLISH_WORKFLOW_NAME,
             status: "waiting",
           }),
           then.assert(
@@ -2363,15 +2379,11 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           }),
           when.time.advance("1 s"),
           then.workflow.instance({
-            workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME,
-            instanceId: buildMarketplacePublicationWorkflowInstanceId({
-              listingId: MARKETPLACE_LISTING_ID,
-              version: "1.0.0",
-            }),
+            workflowName: MARKETPLACE_PACKAGE_PUBLISH_WORKFLOW_NAME,
             status: "complete",
           }),
-          then.assert("the committed batch is reused before publishing the version", () => {
-            expect(batchCommitAttempts).toBe(2);
+          then.assert("the committed inventory is recognized without another Upload commit", () => {
+            expect(batchCommitAttempts).toBe(1);
           }),
         ],
       }),
@@ -2414,29 +2426,17 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           }),
           runner.drain(),
           then.workflow.instance({
-            workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME,
-            instanceId: buildMarketplacePublicationWorkflowInstanceId({
-              listingId: MARKETPLACE_LISTING_ID,
-              version: "1.0.0",
-            }),
+            workflowName: MARKETPLACE_PACKAGE_PUBLISH_WORKFLOW_NAME,
             status: "waiting",
           }),
           when.time.advance("2 hours"),
           then.workflow.instance({
-            workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME,
-            instanceId: buildMarketplacePublicationWorkflowInstanceId({
-              listingId: MARKETPLACE_LISTING_ID,
-              version: "1.0.0",
-            }),
+            workflowName: MARKETPLACE_PACKAGE_PUBLISH_WORKFLOW_NAME,
             status: "waiting",
           }),
           when.time.advance("2 hours"),
           then.workflow.instance({
-            workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME,
-            instanceId: buildMarketplacePublicationWorkflowInstanceId({
-              listingId: MARKETPLACE_LISTING_ID,
-              version: "1.0.0",
-            }),
+            workflowName: MARKETPLACE_PACKAGE_PUBLISH_WORKFLOW_NAME,
             status: "waiting",
           }),
           then.assert("the expired upload is never published", async (ctx) => {
@@ -2463,7 +2463,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
   });
 
   test("replays ingestion after the prepared batch commits but its response is lost", async () => {
-    const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
+    const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
       installationRoot: "/workspace",
       targetScope: { kind: "org", orgId: "org-1" },
       listingId: MARKETPLACE_LISTING_ID,
@@ -2525,7 +2525,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           }),
           runner.drain(),
           then.workflow.instance({
-            workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
+            workflowName: MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
             instanceId: workflowInstanceId,
             status: "waiting",
           }),
@@ -2545,7 +2545,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           }),
           when.time.advance("1 s"),
           then.workflow.instance({
-            workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
+            workflowName: MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
             instanceId: workflowInstanceId,
             status: "complete",
           }),
@@ -2567,7 +2567,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
   });
 
   test("rejects source bytes changed between upload creation and transfer", async () => {
-    const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
+    const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
       installationRoot: "/workspace",
       targetScope: { kind: "org", orgId: "org-1" },
       listingId: MARKETPLACE_LISTING_ID,
@@ -2638,7 +2638,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           }),
           runner.drain(),
           then.workflow.instance({
-            workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
+            workflowName: MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
             instanceId: workflowInstanceId,
             status: "errored",
           }),
@@ -2665,7 +2665,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
   });
 
   test("rejects source bytes changed after listing without poisoning the destination", async () => {
-    const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
+    const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
       installationRoot: "/workspace",
       targetScope: { kind: "org", orgId: "org-1" },
       listingId: MARKETPLACE_LISTING_ID,
@@ -2729,7 +2729,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           }),
           runner.drain(),
           then.workflow.instance({
-            workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
+            workflowName: MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
             instanceId: workflowInstanceId,
             status: "errored",
           }),
@@ -2773,7 +2773,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             });
             const invalidPublication = await workflows("POST", "/:workflowName/instances", {
               pathParams: {
-                workflowName: MARKETPLACE_PUBLISH_WORKFLOW_NAME,
+                workflowName: MARKETPLACE_PACKAGE_PUBLISH_WORKFLOW_NAME,
               },
               body: {
                 id: "invalid-marketplace-publication",
@@ -2789,7 +2789,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
 
             const invalidIngestion = await workflows("POST", "/:workflowName/instances", {
               pathParams: {
-                workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
+                workflowName: MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
               },
               body: {
                 id: "invalid-marketplace-ingestion",

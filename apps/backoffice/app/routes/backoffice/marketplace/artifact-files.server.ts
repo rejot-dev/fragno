@@ -80,11 +80,13 @@ function createPublishedMarketplaceArtifactCollection(input: {
   manifest: MarketplaceArtifactManifest;
   objects: BackofficeObjectRegistry;
   request: Request;
-}): FileCollection {
+}): Pick<FileCollection, "getTree" | "getFile"> {
   const uploadObject = input.objects.upload.forName(input.manifest.uploadName);
   const uploadCollection = createUploadFileCollection({
     routes: createUploadRouteCaller(uploadObject.http, input.request),
     provider: UPLOAD_PROVIDER_DATABASE,
+    // Shared listing storage spans releases; retain a page budget for each version and listing-root files.
+    maxPages: input.manifest.versions.length + 1,
     getFileResponse: ({ provider, fileKey }) =>
       fetchUploadFile(uploadObject, input.request, provider, fileKey),
   });
@@ -97,16 +99,10 @@ function createPublishedMarketplaceArtifactCollection(input: {
       );
     },
     async getFile(path) {
-      return isPublishedArtifactPath(input.manifest, path) ? uploadCollection.getFile(path) : null;
-    },
-    async searchFiles(pattern, query, options, cursor) {
-      const page = await uploadCollection.searchFiles(pattern, query, options, cursor);
-      return {
-        ...page,
-        matches: page.matches.filter((match) =>
-          isPublishedArtifactPath(input.manifest, match.path),
-        ),
-      };
+      if (!isPublishedArtifactPath(input.manifest, path)) {
+        return null;
+      }
+      return await uploadCollection.getFile(path);
     },
   };
 }
@@ -124,7 +120,11 @@ function fetchUploadFile(
 }
 
 function createFileContentResponse(content: FileContent): Response {
-  const headers = new Headers();
+  // Author-controlled HTML/SVG must not execute with Backoffice's origin when opened directly.
+  const headers = new Headers({
+    "content-security-policy": "sandbox; default-src 'none'; style-src 'unsafe-inline'",
+    "x-content-type-options": "nosniff",
+  });
   if (content.contentType) {
     headers.set("content-type", content.contentType);
   }

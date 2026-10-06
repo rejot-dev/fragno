@@ -1,5 +1,7 @@
 // oxlint-disable-next-line typescript/triple-slash-reference -- Published codemode declarations define globals, not an importable module.
 /// <reference path="../../../content/static/codemode/providers/packages.d.ts" />
+// oxlint-disable-next-line typescript/triple-slash-reference -- Published codemode declarations define globals, not an importable module.
+/// <reference path="../../../content/static/codemode/providers/marketplace.d.ts" />
 
 import { describe, expect, expectTypeOf, test, assert } from "vitest";
 
@@ -39,6 +41,23 @@ const findBashFamily = (namespace: string): BackofficeRuntimeToolFamily => {
 };
 
 describe("runtime tool reference generation", () => {
+  test("publishing declarations expose concrete paths, System overrides, and asynchronous workflow references", () => {
+    expectTypeOf<MarketplacePublishInput["packageRoot"]>().toEqualTypeOf<string>();
+    expectTypeOf<
+      Extract<MarketplacePublishOutput, { state: "requested" | "published" }>["workflowScope"]
+    >().toEqualTypeOf<{ kind: "system" }>();
+    const reference = createRuntimeToolFamilyReference({ family: findBashFamily("marketplace") });
+    const publish = reference.tools.find((tool) => tool.id === "marketplace.publish");
+    assert(publish);
+    expect(publish.bash?.options.map((option) => option.name)).toEqual([
+      "package-root",
+      "dry-run",
+      "skip-author-check",
+      "skip-version-check",
+    ]);
+    assert(publish.codemode.inputType.includes("packageRoot: string;"));
+    assert(!publish.codemode.inputType.includes("packageRoot: unknown;"));
+  });
   test("generated package installation paths can be passed to filesystem tools", () => {
     expectTypeOf<PackagesInstallOutput["installationRoot"]>().toEqualTypeOf<string>();
     expectTypeOf<PackagesLsOutput["entries"][number]["installationRoot"]>().toEqualTypeOf<string>();

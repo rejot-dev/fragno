@@ -103,15 +103,18 @@ export type BackofficeRequestExecution = {
 
 export type BackofficeExecutionContext = BackofficeRequestExecution | BackofficeDeferredExecution;
 
+/** Deferred execution retains scope ceilings and provenance, never request authority. */
+export const backofficeDeferredExecutionSchema = z.strictObject({
+  kind: z.literal("deferred"),
+  scope: backofficeContextScopeSchema,
+  scopeRestriction: backofficeContextScopeSchema.nullable(),
+  actors: automationActorsSchema,
+}) satisfies z.ZodType<BackofficeDeferredExecution>;
+
 /** Validates execution variants when crossing a serialized trust boundary. */
 export const backofficeExecutionContextSchema: z.ZodType<BackofficeExecutionContext> =
   z.discriminatedUnion("kind", [
-    z.strictObject({
-      kind: z.literal("deferred"),
-      scope: backofficeContextScopeSchema,
-      scopeRestriction: backofficeContextScopeSchema.nullable(),
-      actors: automationActorsSchema,
-    }),
+    backofficeDeferredExecutionSchema,
     z.strictObject({
       kind: z.literal("request"),
       scope: backofficeContextScopeSchema,

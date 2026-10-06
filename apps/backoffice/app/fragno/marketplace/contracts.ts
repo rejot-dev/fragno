@@ -71,9 +71,15 @@ export type MarketplaceListingMetadata = z.infer<typeof marketplaceListingMetada
 
 const marketplaceOwnerIdSchema = z.string().trim().min(1).max(191);
 
+/** Scoped package names resolve to stable organization ownership, not a user or project owner. */
+export const marketplaceOrganizationOwnerScopeSchema = z.strictObject({
+  kind: z.literal("org"),
+  orgId: marketplaceOwnerIdSchema,
+});
+
 export const marketplaceOwnerScopeSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("system") }),
-  z.object({ kind: z.literal("org"), orgId: marketplaceOwnerIdSchema }),
+  marketplaceOrganizationOwnerScopeSchema,
   z.object({ kind: z.literal("user"), userId: marketplaceOwnerIdSchema }),
   z.object({
     kind: z.literal("project"),
@@ -238,16 +244,12 @@ const marketplaceStaticPublicationIdentitySchema = z.object({
 });
 
 export const marketplaceStaticPublicationEntryResultSchema = z.discriminatedUnion("state", [
-  marketplaceStaticPublicationIdentitySchema.extend({
+  marketplaceStaticPublicationIdentitySchema.omit({ workflowInstanceId: true }).extend({
     state: z.literal("published"),
   }),
   marketplaceStaticPublicationIdentitySchema.extend({
     state: z.literal("requested"),
     workflowStatus: z.literal("active"),
-  }),
-  marketplaceStaticPublicationIdentitySchema.extend({
-    state: z.literal("queued"),
-    blockedByVersion: marketplaceVersionSchema,
   }),
   marketplaceStaticPublicationIdentitySchema.extend({
     state: z.literal("pending"),
@@ -453,6 +455,7 @@ export const MARKETPLACE_OPERATION_ERROR_CODES = [
   "MARKETPLACE_LISTING_NOT_FOUND",
   "MARKETPLACE_VERSION_NOT_FOUND",
   "MARKETPLACE_VERSION_TRANSITION_INVALID",
+  "MARKETPLACE_PUBLICATION_CONFLICT",
 ] as const;
 
 export type MarketplaceOperationErrorCode = (typeof MARKETPLACE_OPERATION_ERROR_CODES)[number];
