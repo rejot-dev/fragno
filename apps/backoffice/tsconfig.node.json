@@ -10,6 +10,7 @@
   ],
   "exclude": [
     "scripts/better-auth-cli.ts",
+    "scripts/test-oauth-client.scenario.test.ts",
     "scripts/node-server/node-process-config.ts",
     "scripts/node-server/node-server-proxy.scenario.test.ts",
     "scripts/node-server/node-supervisor-disconnect.ts"

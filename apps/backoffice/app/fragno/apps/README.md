@@ -124,6 +124,112 @@ internal Codemode bootstrap remains supported and cannot use its synthetic ident
 management actions. Server-side provisioning uses an isolated Auth instance so its synthetic session
 cannot leak into concurrent HTTP requests.
 
+## Test an OAuth client with a local callback server
+
+`scripts/test-oauth-client.mjs` is a small, loopback-only OAuth client, not another Backoffice
+server. It exercises authorization code + S256 PKCE, verifies the ID token through Backoffice's JWKS
+(signature, issuer, audience, expiry, and nonce), then calls userinfo and checks its subject. The
+result page displays identity and token metadata, **not tokens or secrets**. Credentials are not
+persisted or logged. Stop the server with Ctrl+C.
+
+### 1. Start Backoffice and sign in
+
+From the repository root:
+
+```bash
+pnpm --filter @fragno-apps/backoffice-rr dev
+```
+
+Open `http://127.0.0.1:5173/backoffice/login` and sign in as a **global administrator** in the
+browser where you will test OAuth. Use an existing account and the usual development setup; the test
+script neither provisions users nor bypasses email verification/invitations. If your Backoffice runs
+at another origin, use that origin consistently and pass it with `--backoffice-url` below.
+
+Use the **exact Backoffice origin open in your browser** for `--backoffice-url`: `localhost` and
+`127.0.0.1` do not share session cookies. Client creation requires a global administrator; approving
+authorizations and managing your own consents do not. Password login resumes the provider's signed
+OAuth request when starting the test signed out.
+
+### 2. Create a dedicated public native client
+
+Use this exact local test profile:
+
+| Setting               | Value                            |
+| --------------------- | -------------------------------- |
+| Name                  | `Local OAuth PKCE Test`          |
+| Application type      | `native`                         |
+| Client authentication | `none` (public; no secret)       |
+| Grant types           | `authorization_code`             |
+| Redirect URI          | `http://127.0.0.1:8789/callback` |
+| Scopes                | `openid profile email`           |
+| PKCE                  | Required; the script uses S256   |
+
+**Do not use the deployment Codemode client.** This is a native authorization-code test client, not
+a device-code client. Better Auth rejects HTTP loopback redirects for `web` clients; native clients
+allow this callback. Create it through the runtime tool in the **Backoffice terminal with System
+context**, as a global administrator (this command is not a host-shell command):
+
+```bash
+admin.oauth-clients.create --name "Local OAuth PKCE Test" --application-type native --client-type public --redirect-uri http://127.0.0.1:8789/callback --scope openid --scope profile --scope email
+```
+
+Or use Codemode in the same System administrator context:
+
+```ts
+const localOAuthClient = await admin.oauthClientsCreate({
+  name: "Local OAuth PKCE Test",
+  applicationType: "native",
+  clientType: "public",
+  redirectUris: ["http://127.0.0.1:8789/callback"],
+  scopes: ["openid", "profile", "email"],
+});
+```
+
+Copy the returned client ID. Creating a client is not idempotent; keep that ID and reuse it instead
+of creating a new client for every run. No app registration or organization installation is required
+for this identity-only test.
+
+### 3. Run the local client
+
+From the repository root, in another terminal:
+
+```bash
+pnpm --filter @fragno-apps/backoffice-rr oauth:test --client-id 'CLIENT_ID_FROM_STEP_2' --backoffice-url http://127.0.0.1:5173
+```
+
+Open `http://127.0.0.1:8789` (use **127.0.0.1**, not localhost) and click **Start OAuth login**. The
+default port is 8789. If you pass `--port 8790`, provision the client with
+`http://127.0.0.1:8790/callback` instead. The script uses Backoffice's existing `/api/auth/oauth2/*`
+endpoints and `/api/auth/jwks`, with the configured Backoffice origin as issuer. Root OIDC discovery
+is not mounted yet; the script does not require it.
+
+For a separately provisioned confidential native test client using `client_secret_basic`, the script
+also accepts `OAUTH_CLIENT_SECRET` in its environment. Do not put a secret in command-line arguments
+or commit it. The public profile above needs no secret; unset `OAUTH_CLIENT_SECRET` if it was
+previously set. HTTPS web-client testing needs a different, HTTPS non-loopback callback setup.
+
+```bash
+pnpm --filter @fragno-apps/backoffice-rr oauth:test --help
+```
+
+### 4. Review and approve in Backoffice
+
+The provider opens `/backoffice/oauth/consent?...`. Review your signed-in account, the client name
+and ID, requested OAuth scopes, and callback URL, then choose **Approve** or **Deny**. Better Auth
+validates the signed query and owns the callback redirect. No developer-console approval or
+`skip_consent` is needed. Return to the local server and start again if the query expired.
+
+Codemode continues to use `/backoffice/device`, with its device-code verification and first-party
+access warning. Both approval screens share the design-system authorization presentation, but keep
+their protocol-specific loaders/actions.
+
+A successful callback shows **OAuth login succeeded** and the authenticated user's
+subject/name/email. The script rejects missing/mismatched browser state, reused callbacks,
+issuer/nonce mismatches, and failed exchanges. The test requests only identity scopes: it does not
+exchange for a Backoffice execution token or enable organization capabilities.
+Registering/installing this client would not change the current external-client execution
+restrictions.
+
 ## Review and revoke personal OAuth authorizations
 
 Open **Account menu → Authorized applications**, or **Settings → Authorized applications** at
