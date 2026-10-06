@@ -11,6 +11,7 @@ import type {
 import { z } from "zod";
 
 import { CODEMODE_LIMITS } from "../codemode-limits";
+import { codemodeWorkerBundleSchema } from "./codemode-worker-bundle";
 
 /** Execution API v2 uses Cap'n Web; compiler HTTP archives retain their independent v1 format. */
 export const CODEMODE_EXECUTION_HTTP_PATH = "/v2/codemode/execute";
@@ -55,20 +56,40 @@ export const codemodeHookIntentSchema = z.strictObject({
   when: z.enum(["success", "terminal-error", "both"]),
 });
 
-const activationBase = {
-  code: z.string().min(1).max(CODEMODE_LIMITS.maxSourceBytes),
-  dependencies: z
-    .record(z.string().min(1).max(214), z.string().min(1).max(256))
-    .refine((value) => Object.keys(value).length <= CODEMODE_LIMITS.maxDependencies),
+const executionBase = {
   providers: z
     .array(z.strictObject({ name, tools: z.array(name).max(CODEMODE_LIMITS.maxEntries) }))
     .max(CODEMODE_LIMITS.maxProviders),
   timeoutMs: z.number().int().positive().max(CODEMODE_LIMITS.activationTimeoutMs),
 };
+const activationBase = {
+  ...executionBase,
+  code: z.string().min(1).max(CODEMODE_LIMITS.maxSourceBytes),
+  dependencies: z
+    .record(z.string().min(1).max(214), z.string().min(1).max(256))
+    .refine((value) => Object.keys(value).length <= CODEMODE_LIMITS.maxDependencies),
+};
 /** One activation owns one socket and one guest, regardless of its number of workflow steps. */
 export const codemodeActivationSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("immediate"), ...activationBase }),
   z.strictObject({ kind: z.literal("module"), ...activationBase }),
+  z.strictObject({
+    kind: z.literal("module-build"),
+    code: activationBase.code,
+    dependencies: activationBase.dependencies,
+  }),
+  z.strictObject({
+    kind: z.literal("compiled"),
+    ...executionBase,
+    bundle: codemodeWorkerBundleSchema,
+    invocation: z.string().min(1).max(CODEMODE_LIMITS.maxSourceBytes).nullable(),
+    input: z.unknown(),
+  }),
+  z.strictObject({
+    kind: z.literal("module-invoke"),
+    ...activationBase,
+    invocation: z.string().min(1).max(CODEMODE_LIMITS.maxSourceBytes),
+  }),
   z.strictObject({
     kind: z.literal("workflow"),
     ...activationBase,

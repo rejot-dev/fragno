@@ -74,7 +74,11 @@ export default {
       case "/execute": {
         const compiled = await readCompileWorkerServiceResponse(await env.COMPILER.compileWorker(request));
         const executor = new DynamicWorkerExecutor({ loader: env.LOADER });
-        return Response.json(await executor.evaluateWorkerBundle(compiled.bundle, {}));
+        // Compiler callers can use arbitrary Worker RPC methods, not just the Codemode evaluation protocol.
+        return Response.json(await executor.runEntrypoint({
+          bundle: compiled.bundle,
+          run: (entrypoint) => entrypoint.evaluate({}),
+        }));
       }
       default: return new Response("Not Found", { status: 404 });
     }

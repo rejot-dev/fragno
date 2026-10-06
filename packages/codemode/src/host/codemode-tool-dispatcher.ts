@@ -9,6 +9,7 @@ const RESERVED_PROVIDER_NAMES = new Set([
   "context",
   "__createScopedContextHandle",
   "__rpcTargets",
+  "__input",
   "__dispatchers",
   "__logs",
   "__logBytes",

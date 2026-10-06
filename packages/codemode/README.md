@@ -15,23 +15,51 @@ Node Backoffice           cf-sandbox-bridge             Dynamic Worker
         <-------------------->             <------------------------>
 ```
 
-The bridge authenticates, compiles, and loads the guest. Cap'n Web proxies host capabilities through
-native Workers RPC; the bridge does not maintain callback, transaction, subscription, or
-call-correlation handle tables. It is an ordinary Worker, not a Durable Object. Sandbox SDK
-containers and WarmPool are separate infrastructure.
+The bridge authenticates and builds or loads the guest. Precompiled execution does not use the
+compiler. Cap'n Web proxies host capabilities through native Workers RPC; the bridge does not
+maintain callback, transaction, subscription, or call-correlation handle tables. It is an ordinary
+Worker, not a Durable Object. Sandbox SDK containers and WarmPool are separate infrastructure.
+
+Bridge activation admission is separate from compiler admission and shared across clients in each
+Worker isolate. Every activation, including precompiled guests, retains its slot until guest work
+and forwarded host operations settle. Closing a socket revokes capabilities; it does not immediately
+release an active slot. This is an isolate-level bound, not a globally coordinated replica quota.
 
 Cloudflare Backoffice uses its own Worker Loader and native RPC directly. Both execution paths use
 the same revocable capabilities and generated guest API. There is no Node-local fallback.
 
 ## Activations and replay
 
-One activation owns a fresh WebSocket, execution ID, and dynamic Worker:
+One activation owns a fresh WebSocket and execution ID. Execution starts a fresh dynamic Worker; a
+build-only activation returns a reusable bundle without executing guest code:
 
-| Kind        | Behavior                                                                                      |
-| ----------- | --------------------------------------------------------------------------------------------- |
-| `immediate` | Evaluates an expression and invokes it if it is a function. Can return a workflow definition. |
-| `module`    | Imports an ES module, including top-level effects; does not invoke exports.                   |
-| `workflow`  | Runs one passage of a workflow function with its event and scoped step API.                   |
+| Kind            | Behavior                                                                                          |
+| --------------- | ------------------------------------------------------------------------------------------------- |
+| `immediate`     | Evaluates an expression and invokes it if it is a function. Can return a workflow definition.     |
+| `module`        | Imports an ES module, including top-level effects; does not invoke exports.                       |
+| `module-invoke` | Loads an ES module, then calls the supplied invocation function with its module namespace.        |
+| `module-build`  | Bundles an ES module; returns `{ bundle, warnings }` without executing it or choosing a consumer. |
+| `compiled`      | Adds a caller-supplied invocation wrapper to a module bundle, with fresh inputs and capabilities. |
+| `workflow`      | Runs one passage of a workflow function with its event and scoped step API.                       |
+
+Module invocation functions receive `(module, input)`. `module-build` takes only source and
+dependencies: no invocation, provider names, or consumer metadata is baked into the bundle.
+`compiled` supplies the invocation source, input, and provider definitions at execution. A null
+invocation imports the module for top-level effects only and ignores all exports; a string
+invocation receives its module namespace. The host generates a lightweight Worker entrypoint
+importing the bundled module, without a compiler or eval. Native module-global initialization
+restrictions remain in force; startup errors are execution failures, never a reason to recompile or
+rewrite user code. Different consumers can reuse the same artifact. Every execution supplies and
+revokes its own capabilities. Precompiled bundle validation accepts only the host's fixed
+compatibility date and flags, enforces bundle limits, and requires the entry module to exist.
+Compilation services may be `null` when only precompiled execution is required.
+
+Native Worker bundles can contain up to 32 MiB of source. Node execution also has an 8 MiB RPC frame
+limit: compiled requests and module-build responses are measured with Cap'n Web serialization,
+including escaped source and metadata, with 64 KiB reserved for the RPC envelope and capabilities.
+Oversized requests fail before opening a connection; oversized build results return a normal failed
+completion with `CODEMODE_REMOTE_PAYLOAD_LIMIT_EXCEEDED`, preserving any previous saved artifact.
+Reduce the module or use a native Worker Loader for bundles that exceed the remote payload budget.
 
 A workflow step is not a separate sandbox. One activation may execute several nested steps. When the
 host suspends for a checkpoint, sleep, event, or retry, a later runner tick starts a fresh
@@ -140,7 +168,8 @@ not collect these files, so their setup cannot start the bridge implicitly.
 src/
 ├── execution/
 │   ├── codemode-activation-contract.ts   # validated activations, capabilities, and outcomes
-│   ├── execute-codemode-activation.ts    # generate → compile → load → invoke
+│   ├── execute-codemode-activation.ts    # build source or execute a precompiled bundle
+│   ├── codemode-worker-bundle.ts         # persisted bundle validation and fixed runtime contract
 │   └── codemode-errors.ts                # domain errors and runner failure classification
 ├── remote/
 │   ├── codemode-node-executor.ts         # connect → execute → settle host
@@ -148,6 +177,7 @@ src/
 ├── guest/
 │   ├── codemode-function-source.ts       # evaluate(): expression or await fn()
 │   ├── codemode-module-source.ts         # import module without invoking exports
+│   ├── codemode-module-invocation-source.ts # invoke a function with the imported module namespace
 │   ├── codemode-workflow-source.ts       # run(event, step), scoped callbacks, intent flushing
 │   ├── codemode-guest-api-source.ts      # shared provider proxies and guest API helpers
 │   └── codemode-worker-executor.ts       # Worker Loader invocation and native RPC disposal
@@ -169,11 +199,12 @@ session and keeps connection lifetime separate from activation execution:
 bridge HTTP execution route
   acceptCodemodeBridgeSession
     executeCodemodeActivation
-      generate source for activation.kind
-      compile with the bridge's buildWorkerProject
+      compiled → add invocation entrypoint to supplied module bundle; skip compiler admission
+      other kinds → generate source and compile with buildWorkerProject
+        module-build → return bundle and warnings; do not load a Worker
       invoke loaded guest
-        immediate/module → evaluate()
-        workflow         → run(event, step)
+        immediate/module/module-invoke/compiled → evaluate()
+        workflow → run(event, step)
 ```
 
 Workflow callbacks return through `host/codemode-host-capabilities.ts` to the application runner.
@@ -199,7 +230,9 @@ pnpm exec turbo build types:check test --filter=@fragno-dev/codemode --filter=@f
 
 Package tests exercise real Node/Cap'n Web/workerd/native-RPC conversations, capability lifetimes,
 reentrancy, domain outcomes, binary values, compiler admission, and log budgets. The reusable test
-compiler does not install npm dependencies. Bridge tests load the Wrangler-built worker and real
-compiler/Wasm. Backoffice scenarios exercise checkpoint replay, events, and interruption through
-real SQLite-backed state. Deployed CPU enforcement and deployment-time disconnect behavior still
-require VPS-to-deployed-bridge probes; local tests do not establish those guarantees.
+compiler does not install npm dependencies. Tests may supply a dependency resolution directory to
+bundle explicitly declared, locally installed packages without network installation. Bridge tests
+load the Wrangler-built worker and real compiler/Wasm. Backoffice scenarios exercise checkpoint
+replay, events, and interruption through real SQLite-backed state. Deployed CPU enforcement and
+deployment-time disconnect behavior still require VPS-to-deployed-bridge probes; local tests do not
+establish those guarantees.

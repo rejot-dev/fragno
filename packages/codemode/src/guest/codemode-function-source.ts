@@ -16,7 +16,7 @@ export function createCodemodeFunctionSource(
     "",
     "export default class CodeExecutor extends WorkerEntrypoint {",
     "  async evaluate(__rpcTargets = {}) {",
-    "    const { __dispatchers = {} } = __rpcTargets;",
+    "    const { __dispatchers = {}, __input } = __rpcTargets;",
     "    const __logs = [];",
     `    let __logBytes = 0;
     const __captureLog = (prefix, args) => {

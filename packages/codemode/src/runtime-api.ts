@@ -1,3 +1,7 @@
+import { z } from "zod";
+
+import { CODEMODE_LIMITS } from "./codemode-limits";
+
 export type CodemodeToolDescriptor = {
   description?: string;
   inputSchema?: unknown;
@@ -24,22 +28,32 @@ export type ExecuteResult = {
   workflowDefinition?: { name: string; options?: unknown };
 };
 
+const guestLogsSchema = z
+  .array(z.string().max(CODEMODE_LIMITS.maxLogBytes))
+  .max(CODEMODE_LIMITS.maxLogs);
+
+/** Even a hand-edited compiled Worker must earn trust at its RPC result boundary. */
+export const codemodeWorkerEvaluationSchema = z.discriminatedUnion("ok", [
+  z.strictObject({
+    ok: z.literal(true),
+    result: z.unknown(),
+    error: z.null(),
+    logs: guestLogsSchema,
+    workflowDefinition: z
+      .strictObject({ name: z.string().min(1).max(1024), options: z.unknown() })
+      .nullable(),
+  }),
+  z.strictObject({
+    ok: z.literal(false),
+    result: z.undefined(),
+    error: z.string().max(32_768),
+    logs: guestLogsSchema,
+    workflowDefinition: z.null(),
+  }),
+]);
+
 /** Distinguishes guest completion from failure without relying on error-message truthiness. */
-export type CodemodeWorkerEvaluation =
-  | {
-      ok: true;
-      result: unknown;
-      error: null;
-      logs: string[];
-      workflowDefinition: { name: string; options?: unknown } | null;
-    }
-  | {
-      ok: false;
-      result: undefined;
-      error: string;
-      logs: string[];
-      workflowDefinition: null;
-    };
+export type CodemodeWorkerEvaluation = z.infer<typeof codemodeWorkerEvaluationSchema>;
 
 export type DynamicWorkerExecutorOptions = {
   loader: WorkerLoader;
