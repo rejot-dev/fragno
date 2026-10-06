@@ -53,6 +53,7 @@ describe("backoffice login route", () => {
       {
         authenticated: false,
         returnTo: "/backoffice",
+        oauthQuery: null,
         bootstrapError: null,
         authError: null,
       },
@@ -69,6 +70,7 @@ describe("backoffice login route", () => {
     ).resolves.toEqual({
       authenticated: false,
       returnTo: "/backoffice",
+      oauthQuery: null,
       bootstrapError: null,
       authError: {
         title: "Account creation is not available",
@@ -160,6 +162,7 @@ describe("backoffice login route", () => {
     ).resolves.toEqual({
       authenticated: false,
       returnTo: "/backoffice/device?user_code=ME7L-5UAH",
+      oauthQuery: null,
       bootstrapError: null,
       authError: null,
     });

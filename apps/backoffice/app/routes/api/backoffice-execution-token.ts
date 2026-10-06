@@ -7,7 +7,7 @@ import { getAuthDurableObject } from "@/worker-runtime/durable-objects";
 
 import type { Route } from "./+types/backoffice-execution-token";
 
-function hasErrorName(error: unknown, name: string): boolean {
+function hasErrorName(error: unknown, name: string): error is Error {
   return error instanceof Error && error.name === name;
 }
 
@@ -54,14 +54,14 @@ export async function action({ request, context }: Route.ActionArgs) {
       error instanceof BackofficeExecutionTokenAuthenticationError ||
       hasErrorName(error, "BackofficeExecutionTokenAuthenticationError")
     ) {
-      return authenticationFailureResponse("The OAuth access token is invalid or expired.");
+      return authenticationFailureResponse(error.message);
     }
     if (
       error instanceof BackofficeExecutionTokenScopeError ||
       hasErrorName(error, "BackofficeExecutionTokenScopeError")
     ) {
       return Response.json(
-        { error: "scope_unavailable", message: error instanceof Error ? error.message : "" },
+        { error: "scope_unavailable", message: error.message },
         { status: 403, headers: { "cache-control": "no-store" } },
       );
     }

@@ -1,5 +1,6 @@
 import { oauthProviderResourceClient } from "@better-auth/oauth-provider/resource-client";
 import type { betterAuth } from "better-auth";
+import { APIError } from "better-auth/api";
 import { z } from "zod";
 
 import {
@@ -15,6 +16,7 @@ import {
   type BackofficeUserTokenGrantResolution,
   type ResolveBackofficeUserTokenGrant,
 } from "./backoffice-user-token-grant";
+import { requireBackofficeOAuthConsent } from "./better-auth-oauth-consent";
 
 type BetterAuthInstance = Pick<ReturnType<typeof betterAuth>, "handler" | "options" | "$context">;
 
@@ -87,6 +89,22 @@ export async function exchangeBackofficeExecutionToken(
   }
 
   const authContext = await auth.$context;
+  try {
+    await requireBackofficeOAuthConsent(authContext.adapter, {
+      userId: payload.sub,
+      clientId: payload.client_id,
+      scopes: payload.scope.split(/\s+/),
+      requestedUserInfoClaims: [],
+    });
+  } catch (error) {
+    if (error instanceof APIError) {
+      throw new BackofficeExecutionTokenAuthenticationError(
+        "Backoffice execution OAuth consent is missing or has been revoked.",
+        { cause: error },
+      );
+    }
+    throw error;
+  }
   let grant: BackofficeUserTokenGrantResolution;
   switch (policy.kind) {
     case "first-party-user":

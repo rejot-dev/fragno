@@ -4,6 +4,7 @@ import { jwt } from "better-auth/plugins/jwt";
 import { organization, type OrganizationOptions } from "better-auth/plugins/organization";
 
 import { createBackofficeOAuthPlugins } from "./better-auth-oauth";
+import { createBackofficeOAuthConsentPlugin } from "./better-auth-oauth-consent";
 
 type BetterAuthOrganizationHooks = NonNullable<OrganizationOptions["organizationHooks"]>;
 
@@ -44,5 +45,6 @@ export function createBackofficeBetterAuthSchemaPlugins(input: {
       },
     }),
     ...createBackofficeOAuthPlugins({ isUserAdministrator: input.isUserAdministrator }),
+    createBackofficeOAuthConsentPlugin(),
   ];
 }

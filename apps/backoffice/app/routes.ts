@@ -8,6 +8,7 @@ export default [
 
   route("backoffice/login", "routes/backoffice/login.tsx"),
   route("backoffice/device", "routes/backoffice/device.tsx"),
+  route("backoffice/oauth/consent", "routes/backoffice/oauth-consent.tsx"),
   route("backoffice/auth/bootstrap", "routes/backoffice/auth-bootstrap.tsx"),
   route("backoffice/sign-up", "routes/backoffice/sign-up.tsx"),
   route("backoffice/verify-email", "routes/backoffice/verify-email.tsx"),
@@ -282,6 +283,7 @@ export default [
       ]),
       route("users", "routes/backoffice/users.tsx"),
       route("settings", "routes/backoffice/settings.tsx"),
+      route("settings/authorized-applications", "routes/backoffice/authorized-applications.tsx"),
       route("*", "routes/backoffice/not-found.tsx"),
     ]),
   ]),

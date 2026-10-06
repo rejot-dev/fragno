@@ -117,6 +117,9 @@ export function BackofficeAccountMenu({ me, currentScope, isLoading }: Backoffic
           <SelectorMenuLink to="/backoffice/settings" icon="settings">
             Settings
           </SelectorMenuLink>
+          <SelectorMenuLink to="/backoffice/settings/authorized-applications" icon="shield">
+            Authorized applications
+          </SelectorMenuLink>
         </SelectorMenuGroup>
 
         {user.role === "admin" ? (

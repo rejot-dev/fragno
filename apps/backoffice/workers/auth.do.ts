@@ -440,9 +440,7 @@ function resolveAuthBaseUrl(request: Request): string {
   if (forwardedProto === "http" || forwardedProto === "https") {
     requestUrl.protocol = `${forwardedProto}:`;
   }
-  if (requestUrl.protocol === "http:" && requestUrl.hostname === "localhost") {
-    requestUrl.hostname = "127.0.0.1";
-  }
+  // Preserve the selected host: OAuth issuance and execution RPCs must agree on the issuer.
   return requestUrl.origin;
 }
 

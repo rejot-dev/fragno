@@ -20,6 +20,7 @@ import {
 } from "@/fragno/auth/oauth-client";
 
 import type { BackofficeOAuthExecutionPolicy } from "./backoffice-execution-token";
+import { enforceBackofficeOAuthTokenResponseConsent } from "./better-auth-oauth-consent";
 
 const BACKOFFICE_CODEMODE_OAUTH_SOFTWARE_ID = "fragno-backoffice-codemode";
 const BACKOFFICE_CODEMODE_OAUTH_CLIENT_NAME = "Fragno Backoffice Codemode";
@@ -203,6 +204,7 @@ export function createBackofficeOAuthPlugins(input: {
       scopes: [...BACKOFFICE_OAUTH_SCOPES],
       enforcePerClientResources: false,
       allowDynamicClientRegistration: false,
+      customTokenResponseFields: enforceBackofficeOAuthTokenResponseConsent,
       clientPrivileges: async function authorizeOAuthClientManagement({ action, user }) {
         if (!user) {
           return false;

@@ -39,6 +39,7 @@ type BackofficeLoginLoaderData = {
   returnTo: string;
   bootstrapError: string | null;
   authError: BackofficeLoginAuthError | null;
+  oauthQuery: string | null;
 };
 
 type BackofficeLoginActionData =
@@ -54,7 +55,18 @@ type BackofficeLoginActionData =
     };
 
 function requiresBetterAuthBrowserSession(returnTo: string): boolean {
-  return new URL(returnTo, "http://localhost").pathname === "/backoffice/device";
+  const pathname = new URL(returnTo, "http://localhost").pathname;
+  return (
+    pathname === "/backoffice/device" ||
+    pathname === "/backoffice/oauth/consent" ||
+    pathname === "/backoffice/settings/authorized-applications"
+  );
+}
+
+function readOAuthLoginQuery(url: URL): string | null {
+  return url.searchParams.has("client_id") && url.searchParams.has("sig")
+    ? url.search.slice(1)
+    : null;
 }
 
 const loginActionInputSchema = z.discriminatedUnion("intent", [
@@ -249,7 +261,9 @@ async function exchangeSignedInSessionForBackofficeJwt(
 }
 
 export async function loader({ request, context, url }: Route.LoaderArgs) {
-  const returnTo = readBackofficeReturnTo(url);
+  const oauthQuery = readOAuthLoginQuery(url);
+  const returnTo =
+    oauthQuery === null ? readBackofficeReturnTo(url) : `/backoffice/oauth/consent?${oauthQuery}`;
   if (!requiresBetterAuthBrowserSession(returnTo)) {
     const jwtMe = await getBackofficeMe(request, context);
     if (jwtMe.status === "authenticated") {
@@ -262,6 +276,7 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
     returnTo,
     bootstrapError: null,
     authError: readBackofficeLoginAuthError(url),
+    oauthQuery,
   } satisfies BackofficeLoginLoaderData;
 }
 
@@ -295,7 +310,11 @@ export async function action({ request, context, url }: Route.ActionArgs) {
   try {
     const response = await callBetterAuth(request, context, "/sign-in/email", {
       method: "POST",
-      body: JSON.stringify({ email: input.data.email, password: input.data.password }),
+      body: JSON.stringify({
+        email: input.data.email,
+        password: input.data.password,
+        ...(readOAuthLoginQuery(url) === null ? {} : { oauth_query: readOAuthLoginQuery(url) }),
+      }),
     });
     if (!response.ok) {
       const error = (await response.json().catch(() => null)) as {
@@ -316,6 +335,10 @@ export async function action({ request, context, url }: Route.ActionArgs) {
             state: "error",
             message: error?.message || "Unable to sign in.",
           } satisfies BackofficeLoginActionData);
+    }
+    if (readOAuthLoginQuery(url) !== null) {
+      const resumed = z.object({ url: z.string().min(1) }).parse(await response.json());
+      return redirect(resumed.url, { headers: createBackofficeIdentityChangeHeaders(response) });
     }
     const exchange = await exchangeSignedInSessionForBackofficeJwt(
       request,
@@ -346,7 +369,7 @@ export function meta() {
 }
 
 export default function BackofficeLogin() {
-  const { authenticated, returnTo, bootstrapError, authError } =
+  const { authenticated, returnTo, bootstrapError, authError, oauthQuery } =
     useLoaderData<BackofficeLoginLoaderData>();
   const [authErrorNotice, setAuthErrorNotice] = useState<BackofficeLoginAuthError | null>(
     authError,
@@ -373,11 +396,13 @@ export default function BackofficeLogin() {
         buildBackofficeAuthBootstrapPath(returnTo),
         window.location.origin,
       ).toString();
-      const result = await betterAuthClient.signIn.social({
+      const socialSignIn = {
         provider: "github",
         callbackURL,
         disableRedirect: true,
-      });
+        ...(oauthQuery === null ? {} : { oauth_query: oauthQuery }),
+      };
+      const result = await betterAuthClient.signIn.social(socialSignIn);
       if (result.error) {
         throw new Error(result.error.message || "Unable to start GitHub sign-in.");
       }

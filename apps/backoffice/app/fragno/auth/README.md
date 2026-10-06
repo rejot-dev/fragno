@@ -10,6 +10,7 @@ it does not own token verification or scope-token issuance.
 OAuth access token
   → verify issuer, signature, audience, expiry, and backoffice scope
   → resolve the verified client ID's server-controlled execution policy
+  → require the user's current OAuth consent for that client and token scopes
   → resolve current user authority for the requested scope
   → issue a short-lived, scope-restricted Backoffice JWT
   → authorize operations through the existing kernel
@@ -27,7 +28,8 @@ available to that user. An unavailable organization does not silently fall back 
 Responses use `cache-control: no-store`.
 
 - Malformed request bodies return `400` with `invalid_request`.
-- Invalid OAuth credentials or ineligible clients return `401` with `authentication_failed`.
+- Invalid OAuth credentials, ineligible clients, or revoked consent return `401` with
+  `authentication_failed`. The message identifies the failed boundary instead of assuming expiry.
 - Unavailable user authority or scopes return `403` with `scope_unavailable`.
 
 Callers cannot supply a user ID, client ID, or execution policy. Auth validates its internal RPC
@@ -42,10 +44,11 @@ The only implemented OAuth execution policy is `first-party-user`. Auth currentl
 the active deployment Codemode client. Its bootstrap reference owner distinguishes it from managed
 clients that copy its name or software metadata. Disabled clients are ineligible.
 
-This policy resolves authority from the authenticated user's current role, banned status, and
-organization membership. JWT claims remain user authority snapshots, with the existing scope ceiling
-and verification/kernel behavior; the refactor does not change the revocation semantics of already
-issued JWTs.
+This policy requires a current OAuth consent and resolves authority from the authenticated user's
+current role, banned status, and organization membership. Revoking consent prevents further
+execution-token issuance, even with an unexpired OAuth JWT. Already-issued execution JWTs remain
+user authority snapshots with the existing scope ceiling and maximum 15-minute lifetime. There is no
+live installation-grant enforcement or immediate revocation of those execution JWTs.
 
 App registration and even an active organization installation do **not** confer first-party policy.
 Installed-app delegation is not implemented yet. It must preserve app and installation identity and
@@ -57,7 +60,12 @@ model.
 
 The CLI still discovers its device-flow configuration through `/api/backoffice/cli-config`, obtains
 OAuth access/refresh tokens through the internal Codemode client, and exchanges an access token at
-the shared execution-token route. Device approval and refresh behavior are unchanged.
+the shared execution-token route. Device approval now records a user consent in Better Auth's
+`oauthConsent` model, so it can be reviewed and revoked alongside authorization-code grants.
+
+The selected origin is preserved through configuration, browser approval links, OAuth issuance,
+refresh, and execution-token exchange. `localhost` and `127.0.0.1` are distinct issuer and browser
+session origins; neither is rewritten to the other. Sign in using the same hostname as the CLI.
 
 Codemode HTTP entry points keep their `@rejot.dev` account restriction. That product restriction is
 not part of OAuth verification or generic execution-token issuance. System scope still requires a
@@ -67,6 +75,24 @@ The browser `/api/auth/backoffice-token` session exchange reuses the same user-g
 JWT issuer. Its cookie transport, organization selection/provisioning response, and unrestricted
 credential-scope behavior are unchanged.
 
+## Browser consent and revocation
+
+`/backoffice/device` handles first-party device approval; `/backoffice/oauth/consent` handles
+provider-signed authorization-code consent. Both require a live Better Auth browser session and
+explicit same-origin approval/denial. The OAuth login page preserves the signed query through
+password login rather than substituting a Backoffice JWT for the browser session.
+
+Users manage their own authorizations at `/backoffice/settings/authorized-applications`, accessible
+from the account menu and Settings. Listing is credential-free and cursor-bound to the session user.
+Revocation derives the user ID from that session and transactionally removes that client's consents,
+stored access tokens, refresh tokens, and pending/approved device codes for that user. Other users,
+browser sessions, and organization installations are unaffected.
+
+Provider claim issuance and userinfo also require current consent. Self-contained JWTs accepted by
+external verifiers remain subject to their expiry; the UI does not promise global immediate token
+revocation. Device approvals made before tracking must be repeated explicitly, not inferred from old
+tokens.
+
 ## Implementation ownership
 
 - `execution-token.ts`: HTTP/RPC schemas, result, and execution-token errors.
@@ -74,6 +100,9 @@ credential-scope behavior are unchanged.
   scoped credential issuance.
 - `workers/auth/better-auth-oauth.ts`: provider/bootstrap setup, client management, and explicit
   Codemode client-policy resolution.
+- `workers/auth/better-auth-oauth-consent.ts`: provider-owned consent review, listing, device
+  tracking, revocation, same-origin decisions, and live consent enforcement.
+- `oauth-consent.ts`: credential-free review/list contracts and revocation inputs.
 - `workers/auth/backoffice-user-token-grant.ts`: the shared browser/first-party user-grant contract;
   `workers/auth.do.ts` supplies the live Auth-backed resolver.
 - `token-lifecycle.ts`: the existing JWT signer, verifier, and cookie primitives.
