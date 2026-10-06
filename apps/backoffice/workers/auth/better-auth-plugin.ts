@@ -10,13 +10,13 @@ import {
 } from "@/fragno/auth/token-lifecycle";
 
 import {
-  BackofficeTokenGrantForbiddenError,
-  type ResolveBackofficeScopeTokenGrant,
-} from "./better-auth-oauth";
+  BackofficeUserTokenGrantForbiddenError,
+  type ResolveBackofficeUserTokenGrant,
+} from "./backoffice-user-token-grant";
 
 export function createBackofficeTokenPlugin(input: {
   isDevelopment: boolean;
-  resolveBackofficeScopeTokenGrant: ResolveBackofficeScopeTokenGrant;
+  resolveBackofficeUserTokenGrant: ResolveBackofficeUserTokenGrant;
 }): BetterAuthPlugin {
   return {
     id: "fragno-backoffice-token",
@@ -54,7 +54,7 @@ export function createBackofficeTokenPlugin(input: {
         async function issueOrganizationScopedBackofficeToken(context) {
           let grant;
           try {
-            grant = await input.resolveBackofficeScopeTokenGrant(context.context.adapter, {
+            grant = await input.resolveBackofficeUserTokenGrant(context.context.adapter, {
               userId: context.context.session.user.id,
               scope: context.body.organizationId
                 ? { kind: "org", orgId: context.body.organizationId }
@@ -62,7 +62,7 @@ export function createBackofficeTokenPlugin(input: {
               organizationSelection: context.body.selection,
             });
           } catch (error) {
-            if (error instanceof BackofficeTokenGrantForbiddenError) {
+            if (error instanceof BackofficeUserTokenGrantForbiddenError) {
               throw new APIError("FORBIDDEN", { message: error.message });
             }
             throw error;

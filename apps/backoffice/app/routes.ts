@@ -300,7 +300,7 @@ export default [
     route("admin/grant", "routes/api/admin-grant.ts"),
     route("auth/*", "routes/api/auth.ts"),
     route("backoffice/cli-config", "routes/api/backoffice-cli-config.ts"),
-    route("backoffice/cli-token", "routes/api/backoffice-cli-token.ts"),
+    route("backoffice/execution-token", "routes/api/backoffice-execution-token.ts"),
     route("backoffice/me", "routes/api/backoffice-me.ts"),
     route("cloudflare/*", "routes/api/cloudflare.ts"),
     route("forms/*", "routes/api/forms.ts"),

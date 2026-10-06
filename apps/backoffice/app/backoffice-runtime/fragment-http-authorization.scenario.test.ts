@@ -495,7 +495,7 @@ describe("fragment HTTP authority scenarios", () => {
         orgId: me.organizations[0].organization.id,
         projectId: "project-one",
       };
-      const token = await auth.commands.exchangeBackofficeOAuthAccessToken({
+      const token = await auth.commands.exchangeBackofficeExecutionToken({
         requestUrl: origin,
         oauthAccessToken: oauth.access_token,
         scope,

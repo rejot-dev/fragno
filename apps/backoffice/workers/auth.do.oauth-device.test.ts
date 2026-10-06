@@ -236,8 +236,8 @@ describe("Backoffice OAuth device authorization", () => {
     assert(oauthToken.access_token);
     assert(oauthToken.refresh_token);
 
-    const result = await signedUp.auth.commands.exchangeBackofficeOAuthAccessToken({
-      requestUrl: `${baseUrl}/api/backoffice/cli-token`,
+    const result = await signedUp.auth.commands.exchangeBackofficeExecutionToken({
+      requestUrl: `${baseUrl}/api/backoffice/execution-token`,
       oauthAccessToken: oauthToken.access_token,
       scope: { kind: "org", orgId: signedUp.organizationId },
     });
@@ -264,8 +264,8 @@ describe("Backoffice OAuth device authorization", () => {
     const oauthToken = await authorizeDevice(signedUp);
 
     const userScope = { kind: "user" as const, userId: signedUp.user.id };
-    const userResult = await signedUp.auth.commands.exchangeBackofficeOAuthAccessToken({
-      requestUrl: `${baseUrl}/api/backoffice/cli-token`,
+    const userResult = await signedUp.auth.commands.exchangeBackofficeExecutionToken({
+      requestUrl: `${baseUrl}/api/backoffice/execution-token`,
       oauthAccessToken: oauthToken.access_token,
       scope: userScope,
     });
@@ -283,8 +283,8 @@ describe("Backoffice OAuth device authorization", () => {
       orgId: signedUp.organizationId,
       projectId: "project-1",
     };
-    const projectResult = await signedUp.auth.commands.exchangeBackofficeOAuthAccessToken({
-      requestUrl: `${baseUrl}/api/backoffice/cli-token`,
+    const projectResult = await signedUp.auth.commands.exchangeBackofficeExecutionToken({
+      requestUrl: `${baseUrl}/api/backoffice/execution-token`,
       oauthAccessToken: oauthToken.access_token,
       scope: projectScope,
     });
@@ -300,8 +300,8 @@ describe("Backoffice OAuth device authorization", () => {
         },
       ],
     });
-    const systemResult = await signedUp.auth.commands.exchangeBackofficeOAuthAccessToken({
-      requestUrl: `${baseUrl}/api/backoffice/cli-token`,
+    const systemResult = await signedUp.auth.commands.exchangeBackofficeExecutionToken({
+      requestUrl: `${baseUrl}/api/backoffice/execution-token`,
       oauthAccessToken: oauthToken.access_token,
       scope: { kind: "system" },
     });
@@ -313,19 +313,19 @@ describe("Backoffice OAuth device authorization", () => {
     const oauthToken = await authorizeDevice(signedUp);
 
     await expect(
-      signedUp.auth.commands.exchangeBackofficeOAuthAccessToken({
-        requestUrl: `${baseUrl}/api/backoffice/cli-token`,
+      signedUp.auth.commands.exchangeBackofficeExecutionToken({
+        requestUrl: `${baseUrl}/api/backoffice/execution-token`,
         oauthAccessToken: oauthToken.access_token,
         scope: { kind: "user", userId: "another-user" },
       }),
-    ).rejects.toMatchObject({ name: "BackofficeCliScopeAuthorizationError" });
+    ).rejects.toMatchObject({ name: "BackofficeExecutionTokenScopeError" });
     await expect(
-      signedUp.auth.commands.exchangeBackofficeOAuthAccessToken({
-        requestUrl: `${baseUrl}/api/backoffice/cli-token`,
+      signedUp.auth.commands.exchangeBackofficeExecutionToken({
+        requestUrl: `${baseUrl}/api/backoffice/execution-token`,
         oauthAccessToken: oauthToken.access_token,
         scope: { kind: "system" },
       }),
-    ).rejects.toMatchObject({ name: "BackofficeCliScopeAuthorizationError" });
+    ).rejects.toMatchObject({ name: "BackofficeExecutionTokenScopeError" });
   });
 
   test("refreshes the OAuth access token and exchanges the replacement for a Backoffice JWT", async () => {
@@ -351,8 +351,8 @@ describe("Backoffice OAuth device authorization", () => {
     assert(refreshedToken.access_token);
     assert(refreshedToken.refresh_token);
 
-    const result = await signedUp.auth.commands.exchangeBackofficeOAuthAccessToken({
-      requestUrl: `${baseUrl}/api/backoffice/cli-token`,
+    const result = await signedUp.auth.commands.exchangeBackofficeExecutionToken({
+      requestUrl: `${baseUrl}/api/backoffice/execution-token`,
       oauthAccessToken: refreshedToken.access_token,
       scope: { kind: "org", orgId: signedUp.organizationId },
     });
@@ -366,16 +366,20 @@ describe("Backoffice OAuth device authorization", () => {
     const oauthToken = await authorizeDevice(signedUp, "openid offline_access");
 
     await expect(
-      signedUp.auth.commands.exchangeBackofficeOAuthAccessToken({
-        requestUrl: `${baseUrl}/api/backoffice/cli-token`,
+      signedUp.auth.commands.exchangeBackofficeExecutionToken({
+        requestUrl: `${baseUrl}/api/backoffice/execution-token`,
         oauthAccessToken: oauthToken.access_token,
         scope: { kind: "org", orgId: signedUp.organizationId },
       }),
-    ).rejects.toMatchObject({ name: "BackofficeCliOAuthAuthenticationError" });
+    ).rejects.toMatchObject({ name: "BackofficeExecutionTokenAuthenticationError" });
   });
 
   test("rejects an OAuth token issued to another client", async () => {
     const signedUp = await signUpUser();
+    const granted = await signedUp.auth.commands.grantBackofficeAdminByEmail({
+      email: signedUp.user.email,
+    });
+    assert.equal(granted.status, "granted");
     const createClientResponse = await authRequest(signedUp.auth, "/oauth2/create-client", {
       cookie: signedUp.sessionCookie,
       json: {
@@ -407,12 +411,12 @@ describe("Backoffice OAuth device authorization", () => {
     const oauthToken = (await tokenResponse.json()) as { access_token: string };
 
     await expect(
-      signedUp.auth.commands.exchangeBackofficeOAuthAccessToken({
-        requestUrl: `${baseUrl}/api/backoffice/cli-token`,
+      signedUp.auth.commands.exchangeBackofficeExecutionToken({
+        requestUrl: `${baseUrl}/api/backoffice/execution-token`,
         oauthAccessToken: oauthToken.access_token,
         scope: { kind: "org", orgId: signedUp.organizationId },
       }),
-    ).rejects.toMatchObject({ name: "BackofficeCliOAuthAuthenticationError" });
+    ).rejects.toMatchObject({ name: "BackofficeExecutionTokenAuthenticationError" });
   });
 
   test("reports access_denied after the browser denies the device code", async () => {
@@ -445,12 +449,12 @@ describe("Backoffice OAuth device authorization", () => {
     });
 
     await expect(
-      signedUp.auth.commands.exchangeBackofficeOAuthAccessToken({
-        requestUrl: `${baseUrl}/api/backoffice/cli-token`,
+      signedUp.auth.commands.exchangeBackofficeExecutionToken({
+        requestUrl: `${baseUrl}/api/backoffice/execution-token`,
         oauthAccessToken: oauthToken.access_token,
         scope: { kind: "org", orgId: signedUp.organizationId },
       }),
-    ).rejects.toMatchObject({ name: "BackofficeCliScopeAuthorizationError" });
+    ).rejects.toMatchObject({ name: "BackofficeExecutionTokenScopeError" });
   });
 
   test("rejects a removed organization membership when exchanging the OAuth token", async () => {
@@ -461,11 +465,11 @@ describe("Backoffice OAuth device authorization", () => {
     });
 
     await expect(
-      signedUp.auth.commands.exchangeBackofficeOAuthAccessToken({
-        requestUrl: `${baseUrl}/api/backoffice/cli-token`,
+      signedUp.auth.commands.exchangeBackofficeExecutionToken({
+        requestUrl: `${baseUrl}/api/backoffice/execution-token`,
         oauthAccessToken: oauthToken.access_token,
         scope: { kind: "org", orgId: signedUp.organizationId },
       }),
-    ).rejects.toMatchObject({ name: "BackofficeCliScopeAuthorizationError" });
+    ).rejects.toMatchObject({ name: "BackofficeExecutionTokenScopeError" });
   });
 });

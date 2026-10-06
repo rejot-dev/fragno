@@ -1,6 +1,4 @@
-import { oauthProviderResourceClient } from "@better-auth/oauth-provider/resource-client";
 import { betterAuth, type BetterAuthPlugin } from "better-auth";
-import { z } from "zod";
 
 import {
   DEVICE_CODE_GRANT_TYPE,
@@ -9,15 +7,9 @@ import {
   type OAuthClientAdministrativeResponse,
 } from "@better-auth/oauth-provider";
 
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
-import {
-  BackofficeCliScopeAuthorizationError,
-  type BackofficeCliOAuthConfig,
-  BackofficeCliOAuthAuthenticationError,
-  type BackofficeCliTokenResult,
-  type Role,
-} from "@/fragno/auth/contracts";
-import { issueBackofficeJwt } from "@/fragno/auth/token-lifecycle";
+import type { BackofficeCliOAuthConfig } from "@/fragno/auth/contracts";
+
+import type { BackofficeOAuthExecutionPolicy } from "./backoffice-execution-token";
 
 const BACKOFFICE_CODEMODE_OAUTH_SOFTWARE_ID = "fragno-backoffice-codemode";
 const BACKOFFICE_CODEMODE_OAUTH_CLIENT_NAME = "Fragno Backoffice Codemode";
@@ -25,17 +17,6 @@ const BACKOFFICE_CODEMODE_OAUTH_BOOTSTRAP_SUBJECT = "fragno-backoffice-oauth-boo
 const BACKOFFICE_CODEMODE_OAUTH_SCOPES = ["openid", "offline_access", "backoffice"] as const;
 const BACKOFFICE_CODEMODE_OAUTH_SCOPE = BACKOFFICE_CODEMODE_OAUTH_SCOPES.join(" ");
 const BACKOFFICE_DEVICE_USER_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-
-const backofficeOAuthAccessTokenPayloadSchema = z.object({
-  sub: z.string().min(1),
-  exp: z.number().int().positive(),
-  client_id: z.string().min(1),
-  azp: z.string().min(1),
-  scope: z.string().min(1),
-});
-const oauthProviderJwksSchema = z.object({
-  keys: z.array(z.record(z.string(), z.unknown())),
-});
 
 type BetterAuthInstance = Pick<ReturnType<typeof betterAuth>, "handler" | "options" | "$context">;
 type BetterAuthContext = Awaited<ReturnType<typeof betterAuth>["$context"]>;
@@ -69,35 +50,6 @@ type StoreOAuthResource = {
   createdAt: Date | string | number;
   updatedAt: Date | string | number;
 };
-
-export type BackofficeTokenGrantResolution =
-  | {
-      status: "ready";
-      authority: {
-        userId: string;
-        email: string;
-        globalRole: Role;
-        scope: BackofficeContextScope;
-        organization: { id: string; slug: string; roles: string[] } | null;
-      };
-    }
-  | {
-      status: "organization_provisioning";
-      retryAfterMs: number;
-    };
-
-export class BackofficeTokenGrantForbiddenError extends Error {
-  override readonly name = "BackofficeTokenGrantForbiddenError";
-}
-
-export type ResolveBackofficeScopeTokenGrant = (
-  adapter: BetterAuthAdapter,
-  input: {
-    userId: string;
-    scope: BackofficeContextScope | null;
-    organizationSelection: "preferred" | "required";
-  },
-) => Promise<BackofficeTokenGrantResolution>;
 
 function generateBackofficeDeviceUserCode(): string {
   const randomBytes = crypto.getRandomValues(new Uint8Array(8));
@@ -266,79 +218,13 @@ export async function getBackofficeCliOAuthConfig(
   };
 }
 
-export async function exchangeBackofficeOAuthAccessToken(
+/** Codemode is the only first-party OAuth execution client; app registration never grants this policy. */
+export async function resolveBackofficeCodemodeExecutionPolicy(
   auth: BetterAuthInstance,
-  input: {
-    requestUrl: string;
-    oauthAccessToken: string;
-    scope: BackofficeContextScope | null;
-  },
-  resolveGrant: ResolveBackofficeScopeTokenGrant,
-): Promise<BackofficeCliTokenResult> {
+  input: { requestUrl: string; clientId: string },
+): Promise<BackofficeOAuthExecutionPolicy | null> {
   const baseURL = new URL(input.requestUrl).origin;
-  const { authContext, client } = await loadBackofficeCodemodeOAuth(auth, baseURL);
-
-  let oauthPayload: z.infer<typeof backofficeOAuthAccessTokenPayloadSchema>;
-  try {
-    const verifyBearerToken = oauthProviderResourceClient(auth).getActions().verifyBearerToken;
-    const verifyOptions = {
-      verifyOptions: { audience: baseURL },
-      // The resource-client runtime accepts a JWKS loader even though its public type still
-      // declares only URL strings. Loading through this Auth object avoids a network call back to
-      // the same Worker while retaining the resource client's complete verification path.
-      jwksUrl: async () => {
-        const response = await auth.handler(new Request(new URL("/api/auth/jwks", baseURL)));
-        if (!response.ok) {
-          throw new Error(`OAuth provider JWKS request failed with status ${response.status}.`);
-        }
-        return oauthProviderJwksSchema.parse(await response.json());
-      },
-      requiredScopes: ["backoffice"],
-    } as unknown as Parameters<typeof verifyBearerToken>[1];
-    const verifiedPayload = await verifyBearerToken(input.oauthAccessToken, verifyOptions);
-    oauthPayload = backofficeOAuthAccessTokenPayloadSchema.parse(verifiedPayload);
-    const clientDisabled = client.disabled === true || client.disabled === 1;
-    if (
-      clientDisabled ||
-      oauthPayload.client_id !== client.clientId ||
-      oauthPayload.azp !== client.clientId ||
-      oauthPayload.exp * 1_000 <= Date.now()
-    ) {
-      throw new Error("OAuth access token does not belong to the Backoffice codemode client.");
-    }
-  } catch (error) {
-    throw new BackofficeCliOAuthAuthenticationError(
-      "The OAuth access token is invalid for Backoffice codemode.",
-      { cause: error },
-    );
-  }
-
-  let grant: BackofficeTokenGrantResolution;
-  try {
-    grant = await resolveGrant(authContext.adapter, {
-      userId: oauthPayload.sub,
-      scope: input.scope,
-      organizationSelection: input.scope ? "required" : "preferred",
-    });
-  } catch (error) {
-    if (error instanceof BackofficeTokenGrantForbiddenError) {
-      throw new BackofficeCliScopeAuthorizationError(error.message, { cause: error });
-    }
-    throw error;
-  }
-  if (grant.status === "organization_provisioning") {
-    throw new BackofficeCliScopeAuthorizationError(
-      "The authenticated user does not have an available Backoffice organization.",
-    );
-  }
-
-  const issued = await issueBackofficeJwt(
-    { context: authContext } as Parameters<typeof issueBackofficeJwt>[0],
-    { ...grant.authority, scopeRestriction: grant.authority.scope },
-  );
-  return {
-    accessToken: issued.token,
-    expiresAt: issued.expiresAt.toISOString(),
-    scope: grant.authority.scope,
-  };
+  const { client } = await loadBackofficeCodemodeOAuth(auth, baseURL);
+  const disabled = client.disabled === true || client.disabled === 1;
+  return !disabled && input.clientId === client.clientId ? { kind: "first-party-user" } : null;
 }

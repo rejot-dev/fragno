@@ -1,11 +1,11 @@
 import {
-  BackofficeCliScopeAuthorizationError,
-  BackofficeCliOAuthAuthenticationError,
-  backofficeCliTokenInputSchema,
-} from "@/fragno/auth/contracts";
+  BackofficeExecutionTokenScopeError,
+  BackofficeExecutionTokenAuthenticationError,
+  backofficeExecutionTokenRequestSchema,
+} from "@/fragno/auth/execution-token";
 import { getAuthDurableObject } from "@/worker-runtime/durable-objects";
 
-import type { Route } from "./+types/backoffice-cli-token";
+import type { Route } from "./+types/backoffice-execution-token";
 
 function hasErrorName(error: unknown, name: string): boolean {
   return error instanceof Error && error.name === name;
@@ -34,7 +34,7 @@ export async function action({ request, context }: Route.ActionArgs) {
       { status: 400, headers: { "cache-control": "no-store" } },
     );
   }
-  const input = backofficeCliTokenInputSchema.safeParse(body);
+  const input = backofficeExecutionTokenRequestSchema.safeParse(body);
   if (!input.success) {
     return Response.json(
       { error: "invalid_request", message: "scope must be a valid Backoffice scope or null." },
@@ -43,7 +43,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   }
 
   try {
-    const result = await getAuthDurableObject(context).commands.exchangeBackofficeOAuthAccessToken({
+    const result = await getAuthDurableObject(context).commands.exchangeBackofficeExecutionToken({
       requestUrl: request.url,
       oauthAccessToken: bearerMatch[1],
       scope: input.data.scope,
@@ -51,14 +51,14 @@ export async function action({ request, context }: Route.ActionArgs) {
     return Response.json(result, { headers: { "cache-control": "no-store" } });
   } catch (error) {
     if (
-      error instanceof BackofficeCliOAuthAuthenticationError ||
-      hasErrorName(error, "BackofficeCliOAuthAuthenticationError")
+      error instanceof BackofficeExecutionTokenAuthenticationError ||
+      hasErrorName(error, "BackofficeExecutionTokenAuthenticationError")
     ) {
       return authenticationFailureResponse("The OAuth access token is invalid or expired.");
     }
     if (
-      error instanceof BackofficeCliScopeAuthorizationError ||
-      hasErrorName(error, "BackofficeCliScopeAuthorizationError")
+      error instanceof BackofficeExecutionTokenScopeError ||
+      hasErrorName(error, "BackofficeExecutionTokenScopeError")
     ) {
       return Response.json(
         { error: "scope_unavailable", message: error instanceof Error ? error.message : "" },
