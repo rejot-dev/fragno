@@ -21,6 +21,9 @@
     "test": {
       "dependsOn": ["^build", "static:generate"]
     },
+    "test:bridge": {
+      "dependsOn": ["^build", "static:generate"]
+    },
     "test:watch": {
       "dependsOn": ["^build", "static:generate"],
       "interruptible": true
