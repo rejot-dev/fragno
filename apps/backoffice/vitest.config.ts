@@ -10,8 +10,12 @@ export default mergeConfig(
   baseConfig,
   defineConfig({
     test: {
+      // Turbo runs other package suites concurrently; leave CPU capacity for them.
+      maxWorkers: "50%",
       coverage: {
         enabled: false,
+        reportsDirectory: "./coverage",
+        reporter: ["text", "html", "json"],
       },
       projects: [
         resolveConfig("./vitest.node.config.ts"),
