@@ -11,7 +11,6 @@ import type { ResendSendEmailInput } from "@fragno-dev/resend-fragment";
 
 import type {
   BackofficeCliOAuthConfig,
-  BackofficeCliTokenResult,
   BackofficeMeData,
   Organization,
   OrganizationHookPayload,
@@ -19,6 +18,10 @@ import type {
   VerifyUserEmailInput,
   VerifyUserEmailResult,
 } from "@/fragno/auth/contracts";
+import type {
+  BackofficeExecutionTokenExchangeInput,
+  BackofficeExecutionTokenResult,
+} from "@/fragno/auth/execution-token";
 import type {
   AutomationEvent,
   AutomationEventDefinition,
@@ -207,11 +210,10 @@ export type AuthObject = DurableHookCommands & {
     activeOrganizationId: string | null;
   }): Promise<BackofficeMeData | null>;
   getBackofficeCliOAuthConfig(input: { requestUrl: string }): Promise<BackofficeCliOAuthConfig>;
-  exchangeBackofficeOAuthAccessToken(input: {
-    requestUrl: string;
-    oauthAccessToken: string;
-    scope: BackofficeContextScope | null;
-  }): Promise<BackofficeCliTokenResult>;
+  /** Exchanges OAuth identity under a server-controlled execution policy, not app registration alone. */
+  exchangeBackofficeExecutionToken(
+    input: BackofficeExecutionTokenExchangeInput,
+  ): Promise<BackofficeExecutionTokenResult>;
   getUserAuthorityFacts(input: {
     userId: string;
     organizationId?: string;

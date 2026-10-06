@@ -75,7 +75,7 @@ export type BackofficeAvailableScope = {
   isDefault: boolean;
 };
 
-type BackofficeCliTokenResult = {
+type BackofficeExecutionTokenResult = {
   accessToken: string;
   expiresAt: string;
   scope: BackofficeRuntimeScope;
@@ -606,7 +606,7 @@ async function refreshOAuthAccessToken(
   return refreshed;
 }
 
-function isBackofficeCliTokenResult(value: unknown): value is BackofficeCliTokenResult {
+function isBackofficeExecutionTokenResult(value: unknown): value is BackofficeExecutionTokenResult {
   if (!value || typeof value !== "object") {
     return false;
   }
@@ -623,7 +623,7 @@ async function exchangeOAuthTokenForBackofficeJwt(
   scope: BackofficeRuntimeScope | null,
 ): Promise<StoredAuthState> {
   const response = await fetchBackofficeWithoutRedirect(
-    `${auth.baseUrl}/api/backoffice/cli-token`,
+    `${auth.baseUrl}/api/backoffice/execution-token`,
     {
       method: "POST",
       headers: {
@@ -642,7 +642,7 @@ async function exchangeOAuthTokenForBackofficeJwt(
   }
 
   const result = await readJsonResponse(response);
-  if (!isBackofficeCliTokenResult(result)) {
+  if (!isBackofficeExecutionTokenResult(result)) {
     throw new Error("Backoffice token exchange returned an invalid response shape.");
   }
   const exchanged = {

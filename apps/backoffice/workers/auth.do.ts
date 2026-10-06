@@ -23,7 +23,6 @@ import {
   type AuthHookContext,
   type AuthUser,
   type BackofficeCliOAuthConfig,
-  type BackofficeCliTokenResult,
   type BackofficeMeData,
   joinOrganizationRoles,
   type Organization,
@@ -39,6 +38,11 @@ import {
   type VerifyUserEmailInput,
   type VerifyUserEmailResult,
 } from "@/fragno/auth/contracts";
+import {
+  backofficeExecutionTokenExchangeInputSchema,
+  type BackofficeExecutionTokenExchangeInput,
+  type BackofficeExecutionTokenResult,
+} from "@/fragno/auth/execution-token";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 import {
   AUTH_AUTOMATION_EVENT_ORGANIZATION_CREATED,
@@ -57,16 +61,19 @@ import {
   ensureUserHasOrganization,
   type UserOrganizationDependencies,
 } from "./auth-user-organization";
+import { exchangeBackofficeExecutionToken } from "./auth/backoffice-execution-token";
+import {
+  BackofficeUserTokenGrantForbiddenError,
+  type BackofficeUserTokenGrantResolution,
+} from "./auth/backoffice-user-token-grant";
 import {
   applyBackofficeBetterAuthSchemaMigrations,
   BACKOFFICE_BETTER_AUTH_SCHEMA_VERSION,
 } from "./auth/better-auth-migrations";
 import {
-  BackofficeTokenGrantForbiddenError,
-  type BackofficeTokenGrantResolution,
-  exchangeBackofficeOAuthAccessToken,
   getBackofficeCliOAuthConfig,
   initializeBackofficeCodemodeOAuthClient,
+  resolveBackofficeCodemodeExecutionPolicy,
 } from "./auth/better-auth-oauth";
 import { createBackofficeTokenPlugin } from "./auth/better-auth-plugin";
 import {
@@ -567,17 +574,17 @@ const findStoreUserByEmail = async (
     where: [{ field: "email", value: userEmail.trim().toLowerCase() }],
   });
 
-async function resolveBackofficeScopeTokenGrant(
+async function resolveBackofficeUserTokenGrant(
   adapter: BetterAuthAdapter,
   input: {
     userId: string;
     scope: BackofficeContextScope | null;
     organizationSelection: "preferred" | "required";
   },
-): Promise<BackofficeTokenGrantResolution> {
+): Promise<BackofficeUserTokenGrantResolution> {
   const storedUser = await findStoreUser(adapter, input.userId);
   if (!storedUser || normalizeBoolean(storedUser.banned)) {
-    throw new BackofficeTokenGrantForbiddenError(
+    throw new BackofficeUserTokenGrantForbiddenError(
       "This user cannot receive a Backoffice access token.",
     );
   }
@@ -585,7 +592,7 @@ async function resolveBackofficeScopeTokenGrant(
   const globalRole = normalizeRole(storedUser.role);
   if (input.scope?.kind === "system") {
     if (globalRole !== "admin") {
-      throw new BackofficeTokenGrantForbiddenError(
+      throw new BackofficeUserTokenGrantForbiddenError(
         "The requested system scope is not available to this user.",
       );
     }
@@ -603,7 +610,7 @@ async function resolveBackofficeScopeTokenGrant(
 
   if (input.scope?.kind === "user") {
     if (input.scope.userId !== storedUser.id) {
-      throw new BackofficeTokenGrantForbiddenError(
+      throw new BackofficeUserTokenGrantForbiddenError(
         "The requested user scope is not available to this user.",
       );
     }
@@ -634,7 +641,7 @@ async function resolveBackofficeScopeTokenGrant(
   const defaultMembership = memberships[0];
   if (!defaultMembership) {
     if (requestedOrganizationScope && input.organizationSelection === "required") {
-      throw new BackofficeTokenGrantForbiddenError(
+      throw new BackofficeUserTokenGrantForbiddenError(
         "The requested Backoffice scope is not available to this user.",
       );
     }
@@ -651,7 +658,7 @@ async function resolveBackofficeScopeTokenGrant(
     !requestedMembership &&
     input.organizationSelection === "required"
   ) {
-    throw new BackofficeTokenGrantForbiddenError(
+    throw new BackofficeUserTokenGrantForbiddenError(
       "The requested Backoffice scope is not available to this user.",
     );
   }
@@ -851,7 +858,7 @@ export class InMemoryAuthObject implements AuthObject {
 
     const backofficeTokenPlugin = createBackofficeTokenPlugin({
       isDevelopment,
-      resolveBackofficeScopeTokenGrant,
+      resolveBackofficeUserTokenGrant,
     });
     const signUpInvitationPlugins = runtime.config.signUpInvitationsEnabled
       ? [
@@ -1243,18 +1250,21 @@ export class InMemoryAuthObject implements AuthObject {
     return await getBackofficeCliOAuthConfig(this.#getAuth(baseURL), input);
   }
 
-  async exchangeBackofficeOAuthAccessToken(input: {
-    requestUrl: string;
-    oauthAccessToken: string;
-    scope: BackofficeContextScope | null;
-  }): Promise<BackofficeCliTokenResult> {
+  async exchangeBackofficeExecutionToken(
+    input: BackofficeExecutionTokenExchangeInput,
+  ): Promise<BackofficeExecutionTokenResult> {
+    const parsed = backofficeExecutionTokenExchangeInputSchema.parse(input);
     await this.#ready;
-    const baseURL = new URL(input.requestUrl).origin;
-    return await exchangeBackofficeOAuthAccessToken(
-      this.#getAuth(baseURL),
-      input,
-      resolveBackofficeScopeTokenGrant,
-    );
+    const auth = this.#getAuth(new URL(parsed.requestUrl).origin);
+    return await exchangeBackofficeExecutionToken(auth, parsed, {
+      resolveClientPolicy: async function resolveFirstPartyCodemodePolicy(clientId) {
+        return await resolveBackofficeCodemodeExecutionPolicy(auth, {
+          requestUrl: parsed.requestUrl,
+          clientId,
+        });
+      },
+      resolveUserGrant: resolveBackofficeUserTokenGrant,
+    });
   }
 
   async #handleAdminGrantRequest(request: Request): Promise<Response> {
@@ -1751,12 +1761,10 @@ export class Auth extends DurableObject<CloudflareEnv> implements AuthObject {
     return await this.#object.getBackofficeCliOAuthConfig(input);
   }
 
-  async exchangeBackofficeOAuthAccessToken(input: {
-    requestUrl: string;
-    oauthAccessToken: string;
-    scope: BackofficeContextScope | null;
-  }): Promise<BackofficeCliTokenResult> {
-    return await this.#object.exchangeBackofficeOAuthAccessToken(input);
+  async exchangeBackofficeExecutionToken(
+    input: BackofficeExecutionTokenExchangeInput,
+  ): Promise<BackofficeExecutionTokenResult> {
+    return await this.#object.exchangeBackofficeExecutionToken(input);
   }
 
   async getUserAuthorityFacts(input: { userId: string; organizationId?: string }) {
