@@ -5,7 +5,6 @@ import { defineCliArgsParser } from "@/fragno/runtime-tools/bash-cli";
 import {
   defineBackofficeRuntimeTool,
   defineBackofficeRuntimeToolFamily,
-  type BackofficeRuntimeTool,
   type BackofficeToolContext,
 } from "../runtime-tools";
 
@@ -216,7 +215,9 @@ const defineAutomationWorkflowTool = <
   TInputSchema extends z.ZodType,
   TOutputSchema extends z.ZodType,
 >(
-  tool: BackofficeRuntimeTool<TInputSchema, TOutputSchema, AutomationWorkflowToolContext>,
+  tool: Parameters<
+    typeof defineBackofficeRuntimeTool<TInputSchema, TOutputSchema, AutomationWorkflowToolContext>
+  >[0],
 ) => defineBackofficeRuntimeTool(tool);
 
 const getAutomationWorkflowRuntime = (

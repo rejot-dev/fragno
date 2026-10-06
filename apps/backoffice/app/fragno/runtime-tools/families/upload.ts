@@ -14,7 +14,6 @@ import type { UploadRuntime } from "@/fragno/runtime-tools/families/upload-runti
 import {
   defineBackofficeRuntimeTool,
   defineBackofficeRuntimeToolFamily,
-  type BackofficeRuntimeTool,
   type BackofficeToolContext,
 } from "../runtime-tools";
 
@@ -66,7 +65,9 @@ const uploadDiscardPreparedOutputSchema = z.object({
 type UploadToolContext = BackofficeToolContext<{ upload?: UploadRuntime }>;
 
 const defineUploadTool = <TInputSchema extends z.ZodType, TOutputSchema extends z.ZodType>(
-  tool: BackofficeRuntimeTool<TInputSchema, TOutputSchema, UploadToolContext>,
+  tool: Parameters<
+    typeof defineBackofficeRuntimeTool<TInputSchema, TOutputSchema, UploadToolContext>
+  >[0],
 ) => defineBackofficeRuntimeTool(tool);
 
 const getUploadRuntime = (context: UploadToolContext): UploadRuntime => {

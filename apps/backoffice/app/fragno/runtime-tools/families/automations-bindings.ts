@@ -27,7 +27,6 @@ import {
 import {
   defineBackofficeRuntimeTool,
   defineBackofficeRuntimeToolFamily,
-  type BackofficeRuntimeTool,
   type BackofficeToolContext,
 } from "../runtime-tools";
 
@@ -71,7 +70,9 @@ const readJsonArrayOption = (
 };
 
 const defineAutomationStoreTool = <TInputSchema extends z.ZodType, TOutputSchema extends z.ZodType>(
-  tool: BackofficeRuntimeTool<TInputSchema, TOutputSchema, AutomationStoreToolContext>,
+  tool: Parameters<
+    typeof defineBackofficeRuntimeTool<TInputSchema, TOutputSchema, AutomationStoreToolContext>
+  >[0],
 ) => defineBackofficeRuntimeTool(tool);
 
 const parseStoreGetArgs = defineCliArgsParser<StoreGetArgs>("store.get", {
