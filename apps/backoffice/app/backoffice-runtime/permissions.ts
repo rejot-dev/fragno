@@ -57,6 +57,11 @@ export const BACKOFFICE_PERMISSION = {
     resolve: { namespace: "identity", permission: "resolve" },
     revoke: { namespace: "identity", permission: "revoke" },
   },
+  integrations: {
+    read: { namespace: "integrations", permission: "read" },
+    manage: { namespace: "integrations", permission: "manage" },
+    execute: { namespace: "integrations", permission: "execute" },
+  },
   internal: {
     manage: { namespace: "internal", permission: "manage" },
   },

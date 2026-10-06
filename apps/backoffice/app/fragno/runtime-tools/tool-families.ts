@@ -30,6 +30,7 @@ import { eventFireToolFamily, eventReadToolFamily, type EventRuntime } from "./f
 import { eventCatalogToolFamily, type EventCatalogRuntime } from "./families/event-catalog";
 import { formsToolFamily, type FormsRuntime } from "./families/forms";
 import { githubToolFamily, type GitHubRuntime } from "./families/github";
+import type { IntegrationsRuntime } from "./families/integrations/integration-tools";
 import {
   internalMarketplaceToolFamily,
   internalWorkspaceToolFamily,
@@ -63,6 +64,7 @@ export type CoreBackofficeRuntimeMap = {
   state?: BackofficeStateBackend;
   admin?: AdminRuntime;
   backoffice?: BackofficeCapabilitiesRuntime;
+  integrations: IntegrationsRuntime | undefined;
   automations?: AutomationStoreRuntime & AutomationRouterRuntime;
   identity?: AutomationIdentityRuntime;
   workflow?: AutomationWorkflowRuntime;

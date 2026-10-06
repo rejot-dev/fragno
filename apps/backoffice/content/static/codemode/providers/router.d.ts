@@ -382,6 +382,18 @@ type BackofficePermissionRequirement =
       permission: "revoke";
     }
   | {
+      namespace: "integrations";
+      permission: "read";
+    }
+  | {
+      namespace: "integrations";
+      permission: "manage";
+    }
+  | {
+      namespace: "integrations";
+      permission: "execute";
+    }
+  | {
       namespace: "internal";
       permission: "manage";
     }
