@@ -151,6 +151,8 @@ export const createAutomationRuntimeHostContext = ({
       workflow: null,
       durableHooks: null,
       mcp: null,
+      marketplace: null,
+      packages: null,
       projectConnector: null,
       pi: null,
       reson8: { runtime: createUnavailableReson8Runtime() },

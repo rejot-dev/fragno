@@ -49,11 +49,13 @@ import { createFormsRuntime } from "@/fragno/runtime-tools/families/forms-runtim
 import { createGitHubRuntime } from "@/fragno/runtime-tools/families/github-runtime";
 import { createInternalRuntime } from "@/fragno/runtime-tools/families/internal";
 import { createJavaScriptRuntime } from "@/fragno/runtime-tools/families/javascript-runtime";
+import { createMarketplaceRuntime } from "@/fragno/runtime-tools/families/marketplace-runtime";
 import { createMcpRuntime } from "@/fragno/runtime-tools/families/mcp-runtime";
 import {
   createOtpRuntime,
   createUnavailableOtpRuntime,
 } from "@/fragno/runtime-tools/families/otp-runtime";
+import { createPackagesRuntime } from "@/fragno/runtime-tools/families/packages-runtime";
 import { createProjectConnectorRuntime } from "@/fragno/runtime-tools/families/project-connector-runtime";
 import {
   createResendRouteRuntime,
@@ -234,6 +236,25 @@ export const createRouteBackedRuntimeContext = ({
       ? { runtime: createEventCatalogRuntime({ objects: runtime.objects, scope: execution.scope }) }
       : null,
     automation: null,
+    marketplace: runtime.config.bindings.marketplace
+      ? { runtime: createMarketplaceRuntime(runtime.objects.marketplace.singleton().commands) }
+      : null,
+    packages:
+      runtime.config.bindings.upload &&
+      runtime.config.bindings.automations &&
+      runtime.config.bindings.marketplace &&
+      isBackofficeRoutableScope(execution.scope)
+        ? {
+            runtime: createPackagesRuntime({
+              objects: runtime.objects,
+              kernel,
+              execution,
+              preferredOrganizationId:
+                ("userAuthority" in execution ? execution.userAuthority?.organizationId : null) ??
+                billingOrganizationId,
+            }),
+          }
+        : null,
     cloudflare: runtime.config.bindings.cloudflare
       ? (() => {
           const object = unavailableObject(() => runtime.objects.cloudflare.singleton());

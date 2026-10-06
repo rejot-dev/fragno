@@ -4114,6 +4114,160 @@
     ]
   },
   {
+    "command": "marketplace.search",
+    "summary": "Search published packages. Follow the candidate cursor even when a page has no matches.",
+    "options": [
+      {
+        "name": "query",
+        "required": true,
+        "valueRequired": true,
+        "description": "Words to match in package metadata (case-insensitive)."
+      },
+      {
+        "name": "category",
+        "valueRequired": true,
+        "description": "Filter by Marketplace category."
+      },
+      {
+        "name": "page-size",
+        "valueRequired": true,
+        "description": "Number of registry candidates to examine (maximum 60)."
+      },
+      {
+        "name": "cursor",
+        "valueRequired": true,
+        "description": "Next candidate cursor from a previous search."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "marketplace.view",
+    "summary": "Inspect a published package and its releases.",
+    "options": [
+      {
+        "name": "listing-id",
+        "required": true,
+        "valueRequired": true,
+        "description": "Owner-qualified Marketplace listing ID."
+      },
+      {
+        "name": "version-page-size",
+        "valueRequired": true,
+        "description": "Release page size (maximum 60)."
+      },
+      {
+        "name": "version-cursor",
+        "valueRequired": true,
+        "description": "Next release cursor from a previous view."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "packages.install",
+    "summary": "Start the existing installation flow in the selected workspace. A created or restarted workflow is not a completed installation.",
+    "options": [
+      {
+        "name": "listing-id",
+        "required": true,
+        "valueRequired": true,
+        "description": "Owner-qualified Marketplace listing ID."
+      },
+      {
+        "name": "version",
+        "valueRequired": true,
+        "description": "Exact release; defaults to the existing latest-release resolution."
+      },
+      {
+        "name": "installation-root",
+        "required": true,
+        "valueRequired": true,
+        "description": "Destination folder under /workspace. Differing files are not overwritten."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "packages.ls",
+    "summary": "List the selected workspace's recorded package installations.",
+    "options": [
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
     "command": "internal.files.seed.execute",
     "summary": "internal.files.seed.execute seeds missing workspace starter files.",
     "options": [

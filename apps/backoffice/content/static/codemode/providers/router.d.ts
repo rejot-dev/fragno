@@ -386,6 +386,18 @@ type BackofficePermissionRequirement =
       permission: "manage";
     }
   | {
+      namespace: "marketplace";
+      permission: "read";
+    }
+  | {
+      namespace: "packages";
+      permission: "read";
+    }
+  | {
+      namespace: "packages";
+      permission: "install";
+    }
+  | {
       namespace: "mcp";
       permission: "servers.create";
     }
