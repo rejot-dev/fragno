@@ -4,8 +4,9 @@ A DB-backed Fragno fragment for the hosted OOMOL **Project Connector** API. It c
 users to Gmail and other configured OAuth providers, verifies account bindings, reads provider
 profiles, and executes actions using an explicit connected account.
 
-This package uses `oo_proj_...` project keys. It does not use personal `api_...` keys or the
-separate self-hosted SDK surface. Create a project and provider configuration in OOMOL Console
+Account operations use `oo_proj_...` project keys. Authoritative action contracts use a separate
+server-only catalog credential through the SDK's `Connector.catalog` surface; it is never used to
+execute actions or connect users. Create a project and provider configuration in OOMOL Console
 first; see the [Project Connector guide](https://oomol.com/docs/project-connector/).
 
 ## Try the CLI
@@ -41,6 +42,13 @@ OOMOL_PROJECT_API_KEY=oo_proj_...
 override values in `--env-file`. The key never travels through the browser and is not stored in
 SQLite or printed in diagnostics.
 
+Action discovery additionally requires `OOMOL_CONNECTOR_CATALOG_API_KEY`, a separate credential with
+catalog access on the same gateway (for hosted OOMOL, a personal `api_...` key). Project credentials
+are never substituted for catalog credentials. Omit it to leave account operations available but
+fail action discovery with `catalog_not_configured` when the selected configuration allows actions.
+A known configuration with an empty allowlist still returns an empty action list without catalog
+access.
+
 `connect` opens the authorization link, temporarily listens on `127.0.0.1:3930`, and polls the saved
 request. On success it stores the verified binding and performs a **read-only provider profile
 check**. It does not read Gmail messages or send email. `--beep` requests an audible authorization
@@ -70,7 +78,8 @@ local CLI chooses its own user identity; do not expose it as an application serv
 A successful `check` establishes gateway reachability and project-key authentication, not Gmail
 availability. The SaaS API has no health endpoint, so this check expects the authenticated
 `connection_request_not_found` response for a fresh, nonexistent request ID. All provider calls go
-through the official `@oomol-lab/connector` `ProjectConnector` client.
+through the official `@oomol-lab/connector` `ProjectConnector` client; action metadata uses its
+separate `Connector.catalog` surface.
 
 ## Server integration
 
@@ -82,6 +91,7 @@ const fragment = createProjectConnectorFragment(
   {
     baseUrl: env.OOMOL_CONNECTOR_BASE_URL,
     apiKey: env.OOMOL_PROJECT_API_KEY,
+    catalogApiKey: env.OOMOL_CONNECTOR_CATALOG_API_KEY ?? null,
     // Implement this using your application's authenticated session, not a user-supplied ID.
     getExternalUserId: resolveAuthenticatedUserId,
     allowedReturnUrls: (url) => url.toString() === callbackUrl,
@@ -105,15 +115,23 @@ matching.
 `providerConfigId` when connecting, especially when several configurations use the same service.
 
 `GET /provider-configs/:providerConfigId/actions` and the `useProviderActions` client hook retrieve
-`{ projectId, providerConfigId, actionIds }` for one exact configuration. An unknown configuration
-returns `PROVIDER_CONFIG_NOT_FOUND` (404); a known configuration with no actions returns an empty
-`actionIds` list. Discovery never executes actions.
+`{ projectId, providerConfigId, actions }` for one exact configuration. Each action has `id`,
+`service`, `name`, nullable `description`, and authoritative `inputSchema`/`outputSchema` JSON
+Schemas. An unknown configuration returns `PROVIDER_CONFIG_NOT_FOUND` (404); a known configuration
+with no allowed actions returns an empty `actions` list. Discovery never executes actions.
 
 Discovery requires an authenticated product user but is project-scoped, not an account list. It
 neither creates connections nor verifies provider accounts, and does not include API-key or custom
 credential configurations. The server calls `/v1/saas/oauth/provider-configs` with the project key;
-credentials and extra upstream fields stay outside the public response. Unsupported deployments and
-upstream failures return `PROJECT_CONNECTOR_ERROR`, rather than an invented or cached catalog.
+then retrieves the selected service's catalog in one `/v1/actions?service=...` request through
+`Connector.catalog.actions` using only the separate catalog credential. Definitions are indexed by
+unique action ID and selected in the configuration's allowlist order; duplicate allowlist IDs are
+returned once. Only allowed definitions are returned. Their service must match the configuration,
+and both schemas must be present; missing or invalid contracts fail the entire discovery response.
+Catalog presence never expands the configuration's allowlist or bypasses account ownership/execution
+authorization. Credentials and extra upstream fields stay outside the public response. Unsupported
+deployments and upstream failures return `PROJECT_CONNECTOR_ERROR`, rather than an invented,
+partial, or cached catalog.
 
 ## Client flow
 
@@ -153,16 +171,16 @@ lists local verified bindings, not live provider availability.
 
 ## Routes
 
-| Method | Path                                          | Purpose                                                       |
-| ------ | --------------------------------------------- | ------------------------------------------------------------- |
-| GET    | `/provider-configs`                           | Overview of this project's available OAuth configurations     |
-| GET    | `/provider-configs/:providerConfigId/actions` | List action IDs for one exact OAuth configuration             |
-| GET    | `/status`                                     | Check project-key authentication                              |
-| POST   | `/connection-requests`                        | Create an OAuth authorization link and save expected identity |
-| POST   | `/connection-requests/:requestId/refresh`     | Verify gateway status and bind a completed account            |
-| GET    | `/accounts?cursor=...`                        | List this user's locally verified account bindings            |
-| GET    | `/accounts/:accountId/profile`                | Read and verify the provider account profile                  |
-| POST   | `/accounts/:accountId/actions/:actionId`      | Execute `{ "input": { ... } }` using the saved selector       |
+| Method | Path                                          | Purpose                                                         |
+| ------ | --------------------------------------------- | --------------------------------------------------------------- |
+| GET    | `/provider-configs`                           | Overview of this project's available OAuth configurations       |
+| GET    | `/provider-configs/:providerConfigId/actions` | List allowed action contracts for one exact OAuth configuration |
+| GET    | `/status`                                     | Check project-key authentication                                |
+| POST   | `/connection-requests`                        | Create an OAuth authorization link and save expected identity   |
+| POST   | `/connection-requests/:requestId/refresh`     | Verify gateway status and bind a completed account              |
+| GET    | `/accounts?cursor=...`                        | List this user's locally verified account bindings              |
+| GET    | `/accounts/:accountId/profile`                | Read and verify the provider account profile                    |
+| POST   | `/accounts/:accountId/actions/:actionId`      | Execute `{ "input": { ... } }` using the saved selector         |
 
 A connection is bound only when the authenticated gateway response is `connected` and matches the
 saved request ID, project, provider config, external user, service, and connection name. `failed`

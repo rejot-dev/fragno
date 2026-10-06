@@ -70,6 +70,7 @@ export async function createNodeBackofficeProcessConfig(): Promise<NodeBackoffic
       CLOUDFLARE_WORKERS_API_TOKEN: process.env.CLOUDFLARE_WORKERS_API_TOKEN,
       OOMOL_CONNECTOR_BASE_URL: process.env.OOMOL_CONNECTOR_BASE_URL,
       OOMOL_PROJECT_API_KEY: process.env.OOMOL_PROJECT_API_KEY,
+      OOMOL_CONNECTOR_CATALOG_API_KEY: process.env.OOMOL_CONNECTOR_CATALOG_API_KEY,
       OPENAI_API_KEY: process.env.OPENAI_API_KEY,
       ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
       GEMINI_API_KEY: process.env.GEMINI_API_KEY,

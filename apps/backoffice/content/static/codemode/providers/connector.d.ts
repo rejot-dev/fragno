@@ -2,7 +2,7 @@
 type ConnectorCodemodeProvider = {
   /** List the project's OAuth provider configuration overviews without action IDs. Use listProviderActions for a selected providerConfigId; discovery does not verify user accounts. */
   listProviderConfigs(): Promise<ConnectorListProviderConfigsOutput>;
-  /** List available action IDs for one exact OAuth provider configuration; this does not execute actions. */
+  /** List authoritative action definitions, including input/output JSON Schemas, allowed by one exact OAuth provider configuration. Catalog discovery never grants execution permission. */
   listProviderActions(
     input: ConnectorListProviderActionsInput,
   ): Promise<ConnectorListProviderActionsOutput>;
@@ -40,7 +40,18 @@ type ConnectorListProviderActionsInput = {
 type ConnectorListProviderActionsOutput = {
   projectId: string;
   providerConfigId: string;
-  actionIds: string[];
+  actions: {
+    id: string;
+    service: string;
+    name: string;
+    description: string | null;
+    inputSchema: {
+      [key: string]: unknown;
+    };
+    outputSchema: {
+      [key: string]: unknown;
+    };
+  }[];
 };
 type ConnectorCheckOutput = {
   authenticated: true;

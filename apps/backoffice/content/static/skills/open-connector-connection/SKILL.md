@@ -14,8 +14,11 @@ connects external provider accounts through the Open Connector gateway. These co
 separate from native integrations and low-level API/MCP connections.
 
 Open Connector connections are user-owned. The object host reads `OOMOL_CONNECTOR_BASE_URL` and
-`OOMOL_PROJECT_API_KEY`; these are server configuration, not runtime-tool inputs. The key stays
-outside agent files and tool arguments.
+`OOMOL_PROJECT_API_KEY`. Action contract discovery also needs `OOMOL_CONNECTOR_CATALOG_API_KEY`, a
+separate catalog credential. These are server configuration, not runtime-tool inputs; keys stay
+outside agent files and tool arguments. Missing catalog access blocks action discovery, not OAuth or
+account verification. Report that blocker rather than guessing schemas or asking for keys in agent
+files.
 
 ## Connect and verify
 
@@ -59,9 +62,14 @@ browser return or a locally listed account.
 
 `await connector.listAccounts({})` returns one page of this user's verified bindings. Continue with
 `{ cursor: page.cursor }` while `page.hasNextPage` is true. These are local bindings, not a live
-provider health report. Retrieve action IDs separately with
+provider health report. Retrieve authoritative action definitions with
 `await connector.listProviderActions({ providerConfigId: account.providerConfigId })`; select from
-its `actionIds` rather than assuming every configuration of a service supports the same actions.
+its `actions` and construct input using the selected action's `inputSchema`. Each definition
+includes `id`, `service`, `name`, nullable `description`, `inputSchema`, and `outputSchema`. This
+list is limited to the exact configuration's allowed actions; global catalog presence does not grant
+execution permission. **Complete when** the selected action has authoritative input/output
+contracts. If catalog retrieval fails, report the blocker instead of inferring schemas from the
+action ID.
 
 Use an explicit account for every action:
 
@@ -91,5 +99,6 @@ the current execution's explicit grants; a permission failure is not a reason to
 or retry through another scope.
 
 In Bash, `connector.providers.list` prints a readable overview;
-`connector.providers.actions --provider-config-id ID` prints that configuration's action IDs. Both
-support `--format json` and `--print`. For command help, read `/static/terminal/terminal-spec.json`.
+`connector.providers.actions --provider-config-id ID` prints that configuration's action contracts.
+Both support `--format json` and `--print`. For command help, read
+`/static/terminal/terminal-spec.json`.

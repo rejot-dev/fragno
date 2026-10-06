@@ -129,6 +129,7 @@ export async function runProjectConnectorCli(
       {
         baseUrl,
         apiKey,
+        catalogApiKey: env["OOMOL_CONNECTOR_CATALOG_API_KEY"]?.trim() || null,
         getExternalUserId: () => externalUserId,
         allowedReturnUrls: (url) => url.toString() === returnUri,
       },

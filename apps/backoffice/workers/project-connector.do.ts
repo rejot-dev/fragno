@@ -33,7 +33,10 @@ import {
 
 type ProjectConnectorObjectEnv = Pick<
   BackofficeRuntimeEnv,
-  "OOMOL_CONNECTOR_BASE_URL" | "OOMOL_PROJECT_API_KEY" | "BACKOFFICE_INTERNAL_REQUEST_SECRET"
+  | "OOMOL_CONNECTOR_BASE_URL"
+  | "OOMOL_PROJECT_API_KEY"
+  | "OOMOL_CONNECTOR_CATALOG_API_KEY"
+  | "BACKOFFICE_INTERNAL_REQUEST_SECRET"
 >;
 type ConfiguredProjectConnectorObject = {
   host: FragmentDurableObjectHost<ProjectConnectorFragmentConfig, ProjectConnectorFragment>;
@@ -108,6 +111,7 @@ export class InMemoryProjectConnectorObject extends RpcTarget implements Project
         return {
           baseUrl,
           apiKey,
+          catalogApiKey: env.OOMOL_CONNECTOR_CATALOG_API_KEY?.trim() || null,
           getExternalUserId: () => externalUserId,
           allowedReturnUrls: (redirectUri) =>
             isScopedPublicOAuthRedirectUriAllowed({

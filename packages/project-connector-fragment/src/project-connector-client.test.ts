@@ -28,6 +28,7 @@ function createThrowingProjectConnectorSdk(error: Error) {
 const clientConfig = {
   baseUrl: "https://connector.example/v1",
   apiKey: "test-project-key",
+  catalogApiKey: null,
 };
 
 test("unexpected SDK exceptions retain their identity and diagnostics", async () => {

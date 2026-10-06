@@ -105,10 +105,13 @@ function formatConnectorProviderActions(
   const lines = [
     `Project: ${output.projectId}`,
     `Provider configuration: ${output.providerConfigId}`,
-    output.actionIds.length
-      ? `Action IDs (${output.actionIds.length}):`
-      : "No action IDs available.",
-    ...output.actionIds.map((actionId) => `- ${actionId}`),
+    output.actions.length ? `Actions (${output.actions.length}):` : "No actions available.",
+    ...output.actions.flatMap((action) => [
+      `- ${action.id}: ${action.name}`,
+      ...(action.description === null ? [] : [`  ${action.description}`]),
+      `  Input schema: ${JSON.stringify(action.inputSchema)}`,
+      `  Output schema: ${JSON.stringify(action.outputSchema)}`,
+    ]),
   ];
   return { stdout: ensureTrailingNewline(lines.join("\n")) };
 }
@@ -118,7 +121,7 @@ export const projectConnectorToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "connector",
   permissions: {
     "providers.read":
-      "Read the project's OAuth provider overviews and configuration-specific action IDs.",
+      "Read the project's OAuth provider overviews and configuration-specific action contracts.",
     "accounts.read": "Read verified account bindings, profiles, and project authentication status.",
     "connections.create": "Start OAuth and confirm connection requests for the owning user.",
     "actions.execute": "Execute provider actions on an explicitly selected connected account.",
@@ -158,7 +161,7 @@ export const projectConnectorToolFamily = defineBackofficeRuntimeToolFamily({
       name: "listProviderActions",
       capabilityId: "connector",
       description:
-        "List available action IDs for one exact OAuth provider configuration; this does not execute actions.",
+        "List authoritative action definitions, including input/output JSON Schemas, allowed by one exact OAuth provider configuration. Catalog discovery never grants execution permission.",
       requiredPermissions: ["providers.read"],
       inputSchema: providerActionsInputSchema,
       outputSchema: projectConnectorProviderActionsSchema,
@@ -170,7 +173,7 @@ export const projectConnectorToolFamily = defineBackofficeRuntimeToolFamily({
           command: "connector.providers.actions",
           help: {
             summary:
-              "connector.providers.actions lists action IDs for one OAuth provider configuration, without executing them.",
+              "connector.providers.actions lists authoritative action contracts for one OAuth provider configuration, without executing them.",
             options: [
               {
                 name: "provider-config-id",

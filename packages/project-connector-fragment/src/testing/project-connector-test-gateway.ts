@@ -4,14 +4,13 @@ import type { AddressInfo } from "node:net";
 import { z } from "zod";
 
 import type {
-  projectConnectorProviderActionsSchema,
+  projectConnectorActionSchema,
   projectConnectorProviderConfigsSchema,
 } from "../project-connector-contracts";
 
 type GatewayProviderConfig = z.infer<
   typeof projectConnectorProviderConfigsSchema
->["providerConfigs"][number] &
-  Pick<z.infer<typeof projectConnectorProviderActionsSchema>, "actionIds">;
+>["providerConfigs"][number] & { actionIds: string[] };
 
 const connectSchema = z.object({
   userId: z.string(),
@@ -58,6 +57,54 @@ export async function startProjectConnectorTestGateway() {
       proxyAvailable: false,
     },
   ];
+  const catalogActions = new Map<string, z.output<typeof projectConnectorActionSchema>>([
+    [
+      "gmail.search_threads",
+      {
+        id: "gmail.search_threads",
+        service: "gmail",
+        name: "Search Gmail threads",
+        description: "Search the selected Gmail account.",
+        inputSchema: {
+          type: "object",
+          properties: { query: { type: "string" } },
+          required: ["query"],
+          additionalProperties: false,
+        },
+        outputSchema: {
+          type: "object",
+          properties: {
+            query: { type: "string" },
+            threads: { type: "array", items: { type: "object" } },
+          },
+          required: ["query", "threads"],
+        },
+      },
+    ],
+    [
+      "gmail.send_email",
+      {
+        id: "gmail.send_email",
+        service: "gmail",
+        name: "Send Gmail email",
+        description: null,
+        inputSchema: {
+          type: "object",
+          properties: {
+            to: { type: "string" },
+            subject: { type: "string" },
+            body: { type: "string" },
+          },
+          required: ["to", "subject", "body"],
+        },
+        outputSchema: {
+          type: "object",
+          properties: { messageId: { type: "string" } },
+          required: ["messageId"],
+        },
+      },
+    ],
+  ]);
   const executions: {
     externalUserId: string;
     providerConfigId: string;
@@ -80,6 +127,8 @@ export async function startProjectConnectorTestGateway() {
       | "network"
       | null;
     discoveryReads: number;
+    catalogReads: string[];
+    catalogFailure: "wrong-service" | null;
     redirectReads: number;
   } = {
     actionFailure: null,
@@ -87,6 +136,8 @@ export async function startProjectConnectorTestGateway() {
     requestReads: 0,
     discoveryFailure: null,
     discoveryReads: 0,
+    catalogReads: [],
+    catalogFailure: null,
     redirectReads: 0,
   };
   let origin = "";
@@ -97,11 +148,35 @@ export async function startProjectConnectorTestGateway() {
     function failure(code: string, status: number) {
       json({ errorCode: code, errorMessage: code }, status);
     }
+    const url = new URL(req.url ?? "/", "http://localhost");
+    if (req.method === "GET" && url.pathname === "/v1/actions") {
+      if (req.headers.authorization !== "Bearer test-catalog-key") {
+        res.writeHead(401).end("Unauthorized test-catalog-key");
+        return;
+      }
+      const service = url.searchParams.get("service");
+      if (!service) {
+        failure("service_required", 400);
+        return;
+      }
+      control.catalogReads.push(service);
+      json({
+        success: true,
+        data: [...catalogActions.values()]
+          .filter((action) => action.service === service)
+          .map((action) => ({
+            ...action,
+            service: control.catalogFailure === "wrong-service" ? "slack" : action.service,
+            description: action.description ?? undefined,
+            clientSecret: "test-catalog-key",
+          })),
+      });
+      return;
+    }
     if (req.headers.authorization !== "Bearer test-project-key") {
       res.writeHead(401).end("Unauthorized");
       return;
     }
-    const url = new URL(req.url ?? "/", "http://localhost");
     const segments = url.pathname.split("/");
     const route = segments[3];
     const id = decodeURIComponent(segments[4] ?? "");
@@ -296,6 +371,7 @@ export async function startProjectConnectorTestGateway() {
     requests,
     accounts,
     providerConfigs,
+    catalogActions,
     executions,
     control,
     authorize(requestId: string, accountId: string) {

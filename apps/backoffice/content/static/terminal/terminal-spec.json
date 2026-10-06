@@ -2805,7 +2805,7 @@
   },
   {
     "command": "connector.providers.actions",
-    "summary": "connector.providers.actions lists action IDs for one OAuth provider configuration, without executing them.",
+    "summary": "connector.providers.actions lists authoritative action contracts for one OAuth provider configuration, without executing them.",
     "options": [
       {
         "name": "provider-config-id",

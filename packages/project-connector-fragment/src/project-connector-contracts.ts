@@ -86,11 +86,21 @@ export const projectConnectorProviderConfigsSchema = z
     "Provider configuration IDs must be unique",
   );
 
-/** Available action IDs belong to one exact project OAuth provider configuration. */
+/** Authoritative catalog contracts describe action values, not a provider's execution permissions. */
+export const projectConnectorActionSchema = z.object({
+  id: z.string().min(1),
+  service: z.string().min(1),
+  name: z.string(),
+  description: z.string().nullable(),
+  inputSchema: z.record(z.string(), z.unknown()),
+  outputSchema: z.record(z.string(), z.unknown()),
+});
+
+/** Only actions allowed by this exact project OAuth configuration are included. */
 export const projectConnectorProviderActionsSchema = z.object({
   projectId: projectConnectorProviderConfigsSchema.shape.projectId,
   providerConfigId: projectConnectorProviderConfigsSchema.shape.providerConfigs.element.shape.id,
-  actionIds: z.array(z.string().min(1)),
+  actions: z.array(projectConnectorActionSchema),
 });
 
 /** Project authentication does not imply that an individual provider account is usable. */

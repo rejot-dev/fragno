@@ -31,6 +31,8 @@ AUTH_ACCESS_TOKEN_SECRET=dev-auth-access-token-secret-replace-me
 # Hosted SaaS project key; consumed only by the Connector object host.
 OOMOL_CONNECTOR_BASE_URL=https://connector.oomol.com/v1
 OOMOL_PROJECT_API_KEY=oo_proj_
+# Separate server-side credential with catalog access, required for action contract discovery.
+OOMOL_CONNECTOR_CATALOG_API_KEY=api_
 
 
 # Signs trusted execution context sent between the web Worker and Durable Objects.

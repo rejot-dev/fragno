@@ -27,6 +27,7 @@ export async function runProjectConnectorScenario<TVars extends Record<string, u
           env: {
             OOMOL_CONNECTOR_BASE_URL: gateway.baseUrl,
             OOMOL_PROJECT_API_KEY: "test-project-key",
+            OOMOL_CONNECTOR_CATALOG_API_KEY: "test-catalog-key",
             ...scenario.env,
           },
           options: { ...scenario.options, sqliteDataDirectory: directory },

@@ -35,7 +35,10 @@ test("user-scoped codemode verifies OAuth before SQLite bindings, profiles, and 
           const provider = discovery.providerConfigs.find((config) => config.service === "gmail");
           if (!provider) throw new Error("Gmail is not configured");
           const actions = await connector.listProviderActions({ providerConfigId: provider.id });
-          if (!actions.actionIds.includes("gmail.search_threads")) throw new Error("Gmail search is not available");
+          const search = actions.actions.find((action) => action.id === "gmail.search_threads");
+          if (!search || search.inputSchema.type !== "object" || search.outputSchema.type !== "object") {
+            throw new Error("Gmail search contracts are not available");
+          }
           return await connector.connect({ providerConfigId: provider.id, connectionName: "work" });
         }`,
         assertToolCalls: [
@@ -230,25 +233,28 @@ test("Connector bash commands use the same user-owned fragment as codemode", asy
             "connector.providers.actions --provider-config-id gmail-provider",
           );
           expect(providerActions.exitCode, providerActions.stderr).toBe(0);
-          assert(
-            providerActions.stdout ===
-              "Project: project-1\nProvider configuration: gmail-provider\nAction IDs (1):\n- gmail.search_threads\n",
-            providerActions.stdout,
+          expect(providerActions.stdout).toContain(
+            "Actions (1):\n- gmail.search_threads: Search Gmail threads\n",
           );
-          const actionIds = await bash.exec(
+          expect(providerActions.stdout).toContain('Input schema: {"type":"object"');
+          expect(providerActions.stdout).toContain('Output schema: {"type":"object"');
+          const actionDefinitions = await bash.exec(
             "connector.providers.actions --provider-config-id gmail-provider --format json",
           );
-          expect(actionIds.exitCode, actionIds.stderr).toBe(0);
-          expect(JSON.parse(actionIds.stdout)).toEqual({
+          expect(actionDefinitions.exitCode, actionDefinitions.stderr).toBe(0);
+          expect(JSON.parse(actionDefinitions.stdout)).toEqual({
             projectId: "project-1",
             providerConfigId: "gmail-provider",
-            actionIds: ["gmail.search_threads"],
+            actions: [gateway.catalogActions.get("gmail.search_threads")],
           });
+          expect(actionDefinitions.stdout).not.toContain("test-catalog-key");
           const printedActions = await bash.exec(
-            "connector.providers.actions --provider-config-id gmail-provider --print action-ids",
+            "connector.providers.actions --provider-config-id gmail-provider --print actions",
           );
           expect(printedActions.exitCode, printedActions.stderr).toBe(0);
-          assert(printedActions.stdout === '["gmail.search_threads"]\n', printedActions.stdout);
+          expect(JSON.parse(printedActions.stdout)).toEqual([
+            gateway.catalogActions.get("gmail.search_threads"),
+          ]);
           const unknownProvider = await bash.exec(
             "connector.providers.actions --provider-config-id unknown",
           );
@@ -307,7 +313,7 @@ test("Connector bash commands use the same user-owned fragment as codemode", asy
           expect(emptyActions.exitCode, emptyActions.stderr).toBe(0);
           assert(
             emptyActions.stdout ===
-              "Project: project-1\nProvider configuration: gmail-provider\nNo action IDs available.\n",
+              "Project: project-1\nProvider configuration: gmail-provider\nNo actions available.\n",
             emptyActions.stdout,
           );
           gateway.providerConfigs.splice(0);

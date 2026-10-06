@@ -13,7 +13,7 @@ import { startProjectConnectorTestGateway } from "./testing/project-connector-te
 const cleanup: (() => Promise<void>)[] = [];
 const returnUri = "http://localhost/connected";
 
-async function connectorScenario() {
+async function connectorScenario(catalogApiKey: string | null = "test-catalog-key") {
   const gateway = await startProjectConnectorTestGateway();
   cleanup.push(gateway.close);
   const setup = await buildDatabaseFragmentsTest()
@@ -25,6 +25,7 @@ async function connectorScenario() {
         .withConfig({
           baseUrl: gateway.baseUrl,
           apiKey: "test-project-key",
+          catalogApiKey,
           getExternalUserId: (headers) => headers.get("x-test-user"),
           allowedReturnUrls: (url) => url.toString() === returnUri,
         })
@@ -150,7 +151,11 @@ describe("Project Connector connection scenarios", () => {
         await scenario.call("alice", "GET", `/provider-configs/${selectedConfig.id}/actions`),
       ).toEqual({
         status: 200,
-        data: { projectId: "project-1", providerConfigId: selectedConfig.id, actionIds },
+        data: {
+          projectId: "project-1",
+          providerConfigId: selectedConfig.id,
+          actions: actionIds.map((id) => scenario.gateway.catalogActions.get(id)),
+        },
       });
       const started = await client.connect().mutate({
         body: { providerConfigId: selectedConfig.id, connectionName: "personal", returnUri },
@@ -222,15 +227,34 @@ describe("Project Connector connection scenarios", () => {
         .toEqual({
           projectId: "project-1",
           providerConfigId: "gmail-personal",
-          actionIds: ["gmail.send_email"],
+          actions: [scenario.gateway.catalogActions.get("gmail.send_email")],
         });
       expect(JSON.stringify(actionsStore.get().data)).not.toContain("test-project-key");
+      expect(JSON.stringify(actionsStore.get().data)).not.toContain("test-catalog-key");
+      expect(scenario.gateway.control.catalogReads).toEqual(["gmail"]);
+      const discoveryReadsBefore = scenario.gateway.control.discoveryReads;
+      personalConfig.actionIds.push("gmail.search_threads", "gmail.send_email");
+      expect(
+        await scenario.call("alice", "GET", "/provider-configs/gmail-personal/actions"),
+      ).toEqual({
+        status: 200,
+        data: {
+          projectId: "project-1",
+          providerConfigId: "gmail-personal",
+          actions: [
+            scenario.gateway.catalogActions.get("gmail.send_email"),
+            scenario.gateway.catalogActions.get("gmail.search_threads"),
+          ],
+        },
+      });
+      expect(scenario.gateway.control.discoveryReads).toBe(discoveryReadsBefore + 1);
+      expect(scenario.gateway.control.catalogReads).toEqual(["gmail", "gmail"]);
       personalConfig.actionIds.splice(0);
       expect(
         await scenario.call("alice", "GET", "/provider-configs/gmail-personal/actions"),
       ).toEqual({
         status: 200,
-        data: { projectId: "project-1", providerConfigId: "gmail-personal", actionIds: [] },
+        data: { projectId: "project-1", providerConfigId: "gmail-personal", actions: [] },
       });
       expect(
         await scenario.call("alice", "GET", "/provider-configs/unknown/actions"),
@@ -240,9 +264,103 @@ describe("Project Connector connection scenarios", () => {
       });
       assert(scenario.gateway.requests.size === 0);
       expect(scenario.gateway.executions).toEqual([]);
+      expect(scenario.gateway.control.catalogReads).toEqual(["gmail", "gmail"]);
     } finally {
       unsubscribe();
     }
+  });
+
+  test.each([
+    { catalogApiKey: null, code: "catalog_not_configured" },
+    { catalogApiKey: "test-project-key", code: "provider_error" },
+  ])(
+    "catalog access failure ($code) leaves project authentication and verified accounts usable",
+    async ({ catalogApiKey, code }) => {
+      const scenario = await connectorScenario(catalogApiKey);
+      expect(
+        await scenario.call("alice", "GET", "/provider-configs/gmail-provider/actions"),
+      ).toMatchObject({
+        status: 502,
+        data: { code: "PROJECT_CONNECTOR_ERROR", message: expect.stringContaining(code) },
+      });
+      expect(await scenario.call("alice", "GET", "/status")).toMatchObject({
+        status: 200,
+        data: { authenticated: true },
+      });
+      await scenario.bind("alice", "alice-account");
+      expect((await scenario.call("alice", "GET", "/accounts")).data).toMatchObject({
+        accounts: [{ id: "alice-account" }],
+      });
+      expect(scenario.gateway.control.catalogReads).toEqual([]);
+      expect(scenario.gateway.executions).toEqual([]);
+    },
+  );
+
+  test("catalog changes are authoritative, and unavailable or mismatched contracts fail without executing", async () => {
+    const scenario = await connectorScenario();
+    const action = scenario.gateway.catalogActions.get("gmail.search_threads");
+    assert(action);
+    action.inputSchema = {
+      type: "object",
+      properties: { query: { type: "string" }, maxResults: { type: "integer", minimum: 1 } },
+      required: ["query"],
+    };
+    expect(await scenario.call("alice", "GET", "/provider-configs/gmail-provider/actions")).toEqual(
+      {
+        status: 200,
+        data: { projectId: "project-1", providerConfigId: "gmail-provider", actions: [action] },
+      },
+    );
+    scenario.gateway.control.catalogFailure = "wrong-service";
+    expect(
+      await scenario.call("alice", "GET", "/provider-configs/gmail-provider/actions"),
+    ).toMatchObject({
+      status: 502,
+      data: {
+        code: "PROJECT_CONNECTOR_ERROR",
+        message: expect.stringContaining("action_identity_mismatch"),
+      },
+    });
+    scenario.gateway.control.catalogFailure = null;
+    action.id = "gmail.send_email";
+    expect(
+      await scenario.call("alice", "GET", "/provider-configs/gmail-provider/actions"),
+    ).toMatchObject({
+      status: 502,
+      data: {
+        code: "PROJECT_CONNECTOR_ERROR",
+        message: expect.stringContaining("invalid_response"),
+      },
+    });
+    action.id = "gmail.search_threads";
+    // An upstream contract regression must not be converted to a permissive schema.
+    Reflect.deleteProperty(action, "outputSchema");
+    expect(
+      await scenario.call("alice", "GET", "/provider-configs/gmail-provider/actions"),
+    ).toMatchObject({
+      status: 502,
+      data: {
+        code: "PROJECT_CONNECTOR_ERROR",
+        message: expect.stringContaining("invalid_response"),
+      },
+    });
+    scenario.gateway.catalogActions.delete(action.id);
+    const missing = await scenario.call("alice", "GET", "/provider-configs/gmail-provider/actions");
+    expect(missing).toMatchObject({
+      status: 502,
+      data: {
+        code: "PROJECT_CONNECTOR_ERROR",
+        message: expect.stringContaining("action_not_found"),
+      },
+    });
+    expect(JSON.stringify(missing.data)).not.toContain("test-catalog-key");
+    expect(scenario.gateway.control.catalogReads).toEqual(Array(5).fill("gmail"));
+    expect(scenario.gateway.executions).toEqual([]);
+    expect((await scenario.call("alice", "GET", "/accounts")).data).toEqual({
+      accounts: [],
+      cursor: null,
+      hasNextPage: false,
+    });
   });
 
   test.each([

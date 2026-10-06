@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import {
+  Connector,
   ConnectorError,
   ProjectConnector,
   type ProjectApi,
@@ -9,12 +10,12 @@ import {
 } from "@oomol-lab/connector";
 
 import {
+  projectConnectorActionSchema,
   projectConnectorConnectionStateSchema,
   type projectConnectorConnectInputSchema,
   projectConnectorExecutionSchema,
   projectConnectorHttpUrlSchema,
   projectConnectorProfileSchema,
-  projectConnectorProviderActionsSchema,
   projectConnectorProviderConfigsSchema,
   type ProjectConnectorConnectionState,
 } from "./project-connector-contracts";
@@ -38,10 +39,17 @@ const projectConnectorDiscoveryEnvelopeSchema = z.object({
   data: projectConnectorProviderConfigsSchema.safeExtend({
     providerConfigs: z.array(
       projectConnectorProviderConfigsSchema.shape.providerConfigs.element.extend({
-        actionIds: projectConnectorProviderActionsSchema.shape.actionIds,
+        actionIds: z.array(z.string().min(1)),
       }),
     ),
   }),
+});
+
+const projectConnectorCatalogActionSchema = projectConnectorActionSchema.extend({
+  description: z
+    .string()
+    .nullish()
+    .transform((description) => description ?? null),
 });
 
 type ProjectConnectorSdk = Pick<
@@ -72,8 +80,12 @@ export class ProjectConnectorClientError extends Error {
   }
 }
 
-/** Server-only OOMOL Project Connector configuration; baseUrl includes the `/v1` API root. */
-export type ProjectConnectorClientConfig = { baseUrl: string; apiKey: string };
+/** Server-only gateway credentials; null catalogApiKey disables action discovery, not account operations. */
+export type ProjectConnectorClientConfig = {
+  baseUrl: string;
+  apiKey: string;
+  catalogApiKey: string | null;
+};
 
 function parseProjectConnectorApiBaseUrl(value: string): string {
   const baseUrl = new URL(projectConnectorHttpUrlSchema.parse(value));
@@ -125,7 +137,9 @@ function parseProjectConnectorResponse<T>(schema: z.ZodType<T>, value: unknown):
   return parsed.data;
 }
 
-async function fetchProjectConnectorProviderConfigs(config: ProjectConnectorClientConfig) {
+async function fetchProjectConnectorProviderConfigs(
+  config: Pick<ProjectConnectorClientConfig, "baseUrl" | "apiKey">,
+) {
   // The SDK has no discovery method; redirects must not forward the project key elsewhere.
   const signal = AbortSignal.timeout(30_000);
   let response: Response;
@@ -182,6 +196,16 @@ export function createProjectConnectorClient(
   const apiKey = parseProjectConnectorApiKey(config.apiKey);
   const baseUrl = parseProjectConnectorApiBaseUrl(config.baseUrl);
   const client = createSdk({ apiKey, baseUrl, maxRetries: 0 });
+  // Project credentials and catalog credentials have different authority; never substitute one for the other.
+  const catalog =
+    config.catalogApiKey === null
+      ? null
+      : new Connector({
+          apiKey: parseProjectConnectorApiKey(config.catalogApiKey),
+          baseUrl,
+          maxRetries: 0,
+          fetch: (input, init) => globalThis.fetch(input, { ...init, redirect: "error" }),
+        }).catalog;
 
   return {
     async listProviderConfigs() {
@@ -204,10 +228,39 @@ export function createProjectConnectorClient(
       if (!config) {
         return null;
       }
+      const actions: z.output<typeof projectConnectorActionSchema>[] = [];
+      if (config.actionIds.length > 0) {
+        if (!catalog) {
+          throw new ProjectConnectorClientError("catalog_not_configured", 503);
+        }
+        const serviceActions = parseProjectConnectorResponse(
+          z
+            .array(projectConnectorCatalogActionSchema)
+            .refine(
+              (actions) => new Set(actions.map((action) => action.id)).size === actions.length,
+              "Catalog action IDs must be unique",
+            ),
+          await callProjectConnector(() =>
+            catalog.actions(config.service, projectConnectorCallOptions),
+          ),
+        );
+        const actionsById = new Map(serviceActions.map((action) => [action.id, action]));
+        // Fetching the service catalog never expands this configuration's allowlist.
+        for (const actionId of new Set(config.actionIds)) {
+          const action = actionsById.get(actionId);
+          if (!action) {
+            throw new ProjectConnectorClientError("action_not_found", 502);
+          }
+          if (action.service !== config.service) {
+            throw new ProjectConnectorClientError("action_identity_mismatch", 502);
+          }
+          actions.push(action);
+        }
+      }
       return {
         projectId: discovery.projectId,
         providerConfigId: config.id,
-        actionIds: config.actionIds,
+        actions,
       };
     },
     async check() {

@@ -169,7 +169,7 @@
 ```text
 /static/skills/open-connector-connection/SKILL.md — Open Connector Connections
 ├─ /static/codemode/providers/connector.d.ts — connector tools [line 12]
-└─ /static/terminal/terminal-spec.json — terminal-spec.json JSON data [line 95]
+└─ /static/terminal/terminal-spec.json — terminal-spec.json JSON data [line 104]
 ```
 
 ### `otp-system`
