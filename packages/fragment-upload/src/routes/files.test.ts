@@ -111,6 +111,55 @@ describe("upload file routes", async () => {
     return prepared.data.write;
   };
 
+  it("batch snapshots preserve revisions and distinguish ready, deleted, and missing files", async () => {
+    for (const fileKey of ["ready.txt", "deleted.txt"]) {
+      const result = await fragment.callRoute("POST", "/files", {
+        body: createFileForm({ fileKey, filename: fileKey, content: "original" }),
+      });
+      assert(result.type === "json");
+    }
+    const replacement = await fragment.callRoute("POST", "/files", {
+      body: createFileForm({ fileKey: "ready.txt", filename: "ready.txt", content: "replacement" }),
+    });
+    assert(replacement.type === "json");
+    const deleted = await fragment.callRoute("DELETE", "/files/by-key", {
+      query: { provider, key: "deleted.txt" },
+    });
+    assert(deleted.type === "json");
+    const prepared = await prepareProxyFile("prepared.txt", "invisible");
+    const snapshots = await fragment.callRoute("POST", "/files/snapshots", {
+      body: { provider, fileKeys: ["ready.txt", "deleted.txt", "missing.txt", prepared.fileKey] },
+    });
+    assert(snapshots.type === "json");
+    expect(snapshots.data.files).toHaveLength(2);
+    expect(snapshots.data.files).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ fileKey: "ready.txt", status: "ready", revision: 1 }),
+        expect.objectContaining({ fileKey: "deleted.txt", status: "deleted", revision: 1 }),
+      ]),
+    );
+    const snapshot = await fragment.callRoute("GET", "/files/by-key", {
+      query: { provider, key: "ready.txt" },
+    });
+    assert(snapshot.type === "json");
+    expect(snapshots.data.files.find((file) => file.fileKey === "ready.txt")).toEqual(
+      snapshot.data,
+    );
+  });
+
+  it("rejects invalid keys and unbounded batch snapshot reads", async () => {
+    for (const fileKeys of [
+      ["../invalid"],
+      [],
+      Array.from({ length: 501 }, (_, index) => `file-${index}`),
+    ]) {
+      const result = await fragment.callRoute("POST", "/files/snapshots", {
+        body: { provider, fileKeys },
+      });
+      assert(result.status === 400);
+    }
+  });
+
   it("publishes prepared proxy uploads atomically and replays the committed batch", async () => {
     const first = await prepareProxyFile("prepared/first.txt", "first-v1");
     const second = await prepareProxyFile("prepared/second.txt", "second-v1");
