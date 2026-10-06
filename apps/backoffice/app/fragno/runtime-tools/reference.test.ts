@@ -322,30 +322,6 @@ describe("runtime tool reference generation", () => {
       ],
     },
     {
-      namespace: "reson8",
-      tools: [
-        {
-          id: "reson8.prerecorded.transcribe",
-          namespace: "reson8",
-          codemodeProvider: "reson8",
-          codemodeTool: "transcribePrerecorded",
-          inputType: "Reson8TranscribePrerecordedInput",
-          outputType: "Reson8TranscribePrerecordedOutput",
-          bashCommand: "reson8.prerecorded.transcribe",
-          bashOptions: [
-            "input",
-            "encoding",
-            "sample-rate",
-            "channels",
-            "custom-model-id",
-            "include-timestamps",
-            "include-words",
-            "include-confidence",
-          ],
-        },
-      ],
-    },
-    {
       namespace: "telegram",
       tools: [
         {

@@ -47,6 +47,7 @@ import { createEventCatalogRuntime } from "@/fragno/runtime-tools/families/event
 import { createEventRuntime } from "@/fragno/runtime-tools/families/event-runtime";
 import { createFormsRuntime } from "@/fragno/runtime-tools/families/forms-runtime";
 import { createGitHubRuntime } from "@/fragno/runtime-tools/families/github-runtime";
+import { createIntegrationsRuntime } from "@/fragno/runtime-tools/families/integrations/integrations-runtime";
 import { createInternalRuntime } from "@/fragno/runtime-tools/families/internal";
 import { createJavaScriptRuntime } from "@/fragno/runtime-tools/families/javascript-runtime";
 import { createMarketplaceRuntime } from "@/fragno/runtime-tools/families/marketplace-runtime";
@@ -61,10 +62,6 @@ import {
   createResendRouteRuntime,
   createUnavailableResendRuntime,
 } from "@/fragno/runtime-tools/families/resend-runtime";
-import {
-  createReson8RouteRuntime,
-  createUnavailableReson8Runtime,
-} from "@/fragno/runtime-tools/families/reson8-runtime";
 import { createSandboxRouteRuntime } from "@/fragno/runtime-tools/families/sandbox-route-runtime";
 import {
   createTelegramRuntime,
@@ -477,16 +474,8 @@ export const createRouteBackedRuntimeContext = ({
         defaultBillingOrganizationId: billingOrganizationId,
       }),
     },
-    reson8: {
-      runtime:
-        selectedOrg && runtime.config.bindings.reson8
-          ? createReson8RouteRuntime({
-              object: authorizedBackofficeObjectHttp(
-                kernel.scoped("RESON8", execution.scope, runtime.objects.reson8).http,
-                execution,
-              ),
-            })
-          : createUnavailableReson8Runtime(unavailableMessage("RESON8", execution)),
+    integrations: {
+      runtime: createIntegrationsRuntime({ runtime, kernel, execution, nowEpochMs: Date.now }),
     },
     resend: {
       runtime:

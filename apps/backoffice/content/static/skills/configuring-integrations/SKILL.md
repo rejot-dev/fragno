@@ -1,16 +1,17 @@
 ---
 name: configuring-integrations
 description: >
-  Configure native Backoffice integrations with dedicated runtime tools, such as Telegram, Resend,
-  Reson8, and Upload. Always load for native integration setup or verification, together with its
-  provider-specific skill. Open Connector and low-level API/MCP connections use their own skills.
+  Configure native Backoffice services, such as Telegram, Resend, Reson8, and Upload. Always load
+  for native integration setup or verification, together with its provider-specific skill. Open
+  Connector and low-level API/MCP connections use their own skills.
 ---
 
 # Configuring Integrations
 
-Integrations are native Backoffice capabilities with dedicated runtime tools. The `connections.*`
-namespace is their configuration API; its catalog IDs identify integrations, not Open Connector
-accounts or low-level API/MCP connection slugs.
+Native Backoffice services are configurable capabilities. The `connections.*` namespace preserves
+their existing configuration controls; its catalog IDs identify services, not Open Connector
+accounts or low-level API/MCP connection slugs. Reson8 execution and live access checks use
+`integrations.*`; follow its provider-specific skill for that facade.
 
 Treat integration setup as a handshake: **inspect → collect → configure → verify**.
 

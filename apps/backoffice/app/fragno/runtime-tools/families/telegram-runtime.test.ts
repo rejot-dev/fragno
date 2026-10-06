@@ -31,7 +31,6 @@ describe("telegram bash command registration", () => {
         automations: null,
         otp: null,
         pi: null,
-        reson8: null,
         resend: null,
         telegram: {
           runtime: createTelegramRuntime(),
@@ -75,7 +74,6 @@ describe("telegram bash command registration", () => {
         automations: null,
         otp: null,
         pi: null,
-        reson8: null,
         resend: null,
         telegram: {
           runtime: createTelegramRuntime({
@@ -131,7 +129,6 @@ describe("telegram bash command registration", () => {
         automations: null,
         otp: null,
         pi: null,
-        reson8: null,
         resend: null,
         telegram: {
           runtime: createTelegramRuntime(),
@@ -167,7 +164,6 @@ describe("telegram bash command registration", () => {
         automations: null,
         otp: null,
         pi: null,
-        reson8: null,
         resend: null,
         telegram: {
           runtime: createTelegramRuntime(),
@@ -192,7 +188,6 @@ describe("telegram bash command registration", () => {
         automations: null,
         otp: null,
         pi: null,
-        reson8: null,
         resend: null,
         telegram: {
           runtime: createTelegramRuntime(),
@@ -219,7 +214,6 @@ describe("telegram bash command registration", () => {
         automations: null,
         otp: null,
         pi: null,
-        reson8: null,
         resend: null,
         telegram: {
           runtime: createTelegramRuntime({
@@ -262,7 +256,6 @@ describe("telegram bash command registration", () => {
         automations: null,
         otp: null,
         pi: null,
-        reson8: null,
         resend: null,
         telegram: {
           runtime: createTelegramRuntime({
@@ -298,7 +291,6 @@ describe("telegram bash command registration", () => {
         automations: null,
         otp: null,
         pi: null,
-        reson8: null,
         resend: null,
         telegram: {
           runtime: createTelegramRuntime(),

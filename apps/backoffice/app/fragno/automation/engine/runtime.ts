@@ -8,7 +8,6 @@ import {
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import type { BashHostContext } from "@/fragno/runtime-tools/bash-host";
 import { createUnavailableResendRuntime } from "@/fragno/runtime-tools/families/resend-runtime";
-import { createUnavailableReson8Runtime } from "@/fragno/runtime-tools/families/reson8-runtime";
 import { createUnavailableTelegramRuntime } from "@/fragno/runtime-tools/families/telegram-runtime";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 
@@ -155,7 +154,7 @@ export const createAutomationRuntimeHostContext = ({
       packages: null,
       projectConnector: null,
       pi: null,
-      reson8: { runtime: createUnavailableReson8Runtime() },
+      integrations: null,
       resend: { runtime: createUnavailableResendRuntime() },
       sandbox: null,
       telegram: { runtime: createUnavailableTelegramRuntime() },

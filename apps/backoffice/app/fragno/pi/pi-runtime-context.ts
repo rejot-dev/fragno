@@ -5,7 +5,6 @@ import type {
 } from "@/fragno/runtime-tools/bash-host";
 import type { OtpRuntime } from "@/fragno/runtime-tools/families/otp-runtime";
 import type { ResendRuntime } from "@/fragno/runtime-tools/families/resend";
-import type { Reson8Runtime } from "@/fragno/runtime-tools/families/reson8";
 import type { TelegramRuntime } from "@/fragno/runtime-tools/families/telegram-runtime";
 
 import type { PiManagerRuntime } from "../pi-manager/pi-manager-runtime";
@@ -15,7 +14,6 @@ export type PiRuntimeToolContext = InteractiveRuntimeToolContext & {
   automations: { runtime: RegisteredAutomationsRuntime };
   otp: { runtime: OtpRuntime };
   pi: { runtime: PiManagerRuntime };
-  reson8: { runtime: Reson8Runtime };
   resend: { runtime: ResendRuntime };
   telegram: { runtime: TelegramRuntime };
 };

@@ -1,194 +1,181 @@
-# Integration implementation sketch
+# Integrations
 
-This directory contains the public integration contracts and the private implementation interface.
-It does **not** implement an integration registry, setup persistence, action dispatch, or service
-backends. The tool family is not registered in `runtimeToolFamilies`, so it is unavailable and its
-provider declaration is intentionally not generated.
+The registered `integrations` tools provide scope-bound discovery, setup, and execution over
+existing service-owned configuration. They do not own credentials, binding records, or setup-attempt
+history.
 
-## Files
+Reson8 is the implemented source. Codemode and terminal commands use the same contracts, runtime,
+and permissions. Reson8 execution is exposed only through `integrations.*`; its former standalone
+tool family and runtime have been removed. The underlying Fragment, Durable Object, native
+permissions, events, and organization configuration controls remain intact.
 
-- `integration-contracts.ts`: canonical public schemas and their inferred domain types.
-- `integration-tools.ts`: unregistered tool-family sketch and the scope-bound `IntegrationsRuntime`
-  contract.
-- `integration-implementation.ts`: interface for one service, private setup steps, and executable
-  action definitions.
+## Public surface
 
-Once a production `IntegrationsRuntime` exists, register `integrationsToolFamily` in
-`runtimeToolFamilies` and run `pnpm --filter @fragno-apps/backoffice-rr run static:generate`. That
-will restore `content/static/codemode/providers/integrations.d.ts` from the canonical contracts; do
-not maintain a handwritten copy.
+- `discover()`: services and known named setup targets, including unconfigured services.
+- `list({ cursor })`: one page of configured `connections` with deterministic IDs.
+- `get({ connectionId })`: saved configuration, authorization, and available evidence; no live
+  check.
+- `actions({ connectionId })`: supported actions with authoritative input/output JSON Schemas.
+- `execute({ connectionId, actionId, input })`: invoke the exact live action with JSON input/output.
+- `verify({ connectionId })`: explicit supported live checks, returning timestamped evidence.
+- `setup({ kind: "check", connectionId })`: read current source-owned setup requirements.
+  `setup({ kind: "input", connectionId, input })` submits direct JSON values to the same operation.
 
-## One service, any mechanism
+`connect`, `continueSetup`, and `disconnect` are not registered. There is no reference object,
+caller scope argument, binding name, or retained setup ID. Configuration is not proof of working
+credentials; setup-ready is not blanket health, and discovery never authorizes an action.
 
-The proposed boundary is:
+## Deterministic connection IDs
 
-```text
-Public integrations tools
-          |
-Scope-bound IntegrationsRuntime
-          |
-IntegrationImplementation<SetupState, Binding>
-          |
-Private native / HTTP / MCP / Connector collaborators
+An ID has the form `namespace#local-id`. The namespace routes to its registered owner; the suffix is
+preserved as source identity, including case and additional `#` characters. It is never slugified or
+interpreted as a scope selector. These are scoped addresses, not global identities or bearer tokens.
+
+`backoffice#reson8` names the selected organization's existing singleton configuration slot. It
+works before setup, survives object/runtime recreation and credential replacement, and remains a
+valid slot address after existing configuration controls reset its credentials. It is not an
+independently named or revocable binding. Another organization's use of the same address names that
+other organization's configuration, not the first organization's credentials.
+
+Implementations declare exact ID claims or whole namespace claims. Registration rejects duplicate
+claims and overlapping exact/namespace claims before exposing any operation. Sources may publish
+only the addresses they own. This is code-owned routing metadata, not a persistent reservation
+store.
+
+Future sources can own `api#<connection-slug>`, `mcp#<server-slug>`, and
+`connector#<connected-account-id>`. If native identity is only unique within another source
+instance, its local address must include that qualifier losslessly. Those sources are not
+implemented by merely reserving their prefixes; unknown addresses fail closed. Service identity
+remains separate: a Gmail account can have a Connector address while still being presented as Gmail.
+
+## Service-owned setup
+
+Reson8 setup with `{ kind: "check" }` reads current configuration without contacting the provider or
+writing credentials. Missing credentials return `needs-input`, an authoritative input schema, and
+`secretFields: ["apiKey"]`. Requested input is validated and saved through the existing
+configuration command. If already configured, setup returns `ready` without replacing the existing
+key, even if new input was supplied.
+
+In the terminal, omitting `--input-json` checks current requirements; providing it submits the JSON
+value directly, without a `response` or `values` wrapper. JSON `null` is a submission, not a check
+sentinel. Sources validate submissions against their current requirements; Reson8 requires an object
+containing `apiKey`, so null, scalars, and arrays are rejected when configuration is missing. Empty
+or malformed flag values fail rather than silently becoming checks. `--response-json` is not an
+alias. Codemode uses explicit `kind: "check"` / `kind: "input"` variants to preserve the same
+distinction.
+
+There is no private continuation state in the shared interface. Setup can resume across requests or
+object restarts by reading the source again. Resetting configuration makes the same address request
+input again. Concurrent submissions retain the existing store's write semantics; the facade does not
+promise reservations, exactly-once setup, or permanently retained terminal outcomes.
+
+Only named-connection setup is currently supported. A future source whose account ID is assigned
+after authorization needs explicit start/continuation variants with a source-owned attempt locator.
+Do not invent an account ID, encode private state in a public token, or add an integrations-owned
+attempt store to fit that flow into the named-connection operation.
+
+## Implementation boundary
+
+- `integration-contracts.ts`: canonical public schemas and inferred types.
+- `integration-tools.ts`: the seven tools, Bash adapters, and scope-bound runtime contract.
+- `integration-implementation.ts`: connection ID claims, explicit setup capability, and resolved
+  request-local connection operations. No binding/setup generics or shared private state schemas.
+- `integration-registry.ts`: claim ownership, source dispatch, and composite cursor pagination.
+- `integrations-runtime.ts`: production source assembly and public operation dispatch.
+- `reson8-integration.ts`: existing organization configuration, authorized Fragno routes, and action
+  validation. The only provider transport seam is injected fetch.
+
+An implementation can describe multiple services and owns listing, source-local resolution, and any
+supported setup. Setup capability is `supported` or `unsupported`, never an optional method.
+
+Resolution establishes the selected connection and execution authority. It returns identity plus
+bound `inspect`, `actions`, and `verify` operations. Inspection is lazy: actions must not acquire an
+extra configuration-read requirement merely because the runtime resolved their target. Action
+handlers capture authority and the private locator for this request; callers cannot supply a
+different invocation context. None of these closures is persisted or returned through the public
+tools.
+
+Action metadata and invocation remain coupled. Input/output use JSON values only, including scalars,
+arrays, and null. Binary fields are schema-declared integer byte arrays (0–255), converted
+privately. Result contracts retain domain and asynchronous semantics; a no-payload result is null.
+There is no second persisted dispatcher or handwritten duplicate contract.
+
+The registry returns source pages without materializing all connections. Its opaque cursor
+identifies the next source and that source's unchanged cursor. An unknown source or malformed cursor
+fails rather than silently restarting. Pagination never changes execution scope or grants access.
+
+## Codemode usage
+
+In an organization-scoped provider, supply a requested API key and valid audio bytes:
+
+```ts
+const target = { connectionId: "backoffice#reson8" };
+let setup = await integrations.setup({ ...target, kind: "check" });
+if (setup.status === "needs-input") {
+  setup = await integrations.setup({
+    ...target,
+    kind: "input",
+    input: { apiKey },
+  });
+}
+if (setup.status !== "ready") throw new Error("Reson8 setup is not ready.");
+
+const connectionId = setup.connectionId;
+const actions = await integrations.actions({ connectionId });
+const checked = await integrations.verify({ connectionId });
+const transcript = await integrations.execute({
+  connectionId,
+  actionId: "prerecorded.transcribe",
+  input: { audio: { bytes: audioBytes }, query: null },
+});
 ```
 
-An implementation represents a service definition, not an entire mechanism. A Connector-backed
-factory could produce separate Slack and Gmail implementations. An HTTP-backed implementation needs
-real action contracts; an endpoint URL alone cannot supply them.
+## Terminal usage
 
-`describe` supplies a service identity, description, scoped connection cardinality, availability,
-and declared events. The runtime aggregates those descriptions for `discover`; it does not ask
-callers to choose a backend. Service clients, storage, and other concrete collaborators belong in
-implementation assembly rather than a catch-all dependency bag on `IntegrationContext`.
+Each command supports `--help`, `--format json` / `--json`, and `--print <selector>`. Setup and
+action `--input-json` accept any JSON value; each source/action validates its own shape.
+`--connection-id` is a scalar string, not a JSON reference.
 
-## Ownership
+The dashboard starts a fresh shell per submission, so these commands do not depend on shell
+variables from earlier submissions. In an organization scope:
 
-| Runtime responsibility                               | Implementation responsibility                               |
-| ---------------------------------------------------- | ----------------------------------------------------------- |
-| Aggregate discovery and paginate configured bindings | Describe one service in the selected scope                  |
-| Own public references and enforce their owner scope  | Interpret private binding identity                          |
-| Own setup IDs and retain setup progress              | Interpret private continuation state and setup requirements |
-| Enforce umbrella permissions                         | Enforce service- and action-specific permissions            |
-| Attach public identity and name to inspection        | Supply configuration, authorization, and check evidence     |
-| Select the action and publish only its definition    | Validate and invoke the service operation                   |
-| Disable a disconnected public reference              | Release resources owned only by that binding                |
+```sh
+integrations.discover
+integrations.setup --connection-id 'backoffice#reson8' --format json
 
-A caller-supplied scope is not evidence of ownership. The runtime resolves binding and setup handles
-within the selected execution scope before invoking an implementation. Its ownership check and the
-implementation's service permissions are both required.
+# If needs-input, replace the placeholder with the requested API key.
+integrations.setup --connection-id 'backoffice#reson8' \
+  --input-json '{"apiKey":"YOUR_RESON8_API_KEY"}' \
+  --format json
 
-## Private typed state
+integrations.list --print connections.0.connectionId
+integrations.get --connection-id 'backoffice#reson8'
+integrations.actions --connection-id 'backoffice#reson8' --format json
+integrations.verify --connection-id 'backoffice#reson8' --format json
+integrations.execute --connection-id 'backoffice#reson8' \
+  --action-id prerecorded.transcribe \
+  --input-json "$(cat /workspace/transcription-input.json)" \
+  --format json
+```
 
-`SetupState` is the private value needed to continue a setup attempt. `Binding` is the private value
-needed to inspect and use an established connection. Neither appears in public setup progress,
-references, or inspection output.
+The input file contains real audio integer bytes and `query: null` (or the discovered explicit query
+shape). Illustrative bytes are not a valid audio recording for a live provider.
 
-Illustrative private identities, not backend implementations:
+## Authority and evidence
 
-| Implementation              | Possible setup state                   | Possible binding                      |
-| --------------------------- | -------------------------------------- | ------------------------------------- |
-| Native API-key service      | Current requested-input stage          | Scoped configuration locator          |
-| OAuth-connected service     | Pending authorization-request locator  | Confirmed connected-account locator   |
-| HTTP-backed service         | Registration and consent locators      | Registered connection locator         |
-| MCP-backed service          | Registration and consent locators      | Registered server locator             |
-| Environment-managed service | Administrator intervention requirement | Scoped access to shared configuration |
+Umbrella `integrations.read`, `.manage`, and `.execute` apply at the tool boundary. Setup and
+verification require manage. They neither replace native permissions nor broaden role grants.
+Configuration inspection/setup reads require `connections.read`; submitted keys require
+`connections.manage`; transcription and live checks require `reson8.use`.
 
-The implementation supplies `setupStateSchema` and `bindingSchema` so retained private data can earn
-trust at the runtime's loading boundary. Domain methods then receive concrete typed values, not
-`unknown`. These schemas do not prescribe a storage backend or serialization protocol. Private state
-should reference credential storage rather than copy secrets into publicly visible attempt data.
+Verify performs a read-only custom-model listing. It neither transcribes, mints tokens, persists
+health, nor publishes provider credential echoes. A subsequent get remains `not-checked`.
+Receiving-object authorization denials, including unavailable authority resolution, propagate as
+execution errors rather than failed provider checks. Provider HTTP errors still return sanitized
+check evidence.
 
-## Setup progression
-
-`IntegrationSetupStep` derives its user-facing requirements from the canonical
-`IntegrationSetupProgress` type. It replaces runtime-owned handles with private values:
-
-- `needs-input`, `needs-authorization`, and `pending` carry a typed `state`.
-- `ready` carries a typed `binding`, not a public reference.
-- `blocked` and `expired` are terminal results with a reason and no continuation state.
-
-The proposed runtime sequence for `connect` is:
-
-1. Resolve the selected service implementation and authorize setup in the selected scope.
-2. Apply the implementation's declared `connectionCardinality`. For a singleton, reuse the existing
-   binding or nonterminal attempt; otherwise atomically reserve a new slot before service side
-   effects.
-3. Only for a new slot, call its `connect` operation with the proposed name.
-4. Retain the attempt's service, owner, name, progress, and private continuation state.
-5. If ready, retain the private binding behind a public reference.
-6. Return only public progress with the runtime-owned setup ID.
-
-For `continueSetup`, resolve and authorize the retained attempt first. A nonterminal attempt
-supplies its validated private state to the implementation; the caller supplies only `input` or
-`check`. The implementation accepts input only for the current requirement and checks authoritative
-external state when appropriate. An input submission can return another requirement instead of
-completing.
-
-Repeated continuation of a ready attempt returns its existing reference, not a new binding. Terminal
-blocked or expired attempts return their retained result without calling the implementation again. A
-new setup attempt is explicit; continuation never silently restarts consent.
-
-The runtime owns retention, ownership checks, and public projection. The implementation owns the
-service-specific transition. Transaction boundaries, concurrency handling, and secret storage remain
-backend work; this sketch does not add a second durable workflow engine.
-
-## Singleton configuration semantics
-
-`connectionCardinality` is service metadata, not a native/HTTP/MCP/Connector selector:
-
-- `singleton`: at most one active binding or nonterminal setup attempt per integration ID and owner
-  scope. Repeated `connect` returns the existing ready progress/reference or the current setup
-  progress, retaining its setup ID and name. It does not call the implementation again, restart
-  consent, rename the connection, or replace credentials. Concurrent connects must converge on the
-  same slot before either can start service side effects.
-- `multiple`: each explicit `connect` starts an independent setup; the name is a display label, not
-  an idempotency key or credential-store identity.
-
-Existing native singleton configuration stays in its current scope-owned store. A binding contains
-its locator, not an independently named copy of credentials. Shared environment/application
-configuration remains owned by its existing store as well; bindings never become its owners.
-
-Singleton `disconnect` disables the reference and frees its slot, but does not clear the underlying
-configuration or revoke access through legacy service tools. Reconnecting creates a new reference
-and may reuse that configuration. Credential replacement or deletion is not an implicit side effect
-of naming, reconnecting, or disconnecting; any setup operation that explicitly changes shared
-configuration requires its existing configuration-owner permissions. Blocked/expired attempts remain
-terminal; a new explicit connect can reserve a new attempt once there is no active binding/setup.
-
-These are interface requirements for the deferred runtime, not implemented uniqueness or storage.
-
-## Actions are executable definitions
-
-`IntegrationActionImplementation` couples a public `definition` with a private `invoke` boundary.
-The public definition contains its ID, label, description, and authoritative input/output schemas.
-The invocation handler captures the selected private binding.
-
-The proposed runtime behavior is:
-
-- `actions`: resolve the binding and return the action definitions, never their handlers.
-- `execute`: resolve the binding, find the exact action, and invoke it with current execution
-  authority.
-
-There is no separate implementation-level `execute(actionId)` dispatcher to keep aligned with the
-catalog. The contract and input/output validation must come from the same authoritative source;
-adapters must not publish guessed schemas or generic empty schemas for unknown operations.
-
-`invoke` is the boundary for untrusted action input and service responses. It establishes the live
-contract and action-specific authorization before side effects, then delegates to typed domain
-operations. An umbrella `integrations.execute` grant is not blanket permission to use a service.
-
-Results retain the operation's own semantics. A transcription action can return a job handle; a
-profile action can return a profile. The interface does not force every result into one synchronous
-payload or a universal asynchronous-job abstraction. Existing service-specific tools remain intact
-until their eventual migration to actions.
-
-## Action value representation
-
-Action input and output use the existing canonical `JsonValue` type/schema: null, booleans, finite
-numbers, strings, arrays, and string-keyed objects containing only those values. The generated tool
-boundary validates that representation; `invoke(context, input: JsonValue): Promise<JsonValue>`
-still owns validation against the selected action's authoritative schema before service side
-effects.
-
-Native `ArrayBuffer`, typed arrays, Blob, Date, functions, bigint, and undefined are not action
-values. Binary fields use ordinary arrays of integer bytes (0–255), declared at the field's location
-in the action's input/output JSON Schema. The implementation converts validated bytes to the native
-buffer its client expects and encodes native results back to the published JSON shape. This does not
-wrap every action in a binary envelope or invent a file-reference resolution protocol. An action
-with no result payload returns `null` and publishes a null output schema, not `undefined`.
-
-For example, a future transcription action can publish an `audio.bytes` array whose items schema is
-`{ "type": "integer", "minimum": 0, "maximum": 255 }`, then privately pass the bytes to Reson8. The
-existing Reson8 tool's buffer-accepting interface is unchanged; it cannot simply be exposed as a
-JSON Schema integration action without this conversion.
-
-## Inspection, verification, and disconnect
-
-`inspect` reads saved state and existing evidence. `verify` performs supported checks and returns
-fresh evidence; it does not start consent or execute a service action. Credentials being present do
-not prove live access, and declared events do not prove delivery.
-
-`disconnect` ends access through this scoped binding. Its implementation releases only binding-owned
-resources; it must not remove shared application credentials, erase external data, or imply
-provider-wide token revocation. The runtime disables the public reference independently of any
-provider-specific cleanup.
+Concrete scenarios use real temporary SQLite, runtime/kernel authority, registered Codemode and Bash
+tools, object restarts, authorized object HTTP, and real route handlers. Only external provider
+fetch is substituted. They cover claim conflicts, deterministic addressing, both permission layers,
+scope isolation, setup without handles, binary/query transport, output contracts, and check
+evidence.

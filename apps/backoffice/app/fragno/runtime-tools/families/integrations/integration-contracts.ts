@@ -1,6 +1,5 @@
 import { z } from "zod";
 
-import { backofficeContextScopeSchema } from "@/backoffice-runtime/context";
 import { jsonValueSchema } from "@/lib/zod/json-value";
 
 import { isoDateTimeOutputSchema } from "../../output-schemas";
@@ -10,21 +9,24 @@ const integrationIdSchema = z
   .min(1)
   .describe("Service identity returned by discover; it does not identify an integration mechanism.")
   .meta({ id: "IntegrationId" });
-const integrationReferenceSchema = z
-  .strictObject({
-    id: z
-      .string()
-      .min(1)
-      .describe("Opaque binding handle returned by the runtime, not an adapter ID."),
-    scope: backofficeContextScopeSchema.meta({ codemodeType: "BackofficeCodemodeScope" }),
-  })
-  .meta({ id: "IntegrationReference" });
+/** Connection IDs preserve source identity and resolve only within the selected execution scope. */
+export const integrationConnectionIdSchema = z
+  .string()
+  .regex(/^[a-z][a-z0-9-]*#[\s\S]+$/, "Integration connection ID must be namespace#local-id.")
+  .describe(
+    "Deterministic scoped address such as backoffice#reson8, not a credential or a separately revocable binding. The suffix preserves the source's identity.",
+  )
+  .meta({ id: "IntegrationConnectionId" });
 const integrationJsonSchemaSchema = z
   .union([z.boolean(), z.record(z.string(), z.unknown())])
   .describe(
     "Authoritative JSON Schema supplied by the integration, never inferred from an action ID.",
   )
   .meta({ id: "IntegrationJsonSchema" });
+
+const integrationConnectionSetupTargetSchema = z
+  .strictObject({ kind: z.literal("connection"), connectionId: integrationConnectionIdSchema })
+  .meta({ id: "IntegrationConnectionSetupTarget" });
 
 /** Integration discovery reports service availability in the selected scope, not live health. */
 export const integrationOverviewSchema = z
@@ -35,7 +37,7 @@ export const integrationOverviewSchema = z
     connectionCardinality: z
       .enum(["singleton", "multiple"])
       .describe(
-        "Singleton means one active binding or setup per service and owner scope. Repeated connect reuses it without renaming or replacing shared configuration.",
+        "Singleton means one scoped configuration; multiple means separately selectable connections. Credentials remain in their existing service-owned stores.",
       ),
     availability: z
       .discriminatedUnion("status", [
@@ -43,9 +45,14 @@ export const integrationOverviewSchema = z
         z.strictObject({ status: z.literal("unavailable"), reason: z.string() }),
       ])
       .describe(
-        "Whether this service can be connected in the selected scope, not live service health.",
+        "Whether this service's configuration store is available in the selected scope, not whether credentials are present or live service access works.",
       )
       .meta({ id: "IntegrationAvailability" }),
+    setupTargets: z
+      .array(integrationConnectionSetupTargetSchema)
+      .describe(
+        "Known named setup targets, including unconfigured fixed slots; never invented account or attempt IDs.",
+      ),
     automationEvents: z
       .array(z.strictObject({ source: z.string(), eventType: z.string() }))
       .describe("Declared event identities do not prove live event delivery."),
@@ -99,7 +106,7 @@ const integrationInspectionSchema = z.strictObject({
   checks: z
     .array(integrationVerificationCheckSchema)
     .describe(
-      "Supported checks retain not-checked states; a saved binding alone proves no live health.",
+      "Supported checks distinguish missing evidence from actual timestamped results; saved configuration alone proves no live health.",
     ),
   nextSteps: z.array(z.string()),
 });
@@ -107,20 +114,17 @@ const integrationInspectionSchema = z.strictObject({
 /** Integration connection identity is supplied by the runtime, not by private adapter inspection. */
 export const integrationConnectionSchema = integrationInspectionSchema
   .extend({
-    reference: integrationReferenceSchema,
+    connectionId: integrationConnectionIdSchema,
     integrationId: integrationIdSchema,
     name: z.string(),
   })
   .meta({ id: "IntegrationConnection" });
 const configuredIntegrationSchema = integrationConnectionSchema
   .extend({ configuration: z.strictObject({ status: z.literal("configured") }) })
-  .meta({ id: "ConfiguredIntegration" });
+  .meta({ id: "ConfiguredIntegrationConnection" });
 
 const integrationSetupProgressShape = {
-  setupId: z
-    .string()
-    .min(1)
-    .describe("Opaque setup attempt handle; it does not grant access or change scope."),
+  connectionId: integrationConnectionIdSchema,
 };
 
 /** Public integration setup progress never exposes private continuation state or binding data. */
@@ -149,9 +153,6 @@ export const integrationSetupProgressSchema = z
     z.strictObject({
       ...integrationSetupProgressShape,
       status: z.literal("ready"),
-      reference: integrationReferenceSchema.describe(
-        "Setup requirements have been met; not a blanket health claim.",
-      ),
     }),
     z.strictObject({
       ...integrationSetupProgressShape,
@@ -169,7 +170,7 @@ export const integrationSetupProgressSchema = z
 /** Integration action schemas describe the operation's own result, including asynchronous job handles. */
 export const integrationActionSchema = z
   .strictObject({
-    id: z.string().min(1).describe("Action identity returned by actions for this binding."),
+    id: z.string().min(1).describe("Action identity returned by actions for this connection."),
     label: z.string(),
     description: z.string(),
     inputSchema: integrationJsonSchemaSchema,
@@ -187,54 +188,45 @@ export const integrationListInputSchema = z.strictObject({
     .describe("Null starts the scoped listing; use the returned next cursor."),
 });
 
-/** Integration list pages include configured bindings, not unconfigured service definitions. */
+/** Integration list pages project existing configured connections, not independent binding records. */
 export const integrationListOutputSchema = z.strictObject({
-  integrations: z.array(configuredIntegrationSchema),
+  connections: z.array(configuredIntegrationSchema),
   cursor: z
     .string()
     .nullable()
     .describe("Null means all configured integrations in this scope have been listed."),
 });
 
-/** Integration references identify an owner but neither grant access nor switch scope. */
-export const integrationReferenceInputSchema = z.strictObject({
-  reference: integrationReferenceSchema,
+/** Connection operations select an address, never a caller-supplied owner scope. */
+export const integrationConnectionInputSchema = z.strictObject({
+  connectionId: integrationConnectionIdSchema,
 });
-
-/** Integration connection requests select a service and name; setup owns mechanism-specific input. */
-export const integrationConnectInputSchema = z.strictObject({
-  integrationId: integrationIdSchema,
-  name: z
-    .string()
-    .trim()
-    .min(1)
-    .describe("Name for a new binding; repeated singleton connect retains the existing name."),
+const integrationSetupCheckSchema = z.strictObject({
+  kind: z
+    .literal("check")
+    .describe("Read authoritative setup state; user confirmation is not proof of consent."),
 });
-const integrationSetupResponseSchema = z.discriminatedUnion("kind", [
-  z.strictObject({
-    kind: z.literal("input"),
-    values: z
-      .unknown()
-      .nonoptional()
-      .describe(
-        "Untrusted values validated against the attempt's current input schema before use.",
-      ),
-  }),
-  z.strictObject({
-    kind: z
-      .literal("check")
-      .describe("Check authoritative external state; user confirmation is not proof of consent."),
-  }),
+const integrationSetupSubmissionSchema = z.strictObject({
+  kind: z.literal("input"),
+  input: jsonValueSchema
+    .describe(
+      "Direct JSON setup input validated against the source's current requirements. Null is a submitted value, never a check sentinel.",
+    )
+    .meta({ codemodeType: "JsonValue" }),
+});
+const integrationSetupOperationSchema = z.discriminatedUnion("kind", [
+  integrationSetupCheckSchema,
+  integrationSetupSubmissionSchema,
 ]);
 
-/** Integration setup continuation accepts requested input or a check, never an assertion of consent. */
-export const integrationContinueSetupInputSchema = z.strictObject({
-  setupId: integrationSetupProgressShape.setupId,
-  response: integrationSetupResponseSchema,
-});
+/** Named setup distinguishes checking source-owned state from submitting any JSON value, including null. */
+export const integrationSetupInputSchema = z.discriminatedUnion("kind", [
+  integrationSetupCheckSchema.extend(integrationConnectionInputSchema.shape),
+  integrationSetupSubmissionSchema.extend(integrationConnectionInputSchema.shape),
+]);
 
 /** Action values are JSON; action-specific validation still precedes service side effects. */
-export const integrationExecuteInputSchema = integrationReferenceInputSchema.extend({
+export const integrationExecuteInputSchema = integrationConnectionInputSchema.extend({
   actionId: z.string().min(1),
   input: jsonValueSchema
     .describe(
@@ -246,14 +238,23 @@ export const integrationExecuteInputSchema = integrationReferenceInputSchema.ext
 /** Integration discovery metadata has one canonical schema shared by tools and implementations. */
 export type IntegrationOverview = z.output<typeof integrationOverviewSchema>;
 
-/** Integration inspection excludes identity and ownership, which the runtime attaches separately. */
+/** Integration inspection excludes connection identity, which the runtime attaches separately. */
 export type IntegrationInspection = z.output<typeof integrationInspectionSchema>;
 
-/** Integration setup progress is the public projection; private state stays behind the setup ID. */
+/** Integration setup progress describes current requirements without exposing private continuation data. */
 export type IntegrationSetupProgress = z.output<typeof integrationSetupProgressSchema>;
 
-/** Integration setup response is untrusted at acquisition and interpreted only by the current attempt. */
-export type IntegrationSetupResponse = z.output<typeof integrationSetupResponseSchema>;
+/** Public connection records describe source-owned configuration, never a facade-owned binding. */
+export type IntegrationConnection = z.output<typeof integrationConnectionSchema>;
+
+/** Connection pages retain source pagination without allocating new connection identities. */
+export type IntegrationConnectionPage = z.output<typeof integrationListOutputSchema>;
+
+/** Setup operations distinguish checking from submission without treating JSON null as missing input. */
+export type IntegrationSetupOperation = z.output<typeof integrationSetupOperationSchema>;
+
+/** Setup requests select a scoped address and carry one explicit operation, without private continuation data. */
+export type IntegrationSetupInput = z.output<typeof integrationSetupInputSchema>;
 
 /** Integration action metadata contains contracts but no executable handler. */
 export type IntegrationAction = z.output<typeof integrationActionSchema>;
