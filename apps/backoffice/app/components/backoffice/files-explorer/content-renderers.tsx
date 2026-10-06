@@ -49,7 +49,8 @@ const WorkflowRenderer: FilesContentRenderer = {
   },
 };
 
-function WorkflowFilePreview({ preview }: { preview: FilesContentPreview }) {
+/** Read-only workflow previews share Code/Graph tabs; unavailable routing omits runtime details. */
+export function WorkflowFilePreview({ preview }: { preview: FilesContentPreview }) {
   const source = preview.textContent ?? "";
   const visualization = visualizeWorkflowSource(preview.title, source, {
     fallbackName: preview.title.replace(/\.workflow\.js$/iu, ""),

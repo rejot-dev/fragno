@@ -27,6 +27,7 @@ import {
   createBackofficeUserExecution,
 } from "@/backoffice-runtime/context";
 import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
+import type { BackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import {
   automationActorsSchema,
   BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY,
@@ -36,13 +37,12 @@ import {
   CODEMODE_CAPABILITY_ACTOR,
   CODEMODE_WORKFLOW,
 } from "@/fragno/automation/engine/codemode-invocation";
-import type { AutomationRouteAction } from "@/fragno/automation/routing";
-import { automationFragmentSchema } from "@/fragno/automation/schema";
 import {
   MARKETPLACE_INSTALL_WORKFLOW_PATH,
   marketplaceArtifactUploadName,
 } from "@/fragno/marketplace/artifacts";
 import type { MarketplaceCreateDraftListingInput } from "@/fragno/marketplace/contracts";
+import { marketplaceLockSchema } from "@/fragno/marketplace/marketplace-lock";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
 import { STATIC_MARKETPLACE_ENTRIES } from "@/fragno/marketplace/static-entries";
 
@@ -75,8 +75,6 @@ const MARKETPLACE_ARTIFACT_CONFLICT_MESSAGE =
   "Marketplace ingestion conflicts with workspace file '/workspace/automations/telegram-test-command.workflow.js'.";
 const MARKETPLACE_UNCHANGED_FILE_KEY = "prompts/marketplace.md";
 const MARKETPLACE_UNCHANGED_FILE_SOURCE = "# Marketplace\n";
-const MARKETPLACE_REMOVED_FILE_KEY = "prompts/removed-in-next-version.md";
-const MARKETPLACE_REMOVED_FILE_SOURCE = "# Removed in the next Marketplace version\n";
 const STATIC_TELEGRAM_TEST_COMMAND = STATIC_MARKETPLACE_ENTRIES.find(
   (entry) => entry.slug === "telegram-test-command",
 );
@@ -108,60 +106,29 @@ const TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE =
 const UPDATED_TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE =
   UPDATED_STATIC_MARKETPLACE_VERSION.files[MARKETPLACE_ARTIFACT_FILE_KEY];
 
-async function seedTelegramChannelRouteWithoutAuthorityGrants(
+async function readMarketplaceLockEntry(
   ctx: BackofficeScenarioContext,
-  input: { orgId: string; listingId: string },
-): Promise<void> {
-  const automations = ctx.runtime.objects.automations.forOrg(input.orgId);
-  await automations.commands.listMarketplaceIngestions();
-
-  const durableObjectId = (automations.http as unknown as { readonly id: DurableObjectId }).id;
-  const databaseAdapter = ctx.runtime.adapters
-    .forScope({ type: "named", id: durableObjectId.toString() })
-    .createAdapter({ kind: "automations" });
-  const uow = databaseAdapter.createUnitOfWork(
-    automationFragmentSchema,
-    "automations",
-    "seed Telegram Channel 1.0.0 route",
-  );
-  const actors = createBackofficeSystemExecution({ kind: "org", orgId: input.orgId }).actors;
-
-  uow.create("automation_route", {
-    id: "telegram-start-linking",
-    name: "Telegram /start identity linking",
-    enabled: true,
-    priority: 100,
-    trigger: {
-      kind: "event",
-      source: "telegram",
-      eventType: "message.received",
-      matcher: { path: "$.payload.text", op: "eq", value: "/start" },
-    },
-    action: {
-      kind: "start_workflow",
-      authority: { kind: "organization-automation" },
-      workflowScriptPath: "/workspace/automations/telegram-user-linking.workflow.js",
-      instanceIdTemplate: "telegram-link-${event.id}",
-    } as unknown as AutomationRouteAction,
-    description: null,
-    metadata: {
-      createdByActors: actors,
-      updatedByActors: actors,
-      managedBy: {
-        kind: "marketplace",
-        listingId: input.listingId,
-        resourceKey: "telegram-start-linking-route",
-        version: "1.0.0",
-      },
-    },
-    createdAt: uow.now(),
-    updatedAt: uow.now(),
-  });
-
-  const result = await uow.executeMutations();
-  if (!result.success) {
-    throw new Error("Failed to seed the Telegram Channel 1.0.0 route.");
+  input: {
+    targetScope: BackofficeRoutableScope;
+    listingId: string;
+  },
+) {
+  const url = new URL("https://upload.test/api/upload/files/by-key/content");
+  url.searchParams.set("provider", "database");
+  url.searchParams.set("key", "marketplace-lock.json");
+  const response = await ctx.runtime.objects.upload
+    .for(input.targetScope)
+    .http.fetch(new Request(url));
+  if (response.status === 404 || response.status === 410) {
+    return null;
   }
+  assert(response.ok);
+  const lock = marketplaceLockSchema.parse(await response.json());
+  return (
+    lock.entries.find(
+      (entry) => entry.listingId === input.listingId && entry.installationRoot === "/workspace",
+    ) ?? null
+  );
 }
 
 function githubPullRequestWebhookEvent(action: "opened" | "synchronize"): AutomationEvent {
@@ -297,30 +264,6 @@ const withTwoFileMarketplaceVersions = async (run: () => Promise<void>) => {
   }
 };
 
-const withRemovedFileMarketplaceVersion = async (run: () => Promise<void>) => {
-  const baseFiles = BASE_STATIC_MARKETPLACE_VERSION.files as Record<string, string>;
-  const updatedFiles = UPDATED_STATIC_MARKETPLACE_VERSION.files as Record<string, string>;
-  const originalBaseFile = baseFiles[MARKETPLACE_REMOVED_FILE_KEY];
-  const originalUpdatedFile = updatedFiles[MARKETPLACE_REMOVED_FILE_KEY];
-  baseFiles[MARKETPLACE_REMOVED_FILE_KEY] = MARKETPLACE_REMOVED_FILE_SOURCE;
-  delete updatedFiles[MARKETPLACE_REMOVED_FILE_KEY];
-
-  try {
-    await withUpdatedStaticMarketplaceEntry(run);
-  } finally {
-    if (originalBaseFile === undefined) {
-      delete baseFiles[MARKETPLACE_REMOVED_FILE_KEY];
-    } else {
-      baseFiles[MARKETPLACE_REMOVED_FILE_KEY] = originalBaseFile;
-    }
-    if (originalUpdatedFile === undefined) {
-      delete updatedFiles[MARKETPLACE_REMOVED_FILE_KEY];
-    } else {
-      updatedFiles[MARKETPLACE_REMOVED_FILE_KEY] = originalUpdatedFile;
-    }
-  }
-};
-
 const createMarketplacePublicationWorkflow = async (
   ctx: BackofficeScenarioContext,
   version: string,
@@ -441,6 +384,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             await expect(
               automations.commands.requestMarketplaceIngestion(
                 {
+                  installationRoot: "/workspace",
                   listingId: telegramChannelListingId,
                   version: "1.0.1",
                   targetScope: { kind: "org", orgId: "org-1" },
@@ -451,6 +395,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             await expect(
               automations.commands.requestMarketplaceIngestion(
                 {
+                  installationRoot: "/workspace",
                   listingId: githubChannelListingId,
                   version: "1.0.0",
                   targetScope: { kind: "org", orgId: "org-1" },
@@ -563,255 +508,6 @@ describe("marketplace scenarios", { concurrent: false }, () => {
     );
   });
 
-  test("upgrades Telegram Channel routes persisted before authority grants", async () => {
-    const telegramChannelListingId = marketplaceListingId({
-      ownerScope: { kind: "system" },
-      slug: "telegram-channel",
-    });
-
-    await runBackofficeScenario(
-      defineBackofficeScenario({
-        name: "upgrade a persisted Telegram Channel 1.0.0 route to 1.0.1",
-        setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
-        steps: ({ when, then }) => [
-          then.assert("seed the route shape persisted by Telegram Channel 1.0.0", async (ctx) => {
-            await seedTelegramChannelRouteWithoutAuthorityGrants(ctx, {
-              orgId: "org-1",
-              listingId: telegramChannelListingId,
-            });
-          }),
-          when.marketplace.install({
-            targetScope: { kind: "org", orgId: "org-1" },
-            slug: "telegram-channel",
-            version: "1.0.1",
-          }),
-          then.router.route({
-            orgId: "org-1",
-            id: "telegram-start-linking",
-            action: {
-              kind: "start_workflow",
-              authority: {
-                kind: "organization-automation",
-                grants: [
-                  BACKOFFICE_PERMISSION.identity.resolve,
-                  BACKOFFICE_PERMISSION.otp.create,
-                  BACKOFFICE_PERMISSION.store.modify,
-                  BACKOFFICE_PERMISSION.telegram.send,
-                ],
-              },
-              workflowScriptPath: "/workspace/automations/telegram-user-linking.workflow.js",
-              instanceIdTemplate: "telegram-link-${event.id}",
-            },
-            metadata: {
-              managedBy: {
-                kind: "marketplace",
-                listingId: telegramChannelListingId,
-                resourceKey: "telegram-start-linking-route",
-                version: "1.0.1",
-              },
-            },
-          }),
-          then.workflow.noErrored({ orgId: "org-1" }),
-        ],
-      }),
-    );
-  });
-
-  test("upgrades Marketplace-owned Telegram routes to 1.0.1 while preserving enabled state", async () => {
-    const telegramChannelListingId = marketplaceListingId({
-      ownerScope: { kind: "system" },
-      slug: "telegram-channel",
-    });
-    const legacyManagedBy = (resourceKey: string) => ({
-      kind: "marketplace" as const,
-      listingId: telegramChannelListingId,
-      resourceKey,
-      version: "1.0.0",
-    });
-
-    await runBackofficeScenario(
-      defineBackofficeScenario({
-        name: "upgrade Marketplace-owned Telegram routes to inherited linked-user authority",
-        setup: ({ given }) => [
-          given.organization.exists({ id: "org-1", name: "Ada Labs" }),
-          given.router.route({
-            orgId: "org-1",
-            id: "telegram-start-linking",
-            name: "Telegram /start identity linking",
-            enabled: true,
-            trigger: {
-              kind: "event",
-              source: "telegram",
-              eventType: "message.received",
-              matcher: { path: "$.payload.text", op: "eq", value: "/start" },
-            },
-            priority: 100,
-            action: {
-              kind: "start_workflow",
-              authority: { kind: "organization-automation", grants: [] },
-              workflowScriptPath: "/workspace/automations/legacy-telegram-user-linking.workflow.js",
-              instanceIdTemplate: "legacy-telegram-link-${event.id}",
-            },
-            managedBy: legacyManagedBy("telegram-start-linking-route"),
-          }),
-          given.router.route({
-            orgId: "org-1",
-            id: "telegram-identity-claim-completed",
-            name: "Forward Telegram identity claim completion",
-            enabled: true,
-            trigger: {
-              kind: "event",
-              source: "otp",
-              eventType: "identity.claim.completed",
-              matcher: {
-                actor: {
-                  participation: "initiator",
-                  scope: "external",
-                  source: "telegram",
-                },
-              },
-            },
-            priority: 90,
-            action: {
-              kind: "send_workflow_event",
-              target: {
-                kind: "stored_instance_id",
-                keyTemplate: "legacy/telegram/claim-workflow/${event.payload.otpId}",
-              },
-              eventType: "legacy-identity-claim-completed",
-              payload: "$event",
-            },
-            managedBy: legacyManagedBy("telegram-identity-claim-completed-route"),
-          }),
-          given.router.route({
-            orgId: "org-1",
-            id: "telegram-pi-linking",
-            name: "Telegram Pi session linking",
-            enabled: false,
-            trigger: {
-              kind: "event",
-              source: "telegram",
-              eventType: "message.received",
-              matcher: { path: "$.payload.text", op: "exists" },
-            },
-            priority: 120,
-            action: {
-              kind: "start_workflow",
-              authority: { kind: "organization-automation", grants: [] },
-              workflowScriptPath:
-                "/workspace/automations/legacy-telegram-user-pi-linking.workflow.js",
-              instanceIdTemplate: "legacy-telegram-pi-${event.id}",
-            },
-            managedBy: legacyManagedBy("telegram-pi-linking-route"),
-          }),
-        ],
-        steps: ({ when, then }) => [
-          when.marketplace.install({
-            targetScope: { kind: "org", orgId: "org-1" },
-            slug: "telegram-channel",
-            version: "1.0.1",
-          }),
-          then.router.routes({
-            orgId: "org-1",
-            include: [
-              {
-                id: "telegram-start-linking",
-                enabled: true,
-                action: {
-                  kind: "start_workflow",
-                  authority: {
-                    kind: "organization-automation",
-                    grants: [
-                      BACKOFFICE_PERMISSION.identity.resolve,
-                      BACKOFFICE_PERMISSION.otp.create,
-                      BACKOFFICE_PERMISSION.store.modify,
-                      BACKOFFICE_PERMISSION.telegram.send,
-                    ],
-                  },
-                  workflowScriptPath: "/workspace/automations/telegram-user-linking.workflow.js",
-                  instanceIdTemplate: "telegram-link-${event.id}",
-                },
-                metadata: {
-                  managedBy: {
-                    kind: "marketplace",
-                    listingId: telegramChannelListingId,
-                    resourceKey: "telegram-start-linking-route",
-                    version: "1.0.1",
-                  },
-                },
-              },
-              {
-                id: "telegram-identity-claim-completed",
-                enabled: true,
-                action: {
-                  kind: "send_workflow_event",
-                  target: {
-                    kind: "stored_instance_id",
-                    keyTemplate: "telegram/claim-workflow/${event.payload.otpId}",
-                  },
-                  eventType: "identity-claim-completed",
-                  payload: "$event",
-                },
-                metadata: {
-                  managedBy: {
-                    kind: "marketplace",
-                    listingId: telegramChannelListingId,
-                    resourceKey: "telegram-identity-claim-completed-route",
-                    version: "1.0.1",
-                  },
-                },
-              },
-              {
-                id: "telegram-pi-linking",
-                enabled: false,
-                trigger: {
-                  kind: "event",
-                  source: "telegram",
-                  eventType: "message.received",
-                  matcher: {
-                    any: [
-                      { path: "$.payload.text", op: "eq", value: "/pi" },
-                      {
-                        all: [
-                          { path: "$.payload.text", op: "exists" },
-                          {
-                            not: {
-                              path: "$.payload.text",
-                              op: "startsWith",
-                              value: "/",
-                            },
-                          },
-                        ],
-                      },
-                    ],
-                  },
-                },
-                action: {
-                  kind: "start_workflow",
-                  authority: {
-                    kind: "linked-user",
-                    grants: "inherit",
-                  },
-                  workflowScriptPath: "/workspace/automations/telegram-user-pi-linking.workflow.js",
-                  instanceIdTemplate: "telegram-pi-${event.id}",
-                },
-                metadata: {
-                  managedBy: {
-                    kind: "marketplace",
-                    listingId: telegramChannelListingId,
-                    resourceKey: "telegram-pi-linking-route",
-                    version: "1.0.1",
-                  },
-                },
-              },
-            ],
-          }),
-          then.workflow.noErrored({ orgId: "org-1" }),
-        ],
-      }),
-    );
-  });
-
   test("installs Telegram Channel into project and personal scopes", async () => {
     const telegramChannelListingId = marketplaceListingId({
       ownerScope: { kind: "system" },
@@ -859,6 +555,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               await expect(
                 automations.commands.requestMarketplaceIngestion(
                   {
+                    installationRoot: "/workspace",
                     listingId: telegramChannelListingId,
                     version: "1.0.1",
                     targetScope,
@@ -872,14 +569,13 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           then.assert("both scopes contain the installed Telegram routes", async (ctx) => {
             const projectId = ctx.vars.projectId;
             assert(typeof projectId === "string");
-            const installationOwner = ctx.runtime.objects.automations.forOrg("org-1");
 
             for (const targetScope of [
               { kind: "project", orgId: "org-1", projectId },
               { kind: "user", userId: "user-1" },
             ] as const) {
               await expect(
-                installationOwner.commands.getMarketplaceIngestion({
+                readMarketplaceLockEntry(ctx, {
                   listingId: telegramChannelListingId,
                   targetScope,
                 }),
@@ -952,6 +648,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             await expect(
               automations.commands.requestMarketplaceIngestion(
                 {
+                  installationRoot: "/workspace",
                   listingId,
                   version: "1.2.1",
                   targetScope: { kind: "org", orgId: "org-1" },
@@ -965,6 +662,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             await expect(
               automations.commands.requestMarketplaceIngestion(
                 {
+                  installationRoot: "/workspace",
                   listingId,
                   version: "1.2.1",
                   targetScope: { kind: "project", orgId: "org-1", projectId: project.id },
@@ -984,29 +682,6 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           then.assert(
             "each destination has independent successful ingestion state",
             async (ctx) => {
-              const automations = ctx.runtime.objects.automations.forOrg("org-1");
-              const ingestions = await automations.commands.listMarketplaceIngestions();
-              expect(ingestions).toEqual(
-                expect.arrayContaining([
-                  expect.objectContaining({
-                    targetScopeKey: "org:org-1",
-                    listingId: marketplaceListingId({
-                      ownerScope: { kind: "system" },
-                      slug: "telegram-test-command",
-                    }),
-                    version: "1.2.1",
-                  }),
-                  expect.objectContaining({
-                    targetScopeKey: `project:org-1:${String(ctx.vars.projectId)}`,
-                    listingId: marketplaceListingId({
-                      ownerScope: { kind: "system" },
-                      slug: "telegram-test-command",
-                    }),
-                    version: "1.2.1",
-                  }),
-                ]),
-              );
-
               for (const targetScope of [
                 { kind: "org" as const, orgId: "org-1" },
                 {
@@ -1073,6 +748,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
 
   test("configures the Telegram test message through generated installer UI", async () => {
     const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
+      installationRoot: "/workspace",
       targetScope: { kind: "org", orgId: "org-1" },
       listingId: MARKETPLACE_LISTING_ID,
       version: "1.3.0",
@@ -1095,6 +771,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             await expect(
               ctx.runtime.objects.automations.forOrg("org-1").commands.requestMarketplaceIngestion(
                 {
+                  installationRoot: "/workspace",
                   listingId: MARKETPLACE_LISTING_ID,
                   version: "1.3.0",
                   targetScope: { kind: "org", orgId: "org-1" },
@@ -1195,6 +872,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
 
   test("denies installer operations outside the untrusted codemode permission ceiling", async () => {
     const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
+      installationRoot: "/workspace",
       targetScope: { kind: "org", orgId: "org-1" },
       listingId: MARKETPLACE_LISTING_ID,
       version: "1.2.1",
@@ -1219,6 +897,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                   .forOrg("org-1")
                   .commands.requestMarketplaceIngestion(
                     {
+                      installationRoot: "/workspace",
                       listingId: MARKETPLACE_LISTING_ID,
                       version: "1.2.1",
                       targetScope: { kind: "org", orgId: "org-1" },
@@ -1273,6 +952,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
 
   test("reconciles a Marketplace-owned route while preserving its operational state", async () => {
     const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
+      installationRoot: "/workspace",
       targetScope: { kind: "org", orgId: "org-1" },
       listingId: MARKETPLACE_LISTING_ID,
       version: "1.2.1",
@@ -1337,6 +1017,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             const automations = ctx.runtime.objects.automations.forOrg("org-1");
             const firstRequest = await automations.commands.requestMarketplaceIngestion(
               {
+                installationRoot: "/workspace",
                 listingId: MARKETPLACE_LISTING_ID,
                 version: "1.2.1",
                 targetScope: { kind: "org", orgId: "org-1" },
@@ -1345,6 +1026,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             );
             const replayedRequest = await automations.commands.requestMarketplaceIngestion(
               {
+                installationRoot: "/workspace",
                 listingId: MARKETPLACE_LISTING_ID,
                 version: "1.2.1",
                 targetScope: { kind: "org", orgId: "org-1" },
@@ -1512,6 +1194,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
 
   test("rejects the unmanaged legacy Telegram route", async () => {
     const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
+      installationRoot: "/workspace",
       targetScope: { kind: "org", orgId: "org-1" },
       listingId: MARKETPLACE_LISTING_ID,
       version: "1.2.1",
@@ -1553,6 +1236,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               .forOrg("org-1")
               .commands.requestMarketplaceIngestion(
                 {
+                  installationRoot: "/workspace",
                   listingId: MARKETPLACE_LISTING_ID,
                   version: "1.2.1",
                   targetScope: { kind: "org", orgId: "org-1" },
@@ -1573,7 +1257,12 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             "the legacy route remains unmanaged and ingestion is not recorded",
             async (ctx) => {
               const automations = ctx.runtime.objects.automations.forOrg("org-1");
-              await expect(automations.commands.listMarketplaceIngestions()).resolves.toEqual([]);
+              await expect(
+                readMarketplaceLockEntry(ctx, {
+                  targetScope: { kind: "org", orgId: "org-1" },
+                  listingId: MARKETPLACE_LISTING_ID,
+                }),
+              ).resolves.toBeNull();
 
               const response = await automations.http.fetch(
                 new Request(
@@ -1601,6 +1290,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
 
   test("rejects an unrelated route collision without advancing ingestion", async () => {
     const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
+      installationRoot: "/workspace",
       targetScope: { kind: "org", orgId: "org-1" },
       listingId: MARKETPLACE_LISTING_ID,
       version: "1.2.1",
@@ -1642,6 +1332,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               .forOrg("org-1")
               .commands.requestMarketplaceIngestion(
                 {
+                  installationRoot: "/workspace",
                   listingId: MARKETPLACE_LISTING_ID,
                   version: "1.2.1",
                   targetScope: { kind: "org", orgId: "org-1" },
@@ -1660,7 +1351,12 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           }),
           then.assert("the collision is preserved and ingestion is not recorded", async (ctx) => {
             const automations = ctx.runtime.objects.automations.forOrg("org-1");
-            await expect(automations.commands.listMarketplaceIngestions()).resolves.toEqual([]);
+            await expect(
+              readMarketplaceLockEntry(ctx, {
+                targetScope: { kind: "org", orgId: "org-1" },
+                listingId: MARKETPLACE_LISTING_ID,
+              }),
+            ).resolves.toBeNull();
 
             const response = await automations.http.fetch(
               new Request("https://automations.test/api/automations/routes/telegram-test-command"),
@@ -1683,6 +1379,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
 
   test("retries a lost ingestion transfer response without creating another upload session", async () => {
     const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
+      installationRoot: "/workspace",
       targetScope: { kind: "org", orgId: "org-1" },
       listingId: MARKETPLACE_LISTING_ID,
       version: "1.0.0",
@@ -1736,6 +1433,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               .forOrg("org-1")
               .commands.requestMarketplaceIngestion(
                 {
+                  installationRoot: "/workspace",
                   listingId: MARKETPLACE_LISTING_ID,
                   targetScope: { kind: "org", orgId: "org-1" },
                 },
@@ -1786,6 +1484,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
   test("rebuilds a multi-write ingestion batch after a runner restart", async () => {
     await withTwoFileMarketplaceVersions(async () => {
       const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
+        installationRoot: "/workspace",
         targetScope: { kind: "org", orgId: "org-1" },
         listingId: MARKETPLACE_LISTING_ID,
         version: "1.0.0",
@@ -1858,6 +1557,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                 .forOrg("org-1")
                 .commands.requestMarketplaceIngestion(
                   {
+                    installationRoot: "/workspace",
                     listingId: MARKETPLACE_LISTING_ID,
                     targetScope: { kind: "org", orgId: "org-1" },
                   },
@@ -1935,6 +1635,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
 
   test("does not retry permanent typed Upload errors during ingestion", async () => {
     const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
+      installationRoot: "/workspace",
       targetScope: { kind: "org", orgId: "org-1" },
       listingId: MARKETPLACE_LISTING_ID,
       version: "1.0.0",
@@ -1980,6 +1681,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               .forOrg("org-1")
               .commands.requestMarketplaceIngestion(
                 {
+                  installationRoot: "/workspace",
                   listingId: MARKETPLACE_LISTING_ID,
                   targetScope: { kind: "org", orgId: "org-1" },
                 },
@@ -2006,6 +1708,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
 
   test("preserves an existing target file and rejects Marketplace ingestion", async () => {
     const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
+      installationRoot: "/workspace",
       targetScope: { kind: "org", orgId: "org-1" },
       listingId: MARKETPLACE_LISTING_ID,
       version: "1.2.1",
@@ -2034,6 +1737,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             await expect(
               ctx.runtime.objects.automations.forOrg("org-1").commands.requestMarketplaceIngestion(
                 {
+                  installationRoot: "/workspace",
                   listingId: MARKETPLACE_LISTING_ID,
                   version: "1.2.1",
                   targetScope: { kind: "org", orgId: "org-1" },
@@ -2089,7 +1793,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               await expect(response.text()).resolves.toBe("locally modified");
 
               await expect(
-                ctx.runtime.objects.automations.forOrg("org-1").commands.getMarketplaceIngestion({
+                readMarketplaceLockEntry(ctx, {
                   targetScope: { kind: "org", orgId: "org-1" },
                   listingId: MARKETPLACE_LISTING_ID,
                 }),
@@ -2104,6 +1808,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
 
   test("rejects a latest-version ingestion when the legacy starter file matches version 1.0.0", async () => {
     const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
+      installationRoot: "/workspace",
       targetScope: { kind: "org", orgId: "org-1" },
       listingId: MARKETPLACE_LISTING_ID,
       version: "1.2.1",
@@ -2121,7 +1826,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             assertToolCalls: ["internal.marketplace.push"],
           }),
           then.assert(
-            "the legacy starter seeded the version 1.0.0 file without an ingestion row",
+            "the legacy starter seeded the version 1.0.0 file without a lock entry",
             async (ctx) => {
               const automations = ctx.runtime.objects.automations.forOrg("org-1");
               const upload = ctx.runtime.objects.upload.forOrg("org-1");
@@ -2132,7 +1837,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                 content: TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE,
               });
               await expect(
-                automations.commands.getMarketplaceIngestion({
+                readMarketplaceLockEntry(ctx, {
                   targetScope: { kind: "org", orgId: "org-1" },
                   listingId: MARKETPLACE_LISTING_ID,
                 }),
@@ -2141,6 +1846,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               await expect(
                 automations.commands.requestMarketplaceIngestion(
                   {
+                    installationRoot: "/workspace",
                     listingId: MARKETPLACE_LISTING_ID,
                     version: "1.2.1",
                     targetScope: { kind: "org", orgId: "org-1" },
@@ -2159,7 +1865,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           ),
           runner.drain(),
           then.assert(
-            "the missing ingestion baseline makes the legacy file conflict",
+            "the existing legacy file conflicts with the requested artifact",
             async (ctx) => {
               const workflows = createWorkflowsRouteCaller({
                 object: ctx.runtime.objects.automations.forOrg("org-1"),
@@ -2200,7 +1906,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               await expect(response.text()).resolves.toBe(TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE);
 
               await expect(
-                ctx.runtime.objects.automations.forOrg("org-1").commands.getMarketplaceIngestion({
+                readMarketplaceLockEntry(ctx, {
                   targetScope: { kind: "org", orgId: "org-1" },
                   listingId: MARKETPLACE_LISTING_ID,
                 }),
@@ -2758,6 +2464,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
 
   test("replays ingestion after the prepared batch commits but its response is lost", async () => {
     const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
+      installationRoot: "/workspace",
       targetScope: { kind: "org", orgId: "org-1" },
       listingId: MARKETPLACE_LISTING_ID,
       version: "1.0.0",
@@ -2804,6 +2511,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             await expect(
               ctx.runtime.objects.automations.forOrg("org-1").commands.requestMarketplaceIngestion(
                 {
+                  installationRoot: "/workspace",
                   listingId: MARKETPLACE_LISTING_ID,
                   version: "1.0.0",
                   targetScope: { kind: "org", orgId: "org-1" },
@@ -2846,7 +2554,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             async (ctx) => {
               expect(batchCommitAttempts).toBe(2);
               await expect(
-                ctx.runtime.objects.automations.forOrg("org-1").commands.getMarketplaceIngestion({
+                readMarketplaceLockEntry(ctx, {
                   targetScope: { kind: "org", orgId: "org-1" },
                   listingId: MARKETPLACE_LISTING_ID,
                 }),
@@ -2858,581 +2566,9 @@ describe("marketplace scenarios", { concurrent: false }, () => {
     );
   });
 
-  test("derives an out-of-date ingestion after a newer version is published", async () => {
-    await withUpdatedStaticMarketplaceEntry(async () => {
-      await runBackofficeScenario(
-        defineBackofficeScenario({
-          name: "observe an out-of-date marketplace ingestion",
-          setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
-          steps: ({ then, runner }) => [
-            then.assert("version 1.0.0 publication is created", async (ctx) => {
-              await createMarketplacePublicationWorkflow(ctx, "1.0.0");
-            }),
-            runner.drain(),
-            then.assert("version 1.0.0 is ingested", async (ctx) => {
-              await ctx.runtime.objects.automations
-                .forOrg("org-1")
-                .commands.requestMarketplaceIngestion(
-                  {
-                    listingId: MARKETPLACE_LISTING_ID,
-                    version: "1.0.0",
-                    targetScope: { kind: "org", orgId: "org-1" },
-                  },
-                  {
-                    execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
-                    propagationContext: null,
-                  },
-                );
-            }),
-            runner.drain(),
-            then.assert("version 1.1.0 publication is created", async (ctx) => {
-              await createMarketplacePublicationWorkflow(ctx, "1.1.0");
-            }),
-            runner.drain(),
-            then.assert(
-              "the installed version is older than the latest publication",
-              async (ctx) => {
-                const ingestion = await ctx.runtime.objects.automations
-                  .forOrg("org-1")
-                  .commands.getMarketplaceIngestion({
-                    targetScope: { kind: "org", orgId: "org-1" },
-                    listingId: MARKETPLACE_LISTING_ID,
-                  });
-                const latest = await ctx.runtime.objects.marketplace
-                  .singleton()
-                  .commands.getLatestPublishedVersions({
-                    listingIds: [MARKETPLACE_LISTING_ID],
-                  });
-
-                expect(ingestion).toMatchObject({ version: "1.0.0" });
-                expect(latest).toEqual({ [MARKETPLACE_LISTING_ID]: "1.1.0" });
-                expect(ingestion?.version).not.toBe(latest[MARKETPLACE_LISTING_ID]);
-              },
-            ),
-          ],
-        }),
-      );
-    });
-  });
-
-  test("updates files that still match the previously ingested marketplace version", async () => {
-    await withUpdatedStaticMarketplaceEntry(async () => {
-      await runBackofficeScenario(
-        defineBackofficeScenario({
-          name: "upgrade an unchanged marketplace workspace",
-          setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
-          steps: ({ then, runner }) => [
-            then.assert("version 1.0.0 publication is created", async (ctx) => {
-              await createMarketplacePublicationWorkflow(ctx, "1.0.0");
-            }),
-            runner.drain(),
-            then.assert("version 1.1.0 publication is created", async (ctx) => {
-              await createMarketplacePublicationWorkflow(ctx, "1.1.0");
-            }),
-            runner.drain(),
-            then.assert("version 1.0.0 ingestion is requested", async (ctx) => {
-              await ctx.runtime.objects.automations
-                .forOrg("org-1")
-                .commands.requestMarketplaceIngestion(
-                  {
-                    listingId: MARKETPLACE_LISTING_ID,
-                    version: "1.0.0",
-                    targetScope: { kind: "org", orgId: "org-1" },
-                  },
-                  {
-                    execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
-                    propagationContext: null,
-                  },
-                );
-            }),
-            runner.drain(),
-            then.assert("version 1.1.0 ingestion is requested", async (ctx) => {
-              await ctx.runtime.objects.automations
-                .forOrg("org-1")
-                .commands.requestMarketplaceIngestion(
-                  {
-                    listingId: MARKETPLACE_LISTING_ID,
-                    version: "1.1.0",
-                    targetScope: { kind: "org", orgId: "org-1" },
-                  },
-                  {
-                    execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
-                    propagationContext: null,
-                  },
-                );
-            }),
-            runner.drain(),
-            then.assert("the workspace and ingestion projection advance together", async (ctx) => {
-              await expect(
-                ctx.runtime.objects.automations.forOrg("org-1").commands.getMarketplaceIngestion({
-                  targetScope: { kind: "org", orgId: "org-1" },
-                  listingId: MARKETPLACE_LISTING_ID,
-                }),
-              ).resolves.toMatchObject({ version: "1.1.0" });
-
-              const url = new URL("https://upload.test/api/upload/files/by-key/content");
-              url.searchParams.set("provider", "database");
-              url.searchParams.set("key", MARKETPLACE_ARTIFACT_FILE_KEY);
-              const response = await ctx.runtime.objects.upload
-                .forOrg("org-1")
-                .http.fetch(new Request(url));
-              assert(response.ok);
-              await expect(response.text()).resolves.toBe(
-                UPDATED_TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE,
-              );
-            }),
-          ],
-        }),
-      );
-    });
-  });
-
-  test("removes obsolete files and replays an update whose commit response is lost", async () => {
-    await withRemovedFileMarketplaceVersion(async () => {
-      const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
-        targetScope: { kind: "org", orgId: "org-1" },
-        listingId: MARKETPLACE_LISTING_ID,
-        version: "1.1.0",
-      });
-      let loseUpgradeCommitResponse = false;
-
-      await runBackofficeScenario(
-        defineBackofficeScenario({
-          name: "replay a marketplace update that removes a file",
-          objectFactories: {
-            UPLOAD: ({ name, state, env, runtime, implementation }) => {
-              const destinationObject = name.endsWith("v1:org:org-1");
-              return new (class extends InMemoryUploadObject {
-                async fetch(request: Request): Promise<Response> {
-                  const url = new URL(request.url);
-                  if (
-                    destinationObject &&
-                    request.method === "POST" &&
-                    url.pathname.endsWith("/files/commit-prepared")
-                  ) {
-                    const response = await super.fetch(request);
-                    if (response.ok && loseUpgradeCommitResponse) {
-                      loseUpgradeCommitResponse = false;
-                      throw new Error("Marketplace update commit response was lost.");
-                    }
-                    return response;
-                  }
-                  return await super.fetch(request);
-                }
-              })({ state, env: env as never, runtime, implementation });
-            },
-          },
-          setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
-          steps: ({ then, runner, when }) => [
-            then.assert("both Marketplace versions are published", async (ctx) => {
-              await createMarketplacePublicationWorkflow(ctx, "1.0.0");
-            }),
-            runner.drain(),
-            then.assert("the updated Marketplace version is published", async (ctx) => {
-              await createMarketplacePublicationWorkflow(ctx, "1.1.0");
-            }),
-            runner.drain(),
-            then.assert("version 1.0.0 is ingested", async (ctx) => {
-              await ctx.runtime.objects.automations
-                .forOrg("org-1")
-                .commands.requestMarketplaceIngestion(
-                  {
-                    listingId: MARKETPLACE_LISTING_ID,
-                    version: "1.0.0",
-                    targetScope: { kind: "org", orgId: "org-1" },
-                  },
-                  {
-                    execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
-                    propagationContext: null,
-                  },
-                );
-            }),
-            runner.drain(),
-            then.assert("the obsolete file exists before the update", async (ctx) => {
-              const url = new URL("https://upload.test/api/upload/files/by-key/content");
-              url.searchParams.set("provider", "database");
-              url.searchParams.set("key", MARKETPLACE_REMOVED_FILE_KEY);
-              const response = await ctx.runtime.objects.upload
-                .forOrg("org-1")
-                .http.fetch(new Request(url));
-              assert(response.ok);
-              await expect(response.text()).resolves.toBe(MARKETPLACE_REMOVED_FILE_SOURCE);
-            }),
-            then.assert(
-              "version 1.1.0 is requested before losing the commit response",
-              async (ctx) => {
-                loseUpgradeCommitResponse = true;
-                await ctx.runtime.objects.automations
-                  .forOrg("org-1")
-                  .commands.requestMarketplaceIngestion(
-                    {
-                      listingId: MARKETPLACE_LISTING_ID,
-                      version: "1.1.0",
-                      targetScope: { kind: "org", orgId: "org-1" },
-                    },
-                    {
-                      execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
-                      propagationContext: null,
-                    },
-                  );
-              },
-            ),
-            runner.drain(),
-            then.workflow.instance({
-              workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
-              instanceId: workflowInstanceId,
-              status: "waiting",
-            }),
-            then.assert("the committed removal is visible before workflow replay", async (ctx) => {
-              const url = new URL("https://upload.test/api/upload/files/by-key/content");
-              url.searchParams.set("provider", "database");
-              url.searchParams.set("key", MARKETPLACE_REMOVED_FILE_KEY);
-              const response = await ctx.runtime.objects.upload
-                .forOrg("org-1")
-                .http.fetch(new Request(url));
-              assert(response.status === 410);
-              await expect(
-                ctx.runtime.objects.automations.forOrg("org-1").commands.getMarketplaceIngestion({
-                  targetScope: { kind: "org", orgId: "org-1" },
-                  listingId: MARKETPLACE_LISTING_ID,
-                }),
-              ).resolves.toMatchObject({ version: "1.0.0" });
-            }),
-            runner.restartObject({
-              binding: "AUTOMATIONS",
-              scope: { kind: "org", orgId: "org-1" },
-            }),
-            when.time.advance("1 s"),
-            then.workflow.instance({
-              workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
-              instanceId: workflowInstanceId,
-              status: "complete",
-            }),
-            then.assert("the replay records the fully updated version", async (ctx) => {
-              await expect(
-                ctx.runtime.objects.automations.forOrg("org-1").commands.getMarketplaceIngestion({
-                  targetScope: { kind: "org", orgId: "org-1" },
-                  listingId: MARKETPLACE_LISTING_ID,
-                }),
-              ).resolves.toMatchObject({ version: "1.1.0" });
-            }),
-          ],
-        }),
-      );
-    });
-  });
-
-  test("preserves a locally modified file that a Marketplace update would remove", async () => {
-    await withRemovedFileMarketplaceVersion(async () => {
-      const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
-        targetScope: { kind: "org", orgId: "org-1" },
-        listingId: MARKETPLACE_LISTING_ID,
-        version: "1.1.0",
-      });
-
-      await runBackofficeScenario(
-        defineBackofficeScenario({
-          name: "reject removing a locally modified Marketplace file",
-          setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
-          steps: ({ then, runner }) => [
-            then.assert("both Marketplace versions are published", async (ctx) => {
-              await createMarketplacePublicationWorkflow(ctx, "1.0.0");
-            }),
-            runner.drain(),
-            then.assert("the updated Marketplace version is published", async (ctx) => {
-              await createMarketplacePublicationWorkflow(ctx, "1.1.0");
-            }),
-            runner.drain(),
-            then.assert("version 1.0.0 is ingested", async (ctx) => {
-              await ctx.runtime.objects.automations
-                .forOrg("org-1")
-                .commands.requestMarketplaceIngestion(
-                  {
-                    listingId: MARKETPLACE_LISTING_ID,
-                    version: "1.0.0",
-                    targetScope: { kind: "org", orgId: "org-1" },
-                  },
-                  {
-                    execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
-                    propagationContext: null,
-                  },
-                );
-            }),
-            runner.drain(),
-            then.assert("the obsolete file is locally modified", async (ctx) => {
-              await writeUploadFile({
-                upload: ctx.runtime.objects.upload.forOrg("org-1"),
-                fileKey: MARKETPLACE_REMOVED_FILE_KEY,
-                content: "locally modified and must not be deleted",
-              });
-            }),
-            then.assert("version 1.1.0 update is requested", async (ctx) => {
-              await ctx.runtime.objects.automations
-                .forOrg("org-1")
-                .commands.requestMarketplaceIngestion(
-                  {
-                    listingId: MARKETPLACE_LISTING_ID,
-                    version: "1.1.0",
-                    targetScope: { kind: "org", orgId: "org-1" },
-                  },
-                  {
-                    execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
-                    propagationContext: null,
-                  },
-                );
-            }),
-            runner.drain(),
-            then.workflow.instance({
-              workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
-              instanceId: workflowInstanceId,
-              status: "errored",
-            }),
-            then.assert("the local file and previous ingestion remain unchanged", async (ctx) => {
-              const url = new URL("https://upload.test/api/upload/files/by-key/content");
-              url.searchParams.set("provider", "database");
-              url.searchParams.set("key", MARKETPLACE_REMOVED_FILE_KEY);
-              const response = await ctx.runtime.objects.upload
-                .forOrg("org-1")
-                .http.fetch(new Request(url));
-              assert(response.ok);
-              await expect(response.text()).resolves.toBe(
-                "locally modified and must not be deleted",
-              );
-              await expect(
-                ctx.runtime.objects.automations.forOrg("org-1").commands.getMarketplaceIngestion({
-                  targetScope: { kind: "org", orgId: "org-1" },
-                  listingId: MARKETPLACE_LISTING_ID,
-                }),
-              ).resolves.toMatchObject({ version: "1.0.0" });
-            }),
-          ],
-          options: { allowErroredWorkflows: true },
-        }),
-      );
-    });
-  });
-
-  test("rejects an upgrade atomically when an unchanged asserted file changes after planning", async () => {
-    await withTwoFileMarketplaceVersions(async () => {
-      const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
-        targetScope: { kind: "org", orgId: "org-1" },
-        listingId: MARKETPLACE_LISTING_ID,
-        version: "1.1.0",
-      });
-      let changeAssertedFileDuringPreparation = false;
-
-      await runBackofficeScenario(
-        defineBackofficeScenario({
-          name: "reject a marketplace batch after an asserted file changes",
-          objectFactories: {
-            UPLOAD: ({ name, state, env, runtime, implementation }) => {
-              const destinationObject = name.endsWith("v1:org:org-1");
-              return new (class extends InMemoryUploadObject {
-                async fetch(request: Request): Promise<Response> {
-                  const url = new URL(request.url);
-                  if (
-                    destinationObject &&
-                    changeAssertedFileDuringPreparation &&
-                    request.method === "POST" &&
-                    url.pathname.endsWith("/uploads")
-                  ) {
-                    const payload = (await request.clone().json()) as {
-                      fileKey?: string;
-                    };
-                    if (payload.fileKey === MARKETPLACE_ARTIFACT_FILE_KEY) {
-                      changeAssertedFileDuringPreparation = false;
-                      await writeUploadFile({
-                        upload: {
-                          http: {
-                            fetch: async (nextRequest) => await super.fetch(nextRequest),
-                          },
-                        },
-                        fileKey: MARKETPLACE_UNCHANGED_FILE_KEY,
-                        content: "locally changed after planning",
-                      });
-                    }
-                  }
-                  return await super.fetch(request);
-                }
-              })({ state, env: env as never, runtime, implementation });
-            },
-          },
-          setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
-          steps: ({ then, runner }) => [
-            then.assert("both marketplace versions are published", async (ctx) => {
-              await createMarketplacePublicationWorkflow(ctx, "1.0.0");
-            }),
-            runner.drain(),
-            then.assert("the updated marketplace version is published", async (ctx) => {
-              await createMarketplacePublicationWorkflow(ctx, "1.1.0");
-            }),
-            runner.drain(),
-            then.assert("version 1.0.0 is ingested", async (ctx) => {
-              await ctx.runtime.objects.automations
-                .forOrg("org-1")
-                .commands.requestMarketplaceIngestion(
-                  {
-                    listingId: MARKETPLACE_LISTING_ID,
-                    version: "1.0.0",
-                    targetScope: { kind: "org", orgId: "org-1" },
-                  },
-                  {
-                    execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
-                    propagationContext: null,
-                  },
-                );
-            }),
-            runner.drain(),
-            then.assert(
-              "version 1.1.0 is requested before the asserted file changes",
-              async (ctx) => {
-                changeAssertedFileDuringPreparation = true;
-                await ctx.runtime.objects.automations
-                  .forOrg("org-1")
-                  .commands.requestMarketplaceIngestion(
-                    {
-                      listingId: MARKETPLACE_LISTING_ID,
-                      version: "1.1.0",
-                      targetScope: { kind: "org", orgId: "org-1" },
-                    },
-                    {
-                      execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
-                      propagationContext: null,
-                    },
-                  );
-              },
-            ),
-            runner.drain(),
-            then.workflow.instance({
-              workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
-              instanceId: workflowInstanceId,
-              status: "errored",
-            }),
-            then.assert("the rejected batch publishes none of its prepared writes", async (ctx) => {
-              const upload = ctx.runtime.objects.upload.forOrg("org-1");
-              const mainUrl = new URL("https://upload.test/api/upload/files/by-key/content");
-              mainUrl.searchParams.set("provider", "database");
-              mainUrl.searchParams.set("key", MARKETPLACE_ARTIFACT_FILE_KEY);
-              const mainResponse = await upload.http.fetch(new Request(mainUrl));
-              assert(mainResponse.ok);
-              await expect(mainResponse.text()).resolves.toBe(
-                TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE,
-              );
-
-              const assertedUrl = new URL("https://upload.test/api/upload/files/by-key/content");
-              assertedUrl.searchParams.set("provider", "database");
-              assertedUrl.searchParams.set("key", MARKETPLACE_UNCHANGED_FILE_KEY);
-              const assertedResponse = await upload.http.fetch(new Request(assertedUrl));
-              assert(assertedResponse.ok);
-              await expect(assertedResponse.text()).resolves.toBe("locally changed after planning");
-
-              await expect(
-                ctx.runtime.objects.automations.forOrg("org-1").commands.getMarketplaceIngestion({
-                  targetScope: { kind: "org", orgId: "org-1" },
-                  listingId: MARKETPLACE_LISTING_ID,
-                }),
-              ).resolves.toMatchObject({ version: "1.0.0" });
-            }),
-          ],
-          options: { allowErroredWorkflows: true },
-        }),
-      );
-    });
-  });
-
-  test("preserves locally modified files when a marketplace upgrade is requested", async () => {
-    await withUpdatedStaticMarketplaceEntry(async () => {
-      const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
-        targetScope: { kind: "org", orgId: "org-1" },
-        listingId: MARKETPLACE_LISTING_ID,
-        version: "1.1.0",
-      });
-      await runBackofficeScenario(
-        defineBackofficeScenario({
-          name: "reject a marketplace upgrade over local modifications",
-          setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
-          steps: ({ then, runner }) => [
-            then.assert("both marketplace versions are published", async (ctx) => {
-              await createMarketplacePublicationWorkflow(ctx, "1.0.0");
-            }),
-            runner.drain(),
-            then.assert("the updated marketplace version is published", async (ctx) => {
-              await createMarketplacePublicationWorkflow(ctx, "1.1.0");
-            }),
-            runner.drain(),
-            then.assert("version 1.0.0 is ingested", async (ctx) => {
-              await ctx.runtime.objects.automations
-                .forOrg("org-1")
-                .commands.requestMarketplaceIngestion(
-                  {
-                    listingId: MARKETPLACE_LISTING_ID,
-                    version: "1.0.0",
-                    targetScope: { kind: "org", orgId: "org-1" },
-                  },
-                  {
-                    execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
-                    propagationContext: null,
-                  },
-                );
-            }),
-            runner.drain(),
-            then.assert("the installed file is locally modified", async (ctx) => {
-              await writeUploadFile({
-                upload: ctx.runtime.objects.upload.forOrg("org-1"),
-                fileKey: MARKETPLACE_ARTIFACT_FILE_KEY,
-                content: "locally modified after version 1.0.0",
-              });
-            }),
-            then.assert("version 1.1.0 upgrade is requested", async (ctx) => {
-              await ctx.runtime.objects.automations
-                .forOrg("org-1")
-                .commands.requestMarketplaceIngestion(
-                  {
-                    listingId: MARKETPLACE_LISTING_ID,
-                    version: "1.1.0",
-                    targetScope: { kind: "org", orgId: "org-1" },
-                  },
-                  {
-                    execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
-                    propagationContext: null,
-                  },
-                );
-            }),
-            runner.drain(),
-            then.workflow.instance({
-              workflowName: MARKETPLACE_INGEST_WORKFLOW_NAME,
-              instanceId: workflowInstanceId,
-              status: "errored",
-            }),
-            then.assert(
-              "the old projection and local content remain authoritative",
-              async (ctx) => {
-                await expect(
-                  ctx.runtime.objects.automations.forOrg("org-1").commands.getMarketplaceIngestion({
-                    targetScope: { kind: "org", orgId: "org-1" },
-                    listingId: MARKETPLACE_LISTING_ID,
-                  }),
-                ).resolves.toMatchObject({ version: "1.0.0" });
-
-                const url = new URL("https://upload.test/api/upload/files/by-key/content");
-                url.searchParams.set("provider", "database");
-                url.searchParams.set("key", MARKETPLACE_ARTIFACT_FILE_KEY);
-                const response = await ctx.runtime.objects.upload
-                  .forOrg("org-1")
-                  .http.fetch(new Request(url));
-                assert(response.ok);
-                await expect(response.text()).resolves.toBe("locally modified after version 1.0.0");
-              },
-            ),
-          ],
-          options: { allowErroredWorkflows: true },
-        }),
-      );
-    });
-  });
-
   test("rejects source bytes changed between upload creation and transfer", async () => {
     const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
+      installationRoot: "/workspace",
       targetScope: { kind: "org", orgId: "org-1" },
       listingId: MARKETPLACE_LISTING_ID,
       version: "1.0.0",
@@ -3490,6 +2626,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               .forOrg("org-1")
               .commands.requestMarketplaceIngestion(
                 {
+                  installationRoot: "/workspace",
                   listingId: MARKETPLACE_LISTING_ID,
                   targetScope: { kind: "org", orgId: "org-1" },
                 },
@@ -3515,7 +2652,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               .http.fetch(new Request(url));
             assert(response.status === 404);
             await expect(
-              ctx.runtime.objects.automations.forOrg("org-1").commands.getMarketplaceIngestion({
+              readMarketplaceLockEntry(ctx, {
                 targetScope: { kind: "org", orgId: "org-1" },
                 listingId: MARKETPLACE_LISTING_ID,
               }),
@@ -3529,6 +2666,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
 
   test("rejects source bytes changed after listing without poisoning the destination", async () => {
     const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
+      installationRoot: "/workspace",
       targetScope: { kind: "org", orgId: "org-1" },
       listingId: MARKETPLACE_LISTING_ID,
       version: "1.0.0",
@@ -3578,6 +2716,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               .forOrg("org-1")
               .commands.requestMarketplaceIngestion(
                 {
+                  installationRoot: "/workspace",
                   listingId: MARKETPLACE_LISTING_ID,
                   version: "1.0.0",
                   targetScope: { kind: "org", orgId: "org-1" },
@@ -3603,7 +2742,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               .http.fetch(new Request(contentUrl));
             assert(contentResponse.status === 404);
             await expect(
-              ctx.runtime.objects.automations.forOrg("org-1").commands.getMarketplaceIngestion({
+              readMarketplaceLockEntry(ctx, {
                 targetScope: { kind: "org", orgId: "org-1" },
                 listingId: MARKETPLACE_LISTING_ID,
               }),

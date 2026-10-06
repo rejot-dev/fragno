@@ -49,9 +49,6 @@ export {
 export type { AutomationScriptLayer } from "./automation-source";
 export type { AutomationEventRecord } from "./events";
 export type {
-  MarketplaceIngestionListInput,
-  MarketplaceIngestionLookupInput,
-  MarketplaceIngestionRecord,
   MarketplaceIngestionRequestInput,
   MarketplaceIngestionRequestResult,
   MarketplaceIngestionRestartResult,

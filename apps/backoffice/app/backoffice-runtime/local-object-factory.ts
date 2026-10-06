@@ -246,14 +246,6 @@ class UnavailableLocalDurableObject {
     throw new Error("Automations is not configured.");
   }
 
-  async getMarketplaceIngestion() {
-    return null;
-  }
-
-  async listMarketplaceIngestions() {
-    return [];
-  }
-
   async getRuntimeStatus() {
     return { status: "stopped" };
   }

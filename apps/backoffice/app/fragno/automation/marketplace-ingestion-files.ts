@@ -3,10 +3,6 @@ import type { UploadFileWritePrecondition } from "@fragno-dev/upload/types";
 import type { UploadChecksum } from "@fragno-dev/upload";
 
 type WorkspaceFileAssertion = { path: string; precondition: UploadFileWritePrecondition };
-type WorkspaceFileDeletion = {
-  path: string;
-  precondition: Extract<UploadFileWritePrecondition, { kind: "revision" }>;
-};
 
 export type MarketplaceIngestionSourceFile = {
   fileKey: string;
@@ -23,9 +19,7 @@ export type MarketplaceWorkspaceTargetFile = {
 };
 
 export type MarketplaceWorkspaceFileObservation = {
-  relativePath: string;
-  requestedSource: MarketplaceIngestionSourceFile | null;
-  installedSource: MarketplaceIngestionSourceFile | null;
+  source: MarketplaceIngestionSourceFile;
   target: MarketplaceWorkspaceTargetFile | null;
 };
 
@@ -34,76 +28,48 @@ export type MarketplaceWorkspaceWrite = {
   precondition: UploadFileWritePrecondition;
 };
 
-export type MarketplaceWorkspaceUpdatePlan = {
+export type MarketplaceWorkspaceInstallationPlan = {
   writes: MarketplaceWorkspaceWrite[];
-  deletions: WorkspaceFileDeletion[];
   assertions: WorkspaceFileAssertion[];
 };
 
 export class MarketplaceWorkspaceFileConflictError extends Error {
-  constructor(readonly relativePath: string) {
-    super(`Marketplace ingestion conflicts with workspace file '/workspace/${relativePath}'.`);
+  constructor(readonly path: string) {
+    super(`Marketplace ingestion conflicts with workspace file '${path}'.`);
     this.name = "MarketplaceWorkspaceFileConflictError";
   }
 }
 
-export const marketplaceFileContentsMatch = (
+/** Matching content permits installation retries without replacing existing workspace files. */
+export function marketplaceFileContentsMatch(
   source: MarketplaceIngestionSourceFile,
   target: MarketplaceWorkspaceTargetFile | null,
-): boolean =>
-  target?.checksum?.algo === source.checksum.algo &&
-  target.checksum.value === source.checksum.value &&
-  target.sizeBytes === source.sizeBytes;
+): boolean {
+  return (
+    target?.checksum?.algo === source.checksum.algo &&
+    target.checksum.value === source.checksum.value &&
+    target.sizeBytes === source.sizeBytes
+  );
+}
 
-export const planMarketplaceWorkspaceUpdate = (input: {
+/** Installations only create missing files; differing existing files are never upgraded. */
+export function planMarketplaceWorkspaceInstallation(input: {
+  installationRoot: string;
   observations: MarketplaceWorkspaceFileObservation[];
-}): MarketplaceWorkspaceUpdatePlan => {
+}): MarketplaceWorkspaceInstallationPlan {
   const writes: MarketplaceWorkspaceWrite[] = [];
-  const deletions: WorkspaceFileDeletion[] = [];
   const assertions: WorkspaceFileAssertion[] = [];
 
-  for (const { relativePath, requestedSource, installedSource, target } of input.observations) {
-    const path = `/workspace/${relativePath}`;
-
-    if (!requestedSource) {
-      if (!installedSource) {
-        throw new Error(`Marketplace update observation '${relativePath}' has no source version.`);
-      }
-      if (!target) {
-        assertions.push({ path, precondition: { kind: "absent" } });
-        continue;
-      }
-      if (!marketplaceFileContentsMatch(installedSource, target)) {
-        throw new MarketplaceWorkspaceFileConflictError(relativePath);
-      }
-      deletions.push({
-        path,
-        precondition: { kind: "revision", revision: target.revision },
-      });
-      continue;
-    }
-
+  for (const { source, target } of input.observations) {
+    const path = `${input.installationRoot}/${source.relativePath}`;
     if (!target) {
-      writes.push({
-        source: requestedSource,
-        precondition: { kind: "absent" },
-      });
-      continue;
+      writes.push({ source, precondition: { kind: "absent" } });
+    } else if (marketplaceFileContentsMatch(source, target)) {
+      assertions.push({ path, precondition: { kind: "revision", revision: target.revision } });
+    } else {
+      throw new MarketplaceWorkspaceFileConflictError(path);
     }
-
-    const targetPrecondition = { kind: "revision" as const, revision: target.revision };
-    if (marketplaceFileContentsMatch(requestedSource, target)) {
-      assertions.push({ path, precondition: targetPrecondition });
-      continue;
-    }
-
-    if (installedSource && marketplaceFileContentsMatch(installedSource, target)) {
-      writes.push({ source: requestedSource, precondition: targetPrecondition });
-      continue;
-    }
-
-    throw new MarketplaceWorkspaceFileConflictError(relativePath);
   }
 
-  return { writes, deletions, assertions };
-};
+  return { writes, assertions };
+}

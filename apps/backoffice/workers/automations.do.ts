@@ -36,9 +36,6 @@ import type {
   AutomationFragmentConfig,
   AutomationIngestResult,
   AutomationProjectExecutionTarget,
-  MarketplaceIngestionListInput,
-  MarketplaceIngestionLookupInput,
-  MarketplaceIngestionRecord,
   MarketplaceIngestionRequestInput,
   MarketplaceIngestionRequestResult,
   MarketplaceIngestionRestartResult,
@@ -639,6 +636,7 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
     const version = resolvedArtifact.version;
     const workflowInstanceId = await buildMarketplaceIngestionWorkflowInstanceId({
       targetScope: input.targetScope,
+      installationRoot: input.installationRoot,
       listingId: input.listingId,
       version,
     });
@@ -647,16 +645,6 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
       version,
       workflowInstanceId,
     };
-
-    const existing = await runtime.automationFragment.callServices(() =>
-      runtime.automationFragment.services.getMarketplaceIngestion({
-        targetScope: input.targetScope,
-        listingId: input.listingId,
-      }),
-    );
-    if (existing?.version === version) {
-      return { ...identity, state: "ingested" };
-    }
 
     const created = await runtime.workflowsFragment.callServices(() =>
       runtime.workflowsFragment.services.createBatch(MARKETPLACE_INGEST_WORKFLOW_NAME, [
@@ -694,25 +682,7 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
       return { ...identity, ...workflowStatus };
     }
 
-    const completed = await runtime.automationFragment.callServices(() =>
-      runtime.automationFragment.services.getMarketplaceIngestion({
-        targetScope: input.targetScope,
-        listingId: input.listingId,
-      }),
-    );
-    if (completed?.version === version) {
-      return { ...identity, state: "ingested" };
-    }
-
-    return {
-      ...identity,
-      state: "failed",
-      workflowStatus: "complete",
-      error: {
-        name: "MarketplaceIngestionIncomplete",
-        message: `Marketplace ingestion workflow ${workflowInstanceId} completed without recording ${resolvedArtifact.manifest.slug}@${version}.`,
-      },
-    };
+    return { ...identity, state: "ingested" };
   }
 
   async restartMarketplaceIngestion(
@@ -759,34 +729,6 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
       action: result.action,
       workflowStatus: result.details.status,
     };
-  }
-
-  async getMarketplaceIngestion(
-    input: MarketplaceIngestionLookupInput,
-  ): Promise<MarketplaceIngestionRecord | null> {
-    const scope = this.#requireScope();
-    if (scope.kind !== "org") {
-      throw new Error("Marketplace ingestion requires an organization Automations object.");
-    }
-    await this.#ensureConfigured({ scope });
-    const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
-    return await runtime.automationFragment.callServices(() =>
-      runtime.automationFragment.services.getMarketplaceIngestion(input),
-    );
-  }
-
-  async listMarketplaceIngestions(
-    input?: MarketplaceIngestionListInput,
-  ): Promise<MarketplaceIngestionRecord[]> {
-    const scope = this.#requireScope();
-    if (scope.kind !== "org") {
-      throw new Error("Marketplace ingestion requires an organization Automations object.");
-    }
-    await this.#ensureConfigured({ scope });
-    const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
-    return await runtime.automationFragment.callServices(() =>
-      runtime.automationFragment.services.listMarketplaceIngestions(input),
-    );
   }
 
   async bindExternalIdentity(
@@ -1127,14 +1069,6 @@ export class Automations extends DurableObject<CloudflareEnv> implements Automat
     context: BackofficeActionRpcContext,
   ) {
     return await this.#object.restartMarketplaceIngestion(input, context);
-  }
-
-  async getMarketplaceIngestion(input: MarketplaceIngestionLookupInput) {
-    return await this.#object.getMarketplaceIngestion(input);
-  }
-
-  async listMarketplaceIngestions(input?: MarketplaceIngestionListInput) {
-    return await this.#object.listMarketplaceIngestions(input);
   }
 
   async bindExternalIdentity(

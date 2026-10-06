@@ -1372,6 +1372,8 @@ function workflowRun(overrides: Partial<AutomationWorkflowRun> = {}): Automation
     status: "active",
     workflowScriptPath: absolutePath,
     output: null,
+    errorName: null,
+    errorMessage: null,
     createdAt: "2026-07-24T09:00:00.000Z",
     updatedAt: "2026-07-24T10:00:00.000Z",
     workflowSteps: [],

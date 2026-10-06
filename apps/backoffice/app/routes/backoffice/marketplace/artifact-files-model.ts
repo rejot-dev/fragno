@@ -7,11 +7,6 @@ export type MarketplaceArtifactSelectedContent = {
   text: string;
 };
 
-export type MarketplaceArtifactWorkflowSource = {
-  path: string;
-  source: string;
-};
-
 export type MarketplaceArtifactExplorerData =
   | {
       state: "ready";

@@ -14,7 +14,7 @@ import type { BackofficeMeData } from "@/fragno/auth/contracts";
 import type { AutomationProjectRecord } from "../automations/data";
 import { toExternalId } from "../automations/data";
 
-export type MarketplaceTab = "marketplace" | "installed" | "my-listings";
+export type MarketplaceTab = "marketplace" | "my-listings";
 
 export type MarketplaceScopeOption = {
   id: string;

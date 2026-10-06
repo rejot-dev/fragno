@@ -55,7 +55,6 @@ export default [
             index("routes/backoffice/marketplace/artifact-selection.tsx"),
           ]),
         ]),
-        route("installed", "routes/backoffice/marketplace/installed.tsx"),
         route("my-listings", "routes/backoffice/marketplace/my-listings.tsx"),
       ]),
       route("marketplace/:listingRef/manage", "routes/backoffice/marketplace/manage.tsx"),
