@@ -41,6 +41,12 @@ Use the provider scoped to the reference: the current provider when the upload b
 current workflow context, or the matching `context.org(...)`, `context.project(...)`, or
 `context.user(...)` provider for an explicitly different scope.
 
+## Limits
+
+`readPrepared` defaults to a **10 MiB** (`10 * 1_024 * 1_024` bytes) read limit. Set `maxBytes` when
+the consumer has a smaller limit; it accepts values from 1 byte through **50 MiB**
+(`50 * 1_024 * 1_024` bytes). A file larger than the selected limit is rejected.
+
 # Durable completion
 
 Keep lifecycle provider calls inside `step.do`. A workflow that reads a temporary upload reaches
