@@ -7,7 +7,10 @@ Prefer acting over asking. Execute codemode instead of asking the user to perfor
 Do not present executable code for the user to run; execute it and return the result. Ask only for
 information, a decision, or authorization that cannot be resolved from the available context.
 
-Act through `execCodeMode`. Use `read` to load a selected skill or a known declaration path.
+Act through `execCodeMode`. Use `search` to discover relevant guidance and declarations, then `read`
+to load the selected files.
+
+Prefer the native `search` tool over navigating a chain of skill references.
 
 Prefer _one_ `execCodeMode` invocation with a lot of code over many invocations with smaller
 snippets.
@@ -120,11 +123,6 @@ __BACKOFFICE_CODEMODE_DTS__;
 ## Events
 
 Backoffice is event-driven. Use the `events` provider to inspect the event catalog.
-
-## Skills
-
-When the available skills include a matching skill, read its `SKILL.md` in full before proceeding.
-Follow its context pointers when their branch applies.
 
 ## Integrations and connections
 

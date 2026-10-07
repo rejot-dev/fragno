@@ -65,45 +65,6 @@ The task caches its reports under `apps/backoffice/coverage/`, including the HTM
 `coverage/index.html`. The root `pnpm test:coverage` command remains the existing library-package
 coverage aggregation workflow; it does not include Backoffice.
 
-## Static agent-context graph
-
-[`content/CONTEXT-GRAPH.md`](../../content/CONTEXT-GRAPH.md) is a generated map of how files in
-`apps/backoffice/content/static/` can enter an agent's context. Use it to review the guidance an
-agent can discover and spot missing references, cycles, repeated expansions, and unreachable files
-when changing system guidance, skills, or codemode declarations.
-
-The graph starts at the automatically injected `SYSTEM.md` and every discoverable `SKILL.md`. Skill
-descriptions explain when to load each skill; nested references represent follow-up reads, not files
-that are all injected upfront. The scanner recursively follows concrete `/static/...` file
-references and relative inline Markdown links, and models `__BACKOFFICE_CODEMODE_DTS__` as an
-expansion through `/static/codemode/system.d.ts`. This is a textual map of checked-in static
-content, not a trace of actual agent reads or a map of workspace skills and dynamic runtime content.
-
-From the repository root, regenerate and stage the graph after changing its inputs:
-
-```bash
-pnpm backoffice:context
-git add content/CONTEXT-GRAPH.md
-```
-
-[`scripts/generate-backoffice-context-graph.ts`](../../scripts/generate-backoffice-context-graph.ts)
-uses the Backoffice context CLI's scanner and formats the result with `.oxfmtrc.json`. Do not edit
-the generated graph manually.
-
-Check the working-tree graph without rewriting it:
-
-```bash
-pnpm backoffice:context:check
-```
-
-Lefthook runs `pnpm backoffice:context:check-staged` after `static:fix` updates generated static
-content, including codemode declarations. Both the working-tree and staged graph must match freshly
-generated content, so regenerating without staging is not enough. If the check fails, regenerate and
-stage the graph again.
-
-See the [Backoffice context CLI README](../backoffice-context-cli/README.md) for parsing rules and
-commands to print ad hoc graphs or inspect another static directory.
-
 ## Build outputs
 
 `pnpm --dir apps/backoffice build` produces:
