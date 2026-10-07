@@ -299,7 +299,20 @@ const automationRouteConfigurationSchema = z.union(
       ]),
     }),
   ],
-  { error: AutomationRouteAuthorityError.message },
+  {
+    error: (issue) => {
+      const configuration = z
+        .object({
+          trigger: automationRouteScheduleTriggerSchema,
+          action: automationStartWorkflowActionSchema,
+        })
+        .safeParse(issue.input);
+      return configuration.success &&
+        configuration.data.action.authority.kind !== "organization-automation"
+        ? AutomationRouteAuthorityError.message
+        : undefined;
+    },
+  },
 );
 
 export const automationRouteSchema: z.ZodType<AutomationRouteDefinition> = z
@@ -308,11 +321,12 @@ export const automationRouteSchema: z.ZodType<AutomationRouteDefinition> = z
     name: z.string().trim().min(1),
     enabled: z.boolean(),
     priority: z.number().int(),
+    trigger: automationRouteTriggerSchema,
+    action: automationRouteActionSchema,
     description: z.string().nullable().optional(),
     metadata: automationRouteMetadataSchema.nullable(),
     nextOccurrenceAt: z.iso.datetime().nullable(),
   })
-  .and(automationRouteConfigurationSchema)
   .meta({ id: "AutomationRoute" });
 
 export const automationRouteCreateInputSchema = z

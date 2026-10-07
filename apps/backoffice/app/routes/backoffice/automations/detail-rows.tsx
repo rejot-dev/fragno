@@ -23,7 +23,7 @@ export function AutomationDetailRows({
           <dt className="text-[9px] tracking-[0.18em] text-[var(--bo-muted-2)] uppercase">
             {row.label}
           </dt>
-          <dd className="min-w-0 font-mono text-[11px] break-all text-[var(--bo-fg)]">
+          <dd className="min-w-0 font-mono text-[11px] break-all whitespace-pre-wrap text-[var(--bo-fg)]">
             {row.to ? (
               <Link
                 to={row.to}

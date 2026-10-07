@@ -15,299 +15,163 @@ type RouterCodemodeProvider = {
 };
 declare const router: RouterCodemodeProvider;
 
-type AutomationRoute =
+type AutomationRoute = {
+  id: string;
+  name: string;
+  enabled: boolean;
+  priority: number;
+  trigger: AutomationRouteTrigger;
+  action: AutomationRouteAction;
+  description?: string | null;
+  metadata: {
+    createdByActors: {
+      initiator:
+        | {
+            scope: "internal";
+            type: string;
+            id: string;
+            role: "initiator";
+          }
+        | {
+            scope: "external";
+            source: string;
+            type: string;
+            id: string;
+            role: "initiator";
+          };
+      principal:
+        | {
+            scope: "internal";
+            type: string;
+            id: string;
+            role: "principal";
+          }
+        | {
+            scope: "external";
+            source: string;
+            type: string;
+            id: string;
+            role: "principal";
+          }
+        | null;
+      delegation: (
+        | {
+            scope: "internal";
+            type: string;
+            id: string;
+            role: "delegate";
+          }
+        | {
+            scope: "external";
+            source: string;
+            type: string;
+            id: string;
+            role: "delegate";
+          }
+        | {
+            scope: "internal";
+            type: string;
+            id: string;
+            role: "assistant";
+          }
+        | {
+            scope: "external";
+            source: string;
+            type: string;
+            id: string;
+            role: "assistant";
+          }
+      )[];
+    };
+    updatedByActors: {
+      initiator:
+        | {
+            scope: "internal";
+            type: string;
+            id: string;
+            role: "initiator";
+          }
+        | {
+            scope: "external";
+            source: string;
+            type: string;
+            id: string;
+            role: "initiator";
+          };
+      principal:
+        | {
+            scope: "internal";
+            type: string;
+            id: string;
+            role: "principal";
+          }
+        | {
+            scope: "external";
+            source: string;
+            type: string;
+            id: string;
+            role: "principal";
+          }
+        | null;
+      delegation: (
+        | {
+            scope: "internal";
+            type: string;
+            id: string;
+            role: "delegate";
+          }
+        | {
+            scope: "external";
+            source: string;
+            type: string;
+            id: string;
+            role: "delegate";
+          }
+        | {
+            scope: "internal";
+            type: string;
+            id: string;
+            role: "assistant";
+          }
+        | {
+            scope: "external";
+            source: string;
+            type: string;
+            id: string;
+            role: "assistant";
+          }
+      )[];
+    };
+    managedBy: AutomationRouteManagedBy | null;
+  } | null;
+  nextOccurrenceAt: string | null;
+};
+type AutomationRouteTrigger =
   | {
-      id: string;
-      name: string;
-      enabled: boolean;
-      priority: number;
-      description?: string | null;
-      metadata: {
-        createdByActors: {
-          initiator:
-            | {
-                scope: "internal";
-                type: string;
-                id: string;
-                role: "initiator";
-              }
-            | {
-                scope: "external";
-                source: string;
-                type: string;
-                id: string;
-                role: "initiator";
-              };
-          principal:
-            | {
-                scope: "internal";
-                type: string;
-                id: string;
-                role: "principal";
-              }
-            | {
-                scope: "external";
-                source: string;
-                type: string;
-                id: string;
-                role: "principal";
-              }
-            | null;
-          delegation: (
-            | {
-                scope: "internal";
-                type: string;
-                id: string;
-                role: "delegate";
-              }
-            | {
-                scope: "external";
-                source: string;
-                type: string;
-                id: string;
-                role: "delegate";
-              }
-            | {
-                scope: "internal";
-                type: string;
-                id: string;
-                role: "assistant";
-              }
-            | {
-                scope: "external";
-                source: string;
-                type: string;
-                id: string;
-                role: "assistant";
-              }
-          )[];
-        };
-        updatedByActors: {
-          initiator:
-            | {
-                scope: "internal";
-                type: string;
-                id: string;
-                role: "initiator";
-              }
-            | {
-                scope: "external";
-                source: string;
-                type: string;
-                id: string;
-                role: "initiator";
-              };
-          principal:
-            | {
-                scope: "internal";
-                type: string;
-                id: string;
-                role: "principal";
-              }
-            | {
-                scope: "external";
-                source: string;
-                type: string;
-                id: string;
-                role: "principal";
-              }
-            | null;
-          delegation: (
-            | {
-                scope: "internal";
-                type: string;
-                id: string;
-                role: "delegate";
-              }
-            | {
-                scope: "external";
-                source: string;
-                type: string;
-                id: string;
-                role: "delegate";
-              }
-            | {
-                scope: "internal";
-                type: string;
-                id: string;
-                role: "assistant";
-              }
-            | {
-                scope: "external";
-                source: string;
-                type: string;
-                id: string;
-                role: "assistant";
-              }
-          )[];
-        };
-        managedBy: AutomationRouteManagedBy | null;
-      } | null;
-      nextOccurrenceAt: string | null;
-      trigger: {
-        kind: "event";
-        source: string;
-        eventType: string;
-        matcher: AutomationEventMatcher | null;
-      };
-      action: AutomationRouteAction;
+      kind: "event";
+      source: string;
+      eventType: string;
+      matcher: AutomationEventMatcher | null;
     }
   | {
-      id: string;
-      name: string;
-      enabled: boolean;
-      priority: number;
-      description?: string | null;
-      metadata: {
-        createdByActors: {
-          initiator:
-            | {
-                scope: "internal";
-                type: string;
-                id: string;
-                role: "initiator";
-              }
-            | {
-                scope: "external";
-                source: string;
-                type: string;
-                id: string;
-                role: "initiator";
-              };
-          principal:
-            | {
-                scope: "internal";
-                type: string;
-                id: string;
-                role: "principal";
-              }
-            | {
-                scope: "external";
-                source: string;
-                type: string;
-                id: string;
-                role: "principal";
-              }
-            | null;
-          delegation: (
-            | {
-                scope: "internal";
-                type: string;
-                id: string;
-                role: "delegate";
-              }
-            | {
-                scope: "external";
-                source: string;
-                type: string;
-                id: string;
-                role: "delegate";
-              }
-            | {
-                scope: "internal";
-                type: string;
-                id: string;
-                role: "assistant";
-              }
-            | {
-                scope: "external";
-                source: string;
-                type: string;
-                id: string;
-                role: "assistant";
-              }
-          )[];
-        };
-        updatedByActors: {
-          initiator:
-            | {
-                scope: "internal";
-                type: string;
-                id: string;
-                role: "initiator";
-              }
-            | {
-                scope: "external";
-                source: string;
-                type: string;
-                id: string;
-                role: "initiator";
-              };
-          principal:
-            | {
-                scope: "internal";
-                type: string;
-                id: string;
-                role: "principal";
-              }
-            | {
-                scope: "external";
-                source: string;
-                type: string;
-                id: string;
-                role: "principal";
-              }
-            | null;
-          delegation: (
-            | {
-                scope: "internal";
-                type: string;
-                id: string;
-                role: "delegate";
-              }
-            | {
-                scope: "external";
-                source: string;
-                type: string;
-                id: string;
-                role: "delegate";
-              }
-            | {
-                scope: "internal";
-                type: string;
-                id: string;
-                role: "assistant";
-              }
-            | {
-                scope: "external";
-                source: string;
-                type: string;
-                id: string;
-                role: "assistant";
-              }
-          )[];
-        };
-        managedBy: AutomationRouteManagedBy | null;
-      } | null;
-      nextOccurrenceAt: string | null;
-      trigger: {
-        kind: "schedule";
-        cadence:
-          | {
-              kind: "once";
-              /** ISO 8601 datetime string. */
-              at: string;
-            }
-          | {
-              kind: "cron";
-              expression: string;
-              timeZone: string;
-            };
-      };
-      action:
+      kind: "schedule";
+      cadence:
         | {
-            kind: "start_workflow";
-            authority: {
-              kind: "organization-automation";
-              grants: BackofficePermissionRequirement[];
-            };
-            workflowScriptPath: string;
-            instanceIdTemplate: string;
+            kind: "once";
+            /** ISO 8601 datetime string. */
+            at: string;
           }
-        | AutomationSendWorkflowEventAction
-        | AutomationForwardEventAction
-        | AutomationReclassifyEventAction;
+        | {
+            kind: "cron";
+            expression: string;
+            timeZone: string;
+          };
     };
+type AutomationRouteAction =
+  | AutomationStartWorkflowAction
+  | AutomationSendWorkflowEventAction
+  | AutomationForwardEventAction
+  | AutomationReclassifyEventAction;
 type AutomationRouteManagedBy = {
   kind: "marketplace";
   listingId: string;
@@ -377,11 +241,41 @@ type AutomationEventMatcher =
   | {
       not: AutomationEventMatcher;
     };
-type AutomationRouteAction =
-  | AutomationStartWorkflowAction
-  | AutomationSendWorkflowEventAction
-  | AutomationForwardEventAction
-  | AutomationReclassifyEventAction;
+type AutomationStartWorkflowAction = {
+  kind: "start_workflow";
+  authority:
+    | {
+        kind: "delegated-user";
+        grants: BackofficePermissionRequirement[] | "inherit";
+      }
+    | {
+        kind: "linked-user";
+        grants: BackofficePermissionRequirement[] | "inherit";
+      }
+    | {
+        kind: "organization-automation";
+        grants: BackofficePermissionRequirement[];
+      };
+  workflowScriptPath: string;
+  instanceIdTemplate: string;
+};
+type AutomationSendWorkflowEventAction = {
+  kind: "send_workflow_event";
+  target: AutomationWorkflowEventTarget;
+  eventType: string;
+  payload?: unknown;
+};
+type AutomationForwardEventAction = {
+  kind: "forward_event";
+  targetScope: AutomationRouteScopeTemplate;
+  idTemplate?: string;
+};
+type AutomationReclassifyEventAction = {
+  kind: "reclassify_event";
+  source: string;
+  eventType: string;
+  payload: AutomationEventPayloadProjection;
+};
 type BackofficePermissionRequirement =
   | {
       namespace: "admin";
@@ -406,6 +300,14 @@ type BackofficePermissionRequirement =
   | {
       namespace: "admin";
       permission: "organizations.manage";
+    }
+  | {
+      namespace: "apps";
+      permission: "read";
+    }
+  | {
+      namespace: "apps";
+      permission: "manage";
     }
   | {
       namespace: "api";
@@ -643,41 +545,6 @@ type BackofficePermissionRequirement =
       namespace: "workflow";
       permission: "read";
     };
-type AutomationSendWorkflowEventAction = {
-  kind: "send_workflow_event";
-  target: AutomationWorkflowEventTarget;
-  eventType: string;
-  payload?: unknown;
-};
-type AutomationForwardEventAction = {
-  kind: "forward_event";
-  targetScope: AutomationRouteScopeTemplate;
-  idTemplate?: string;
-};
-type AutomationReclassifyEventAction = {
-  kind: "reclassify_event";
-  source: string;
-  eventType: string;
-  payload: AutomationEventPayloadProjection;
-};
-type AutomationStartWorkflowAction = {
-  kind: "start_workflow";
-  authority:
-    | {
-        kind: "delegated-user";
-        grants: BackofficePermissionRequirement[] | "inherit";
-      }
-    | {
-        kind: "linked-user";
-        grants: BackofficePermissionRequirement[] | "inherit";
-      }
-    | {
-        kind: "organization-automation";
-        grants: BackofficePermissionRequirement[];
-      };
-  workflowScriptPath: string;
-  instanceIdTemplate: string;
-};
 type AutomationWorkflowEventTarget =
   | AutomationWorkflowEventInstanceIdTarget
   | AutomationWorkflowEventStoredInstanceIdTarget;

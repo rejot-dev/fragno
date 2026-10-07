@@ -1,6 +1,6 @@
 import type { AuthObject, OtpObject } from "@/backoffice-runtime/object-registry";
 import type { BackofficeAppsCommands } from "@/fragno/apps/contracts";
-import { BackofficeAppDomainError, type BackofficeAppOperationResult } from "@/fragno/apps/errors";
+import { requireBackofficeAppOperationValue } from "@/fragno/apps/errors";
 
 import type { AdminRuntime } from "./admin";
 
@@ -34,13 +34,6 @@ async function requireAdminOrganizationId(auth: AdminAuthCommands, organizationS
   return organization.id;
 }
 
-function requireAdminAppValue<T>(result: BackofficeAppOperationResult<T>): T {
-  if (!result.ok) {
-    throw new BackofficeAppDomainError(result.error.code, result.error.message);
-  }
-  return result.value;
-}
-
 /** Creates the system administration runtime backed by singleton Backoffice objects. */
 export function createAdminRuntime({
   auth,
@@ -60,13 +53,13 @@ export function createAdminRuntime({
       if (!(await auth.hasOAuthClient({ clientId: input.oauthClientId }))) {
         throw new Error(`Admin app creation could not find OAuth client '${input.oauthClientId}'.`);
       }
-      return requireAdminAppValue(await apps.registerApp(input));
+      return requireBackofficeAppOperationValue(await apps.registerApp(input));
     },
     listApps: async (input) => {
       if (!apps) {
         throw new Error("Admin app listing requires the APPS binding.");
       }
-      return requireAdminAppValue(await apps.listApps(input));
+      return requireBackofficeAppOperationValue(await apps.listApps(input));
     },
     createSignUpInvitation: async (input) => {
       if (!otp) {
