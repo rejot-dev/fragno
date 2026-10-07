@@ -508,7 +508,19 @@ export const mcpRuntimeTools = [
         parse: parseSetToken,
         outputOptions: defaultOutput,
         format: textOrDataFormat((result: McpAuthStatus) =>
-          renderTable(["authenticated", "mode"], [[result.authenticated, result.mode]]),
+          renderTable(
+            ["mode", "auth"],
+            [
+              [
+                result.mode,
+                result.mode === "none"
+                  ? "not required"
+                  : result.mode === "oauth"
+                    ? result.state
+                    : `credentials ${result.credentials}`,
+              ],
+            ],
+          ),
         ),
       },
     },

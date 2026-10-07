@@ -40,7 +40,24 @@ const serverConnectionCacheSchema = z.object({
   updatedAt: dateTimeStringOutputSchema.optional(),
 });
 
-export const mcpAuthStatusSchema = z.object({ authenticated: z.boolean(), mode: z.string() });
+const mcpCredentialsPresenceSchema = z
+  .enum(["present", "missing"])
+  .describe("Whether credentials are stored, not whether the server accepts them.");
+
+/** Sanitized auth state derived from stored configuration; it never proves live server access. */
+export const mcpAuthStatusSchema = z.discriminatedUnion("mode", [
+  z.object({ mode: z.literal("none") }),
+  z.object({ mode: z.literal("bearer"), credentials: mcpCredentialsPresenceSchema }),
+  z.object({ mode: z.literal("client_credentials"), credentials: mcpCredentialsPresenceSchema }),
+  z.object({
+    mode: z.literal("oauth"),
+    state: z
+      .enum(["consent-required", "consent-pending", "authorized", "expired"])
+      .describe(
+        "Expired means the access token expired and no refresh token is stored; pending means an unexpired authorization link exists.",
+      ),
+  }),
+]);
 
 export type McpAuthStatus = z.infer<typeof mcpAuthStatusSchema>;
 

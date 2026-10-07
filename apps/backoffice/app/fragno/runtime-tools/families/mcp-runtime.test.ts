@@ -30,6 +30,6 @@ describe("route-backed MCP runtime public addresses", () => {
       new URL(request.url).searchParams.get("redirectUri"),
       publicAddress.oauthRedirectUri,
     );
-    assert.deepEqual(await request.json(), { scope: "tools" });
+    assert.deepEqual(await request.json(), { scope: "tools", discardTokens: false });
   });
 });
