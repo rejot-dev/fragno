@@ -69,5 +69,5 @@ export const normalizeAutomationRoute = (
     description: row.description,
     metadata: row.metadata,
     nextOccurrenceAt: scheduleState?.nextOccurrenceAt?.toISOString() ?? null,
-  };
+  } as AutomationRouteDefinition;
 };

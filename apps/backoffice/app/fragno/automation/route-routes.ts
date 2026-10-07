@@ -6,6 +6,7 @@ import { isUniqueConstraintError } from "@fragno-dev/db";
 import { AUTOMATION_SYSTEM_INITIATOR, type AutomationActors } from "./actors";
 import { automationFragmentDefinition } from "./definition";
 import { isAutomationScheduleError } from "./route-triggers";
+import { AutomationRouteAuthorityError } from "./routing";
 import {
   automationRouteCreateInputSchema,
   automationRouteSchema,
@@ -56,14 +57,23 @@ const getAutomationRouteMutationActionAuthorizer = (
 ): AuthorizeAutomationRouteAction =>
   (request && mutationActionAuthorizerByRequest.get(request)) ?? (async () => undefined);
 
-const routeError = (cause: unknown) =>
-  isAutomationScheduleError(cause)
-    ? {
-        message: cause.message,
-        code: "SCHEDULE_CADENCE_INVALID" as const,
-        status: 400 as const,
-      }
-    : null;
+function routeError(cause: unknown) {
+  if (cause instanceof AutomationRouteAuthorityError) {
+    return {
+      message: cause.message,
+      code: "ROUTE_AUTHORITY_INVALID" as const,
+      status: 400 as const,
+    };
+  }
+  if (isAutomationScheduleError(cause)) {
+    return {
+      message: cause.message,
+      code: "SCHEDULE_CADENCE_INVALID" as const,
+      status: 400 as const,
+    };
+  }
+  return null;
+}
 
 export const automationRouteRoutes = defineRoutes(automationFragmentDefinition).create(
   ({ defineRoute, services }) => [

@@ -7,7 +7,7 @@ import {
 
 import { automationActorsSchema } from "./actors";
 import { automationScheduleCadenceSchema } from "./route-triggers";
-import { isAutomationActorProvenancePath } from "./routing";
+import { AutomationRouteAuthorityError, isAutomationActorProvenancePath } from "./routing";
 import type {
   AutomationActorMatcher,
   AutomationEventMatcher,
@@ -141,6 +141,11 @@ const automationRouteGrantsSchema = z
     }
   }) satisfies z.ZodType<readonly BackofficePermissionRequirement[]>;
 
+const organizationAutomationAuthoritySchema = z.strictObject({
+  kind: z.literal("organization-automation"),
+  grants: automationRouteGrantsSchema,
+});
+
 const automationAuthorityModeSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("delegated-user"),
@@ -150,10 +155,7 @@ const automationAuthorityModeSchema = z.discriminatedUnion("kind", [
     kind: z.literal("linked-user"),
     grants: z.union([automationRouteGrantsSchema, z.literal("inherit")]),
   }),
-  z.strictObject({
-    kind: z.literal("organization-automation"),
-    grants: automationRouteGrantsSchema,
-  }),
+  organizationAutomationAuthoritySchema,
 ]);
 
 const automationStartWorkflowActionSchema = z
@@ -260,20 +262,45 @@ const automationRouteMetadataSchema = z.strictObject({
   managedBy: automationRouteManagedBySchema.nullable(),
 });
 
+const automationRouteEventTriggerSchema = z.object({
+  kind: z.literal("event"),
+  source: z.string().trim().min(1),
+  eventType: z.string().trim().min(1),
+  matcher: automationEventMatcherSchema.nullable().default(null),
+});
+
+const automationRouteScheduleTriggerSchema = z.object({
+  kind: z.literal("schedule"),
+  cadence: automationScheduleCadenceSchema,
+});
+
 const automationRouteTriggerSchema: z.ZodType<AutomationRouteTrigger> = z
   .discriminatedUnion("kind", [
-    z.object({
-      kind: z.literal("event"),
-      source: z.string().trim().min(1),
-      eventType: z.string().trim().min(1),
-      matcher: automationEventMatcherSchema.nullable().default(null),
-    }),
-    z.object({
-      kind: z.literal("schedule"),
-      cadence: automationScheduleCadenceSchema,
-    }),
+    automationRouteEventTriggerSchema,
+    automationRouteScheduleTriggerSchema,
   ])
   .meta({ id: "AutomationRouteTrigger", codemodeInputId: "AutomationRouteTriggerInput" });
+
+const automationRouteConfigurationSchema = z.union(
+  [
+    z.object({
+      trigger: automationRouteEventTriggerSchema,
+      action: automationRouteActionSchema,
+    }),
+    z.object({
+      trigger: automationRouteScheduleTriggerSchema,
+      action: z.union([
+        automationStartWorkflowActionSchema.extend({
+          authority: organizationAutomationAuthoritySchema,
+        }),
+        automationSendWorkflowEventActionSchema,
+        automationForwardEventActionSchema,
+        automationReclassifyEventActionSchema,
+      ]),
+    }),
+  ],
+  { error: AutomationRouteAuthorityError.message },
+);
 
 export const automationRouteSchema: z.ZodType<AutomationRouteDefinition> = z
   .object({
@@ -281,24 +308,23 @@ export const automationRouteSchema: z.ZodType<AutomationRouteDefinition> = z
     name: z.string().trim().min(1),
     enabled: z.boolean(),
     priority: z.number().int(),
-    trigger: automationRouteTriggerSchema,
-    action: automationRouteActionSchema,
     description: z.string().nullable().optional(),
     metadata: automationRouteMetadataSchema.nullable(),
     nextOccurrenceAt: z.iso.datetime().nullable(),
   })
+  .and(automationRouteConfigurationSchema)
   .meta({ id: "AutomationRoute" });
 
-export const automationRouteCreateInputSchema = z.object({
-  id: z.string().trim().min(1),
-  name: z.string().trim().min(1),
-  enabled: z.boolean().default(true),
-  priority: z.number().int().default(1000),
-  trigger: automationRouteTriggerSchema,
-  action: automationRouteActionSchema,
-  description: z.string().nullable().optional(),
-  managedBy: automationRouteManagedBySchema.nullable().optional(),
-});
+export const automationRouteCreateInputSchema = z
+  .object({
+    id: z.string().trim().min(1),
+    name: z.string().trim().min(1),
+    enabled: z.boolean().default(true),
+    priority: z.number().int().default(1000),
+    description: z.string().nullable().optional(),
+    managedBy: automationRouteManagedBySchema.nullable().optional(),
+  })
+  .and(automationRouteConfigurationSchema);
 
 const automationRouteUpdateObjectSchema = z.object({
   id: z.string().trim().min(1),
