@@ -6,8 +6,6 @@ import {
 } from "@fragno-dev/project-connector-fragment/contracts";
 import { z } from "zod";
 
-import { Validator, dereference, type Schema } from "@cfworker/json-schema";
-
 import { authorizedBackofficeObjectHttp } from "@/backoffice-runtime/authorized-object-http";
 import { BackofficeUnavailableError } from "@/backoffice-runtime/kernel";
 import {
@@ -18,7 +16,6 @@ import { backofficeRouteScopeSinglePathSegment } from "@/backoffice-runtime/rout
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import type { ProjectConnectorFragment } from "@/fragno/project-connector";
 import { projectConnectorPublicAddress } from "@/fragno/scoped-public-fragment-routes";
-import { jsonSchema202012ValidationSchema } from "@/lib/json-schema/validation";
 import { jsonValueSchema } from "@/lib/zod/json-value";
 
 import {
@@ -31,6 +28,7 @@ import {
   decodeConnectorConnectionLocalId,
   encodeConnectorConnectionId,
 } from "./connector-connection-id";
+import { compileIntegrationActionSchema } from "./integration-action-json-schema";
 import type { IntegrationInspection, IntegrationSetupProgress } from "./integration-contracts";
 import type { IntegrationContext, IntegrationImplementation } from "./integration-implementation";
 
@@ -95,59 +93,12 @@ function describeConnectorRequest(
   }
 }
 
-function createConnectorActionValidator(schema: Record<string, unknown>): Validator {
-  try {
-    // Catalog schemas without a dialect use 2020-12; incompatible explicit dialects fail closed.
-    const parsed = jsonSchema202012ValidationSchema.parse(schema) as Schema;
-    const references = dereference(parsed);
-    for (const subschema of Object.values(references)) {
-      if (typeof subschema === "boolean") {
-        continue;
-      }
-      for (const keyword of [
-        "minLength",
-        "maxLength",
-        "minItems",
-        "maxItems",
-        "minProperties",
-        "maxProperties",
-        "minContains",
-        "maxContains",
-      ] as const) {
-        const value = subschema[keyword];
-        if (value !== undefined && (!Number.isInteger(value) || value < 0)) {
-          throw new Error("Invalid schema cardinality");
-        }
-      }
-      for (const keyword of ["exclusiveMinimum", "exclusiveMaximum"] as const) {
-        if (typeof subschema[keyword] === "boolean") {
-          throw new Error("Unsupported legacy exclusive bound");
-        }
-      }
-      if (subschema.multipleOf !== undefined && subschema.multipleOf <= 0) {
-        throw new Error("Invalid schema multipleOf");
-      }
-      if (subschema.pattern !== undefined) {
-        new RegExp(subschema.pattern, "u");
-      }
-      for (const pattern of Object.keys(subschema.patternProperties ?? {})) {
-        new RegExp(pattern, "u");
-      }
-      // Unsupported reference/vocabulary semantics must not silently weaken a published contract.
-      if (
-        subschema.$dynamicRef !== undefined ||
-        subschema.$recursiveRef !== undefined ||
-        subschema.$vocabulary !== undefined ||
-        (subschema.__absolute_ref__ !== undefined &&
-          references[subschema.__absolute_ref__] === undefined)
-      ) {
-        throw new Error("Unsupported schema reference or vocabulary");
-      }
-    }
-    return new Validator(parsed, "2020-12");
-  } catch {
+function createConnectorActionValidator(schema: Record<string, unknown>) {
+  const validator = compileIntegrationActionSchema(schema);
+  if (!validator) {
     throw new Error("Connector integration action JSON Schema is invalid or unsupported.");
   }
+  return validator;
 }
 
 /** Projects user-owned OAuth requests and accounts without owning credentials or current-selection state. */
