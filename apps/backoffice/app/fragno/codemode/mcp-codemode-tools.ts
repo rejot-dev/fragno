@@ -1,7 +1,7 @@
 import type { ToolProvider } from "@fragno-dev/codemode/runtime-api";
 import { z } from "zod";
 
-import { isBackofficeForbiddenError } from "@/backoffice-runtime/kernel";
+import { BackofficeForbiddenError, isBackofficeForbiddenError } from "@/backoffice-runtime/kernel";
 import type {
   McpListServersOutput,
   McpRuntime,
@@ -238,9 +238,7 @@ const createMcpCodemodeRuntimeTools = ({
     ),
   );
 
-const isMcpNotConfiguredError = (error: unknown) => error instanceof NotConfiguredError;
-
-export const createMcpCodemodeProviders = async ({
+export async function createMcpCodemodeProviders({
   runtime,
   context,
   toolCalls,
@@ -248,21 +246,57 @@ export const createMcpCodemodeProviders = async ({
   runtime: McpRuntime;
   context: BackofficeToolContext;
   toolCalls?: BackofficeRuntimeToolCall[];
-}): Promise<ToolProvider[]> => {
+}): Promise<{ providers: ToolProvider[]; discoveryError: Error | null }> {
   let serverList: McpListServersOutput;
   try {
     serverList = await runtime.listServers();
   } catch (error) {
-    if (
-      isMcpNotConfiguredError(error) ||
-      (isBackofficeForbiddenError(error) && error.reason !== "authority-unavailable")
-    ) {
-      return [];
+    if (error instanceof NotConfiguredError) {
+      return { providers: [], discoveryError: error };
+    }
+    if (isBackofficeForbiddenError(error) && error.reason !== "authority-unavailable") {
+      return {
+        providers: [],
+        discoveryError: new BackofficeForbiddenError(
+          [
+            "Cannot discover generated MCP providers.",
+            "Required permission: mcp.servers.read.",
+            "Calling MCP tools also requires mcp.tools.call.",
+            `Reason: ${error.message}`,
+          ].join("\n"),
+          error.reason,
+        ),
+      };
     }
     throw error;
   }
 
   const servers = createMcpCodemodeServers(serverList.servers);
   const tools = createMcpCodemodeRuntimeTools({ runtime, servers });
-  return createBackofficeCodemodeProviders({ tools, context, toolCalls });
-};
+  return {
+    providers: createBackofficeCodemodeProviders({ tools, context, toolCalls }),
+    discoveryError: null,
+  };
+}
+
+export function explainMcpCodemodeError(discoveryError: Error | null, error: string): string;
+export function explainMcpCodemodeError(discoveryError: Error | null, error: unknown): unknown;
+export function explainMcpCodemodeError(discoveryError: Error | null, error: unknown): unknown {
+  const message =
+    typeof error === "string"
+      ? error
+      : error !== null && typeof error === "object" && "message" in error
+        ? error.message
+        : null;
+
+  // Discovery must not block non-MCP execution or replace unrelated script failures.
+  // Only explain a missing generated provider; no undiscovered server metadata is needed.
+  if (
+    discoveryError &&
+    typeof message === "string" &&
+    /^mcp_[a-zA-Z0-9_$]+ is not defined$/u.test(message)
+  ) {
+    return typeof error === "string" ? discoveryError.message : discoveryError;
+  }
+  return error;
+}

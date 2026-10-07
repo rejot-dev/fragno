@@ -1,4 +1,4 @@
-import { beforeAll, afterAll, expect, test, vi } from "vitest";
+import { beforeAll, afterAll, assert, expect, test, vi } from "vitest";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
   DurableObject: class {},
@@ -11,12 +11,21 @@ import { createCodemodeNodeExecutor } from "@fragno-dev/codemode/remote/codemode
 import { createCodemodeTestServer } from "@fragno-dev/codemode/testing/codemode-test-server";
 
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
+import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import { createNodeBackofficeRuntimeConfiguration } from "@/backoffice-runtime/node/node-runtime-env";
+import { CODEMODE_WORKFLOW } from "@/fragno/automation/engine/codemode-invocation";
+import { createWorkflowsRouteCaller } from "@/fragno/automation/route-callers";
 import {
   backofficeFiles,
   defineBackofficeScenario,
   runBackofficeScenario,
 } from "@/fragno/automation/scenario";
+import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
+import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
+import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
+
+import { runBackofficeCodemode } from "./execute";
+import { runBackofficeJavaScriptModule } from "./javascript-module-execute";
 
 let server: Awaited<ReturnType<typeof createCodemodeTestServer>>;
 beforeAll(async () => {
@@ -267,6 +276,146 @@ test("permanent guest failures bypass the real Node runner's configured retry po
         }),
         when.time.advance("5 seconds"),
         then.store.entry({ orgId: "org-1", key: "permanent-attempts", value: "1" }),
+      ],
+      options: { allowErroredWorkflows: true },
+    }),
+  );
+});
+
+test("Node explains denied MCP discovery for immediate, module, and scheduled execution", async () => {
+  const { runtimeEnv: env } = createNodeBackofficeRuntimeConfiguration({
+    bridgeUrl: server.url,
+    bridgeApiKey: server.apiKey,
+    env: {},
+  });
+  const scope = { kind: "org" as const, orgId: "org-1" };
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "MCP discovery denial survives the Worker bridge and durable history",
+      env,
+      files: backofficeFiles.workspaceStarter({
+        "automations/remote-mcp.workflow.js": `defineWorkflow({ name: "remote-mcp" }, async (_event, step) => {
+          return await step.do("call MCP", { retries: { limit: 1, delay: "1 second" } }, async () => await mcp_agensi.search({}));
+        });`,
+      }),
+      setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
+      steps: ({ when, then }) => [
+        when.codemode.run({
+          scope,
+          code: `async () => await router.create({
+            id: "remote-mcp",
+            name: "Remote MCP",
+            enabled: true,
+            trigger: { kind: "schedule", cadence: { kind: "once", at: new Date(Date.now() + 60_000).toISOString() } },
+            action: {
+              kind: "start_workflow",
+              authority: { kind: "organization-automation", grants: [] },
+              workflowScriptPath: "/workspace/automations/remote-mcp.workflow.js",
+              instanceIdTemplate: "remote-mcp-1",
+            },
+          })`,
+        }),
+        then.assert(
+          "immediate and module execution explain only missing MCP providers",
+          async (ctx) => {
+            const systemExecution = createBackofficeSystemExecution(scope);
+            const execution = {
+              ...systemExecution,
+              actors: {
+                ...systemExecution.actors,
+                principal: {
+                  scope: "internal" as const,
+                  type: "automation" as const,
+                  id: "automation-route:remote-mcp",
+                  role: "principal" as const,
+                },
+              },
+            };
+            const toolContext = createBackofficeToolContext(
+              createCodemodeRouteBackedRuntimeContext({
+                runtime: ctx.runtime.services,
+                kernel: new BackofficeKernel(ctx.runtime.services),
+                execution,
+                billingOrganizationId: null,
+              }),
+            );
+            assert(env.codemode);
+            const options = { env: env.codemode, toolContext, families: runtimeToolFamilies };
+            const denied = await runBackofficeCodemode({
+              ...options,
+              code: "async () => await mcp_agensi.search({})",
+            });
+            expect(denied.error).toContain("Required permission: mcp.servers.read.");
+            expect(denied.error).toContain("Calling MCP tools also requires mcp.tools.call.");
+            const unrelated = await runBackofficeCodemode({
+              ...options,
+              code: "async () => await missingHelper()",
+            });
+            assert(unrelated.error === "missingHelper is not defined");
+            const successful = await runBackofficeCodemode({ ...options, code: "async () => 42" });
+            expect(successful.error).toBeUndefined();
+            assert(successful.result === 42);
+
+            const moduleDenied = await runBackofficeJavaScriptModule({
+              ...options,
+              program: { kind: "source", code: "await mcp_agensi.search({});" },
+            });
+            expect(moduleDenied.error).toContain("Required permission: mcp.servers.read.");
+            const moduleUnrelated = await runBackofficeJavaScriptModule({
+              ...options,
+              program: { kind: "source", code: 'throw new Error("unrelated module failure");' },
+            });
+            assert(moduleUnrelated.error === "unrelated module failure");
+            const moduleSuccessful = await runBackofficeJavaScriptModule({
+              ...options,
+              program: { kind: "source", code: 'console.log("non-MCP module completed");' },
+            });
+            expect(moduleSuccessful.error).toBeUndefined();
+            expect(moduleSuccessful.logs).toContain("non-MCP module completed");
+          },
+        ),
+        when.time.advance("2 minutes"),
+        when.time.advance("2 seconds"),
+        then.workflow.instance({
+          remoteWorkflowName: "remote-mcp",
+          instanceId: "remote-mcp-1",
+          status: "errored",
+        }),
+        then.assert(
+          "the persisted step and instance explain the missing discovery grant",
+          async (ctx) => {
+            const workflows = createWorkflowsRouteCaller({
+              object: ctx.runtime.objects.automations.forOrg("org-1"),
+              context: {
+                execution: createBackofficeSystemExecution(scope),
+                propagationContext: null,
+              },
+            });
+            const pathParams = { workflowName: CODEMODE_WORKFLOW, instanceId: "remote-mcp-1" };
+            const instance = await workflows("GET", "/:workflowName/instances/:instanceId", {
+              pathParams,
+            });
+            assert(instance.type === "json");
+            expect(instance.data.details.error?.message).toContain(
+              "Required permission: mcp.servers.read.",
+            );
+            const history = await workflows("GET", "/:workflowName/instances/:instanceId/history", {
+              pathParams,
+            });
+            assert(history.type === "json");
+            expect(history.data.steps).toContainEqual(
+              expect.objectContaining({
+                name: "call MCP",
+                status: "errored",
+                attempts: 2,
+                error: expect.objectContaining({
+                  name: "BackofficeForbiddenError",
+                  message: expect.stringContaining("Required permission: mcp.servers.read."),
+                }),
+              }),
+            );
+          },
+        ),
       ],
       options: { allowErroredWorkflows: true },
     }),

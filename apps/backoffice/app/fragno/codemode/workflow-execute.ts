@@ -27,6 +27,7 @@ import {
   resolveBackofficeWorkerCompiler,
   type BackofficeCodemodeEnv,
 } from "./execute";
+import { explainMcpCodemodeError } from "./mcp-codemode-tools";
 import { createBackofficeCodemodeRemoteHost } from "./remote-execution-host";
 import { BackofficeWorkflowStepHost } from "./workflow-host";
 
@@ -77,8 +78,13 @@ async function executeBackofficeCodemodeWorkflow<TParams, TOutput>(
     dependencies,
     allowedHooks,
   } = input;
-  const stepTarget = new BackofficeWorkflowStepHost(remote, allowedHooks);
-  const providers = await createBackofficeCodemodeResolvedProviders({ families, toolContext });
+  const { providers, mcpDiscoveryError } = await createBackofficeCodemodeResolvedProviders({
+    families,
+    toolContext,
+  });
+  const stepTarget = new BackofficeWorkflowStepHost(remote, allowedHooks, (error) =>
+    explainMcpCodemodeError(mcpDiscoveryError, error),
+  );
   if ("remoteExecutor" in env) {
     if (globalOutbound) {
       throw new Error("CODEMODE_REMOTE_EGRESS_UNSUPPORTED");
@@ -106,6 +112,8 @@ async function executeBackofficeCodemodeWorkflow<TParams, TOutput>(
       }
       // Workflow output remains opaque until the runner's registered output schema validates it.
       return completion.value as TOutput;
+    } catch (error) {
+      throw explainMcpCodemodeError(mcpDiscoveryError, error);
     } finally {
       host.close();
     }
@@ -155,7 +163,7 @@ async function executeBackofficeCodemodeWorkflow<TParams, TOutput>(
     throw new RemoteWorkflowSuspendedError(suspension);
   }
   if (outcome.type === "failed") {
-    throw outcome.error;
+    throw explainMcpCodemodeError(mcpDiscoveryError, outcome.error);
   }
   if (!outcome.output.ok) {
     throw new RemoteWorkflowSuspendedError(outcome.output.suspension.reason);

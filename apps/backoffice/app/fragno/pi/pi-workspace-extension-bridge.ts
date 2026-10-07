@@ -135,10 +135,12 @@ export function createPiWorkspaceExtensionBridge(input: {
     }
     if (request.operation === "tool") {
       providers.push(
-        ...(await createBackofficeCodemodeResolvedProviders({
-          families: runtimeToolFamilies,
-          toolContext: createBackofficeToolContext(runtime),
-        })),
+        ...(
+          await createBackofficeCodemodeResolvedProviders({
+            families: runtimeToolFamilies,
+            toolContext: createBackofficeToolContext(runtime),
+          })
+        ).providers,
       );
     }
     // Every provider call rechecks authority and cancellation, not merely the initial guest admission.
