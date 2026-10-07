@@ -5,7 +5,10 @@ import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 
 import { createProjectConnectorFragmentClient } from "./client/vanilla";
 import { projectConnectorFragmentDefinition } from "./definition";
-import { projectConnectorConnectionSchema } from "./project-connector-contracts";
+import {
+  projectConnectorConnectionSchema,
+  projectConnectorNamedRequestSchema,
+} from "./project-connector-contracts";
 import { projectConnectorRoutes } from "./routes";
 import { projectConnectorSchema } from "./schema";
 import { startProjectConnectorTestGateway } from "./testing/project-connector-test-gateway";
@@ -13,7 +16,10 @@ import { startProjectConnectorTestGateway } from "./testing/project-connector-te
 const cleanup: (() => Promise<void>)[] = [];
 const returnUri = "http://localhost/connected";
 
-async function connectorScenario(catalogApiKey: string | null = "test-catalog-key") {
+async function connectorScenario(
+  catalogApiKey: string | null = "test-catalog-key",
+  schemaVersion: number = projectConnectorSchema.version,
+) {
   const gateway = await startProjectConnectorTestGateway();
   cleanup.push(gateway.close);
   const setup = await buildDatabaseFragmentsTest()
@@ -30,6 +36,7 @@ async function connectorScenario(catalogApiKey: string | null = "test-catalog-ke
           allowedReturnUrls: (url) => url.toString() === returnUri,
         })
         .withRoutes([projectConnectorRoutes]),
+      { migrateToVersion: schemaVersion },
     )
     .build();
   cleanup.push(() => setup.test.cleanup());
@@ -44,8 +51,9 @@ async function connectorScenario(catalogApiKey: string | null = "test-catalog-ke
     if (externalUserId) {
       headers.set("x-test-user", externalUserId);
     }
-    const response = await fragment.handler(
-      new Request(`http://localhost${fragment.mountRoute}${route}`, {
+    const currentFragment = setup.fragments.connector.fragment;
+    const response = await currentFragment.handler(
+      new Request(`http://localhost${currentFragment.mountRoute}${route}`, {
         method,
         headers,
         ...(method === "POST" ? { body: JSON.stringify(body) } : {}),
@@ -768,6 +776,398 @@ describe("Project Connector connection scenarios", () => {
     await scenario.bind("alice", "gmail-account");
     scenario.gateway.control.profileUserId = "bob";
     assert((await scenario.call("alice", "GET", "/accounts/gmail-account/profile")).status === 502);
+  });
+
+  test("additive migration preserves duplicate names, nullable names, and legacy ID-based operations", async () => {
+    const scenario = await connectorScenario("test-catalog-key", 2);
+    // Existing starts do not acquire a new dependency on provider discovery.
+    scenario.gateway.control.discoveryFailure = "not-found";
+    const first = await scenario.bind("alice", "legacy-work-1");
+    const second = await scenario.bind("alice", "legacy-work-2");
+    const unnamed = await scenario.bind("alice", "legacy-unnamed-account", "legacy");
+    const uow = scenario.db
+      .createUnitOfWork("legacy-nullable-names")
+      .forSchema(projectConnectorSchema);
+    uow.update("connectionRequest", unnamed.id, (b) => b.set({ connectionName: null }));
+    uow.update("connectedAccount", "legacy-unnamed-account", (b) =>
+      b.set({ connectionName: null }),
+    );
+    await uow.executeMutations();
+    const adapter = scenario.setup.test.adapter;
+    assert(adapter.prepareMigrations);
+    const { schema, namespace } = scenario.setup.fragments.connector.fragment.$internal.deps;
+    // The test adapter intentionally does not persist migration versions.
+    await adapter.prepareMigrations(schema, namespace).execute(2, schema.version, {
+      updateVersionInMigration: false,
+    });
+    await scenario.setup.test.recreateFragments();
+    const query = new URLSearchParams({
+      projectId: "project-1",
+      providerConfigId: "gmail-provider",
+      connectionName: "work",
+    }).toString();
+    for (const route of ["/connection-requests/by-name", "/accounts/by-name"]) {
+      expect(await scenario.call("alice", "GET", `${route}?${query}`)).toMatchObject({
+        status: 409,
+        data: { code: "CONNECTION_AMBIGUOUS" },
+      });
+      expect(await scenario.call("bob", "GET", `${route}?${query}`)).toEqual({
+        status: 200,
+        data: route === "/connection-requests/by-name" ? { request: null } : { account: null },
+      });
+    }
+    const accounts = await scenario.call("alice", "GET", "/accounts");
+    expect(accounts).toMatchObject({
+      status: 200,
+      data: {
+        accounts: expect.arrayContaining([
+          {
+            id: "legacy-work-1",
+            projectId: first.projectId,
+            providerConfigId: first.providerConfigId,
+            externalUserId: "alice",
+            service: "gmail",
+            connectionName: "work",
+          },
+          {
+            id: "legacy-work-2",
+            projectId: second.projectId,
+            providerConfigId: second.providerConfigId,
+            externalUserId: "alice",
+            service: "gmail",
+            connectionName: "work",
+          },
+          {
+            id: "legacy-unnamed-account",
+            projectId: unnamed.projectId,
+            providerConfigId: unnamed.providerConfigId,
+            externalUserId: "alice",
+            service: "gmail",
+            connectionName: null,
+          },
+        ]),
+        hasNextPage: false,
+      },
+    });
+    for (const request of [first, second, unnamed]) {
+      const refreshed = await scenario.call(
+        "alice",
+        "POST",
+        `/connection-requests/${request.id}/refresh`,
+      );
+      expect(refreshed).toMatchObject({
+        status: 200,
+        data: {
+          id: request.id,
+          connectionName: request.id === unnamed.id ? null : "work",
+          state: { status: "connected" },
+        },
+      });
+    }
+    expect(
+      await scenario.call("alice", "GET", "/accounts/legacy-unnamed-account/profile"),
+    ).toMatchObject({ status: 200, data: { connectedAccountId: "legacy-unnamed-account" } });
+    expect(
+      await scenario.call(
+        "alice",
+        "POST",
+        "/accounts/legacy-unnamed-account/actions/gmail.search_threads",
+        { input: { query: "is:unread" } },
+      ),
+    ).toMatchObject({ status: 200, data: { actionId: "gmail.search_threads" } });
+    assert(scenario.gateway.control.discoveryReads === 0);
+    expect(scenario.gateway.links).toHaveLength(3);
+  });
+
+  test("named setup reconstructs pending OAuth after recreation and updates named client stores", async () => {
+    const scenario = await connectorScenario();
+    const selector = {
+      projectId: "project-1",
+      providerConfigId: "gmail-provider",
+      connectionName: "work-mailbox",
+    };
+    const query = new URLSearchParams(selector).toString();
+    const client = createProjectConnectorFragmentClient({
+      baseUrl: "http://localhost",
+      fetcherConfig: {
+        type: "function",
+        useOnServer: true,
+        fetcher: async (input, init) => {
+          const request = new Request(input, init);
+          request.headers.set("x-test-user", "alice");
+          const response = await scenario.setup.fragments.connector.fragment.handler(request);
+          assert(response);
+          return response;
+        },
+      },
+    });
+    const requestStore = client.useNamedConnectionRequest({ query: selector });
+    const accountStore = client.useNamedAccount({ query: selector });
+    const unsubscribeRequest = requestStore.subscribe(() => undefined);
+    const unsubscribeAccount = accountStore.subscribe(() => undefined);
+    try {
+      await expect.poll(() => requestStore.get().data).toEqual({ request: null });
+      await expect.poll(() => accountStore.get().data).toEqual({ account: null });
+      const started = await client.connect().mutate({
+        body: {
+          providerConfigId: selector.providerConfigId,
+          connectionName: selector.connectionName,
+          returnUri,
+        },
+      });
+      assert(started);
+      await expect.poll(() => requestStore.get().data).toEqual({ request: started });
+      expect(scenario.gateway.links).toHaveLength(1);
+      await scenario.setup.test.recreateFragments();
+      const recovered = await scenario.call(
+        "alice",
+        "GET",
+        `/connection-requests/by-name?${query}`,
+      );
+      expect(recovered).toEqual({ status: 200, data: { request: started } });
+      assert(scenario.gateway.control.requestReads === 0);
+      expect(await scenario.call("alice", "GET", `/accounts/by-name?${query}`)).toEqual({
+        status: 200,
+        data: { account: null },
+      });
+      scenario.gateway.authorize(started.id, "work-account");
+      const { request } = projectConnectorNamedRequestSchema.parse(recovered.data);
+      assert(request);
+      const confirmed = await client
+        .refreshConnection()
+        .mutate({ path: { requestId: request.id } });
+      expect(confirmed?.state).toEqual({ status: "connected", connectedAccountId: "work-account" });
+      await expect.poll(() => requestStore.get().data?.request?.state).toEqual(confirmed?.state);
+      await expect
+        .poll(() => accountStore.get().data)
+        .toEqual({
+          account: {
+            id: "work-account",
+            ...selector,
+            externalUserId: "alice",
+            service: "gmail",
+          },
+        });
+      const next = await client.connect().mutate({
+        body: {
+          providerConfigId: selector.providerConfigId,
+          connectionName: selector.connectionName,
+          returnUri,
+        },
+      });
+      assert(next);
+      expect(next.id).not.toBe(started.id);
+      await expect.poll(() => requestStore.get().error?.code).toBe("CONNECTION_AMBIGUOUS");
+      scenario.gateway.authorize(next.id, "second-work-account");
+      await client.refreshConnection().mutate({ path: { requestId: next.id } });
+      await expect.poll(() => accountStore.get().error?.code).toBe("CONNECTION_AMBIGUOUS");
+      expect((await scenario.call("alice", "GET", "/accounts")).data).toMatchObject({
+        accounts: [{ id: "second-work-account" }, { id: "work-account" }],
+      });
+      expect(scenario.gateway.executions).toEqual([]);
+    } finally {
+      unsubscribeRequest();
+      unsubscribeAccount();
+    }
+  });
+
+  test("named selectors isolate owners, projects, providers, and connection names", async () => {
+    const scenario = await connectorScenario();
+    const [provider] = scenario.gateway.providerConfigs;
+    assert(provider);
+    scenario.gateway.providerConfigs.push({ ...provider, id: "gmail-personal" });
+    const selector = {
+      projectId: "project-1",
+      providerConfigId: provider.id,
+      connectionName: "work-mail",
+    };
+    const original = await scenario.call("alice", "POST", "/connection-requests", {
+      providerConfigId: selector.providerConfigId,
+      connectionName: selector.connectionName,
+      returnUri,
+    });
+    const started = projectConnectorConnectionSchema.parse(original.data);
+    const personal = await scenario.call("alice", "POST", "/connection-requests", {
+      providerConfigId: "gmail-personal",
+      connectionName: selector.connectionName,
+      returnUri,
+    });
+    const other = projectConnectorConnectionSchema.parse(personal.data);
+    expect(other.id).not.toBe(started.id);
+    for (const [name, id] of [
+      [provider.id, started.id],
+      ["gmail-personal", other.id],
+    ]) {
+      const query = new URLSearchParams({ ...selector, providerConfigId: name }).toString();
+      expect(
+        await scenario.call("alice", "GET", `/connection-requests/by-name?${query}`),
+      ).toMatchObject({
+        status: 200,
+        data: { request: { id } },
+      });
+    }
+    scenario.gateway.authorize(started.id, "work-account");
+    await scenario.call("alice", "POST", `/connection-requests/${started.id}/refresh`);
+    for (const selected of [
+      { ...selector, projectId: "other-project" },
+      { ...selector, providerConfigId: "other-provider" },
+      { ...selector, connectionName: "work_mail" },
+      { ...selector, connectionName: "work-mai" },
+    ]) {
+      const query = new URLSearchParams(selected).toString();
+      for (const route of ["/connection-requests/by-name", "/accounts/by-name"]) {
+        expect(await scenario.call("alice", "GET", `${route}?${query}`)).toEqual({
+          status: 200,
+          data: route === "/connection-requests/by-name" ? { request: null } : { account: null },
+        });
+      }
+    }
+    const query = new URLSearchParams(selector).toString();
+    for (const route of ["/connection-requests/by-name", "/accounts/by-name"]) {
+      expect(await scenario.call("bob", "GET", `${route}?${query}`)).toEqual({
+        status: 200,
+        data: route === "/connection-requests/by-name" ? { request: null } : { account: null },
+      });
+      expect(await scenario.call(null, "GET", `${route}?${query}`)).toMatchObject({
+        status: 401,
+        data: { code: "UNAUTHENTICATED" },
+      });
+      expect(await scenario.call("alice", "GET", `${route}?projectId=project-1`)).toMatchObject({
+        status: 400,
+        data: { code: "INVALID_SELECTOR" },
+      });
+      expect(
+        await scenario.call(
+          "alice",
+          "GET",
+          `${route}?${new URLSearchParams({ ...selector, connectionName: "" })}`,
+        ),
+      ).toMatchObject({ status: 400, data: { code: "INVALID_SELECTOR" } });
+    }
+    expect(scenario.gateway.executions).toEqual([]);
+  });
+
+  test("fresh starts preserve pending and terminal request IDs instead of choosing a current attempt", async () => {
+    const scenario = await connectorScenario();
+    const query = new URLSearchParams({
+      projectId: "project-1",
+      providerConfigId: "gmail-provider",
+      connectionName: "work",
+    }).toString();
+    const terminal = [];
+    for (const status of ["failed", "expired"] as const) {
+      const started = await scenario.connect("alice");
+      const remote = scenario.gateway.requests.get(started.id);
+      assert(remote);
+      remote.status = status;
+      remote.errorCode = status === "failed" ? "authorization_failed" : null;
+      remote.errorMessage = status === "failed" ? "Consent was rejected" : null;
+      expect(
+        await scenario.call("alice", "POST", `/connection-requests/${started.id}/refresh`),
+      ).toMatchObject({ status: 200, data: { state: { status } } });
+      terminal.push({ id: started.id, status });
+    }
+    const pending = await scenario.connect("alice");
+    const next = await scenario.connect("alice");
+    expect(next.id).not.toBe(pending.id);
+    expect(
+      await scenario.call("alice", "GET", `/connection-requests/by-name?${query}`),
+    ).toMatchObject({ status: 409, data: { code: "CONNECTION_AMBIGUOUS" } });
+    await scenario.setup.test.recreateFragments();
+    for (const request of [
+      ...terminal,
+      { id: pending.id, status: "initiated" },
+      { id: next.id, status: "initiated" },
+    ]) {
+      expect(
+        await scenario.call("alice", "POST", `/connection-requests/${request.id}/refresh`),
+      ).toMatchObject({ status: 200, data: { id: request.id, state: { status: request.status } } });
+    }
+    expect(await scenario.call("alice", "GET", `/accounts/by-name?${query}`)).toEqual({
+      status: 200,
+      data: { account: null },
+    });
+    const [requests] = await scenario.db
+      .createUnitOfWork("preserved-oauth-attempts")
+      .forSchema(projectConnectorSchema)
+      .find("connectionRequest", (b) => b.whereIndex("primary"))
+      .executeRetrieve();
+    expect(requests).toHaveLength(4);
+    expect(scenario.gateway.links).toHaveLength(4);
+  });
+
+  test("concurrent starts retain distinct attempts and same-name accounts remain usable by ID", async () => {
+    const scenario = await connectorScenario();
+    const [first, second] = await Promise.all([
+      scenario.connect("alice"),
+      scenario.connect("alice"),
+    ]);
+    expect(second.id).not.toBe(first.id);
+    const query = new URLSearchParams({
+      projectId: first.projectId,
+      providerConfigId: first.providerConfigId,
+      connectionName: "work",
+    }).toString();
+    const reads = scenario.gateway.control.requestReads;
+    expect(
+      await scenario.call("alice", "GET", `/connection-requests/by-name?${query}`),
+    ).toMatchObject({ status: 409, data: { code: "CONNECTION_AMBIGUOUS" } });
+    expect(scenario.gateway.control.requestReads).toBe(reads);
+    scenario.gateway.authorize(first.id, "first-account");
+    scenario.gateway.authorize(second.id, "second-account");
+    for (const request of [first, second]) {
+      expect(
+        await scenario.call("alice", "POST", `/connection-requests/${request.id}/refresh`),
+      ).toMatchObject({ status: 200, data: { state: { status: "connected" } } });
+    }
+    const accounts = await scenario.call("alice", "GET", "/accounts");
+    expect(accounts.data).toMatchObject({
+      accounts: [{ id: "first-account" }, { id: "second-account" }],
+    });
+    expect(await scenario.call("alice", "GET", `/accounts/by-name?${query}`)).toMatchObject({
+      status: 409,
+      data: { code: "CONNECTION_AMBIGUOUS" },
+    });
+    for (const accountId of ["first-account", "second-account"]) {
+      expect(await scenario.call("alice", "GET", `/accounts/${accountId}/profile`)).toMatchObject({
+        status: 200,
+        data: { connectedAccountId: accountId },
+      });
+      expect(
+        await scenario.call(
+          "alice",
+          "POST",
+          `/accounts/${accountId}/actions/gmail.search_threads`,
+          { input: {} },
+        ),
+      ).toMatchObject({ status: 200, data: { actionId: "gmail.search_threads" } });
+    }
+    expect(scenario.gateway.executions.map((execution) => execution.connectedAccountId)).toEqual([
+      "first-account",
+      "second-account",
+    ]);
+    expect(scenario.gateway.links).toHaveLength(2);
+    const [saved] = await scenario.db
+      .createUnitOfWork("concurrent-oauth-attempts")
+      .forSchema(projectConnectorSchema)
+      .find("connectionRequest", (b) => b.whereIndex("primary"))
+      .executeRetrieve();
+    expect(saved).toHaveLength(2);
+  });
+
+  test("a conflicting incoming account ID cannot steal another user's named binding", async () => {
+    const scenario = await connectorScenario();
+    await scenario.bind("bob", "bob-account");
+    const started = await scenario.connect("alice");
+    scenario.gateway.authorize(started.id, "bob-account");
+    expect(
+      await scenario.call("alice", "POST", `/connection-requests/${started.id}/refresh`),
+    ).toMatchObject({ status: 500, data: { code: "INTERNAL_SERVER_ERROR" } });
+    expect((await scenario.call("bob", "GET", "/accounts")).data).toMatchObject({
+      accounts: [{ id: "bob-account", externalUserId: "bob" }],
+    });
+    expect((await scenario.call("alice", "GET", "/accounts")).data).toMatchObject({ accounts: [] });
+    expect((await scenario.storedRequest(started.id)).state).toEqual({ status: "initiated" });
   });
 
   test("reauthorization updates one binding without duplicating the connected account", async () => {

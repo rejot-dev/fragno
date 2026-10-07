@@ -33,5 +33,21 @@ export const projectConnectorSchema = schema("project-connector-fragment", (s) =
         .addColumn("service", column("string"))
         .addColumn("connectionName", column("string").nullable())
         .createIndex("idx_account_external_user_id", ["externalUserId", "id"]),
+    )
+    .alterTable("connectionRequest", (t) =>
+      t.createIndex("idx_request_named_connection", [
+        "externalUserId",
+        "projectId",
+        "providerConfigId",
+        "connectionName",
+      ]),
+    )
+    .alterTable("connectedAccount", (t) =>
+      t.createIndex("idx_account_named_connection", [
+        "externalUserId",
+        "projectId",
+        "providerConfigId",
+        "connectionName",
+      ]),
     ),
 );
