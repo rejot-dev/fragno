@@ -163,7 +163,7 @@ test("Codemode resolves deterministic Reson8 addresses across setup, requests, r
             scope,
             code: `async () => {
           const removed = [];
-          for (const name of ["connect", "continueSetup", "disconnect"]) {
+          for (const name of ["connect", "continueSetup"]) {
             try { await integrations[name]({}); } catch (error) { removed.push(error.message); }
           }
           return { services: await integrations.discover(), page: await integrations.list({ cursor: null }), removed };
@@ -172,6 +172,7 @@ test("Codemode resolves deterministic Reson8 addresses across setup, requests, r
           });
           expect(run.result).toMatchObject({
             services: [
+              { id: "api", setupTargets: [], availability: { status: "available" } },
               {
                 id: "reson8",
                 setupTargets: [{ kind: "connection", connectionId }],
@@ -180,7 +181,6 @@ test("Codemode resolves deterministic Reson8 addresses across setup, requests, r
             ],
             page: { connections: [], cursor: null },
             removed: [
-              expect.stringContaining("Unknown tool"),
               expect.stringContaining("Unknown tool"),
               expect.stringContaining("Unknown tool"),
             ],
@@ -309,29 +309,64 @@ test("Codemode resolves deterministic Reson8 addresses across setup, requests, r
         },
       ),
       then.assert(
-        "removing source configuration changes listing, setup, and execution without invalidating the slot address",
+        "reconfiguration replaces the stored key, which verification then observes",
         async (ctx) => {
-          await ctx.runtime.objects.reson8.forOrg(scope.orgId).commands.resetAdminConfig();
           const run = await ctx.runCodemode({
             scope,
             code: `async () => {
           const target = { connectionId: "backoffice#reson8" };
+          const check = await integrations.reconfigure({ ...target, kind: "check" });
+          const rotated = await integrations.reconfigure({ ...target, kind: "input", input: { apiKey: "rotated-wrong-key" } });
+          const rejected = await integrations.verify(target);
+          const restored = await integrations.reconfigure({ ...target, kind: "input", input: { apiKey: ${JSON.stringify(apiKey)} } });
+          return { check, rotated, rejected, restored, accepted: await integrations.verify(target) };
+        }`,
+            assertToolCalls: ["integrations.reconfigure", "integrations.verify"],
+          });
+          expect(run.result).toMatchObject({
+            check: { status: "needs-input", connectionId, secretFields: ["apiKey"] },
+            rotated: { status: "ready", connectionId },
+            rejected: { checks: [{ status: "failed", message: expect.stringContaining("401") }] },
+            restored: { status: "ready", connectionId },
+            accepted: { checks: [{ status: "passed" }] },
+          });
+          expect(JSON.stringify(run.result)).not.toContain("rotated-wrong-key");
+          expect(provider.reads).toHaveLength(2);
+        },
+      ),
+      then.assert(
+        "disconnecting changes listing, setup, and execution without invalidating the slot address",
+        async (ctx) => {
+          const run = await ctx.runCodemode({
+            scope,
+            code: `async () => {
+          const target = { connectionId: "backoffice#reson8" };
+          const disconnected = await integrations.disconnect({ ...target, confirm: target.connectionId });
+          const repeated = await integrations.disconnect({ ...target, confirm: target.connectionId });
+          const reconfigure = await integrations.reconfigure({ ...target, kind: "check" });
           const page = await integrations.list({ cursor: null });
           const inspected = await integrations.get(target);
           const setup = await integrations.setup({ ...target, kind: "check" });
           try { await integrations.execute({ ...target, actionId: "prerecorded.transcribe", input: { audio: { bytes: [6] }, query: null } }); }
-          catch (error) { return { page, inspected, setup, executionError: error.message }; }
+          catch (error) { return { disconnected, repeated, reconfigure, page, inspected, setup, executionError: error.message }; }
           throw new Error("Unconfigured transcription unexpectedly succeeded");
         }`,
+            assertToolCalls: ["integrations.disconnect", "integrations.reconfigure"],
           });
           expect(run.result).toMatchObject({
+            disconnected: { connectionId, status: "disconnected" },
+            repeated: { connectionId, status: "not-configured" },
+            reconfigure: { status: "blocked", reason: expect.stringContaining("Run setup") },
             page: { connections: [], cursor: null },
             inspected: { configuration: { status: "missing" } },
             setup: { status: "needs-input", connectionId },
             executionError: expect.stringContaining("not configured"),
           });
+          expect(
+            await ctx.runtime.objects.reson8.forOrg(scope.orgId).commands.getAdminConfig(),
+          ).toEqual({ configured: false });
           expect(provider.transcriptions).toHaveLength(2);
-          expect(provider.reads).toHaveLength(1);
+          expect(provider.reads).toHaveLength(2);
         },
       ),
     ],
@@ -346,7 +381,7 @@ test("terminal commands use scalar connection IDs without setup handles or persi
     ],
     steps: ({ then }) => [
       then.assert(
-        "unconfigured discovery and setup work and all seven commands have help",
+        "unconfigured discovery and setup work and every command has help",
         async (ctx) => {
           const bash = createIntegrationScenarioTerminal(
             ctx.runtime.services,
@@ -357,7 +392,8 @@ test("terminal commands use scalar connection IDs without setup handles or persi
           expect(discovery.exitCode, discovery.stderr).toBe(0);
           expect(discovery.stdout).toContain("\n  {\n");
           expect(JSON.parse(discovery.stdout)).toMatchObject([
-            { setupTargets: [{ connectionId }] },
+            { id: "api", setupTargets: [] },
+            { id: "reson8", setupTargets: [{ connectionId }] },
           ]);
           const page = await bash.exec("integrations.list --json");
           expect(page.exitCode, page.stderr).toBe(0);
@@ -367,6 +403,8 @@ test("terminal commands use scalar connection IDs without setup handles or persi
             "integrations.list",
             "integrations.get",
             "integrations.setup",
+            "integrations.reconfigure",
+            "integrations.disconnect",
             "integrations.actions",
             "integrations.execute",
             "integrations.verify",
@@ -688,7 +726,8 @@ test("connection IDs cannot select an owner or replace umbrella and service auth
           const userHost = host.createBackofficeScopedContext({ kind: "user", userId: "member" });
           assert(userHost.integrations);
           expect(await userHost.integrations.runtime.discover()).toMatchObject([
-            { availability: { status: "unavailable" } },
+            { id: "api", availability: { status: "available" } },
+            { id: "reson8", availability: { status: "unavailable" } },
           ]);
           expect(await userHost.integrations.runtime.list({ cursor: null })).toEqual({
             connections: [],

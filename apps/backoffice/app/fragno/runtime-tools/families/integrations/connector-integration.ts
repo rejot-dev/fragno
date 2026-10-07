@@ -405,6 +405,15 @@ export function createConnectorIntegration({
         return describeConnectorRequest(connectionId, started.data);
       },
     },
+    reconfigure: {
+      kind: "unsupported",
+      reason:
+        "Connector accounts are not replaced in place. Set up a fresh connection name to consent again; the gateway owns credentials.",
+    },
+    disconnect: {
+      kind: "unsupported",
+      reason: "The Connector source has no account removal operation.",
+    },
     async discover(context) {
       if (context.execution.scope.kind !== "user" || !runtime.config.bindings.projectConnector) {
         return [];

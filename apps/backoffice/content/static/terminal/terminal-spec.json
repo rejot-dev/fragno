@@ -1511,6 +1511,79 @@
     ]
   },
   {
+    "command": "integrations.reconfigure",
+    "summary": "Read replacement requirements, or submit a replacement for an existing connection's configuration or credentials.",
+    "options": [
+      {
+        "name": "connection-id",
+        "required": true,
+        "valueRequired": true,
+        "description": "Deterministic connection address in the selected scope, such as backoffice#reson8"
+      },
+      {
+        "name": "input-json",
+        "valueRequired": true,
+        "description": "Direct JSON replacement input, including null; omit to read replacement requirements"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "integrations.disconnect",
+    "summary": "Remove a connection's configuration and credentials; the address remains available for setup.",
+    "options": [
+      {
+        "name": "connection-id",
+        "required": true,
+        "valueRequired": true,
+        "description": "Deterministic connection address in the selected scope, such as backoffice#reson8"
+      },
+      {
+        "name": "confirm",
+        "required": true,
+        "valueRequired": true,
+        "description": "Repeat the connection ID to confirm removal"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
     "command": "integrations.actions",
     "summary": "Discover a connection's authoritative action contracts without executing them.",
     "options": [

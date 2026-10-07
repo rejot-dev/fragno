@@ -6,8 +6,12 @@ type IntegrationsCodemodeProvider = {
   list(input: IntegrationsListInput): Promise<IntegrationsListOutput>;
   /** Inspect source-owned connection configuration and available evidence without performing a live health check. The connection ID resolves only within the selected scope. */
   get(input: IntegrationsGetInput): Promise<IntegrationsGetOutput>;
-  /** Read current requirements or submit input for a deterministic connection address. Setup is source-owned; this operation retains no attempt state or independent binding. Already configured Reson8 reuses its key without replacing it. */
+  /** Read current requirements or submit input for a deterministic connection address. Setup is source-owned; this operation retains no attempt state or independent binding. Ready connections keep their configuration and credentials; reconfigure replaces them. */
   setup(input: IntegrationsSetupInput): Promise<IntegrationsSetupOutput>;
+  /** Read replacement requirements or submit replacement configuration or credentials for an existing connection. Submission replaces source-owned state; continue with setup checks until ready. A missing connection needs setup. */
+  reconfigure(input: IntegrationsReconfigureInput): Promise<IntegrationsReconfigureOutput>;
+  /** Remove a connection's source-owned configuration and credentials in the selected scope. The address stays valid for a later setup. Requires confirm to repeat the connection ID. */
+  disconnect(input: IntegrationsDisconnectInput): Promise<IntegrationsDisconnectOutput>;
   /** Discover the selected connection's supported actions and authoritative input/output contracts without executing them. Never infer schemas from action IDs. */
   actions(input: IntegrationsActionsInput): Promise<IntegrationsActionsOutput>;
   /** Execute an explicit connection action with JSON input/output, validated against its live contracts and service permissions. Binary inputs are schema-declared byte arrays; results retain the action's domain and asynchronous semantics. */
@@ -147,6 +151,11 @@ type IntegrationJsonSchema =
   | {
       [key: string]: unknown;
     };
+type IntegrationDisconnectResult = {
+  connectionId: IntegrationConnectionId;
+  /** Not-configured means nothing was stored at this address in the selected scope. */
+  status: "disconnected" | "not-configured";
+};
 type IntegrationAction = {
   /** Action identity returned by actions for this connection. */
   id: string;
@@ -183,6 +192,25 @@ type IntegrationsSetupInput =
       connectionId: IntegrationConnectionId;
     };
 type IntegrationsSetupOutput = IntegrationSetupProgress;
+type IntegrationsReconfigureInput =
+  | {
+      /** Read authoritative setup state; user confirmation is not proof of consent. */
+      kind: "check";
+      connectionId: IntegrationConnectionId;
+    }
+  | {
+      kind: "input";
+      /** Direct JSON setup input validated against the source's current requirements. Null is a submitted value, never a check sentinel. */
+      input: JsonValue;
+      connectionId: IntegrationConnectionId;
+    };
+type IntegrationsReconfigureOutput = IntegrationSetupProgress;
+type IntegrationsDisconnectInput = {
+  connectionId: IntegrationConnectionId;
+  /** Repeat connectionId to confirm removing its source-owned configuration and credentials. */
+  confirm: IntegrationConnectionId;
+};
+type IntegrationsDisconnectOutput = IntegrationDisconnectResult;
 type IntegrationsActionsInput = {
   connectionId: IntegrationConnectionId;
 };

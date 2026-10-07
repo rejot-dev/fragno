@@ -6,6 +6,7 @@ import type {
   IntegrationAction,
   IntegrationConnection,
   IntegrationConnectionPage,
+  IntegrationDisconnectResult,
   IntegrationInspection,
   IntegrationOverview,
   IntegrationSetupProgress,
@@ -44,21 +45,30 @@ export interface ResolvedIntegrationConnection {
   verify(): Promise<IntegrationInspection>;
 }
 
-/** Setup support is explicit; any private state or validation schemas stay with the source that owns them. */
-export type IntegrationSetupCapability =
+/** Lifecycle support is explicit; private state and validation schemas stay with the owning source. */
+export type IntegrationCapability<TRun> =
   | { kind: "unsupported"; reason: string }
-  | {
-      kind: "supported";
-      run(
-        context: IntegrationContext,
-        input: { localId: string; operation: IntegrationSetupOperation },
-      ): Promise<IntegrationSetupProgress>;
-    };
+  | { kind: "supported"; run: TRun };
+
+type IntegrationProgressRun = (
+  context: IntegrationContext,
+  input: { localId: string; operation: IntegrationSetupOperation },
+) => Promise<IntegrationSetupProgress>;
 
 /** A scoped connection source can expose several services without allocating facade-owned bindings. */
 export interface IntegrationImplementation {
   readonly connectionIds: readonly IntegrationConnectionIdClaim[];
-  readonly setup: IntegrationSetupCapability;
+  /** Brings an address to ready without replacing stored configuration or credentials. */
+  readonly setup: IntegrationCapability<IntegrationProgressRun>;
+  /** Replaces an existing connection's configuration or credentials; a missing one needs setup. */
+  readonly reconfigure: IntegrationCapability<IntegrationProgressRun>;
+  /** Removes source-owned configuration and credentials; the address remains valid for setup. */
+  readonly disconnect: IntegrationCapability<
+    (
+      context: IntegrationContext,
+      input: { localId: string },
+    ) => Promise<IntegrationDisconnectResult>
+  >;
 
   discover(context: IntegrationContext): Promise<readonly IntegrationOverview[]>;
   list(context: IntegrationContext, cursor: string | null): Promise<IntegrationConnectionPage>;

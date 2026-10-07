@@ -140,6 +140,23 @@ export function createReson8Integration({
     });
   }
 
+  /** The native command replaces any stored key, so callers decide whether replacing is allowed. */
+  async function saveApiKey(context: IntegrationContext, input: unknown) {
+    const values = reson8SetupInputSchema.parse(input);
+    if (context.execution.scope.kind !== "org") {
+      throw new BackofficeUnavailableError("Reson8 integration requires an organization scope.");
+    }
+    const orgId = context.execution.scope.orgId;
+    const object = getReson8Object(context);
+    const configured = await context.kernel.invoke({
+      execution: context.execution,
+      operation: BACKOFFICE_PERMISSION.connections.manage,
+      resource: { capabilityId: "reson8" },
+      execute: () => object.commands.setAdminConfig(values, orgId),
+    });
+    return configured.configured;
+  }
+
   return {
     connectionIds: [{ kind: "exact", connectionId: reson8ConnectionIdentity.connectionId }],
     setup: {
@@ -158,16 +175,57 @@ export function createReson8Integration({
         if (configuration.configured || operation.kind === "check") {
           return describeReson8Setup(configuration.configured);
         }
-        const input = reson8SetupInputSchema.parse(operation.input);
-        const scope = context.execution.scope;
+        return describeReson8Setup(await saveApiKey(context, operation.input));
+      },
+    },
+    reconfigure: {
+      kind: "supported",
+      async run(context, { localId, operation }) {
+        assertReson8LocalId(localId);
+        const connectionId = reson8ConnectionIdentity.connectionId;
+        if (context.execution.scope.kind !== "org" || !runtime.config.bindings.reson8) {
+          return {
+            status: "blocked",
+            connectionId,
+            reason: "Reson8 requires an available organization-owned configuration store.",
+          };
+        }
+        if (!(await readConfiguration(context)).configured) {
+          return {
+            status: "blocked",
+            connectionId,
+            reason: "Reson8 is not configured for this organization. Run setup instead.",
+          };
+        }
+        if (operation.kind === "check") {
+          return {
+            status: "needs-input",
+            connectionId,
+            instructions:
+              "Submit a replacement Reson8 API key. It replaces the organization's stored key immediately.",
+            inputSchema: z.toJSONSchema(reson8SetupInputSchema, { io: "input" }),
+            secretFields: ["apiKey"],
+          };
+        }
+        return describeReson8Setup(await saveApiKey(context, operation.input));
+      },
+    },
+    disconnect: {
+      kind: "supported",
+      async run(context, { localId }) {
+        assertReson8LocalId(localId);
+        const connectionId = reson8ConnectionIdentity.connectionId;
+        if (!(await readConfiguration(context)).configured) {
+          return { connectionId, status: "not-configured" };
+        }
         const object = getReson8Object(context);
-        const configured = await context.kernel.invoke({
+        await context.kernel.invoke({
           execution: context.execution,
           operation: BACKOFFICE_PERMISSION.connections.manage,
           resource: { capabilityId: "reson8" },
-          execute: () => object.commands.setAdminConfig(input, scope.orgId),
+          execute: () => object.commands.resetAdminConfig(),
         });
-        return describeReson8Setup(configured.configured);
+        return { connectionId, status: "disconnected" };
       },
     },
     async discover(context) {

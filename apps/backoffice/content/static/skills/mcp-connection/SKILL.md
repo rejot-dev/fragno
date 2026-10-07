@@ -2,16 +2,16 @@
 name: mcp-connection
 description: >
   Register and use low-level MCP connections with mcp.*. Use when the user requests MCP or supplies
-  an MCP endpoint, and for server authentication, tool discovery, and MCP tool calls. Named services
-  without a native integration default to Open Connector connections.
+  an MCP endpoint, and for server authentication, tool discovery, and MCP tool calls. Connecting a
+  named service starts with configuring-integrations.
 ---
 
 # Low-Level MCP Connections
 
 Read `/static/codemode/providers/mcp.d.ts` before executing MCP calls. This skill registers remote
 MCP endpoints and their authentication with `mcp.*`. These low-level connections belong to
-`mcp.listServers()`, separately from native integration configuration, low-level API connections,
-and Open Connector connections.
+`mcp.listServers()`, separately from the connections `integrations.*` manages: native services, Open
+Connector accounts, and direct API connections.
 
 Resolve the provider's streamable HTTP MCP endpoint from available context or provider documentation
 before registration; a service name alone does not establish an endpoint.

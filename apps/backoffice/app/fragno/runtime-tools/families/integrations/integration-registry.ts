@@ -7,12 +7,23 @@ import {
   type IntegrationConnectionPage,
   type IntegrationSetupInput,
 } from "./integration-contracts";
-import type { IntegrationContext, IntegrationImplementation } from "./integration-implementation";
+import type {
+  IntegrationCapability,
+  IntegrationContext,
+  IntegrationImplementation,
+} from "./integration-implementation";
 
 const integrationListingCursorSchema = z.strictObject({
   source: z.string().min(1),
   cursor: z.string().nullable(),
 });
+
+function requireCapability<TRun>(capability: IntegrationCapability<TRun>) {
+  if (capability.kind === "unsupported") {
+    throw new BackofficeUnavailableError(capability.reason);
+  }
+  return capability;
+}
 
 /** Registration reserves code-owned addresses, not credentials, connections, or retained runtime handles. */
 export function createIntegrationRegistry(implementations: readonly IntegrationImplementation[]) {
@@ -78,6 +89,23 @@ export function createIntegrationRegistry(implementations: readonly IntegrationI
     }
   }
 
+  async function runProgressOperation(
+    operationName: "setup" | "reconfigure",
+    context: IntegrationContext,
+    input: IntegrationSetupInput,
+  ) {
+    const { connectionId, ...operation } = input;
+    const { implementation, localId } = resolveConnectionOwner(connectionId);
+    const capability = requireCapability(implementation[operationName]);
+    const progress = await capability.run(context, { localId, operation });
+    if (progress.connectionId !== connectionId) {
+      throw new Error(
+        `Integrations source returned ${operationName} for a different connection ID.`,
+      );
+    }
+    return progress;
+  }
+
   return {
     async discover(context: IntegrationContext) {
       return (
@@ -134,20 +162,20 @@ export function createIntegrationRegistry(implementations: readonly IntegrationI
       }
       return connection;
     },
-    async setup(context: IntegrationContext, input: IntegrationSetupInput) {
-      const { connectionId, ...operation } = input;
+    setup(context: IntegrationContext, input: IntegrationSetupInput) {
+      return runProgressOperation("setup", context, input);
+    },
+    reconfigure(context: IntegrationContext, input: IntegrationSetupInput) {
+      return runProgressOperation("reconfigure", context, input);
+    },
+    async disconnect(context: IntegrationContext, connectionId: string) {
       const { implementation, localId } = resolveConnectionOwner(connectionId);
-      if (implementation.setup.kind === "unsupported") {
-        throw new BackofficeUnavailableError(implementation.setup.reason);
+      const capability = requireCapability(implementation.disconnect);
+      const result = await capability.run(context, { localId });
+      if (result.connectionId !== connectionId) {
+        throw new Error("Integrations source disconnected a different connection ID.");
       }
-      const progress = await implementation.setup.run(context, {
-        localId,
-        operation,
-      });
-      if (progress.connectionId !== connectionId) {
-        throw new Error("Integrations source returned setup for a different connection ID.");
-      }
-      return progress;
+      return result;
     },
   };
 }

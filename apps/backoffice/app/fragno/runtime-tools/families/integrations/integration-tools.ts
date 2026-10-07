@@ -19,6 +19,8 @@ import {
   integrationActionSchema,
   integrationConnectionInputSchema,
   integrationConnectionSchema,
+  integrationDisconnectInputSchema,
+  integrationDisconnectResultSchema,
   integrationExecuteInputSchema,
   integrationListInputSchema,
   integrationListOutputSchema,
@@ -40,6 +42,12 @@ export type IntegrationsRuntime = {
   setup(
     input: z.output<typeof integrationSetupInputSchema>,
   ): Promise<z.output<typeof integrationSetupProgressSchema>>;
+  reconfigure(
+    input: z.output<typeof integrationSetupInputSchema>,
+  ): Promise<z.output<typeof integrationSetupProgressSchema>>;
+  disconnect(
+    input: z.output<typeof integrationDisconnectInputSchema>,
+  ): Promise<z.output<typeof integrationDisconnectResultSchema>>;
   actions(
     input: z.output<typeof integrationConnectionInputSchema>,
   ): Promise<z.output<typeof integrationActionSchema>[]>;
@@ -68,12 +76,20 @@ const integrationConnectionOption = {
 const integrationConnectionCliFields = {
   connectionId: { required: true, read: readOpaqueStringOption },
 } as const;
-const parseIntegrationSetupFields = defineCliArgsParser<
-  z.input<typeof integrationConnectionInputSchema> & { operation: IntegrationSetupOperation }
->("integrations.setup", {
-  ...integrationConnectionCliFields,
-  operation: { option: "input-json", read: readIntegrationSetupOperation },
-});
+function parseIntegrationProgressFields(
+  command: "integrations.setup" | "integrations.reconfigure",
+) {
+  const parse = defineCliArgsParser<
+    z.input<typeof integrationConnectionInputSchema> & { operation: IntegrationSetupOperation }
+  >(command, {
+    ...integrationConnectionCliFields,
+    operation: { option: "input-json", read: readIntegrationSetupOperation },
+  });
+  return (args: string[]) => {
+    const { connectionId, operation } = parse(args);
+    return { connectionId, ...operation };
+  };
+}
 
 function readIntegrationJsonInput(
   parsed: ParsedCliTokens,
@@ -125,7 +141,8 @@ export const integrationsToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "integrations",
   permissions: {
     read: "Discover services and actions, and inspect scoped integration state.",
-    manage: "Set up and verify scoped integrations using their existing service-owned stores.",
+    manage:
+      "Set up, reconfigure, disconnect, and verify scoped integrations using their existing service-owned stores.",
     execute: "Dispatch scoped integration actions, subject to their own authorization checks.",
   },
   isAvailable: (context: IntegrationsToolContext) => !!context.runtimes.integrations,
@@ -221,7 +238,7 @@ export const integrationsToolFamily = defineBackofficeRuntimeToolFamily({
       namespace: "integrations",
       name: "setup",
       description:
-        "Read current requirements or submit input for a deterministic connection address. Setup is source-owned; this operation retains no attempt state or independent binding. Already configured Reson8 reuses its key without replacing it.",
+        "Read current requirements or submit input for a deterministic connection address. Setup is source-owned; this operation retains no attempt state or independent binding. Ready connections keep their configuration and credentials; reconfigure replaces them.",
       requiredPermissions: ["manage"],
       inputSchema: integrationSetupInputSchema,
       outputSchema: integrationSetupProgressSchema,
@@ -248,10 +265,86 @@ export const integrationsToolFamily = defineBackofficeRuntimeToolFamily({
               "integrations.setup --connection-id 'backoffice#reson8' --input-json '{\"apiKey\":\"...\"}' --format json",
             ],
           },
-          parse: (args) => {
-            const { connectionId, operation } = parseIntegrationSetupFields(args);
-            return { connectionId, ...operation };
+          parse: parseIntegrationProgressFields("integrations.setup"),
+          format: formatIntegrationCommandOutput,
+        },
+      },
+    }),
+    defineBackofficeRuntimeTool({
+      id: "integrations.reconfigure",
+      namespace: "integrations",
+      name: "reconfigure",
+      description:
+        "Read replacement requirements or submit replacement configuration or credentials for an existing connection. Submission replaces source-owned state; continue with setup checks until ready. A missing connection needs setup.",
+      requiredPermissions: ["manage"],
+      inputSchema: integrationSetupInputSchema,
+      outputSchema: integrationSetupProgressSchema,
+      getResource: (input) => ({ connectionId: input.connectionId }),
+      execute: async (input, context: IntegrationsToolContext) =>
+        await requireIntegrationsRuntime(context).reconfigure(input),
+      adapters: {
+        bash: {
+          command: "integrations.reconfigure",
+          help: {
+            summary:
+              "Read replacement requirements, or submit a replacement for an existing connection's configuration or credentials.",
+            options: [
+              integrationConnectionOption,
+              {
+                name: "input-json",
+                valueRequired: true,
+                description:
+                  "Direct JSON replacement input, including null; omit to read replacement requirements",
+              },
+            ],
+            examples: [
+              "integrations.reconfigure --connection-id 'api#stripe' --format json",
+              "integrations.reconfigure --connection-id 'api#github' --input-json '{\"reauthorize\":true}' --format json",
+            ],
           },
+          parse: parseIntegrationProgressFields("integrations.reconfigure"),
+          format: formatIntegrationCommandOutput,
+        },
+      },
+    }),
+    defineBackofficeRuntimeTool({
+      id: "integrations.disconnect",
+      namespace: "integrations",
+      name: "disconnect",
+      description:
+        "Remove a connection's source-owned configuration and credentials in the selected scope. The address stays valid for a later setup. Requires confirm to repeat the connection ID.",
+      requiredPermissions: ["manage"],
+      inputSchema: integrationDisconnectInputSchema,
+      outputSchema: integrationDisconnectResultSchema,
+      getResource: (input) => ({ connectionId: input.connectionId }),
+      execute: async (input, context: IntegrationsToolContext) =>
+        await requireIntegrationsRuntime(context).disconnect(input),
+      adapters: {
+        bash: {
+          command: "integrations.disconnect",
+          help: {
+            summary:
+              "Remove a connection's configuration and credentials; the address remains available for setup.",
+            options: [
+              integrationConnectionOption,
+              {
+                name: "confirm",
+                required: true,
+                valueRequired: true,
+                description: "Repeat the connection ID to confirm removal",
+              },
+            ],
+            examples: [
+              "integrations.disconnect --connection-id 'api#stripe' --confirm 'api#stripe' --format json",
+            ],
+          },
+          parse: defineCliArgsParser<z.input<typeof integrationDisconnectInputSchema>>(
+            "integrations.disconnect",
+            {
+              ...integrationConnectionCliFields,
+              confirm: { required: true, read: readOpaqueStringOption },
+            },
+          ),
           format: formatIntegrationCommandOutput,
         },
       },

@@ -86,7 +86,7 @@ export const apiCapability: BackofficeCapability = {
           createDurableHookRepositoryFromCommands(objects.api.for(scope).commands),
       },
     ],
-    skillPaths: ["skills/api-connection/SKILL.md", "skills/api-webhooks/SKILL.md"],
+    skillPaths: ["skills/configuring-integrations/SKILL.md", "skills/api-webhooks/SKILL.md"],
     externalEntities: [],
     automationEvents: [
       {

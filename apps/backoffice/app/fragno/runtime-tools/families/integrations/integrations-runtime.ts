@@ -2,6 +2,7 @@ import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 
+import { createApiIntegration } from "./api-integration";
 import { createConnectorIntegration } from "./connector-integration";
 import { createIntegrationRegistry } from "./integration-registry";
 import type { IntegrationsRuntime } from "./integration-tools";
@@ -20,6 +21,7 @@ export function createIntegrationsRuntime({
   nowEpochMs: () => number;
 }): IntegrationsRuntime {
   const registry = createIntegrationRegistry([
+    createApiIntegration({ runtime }),
     createReson8Integration({ runtime, nowEpochMs }),
     ...(execution.scope.kind === "user"
       ? [createConnectorIntegration({ runtime, nowEpochMs })]
@@ -31,6 +33,8 @@ export function createIntegrationsRuntime({
     discover: () => registry.discover(context),
     list: ({ cursor }) => registry.list(context, cursor),
     setup: (input) => registry.setup(context, input),
+    reconfigure: (input) => registry.reconfigure(context, input),
+    disconnect: ({ connectionId }) => registry.disconnect(context, connectionId),
     async get({ connectionId }) {
       const connection = await registry.resolve(context, connectionId);
       return { ...connection.identity, ...(await connection.inspect()) };
