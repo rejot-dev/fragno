@@ -1,6 +1,9 @@
 import { describe, expect, test, assert } from "vitest";
 
-import type { BackofficeToolContext } from "@/fragno/runtime-tools/runtime-tools";
+import {
+  createTrustedSystemBackofficeToolContext,
+  type BackofficeToolContext,
+} from "@/fragno/runtime-tools/runtime-tools";
 
 import type { DashboardCommandSpec } from "./dashboard-terminal";
 import {
@@ -53,11 +56,8 @@ describe("formatPiTerminalHelp", () => {
 });
 
 describe("getAvailablePiTerminalCommandSpecs", () => {
-  // Listing only reads `context.runtimes` (via each family's `isAvailable`); the
-  // actor/scope/kernel fields are only used during tool execution, so a runtimes-only
-  // stub is enough to drive availability here.
   const commandsFor = (runtimes: BackofficeToolContext["runtimes"]) =>
-    getAvailablePiTerminalCommandSpecs({ runtimes } as unknown as BackofficeToolContext).map(
+    getAvailablePiTerminalCommandSpecs(createTrustedSystemBackofficeToolContext({ runtimes })).map(
       (spec) => spec.command,
     );
 
