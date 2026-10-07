@@ -30,6 +30,9 @@ export function createProjectConnectorServer(
     await ifMatchesRoute("GET", "/status", () => {
       access = BACKOFFICE_PERMISSION.connector.accountsRead;
     });
+    await ifMatchesRoute("GET", "/connection-requests/by-name", () => {
+      access = BACKOFFICE_PERMISSION.connector.connectionsCreate;
+    });
     await ifMatchesRoute("POST", "/connection-requests", () => {
       access = BACKOFFICE_PERMISSION.connector.connectionsCreate;
     });
@@ -37,6 +40,9 @@ export function createProjectConnectorServer(
       access = BACKOFFICE_PERMISSION.connector.connectionsCreate;
     });
     await ifMatchesRoute("GET", "/accounts", () => {
+      access = BACKOFFICE_PERMISSION.connector.accountsRead;
+    });
+    await ifMatchesRoute("GET", "/accounts/by-name", () => {
       access = BACKOFFICE_PERMISSION.connector.accountsRead;
     });
     await ifMatchesRoute("GET", "/accounts/:accountId/profile", () => {

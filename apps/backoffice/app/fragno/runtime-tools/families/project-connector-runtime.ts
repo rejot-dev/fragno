@@ -1,5 +1,8 @@
 import { createRouteCaller } from "@fragno-dev/core/api";
-import type { projectConnectorConnectInputSchema } from "@fragno-dev/project-connector-fragment/contracts";
+import type {
+  projectConnectorConnectInputSchema,
+  projectConnectorNamedConnectionSchema,
+} from "@fragno-dev/project-connector-fragment/contracts";
 import type { z } from "zod";
 
 import type { FetchObject } from "@/backoffice-runtime/object-registry";
@@ -62,6 +65,20 @@ export function createProjectConnectorRuntime(
         return response.data;
       }
       return fail(response, "connector.connect");
+    },
+    async getNamedConnectionRequest(input: z.output<typeof projectConnectorNamedConnectionSchema>) {
+      const response = await callRoute("GET", "/connection-requests/by-name", { query: input });
+      if (response.type === "json" && isSuccessStatus(response.status)) {
+        return response.data.request;
+      }
+      return fail(response, "Connector named authorization request lookup");
+    },
+    async getNamedAccount(input: z.output<typeof projectConnectorNamedConnectionSchema>) {
+      const response = await callRoute("GET", "/accounts/by-name", { query: input });
+      if (response.type === "json" && isSuccessStatus(response.status)) {
+        return response.data.account;
+      }
+      return fail(response, "Connector named account lookup");
     },
     async refreshConnection({ requestId }: { requestId: string }) {
       const response = await callRoute("POST", "/connection-requests/:requestId/refresh", {
