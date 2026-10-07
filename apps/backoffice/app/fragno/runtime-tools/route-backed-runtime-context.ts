@@ -5,11 +5,7 @@ import {
 } from "@/backoffice-runtime/context";
 import { isBackofficeUnavailableError, type BackofficeKernel } from "@/backoffice-runtime/kernel";
 import { isBackofficeObjectAvailableInContext } from "@/backoffice-runtime/object-registry";
-import {
-  backofficeRouteScopeFromResolvedScope,
-  resolveBackofficeRuntimeScope,
-} from "@/backoffice-runtime/resolved-scope";
-import { backofficeRouteScopeSinglePathSegment } from "@/backoffice-runtime/route-scope";
+import { resolveBackofficeRuntimeScope } from "@/backoffice-runtime/resolved-scope";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { isBackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import { createStaticFileCollection } from "@/file-collection/create-static-file-collection";
@@ -80,6 +76,10 @@ import {
 
 import type { InteractiveRuntimeToolContext } from "./bash-host";
 import { buildJavaScriptModuleFile } from "./families/javascript-build";
+import {
+  resolveRuntimeOrganization,
+  resolveRuntimePublicScopePathSegment,
+} from "./runtime-public-scope";
 import { getRuntimeToolNamespacesByCapability, runtimeToolFamilies } from "./tool-families";
 
 export type RouteBackedRuntimeContextOptions = {
@@ -147,19 +147,6 @@ const unavailableObject = <T>(resolve: () => T): T | null => {
     throw error;
   }
 };
-
-async function resolveRuntimeOrganization(
-  runtime: BackofficeRuntimeServices,
-  organizationId: string,
-) {
-  const organization = (await runtime.objects.auth.singleton().commands.getAllOrganizations()).find(
-    ({ id }) => id === organizationId,
-  );
-  if (!organization) {
-    throw new Error(`Organization '${organizationId}' could not be found.`);
-  }
-  return { id: organization.id, slug: organization.slug };
-}
 
 export const createRouteBackedRuntimeContext = ({
   runtime,
@@ -432,21 +419,11 @@ export const createRouteBackedRuntimeContext = ({
             ? {
                 runtime: createApiRuntime(
                   authorizedBackofficeObjectHttp(object.http, execution),
-                  async () => {
-                    const resolvedScope = await resolveBackofficeRuntimeScope(
-                      execution.scope,
-                      (organizationId) => resolveRuntimeOrganization(runtime, organizationId),
-                    );
-                    if (resolvedScope.kind === "system") {
-                      throw new Error("API public routes require a routable scope.");
-                    }
-                    return apiPublicAddress(
+                  async () =>
+                    apiPublicAddress(
                       runtime.config.docsPublicBaseUrl,
-                      backofficeRouteScopeSinglePathSegment(
-                        backofficeRouteScopeFromResolvedScope(resolvedScope),
-                      ),
-                    );
-                  },
+                      await resolveRuntimePublicScopePathSegment(runtime, execution.scope, "API"),
+                    ),
                 ),
               }
             : null;
@@ -461,21 +438,11 @@ export const createRouteBackedRuntimeContext = ({
             ? {
                 runtime: createMcpRuntime(
                   authorizedBackofficeObjectHttp(object.http, execution),
-                  async () => {
-                    const resolvedScope = await resolveBackofficeRuntimeScope(
-                      execution.scope,
-                      (organizationId) => resolveRuntimeOrganization(runtime, organizationId),
-                    );
-                    if (resolvedScope.kind === "system") {
-                      throw new Error("MCP public routes require a routable scope.");
-                    }
-                    return mcpPublicAddress(
+                  async () =>
+                    mcpPublicAddress(
                       runtime.config.docsPublicBaseUrl,
-                      backofficeRouteScopeSinglePathSegment(
-                        backofficeRouteScopeFromResolvedScope(resolvedScope),
-                      ),
-                    );
-                  },
+                      await resolveRuntimePublicScopePathSegment(runtime, execution.scope, "MCP"),
+                    ),
                 ),
               }
             : null;
@@ -490,21 +457,15 @@ export const createRouteBackedRuntimeContext = ({
             ? {
                 runtime: createProjectConnectorRuntime(
                   authorizedBackofficeObjectHttp(object.http, execution),
-                  async () => {
-                    const resolvedScope = await resolveBackofficeRuntimeScope(
-                      execution.scope,
-                      (organizationId) => resolveRuntimeOrganization(runtime, organizationId),
-                    );
-                    if (resolvedScope.kind === "system") {
-                      throw new Error("Connector public routes require a routable scope.");
-                    }
-                    return projectConnectorPublicAddress(
+                  async () =>
+                    projectConnectorPublicAddress(
                       runtime.config.docsPublicBaseUrl,
-                      backofficeRouteScopeSinglePathSegment(
-                        backofficeRouteScopeFromResolvedScope(resolvedScope),
+                      await resolveRuntimePublicScopePathSegment(
+                        runtime,
+                        execution.scope,
+                        "Connector",
                       ),
-                    );
-                  },
+                    ),
                 ),
               }
             : null;
