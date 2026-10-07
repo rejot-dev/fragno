@@ -1,0 +1,12 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "fragno-bookkeeping",
+  "main": "workers/app.ts",
+  "compatibility_date": "2026-10-07",
+  "compatibility_flags": ["nodejs_compat"],
+  "durable_objects": {
+    "bindings": [{ "name": "AUTH", "class_name": "Auth" }],
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Auth"] }],
+  "observability": { "enabled": true },
+}
