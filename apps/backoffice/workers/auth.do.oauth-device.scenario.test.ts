@@ -43,7 +43,7 @@ function requestOAuth(
 }
 
 for (const origin of ["http://localhost:5173", "http://127.0.0.1:5173"]) {
-  test(`device authorization and token exchange share the canonical issuer through ${origin}`, async () => {
+  test(`device authorization and token exchange preserve the selected origin ${origin}`, async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         name: `local OAuth device login through ${origin}`,
@@ -58,8 +58,6 @@ for (const origin of ["http://localhost:5173", "http://127.0.0.1:5173"]) {
               const config = await auth.commands.getBackofficeCliOAuthConfig({
                 requestUrl: `${origin}/api/backoffice/cli-config`,
               });
-              // Older clients may still select localhost. Resource endpoints must remain on that
-              // exact origin even though both aliases share the canonical authorization issuer.
               assert.equal(new URL(config.tokenEndpoint).origin, origin);
               const requested = await requestOAuth(
                 auth,
@@ -77,10 +75,7 @@ for (const origin of ["http://localhost:5173", "http://127.0.0.1:5173"]) {
                 user_code: string;
                 verification_uri_complete: string;
               }>();
-              assert.equal(
-                new URL(device.verification_uri_complete).origin,
-                "http://127.0.0.1:5173",
-              );
+              assert.equal(new URL(device.verification_uri_complete).origin, origin);
 
               const claimUrl = new URL("/api/auth/device", device.verification_uri_complete);
               claimUrl.searchParams.set("user_code", device.user_code);
@@ -107,11 +102,11 @@ for (const origin of ["http://localhost:5173", "http://127.0.0.1:5173"]) {
               assert.equal(granted.status, 200, await granted.clone().text());
               const oauth = await granted.json<{ access_token: string }>();
               const claims = decodeJwt(oauth.access_token);
-              assert.equal(claims.iss, "http://127.0.0.1:5173");
+              assert.equal(claims.iss, origin);
               expect([claims.aud].flat()).toContain(origin);
 
-              const token = await auth.commands.exchangeBackofficeOAuthAccessToken({
-                requestUrl: `${origin}/api/backoffice/cli-token`,
+              const token = await auth.commands.exchangeBackofficeExecutionToken({
+                requestUrl: `${origin}/api/backoffice/execution-token`,
                 oauthAccessToken: oauth.access_token,
                 scope: null,
               });
@@ -124,12 +119,12 @@ for (const origin of ["http://localhost:5173", "http://127.0.0.1:5173"]) {
                 ? "http://127.0.0.1:5173"
                 : "http://localhost:5173";
               await expect(
-                auth.commands.exchangeBackofficeOAuthAccessToken({
-                  requestUrl: `${otherOrigin}/api/backoffice/cli-token`,
+                auth.commands.exchangeBackofficeExecutionToken({
+                  requestUrl: `${otherOrigin}/api/backoffice/execution-token`,
                   oauthAccessToken: oauth.access_token,
                   scope: null,
                 }),
-              ).rejects.toMatchObject({ name: "BackofficeCliOAuthAuthenticationError" });
+              ).rejects.toMatchObject({ name: "BackofficeExecutionTokenAuthenticationError" });
             },
           ),
         ],

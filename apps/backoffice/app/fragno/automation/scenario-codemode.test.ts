@@ -333,62 +333,6 @@ describe("Backoffice codemode scenarios", () => {
     );
   });
 
-  test("uses codemode setup helpers while keeping setup intent explicit", async () => {
-    await runBackofficeScenario(
-      defineBackofficeScenario({
-        name: "codemode setup helpers arrange state through runtime tools",
-
-        files: backofficeFiles.workspaceStarter(),
-
-        setup: ({ given }) => [
-          given.organization.exists({ id: "org-1", name: "Ada Labs" }),
-          given.codemode.connectionConfigure({
-            orgId: "org-1",
-            id: "upload",
-            payload: { provider: "database" },
-          }),
-          given.codemode.storeSet({
-            orgId: "org-1",
-            key: "setup/foo",
-            value: "from-codemode",
-          }),
-          given.codemode.writeFile({
-            orgId: "org-1",
-            path: "/workspace/setup.txt",
-            content: "setup helper wrote this",
-          }),
-          given.codemode.writeFile({
-            orgId: "org-1",
-            path: "/workspace/setup.bin",
-            content: new Uint8Array([0x62, 0x69, 0x6e, 0x61, 0x72, 0x79]),
-          }),
-        ],
-
-        steps: ({ then }) => [
-          then.connection.configured({ orgId: "org-1", id: "upload" }),
-          then.store.entry({
-            orgId: "org-1",
-            key: "setup/foo",
-            value: "from-codemode",
-          }),
-          then.files.contains({
-            orgId: "org-1",
-            path: "/workspace/setup.txt",
-            text: "setup helper wrote this",
-          }),
-          then.files.contains({
-            orgId: "org-1",
-            path: "/workspace/setup.bin",
-            text: "binary",
-          }),
-          then.codemode.toolCalls({
-            include: ["connections.configure", "store.set"],
-          }),
-        ],
-      }),
-    );
-  });
-
   test("uses file setup helper for multiple workspace files", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({

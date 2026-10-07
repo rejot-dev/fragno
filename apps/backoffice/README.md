@@ -44,8 +44,10 @@ uses the local Cloudflare test pool's Worker Loader and the in-process compiler 
 `workers/vitest-compiler-setup.ts`. Pure Codemode helpers are tested in the owning package under
 Node.
 
-Node-specific bridge transport and recovery scenarios are opt-in. Run them together with the
-Codemode package's bridge lifecycle tests when changing that boundary:
+Node-specific bridge transport and recovery scenarios run separately through `test:bridge`,
+including binary codemode setup and in-flight event subscriptions. CI runs the Backoffice bridge
+suite; local ordinary test runs do not. Run it together with the Codemode package's bridge lifecycle
+tests when changing that boundary:
 
 ```bash
 pnpm exec turbo run test:bridge --filter=@fragno-apps/backoffice-rr --filter=@fragno-dev/codemode --output-logs=errors-only
