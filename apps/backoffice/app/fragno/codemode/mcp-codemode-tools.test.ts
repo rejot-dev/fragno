@@ -36,7 +36,7 @@ describe("MCP codemode providers", () => {
   const context = createTrustedSystemBackofficeToolContext({ runtimes: {} });
 
   test("does not fail codemode when MCP is bound but not configured for the scope", async () => {
-    const providers = await createMcpCodemodeProviders({
+    const { providers } = await createMcpCodemodeProviders({
       context,
       runtime: createRuntime({
         listServers: async () => {

@@ -11,7 +11,10 @@ import {
 } from "@fragno-dev/codemode/runtime-api";
 
 import type { NpmDependencyMap } from "@/backoffice-runtime/dynamic-workers/npm-dependencies";
-import { createMcpCodemodeProviders } from "@/fragno/codemode/mcp-codemode-tools";
+import {
+  createMcpCodemodeProviders,
+  explainMcpCodemodeError,
+} from "@/fragno/codemode/mcp-codemode-tools";
 import {
   createBackofficeCodemodeProviders,
   executeBackofficeRuntimeTool,
@@ -180,11 +183,14 @@ const createBackofficeScopedCodemodeProvider = ({
   },
 });
 
-export const createBackofficeCodemodeResolvedProviders = async ({
+export async function createBackofficeCodemodeResolvedProviders({
   families,
   toolContext,
   toolCalls,
-}: BackofficeCodemodeProvidersInput): Promise<ResolvedProvider[]> => {
+}: BackofficeCodemodeProvidersInput): Promise<{
+  providers: ResolvedProvider[];
+  mcpDiscoveryError: Error | null;
+}> {
   const providers: ResolvedProvider[] = [];
 
   const tools = families.flatMap((family) => {
@@ -206,20 +212,19 @@ export const createBackofficeCodemodeResolvedProviders = async ({
     ),
   );
 
+  let mcpDiscoveryError: Error | null = null;
   if (toolContext.runtimes.mcp) {
-    providers.push(
-      ...(
-        await createMcpCodemodeProviders({
-          runtime: toolContext.runtimes.mcp,
-          context: toolContext,
-          toolCalls,
-        })
-      ).map((provider) => resolveProvider(provider)),
-    );
+    const discovery = await createMcpCodemodeProviders({
+      runtime: toolContext.runtimes.mcp,
+      context: toolContext,
+      toolCalls,
+    });
+    providers.push(...discovery.providers.map((provider) => resolveProvider(provider)));
+    mcpDiscoveryError = discovery.discoveryError;
   }
 
-  return providers;
-};
+  return { providers, mcpDiscoveryError };
+}
 
 /** Resolves the in-process test compiler or private production compiler service. */
 export function resolveBackofficeWorkerCompiler(env: LocalBackofficeCodemodeEnv): WorkerCompiler {
@@ -243,7 +248,7 @@ export const runBackofficeCodemode = async ({
 }: RunBackofficeCodemodeInput): Promise<BackofficeCodemodeExecuteResult> => {
   const toolCalls: BackofficeRuntimeToolCall[] = [];
 
-  const providers = await createBackofficeCodemodeResolvedProviders({
+  const { providers, mcpDiscoveryError } = await createBackofficeCodemodeResolvedProviders({
     families,
     toolContext,
     toolCalls,
@@ -252,15 +257,17 @@ export const runBackofficeCodemode = async ({
     if (globalOutbound) {
       throw new Error("CODEMODE_REMOTE_EGRESS_UNSUPPORTED");
     }
+    const result = await runBackofficeRemoteImmediate({
+      execute: env.remoteExecutor,
+      kind: "immediate",
+      code,
+      dependencies: dependencies ?? {},
+      timeout,
+      providers,
+    });
     return {
-      ...(await runBackofficeRemoteImmediate({
-        execute: env.remoteExecutor,
-        kind: "immediate",
-        code,
-        dependencies: dependencies ?? {},
-        timeout,
-        providers,
-      })),
+      ...result,
+      ...(result.error ? { error: explainMcpCodemodeError(mcpDiscoveryError, result.error) } : {}),
       toolCalls,
     };
   }
@@ -297,6 +304,7 @@ export const runBackofficeCodemode = async ({
   )) as BackofficeCodemodeExecuteResult;
   return {
     ...result,
+    ...(result.error ? { error: explainMcpCodemodeError(mcpDiscoveryError, result.error) } : {}),
     logs: [...compiled.warnings, ...(result.logs ?? [])],
     toolCalls,
   };

@@ -13,6 +13,7 @@ import type { BackofficeRuntimeToolFamily } from "@/fragno/runtime-tools/runtime
 import type { CoreBackofficeToolContext } from "@/fragno/runtime-tools/tool-families";
 
 import { executeBackofficeCompiledModule } from "./compiled-module-execute";
+import { explainMcpCodemodeError } from "./mcp-codemode-tools";
 import { runBackofficeRemoteImmediate } from "./remote-immediate-execute";
 
 export type RunBackofficeJavaScriptModuleInput = {
@@ -34,7 +35,7 @@ export async function runBackofficeJavaScriptModule({
   globalOutbound,
 }: RunBackofficeJavaScriptModuleInput): Promise<BackofficeCodemodeExecuteResult> {
   const toolCalls: BackofficeCodemodeExecuteResult["toolCalls"] = [];
-  const providers = await createBackofficeCodemodeResolvedProviders({
+  const { providers, mcpDiscoveryError } = await createBackofficeCodemodeResolvedProviders({
     families,
     toolContext,
     toolCalls,
@@ -52,7 +53,12 @@ export async function runBackofficeJavaScriptModule({
       throw new Error("CODEMODE_MODULE_INVOCATION_CANNOT_SUSPEND");
     }
     return completion.status === "failed"
-      ? { result: undefined, error: completion.error.message, logs: completion.logs, toolCalls }
+      ? {
+          result: undefined,
+          error: explainMcpCodemodeError(mcpDiscoveryError, completion.error.message),
+          logs: completion.logs,
+          toolCalls,
+        }
       : { result: undefined, logs: completion.logs, toolCalls };
   }
   const { code } = program;
@@ -60,15 +66,17 @@ export async function runBackofficeJavaScriptModule({
     if (globalOutbound) {
       throw new Error("CODEMODE_REMOTE_EGRESS_UNSUPPORTED");
     }
+    const result = await runBackofficeRemoteImmediate({
+      execute: env.remoteExecutor,
+      kind: "module",
+      code,
+      dependencies: {},
+      timeout,
+      providers,
+    });
     return {
-      ...(await runBackofficeRemoteImmediate({
-        execute: env.remoteExecutor,
-        kind: "module",
-        code,
-        dependencies: {},
-        timeout,
-        providers,
-      })),
+      ...result,
+      ...(result.error ? { error: explainMcpCodemodeError(mcpDiscoveryError, result.error) } : {}),
       toolCalls,
     };
   }
@@ -103,6 +111,7 @@ export async function runBackofficeJavaScriptModule({
   const result = await executor.execute(compiled.bundle, providers);
   return {
     ...result,
+    ...(result.error ? { error: explainMcpCodemodeError(mcpDiscoveryError, result.error) } : {}),
     logs: [...compiled.warnings, ...(result.logs ?? [])],
     toolCalls,
   };
