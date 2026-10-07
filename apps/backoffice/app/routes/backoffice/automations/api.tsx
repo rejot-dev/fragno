@@ -1,5 +1,6 @@
 import {
   API_OAUTH_REDIRECT_URI_QUERY_PARAMETER,
+  type ApiAuthStatus,
   type ApiRequestOutput,
 } from "@fragno-dev/api-fragment/types";
 import {
@@ -46,13 +47,6 @@ type ApiConnectionSummary = {
   updatedAt?: string | Date;
   authStatus?: ApiAuthStatus;
   authError?: string;
-};
-
-type ApiAuthStatus = {
-  authenticated: boolean;
-  mode: string;
-  tokenPresent?: boolean;
-  expiresAt?: string | Date | null;
 };
 
 type WebhookDeliveryIdentity =
@@ -114,6 +108,8 @@ type ApiActionData = {
 type ApiConfigurationLoaderData = {
   publicBaseUrl: string | null;
   connections: ApiConnectionSummary[];
+  /** Cursor for the page after the loaded connections; null on the last page. */
+  connectionsCursor: string | null;
   webhooks: ApiWebhookEndpointSummary[];
   connectionsError: string | null;
   webhooksError: string | null;
@@ -191,8 +187,32 @@ const isSuccessResponse = (response: { status: number }) =>
 const formatMaybeDate = (value?: string | Date | null) =>
   value ? new Date(value).toLocaleString() : "—";
 
-const selectedConnectionPath = (slug: string) =>
-  `?tab=connections&connection=${encodeURIComponent(slug)}`;
+const connectionsPagePath = (page: string | null) =>
+  page === null ? "?tab=connections" : `?tab=connections&page=${encodeURIComponent(page)}`;
+const selectedConnectionPath = (page: string | null, slug: string) =>
+  `${connectionsPagePath(page)}&connection=${encodeURIComponent(slug)}`;
+const describeAuthStatus = (status: ApiAuthStatus) => {
+  if (status.mode === "none") {
+    return "No auth required";
+  }
+  if (status.mode !== "oauth") {
+    return status.credentials === "present" ? "Credentials stored" : "Needs credentials";
+  }
+  switch (status.state) {
+    case "authorized":
+      return "Authorized";
+    case "consent-pending":
+      return "Waiting for OAuth consent";
+    case "consent-required":
+      return "Needs OAuth consent";
+    case "expired":
+      return "OAuth token expired; start OAuth again";
+    case "client-missing":
+      return "OAuth configuration cleared; recreate the connection";
+    default:
+      throw new Error("Unsupported API OAuth state.", { cause: status.state satisfies never });
+  }
+};
 const selectedWebhookPath = (endpointId: string) =>
   `?tab=webhooks&webhook=${encodeURIComponent(endpointId)}`;
 
@@ -245,13 +265,21 @@ async function fetchApiConnectionsForScope(
   request: Request,
   context: Readonly<RouterContextProvider>,
   scope: BackofficeContextScope,
-): Promise<{ connections: ApiConnectionSummary[]; connectionsError: string | null }> {
+  page: string | null,
+): Promise<{
+  connections: ApiConnectionSummary[];
+  connectionsCursor: string | null;
+  connectionsError: string | null;
+}> {
   try {
     const callRoute = createApiRouteCallerForScope(request, context, scope);
-    const response = await callRoute("GET", "/connections");
+    const response = await callRoute("GET", "/connections", {
+      query: page === null ? {} : { cursor: page },
+    });
     if (response.type !== "json" || !isSuccessResponse(response)) {
       return {
         connections: [],
+        connectionsCursor: null,
         connectionsError: routeResponseMessage(response) || "Unable to load API connections.",
       };
     }
@@ -266,15 +294,20 @@ async function fetchApiConnectionsForScope(
           pathParams: { slug: connection.slug },
         });
         if (authResponse.type === "json" && isSuccessResponse(authResponse)) {
-          return { ...connection, authStatus: authResponse.data as ApiAuthStatus };
+          return { ...connection, authStatus: authResponse.data };
         }
         return { ...connection, authError: routeResponseMessage(authResponse) };
       }),
     );
-    return { connections: withAuth, connectionsError: null };
+    return {
+      connections: withAuth,
+      connectionsCursor: response.data.cursor,
+      connectionsError: null,
+    };
   } catch (error) {
     return {
       connections: [],
+      connectionsCursor: null,
       connectionsError: error instanceof Error ? error.message : "Unable to load API connections.",
     };
   }
@@ -328,6 +361,7 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
     return {
       publicBaseUrl,
       connections: [],
+      connectionsCursor: null,
       webhooks: [],
       connectionsError: null,
       webhooksError: null,
@@ -336,13 +370,19 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
   }
 
   const [connectionsResult, webhooksResult] = await Promise.all([
-    fetchApiConnectionsForScope(request, context, scope),
+    fetchApiConnectionsForScope(
+      request,
+      context,
+      scope,
+      new URL(request.url).searchParams.get("page"),
+    ),
     fetchApiWebhooksForScope(request, context, scope, publicBaseUrl),
   ]);
 
   return {
     publicBaseUrl,
     connections: connectionsResult.connections,
+    connectionsCursor: connectionsResult.connectionsCursor,
     webhooks: webhooksResult.webhooks,
     connectionsError: connectionsResult.connectionsError,
     webhooksError: webhooksResult.webhooksError,
@@ -544,7 +584,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
               backofficeRouteScopeSinglePathSegmentFromParams(params),
             ).oauthRedirectUri,
           },
-          body: {},
+          body: { discardTokens: false },
         });
         if (oauthResponse.type === "json" && isSuccessResponse(oauthResponse)) {
           return {
@@ -581,6 +621,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
         body: {
           ...(scopes.length ? { scopes } : {}),
           ...(extraAuthorizationParams ? { extraAuthorizationParams } : {}),
+          discardTokens: false,
         },
       });
       if (response.type === "json" && isSuccessResponse(response)) {
@@ -986,12 +1027,7 @@ function ConnectionDetail({
           <p>Updated: {formatMaybeDate(connection.updatedAt)}</p>
           <p>Script id: {connection.slug}</p>
           {connection.authError ? <p className="text-red-500">{connection.authError}</p> : null}
-          {auth ? (
-            <p>
-              {auth.authenticated ? "Authenticated" : "Needs auth"}
-              {auth.expiresAt ? ` · expires ${formatMaybeDate(auth.expiresAt)}` : ""}
-            </p>
-          ) : null}
+          {auth ? <p>{describeAuthStatus(auth)}</p> : null}
         </div>
       </div>
 
@@ -1720,8 +1756,15 @@ function EmptyState({ title, description }: { title: string; description: string
 }
 
 export default function BackofficeAutomationApiConfiguration() {
-  const { publicBaseUrl, connections, webhooks, connectionsError, webhooksError, configError } =
-    useLoaderData<typeof loader>();
+  const {
+    publicBaseUrl,
+    connections,
+    connectionsCursor,
+    webhooks,
+    connectionsError,
+    webhooksError,
+    configError,
+  } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const [searchParams] = useSearchParams();
@@ -1731,6 +1774,7 @@ export default function BackofficeAutomationApiConfiguration() {
   const [signedPayloadMode, setSignedPayloadMode] = useState<SignedPayloadMode>("rawBody");
 
   const activePane = searchParams.get("tab") === "webhooks" ? "webhooks" : "connections";
+  const connectionsPage = searchParams.get("page");
   const configure = searchParams.get("configure");
   const selectedConnection =
     connections.find((connection) => connection.slug === searchParams.get("connection")) ?? null;
@@ -1831,7 +1875,7 @@ export default function BackofficeAutomationApiConfiguration() {
                 return (
                   <Link
                     key={connection.slug}
-                    to={selectedConnectionPath(connection.slug)}
+                    to={selectedConnectionPath(connectionsPage, connection.slug)}
                     preventScrollReset
                     aria-current={isSelected ? "page" : undefined}
                     className={`block border px-3 py-3 text-left ${tabButtonClass(isSelected)}`}
@@ -1880,6 +1924,31 @@ export default function BackofficeAutomationApiConfiguration() {
                 );
               })
             )}
+            {activePane === "connections" &&
+            (connectionsPage !== null || connectionsCursor !== null) ? (
+              <div className="flex justify-between gap-2 pt-2">
+                {connectionsPage !== null ? (
+                  <Link
+                    to={connectionsPagePath(null)}
+                    preventScrollReset
+                    className={`border px-3 py-2 text-[10px] font-semibold tracking-[0.22em] uppercase ${tabButtonClass(false)}`}
+                  >
+                    First page
+                  </Link>
+                ) : (
+                  <span />
+                )}
+                {connectionsCursor !== null ? (
+                  <Link
+                    to={connectionsPagePath(connectionsCursor)}
+                    preventScrollReset
+                    className={`border px-3 py-2 text-[10px] font-semibold tracking-[0.22em] uppercase ${tabButtonClass(false)}`}
+                  >
+                    Next page
+                  </Link>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         </div>
       </div>

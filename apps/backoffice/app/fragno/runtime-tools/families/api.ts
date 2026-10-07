@@ -1,4 +1,6 @@
 import {
+  apiAuthStatusSchema,
+  apiConnectionSlugSchema,
   apiRequestInputSchema as apiFragmentRequestInputSchema,
   apiRequestOutputSchema as apiFragmentRequestOutputSchema,
   createWebhookEndpointInputSchema as apiFragmentCreateWebhookEndpointInputSchema,
@@ -58,24 +60,23 @@ const connectionSchema = z.object({
   createdAt: z.union([z.string(), z.date()]).optional(),
   updatedAt: z.union([z.string(), z.date()]).optional(),
 });
-const connectionsOutputSchema = z.object({ connections: z.array(connectionSchema) });
+const connectionsInputSchema = z
+  .strictObject({ cursor: z.string().nullable().default(null) })
+  .optional()
+  .default({ cursor: null });
+const connectionsOutputSchema = z.object({
+  connections: z.array(connectionSchema),
+  cursor: z.string().nullable(),
+});
 const createConnectionInputSchema = z.object({
-  slug: z
-    .string()
-    .trim()
-    .min(1)
-    .regex(/^[a-z0-9][a-z0-9-]*$/),
+  slug: apiConnectionSlugSchema,
   name: z.string().trim().optional(),
   baseUrl: z.url(),
   auth: authSchema.default({ type: "none" }),
 });
 const slugInputSchema = z.object({ slug: z.string().trim().min(1) });
 const deleteOutputSchema = z.object({ ok: z.literal(true) });
-const authStatusSchema = z.object({
-  authenticated: z.boolean(),
-  mode: z.string(),
-  expiresAt: z.union([z.string(), z.date()]).nullable().optional(),
-});
+const authStatusSchema = apiAuthStatusSchema;
 const setTokenInputSchema = z.object({
   slug: z.string().trim().min(1),
   token: z.string().trim().min(1),
@@ -108,6 +109,7 @@ const webhookEndpointUpdateInputSchema = apiFragmentUpdateWebhookEndpointInputSc
 const endpointInputSchema = z.object({ endpointId: z.string().trim().min(1) });
 
 export type ApiConnection = z.infer<typeof connectionSchema>;
+export type ApiListConnectionsInput = z.output<typeof connectionsInputSchema>;
 export type ApiListConnectionsOutput = z.infer<typeof connectionsOutputSchema>;
 export type ApiAuthStatus = z.infer<typeof authStatusSchema>;
 export type ApiSetTokenInput = Omit<z.infer<typeof setTokenInputSchema>, "slug">;
@@ -190,9 +192,27 @@ const renderConnectionRows = (connections: readonly ApiConnection[]) =>
   );
 
 const renderConnections = (result: ApiListConnectionsOutput) =>
-  result.connections.length
-    ? renderConnectionRows(result.connections)
-    : "No API connections configured.";
+  [
+    result.connections.length
+      ? renderConnectionRows(result.connections)
+      : "No API connections configured.",
+    result.cursor === null ? "" : `\nNext page: api.connections.list --cursor ${result.cursor}`,
+  ].join("");
+
+const renderAuthStatus = (result: ApiAuthStatus) =>
+  renderTable(
+    ["mode", "auth"],
+    [
+      [
+        result.mode,
+        result.mode === "none"
+          ? "not required"
+          : result.mode === "oauth"
+            ? result.state
+            : `credentials ${result.credentials}`,
+      ],
+    ],
+  );
 
 const renderRequest = (result: ApiRequestOutput) => {
   if (!result.ok && !result.response) {
@@ -384,21 +404,31 @@ export const apiRuntimeTools = [
     namespace: "api",
     name: "listConnections",
     capabilityId: "api",
-    description: "List API connections configured for the current scope.",
+    description:
+      "List API connections configured for the current scope, one cursor page at a time.",
     requiredPermissions: ["connections.read"],
-    inputSchema: z.void(),
+    inputSchema: connectionsInputSchema,
     outputSchema: connectionsOutputSchema,
-    execute: async (_input, context: ApiToolContext) =>
-      await getApiRuntime(context.runtimes.api).listConnections(),
+    execute: async (input, context: ApiToolContext) =>
+      await getApiRuntime(context.runtimes.api).listConnections(input),
     adapters: {
       bash: {
         command: "api.connections.list",
         help: {
-          summary: "api.connections.list lists configured API connections.",
-          options: [],
-          examples: ["api.connections.list"],
+          summary: "api.connections.list lists one page of configured API connections.",
+          options: [
+            {
+              name: "cursor",
+              valueRequired: true,
+              description: "Cursor from the preceding page",
+            },
+          ],
+          examples: ["api.connections.list", "api.connections.list --cursor CURSOR"],
         },
-        parse: defineNoInputArgsParser("api.connections.list"),
+        parse: defineCliArgsParser<z.output<typeof connectionsInputSchema>>(
+          "api.connections.list",
+          { cursor: { defaultValue: null } },
+        ),
         outputOptions: defaultOutput,
         format: textOrDataFormat(renderConnections),
       },
@@ -578,12 +608,7 @@ export const apiRuntimeTools = [
         },
         parse: parseSlug,
         outputOptions: defaultOutput,
-        format: textOrDataFormat((result: ApiAuthStatus) =>
-          renderTable(
-            ["authenticated", "mode", "expires"],
-            [[result.authenticated, result.mode, result.expiresAt]],
-          ),
-        ),
+        format: textOrDataFormat(renderAuthStatus),
       },
     },
   }),
@@ -624,9 +649,7 @@ export const apiRuntimeTools = [
         },
         parse: parseSetToken,
         outputOptions: defaultOutput,
-        format: textOrDataFormat((result: ApiAuthStatus) =>
-          renderTable(["authenticated", "mode"], [[result.authenticated, result.mode]]),
-        ),
+        format: textOrDataFormat(renderAuthStatus),
       },
     },
   }),

@@ -2937,8 +2937,13 @@
   },
   {
     "command": "api.connections.list",
-    "summary": "api.connections.list lists configured API connections.",
+    "summary": "api.connections.list lists one page of configured API connections.",
     "options": [
+      {
+        "name": "cursor",
+        "valueRequired": true,
+        "description": "Cursor from the preceding page"
+      },
       {
         "name": "help",
         "description": "Show this help text",

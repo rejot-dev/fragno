@@ -12,6 +12,7 @@ export function createApiFragmentClients(fragnoConfig: FragnoPublicClientConfig 
     useConnections: builder.createHook("/connections"),
     useConnection: builder.createHook("/connections/:slug"),
     useAuthStatus: builder.createHook("/connections/:slug/auth/status"),
+    usePendingOAuth: builder.createHook("/connections/:slug/auth/oauth/pending"),
     createConnection: builder.createMutator("PUT", "/connections/:slug"),
     deleteConnection: builder.createMutator("DELETE", "/connections/:slug"),
     setBearerToken: builder.createMutator("POST", "/connections/:slug/auth/token"),

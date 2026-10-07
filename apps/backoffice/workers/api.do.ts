@@ -45,6 +45,7 @@ export class InMemoryApiObject extends RpcTarget implements ApiObject {
   readonly #forwardHttpRequest: ReturnType<typeof createBackofficeFragmentHttpTransport>;
   readonly #host: FragmentDurableObjectHost<ApiConfig, ApiFragment>;
   readonly #scopedRuntime: ScopedFragmentDurableObjectRuntime<ApiFragment, BackofficeRoutableScope>;
+  readonly #fetch: typeof fetch;
 
   constructor({
     state,
@@ -52,15 +53,18 @@ export class InMemoryApiObject extends RpcTarget implements ApiObject {
     nowEpochMs,
     runtime,
     implementation,
+    fetch: fetchImpl = fetch,
   }: {
     state: BackofficeObjectState;
     env: Pick<CloudflareEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">;
     nowEpochMs: () => number;
     runtime: BackofficeRuntimeServices;
     implementation: BackofficeObjectImplementation;
+    fetch?: typeof fetch;
   }) {
     super();
     this.#runtimeServices = runtime;
+    this.#fetch = fetchImpl;
     this.#forwardHttpRequest = createBackofficeFragmentHttpTransport({
       address: {
         binding: "API",
@@ -99,6 +103,7 @@ export class InMemoryApiObject extends RpcTarget implements ApiObject {
 
   #createConfig(ownerScope: BackofficeRoutableScope): ApiConfig {
     return {
+      fetch: this.#fetch,
       allowedOAuthRedirectUris: (redirectUri) =>
         isScopedPublicOAuthRedirectUriAllowed({
           publicOrigin: this.#runtimeServices.config.docsPublicBaseUrl,

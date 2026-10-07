@@ -1,3 +1,4 @@
+import { decodeCursor, type Cursor } from "@fragno-dev/db/cursor";
 import { z } from "zod";
 
 import { defineRoutes } from "@fragno-dev/core";
@@ -5,7 +6,11 @@ import { isUniqueConstraintError } from "@fragno-dev/db";
 
 import {
   API_OAUTH_REDIRECT_URI_QUERY_PARAMETER,
+  apiAuthStatusSchema,
   apiConnectionOutputSchema,
+  apiConnectionSlugSchema,
+  apiConnectionsPageSchema,
+  apiOAuthPendingSchema,
   apiRequestInputSchema,
   apiRequestOutputSchema,
   createApiConnectionInputSchema,
@@ -22,7 +27,7 @@ import {
 import { sha256Base64Url, utf8Bytes } from "./crypto";
 import { apiFragmentDefinition, type WebhookEndpointHookSnapshot } from "./definition";
 import { apiSchema } from "./schema";
-import { assertAllowedBaseUrl, storedAuthPayloadSchema } from "./services";
+import { assertAllowedBaseUrl, pendingOAuthLink, projectApiAuthStatus } from "./services";
 import {
   getSensitiveWebhookAuthValues,
   getWebhookAuthSecretRefs,
@@ -36,14 +41,8 @@ import {
   type WebhookVerificationConfig,
 } from "./webhooks/verification";
 
-const connectionsOutputSchema = z.object({ connections: z.array(apiConnectionOutputSchema) });
+const CONNECTIONS_PAGE_SIZE = 50;
 const webhookEndpointsOutputSchema = z.object({ endpoints: z.array(webhookEndpointOutputSchema) });
-const authStatusSchema = z.object({
-  authenticated: z.boolean(),
-  mode: z.string(),
-  tokenPresent: z.boolean().optional(),
-  expiresAt: z.union([z.string(), z.date()]).nullable().optional(),
-});
 const oauthStartOutputSchema = z.object({ authorizationUrl: z.string(), state: z.string() });
 const oauthCallbackOutputSchema = z.object({ authenticated: z.boolean(), mode: z.string() });
 const logApiRouteError = (message: string, err: unknown) => {
@@ -802,8 +801,12 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
       path: "/connections/:slug",
       inputSchema: createApiConnectionInputSchema,
       outputSchema: apiConnectionOutputSchema,
-      errorCodes: ["CONNECTION_EXISTS", "BASE_URL_NOT_ALLOWED"],
+      errorCodes: ["CONNECTION_EXISTS", "BASE_URL_NOT_ALLOWED", "INVALID_SLUG"],
       handler: async function ({ input, pathParams }, { json, error }) {
+        const slug = apiConnectionSlugSchema.safeParse(pathParams.slug);
+        if (!slug.success) {
+          return error({ code: "INVALID_SLUG", message: slug.error.issues[0].message }, 400);
+        }
         const body = await input.valid();
         try {
           assertAllowedBaseUrl(body.baseUrl, config);
@@ -879,14 +882,42 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
     defineRoute({
       method: "GET",
       path: "/connections",
-      outputSchema: connectionsOutputSchema,
-      handler: async function (_, { json }) {
-        const [connections] = await this.handlerTx()
+      queryParameters: ["cursor"],
+      outputSchema: apiConnectionsPageSchema,
+      errorCodes: ["INVALID_CURSOR"],
+      handler: async function ({ query }, { json, error }) {
+        let cursor: Cursor | null = null;
+        const rawCursor = query.get("cursor");
+        if (rawCursor) {
+          try {
+            cursor = decodeCursor(rawCursor);
+            if (
+              cursor.indexName !== "_primary" ||
+              cursor.orderDirection !== "asc" ||
+              cursor.pageSize !== CONNECTIONS_PAGE_SIZE ||
+              typeof cursor.indexValues["id"] !== "string"
+            ) {
+              throw new Error("Connection cursor does not match this listing");
+            }
+          } catch {
+            return error({ code: "INVALID_CURSOR", message: "Invalid connection cursor" }, 400);
+          }
+        }
+        const [page] = await this.handlerTx()
           .retrieve(({ forSchema }) =>
-            forSchema(apiSchema).find("api_connection", (b) => b.whereIndex("primary")),
+            forSchema(apiSchema).findWithCursor("api_connection", (b) => {
+              const ordered = b
+                .whereIndex("primary")
+                .orderByIndex("primary", "asc")
+                .pageSize(CONNECTIONS_PAGE_SIZE);
+              return cursor ? ordered.after(cursor) : ordered;
+            }),
           )
           .execute();
-        return json({ connections: connections.map(publicConnection) });
+        return json({
+          connections: page.items.map(publicConnection),
+          cursor: page.cursor?.encode() ?? null,
+        });
       },
     }),
 
@@ -907,6 +938,101 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
           return error({ code: "CONNECTION_NOT_FOUND", message: "API connection not found" }, 404);
         }
         return json(publicConnection(connection));
+      },
+    }),
+
+    defineRoute({
+      method: "PUT",
+      path: "/connections/:slug/configuration",
+      inputSchema: createApiConnectionInputSchema,
+      outputSchema: apiConnectionOutputSchema,
+      errorCodes: ["CONNECTION_NOT_FOUND", "BASE_URL_NOT_ALLOWED"],
+      handler: async function ({ input, pathParams }, { json, error }) {
+        const body = await input.valid();
+        try {
+          assertAllowedBaseUrl(body.baseUrl, config);
+        } catch (err) {
+          logApiRouteError("API connection base URL rejected", err);
+          return error(
+            { code: "BASE_URL_NOT_ALLOWED", message: "API base URL is not allowed" },
+            400,
+          );
+        }
+        const payload = body.auth.type === "none" ? null : JSON.stringify(body.auth);
+        const result = await this.handlerTx()
+          .retrieve(({ forSchema }) =>
+            forSchema(apiSchema)
+              .findFirst("api_connection", (b) =>
+                b.whereIndex("primary", (eb) => eb("id", "=", pathParams.slug)),
+              )
+              .find("secret", (b) =>
+                b.whereIndex("idx_secret_connection_kind", (eb) =>
+                  eb("connectionId", "=", pathParams.slug),
+                ),
+              )
+              .find("oauthState", (b) =>
+                b.whereIndex("idx_oauth_state_connection", (eb) =>
+                  eb("connectionId", "=", pathParams.slug),
+                ),
+              ),
+          )
+          .mutate(({ forSchema, retrieveResult: [connection, secrets, states] }) => {
+            if (!connection) {
+              return { connection: null };
+            }
+            const uow = forSchema(apiSchema);
+            const replaced = {
+              ...connection,
+              name: body.name ?? null,
+              baseUrl: body.baseUrl,
+              authMode: body.auth.type,
+            };
+            uow.update("api_connection", connection.id, (b) =>
+              b
+                .set({
+                  name: replaced.name,
+                  baseUrl: replaced.baseUrl,
+                  authMode: replaced.authMode,
+                  updatedAt: b.now(),
+                })
+                .check(),
+            );
+            // Replaced credentials take their tokens with them; pending links belong to the old client.
+            const authSecret = secrets.find((secret) => secret.kind === "auth");
+            for (const secret of secrets) {
+              if (secret !== authSecret || payload === null) {
+                uow.delete("secret", secret.id);
+              }
+            }
+            if (payload !== null) {
+              if (authSecret) {
+                uow.update("secret", authSecret.id, (b) =>
+                  b.set({ payload, expiresAt: null, updatedAt: b.now() }).check(),
+                );
+              } else {
+                uow.create("secret", {
+                  id: `${pathParams.slug}:auth`,
+                  connectionId: pathParams.slug,
+                  kind: "auth",
+                  payload,
+                  expiresAt: null,
+                });
+              }
+            }
+            for (const state of states) {
+              uow.delete("oauthState", state.id);
+            }
+            uow.triggerHook("onConnectionChanged", {
+              connectionId: pathParams.slug,
+              connection: connectionHookSnapshot(replaced),
+            });
+            return { connection: replaced };
+          })
+          .execute();
+        if (!result.connection) {
+          return error({ code: "CONNECTION_NOT_FOUND", message: "API connection not found" }, 404);
+        }
+        return json(publicConnection(result.connection));
       },
     }),
 
@@ -961,10 +1087,10 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
     defineRoute({
       method: "GET",
       path: "/connections/:slug/auth/status",
-      outputSchema: authStatusSchema,
+      outputSchema: apiAuthStatusSchema,
       errorCodes: ["CONNECTION_NOT_FOUND"],
       handler: async function ({ pathParams }, { json, error }) {
-        const [connection, secret] = await this.handlerTx()
+        const [connection, secret, pendingState] = await this.handlerTx()
           .retrieve(({ forSchema }) =>
             forSchema(apiSchema)
               .findFirst("api_connection", (b) =>
@@ -974,26 +1100,62 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
                 b.whereIndex("idx_secret_connection_kind", (eb) =>
                   eb.and(eb("connectionId", "=", pathParams.slug), eb("kind", "=", "auth")),
                 ),
+              )
+              .findFirst("oauthState", (b) =>
+                b
+                  .whereIndex("idx_oauth_state_pending", (eb) =>
+                    eb.and(
+                      eb("connectionId", "=", pathParams.slug),
+                      eb.isNull("consumedAt"),
+                      eb("expiresAt", ">", eb.now()),
+                    ),
+                  )
+                  .orderByIndex("idx_oauth_state_pending", "desc"),
               ),
           )
           .execute();
         if (!connection) {
           return error({ code: "CONNECTION_NOT_FOUND", message: "API connection not found" }, 404);
         }
-        const auth = secret ? storedAuthPayloadSchema.parse(JSON.parse(secret.payload)) : undefined;
-        const tokenPresent = Boolean(
-          auth?.type === "bearer"
-            ? auth.token
-            : auth?.type === "basic"
-              ? auth.username && auth.password
-              : auth?.tokens?.accessToken,
+        return json(
+          projectApiAuthStatus({
+            authMode: connection.authMode,
+            authSecret: secret ?? undefined,
+            hasPendingOAuth: pendingOAuthLink(pendingState) !== null,
+          }),
         );
-        return json({
-          authenticated: connection.authMode === "none" || tokenPresent,
-          mode: connection.authMode,
-          tokenPresent,
-          expiresAt: secret?.expiresAt ?? null,
-        });
+      },
+    }),
+
+    defineRoute({
+      method: "GET",
+      path: "/connections/:slug/auth/oauth/pending",
+      outputSchema: apiOAuthPendingSchema,
+      errorCodes: ["CONNECTION_NOT_FOUND"],
+      handler: async function ({ pathParams }, { json, error }) {
+        const [connection, pendingState] = await this.handlerTx()
+          .retrieve(({ forSchema }) =>
+            forSchema(apiSchema)
+              .findFirst("api_connection", (b) =>
+                b.whereIndex("primary", (eb) => eb("id", "=", pathParams.slug)),
+              )
+              .findFirst("oauthState", (b) =>
+                b
+                  .whereIndex("idx_oauth_state_pending", (eb) =>
+                    eb.and(
+                      eb("connectionId", "=", pathParams.slug),
+                      eb.isNull("consumedAt"),
+                      eb("expiresAt", ">", eb.now()),
+                    ),
+                  )
+                  .orderByIndex("idx_oauth_state_pending", "desc"),
+              ),
+          )
+          .execute();
+        if (!connection) {
+          return error({ code: "CONNECTION_NOT_FOUND", message: "API connection not found" }, 404);
+        }
+        return json({ pending: pendingOAuthLink(pendingState) });
       },
     }),
 
@@ -1001,7 +1163,7 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
       method: "POST",
       path: "/connections/:slug/auth/token",
       inputSchema: tokenAuthInputSchema,
-      outputSchema: authStatusSchema,
+      outputSchema: apiAuthStatusSchema,
       errorCodes: ["CONNECTION_NOT_FOUND"],
       handler: async function ({ input, pathParams }, { json, error }) {
         const { token } = await input.valid();
@@ -1058,7 +1220,7 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
         if (!result.found) {
           return error({ code: "CONNECTION_NOT_FOUND", message: "API connection not found" }, 404);
         }
-        return json({ authenticated: true, mode: "bearer", tokenPresent: true, expiresAt: null });
+        return json({ mode: "bearer" as const, credentials: "present" as const });
       },
     }),
 
@@ -1112,6 +1274,7 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
                     redirectUri: oauthRedirectUri.toString(),
                     scopes: body.scopes,
                     extraAuthorizationParams: body.extraAuthorizationParams,
+                    discardTokens: body.discardTokens,
                   }),
                 ] as const,
             )
@@ -1198,7 +1361,7 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
     defineRoute({
       method: "DELETE",
       path: "/connections/:slug/auth",
-      outputSchema: authStatusSchema,
+      outputSchema: apiAuthStatusSchema,
       errorCodes: ["CONNECTION_NOT_FOUND"],
       handler: async function ({ pathParams }, { json, error }) {
         const result = await this.handlerTx()
@@ -1229,20 +1392,28 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
             for (const state of states) {
               uow.delete("oauthState", state.id);
             }
+            // Keep the mode: clearing credentials must not turn the connection unauthenticated.
             uow.update("api_connection", connection.id, (b) =>
-              b.set({ authMode: "none", updatedAt: b.now() }).check(),
+              b.set({ updatedAt: b.now() }).check(),
             );
             uow.triggerHook("onConnectionChanged", {
               connectionId: pathParams.slug,
-              connection: connectionHookSnapshot({ ...connection, authMode: "none" }),
+              connection: connectionHookSnapshot(connection),
             });
-            return { found: true as const };
+            return {
+              found: true as const,
+              status: projectApiAuthStatus({
+                authMode: connection.authMode,
+                authSecret: undefined,
+                hasPendingOAuth: false,
+              }),
+            };
           })
           .execute();
         if (!result.found) {
           return error({ code: "CONNECTION_NOT_FOUND", message: "API connection not found" }, 404);
         }
-        return json({ authenticated: true, mode: "none", tokenPresent: false, expiresAt: null });
+        return json(result.status);
       },
     }),
 
