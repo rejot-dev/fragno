@@ -47,6 +47,7 @@ export class InMemoryMcpObject extends RpcTarget implements McpObject {
   readonly #forwardHttpRequest: ReturnType<typeof createBackofficeFragmentHttpTransport>;
   readonly #host: FragmentDurableObjectHost<McpConfig, McpFragment>;
   readonly #scopedRuntime: ScopedFragmentDurableObjectRuntime<McpFragment, BackofficeRoutableScope>;
+  readonly #fetch: typeof fetch;
 
   constructor({
     state,
@@ -54,15 +55,18 @@ export class InMemoryMcpObject extends RpcTarget implements McpObject {
     nowEpochMs,
     runtime,
     implementation,
+    fetch: fetchImpl = fetch,
   }: {
     state: BackofficeObjectState;
     env?: McpObjectEnv;
     nowEpochMs: () => number;
     runtime: BackofficeRuntimeServices;
     implementation: BackofficeObjectImplementation;
+    fetch?: typeof fetch;
   }) {
     super();
     this.#runtimeServices = runtime;
+    this.#fetch = fetchImpl;
     this.#forwardHttpRequest = createBackofficeFragmentHttpTransport({
       address: {
         binding: "MCP",
@@ -101,6 +105,7 @@ export class InMemoryMcpObject extends RpcTarget implements McpObject {
 
   #createConfig(ownerScope: BackofficeRoutableScope): McpConfig {
     return {
+      fetch: this.#fetch,
       allowedOAuthRedirectUris: (redirectUri) =>
         isScopedPublicOAuthRedirectUriAllowed({
           publicOrigin: this.#runtimeServices.config.docsPublicBaseUrl,

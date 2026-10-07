@@ -67,6 +67,10 @@
       "types": "./dist/node/mcp-types.d.ts",
       "default": "./dist/node/mcp-types.js"
     },
+    "./testing": {
+      "types": "./dist/node/testing/mcp-test-server.d.ts",
+      "default": "./dist/node/testing/mcp-test-server.js"
+    },
     "./react": {
       "types": "./dist/browser/client/react.d.ts",
       "default": "./dist/browser/client/react.js"

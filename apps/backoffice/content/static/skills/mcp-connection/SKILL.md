@@ -23,7 +23,9 @@ The MCP capability is available automatically for the current scope.
 - Register each remote MCP server with a stable lowercase slug, a display name, the streamable HTTP
   endpoint URL, and an auth mode.
 - For OAuth servers, create the server first with `auth: { type: "oauth" }`, then start OAuth and
-  send the returned `authorizationUrl` to the user.
+  send the returned `authorizationUrl` to the user. If the server does not support dynamic client
+  registration, include `clientId`, `clientSecret`, and `scopes` in `auth` at creation; later OAuth
+  starts reuse them.
 - For bearer-token servers, create the server with `auth: { type: "bearer", token }` or set the
   token after creation.
 
@@ -83,3 +85,6 @@ await mcp.callTool({
   arguments: { query: "Durable Objects alarms" },
 });
 ```
+
+`callTool` returns `{ isError, content, structuredContent }`. A tool error is a result with
+`isError: true` whose `content` explains it; auth, transport, and protocol failures throw.

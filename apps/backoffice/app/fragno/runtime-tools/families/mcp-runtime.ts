@@ -143,6 +143,7 @@ export const createRouteBackedMcpRuntime = (
           ...(scope ? { scope } : {}),
           ...(clientId ? { clientId } : {}),
           ...(clientSecret ? { clientSecret } : {}),
+          discardTokens: false,
         },
       });
       if (response.type === "json" && isSuccessStatus(response.status)) {

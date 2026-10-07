@@ -141,6 +141,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
           ...(scope ? { scope } : {}),
           ...(clientId ? { clientId } : {}),
           ...(clientSecret ? { clientSecret } : {}),
+          discardTokens: false,
         },
       });
       if (response.type === "json" && response.status >= 200 && response.status < 300) {

@@ -2,7 +2,7 @@ import { auth } from "@modelcontextprotocol/sdk/client/auth.js";
 import type { OAuthTokens } from "@modelcontextprotocol/sdk/shared/auth.js";
 
 import { parseSecretPayload, stringifySecretPayload, type McpClientAuth } from "./mcp-api";
-import type { McpFragmentConfig } from "./mcp-types";
+import type { AuthConfig, McpAuthStatus, McpFragmentConfig } from "./mcp-types";
 import {
   BufferedOAuthClientProvider,
   type OAuthProviderChanges,
@@ -41,9 +41,14 @@ export type SecretRecord = {
   expiresAt?: Date | string | null;
 };
 
+// OAuth payloads hold the creation-time configuration until consent adds tokens and a redirect URI.
 type StoredAuthPayload =
   | { type: "bearer"; token: string }
-  | { type: "oauth"; tokens?: OAuthTokens; redirectUri: string }
+  | (Omit<Extract<AuthConfig, { type: "oauth" }>, "type"> & {
+      type: "oauth";
+      tokens?: OAuthTokens;
+      redirectUri?: string;
+    })
   | {
       type: "client_credentials";
       clientId: string;
@@ -65,6 +70,74 @@ function secretExpiresInFuture(secret: Pick<SecretRecord, "expiresAt"> | undefin
 
 function secretIsUnexpired(secret: Pick<SecretRecord, "expiresAt"> | undefined) {
   return !secret?.expiresAt || secretExpiresInFuture(secret);
+}
+
+/** Projects stored auth without secrets; whether credentials work can only be learned by using them. */
+export function projectMcpAuthStatus(args: {
+  authMode: string;
+  authSecret: Pick<SecretRecord, "payload" | "expiresAt"> | undefined;
+  hasPendingOAuth: boolean;
+}): McpAuthStatus {
+  // Routes write authMode only from authConfigSchema discriminators.
+  const mode = args.authMode as AuthConfig["type"];
+  if (mode === "none") {
+    return { mode };
+  }
+  if (mode !== "oauth") {
+    return { mode, credentials: args.authSecret ? "present" : "missing" };
+  }
+  const auth = args.authSecret
+    ? parseSecretPayload<StoredAuthPayload>(args.authSecret.payload)
+    : undefined;
+  const tokens = auth?.type === "oauth" ? auth.tokens : undefined;
+  // Matches operation-time resolution: a refresh token renews an expired access token.
+  if (tokens?.access_token && (tokens.refresh_token || secretIsUnexpired(args.authSecret))) {
+    return { mode, state: "authorized" };
+  }
+  // Expired tokens without a refresh token are unusable, so a pending link is the actionable state.
+  if (args.hasPendingOAuth) {
+    return { mode, state: "consent-pending" };
+  }
+  return { mode, state: tokens?.access_token ? "expired" : "consent-required" };
+}
+
+/**
+ * Projects the newest unexpired, unconsumed state; any such state completes the same server.
+ * States started before links were retained have no URL and cannot be resumed.
+ */
+export function pendingOAuthLink(
+  state: { authorizationUrl: string | null; expiresAt: Date } | null,
+): { authorizationUrl: string; expiresAt: Date } | null {
+  return state?.authorizationUrl
+    ? { authorizationUrl: state.authorizationUrl, expiresAt: state.expiresAt }
+    : null;
+}
+
+/** Start requests may override the configured client; otherwise the stored configuration applies. */
+export function resolveOAuthStartClient(
+  secrets: Pick<SecretRecord, "kind" | "payload">[],
+  input: { scope?: string; clientId?: string; clientSecret?: string },
+) {
+  const authSecret = secretByKind(secrets, "auth");
+  const stored = authSecret ? parseSecretPayload<StoredAuthPayload>(authSecret.payload) : undefined;
+  const configured = stored?.type === "oauth" ? stored : undefined;
+  return {
+    scope: input.scope ?? configured?.scopes?.join(" "),
+    // A client ID and secret belong together; never pair an override with a stored secret.
+    ...(input.clientId
+      ? { clientId: input.clientId, clientSecret: input.clientSecret }
+      : { clientId: configured?.clientId, clientSecret: configured?.clientSecret }),
+  };
+}
+
+/** Clearing OAuth consent keeps the configured client and scopes for the next start. */
+export function withoutOAuthConsent(payload: string) {
+  const {
+    tokens: _tokens,
+    redirectUri: _redirectUri,
+    ...configuration
+  } = parseSecretPayload<Extract<StoredAuthPayload, { type: "oauth" }>>(payload);
+  return stringifySecretPayload(configuration);
 }
 
 async function parseSecretKind<T>(
@@ -127,7 +200,7 @@ export async function createOAuthCallbackSnapshot(args: {
   server: { id: { toString(): string } | string; endpointUrl: string };
   secrets: Pick<SecretRecord, "kind" | "payload">[];
 }): Promise<AuthPersistenceChanges> {
-  const authPayload = await parseSecretKind<{ type: string; tokens?: OAuthTokens }>(
+  const authPayload = await parseSecretKind<Extract<StoredAuthPayload, { type: "oauth" }>>(
     args.secrets,
     "auth",
   );
@@ -162,7 +235,9 @@ export async function createOAuthCallbackSnapshot(args: {
     ...changes,
     ...(changes.tokens
       ? {
+          // Keep the configured client and scopes so consent can be started again later.
           authPayload: stringifySecretPayload({
+            ...authPayload,
             type: "oauth",
             redirectUri: args.state.redirectUri,
             tokens: changes.tokens,

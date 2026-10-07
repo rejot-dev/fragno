@@ -12,7 +12,10 @@ import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 
 export type McpConfig = Pick<
   McpFragmentConfig,
-  "allowedOAuthRedirectUris" | "onServerConfigurationChanged" | "onServerConfigurationDeleted"
+  | "allowedOAuthRedirectUris"
+  | "fetch"
+  | "onServerConfigurationChanged"
+  | "onServerConfigurationDeleted"
 >;
 
 export function createMcpServer(
@@ -23,6 +26,7 @@ export function createMcpServer(
   return createMcpFragment(
     {
       allowedOAuthRedirectUris: config.allowedOAuthRedirectUris,
+      fetch: config.fetch,
       onServerConfigurationChanged: config.onServerConfigurationChanged,
       onServerConfigurationDeleted: config.onServerConfigurationDeleted,
     },
@@ -46,6 +50,9 @@ export function createMcpServer(
     await ifMatchesRoute("GET", "/servers/:slug", () => {
       access = BACKOFFICE_PERMISSION.mcp.serversRead;
     });
+    await ifMatchesRoute("PUT", "/servers/:slug/configuration", () => {
+      access = BACKOFFICE_PERMISSION.mcp.serversCreate;
+    });
     await ifMatchesRoute("DELETE", "/servers/:slug", () => {
       access = BACKOFFICE_PERMISSION.mcp.serversDelete;
     });
@@ -53,6 +60,10 @@ export function createMcpServer(
       access = BACKOFFICE_PERMISSION.mcp.serversRead;
     });
     await ifMatchesRoute("POST", "/servers/:slug/auth/token", () => {
+      access = BACKOFFICE_PERMISSION.mcp.serversCreate;
+    });
+    // A pending link embeds the callback state, so only setup authority may resume it.
+    await ifMatchesRoute("GET", "/servers/:slug/auth/pending", () => {
       access = BACKOFFICE_PERMISSION.mcp.serversCreate;
     });
     await ifMatchesRoute("POST", "/servers/:slug/auth/start", () => {
