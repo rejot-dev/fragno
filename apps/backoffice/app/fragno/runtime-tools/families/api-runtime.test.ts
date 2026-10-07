@@ -27,7 +27,7 @@ describe("route-backed API runtime public addresses", () => {
     expect(new URL(requests[0]!.url).searchParams.get("redirectUri")).toBe(
       publicAddress.oauthRedirectUri,
     );
-    await expect(requests[0]?.json()).resolves.toEqual({});
+    await expect(requests[0]?.json()).resolves.toEqual({ discardTokens: false });
   });
 
   test("adds the public URL to webhook endpoint results outside the API object", async () => {

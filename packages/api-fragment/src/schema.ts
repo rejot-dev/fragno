@@ -82,5 +82,13 @@ export const apiSchema = schema("api-fragment", (s) => {
         .createIndex("idx_webhook_secret_endpoint_ref", ["endpointId", "ref"], {
           unique: true,
         }),
+    )
+    .alterTable("oauthState", (t) =>
+      // Null only for states started before links were retained; those cannot be resumed.
+      t.addColumn("authorizationUrl", column("text").nullable()),
+    )
+    .alterTable("oauthState", (t) =>
+      // States are retained after use, so pending reads seek the newest live one instead of scanning.
+      t.createIndex("idx_oauth_state_pending", ["connectionId", "consumedAt", "expiresAt"]),
     );
 });

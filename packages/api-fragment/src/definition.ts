@@ -165,6 +165,7 @@ export const apiFragmentDefinition = defineFragment<ApiFragmentConfig>("api-frag
         redirectUri: string;
         scopes?: string[];
         extraAuthorizationParams?: Record<string, string>;
+        discardTokens: boolean;
       }) {
         return this.serviceTx(apiSchema)
           .retrieve((uow) =>
@@ -201,6 +202,9 @@ export const apiFragmentDefinition = defineFragment<ApiFragmentConfig>("api-frag
               found: true as const,
               authorizationUrl: snapshot.authorizationUrl.toString(),
               oauthState: snapshot.oauthState,
+              secretId: secret.id,
+              // Keeps the client configuration; only consent evidence is discarded.
+              clientPayload: JSON.stringify({ ...auth, tokens: undefined, redirectUri: undefined }),
             };
           })
           .mutate(({ uow, retrieveResult }) => {
@@ -210,12 +214,24 @@ export const apiFragmentDefinition = defineFragment<ApiFragmentConfig>("api-frag
             uow.create("oauthState", {
               id: retrieveResult.oauthState.id,
               connectionId: retrieveResult.oauthState.connectionId,
+              authorizationUrl: retrieveResult.oauthState.authorizationUrl,
               codeVerifier: retrieveResult.oauthState.codeVerifier,
               redirectUri: retrieveResult.oauthState.redirectUri,
               scope: retrieveResult.oauthState.scope,
               expiresAt: retrieveResult.oauthState.expiresAt,
               consumedAt: null,
             });
+            if (input.discardTokens) {
+              uow.update("secret", retrieveResult.secretId, (b) =>
+                b
+                  .set({
+                    payload: retrieveResult.clientPayload,
+                    expiresAt: null,
+                    updatedAt: b.now(),
+                  })
+                  .check(),
+              );
+            }
             return { found: true as const, authorizationUrl: retrieveResult.authorizationUrl };
           })
           .transform(({ retrieveResult }) => retrieveResult)

@@ -51,7 +51,7 @@ describe("API system capability", () => {
       },
     );
     assert(response.ok);
-    await expect(response.json()).resolves.toEqual({ connections: [] });
+    await expect(response.json()).resolves.toEqual({ connections: [], cursor: null });
   });
 
   test("creates an automation event source for a new webhook endpoint", async () => {
