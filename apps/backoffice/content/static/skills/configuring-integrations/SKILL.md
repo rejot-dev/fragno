@@ -3,12 +3,13 @@ name: configuring-integrations
 description: >
   Connect, set up, verify, reconfigure, or disconnect a service. Walks a source ladder: native
   Backoffice services such as Telegram, Resend, Reson8, and Upload first, then Open Connector OAuth
-  providers, then direct HTTP API connections. Load with the service's provider-specific skill.
+  providers, then remote MCP servers, then direct HTTP API connections. Load with the service's
+  provider-specific skill.
 ---
 
 # Configuring Integrations
 
-`integrations.*` is one facade over three connection sources. Every connection has a scoped address
+`integrations.*` is one facade over four connection sources. Every connection has a scoped address
 `namespace#local-id`; copy addresses from discovery and listing verbatim. Read
 `/static/codemode/providers/integrations.d.ts` before calling it.
 
@@ -16,7 +17,8 @@ description: >
 | ---- | --------------- | ------------------------------------------ | ------------------ |
 | 1    | Backoffice      | `backoffice#<service>`, or `connections.*` | organization       |
 | 2    | Open Connector  | `connector#n_…`, `connector#a_…` (opaque)  | user               |
-| 3    | Direct HTTP API | `api#<slug>`, slug chosen by you           | org, user, project |
+| 3    | MCP server      | `mcp#<slug>`, slug chosen by you           | org, user, project |
+| 4    | Direct HTTP API | `api#<slug>`, slug chosen by you           | org, user, project |
 
 ## 1. Discover
 
@@ -48,7 +50,10 @@ Take the highest rung that offers the requested service:
 2. **Open Connector**: a service whose `id` names the provider, such as `gmail`, with
    `connector#n_…` targets. Use the target unchanged; it preassigns the connection name. Several
    targets mean several provider configurations: use the user's choice.
-3. **Direct HTTP API**: the `api` service, chosen when no higher rung offers the service or the user
+3. **MCP server**: the `mcp` service, chosen when the provider publishes a streamable HTTP MCP
+   endpoint or the user supplies one. Choose a slug of lowercase letters, digits, and `-`, such as
+   `mcp#cloudflare`. Take the endpoint URL from provider documentation.
+4. **Direct HTTP API**: the `api` service, chosen when no higher rung offers the service or the user
    asks for a direct API connection. Choose a lowercase slug such as `stripe` (letters, digits, `.`,
    `_`, `-`, starting with a letter or digit) and address it as `api#stripe`. Take the base URL and
    auth method from provider documentation; a service name alone establishes neither.
@@ -85,6 +90,12 @@ the user that URL to register in the provider's OAuth app in the same message th
 create the app, before they send credentials; consent fails with a redirect URI error until the app
 lists it.
 
+For `mcp#` addresses, `type` likewise selects the auth mode and an OAuth submission starts consent.
+Servers with dynamic client registration need no client; otherwise include `clientId` and
+`clientSecret`. A `blocked` result naming dynamic client registration means the server needs a
+pre-registered client: have the user create an OAuth app with the stated callback URL, then
+reconfigure with its client.
+
 Collect missing values through a durable form unless the request already supplies all of them. Read
 `/static/skills/workflows/SKILL.md` and `/static/skills/generating-backoffice-uis/SKILL.md`, then
 define an inline workflow whose completed `step.do` returns a `$ui` form with one control per
@@ -99,10 +110,10 @@ reconfiguration.
 
 ## 4. Verify
 
-`integrations.verify({ connectionId })` runs the source's read-only live check. Backoffice and Open
-Connector return timestamped `passed` or `failed` checks. Direct API connections return no checks:
-prove access with one read-only `request`, such as the provider's profile or account endpoint.
-`integrations.get` never contacts the provider.
+`integrations.verify({ connectionId })` runs the source's read-only live check. Backoffice, Open
+Connector, and MCP return timestamped `passed` or `failed` checks; MCP's lists the server's tools.
+Direct API connections return no checks: prove access with one read-only `request`, such as the
+provider's profile or account endpoint. `integrations.get` never contacts the provider.
 
 **Complete when** a `passed` check or an `ok: true` read-only request proves access. Otherwise
 report the check message or error and the connection's `nextSteps`.
@@ -114,9 +125,9 @@ Both operations replace or delete live credentials, so run them on the user's in
 - **Reconfigure**: `integrations.reconfigure({ kind: "check", connectionId })` returns the
   replacement `inputSchema`; submit with `kind: "input"`, collecting values as in step 3. A
   submission replaces the stored configuration and credentials, then returns setup progress: rerun
-  the setup loop and step 4. For an `api#` OAuth connection whose provider revoked access, submit
-  `{ reauthorize: true }` to consent again with the stored client; changing scopes, endpoints, or
-  the client is a full replacement.
+  the setup loop and step 4. For an `api#` or `mcp#` OAuth connection whose provider revoked access,
+  submit `{ reauthorize: true }` to consent again with the stored client; changing scopes,
+  endpoints, or the client is a full replacement.
 - **Disconnect**: `integrations.disconnect({ connectionId, confirm: connectionId })` removes the
   configuration and credentials. `not-configured` means nothing was stored. The address stays valid
   for a later setup.
@@ -154,6 +165,14 @@ headers, and body.
 - A `405` lists allowed methods in `Allow`; a `401` with `WWW-Authenticate` names the scheme the
   endpoint expects.
 - Responses decode as JSON or text, so binary downloads arrive altered.
+
+### MCP servers
+
+Each server tool is an action with the tool's own input schema. Results are
+`{ isError, content, structuredContent }`: `isError: true` is the tool's own answer, explained in
+`content`, so report it rather than retrying. Tools appear once the server's tools are discovered,
+shortly after setup is ready; if `actions` is empty, run `integrations.verify`. Tools whose schemas
+cannot be validated are not offered as actions, and `integrations.get` names them in `nextSteps`.
 
 Inbound webhooks are endpoints, not connections: configure them with `api.webhooks.*` following
 `/static/skills/api-webhooks/SKILL.md`.
