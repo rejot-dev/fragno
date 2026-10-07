@@ -290,9 +290,12 @@ and unsupported dynamic-reference/vocabulary semantics fail before actions are p
 Self-contained ordinary references are supported; no remote schema fetch or inferred output contract
 is introduced.
 
-The registry returns source pages without materializing all connections. Its opaque cursor
-identifies the next source and that source's unchanged cursor. An unknown source or malformed cursor
-fails rather than silently restarting. Pagination never changes execution scope or grants access.
+The registry reads sources in registration order (API, MCP, Reson8, then Connector in user scope)
+and combines every source that finishes into the same page. A page ends only at a source that
+returns its own next cursor, so each source's page size still bounds the result and nothing is
+materialized beyond those pages. The opaque cursor identifies that source and its unchanged cursor.
+An unknown source or malformed cursor fails rather than silently restarting. Pagination never
+changes execution scope or grants access.
 
 ## Codemode usage
 
