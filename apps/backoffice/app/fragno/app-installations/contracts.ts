@@ -1,6 +1,5 @@
 import { z } from "zod";
 
-import type { BackofficePermissionRequirement } from "@/backoffice-runtime/permissions";
 import {
   backofficeAppLookupInputSchema,
   type BackofficeAppLookupInput,
@@ -33,29 +32,37 @@ export type BackofficeAppInstallationPageInput = z.infer<
 >;
 
 /** Uninstalled records retain their identity, but hold no effective grants. */
-export type BackofficeAppInstallationStatus = "active" | "uninstalled";
+export type BackofficeAppInstallationStatus = BackofficeAppInstallation["status"];
 
 /** Installation authority belongs to the customer organization, not the installing user. */
-export type BackofficeAppInstallation = {
-  id: string;
-  appId: string;
-  organizationId: string;
-  grantedPermissions: BackofficePermissionRequirement[];
-  installedByUserId: string;
-  status: BackofficeAppInstallationStatus;
-  createdAt: string;
-  updatedAt: string;
-};
+export const backofficeAppInstallationSchema = z.strictObject({
+  id: z.string().min(1),
+  appId: z.string().min(1),
+  organizationId: z.string().min(1),
+  grantedPermissions: appPermissionsSchema,
+  installedByUserId: z.string().min(1),
+  status: z.enum(["active", "uninstalled"]),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+});
+export type BackofficeAppInstallation = z.infer<typeof backofficeAppInstallationSchema>;
 
 /** Reinstallation preserves the transaction-resolved installation identity. */
-export type BackofficeAppInstallationMutationResult = { installationId: string; changed: boolean };
+export const backofficeAppInstallationMutationResultSchema = z.strictObject({
+  installationId: z.string().min(1),
+  changed: z.boolean(),
+});
+export type BackofficeAppInstallationMutationResult = z.infer<
+  typeof backofficeAppInstallationMutationResultSchema
+>;
 
 /** Organization installation history includes uninstalled records. */
-export type BackofficeAppInstallationPage = {
-  installations: BackofficeAppInstallation[];
-  nextCursor: string | null;
-  hasNextPage: boolean;
-};
+export const backofficeAppInstallationPageSchema = z.strictObject({
+  installations: z.array(backofficeAppInstallationSchema),
+  nextCursor: z.string().nullable(),
+  hasNextPage: z.boolean(),
+});
+export type BackofficeAppInstallationPage = z.infer<typeof backofficeAppInstallationPageSchema>;
 
 /** Internal organization-scoped commands; callers must establish Auth management authority. */
 export type BackofficeAppInstallationsCommands = {

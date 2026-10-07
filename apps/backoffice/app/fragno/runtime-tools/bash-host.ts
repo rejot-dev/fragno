@@ -18,6 +18,7 @@ import type { AutomationCommandContext, BashAutomationCommandResult } from "./au
 import { createCurrentScopeBashCommand } from "./current-scope-command";
 import type { AdminRuntime } from "./families/admin";
 import type { RegisteredApiCommandContext } from "./families/api-runtime";
+import type { AppsRuntime } from "./families/apps-runtime";
 import type { AutomationStoreRuntime } from "./families/automations-bindings";
 import type { DurableHooksRuntime } from "./families/automations-durable-hooks";
 import type { AutomationIdentityRuntime } from "./families/automations-identities";
@@ -61,6 +62,7 @@ export type BashHostContext = {
   stateBackend?: BackofficeStateBackend;
   createBackofficeScopedContext(scope: BackofficeContextScope): BashHostContext;
   admin?: { runtime: AdminRuntime } | null;
+  apps: { runtime: AppsRuntime } | null;
   backoffice: { runtime: BackofficeCapabilitiesRuntime } | null;
   automation: RegisteredEventBashCommandContext | null;
   cloudflare?: { runtime: CloudflareRuntime } | null;

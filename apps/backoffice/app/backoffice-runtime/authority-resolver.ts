@@ -28,12 +28,16 @@ import {
 export type BackofficeAuthorityResolver = {
   /**
    * Returns the permissions recognized for the human or service principal on this execution scope.
+   * Operations limit which authority sources need resolving; omit them to inspect the full catalog.
    * An empty result means the principal has no authority for the requested action.
    */
-  resolvePrincipalPermissions(input: {
-    principal: NonNullable<AutomationActors["principal"]>;
-    execution: BackofficeExecutionContext;
-  }): Promise<readonly BackofficePermissionRequirement[]>;
+  resolvePrincipalPermissions(
+    input: {
+      principal: NonNullable<AutomationActors["principal"]>;
+      execution: BackofficeExecutionContext;
+    },
+    operations?: readonly BackofficePermissionRequirement[],
+  ): Promise<readonly BackofficePermissionRequirement[]>;
 
   /**
    * Returns the capabilities currently granted to one delegate or assistant in the provenance
@@ -62,7 +66,8 @@ export const withBackofficeActorCapabilityGrants = ({
   actor: AutomationActors["delegation"][number];
   grants: readonly BackofficePermissionRequirement[];
 }): BackofficeAuthorityResolver => ({
-  resolvePrincipalPermissions: async (input) => await resolver.resolvePrincipalPermissions(input),
+  resolvePrincipalPermissions: async (input, operations) =>
+    await resolver.resolvePrincipalPermissions(input, operations),
   resolveActorCapabilityGrants: async (input) =>
     automationEntityRefsEqual(input.actor, actor)
       ? grants

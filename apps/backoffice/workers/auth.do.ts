@@ -34,6 +34,9 @@ import {
   resolveLiveAccessTokenSecret,
   splitOrganizationRoles,
   type UserAuthorityFacts,
+  userOrganizationAuthorityInputSchema,
+  type UserOrganizationAuthorityFacts,
+  type UserOrganizationAuthorityInput,
   type UserSummary,
   type VerifyUserEmailInput,
   type VerifyUserEmailResult,
@@ -1554,6 +1557,28 @@ export class InMemoryAuthObject implements AuthObject {
     };
   }
 
+  async getUserOrganizationAuthorityFacts(
+    input: UserOrganizationAuthorityInput,
+  ): Promise<UserOrganizationAuthorityFacts> {
+    const { userId, organizationId } = userOrganizationAuthorityInputSchema.parse(input);
+    const { adapter } = await this.#authContext();
+    const [user, member] = await Promise.all([
+      findStoreUser(adapter, userId),
+      adapter.findOne<StoreMember>({
+        model: "member",
+        where: [
+          { field: "organizationId", value: organizationId },
+          { field: "userId", value: userId },
+        ],
+      }),
+    ]);
+    return {
+      active: Boolean(user && !normalizeBoolean(user.banned)),
+      role: user ? normalizeRole(user.role) : null,
+      organizationRoles: member ? splitOrganizationRoles(member.role) : null,
+    };
+  }
+
   async getAllOrganizations(): Promise<Organization[]> {
     const { adapter } = await this.#authContext();
     return (
@@ -1845,6 +1870,10 @@ export class Auth extends DurableObject<CloudflareEnv> implements AuthObject {
 
   async getUserAuthorityFacts(input: { userId: string; organizationId?: string }) {
     return await this.#object.getUserAuthorityFacts(input);
+  }
+
+  async getUserOrganizationAuthorityFacts(input: UserOrganizationAuthorityInput) {
+    return await this.#object.getUserOrganizationAuthorityFacts(input);
   }
 
   async grantBackofficeAdminByEmail(input: { email: string }) {

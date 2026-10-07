@@ -194,6 +194,14 @@ class UnavailableLocalDurableObject {
     } as const;
   }
 
+  async getUserOrganizationAuthorityFacts() {
+    return {
+      active: false,
+      role: null,
+      organizationRoles: null,
+    } as const;
+  }
+
   async getAllOrganizations() {
     return [];
   }

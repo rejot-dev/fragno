@@ -1,6 +1,7 @@
 /// <reference path="/static/codemode/workflow-authoring.d.ts" />
 /// <reference path="/static/codemode/providers/state.d.ts" />
 /// <reference path="/static/codemode/providers/admin.d.ts" />
+/// <reference path="/static/codemode/providers/apps.d.ts" />
 /// <reference path="/static/codemode/providers/capabilities.d.ts" />
 /// <reference path="/static/codemode/providers/hooks.d.ts" />
 /// <reference path="/static/codemode/providers/connections.d.ts" />
@@ -37,6 +38,7 @@ type BackofficeCodemodeScope =
 interface BackofficeCodemodeScopedProviders {
   state: StateCodemodeProvider;
   admin: AdminCodemodeProvider;
+  apps: AppsCodemodeProvider;
   capabilities: CapabilitiesCodemodeProvider;
   hooks: HooksCodemodeProvider;
   connections: ConnectionsCodemodeProvider;

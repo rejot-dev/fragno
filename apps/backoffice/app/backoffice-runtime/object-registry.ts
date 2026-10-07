@@ -17,6 +17,8 @@ import type {
   Organization,
   OrganizationHookPayload,
   UserAuthorityFacts,
+  UserOrganizationAuthorityFacts,
+  UserOrganizationAuthorityInput,
   VerifyUserEmailInput,
   VerifyUserEmailResult,
 } from "@/fragno/auth/contracts";
@@ -243,6 +245,10 @@ export type AuthObject = DurableHookCommands & {
     userId: string;
     organizationId?: string;
   }): Promise<UserAuthorityFacts>;
+  /** Resolves live user status and roles for exactly one organization, without session metadata. */
+  getUserOrganizationAuthorityFacts(
+    input: UserOrganizationAuthorityInput,
+  ): Promise<UserOrganizationAuthorityFacts>;
   /** Grants global administrator access; only the first administrator may be unverified. */
   grantBackofficeAdminByEmail(input: { email: string }): Promise<GrantBackofficeAdminResult>;
   createAdminOrganization(input: {

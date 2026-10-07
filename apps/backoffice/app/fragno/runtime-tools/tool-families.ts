@@ -4,6 +4,8 @@ import type { PiManagerRuntime } from "@/fragno/pi-manager/pi-manager-runtime";
 import { codemodeStateToolFamily } from "./codemode-state-runtime";
 import { adminToolFamily, type AdminRuntime } from "./families/admin";
 import { apiToolFamily, type ApiRuntime } from "./families/api";
+import { appsToolFamily } from "./families/apps";
+import type { AppsRuntime } from "./families/apps-runtime";
 import {
   automationStoreToolFamily,
   type AutomationStoreRuntime,
@@ -69,6 +71,7 @@ import {
 export type CoreBackofficeRuntimeMap = {
   state?: BackofficeStateBackend;
   admin?: AdminRuntime;
+  apps: AppsRuntime | undefined;
   backoffice?: BackofficeCapabilitiesRuntime;
   integrations: IntegrationsRuntime | undefined;
   automations?: AutomationStoreRuntime & AutomationRouterRuntime;
@@ -101,6 +104,7 @@ export type CoreBackofficeToolContext = BackofficeToolContext<Partial<CoreBackof
 export const runtimeToolFamilies = [
   codemodeStateToolFamily,
   adminToolFamily,
+  appsToolFamily,
   backofficeCapabilitiesToolFamily,
   integrationsToolFamily,
   automationStoreToolFamily,
