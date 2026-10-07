@@ -2,6 +2,7 @@ import { Button } from "@fragno-private/design-system/button";
 import { cn } from "@fragno-private/design-system/cn";
 import { FormContainer } from "@fragno-private/design-system/form-container";
 import { Input } from "@fragno-private/design-system/input";
+import { usePostHog } from "@posthog/react/slim";
 import { useEffect, useMemo, useState } from "react";
 import {
   useLoaderData,
@@ -34,6 +35,7 @@ export function meta() {
 }
 
 export default function BackofficeOrganizationMembers() {
+  const posthog = usePostHog();
   const { organization, member, me } = useOutletContext<OrganizationLayoutContext>();
   const currentUserId = me.user.id;
   const canManageMembers =
@@ -60,6 +62,12 @@ export default function BackofficeOrganizationMembers() {
       body: { roles },
     });
     await revalidator.revalidate();
+    if (posthog) {
+      posthog.capture("organization_member_role_updated", {
+        organization_id: organization.id,
+        role_count: roles.length,
+      });
+    }
   };
 
   const handleRemoveMember = async (memberId: string) => {
@@ -67,6 +75,11 @@ export default function BackofficeOrganizationMembers() {
       path: { organizationId: organization.id, memberId },
     });
     await revalidator.revalidate();
+    if (posthog) {
+      posthog.capture("organization_member_removed", {
+        organization_id: organization.id,
+      });
+    }
   };
 
   const filteredMembers = useMemo(() => {

@@ -3,6 +3,7 @@ import { ClientOnly } from "@fragno-private/design-system/client-only";
 import { Icon } from "@fragno-private/design-system/icon";
 import { Input } from "@fragno-private/design-system/input";
 import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
+import { usePostHog } from "@posthog/react/slim";
 import { Suspense, useState } from "react";
 import {
   Link,
@@ -31,6 +32,7 @@ import {
   decodeMarketplacePublishedVersionCursor,
   MarketplaceListingCursorError,
 } from "@/fragno/marketplace/pagination";
+import { captureBackofficeServerEvent } from "@/posthog.server";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import { buildBackofficeLoginPath } from "../auth-navigation";
@@ -335,6 +337,16 @@ export async function action({ request, params, context, url }: Route.ActionArgs
       },
       { execution, propagationContext: null },
     );
+    captureBackofficeServerEvent(context, {
+      event: "marketplace_ingestion_admitted",
+      userId: execution.userAuthority.userId,
+      properties: {
+        listing_id: listingIdResult.data,
+        version: result.version,
+        scope_kind: installationTarget.targetScope.kind,
+        organization_id: installationTarget.organizationId,
+      },
+    });
     return redirect(
       buildMarketplaceInstallationPath(url.pathname, url.search, {
         organizationId: installationTarget.organizationId,
@@ -361,6 +373,7 @@ export default function BackofficeMarketplaceDetail(props: Route.ComponentProps)
 }
 
 function MarketplaceListingDetail({ loaderData }: Route.ComponentProps) {
+  const posthog = usePostHog();
   const { selectedScope } = useOutletContext<MarketplaceLayoutContext>();
   const {
     listing,
@@ -559,6 +572,13 @@ function MarketplaceListingDetail({ loaderData }: Route.ComponentProps) {
                         return;
                       }
                       setInstallationPathError(null);
+                      if (posthog) {
+                        posthog.capture("marketplace_installation_started", {
+                          listing_id: listing.listingId,
+                          version: installationVersion,
+                          scope_kind: selectedScope.kind,
+                        });
+                      }
                     }}
                   >
                     <input type="hidden" name="version" value={installationVersion} />

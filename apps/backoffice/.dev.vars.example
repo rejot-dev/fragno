@@ -21,6 +21,9 @@ CLOUDFLARE_BRIDGE_API_KEY=
 # X-Forwarded-Proto; false disables proxy trust.
 BACKOFFICE_TRUST_PROXY=loopback
 
+# Empty in dev is fine
+POSTHOG_PROJECT_TOKEN=
+
 # For GitHub OAuth (login)
 GITHUB_CLIENT_ID=
 GITHUB_CLIENT_SECRET=

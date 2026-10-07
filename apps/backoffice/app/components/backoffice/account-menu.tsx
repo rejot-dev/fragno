@@ -12,6 +12,7 @@ import {
   SelectorMenuPopup,
   SelectorMenuTrigger,
 } from "@fragno-private/design-system/selector-menu";
+import { usePostHog } from "@posthog/react/slim";
 import { useMemo } from "react";
 
 import {
@@ -45,6 +46,7 @@ function userInitials(email: string) {
 }
 
 export function BackofficeAccountMenu({ me, currentScope, isLoading }: BackofficeAccountMenuProps) {
+  const posthog = usePostHog();
   const { mutate: signOut, loading: signingOut, error: signOutError } = authClient.useSignOut();
   // Called before the early returns so the stored appearance is applied even while signed out.
   const appearance = useAppearancePreferences();
@@ -138,6 +140,9 @@ export function BackofficeAccountMenu({ me, currentScope, isLoading }: Backoffic
             onClick={() => {
               void signOut({ body: {} })
                 .then(() => {
+                  if (posthog) {
+                    posthog.reset();
+                  }
                   window.location.replace("/backoffice/login");
                 })
                 .catch(() => undefined);

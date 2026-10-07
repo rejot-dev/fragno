@@ -4,6 +4,7 @@
  *     https://github.com/cloudflare/workers-sdk/issues/5756
  */
 interface CloudflareEnv {
+  POSTHOG_PROJECT_TOKEN: string | undefined;
   GITHUB_CLIENT_ID: string;
   GITHUB_CLIENT_SECRET: string;
   AUTH_ACCESS_TOKEN_SECRET?: string;

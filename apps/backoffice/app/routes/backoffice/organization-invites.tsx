@@ -2,6 +2,7 @@ import { Button } from "@fragno-private/design-system/button";
 import { cn } from "@fragno-private/design-system/cn";
 import { FormContainer, FormField } from "@fragno-private/design-system/form-container";
 import { Input } from "@fragno-private/design-system/input";
+import { usePostHog } from "@posthog/react/slim";
 import { useEffect, useReducer, useState, type SubmitEvent } from "react";
 import { useLoaderData, useOutletContext, useRevalidator } from "react-router";
 
@@ -122,6 +123,7 @@ export function meta() {
 }
 
 export default function BackofficeOrganizationInvites() {
+  const posthog = usePostHog();
   const { organization, member, me } = useOutletContext<OrganizationLayoutContext>();
   const canManageMembers =
     me.user.role === "admin" || member.roles.some((role) => role === "owner" || role === "admin");
@@ -170,6 +172,12 @@ export default function BackofficeOrganizationInvites() {
       });
       const invitation = response.invitation;
       await revalidator.revalidate();
+      if (posthog) {
+        posthog.capture("organization_invitation_sent", {
+          organization_id: organization.id,
+          role_count: roles?.length ?? 0,
+        });
+      }
       dispatchInviteForm({
         type: "submissionSucceeded",
         email,

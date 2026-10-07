@@ -9,11 +9,15 @@ import { emitWaSqliteWasmAssetPlugin } from "./scripts/node-server/vite-wa-sqlit
 
 // Separate from the Cloudflare Vite plugin: the server bundle runs under Node.
 export default defineConfig({
+  define: {
+    "import.meta.env.BACKOFFICE_TARGET": JSON.stringify("node"),
+  },
   resolve: {
     tsconfigPaths: true,
     dedupe: ["react", "react-dom", "react-router"],
     alias: {
       "cloudflare:workers": path.resolve(__dirname, "shims/node-cloudflare-workers.ts"),
+      "@/posthog.client": path.resolve(__dirname, "shims/node-posthog.client.ts"),
       "@/components": path.resolve(__dirname, "app/components"),
       "@/lib": path.resolve(__dirname, "app/lib"),
       ajv: path.resolve(__dirname, "shims/ajv.ts"),

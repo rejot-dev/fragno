@@ -1,8 +1,9 @@
 import { isbot } from "isbot";
 import { renderToReadableStream } from "react-dom/server";
-import type { EntryContext, HandleErrorFunction } from "react-router";
+import type { EntryContext, HandleErrorFunction, RouterContextProvider } from "react-router";
 import { ServerRouter } from "react-router";
 
+import { captureBackofficeServerException } from "./posthog.server";
 import { cloudflareReactRouterServerInstrumentation } from "./worker-runtime/cloudflare-react-router-instrumentation";
 
 /** Observes React Router request and route-handler boundaries without changing route behavior. */
@@ -13,6 +14,7 @@ export default async function handleRequest(
   responseStatusCode: number,
   responseHeaders: Headers,
   routerContext: EntryContext,
+  loadContext: RouterContextProvider,
 ) {
   let shellRendered = false;
   const userAgent = request.headers.get("user-agent");
@@ -22,6 +24,9 @@ export default async function handleRequest(
     {
       onError(error: unknown) {
         responseStatusCode = 500;
+        if (!request.signal.aborted) {
+          captureBackofficeServerException(loadContext, error);
+        }
         // Log streaming rendering errors from inside the shell.  Don't log
         // errors encountered during initial shell rendering since they'll
         // reject and get logged in handleDocumentRequest.
@@ -50,9 +55,10 @@ export default async function handleRequest(
   });
 }
 
-export const handleError: HandleErrorFunction = (error, { request }) => {
+export const handleError: HandleErrorFunction = (error, { request, context }) => {
   // React Router may abort some interrupted requests, don't log those
   if (!request.signal.aborted) {
+    captureBackofficeServerException(context, error);
     console.error("Request Errored", {
       request,
       error,

@@ -4,6 +4,7 @@ import { DurableObject, RpcTarget } from "cloudflare:workers";
 import type { z } from "zod";
 
 import {
+  createRegistry,
   Harness,
   type CompactionResult,
   type Conversation,
@@ -35,6 +36,7 @@ import {
 import { PI_THINKING_LEVEL } from "@/fragno/pi/pi-shared";
 
 import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-object";
+import { createCloudflarePostHog, shutdownCloudflarePostHog } from "./lib/cloudflare-posthog";
 import { createBackofficePiDurableHarnessOptions } from "./lib/pi-durable-backoffice";
 import {
   calculatePiDurableBillingRetryDelayMs,
@@ -44,6 +46,7 @@ import {
   type PiDurableBillingTask,
 } from "./lib/pi-durable-billing";
 import { createPiDurableHarnessOptions } from "./lib/pi-durable-harness-options";
+import { createPiPostHogExtension } from "./lib/pi-posthog-extension";
 import { openPiSessionStore } from "./lib/pi-session-store";
 
 const AGENT_CONFIG_KEY = "pi-agent-config";
@@ -550,9 +553,46 @@ export class Pi extends DurableObject<CloudflareEnv> implements PiAgent {
     options: HarnessOptions = createPiDurableHarnessOptions(env),
   ) {
     super(state, env);
+    let harnessOptions = options;
+    if (
+      import.meta.env.BACKOFFICE_TARGET === "cloudflare" &&
+      import.meta.env.PROD &&
+      env.POSTHOG_PROJECT_TOKEN
+    ) {
+      const registry = createRegistry();
+      for (const extension of options.registry.snapshot().installed()) {
+        registry.install(extension);
+      }
+      let configPromise: Promise<PiAgentConfig> | null = null;
+      registry.install(
+        createPiPostHogExtension({
+          getConfig: function loadPersistedPiConfig() {
+            configPromise ??= state.storage.get<PiAgentConfig>(AGENT_CONFIG_KEY).then((config) => {
+              if (!config) {
+                throw new Error("Pi analytics requires a provisioned agent.");
+              }
+              return config;
+            });
+            return configPromise;
+          },
+          capture: async function queuePiGenerationEvent(event) {
+            const client = await createCloudflarePostHog(env);
+            if (!client) {
+              return;
+            }
+            try {
+              client.capture(event);
+            } finally {
+              state.waitUntil(shutdownCloudflarePostHog(client));
+            }
+          },
+        }),
+      );
+      harnessOptions = { ...options, registry };
+    }
     this.#object = new InMemoryPiObject({
       state,
-      options,
+      options: harnessOptions,
       runtime: createCloudflareDurableObjectRuntimeServices(env, state),
       openStorage: () => openPiSessionStore(state.storage),
       idFromConfig: (config) => env.PI.idFromName(piAgentObjectName(config)),

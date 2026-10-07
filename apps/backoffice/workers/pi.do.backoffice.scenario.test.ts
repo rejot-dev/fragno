@@ -8,6 +8,7 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
 import { mkdtemp, rm } from "node:fs/promises";
+import { createServer } from "node:http";
 import os from "node:os";
 import path from "node:path";
 
@@ -23,6 +24,7 @@ import {
   openNodeSqliteDatabase,
   openNodeSqliteStorage,
 } from "@earendil-works/pi-durable/storage/sqlite/node";
+import { PostHog } from "posthog-node";
 
 import {
   createRegistry,
@@ -42,8 +44,10 @@ import {
   type BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
 import type { InMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
+import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { LocalObjectFactoryOverrides } from "@/backoffice-runtime/local-object-factory";
 import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
+import { issueBackofficeTokenResultSchema } from "@/fragno/auth/contracts";
 import type { CodemodeWorkflowParams } from "@/fragno/automation/engine/codemode-invocation";
 import { createRouteBackedAutomationRouterRuntime } from "@/fragno/automation/routing-route-runtime";
 import {
@@ -53,7 +57,16 @@ import {
 } from "@/fragno/automation/scenario";
 import { createRouteBackedAutomationWorkflowRuntime } from "@/fragno/automation/workflow-route-runtime";
 import type { PiAgentConfig } from "@/fragno/pi-manager/pi-agent-contract";
+import { BackofficePostHogContext, captureBackofficeServerException } from "@/posthog.server";
+import {
+  createPiManagerSession,
+  fetchPiManagerSessions,
+  submitPiManagerPrompt,
+} from "@/routes/backoffice/sessions/data";
+import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
+import { shutdownCloudflarePostHog } from "./lib/cloudflare-posthog";
+import { createPiPostHogExtension } from "./lib/pi-posthog-extension";
 import { InMemoryPiObject } from "./pi.do";
 
 const PI_SCENARIO_AVAILABLE_MODELS = [
@@ -1047,4 +1060,237 @@ test("durable Pi scoped codemode handles select a different manager instead of r
       ],
     }),
   );
+});
+
+test("Cloudflare backend analytics delivers verified outcomes and Pi usage without conversation content", async () => {
+  type IngestedEvent = {
+    event: string;
+    distinct_id: string;
+    uuid: string;
+    properties: Record<string, unknown>;
+  };
+  const received: IngestedEvent[] = [];
+  let receiverStatus = 200;
+  const receiver = createServer((incoming, response) => {
+    incoming.setEncoding("utf8");
+    let body = "";
+    incoming.on("data", (chunk: string) => {
+      body += chunk;
+    });
+    incoming.on("end", () => {
+      // This local endpoint receives the real SDK's authoritative batch wire format.
+      const batch = JSON.parse(body) as { batch: IngestedEvent[] };
+      if (receiverStatus === 200) {
+        received.push(...batch.batch);
+      }
+      response.writeHead(receiverStatus, { "content-type": "application/json" });
+      response.end(JSON.stringify({ status: receiverStatus === 200 ? 1 : 0 }));
+    });
+  });
+  await new Promise<void>((resolve) => receiver.listen(0, "127.0.0.1", resolve));
+  const address = receiver.address();
+  assert(address !== null && typeof address !== "string");
+  const client = new PostHog("phc_scenario", {
+    host: `http://127.0.0.1:${address.port}`,
+    flushAt: 100,
+    flushInterval: 0,
+    disableCompression: true,
+    disableGeoip: true,
+    fetchRetryCount: 0,
+    requestTimeout: 1_000,
+  });
+  const directory = await mkdtemp(path.join(os.tmpdir(), "backoffice-posthog-"));
+  const deliveries: Promise<unknown>[] = [];
+  let config: PiAgentConfig | null = null;
+  const objectFactories: LocalObjectFactoryOverrides = {
+    PI: ({ state, runtime, openPiSessionStore, piAgentIdFromConfig, nowEpochMs }) => {
+      const faux = fauxProvider();
+      faux.setResponses([fauxAssistantMessage("PRIVATE_ASSISTANT_OUTPUT")]);
+      const models = createModels();
+      models.setProvider(faux.provider);
+      const registry = createRegistry();
+      registry.install(
+        createPiPostHogExtension({
+          getConfig: async () => {
+            assert(config);
+            return config;
+          },
+          capture: async (event) => {
+            client.capture(event);
+          },
+        }),
+      );
+      return new InMemoryPiObject({
+        state,
+        runtime,
+        options: { models, registry },
+        openStorage: openPiSessionStore,
+        idFromConfig: piAgentIdFromConfig,
+        nowEpochMs,
+      });
+    },
+  };
+
+  try {
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        name: "PostHog captures SQLite-backed server outcomes and durable generations",
+        options: { drain: false, sqliteDataDirectory: directory },
+        objectFactories,
+        piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
+        env: { AUTH_EMAIL_VERIFICATION_ENABLED: "false", SIGN_UP_INVITATIONS_ENABLED: "false" },
+        vars: () => ({ session: "" }),
+        steps: ({ when, then }) => [
+          when.auth.signUp({ email: "analytics@example.test", captureSessionCookieAs: "session" }),
+          then.assert(
+            "only successful operations reach the real ingestion endpoint",
+            async (ctx) => {
+              const origin = "https://backoffice.example";
+              const exchange = await ctx.runtime.objects.auth.singleton().http.fetch(
+                new Request(`${origin}/api/auth/backoffice-token`, {
+                  method: "POST",
+                  headers: { cookie: ctx.vars.session, origin, "content-type": "application/json" },
+                  body: JSON.stringify({ selection: "preferred", organizationId: null }),
+                }),
+              );
+              assert(exchange.ok, await exchange.clone().text());
+              const { organization } = issueBackofficeTokenResultSchema.parse(
+                await exchange.json(),
+              );
+              assert(organization);
+              const scope = { kind: "org" as const, orgId: organization.id };
+              const cookie = exchange.headers
+                .getSetCookie()
+                .map((value) => value.split(";", 1)[0])
+                .join("; ");
+              const authenticatedRequest = new Request(`${origin}/backoffice/sessions`, {
+                method: "POST",
+                headers: { cookie },
+              });
+              const context = createBackofficeRouterContextProvider(authenticatedRequest, {
+                runtime: ctx.runtime.services,
+                kernel: new BackofficeKernel(ctx.runtime.services),
+                env: ctx.runtime.env as unknown as CloudflareEnv,
+                ctx: {} as ExecutionContext,
+              });
+              context.set(BackofficePostHogContext, {
+                client,
+                requestId: "request-scenario",
+                userId: null,
+                capturedErrors: new WeakSet<Error>(),
+                waitUntil: (promise) => {
+                  deliveries.push(promise);
+                },
+              });
+              const created = await createPiManagerSession(authenticatedRequest, context, scope, {
+                name: "PRIVATE_SESSION_NAME",
+                model: { provider: "faux", modelId: "faux-1" },
+                instructions: "PRIVATE_SYSTEM_INSTRUCTIONS",
+                billingOrganizationId: organization.id,
+              });
+              assert(created.session, created.error ?? "No session created");
+              config = created.session;
+              const principal = config.actors.principal;
+              assert(principal?.scope === "internal" && principal.type === "user");
+              const admission = await submitPiManagerPrompt(
+                authenticatedRequest,
+                context,
+                scope,
+                config.sessionId,
+                {
+                  requestId: "accepted-prompt",
+                  content: "PRIVATE_USER_PROMPT",
+                  whenBusy: "reject",
+                },
+              );
+              expect(admission).toEqual({ requestId: "accepted-prompt", error: null });
+              const rejected = await submitPiManagerPrompt(
+                authenticatedRequest,
+                context,
+                scope,
+                "missing-session",
+                {
+                  requestId: "rejected-prompt",
+                  content: "PRIVATE_REJECTED_PROMPT",
+                  whenBusy: "reject",
+                },
+              );
+              assert(rejected.error !== null);
+              await ctx.runtime.drain();
+              await shutdownCloudflarePostHog(client);
+              expect(received.filter((event) => event.event === "session_created")).toHaveLength(1);
+              expect(
+                received.filter((event) => event.event === "session_prompt_admitted"),
+              ).toHaveLength(1);
+              const generation = received.filter((event) => event.event === "$ai_generation");
+              expect(generation).toHaveLength(1);
+              expect(generation[0].distinct_id).toBe(principal.id);
+              expect(generation[0].uuid).toBe(generation[0].properties.$ai_span_id);
+              expect(generation[0].properties).toMatchObject({
+                session_id: config.sessionId,
+                $ai_session_id: config.sessionId,
+                $ai_provider: "faux",
+                $ai_model: "faux-1",
+                $ai_is_error: false,
+                $process_person_profile: false,
+              });
+              for (const marker of [
+                "PRIVATE_SESSION_NAME",
+                "PRIVATE_SYSTEM_INSTRUCTIONS",
+                "PRIVATE_USER_PROMPT",
+                "PRIVATE_ASSISTANT_OUTPUT",
+                "PRIVATE_REJECTED_PROMPT",
+              ]) {
+                expect(JSON.stringify(received)).not.toContain(marker);
+              }
+
+              // Streaming failures can arrive after the request batch has already shut down.
+              const lateError = new Error("Late rendering failure");
+              captureBackofficeServerException(context, lateError);
+              captureBackofficeServerException(context, lateError);
+              await Promise.all(deliveries);
+              const exceptions = received.filter((event) => event.event === "$exception");
+              expect(exceptions).toHaveLength(1);
+              expect(exceptions[0].distinct_id).toBe(principal.id);
+
+              // An unavailable analytics service must not roll back or hide a successful server operation.
+              receiverStatus = 503;
+              const failedDeliveryClient = new PostHog("phc_scenario", {
+                host: `http://127.0.0.1:${address.port}`,
+                flushAt: 100,
+                flushInterval: 0,
+                disableCompression: true,
+                fetchRetryCount: 0,
+              });
+              const analytics = context.get(BackofficePostHogContext);
+              assert(analytics);
+              context.set(BackofficePostHogContext, { ...analytics, client: failedDeliveryClient });
+              const second = await createPiManagerSession(authenticatedRequest, context, scope, {
+                name: null,
+                model: { provider: "faux", modelId: "faux-1" },
+                instructions: "",
+                billingOrganizationId: organization.id,
+              });
+              assert(second.session, second.error ?? "No second session created");
+              await shutdownCloudflarePostHog(failedDeliveryClient);
+              expect(second.error).toBeNull();
+              const persisted = await fetchPiManagerSessions(authenticatedRequest, context, scope);
+              expect(persisted.sessions.map((session) => session.sessionId)).toContain(
+                second.session.sessionId,
+              );
+              expect(received.filter((event) => event.event === "session_created")).toHaveLength(1);
+            },
+          ),
+        ],
+      }),
+    );
+  } finally {
+    await Promise.all(deliveries);
+    await shutdownCloudflarePostHog(client);
+    receiver.closeAllConnections();
+    await new Promise<void>((resolve, reject) =>
+      receiver.close((error) => (error ? reject(error) : resolve())),
+    );
+    await rm(directory, { recursive: true, force: true });
+  }
 });

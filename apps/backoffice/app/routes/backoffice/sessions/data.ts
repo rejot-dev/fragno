@@ -15,6 +15,7 @@ import type {
   PiManagerSession,
 } from "@/fragno/pi-manager/pi-agent-contract";
 import type { createPiManagerFragment } from "@/fragno/pi-manager/pi-manager-fragment";
+import { captureBackofficeServerEvent } from "@/posthog.server";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 const PI_SESSION_PAGE_SIZE = 100;
@@ -214,6 +215,16 @@ export async function createPiManagerSession(
     },
   });
   if (response.type === "json") {
+    captureBackofficeServerEvent(context, {
+      event: "session_created",
+      userId: execution.userAuthority.userId,
+      properties: {
+        session_id: response.data.sessionId,
+        scope_kind: scope.kind,
+        provider: response.data.model.provider,
+        model: response.data.model.modelId,
+      },
+    });
     return { session: response.data, error: null };
   }
   if (response.type === "error") {
@@ -230,12 +241,22 @@ export async function submitPiManagerPrompt(
   sessionId: string,
   input: { requestId: string; content: string; whenBusy: "followUp" | "steer" | "reject" },
 ): Promise<{ requestId: string | null; error: string | null }> {
-  const { callRoute } = await createPiManagerRouteCaller(request, context, scope);
+  const { callRoute, execution } = await createPiManagerRouteCaller(request, context, scope);
   const response = await callRoute("POST", "/sessions/:sessionId/prompts", {
     pathParams: { sessionId },
     body: input,
   });
   if (response.type === "json") {
+    captureBackofficeServerEvent(context, {
+      event: "session_prompt_admitted",
+      userId: execution.userAuthority.userId,
+      properties: {
+        session_id: sessionId,
+        prompt_request_id: response.data.requestId,
+        when_busy: input.whenBusy,
+        scope_kind: scope.kind,
+      },
+    });
     return { requestId: response.data.requestId, error: null };
   }
   if (response.type === "error") {
@@ -326,12 +347,22 @@ export async function compactPiManagerSession(
   sessionId: string,
   instructions: string | null,
 ): Promise<{ taskId: number | null; error: string | null }> {
-  const { callRoute } = await createPiManagerRouteCaller(request, context, scope);
+  const { callRoute, execution } = await createPiManagerRouteCaller(request, context, scope);
   const response = await callRoute("POST", "/sessions/:sessionId/compact", {
     pathParams: { sessionId },
     body: { instructions },
   });
   if (response.type === "json") {
+    captureBackofficeServerEvent(context, {
+      event: "session_compaction_admitted",
+      userId: execution.userAuthority.userId,
+      properties: {
+        session_id: sessionId,
+        task_id: response.data.taskId,
+        has_instructions: instructions !== null,
+        scope_kind: scope.kind,
+      },
+    });
     return { taskId: response.data.taskId, error: null };
   }
   if (response.type === "error") {
@@ -370,11 +401,16 @@ export async function abortPiManagerSession(
   scope: BackofficeContextScope,
   sessionId: string,
 ): Promise<string | null> {
-  const { callRoute } = await createPiManagerRouteCaller(request, context, scope);
+  const { callRoute, execution } = await createPiManagerRouteCaller(request, context, scope);
   const response = await callRoute("POST", "/sessions/:sessionId/abort", {
     pathParams: { sessionId },
   });
   if (response.type === "empty") {
+    captureBackofficeServerEvent(context, {
+      event: "session_abort_completed",
+      userId: execution.userAuthority.userId,
+      properties: { session_id: sessionId, scope_kind: scope.kind },
+    });
     return null;
   }
   if (response.type === "error") {

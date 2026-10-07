@@ -1,3 +1,4 @@
+import { usePostHog } from "@posthog/react/slim";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useFetcher, useOutletContext, useSearchParams } from "react-router";
 
@@ -334,6 +335,7 @@ export default function BackofficeOrganizationPiSessionDetail(props: Route.Compo
 }
 
 function BackofficeOrganizationPiSession({ loaderData }: Route.ComponentProps) {
+  const posthog = usePostHog();
   const { session, view, entryPage } = loaderData;
   const {
     availableModelOptions,
@@ -459,10 +461,14 @@ function BackofficeOrganizationPiSession({ loaderData }: Route.ComponentProps) {
       if (!text) {
         return;
       }
-      void fetcher.submit(
-        { intent: "send", content: text, whenBusy: running ? commandKind : "reject" },
-        { method: "post" },
-      );
+      const whenBusy = running ? commandKind : "reject";
+      if (posthog) {
+        posthog.capture("session_message_sent", {
+          session_id: session.sessionId,
+          when_busy: whenBusy,
+        });
+      }
+      void fetcher.submit({ intent: "send", content: text, whenBusy }, { method: "post" });
       if (initialPromptError) {
         setSearchParams(
           (current) => {
@@ -474,7 +480,15 @@ function BackofficeOrganizationPiSession({ loaderData }: Route.ComponentProps) {
         );
       }
     },
-    [commandKind, fetcher, initialPromptError, running, setSearchParams],
+    [
+      posthog,
+      commandKind,
+      fetcher,
+      initialPromptError,
+      running,
+      session.sessionId,
+      setSearchParams,
+    ],
   );
 
   const runtime = useExternalStoreRuntime({
@@ -550,8 +564,14 @@ function BackofficeOrganizationPiSession({ loaderData }: Route.ComponentProps) {
     const instructions = runtimeRef.current?.thread.composer.getState().text.trim() ?? "";
     setCompactionError(null);
     setCompactionNotice(null);
+    if (posthog) {
+      posthog.capture("session_compaction_requested", {
+        session_id: session.sessionId,
+        has_instructions: Boolean(instructions),
+      });
+    }
     void fetcher.submit({ intent: "compact", instructions }, { method: "post" });
-  }, [fetcher, running]);
+  }, [posthog, fetcher, running, session.sessionId]);
 
   const handleStop = useCallback(() => {
     void fetcher.submit({ intent: "abort" }, { method: "post" });

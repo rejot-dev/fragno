@@ -3,7 +3,8 @@
   "tasks": {
     "build": {
       "dependsOn": ["$TURBO_EXTENDS$", "static:generate"],
-      "inputs": ["$TURBO_DEFAULT$", ".dev.vars"]
+      "inputs": ["$TURBO_DEFAULT$", ".dev.vars", ".env", ".env.*"],
+      "env": ["VITE_POSTHOG_PROJECT_TOKEN", "VITE_POSTHOG_HOST", "VITE_POSTHOG_APP_ORIGIN"]
     },
     "build:node": {
       "dependsOn": ["$TURBO_EXTENDS$", "static:generate"]

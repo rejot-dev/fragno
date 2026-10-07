@@ -18,7 +18,20 @@ vi.mock("@/components/backoffice/shell", () => ({
   },
 }));
 
+import type { AuthUser } from "@/fragno/auth/contracts";
+
 import BackofficeLayout from "./backoffice-layout-ui";
+
+const user: AuthUser = {
+  id: "user-current",
+  email: "current@example.test",
+  name: "Current User",
+  emailVerified: true,
+  role: "user",
+  banned: false,
+  createdAt: new Date("2026-08-24T12:00:00.000Z"),
+  updatedAt: new Date("2026-08-24T12:00:00.000Z"),
+};
 
 describe("Backoffice layout organization preference", () => {
   beforeEach(() => {
@@ -33,7 +46,7 @@ describe("Backoffice layout organization preference", () => {
       <BackofficeLayout
         loaderData={
           {
-            me: { activeOrganizationId: "org-current" },
+            me: { activeOrganizationId: "org-current", user },
             accessTokenExpiresAt: "2026-08-24T12:15:00.000Z",
             resolvedScope: {
               kind: "org",
@@ -69,7 +82,7 @@ describe("Backoffice layout organization preference", () => {
       <BackofficeLayout
         loaderData={
           {
-            me: { activeOrganizationId: "org-current" },
+            me: { activeOrganizationId: "org-current", user },
             accessTokenExpiresAt: "2026-09-01T12:15:00.000Z",
             resolvedScope,
             automationCollectionSource,

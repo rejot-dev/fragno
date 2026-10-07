@@ -53,6 +53,7 @@
     "AUTH_EMAIL_VERIFICATION_ENABLED": "true",
     "SIGN_UP_INVITATIONS_ENABLED": "true",
     "DOCS_PUBLIC_BASE_URL": "https://backoffice.rejot.dev/",
+    "POSTHOG_HOST": "https://eu.i.posthog.com",
     "OOMOL_CONNECTOR_BASE_URL": "https://connector.oomol.com/v1",
   },
   "secrets": {

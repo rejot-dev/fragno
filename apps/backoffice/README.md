@@ -67,6 +67,73 @@ The task caches its reports under `apps/backoffice/coverage/`, including the HTM
 `coverage/index.html`. The root `pnpm test:coverage` command remains the existing library-package
 coverage aggregation workflow; it does not include Backoffice.
 
+## PostHog (Cloudflare only)
+
+The browser client in `app/posthog.client.ts` enables analytics only for a production Cloudflare
+build served at `VITE_POSTHOG_APP_ORIGIN`. `app/entry.client.tsx` initializes the SDK synchronously
+before hydration and provides it through PostHog's React provider; there is no awaited SDK chunk or
+custom event queue. Initialization failures leave the application running without analytics. The
+slim React bindings use only this explicitly supplied client, with no global SDK fallback. Node
+builds, development servers, and local previews do not initialize the browser SDK. The Cloudflare
+backend also captures server outcomes, exceptions, and Pi Durable Object generation metadata; Node
+never installs a backend analytics client.
+
+Provide these public values in the Cloudflare **build environment**, or in a git-ignored `.env` file
+beside `package.json` (see `.env.example`):
+
+- `VITE_POSTHOG_PROJECT_TOKEN`: the project's public client token, not a personal API key.
+- `VITE_POSTHOG_HOST`: the ingestion host, currently `https://eu.i.posthog.com`.
+- `VITE_POSTHOG_APP_ORIGIN`: the exact deployed origin, currently `https://backoffice.rejot.dev`.
+
+These values are embedded at build time; setting Worker runtime secrets does not configure the
+browser SDK. Changes require rebuilding the frontend, and Turbo includes these values in its build
+cache key.
+
+The initial integration captures pageviews, identifies authenticated users by their stable user ID,
+resets identity after sign-out, and records browser exceptions. Six explicit product events cover
+organization invitations, member role changes/removals, session message submissions/compaction
+requests, and marketplace installation starts. Custom events exclude message contents, instructions,
+and installation paths. A `before_send` hook strips query strings and fragments from URL properties,
+including nested initial/person/session attribution and exception-frame URLs; referrers retain only
+their origin. Campaign/search attribution is omitted, and failed redaction drops the event rather
+than sending an unsafe payload. This applies before the first automatic capture and to attribution
+already stored by the SDK. Autocapture masks text and element attributes; session replay is
+disabled. `HydratedRouter.onError` reports caught client route/render failures independently of
+nested route error boundaries, with route patterns instead of raw locations or parameters. Expected
+route responses are not reported as exceptions. Server log capture is not enabled.
+
+### Backend runtime configuration
+
+Set the same public project token as a runtime secret named `POSTHOG_PROJECT_TOKEN` on **both**
+`rejot-backoffice-web` and `rejot-backoffice`. It is intentionally not a Wrangler default:
+deployment secrets are unavailable to local development and preview, keeping local backend traffic
+out of PostHog. Do not copy this binding into `.dev.vars`. Both Wrangler configs set `POSTHOG_HOST`
+to the EU ingestion host. Missing or invalid backend configuration disables capture without breaking
+the application; frontend `VITE_*` values do not enable backend capture.
+
+The public Worker records `backoffice_request_completed` with method, status, handler duration, and
+request ID, without URLs, headers, query strings, or bodies. Server product events record successful
+session creation, prompt/compaction admission, completed aborts, and marketplace ingestion
+admission. These are separate from browser submission events; admission does not mean an agent or
+ingestion workflow has finished. Product identity comes from verified request authority, never a
+client-supplied analytics ID. Request IDs match the existing `backoffice-request-id` response
+header.
+
+The Pi Durable Object emits `$ai_generation` for terminal provider responses, with model/provider,
+token/cache usage, cost, stop reason, and session/conversation/task identifiers. Internal user
+principals use the same user ID as browser analytics; service-originated sessions use a
+session-scoped identity without creating person profiles. No prompts, instructions, model outputs,
+or tool arguments are included. Deterministic generation UUIDs preserve ingestion identity when a
+response is replayed.
+
+Each Worker request or Pi response owns its own server client. Batches flush through the owner's
+`waitUntil`, and streaming exceptions use immediate delivery through that same lifetime boundary.
+Capture is best-effort, bounded, and cannot change an already committed application outcome; it is
+not a durable audit log. Development builds and runtimes without a deployment token do not capture.
+
+The wizard created the **Analytics basics (wizard)** dashboard in EU PostHog project `296980`,
+dashboard `1003657`. It will populate after the configured Cloudflare frontend is deployed and used.
+
 ## Run on Node with file-backed SQLite
 
 For a file-backed Node instance without Cloudflare bindings, create `apps/backoffice/.dev.vars` from

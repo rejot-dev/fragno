@@ -1,5 +1,10 @@
 import { assert, beforeEach, describe, expect, test, vi } from "vitest";
 
+import { RouterContextProvider } from "react-router";
+
+import { createBackofficeRequestExecution } from "@/backoffice-runtime/context";
+import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
+
 const { requireBackofficeContextMock } = vi.hoisted(() => ({
   requireBackofficeContextMock: vi.fn(),
 }));
@@ -16,26 +21,16 @@ import {
 } from "./data";
 
 const scope = { kind: "org" as const, orgId: "org-1" };
-const execution = {
-  kind: "deferred" as const,
-  scopeRestriction: null,
+const execution = createBackofficeRequestExecution({
   scope,
-  actors: {
-    initiator: {
-      scope: "internal" as const,
-      type: "backoffice",
-      id: "interactive",
-      role: "initiator" as const,
-    },
-    principal: {
-      scope: "internal" as const,
-      type: "user",
-      id: "user-1",
-      role: "principal" as const,
-    },
-    delegation: [],
+  userId: "user-1",
+  verifiedRequestAuthority: {
+    role: "user",
+    organizationId: "org-1",
+    expiresAt: new Date("2030-01-01T00:00:00.000Z"),
+    scopeRestriction: null,
   },
-};
+});
 
 beforeEach(() => {
   requireBackofficeContextMock.mockReset();
@@ -71,9 +66,11 @@ describe("Pi manager session route caller", () => {
     });
     const manager = { http: { fetchAuthorized } };
     const kernel = { scoped: vi.fn(() => manager) };
-    const context = {
-      get: () => ({ runtime: { objects: { piManager: {} } }, kernel }),
-    };
+    const context = new RouterContextProvider();
+    context.set(BackofficeWorkerContext, {
+      runtime: { objects: { piManager: {} } },
+      kernel,
+    } as never);
     const request = new Request("https://backoffice.example/sessions", { method: "POST" });
 
     await expect(
@@ -106,12 +103,11 @@ describe("Pi manager session route caller", () => {
     const fetchAuthorized = vi.fn(
       async (_request: Request, _actionContext: unknown) => new Response(stream),
     );
-    const context = {
-      get: () => ({
-        runtime: { objects: { piManager: {} } },
-        kernel: { scoped: () => ({ http: { fetchAuthorized } }) },
-      }),
-    };
+    const context = new RouterContextProvider();
+    context.set(BackofficeWorkerContext, {
+      runtime: { objects: { piManager: {} } },
+      kernel: { scoped: () => ({ http: { fetchAuthorized } }) },
+    } as never);
     const request = new Request("https://backoffice.example/sessions/session-1/view-stream");
 
     const response = await fetchPiManagerSessionViewStream(
@@ -135,12 +131,11 @@ describe("Pi manager session route caller", () => {
     const fetchAuthorized = vi.fn(async (_request: Request, _actionContext: unknown) =>
       Response.json({ submissionId: 7, requestId: "request-1" }, { status: 202 }),
     );
-    const context = {
-      get: () => ({
-        runtime: { objects: { piManager: {} } },
-        kernel: { scoped: () => ({ http: { fetchAuthorized } }) },
-      }),
-    };
+    const context = new RouterContextProvider();
+    context.set(BackofficeWorkerContext, {
+      runtime: { objects: { piManager: {} } },
+      kernel: { scoped: () => ({ http: { fetchAuthorized } }) },
+    } as never);
 
     await expect(
       submitPiManagerPrompt(

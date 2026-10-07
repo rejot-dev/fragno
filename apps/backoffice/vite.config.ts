@@ -89,6 +89,9 @@ export default defineConfig(({ command }) => {
   const isDevServer = command === "serve";
 
   return {
+    define: {
+      "import.meta.env.BACKOFFICE_TARGET": JSON.stringify("cloudflare"),
+    },
     resolve: {
       tsconfigPaths: true,
       dedupe: ["react", "react-dom", "react-router"],

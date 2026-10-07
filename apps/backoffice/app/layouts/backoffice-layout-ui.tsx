@@ -1,5 +1,6 @@
 import { ButtonLink } from "@fragno-private/design-system/button";
 import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
+import { usePostHog } from "@posthog/react/slim";
 import { type ReactNode, useEffect } from "react";
 import { Outlet, isRouteErrorResponse, useRouteError, useRouteLoaderData } from "react-router";
 
@@ -21,6 +22,7 @@ export default function BackofficeLayout({
   children?: ReactNode;
   loaderData: Route.ComponentProps["loaderData"];
 }) {
+  const posthog = usePostHog();
   const {
     me,
     accessTokenExpiresAt,
@@ -32,6 +34,22 @@ export default function BackofficeLayout({
   useEffect(() => {
     writePreferredOrganization(me.activeOrganizationId);
   }, [me.activeOrganizationId]);
+
+  useEffect(
+    function identifyAuthenticatedUser() {
+      if (!posthog) {
+        return;
+      }
+
+      posthog.identify(me.user.id, {
+        email: me.user.email,
+        name: me.user.name,
+        role: me.user.role,
+      });
+    },
+    [posthog, me.user.email, me.user.id, me.user.name, me.user.role],
+  );
+
   return (
     <BackofficeShell
       me={me}

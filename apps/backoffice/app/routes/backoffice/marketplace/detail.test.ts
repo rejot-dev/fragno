@@ -2,7 +2,10 @@ import { beforeEach, describe, expect, test, vi, assert } from "vitest";
 
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
+import { createMemoryRouter, Outlet, RouterProvider, RouterContextProvider } from "react-router";
+
+import { createBackofficeRequestExecution } from "@/backoffice-runtime/context";
+import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 const {
   findBackofficeMeMock,
@@ -86,16 +89,15 @@ const marketplace = {
   getPublishedListing: getPublishedListingMock,
   getArtifactManifest: getArtifactManifestMock,
 };
-const context = {
-  get: () => ({
-    runtime: {
-      objects: {
-        automations: { forOrg: forOrgMock },
-        marketplace: { singleton: () => ({ commands: marketplace }) },
-      },
+const context = new RouterContextProvider();
+context.set(BackofficeWorkerContext, {
+  runtime: {
+    objects: {
+      automations: { forOrg: forOrgMock },
+      marketplace: { singleton: () => ({ commands: marketplace }) },
     },
-  }),
-};
+  },
+} as never);
 
 function routeScopeForTest(scope: BackofficeRoutableScope): BackofficeRoutableRouteScope {
   if (scope.kind === "user") {
@@ -180,26 +182,18 @@ beforeEach(() => {
   loadPublishedMarketplaceArtifactExplorerMock.mockReset();
   forOrgMock.mockClear();
   findBackofficeMeMock.mockResolvedValue(authenticatedUser);
-  requireBackofficeContextMock.mockImplementation(async (_request, _context, scope) => ({
-    kind: "deferred" as const,
-    scopeRestriction: null,
-    scope,
-    actors: {
-      initiator: {
-        scope: "internal",
-        type: "backoffice",
-        id: "interactive",
-        role: "initiator",
+  requireBackofficeContextMock.mockImplementation(async (_request, _context, scope) =>
+    createBackofficeRequestExecution({
+      scope,
+      userId: authenticatedUser.user.id,
+      verifiedRequestAuthority: {
+        role: "user",
+        organizationId: "org-1",
+        expiresAt: new Date("2030-01-01T00:00:00.000Z"),
+        scopeRestriction: null,
       },
-      principal: {
-        scope: "internal",
-        type: "user",
-        id: authenticatedUser.user.id,
-        role: "principal",
-      },
-      delegation: [],
-    },
-  }));
+    }),
+  );
   getPublishedListingMock.mockResolvedValue({
     listing: {
       listingId,

@@ -2,6 +2,7 @@ import { RouterContextProvider } from "react-router";
 
 import { verifyBackofficeJwt } from "@/fragno/auth/token-lifecycle";
 import { loadAutomationCollectionSource } from "@/fragno/automation/tanstack/server";
+import { BackofficePostHogContext } from "@/posthog.server";
 
 import { BackofficeRequestStateContext } from "./request-state";
 import { createBackofficeRequestState } from "./request-state.server";
@@ -18,7 +19,14 @@ export function createBackofficeRouterContextProvider(
     BackofficeRequestStateContext,
     createBackofficeRequestState(request, {
       getAuthObject: () => workerContext.runtime.objects.auth.singleton(),
-      verifyJwt: verifyBackofficeJwt,
+      verifyJwt: async function verifyRequestIdentity(token, requestUrl, authObject) {
+        const result = await verifyBackofficeJwt(token, requestUrl, authObject);
+        const analytics = context.get(BackofficePostHogContext);
+        if (result.ok && analytics) {
+          analytics.userId = result.payload.sub;
+        }
+        return result;
+      },
       loadAutomationCollectionSource: (resolvedScope) =>
         loadAutomationCollectionSource(request, workerContext, resolvedScope),
     }),
