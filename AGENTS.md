@@ -42,7 +42,7 @@ Use canonical definitions and direct imports.
 
 - **Scenario Testing** Test through real SQLite operations, routes, client-store updates, and final-state
   assertions. We test through "scenarios" (setup, steps, assert), specifically built test DSLs that allow us to test real
-  user flows. Real end-to-end, but within a process. If the tests are simple enough to not need steps, we should NOT have the test at all.
+  user flows. Real end-to-end, but within a process. If the tests are simple enough to not need steps, we should NOT have the test at all. If a test should normally be a unit test, DO NOT ADD IT at all.
 - **Primitive-first.** Build reusable primitives, not application conveniences.
 
 ## Fragno's constraints:
