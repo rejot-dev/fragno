@@ -1,0 +1,24 @@
+{
+  "include": [
+    "app/**/*",
+    "workers/**/*",
+    "*.ts",
+    "worker-configuration.d.ts",
+    ".react-router/types/**/*"
+  ],
+  "compilerOptions": {
+    "strict": true,
+    "lib": ["DOM", "DOM.Iterable", "ES2022"],
+    "types": ["vite/client"],
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "rootDirs": [".", "./.react-router/types"],
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "verbatimModuleSyntax": true,
+    "noEmit": true
+  }
+}

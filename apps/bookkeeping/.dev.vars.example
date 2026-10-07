@@ -1,0 +1,5 @@
+BETTER_AUTH_SECRET=replace-with-a-random-secret-at-least-32-characters
+BOOKKEEPING_BASE_URL=http://127.0.0.1:6174
+BACKOFFICE_BASE_URL=http://127.0.0.1:5173
+BACKOFFICE_OAUTH_CLIENT_ID=replace-with-backoffice-client-id
+BACKOFFICE_OAUTH_CLIENT_SECRET=replace-with-backoffice-client-secret
