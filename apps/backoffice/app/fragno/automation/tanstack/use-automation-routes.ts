@@ -33,10 +33,13 @@ export function useAutomationRoutes(
         })),
     [collections.routeScheduleStates, collections.routes],
   );
-  const routes: AutomationRouteDefinition[] = (routesQuery.data ?? []).map((route) => ({
-    ...route,
-    nextOccurrenceAt: route.nextOccurrenceAt?.toISOString() ?? null,
-  }));
+  const routes = (routesQuery.data ?? []).map(
+    (route) =>
+      ({
+        ...route,
+        nextOccurrenceAt: route.nextOccurrenceAt?.toISOString() ?? null,
+      }) as AutomationRouteDefinition,
+  );
 
   if (routesQuery.isError) {
     return {

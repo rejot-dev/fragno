@@ -10,6 +10,7 @@ import {
   validateAutomationScheduleCadence,
 } from "./route-triggers";
 import {
+  assertAutomationRouteAuthorityMatchesTrigger,
   assertAutomationRouteDoesNotReclassifyItself,
   type AutomationRouteAction,
 } from "./routing";
@@ -144,18 +145,14 @@ export const createAutomationRouteServices = (
             }
           }
 
+          const { managedBy, ...authoredRoute } = route;
           return {
-            id: route.id,
-            name: route.name,
-            enabled: route.enabled,
-            priority: route.priority,
-            trigger: route.trigger,
-            action: route.action,
+            ...authoredRoute,
             description: route.description ?? null,
             metadata: {
               createdByActors: actors,
               updatedByActors: actors,
-              managedBy: route.managedBy ?? null,
+              managedBy: managedBy ?? null,
             },
             nextOccurrenceAt: null,
           };
@@ -204,6 +201,7 @@ export const createAutomationRouteServices = (
                 ? (patch.managedBy ?? null)
                 : (current.metadata?.managedBy ?? null),
           };
+          assertAutomationRouteAuthorityMatchesTrigger(merged);
           assertAutomationRouteDoesNotReclassifyItself({
             routeId: merged.id,
             trigger: merged.trigger,
@@ -312,18 +310,13 @@ export const createAutomationRouteServices = (
             );
           }
 
+          const { managedBy, ...authoredRoute } = merged;
           return {
-            id: merged.id,
-            name: merged.name,
-            enabled: merged.enabled,
-            priority: merged.priority,
-            trigger: merged.trigger,
-            action: merged.action,
-            description: merged.description,
+            ...authoredRoute,
             metadata: {
               createdByActors: current.metadata?.createdByActors ?? actors,
               updatedByActors: actors,
-              managedBy: merged.managedBy,
+              managedBy,
             },
             nextOccurrenceAt:
               isScheduled && merged.enabled && !needsInitialization

@@ -578,16 +578,19 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
               );
           })
           .transformRetrieve(([routeRows, storeRows, externalIdentityBinding]) => ({
-            routes: routeRows.map((route) => ({
-              id: route.id.externalId,
-              name: route.name,
-              enabled: route.enabled,
-              priority: route.priority,
-              trigger: route.trigger,
-              action: route.action,
-              description: route.description,
-              nextOccurrenceAt: null,
-            })),
+            routes: routeRows.map(
+              (route) =>
+                ({
+                  id: route.id.externalId,
+                  name: route.name,
+                  enabled: route.enabled,
+                  priority: route.priority,
+                  trigger: route.trigger,
+                  action: route.action,
+                  description: route.description,
+                  nextOccurrenceAt: null,
+                }) as AutomationRouteDefinition,
+            ),
             store: new Map(storeRows.map((entry) => [entry.key, entry.value])),
             linkedUserId:
               externalIdentityBinding?.revokedAt === null ? externalIdentityBinding.userId : null,

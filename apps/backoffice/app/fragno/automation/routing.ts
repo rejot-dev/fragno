@@ -101,6 +101,40 @@ type AutomationRouteScheduleTrigger = {
 
 export type AutomationRouteTrigger = AutomationRouteEventTrigger | AutomationRouteScheduleTrigger;
 
+type AutomationRouteConfiguration =
+  | { trigger: AutomationRouteEventTrigger; action: AutomationRouteAction }
+  | {
+      trigger: AutomationRouteScheduleTrigger;
+      action:
+        | Exclude<AutomationRouteAction, AutomationStartWorkflowAction>
+        | (AutomationStartWorkflowAction & {
+            authority: Extract<AutomationAuthorityMode, { kind: "organization-automation" }>;
+          });
+    };
+
+export class AutomationRouteAuthorityError extends Error {
+  static readonly message =
+    "Scheduled workflows require organization-automation authority. Linked-user authority requires an external sender; delegated-user authority requires a user principal.";
+
+  constructor() {
+    super(AutomationRouteAuthorityError.message);
+    this.name = "AutomationRouteAuthorityError";
+  }
+}
+
+export function assertAutomationRouteAuthorityMatchesTrigger(configuration: {
+  trigger: AutomationRouteTrigger;
+  action: AutomationRouteAction;
+}): asserts configuration is AutomationRouteConfiguration {
+  if (
+    configuration.trigger.kind === "schedule" &&
+    configuration.action.kind === "start_workflow" &&
+    configuration.action.authority.kind !== "organization-automation"
+  ) {
+    throw new AutomationRouteAuthorityError();
+  }
+}
+
 /** Rejects a reclassification route whose derived event would activate the same route again. */
 export function assertAutomationRouteDoesNotReclassifyItself({
   routeId,
@@ -135,13 +169,11 @@ export type AutomationRouteMetadata = {
   managedBy: AutomationRouteManagedBy | null;
 };
 
-export type AutomationRouteDefinition = {
+export type AutomationRouteDefinition = AutomationRouteConfiguration & {
   id: string;
   name: string;
   enabled: boolean;
   priority: number;
-  trigger: AutomationRouteTrigger;
-  action: AutomationRouteAction;
   description?: string | null;
   metadata?: AutomationRouteMetadata | null;
   nextOccurrenceAt: string | null;
