@@ -31,13 +31,19 @@ export function createProjectConnectorFragmentClients(fragnoConfig: FragnoPublic
     useProviderActions: builder.createHook("/provider-configs/:providerConfigId/actions"),
     useStatus: builder.createHook("/status"),
     useAccounts: builder.createHook("/accounts"),
+    useNamedAccount: builder.createHook("/accounts/by-name"),
+    useNamedConnectionRequest: builder.createHook("/connection-requests/by-name"),
     useProfile: builder.createHook("/accounts/:accountId/profile"),
-    connect: builder.createMutator("POST", "/connection-requests"),
+    connect: builder.createMutator("POST", "/connection-requests", (invalidate) => {
+      invalidate("GET", "/connection-requests/by-name", {});
+    }),
     refreshConnection: builder.createMutator(
       "POST",
       "/connection-requests/:requestId/refresh",
       (invalidate) => {
         invalidate("GET", "/accounts", {});
+        invalidate("GET", "/accounts/by-name", {});
+        invalidate("GET", "/connection-requests/by-name", {});
       },
     ),
     executeAction: builder.createMutator("POST", "/accounts/:accountId/actions/:actionId"),

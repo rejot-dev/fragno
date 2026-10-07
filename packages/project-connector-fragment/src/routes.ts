@@ -10,6 +10,9 @@ import {
 } from "./project-connector-client";
 import {
   projectConnectorAccountsSchema,
+  projectConnectorNamedConnectionSchema,
+  projectConnectorNamedRequestSchema,
+  projectConnectorNamedAccountSchema,
   projectConnectorStatusSchema,
   projectConnectorProviderConfigsSchema,
   projectConnectorProviderActionsSchema,
@@ -20,6 +23,24 @@ import {
   type ProjectConnectorConnectionState,
 } from "./project-connector-contracts";
 import { projectConnectorSchema } from "./schema";
+
+function serializeProjectConnectorRequest(
+  saved: Omit<z.output<typeof projectConnectorConnectionSchema>, "id"> & {
+    id: { toString(): string };
+  },
+): z.output<typeof projectConnectorConnectionSchema> {
+  return {
+    id: saved.id.toString(),
+    projectId: saved.projectId,
+    providerConfigId: saved.providerConfigId,
+    externalUserId: saved.externalUserId,
+    service: saved.service,
+    connectionName: saved.connectionName,
+    authorizationUrl: saved.authorizationUrl,
+    expiresAt: saved.expiresAt,
+    state: saved.state,
+  };
+}
 
 /** Authenticated routes never accept a product user ID or account binding from the browser. */
 export const projectConnectorRoutes = defineRoutes(projectConnectorFragmentDefinition).create(
@@ -148,6 +169,58 @@ export const projectConnectorRoutes = defineRoutes(projectConnectorFragmentDefin
       },
     }),
     defineRoute({
+      method: "GET",
+      path: "/connection-requests/by-name",
+      queryParameters: ["projectId", "providerConfigId", "connectionName"],
+      outputSchema: projectConnectorNamedRequestSchema,
+      errorCodes: ["UNAUTHENTICATED", "INVALID_SELECTOR", "CONNECTION_AMBIGUOUS"],
+      handler: async function ({ headers, query }, { json, error }) {
+        const externalUserId = await config.getExternalUserId(headers);
+        if (!externalUserId) {
+          return error({ code: "UNAUTHENTICATED", message: "Authentication required" }, 401);
+        }
+        const selector = projectConnectorNamedConnectionSchema.safeParse({
+          projectId: query.get("projectId"),
+          providerConfigId: query.get("providerConfigId"),
+          connectionName: query.get("connectionName"),
+        });
+        if (!selector.success) {
+          return error(
+            { code: "INVALID_SELECTOR", message: "Invalid named connection selector" },
+            400,
+          );
+        }
+        const [page] = await this.handlerTx()
+          .retrieve(({ forSchema }) =>
+            forSchema(projectConnectorSchema).findWithCursor("connectionRequest", (b) =>
+              b
+                .whereIndex("idx_request_named_connection", (eb) =>
+                  eb.and(
+                    eb("externalUserId", "=", externalUserId),
+                    eb("projectId", "=", selector.data.projectId),
+                    eb("providerConfigId", "=", selector.data.providerConfigId),
+                    eb("connectionName", "=", selector.data.connectionName),
+                  ),
+                )
+                .orderByIndex("idx_request_named_connection", "asc")
+                .pageSize(2),
+            ),
+          )
+          .execute();
+        if (page.items.length > 1) {
+          return error(
+            {
+              code: "CONNECTION_AMBIGUOUS",
+              message: "Project Connector named connection matches multiple OAuth requests.",
+            },
+            409,
+          );
+        }
+        const [saved] = page.items;
+        return json({ request: saved ? serializeProjectConnectorRequest(saved) : null });
+      },
+    }),
+    defineRoute({
       method: "POST",
       path: "/connection-requests/:requestId/refresh",
       outputSchema: projectConnectorConnectionSchema,
@@ -161,9 +234,18 @@ export const projectConnectorRoutes = defineRoutes(projectConnectorFragmentDefin
         try {
           const result = await this.handlerTx()
             .retrieve(({ forSchema }) =>
-              forSchema(projectConnectorSchema).findFirst("connectionRequest", (b) =>
-                b.whereIndex("primary", (eb) => eb("id", "=", pathParams.requestId)),
-              ),
+              forSchema(projectConnectorSchema)
+                .findFirst("connectionRequest", (b) =>
+                  b.whereIndex("primary", (eb) => eb("id", "=", pathParams.requestId)),
+                )
+                // Confirmation supplies the account ID later; acquire owned IDs in the single read phase.
+                .find("connectedAccount", (b) =>
+                  b
+                    .whereIndex("idx_account_external_user_id", (eb) =>
+                      eb("externalUserId", "=", externalUserId),
+                    )
+                    .select(["id"]),
+                ),
             )
             .afterRetrieve(async (_uow, [saved]) => {
               // OCC retries must not reuse a confirmation prepared for an older snapshot.
@@ -181,7 +263,7 @@ export const projectConnectorRoutes = defineRoutes(projectConnectorFragmentDefin
                 remote,
               );
             })
-            .mutate(({ forSchema, retrieveResult: [saved] }) => {
+            .mutate(({ forSchema, retrieveResult: [saved, accounts] }) => {
               if (!saved || saved.externalUserId !== externalUserId) {
                 return null;
               }
@@ -190,9 +272,14 @@ export const projectConnectorRoutes = defineRoutes(projectConnectorFragmentDefin
               if (saved.state.status === "initiated" && state.status !== "initiated") {
                 uow.update("connectionRequest", saved.id, (b) => b.set({ state }).check());
                 if (state.status === "connected") {
-                  // Reauthorization can return an existing account. Upstream identity is
-                  // already verified; an idempotent binding must not duplicate the row.
-                  uow.delete("connectedAccount", state.connectedAccountId);
+                  const existing = accounts.find(
+                    (account) => account.id.toString() === state.connectedAccountId,
+                  );
+                  // Reauthorization replaces only the same owned account ID, not other accounts sharing its name.
+                  if (existing) {
+                    uow.delete("connectedAccount", existing.id, (b) => b.check());
+                  }
+                  // An incoming ID belonging to another user must fail the create, never replace their binding.
                   uow.create("connectedAccount", {
                     id: state.connectedAccountId,
                     projectId: saved.projectId,
@@ -203,17 +290,7 @@ export const projectConnectorRoutes = defineRoutes(projectConnectorFragmentDefin
                   });
                 }
               }
-              return {
-                id: saved.id.toString(),
-                projectId: saved.projectId,
-                providerConfigId: saved.providerConfigId,
-                externalUserId: saved.externalUserId,
-                service: saved.service,
-                connectionName: saved.connectionName,
-                authorizationUrl: saved.authorizationUrl,
-                expiresAt: saved.expiresAt,
-                state,
-              };
+              return serializeProjectConnectorRequest({ ...saved, state });
             })
             .execute();
           if (!result) {
@@ -286,6 +363,69 @@ export const projectConnectorRoutes = defineRoutes(projectConnectorFragmentDefin
           })),
           cursor: page.cursor?.encode() ?? null,
           hasNextPage: page.hasNextPage,
+        });
+      },
+    }),
+    defineRoute({
+      method: "GET",
+      path: "/accounts/by-name",
+      queryParameters: ["projectId", "providerConfigId", "connectionName"],
+      outputSchema: projectConnectorNamedAccountSchema,
+      errorCodes: ["UNAUTHENTICATED", "INVALID_SELECTOR", "CONNECTION_AMBIGUOUS"],
+      handler: async function ({ headers, query }, { json, error }) {
+        const externalUserId = await config.getExternalUserId(headers);
+        if (!externalUserId) {
+          return error({ code: "UNAUTHENTICATED", message: "Authentication required" }, 401);
+        }
+        const selector = projectConnectorNamedConnectionSchema.safeParse({
+          projectId: query.get("projectId"),
+          providerConfigId: query.get("providerConfigId"),
+          connectionName: query.get("connectionName"),
+        });
+        if (!selector.success) {
+          return error(
+            { code: "INVALID_SELECTOR", message: "Invalid named connection selector" },
+            400,
+          );
+        }
+        const [page] = await this.handlerTx()
+          .retrieve(({ forSchema }) =>
+            forSchema(projectConnectorSchema).findWithCursor("connectedAccount", (b) =>
+              b
+                .whereIndex("idx_account_named_connection", (eb) =>
+                  eb.and(
+                    eb("externalUserId", "=", externalUserId),
+                    eb("projectId", "=", selector.data.projectId),
+                    eb("providerConfigId", "=", selector.data.providerConfigId),
+                    eb("connectionName", "=", selector.data.connectionName),
+                  ),
+                )
+                .orderByIndex("idx_account_named_connection", "asc")
+                .pageSize(2),
+            ),
+          )
+          .execute();
+        if (page.items.length > 1) {
+          return error(
+            {
+              code: "CONNECTION_AMBIGUOUS",
+              message: "Project Connector named connection matches multiple confirmed accounts.",
+            },
+            409,
+          );
+        }
+        const [account] = page.items;
+        return json({
+          account: account
+            ? {
+                id: account.id.toString(),
+                projectId: account.projectId,
+                providerConfigId: account.providerConfigId,
+                externalUserId: account.externalUserId,
+                service: account.service,
+                connectionName: account.connectionName,
+              }
+            : null,
         });
       },
     }),
