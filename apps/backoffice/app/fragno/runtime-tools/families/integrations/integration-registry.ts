@@ -131,28 +131,25 @@ export function createIntegrationRegistry(implementations: readonly IntegrationI
         }
         sourceCursor = decoded.cursor;
       }
+      // Finished sources are combined into one page, so a page stops only at a source with more
+      // pages; each source's own page size still bounds the result.
+      const connections: IntegrationConnectionPage["connections"] = [];
       for (; index < entries.length; index++) {
         const entry = entries[index];
         const page = await entry.implementation.list(context, sourceCursor);
         for (const connection of page.connections) {
           assertPublishedConnectionOwner(connection.connectionId, entry.implementation);
         }
+        connections.push(...page.connections);
         if (page.cursor !== null) {
           return {
-            connections: page.connections,
+            connections,
             cursor: JSON.stringify({ source: entry.key, cursor: page.cursor }),
-          };
-        }
-        if (page.connections.length > 0) {
-          const next = entries[index + 1];
-          return {
-            connections: page.connections,
-            cursor: next ? JSON.stringify({ source: next.key, cursor: null }) : null,
           };
         }
         sourceCursor = null;
       }
-      return { connections: [], cursor: null };
+      return { connections, cursor: null };
     },
     async resolve(context: IntegrationContext, connectionId: string) {
       const { implementation, localId } = resolveConnectionOwner(connectionId);

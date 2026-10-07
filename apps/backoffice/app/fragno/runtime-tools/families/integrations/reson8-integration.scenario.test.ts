@@ -1259,11 +1259,9 @@ test("implementation claims reject collisions and wrong publication instead of s
             ctx.runtime.services,
             createBackofficeSystemExecution(scope),
           );
-          const first = await registry.list(context, null);
-          expect(first.connections).toMatchObject([{ connectionId }]);
-          assert(first.cursor !== null);
-          expect(await registry.list(context, first.cursor)).toEqual({
-            connections: [],
+          // A finished source does not end the page; the empty disabled source adds nothing.
+          expect(await registry.list(context, null)).toMatchObject({
+            connections: [{ connectionId }],
             cursor: null,
           });
           const unsupported = createIntegrationRegistry([

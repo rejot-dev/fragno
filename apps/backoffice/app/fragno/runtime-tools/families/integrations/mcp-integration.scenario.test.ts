@@ -717,6 +717,30 @@ test("mcp addresses resolve only in their own scope and require both authority l
           expect(JSON.parse(setup.stdout)).toMatchObject({ status: "blocked" });
         },
       ),
+      then.assert(
+        "listing combines finished sources and pauses only at a source with more pages",
+        async (ctx) => {
+          const run = await ctx.runCodemode({
+            scope: orgScope,
+            code: `async () => {
+              for (let index = 0; index < 51; index++) {
+                await api.createConnection({ slug: "conn-" + String(index).padStart(2, "0"), baseUrl: "https://api.provider.test" });
+              }
+              const first = await integrations.list({ cursor: null });
+              const second = await integrations.list({ cursor: first.cursor });
+              return {
+                first: { count: first.connections.length, more: first.cursor !== null },
+                second: { ids: second.connections.map((connection) => connection.connectionId), cursor: second.cursor },
+              };
+            }`,
+          });
+          // The API source has a second page, so it ends the first; the rest share one page.
+          expect(run.result).toEqual({
+            first: { count: 50, more: true },
+            second: { ids: ["api#conn-50", "mcp#shared"], cursor: null },
+          });
+        },
+      ),
       then.assert("umbrella permissions never replace native MCP permissions", async (ctx) => {
         const setupOnly = createDelegatedExecution(ctx, orgScope, providers, [
           BACKOFFICE_PERMISSION.integrations.manage,
