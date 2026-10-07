@@ -173,6 +173,7 @@ test("Codemode resolves deterministic Reson8 addresses across setup, requests, r
           expect(run.result).toMatchObject({
             services: [
               { id: "api", setupTargets: [], availability: { status: "available" } },
+              { id: "mcp", setupTargets: [], availability: { status: "available" } },
               {
                 id: "reson8",
                 setupTargets: [{ kind: "connection", connectionId }],
@@ -393,6 +394,7 @@ test("terminal commands use scalar connection IDs without setup handles or persi
           expect(discovery.stdout).toContain("\n  {\n");
           expect(JSON.parse(discovery.stdout)).toMatchObject([
             { id: "api", setupTargets: [] },
+            { id: "mcp", setupTargets: [] },
             { id: "reson8", setupTargets: [{ connectionId }] },
           ]);
           const page = await bash.exec("integrations.list --json");
@@ -727,6 +729,7 @@ test("connection IDs cannot select an owner or replace umbrella and service auth
           assert(userHost.integrations);
           expect(await userHost.integrations.runtime.discover()).toMatchObject([
             { id: "api", availability: { status: "available" } },
+            { id: "mcp", availability: { status: "available" } },
             { id: "reson8", availability: { status: "unavailable" } },
           ]);
           expect(await userHost.integrations.runtime.list({ cursor: null })).toEqual({

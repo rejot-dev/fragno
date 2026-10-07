@@ -10,8 +10,9 @@ description: >
 
 Read `/static/codemode/providers/mcp.d.ts` before executing MCP calls. This skill registers remote
 MCP endpoints and their authentication with `mcp.*`. These low-level connections belong to
-`mcp.listServers()`, separately from the connections `integrations.*` manages: native services, Open
-Connector accounts, and direct API connections.
+`mcp.listServers()`; `integrations.*` addresses the same servers as `mcp#<slug>`. To connect a
+service, start with `/static/skills/configuring-integrations/SKILL.md`; use `mcp.*` for tools the
+integration does not offer as actions.
 
 Resolve the provider's streamable HTTP MCP endpoint from available context or provider documentation
 before registration; a service name alone does not establish an endpoint.

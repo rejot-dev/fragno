@@ -6,6 +6,7 @@ import { createApiIntegration } from "./api-integration";
 import { createConnectorIntegration } from "./connector-integration";
 import { createIntegrationRegistry } from "./integration-registry";
 import type { IntegrationsRuntime } from "./integration-tools";
+import { createMcpIntegration } from "./mcp-integration";
 import { createReson8Integration } from "./reson8-integration";
 
 /** Every request resolves deterministic addresses against the selected scope's authoritative source. */
@@ -22,6 +23,7 @@ export function createIntegrationsRuntime({
 }): IntegrationsRuntime {
   const registry = createIntegrationRegistry([
     createApiIntegration({ runtime }),
+    createMcpIntegration({ runtime, nowEpochMs }),
     createReson8Integration({ runtime, nowEpochMs }),
     ...(execution.scope.kind === "user"
       ? [createConnectorIntegration({ runtime, nowEpochMs })]

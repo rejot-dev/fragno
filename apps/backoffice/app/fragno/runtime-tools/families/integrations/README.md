@@ -4,11 +4,11 @@ The registered `integrations` tools provide scope-bound discovery, setup, and ex
 existing service-owned configuration. They do not own credentials, binding records, or setup-attempt
 history.
 
-Reson8, Connector, and API are implemented sources. Codemode and terminal commands use the same
+Reson8, Connector, API, and MCP are implemented sources. Codemode and terminal commands use the same
 contracts, runtime, and permissions. Reson8 execution is exposed only through `integrations.*`; its
-former standalone tool family and runtime have been removed. Connector's and API's existing native
-tools remain available. All retain their underlying Fragments, Durable Objects, native permissions,
-ownership, and configuration controls.
+former standalone tool family and runtime have been removed. Connector's, API's, and MCP's existing
+native tools remain available. All retain their underlying Fragments, Durable Objects, native
+permissions, ownership, and configuration controls.
 
 ## Public surface
 
@@ -52,9 +52,9 @@ claims and overlapping exact/namespace claims before exposing any operation. Sou
 only the addresses they own. This is code-owned routing metadata, not a persistent reservation
 store.
 
-A future source can own `mcp#<server-slug>`. If native identity is only unique within another source
-instance, its local address must include that qualifier losslessly. Sources are not implemented by
-merely reserving their prefixes; unknown addresses fail closed.
+If native identity is only unique within another source instance, its local address must include
+that qualifier losslessly. Sources are not implemented by merely reserving their prefixes; unknown
+addresses fail closed.
 
 ### API addresses
 
@@ -69,6 +69,15 @@ caller-chosen, so there is no fixed slot to advertise. Choosing `api#<slug>` bef
 preassigned name that exists before authorization. Every listed connection uses
 `integrationId: "api"`; no provider is inferred from a base URL hostname. An address whose
 connection does not exist still resolves, reporting missing configuration, so setup can create it.
+
+### MCP addresses
+
+MCP owns the `mcp` namespace in organization, user, and project scopes, the same scopes as its
+store. `mcp#<slug>` names the MCP Fragment server with exactly that slug. Resolution preserves the
+suffix exactly; registration accepts only the Fragment's canonical slugs: a lowercase letter or
+digit, then lowercase letters, digits, or `-`. Discovery publishes one `mcp` service with `multiple`
+cardinality and no setup targets, and every listed server uses `integrationId: "mcp"`. The Fragment
+lists every server in one read, so listing returns a single page.
 
 ### Connector addresses
 
@@ -193,6 +202,23 @@ uses, and disconnect resets that configuration. Connector declares both unsuppor
 owns credentials, and the source has no account removal. Consenting again uses a fresh connection
 name.
 
+MCP setup follows API setup with the MCP Fragment's auth modes: `type` selects `none`, `bearer`,
+`client_credentials`, or `oauth` beside `endpointUrl` and an optional `name`, and `secretFields`
+names `token` and `clientSecret`. An OAuth submission registers the server and starts consent.
+Servers with dynamic client registration register the callback themselves. For servers without it,
+the submission includes `clientId` and `clientSecret`; the Fragment stores them and reuses them on
+every later start. When the server's OAuth discovery or client registration rejects a start, setup
+is `blocked` with that remedy and never echoes the server's error. Pending links, expiry, native
+credential resets, and `{ reauthorize: true }` behave as for API. Reconfigure replaces the server in
+place through `PUT /servers/:slug/configuration`, which also drops the registered OAuth client and
+discovery state, since they belong to the old endpoint. Disconnect deletes the server.
+
+MCP `ready` means auth is usable, not that tools are known. The Fragment discovers tools in a
+background refresh after credentials are stored or consent completes, so actions can be empty
+briefly. Setup does not wait for that refresh: a failed refresh records no outcome, so a pending
+state could never resolve. Inspection says when tools have not been discovered, and verify discovers
+them on demand.
+
 A future source without preassignable names or another authoritative pre-authorization identity
 needs an explicit interface decision. Do not invent an account ID, encode private continuation state
 in a public token, or add an integrations-owned attempt store to fit it into named setup.
@@ -214,6 +240,10 @@ in a public token, or add an integrations-owned attempt store to fit it into nam
 - `api-integration.ts`: scoped API Fragment connections, exact slug addresses, sanitized auth
   status, resumable OAuth, and the generic `request` action. Its OAuth callback comes from
   `../../runtime-public-scope.ts`, which the native API runtime shares.
+- `mcp-integration.ts`: scoped MCP Fragment servers, exact slug addresses, sanitized auth status,
+  resumable OAuth, one action per cached server tool, and live tool listing as verification.
+- `integration-action-json-schema.ts`: compiles source-published action schemas for Connector and
+  MCP, failing closed on contracts validation would weaken.
 
 An implementation can describe multiple services and owns listing, source-local resolution, and any
 supported setup. Setup capability is `supported` or `unsupported`, never an optional method.
@@ -245,10 +275,20 @@ rejected. The full native envelope is returned, including `ok: false` upstream H
 `CONNECTION_NOT_FOUND` after a deletion race. Validation failure of the output happens after the
 request has run, and requests are never retried automatically.
 
-Catalog schemas without an explicit dialect use JSON Schema 2020-12. Incompatible explicit dialects,
-unresolved references, and unsupported dynamic-reference/vocabulary semantics fail before actions
-are published. Self-contained ordinary references are supported; no remote schema fetch or inferred
-output contract is introduced.
+MCP publishes one action per tool in the Fragment's tool cache, with the tool name as its ID and its
+own input schema. Every tool shares the Fragment's result envelope as the output schema:
+`{ isError, content, structuredContent }`. A tool error is a result the caller sees, not a thrown
+failure; auth, transport, and protocol failures throw. Successful `structuredContent` is validated
+against the tool's output schema when it declares one. A tool whose input or output schema cannot be
+validated is withheld from actions rather than published with a weaker contract, and inspection
+names it; it stays callable through native `mcp.callTool`. Connector instead fails the whole
+catalog, since its catalogs are curated.
+
+Source schemas without an explicit dialect use JSON Schema 2020-12; draft-07, which MCP SDK servers
+publish, is also accepted and validated as draft-07. Other explicit dialects, unresolved references,
+and unsupported dynamic-reference/vocabulary semantics fail before actions are published.
+Self-contained ordinary references are supported; no remote schema fetch or inferred output contract
+is introduced.
 
 The registry returns source pages without materializing all connections. Its opaque cursor
 identifies the next source and that source's unchanged cursor. An unknown source or malformed cursor
@@ -409,14 +449,26 @@ profile data and server credentials are not included, and subsequent inspection 
 Receiving-object denials remain execution errors, including when authority is revoked after
 resolution.
 
+MCP listing, resolution, inspection, verification, and setup checks require `mcp.servers.read`.
+Registration, replacement, token submission, OAuth start, reauthorization, and reading a pending
+link require `mcp.servers.create`; disconnect requires `mcp.servers.delete`. Tool actions require
+`mcp.tools.call`, with resources carrying the slug and tool name; resolution reads the server and
+its cached tools, so execution also needs `mcp.servers.read`.
+
+MCP verify lists the server's tools through the Fragment's refresh route, which also updates the
+tool cache and may store refreshed tokens; both stay in the source. A passed check reports the tool
+count and does not prove any tool works; a failed check names only the failing stage, since refresh
+errors can echo server responses.
+
 API verify returns the current inspection with no checks. The Fragment declares no live verification
 operation, so verification makes no provider request, acquires no token, and persists no health. A
 provider-specific check would need a separately justified source capability.
 
 Concrete scenarios use real temporary SQLite, runtime/kernel authority, registered Codemode and Bash
 tools, object restarts, authorized object HTTP, and real route handlers. External transport is an
-injected fetch for Reson8, a stateful local HTTP gateway for Connector, and a local HTTP and OAuth
-provider for API. Scenarios cover claim conflicts, deterministic and exact addressing, both
-permission layers, owner isolation, setup without handles, in-place replacement, reauthorization,
-confirmed disconnects, retained OAuth history, ambiguity, source pagination, binary/query transport,
-live contracts, output failures without retries, and sanitized verification evidence.
+injected fetch for Reson8, a stateful local HTTP gateway for Connector, a local HTTP and OAuth
+provider for API, and in-process MCP servers from `@fragno-dev/mcp-fragment/testing` for MCP.
+Scenarios cover claim conflicts, deterministic and exact addressing, both permission layers, owner
+isolation, setup without handles, in-place replacement, reauthorization, confirmed disconnects,
+retained OAuth history, ambiguity, source pagination, binary/query transport, live contracts, output
+failures without retries, and sanitized verification evidence.
