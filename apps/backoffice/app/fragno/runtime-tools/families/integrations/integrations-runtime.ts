@@ -2,6 +2,7 @@ import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 
+import { createConnectorIntegration } from "./connector-integration";
 import { createIntegrationRegistry } from "./integration-registry";
 import type { IntegrationsRuntime } from "./integration-tools";
 import { createReson8Integration } from "./reson8-integration";
@@ -18,7 +19,12 @@ export function createIntegrationsRuntime({
   execution: BackofficeExecutionContext;
   nowEpochMs: () => number;
 }): IntegrationsRuntime {
-  const registry = createIntegrationRegistry([createReson8Integration({ runtime, nowEpochMs })]);
+  const registry = createIntegrationRegistry([
+    createReson8Integration({ runtime, nowEpochMs }),
+    ...(execution.scope.kind === "user"
+      ? [createConnectorIntegration({ runtime, nowEpochMs })]
+      : []),
+  ]);
   const context = { kernel, execution };
 
   return {
