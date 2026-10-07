@@ -183,6 +183,31 @@ export const integrationSetupInputSchema = z.discriminatedUnion("kind", [
 /** Setup requests select a scoped address and carry one explicit operation, without private continuation data. */
 export type IntegrationSetupInput = z.output<typeof integrationSetupInputSchema>;
 
+/** Disconnecting repeats the address, so removal is never a side effect of an edited command. */
+export const integrationDisconnectInputSchema = integrationConnectionInputSchema
+  .extend({
+    confirm: integrationConnectionIdSchema.describe(
+      "Repeat connectionId to confirm removing its source-owned configuration and credentials.",
+    ),
+  })
+  .refine((input) => input.confirm === input.connectionId, {
+    message: "Integration disconnect confirmation must repeat the connection ID.",
+    path: ["confirm"],
+  });
+
+/** Disconnect results report source state; the address stays valid for a later setup. */
+export const integrationDisconnectResultSchema = z
+  .strictObject({
+    connectionId: integrationConnectionIdSchema,
+    status: z
+      .enum(["disconnected", "not-configured"])
+      .describe("Not-configured means nothing was stored at this address in the selected scope."),
+  })
+  .meta({ id: "IntegrationDisconnectResult" });
+
+/** Disconnect results never retain a removed connection's configuration. */
+export type IntegrationDisconnectResult = z.output<typeof integrationDisconnectResultSchema>;
+
 /** Integration discovery reports service availability in the selected scope, not live health. */
 export const integrationOverviewSchema = z
   .strictObject({
@@ -287,10 +312,24 @@ export const integrationsOperations = {
   },
   "integrations.setup": {
     description:
-      "Read current requirements or submit input for a deterministic connection address. Setup is source-owned; this operation retains no attempt state or independent binding. Already configured Reson8 reuses its key without replacing it.",
+      "Read current requirements or submit input for a deterministic connection address. Setup is source-owned; this operation retains no attempt state or independent binding. Ready connections keep their configuration and credentials; reconfigure replaces them.",
     permissions: [BACKOFFICE_PERMISSION.integrations.manage],
     input: integrationSetupInputSchema,
     output: integrationSetupProgressSchema,
+  },
+  "integrations.reconfigure": {
+    description:
+      "Read replacement requirements or submit replacement configuration or credentials for an existing connection. Submission replaces source-owned state; continue with setup checks until ready. A missing connection needs setup.",
+    permissions: [BACKOFFICE_PERMISSION.integrations.manage],
+    input: integrationSetupInputSchema,
+    output: integrationSetupProgressSchema,
+  },
+  "integrations.disconnect": {
+    description:
+      "Remove a connection's source-owned configuration and credentials in the selected scope. The address stays valid for a later setup. Requires confirm to repeat the connection ID.",
+    permissions: [BACKOFFICE_PERMISSION.integrations.manage],
+    input: integrationDisconnectInputSchema,
+    output: integrationDisconnectResultSchema,
   },
   "integrations.actions": {
     description:

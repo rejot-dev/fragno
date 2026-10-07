@@ -4,11 +4,11 @@ The registered `integrations` tools provide scope-bound discovery, setup, and ex
 existing service-owned configuration. They do not own credentials, binding records, or setup-attempt
 history.
 
-Reson8 and Connector are implemented sources. Codemode and terminal commands use the same contracts,
-runtime, and permissions. Reson8 execution is exposed only through `integrations.*`; its former
-standalone tool family and runtime have been removed. Connector's existing native tools remain
-available. Both retain their underlying Fragments, Durable Objects, native permissions, ownership,
-and configuration controls.
+Reson8, Connector, and API are implemented sources. Codemode and terminal commands use the same
+contracts, runtime, and permissions. Reson8 execution is exposed only through `integrations.*`; its
+former standalone tool family and runtime have been removed. Connector's and API's existing native
+tools remain available. All retain their underlying Fragments, Durable Objects, native permissions,
+ownership, and configuration controls.
 
 ## Public surface
 
@@ -21,10 +21,19 @@ and configuration controls.
 - `verify({ connectionId })`: explicit supported live checks, returning timestamped evidence.
 - `setup({ kind: "check", connectionId })`: read current source-owned setup requirements.
   `setup({ kind: "input", connectionId, input })` submits direct JSON values to the same operation.
+  Setup never replaces stored configuration or credentials.
+- `reconfigure({ kind: "check" | "input", connectionId, ... })`: the same check/input shape, for
+  replacing an existing connection's configuration or credentials. A missing connection is `blocked`
+  and needs setup. After a submission, continue with setup checks until ready.
+- `disconnect({ connectionId, confirm })`: remove source-owned configuration and credentials.
+  `confirm` repeats the address. The result is `disconnected` or `not-configured`; the address stays
+  valid for a later setup.
 
-`connect`, `continueSetup`, and `disconnect` are not registered. There is no reference object,
-caller scope argument, binding name, or retained setup ID. Configuration is not proof of working
-credentials; setup-ready is not blanket health, and discovery never authorizes an action.
+Each source declares setup, reconfigure, and disconnect as `supported` or `unsupported`; an
+unsupported operation fails with its reason. `connect` and `continueSetup` are not registered. There
+is no reference object, caller scope argument, binding name, or retained setup ID. Configuration is
+not proof of working credentials; setup-ready is not blanket health, and discovery never authorizes
+an action.
 
 ## Deterministic connection IDs
 
@@ -43,9 +52,23 @@ claims and overlapping exact/namespace claims before exposing any operation. Sou
 only the addresses they own. This is code-owned routing metadata, not a persistent reservation
 store.
 
-Future sources can own `api#<connection-slug>` and `mcp#<server-slug>`. If native identity is only
-unique within another source instance, its local address must include that qualifier losslessly.
-Those sources are not implemented by merely reserving their prefixes; unknown addresses fail closed.
+A future source can own `mcp#<server-slug>`. If native identity is only unique within another source
+instance, its local address must include that qualifier losslessly. Sources are not implemented by
+merely reserving their prefixes; unknown addresses fail closed.
+
+### API addresses
+
+API owns the `api` namespace in organization, user, and project scopes; system scope has no API
+store. `api#<slug>` names the API Fragment connection with exactly that slug in the selected scope.
+Resolution preserves the suffix exactly, without trimming or case changes, so connections created
+before slug validation remain addressable. Creating a connection accepts only canonical slugs, which
+the Fragment enforces: a letter or digit, then letters, digits, `.`, `_`, or `-`.
+
+Discovery publishes one `api` service with `multiple` cardinality and no setup targets: slugs are
+caller-chosen, so there is no fixed slot to advertise. Choosing `api#<slug>` before setup is the
+preassigned name that exists before authorization. Every listed connection uses
+`integrationId: "api"`; no provider is inferred from a base URL hostname. An address whose
+connection does not exist still resolves, reporting missing configuration, so setup can create it.
 
 ### Connector addresses
 
@@ -125,6 +148,51 @@ response or unsuccessful local save is not claimed to be recoverable by name. Ac
 reports ready only for an existing locally confirmed account; it cannot invent a pre-authorization
 account ID.
 
+API setup reads the Fragment's sanitized auth status, never secrets or tokens. A missing connection
+returns `needs-input` with flat auth variants beside `baseUrl` and an optional `name`; `type`
+selects `none`, `bearer`, `basic`, `client_credentials`, or `oauth`, and `secretFields` names
+`token`, `password`, and `clientSecret`. The variants are derived from the Fragment's own auth
+schemas. Input cannot choose the slug, owner scope, or OAuth callback: the address supplies the slug
+and the server selects the scope's public callback. That callback is fixed per scope, so the
+`needs-input` and `{ start: true }` instructions state it before any OAuth app exists, and
+`needs-authorization` instructions repeat the one embedded in the link. Without a configured public
+origin, the instructions report OAuth as unavailable and non-OAuth setup still works. Submission
+creates the connection. If a concurrent creation wins, setup reports that connection's state instead
+of overwriting it.
+
+Non-OAuth submissions become `ready` without contacting the provider. Submitting an OAuth
+configuration also starts consent, since the submission is already explicit; if starting fails, the
+connection remains and the next check asks for `{ start: true }`. A pending, unexpired link is
+persisted by the Fragment, so checks resume it across requests and object restarts and never start
+another flow. Native `api.startOAuth` can leave several pending links; any of them completes the
+same connection, so this is not treated as ambiguity. An expired link, or an expired access token
+without a refresh token, returns `needs-input` for `{ start: true }`, never a terminal state. The
+new link then takes precedence over the unusable tokens, so it resumes like any pending link. The
+Fragment reads only the newest live state through `idx_oauth_state_pending`, never the retained
+history of used and expired states. Ready connections ignore setup submissions and never replace
+credentials.
+
+Native `api.deleteAuth` keeps the auth mode. A bearer connection then asks for a new token. Basic,
+client-credentials, and OAuth connections whose configuration was cleared are `blocked`, naming
+`integrations.reconfigure`. Concurrent OAuth starts are harmless extra pending links; setup promises
+no exactly-once consent.
+
+API reconfigure accepts the same flat variants as setup and replaces the connection in place through
+the Fragment's `PUT /connections/:slug/configuration`: base URL, name, auth mode, and credentials
+change together, while the slug and creation time stay. Replaced credentials drop their tokens and
+pending OAuth links, since those belong to the old client. An OAuth replacement starts consent at
+once. For an OAuth connection whose client is still stored, `{ reauthorize: true }` restarts consent
+with that client and discards the stored tokens. Discarding them makes completion observable: status
+stays pending, and setup resumes the link, until the new consent's callback arrives. The trade-off
+is that requests fail until consent completes, which suits the revoked-access case it exists for.
+Changing scopes or endpoints is a full replacement. API disconnect deletes the connection with its
+secrets and OAuth state.
+
+Reson8 reconfigure replaces the organization's API key through the same configuration command setup
+uses, and disconnect resets that configuration. Connector declares both unsupported: the gateway
+owns credentials, and the source has no account removal. Consenting again uses a fresh connection
+name.
+
 A future source without preassignable names or another authoritative pre-authorization identity
 needs an explicit interface decision. Do not invent an account ID, encode private continuation state
 in a public token, or add an integrations-owned attempt store to fit it into named setup.
@@ -132,7 +200,7 @@ in a public token, or add an integrations-owned attempt store to fit it into nam
 ## Implementation boundary
 
 - `integration-contracts.ts`: canonical public schemas and inferred types.
-- `integration-tools.ts`: the seven tools, Bash adapters, and scope-bound runtime contract.
+- `integration-tools.ts`: the nine tools, Bash adapters, and scope-bound runtime contract.
 - `integration-implementation.ts`: connection ID claims, explicit setup capability, and resolved
   request-local connection operations. No binding/setup generics or shared private state schemas.
 - `integration-registry.ts`: claim ownership, source dispatch, and composite cursor pagination.
@@ -143,6 +211,9 @@ in a public token, or add an integrations-owned attempt store to fit it into nam
   selectors.
 - `connector-integration.ts`: user-owned native requests/accounts, source-qualified addresses,
   provider allowlists, authoritative catalog validation, and read-only profile evidence.
+- `api-integration.ts`: scoped API Fragment connections, exact slug addresses, sanitized auth
+  status, resumable OAuth, and the generic `request` action. Its OAuth callback comes from
+  `../../runtime-public-scope.ts`, which the native API runtime shares.
 
 An implementation can describe multiple services and owns listing, source-local resolution, and any
 supported setup. Setup capability is `supported` or `unsupported`, never an optional method.
@@ -165,6 +236,14 @@ explicitly declare an object root; unsupported transport shapes fail discovery i
 advertising an unusable action. Execution returns the validated provider payload, not the native
 execution-ID envelope, so its shape matches the published output schema exactly. Output failure
 happens after the action has run and must not trigger a retry.
+
+API publishes a read-only `connection.describe` action returning the stored slug, name, base URL,
+auth mode, connection status, and sanitized auth status, so callers can build request paths relative
+to the base URL. API also publishes a `request` action whose contracts are the Fragment's own
+request and result schemas. The slug comes from resolution; input naming another connection is
+rejected. The full native envelope is returned, including `ok: false` upstream HTTP errors and
+`CONNECTION_NOT_FOUND` after a deletion race. Validation failure of the output happens after the
+request has run, and requests are never retried automatically.
 
 Catalog schemas without an explicit dialect use JSON Schema 2020-12. Incompatible explicit dialects,
 unresolved references, and unsupported dynamic-reference/vocabulary semantics fail before actions
@@ -225,6 +304,27 @@ return await integrations.execute({
 });
 ```
 
+In any organization, user, or project scope, choose a slug for a custom HTTP API:
+
+```ts
+const target = { connectionId: "api#billing" };
+let setup = await integrations.setup({ ...target, kind: "check" });
+if (setup.status === "needs-input") {
+  setup = await integrations.setup({
+    ...target,
+    kind: "input",
+    input: { type: "bearer", name: "Billing", baseUrl: "https://billing.example.com", token },
+  });
+}
+// OAuth configurations return needs-authorization; check the same address after consent.
+if (setup.status !== "ready") return setup;
+return await integrations.execute({
+  ...target,
+  actionId: "request",
+  input: { method: "GET", path: "/v1/invoices", body: { type: "empty" } },
+});
+```
+
 ## Terminal usage
 
 Each command supports `--help`, `--format json` / `--json`, and `--print <selector>`. Setup and
@@ -274,10 +374,11 @@ integrations.execute --connection-id 'connector#n_ACJwcm9qZWN0LTEiACJnbWFpbC1wcm
 
 ## Authority and evidence
 
-Umbrella `integrations.read`, `.manage`, and `.execute` apply at the tool boundary. Setup and
-verification require manage. They neither replace native permissions nor broaden role grants. For
-Reson8, configuration inspection/setup reads require `connections.read`; submitted keys require
-`connections.manage`; transcription and live checks require `reson8.use`.
+Umbrella `integrations.read`, `.manage`, and `.execute` apply at the tool boundary. Setup,
+reconfigure, disconnect, and verification require manage. They neither replace native permissions
+nor broaden role grants. For Reson8, configuration inspection/setup reads require
+`connections.read`; submitted or replaced keys and disconnect require `connections.manage`;
+transcription and live checks require `reson8.use`.
 
 Connector discovery and action contracts require `connector.providers.read`. Listing, source-account
 selection, and profile checks require `connector.accounts.read`. Named request lookup, OAuth start,
@@ -286,6 +387,15 @@ and refresh require `connector.connections.create`; invocation additionally requ
 Connector execution needs account-read and provider-read authority as well as action execution. It
 does not call `inspect`, verify a profile, or acquire `connections.read` before invoking an action.
 Both caller and receiving-object checks use the original execution authority; no roles gain grants.
+
+API listing, resolution, inspection, verification, and setup checks require `api.connections.read`.
+Connection creation, replacement, token submission, OAuth start, reauthorization, and reading a
+pending authorization link require `api.connections.create`: a pending link carries the callback
+state, so a reader could otherwise complete consent with their own provider account. Disconnect
+requires `api.connections.delete`. Requests require `api.requests.execute`; `connection.describe`
+requires `api.connections.read`. Resolution reads the connection name, so execution also needs
+`api.connections.read`. Request resources carry the slug and path for caller-side policy and audit;
+the receiving object authorizes the native permission.
 
 Reson8 verify performs a read-only custom-model listing. It neither transcribes, mints tokens,
 persists health, nor publishes provider credential echoes. A subsequent get remains `not-checked`.
@@ -299,9 +409,14 @@ profile data and server credentials are not included, and subsequent inspection 
 Receiving-object denials remain execution errors, including when authority is revoked after
 resolution.
 
+API verify returns the current inspection with no checks. The Fragment declares no live verification
+operation, so verification makes no provider request, acquires no token, and persists no health. A
+provider-specific check would need a separately justified source capability.
+
 Concrete scenarios use real temporary SQLite, runtime/kernel authority, registered Codemode and Bash
 tools, object restarts, authorized object HTTP, and real route handlers. External transport is an
-injected fetch for Reson8 and a stateful local HTTP gateway for Connector. Scenarios cover claim
-conflicts, deterministic and exact addressing, both permission layers, owner isolation, setup
-without handles, retained OAuth history, ambiguity, source pagination, binary/query transport, live
-contracts, output failures without retries, and sanitized verification evidence.
+injected fetch for Reson8, a stateful local HTTP gateway for Connector, and a local HTTP and OAuth
+provider for API. Scenarios cover claim conflicts, deterministic and exact addressing, both
+permission layers, owner isolation, setup without handles, in-place replacement, reauthorization,
+confirmed disconnects, retained OAuth history, ambiguity, source pagination, binary/query transport,
+live contracts, output failures without retries, and sanitized verification evidence.

@@ -1,17 +1,18 @@
 ---
 name: open-connector-connection
 description: >
-  Create Open Connector connections for long-tail services without a native Backoffice integration,
-  such as a request to connect Linear or Gmail. Default to this skill unless the user requests a
-  low-level API/MCP connection. Use for provider-config discovery, consent, verified user accounts,
-  and provider actions.
+  Use Open Connector's native connector.* tools for provider-config discovery, consent requests,
+  verified user accounts, and provider actions. Connecting a service, such as Linear or Gmail,
+  starts with configuring-integrations.
 ---
 
 # Open Connector Connections
 
 Read `/static/codemode/providers/connector.d.ts` before executing Open Connector calls. This skill
 connects external provider accounts through the Open Connector gateway. These connections are
-separate from native integrations and low-level API/MCP connections.
+separate from native integrations, direct API connections, and MCP connections. The
+`configuring-integrations` skill sets them up through `integrations.*`; this skill covers the native
+`connector.*` tools beneath it.
 
 Open Connector connections are user-owned. The object host reads `OOMOL_CONNECTOR_BASE_URL` and
 `OOMOL_PROJECT_API_KEY`. Action contract discovery also needs `OOMOL_CONNECTOR_CATALOG_API_KEY`, a
