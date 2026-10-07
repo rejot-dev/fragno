@@ -439,6 +439,217 @@
     ]
   },
   {
+    "command": "apps.get",
+    "summary": "apps.get reviews a global app declaration from organization context.",
+    "options": [
+      {
+        "name": "app-id",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "id",
+        "description": "Registered Backoffice app ID (not an OAuth client ID)"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "apps.install",
+    "summary": "apps.install approves an organization-owned installation (organization owners/admins only). OAuth user consent is separate; app execution remains unavailable.",
+    "options": [
+      {
+        "name": "app-id",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "id",
+        "description": "Registered Backoffice app ID (not an OAuth client ID)"
+      },
+      {
+        "name": "granted-permissions-json",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "json",
+        "description": "Explicitly approved subset of requested permissions; use [] for no grants"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "apps.installations.get",
+    "summary": "apps.installations.get inspects an organization's installation by app ID.",
+    "options": [
+      {
+        "name": "app-id",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "id",
+        "description": "Registered Backoffice app ID (not an OAuth client ID)"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "apps.installations.list",
+    "summary": "apps.installations.list lists installation history in organization context.",
+    "options": [
+      {
+        "name": "page-size",
+        "valueRequired": true,
+        "valueName": "count",
+        "description": "Page size, 1–100 (default 25)"
+      },
+      {
+        "name": "cursor",
+        "valueRequired": true,
+        "valueName": "cursor",
+        "description": "Cursor from the previous page; keep the same page size and organization"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "apps.installations.grants.update",
+    "summary": "apps.installations.grants.update replaces approved grants (organization owners/admins only).",
+    "options": [
+      {
+        "name": "app-id",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "id",
+        "description": "Registered Backoffice app ID (not an OAuth client ID)"
+      },
+      {
+        "name": "granted-permissions-json",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "json",
+        "description": "Explicitly approved subset of requested permissions; use [] for no grants"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "apps.uninstall",
+    "summary": "apps.uninstall clears organization installation grants (organization owners/admins only).",
+    "options": [
+      {
+        "name": "app-id",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "id",
+        "description": "Registered Backoffice app ID (not an OAuth client ID)"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
     "command": "capabilities.list",
     "summary": "capabilities.list lists Backoffice capabilities and status.",
     "options": [

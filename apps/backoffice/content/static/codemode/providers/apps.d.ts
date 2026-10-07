@@ -1,29 +1,21 @@
-// admin tools
-type AdminCodemodeProvider = {
-  /** Create an email-bound link that authorizes one Backoffice account sign-up. */
-  signupInvitationsCreate(
-    input: AdminSignupInvitationsCreateInput,
-  ): Promise<AdminSignupInvitationsCreateOutput>;
-  /** Create an organization and assign its owner. */
-  organisationCreate(input: AdminOrganisationCreateInput): Promise<AdminOrganisationCreateOutput>;
-  /** Add a user to an organization with explicit roles. */
-  organisationMembersAdd(
-    input: AdminOrganisationMembersAddInput,
-  ): Promise<AdminOrganisationMembersAddOutput>;
-  /** Remove a user from an organization. */
-  organisationMembersRemove(
-    input: AdminOrganisationMembersRemoveInput,
-  ): Promise<AdminOrganisationMembersRemoveOutput>;
-  /** Register a Backoffice app for an existing Better Auth OAuth client. Does not provision OAuth credentials or install the app. */
-  appsCreate(input: AdminAppsCreateInput): Promise<AdminAppsCreateOutput>;
-  /** List global Backoffice app registrations using cursor pagination. Does not expose OAuth credentials or organization installations. */
-  appsList(input: AdminAppsListInput): Promise<AdminAppsListOutput>;
-  /** Create an Auth-owned authorization-code OAuth web or native client for the current System administrator. Confidential clients return an initial secret; public clients use PKCE without a secret. Does not register or install a Backoffice app. */
-  oauthClientsCreate(input: AdminOauthClientsCreateInput): Promise<AdminOauthClientsCreateOutput>;
-  /** List the global Auth-owned OAuth client catalog, including other owners and the internal Codemode client, using cursor pagination. Never exposes credentials or credential hashes. */
-  oauthClientsList(input: AdminOauthClientsListInput): Promise<AdminOauthClientsListOutput>;
+// apps tools
+type AppsCodemodeProvider = {
+  /** Review a registered app's requested permissions before approving an installation. */
+  get(input: AppsGetInput): Promise<AppsGetOutput>;
+  /** Approve an app installation in the selected organization. Installer identity comes from the authenticated user; approval does not enable app execution. */
+  install(input: AppsInstallInput): Promise<AppsInstallOutput>;
+  /** Inspect one app installation in the selected organization, including approved grants. */
+  getInstallation(input: AppsGetInstallationInput): Promise<AppsGetInstallationOutput>;
+  /** List the selected organization's active and uninstalled apps using cursor pagination. Does not expose other organizations or OAuth credentials. */
+  listInstallations(input: AppsListInstallationsInput): Promise<AppsListInstallationsOutput>;
+  /** Replace an active installation's approved grants with an explicit subset of the app declaration. Does not change installer attribution or enable execution. */
+  updateInstallationGrants(
+    input: AppsUpdateInstallationGrantsInput,
+  ): Promise<AppsUpdateInstallationGrantsOutput>;
+  /** Uninstall an app in the selected organization, clearing approved grants while retaining installation identity. Does not revoke personal OAuth consent. */
+  uninstall(input: AppsUninstallInput): Promise<AppsUninstallOutput>;
 };
-declare const admin: AdminCodemodeProvider;
+declare const apps: AppsCodemodeProvider;
 
 type BackofficePermissionRequirement =
   | {
@@ -294,107 +286,71 @@ type BackofficePermissionRequirement =
       namespace: "workflow";
       permission: "read";
     };
-type BackofficeOAuthClientCreateInput = {
-  name: string;
-  redirectUris: string[];
-  scopes: ("openid" | "profile" | "email" | "offline_access" | "backoffice")[];
-  clientType?: "confidential" | "public";
-  applicationType?: "web" | "native";
+type AppsGetInput = {
+  appId: string;
 };
-type BackofficeOAuthClientCreateResult =
-  | {
-      clientType: "confidential";
-      clientId: string;
-      clientSecret: string;
-    }
-  | {
-      clientType: "public";
-      clientId: string;
-      clientSecret: null;
-    };
-type BackofficeOAuthClientListInput = {
-  pageSize?: number;
-  cursor?: string | null;
-};
-type BackofficeOAuthClientPage = {
-  clients: BackofficeOAuthClientSummary[];
-  nextCursor: string | null;
-  hasNextPage: boolean;
-};
-type BackofficeOAuthClientSummary = {
-  clientId: string;
-  name: string | null;
-  redirectUris: string[] | null;
-  scopes: string[] | null;
-  tokenEndpointAuthMethod: string | null;
-  userId: string | null;
-  referenceId: string | null;
-  disabled: boolean | null;
-};
-type AdminSignupInvitationsCreateInput = {
-  email: string;
-  ttlDays?: number;
-};
-type AdminSignupInvitationsCreateOutput = {
-  invitationId: string;
-  email: string;
-  url: string;
-  ttlDays: number;
-};
-type AdminOrganisationCreateInput = {
-  name: string;
-  slug: string;
-  ownerEmail: string;
-};
-type AdminOrganisationCreateOutput = {
-  organizationId: string;
-  name: string;
-  slug: string;
-  ownerUserId: string;
-};
-type AdminOrganisationMembersAddInput = {
-  organizationSlug: string;
-  userEmail: string;
-  roles: string[];
-};
-type AdminOrganisationMembersAddOutput = {
-  organizationId: string;
-  userId: string;
-  roles: string[];
-};
-type AdminOrganisationMembersRemoveInput = {
-  organizationSlug: string;
-  userEmail: string;
-};
-type AdminOrganisationMembersRemoveOutput = {
-  organizationId: string;
-  userId: string;
-  roles: string[];
-};
-type AdminAppsCreateInput = {
+type AppsGetOutput = {
+  id: string;
   oauthClientId: string;
   requestedPermissions: BackofficePermissionRequirement[];
-};
-type AdminAppsCreateOutput = {
+  /** ISO 8601 datetime string. */
+  createdAt: string;
+} | null;
+type AppsInstallInput = {
   appId: string;
-  created: boolean;
+  grantedPermissions: BackofficePermissionRequirement[];
 };
-type AdminAppsListInput = {
+type AppsInstallOutput = {
+  installationId: string;
+  changed: boolean;
+};
+type AppsGetInstallationInput = {
+  appId: string;
+};
+type AppsGetInstallationOutput = {
+  id: string;
+  appId: string;
+  organizationId: string;
+  grantedPermissions: BackofficePermissionRequirement[];
+  installedByUserId: string;
+  status: "active" | "uninstalled";
+  /** ISO 8601 datetime string. */
+  createdAt: string;
+  /** ISO 8601 datetime string. */
+  updatedAt: string;
+} | null;
+type AppsListInstallationsInput = {
   pageSize?: number;
   cursor?: string | null;
 };
-type AdminAppsListOutput = {
-  apps: {
+type AppsListInstallationsOutput = {
+  installations: {
     id: string;
-    oauthClientId: string;
-    requestedPermissions: BackofficePermissionRequirement[];
+    appId: string;
+    organizationId: string;
+    grantedPermissions: BackofficePermissionRequirement[];
+    installedByUserId: string;
+    status: "active" | "uninstalled";
     /** ISO 8601 datetime string. */
     createdAt: string;
+    /** ISO 8601 datetime string. */
+    updatedAt: string;
   }[];
   nextCursor: string | null;
   hasNextPage: boolean;
 };
-type AdminOauthClientsCreateInput = BackofficeOAuthClientCreateInput;
-type AdminOauthClientsCreateOutput = BackofficeOAuthClientCreateResult;
-type AdminOauthClientsListInput = BackofficeOAuthClientListInput;
-type AdminOauthClientsListOutput = BackofficeOAuthClientPage;
+type AppsUpdateInstallationGrantsInput = {
+  appId: string;
+  grantedPermissions: BackofficePermissionRequirement[];
+};
+type AppsUpdateInstallationGrantsOutput = {
+  installationId: string;
+  changed: boolean;
+};
+type AppsUninstallInput = {
+  appId: string;
+};
+type AppsUninstallOutput = {
+  installationId: string;
+  changed: boolean;
+};

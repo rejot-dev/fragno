@@ -268,10 +268,10 @@ export class BackofficeKernel {
 
     const resolvePrincipalAuthority = principal
       ? this.#authorityResolver
-          .resolvePrincipalPermissions({
-            principal,
-            execution: trustedExecution,
-          })
+          .resolvePrincipalPermissions(
+            { principal, execution: trustedExecution },
+            requirements.map(({ operation }) => operation),
+          )
           .then((permissions) => ({ kind: "principal" as const, permissions }))
       : Promise.resolve({ kind: "principal-free" as const });
 

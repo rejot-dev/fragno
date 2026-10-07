@@ -8,6 +8,7 @@ export const createBackofficeToolContext = (
   const runtimes = {
     state: context.stateBackend,
     admin: context.admin?.runtime,
+    apps: context.apps?.runtime,
     backoffice: context.backoffice?.runtime,
     cloudflare: context.cloudflare?.runtime,
     automations: context.automations?.runtime,

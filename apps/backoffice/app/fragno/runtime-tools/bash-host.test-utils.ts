@@ -24,6 +24,7 @@ export const EMPTY_BASH_HOST_CONTEXT: BashHostContext = {
     ...EMPTY_BASH_HOST_CONTEXT,
     execution: { ...EMPTY_BASH_HOST_CONTEXT.execution, scope },
   }),
+  apps: null,
   backoffice: null,
   automation: null,
   automations: null,

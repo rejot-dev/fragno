@@ -167,13 +167,13 @@ export function createAutomationRouteAuthorityResolver({
   lookupRoute: AutomationRouteAuthorityLookup;
 }): BackofficeAuthorityResolver {
   return {
-    async resolvePrincipalPermissions(input) {
+    async resolvePrincipalPermissions(input, operations) {
       const routeGrants = await resolveAutomationRouteActorGrants({
         actor: input.principal,
         execution: input.execution,
         lookupRoute,
       });
-      return routeGrants ?? (await fallbackResolver.resolvePrincipalPermissions(input));
+      return routeGrants ?? (await fallbackResolver.resolvePrincipalPermissions(input, operations));
     },
     async resolveActorCapabilityGrants(input) {
       if (input.actor.role !== "delegate") {

@@ -19,6 +19,10 @@ export const BACKOFFICE_PERMISSION = {
     },
     organizationsManage: { namespace: "admin", permission: "organizations.manage" },
   },
+  apps: {
+    read: { namespace: "apps", permission: "read" },
+    manage: { namespace: "apps", permission: "manage" },
+  },
   api: {
     connectionsCreate: { namespace: "api", permission: "connections.create" },
     connectionsDelete: { namespace: "api", permission: "connections.delete" },

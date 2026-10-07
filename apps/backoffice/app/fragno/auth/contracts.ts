@@ -201,6 +201,18 @@ export type UserAuthorityFacts = Readonly<{
   organizationMember: boolean;
 }>;
 
+/** Live user and membership facts for organization management, without session or directory data. */
+export const userOrganizationAuthorityInputSchema = z.strictObject({
+  userId: z.string().min(1),
+  organizationId: z.string().min(1),
+});
+export type UserOrganizationAuthorityInput = z.infer<typeof userOrganizationAuthorityInputSchema>;
+export type UserOrganizationAuthorityFacts = Readonly<{
+  active: boolean;
+  role: Role | null;
+  organizationRoles: readonly string[] | null;
+}>;
+
 export type VerifyUserEmailInput = {
   userId: string;
   expectedEmail?: string;

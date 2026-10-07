@@ -41,6 +41,7 @@ import {
 } from "@/fragno/pi-manager/pi-manager-runtime";
 import { createAdminRuntime } from "@/fragno/runtime-tools/families/admin-runtime";
 import { createApiRuntime } from "@/fragno/runtime-tools/families/api-runtime";
+import { createAppsRuntime } from "@/fragno/runtime-tools/families/apps-runtime";
 import { createBackofficeCapabilitiesRuntime } from "@/fragno/runtime-tools/families/backoffice-capabilities";
 import { createCloudflareRuntime } from "@/fragno/runtime-tools/families/cloudflare-runtime";
 import { createEventCatalogRuntime } from "@/fragno/runtime-tools/families/event-catalog";
@@ -207,6 +208,23 @@ export const createRouteBackedRuntimeContext = ({
               publicBaseUrl: runtime.config.docsPublicBaseUrl ?? null,
             }),
           }
+        : null,
+    apps:
+      runtime.config.bindings.auth && selectedOrg
+        ? (() => {
+            const apps = unavailableObject(() => runtime.objects.apps.singleton());
+            const installations = unavailableObject(() =>
+              kernel.scoped("APP_INSTALLATIONS", selectedOrg, runtime.objects.appInstallations),
+            );
+            return installations
+              ? {
+                  runtime: createAppsRuntime({
+                    apps: apps?.commands ?? null,
+                    installations: installations.commands,
+                  }),
+                }
+              : null;
+          })()
         : null,
     createBackofficeScopedContext: (scope) => {
       kernel.assertScopedContextAccess(execution, scope);

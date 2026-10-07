@@ -146,6 +146,7 @@ export const createAutomationRuntimeHostContext = ({
       createBackofficeScopedContext: () => {
         throw new BackofficeForbiddenError("Backoffice runtime services are not configured.");
       },
+      apps: null,
       backoffice: null,
       workflow: null,
       durableHooks: null,

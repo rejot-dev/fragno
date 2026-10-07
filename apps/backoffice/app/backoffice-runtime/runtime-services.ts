@@ -7,6 +7,7 @@ import type { FragmentDurableObjectHostOperations } from "@fragno-dev/db/dispatc
 
 import type { FragnoRuntime } from "@fragno-dev/core";
 
+import { createAppInstallationAuthorityResolver } from "@/fragno/app-installations/authority";
 import { createAutomationRouteAuthorityResolver } from "@/fragno/automation/authority";
 import type { BackofficeCodemodeEnv } from "@/fragno/codemode/execute";
 
@@ -181,13 +182,19 @@ export const createCloudflareBackofficeRuntimeServices = (
     objects,
     adapters: options.databaseScope ? adapters.forScope(options.databaseScope) : adapters,
     config: createCloudflareBackofficeRuntimeConfig(env),
-    authorityResolver: createAutomationRouteAuthorityResolver({
-      fallbackResolver: createBackofficeAuthorityResolver({
-        getUserAuthorityFacts: async (input) =>
-          await objects.auth.singleton().commands.getUserAuthorityFacts(input),
+    authorityResolver: createAppInstallationAuthorityResolver({
+      resolver: createAutomationRouteAuthorityResolver({
+        fallbackResolver: createBackofficeAuthorityResolver({
+          getUserAuthorityFacts: async (input) =>
+            await objects.auth.singleton().commands.getUserAuthorityFacts(input),
+        }),
+        lookupRoute: async ({ scope, routeId }) =>
+          await objects.automations.for(scope).commands.getRouteForAuthority({ id: routeId }),
       }),
-      lookupRoute: async ({ scope, routeId }) =>
-        await objects.automations.for(scope).commands.getRouteForAuthority({ id: routeId }),
+      auth: {
+        getUserOrganizationAuthorityFacts: async (input) =>
+          await objects.auth.singleton().commands.getUserOrganizationAuthorityFacts(input),
+      },
     }),
     kernelObserver: options.kernelObserver ?? noopBackofficeKernelObserver,
     codemodeEnv: env.LOADER ? (testCompilerEnv as BackofficeCodemodeEnv) : null,

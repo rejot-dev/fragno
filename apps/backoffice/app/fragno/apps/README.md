@@ -53,8 +53,9 @@ organization's database. Installer IDs refer to Auth-owned users. Trusted comman
 establish Auth identities and management authority before calling either object.
 
 Neither fragment exposes HTTP routes. System admin runtime tools expose OAuth client provisioning,
-app registration, and listing. Ordinary developer management, installation tokens, and runtime
-execution authorization remain outside this scaffold. Marketplace packages remain independent.
+app registration, and listing. Organization runtime tools expose declaration review and installation
+management. Ordinary developer registration, installation tokens, and runtime execution
+authorization remain outside this scaffold. Marketplace packages remain independent.
 
 ## System admin OAuth client tools
 
@@ -275,6 +276,77 @@ admin.apps.list --page-size 25 --format json
 Listing defaults to 25 registrations, allows 1–100 per page, and returns `apps`, `nextCursor`, and
 `hasNextPage`. Resume using the same page size. Output contains only registry data, never OAuth
 credentials or organization installation grants.
+
+## Organization installation runtime tools
+
+Select an **organization context** in the Backoffice terminal or Codemode. The `apps` tool family is
+unavailable in System, project, and user contexts. Organization identity comes from the selected
+context and the installation object's scope, never from command input.
+
+| Codemode method                 | Bash command                       | Permission    | Purpose                                      |
+| ------------------------------- | ---------------------------------- | ------------- | -------------------------------------------- |
+| `apps.get`                      | `apps.get`                         | `apps.read`   | Review the global app declaration            |
+| `apps.getInstallation`          | `apps.installations.get`           | `apps.read`   | Inspect this organization's installation     |
+| `apps.listInstallations`        | `apps.installations.list`          | `apps.read`   | List active and uninstalled installations    |
+| `apps.install`                  | `apps.install`                     | `apps.manage` | Approve an explicit subset of permissions    |
+| `apps.updateInstallationGrants` | `apps.installations.grants.update` | `apps.manage` | Replace approved grants explicitly           |
+| `apps.uninstall`                | `apps.uninstall`                   | `apps.manage` | Clear grants and retain installation history |
+
+Active organization members may review declarations and installations. Management additionally
+requires an organization `owner` or `admin` role, or global administrator status **and membership in
+that organization**. These permissions require an undelegated internal user principal; automation
+services cannot approve installations. The kernel resolves app permissions from live Auth state,
+including membership, organization roles, global role, and banned status. A still-valid user JWT or
+reused tool context does not preserve installation authority after those rights are removed. This
+live policy is specific to app management; unrelated operations retain their existing authority
+policy and do not acquire an extra Auth lookup.
+
+Review before approving:
+
+```ts
+const app = await apps.get({ appId: "APP_ID" });
+// Review app.requestedPermissions; OAuth scopes are not installation permissions.
+await apps.install({
+  appId: "APP_ID",
+  grantedPermissions: [{ namespace: "events", permission: "emit" }],
+});
+const page = await apps.listInstallations({ pageSize: 25, cursor: null });
+await apps.updateInstallationGrants({ appId: "APP_ID", grantedPermissions: [] });
+await apps.uninstall({ appId: "APP_ID" });
+```
+
+```bash
+apps.get --app-id APP_ID
+apps.install --app-id APP_ID \
+  --granted-permissions-json '[{"namespace":"events","permission":"emit"}]'
+apps.installations.get --app-id APP_ID --format json
+apps.installations.list --page-size 25
+apps.installations.grants.update --app-id APP_ID --granted-permissions-json '[]'
+apps.uninstall --app-id APP_ID
+```
+
+Install and grant-update inputs require an explicit permission array; `[]` approves no capabilities.
+Installer attribution comes from the authenticated principal. Neither `installedByUserId` nor an
+organization ID is accepted from callers. Duplicate install cannot enlarge grants or replace the
+installer; use the explicit grant-update command. Reinstallation retains installation identity and
+records the newly approving user.
+
+Lists default to 25 records, accept 1–100, and return `{ installations, nextCursor, hasNextPage }`.
+Resume with the same organization and page size. Bash commands produce readable text by default;
+`--format json` returns structured results and `--print installations.0.id` selects a nested field.
+Declaration review returns registry metadata and requested permissions, never OAuth credentials.
+Installation inspection, listing, and uninstall remain independent of registry availability;
+approval and grant updates still require the authoritative declaration.
+
+**Installation approval is not OAuth user consent and does not enable execution.** It does not
+change OAuth scopes, create credentials, allow the execution-token exchange, or activate
+`events.emit`. Uninstall clears organization grants but does not revoke personal OAuth
+authorizations. Installed-app delegation and app-only execution are still unimplemented.
+
+`app/fragno/runtime-tools/families/apps.scenario.test.ts` exercises both Codemode and Bash through
+real Auth and installation SQLite storage, including approval lifecycle, authenticated attribution,
+member versus manager authority, live revocation with request snapshots, strict inputs, organization
+isolation, scope restrictions, and pagination after object restart.
 
 ## Commands and transaction boundaries
 
