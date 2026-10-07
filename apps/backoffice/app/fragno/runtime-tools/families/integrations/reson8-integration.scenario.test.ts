@@ -49,6 +49,8 @@ import { InMemoryAutomationsObject } from "../../../../../workers/automations.do
 import { InMemoryCodemodeObject } from "../../../../../workers/codemode.do";
 import { InMemoryFormsObject } from "../../../../../workers/forms.do";
 import { InMemoryMcpObject } from "../../../../../workers/mcp.do";
+import { InMemoryProjectConnectorObject } from "../../../../../workers/project-connector.do";
+import { InMemoryResendObject } from "../../../../../workers/resend.do";
 import { InMemoryReson8Object } from "../../../../../workers/reson8.do";
 import { InMemoryTelegramObject } from "../../../../../workers/telegram.do";
 import { InMemoryUploadObject } from "../../../../../workers/upload.do";
@@ -66,6 +68,8 @@ const scenarioObjects = {
   CODEMODE: (input) => new InMemoryCodemodeObject(input),
   FORMS: (input) => new InMemoryFormsObject(input),
   MCP: (input) => new InMemoryMcpObject(input),
+  PROJECT_CONNECTOR: (input) => new InMemoryProjectConnectorObject(input),
+  RESEND: (input) => new InMemoryResendObject(input),
   TELEGRAM: (input) => new InMemoryTelegramObject(input),
   UPLOAD: (input) => new InMemoryUploadObject(input),
 } satisfies LocalBackofficeObjects;
