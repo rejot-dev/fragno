@@ -1,5 +1,11 @@
 import { assert, describe, expect, test, vi } from "vitest";
 
+import { mkdtemp, readdir, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
+import Database from "better-sqlite3";
+
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
@@ -19,6 +25,7 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
 
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
+import { createRouteBackedAutomationRouterRuntime } from "./routing-route-runtime";
 import { backofficeFiles, defineBackofficeScenario, runBackofficeScenario } from "./scenario";
 
 describe("scheduled automation route scenario", () => {
@@ -106,6 +113,40 @@ describe("scheduled automation route scenario", () => {
                     "Scheduled workflows require organization-automation authority",
                   );
                 }
+                for (const configuration of [
+                  { trigger: { kind: "unknown" }, action },
+                  { trigger, action: { kind: "unknown" } },
+                  {
+                    trigger: { kind: "event", source: "telegram", eventType: "" },
+                    action,
+                  },
+                  {
+                    trigger: { kind: "schedule", cadence: { kind: "unknown" } },
+                    action: {
+                      ...action,
+                      authority: { kind: "organization-automation", grants: [] },
+                    },
+                  },
+                ]) {
+                  const response = await object.http.fetchAuthorized(
+                    new Request("https://automations.do/api/automations/routes", {
+                      method: "POST",
+                      headers: { "content-type": "application/json" },
+                      body: JSON.stringify({
+                        id: "malformed-route",
+                        name: "Malformed",
+                        ...configuration,
+                      }),
+                    }),
+                    { execution, propagationContext: null },
+                  );
+                  assert(response.status === 400, await response.clone().text());
+                  const message = await response.text();
+                  expect(message).toContain("Validation failed");
+                  expect(message).not.toContain(
+                    "Scheduled workflows require organization-automation authority",
+                  );
+                }
               },
             ),
             then.router.missing({ orgId: "org-1", id: "invalid-route" }),
@@ -164,6 +205,152 @@ describe("scheduled automation route scenario", () => {
           ],
         }),
       );
+    },
+  );
+
+  test.each(["linked-user", "delegated-user"] as const)(
+    "legacy scheduled %s routes remain manageable but cannot be re-enabled without repair",
+    async (kind) => {
+      const action = {
+        kind: "start_workflow",
+        authority: { kind, grants: "inherit" },
+        workflowScriptPath: "/workspace/automations/digest.workflow.js",
+        instanceIdTemplate: "legacy-${event.id}",
+      } as const;
+      const directory = await mkdtemp(path.join(os.tmpdir(), "backoffice-legacy-schedule-"));
+      try {
+        await runBackofficeScenario(
+          defineBackofficeScenario({
+            name: `manage legacy scheduled ${kind} route`,
+            options: { sqliteDataDirectory: directory },
+            setup: ({ given }) => [
+              given.organization.exists({ id: "org-1", name: "Ada Labs" }),
+              given.router.route({
+                orgId: "org-1",
+                id: "legacy-route",
+                name: "Legacy route",
+                enabled: true,
+                priority: 1000,
+                trigger: {
+                  kind: "schedule",
+                  cadence: { kind: "once", at: "2030-01-01T00:00:00.000Z" },
+                },
+                action: {
+                  kind: "start_workflow",
+                  authority: { kind: "organization-automation", grants: [] },
+                  workflowScriptPath: "/workspace/automations/digest.workflow.js",
+                  instanceIdTemplate: "legacy-${event.id}",
+                },
+              }),
+            ],
+            steps: ({ then }) => [
+              then.assert("seed the historical authority directly in SQLite", async () => {
+                let changed = 0;
+                for (const file of await readdir(directory)) {
+                  if (!file.startsWith("automations-") || !file.endsWith(".sqlite")) {
+                    continue;
+                  }
+                  const database = new Database(path.join(directory, file));
+                  try {
+                    const tables = database
+                      .prepare(
+                        "SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'automation_route%' AND name NOT LIKE 'automation_route_schedule_state%'",
+                      )
+                      .all() as { name: string }[];
+                    for (const table of tables) {
+                      // Historical data must bypass current create validation to exercise migration behavior.
+                      changed += database
+                        .prepare(`UPDATE "${table.name}" SET action = ? WHERE id = ?`)
+                        .run(JSON.stringify(action), "legacy-route").changes;
+                    }
+                  } finally {
+                    database.close();
+                  }
+                }
+                expect(changed).toBe(1);
+              }),
+              then.assert(
+                "read, edit, disable, reject unsafe changes, and repair the route",
+                async (ctx) => {
+                  const router = createRouteBackedAutomationRouterRuntime({
+                    object: ctx.runtime.objects.automations.forOrg("org-1"),
+                    execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+                  });
+                  const route = await router.getRoute({ id: "legacy-route" });
+                  assert(route);
+                  expect(route.action).toMatchObject({ authority: { kind, grants: "inherit" } });
+                  expect(await router.listRoutes()).toContainEqual(route);
+                  expect(
+                    await router.updateRoute({
+                      id: route.id,
+                      name: "Renamed legacy route",
+                      priority: 42,
+                    }),
+                  ).toMatchObject({ name: "Renamed legacy route", priority: 42, enabled: true });
+                  expect(await router.updateRoute({ id: route.id, enabled: false })).toMatchObject({
+                    enabled: false,
+                  });
+                  expect(
+                    await router.updateRoute({
+                      id: route.id,
+                      description: "Awaiting migration",
+                    }),
+                  ).toMatchObject({ description: "Awaiting migration", enabled: false });
+                  expect(await router.updateRoute({ id: route.id, action })).toMatchObject({
+                    action,
+                    enabled: false,
+                  });
+                  for (const patch of [
+                    { enabled: true },
+                    { action: { ...action, instanceIdTemplate: "changed-${event.id}" } },
+                    {
+                      trigger: {
+                        kind: "schedule",
+                        cadence: { kind: "once", at: "2030-01-02T00:00:00.000Z" },
+                      },
+                    },
+                  ] as const) {
+                    await expect(router.updateRoute({ id: route.id, ...patch })).rejects.toThrow(
+                      "Scheduled workflows require organization-automation authority",
+                    );
+                  }
+                  expect(await router.getRoute({ id: route.id })).toMatchObject({
+                    enabled: false,
+                    description: "Awaiting migration",
+                    action: route.action,
+                    trigger: route.trigger,
+                  });
+                  await router.updateRoute({
+                    id: route.id,
+                    enabled: true,
+                    action: {
+                      kind: "start_workflow",
+                      authority: { kind: "organization-automation", grants: [] },
+                      workflowScriptPath: "/workspace/automations/digest.workflow.js",
+                      instanceIdTemplate: "legacy-${event.id}",
+                    },
+                  });
+                },
+              ),
+              then.router.route({
+                orgId: "org-1",
+                id: "legacy-route",
+                enabled: true,
+                name: "Renamed legacy route",
+                priority: 42,
+                description: "Awaiting migration",
+                action: {
+                  kind: "start_workflow",
+                  authority: { kind: "organization-automation", grants: [] },
+                },
+              }),
+              then.hooks.noFailed({ orgId: "org-1", fragments: ["automations"] }),
+            ],
+          }),
+        );
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
     },
   );
 

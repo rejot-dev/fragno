@@ -26,6 +26,14 @@ export type BackofficeAppOperationResult<T> =
   | { ok: true; value: T }
   | { ok: false; error: { code: BackofficeAppErrorCode; message: string } };
 
+/** Reconstructs domain errors serialized across Durable Object RPC boundaries. */
+export function requireBackofficeAppOperationValue<T>(result: BackofficeAppOperationResult<T>): T {
+  if (!result.ok) {
+    throw new BackofficeAppDomainError(result.error.code, result.error.message);
+  }
+  return result.value;
+}
+
 /** Maps only known domain failures, including those raised during cross-object orchestration. */
 export async function runBackofficeAppOperation<T>(
   operation: () => Promise<T>,

@@ -201,7 +201,12 @@ export const createAutomationRouteServices = (
                 ? (patch.managedBy ?? null)
                 : (current.metadata?.managedBy ?? null),
           };
-          assertAutomationRouteAuthorityMatchesTrigger(merged);
+          const configurationChanged =
+            JSON.stringify(merged.action) !== JSON.stringify(current.action) ||
+            JSON.stringify(merged.trigger) !== JSON.stringify(current.trigger);
+          if (configurationChanged || (merged.enabled && !current.enabled)) {
+            assertAutomationRouteAuthorityMatchesTrigger(merged);
+          }
           assertAutomationRouteDoesNotReclassifyItself({
             routeId: merged.id,
             trigger: merged.trigger,

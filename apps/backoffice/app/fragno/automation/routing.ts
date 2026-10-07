@@ -169,7 +169,10 @@ export type AutomationRouteMetadata = {
   managedBy: AutomationRouteManagedBy | null;
 };
 
-export type AutomationRouteDefinition = AutomationRouteConfiguration & {
+/** Persisted routes may predate the authority rules enforced on create and activation. */
+export type AutomationRouteDefinition = {
+  trigger: AutomationRouteTrigger;
+  action: AutomationRouteAction;
   id: string;
   name: string;
   enabled: boolean;
