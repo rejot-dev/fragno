@@ -9,6 +9,8 @@ import {
   createMcpOperationAuth,
   createOAuthStartSnapshot,
   resolveMcpOperationAuth,
+  resolveOAuthStartClient,
+  withoutOAuthConsent,
   type AuthPersistenceChanges,
 } from "./services";
 
@@ -190,6 +192,7 @@ export const mcpFragmentDefinition = defineFragment<McpFragmentConfig>("mcp-frag
         scope?: string;
         clientId?: string;
         clientSecret?: string;
+        discardTokens: boolean;
       }) {
         return this.serviceTx(mcpSchema)
           .retrieve((uow) =>
@@ -211,9 +214,7 @@ export const mcpFragmentDefinition = defineFragment<McpFragmentConfig>("mcp-frag
               secrets,
               stateId: input.stateId,
               redirectUri: input.redirectUri,
-              scope: input.scope,
-              clientId: input.clientId,
-              clientSecret: input.clientSecret,
+              ...resolveOAuthStartClient(secrets, input),
             });
             return {
               found: true as const,
@@ -251,10 +252,25 @@ export const mcpFragmentDefinition = defineFragment<McpFragmentConfig>("mcp-frag
             if (retrieveResult.changes.discoveryStatePayload) {
               upsertSecret("oauth-discovery", retrieveResult.changes.discoveryStatePayload, null);
             }
+            const authSecret = retrieveResult.secrets.find((secret) => secret.kind === "auth");
+            if (input.discardTokens && authSecret) {
+              // Keeps the client configuration; only consent evidence is discarded.
+              uow.update("secret", authSecret.id, (b) =>
+                b
+                  .set({
+                    payload: withoutOAuthConsent(authSecret.payload),
+                    expiresAt: null,
+                    updatedAt: b.now(),
+                  })
+                  .check(),
+              );
+            }
             if (retrieveResult.changes.oauthState) {
               uow.create("oauthState", {
                 id: retrieveResult.changes.oauthState.id,
                 serverId: retrieveResult.serverId,
+                // The link carries only the PKCE challenge, never the verifier.
+                authorizationUrl: retrieveResult.authorizationUrl,
                 codeVerifier: retrieveResult.changes.oauthState.codeVerifier,
                 redirectUri: retrieveResult.changes.oauthState.redirectUri,
                 scope: retrieveResult.changes.oauthState.scope ?? null,

@@ -189,7 +189,22 @@ type McpSetTokenInput = {
   slug: string;
   token: string;
 };
-type McpSetTokenOutput = {
-  authenticated: boolean;
-  mode: string;
-};
+type McpSetTokenOutput =
+  | {
+      mode: "none";
+    }
+  | {
+      mode: "bearer";
+      /** Whether credentials are stored, not whether the server accepts them. */
+      credentials: "present" | "missing";
+    }
+  | {
+      mode: "client_credentials";
+      /** Whether credentials are stored, not whether the server accepts them. */
+      credentials: "present" | "missing";
+    }
+  | {
+      mode: "oauth";
+      /** Expired means the access token expired and no refresh token is stored; pending means an unexpired authorization link exists. */
+      state: "consent-required" | "consent-pending" | "authorized" | "expired";
+    };

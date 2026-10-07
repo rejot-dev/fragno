@@ -1,13 +1,14 @@
 import { z } from "zod";
 
 import { parseSecretPayload } from "./mcp-api";
+import { mcpToolSchema } from "./mcp-types";
 import type { AuthPersistenceChanges } from "./services";
 
 const serverConnectionCacheOutputSchema = z.object({
   protocolVersion: z.string().nullable().optional(),
   serverInfo: z.unknown().nullable().optional(),
   capabilities: z.unknown().nullable().optional(),
-  tools: z.array(z.unknown()).nullable().optional(),
+  tools: z.array(mcpToolSchema).nullable().optional(),
   updatedAt: z.union([z.string(), z.date()]).optional(),
 });
 
@@ -21,7 +22,7 @@ const serverOutputSchema = z.object({
 
 export const refreshOutputSchema = z.object({
   ok: z.boolean(),
-  tools: z.array(z.unknown()),
+  tools: z.array(mcpToolSchema),
   stage: z.enum(["auth", "list_tools"]).nullable(),
   checkedAt: z.string(),
   server: serverOutputSchema.omit({ cache: true }),
