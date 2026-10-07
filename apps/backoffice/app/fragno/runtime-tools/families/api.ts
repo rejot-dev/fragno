@@ -8,6 +8,7 @@ import {
   type ApiWebhookEndpointsOutput,
   apiOAuthStartInputSchema,
   apiSetTokenInputSchema,
+  connectionsInputSchema,
   createConnectionInputSchema,
   requestInputSchema,
   webhookEndpointCreateInputSchema,
@@ -110,9 +111,27 @@ const renderConnectionRows = (connections: readonly ApiConnection[]) =>
   );
 
 const renderConnections = (result: ApiListConnectionsOutput) =>
-  result.connections.length
-    ? renderConnectionRows(result.connections)
-    : "No API connections configured.";
+  [
+    result.connections.length
+      ? renderConnectionRows(result.connections)
+      : "No API connections configured.",
+    result.cursor === null ? "" : `\nNext page: api.connections.list --cursor ${result.cursor}`,
+  ].join("");
+
+const renderAuthStatus = (result: ApiAuthStatus) =>
+  renderTable(
+    ["mode", "auth"],
+    [
+      [
+        result.mode,
+        result.mode === "none"
+          ? "not required"
+          : result.mode === "oauth"
+            ? result.state
+            : `credentials ${result.credentials}`,
+      ],
+    ],
+  );
 
 const renderRequest = (result: ApiRequestOutput) => {
   if (!result.ok && !result.response) {
@@ -298,17 +317,26 @@ export const apiRuntimeTools = [
     namespace: "api",
     name: "listConnections",
     capabilityId: "api",
-    execute: async (_input, context: ApiToolContext) =>
-      await getApiRuntime(context.runtimes.api).listConnections(),
+    execute: async (input, context: ApiToolContext) =>
+      await getApiRuntime(context.runtimes.api).listConnections(input),
     adapters: {
       bash: {
         command: "api.connections.list",
         help: {
-          summary: "api.connections.list lists configured API connections.",
-          options: [],
-          examples: ["api.connections.list"],
+          summary: "api.connections.list lists one page of configured API connections.",
+          options: [
+            {
+              name: "cursor",
+              valueRequired: true,
+              description: "Cursor from the preceding page",
+            },
+          ],
+          examples: ["api.connections.list", "api.connections.list --cursor CURSOR"],
         },
-        parse: defineNoInputArgsParser("api.connections.list"),
+        parse: defineCliArgsParser<z.output<typeof connectionsInputSchema>>(
+          "api.connections.list",
+          { cursor: { defaultValue: null } },
+        ),
         outputOptions: defaultOutput,
         format: textOrDataFormat(renderConnections),
       },
@@ -476,12 +504,7 @@ export const apiRuntimeTools = [
         },
         parse: parseSlug,
         outputOptions: defaultOutput,
-        format: textOrDataFormat((result: ApiAuthStatus) =>
-          renderTable(
-            ["authenticated", "mode", "expires"],
-            [[result.authenticated, result.mode, result.expiresAt]],
-          ),
-        ),
+        format: textOrDataFormat(renderAuthStatus),
       },
     },
   }),
@@ -518,9 +541,7 @@ export const apiRuntimeTools = [
         },
         parse: parseSetToken,
         outputOptions: defaultOutput,
-        format: textOrDataFormat((result: ApiAuthStatus) =>
-          renderTable(["authenticated", "mode"], [[result.authenticated, result.mode]]),
-        ),
+        format: textOrDataFormat(renderAuthStatus),
       },
     },
   }),

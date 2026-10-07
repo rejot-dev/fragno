@@ -1,7 +1,7 @@
 // api tools
 type ApiCodemodeProvider = {
-  /** List API connections configured for the current scope. */
-  listConnections(): Promise<ApiListConnectionsOutput>;
+  /** List API connections configured for the current scope, one cursor page at a time. */
+  listConnections(input: ApiListConnectionsInput): Promise<ApiListConnectionsOutput>;
   /** Create an outbound HTTP API connection. */
   createConnection(input: ApiCreateConnectionInput): Promise<ApiCreateConnectionOutput>;
   /** Delete an API connection and its stored auth state. */
@@ -35,6 +35,9 @@ type ApiCodemodeProvider = {
 };
 declare const api: ApiCodemodeProvider;
 
+type ApiListConnectionsInput = {
+  cursor?: string | null;
+};
 type ApiListConnectionsOutput = {
   connections: {
     slug: string;
@@ -45,6 +48,7 @@ type ApiListConnectionsOutput = {
     createdAt?: string;
     updatedAt?: string;
   }[];
+  cursor: string | null;
 };
 type ApiCreateConnectionInput = {
   slug: string;
@@ -100,20 +104,58 @@ type ApiDeleteConnectionOutput = {
 type ApiGetAuthStatusInput = {
   slug: string;
 };
-type ApiGetAuthStatusOutput = {
-  authenticated: boolean;
-  mode: string;
-  expiresAt?: string | null;
-};
+type ApiGetAuthStatusOutput =
+  | {
+      mode: "none";
+    }
+  | {
+      mode: "bearer";
+      /** Whether credentials are stored, not whether the provider accepts them. */
+      credentials: "present" | "missing";
+    }
+  | {
+      mode: "basic";
+      /** Whether credentials are stored, not whether the provider accepts them. */
+      credentials: "present" | "missing";
+    }
+  | {
+      mode: "client_credentials";
+      /** Whether credentials are stored, not whether the provider accepts them. */
+      credentials: "present" | "missing";
+    }
+  | {
+      mode: "oauth";
+      /** Expired means the access token expired and no refresh token is stored; pending means an unexpired authorization link exists. */
+      state: "client-missing" | "consent-required" | "consent-pending" | "authorized" | "expired";
+    };
 type ApiSetTokenInput = {
   slug: string;
   token: string;
 };
-type ApiSetTokenOutput = {
-  authenticated: boolean;
-  mode: string;
-  expiresAt?: string | null;
-};
+type ApiSetTokenOutput =
+  | {
+      mode: "none";
+    }
+  | {
+      mode: "bearer";
+      /** Whether credentials are stored, not whether the provider accepts them. */
+      credentials: "present" | "missing";
+    }
+  | {
+      mode: "basic";
+      /** Whether credentials are stored, not whether the provider accepts them. */
+      credentials: "present" | "missing";
+    }
+  | {
+      mode: "client_credentials";
+      /** Whether credentials are stored, not whether the provider accepts them. */
+      credentials: "present" | "missing";
+    }
+  | {
+      mode: "oauth";
+      /** Expired means the access token expired and no refresh token is stored; pending means an unexpired authorization link exists. */
+      state: "client-missing" | "consent-required" | "consent-pending" | "authorized" | "expired";
+    };
 type ApiStartOAuthInput = {
   slug: string;
   scopes?: string[];

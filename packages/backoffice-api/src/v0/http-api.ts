@@ -265,11 +265,25 @@ export const authSchema = z.discriminatedUnion("type", [
   }),
 ]);
 
-export const apiAuthStatusSchema = z.object({
-  authenticated: z.boolean(),
-  mode: z.string(),
-  expiresAt: dateTimeStringOutputSchema.nullable().optional(),
-});
+const apiCredentialsPresenceSchema = z
+  .enum(["present", "missing"])
+  .describe("Whether credentials are stored, not whether the provider accepts them.");
+
+/** Sanitized auth state derived from stored configuration; it never proves live provider access. */
+export const apiAuthStatusSchema = z.discriminatedUnion("mode", [
+  z.object({ mode: z.literal("none") }),
+  z.object({ mode: z.literal("bearer"), credentials: apiCredentialsPresenceSchema }),
+  z.object({ mode: z.literal("basic"), credentials: apiCredentialsPresenceSchema }),
+  z.object({ mode: z.literal("client_credentials"), credentials: apiCredentialsPresenceSchema }),
+  z.object({
+    mode: z.literal("oauth"),
+    state: z
+      .enum(["client-missing", "consent-required", "consent-pending", "authorized", "expired"])
+      .describe(
+        "Expired means the access token expired and no refresh token is stored; pending means an unexpired authorization link exists.",
+      ),
+  }),
+]);
 
 export type ApiAuthStatus = z.infer<typeof apiAuthStatusSchema>;
 
@@ -285,16 +299,30 @@ export const connectionSchema = z.object({
 
 export type ApiConnection = z.infer<typeof connectionSchema>;
 
-export const connectionsOutputSchema = z.object({ connections: z.array(connectionSchema) });
+export const connectionsInputSchema = z
+  .strictObject({ cursor: z.string().nullable().default(null) })
+  .optional()
+  .default({ cursor: null });
+
+export type ApiListConnectionsInput = z.output<typeof connectionsInputSchema>;
+
+export const connectionsOutputSchema = z.object({
+  connections: z.array(connectionSchema),
+  cursor: z.string().nullable(),
+});
 
 export type ApiListConnectionsOutput = z.infer<typeof connectionsOutputSchema>;
 
+/** Slugs are URL path segments; whitespace and dot segments would make a connection unaddressable. */
+export const apiConnectionSlugSchema = z
+  .string()
+  .regex(
+    /^[A-Za-z0-9][A-Za-z0-9._-]*$/,
+    "API connection slugs start with a letter or digit and contain only letters, digits, '.', '_', or '-'.",
+  );
+
 export const createConnectionInputSchema = z.object({
-  slug: z
-    .string()
-    .trim()
-    .min(1)
-    .regex(/^[a-z0-9][a-z0-9-]*$/),
+  slug: apiConnectionSlugSchema,
   name: z.string().trim().optional(),
   baseUrl: z.url(),
   auth: authSchema.default({ type: "none" }),
@@ -345,9 +373,10 @@ export type ApiWebhookEndpointsOutput = z.infer<typeof webhookEndpointsOutputSch
 
 export const httpApiOperations = {
   "api.connections.list": {
-    description: "List API connections configured for the current scope.",
+    description:
+      "List API connections configured for the current scope, one cursor page at a time.",
     permissions: [BACKOFFICE_PERMISSION.api.connectionsRead],
-    input: z.void(),
+    input: connectionsInputSchema,
     output: connectionsOutputSchema,
   },
   "api.connections.create": {

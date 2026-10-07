@@ -9,6 +9,7 @@ import {
 import type {
   ApiAuthStatus,
   ApiConnection,
+  ApiListConnectionsInput,
   ApiListConnectionsOutput,
   ApiOAuthStartOutput,
   ApiRequestOutput,
@@ -42,7 +43,7 @@ type ApiWebhookEndpointResult = z.input<typeof webhookEndpointSchema>;
 type ApiWebhookEndpointsResult = z.input<typeof webhookEndpointsOutputSchema>;
 
 export type ApiRuntime = {
-  listConnections: () => Promise<ApiListConnectionsOutput>;
+  listConnections: (input: ApiListConnectionsInput) => Promise<ApiListConnectionsOutput>;
   createConnection: (input: { slug: string } & ApiConnectionInput) => Promise<ApiConnection>;
   deleteConnection: (input: { slug: string }) => Promise<{ ok: true }>;
   getAuthStatus: (input: { slug: string }) => Promise<ApiAuthStatus>;
@@ -120,8 +121,10 @@ export const createRouteBackedApiRuntime = (
   const callRoute = createApiRouteCaller({ ...options, baseUrl });
 
   return {
-    listConnections: async () => {
-      const response = await callRoute("GET", "/connections");
+    listConnections: async ({ cursor }) => {
+      const response = await callRoute("GET", "/connections", {
+        query: cursor === null ? {} : { cursor },
+      });
       if (response.type === "json" && isSuccessStatus(response.status)) {
         return response.data as ApiListConnectionsOutput;
       }
@@ -175,6 +178,8 @@ export const createRouteBackedApiRuntime = (
         body: {
           ...(scopes?.length ? { scopes } : {}),
           ...(extraAuthorizationParams ? { extraAuthorizationParams } : {}),
+          // Native restarts keep working tokens until the new consent replaces them.
+          discardTokens: false,
         },
       });
       if (response.type === "json" && isSuccessStatus(response.status)) {
