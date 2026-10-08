@@ -21,9 +21,12 @@ function createAdminRuntimeDependencies() {
       }),
       getOrganizationBySlug: async (slug: string) =>
         slug === "acme" ? { id: "org-1", slug } : null,
+      getOrganization: async () => null,
+      listOrganizations: async () => ({ organizations: [], nextCursor: null, hasNextPage: false }),
+      listOrganizationMembers: async () => ({ members: [], nextCursor: null, hasNextPage: false }),
       addAdminOrganizationMember: async (input: {
         organizationId: string;
-        roles: readonly string[];
+        roles: readonly ("owner" | "admin" | "member")[];
       }) => ({
         organizationId: input.organizationId,
         userId: "user-1",
@@ -131,8 +134,6 @@ describe("createAdminRuntime", () => {
         userEmail: "member@example.com",
         roles: ["member"],
       }),
-    ).rejects.toThrow(
-      "Admin organization member command could not find organization slug 'missing'.",
-    );
+    ).rejects.toThrow("Admin organization command could not find organization slug 'missing'.");
   });
 });

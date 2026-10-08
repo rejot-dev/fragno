@@ -5,15 +5,17 @@ type AdminCodemodeProvider = {
     input: AdminSignupInvitationsCreateInput,
   ): Promise<AdminSignupInvitationsCreateOutput>;
   /** Create an organization and assign its owner. */
-  organisationCreate(input: AdminOrganisationCreateInput): Promise<AdminOrganisationCreateOutput>;
+  orgCreate(input: AdminOrgCreateInput): Promise<AdminOrgCreateOutput>;
   /** Add a user to an organization with explicit roles. */
-  organisationMembersAdd(
-    input: AdminOrganisationMembersAddInput,
-  ): Promise<AdminOrganisationMembersAddOutput>;
+  orgMembersAdd(input: AdminOrgMembersAddInput): Promise<AdminOrgMembersAddOutput>;
   /** Remove a user from an organization. */
-  organisationMembersRemove(
-    input: AdminOrganisationMembersRemoveInput,
-  ): Promise<AdminOrganisationMembersRemoveOutput>;
+  orgMembersRemove(input: AdminOrgMembersRemoveInput): Promise<AdminOrgMembersRemoveOutput>;
+  /** List every organization, using cursor pagination. */
+  orgList(input: AdminOrgListInput): Promise<AdminOrgListOutput>;
+  /** Read one organization by slug. */
+  orgGet(input: AdminOrgGetInput): Promise<AdminOrgGetOutput>;
+  /** List members of any organization with their roles, using cursor pagination. */
+  orgMembersList(input: AdminOrgMembersListInput): Promise<AdminOrgMembersListOutput>;
   /** Register a Backoffice app for an existing Better Auth OAuth client. Does not provision OAuth credentials or install the app. */
   appsCreate(input: AdminAppsCreateInput): Promise<AdminAppsCreateOutput>;
   /** List global Backoffice app registrations using cursor pagination. Does not expose OAuth credentials or organization installations. */
@@ -25,6 +27,35 @@ type AdminCodemodeProvider = {
 };
 declare const admin: AdminCodemodeProvider;
 
+type DirectoryPageInput = {
+  pageSize?: number;
+  cursor?: string | null;
+};
+type OrganizationPage = {
+  organizations: OrganizationRecord[];
+  nextCursor: string | null;
+  hasNextPage: boolean;
+};
+type OrganizationRecord = {
+  organizationId: string;
+  name: string;
+  slug: string;
+  /** ISO 8601 datetime string. */
+  createdAt: string;
+};
+type OrganizationMemberPage = {
+  members: OrganizationMemberRecord[];
+  nextCursor: string | null;
+  hasNextPage: boolean;
+};
+type OrganizationMemberRecord = {
+  userId: string;
+  name: string;
+  email: string;
+  roles: string[];
+  /** ISO 8601 datetime string. */
+  joinedAt: string;
+};
 type BackofficePermissionRequirement =
   | {
       namespace: "account";
@@ -357,36 +388,48 @@ type AdminSignupInvitationsCreateOutput = {
   url: string;
   ttlDays: number;
 };
-type AdminOrganisationCreateInput = {
+type AdminOrgCreateInput = {
   name: string;
   slug: string;
   ownerEmail: string;
 };
-type AdminOrganisationCreateOutput = {
+type AdminOrgCreateOutput = {
   organizationId: string;
   name: string;
   slug: string;
   ownerUserId: string;
 };
-type AdminOrganisationMembersAddInput = {
+type AdminOrgMembersAddInput = {
   organizationSlug: string;
   userEmail: string;
-  roles: string[];
+  roles: ("owner" | "admin" | "member")[];
 };
-type AdminOrganisationMembersAddOutput = {
+type AdminOrgMembersAddOutput = {
   organizationId: string;
   userId: string;
   roles: string[];
 };
-type AdminOrganisationMembersRemoveInput = {
+type AdminOrgMembersRemoveInput = {
   organizationSlug: string;
   userEmail: string;
 };
-type AdminOrganisationMembersRemoveOutput = {
+type AdminOrgMembersRemoveOutput = {
   organizationId: string;
   userId: string;
   roles: string[];
 };
+type AdminOrgListInput = DirectoryPageInput;
+type AdminOrgListOutput = OrganizationPage;
+type AdminOrgGetInput = {
+  organizationSlug: string;
+};
+type AdminOrgGetOutput = OrganizationRecord;
+type AdminOrgMembersListInput = {
+  pageSize?: number;
+  cursor?: string | null;
+  organizationSlug: string;
+};
+type AdminOrgMembersListOutput = OrganizationMemberPage;
 type AdminAppsCreateInput = {
   oauthClientId: string;
   requestedPermissions: BackofficePermissionRequirement[];

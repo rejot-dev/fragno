@@ -10,6 +10,17 @@ import type {
   BackofficeAppRegistrationInput,
   BackofficeAppRegistrationResult,
 } from "@/fragno/apps/contracts";
+import { organizationRoleSchema, type OrganizationRole } from "@/fragno/auth/contracts";
+import {
+  directoryPageInputSchema,
+  organizationMemberPageSchema,
+  organizationPageSchema,
+  organizationRecordSchema,
+  type DirectoryPageInput,
+  type OrganizationMemberPage,
+  type OrganizationPage,
+  type OrganizationRecord,
+} from "@/fragno/auth/directory-records";
 import type {
   BackofficeOAuthClientCreateInput,
   BackofficeOAuthClientCreateResult,
@@ -25,6 +36,11 @@ import {
 } from "../runtime-tools";
 import { adminAppsRuntimeTools } from "./admin-apps";
 import { adminOAuthClientsRuntimeTools } from "./admin-oauth-clients";
+import {
+  formatOrganizationMemberPageText,
+  formatOrganizationPageText,
+  formatOrganizationText,
+} from "./organization";
 
 export type AdminSignUpInvitationRecord = {
   invitationId: string;
@@ -53,10 +69,15 @@ export type AdminRuntime = {
     slug: string;
     ownerEmail: string;
   }): Promise<AdminOrganizationRecord>;
+  listOrganizations(input: DirectoryPageInput): Promise<OrganizationPage>;
+  getOrganization(input: { organizationSlug: string }): Promise<OrganizationRecord>;
+  listOrganizationMembers(
+    input: { organizationSlug: string } & DirectoryPageInput,
+  ): Promise<OrganizationMemberPage>;
   addOrganizationMember(input: {
     organizationSlug: string;
     userEmail: string;
-    roles: readonly string[];
+    roles: readonly OrganizationRole[];
   }): Promise<AdminOrganizationMemberRecord>;
   removeOrganizationMember(input: {
     organizationSlug: string;
@@ -73,14 +94,14 @@ const signUpInvitationRecordSchema = z.strictObject({
   ttlDays: z.number().int().positive(),
 });
 
-const organizationRecordSchema = z.strictObject({
+const organizationCreatedRecordSchema = z.strictObject({
   organizationId: z.string().trim().min(1),
   name: z.string().trim().min(1),
   slug: z.string().trim().min(1),
   ownerUserId: z.string().trim().min(1),
 });
 
-const organizationMemberRecordSchema = z.strictObject({
+const organizationMemberChangeRecordSchema = z.strictObject({
   organizationId: z.string().trim().min(1),
   userId: z.string().trim().min(1),
   roles: z.array(z.string().trim().min(1)).min(1),
@@ -100,7 +121,7 @@ const createOrganizationInputSchema = z.strictObject({
 const addOrganizationMemberInputSchema = z.strictObject({
   organizationSlug: z.string().trim().min(1),
   userEmail: z.string().trim().toLowerCase().pipe(z.email()),
-  roles: z.array(z.string().trim().min(1)).min(1),
+  roles: z.array(organizationRoleSchema).min(1),
 });
 
 const removeOrganizationMemberInputSchema = z.strictObject({
@@ -164,21 +185,28 @@ const createSignUpInvitationTool = defineBackofficeRuntimeTool({
   },
 });
 
+const organizationSlugOption = {
+  name: "org",
+  valueRequired: true,
+  valueName: "slug",
+  description: "Organization slug",
+};
+
 const createOrganizationTool = defineBackofficeRuntimeTool({
-  id: "admin.organisation.create",
+  id: "admin.org.create",
   namespace: "admin",
-  name: "organisationCreate",
+  name: "orgCreate",
   description: "Create an organization and assign its owner.",
   requiredPermissions: ["organizations.manage"],
   inputSchema: createOrganizationInputSchema,
-  outputSchema: organizationRecordSchema,
+  outputSchema: organizationCreatedRecordSchema,
   execute: async (input, context: AdminToolContext) =>
     await getAdminRuntime(context.runtimes.admin).createOrganization(input),
   adapters: {
     bash: {
-      command: "admin.organisation.create",
+      command: "admin.org.create",
       help: {
-        summary: "admin.organisation.create creates an organization and assigns its owner.",
+        summary: "admin.org.create creates an organization and assigns its owner.",
         options: [
           {
             name: "name",
@@ -200,10 +228,10 @@ const createOrganizationTool = defineBackofficeRuntimeTool({
           },
         ],
         examples: [
-          'admin.organisation.create --name "Acme" --slug acme --owner-email owner@example.com --format json',
+          'admin.org.create --name "Acme" --slug acme --owner-email owner@example.com --format json',
         ],
       },
-      parse: defineCliArgsParser("admin.organisation.create", {
+      parse: defineCliArgsParser("admin.org.create", {
         name: { kind: "string", required: true },
         slug: { kind: "string", required: true },
         ownerEmail: { kind: "string", required: true },
@@ -213,28 +241,145 @@ const createOrganizationTool = defineBackofficeRuntimeTool({
   },
 });
 
-const addOrganizationMemberTool = defineBackofficeRuntimeTool({
-  id: "admin.organisation.members.add",
+const listOrganizationsTool = defineBackofficeRuntimeTool({
+  id: "admin.org.list",
   namespace: "admin",
-  name: "organisationMembersAdd",
+  name: "orgList",
+  description: "List every organization, using cursor pagination.",
+  requiredPermissions: ["organizations.manage"],
+  inputSchema: directoryPageInputSchema,
+  outputSchema: organizationPageSchema,
+  execute: async (input, context: AdminToolContext) =>
+    await getAdminRuntime(context.runtimes.admin).listOrganizations(input),
+  adapters: {
+    bash: {
+      command: "admin.org.list",
+      help: {
+        summary: "admin.org.list lists every organization.",
+        options: [
+          {
+            name: "page-size",
+            valueRequired: true,
+            valueName: "count",
+            description: "Page size, 1–100 (default 25)",
+          },
+          {
+            name: "cursor",
+            valueRequired: true,
+            valueName: "cursor",
+            description: "Cursor from the previous page; keep the same page size",
+          },
+        ],
+        examples: ["admin.org.list", "admin.org.list --page-size 10 --cursor CURSOR --format json"],
+      },
+      parse: defineCliArgsParser("admin.org.list", {
+        pageSize: { kind: "positiveInteger" },
+        cursor: { kind: "string" },
+      }),
+      format: (result, options) =>
+        options.format === "json" || options.print
+          ? { data: result }
+          : { data: result, stdout: formatOrganizationPageText(result) },
+    },
+  },
+});
+
+const getOrganizationTool = defineBackofficeRuntimeTool({
+  id: "admin.org.get",
+  namespace: "admin",
+  name: "orgGet",
+  description: "Read one organization by slug.",
+  requiredPermissions: ["organizations.manage"],
+  inputSchema: z.strictObject({ organizationSlug: z.string().trim().min(1) }),
+  outputSchema: organizationRecordSchema,
+  execute: async (input, context: AdminToolContext) =>
+    await getAdminRuntime(context.runtimes.admin).getOrganization(input),
+  adapters: {
+    bash: {
+      command: "admin.org.get",
+      help: {
+        summary: "admin.org.get prints one organization.",
+        options: [organizationSlugOption],
+        examples: ["admin.org.get --org acme", "admin.org.get --org acme --print organizationId"],
+      },
+      parse: defineCliArgsParser("admin.org.get", {
+        organizationSlug: { kind: "string", required: true, option: "org" },
+      }),
+      format: (result, options) =>
+        options.format === "json" || options.print
+          ? { data: result }
+          : { data: result, stdout: `${formatOrganizationText(result)}\n` },
+    },
+  },
+});
+
+const listOrganizationMembersTool = defineBackofficeRuntimeTool({
+  id: "admin.org.members.list",
+  namespace: "admin",
+  name: "orgMembersList",
+  description: "List members of any organization with their roles, using cursor pagination.",
+  requiredPermissions: ["organizations.manage"],
+  inputSchema: directoryPageInputSchema.extend({
+    organizationSlug: z.string().trim().min(1),
+  }),
+  outputSchema: organizationMemberPageSchema,
+  execute: async (input, context: AdminToolContext) =>
+    await getAdminRuntime(context.runtimes.admin).listOrganizationMembers(input),
+  adapters: {
+    bash: {
+      command: "admin.org.members.list",
+      help: {
+        summary: "admin.org.members.list lists members of an organization.",
+        options: [
+          organizationSlugOption,
+          {
+            name: "page-size",
+            valueRequired: true,
+            valueName: "count",
+            description: "Page size, 1–100 (default 25)",
+          },
+          {
+            name: "cursor",
+            valueRequired: true,
+            valueName: "cursor",
+            description: "Cursor from the previous page; keep the same page size",
+          },
+        ],
+        examples: [
+          "admin.org.members.list --org acme",
+          "admin.org.members.list --org acme --page-size 10 --cursor CURSOR --format json",
+        ],
+      },
+      parse: defineCliArgsParser("admin.org.members.list", {
+        organizationSlug: { kind: "string", required: true, option: "org" },
+        pageSize: { kind: "positiveInteger" },
+        cursor: { kind: "string" },
+      }),
+      format: (result, options) =>
+        options.format === "json" || options.print
+          ? { data: result }
+          : { data: result, stdout: formatOrganizationMemberPageText(result) },
+    },
+  },
+});
+
+const addOrganizationMemberTool = defineBackofficeRuntimeTool({
+  id: "admin.org.members.add",
+  namespace: "admin",
+  name: "orgMembersAdd",
   description: "Add a user to an organization with explicit roles.",
   requiredPermissions: ["organizations.manage"],
   inputSchema: addOrganizationMemberInputSchema,
-  outputSchema: organizationMemberRecordSchema,
+  outputSchema: organizationMemberChangeRecordSchema,
   execute: async (input, context: AdminToolContext) =>
     await getAdminRuntime(context.runtimes.admin).addOrganizationMember(input),
   adapters: {
     bash: {
-      command: "admin.organisation.members.add",
+      command: "admin.org.members.add",
       help: {
-        summary: "admin.organisation.members.add adds a user to an organization.",
+        summary: "admin.org.members.add adds a user to an organization.",
         options: [
-          {
-            name: "organization-slug",
-            valueRequired: true,
-            valueName: "organization-slug",
-            description: "Organization slug",
-          },
+          organizationSlugOption,
           {
             name: "email",
             valueRequired: true,
@@ -245,15 +390,15 @@ const addOrganizationMemberTool = defineBackofficeRuntimeTool({
             name: "role",
             valueRequired: true,
             valueName: "role",
-            description: "Organization role; repeat for multiple roles",
+            description: "owner, admin, or member; repeat for multiple roles",
           },
         ],
         examples: [
-          "admin.organisation.members.add --organization-slug acme --email member@example.com --role member --format json",
+          "admin.org.members.add --org acme --email member@example.com --role member --format json",
         ],
       },
-      parse: defineCliArgsParser("admin.organisation.members.add", {
-        organizationSlug: { kind: "string", required: true },
+      parse: defineCliArgsParser("admin.org.members.add", {
+        organizationSlug: { kind: "string", required: true, option: "org" },
         userEmail: { kind: "string", required: true, option: "email" },
         roles: { kind: "stringArray", required: true, option: "role" },
       }),
@@ -263,27 +408,22 @@ const addOrganizationMemberTool = defineBackofficeRuntimeTool({
 });
 
 const removeOrganizationMemberTool = defineBackofficeRuntimeTool({
-  id: "admin.organisation.members.remove",
+  id: "admin.org.members.remove",
   namespace: "admin",
-  name: "organisationMembersRemove",
+  name: "orgMembersRemove",
   description: "Remove a user from an organization.",
   requiredPermissions: ["organizations.manage"],
   inputSchema: removeOrganizationMemberInputSchema,
-  outputSchema: organizationMemberRecordSchema,
+  outputSchema: organizationMemberChangeRecordSchema,
   execute: async (input, context: AdminToolContext) =>
     await getAdminRuntime(context.runtimes.admin).removeOrganizationMember(input),
   adapters: {
     bash: {
-      command: "admin.organisation.members.remove",
+      command: "admin.org.members.remove",
       help: {
-        summary: "admin.organisation.members.remove removes a user from an organization.",
+        summary: "admin.org.members.remove removes a user from an organization.",
         options: [
-          {
-            name: "organization-slug",
-            valueRequired: true,
-            valueName: "organization-slug",
-            description: "Organization slug",
-          },
+          organizationSlugOption,
           {
             name: "email",
             valueRequired: true,
@@ -291,12 +431,10 @@ const removeOrganizationMemberTool = defineBackofficeRuntimeTool({
             description: "Email address of the existing user",
           },
         ],
-        examples: [
-          "admin.organisation.members.remove --organization-slug acme --email member@example.com --format json",
-        ],
+        examples: ["admin.org.members.remove --org acme --email member@example.com --format json"],
       },
-      parse: defineCliArgsParser("admin.organisation.members.remove", {
-        organizationSlug: { kind: "string", required: true },
+      parse: defineCliArgsParser("admin.org.members.remove", {
+        organizationSlug: { kind: "string", required: true, option: "org" },
         userEmail: { kind: "string", required: true, option: "email" },
       }),
       format: (result) => ({ data: result }),
@@ -309,6 +447,9 @@ export const adminRuntimeTools = [
   createOrganizationTool,
   addOrganizationMemberTool,
   removeOrganizationMemberTool,
+  listOrganizationsTool,
+  getOrganizationTool,
+  listOrganizationMembersTool,
   ...adminAppsRuntimeTools,
   ...adminOAuthClientsRuntimeTools,
 ] as const;
@@ -322,7 +463,7 @@ export const adminToolFamily = defineBackofficeRuntimeToolFamily({
     "oauth-clients.read":
       "List the global OAuth client catalog without credentials (System administrators only).",
     "sign-up-invitations.manage": "Create links that authorize Backoffice account sign-up.",
-    "organizations.manage": "Create organizations and manage organization membership.",
+    "organizations.manage": "List, read, and create organizations and manage their membership.",
   },
   tools: adminRuntimeTools,
   isAvailable: (context: AdminToolContext) => !!context.runtimes.admin,

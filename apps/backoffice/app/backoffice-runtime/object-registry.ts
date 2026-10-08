@@ -272,7 +272,7 @@ export type AuthObject = DurableHookCommands & {
   addAdminOrganizationMember(input: {
     organizationId: string;
     userEmail: string;
-    roles: readonly string[];
+    roles: readonly OrganizationRole[];
   }): Promise<AdminOrganizationMemberRecord>;
   removeAdminOrganizationMember(input: {
     organizationId: string;

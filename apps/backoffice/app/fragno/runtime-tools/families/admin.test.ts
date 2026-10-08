@@ -54,22 +54,13 @@ describe("admin runtime tools", () => {
     assert(removeCommand);
 
     expect(
-      addCommand.parse([
-        "--organization-slug",
-        "acme",
-        "--email",
-        "member@example.com",
-        "--role",
-        "member",
-      ]),
+      addCommand.parse(["--org", "acme", "--email", "member@example.com", "--role", "member"]),
     ).toEqual({
       organizationSlug: "acme",
       userEmail: "member@example.com",
       roles: ["member"],
     });
-    expect(
-      removeCommand.parse(["--organization-slug", "acme", "--email", "member@example.com"]),
-    ).toEqual({
+    expect(removeCommand.parse(["--org", "acme", "--email", "member@example.com"])).toEqual({
       organizationSlug: "acme",
       userEmail: "member@example.com",
     });
@@ -111,6 +102,15 @@ describe("admin runtime tools", () => {
         userId: "user-1",
         roles: ["member"],
       })),
+      listOrganizations: async () => {
+        throw new Error("Organization listing is not configured in this fixture.");
+      },
+      getOrganization: async () => {
+        throw new Error("Organization reads are not configured in this fixture.");
+      },
+      listOrganizationMembers: async () => {
+        throw new Error("Member listing is not configured in this fixture.");
+      },
     };
     const context = createTrustedSystemBackofficeToolContext({ runtimes: { admin: runtime } });
 

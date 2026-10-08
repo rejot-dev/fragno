@@ -324,8 +324,8 @@
     ]
   },
   {
-    "command": "admin.organisation.create",
-    "summary": "admin.organisation.create creates an organization and assigns its owner.",
+    "command": "admin.org.create",
+    "summary": "admin.org.create creates an organization and assigns its owner.",
     "options": [
       {
         "name": "name",
@@ -367,13 +367,13 @@
     ]
   },
   {
-    "command": "admin.organisation.members.add",
-    "summary": "admin.organisation.members.add adds a user to an organization.",
+    "command": "admin.org.members.add",
+    "summary": "admin.org.members.add adds a user to an organization.",
     "options": [
       {
-        "name": "organization-slug",
+        "name": "org",
         "valueRequired": true,
-        "valueName": "organization-slug",
+        "valueName": "slug",
         "description": "Organization slug"
       },
       {
@@ -386,7 +386,7 @@
         "name": "role",
         "valueRequired": true,
         "valueName": "role",
-        "description": "Organization role; repeat for multiple roles"
+        "description": "owner, admin, or member; repeat for multiple roles"
       },
       {
         "name": "help",
@@ -410,13 +410,13 @@
     ]
   },
   {
-    "command": "admin.organisation.members.remove",
-    "summary": "admin.organisation.members.remove removes a user from an organization.",
+    "command": "admin.org.members.remove",
+    "summary": "admin.org.members.remove removes a user from an organization.",
     "options": [
       {
-        "name": "organization-slug",
+        "name": "org",
         "valueRequired": true,
-        "valueName": "organization-slug",
+        "valueName": "slug",
         "description": "Organization slug"
       },
       {
@@ -424,6 +424,117 @@
         "valueRequired": true,
         "valueName": "email",
         "description": "Email address of the existing user"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "admin.org.list",
+    "summary": "admin.org.list lists every organization.",
+    "options": [
+      {
+        "name": "page-size",
+        "valueRequired": true,
+        "valueName": "count",
+        "description": "Page size, 1–100 (default 25)"
+      },
+      {
+        "name": "cursor",
+        "valueRequired": true,
+        "valueName": "cursor",
+        "description": "Cursor from the previous page; keep the same page size"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "admin.org.get",
+    "summary": "admin.org.get prints one organization.",
+    "options": [
+      {
+        "name": "org",
+        "valueRequired": true,
+        "valueName": "slug",
+        "description": "Organization slug"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "admin.org.members.list",
+    "summary": "admin.org.members.list lists members of an organization.",
+    "options": [
+      {
+        "name": "org",
+        "valueRequired": true,
+        "valueName": "slug",
+        "description": "Organization slug"
+      },
+      {
+        "name": "page-size",
+        "valueRequired": true,
+        "valueName": "count",
+        "description": "Page size, 1–100 (default 25)"
+      },
+      {
+        "name": "cursor",
+        "valueRequired": true,
+        "valueName": "cursor",
+        "description": "Cursor from the previous page; keep the same page size"
       },
       {
         "name": "help",

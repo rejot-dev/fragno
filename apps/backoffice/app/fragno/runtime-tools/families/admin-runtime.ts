@@ -11,6 +11,9 @@ type AdminAuthCommands = Pick<
   | "listAdminOAuthClients"
   | "createAdminOrganization"
   | "getOrganizationBySlug"
+  | "getOrganization"
+  | "listOrganizations"
+  | "listOrganizationMembers"
   | "addAdminOrganizationMember"
   | "removeAdminOrganizationMember"
 >;
@@ -28,7 +31,7 @@ async function requireAdminOrganizationId(auth: AdminAuthCommands, organizationS
   const organization = await auth.getOrganizationBySlug(organizationSlug);
   if (!organization) {
     throw new Error(
-      `Admin organization member command could not find organization slug '${organizationSlug}'.`,
+      `Admin organization command could not find organization slug '${organizationSlug}'.`,
     );
   }
   return organization.id;
@@ -83,6 +86,21 @@ export function createAdminRuntime({
       };
     },
     createOrganization: async (input) => await auth.createAdminOrganization(input),
+    listOrganizations: async (input) => await auth.listOrganizations(input),
+    getOrganization: async ({ organizationSlug }) => {
+      const organization = await auth.getOrganization({
+        organizationId: await requireAdminOrganizationId(auth, organizationSlug),
+      });
+      if (!organization) {
+        throw new Error(`Admin organization command could not find slug '${organizationSlug}'.`);
+      }
+      return organization;
+    },
+    listOrganizationMembers: async ({ organizationSlug, ...page }) =>
+      await auth.listOrganizationMembers({
+        ...page,
+        organizationId: await requireAdminOrganizationId(auth, organizationSlug),
+      }),
     addOrganizationMember: async ({ organizationSlug, ...input }) =>
       await auth.addAdminOrganizationMember({
         ...input,

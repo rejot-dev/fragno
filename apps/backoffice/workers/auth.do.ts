@@ -1508,8 +1508,9 @@ export class InMemoryAuthObject implements AuthObject {
   async addAdminOrganizationMember(input: {
     organizationId: string;
     userEmail: string;
-    roles: readonly string[];
+    roles: readonly OrganizationRole[];
   }): Promise<AdminOrganizationMemberRecord> {
+    const roles = organizationRoleSchema.array().min(1).parse(input.roles);
     const { adapter } = await this.#authContext();
     const userEmail = input.userEmail.trim().toLowerCase();
     const user = await findStoreUserByEmail(adapter, userEmail);
@@ -1521,7 +1522,7 @@ export class InMemoryAuthObject implements AuthObject {
         body: {
           organizationId: input.organizationId,
           userId: user.id,
-          role: [...input.roles],
+          role: roles,
         },
       },
     );
@@ -2109,7 +2110,7 @@ export class Auth extends DurableObject<CloudflareEnv> implements AuthObject {
   async addAdminOrganizationMember(input: {
     organizationId: string;
     userEmail: string;
-    roles: readonly string[];
+    roles: readonly OrganizationRole[];
   }) {
     return await this.#object.addAdminOrganizationMember(input);
   }
