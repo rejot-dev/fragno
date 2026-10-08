@@ -128,7 +128,7 @@ export async function startProjectConnectorTestGateway() {
       | null;
     discoveryReads: number;
     catalogReads: string[];
-    catalogFailure: "wrong-service" | null;
+    catalogFailure: "wrong-service" | "redirect" | null;
     redirectReads: number;
   } = {
     actionFailure: null,
@@ -149,6 +149,11 @@ export async function startProjectConnectorTestGateway() {
       json({ errorCode: code, errorMessage: code }, status);
     }
     const url = new URL(req.url ?? "/", "http://localhost");
+    if (url.pathname === "/v1/saas/redirect-target") {
+      control.redirectReads += 1;
+      failure("redirect_followed", 500);
+      return;
+    }
     if (req.method === "GET" && url.pathname === "/v1/actions") {
       if (req.headers.authorization !== "Bearer test-catalog-key") {
         res.writeHead(401).end("Unauthorized test-catalog-key");
@@ -160,6 +165,10 @@ export async function startProjectConnectorTestGateway() {
         return;
       }
       control.catalogReads.push(service);
+      if (control.catalogFailure === "redirect") {
+        res.writeHead(302, { location: `${origin}/v1/saas/redirect-target` }).end();
+        return;
+      }
       json({
         success: true,
         data: [...catalogActions.values()]
@@ -245,11 +254,6 @@ export async function startProjectConnectorTestGateway() {
           apiKey: "test-project-key",
         },
       });
-      return;
-    }
-    if (url.pathname === "/v1/saas/redirect-target") {
-      control.redirectReads += 1;
-      failure("redirect_followed", 500);
       return;
     }
     if (route === "connected-accounts" && id === "link") {

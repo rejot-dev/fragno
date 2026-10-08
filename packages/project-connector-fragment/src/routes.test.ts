@@ -296,6 +296,38 @@ describe("Project Connector connection scenarios", () => {
     },
   );
 
+  test("catalog redirects are rejected without forwarding credentials, and discovery recovers", async () => {
+    const scenario = await connectorScenario();
+    scenario.gateway.control.catalogFailure = "redirect";
+    const redirected = await scenario.call(
+      "alice",
+      "GET",
+      "/provider-configs/gmail-provider/actions",
+    );
+    expect(redirected).toMatchObject({
+      status: 502,
+      data: {
+        code: "PROJECT_CONNECTOR_ERROR",
+        message: expect.stringContaining("unexpected_redirect (HTTP 302)"),
+      },
+    });
+    expect(JSON.stringify(redirected.data)).not.toContain("test-catalog-key");
+    assert((await scenario.call("alice", "GET", "/provider-configs")).status === 200);
+
+    scenario.gateway.control.catalogFailure = null;
+    expect(
+      await scenario.call("alice", "GET", "/provider-configs/gmail-provider/actions"),
+    ).toMatchObject({ status: 200, data: { actions: [{ id: "gmail.search_threads" }] } });
+    assert(scenario.gateway.control.redirectReads === 0);
+    expect(scenario.gateway.control.catalogReads).toEqual(["gmail", "gmail"]);
+    expect(scenario.gateway.executions).toEqual([]);
+    expect((await scenario.call("alice", "GET", "/accounts")).data).toEqual({
+      accounts: [],
+      cursor: null,
+      hasNextPage: false,
+    });
+  });
+
   test("catalog changes are authoritative, and unavailable or mismatched contracts fail without executing", async () => {
     const scenario = await connectorScenario();
     const action = scenario.gateway.catalogActions.get("gmail.search_threads");
@@ -371,7 +403,7 @@ describe("Project Connector connection scenarios", () => {
     { failure: "duplicate", code: "invalid_response" },
     { failure: "not-found", code: "not_found" },
     { failure: "invalid-json", code: "invalid_response" },
-    { failure: "redirect", code: "client_network_error" },
+    { failure: "redirect", code: "unexpected_redirect" },
     { failure: "network", code: "client_network_error" },
   ] as const)(
     "$failure discovery failures are safe and never create accounts or follow redirects",

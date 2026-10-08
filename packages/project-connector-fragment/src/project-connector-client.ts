@@ -112,6 +112,10 @@ function projectConnectorClientErrorFromKnownFailure(
     return error;
   }
   if (error instanceof ConnectorError) {
+    // The SDK wraps transport rejections as network errors; retain our safe redirect diagnosis.
+    if (error.cause instanceof ProjectConnectorClientError) {
+      return error.cause;
+    }
     return new ProjectConnectorClientError(error.code, error.status);
   }
   return null;
@@ -137,6 +141,20 @@ function parseProjectConnectorResponse<T>(schema: z.ZodType<T>, value: unknown):
   return parsed.data;
 }
 
+async function fetchProjectConnectorWithoutRedirects(
+  input: RequestInfo | URL,
+  init: RequestInit | undefined,
+): Promise<Response> {
+  // Workers rejects redirect: "error" before sending the request. Manual mode keeps credentials
+  // on the original host; reject redirects before interpreting the response body.
+  const response = await globalThis.fetch(input, { ...init, redirect: "manual" });
+  if ([301, 302, 303, 307, 308].includes(response.status)) {
+    await response.body?.cancel();
+    throw new ProjectConnectorClientError("unexpected_redirect", response.status);
+  }
+  return response;
+}
+
 async function fetchProjectConnectorProviderConfigs(
   config: Pick<ProjectConnectorClientConfig, "baseUrl" | "apiKey">,
 ) {
@@ -144,12 +162,14 @@ async function fetchProjectConnectorProviderConfigs(
   const signal = AbortSignal.timeout(30_000);
   let response: Response;
   try {
-    response = await fetch(`${config.baseUrl}/saas/oauth/provider-configs`, {
-      method: "GET",
-      headers: { authorization: `Bearer ${config.apiKey}` },
-      redirect: "error",
-      signal,
-    });
+    response = await fetchProjectConnectorWithoutRedirects(
+      `${config.baseUrl}/saas/oauth/provider-configs`,
+      {
+        method: "GET",
+        headers: { authorization: `Bearer ${config.apiKey}` },
+        signal,
+      },
+    );
   } catch (cause) {
     if (signal.aborted) {
       throw new ProjectConnectorClientError("client_timeout", 0);
@@ -204,7 +224,7 @@ export function createProjectConnectorClient(
           apiKey: parseProjectConnectorApiKey(config.catalogApiKey),
           baseUrl,
           maxRetries: 0,
-          fetch: (input, init) => globalThis.fetch(input, { ...init, redirect: "error" }),
+          fetch: fetchProjectConnectorWithoutRedirects,
         }).catalog;
 
   return {
