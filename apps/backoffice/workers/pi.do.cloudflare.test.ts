@@ -258,7 +258,18 @@ describe("Pi durable agent scenarios", () => {
       const submitted = await request(`/sessions/${session.sessionId}/prompts`, prompt);
       assert.equal(submitted.status, 202, await submitted.clone().text());
       const agent = (env as CloudflareEnv).PI.getByName(piAgentObjectName(session));
+      // Submission schedules a real alarm, which may already be running; wait for the prompt to
+      // settle rather than assuming this alarm call performs the turn.
+      const waiting = request(
+        `/sessions/${session.sessionId}/submissions/${prompt.requestId}/wait?waitMs=5000`,
+      );
       await runDurableObjectAlarm(agent);
+      const waited = await waiting;
+      assert.equal(waited.status, 200, await waited.clone().text());
+      expect(await waited.json()).toMatchObject({
+        status: "settled",
+        submission: { status: "done" },
+      });
       const view = await (
         await request(`/sessions/${session.sessionId}/view`)
       ).json<ConversationView>();
