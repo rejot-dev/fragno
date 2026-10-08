@@ -8,6 +8,9 @@ export default [
   ]),
   route("dashboard", "routes/dashboard-layout.tsx", [
     index("routes/dashboard.tsx"),
+    route("organizations", "routes/organizations.tsx"),
+    route("backoffice", "routes/backoffice.tsx"),
+    route("backoffice/callback", "routes/backoffice-callback.tsx"),
     route("account", "routes/account.tsx"),
   ]),
 ] satisfies RouteConfig;
