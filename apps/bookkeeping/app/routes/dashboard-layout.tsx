@@ -2,6 +2,7 @@ import { ButtonLink } from "@fragno-private/design-system/button";
 import { Icon } from "@fragno-private/design-system/icon";
 import { SidebarNavigation, MobileNavigation } from "@fragno-private/design-system/navigation";
 import type { NavigationItem } from "@fragno-private/design-system/navigation-item";
+import { env } from "cloudflare:workers";
 import { useState } from "react";
 import { Link, Outlet, useLocation } from "react-router";
 
@@ -10,7 +11,10 @@ import type { Route } from "./+types/dashboard-layout";
 
 export async function loader({ request }: Route.LoaderArgs) {
   const session = await requireSession(request);
-  return { user: session.user };
+  const active = await env.AUTH.getByName("auth").getActiveOrganization(
+    request.headers.get("cookie") ?? "",
+  );
+  return { user: session.user, organizationName: active?.organization.name ?? null };
 }
 
 export function headers() {
@@ -22,6 +26,18 @@ export default function DashboardLayout({ loaderData }: Route.ComponentProps) {
   const { pathname } = useLocation();
   const items: NavigationItem[] = [
     { label: "Overview", to: "/dashboard", icon: "grid", active: pathname === "/dashboard" },
+    {
+      label: "Organizations",
+      to: "/dashboard/organizations",
+      icon: "users",
+      active: pathname === "/dashboard/organizations",
+    },
+    {
+      label: "Backoffice",
+      to: "/dashboard/backoffice",
+      icon: "send",
+      active: pathname === "/dashboard/backoffice",
+    },
     {
       label: "Account",
       to: "/dashboard/account",
@@ -40,7 +56,12 @@ export default function DashboardLayout({ loaderData }: Route.ComponentProps) {
           Bookkeeping
         </Link>
         <div className="flex min-w-0 items-center gap-3">
-          <span className="hidden text-xs text-[var(--bo-muted)] sm:block">Personal workspace</span>
+          <Link
+            to="/dashboard/organizations"
+            className="hidden text-xs text-[var(--bo-muted)] hover:text-[var(--bo-fg)] sm:block"
+          >
+            {loaderData.organizationName ?? "No organization selected"}
+          </Link>
           <ButtonLink variant="secondary" to="/dashboard/account" className="max-w-48">
             <span className="truncate">{loaderData.user.name}</span>
           </ButtonLink>

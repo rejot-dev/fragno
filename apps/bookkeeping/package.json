@@ -18,7 +18,8 @@
     "kysely": "^0.28.17",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "react-router": "^8.2.0"
+    "react-router": "^8.2.0",
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "catalog:",
