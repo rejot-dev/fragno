@@ -20,10 +20,16 @@ type AdminCodemodeProvider = {
   appsCreate(input: AdminAppsCreateInput): Promise<AdminAppsCreateOutput>;
   /** List global Backoffice app registrations using cursor pagination. Does not expose OAuth credentials or organization installations. */
   appsList(input: AdminAppsListInput): Promise<AdminAppsListOutput>;
-  /** Create an Auth-owned authorization-code OAuth web or native client for the current System administrator. Confidential clients return an initial secret; public clients use PKCE without a secret. Does not register or install a Backoffice app. */
+  /** Create an Auth-owned authorization-code OAuth web or native client for the current System administrator. Confidential clients return an initial secret and may use client credentials; public clients use PKCE without a secret. Does not register or install a Backoffice app. */
   oauthClientsCreate(input: AdminOauthClientsCreateInput): Promise<AdminOauthClientsCreateOutput>;
   /** List the global Auth-owned OAuth client catalog, including other owners and the internal Codemode client, using cursor pagination. Never exposes credentials or credential hashes. */
   oauthClientsList(input: AdminOauthClientsListInput): Promise<AdminOauthClientsListOutput>;
+  /** Replace the redirect URIs, OAuth scopes, and client-credentials access of an OAuth client owned by the current System administrator. Widened scopes apply to new authorizations only; existing users authorize again. */
+  oauthClientsUpdate(input: AdminOauthClientsUpdateInput): Promise<AdminOauthClientsUpdateOutput>;
+  /** Replace the secret of a confidential OAuth client owned by the current System administrator. The previous secret stops working immediately; the new one is returned once. */
+  oauthClientsRotateSecret(
+    input: AdminOauthClientsRotateSecretInput,
+  ): Promise<AdminOauthClientsRotateSecretOutput>;
 };
 declare const admin: AdminCodemodeProvider;
 
@@ -347,6 +353,7 @@ type BackofficeOAuthClientCreateInput = {
   scopes: ("openid" | "profile" | "email" | "offline_access" | "backoffice")[];
   clientType?: "confidential" | "public";
   applicationType?: "web" | "native";
+  clientCredentials?: boolean;
 };
 type BackofficeOAuthClientCreateResult =
   | {
@@ -377,6 +384,25 @@ type BackofficeOAuthClientSummary = {
   userId: string | null;
   referenceId: string | null;
   disabled: boolean | null;
+};
+type BackofficeOAuthClientUpdateInput = {
+  clientId: string;
+  redirectUris: string[];
+  scopes: ("openid" | "profile" | "email" | "offline_access" | "backoffice")[];
+  clientCredentials: boolean;
+};
+type BackofficeOAuthClientUpdateResult = {
+  clientId: string;
+  redirectUris: string[];
+  scopes: string[];
+  clientCredentials: boolean;
+};
+type BackofficeOAuthClientRotateSecretInput = {
+  clientId: string;
+};
+type BackofficeOAuthClientRotateSecretResult = {
+  clientId: string;
+  clientSecret: string;
 };
 type AdminSignupInvitationsCreateInput = {
   email: string;
@@ -457,3 +483,7 @@ type AdminOauthClientsCreateInput = BackofficeOAuthClientCreateInput;
 type AdminOauthClientsCreateOutput = BackofficeOAuthClientCreateResult;
 type AdminOauthClientsListInput = BackofficeOAuthClientListInput;
 type AdminOauthClientsListOutput = BackofficeOAuthClientPage;
+type AdminOauthClientsUpdateInput = BackofficeOAuthClientUpdateInput;
+type AdminOauthClientsUpdateOutput = BackofficeOAuthClientUpdateResult;
+type AdminOauthClientsRotateSecretInput = BackofficeOAuthClientRotateSecretInput;
+type AdminOauthClientsRotateSecretOutput = BackofficeOAuthClientRotateSecretResult;

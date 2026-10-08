@@ -38,6 +38,8 @@ import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 
 import { adminAppsRuntimeTools } from "./admin-apps";
 
+const wholeOrganization = { kind: "organization" } as const;
+
 const permissions = [BACKOFFICE_PERMISSION.events.emit];
 
 function appAdminContext(
@@ -51,6 +53,17 @@ function appAdminContext(
     execution: createBackofficeUserExecution({ scope, userId }),
     billingOrganizationId: null,
   });
+}
+
+/** A dedicated client an app can be registered for; the Codemode client never can. */
+async function createAppClient(ctx: BackofficeScenarioContext, administratorUserId: string) {
+  const client = await ctx.runtime.objects.auth.singleton().commands.createAdminOAuthClient({
+    administratorUserId,
+    name: "Accounting",
+    redirectUris: ["https://accounting.example/callback"],
+    scopes: ["openid", "backoffice"],
+  });
+  return { clientId: client.clientId };
 }
 
 async function runAppAdminSqliteScenario<TVars extends Record<string, unknown>>(
@@ -75,9 +88,7 @@ describe("admin app runtime tool SQLite scenarios", () => {
         setup: ({ given }) => [given.auth.user({ id: "admin-1", role: "admin" })],
         steps: ({ then }) => [
           then.assert("text output describes real persisted registrations", async (ctx) => {
-            const config = await ctx.runtime.objects.auth
-              .singleton()
-              .commands.getBackofficeCliOAuthConfig({ requestUrl: "https://backoffice.test" });
+            const config = await createAppClient(ctx, "admin-1");
             const context = appAdminContext(ctx, "admin-1");
             assert(context.stateBackend);
             const { bash } = createInteractiveBashHost({
@@ -130,10 +141,8 @@ describe("admin app runtime tool SQLite scenarios", () => {
         setup: ({ given }) => [given.auth.user({ id: "admin-1", role: "admin" })],
         steps: ({ then }) => [
           then.assert("both adapters share registration and listing semantics", async (ctx) => {
-            const cliConfig = await ctx.runtime.objects.auth
-              .singleton()
-              .commands.getBackofficeCliOAuthConfig({ requestUrl: "https://backoffice.test" });
-            const input = { oauthClientId: cliConfig.clientId, requestedPermissions: permissions };
+            const client = await createAppClient(ctx, "admin-1");
+            const input = { oauthClientId: client.clientId, requestedPermissions: permissions };
             const context = appAdminContext(ctx, "admin-1");
             assert(context.stateBackend);
             assert(ctx.runtime.env.codemode);
@@ -159,7 +168,7 @@ describe("admin app runtime tool SQLite scenarios", () => {
             expect(data.page.apps).toEqual([
               {
                 id: data.created.appId,
-                oauthClientId: cliConfig.clientId,
+                oauthClientId: client.clientId,
                 requestedPermissions: permissions,
                 createdAt: expect.any(String),
               },
@@ -172,7 +181,7 @@ describe("admin app runtime tool SQLite scenarios", () => {
               context: { ...context, stateBackend: context.stateBackend },
             });
             const repeated = await bash.exec(
-              `admin.apps.create --oauth-client-id '${cliConfig.clientId}' --requested-permissions-json '${JSON.stringify(permissions)}' --format json`,
+              `admin.apps.create --oauth-client-id '${client.clientId}' --requested-permissions-json '${JSON.stringify(permissions)}' --format json`,
             );
             assert.equal(repeated.exitCode, 0, repeated.stderr);
             expect(
@@ -194,10 +203,6 @@ describe("admin app runtime tool SQLite scenarios", () => {
               toolContext,
             );
             expect(page.apps).toEqual(data.page.apps);
-            const currentConfig = await ctx.runtime.objects.auth
-              .singleton()
-              .commands.getBackofficeCliOAuthConfig({ requestUrl: "https://backoffice.test" });
-            expect(currentConfig).toEqual(cliConfig);
           }),
         ],
       }),
@@ -215,9 +220,7 @@ describe("admin app runtime tool SQLite scenarios", () => {
         ],
         steps: ({ then, when }) => [
           then.assert("non-admin adapters cannot mutate or disclose the catalog", async (ctx) => {
-            const cli = await ctx.runtime.objects.auth
-              .singleton()
-              .commands.getBackofficeCliOAuthConfig({ requestUrl: "https://backoffice.test" });
+            const cli = await createAppClient(ctx, "admin-1");
             context = appAdminContext(ctx, "admin-1");
             await executeBackofficeRuntimeTool(
               adminAppsRuntimeTools[0],
@@ -366,7 +369,9 @@ describe("admin app runtime tool SQLite scenarios", () => {
                   { oauthClientId: "missing", requestedPermissions: [] },
                   tools,
                 ),
-              ).rejects.toThrow("could not find OAuth client 'missing'");
+              ).rejects.toThrow(
+                "OAuth client 'missing' was not found. List clients with admin.oauth-clients.list.",
+              );
               const cli = await ctx.runtime.objects.auth
                 .singleton()
                 .commands.getBackofficeCliOAuthConfig({ requestUrl: "https://backoffice.test" });
@@ -394,6 +399,33 @@ describe("admin app runtime tool SQLite scenarios", () => {
                 const result = await bash.exec(command);
                 assert.notEqual(result.exitCode, 0);
               }
+              // The Codemode client is first-party: it can be neither an app nor reconfigured.
+              const codemodeFailures = [
+                [
+                  `admin.apps.create --oauth-client-id ${cli.clientId} --requested-permissions-json '[]'`,
+                  "is the deployment's Codemode client and cannot be registered as an app. Create a dedicated client with admin.oauth-clients.create.",
+                ],
+                [
+                  `admin.oauth-clients.update --client-id ${cli.clientId} --redirect-uri https://backoffice.test/callback --scope openid --scope backoffice`,
+                  "is the deployment's Codemode client. Backoffice manages it, so it cannot be changed. Use a client created with admin.oauth-clients.create.",
+                ],
+                [
+                  `admin.oauth-clients.rotate-secret --client-id ${cli.clientId}`,
+                  "is the deployment's Codemode client. Backoffice manages it, so it cannot be changed. Use a client created with admin.oauth-clients.create.",
+                ],
+              ];
+              for (const [command, reason] of codemodeFailures) {
+                const result = await bash.exec(command);
+                assert.equal(result.exitCode, 1);
+                assert.equal(result.stderr, `OAuth client '${cli.clientId}' ${reason}\n`);
+              }
+              const missingUpdate = await bash.exec(
+                "admin.oauth-clients.rotate-secret --client-id missing",
+              );
+              assert.equal(
+                missingUpdate.stderr,
+                "OAuth client 'missing' was not found. List clients with admin.oauth-clients.list.\n",
+              );
               const page = await executeBackofficeRuntimeTool(adminAppsRuntimeTools[1], {}, tools);
               expect(page.apps).toEqual([]);
             },
@@ -485,6 +517,7 @@ describe("admin app runtime tool SQLite scenarios", () => {
               const installed = await installations.installApp({
                 appId,
                 installedByUserId: "admin-1",
+                resourceScope: wholeOrganization,
                 grantedPermissions: [],
               });
               assert(installed.ok);

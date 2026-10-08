@@ -22,7 +22,7 @@ import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import {
   backofficeOAuthClientCreateResultSchema,
   backofficeOAuthClientPageSchema,
-  type BackofficeOAuthClientCreateInput,
+  type BackofficeOAuthClientCreateRequest,
 } from "@/fragno/auth/oauth-client";
 import {
   defineBackofficeScenario,
@@ -45,7 +45,7 @@ const clientInput = {
   name: "Accounting",
   redirectUris: ["https://accounting.example/callback"],
   scopes: ["openid", "profile", "email", "offline_access"],
-} satisfies Omit<BackofficeOAuthClientCreateInput, "clientType" | "applicationType">;
+} satisfies Omit<BackofficeOAuthClientCreateRequest, "clientType" | "applicationType">;
 
 function oauthAdminContext(
   ctx: BackofficeScenarioContext,
@@ -177,7 +177,7 @@ describe("admin OAuth client SQLite scenarios", () => {
               assert(
                 await ctx.runtime.objects.auth
                   .singleton()
-                  .commands.hasOAuthClient({ clientId: created.clientId }),
+                  .commands.getOAuthClientFacts({ clientId: created.clientId }),
               );
               expect(result.toolCalls).toEqual([
                 expect.objectContaining({
@@ -361,7 +361,9 @@ describe("admin OAuth client SQLite scenarios", () => {
                 `Created confidential OAuth client.\nClient ID: ${clientId}\nClient secret: ${clientSecret}\nStore this secret securely; it is only returned at creation.\n`,
               );
               assert(
-                await ctx.runtime.objects.auth.singleton().commands.hasOAuthClient({ clientId }),
+                await ctx.runtime.objects.auth
+                  .singleton()
+                  .commands.getOAuthClientFacts({ clientId }),
               );
               const publicResult = await bash.exec(
                 'admin.oauth-clients.create --name "Accounting SPA" --redirect-uri https://accounting.example/callback --scope openid --client-type public --format text',
@@ -412,7 +414,7 @@ describe("admin OAuth client SQLite scenarios", () => {
               assert(
                 await ctx.runtime.objects.auth
                   .singleton()
-                  .commands.hasOAuthClient({ clientId: printedCreate.stdout.trim() }),
+                  .commands.getOAuthClientFacts({ clientId: printedCreate.stdout.trim() }),
               );
               for (const call of commandCallsResult.filter(
                 (call) => call.command === "admin.oauth-clients.create",
@@ -583,7 +585,13 @@ describe("admin OAuth client SQLite scenarios", () => {
     await runOAuthAdminSqliteScenario(
       defineBackofficeScenario({
         name: "create OAuth credentials then register a Backoffice app",
-        vars: () => ({ cookie: "", userId: "", clientId: "", clientSecret: "" }),
+        vars: () => ({
+          cookie: "",
+          userId: "",
+          clientId: "",
+          clientSecret: "",
+          rotatedOutSecret: "",
+        }),
         steps: ({ when, then, runner }) => [
           when.auth.signUp({ email: "oauth-admin@example.com", captureSessionCookieAs: "cookie" }),
           then.assert(
@@ -637,19 +645,82 @@ describe("admin OAuth client SQLite scenarios", () => {
                 .commands.listApps({ pageSize: 25, cursor: null });
               assert(beforeRegistration.ok);
               expect(beforeRegistration.value.apps).toEqual([]);
-              const registered = await executeBackofficeRuntimeTool(
-                adminAppsRuntimeTools[0],
-                {
-                  oauthClientId: created.clientId,
-                  requestedPermissions: [BACKOFFICE_PERMISSION.events.emit],
-                },
-                createBackofficeToolContext(context),
-              );
-              assert(registered.created);
+              const registration = {
+                oauthClientId: created.clientId,
+                requestedPermissions: [BACKOFFICE_PERMISSION.events.emit],
+              };
+              await expect(
+                executeBackofficeRuntimeTool(
+                  adminAppsRuntimeTools[0],
+                  registration,
+                  createBackofficeToolContext(context),
+                ),
+              ).rejects.toThrow("must allow the backoffice scope");
 
               const { bash, commandCallsResult } = createInteractiveBashHost({
                 context: { ...context, stateBackend: context.stateBackend },
               });
+              const updateCommand = `admin.oauth-clients.update --client-id ${created.clientId} ${clientInput.redirectUris.map((uri) => `--redirect-uri ${uri}`).join(" ")} ${[...clientInput.scopes, "backoffice"].map((scope) => `--scope ${scope}`).join(" ")} --client-credentials --format json`;
+              await ctx.runtime.objects.auth.singleton().commands.applyScenarioFixture({
+                users: [
+                  {
+                    id: "other-admin",
+                    email: "other-admin@example.com",
+                    role: "admin",
+                    status: "active",
+                  },
+                ],
+              });
+              const otherContext = oauthAdminContext(ctx, "other-admin");
+              assert(otherContext.stateBackend);
+              const notOwner = await createInteractiveBashHost({
+                context: { ...otherContext, stateBackend: otherContext.stateBackend },
+              }).bash.exec(updateCommand);
+              assert.equal(notOwner.exitCode, 1);
+              assert.equal(
+                notOwner.stderr,
+                `Only the administrator who owns OAuth client '${created.clientId}' can change it. Check its owner with admin.oauth-clients.list, or create a new client.\n`,
+              );
+              const widened = await bash.exec(updateCommand);
+              assert.equal(widened.exitCode, 0, widened.stderr);
+              expect(JSON.parse(widened.stdout)).toEqual({
+                clientId: created.clientId,
+                redirectUris: clientInput.redirectUris,
+                scopes: [...clientInput.scopes, "backoffice"],
+                clientCredentials: true,
+              });
+              const updatedMetadata = await oauthAuthRequest(
+                ctx,
+                `/oauth2/get-client?client_id=${created.clientId}`,
+                ctx.vars.cookie,
+              );
+              expect(clientMetadataSchema.parse(await updatedMetadata.json()).grant_types).toEqual([
+                "authorization_code",
+                "refresh_token",
+                "client_credentials",
+              ]);
+              const registered = await executeBackofficeRuntimeTool(
+                adminAppsRuntimeTools[0],
+                registration,
+                createBackofficeToolContext(context),
+              );
+              assert(registered.created);
+
+              const rotated = await bash.exec(
+                `admin.oauth-clients.rotate-secret --client-id ${created.clientId} --format json`,
+              );
+              assert.equal(rotated.exitCode, 0, rotated.stderr);
+              const { clientSecret: rotatedSecret } = z
+                .object({ clientSecret: z.string().min(1) })
+                .parse(JSON.parse(rotated.stdout));
+              ctx.vars.rotatedOutSecret = ctx.vars.clientSecret;
+              ctx.vars.clientSecret = rotatedSecret;
+              expect(commandCallsResult).toContainEqual(
+                expect.objectContaining({
+                  command: "admin.oauth-clients.rotate-secret",
+                  output: "[redacted]",
+                }),
+              );
               const publicResult = await bash.exec(
                 'admin.oauth-clients.create --name "Accounting SPA" --redirect-uri https://accounting.example/callback --scope openid --client-type public --format json',
               );
@@ -708,8 +779,12 @@ describe("admin OAuth client SQLite scenarios", () => {
             "the returned confidential secret authenticates after an Auth restart",
             async (ctx) => {
               const auth = ctx.runtime.objects.auth.singleton();
-              assert(await auth.commands.hasOAuthClient({ clientId: ctx.vars.clientId }));
-              for (const secret of ["wrong-secret", ctx.vars.clientSecret]) {
+              assert(await auth.commands.getOAuthClientFacts({ clientId: ctx.vars.clientId }));
+              for (const secret of [
+                "wrong-secret",
+                ctx.vars.rotatedOutSecret,
+                ctx.vars.clientSecret,
+              ]) {
                 const grant = await authorizeOAuthClient(ctx, ctx.vars.cookie, ctx.vars.clientId);
                 const response = await auth.http.fetch(
                   new Request("https://backoffice.example/api/auth/oauth2/token", {
@@ -726,7 +801,7 @@ describe("admin OAuth client SQLite scenarios", () => {
                     }),
                   }),
                 );
-                if (secret === "wrong-secret") {
+                if (secret !== ctx.vars.clientSecret) {
                   assert.equal(response.status, 401, await response.clone().text());
                   assert.equal(
                     z.object({ error: z.string() }).parse(await response.json()).error,

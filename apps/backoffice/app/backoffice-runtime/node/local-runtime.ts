@@ -3,6 +3,7 @@ import type { WorkerTypeChecker } from "@fragno-dev/codemode/compiler/compile-wo
 import { defaultFragnoRuntime } from "@fragno-dev/core";
 
 import { createControlPlaneAuthorityResolver } from "@/backoffice-runtime/control-plane-authority-resolver";
+import { createAppInstallationAuthorityResolver } from "@/fragno/app-installations/authority";
 import { createAutomationRouteAuthorityResolver } from "@/fragno/automation/authority";
 import type { AutomationSourceReader } from "@/fragno/automation/automation-source";
 import type { PiAvailableModel } from "@/fragno/pi-manager/pi-agent-contract";
@@ -108,16 +109,24 @@ export async function createLocalBackofficeRuntime(
     authorityResolver:
       options.authorityResolver ??
       createControlPlaneAuthorityResolver({
-        resolver: createAutomationRouteAuthorityResolver({
-          fallbackResolver: createBackofficeAuthorityResolver(
-            {
-              getUserAuthorityFacts: async (input) =>
-                await objects.auth.singleton().commands.getUserAuthorityFacts(input),
-            },
-            { now: () => objectFactory.now() },
-          ),
-          lookupRoute: async ({ scope, routeId }) =>
-            await objects.automations.for(scope).commands.getRouteForAuthority({ id: routeId }),
+        resolver: createAppInstallationAuthorityResolver({
+          resolver: createAutomationRouteAuthorityResolver({
+            fallbackResolver: createBackofficeAuthorityResolver(
+              {
+                getUserAuthorityFacts: async (input) =>
+                  await objects.auth.singleton().commands.getUserAuthorityFacts(input),
+              },
+              { now: () => objectFactory.now() },
+            ),
+            lookupRoute: async ({ scope, routeId }) =>
+              await objects.automations.for(scope).commands.getRouteForAuthority({ id: routeId }),
+          }),
+          installations: {
+            getInstallation: async ({ organizationId, appId }) =>
+              await objects.appInstallations
+                .forOrg(organizationId)
+                .commands.getInstallation({ appId }),
+          },
         }),
         auth: {
           getUserOrganizationAuthorityFacts: async (input) =>

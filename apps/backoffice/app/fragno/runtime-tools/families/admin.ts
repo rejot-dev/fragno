@@ -26,6 +26,10 @@ import type {
   BackofficeOAuthClientCreateResult,
   BackofficeOAuthClientListInput,
   BackofficeOAuthClientPage,
+  BackofficeOAuthClientRotateSecretInput,
+  BackofficeOAuthClientRotateSecretResult,
+  BackofficeOAuthClientUpdateInput,
+  BackofficeOAuthClientUpdateResult,
 } from "@/fragno/auth/oauth-client";
 import { defineCliArgsParser } from "@/fragno/runtime-tools/bash-cli";
 
@@ -58,6 +62,14 @@ export type AdminRuntime = {
     input: BackofficeOAuthClientListInput,
     administratorUserId: string,
   ): Promise<BackofficeOAuthClientPage>;
+  updateOAuthClient(
+    input: BackofficeOAuthClientUpdateInput,
+    administratorUserId: string,
+  ): Promise<BackofficeOAuthClientUpdateResult>;
+  rotateOAuthClientSecret(
+    input: BackofficeOAuthClientRotateSecretInput,
+    administratorUserId: string,
+  ): Promise<BackofficeOAuthClientRotateSecretResult>;
   createApp(input: BackofficeAppRegistrationInput): Promise<BackofficeAppRegistrationResult>;
   listApps(input: BackofficeAppPageInput): Promise<BackofficeAppPage>;
   createSignUpInvitation(input: {
@@ -459,7 +471,8 @@ export const adminToolFamily = defineBackofficeRuntimeToolFamily({
   permissions: {
     "apps.manage": "Register apps for existing OAuth clients (System administrators only).",
     "apps.read": "List global app registrations (System administrators only).",
-    "oauth-clients.manage": "Create Auth-owned OAuth clients (System administrators only).",
+    "oauth-clients.manage":
+      "Create Auth-owned OAuth clients, and update or rotate secrets of clients you own (System administrators only).",
     "oauth-clients.read":
       "List the global OAuth client catalog without credentials (System administrators only).",
     "sign-up-invitations.manage": "Create links that authorize Backoffice account sign-up.",

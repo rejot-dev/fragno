@@ -62,12 +62,20 @@ import {
 import {
   backofficeOAuthClientCreateInputSchema,
   backofficeOAuthClientListInputSchema,
-  type BackofficeOAuthClientCreateInput,
+  backofficeOAuthClientRotateSecretInputSchema,
+  backofficeOAuthClientUpdateInputSchema,
+  type BackofficeOAuthClientCreateRequest,
   type BackofficeOAuthClientCreateResult,
+  type BackofficeOAuthClientFacts,
   type BackofficeOAuthClientListInput,
   type BackofficeOAuthClientPage,
+  type BackofficeOAuthClientRotateSecretInput,
+  type BackofficeOAuthClientRotateSecretResult,
+  type BackofficeOAuthClientUpdateInput,
+  type BackofficeOAuthClientUpdateResult,
 } from "@/fragno/auth/oauth-client";
 import type { BackofficeOAuthConsentPage } from "@/fragno/auth/oauth-consent";
+import { issueAppInstallationCode } from "@/fragno/auth/token-lifecycle";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 import {
   AUTH_AUTOMATION_EVENT_ORGANIZATION_CREATED,
@@ -86,7 +94,10 @@ import {
   ensureUserHasOrganization,
   type UserOrganizationDependencies,
 } from "./auth-user-organization";
-import { exchangeBackofficeExecutionToken } from "./auth/backoffice-execution-token";
+import {
+  authenticateInstalledAppClient,
+  exchangeBackofficeExecutionToken,
+} from "./auth/backoffice-execution-token";
 import {
   BackofficeUserTokenGrantForbiddenError,
   type BackofficeUserTokenGrantResolution,
@@ -99,8 +110,12 @@ import {
   createBackofficeAdminOAuthClient,
   getBackofficeCliOAuthConfig,
   initializeBackofficeCodemodeOAuthClient,
+  getBackofficeOAuthClientFacts,
+  initializeBackofficeOAuthResource,
   listBackofficeOAuthClients,
-  resolveBackofficeCodemodeExecutionPolicy,
+  resolveBackofficeOAuthExecutionPolicy,
+  rotateBackofficeAdminOAuthClientSecret,
+  updateBackofficeAdminOAuthClient,
 } from "./auth/better-auth-oauth";
 import { listBackofficeOAuthConsentPage } from "./auth/better-auth-oauth-consent";
 import { createBackofficeTokenPlugin } from "./auth/better-auth-plugin";
@@ -834,6 +849,9 @@ export class InMemoryAuthObject implements AuthObject {
   readonly #database: Kysely<AuthDatabase>;
   readonly #ready: Promise<void>;
   readonly #authByBaseUrl = new Map<string, BetterAuthInstance>();
+  // Shared per origin, so concurrent first requests await one creation instead of racing on the
+  // resource's unique identifier.
+  readonly #oauthResourceInitializations = new Map<string, Promise<void>>();
   readonly #rateLimits = new Map<string, { key: string; count: number; windowStartedAt: number }>();
   #adminGrantQueue: Promise<void> = Promise.resolve();
   #processingHooks: Promise<void> | null = null;
@@ -1062,6 +1080,17 @@ export class InMemoryAuthObject implements AuthObject {
     } satisfies BetterAuthOptions;
 
     return options;
+  }
+
+  async #initializeOAuthResource(auth: BetterAuthInstance, baseURL: string): Promise<void> {
+    let initialization = this.#oauthResourceInitializations.get(baseURL);
+    if (!initialization) {
+      initialization = initializeBackofficeOAuthResource(auth, baseURL);
+      this.#oauthResourceInitializations.set(baseURL, initialization);
+      // A failed attempt must not be remembered; the next request retries.
+      initialization.catch(() => this.#oauthResourceInitializations.delete(baseURL));
+    }
+    await initialization;
   }
 
   #getAuth(baseURL: string) {
@@ -1320,12 +1349,16 @@ export class InMemoryAuthObject implements AuthObject {
   }
 
   /** Creates Auth-owned credentials; the caller identity comes from the authorized runtime tool. */
-  async createAdminOAuthClient(
-    input: BackofficeOAuthClientCreateInput & { administratorUserId: string },
-  ): Promise<BackofficeOAuthClientCreateResult> {
-    const parsed = backofficeOAuthClientCreateInputSchema
-      .extend({ administratorUserId: z.string().min(1) })
-      .parse(input);
+  async createAdminOAuthClient({
+    administratorUserId,
+    ...input
+  }: BackofficeOAuthClientCreateRequest & {
+    administratorUserId: string;
+  }): Promise<BackofficeOAuthClientCreateResult> {
+    const parsed = {
+      ...backofficeOAuthClientCreateInputSchema.parse(input),
+      administratorUserId: z.string().min(1).parse(administratorUserId),
+    };
     await this.#ready;
     // Endpoint session injection is confined to this instance, never the cached HTTP Auth instances.
     const auth = betterAuth(this.#createOptions("http://localhost"));
@@ -1346,15 +1379,65 @@ export class InMemoryAuthObject implements AuthObject {
     return await listBackofficeOAuthClients(this.#getAuth("http://localhost"), parsed);
   }
 
-  /** Internal identity lookup for app registration; never exposes OAuth client credentials. */
-  async hasOAuthClient(input: { clientId: string }): Promise<boolean> {
+  /** Owner-only client changes run on an isolated Auth instance under live administrator checks. */
+  async updateAdminOAuthClient({
+    administratorUserId,
+    ...input
+  }: BackofficeOAuthClientUpdateInput & {
+    administratorUserId: string;
+  }): Promise<BackofficeOAuthClientUpdateResult> {
+    const parsed = {
+      ...backofficeOAuthClientUpdateInputSchema.parse(input),
+      administratorUserId: z.string().min(1).parse(administratorUserId),
+    };
+    await this.#ready;
+    return await updateBackofficeAdminOAuthClient(
+      betterAuth(this.#createOptions("http://localhost")),
+      parsed,
+    );
+  }
+
+  async rotateAdminOAuthClientSecret(
+    input: BackofficeOAuthClientRotateSecretInput & { administratorUserId: string },
+  ): Promise<BackofficeOAuthClientRotateSecretResult> {
+    const parsed = backofficeOAuthClientRotateSecretInputSchema
+      .extend({ administratorUserId: z.string().min(1) })
+      .parse(input);
+    await this.#ready;
+    return await rotateBackofficeAdminOAuthClientSecret(
+      betterAuth(this.#createOptions("http://localhost")),
+      parsed,
+    );
+  }
+
+  /** Internal client lookup for app registration and installation; never exposes credentials. */
+  async getOAuthClientFacts(input: {
+    clientId: string;
+  }): Promise<BackofficeOAuthClientFacts | null> {
     const clientId = z.string().min(1).max(191).parse(input.clientId);
-    const { adapter } = await this.#authContext();
-    const client = await adapter.findOne<{ clientId: string }>({
-      model: "oauthClient",
-      where: [{ field: "clientId", value: clientId }],
-    });
-    return client !== null;
+    await this.#ready;
+    return await getBackofficeOAuthClientFacts(this.#getAuth("http://localhost"), clientId);
+  }
+
+  /** Signs a short-lived code the app's server redeems to claim the installation it was sent for. */
+  async issueAppInstallationCode(input: {
+    appId: string;
+    organizationId: string;
+    activation: number;
+  }): Promise<{ code: string }> {
+    const parsed = z
+      .strictObject({
+        appId: z.string().min(1),
+        organizationId: z.string().min(1),
+        activation: z.number().int().positive(),
+      })
+      .parse(input);
+    const authContext = await this.#authContext();
+    const issued = await issueAppInstallationCode(
+      { context: authContext } as Parameters<typeof issueAppInstallationCode>[0],
+      parsed,
+    );
+    return { code: issued.token };
   }
 
   async getBackofficeCliOAuthConfig(input: {
@@ -1365,20 +1448,58 @@ export class InMemoryAuthObject implements AuthObject {
     return await getBackofficeCliOAuthConfig(this.#getAuth(baseURL), input);
   }
 
+  #resolveOAuthClientPolicy(auth: BetterAuthInstance, requestUrl: string) {
+    const objects = this.#runtime.objects;
+    return async function resolveOAuthClientPolicy(clientId: string) {
+      return await resolveBackofficeOAuthExecutionPolicy(auth, {
+        requestUrl,
+        clientId,
+        findAppIdByOAuthClientId: async function findRegisteredAppId(oauthClientId) {
+          const app = await objects.apps.singleton().commands.getAppByOAuthClientId({
+            oauthClientId,
+          });
+          return app?.id ?? null;
+        },
+      });
+    };
+  }
+
+  async authenticateInstalledAppClient(input: {
+    requestUrl: string;
+    oauthAccessToken: string;
+  }): Promise<{ appId: string }> {
+    const parsed = backofficeExecutionTokenExchangeInputSchema
+      .pick({ requestUrl: true, oauthAccessToken: true })
+      .parse(input);
+    await this.#ready;
+    const auth = this.#getAuth(new URL(parsed.requestUrl).origin);
+    return await authenticateInstalledAppClient(auth, parsed, {
+      resolveClientPolicy: this.#resolveOAuthClientPolicy(auth, parsed.requestUrl),
+    });
+  }
+
   async exchangeBackofficeExecutionToken(
     input: BackofficeExecutionTokenExchangeInput,
   ): Promise<BackofficeExecutionTokenResult> {
     const parsed = backofficeExecutionTokenExchangeInputSchema.parse(input);
     await this.#ready;
     const auth = this.#getAuth(new URL(parsed.requestUrl).origin);
+    const objects = this.#runtime.objects;
     return await exchangeBackofficeExecutionToken(auth, parsed, {
-      resolveClientPolicy: async function resolveFirstPartyCodemodePolicy(clientId) {
-        return await resolveBackofficeCodemodeExecutionPolicy(auth, {
-          requestUrl: parsed.requestUrl,
-          clientId,
-        });
-      },
+      resolveClientPolicy: this.#resolveOAuthClientPolicy(auth, parsed.requestUrl),
       resolveUserGrant: resolveBackofficeUserTokenGrant,
+      resolveActiveInstallation: async function resolveActiveInstallation(input) {
+        const installation = await objects.appInstallations
+          .forOrg(input.organizationId)
+          .commands.getInstallation({ appId: input.appId });
+        return installation?.status === "active"
+          ? {
+              activation: installation.activation,
+              resourceScope: installation.resourceScope,
+              externalAccount: installation.externalAccount,
+            }
+          : null;
+      },
     });
   }
 
@@ -2001,12 +2122,18 @@ export class InMemoryAuthObject implements AuthObject {
   async fetch(request: Request): Promise<Response> {
     await this.#ready;
     try {
-      if (new URL(request.url).pathname === "/api/admin/grant") {
+      const pathname = new URL(request.url).pathname;
+      if (pathname === "/api/admin/grant") {
         return await this.#handleAdminGrantRequest(request);
       }
-      return await this.#getAuth(resolveAuthBaseUrl(request)).handler(
-        new Request(request, { redirect: "manual" }),
-      );
+      const baseURL = resolveAuthBaseUrl(request);
+      const auth = this.#getAuth(baseURL);
+      const validatesOAuthResource =
+        pathname.startsWith("/api/auth/oauth2/") || pathname.startsWith("/api/auth/device/");
+      if (validatesOAuthResource) {
+        await this.#initializeOAuthResource(auth, baseURL);
+      }
+      return await auth.handler(new Request(request, { redirect: "manual" }));
     } finally {
       await this.#scheduleNextHookAlarm();
     }
@@ -2064,7 +2191,7 @@ export class Auth extends DurableObject<CloudflareEnv> implements AuthObject {
   }
 
   async createAdminOAuthClient(
-    input: BackofficeOAuthClientCreateInput & { administratorUserId: string },
+    input: BackofficeOAuthClientCreateRequest & { administratorUserId: string },
   ): Promise<BackofficeOAuthClientCreateResult> {
     return await this.#object.createAdminOAuthClient(input);
   }
@@ -2075,8 +2202,28 @@ export class Auth extends DurableObject<CloudflareEnv> implements AuthObject {
     return await this.#object.listAdminOAuthClients(input);
   }
 
-  async hasOAuthClient(input: { clientId: string }): Promise<boolean> {
-    return await this.#object.hasOAuthClient(input);
+  async updateAdminOAuthClient(
+    input: BackofficeOAuthClientUpdateInput & { administratorUserId: string },
+  ) {
+    return await this.#object.updateAdminOAuthClient(input);
+  }
+
+  async rotateAdminOAuthClientSecret(
+    input: BackofficeOAuthClientRotateSecretInput & { administratorUserId: string },
+  ) {
+    return await this.#object.rotateAdminOAuthClientSecret(input);
+  }
+
+  async getOAuthClientFacts(input: { clientId: string }) {
+    return await this.#object.getOAuthClientFacts(input);
+  }
+
+  async issueAppInstallationCode(input: {
+    appId: string;
+    organizationId: string;
+    activation: number;
+  }) {
+    return await this.#object.issueAppInstallationCode(input);
   }
 
   async getBackofficeCliOAuthConfig(input: {
@@ -2089,6 +2236,10 @@ export class Auth extends DurableObject<CloudflareEnv> implements AuthObject {
     input: BackofficeExecutionTokenExchangeInput,
   ): Promise<BackofficeExecutionTokenResult> {
     return await this.#object.exchangeBackofficeExecutionToken(input);
+  }
+
+  async authenticateInstalledAppClient(input: { requestUrl: string; oauthAccessToken: string }) {
+    return await this.#object.authenticateInstalledAppClient(input);
   }
 
   async getUserAuthorityFacts(input: { userId: string; organizationId?: string }) {

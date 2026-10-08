@@ -1,5 +1,6 @@
 import {
-  backofficeAppInstallationGrantsInputSchema,
+  appInstallationResourceScopeSchema,
+  backofficeAppInstallationAccessInputSchema,
   backofficeAppInstallationMutationResultSchema,
   backofficeAppInstallationPageInputSchema,
   backofficeAppInstallationPageSchema,
@@ -51,6 +52,8 @@ const grantsOption = {
   valueName: "json",
   description: "Explicitly approved subset of requested permissions; use [] for no grants",
 };
+const resourceScopeDescription =
+  'Resources the grants apply to: {"kind":"organization"} or {"kind":"projects","projectIds":["..."]}';
 
 const getAppTool = defineBackofficeRuntimeTool({
   id: "apps.get",
@@ -95,9 +98,11 @@ const installAppTool = defineBackofficeRuntimeTool({
   namespace: "apps",
   name: "install",
   description:
-    "Approve an app installation in the selected organization. Installer identity comes from the authenticated user; approval does not enable app execution.",
+    "Approve an app installation in the selected organization, limited to explicit permissions and resources. Installer identity comes from the authenticated user.",
   requiredPermissions: ["manage"],
-  inputSchema: backofficeAppInstallationGrantsInputSchema,
+  inputSchema: backofficeAppInstallationAccessInputSchema.extend({
+    resourceScope: appInstallationResourceScopeSchema.default({ kind: "organization" }),
+  }),
   outputSchema: backofficeAppInstallationMutationResultSchema,
   execute: async (input, context: AppsToolContext) => {
     const { apps, userId } = requireAppsContext(context);
@@ -108,16 +113,26 @@ const installAppTool = defineBackofficeRuntimeTool({
       command: "apps.install",
       help: {
         summary:
-          "apps.install approves an organization-owned installation (organization owners/admins only). OAuth user consent is separate; app execution remains unavailable.",
-        options: [appIdOption, grantsOption],
+          "apps.install approves an organization-owned installation (organization owners/admins only). The app can then act only within these grants and resources; OAuth user consent is separate.",
+        options: [
+          appIdOption,
+          grantsOption,
+          {
+            name: "resource-scope-json",
+            valueRequired: true,
+            valueName: "json",
+            description: `${resourceScopeDescription} (default: whole organization)`,
+          },
+        ],
         examples: [
           "apps.install --app-id APP_ID --granted-permissions-json '[]'",
-          'apps.install --app-id APP_ID --granted-permissions-json \'[{"namespace":"events","permission":"emit"}]\'',
+          'apps.install --app-id APP_ID --granted-permissions-json \'[{"namespace":"events","permission":"emit"}]\' --resource-scope-json \'{"kind":"projects","projectIds":["PROJECT_ID"]}\'',
         ],
       },
       parse: defineCliArgsParser("apps.install", {
         appId: { kind: "string", required: true },
         grantedPermissions: { kind: "json", option: "granted-permissions-json", required: true },
+        resourceScope: { kind: "json", option: "resource-scope-json" },
       }),
       format: (result, options) =>
         options.format === "json" || options.print
@@ -171,7 +186,10 @@ function renderInstallation(installation: BackofficeAppInstallation) {
     `  App ID: ${installation.appId}`,
     `  Organization ID: ${installation.organizationId}`,
     `  Status: ${installation.status}`,
+    `  Activation: ${installation.activation}`,
     `  Granted permissions: ${installation.grantedPermissions.map(({ namespace, permission }) => `${namespace}.${permission}`).join(", ") || "none"}`,
+    `  Resources: ${installation.resourceScope.kind === "organization" ? "whole organization" : `projects ${installation.resourceScope.projectIds.join(", ")}`}`,
+    `  Linked account: ${installation.externalAccount ? `${installation.externalAccount.label} (${installation.externalAccount.id})` : "none"}`,
     `  Installed by user ID: ${installation.installedByUserId}`,
     `  Created at: ${installation.createdAt}`,
     `  Updated at: ${installation.updatedAt}`,
@@ -239,38 +257,49 @@ const listInstallationsTool = defineBackofficeRuntimeTool({
   },
 });
 
-const updateGrantsTool = defineBackofficeRuntimeTool({
-  id: "apps.installations.grants.update",
+const updateInstallationTool = defineBackofficeRuntimeTool({
+  id: "apps.installations.update",
   namespace: "apps",
-  name: "updateInstallationGrants",
+  name: "updateInstallation",
   description:
-    "Replace an active installation's approved grants with an explicit subset of the app declaration. Does not change installer attribution or enable execution.",
+    "Replace an active installation's approved permissions and resources. Takes effect immediately, including for issued app credentials. Does not change installer attribution.",
   requiredPermissions: ["manage"],
-  inputSchema: backofficeAppInstallationGrantsInputSchema,
+  inputSchema: backofficeAppInstallationAccessInputSchema,
   outputSchema: backofficeAppInstallationMutationResultSchema,
   execute: async (input, context: AppsToolContext) =>
-    await requireAppsContext(context).apps.updateInstallationGrants(input),
+    await requireAppsContext(context).apps.updateInstallationAccess(input),
   adapters: {
     bash: {
-      command: "apps.installations.grants.update",
+      command: "apps.installations.update",
       help: {
         summary:
-          "apps.installations.grants.update replaces approved grants (organization owners/admins only).",
-        options: [appIdOption, grantsOption],
+          "apps.installations.update replaces approved permissions and resources (organization owners/admins only). Both are required so access is never widened implicitly.",
+        options: [
+          appIdOption,
+          grantsOption,
+          {
+            name: "resource-scope-json",
+            required: true,
+            valueRequired: true,
+            valueName: "json",
+            description: resourceScopeDescription,
+          },
+        ],
         examples: [
-          "apps.installations.grants.update --app-id APP_ID --granted-permissions-json '[]'",
+          "apps.installations.update --app-id APP_ID --granted-permissions-json '[]' --resource-scope-json '{\"kind\":\"organization\"}'",
         ],
       },
-      parse: defineCliArgsParser("apps.installations.grants.update", {
+      parse: defineCliArgsParser("apps.installations.update", {
         appId: { kind: "string", required: true },
         grantedPermissions: { kind: "json", option: "granted-permissions-json", required: true },
+        resourceScope: { kind: "json", option: "resource-scope-json", required: true },
       }),
       format: (result, options) =>
         options.format === "json" || options.print
           ? { data: result }
           : {
               data: result,
-              stdout: `${result.changed ? "Updated installation grants." : "Installation grants unchanged."}\nInstallation ID: ${result.installationId}\n`,
+              stdout: `${result.changed ? "Updated installation access." : "Installation access unchanged."}\nInstallation ID: ${result.installationId}\n`,
             },
     },
   },
@@ -281,7 +310,7 @@ const uninstallAppTool = defineBackofficeRuntimeTool({
   namespace: "apps",
   name: "uninstall",
   description:
-    "Uninstall an app in the selected organization, clearing approved grants while retaining installation identity. Does not revoke personal OAuth consent.",
+    "Uninstall an app in the selected organization, clearing approved grants and its linked account while retaining installation identity. Immediately invalidates app credentials. Does not revoke personal OAuth consent.",
   requiredPermissions: ["manage"],
   inputSchema: backofficeAppLookupInputSchema,
   outputSchema: backofficeAppInstallationMutationResultSchema,
@@ -313,14 +342,14 @@ export const appsToolFamily = defineBackofficeRuntimeToolFamily({
   permissions: {
     read: "Review app declarations and the selected organization's installations.",
     manage:
-      "Approve installations, replace grants, and uninstall apps as an organization owner/admin.",
+      "Approve installations, replace permissions and resources, and uninstall apps as an organization owner/admin.",
   },
   tools: [
     getAppTool,
     installAppTool,
     getInstallationTool,
     listInstallationsTool,
-    updateGrantsTool,
+    updateInstallationTool,
     uninstallAppTool,
   ],
   isAvailable: (context: AppsToolContext) =>

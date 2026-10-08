@@ -1,4 +1,5 @@
 import { betterAuth, type BetterAuthPlugin } from "better-auth";
+import { APIError } from "better-auth/api";
 
 import { Cursor, decodeCursor } from "@fragno-dev/db";
 
@@ -11,9 +12,16 @@ import {
 
 import type { BackofficeCliOAuthConfig } from "@/fragno/auth/contracts";
 import {
+  BACKOFFICE_CLIENT_CREDENTIALS_SCOPES,
   BACKOFFICE_OAUTH_SCOPES,
+  backofficeOAuthClientGrantTypes,
   type BackofficeOAuthClientCreateInput,
   type BackofficeOAuthClientCreateResult,
+  type BackofficeOAuthClientFacts,
+  type BackofficeOAuthClientRotateSecretInput,
+  type BackofficeOAuthClientRotateSecretResult,
+  type BackofficeOAuthClientUpdateInput,
+  type BackofficeOAuthClientUpdateResult,
   type BackofficeOAuthClientListInput,
   type BackofficeOAuthClientPage,
   type BackofficeOAuthClientSummary,
@@ -43,11 +51,13 @@ type AdminCreateOAuthClientEndpoint = (input: {
     application_type: "native" | "web";
     grant_types: string[];
     require_pkce?: boolean;
+    client_credentials_scopes?: string[];
   };
 }) => Promise<OAuthClientAdministrativeResponse>;
 type StoreOAuthClient = {
   clientId: string;
   softwareId: string | null;
+  referenceId: string | null;
   name: string | null;
   scopes: string[] | null;
   disabled: boolean | number | null;
@@ -87,23 +97,35 @@ async function getAuthContext(auth: BetterAuthInstance): Promise<BetterAuthConte
   return await auth.$context;
 }
 
+/**
+ * Better Auth intersects requested scopes with the resource's allowed scopes. Allowing every
+ * Backoffice scope keeps identity claims available to apps that also request execution access.
+ */
 async function ensureBackofficeOAuthResource(
   adapter: BetterAuthAdapter,
   baseURL: string,
-): Promise<StoreOAuthResource> {
+): Promise<void> {
   const existingResource = await adapter.findOne<StoreOAuthResource>({
     model: "oauthResource",
     where: [{ field: "identifier", value: baseURL }],
   });
   if (existingResource) {
-    return existingResource;
+    const allowedScopes = existingResource.allowedScopes ?? [];
+    if (!BACKOFFICE_OAUTH_SCOPES.every((scope) => allowedScopes.includes(scope))) {
+      await adapter.update<StoreOAuthResource>({
+        model: "oauthResource",
+        where: [{ field: "id", value: existingResource.id }],
+        update: { allowedScopes: [...BACKOFFICE_OAUTH_SCOPES], updatedAt: new Date() },
+      });
+    }
+    return;
   }
-  return await adapter.create<StoreOAuthResource>({
+  await adapter.create<StoreOAuthResource>({
     model: "oauthResource",
     data: {
       identifier: baseURL,
       name: "Fragno Backoffice",
-      allowedScopes: [...BACKOFFICE_CODEMODE_OAUTH_SCOPES],
+      allowedScopes: [...BACKOFFICE_OAUTH_SCOPES],
       dpopBoundAccessTokensRequired: false,
       disabled: false,
       policyVersion: 1,
@@ -297,22 +319,26 @@ export async function listBackofficeOAuthClients(
   };
 }
 
-/** Uses an isolated Auth instance so synthetic server session state cannot leak to HTTP requests. */
-export async function createBackofficeAdminOAuthClient(
+/**
+ * Runs a session-gated Better Auth endpoint as the given administrator. Callers must use an
+ * isolated Auth instance so synthetic server session state cannot leak to HTTP requests.
+ */
+async function runAsAdministrator<T>(
   auth: BetterAuthInstance,
-  input: BackofficeOAuthClientCreateInput & { administratorUserId: string },
-): Promise<BackofficeOAuthClientCreateResult> {
+  administratorUserId: string,
+  run: () => Promise<T>,
+): Promise<T> {
   const authContext = await getAuthContext(auth);
-  const user = await authContext.internalAdapter.findUserById(input.administratorUserId);
+  const user = await authContext.internalAdapter.findUserById(administratorUserId);
   if (!user) {
-    throw new Error("Admin OAuth client creation requires an existing administrator user.");
+    throw new Error("Admin OAuth client management requires an existing administrator user.");
   }
   const now = new Date();
   authContext.session = {
     user,
     session: {
-      id: "backoffice-admin-oauth-client-create",
-      token: "backoffice-admin-oauth-client-create",
+      id: "backoffice-admin-oauth-client-management",
+      token: "backoffice-admin-oauth-client-management",
       userId: user.id,
       expiresAt: new Date(now.getTime() + 60_000),
       createdAt: now,
@@ -321,9 +347,83 @@ export async function createBackofficeAdminOAuthClient(
       userAgent: null,
     },
   };
-  const createClient = getAdminCreateOAuthClientEndpoint(auth);
   try {
-    const client = await createClient({
+    return await run();
+  } finally {
+    authContext.session = null;
+  }
+}
+
+/**
+ * Better Auth reports ownership failures as a bare UNAUTHORIZED error without a message. Name the
+ * actual rule so administrators know whose client it is and what to do.
+ */
+async function describeOAuthClientManagementErrors<T>(
+  auth: BetterAuthInstance,
+  clientId: string,
+  run: () => Promise<T>,
+): Promise<T> {
+  const client = await getBackofficeOAuthClientFacts(auth, clientId);
+  if (!client) {
+    throw new Error(
+      `OAuth client '${clientId}' was not found. List clients with admin.oauth-clients.list.`,
+    );
+  }
+  if (client.managedByBackoffice) {
+    throw new Error(
+      `OAuth client '${clientId}' is the deployment's Codemode client. Backoffice manages it, so it cannot be changed. Use a client created with admin.oauth-clients.create.`,
+    );
+  }
+  try {
+    return await run();
+  } catch (error) {
+    if (!(error instanceof APIError)) {
+      throw error;
+    }
+    if (error.status === "UNAUTHORIZED") {
+      throw new Error(
+        `Only the administrator who owns OAuth client '${clientId}' can change it. Check its owner with admin.oauth-clients.list, or create a new client.`,
+        { cause: error },
+      );
+    }
+    if (error.status === "NOT_FOUND") {
+      throw new Error(`OAuth client '${clientId}' was not found.`, { cause: error });
+    }
+    const description = (error.body as { error_description?: unknown } | undefined)
+      ?.error_description;
+    throw new Error(
+      typeof description === "string" && description
+        ? `OAuth client '${clientId}' could not be changed: ${description}.`
+        : `OAuth client '${clientId}' could not be changed (${error.status}).`,
+      { cause: error },
+    );
+  }
+}
+
+type AdminUpdateOAuthClientEndpoint = (input: {
+  headers: Headers;
+  body: {
+    client_id: string;
+    update: {
+      redirect_uris: string[];
+      scope: string;
+      grant_types: string[];
+      client_credentials_scopes: string[];
+    };
+  };
+}) => Promise<OAuthClientAdministrativeResponse & { client_credentials_scopes: string[] }>;
+type RotateOAuthClientSecretEndpoint = (input: {
+  headers: Headers;
+  body: { client_id: string };
+}) => Promise<OAuthClientAdministrativeResponse>;
+
+export async function createBackofficeAdminOAuthClient(
+  auth: BetterAuthInstance,
+  input: BackofficeOAuthClientCreateInput & { administratorUserId: string },
+): Promise<BackofficeOAuthClientCreateResult> {
+  const createClient = getAdminCreateOAuthClientEndpoint(auth);
+  const client = await runAsAdministrator(auth, input.administratorUserId, async () =>
+    createClient({
       headers: new Headers(),
       body: {
         client_name: input.name,
@@ -332,22 +432,100 @@ export async function createBackofficeAdminOAuthClient(
         token_endpoint_auth_method: input.clientType === "public" ? "none" : "client_secret_basic",
         application_type: input.applicationType,
         require_pkce: true,
-        grant_types: input.scopes.includes("offline_access")
-          ? ["authorization_code", "refresh_token"]
-          : ["authorization_code"],
+        grant_types: backofficeOAuthClientGrantTypes(input),
+        ...(input.clientCredentials
+          ? { client_credentials_scopes: [...BACKOFFICE_CLIENT_CREDENTIALS_SCOPES] }
+          : {}),
       },
-    });
-    return input.clientType === "public"
-      ? { clientType: "public", clientId: client.client_id, clientSecret: null }
-      : {
-          clientType: "confidential",
-          clientId: client.client_id,
-          // Better Auth's optional secret field covers public clients; confidential creation returns it.
-          clientSecret: client.client_secret!,
-        };
-  } finally {
-    authContext.session = null;
+    }),
+  );
+  return input.clientType === "public"
+    ? { clientType: "public", clientId: client.client_id, clientSecret: null }
+    : {
+        clientType: "confidential",
+        clientId: client.client_id,
+        // Better Auth's optional secret field covers public clients; confidential creation returns it.
+        clientSecret: client.client_secret!,
+      };
+}
+
+/** Better Auth permits only the owning administrator to change a client's settings. */
+export async function updateBackofficeAdminOAuthClient(
+  auth: BetterAuthInstance,
+  input: BackofficeOAuthClientUpdateInput & { administratorUserId: string },
+): Promise<BackofficeOAuthClientUpdateResult> {
+  // Plugin endpoints are erased from runtime-factory options; assert at the plugin boundary.
+  const { adminUpdateOAuthClient } = (
+    auth as unknown as { api: { adminUpdateOAuthClient: AdminUpdateOAuthClientEndpoint } }
+  ).api;
+  const client = await runAsAdministrator(auth, input.administratorUserId, async () =>
+    describeOAuthClientManagementErrors(auth, input.clientId, async () =>
+      adminUpdateOAuthClient({
+        headers: new Headers(),
+        body: {
+          client_id: input.clientId,
+          update: {
+            redirect_uris: input.redirectUris,
+            scope: input.scopes.join(" "),
+            grant_types: backofficeOAuthClientGrantTypes(input),
+            client_credentials_scopes: input.clientCredentials
+              ? [...BACKOFFICE_CLIENT_CREDENTIALS_SCOPES]
+              : [],
+          },
+        },
+      }),
+    ),
+  );
+  return {
+    clientId: client.client_id,
+    redirectUris: client.redirect_uris ?? [],
+    scopes: client.scope?.split(" ") ?? [],
+    clientCredentials: client.client_credentials_scopes.length > 0,
+  };
+}
+
+/** Rotation is limited to the owning administrator; the previous secret stops working at once. */
+export async function rotateBackofficeAdminOAuthClientSecret(
+  auth: BetterAuthInstance,
+  input: BackofficeOAuthClientRotateSecretInput & { administratorUserId: string },
+): Promise<BackofficeOAuthClientRotateSecretResult> {
+  const { rotateClientSecret } = (
+    auth as unknown as { api: { rotateClientSecret: RotateOAuthClientSecretEndpoint } }
+  ).api;
+  const client = await runAsAdministrator(auth, input.administratorUserId, async () =>
+    describeOAuthClientManagementErrors(auth, input.clientId, async () =>
+      rotateClientSecret({ headers: new Headers(), body: { client_id: input.clientId } }),
+    ),
+  );
+  if (!client.client_secret) {
+    throw new Error("OAuth client secret rotation did not return a secret.");
   }
+  return { clientId: client.client_id, clientSecret: client.client_secret };
+}
+
+/** Reads credential-free client facts; app registration and installation flows validate these. */
+export async function getBackofficeOAuthClientFacts(
+  auth: BetterAuthInstance,
+  clientId: string,
+): Promise<BackofficeOAuthClientFacts | null> {
+  const client = await (
+    await getAuthContext(auth)
+  ).adapter.findOne<StoreOAuthClient & { redirectUris: string[] | null }>({
+    model: "oauthClient",
+    select: ["clientId", "referenceId", "name", "scopes", "disabled", "redirectUris"],
+    where: [{ field: "clientId", value: clientId }],
+  });
+  return client
+    ? {
+        clientId: client.clientId,
+        name: client.name,
+        redirectUris: client.redirectUris ?? [],
+        scopes: client.scopes ?? [],
+        disabled: isOAuthClientDisabled(client),
+        // Only the server bootstrap assigns this reference owner; managed clients cannot claim it.
+        managedByBackoffice: client.referenceId === BACKOFFICE_CODEMODE_OAUTH_SOFTWARE_ID,
+      }
+    : null;
 }
 
 export async function initializeBackofficeCodemodeOAuthClient(
@@ -355,6 +533,14 @@ export async function initializeBackofficeCodemodeOAuthClient(
 ): Promise<void> {
   const authContext = await getAuthContext(auth);
   await ensureBackofficeCodemodeOAuthClient(authContext, getAdminCreateOAuthClientEndpoint(auth));
+}
+
+/** Each served origin is its own OAuth resource, so apps can target it before Codemode is used. */
+export async function initializeBackofficeOAuthResource(
+  auth: BetterAuthInstance,
+  baseURL: string,
+): Promise<void> {
+  await ensureBackofficeOAuthResource((await getAuthContext(auth)).adapter, baseURL);
 }
 
 export async function getBackofficeCliOAuthConfig(
@@ -372,13 +558,34 @@ export async function getBackofficeCliOAuthConfig(
   };
 }
 
-/** Codemode is the only first-party OAuth execution client; app registration never grants this policy. */
-export async function resolveBackofficeCodemodeExecutionPolicy(
+/**
+ * Codemode is the only first-party OAuth execution client. Any other enabled client can only
+ * receive app-bound authority, and only once it is registered as a Backoffice app.
+ */
+export async function resolveBackofficeOAuthExecutionPolicy(
   auth: BetterAuthInstance,
-  input: { requestUrl: string; clientId: string },
+  input: {
+    requestUrl: string;
+    clientId: string;
+    findAppIdByOAuthClientId(clientId: string): Promise<string | null>;
+  },
 ): Promise<BackofficeOAuthExecutionPolicy | null> {
   const baseURL = new URL(input.requestUrl).origin;
-  const { client } = await loadBackofficeCodemodeOAuth(auth, baseURL);
-  const disabled = client.disabled === true || client.disabled === 1;
-  return !disabled && input.clientId === client.clientId ? { kind: "first-party-user" } : null;
+  const { authContext, client: codemodeClient } = await loadBackofficeCodemodeOAuth(auth, baseURL);
+  if (input.clientId === codemodeClient.clientId) {
+    return isOAuthClientDisabled(codemodeClient) ? null : { kind: "first-party-user" };
+  }
+  const client = await authContext.adapter.findOne<StoreOAuthClient>({
+    model: "oauthClient",
+    where: [{ field: "clientId", value: input.clientId }],
+  });
+  if (!client || isOAuthClientDisabled(client)) {
+    return null;
+  }
+  const appId = await input.findAppIdByOAuthClientId(input.clientId);
+  return appId === null ? null : { kind: "installed-app", appId };
+}
+
+function isOAuthClientDisabled(client: StoreOAuthClient): boolean {
+  return client.disabled === true || client.disabled === 1;
 }

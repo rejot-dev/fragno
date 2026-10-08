@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import {
   backofficeAppLookupInputSchema,
   type BackofficeAppLookupInput,
@@ -7,19 +8,68 @@ import {
 import type { BackofficeAppOperationResult } from "@/fragno/apps/errors";
 import { appPermissionsSchema } from "@/fragno/apps/permissions";
 
-/** Organization ownership comes from the object scope, never an RPC payload. */
-export const backofficeAppInstallationInputSchema = backofficeAppLookupInputSchema.extend({
+/**
+ * The organization resources an installation may act on. Project lists are sets; they are
+ * normalized so equal selections compare equal regardless of order.
+ */
+export const appInstallationResourceScopeSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("organization") }),
+  z.strictObject({
+    kind: z.literal("projects"),
+    projectIds: z
+      .array(z.string().trim().min(1).max(191))
+      .min(1)
+      .max(100)
+      .transform((projectIds) => [...new Set(projectIds)].sort()),
+  }),
+]);
+export type AppInstallationResourceScope = z.infer<typeof appInstallationResourceScopeSchema>;
+
+/** The one installation resource policy, shared by credential issuance and live authorization. */
+export function appInstallationResourceScopeContains(
+  resourceScope: AppInstallationResourceScope,
+  scope: Extract<BackofficeContextScope, { kind: "org" | "project" }>,
+): boolean {
+  return (
+    resourceScope.kind === "organization" ||
+    (scope.kind === "project" && resourceScope.projectIds.includes(scope.projectId))
+  );
+}
+
+/** What an organization approves: permissions, and the resources they apply to. */
+export const appInstallationAccessSchema = z.strictObject({
   grantedPermissions: appPermissionsSchema,
-  installedByUserId: z.string().min(1).max(191),
+  resourceScope: appInstallationResourceScopeSchema,
 });
+
+/** An app-side tenant, such as a Bookkeeping organization, claimed by the app's server. */
+export const appInstallationExternalAccountSchema = z.strictObject({
+  id: z.string().trim().min(1).max(191),
+  label: z.string().trim().min(1).max(191),
+});
+export type AppInstallationExternalAccount = z.infer<typeof appInstallationExternalAccountSchema>;
+
+/** Organization ownership comes from the object scope, never an RPC payload. */
+export const backofficeAppInstallationInputSchema = backofficeAppLookupInputSchema
+  .extend(appInstallationAccessSchema.shape)
+  .extend({ installedByUserId: z.string().min(1).max(191) });
 export type BackofficeAppInstallationInput = z.infer<typeof backofficeAppInstallationInputSchema>;
 
-/** Grant changes are explicit control-plane operations and cannot change organization ownership. */
-export const backofficeAppInstallationGrantsInputSchema = backofficeAppLookupInputSchema.extend({
-  grantedPermissions: appPermissionsSchema,
+/** Access changes are explicit control-plane operations and cannot change organization ownership. */
+export const backofficeAppInstallationAccessInputSchema = backofficeAppLookupInputSchema.extend(
+  appInstallationAccessSchema.shape,
+);
+export type BackofficeAppInstallationAccessInput = z.infer<
+  typeof backofficeAppInstallationAccessInputSchema
+>;
+
+/** Binds the app's own tenant to one activation; only the authenticated app server may claim. */
+export const backofficeAppInstallationClaimInputSchema = backofficeAppLookupInputSchema.extend({
+  activation: z.number().int().positive(),
+  externalAccount: appInstallationExternalAccountSchema,
 });
-export type BackofficeAppInstallationGrantsInput = z.infer<
-  typeof backofficeAppInstallationGrantsInputSchema
+export type BackofficeAppInstallationClaimInput = z.infer<
+  typeof backofficeAppInstallationClaimInputSchema
 >;
 
 /** Cursors remain bound to the owning organization even when each object has its own database. */
@@ -40,8 +90,13 @@ export const backofficeAppInstallationSchema = z.strictObject({
   appId: z.string().min(1),
   organizationId: z.string().min(1),
   grantedPermissions: appPermissionsSchema,
+  resourceScope: appInstallationResourceScopeSchema,
+  /** Null until the app's server claims the installation for one of its own tenants. */
+  externalAccount: appInstallationExternalAccountSchema.nullable(),
   installedByUserId: z.string().min(1),
   status: z.enum(["active", "uninstalled"]),
+  /** Increments on reinstallation; app credentials are bound to the activation that issued them. */
+  activation: z.number().int().positive(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
 });
@@ -54,6 +109,20 @@ export const backofficeAppInstallationMutationResultSchema = z.strictObject({
 });
 export type BackofficeAppInstallationMutationResult = z.infer<
   typeof backofficeAppInstallationMutationResultSchema
+>;
+
+/** What the app learns about the installation it claimed; never credentials or installer identity. */
+export const backofficeAppInstallationClaimResultSchema = backofficeAppInstallationSchema.pick({
+  id: true,
+  appId: true,
+  organizationId: true,
+  grantedPermissions: true,
+  resourceScope: true,
+  externalAccount: true,
+  activation: true,
+});
+export type BackofficeAppInstallationClaimResult = z.infer<
+  typeof backofficeAppInstallationClaimResultSchema
 >;
 
 /** Organization installation history includes uninstalled records. */
@@ -73,9 +142,12 @@ export type BackofficeAppInstallationsCommands = {
   listInstallations(
     input: BackofficeAppInstallationPageInput,
   ): Promise<BackofficeAppOperationResult<BackofficeAppInstallationPage>>;
-  updateInstallationGrants(
-    input: BackofficeAppInstallationGrantsInput,
+  updateInstallationAccess(
+    input: BackofficeAppInstallationAccessInput,
   ): Promise<BackofficeAppOperationResult<BackofficeAppInstallationMutationResult>>;
+  claimInstallation(
+    input: BackofficeAppInstallationClaimInput,
+  ): Promise<BackofficeAppOperationResult<BackofficeAppInstallationClaimResult>>;
   uninstallApp(
     input: BackofficeAppLookupInput,
   ): Promise<BackofficeAppOperationResult<BackofficeAppInstallationMutationResult>>;

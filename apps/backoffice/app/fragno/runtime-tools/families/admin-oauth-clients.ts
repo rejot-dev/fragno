@@ -4,6 +4,10 @@ import {
   backofficeOAuthClientCreateResultSchema,
   backofficeOAuthClientListInputSchema,
   backofficeOAuthClientPageSchema,
+  backofficeOAuthClientRotateSecretInputSchema,
+  backofficeOAuthClientRotateSecretResultSchema,
+  backofficeOAuthClientUpdateInputSchema,
+  backofficeOAuthClientUpdateResultSchema,
 } from "@/fragno/auth/oauth-client";
 import { defineCliArgsParser } from "@/fragno/runtime-tools/bash-cli";
 
@@ -33,7 +37,7 @@ const createOAuthClientTool = defineBackofficeRuntimeTool(
     namespace: "admin",
     name: "oauthClientsCreate",
     description:
-      "Create an Auth-owned authorization-code OAuth web or native client for the current System administrator. Confidential clients return an initial secret; public clients use PKCE without a secret. Does not register or install a Backoffice app.",
+      "Create an Auth-owned authorization-code OAuth web or native client for the current System administrator. Confidential clients return an initial secret and may use client credentials; public clients use PKCE without a secret. Does not register or install a Backoffice app.",
     requiredPermissions: [BACKOFFICE_PERMISSION.admin.oauthClientsManage.permission],
     inputSchema: backofficeOAuthClientCreateInputSchema,
     outputSchema: backofficeOAuthClientCreateResultSchema,
@@ -76,6 +80,11 @@ const createOAuthClientTool = defineBackofficeRuntimeTool(
               valueName: "type",
               description: "web (default) or native; native permits HTTP loopback callbacks",
             },
+            {
+              name: "client-credentials",
+              description:
+                "Allow client credentials (confidential clients with the backoffice scope), so an installed app can act as its installation",
+            },
           ],
           examples: [
             'admin.oauth-clients.create --name "Accounting" --redirect-uri https://accounting.example/callback --scope openid',
@@ -90,6 +99,7 @@ const createOAuthClientTool = defineBackofficeRuntimeTool(
           scopes: { kind: "stringArray", option: "scope", required: true },
           clientType: { kind: "string" },
           applicationType: { kind: "string" },
+          clientCredentials: { kind: "boolean", option: "client-credentials" },
         }),
         format: (result, options) =>
           options.format === "json" || options.print
@@ -190,5 +200,131 @@ const listOAuthClientsTool = defineBackofficeRuntimeTool({
   },
 });
 
+const clientIdOption = {
+  name: "client-id",
+  required: true,
+  valueRequired: true,
+  valueName: "id",
+  description: "OAuth client ID you own",
+};
+
+const updateOAuthClientTool = defineBackofficeRuntimeTool({
+  id: "admin.oauth-clients.update",
+  namespace: "admin",
+  name: "oauthClientsUpdate",
+  description:
+    "Replace the redirect URIs, OAuth scopes, and client-credentials access of an OAuth client owned by the current System administrator. Widened scopes apply to new authorizations only; existing users authorize again.",
+  requiredPermissions: [BACKOFFICE_PERMISSION.admin.oauthClientsManage.permission],
+  inputSchema: backofficeOAuthClientUpdateInputSchema,
+  outputSchema: backofficeOAuthClientUpdateResultSchema,
+  execute: async function updateAdministratorOAuthClient(
+    input,
+    context: AdminOAuthClientToolContext,
+  ) {
+    const { admin, administratorUserId } = requireAdminOAuthClientContext(context);
+    return await admin.updateOAuthClient(input, administratorUserId);
+  },
+  adapters: {
+    bash: {
+      command: "admin.oauth-clients.update",
+      help: {
+        summary:
+          "admin.oauth-clients.update replaces an owned client's redirects, scopes, and client-credentials access. All settings are required so nothing changes implicitly.",
+        options: [
+          clientIdOption,
+          {
+            name: "redirect-uri",
+            required: true,
+            valueRequired: true,
+            valueName: "url",
+            description: "Allowed redirect URI; repeat for multiple callbacks",
+          },
+          {
+            name: "scope",
+            required: true,
+            valueRequired: true,
+            valueName: "scope",
+            description: "OAuth scope; repeat for multiple scopes",
+          },
+          {
+            name: "client-credentials",
+            description: "Allow client credentials; omit to remove them",
+          },
+        ],
+        examples: [
+          "admin.oauth-clients.update --client-id CLIENT_ID --redirect-uri https://bookkeeping.example/api/auth/callback/backoffice --scope openid --scope profile --scope email --scope offline_access --scope backoffice --client-credentials",
+        ],
+      },
+      parse: defineCliArgsParser("admin.oauth-clients.update", {
+        clientId: { kind: "string", required: true },
+        redirectUris: { kind: "stringArray", option: "redirect-uri", required: true },
+        scopes: { kind: "stringArray", option: "scope", required: true },
+        clientCredentials: { kind: "boolean", option: "client-credentials", defaultValue: false },
+      }),
+      format: (result, options) =>
+        options.format === "json" || options.print
+          ? { data: result }
+          : {
+              data: result,
+              stdout: [
+                "Updated OAuth client.",
+                `Client ID: ${result.clientId}`,
+                `Redirect URIs: ${result.redirectUris.join(", ")}`,
+                `OAuth scopes: ${result.scopes.join(" ")}`,
+                `Client credentials: ${result.clientCredentials ? "allowed" : "not allowed"}`,
+                "",
+              ].join("\n"),
+            },
+    },
+  },
+});
+
+const rotateOAuthClientSecretTool = defineBackofficeRuntimeTool(
+  {
+    id: "admin.oauth-clients.rotate-secret",
+    namespace: "admin",
+    name: "oauthClientsRotateSecret",
+    description:
+      "Replace the secret of a confidential OAuth client owned by the current System administrator. The previous secret stops working immediately; the new one is returned once.",
+    requiredPermissions: [BACKOFFICE_PERMISSION.admin.oauthClientsManage.permission],
+    inputSchema: backofficeOAuthClientRotateSecretInputSchema,
+    outputSchema: backofficeOAuthClientRotateSecretResultSchema,
+    execute: async function rotateAdministratorOAuthClientSecret(
+      input,
+      context: AdminOAuthClientToolContext,
+    ) {
+      const { admin, administratorUserId } = requireAdminOAuthClientContext(context);
+      return await admin.rotateOAuthClientSecret(input, administratorUserId);
+    },
+    adapters: {
+      bash: {
+        command: "admin.oauth-clients.rotate-secret",
+        help: {
+          summary:
+            "admin.oauth-clients.rotate-secret replaces an owned confidential client's secret. Update the app's configuration before the old secret is needed again.",
+          options: [clientIdOption],
+          examples: ["admin.oauth-clients.rotate-secret --client-id CLIENT_ID"],
+        },
+        parse: defineCliArgsParser("admin.oauth-clients.rotate-secret", {
+          clientId: { kind: "string", required: true },
+        }),
+        format: (result, options) =>
+          options.format === "json" || options.print
+            ? { data: result }
+            : {
+                data: result,
+                stdout: `Rotated OAuth client secret.\nClient ID: ${result.clientId}\nClient secret: ${result.clientSecret}\nStore this secret securely; it is only returned once.\n`,
+              },
+      },
+    },
+  },
+  "redacted",
+);
+
 /** System admin OAuth provisioning and catalog reads remain separate from app registration. */
-export const adminOAuthClientsRuntimeTools = [createOAuthClientTool, listOAuthClientsTool] as const;
+export const adminOAuthClientsRuntimeTools = [
+  createOAuthClientTool,
+  listOAuthClientsTool,
+  updateOAuthClientTool,
+  rotateOAuthClientSecretTool,
+] as const;

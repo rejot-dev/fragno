@@ -54,8 +54,9 @@ establish Auth identities and management authority before calling either object.
 
 Neither fragment exposes HTTP routes. System admin runtime tools expose OAuth client provisioning,
 app registration, and listing. Organization runtime tools expose declaration review and installation
-management. Ordinary developer registration, installation tokens, and runtime execution
-authorization remain outside this scaffold. Marketplace packages remain independent.
+management. An installed app can act for a signed-in organization member through an app-bound
+credential (see below). Ordinary developer registration and app-only background execution remain
+outside this scaffold. Marketplace packages remain independent.
 
 ## System admin OAuth client tools
 
@@ -68,8 +69,9 @@ Auth.
 const client = await admin.oauthClientsCreate({
   name: "Accounting",
   redirectUris: ["https://accounting.example/callback"],
-  scopes: ["openid", "profile", "email", "offline_access"],
+  scopes: ["openid", "profile", "email", "offline_access", "backoffice"],
   clientType: "confidential",
+  clientCredentials: true,
 });
 // Store the initial confidential client secret securely before discarding this response.
 await admin.appsCreate({
@@ -81,7 +83,23 @@ await admin.appsCreate({
 ```bash
 admin.oauth-clients.create --name Accounting \
   --redirect-uri https://accounting.example/callback \
-  --scope openid --scope profile --scope email --scope offline_access --format json
+  --scope openid --scope profile --scope email --scope offline_access --scope backoffice \
+  --client-credentials --format json
+```
+
+`admin.oauthClientsUpdate` / `admin.oauth-clients.update` replaces a client's redirect URIs, OAuth
+scopes, and client-credentials access; all three are required, so nothing changes implicitly.
+`admin.oauthClientsRotateSecret` / `admin.oauth-clients.rotate-secret` replaces a confidential
+client's secret, returning the new one once; the previous secret stops working immediately. Both
+require `admin.oauth-clients.manage` and act as the calling administrator: Better Auth allows only
+the client's owner to change it, and the deployment's Codemode client cannot be changed at all.
+Widening scopes does not widen existing consents; users authorize again.
+
+```bash
+admin.oauth-clients.update --client-id CLIENT_ID \
+  --redirect-uri https://accounting.example/callback \
+  --scope openid --scope backoffice --client-credentials
+admin.oauth-clients.rotate-secret --client-id CLIENT_ID
 ```
 
 `admin.oauthClientsList` / `admin.oauth-clients.list` requires `admin.oauth-clients.read` and the
@@ -106,12 +124,14 @@ confidential clients (the default) use `client_secret_basic` and return their in
 clients use `none` and return `clientSecret: null`. Native clients permit HTTP loopback callbacks;
 web clients require HTTPS callbacks on non-loopback hosts. Neither application type enables the
 device-code grant through this tool. Refresh-token support is added when `offline_access` is
-requested. Supported OAuth scopes are defined by `BACKOFFICE_OAUTH_SCOPES` in
-`auth/oauth-client.ts`; they are not app capability declarations or organization installation
-grants. The shared Backoffice execution token exchange still accepts only the deployment's Codemode
-client under an explicit first-party user policy. Registering or installing an app does not grant
-that policy. See [`../auth/README.md`](../auth/README.md) for the shared execution flow and its
-entry point.
+requested. `clientCredentials` / `--client-credentials` additionally allows the `client_credentials`
+grant for the `backoffice` scope only, letting an installed app act as its installation; it requires
+a confidential client with the `backoffice` scope. Supported OAuth scopes are defined by
+`BACKOFFICE_OAUTH_SCOPES` in `auth/oauth-client.ts`; they are not app capability declarations or
+organization installation grants. The shared Backoffice execution token exchange grants first-party
+user authority only to the deployment's Codemode client. A registered app's client receives an
+app-bound credential instead; see [Installed-app execution](#installed-app-execution) and
+[`../auth/README.md`](../auth/README.md) for the shared execution flow.
 
 OAuth client creation is **not idempotent** and does not register or install an app. Creating a
 client and registering its app are explicit independent operations, with no cross-object
@@ -240,10 +260,10 @@ and approval timestamps. It is not an organization installation-management page.
 
 **Revoke access** deletes that user's consent, stored access tokens, refresh tokens, and pending or
 approved device codes for the selected client. Live consent is checked when minting user OAuth
-claims, serving userinfo, and exchanging a first-party OAuth token for Backoffice execution. This
-prevents an already-issued OAuth JWT from obtaining fresh execution credentials after revocation.
-Previously issued self-contained tokens may still be usable by external verifiers until expiry;
-already-issued Backoffice execution JWTs retain their existing maximum 15-minute lifetime.
+claims, serving userinfo, and exchanging an OAuth token for Backoffice execution. This prevents an
+already-issued OAuth JWT from obtaining fresh execution credentials after revocation. Previously
+issued self-contained tokens may still be usable by external verifiers until expiry; already-issued
+Backoffice execution JWTs retain their existing maximum 15-minute lifetime.
 
 Device approvals made before consent tracking was added must be repeated once; there is no inferred
 or automatic consent backfill. Reauthorizing after revocation requires a new explicit approval.
@@ -273,6 +293,10 @@ admin.apps.create --oauth-client-id existing-client-id \
 admin.apps.list --page-size 25 --format json
 ```
 
+Registration requires an existing client that allows the `backoffice` scope. The deployment's
+Codemode client is rejected: it always receives first-party authority, so an app registered for it
+could never act as an app.
+
 Listing defaults to 25 registrations, allows 1–100 per page, and returns `apps`, `nextCursor`, and
 `hasNextPage`. Resume using the same page size. Output contains only registry data, never OAuth
 credentials or organization installation grants.
@@ -283,14 +307,14 @@ Select an **organization context** in the Backoffice terminal or Codemode. The `
 unavailable in System, project, and user contexts. Organization identity comes from the selected
 context and the installation object's scope, never from command input.
 
-| Codemode method                 | Bash command                       | Permission    | Purpose                                      |
-| ------------------------------- | ---------------------------------- | ------------- | -------------------------------------------- |
-| `apps.get`                      | `apps.get`                         | `apps.read`   | Review the global app declaration            |
-| `apps.getInstallation`          | `apps.installations.get`           | `apps.read`   | Inspect this organization's installation     |
-| `apps.listInstallations`        | `apps.installations.list`          | `apps.read`   | List active and uninstalled installations    |
-| `apps.install`                  | `apps.install`                     | `apps.manage` | Approve an explicit subset of permissions    |
-| `apps.updateInstallationGrants` | `apps.installations.grants.update` | `apps.manage` | Replace approved grants explicitly           |
-| `apps.uninstall`                | `apps.uninstall`                   | `apps.manage` | Clear grants and retain installation history |
+| Codemode method           | Bash command                | Permission    | Purpose                                            |
+| ------------------------- | --------------------------- | ------------- | -------------------------------------------------- |
+| `apps.get`                | `apps.get`                  | `apps.read`   | Review the global app declaration                  |
+| `apps.getInstallation`    | `apps.installations.get`    | `apps.read`   | Inspect this organization's installation           |
+| `apps.listInstallations`  | `apps.installations.list`   | `apps.read`   | List active and uninstalled installations          |
+| `apps.install`            | `apps.install`              | `apps.manage` | Approve explicit permissions and resources         |
+| `apps.updateInstallation` | `apps.installations.update` | `apps.manage` | Replace approved permissions and resources         |
+| `apps.uninstall`          | `apps.uninstall`            | `apps.manage` | Clear grants and link; retain installation history |
 
 Active organization members may review declarations and installations. Management additionally
 requires an organization `owner` or `admin` role, or global administrator status **and membership in
@@ -309,9 +333,14 @@ const app = await apps.get({ appId: "APP_ID" });
 await apps.install({
   appId: "APP_ID",
   grantedPermissions: [{ namespace: "events", permission: "emit" }],
+  resourceScope: { kind: "projects", projectIds: ["PROJECT_ID"] }, // default: whole organization
 });
 const page = await apps.listInstallations({ pageSize: 25, cursor: null });
-await apps.updateInstallationGrants({ appId: "APP_ID", grantedPermissions: [] });
+await apps.updateInstallation({
+  appId: "APP_ID",
+  grantedPermissions: [],
+  resourceScope: { kind: "organization" },
+});
 await apps.uninstall({ appId: "APP_ID" });
 ```
 
@@ -321,15 +350,19 @@ apps.install --app-id APP_ID \
   --granted-permissions-json '[{"namespace":"events","permission":"emit"}]'
 apps.installations.get --app-id APP_ID --format json
 apps.installations.list --page-size 25
-apps.installations.grants.update --app-id APP_ID --granted-permissions-json '[]'
+apps.installations.update --app-id APP_ID --granted-permissions-json '[]' \
+  --resource-scope-json '{"kind":"organization"}'
 apps.uninstall --app-id APP_ID
 ```
 
-Install and grant-update inputs require an explicit permission array; `[]` approves no capabilities.
-Installer attribution comes from the authenticated principal. Neither `installedByUserId` nor an
-organization ID is accepted from callers. Duplicate install cannot enlarge grants or replace the
-installer; use the explicit grant-update command. Reinstallation retains installation identity and
-records the newly approving user.
+Install and update inputs require an explicit permission array; `[]` approves no capabilities.
+Resources are `{ "kind": "organization" }` or `{ "kind": "projects", "projectIds": [...] }` for
+current, unarchived projects of the organization; install defaults to the whole organization, while
+update requires both so access is never widened implicitly. Installer attribution comes from the
+authenticated principal. Neither `installedByUserId` nor an organization ID is accepted from
+callers. Duplicate install cannot change access or replace the installer; use the explicit update
+command. Reinstallation retains installation identity, records the newly approving user, and
+increments `activation`.
 
 Lists default to 25 records, accept 1–100, and return `{ installations, nextCursor, hasNextPage }`.
 Resume with the same organization and page size. Bash commands produce readable text by default;
@@ -338,10 +371,41 @@ Declaration review returns registry metadata and requested permissions, never OA
 Installation inspection, listing, and uninstall remain independent of registry availability;
 approval and grant updates still require the authoritative declaration.
 
-**Installation approval is not OAuth user consent and does not enable execution.** It does not
-change OAuth scopes, create credentials, allow the execution-token exchange, or activate
-`events.emit`. Uninstall clears organization grants but does not revoke personal OAuth
-authorizations. Installed-app delegation and app-only execution are still unimplemented.
+**Installation approval is not OAuth user consent.** It does not change OAuth scopes or create
+credentials. It is the organization-side ceiling for
+[installed-app execution](#installed-app-execution): the app may act only within the approved
+permissions and resources, and when acting for a member, only within what that member may currently
+do as well. Uninstall clears grants and any linked external account and immediately invalidates
+app-bound credentials, but does not revoke personal OAuth authorizations.
+
+## Installed-app execution
+
+A registered app exercises its organization's approval either on behalf of a signed-in member or as
+its installation:
+
+1. An administrator creates the app's confidential OAuth client with the `backoffice` scope (plus
+   identity scopes, `offline_access`, and client credentials as needed) and registers it.
+2. An organization owner or admin installs it, approving permissions and resources: with the tools
+   above, or through the app-initiated install page
+   `/backoffice/apps/install?client_id&redirect_uri&state`, after which the app's server claims the
+   installation for one of its own accounts.
+3. The app's server obtains an OAuth access token for `resource=<Backoffice origin>`: through the
+   authorization-code flow for a member, or the client-credentials grant for the installation.
+4. It exchanges that token at `POST /api/backoffice/execution-token` with an organization or
+   approved project scope, receiving a 15-minute app-bound credential.
+5. It calls `POST /api/backoffice/scopes/:scopeSegment/events` with that credential.
+
+Every protected operation resolves the installation live. Acting for a member requires the member's
+current permissions **and** the installation's grants; acting as the installation requires its
+grants. Either way the target must be inside the approved resources. Narrowing access, removing the
+member, banning the user, or uninstalling affects already-issued credentials immediately. Each
+reinstall increments `activation`; credentials and app-started work from an earlier activation never
+revive. Installation management is never available to an app.
+
+App-bound credentials have a distinct JWT audience and cannot be used where user credentials are
+accepted. Events use source `app:<appId>` and persist actors that keep the app's restrictions for
+automation started from them. See [`../auth/README.md`](../auth/README.md#installed-apps) for the
+endpoint, install, and claim contracts, and `apps/bookkeeping` for an example app.
 
 `app/fragno/runtime-tools/families/apps.scenario.test.ts` exercises both Codemode and Bash through
 real Auth and installation SQLite storage, including approval lifecycle, authenticated attribution,
@@ -355,12 +419,13 @@ const registry = runtime.objects.apps.singleton().commands;
 const installations = runtime.objects.appInstallations.forOrg(organizationId).commands;
 ```
 
-| Object       | Command                                                | Registry access                                           |
-| ------------ | ------------------------------------------------------ | --------------------------------------------------------- |
-| Registry     | `registerApp`, `getApp`, `listApps`                    | Own local database                                        |
-| Organization | `installApp`                                           | Resolve declaration before local installation transaction |
-| Organization | `updateInstallationGrants`                             | Resolve declaration before local grant transaction        |
-| Organization | `getInstallation`, `listInstallations`, `uninstallApp` | None                                                      |
+| Object       | Command                                                      | Registry access                                           |
+| ------------ | ------------------------------------------------------------ | --------------------------------------------------------- |
+| Registry     | `registerApp`, `getApp`, `getAppByOAuthClientId`, `listApps` | Own local database                                        |
+| Organization | `installApp`                                                 | Resolve declaration and projects before local transaction |
+| Organization | `updateInstallationAccess`                                   | Resolve declaration and projects before local transaction |
+| Organization | `claimInstallation`                                          | None                                                      |
+| Organization | `getInstallation`, `listInstallations`, `uninstallApp`       | None                                                      |
 
 Declarations are immutable and cannot be deleted in this scaffold. Installation setup and grant
 updates fetch that authoritative declaration before opening the organization's transaction. There is
@@ -379,8 +444,11 @@ this split.
 - Grants use canonical Backoffice permissions and cannot exceed the app declaration.
 - Duplicate registration or installation cannot silently enlarge declarations or grants.
 - Grant updates are explicit; duplicate install does not change installer attribution.
-- Uninstall clears grants but retains identity. Reinstall reuses that identity and records the newly
-  approved grants and installer.
+- Uninstall clears grants and the linked external account but retains identity. Reinstall reuses
+  that identity, records the newly approved access and installer, and increments `activation`.
+- An installation links at most one external account; linking a different one requires uninstalling.
+- Resources are stored as `resourceProjectIds`: `null` is the whole organization (also what earlier
+  installations approved), otherwise a non-empty project list.
 - Installer membership removal does not delete an organization-owned installation.
 - Local absence checks, row-version checks, and unique indexes guard concurrent mutations.
 - All database reads precede mutation; timestamps come from database time.

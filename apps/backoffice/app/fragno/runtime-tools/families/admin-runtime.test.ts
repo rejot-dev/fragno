@@ -6,7 +6,13 @@ function createAdminRuntimeDependencies() {
   return {
     apps: null,
     auth: {
-      hasOAuthClient: async () => false,
+      getOAuthClientFacts: async () => null,
+      updateAdminOAuthClient: async () => {
+        throw new Error("OAuth client updates are not configured in this fixture.");
+      },
+      rotateAdminOAuthClientSecret: async () => {
+        throw new Error("OAuth client secret rotation is not configured in this fixture.");
+      },
       listAdminOAuthClients: async () => ({ clients: [], nextCursor: null, hasNextPage: false }),
       createAdminOAuthClient: async () => ({
         clientType: "public" as const,

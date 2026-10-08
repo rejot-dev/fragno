@@ -7,7 +7,10 @@ export type BackofficeAppErrorCode =
   | "APP_INSTALLATION_NOT_FOUND"
   | "APP_INSTALLATION_INACTIVE"
   | "APP_INSTALLATION_CONFLICT"
-  | "APP_INSTALLATION_CURSOR_INVALID";
+  | "APP_INSTALLATION_CURSOR_INVALID"
+  | "APP_INSTALLATION_PROJECT_NOT_FOUND"
+  | "APP_INSTALLATION_ACTIVATION_STALE"
+  | "APP_INSTALLATION_ALREADY_CLAIMED";
 
 /** Known app failures are serialized at RPC boundaries; unexpected failures still propagate. */
 export class BackofficeAppDomainError extends Error {

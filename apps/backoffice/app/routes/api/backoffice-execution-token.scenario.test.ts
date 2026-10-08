@@ -32,6 +32,8 @@ import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-c
 
 import { action } from "./backoffice-execution-token";
 
+const wholeOrganization = { kind: "organization" } as const;
+
 const origin = "https://backoffice.example";
 const deviceGrant = "urn:ietf:params:oauth:grant-type:device_code";
 
@@ -300,7 +302,7 @@ describe("Backoffice execution token SQLite scenarios", () => {
     });
   });
 
-  test("registered and installed external apps cannot inherit first-party user authority, even for an administrator", async () => {
+  test("external apps receive only app-bound credentials, even when claiming first-party metadata for an administrator", async () => {
     await runExecutionTokenScenario(async (ctx) => {
       const { user, organization } = await authorizeFirstPartyClient(ctx);
       const auth = ctx.runtime.objects.auth.singleton().commands;
@@ -317,27 +319,84 @@ describe("Backoffice execution token SQLite scenarios", () => {
       });
       assert(created.ok, await created.clone().text());
       const client = z.object({ client_id: z.string() }).parse(await created.json());
+      const token = await authorizeOAuthDevice(ctx, {
+        clientId: client.client_id,
+        scopes: "openid offline_access backoffice",
+      });
+      const scope = { kind: "org" as const, orgId: organization.id };
+      const unregistered = await requestExecutionToken(ctx, exchangeRequest(token, scope));
+      assert.equal(unregistered.status, 401);
+      expect(await unregistered.json()).toMatchObject({ error: "authentication_failed" });
+
       const requestedPermissions = [{ namespace: "events" as const, permission: "emit" as const }];
       const registered = await ctx.runtime.objects.apps
         .singleton()
         .commands.registerApp({ oauthClientId: client.client_id, requestedPermissions });
       assert(registered.ok);
+      const notInstalled = await requestExecutionToken(ctx, exchangeRequest(token, scope));
+      assert.equal(notInstalled.status, 403);
+      expect(await notInstalled.json()).toMatchObject({ error: "scope_unavailable" });
       const installed = await ctx.runtime.objects.appInstallations
         .forOrg(organization.id)
         .commands.installApp({
           appId: registered.value.appId,
           grantedPermissions: requestedPermissions,
           installedByUserId: user.id,
+          resourceScope: wholeOrganization,
         });
       assert(installed.ok);
-      const token = await authorizeOAuthDevice(ctx, {
-        clientId: client.client_id,
-        scopes: "openid offline_access backoffice",
+      for (const unavailableScope of [
+        null,
+        { kind: "system" },
+        { kind: "user", userId: user.id },
+      ]) {
+        const response = await requestExecutionToken(ctx, exchangeRequest(token, unavailableScope));
+        assert.equal(response.status, 403);
+        expect(await response.json()).toMatchObject({ error: "scope_unavailable" });
+      }
+
+      const response = await requestExecutionToken(ctx, exchangeRequest(token, scope));
+      assert.equal(response.status, 200, await response.clone().text());
+      const result = backofficeExecutionTokenResultSchema.parse(await response.json());
+      expect(result.scope).toEqual(scope);
+      const httpAuth = ctx.runtime.objects.auth.singleton().http;
+      const asUserCredential = await verifyBackofficeJwt(result.accessToken, origin, httpAuth);
+      expect(asUserCredential).toEqual({ ok: false, reason: "invalid" });
+      const request = new Request(`${origin}/api/backoffice/codemode/org/${organization.id}`, {
+        headers: { authorization: `Bearer ${result.accessToken}` },
       });
-      for (const scope of [{ kind: "org", orgId: organization.id }, { kind: "system" }]) {
-        const response = await requestExecutionToken(ctx, exchangeRequest(token, scope));
-        assert.equal(response.status, 401);
-        expect(await response.json()).toMatchObject({ error: "authentication_failed" });
+      await expect(
+        requireBackofficeContext(request, routerContext(ctx, request), scope),
+      ).rejects.toBeInstanceOf(Response);
+    });
+  });
+
+  test("concurrent first OAuth requests for a new origin share one resource initialization", async () => {
+    await runExecutionTokenScenario(async (ctx) => {
+      const freshOrigin = "https://fresh.backoffice.example";
+      const auth = ctx.runtime.objects.auth.singleton();
+      const config = await auth.commands.getBackofficeCliOAuthConfig({ requestUrl: origin });
+      const responses = await Promise.allSettled(
+        Array.from({ length: 10 }, () =>
+          auth.http.fetch(
+            new Request(`${freshOrigin}/api/auth/device/code`, {
+              method: "POST",
+              headers: { "content-type": "application/x-www-form-urlencoded" },
+              body: new URLSearchParams({
+                client_id: config.clientId,
+                scope: config.scope,
+                resource: freshOrigin,
+              }),
+            }),
+          ),
+        ),
+      );
+      for (const response of responses) {
+        assert(
+          response.status === "fulfilled",
+          String(response.status === "rejected" && response.reason),
+        );
+        assert.equal(response.value.status, 200, await response.value.clone().text());
       }
     });
   });

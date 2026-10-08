@@ -45,6 +45,8 @@ import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 import { InMemoryAppsObject } from "../../../../workers/apps.do";
 import { appsToolFamily } from "./apps";
 
+const wholeOrganization = { kind: "organization" } as const;
+
 const requestedPermissions = [BACKOFFICE_PERMISSION.events.emit, BACKOFFICE_PERMISSION.events.read];
 
 function appContext(
@@ -210,12 +212,12 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
                   },
                   adminTools,
                 ),
-              ).rejects.toThrow("update grants explicitly");
+              ).rejects.toThrow("update it explicitly");
               const updated = await bash.exec(
-                `apps.installations.grants.update --app-id ${appId} --granted-permissions-json '[]'`,
+                `apps.installations.update --app-id ${appId} --granted-permissions-json '[]' --resource-scope-json '{"kind":"organization"}'`,
               );
               assert.equal(updated.exitCode, 0, updated.stderr);
-              expect(updated.stdout).toContain("Updated installation grants.");
+              expect(updated.stdout).toContain("Updated installation access.");
               expect(
                 await executeBackofficeRuntimeTool(
                   appTool("getInstallation"),
@@ -243,10 +245,11 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
               expect(repeat.stdout).toContain("already uninstalled");
               await expect(
                 executeBackofficeRuntimeTool(
-                  appTool("updateInstallationGrants"),
+                  appTool("updateInstallation"),
                   {
                     appId,
                     grantedPermissions: requestedPermissions,
+                    resourceScope: wholeOrganization,
                   },
                   adminTools,
                 ),
@@ -329,8 +332,11 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
             expect(
               await executeBackofficeRuntimeTool(appTool("listInstallations"), {}, memberTools),
             ).toMatchObject({ installations: [] });
-            for (const name of ["install", "updateInstallationGrants", "uninstall"]) {
-              const input = name === "uninstall" ? { appId } : { appId, grantedPermissions: [] };
+            for (const name of ["install", "updateInstallation", "uninstall"]) {
+              const input =
+                name === "uninstall"
+                  ? { appId }
+                  : { appId, grantedPermissions: [], resourceScope: wholeOrganization };
               await expect(
                 executeBackofficeRuntimeTool(appTool(name), input, memberTools),
               ).rejects.toThrow("Required permission: apps.manage.");
@@ -429,10 +435,11 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
             );
             await expect(
               executeBackofficeRuntimeTool(
-                appTool("updateInstallationGrants"),
+                appTool("updateInstallation"),
                 {
                   appId,
                   grantedPermissions: [BACKOFFICE_PERMISSION.store.modify],
+                  resourceScope: wholeOrganization,
                 },
                 ownerTools,
               ),
@@ -489,8 +496,12 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
               );
               expect(
                 await executeBackofficeRuntimeTool(
-                  appTool("updateInstallationGrants"),
-                  { appId, grantedPermissions: requestedPermissions },
+                  appTool("updateInstallation"),
+                  {
+                    appId,
+                    grantedPermissions: requestedPermissions,
+                    resourceScope: wholeOrganization,
+                  },
                   createBackofficeToolContext(administratorContext),
                 ),
               ).toMatchObject({ changed: false });
@@ -518,8 +529,8 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
               const tools = createBackofficeToolContext(context);
               await expect(
                 executeBackofficeRuntimeTool(
-                  appTool("updateInstallationGrants"),
-                  { appId, grantedPermissions: [] },
+                  appTool("updateInstallation"),
+                  { appId, grantedPermissions: [], resourceScope: wholeOrganization },
                   tools,
                 ),
               ).rejects.toThrow("Required permission: apps.manage.");
@@ -610,8 +621,8 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
               ).toMatchObject({ installations: [{ appId, status: "active" }] });
               await expect(
                 executeBackofficeRuntimeTool(
-                  appTool("updateInstallationGrants"),
-                  { appId, grantedPermissions: [] },
+                  appTool("updateInstallation"),
+                  { appId, grantedPermissions: [], resourceScope: wholeOrganization },
                   tools,
                 ),
               ).rejects.toThrow();
