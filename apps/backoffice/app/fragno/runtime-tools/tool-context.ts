@@ -7,7 +7,9 @@ export const createBackofficeToolContext = (
   const kernel = context.backofficeKernel;
   const runtimes = {
     state: context.stateBackend,
+    account: context.account?.runtime,
     admin: context.admin?.runtime,
+    org: context.org?.runtime,
     apps: context.apps?.runtime,
     backoffice: context.backoffice?.runtime,
     cloudflare: context.cloudflare?.runtime,

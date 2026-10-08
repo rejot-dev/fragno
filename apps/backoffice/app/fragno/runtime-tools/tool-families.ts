@@ -2,6 +2,7 @@ import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
 import type { PiManagerRuntime } from "@/fragno/pi-manager/pi-manager-runtime";
 
 import { codemodeStateToolFamily } from "./codemode-state-runtime";
+import { accountToolFamily, type AccountRuntime } from "./families/account";
 import { adminToolFamily, type AdminRuntime } from "./families/admin";
 import { apiToolFamily, type ApiRuntime } from "./families/api";
 import { appsToolFamily } from "./families/apps";
@@ -50,6 +51,7 @@ import type { JavaScriptRuntime } from "./families/javascript-runtime";
 import { marketplaceToolFamily } from "./families/marketplace";
 import type { MarketplaceRuntime } from "./families/marketplace-runtime";
 import { mcpToolFamily, type McpRuntime } from "./families/mcp";
+import { organizationToolFamily, type OrganizationRuntime } from "./families/organization";
 import { otpToolFamily, type OtpRuntime } from "./families/otp";
 import { packagesToolFamily } from "./families/packages";
 import type { PackagesRuntime } from "./families/packages-runtime";
@@ -70,7 +72,9 @@ import {
 
 export type CoreBackofficeRuntimeMap = {
   state?: BackofficeStateBackend;
+  account?: AccountRuntime;
   admin?: AdminRuntime;
+  org?: OrganizationRuntime;
   apps: AppsRuntime | undefined;
   backoffice?: BackofficeCapabilitiesRuntime;
   integrations: IntegrationsRuntime | undefined;
@@ -103,7 +107,9 @@ export type CoreBackofficeToolContext = BackofficeToolContext<Partial<CoreBackof
 
 export const runtimeToolFamilies = [
   codemodeStateToolFamily,
+  accountToolFamily,
   adminToolFamily,
+  organizationToolFamily,
   appsToolFamily,
   backofficeCapabilitiesToolFamily,
   integrationsToolFamily,

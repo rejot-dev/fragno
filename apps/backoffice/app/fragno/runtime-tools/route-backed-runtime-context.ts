@@ -39,6 +39,7 @@ import {
   createPiManagerRuntime,
   type PiManagerRuntime,
 } from "@/fragno/pi-manager/pi-manager-runtime";
+import { createAccountRuntime } from "@/fragno/runtime-tools/families/account-runtime";
 import { createAdminRuntime } from "@/fragno/runtime-tools/families/admin-runtime";
 import { createApiRuntime } from "@/fragno/runtime-tools/families/api-runtime";
 import { createAppsRuntime } from "@/fragno/runtime-tools/families/apps-runtime";
@@ -53,6 +54,7 @@ import { createInternalRuntime } from "@/fragno/runtime-tools/families/internal"
 import { createJavaScriptRuntime } from "@/fragno/runtime-tools/families/javascript-runtime";
 import { createMarketplaceRuntime } from "@/fragno/runtime-tools/families/marketplace-runtime";
 import { createMcpRuntime } from "@/fragno/runtime-tools/families/mcp-runtime";
+import { createOrganizationRuntime } from "@/fragno/runtime-tools/families/organization-runtime";
 import {
   createOtpRuntime,
   createUnavailableOtpRuntime,
@@ -117,6 +119,11 @@ const selectedOrgScope = (
 ): Extract<BackofficeExecutionContext["scope"], { kind: "org" }> | null =>
   execution.scope.kind === "org" ? execution.scope : null;
 
+function userPrincipalId(execution: BackofficeExecutionContext): string | null {
+  const principal = execution.actors.principal;
+  return principal?.scope === "internal" && principal.type === "user" ? principal.id : null;
+}
+
 function createExecutionStaticFileCollection({
   runtime,
   execution,
@@ -165,6 +172,7 @@ export const createRouteBackedRuntimeContext = ({
 }: RouteBackedRuntimeContextOptions): InteractiveRuntimeToolContext => {
   const org = ownerOrgScope(execution);
   const selectedOrg = selectedOrgScope(execution);
+  const userId = userPrincipalId(execution);
   const internalScope =
     execution.scope.kind === "system"
       ? execution.scope
@@ -198,6 +206,23 @@ export const createRouteBackedRuntimeContext = ({
     execution,
     backofficeKernel: kernel,
     stateBackend,
+    account:
+      runtime.config.bindings.auth && userId
+        ? {
+            runtime: createAccountRuntime({ objects: runtime.objects, userId }),
+          }
+        : null,
+    org:
+      runtime.config.bindings.auth && userId && selectedOrg
+        ? {
+            runtime: createOrganizationRuntime({
+              objects: runtime.objects,
+              organizationId: selectedOrg.orgId,
+              userId,
+              publicBaseUrl: runtime.config.docsPublicBaseUrl ?? null,
+            }),
+          }
+        : null,
     admin:
       runtime.config.bindings.auth && execution.scope.kind === "system"
         ? {

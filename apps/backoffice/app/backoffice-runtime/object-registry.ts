@@ -16,12 +16,24 @@ import type {
   BackofficeMeData,
   Organization,
   OrganizationHookPayload,
+  OrganizationRole,
   UserAuthorityFacts,
   UserOrganizationAuthorityFacts,
   UserOrganizationAuthorityInput,
   VerifyUserEmailInput,
   VerifyUserEmailResult,
 } from "@/fragno/auth/contracts";
+import type {
+  AccountInvitationRecord,
+  AccountProfile,
+  DirectoryPageInput,
+  OrganizationInvitationPage,
+  OrganizationInvitationRecord,
+  OrganizationMemberPage,
+  OrganizationMembershipRecord,
+  OrganizationPage,
+  OrganizationRecord,
+} from "@/fragno/auth/directory-records";
 import type {
   BackofficeExecutionTokenExchangeInput,
   BackofficeExecutionTokenResult,
@@ -32,6 +44,7 @@ import type {
   BackofficeOAuthClientListInput,
   BackofficeOAuthClientPage,
 } from "@/fragno/auth/oauth-client";
+import type { BackofficeOAuthConsentPage } from "@/fragno/auth/oauth-consent";
 import type {
   AutomationEvent,
   AutomationEventDefinition,
@@ -265,6 +278,40 @@ export type AuthObject = DurableHookCommands & {
     organizationId: string;
     userEmail: string;
   }): Promise<AdminOrganizationMemberRecord>;
+  // Directory commands do not authorize: callers pass the principal or organization that kernel
+  // authorization already established for the execution.
+  getAccountProfile(input: { userId: string }): Promise<AccountProfile>;
+  updateAccountProfile(input: { userId: string; name: string }): Promise<AccountProfile>;
+  listAccountOrganizations(input: { userId: string }): Promise<OrganizationMembershipRecord[]>;
+  listAccountInvitations(input: { userId: string }): Promise<AccountInvitationRecord[]>;
+  /** Accepts as the user, so Better Auth enforces the recipient email, expiry, and status. */
+  acceptAccountInvitation(input: {
+    userId: string;
+    invitationId: string;
+  }): Promise<OrganizationMembershipRecord>;
+  listAccountOAuthConsents(
+    input: { userId: string } & DirectoryPageInput,
+  ): Promise<BackofficeOAuthConsentPage>;
+  getOrganization(input: { organizationId: string }): Promise<OrganizationRecord | null>;
+  getOrganizationMembership(input: {
+    organizationId: string;
+    userId: string;
+  }): Promise<OrganizationMembershipRecord | null>;
+  updateOrganization(input: { organizationId: string; name: string }): Promise<OrganizationRecord>;
+  listOrganizations(input: DirectoryPageInput): Promise<OrganizationPage>;
+  listOrganizationMembers(
+    input: { organizationId: string } & DirectoryPageInput,
+  ): Promise<OrganizationMemberPage>;
+  listOrganizationInvitations(
+    input: { organizationId: string } & DirectoryPageInput,
+  ): Promise<OrganizationInvitationPage>;
+  /** Invites as the inviter, so Better Auth enforces membership, duplicate, and owner-role rules. */
+  createOrganizationInvitation(input: {
+    organizationId: string;
+    inviterUserId: string;
+    email: string;
+    roles: readonly OrganizationRole[];
+  }): Promise<OrganizationInvitationRecord>;
   getAllOrganizations(): Promise<Organization[]>;
   getOrganizationBySlug(slug: string): Promise<Pick<Organization, "id" | "slug"> | null>;
   hasOrganizationMember(input: { organizationId: string; userId: string }): Promise<boolean>;

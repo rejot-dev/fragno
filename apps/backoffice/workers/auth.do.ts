@@ -30,7 +30,9 @@ import {
   type OrganizationHooks,
   type OrganizationInvitation,
   type OrganizationMember,
+  type OrganizationRole,
   type Role,
+  organizationRoleSchema,
   resolveLiveAccessTokenSecret,
   splitOrganizationRoles,
   type UserAuthorityFacts,
@@ -41,6 +43,17 @@ import {
   type VerifyUserEmailInput,
   type VerifyUserEmailResult,
 } from "@/fragno/auth/contracts";
+import type {
+  AccountInvitationRecord,
+  AccountProfile,
+  DirectoryPageInput,
+  OrganizationInvitationPage,
+  OrganizationInvitationRecord,
+  OrganizationMemberPage,
+  OrganizationMembershipRecord,
+  OrganizationPage,
+  OrganizationRecord,
+} from "@/fragno/auth/directory-records";
 import {
   backofficeExecutionTokenExchangeInputSchema,
   type BackofficeExecutionTokenExchangeInput,
@@ -54,6 +67,7 @@ import {
   type BackofficeOAuthClientListInput,
   type BackofficeOAuthClientPage,
 } from "@/fragno/auth/oauth-client";
+import type { BackofficeOAuthConsentPage } from "@/fragno/auth/oauth-consent";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 import {
   AUTH_AUTOMATION_EVENT_ORGANIZATION_CREATED,
@@ -88,12 +102,23 @@ import {
   listBackofficeOAuthClients,
   resolveBackofficeCodemodeExecutionPolicy,
 } from "./auth/better-auth-oauth";
+import { listBackofficeOAuthConsentPage } from "./auth/better-auth-oauth-consent";
 import { createBackofficeTokenPlugin } from "./auth/better-auth-plugin";
 import {
   BACKOFFICE_ORGANIZATION_OWNER_ROLE,
   createBackofficeBetterAuthSchemaPlugins,
 } from "./auth/better-auth-schema-plugins";
 import { createBackofficeSignUpInvitationPlugin } from "./auth/better-auth-sign-up-invitation";
+import {
+  readAccountInvitations,
+  readAccountOrganizations,
+  readAccountProfile,
+  readOrganization,
+  readOrganizationInvitationPage,
+  readOrganizationMemberPage,
+  readOrganizationMembership,
+  readOrganizationPage,
+} from "./auth/directory-queries";
 import {
   completeBetterAuthDurableHook,
   deleteBetterAuthDurableHooksForFixture,
@@ -470,6 +495,33 @@ type OrganizationAdminEndpoints = {
   createOrganization: CreateOrganizationEndpoint;
   addMember: AddOrganizationMemberEndpoint;
 };
+
+/** Session-bound organization endpoints; callers act as one live user. */
+type OrganizationUserEndpoints = {
+  createInvitation(input: {
+    headers: Headers;
+    body: { organizationId: string; email: string; role: string[] };
+  }): Promise<StoreInvitation>;
+  acceptInvitation(input: {
+    headers: Headers;
+    body: { invitationId: string };
+  }): Promise<{ invitation: StoreInvitation; member: StoreMember }>;
+};
+
+function getOrganizationUserEndpoints(auth: BetterAuthInstance): OrganizationUserEndpoints {
+  const api: unknown = "api" in auth ? auth.api : null;
+  if (
+    typeof api !== "object" ||
+    api === null ||
+    !("createInvitation" in api) ||
+    typeof api.createInvitation !== "function" ||
+    !("acceptInvitation" in api) ||
+    typeof api.acceptInvitation !== "function"
+  ) {
+    throw new Error("Better Auth organization invitation endpoints are not configured.");
+  }
+  return api as OrganizationUserEndpoints;
+}
 
 function hasOrganizationAdminEndpoints(
   auth: BetterAuthInstance,
@@ -1530,6 +1582,176 @@ export class InMemoryAuthObject implements AuthObject {
     };
   }
 
+  /** Isolated Auth instance keeps the synthetic user session away from HTTP request handling. */
+  async #callOrganizationEndpointsAsUser<T>(
+    userId: string,
+    call: (endpoints: OrganizationUserEndpoints) => Promise<T>,
+  ): Promise<T> {
+    await this.#ready;
+    const auth = betterAuth(this.#createOptions("http://localhost"));
+    const authContext = await getAuthContext(auth);
+    const user = await authContext.internalAdapter.findUserById(userId);
+    if (!user) {
+      throw new Error(`Auth could not find user '${userId}'.`);
+    }
+    const now = new Date();
+    authContext.session = {
+      user,
+      session: {
+        id: "backoffice-runtime-organization-command",
+        token: "backoffice-runtime-organization-command",
+        userId: user.id,
+        expiresAt: new Date(now.getTime() + 60_000),
+        createdAt: now,
+        updatedAt: now,
+        ipAddress: null,
+        userAgent: null,
+      },
+    };
+    try {
+      return await call(getOrganizationUserEndpoints(auth));
+    } finally {
+      authContext.session = null;
+    }
+  }
+
+  async getAccountProfile(input: { userId: string }): Promise<AccountProfile> {
+    const { adapter } = await this.#authContext();
+    const profile = await readAccountProfile(adapter, input.userId);
+    if (!profile) {
+      throw new Error(`Account profile could not find user '${input.userId}'.`);
+    }
+    return profile;
+  }
+
+  async updateAccountProfile(input: { userId: string; name: string }): Promise<AccountProfile> {
+    const { internalAdapter } = await this.#authContext();
+    await internalAdapter.updateUser(input.userId, { name: input.name, updatedAt: new Date() });
+    return await this.getAccountProfile({ userId: input.userId });
+  }
+
+  async listAccountOrganizations(input: {
+    userId: string;
+  }): Promise<OrganizationMembershipRecord[]> {
+    const { adapter } = await this.#authContext();
+    return await readAccountOrganizations(adapter, input.userId);
+  }
+
+  async listAccountInvitations(input: { userId: string }): Promise<AccountInvitationRecord[]> {
+    const { adapter } = await this.#authContext();
+    const profile = await this.getAccountProfile(input);
+    return await readAccountInvitations(adapter, { email: profile.email, now: new Date() });
+  }
+
+  async acceptAccountInvitation(input: {
+    userId: string;
+    invitationId: string;
+  }): Promise<OrganizationMembershipRecord> {
+    const { member } = await this.#callOrganizationEndpointsAsUser(
+      input.userId,
+      async (endpoints) =>
+        await endpoints.acceptInvitation({
+          headers: new Headers(),
+          body: { invitationId: input.invitationId },
+        }),
+    );
+    const membership = await this.getOrganizationMembership({
+      organizationId: member.organizationId,
+      userId: input.userId,
+    });
+    if (!membership) {
+      throw new Error(`Accepted invitation '${input.invitationId}' produced no membership.`);
+    }
+    return membership;
+  }
+
+  async listAccountOAuthConsents(
+    input: { userId: string } & DirectoryPageInput,
+  ): Promise<BackofficeOAuthConsentPage> {
+    const { adapter } = await this.#authContext();
+    return await listBackofficeOAuthConsentPage(adapter, input);
+  }
+
+  async getOrganization(input: { organizationId: string }): Promise<OrganizationRecord | null> {
+    const { adapter } = await this.#authContext();
+    return await readOrganization(adapter, input.organizationId);
+  }
+
+  async getOrganizationMembership(input: {
+    organizationId: string;
+    userId: string;
+  }): Promise<OrganizationMembershipRecord | null> {
+    const { adapter } = await this.#authContext();
+    return await readOrganizationMembership(adapter, input);
+  }
+
+  async updateOrganization(input: {
+    organizationId: string;
+    name: string;
+  }): Promise<OrganizationRecord> {
+    const { adapter } = await this.#authContext();
+    await adapter.update<StoreOrganization>({
+      model: "organization",
+      where: [{ field: "id", value: input.organizationId }],
+      update: { name: input.name, updatedAt: new Date() },
+    });
+    const organization = await readOrganization(adapter, input.organizationId);
+    if (!organization) {
+      throw new Error(`Organization update could not find organization '${input.organizationId}'.`);
+    }
+    return organization;
+  }
+
+  async listOrganizations(input: DirectoryPageInput): Promise<OrganizationPage> {
+    const { adapter } = await this.#authContext();
+    return await readOrganizationPage(adapter, input);
+  }
+
+  async listOrganizationMembers({
+    organizationId,
+    ...page
+  }: { organizationId: string } & DirectoryPageInput): Promise<OrganizationMemberPage> {
+    const { adapter } = await this.#authContext();
+    return await readOrganizationMemberPage(adapter, { organizationId, page });
+  }
+
+  async listOrganizationInvitations({
+    organizationId,
+    ...page
+  }: { organizationId: string } & DirectoryPageInput): Promise<OrganizationInvitationPage> {
+    const { adapter } = await this.#authContext();
+    return await readOrganizationInvitationPage(adapter, {
+      organizationId,
+      now: new Date(),
+      page,
+    });
+  }
+
+  async createOrganizationInvitation(input: {
+    organizationId: string;
+    inviterUserId: string;
+    email: string;
+    roles: readonly OrganizationRole[];
+  }): Promise<OrganizationInvitationRecord> {
+    const roles = organizationRoleSchema.array().min(1).parse(input.roles);
+    const invitation = await this.#callOrganizationEndpointsAsUser(
+      input.inviterUserId,
+      async (endpoints) =>
+        await endpoints.createInvitation({
+          headers: new Headers(),
+          body: { organizationId: input.organizationId, email: input.email, role: roles },
+        }),
+    );
+    return {
+      invitationId: invitation.id,
+      organizationId: invitation.organizationId,
+      email: invitation.email,
+      roles: splitOrganizationRoles(invitation.role),
+      expiresAt: toIsoString(toDate(invitation.expiresAt)),
+      createdAt: toIsoString(toDate(invitation.createdAt)),
+    };
+  }
+
   async getUserAuthorityFacts(input: {
     userId: string;
     organizationId?: string;
@@ -1894,6 +2116,63 @@ export class Auth extends DurableObject<CloudflareEnv> implements AuthObject {
 
   async removeAdminOrganizationMember(input: { organizationId: string; userEmail: string }) {
     return await this.#object.removeAdminOrganizationMember(input);
+  }
+
+  async getAccountProfile(input: { userId: string }) {
+    return await this.#object.getAccountProfile(input);
+  }
+
+  async updateAccountProfile(input: { userId: string; name: string }) {
+    return await this.#object.updateAccountProfile(input);
+  }
+
+  async listAccountOrganizations(input: { userId: string }) {
+    return await this.#object.listAccountOrganizations(input);
+  }
+
+  async listAccountInvitations(input: { userId: string }) {
+    return await this.#object.listAccountInvitations(input);
+  }
+
+  async acceptAccountInvitation(input: { userId: string; invitationId: string }) {
+    return await this.#object.acceptAccountInvitation(input);
+  }
+
+  async listAccountOAuthConsents(input: { userId: string } & DirectoryPageInput) {
+    return await this.#object.listAccountOAuthConsents(input);
+  }
+
+  async getOrganization(input: { organizationId: string }) {
+    return await this.#object.getOrganization(input);
+  }
+
+  async getOrganizationMembership(input: { organizationId: string; userId: string }) {
+    return await this.#object.getOrganizationMembership(input);
+  }
+
+  async updateOrganization(input: { organizationId: string; name: string }) {
+    return await this.#object.updateOrganization(input);
+  }
+
+  async listOrganizations(input: DirectoryPageInput) {
+    return await this.#object.listOrganizations(input);
+  }
+
+  async listOrganizationMembers(input: { organizationId: string } & DirectoryPageInput) {
+    return await this.#object.listOrganizationMembers(input);
+  }
+
+  async listOrganizationInvitations(input: { organizationId: string } & DirectoryPageInput) {
+    return await this.#object.listOrganizationInvitations(input);
+  }
+
+  async createOrganizationInvitation(input: {
+    organizationId: string;
+    inviterUserId: string;
+    email: string;
+    roles: readonly OrganizationRole[];
+  }) {
+    return await this.#object.createOrganizationInvitation(input);
   }
 
   async getAllOrganizations() {

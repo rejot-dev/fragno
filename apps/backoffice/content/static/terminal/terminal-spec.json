@@ -113,6 +113,180 @@
     ]
   },
   {
+    "command": "account.me",
+    "summary": "account.me prints your own account profile.",
+    "options": [
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "account.profile.update",
+    "summary": "account.profile.update changes your display name.",
+    "options": [
+      {
+        "name": "name",
+        "valueRequired": true,
+        "valueName": "name",
+        "description": "New display name"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "account.orgs.list",
+    "summary": "account.orgs.list lists your organizations and roles.",
+    "options": [
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "account.invitations.list",
+    "summary": "account.invitations.list lists pending invitations addressed to you.",
+    "options": [
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "account.invitations.accept",
+    "summary": "account.invitations.accept joins the organization that invited you.",
+    "options": [
+      {
+        "name": "invitation",
+        "valueRequired": true,
+        "valueName": "invitation-id",
+        "description": "Invitation ID from account.invitations.list"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "account.applications.list",
+    "summary": "account.applications.list lists OAuth applications you have authorized.",
+    "options": [
+      {
+        "name": "page-size",
+        "valueRequired": true,
+        "valueName": "count",
+        "description": "Page size, 1–100 (default 25)"
+      },
+      {
+        "name": "cursor",
+        "valueRequired": true,
+        "valueName": "cursor",
+        "description": "Cursor from the previous page; keep the same page size"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
     "command": "admin.signup-invitations.create",
     "summary": "admin.signup-invitations.create creates an email-bound sign-up link.",
     "options": [
@@ -416,6 +590,173 @@
         "valueRequired": true,
         "valueName": "cursor",
         "description": "Cursor from the previous page; keep the same page size"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "org.get",
+    "summary": "org.get prints the current organization and your roles in it.",
+    "options": [
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "org.update",
+    "summary": "org.update renames the current organization (owners and admins).",
+    "options": [
+      {
+        "name": "name",
+        "valueRequired": true,
+        "valueName": "name",
+        "description": "New organization name"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "org.members.list",
+    "summary": "org.members.list lists members of the current organization.",
+    "options": [
+      {
+        "name": "page-size",
+        "valueRequired": true,
+        "valueName": "count",
+        "description": "Page size, 1–100 (default 25)"
+      },
+      {
+        "name": "cursor",
+        "valueRequired": true,
+        "valueName": "cursor",
+        "description": "Cursor from the previous page; keep the same page size"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "org.invitations.list",
+    "summary": "org.invitations.list lists pending invitations to the current organization.",
+    "options": [
+      {
+        "name": "page-size",
+        "valueRequired": true,
+        "valueName": "count",
+        "description": "Page size, 1–100 (default 25)"
+      },
+      {
+        "name": "cursor",
+        "valueRequired": true,
+        "valueName": "cursor",
+        "description": "Cursor from the previous page; keep the same page size"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "org.invitations.create",
+    "summary": "org.invitations.create invites an email to the current organization and prints the invitation link. Invitations are not emailed.",
+    "options": [
+      {
+        "name": "email",
+        "valueRequired": true,
+        "valueName": "email",
+        "description": "Email address to invite"
+      },
+      {
+        "name": "role",
+        "valueRequired": true,
+        "valueName": "role",
+        "description": "owner, admin, or member; repeat for multiple roles"
       },
       {
         "name": "help",

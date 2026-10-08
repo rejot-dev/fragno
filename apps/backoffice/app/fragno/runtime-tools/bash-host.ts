@@ -16,6 +16,7 @@ import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 
 import type { AutomationCommandContext, BashAutomationCommandResult } from "./automation-types";
 import { createCurrentScopeBashCommand } from "./current-scope-command";
+import type { AccountRuntime } from "./families/account";
 import type { AdminRuntime } from "./families/admin";
 import type { RegisteredApiCommandContext } from "./families/api-runtime";
 import type { AppsRuntime } from "./families/apps-runtime";
@@ -35,6 +36,7 @@ import type { InternalRuntime } from "./families/internal";
 import type { JavaScriptRuntime } from "./families/javascript-runtime";
 import type { MarketplaceRuntime } from "./families/marketplace-runtime";
 import type { RegisteredMcpCommandContext } from "./families/mcp-runtime";
+import type { OrganizationRuntime } from "./families/organization";
 import type { RegisteredOtpCommandContext } from "./families/otp-runtime";
 import type { PackagesRuntime } from "./families/packages-runtime";
 import type { RegisteredPiCommandContext } from "./families/pi";
@@ -61,7 +63,9 @@ export type BashHostContext = {
   backofficeKernel: BackofficeKernel;
   stateBackend?: BackofficeStateBackend;
   createBackofficeScopedContext(scope: BackofficeContextScope): BashHostContext;
+  account?: { runtime: AccountRuntime } | null;
   admin?: { runtime: AdminRuntime } | null;
+  org?: { runtime: OrganizationRuntime } | null;
   apps: { runtime: AppsRuntime } | null;
   backoffice: { runtime: BackofficeCapabilitiesRuntime } | null;
   automation: RegisteredEventBashCommandContext | null;
