@@ -6,9 +6,11 @@ import type { AdminRuntime } from "./admin";
 
 type AdminAuthCommands = Pick<
   AuthObject,
-  | "hasOAuthClient"
+  | "getOAuthClientFacts"
   | "createAdminOAuthClient"
   | "listAdminOAuthClients"
+  | "updateAdminOAuthClient"
+  | "rotateAdminOAuthClientSecret"
   | "createAdminOrganization"
   | "getOrganizationBySlug"
   | "getOrganization"
@@ -49,12 +51,32 @@ export function createAdminRuntime({
       await auth.createAdminOAuthClient({ ...input, administratorUserId }),
     listOAuthClients: async (input, administratorUserId) =>
       await auth.listAdminOAuthClients({ ...input, administratorUserId }),
+    updateOAuthClient: async (input, administratorUserId) =>
+      await auth.updateAdminOAuthClient({ ...input, administratorUserId }),
+    rotateOAuthClientSecret: async (input, administratorUserId) =>
+      await auth.rotateAdminOAuthClientSecret({ ...input, administratorUserId }),
     createApp: async (input) => {
       if (!apps) {
         throw new Error("Admin app creation requires the APPS binding.");
       }
-      if (!(await auth.hasOAuthClient({ clientId: input.oauthClientId }))) {
-        throw new Error(`Admin app creation could not find OAuth client '${input.oauthClientId}'.`);
+      const client = await auth.getOAuthClientFacts({ clientId: input.oauthClientId });
+      if (!client) {
+        throw new Error(
+          `OAuth client '${input.oauthClientId}' was not found. List clients with admin.oauth-clients.list.`,
+        );
+      }
+      // The Codemode client always receives first-party authority, so an app registration for it
+      // could be installed but never used.
+      if (client.managedByBackoffice) {
+        throw new Error(
+          `OAuth client '${input.oauthClientId}' is the deployment's Codemode client and cannot be registered as an app. Create a dedicated client with admin.oauth-clients.create.`,
+        );
+      }
+      // Without this scope the app could be installed but never exchange for execution access.
+      if (!client.scopes.includes("backoffice")) {
+        throw new Error(
+          `OAuth client '${input.oauthClientId}' must allow the backoffice scope before it can be registered as an app. Update it with admin.oauth-clients.update.`,
+        );
       }
       return requireBackofficeAppOperationValue(await apps.registerApp(input));
     },

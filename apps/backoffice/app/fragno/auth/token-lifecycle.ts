@@ -36,6 +36,58 @@ export const backofficeJwtPayloadSchema = z.object({
 
 export type BackofficeJwtPayload = z.infer<typeof backofficeJwtPayloadSchema>;
 
+/**
+ * Installed apps receive a separate audience, so every user-credential verifier rejects them.
+ * The credential names identities only; user and installation authority are resolved live.
+ */
+const INSTALLED_APP_ACCESS_TOKEN_AUDIENCE = "fragno-backoffice-installed-app";
+
+const installedAppJwtPayloadSchema = z.object({
+  sub: z.string().min(1),
+  actor: z.discriminatedUnion("kind", [
+    z.strictObject({ kind: z.literal("user"), userId: z.string().min(1) }),
+    z.strictObject({ kind: z.literal("installation") }),
+  ]),
+  installation: z.strictObject({
+    appId: z.string().min(1),
+    activation: z.number().int().positive(),
+    externalAccount: z.strictObject({ id: z.string().min(1), label: z.string().min(1) }).nullable(),
+  }),
+  scopeRestriction: z.discriminatedUnion("kind", [
+    z.strictObject({ kind: z.literal("org"), orgId: z.string().min(1) }),
+    z.strictObject({
+      kind: z.literal("project"),
+      orgId: z.string().min(1),
+      projectId: z.string().min(1),
+    }),
+  ]),
+  iss: z.literal(ACCESS_TOKEN_ISSUER),
+  aud: z.literal(INSTALLED_APP_ACCESS_TOKEN_AUDIENCE),
+  iat: z.number().int().nonnegative(),
+  exp: z.number().int().positive(),
+  jti: z.string().min(1),
+});
+
+export type InstalledAppJwtPayload = z.infer<typeof installedAppJwtPayloadSchema>;
+
+/**
+ * A browser-carried proof that an organization approved an app installation. It is not a
+ * credential: only the app's authenticated server can redeem it, and only to claim that activation.
+ */
+const APP_INSTALLATION_CODE_AUDIENCE = "fragno-backoffice-app-installation-code";
+const APP_INSTALLATION_CODE_LIFETIME_SECONDS = 5 * 60;
+
+const appInstallationCodePayloadSchema = z.object({
+  appId: z.string().min(1),
+  organizationId: z.string().min(1),
+  activation: z.number().int().positive(),
+  iss: z.literal(ACCESS_TOKEN_ISSUER),
+  aud: z.literal(APP_INSTALLATION_CODE_AUDIENCE),
+  exp: z.number().int().positive(),
+});
+
+export type AppInstallationCodePayload = z.infer<typeof appInstallationCodePayloadSchema>;
+
 const betterAuthJwksSchema = z.object({
   keys: z.array(
     z.looseObject({
@@ -95,6 +147,33 @@ export const readBackofficeAccessTokenCookie = (cookieHeader: string | null): st
 
 type BackofficeJwtSigningContext = Parameters<typeof signJWT>[0];
 
+async function signBackofficeAccessToken(
+  context: BackofficeJwtSigningContext,
+  audience: string,
+  claims: Record<string, unknown>,
+  lifetimeSeconds = BACKOFFICE_JWT_LIFETIME_SECONDS,
+): Promise<{ token: string; expiresAt: Date }> {
+  const issuedAtEpochSeconds = Math.floor(Date.now() / 1_000);
+  const expiresAtEpochSeconds = issuedAtEpochSeconds + lifetimeSeconds;
+  const token = await signJWT(context, {
+    options: {
+      jwt: {
+        issuer: ACCESS_TOKEN_ISSUER,
+        audience,
+        expirationTime: `${lifetimeSeconds}s`,
+      },
+    },
+    payload: {
+      ...claims,
+      iat: issuedAtEpochSeconds,
+      exp: expiresAtEpochSeconds,
+      jti: crypto.randomUUID(),
+    },
+  });
+
+  return { token, expiresAt: new Date(expiresAtEpochSeconds * 1_000) };
+}
+
 export const issueBackofficeJwt = async (
   context: BackofficeJwtSigningContext,
   authority: {
@@ -104,31 +183,43 @@ export const issueBackofficeJwt = async (
     scopeRestriction: BackofficeContextScope | null;
     organization: { id: string; slug: string; roles: string[] } | null;
   },
-): Promise<{ token: string; expiresAt: Date }> => {
-  const issuedAtEpochSeconds = Math.floor(Date.now() / 1_000);
-  const expiresAtEpochSeconds = issuedAtEpochSeconds + BACKOFFICE_JWT_LIFETIME_SECONDS;
-  const token = await signJWT(context, {
-    options: {
-      jwt: {
-        issuer: ACCESS_TOKEN_ISSUER,
-        audience: ACCESS_TOKEN_AUDIENCE,
-        expirationTime: `${BACKOFFICE_JWT_LIFETIME_SECONDS}s`,
-      },
-    },
-    payload: {
-      sub: authority.userId,
-      email: authority.email,
-      globalRole: authority.globalRole,
-      scopeRestriction: authority.scopeRestriction,
-      organization: authority.organization,
-      iat: issuedAtEpochSeconds,
-      exp: expiresAtEpochSeconds,
-      jti: crypto.randomUUID(),
-    },
+): Promise<{ token: string; expiresAt: Date }> =>
+  await signBackofficeAccessToken(context, ACCESS_TOKEN_AUDIENCE, {
+    sub: authority.userId,
+    email: authority.email,
+    globalRole: authority.globalRole,
+    scopeRestriction: authority.scopeRestriction,
+    organization: authority.organization,
   });
 
-  return { token, expiresAt: new Date(expiresAtEpochSeconds * 1_000) };
-};
+/**
+ * Binds an installed app, acting for a user or as itself, to one activation and scope. It carries
+ * no role or grant snapshot; both are resolved live on every use.
+ */
+export async function issueInstalledAppJwt(
+  context: BackofficeJwtSigningContext,
+  authority: Pick<InstalledAppJwtPayload, "actor" | "installation" | "scopeRestriction">,
+): Promise<{ token: string; expiresAt: Date }> {
+  return await signBackofficeAccessToken(context, INSTALLED_APP_ACCESS_TOKEN_AUDIENCE, {
+    sub:
+      authority.actor.kind === "user"
+        ? authority.actor.userId
+        : `app:${authority.installation.appId}`,
+    ...authority,
+  });
+}
+
+export async function issueAppInstallationCode(
+  context: BackofficeJwtSigningContext,
+  installation: Pick<AppInstallationCodePayload, "appId" | "organizationId" | "activation">,
+): Promise<{ token: string; expiresAt: Date }> {
+  return await signBackofficeAccessToken(
+    context,
+    APP_INSTALLATION_CODE_AUDIENCE,
+    { ...installation },
+    APP_INSTALLATION_CODE_LIFETIME_SECONDS,
+  );
+}
 
 type JwksFetchObject = {
   fetch(request: Request): Promise<Response>;
@@ -281,10 +372,15 @@ async function refreshBackofficeJwksForUnknownKey(
   return await refreshBackofficeJwks(authObject, cacheAuthority, requestOrigin);
 }
 
-const verifyBackofficeJwtWithJwks = async (
+type JwtPayloadVerifier<TPayload> = (
   token: string,
   resolver: BackofficeJwksResolver,
-): Promise<BackofficeJwtPayload> => {
+) => Promise<TPayload>;
+
+const verifyBackofficeJwtWithJwks: JwtPayloadVerifier<BackofficeJwtPayload> = async (
+  token,
+  resolver,
+) => {
   const verification = await jwtVerify(token, resolver, {
     issuer: ACCESS_TOKEN_ISSUER,
     audience: ACCESS_TOKEN_AUDIENCE,
@@ -292,15 +388,41 @@ const verifyBackofficeJwtWithJwks = async (
   return backofficeJwtPayloadSchema.parse(verification.payload);
 };
 
-export type BackofficeJwtVerificationResult =
-  | { ok: true; payload: BackofficeJwtPayload }
+const verifyInstalledAppJwtWithJwks: JwtPayloadVerifier<InstalledAppJwtPayload> = async (
+  token,
+  resolver,
+) => {
+  const verification = await jwtVerify(token, resolver, {
+    issuer: ACCESS_TOKEN_ISSUER,
+    audience: INSTALLED_APP_ACCESS_TOKEN_AUDIENCE,
+  });
+  return installedAppJwtPayloadSchema.parse(verification.payload);
+};
+
+const verifyAppInstallationCodeWithJwks: JwtPayloadVerifier<AppInstallationCodePayload> = async (
+  token,
+  resolver,
+) => {
+  const verification = await jwtVerify(token, resolver, {
+    issuer: ACCESS_TOKEN_ISSUER,
+    audience: APP_INSTALLATION_CODE_AUDIENCE,
+  });
+  return appInstallationCodePayloadSchema.parse(verification.payload);
+};
+
+export type JwtVerificationResult<TPayload> =
+  | { ok: true; payload: TPayload }
   | { ok: false; reason: "missing" | "expired" | "invalid" };
 
-export const verifyBackofficeJwt = async (
+export type BackofficeJwtVerificationResult = JwtVerificationResult<BackofficeJwtPayload>;
+
+/** User and app credentials share Auth's signing keys and therefore one JWKS cache. */
+async function verifyWithBackofficeJwks<TPayload>(
   token: string | null,
   requestUrl: string,
   authObject: JwksFetchObject,
-): Promise<BackofficeJwtVerificationResult> => {
+  verify: JwtPayloadVerifier<TPayload>,
+): Promise<JwtVerificationResult<TPayload>> {
   if (!token) {
     return { ok: false, reason: "missing" };
   }
@@ -312,7 +434,7 @@ export const verifyBackofficeJwt = async (
   try {
     return {
       ok: true,
-      payload: await verifyBackofficeJwtWithJwks(token, jwksEntry.resolver),
+      payload: await verify(token, jwksEntry.resolver),
     };
   } catch (error) {
     if (error instanceof errors.JWTExpired) {
@@ -334,7 +456,7 @@ export const verifyBackofficeJwt = async (
   }
 
   try {
-    const payload = await verifyBackofficeJwtWithJwks(token, refreshedEntry.resolver);
+    const payload = await verify(token, refreshedEntry.resolver);
     backofficeUnknownKeyRefreshAtByAuthority.delete(cacheAuthority);
     return { ok: true, payload };
   } catch (error) {
@@ -346,7 +468,40 @@ export const verifyBackofficeJwt = async (
       reason: error instanceof errors.JWTExpired ? "expired" : "invalid",
     };
   }
-};
+}
+
+export const verifyBackofficeJwt = async (
+  token: string | null,
+  requestUrl: string,
+  authObject: JwksFetchObject,
+): Promise<BackofficeJwtVerificationResult> =>
+  await verifyWithBackofficeJwks(token, requestUrl, authObject, verifyBackofficeJwtWithJwks);
+
+export async function verifyInstalledAppJwt(
+  token: string | null,
+  requestUrl: string,
+  authObject: JwksFetchObject,
+): Promise<JwtVerificationResult<InstalledAppJwtPayload>> {
+  return await verifyWithBackofficeJwks(
+    token,
+    requestUrl,
+    authObject,
+    verifyInstalledAppJwtWithJwks,
+  );
+}
+
+export async function verifyAppInstallationCode(
+  code: string,
+  requestUrl: string,
+  authObject: JwksFetchObject,
+): Promise<JwtVerificationResult<AppInstallationCodePayload>> {
+  return await verifyWithBackofficeJwks(
+    code,
+    requestUrl,
+    authObject,
+    verifyAppInstallationCodeWithJwks,
+  );
+}
 
 export const verifyBackofficeJwtRequest = async (
   request: Request,

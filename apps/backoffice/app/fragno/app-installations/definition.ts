@@ -7,12 +7,17 @@ import { BackofficeAppDomainError } from "@/fragno/apps/errors";
 import { appPermissionsEqual } from "@/fragno/apps/permissions";
 
 import type {
+  AppInstallationExternalAccount,
+  AppInstallationResourceScope,
   BackofficeAppInstallation,
-  BackofficeAppInstallationGrantsInput,
+  BackofficeAppInstallationAccessInput,
+  BackofficeAppInstallationClaimInput,
+  BackofficeAppInstallationClaimResult,
   BackofficeAppInstallationInput,
   BackofficeAppInstallationMutationResult,
   BackofficeAppInstallationPage,
   BackofficeAppInstallationPageInput,
+  BackofficeAppInstallationStatus,
 } from "./contracts";
 import { appInstallationsFragmentSchema } from "./schema";
 
@@ -36,6 +41,58 @@ function assertAppGrantsWereRequested(
       "Backoffice app installation grants exceed the app's requested permissions.",
     );
   }
+}
+
+function resourceScopesEqual(
+  left: AppInstallationResourceScope,
+  right: AppInstallationResourceScope,
+): boolean {
+  if (left.kind === "organization" || right.kind === "organization") {
+    return left.kind === right.kind;
+  }
+  // Both lists are normalized to sorted sets at the boundary.
+  return (
+    left.projectIds.length === right.projectIds.length &&
+    left.projectIds.every((projectId, index) => projectId === right.projectIds[index])
+  );
+}
+
+function toResourceProjectIds(resourceScope: AppInstallationResourceScope): string[] | null {
+  return resourceScope.kind === "organization" ? null : resourceScope.projectIds;
+}
+
+function toResourceScope(resourceProjectIds: string[] | null): AppInstallationResourceScope {
+  return resourceProjectIds === null
+    ? { kind: "organization" }
+    : { kind: "projects", projectIds: resourceProjectIds };
+}
+
+function toBackofficeAppInstallation(installation: {
+  id: { externalId: string };
+  appId: string;
+  organizationId: string;
+  grantedPermissions: BackofficePermissionRequirement[];
+  resourceProjectIds: string[] | null;
+  externalAccount: AppInstallationExternalAccount | null;
+  installedByUserId: string;
+  status: BackofficeAppInstallationStatus;
+  activation: number;
+  createdAt: Date;
+  updatedAt: Date;
+}): BackofficeAppInstallation {
+  return {
+    id: installation.id.externalId,
+    appId: installation.appId,
+    organizationId: installation.organizationId,
+    grantedPermissions: installation.grantedPermissions,
+    resourceScope: toResourceScope(installation.resourceProjectIds),
+    externalAccount: installation.externalAccount,
+    installedByUserId: installation.installedByUserId,
+    status: installation.status,
+    activation: installation.activation,
+    createdAt: installation.createdAt.toISOString(),
+    updatedAt: installation.updatedAt.toISOString(),
+  };
 }
 
 function decodeAppInstallationCursor(
@@ -87,11 +144,15 @@ export const appInstallationsFragmentDefinition = defineFragment<AppInstallation
               assertAppGrantsWereRequested(requestedPermissions, input.grantedPermissions);
               if (installation?.status === "active") {
                 if (
-                  !appPermissionsEqual(installation.grantedPermissions, input.grantedPermissions)
+                  !appPermissionsEqual(installation.grantedPermissions, input.grantedPermissions) ||
+                  !resourceScopesEqual(
+                    toResourceScope(installation.resourceProjectIds),
+                    input.resourceScope,
+                  )
                 ) {
                   throw new BackofficeAppDomainError(
                     "APP_INSTALLATION_CONFLICT",
-                    "Backoffice app is already installed with different grants; update grants explicitly.",
+                    "Backoffice app is already installed with different access; update it explicitly.",
                   );
                 }
                 return { installationId: installation.id.externalId, changed: false };
@@ -101,8 +162,10 @@ export const appInstallationsFragmentDefinition = defineFragment<AppInstallation
                   b
                     .set({
                       grantedPermissions: input.grantedPermissions,
+                      resourceProjectIds: toResourceProjectIds(input.resourceScope),
                       installedByUserId: input.installedByUserId,
                       status: "active",
+                      activation: installation.activation + 1,
                       updatedAt: uow.now(),
                     })
                     .check(),
@@ -115,8 +178,12 @@ export const appInstallationsFragmentDefinition = defineFragment<AppInstallation
               const id = uow.create(
                 "app_installation",
                 {
-                  ...input,
+                  appId: input.appId,
+                  grantedPermissions: input.grantedPermissions,
+                  resourceProjectIds: toResourceProjectIds(input.resourceScope),
+                  installedByUserId: input.installedByUserId,
                   organizationId: config.organizationId,
+                  externalAccount: null,
                   status: "active",
                 },
                 {
@@ -138,18 +205,7 @@ export const appInstallationsFragmentDefinition = defineFragment<AppInstallation
             ),
           )
           .transformRetrieve(([installation]): BackofficeAppInstallation | null =>
-            installation
-              ? {
-                  id: installation.id.externalId,
-                  appId: installation.appId,
-                  organizationId: installation.organizationId,
-                  grantedPermissions: installation.grantedPermissions,
-                  installedByUserId: installation.installedByUserId,
-                  status: installation.status,
-                  createdAt: installation.createdAt.toISOString(),
-                  updatedAt: installation.updatedAt.toISOString(),
-                }
-              : null,
+            installation ? toBackofficeAppInstallation(installation) : null,
           )
           .build();
       },
@@ -170,16 +226,7 @@ export const appInstallationsFragmentDefinition = defineFragment<AppInstallation
           )
           .transformRetrieve(
             ([page]): BackofficeAppInstallationPage => ({
-              installations: page.items.map((installation) => ({
-                id: installation.id.externalId,
-                appId: installation.appId,
-                organizationId: installation.organizationId,
-                grantedPermissions: installation.grantedPermissions,
-                installedByUserId: installation.installedByUserId,
-                status: installation.status,
-                createdAt: installation.createdAt.toISOString(),
-                updatedAt: installation.updatedAt.toISOString(),
-              })),
+              installations: page.items.map(toBackofficeAppInstallation),
               nextCursor: page.cursor?.encode() ?? null,
               hasNextPage: page.hasNextPage,
             }),
@@ -187,8 +234,8 @@ export const appInstallationsFragmentDefinition = defineFragment<AppInstallation
           .build();
       },
 
-      updateInstallationGrants: function (
-        input: BackofficeAppInstallationGrantsInput,
+      updateInstallationAccess: function (
+        input: BackofficeAppInstallationAccessInput,
         requestedPermissions: readonly BackofficePermissionRequirement[],
       ) {
         return this.serviceTx(appInstallationsFragmentSchema)
@@ -212,18 +259,76 @@ export const appInstallationsFragmentDefinition = defineFragment<AppInstallation
                 );
               }
               assertAppGrantsWereRequested(requestedPermissions, input.grantedPermissions);
-              if (appPermissionsEqual(installation.grantedPermissions, input.grantedPermissions)) {
+              if (
+                appPermissionsEqual(installation.grantedPermissions, input.grantedPermissions) &&
+                resourceScopesEqual(
+                  toResourceScope(installation.resourceProjectIds),
+                  input.resourceScope,
+                )
+              ) {
                 return { installationId: installation.id.externalId, changed: false };
               }
               uow.update("app_installation", installation.id, (b) =>
                 b
                   .set({
                     grantedPermissions: input.grantedPermissions,
+                    resourceProjectIds: toResourceProjectIds(input.resourceScope),
                     updatedAt: uow.now(),
                   })
                   .check(),
               );
               return { installationId: installation.id.externalId, changed: true };
+            },
+          )
+          .build();
+      },
+
+      /**
+       * Records the app's own tenant on one activation. Re-claiming the same tenant refreshes its
+       * label; a different tenant requires uninstalling first, so a link is never silently moved.
+       */
+      claimInstallation: function (input: BackofficeAppInstallationClaimInput) {
+        return this.serviceTx(appInstallationsFragmentSchema)
+          .retrieve((uow) =>
+            uow.findFirst("app_installation", (b) =>
+              b.whereIndex("idx_app_installation_appId", (eb) => eb("appId", "=", input.appId)),
+            ),
+          )
+          .mutate(
+            ({ uow, retrieveResult: [installation] }): BackofficeAppInstallationClaimResult => {
+              if (installation?.status !== "active") {
+                throw new BackofficeAppDomainError(
+                  "APP_INSTALLATION_INACTIVE",
+                  "Backoffice app is not installed in this organization.",
+                );
+              }
+              if (installation.activation !== input.activation) {
+                throw new BackofficeAppDomainError(
+                  "APP_INSTALLATION_ACTIVATION_STALE",
+                  "Backoffice app was reinstalled since this installation was approved.",
+                );
+              }
+              if (
+                installation.externalAccount !== null &&
+                installation.externalAccount.id !== input.externalAccount.id
+              ) {
+                throw new BackofficeAppDomainError(
+                  "APP_INSTALLATION_ALREADY_CLAIMED",
+                  "Backoffice app installation is already linked to another account; uninstall it first.",
+                );
+              }
+              uow.update("app_installation", installation.id, (b) =>
+                b.set({ externalAccount: input.externalAccount, updatedAt: uow.now() }).check(),
+              );
+              return {
+                id: installation.id.externalId,
+                appId: installation.appId,
+                organizationId: installation.organizationId,
+                grantedPermissions: installation.grantedPermissions,
+                resourceScope: toResourceScope(installation.resourceProjectIds),
+                externalAccount: input.externalAccount,
+                activation: installation.activation,
+              };
             },
           )
           .build();
@@ -252,6 +357,7 @@ export const appInstallationsFragmentDefinition = defineFragment<AppInstallation
                   .set({
                     status: "uninstalled",
                     grantedPermissions: [],
+                    externalAccount: null,
                     updatedAt: uow.now(),
                   })
                   .check(),

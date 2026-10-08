@@ -2,17 +2,15 @@
 type AppsCodemodeProvider = {
   /** Review a registered app's requested permissions before approving an installation. */
   get(input: AppsGetInput): Promise<AppsGetOutput>;
-  /** Approve an app installation in the selected organization. Installer identity comes from the authenticated user; approval does not enable app execution. */
+  /** Approve an app installation in the selected organization, limited to explicit permissions and resources. Installer identity comes from the authenticated user. */
   install(input: AppsInstallInput): Promise<AppsInstallOutput>;
   /** Inspect one app installation in the selected organization, including approved grants. */
   getInstallation(input: AppsGetInstallationInput): Promise<AppsGetInstallationOutput>;
   /** List the selected organization's active and uninstalled apps using cursor pagination. Does not expose other organizations or OAuth credentials. */
   listInstallations(input: AppsListInstallationsInput): Promise<AppsListInstallationsOutput>;
-  /** Replace an active installation's approved grants with an explicit subset of the app declaration. Does not change installer attribution or enable execution. */
-  updateInstallationGrants(
-    input: AppsUpdateInstallationGrantsInput,
-  ): Promise<AppsUpdateInstallationGrantsOutput>;
-  /** Uninstall an app in the selected organization, clearing approved grants while retaining installation identity. Does not revoke personal OAuth consent. */
+  /** Replace an active installation's approved permissions and resources. Takes effect immediately, including for issued app credentials. Does not change installer attribution. */
+  updateInstallation(input: AppsUpdateInstallationInput): Promise<AppsUpdateInstallationOutput>;
+  /** Uninstall an app in the selected organization, clearing approved grants and its linked account while retaining installation identity. Immediately invalidates app credentials. Does not revoke personal OAuth consent. */
   uninstall(input: AppsUninstallInput): Promise<AppsUninstallOutput>;
 };
 declare const apps: AppsCodemodeProvider;
@@ -315,6 +313,14 @@ type AppsGetOutput = {
 type AppsInstallInput = {
   appId: string;
   grantedPermissions: BackofficePermissionRequirement[];
+  resourceScope?:
+    | {
+        kind: "organization";
+      }
+    | {
+        kind: "projects";
+        projectIds: string[];
+      };
 };
 type AppsInstallOutput = {
   installationId: string;
@@ -328,8 +334,21 @@ type AppsGetInstallationOutput = {
   appId: string;
   organizationId: string;
   grantedPermissions: BackofficePermissionRequirement[];
+  resourceScope:
+    | {
+        kind: "organization";
+      }
+    | {
+        kind: "projects";
+        projectIds: unknown;
+      };
+  externalAccount: {
+    id: string;
+    label: string;
+  } | null;
   installedByUserId: string;
   status: "active" | "uninstalled";
+  activation: number;
   /** ISO 8601 datetime string. */
   createdAt: string;
   /** ISO 8601 datetime string. */
@@ -345,8 +364,21 @@ type AppsListInstallationsOutput = {
     appId: string;
     organizationId: string;
     grantedPermissions: BackofficePermissionRequirement[];
+    resourceScope:
+      | {
+          kind: "organization";
+        }
+      | {
+          kind: "projects";
+          projectIds: unknown;
+        };
+    externalAccount: {
+      id: string;
+      label: string;
+    } | null;
     installedByUserId: string;
     status: "active" | "uninstalled";
+    activation: number;
     /** ISO 8601 datetime string. */
     createdAt: string;
     /** ISO 8601 datetime string. */
@@ -355,11 +387,19 @@ type AppsListInstallationsOutput = {
   nextCursor: string | null;
   hasNextPage: boolean;
 };
-type AppsUpdateInstallationGrantsInput = {
+type AppsUpdateInstallationInput = {
   appId: string;
   grantedPermissions: BackofficePermissionRequirement[];
+  resourceScope:
+    | {
+        kind: "organization";
+      }
+    | {
+        kind: "projects";
+        projectIds: string[];
+      };
 };
-type AppsUpdateInstallationGrantsOutput = {
+type AppsUpdateInstallationOutput = {
   installationId: string;
   changed: boolean;
 };

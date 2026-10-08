@@ -666,6 +666,10 @@
         "description": "web (default) or native; native permits HTTP loopback callbacks"
       },
       {
+        "name": "client-credentials",
+        "description": "Allow client credentials (confidential clients with the backoffice scope), so an installed app can act as its installation"
+      },
+      {
         "name": "help",
         "description": "Show this help text",
         "valueRequired": false,
@@ -701,6 +705,88 @@
         "valueRequired": true,
         "valueName": "cursor",
         "description": "Cursor from the previous page; keep the same page size"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "admin.oauth-clients.update",
+    "summary": "admin.oauth-clients.update replaces an owned client's redirects, scopes, and client-credentials access. All settings are required so nothing changes implicitly.",
+    "options": [
+      {
+        "name": "client-id",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "id",
+        "description": "OAuth client ID you own"
+      },
+      {
+        "name": "redirect-uri",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "url",
+        "description": "Allowed redirect URI; repeat for multiple callbacks"
+      },
+      {
+        "name": "scope",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "scope",
+        "description": "OAuth scope; repeat for multiple scopes"
+      },
+      {
+        "name": "client-credentials",
+        "description": "Allow client credentials; omit to remove them"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "admin.oauth-clients.rotate-secret",
+    "summary": "admin.oauth-clients.rotate-secret replaces an owned confidential client's secret. Update the app's configuration before the old secret is needed again.",
+    "options": [
+      {
+        "name": "client-id",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "id",
+        "description": "OAuth client ID you own"
       },
       {
         "name": "help",
@@ -924,7 +1010,7 @@
   },
   {
     "command": "apps.install",
-    "summary": "apps.install approves an organization-owned installation (organization owners/admins only). OAuth user consent is separate; app execution remains unavailable.",
+    "summary": "apps.install approves an organization-owned installation (organization owners/admins only). The app can then act only within these grants and resources; OAuth user consent is separate.",
     "options": [
       {
         "name": "app-id",
@@ -939,6 +1025,12 @@
         "valueRequired": true,
         "valueName": "json",
         "description": "Explicitly approved subset of requested permissions; use [] for no grants"
+      },
+      {
+        "name": "resource-scope-json",
+        "valueRequired": true,
+        "valueName": "json",
+        "description": "Resources the grants apply to: {\"kind\":\"organization\"} or {\"kind\":\"projects\",\"projectIds\":[\"...\"]} (default: whole organization)"
       },
       {
         "name": "help",
@@ -1031,8 +1123,8 @@
     ]
   },
   {
-    "command": "apps.installations.grants.update",
-    "summary": "apps.installations.grants.update replaces approved grants (organization owners/admins only).",
+    "command": "apps.installations.update",
+    "summary": "apps.installations.update replaces approved permissions and resources (organization owners/admins only). Both are required so access is never widened implicitly.",
     "options": [
       {
         "name": "app-id",
@@ -1047,6 +1139,13 @@
         "valueRequired": true,
         "valueName": "json",
         "description": "Explicitly approved subset of requested permissions; use [] for no grants"
+      },
+      {
+        "name": "resource-scope-json",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "json",
+        "description": "Resources the grants apply to: {\"kind\":\"organization\"} or {\"kind\":\"projects\",\"projectIds\":[\"...\"]}"
       },
       {
         "name": "help",

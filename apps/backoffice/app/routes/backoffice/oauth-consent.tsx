@@ -109,7 +109,8 @@ export default function BackofficeOAuthConsent({
         </div>
         <p className="text-sm leading-6 text-pretty text-[var(--bo-muted)]">
           Approval allows this client to use the scopes and any additional requests listed here. It
-          does not install an app or grant organization permissions or Backoffice execution access.
+          does not install an app or approve organization permissions; an app can act in an
+          organization only after an owner or admin installs it there.
         </p>
         {consent.resources.length > 0 ? (
           <div className="text-xs text-[var(--bo-muted)]">

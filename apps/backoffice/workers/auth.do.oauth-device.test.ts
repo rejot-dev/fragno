@@ -24,12 +24,14 @@ import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-f
 import { verifyBackofficeJwt } from "@/fragno/auth/token-lifecycle";
 import { getSetCookieHeaders } from "@/worker-runtime/http-headers";
 
+import { InMemoryAppsObject } from "./apps.do";
 import { issueTestSignUpInvitation } from "./auth-sign-up.test-support";
 import { InMemoryAuthObject } from "./auth.do";
 import { InMemoryAutomationsObject } from "./automations.do";
 import { InMemoryOtpObject } from "./otp.do";
 
 const localObjects = {
+  APPS: (input) => new InMemoryAppsObject(input),
   AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
   AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
   OTP: (input) => new InMemoryOtpObject(input),
