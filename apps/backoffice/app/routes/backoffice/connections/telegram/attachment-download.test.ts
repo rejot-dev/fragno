@@ -230,10 +230,22 @@ describe("Telegram attachment download scenarios", () => {
     });
   });
 
-  test("returns the object's permission denial rather than treating it as attachment bytes", async () => {
+  test("organization members download attachments through the signed object transport", async () => {
     await runAttachmentScenario({
-      name: "Attachment downloads require canonical Telegram read permission",
-      fakes: ({ fake }) => ({ telegram: fake.telegram() }),
+      name: "Attachment downloads authorize members with Telegram read permission",
+      fakes: ({ fake }) => ({
+        telegram: fake.telegram({
+          files: [
+            {
+              fileId: "file-1",
+              fileUniqueId: "unique-1",
+              filePath: "voice/file.ogg",
+              fileSize: 3,
+              bytes: new Uint8Array([1, 2, 3]),
+            },
+          ],
+        }),
+      }),
       setup: ({ given }) => [
         given.organization.exists({ id: orgId, slug: "fragno" }),
         given.telegram.configured({ orgId, botUsername: "fragno_bot" }),
@@ -243,17 +255,14 @@ describe("Telegram attachment download scenarios", () => {
           email: "attachment-member@example.test",
           captureSessionCookieAs: "session",
         }),
-        then.assert(
-          "membership without read permission cannot invoke the transport",
-          async (ctx) => {
-            const cookie = await authenticateAttachmentUser(ctx, "user", true);
-            const response = await downloadAttachment(ctx, "fileId=file-1&kind=voice", cookie);
-            assert.equal(response.status, 403);
-            expect(await response.json()).toMatchObject({ code: "principal-permission-denied" });
-            assert(ctx.fakes.telegram);
-            expect(ctx.fakes.telegram.downloadFileCalls).toEqual([]);
-          },
-        ),
+        then.assert("members receive the attachment bytes", async (ctx) => {
+          const cookie = await authenticateAttachmentUser(ctx, "user", true);
+          const response = await downloadAttachment(ctx, "fileId=file-1&kind=voice", cookie);
+          assert.equal(response.status, 200);
+          expect(new Uint8Array(await response.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
+          assert(ctx.fakes.telegram);
+          expect(ctx.fakes.telegram.downloadFileCalls).toEqual([{ fileId: "file-1" }]);
+        }),
       ],
     });
   });

@@ -40,7 +40,11 @@ import { loader as loadInvitationPreview } from "@/routes/backoffice/invitation-
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
 import { authorizedBackofficeObjectHttp } from "./authorized-object-http";
-import { createBackofficeSystemExecution, createBackofficeUserExecution } from "./context";
+import {
+  createBackofficeServiceExecution,
+  createBackofficeSystemExecution,
+  createBackofficeUserExecution,
+} from "./context";
 import { deferBackofficeExecution } from "./context";
 import { BackofficeKernel } from "./kernel";
 import { backofficeObjectScopeFromContextScope } from "./object-registry";
@@ -167,7 +171,12 @@ describe("fragment HTTP authority scenarios", () => {
       await reson8.commands.setAdminConfig({ apiKey: "test-key" }, scope.orgId);
       const url = `${origin}/api/reson8/custom-model`;
       assert((await reson8.http.fetch(new Request(url))).status === 401);
-      const forbidden = await reson8.http.fetchAuthorized(new Request(url), { execution });
+      const forbidden = await reson8.http.fetchAuthorized(new Request(url), {
+        execution: createBackofficeServiceExecution({
+          scope,
+          service: { type: "agent", id: "reson8-reader" },
+        }),
+      });
       assert(forbidden.status === 403);
       const unexposed = await reson8.http.fetchAuthorized(
         new Request(`${origin}/api/reson8/_internal`),
@@ -270,9 +279,9 @@ describe("fragment HTTP authority scenarios", () => {
   test("public HTTP, bound runtime calls, and direct object requests cannot bypass operation permissions", async () => {
     await runHttpAuthorityScenario(async (ctx) => {
       const { accessCookie, me } = await exchangeBrowserSession(ctx);
-      const organization = me.organizations[0].organization;
-      const scope = { kind: "org" as const, orgId: organization.id };
-      const scopeSegment = `org:${organization.slug}`;
+      // Organization members hold API and MCP management; a personal scope does not.
+      const scope = { kind: "user" as const, userId: me.user.id };
+      const scopeSegment = `user:${me.user.id}`;
       const api = ctx.runtime.objects.api.for(scope);
       const connection = {
         name: "Protected connection",

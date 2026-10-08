@@ -17,6 +17,7 @@ import {
   type BackofficeAuthorityResolver,
 } from "@/backoffice-runtime/authority-resolver";
 import {
+  createBackofficeServiceExecution,
   createBackofficeSystemExecution,
   createBackofficeUserExecution,
   type BackofficeExecutionContext,
@@ -578,13 +579,16 @@ test("connection IDs cannot select an owner or replace umbrella and service auth
         async (ctx) => {
           const execution = createBackofficeSystemExecution(scope);
           const kernel = new BackofficeKernel(ctx.runtime.services);
-          const member = createIntegrationScenarioTerminal(
+          const agent = createIntegrationScenarioTerminal(
             ctx.runtime.services,
-            createBackofficeUserExecution({ scope, userId: "member" }),
+            createBackofficeServiceExecution({
+              scope,
+              service: { type: "agent", id: "integration-setup-principal" },
+            }),
             kernel,
           );
           expect(
-            await member.exec("integrations.setup --connection-id 'backoffice#reson8'"),
+            await agent.exec("integrations.setup --connection-id 'backoffice#reson8'"),
           ).toMatchObject({
             exitCode: 1,
             stderr: expect.stringContaining("Required permission: integrations.manage"),
@@ -707,7 +711,7 @@ test("connection IDs cannot select an owner or replace umbrella and service auth
         },
       ),
       then.assert(
-        "umbrella execution alone does not grant native use and membership does not grant umbrella execution",
+        "umbrella execution alone does not grant native use and agents do not hold umbrella execution",
         async (ctx) => {
           const actor = {
             scope: "internal",
@@ -737,12 +741,15 @@ test("connection IDs cannot select an owner or replace umbrella and service auth
             exitCode: 1,
             stderr: expect.stringContaining("required capability grant"),
           });
-          const member = createIntegrationScenarioTerminal(
+          const agent = createIntegrationScenarioTerminal(
             ctx.runtime.services,
-            createBackofficeUserExecution({ scope, userId: "member" }),
+            createBackofficeServiceExecution({
+              scope,
+              service: { type: "agent", id: "integration-principal" },
+            }),
             new BackofficeKernel(ctx.runtime.services),
           );
-          expect(await member.exec(command)).toMatchObject({
+          expect(await agent.exec(command)).toMatchObject({
             exitCode: 1,
             stderr: expect.stringContaining("Required permission: integrations.execute"),
           });
@@ -923,10 +930,29 @@ test("resolved Reson8 operations bind authority and validate binary contracts an
             runtime: ctx.runtime.services,
             nowEpochMs: ctx.runtime.now,
           });
-          const context = createIntegrationScenarioContext(
-            ctx.runtime.services,
-            createBackofficeUserExecution({ scope, userId: "member" }),
-          );
+          // Members hold every non-administration permission, so a delegate narrows them to
+          // configuration authority.
+          const actor = {
+            scope: "internal",
+            type: "agent",
+            id: "reson8-configuration-agent",
+            role: "assistant",
+          } as const;
+          const member = createBackofficeUserExecution({ scope, userId: "member" });
+          const context: IntegrationContext = {
+            kernel: new BackofficeKernel({
+              ...ctx.runtime.services,
+              authorityResolver: withBackofficeActorCapabilityGrants({
+                resolver: ctx.runtime.services.authorityResolver,
+                actor,
+                grants: [
+                  BACKOFFICE_PERMISSION.connections.manage,
+                  BACKOFFICE_PERMISSION.connections.read,
+                ],
+              }),
+            }),
+            execution: { ...member, actors: { ...member.actors, delegation: [actor] } },
+          };
           assert(source.setup.kind === "supported");
           expect(
             await source.setup.run(context, {
@@ -938,11 +964,11 @@ test("resolved Reson8 operations bind authority and validate binary contracts an
           const [action] = await resolved.actions();
           assert(action);
           await expect(action.invoke({ audio: { bytes: [1] }, query: null })).rejects.toMatchObject(
-            { name: "BackofficeForbiddenError", reason: "principal-permission-denied" },
+            { name: "BackofficeForbiddenError", reason: "actor-capability-denied" },
           );
           await expect(resolved.verify()).rejects.toMatchObject({
             name: "BackofficeForbiddenError",
-            reason: "principal-permission-denied",
+            reason: "actor-capability-denied",
           });
           expect(provider.reads).toEqual([]);
           expect(provider.transcriptions).toEqual([]);

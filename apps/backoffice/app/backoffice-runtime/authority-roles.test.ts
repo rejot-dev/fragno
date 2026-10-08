@@ -66,7 +66,12 @@ describe("Backoffice authority role grants", () => {
   });
 
   test("keeps Cloudflare Browser Run out of constrained authority roles", () => {
-    const unrestrictedRoles = new Set(["system-administrator", "automation", "capability"]);
+    const unrestrictedRoles = new Set([
+      "system-administrator",
+      "organization-member",
+      "automation",
+      "capability",
+    ]);
     for (const [role, grants] of Object.entries(BACKOFFICE_AUTHORITY_ROLE_GRANTS)) {
       if (!unrestrictedRoles.has(role)) {
         expect(grants).not.toContain(BACKOFFICE_PERMISSION.cloudflare.browserRun);
@@ -87,20 +92,6 @@ describe("Backoffice authority role grants", () => {
     expect(BACKOFFICE_AUTHORITY_ROLE_GRANTS["user-owner"]).toEqual([
       BACKOFFICE_PERMISSION.marketplace.publish,
       ...automationAuthoringPermissions,
-    ]);
-  });
-
-  test("organization members can author and execute organization-scoped codemode workflows", () => {
-    expect(BACKOFFICE_AUTHORITY_ROLE_GRANTS["organization-member"]).toEqual([
-      BACKOFFICE_PERMISSION.identity.link,
-      BACKOFFICE_PERMISSION.marketplace.publish,
-      BACKOFFICE_PERMISSION.api.connectionsRead,
-      BACKOFFICE_PERMISSION.capabilities.read,
-      BACKOFFICE_PERMISSION.connections.manage,
-      BACKOFFICE_PERMISSION.connections.read,
-      ...automationAuthoringPermissions.slice(2, 5),
-      BACKOFFICE_PERMISSION.github.read,
-      ...automationAuthoringPermissions.slice(5),
     ]);
   });
 
@@ -145,7 +136,12 @@ describe("Backoffice authority role grants", () => {
   });
 
   test("does not grant unrelated read permissions to constrained authority roles", () => {
-    const unrestrictedRoles = new Set(["system-administrator", "automation", "capability"]);
+    const unrestrictedRoles = new Set([
+      "system-administrator",
+      "organization-member",
+      "automation",
+      "capability",
+    ]);
     for (const [role, grants] of Object.entries(BACKOFFICE_AUTHORITY_ROLE_GRANTS)) {
       if (!unrestrictedRoles.has(role)) {
         expect(grants).not.toContain(BACKOFFICE_PERMISSION.telegram.read);

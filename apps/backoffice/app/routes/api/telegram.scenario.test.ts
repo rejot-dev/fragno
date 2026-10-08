@@ -287,7 +287,7 @@ describe("Telegram public authorization scenarios", () => {
     });
   });
 
-  test("scope access never substitutes for read or connection-management permissions", async () => {
+  test("members operate their organization's Telegram without reaching private or foreign scopes", async () => {
     await runTelegramScenario({
       name: "Telegram member requests use canonical operation permissions",
       fakes: ({ fake }) => ({ telegram: fake.telegram() }),
@@ -300,7 +300,7 @@ describe("Telegram public authorization scenarios", () => {
           email: "telegram-member@example.test",
           captureSessionCookieAs: "session",
         }),
-        then.assert("members can send but cannot acquire ungranted read authority", async (ctx) => {
+        then.assert("members read and send only within their organization", async (ctx) => {
           const member = await authenticateTelegramUser(ctx, "user");
           const headers = { cookie: member.cookie };
           const invalidBearer = await callPublicTelegram(ctx, {
@@ -311,7 +311,7 @@ describe("Telegram public authorization scenarios", () => {
             body: null,
           });
           assert.equal(invalidBearer.status, 401);
-          for (const suffix of ["/chats", "/chats/1234", "/chats/1234/messages", "/commands"]) {
+          for (const suffix of ["/chats", "/chats/1234/messages", "/commands"]) {
             const response = await callPublicTelegram(ctx, {
               scopePath,
               suffix,
@@ -319,8 +319,7 @@ describe("Telegram public authorization scenarios", () => {
               headers,
               body: null,
             });
-            assert.equal(response.status, 403);
-            expect(await response.json()).toMatchObject({ code: "principal-permission-denied" });
+            assert.equal(response.status, 200, await response.clone().text());
           }
           await ctx.runtime.objects.telegram
             .forUser({ userId: member.userId })

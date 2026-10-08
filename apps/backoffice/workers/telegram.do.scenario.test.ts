@@ -12,8 +12,8 @@ const workers = vi.hoisted(() => ({
 vi.mock("cloudflare:workers", () => workers);
 
 import {
+  createBackofficeServiceExecution,
   createBackofficeSystemExecution,
-  createBackofficeUserExecution,
 } from "@/backoffice-runtime/context";
 import {
   BACKOFFICE_INTERNAL_CONTEXT_HEADER,
@@ -205,8 +205,12 @@ describe("Telegram object authorization scenarios", () => {
         }),
         then.assert("trusted scope context alone does not grant read access", async (ctx) => {
           const object = ctx.runtime.objects.telegram.for(scope);
-          const member = {
-            execution: createBackofficeUserExecution({ scope, userId: "user-1" }),
+          // Agents may send to Telegram but hold no Telegram read permission.
+          const sender = {
+            execution: createBackofficeServiceExecution({
+              scope,
+              service: { type: "agent", id: "telegram-sender" },
+            }),
             propagationContext: null,
           };
           for (const path of [
@@ -218,7 +222,7 @@ describe("Telegram object authorization scenarios", () => {
           ]) {
             const response = await object.http.fetchAuthorized(
               new Request(`https://telegram.do${path}`),
-              member,
+              sender,
             );
             assert.equal(response.status, 403);
             expect(await response.json()).toMatchObject({ code: "principal-permission-denied" });
@@ -234,7 +238,7 @@ describe("Telegram object authorization scenarios", () => {
           expect(await unlisted.json()).toMatchObject({ code: "FRAGMENT_ROUTE_NOT_EXPOSED" });
           const runtime = createTelegramRuntime({
             object,
-            execution: member.execution,
+            execution: sender.execution,
             kernel: new BackofficeKernel(ctx.runtime.services),
           });
           await expect(runtime.getFile({ fileId: "private-file" })).rejects.toMatchObject({
@@ -250,7 +254,7 @@ describe("Telegram object authorization scenarios", () => {
               headers: { "content-type": "application/json" },
               body: JSON.stringify({ text: "authorized send" }),
             }),
-            member,
+            sender,
           );
           assert.equal(sent.status, 200);
           await ctx.runtime.drain();

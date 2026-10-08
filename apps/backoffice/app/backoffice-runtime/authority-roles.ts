@@ -8,6 +8,31 @@ import {
   type BackofficePermissionRequirement,
 } from "./permissions";
 
+/**
+ * Permissions that stay with system administrators and trusted internal services. Organization
+ * members receive every other permission, including permissions added to the catalog later.
+ */
+const ADMINISTRATION_PERMISSION_REQUIREMENTS: readonly BackofficePermissionRequirement[] = [
+  ...Object.values(BACKOFFICE_PERMISSION.admin),
+  BACKOFFICE_PERMISSION.internal.manage,
+  // Binding or revoking an external identity for an arbitrary user lets the caller act as them.
+  BACKOFFICE_PERMISSION.identity.bind,
+  BACKOFFICE_PERMISSION.identity.revoke,
+];
+
+const organizationMemberPermissionRequirements = allBackofficePermissionRequirements.filter(
+  (requirement) => !ADMINISTRATION_PERMISSION_REQUIREMENTS.includes(requirement),
+);
+
+/**
+ * Roles for human users, chosen per scope by `resolveBackofficeUserAuthorityRole`.
+ *
+ * `user-owner` and `organization-member` are the same non-admin user in different scopes:
+ * `user-owner` applies in the user's own personal scope, while `organization-member` applies in an
+ * organization or project scope of the user's organization. The personal scope keeps an explicit,
+ * narrower grant; organization members receive every non-administration permission. Admins resolve
+ * to `system-administrator` in either scope.
+ */
 const USER_AUTHORITY_ROLE_GRANTS = {
   "system-administrator": allBackofficePermissionRequirements,
   "user-owner": [
@@ -36,36 +61,7 @@ const USER_AUTHORITY_ROLE_GRANTS = {
     BACKOFFICE_PERMISSION.workflow.modify,
     BACKOFFICE_PERMISSION.workflow.read,
   ],
-  "organization-member": [
-    BACKOFFICE_PERMISSION.identity.link,
-    BACKOFFICE_PERMISSION.marketplace.publish,
-    BACKOFFICE_PERMISSION.api.connectionsRead,
-    BACKOFFICE_PERMISSION.capabilities.read,
-    BACKOFFICE_PERMISSION.connections.manage,
-    BACKOFFICE_PERMISSION.connections.read,
-    BACKOFFICE_PERMISSION.events.emit,
-    BACKOFFICE_PERMISSION.events.manage,
-    BACKOFFICE_PERMISSION.events.read,
-    BACKOFFICE_PERMISSION.github.read,
-    BACKOFFICE_PERMISSION.hooks.read,
-    BACKOFFICE_PERMISSION.identity.read,
-    BACKOFFICE_PERMISSION.marketplace.read,
-    BACKOFFICE_PERMISSION.packages.read,
-    BACKOFFICE_PERMISSION.packages.install,
-    BACKOFFICE_PERMISSION.otp.create,
-    BACKOFFICE_PERMISSION.pi.modify,
-    BACKOFFICE_PERMISSION.pi.read,
-    BACKOFFICE_PERMISSION.router.modify,
-    BACKOFFICE_PERMISSION.router.read,
-    BACKOFFICE_PERMISSION.store.modify,
-    BACKOFFICE_PERMISSION.store.read,
-    BACKOFFICE_PERMISSION.telegram.send,
-    BACKOFFICE_PERMISSION.upload.modify,
-    BACKOFFICE_PERMISSION.upload.read,
-    BACKOFFICE_PERMISSION.workflow.executeCode,
-    BACKOFFICE_PERMISSION.workflow.modify,
-    BACKOFFICE_PERMISSION.workflow.read,
-  ],
+  "organization-member": organizationMemberPermissionRequirements,
 } as const satisfies Record<string, readonly BackofficePermissionRequirement[]>;
 
 /**
@@ -120,8 +116,9 @@ export type BackofficeInternalServiceAuthorityRole =
  * Explicit grants for operations that currently execute through `BackofficeKernel.invoke()`.
  *
  * These are Backoffice authorization roles, not persisted actor roles or Auth organization role
- * names. System administrators receive the complete permission catalog automatically. Each later
- * action migration must explicitly update any non-administrator roles that should receive it.
+ * names. System administrators receive the complete permission catalog automatically and
+ * organization members receive every non-administration permission automatically. Each later action
+ * migration must explicitly update any other roles that should receive it.
  */
 export const BACKOFFICE_AUTHORITY_ROLE_GRANTS = {
   ...USER_AUTHORITY_ROLE_GRANTS,
