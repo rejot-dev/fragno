@@ -74,6 +74,12 @@ describe("admin runtime tools", () => {
         clientId: "client-1",
         clientSecret: null,
       }),
+      updateOAuthClient: async () => {
+        throw new Error("OAuth client updates are not configured in this legacy fixture.");
+      },
+      rotateOAuthClientSecret: async () => {
+        throw new Error("OAuth client secret rotation is not configured in this legacy fixture.");
+      },
       createApp: async () => {
         throw new Error("App creation is not configured in this legacy fixture.");
       },

@@ -43,6 +43,8 @@ const scenarioObjects = {
   UPLOAD: (input) => new InMemoryUploadObject(input),
 } satisfies LocalBackofficeObjects;
 
+const wholeOrganization = { kind: "organization" } as const;
+
 const requestedPermissions = [BACKOFFICE_PERMISSION.events.emit, BACKOFFICE_PERMISSION.resend.send];
 
 function appOperationValue<T>(result: BackofficeAppOperationResult<T>): T {
@@ -124,6 +126,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
               const input = {
                 appId,
                 installedByUserId: "installer",
+                resourceScope: wholeOrganization,
                 grantedPermissions: [BACKOFFICE_PERMISSION.events.emit],
               };
               const installed = appOperationValue(await first.installApp(input));
@@ -141,6 +144,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
                 await second.installApp({
                   appId,
                   installedByUserId: "customer-two-owner",
+                  resourceScope: wholeOrganization,
                   grantedPermissions: [BACKOFFICE_PERMISSION.resend.send],
                 }),
               );
@@ -152,9 +156,10 @@ describe("App registry and organization installation SQLite scenarios", () => {
                 grantedPermissions: [BACKOFFICE_PERMISSION.events.emit],
               });
               appOperationValue(
-                await first.updateInstallationGrants({
+                await first.updateInstallationAccess({
                   appId,
                   grantedPermissions: requestedPermissions,
+                  resourceScope: wholeOrganization,
                 }),
               );
             },
@@ -185,6 +190,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
                 organizationId: "customer-one",
                 status: "active",
                 installedByUserId: "installer",
+                resourceScope: wholeOrganization,
                 grantedPermissions: requestedPermissions,
               });
               expect(await second.getInstallation({ appId })).toMatchObject({
@@ -251,7 +257,12 @@ describe("App registry and organization installation SQLite scenarios", () => {
             "reject forged organization and undeclared grants",
             async ({ runtime }) => {
               const installations = runtime.objects.appInstallations.forOrg("customer").commands;
-              const input = { appId, installedByUserId: "installer", grantedPermissions: [] };
+              const input = {
+                appId,
+                installedByUserId: "installer",
+                grantedPermissions: [],
+                resourceScope: wholeOrganization,
+              };
               const forgedOwnership = { ...input, organizationId: "other-customer" };
               await expect(installations.installApp(forgedOwnership)).rejects.toThrow(
                 "organizationId",
@@ -278,7 +289,11 @@ describe("App registry and organization installation SQLite scenarios", () => {
                 error: { code: "APP_INSTALLATION_NOT_FOUND" },
               });
               expect(
-                await installations.updateInstallationGrants({ appId, grantedPermissions: [] }),
+                await installations.updateInstallationAccess({
+                  appId,
+                  grantedPermissions: [],
+                  resourceScope: wholeOrganization,
+                }),
               ).toMatchObject({
                 ok: false,
                 error: { code: "APP_INSTALLATION_NOT_FOUND" },
@@ -290,9 +305,10 @@ describe("App registry and organization installation SQLite scenarios", () => {
                 }),
               ).installationId;
               expect(
-                await installations.updateInstallationGrants({
+                await installations.updateInstallationAccess({
                   appId,
                   grantedPermissions: [BACKOFFICE_PERMISSION.events.read],
+                  resourceScope: wholeOrganization,
                 }),
               ).toMatchObject({ ok: false, error: { code: "APP_GRANTS_NOT_REQUESTED" } });
               expect(await installations.getInstallation({ appId })).toMatchObject({
@@ -325,9 +341,10 @@ describe("App registry and organization installation SQLite scenarios", () => {
                 grantedPermissions: [],
               });
               expect(
-                await installations.updateInstallationGrants({
+                await installations.updateInstallationAccess({
                   appId,
                   grantedPermissions: requestedPermissions,
+                  resourceScope: wholeOrganization,
                 }),
               ).toMatchObject({ ok: false, error: { code: "APP_INSTALLATION_INACTIVE" } });
               expect(
@@ -340,6 +357,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
                   await installations.installApp({
                     appId,
                     installedByUserId: "new-installer",
+                    resourceScope: wholeOrganization,
                     grantedPermissions: [BACKOFFICE_PERMISSION.resend.send],
                   }),
                 ),
@@ -358,6 +376,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
                 organizationId: "customer",
                 status: "active",
                 installedByUserId: "new-installer",
+                resourceScope: wholeOrganization,
                 grantedPermissions: [BACKOFFICE_PERMISSION.resend.send],
               });
             },
@@ -392,6 +411,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
                 await installations.installApp({
                   appId,
                   installedByUserId: "installer",
+                  resourceScope: wholeOrganization,
                   grantedPermissions: [BACKOFFICE_PERMISSION.events.emit],
                 }),
               );
@@ -400,6 +420,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
               await runtime.objects.appInstallations.forOrg("customer-two").commands.installApp({
                 appId: registeredAppIds[0],
                 installedByUserId: "other-installer",
+                resourceScope: wholeOrganization,
                 grantedPermissions: [BACKOFFICE_PERMISSION.resend.send],
               }),
             );
@@ -503,6 +524,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
                     .commands.installApp({
                       appId,
                       installedByUserId: "installer",
+                      resourceScope: wholeOrganization,
                       grantedPermissions: requestedPermissions,
                     }),
                 ).installationId;
@@ -583,6 +605,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
               await runtime.objects.appInstallations.forOrg("customer").commands.installApp({
                 appId,
                 installedByUserId: "installer",
+                resourceScope: wholeOrganization,
                 grantedPermissions: requestedPermissions,
               }),
             ).installationId;
@@ -608,20 +631,23 @@ describe("App registry and organization installation SQLite scenarios", () => {
                 ).installations,
               ).toMatchObject([{ id: installationId, appId, organizationId: "customer" }]);
               await expect(
-                installations.updateInstallationGrants({
+                installations.updateInstallationAccess({
                   appId,
                   grantedPermissions: [BACKOFFICE_PERMISSION.events.emit],
+                  resourceScope: wholeOrganization,
                 }),
               ).rejects.toThrow();
               await expect(
                 installations.installApp({
                   appId,
                   installedByUserId: "new-installer",
+                  resourceScope: wholeOrganization,
                   grantedPermissions: [],
                 }),
               ).rejects.toThrow();
               expect(await installations.getInstallation({ appId })).toMatchObject({
                 installedByUserId: "installer",
+                resourceScope: wholeOrganization,
                 status: "active",
                 grantedPermissions: requestedPermissions,
               });

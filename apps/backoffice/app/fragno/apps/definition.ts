@@ -4,6 +4,7 @@ import { decodeCursor, withDatabase } from "@fragno-dev/db";
 import type {
   BackofficeApp,
   BackofficeAppLookupInput,
+  BackofficeAppOAuthClientLookupInput,
   BackofficeAppPage,
   BackofficeAppPageInput,
   BackofficeAppRegistrationInput,
@@ -90,6 +91,29 @@ export const appsFragmentDefinition = defineFragment("apps")
           )
           .build();
       },
+
+      getAppByOAuthClientId: function (input: BackofficeAppOAuthClientLookupInput) {
+        return this.serviceTx(appsFragmentSchema)
+          .retrieve((uow) =>
+            uow.findFirst("app", (b) =>
+              b.whereIndex("idx_app_oauthClientId", (eb) =>
+                eb("oauthClientId", "=", input.oauthClientId),
+              ),
+            ),
+          )
+          .transformRetrieve(([app]): BackofficeApp | null =>
+            app
+              ? {
+                  id: app.id.externalId,
+                  oauthClientId: app.oauthClientId,
+                  requestedPermissions: app.requestedPermissions,
+                  createdAt: app.createdAt.toISOString(),
+                }
+              : null,
+          )
+          .build();
+      },
+
       listApps: function (input: BackofficeAppPageInput) {
         const cursor = decodeAppRegistryCursor(input);
         return this.serviceTx(appsFragmentSchema)

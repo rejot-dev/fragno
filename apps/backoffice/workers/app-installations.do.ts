@@ -4,11 +4,15 @@ import { DurableObject, RpcTarget } from "cloudflare:workers";
 import { requireBackofficeContextScopeFromDurableObjectId } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import {
-  backofficeAppInstallationGrantsInputSchema,
+  backofficeAppInstallationAccessInputSchema,
+  backofficeAppInstallationClaimInputSchema,
   backofficeAppInstallationInputSchema,
   backofficeAppInstallationPageInputSchema,
+  type AppInstallationResourceScope,
   type BackofficeAppInstallation,
-  type BackofficeAppInstallationGrantsInput,
+  type BackofficeAppInstallationAccessInput,
+  type BackofficeAppInstallationClaimInput,
+  type BackofficeAppInstallationClaimResult,
   type BackofficeAppInstallationInput,
   type BackofficeAppInstallationMutationResult,
   type BackofficeAppInstallationPage,
@@ -38,6 +42,7 @@ export class InMemoryAppInstallationsObject
 {
   readonly #host: FragmentDurableObjectHost<void, AppInstallationsFragment>;
   readonly #runtime: BackofficeRuntimeServices;
+  readonly #organizationId: string;
   #fragment: AppInstallationsFragment | null = null;
 
   constructor({
@@ -55,6 +60,7 @@ export class InMemoryAppInstallationsObject
       throw new Error("Backoffice app installation objects require an organization scope.");
     }
     this.#runtime = runtime;
+    this.#organizationId = scope.orgId;
     this.#host = implementation.createFragmentHost({
       name: "AppInstallations",
       createRuntime: () =>
@@ -86,6 +92,26 @@ export class InMemoryAppInstallationsObject
     return app;
   }
 
+  /** Projects live in the organization's automations object; approve only current projects. */
+  async #assertProjectsAvailable(resourceScope: AppInstallationResourceScope) {
+    if (resourceScope.kind === "organization") {
+      return;
+    }
+    const automations = this.#runtime.objects.automations.forOrg(this.#organizationId).commands;
+    const projects = await Promise.all(
+      resourceScope.projectIds.map((projectId) =>
+        automations.resolveProjectForExecution({ projectId }),
+      ),
+    );
+    const missing = resourceScope.projectIds.filter((_, index) => projects[index] === null);
+    if (missing.length > 0) {
+      throw new BackofficeAppDomainError(
+        "APP_INSTALLATION_PROJECT_NOT_FOUND",
+        `Projects are not available in this organization: ${missing.join(", ")}.`,
+      );
+    }
+  }
+
   async installApp(
     input: BackofficeAppInstallationInput,
   ): Promise<BackofficeAppOperationResult<BackofficeAppInstallationMutationResult>> {
@@ -93,6 +119,7 @@ export class InMemoryAppInstallationsObject
     return await runBackofficeAppOperation(async () => {
       // Declarations are immutable. Resolve the registry before opening the local transaction.
       const app = await this.#getRegisteredApp(installation.appId);
+      await this.#assertProjectsAvailable(installation.resourceScope);
       const fragment = this.#getFragment();
       return await fragment.callServices(() =>
         fragment.services.installApp(installation, app.requestedPermissions),
@@ -118,16 +145,27 @@ export class InMemoryAppInstallationsObject
     });
   }
 
-  async updateInstallationGrants(
-    input: BackofficeAppInstallationGrantsInput,
+  async updateInstallationAccess(
+    input: BackofficeAppInstallationAccessInput,
   ): Promise<BackofficeAppOperationResult<BackofficeAppInstallationMutationResult>> {
-    const grants = backofficeAppInstallationGrantsInputSchema.parse(input);
+    const access = backofficeAppInstallationAccessInputSchema.parse(input);
     return await runBackofficeAppOperation(async () => {
-      const app = await this.#getRegisteredApp(grants.appId);
+      const app = await this.#getRegisteredApp(access.appId);
+      await this.#assertProjectsAvailable(access.resourceScope);
       const fragment = this.#getFragment();
       return await fragment.callServices(() =>
-        fragment.services.updateInstallationGrants(grants, app.requestedPermissions),
+        fragment.services.updateInstallationAccess(access, app.requestedPermissions),
       );
+    });
+  }
+
+  async claimInstallation(
+    input: BackofficeAppInstallationClaimInput,
+  ): Promise<BackofficeAppOperationResult<BackofficeAppInstallationClaimResult>> {
+    const claim = backofficeAppInstallationClaimInputSchema.parse(input);
+    return await runBackofficeAppOperation(async () => {
+      const fragment = this.#getFragment();
+      return await fragment.callServices(() => fragment.services.claimInstallation(claim));
     });
   }
 
@@ -180,10 +218,16 @@ export class AppInstallations
     return this.#object.listInstallations(input);
   }
 
-  updateInstallationGrants(
-    input: BackofficeAppInstallationGrantsInput,
+  updateInstallationAccess(
+    input: BackofficeAppInstallationAccessInput,
   ): Promise<BackofficeAppOperationResult<BackofficeAppInstallationMutationResult>> {
-    return this.#object.updateInstallationGrants(input);
+    return this.#object.updateInstallationAccess(input);
+  }
+
+  claimInstallation(
+    input: BackofficeAppInstallationClaimInput,
+  ): Promise<BackofficeAppOperationResult<BackofficeAppInstallationClaimResult>> {
+    return this.#object.claimInstallation(input);
   }
 
   uninstallApp(

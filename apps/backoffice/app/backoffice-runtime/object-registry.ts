@@ -39,10 +39,15 @@ import type {
   BackofficeExecutionTokenResult,
 } from "@/fragno/auth/execution-token";
 import type {
-  BackofficeOAuthClientCreateInput,
+  BackofficeOAuthClientCreateRequest,
   BackofficeOAuthClientCreateResult,
+  BackofficeOAuthClientFacts,
   BackofficeOAuthClientListInput,
   BackofficeOAuthClientPage,
+  BackofficeOAuthClientRotateSecretInput,
+  BackofficeOAuthClientRotateSecretResult,
+  BackofficeOAuthClientUpdateInput,
+  BackofficeOAuthClientUpdateResult,
 } from "@/fragno/auth/oauth-client";
 import type { BackofficeOAuthConsentPage } from "@/fragno/auth/oauth-consent";
 import type {
@@ -241,15 +246,34 @@ export type AuthObject = DurableHookCommands & {
   }): Promise<BackofficeMeData | null>;
   /** Creates an OAuth client owned by the administrator principal, not an organization installation. */
   createAdminOAuthClient(
-    input: BackofficeOAuthClientCreateInput & { administratorUserId: string },
+    input: BackofficeOAuthClientCreateRequest & { administratorUserId: string },
   ): Promise<BackofficeOAuthClientCreateResult>;
   /** Reads the global, credential-free OAuth catalog under live administrator authority. */
   listAdminOAuthClients(
     input: BackofficeOAuthClientListInput & { administratorUserId: string },
   ): Promise<BackofficeOAuthClientPage>;
-  /** Checks Auth-owned OAuth client identity without exposing credentials. */
-  hasOAuthClient(input: { clientId: string }): Promise<boolean>;
+  /** Changes an administrator-owned client's redirects, scopes, and client credentials. */
+  updateAdminOAuthClient(
+    input: BackofficeOAuthClientUpdateInput & { administratorUserId: string },
+  ): Promise<BackofficeOAuthClientUpdateResult>;
+  /** Replaces an administrator-owned confidential client's secret, returning it once. */
+  rotateAdminOAuthClientSecret(
+    input: BackofficeOAuthClientRotateSecretInput & { administratorUserId: string },
+  ): Promise<BackofficeOAuthClientRotateSecretResult>;
+  /** Reads Auth-owned OAuth client facts without exposing credentials. */
+  getOAuthClientFacts(input: { clientId: string }): Promise<BackofficeOAuthClientFacts | null>;
+  /** Signs a short-lived code that lets the app's server claim an approved installation. */
+  issueAppInstallationCode(input: {
+    appId: string;
+    organizationId: string;
+    activation: number;
+  }): Promise<{ code: string }>;
   getBackofficeCliOAuthConfig(input: { requestUrl: string }): Promise<BackofficeCliOAuthConfig>;
+  /** Verifies an installed app's client-credentials token and returns its registered app. */
+  authenticateInstalledAppClient(input: {
+    requestUrl: string;
+    oauthAccessToken: string;
+  }): Promise<{ appId: string }>;
   /** Exchanges OAuth identity under a server-controlled execution policy, not app registration alone. */
   exchangeBackofficeExecutionToken(
     input: BackofficeExecutionTokenExchangeInput,
