@@ -631,7 +631,7 @@ describe("Project Connector connection scenarios", () => {
     },
   );
 
-  test("OAuth links reject unapproved destinations and ambiguous or browser-controlled user selectors", async () => {
+  test("OAuth links reject unapproved destinations, gateway-invalid connection names, and ambiguous or browser-controlled user selectors", async () => {
     const scenario = await connectorScenario();
     assert(
       (
@@ -671,6 +671,17 @@ describe("Project Connector connection scenarios", () => {
         })
       ).status === 400,
     );
+    for (const connectionName of ["Gmail", "_work", "-work", "my work"]) {
+      assert(
+        (
+          await scenario.call("alice", "POST", "/connection-requests", {
+            service: "gmail",
+            connectionName,
+            returnUri,
+          })
+        ).status === 400,
+      );
+    }
     assert(scenario.gateway.requests.size === 0);
   });
 

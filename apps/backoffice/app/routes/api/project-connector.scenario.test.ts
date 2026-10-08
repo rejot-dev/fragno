@@ -198,10 +198,14 @@ test("public action requests enforce verified execution permissions before conta
     ],
     steps: ({ when, then }) => [
       when.auth.signUp({
+        email: "connector-foreign@example.test",
+        captureSessionCookieAs: "foreignSessionCookie",
+      }),
+      when.auth.signUp({
         email: "connector-member@example.test",
         captureSessionCookieAs: "sessionCookie",
       }),
-      then.assert("scope access alone never authorizes provider execution", async (ctx) => {
+      then.assert("only the owning user's token reaches the provider", async (ctx) => {
         const auth = ctx.runtime.objects.auth.singleton();
         const sessionCookie = ctx.vars.sessionCookie as string;
         const session = await auth.http.fetch(
@@ -215,79 +219,60 @@ test("public action requests enforce verified execution permissions before conta
           members: [{ organizationId: "org-1", userId, roles: ["member"] }],
         });
         const memberCookie = await issueBackofficeAccessCookie(ctx, sessionCookie, "org-1");
-        const scopes = [
-          {
-            publicScope: `user:${userId}`,
-            provider: `context.user(${JSON.stringify(userId)}).connector`,
-            accountId: "private-account",
-          },
-        ];
-        for (const scope of scopes) {
-          const started = await ctx.runCodemode({
-            scope: { kind: "org", orgId: "org-1" },
-            label: `start consent for ${scope.accountId}`,
-            code: `async () => await ${scope.provider}.connect({ service: "gmail", connectionName: "work" })`,
-          });
-          const connection = projectConnectorConnectionSchema.parse(started.result);
-          gateway.authorize(connection.id, scope.accountId);
-          await ctx.runCodemode({
-            scope: { kind: "org", orgId: "org-1" },
-            label: `verify ${scope.accountId}`,
-            code: `async () => await ${scope.provider}.refreshConnection({ requestId: ${JSON.stringify(connection.id)} })`,
-          });
-          const profile = await callPublicProjectConnector(
-            ctx,
-            scope.publicScope,
-            `/accounts/${scope.accountId}/profile`,
-            "GET",
-            memberCookie,
-          );
-          assert(profile.status === 403, await profile.clone().text());
-          for (const suffix of ["", "/"]) {
-            const denied = await callPublicProjectConnector(
-              ctx,
-              scope.publicScope,
-              `/accounts/${scope.accountId}/actions/gmail.search_threads${suffix}`,
-              "POST",
-              memberCookie,
-              { input: { query: "is:unread" } },
-            );
-            assert(denied.status === 403);
-          }
-        }
-        expect(gateway.executions).toEqual([]);
-        await auth.commands.applyScenarioFixture({
-          users: [
-            { id: userId, email: "connector-member@example.test", role: "admin", status: "active" },
-          ],
+        const foreignCookie = await issueBackofficeAccessCookie(
+          ctx,
+          ctx.vars.foreignSessionCookie as string,
+          null,
+        );
+        const publicScope = `user:${userId}`;
+        const accountId = "private-account";
+        const started = await ctx.runCodemode({
+          scope: { kind: "org", orgId: "org-1" },
+          label: `start consent for ${accountId}`,
+          code: `async () => await context.user(${JSON.stringify(userId)}).connector.connect({ service: "gmail", connectionName: "work" })`,
         });
-        const adminCookie = await issueBackofficeAccessCookie(ctx, sessionCookie, "org-1");
-        for (const scope of scopes) {
-          const staleAuthority = await callPublicProjectConnector(
+        const connection = projectConnectorConnectionSchema.parse(started.result);
+        gateway.authorize(connection.id, accountId);
+        await ctx.runCodemode({
+          scope: { kind: "org", orgId: "org-1" },
+          label: `verify ${accountId}`,
+          code: `async () => await context.user(${JSON.stringify(userId)}).connector.refreshConnection({ requestId: ${JSON.stringify(connection.id)} })`,
+        });
+        const profile = await callPublicProjectConnector(
+          ctx,
+          publicScope,
+          `/accounts/${accountId}/profile`,
+          "GET",
+          foreignCookie,
+        );
+        assert(profile.status === 403, await profile.clone().text());
+        for (const suffix of ["", "/"]) {
+          const denied = await callPublicProjectConnector(
             ctx,
-            scope.publicScope,
-            `/accounts/${scope.accountId}/actions/gmail.search_threads`,
+            publicScope,
+            `/accounts/${accountId}/actions/gmail.search_threads${suffix}`,
             "POST",
-            memberCookie,
-            { input: {} },
-          );
-          assert(staleAuthority.status === 403);
-          const executed = await callPublicProjectConnector(
-            ctx,
-            scope.publicScope,
-            `/accounts/${scope.accountId}/actions/gmail.search_threads`,
-            "POST",
-            adminCookie,
+            foreignCookie,
             { input: { query: "is:unread" } },
           );
-          assert(executed.status === 200);
-          expect(await executed.json()).toMatchObject({
-            actionId: "gmail.search_threads",
-            output: { query: "is:unread" },
-          });
+          assert(denied.status === 403);
         }
+        expect(gateway.executions).toEqual([]);
+        const executed = await callPublicProjectConnector(
+          ctx,
+          publicScope,
+          `/accounts/${accountId}/actions/gmail.search_threads`,
+          "POST",
+          memberCookie,
+          { input: { query: "is:unread" } },
+        );
+        assert(executed.status === 200, await executed.clone().text());
+        expect(await executed.json()).toMatchObject({
+          actionId: "gmail.search_threads",
+          output: { query: "is:unread" },
+        });
         expect(gateway.executions.map((execution) => execution.connectedAccountId)).toEqual([
-          "private-account",
+          accountId,
         ]);
       }),
     ],
@@ -320,16 +305,6 @@ test("public routes authenticate access tokens and reject foreign or non-user sc
           const userId = z
             .object({ user: z.object({ id: z.string() }) })
             .parse(await session.json()).user.id;
-          await ctx.runtime.objects.auth.singleton().commands.applyScenarioFixture({
-            users: [
-              {
-                id: userId,
-                email: "connector-user@example.test",
-                role: "admin",
-                status: "active",
-              },
-            ],
-          });
           const accessCookie = await issueBackofficeAccessCookie(ctx, sessionCookie, null);
           const scope = `user:${userId}`;
           const anonymous = await callPublicProjectConnector(ctx, scope, "/accounts", "GET", null);

@@ -116,6 +116,14 @@ function projectConnectorClientErrorFromKnownFailure(
     if (error.cause instanceof ProjectConnectorClientError) {
       return error.cause;
     }
+    // Callers only see the code; the gateway's message (e.g. which input field it rejected) stays in
+    // server logs. Gateway messages never contain the project API key.
+    console.warn("Project Connector gateway request failed", {
+      code: error.code,
+      status: error.status,
+      message: error.message,
+      requestId: error.requestId,
+    });
     return new ProjectConnectorClientError(error.code, error.status);
   }
   return null;

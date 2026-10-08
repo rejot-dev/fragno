@@ -341,6 +341,7 @@ test("runtime permission failures and unavailable configuration do not contact t
     name: "Connector permissions stop side effects",
     setup: ({ given }) => [
       given.auth.user({ id: "member-1", email: "member@example.test" }),
+      given.auth.user({ id: "member-2", email: "other-member@example.test" }),
       given.auth.organization({
         id: "org-1",
         slug: "ada-labs",
@@ -350,9 +351,10 @@ test("runtime permission failures and unavailable configuration do not contact t
     ],
     steps: ({ then }) => [
       then.assert("kernel permissions are checked before OAuth or actions", async (ctx) => {
+        // Another user holds no authority in member-1's personal scope.
         const execution = createBackofficeUserExecution({
           scope: { kind: "user", userId: "member-1" },
-          userId: "member-1",
+          userId: "member-2",
         });
         const { bash } = createInteractiveBashHost({
           context: createCodemodeRouteBackedRuntimeContext({

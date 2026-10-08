@@ -287,7 +287,7 @@ describe("Telegram public authorization scenarios", () => {
     });
   });
 
-  test("members operate their organization's Telegram without reaching private or foreign scopes", async () => {
+  test("members operate their own Telegram scopes without reaching foreign scopes", async () => {
     await runTelegramScenario({
       name: "Telegram member requests use canonical operation permissions",
       fakes: ({ fake }) => ({ telegram: fake.telegram() }),
@@ -300,7 +300,7 @@ describe("Telegram public authorization scenarios", () => {
           email: "telegram-member@example.test",
           captureSessionCookieAs: "session",
         }),
-        then.assert("members read and send only within their organization", async (ctx) => {
+        then.assert("members read and send only within their own scopes", async (ctx) => {
           const member = await authenticateTelegramUser(ctx, "user");
           const headers = { cookie: member.cookie };
           const invalidBearer = await callPublicTelegram(ctx, {
@@ -335,10 +335,9 @@ describe("Telegram public authorization scenarios", () => {
             headers,
             body: { chatId: "1234", commandName: "start", enabled: false },
           });
-          assert.equal(privateManagement.status, 403);
-          expect(await privateManagement.json()).toMatchObject({
-            code: "principal-permission-denied",
-          });
+          // Personal-scope management is authorized; the fragment itself rejects the unknown command.
+          assert.equal(privateManagement.status, 404);
+          expect(await privateManagement.json()).toMatchObject({ code: "command_not_found" });
           const privateCommands = await ctx.runtime.objects.telegram
             .forUser({ userId: member.userId })
             .http.fetchAuthorized(new Request("https://telegram.do/api/telegram/commands"), {

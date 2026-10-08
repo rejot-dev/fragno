@@ -59,10 +59,12 @@ type ConnectorCheckOutput = {
 type ConnectorConnectInput =
   | {
       service: string;
+      /** Lowercase letters, digits, underscores, and hyphens; starts with a letter or digit. */
       connectionName: string;
     }
   | {
       providerConfigId: string;
+      /** Lowercase letters, digits, underscores, and hyphens; starts with a letter or digit. */
       connectionName: string;
     };
 type ConnectorConnectOutput = {

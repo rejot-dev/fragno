@@ -4,6 +4,7 @@ import {
   BACKOFFICE_AUTHORITY_ROLE_GRANTS,
   resolveBackofficeInternalServiceAuthorityRole,
   resolveBackofficeUserAuthorityRole,
+  USER_AUTHORITY_ROLE_PERMISSION_DECISIONS,
 } from "./authority-roles";
 import { allBackofficePermissionRequirements, BACKOFFICE_PERMISSION } from "./permissions";
 
@@ -15,33 +16,27 @@ const currentKernelPermissions = [
   BACKOFFICE_PERMISSION.upload.read,
 ];
 
-const automationAuthoringPermissions = [
-  BACKOFFICE_PERMISSION.api.connectionsRead,
-  BACKOFFICE_PERMISSION.capabilities.read,
-  BACKOFFICE_PERMISSION.events.emit,
-  BACKOFFICE_PERMISSION.events.manage,
-  BACKOFFICE_PERMISSION.events.read,
-  BACKOFFICE_PERMISSION.hooks.read,
-  BACKOFFICE_PERMISSION.identity.read,
-  BACKOFFICE_PERMISSION.marketplace.read,
-  BACKOFFICE_PERMISSION.packages.read,
-  BACKOFFICE_PERMISSION.packages.install,
-  BACKOFFICE_PERMISSION.otp.create,
-  BACKOFFICE_PERMISSION.pi.modify,
-  BACKOFFICE_PERMISSION.pi.read,
-  BACKOFFICE_PERMISSION.router.modify,
-  BACKOFFICE_PERMISSION.router.read,
-  BACKOFFICE_PERMISSION.store.modify,
-  BACKOFFICE_PERMISSION.store.read,
-  BACKOFFICE_PERMISSION.telegram.send,
-  BACKOFFICE_PERMISSION.upload.modify,
-  BACKOFFICE_PERMISSION.upload.read,
-  BACKOFFICE_PERMISSION.workflow.executeCode,
-  BACKOFFICE_PERMISSION.workflow.modify,
-  BACKOFFICE_PERMISSION.workflow.read,
-];
-
 describe("Backoffice authority role grants", () => {
+  test("user roles grant or deny every catalog permission", () => {
+    const catalog = Object.fromEntries(
+      Object.entries(BACKOFFICE_PERMISSION).map(([namespace, requirements]) => [
+        namespace,
+        Object.keys(requirements),
+      ]),
+    );
+    for (const decisions of Object.values(USER_AUTHORITY_ROLE_PERMISSION_DECISIONS)) {
+      const decided = Object.fromEntries(
+        Object.entries(decisions).map(([namespace, namespaceDecisions]) => {
+          for (const decision of Object.values(namespaceDecisions)) {
+            expect(["grant", "deny"]).toContain(decision);
+          }
+          return [namespace, Object.keys(namespaceDecisions)];
+        }),
+      );
+      expect(decided).toEqual(catalog);
+    }
+  });
+
   test("grants every permission to system administrators", () => {
     expect(BACKOFFICE_AUTHORITY_ROLE_GRANTS["system-administrator"]).toEqual(
       allBackofficePermissionRequirements,
@@ -69,6 +64,7 @@ describe("Backoffice authority role grants", () => {
     const unrestrictedRoles = new Set([
       "system-administrator",
       "organization-member",
+      "user-owner",
       "automation",
       "capability",
     ]);
@@ -86,15 +82,6 @@ describe("Backoffice authority role grants", () => {
     expect(BACKOFFICE_AUTHORITY_ROLE_GRANTS.capability).toEqual(
       allBackofficePermissionRequirements,
     );
-  });
-
-  test("user owners can author and execute user-scoped codemode workflows", () => {
-    expect(BACKOFFICE_AUTHORITY_ROLE_GRANTS["user-owner"]).toEqual([
-      BACKOFFICE_PERMISSION.account.manage,
-      BACKOFFICE_PERMISSION.account.read,
-      BACKOFFICE_PERMISSION.marketplace.publish,
-      ...automationAuthoringPermissions,
-    ]);
   });
 
   test("allows human automation owners to inspect identity bindings", () => {
@@ -141,6 +128,7 @@ describe("Backoffice authority role grants", () => {
     const unrestrictedRoles = new Set([
       "system-administrator",
       "organization-member",
+      "user-owner",
       "automation",
       "capability",
     ]);

@@ -60,14 +60,17 @@ function routerContext(ctx: BackofficeScenarioContext, request: Request) {
   });
 }
 
-async function exchangeBrowserSession(ctx: BackofficeScenarioContext) {
+async function exchangeBrowserSession(
+  ctx: BackofficeScenarioContext,
+  organizationId: string | null = null,
+) {
   const cookie = ctx.vars.session;
   assert(typeof cookie === "string");
   const response = await ctx.runtime.objects.auth.singleton().http.fetch(
     new Request(`${origin}/api/auth/backoffice-token`, {
       method: "POST",
       headers: { cookie, origin, "content-type": "application/json" },
-      body: JSON.stringify({ selection: "preferred", organizationId: null }),
+      body: JSON.stringify({ selection: "preferred", organizationId }),
     }),
   );
   assert(response.ok, await response.clone().text());
@@ -279,9 +282,25 @@ describe("fragment HTTP authority scenarios", () => {
   test("public HTTP, bound runtime calls, and direct object requests cannot bypass operation permissions", async () => {
     await runHttpAuthorityScenario(async (ctx) => {
       const { accessCookie, me } = await exchangeBrowserSession(ctx);
-      // Organization members hold API and MCP management; a personal scope does not.
-      const scope = { kind: "user" as const, userId: me.user.id };
-      const scopeSegment = `user:${me.user.id}`;
+      const auth = ctx.runtime.objects.auth.singleton();
+      // Every non-admin user holds API and MCP management in their own scopes, so authority here
+      // comes from membership in an organization the user does not join until later.
+      await auth.commands.applyScenarioFixture({
+        users: [
+          { id: "api-org-owner", email: "api-owner@example.test", role: "user", status: "active" },
+        ],
+        organizations: [
+          {
+            id: "api-org",
+            name: "API Org",
+            slug: "api-org",
+            ownerUserId: "api-org-owner",
+            ownerRoles: ["owner"],
+          },
+        ],
+      });
+      const scope = { kind: "org" as const, orgId: "api-org" };
+      const scopeSegment = "org:api-org";
       const api = ctx.runtime.objects.api.for(scope);
       const connection = {
         name: "Protected connection",
@@ -300,7 +319,6 @@ describe("fragment HTTP authority scenarios", () => {
       }
       const request = connectionRequest(accessCookie);
       const context = routerContext(ctx, request);
-      const execution = await requireBackofficeContext(request, context, scope);
       const denied = await forwardPublicFragmentRequest({
         request,
         context,
@@ -308,7 +326,8 @@ describe("fragment HTTP authority scenarios", () => {
         route: apiPublicRoute,
       });
       assert(denied.status === 403);
-      const obsoleteBypass = { execution, authorization: "preauthorized" as const };
+      const outsider = createBackofficeUserExecution({ scope, userId: me.user.id });
+      const obsoleteBypass = { execution: outsider, authorization: "preauthorized" as const };
       const bypassed = await api.http.fetchAuthorized(
         new Request(`${origin}/api/api/connections/forged`, {
           method: "PUT",
@@ -318,17 +337,16 @@ describe("fragment HTTP authority scenarios", () => {
         obsoleteBypass,
       );
       assert(bypassed.status === 403);
-      const apiRuntime = createApiRuntime(
-        authorizedBackofficeObjectHttp(api.http, execution),
+      const deferred = createApiRuntime(
+        authorizedBackofficeObjectHttp(api.http, outsider),
         async () => ({
           baseUrl: `${origin}/api/http/${encodeURIComponent(scopeSegment)}`,
           oauthRedirectUri: `${origin}/api/http/${encodeURIComponent(scopeSegment)}/oauth/callback`,
         }),
       );
       await expect(
-        apiRuntime.createConnection({ slug: "protected", ...connection }),
+        deferred.createConnection({ slug: "protected", ...connection }),
       ).rejects.toMatchObject({ reason: "principal-permission-denied" });
-      expect(await apiRuntime.listConnections()).toEqual({ connections: [] });
       assert((await api.http.fetch(new Request(`${origin}/api/api/connections`))).status === 401);
       const callback = await api.http.fetch(new Request(`${origin}/api/api/oauth/callback`));
       assert(callback.status === 400);
@@ -362,11 +380,20 @@ describe("fragment HTTP authority scenarios", () => {
         ).status === 401,
       );
 
-      await ctx.runtime.objects.auth.singleton().commands.applyScenarioFixture({
-        users: [{ id: me.user.id, email: me.user.email, role: "admin", status: "active" }],
+      await auth.commands.applyScenarioFixture({
+        members: [{ organizationId: "api-org", userId: me.user.id, roles: ["member"] }],
       });
-      const admin = await exchangeBrowserSession(ctx);
-      const allowedRequest = connectionRequest(admin.accessCookie);
+      // Joining the organization does not silently upgrade an already issued request snapshot.
+      const staleRequest = connectionRequest(accessCookie);
+      const stale = await forwardPublicFragmentRequest({
+        request: staleRequest,
+        context: routerContext(ctx, staleRequest),
+        scopePathSegment: scopeSegment,
+        route: apiPublicRoute,
+      });
+      assert(stale.status === 403);
+      const member = await exchangeBrowserSession(ctx, "api-org");
+      const allowedRequest = connectionRequest(member.accessCookie);
       const allowed = await forwardPublicFragmentRequest({
         request: allowedRequest,
         context: routerContext(ctx, allowedRequest),
@@ -382,7 +409,7 @@ describe("fragment HTTP authority scenarios", () => {
           const managementRequest = new Request(
             `${origin}${route.publicPrefix}/${spelling}${pathname}`,
             {
-              headers: { cookie: admin.accessCookie },
+              headers: { cookie: member.accessCookie },
             },
           );
           const management = await forwardPublicFragmentRequest({
@@ -394,13 +421,6 @@ describe("fragment HTTP authority scenarios", () => {
           assert.equal(management.status, 200, await management.clone().text());
         }
       }
-      expect((await apiRuntime.listConnections()).connections).toMatchObject([
-        { slug: "protected" },
-      ]);
-      // Promoting the user does not silently upgrade an already issued request snapshot.
-      await expect(
-        apiRuntime.createConnection({ slug: "another", ...connection }),
-      ).rejects.toMatchObject({ reason: "principal-permission-denied" });
       const internal = await api.http.fetchAuthorized(
         new Request(`${origin}/api/api/connections`),
         { execution: createBackofficeSystemExecution(scope) },
@@ -410,22 +430,16 @@ describe("fragment HTTP authority scenarios", () => {
         z.object({ connections: z.array(z.unknown()) }).parse(await internal.json()).connections,
       ).toHaveLength(1);
 
-      const deferred = createApiRuntime(
-        authorizedBackofficeObjectHttp(
-          api.http,
-          createBackofficeUserExecution({ scope, userId: me.user.id }),
-        ),
-        async () => ({ baseUrl: origin, oauthRedirectUri: `${origin}/callback` }),
-      );
+      // Deferred executions resolve membership live, so the same execution now succeeds.
       await deferred.createConnection({ slug: "before-revocation", ...connection });
-      await ctx.runtime.objects.auth.singleton().commands.applyScenarioFixture({
-        users: [{ id: me.user.id, email: me.user.email, role: "user", status: "active" }],
+      await auth.commands.applyScenarioFixture({
+        removedMembers: [{ organizationId: "api-org", userId: me.user.id }],
       });
       await expect(
         deferred.createConnection({ slug: "after-revocation", ...connection }),
       ).rejects.toMatchObject({ reason: "principal-permission-denied" });
-      // A previously issued browser snapshot is deliberately not a live-role lookup.
-      const originalSnapshotRequest = connectionRequest(admin.accessCookie);
+      // A previously issued browser snapshot is deliberately not a live-membership lookup.
+      const originalSnapshotRequest = connectionRequest(member.accessCookie);
       const snapshotRequest = new Request(
         originalSnapshotRequest.url.replace("/protected", "/snapshot-authority"),
         originalSnapshotRequest,
@@ -440,8 +454,16 @@ describe("fragment HTTP authority scenarios", () => {
           })
         ).status === 201,
       );
+      const final = await api.http.fetchAuthorized(new Request(`${origin}/api/api/connections`), {
+        execution: createBackofficeSystemExecution(scope),
+      });
+      assert(final.ok);
       expect(
-        (await apiRuntime.listConnections()).connections.map(({ slug }) => slug).sort(),
+        z
+          .object({ connections: z.array(z.object({ slug: z.string() })) })
+          .parse(await final.json())
+          .connections.map(({ slug }) => slug)
+          .sort(),
       ).toEqual(["before-revocation", "protected", "snapshot-authority"]);
     });
   });

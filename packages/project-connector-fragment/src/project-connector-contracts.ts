@@ -21,16 +21,25 @@ export const projectConnectorConnectionStateSchema = z.discriminatedUnion("statu
 /** Persisted connection lifecycle; provider credentials never enter this fragment. */
 export type ProjectConnectorConnectionState = z.infer<typeof projectConnectorConnectionStateSchema>;
 
+/** Mirrors the gateway's alias rule so invalid names fail here with a usable message. */
+const projectConnectorConnectionNameSchema = z
+  .string()
+  .regex(
+    /^[a-z0-9][a-z0-9_-]*$/,
+    "Connection names may only contain lowercase letters, digits, underscores, and hyphens, and must start with a letter or digit",
+  )
+  .describe("Lowercase letters, digits, underscores, and hyphens; starts with a letter or digit.");
+
 /** Select exactly one provider and name every connection explicitly. */
 export const projectConnectorConnectInputSchema = z.union([
   z.strictObject({
     service: z.string().regex(/^[a-z0-9_-]+$/),
-    connectionName: z.string().min(1),
+    connectionName: projectConnectorConnectionNameSchema,
     returnUri: projectConnectorHttpUrlSchema,
   }),
   z.strictObject({
     providerConfigId: z.string().min(1),
-    connectionName: z.string().min(1),
+    connectionName: projectConnectorConnectionNameSchema,
     returnUri: projectConnectorHttpUrlSchema,
   }),
 ]);

@@ -5,21 +5,9 @@ import type { BackofficeContextScope } from "./context";
 import {
   allBackofficePermissionRequirements,
   BACKOFFICE_PERMISSION,
+  type BackofficePermissionNamespace,
   type BackofficePermissionRequirement,
 } from "./permissions";
-
-/**
- * Permissions that stay with system administrators and trusted internal services. Organization
- * members receive every other permission, including permissions added to the catalog later, except
- * organization-role permissions, which resolve from live membership.
- */
-const ADMINISTRATION_PERMISSION_REQUIREMENTS: readonly BackofficePermissionRequirement[] = [
-  ...Object.values(BACKOFFICE_PERMISSION.admin),
-  BACKOFFICE_PERMISSION.internal.manage,
-  // Binding or revoking an external identity for an arbitrary user lets the caller act as them.
-  BACKOFFICE_PERMISSION.identity.bind,
-  BACKOFFICE_PERMISSION.identity.revoke,
-];
 
 /**
  * Grants conferred by live Better Auth organization roles.
@@ -49,52 +37,223 @@ export const ORGANIZATION_ROLE_PERMISSION_NAMESPACES: ReadonlySet<string> = new 
   ),
 );
 
-const organizationMemberPermissionRequirements = allBackofficePermissionRequirements.filter(
-  (requirement) =>
-    !ADMINISTRATION_PERMISSION_REQUIREMENTS.includes(requirement) &&
-    !ORGANIZATION_ROLE_PERMISSION_NAMESPACES.has(requirement.namespace),
-);
+type BackofficePermissionDecision = "grant" | "deny";
+
+/** One explicit decision for every permission in the catalog, so new permissions fail to compile. */
+type BackofficePermissionDecisions = {
+  readonly [TNamespace in BackofficePermissionNamespace]: {
+    readonly [TKey in keyof (typeof BACKOFFICE_PERMISSION)[TNamespace]]: BackofficePermissionDecision;
+  };
+};
 
 /**
  * Roles for human users, chosen per scope by `resolveBackofficeUserAuthorityRole`.
  *
  * `user-owner` and `organization-member` are the same non-admin user in different scopes:
  * `user-owner` applies in the user's own personal scope, while `organization-member` applies in an
- * organization or project scope of the user's organization. The personal scope keeps an explicit,
- * narrower grant; organization members receive every non-administration permission. Admins resolve
- * to `system-administrator` in either scope.
+ * organization or project scope of the user's organization. Both receive almost every
+ * non-administration permission; organization members additionally link and resolve external
+ * identities, route events, and receive live organization-role permissions. Admins resolve to
+ * `system-administrator` in either scope.
  */
+export const USER_AUTHORITY_ROLE_PERMISSION_DECISIONS = {
+  "system-administrator": {
+    account: { read: "grant", manage: "grant" },
+    admin: {
+      appsManage: "grant",
+      appsRead: "grant",
+      oauthClientsManage: "grant",
+      oauthClientsRead: "grant",
+      signUpInvitationsManage: "grant",
+      organizationsManage: "grant",
+    },
+    apps: { read: "grant", manage: "grant" },
+    api: {
+      connectionsCreate: "grant",
+      connectionsDelete: "grant",
+      connectionsRead: "grant",
+      requestsExecute: "grant",
+      webhooksManage: "grant",
+      webhooksRead: "grant",
+    },
+    capabilities: { read: "grant" },
+    cloudflare: { browserRun: "grant" },
+    connections: { manage: "grant", read: "grant" },
+    events: { emit: "grant", manage: "grant", read: "grant", route: "grant" },
+    forms: { create: "grant", read: "grant", update: "grant" },
+    github: { read: "grant" },
+    hooks: { read: "grant" },
+    identity: { link: "grant", bind: "grant", read: "grant", resolve: "grant", revoke: "grant" },
+    integrations: { read: "grant", manage: "grant", execute: "grant" },
+    internal: { manage: "grant" },
+    org: { read: "grant", manage: "grant" },
+    marketplace: { read: "grant", publish: "grant" },
+    packages: { read: "grant", install: "grant" },
+    mcp: {
+      serversCreate: "grant",
+      serversDelete: "grant",
+      serversRead: "grant",
+      toolsCall: "grant",
+    },
+    connector: {
+      providersRead: "grant",
+      accountsRead: "grant",
+      connectionsCreate: "grant",
+      actionsExecute: "grant",
+    },
+    otp: { create: "grant" },
+    pi: { modify: "grant", read: "grant" },
+    resend: { read: "grant", send: "grant" },
+    reson8: { use: "grant" },
+    router: { modify: "grant", read: "grant" },
+    sandbox: { modify: "grant", read: "grant" },
+    store: { modify: "grant", read: "grant" },
+    telegram: { read: "grant", send: "grant" },
+    upload: { modify: "grant", read: "grant" },
+    workflow: { executeCode: "grant", modify: "grant", read: "grant" },
+  },
+  "user-owner": {
+    account: { read: "grant", manage: "grant" },
+    admin: {
+      appsManage: "deny",
+      appsRead: "deny",
+      oauthClientsManage: "deny",
+      oauthClientsRead: "deny",
+      signUpInvitationsManage: "deny",
+      organizationsManage: "deny",
+    },
+    apps: { read: "deny", manage: "deny" },
+    api: {
+      connectionsCreate: "grant",
+      connectionsDelete: "grant",
+      connectionsRead: "grant",
+      requestsExecute: "grant",
+      webhooksManage: "grant",
+      webhooksRead: "grant",
+    },
+    capabilities: { read: "grant" },
+    cloudflare: { browserRun: "grant" },
+    connections: { manage: "grant", read: "grant" },
+    events: { emit: "grant", manage: "grant", read: "grant", route: "deny" },
+    forms: { create: "grant", read: "grant", update: "grant" },
+    github: { read: "grant" },
+    hooks: { read: "grant" },
+    identity: { link: "deny", bind: "deny", read: "grant", resolve: "deny", revoke: "deny" },
+    integrations: { read: "grant", manage: "grant", execute: "grant" },
+    internal: { manage: "deny" },
+    org: { read: "deny", manage: "deny" },
+    marketplace: { read: "grant", publish: "grant" },
+    packages: { read: "grant", install: "grant" },
+    mcp: {
+      serversCreate: "grant",
+      serversDelete: "grant",
+      serversRead: "grant",
+      toolsCall: "grant",
+    },
+    connector: {
+      providersRead: "grant",
+      accountsRead: "grant",
+      connectionsCreate: "grant",
+      actionsExecute: "grant",
+    },
+    otp: { create: "grant" },
+    pi: { modify: "grant", read: "grant" },
+    resend: { read: "grant", send: "grant" },
+    reson8: { use: "grant" },
+    router: { modify: "grant", read: "grant" },
+    sandbox: { modify: "grant", read: "grant" },
+    store: { modify: "grant", read: "grant" },
+    telegram: { read: "grant", send: "grant" },
+    upload: { modify: "grant", read: "grant" },
+    workflow: { executeCode: "grant", modify: "grant", read: "grant" },
+  },
+  "organization-member": {
+    account: { read: "grant", manage: "grant" },
+    // Administration stays with system administrators.
+    admin: {
+      appsManage: "deny",
+      appsRead: "deny",
+      oauthClientsManage: "deny",
+      oauthClientsRead: "deny",
+      signUpInvitationsManage: "deny",
+      organizationsManage: "deny",
+    },
+    // Resolved from live organization roles, never from the Backoffice user role.
+    apps: { read: "deny", manage: "deny" },
+    api: {
+      connectionsCreate: "grant",
+      connectionsDelete: "grant",
+      connectionsRead: "grant",
+      requestsExecute: "grant",
+      webhooksManage: "grant",
+      webhooksRead: "grant",
+    },
+    capabilities: { read: "grant" },
+    cloudflare: { browserRun: "grant" },
+    connections: { manage: "grant", read: "grant" },
+    events: { emit: "grant", manage: "grant", read: "grant", route: "grant" },
+    forms: { create: "grant", read: "grant", update: "grant" },
+    github: { read: "grant" },
+    hooks: { read: "grant" },
+    // Binding or revoking an external identity for an arbitrary user lets the caller act as them.
+    identity: { link: "grant", bind: "deny", read: "grant", resolve: "grant", revoke: "deny" },
+    integrations: { read: "grant", manage: "grant", execute: "grant" },
+    // Internal maintenance stays with system administrators.
+    internal: { manage: "deny" },
+    // Resolved from live organization roles, never from the Backoffice user role.
+    org: { read: "deny", manage: "deny" },
+    marketplace: { read: "grant", publish: "grant" },
+    packages: { read: "grant", install: "grant" },
+    mcp: {
+      serversCreate: "grant",
+      serversDelete: "grant",
+      serversRead: "grant",
+      toolsCall: "grant",
+    },
+    connector: {
+      providersRead: "grant",
+      accountsRead: "grant",
+      connectionsCreate: "grant",
+      actionsExecute: "grant",
+    },
+    otp: { create: "grant" },
+    pi: { modify: "grant", read: "grant" },
+    resend: { read: "grant", send: "grant" },
+    reson8: { use: "grant" },
+    router: { modify: "grant", read: "grant" },
+    sandbox: { modify: "grant", read: "grant" },
+    store: { modify: "grant", read: "grant" },
+    telegram: { read: "grant", send: "grant" },
+    upload: { modify: "grant", read: "grant" },
+    workflow: { executeCode: "grant", modify: "grant", read: "grant" },
+  },
+} as const satisfies Record<string, BackofficePermissionDecisions>;
+
+function grantedPermissionRequirements(
+  decisions: BackofficePermissionDecisions,
+): readonly BackofficePermissionRequirement[] {
+  const catalog: Readonly<
+    Record<string, Readonly<Record<string, BackofficePermissionRequirement>>>
+  > = BACKOFFICE_PERMISSION;
+  const decided: Readonly<Record<string, Readonly<Record<string, BackofficePermissionDecision>>>> =
+    decisions;
+  return Object.entries(catalog).flatMap(([namespace, requirements]) =>
+    Object.entries(requirements).flatMap(([key, requirement]) =>
+      decided[namespace][key] === "grant" ? [requirement] : [],
+    ),
+  );
+}
+
 const USER_AUTHORITY_ROLE_GRANTS = {
-  "system-administrator": allBackofficePermissionRequirements,
-  "user-owner": [
-    BACKOFFICE_PERMISSION.account.manage,
-    BACKOFFICE_PERMISSION.account.read,
-    BACKOFFICE_PERMISSION.marketplace.publish,
-    BACKOFFICE_PERMISSION.api.connectionsRead,
-    BACKOFFICE_PERMISSION.capabilities.read,
-    BACKOFFICE_PERMISSION.events.emit,
-    BACKOFFICE_PERMISSION.events.manage,
-    BACKOFFICE_PERMISSION.events.read,
-    BACKOFFICE_PERMISSION.hooks.read,
-    BACKOFFICE_PERMISSION.identity.read,
-    BACKOFFICE_PERMISSION.marketplace.read,
-    BACKOFFICE_PERMISSION.packages.read,
-    BACKOFFICE_PERMISSION.packages.install,
-    BACKOFFICE_PERMISSION.otp.create,
-    BACKOFFICE_PERMISSION.pi.modify,
-    BACKOFFICE_PERMISSION.pi.read,
-    BACKOFFICE_PERMISSION.router.modify,
-    BACKOFFICE_PERMISSION.router.read,
-    BACKOFFICE_PERMISSION.store.modify,
-    BACKOFFICE_PERMISSION.store.read,
-    BACKOFFICE_PERMISSION.telegram.send,
-    BACKOFFICE_PERMISSION.upload.modify,
-    BACKOFFICE_PERMISSION.upload.read,
-    BACKOFFICE_PERMISSION.workflow.executeCode,
-    BACKOFFICE_PERMISSION.workflow.modify,
-    BACKOFFICE_PERMISSION.workflow.read,
-  ],
-  "organization-member": organizationMemberPermissionRequirements,
+  "system-administrator": grantedPermissionRequirements(
+    USER_AUTHORITY_ROLE_PERMISSION_DECISIONS["system-administrator"],
+  ),
+  "user-owner": grantedPermissionRequirements(
+    USER_AUTHORITY_ROLE_PERMISSION_DECISIONS["user-owner"],
+  ),
+  "organization-member": grantedPermissionRequirements(
+    USER_AUTHORITY_ROLE_PERMISSION_DECISIONS["organization-member"],
+  ),
 } as const satisfies Record<string, readonly BackofficePermissionRequirement[]>;
 
 /**
@@ -149,9 +308,9 @@ export type BackofficeInternalServiceAuthorityRole =
  * Explicit grants for operations that currently execute through `BackofficeKernel.invoke()`.
  *
  * These are Backoffice authorization roles, not persisted actor roles or Auth organization role
- * names. System administrators receive the complete permission catalog automatically and
- * organization members receive every non-administration permission automatically. Each later action
- * migration must explicitly update any other roles that should receive it.
+ * names. User roles decide every catalog permission explicitly, so adding a permission does not
+ * compile until each user role grants or denies it. Each later action migration must explicitly
+ * update any internal service roles that should receive it.
  */
 export const BACKOFFICE_AUTHORITY_ROLE_GRANTS = {
   ...USER_AUTHORITY_ROLE_GRANTS,
