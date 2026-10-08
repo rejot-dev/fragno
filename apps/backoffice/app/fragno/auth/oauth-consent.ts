@@ -39,6 +39,7 @@ export const backofficeOAuthConsentPageSchema = z.object({
   nextCursor: z.string().nullable(),
   hasNextPage: z.boolean(),
 });
+export type BackofficeOAuthConsentPage = z.output<typeof backofficeOAuthConsentPageSchema>;
 
 /** Revocation always derives the grant owner from the live browser session. */
 export const backofficeOAuthConsentRevokeInputSchema = z.strictObject({

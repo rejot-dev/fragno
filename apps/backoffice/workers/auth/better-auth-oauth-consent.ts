@@ -27,6 +27,7 @@ import {
   backofficeOAuthConsentRequestSchema,
   backofficeOAuthConsentListInputSchema,
   backofficeOAuthConsentRevokeInputSchema,
+  type BackofficeOAuthConsentPage,
 } from "@/fragno/auth/oauth-consent";
 
 type StoredOAuthConsent = {
@@ -104,6 +105,92 @@ export async function enforceBackofficeOAuthTokenResponseConsent(
     requestedUserInfoClaims: [],
   });
   return {};
+}
+
+/** Lists one user's OAuth authorizations; cursors are bound to that user and the page size. */
+export async function listBackofficeOAuthConsentPage(
+  adapter: AuthContext["adapter"],
+  input: { userId: string; pageSize: number; cursor: string | null },
+): Promise<BackofficeOAuthConsentPage> {
+  const { userId, pageSize, cursor } = input;
+  let afterId: string | null = null;
+  if (cursor !== null) {
+    try {
+      const decoded = decodeCursor(cursor);
+      if (
+        decoded.indexName !== "oauthConsent.id" ||
+        decoded.orderDirection !== "asc" ||
+        decoded.pageSize !== pageSize ||
+        decoded.indexValues.userId !== userId ||
+        typeof decoded.indexValues.id !== "string" ||
+        !decoded.indexValues.id
+      ) {
+        throw new Error("Invalid consent cursor");
+      }
+      afterId = decoded.indexValues.id;
+    } catch {
+      throw new APIError("BAD_REQUEST", {
+        message: "OAuth consent listing cursor is invalid.",
+      });
+    }
+  }
+  const rows = await adapter.findMany<StoredOAuthConsent>({
+    model: "oauthConsent",
+    select: [
+      "id",
+      "clientId",
+      "userId",
+      "scopes",
+      "resources",
+      "requestedUserInfoClaims",
+      "createdAt",
+      "updatedAt",
+    ],
+    where: [
+      { field: "userId", value: userId },
+      ...(afterId === null ? [] : [{ field: "id", operator: "gt" as const, value: afterId }]),
+    ],
+    sortBy: { field: "id", direction: "asc" },
+    limit: pageSize + 1,
+  });
+  const hasNextPage = rows.length > pageSize;
+  const page = rows.slice(0, pageSize);
+  const clients =
+    page.length === 0
+      ? []
+      : await adapter.findMany<{ clientId: string; name: string | null }>({
+          model: "oauthClient",
+          select: ["clientId", "name"],
+          where: [
+            {
+              field: "clientId",
+              operator: "in",
+              value: page.map((consent) => consent.clientId),
+            },
+          ],
+        });
+  const names = new Map(clients.map((client) => [client.clientId, client.name]));
+  return {
+    consents: page.map((consent) => ({
+      id: consent.id,
+      clientId: consent.clientId,
+      clientName: names.get(consent.clientId) ?? consent.clientId,
+      scopes: consent.scopes,
+      resources: consent.resources ?? [],
+      requestedUserInfoClaims: consent.requestedUserInfoClaims ?? [],
+      createdAt: consent.createdAt.toISOString(),
+      updatedAt: consent.updatedAt.toISOString(),
+    })),
+    hasNextPage,
+    nextCursor: hasNextPage
+      ? new Cursor({
+          indexName: "oauthConsent.id",
+          orderDirection: "asc",
+          pageSize,
+          indexValues: { id: page[page.length - 1].id, userId },
+        }).encode()
+      : null,
+  };
 }
 
 /** Better Auth owns consent storage; device approval is recorded in the same provider model. */
@@ -297,88 +384,12 @@ export function createBackofficeOAuthConsentPlugin(): BetterAuthPlugin {
           query: backofficeOAuthConsentListInputSchema,
         },
         async function listUserOAuthConsents(context) {
-          const userId = context.context.session.user.id;
-          const { pageSize, cursor } = context.query;
-          let afterId: string | null = null;
-          if (cursor !== null) {
-            try {
-              const decoded = decodeCursor(cursor);
-              if (
-                decoded.indexName !== "oauthConsent.id" ||
-                decoded.orderDirection !== "asc" ||
-                decoded.pageSize !== pageSize ||
-                decoded.indexValues.userId !== userId ||
-                typeof decoded.indexValues.id !== "string" ||
-                !decoded.indexValues.id
-              ) {
-                throw new Error("Invalid consent cursor");
-              }
-              afterId = decoded.indexValues.id;
-            } catch {
-              throw new APIError("BAD_REQUEST", {
-                message: "OAuth consent listing cursor is invalid.",
-              });
-            }
-          }
-          const rows = await context.context.adapter.findMany<StoredOAuthConsent>({
-            model: "oauthConsent",
-            select: [
-              "id",
-              "clientId",
-              "userId",
-              "scopes",
-              "resources",
-              "requestedUserInfoClaims",
-              "createdAt",
-              "updatedAt",
-            ],
-            where: [
-              { field: "userId", value: userId },
-              ...(afterId === null
-                ? []
-                : [{ field: "id", operator: "gt" as const, value: afterId }]),
-            ],
-            sortBy: { field: "id", direction: "asc" },
-            limit: pageSize + 1,
-          });
-          const hasNextPage = rows.length > pageSize;
-          const page = rows.slice(0, pageSize);
-          const clients =
-            page.length === 0
-              ? []
-              : await context.context.adapter.findMany<{ clientId: string; name: string | null }>({
-                  model: "oauthClient",
-                  select: ["clientId", "name"],
-                  where: [
-                    {
-                      field: "clientId",
-                      operator: "in",
-                      value: page.map((consent) => consent.clientId),
-                    },
-                  ],
-                });
-          const names = new Map(clients.map((client) => [client.clientId, client.name]));
-          return context.json({
-            consents: page.map((consent) => ({
-              id: consent.id,
-              clientId: consent.clientId,
-              clientName: names.get(consent.clientId) ?? consent.clientId,
-              scopes: consent.scopes,
-              resources: consent.resources ?? [],
-              requestedUserInfoClaims: consent.requestedUserInfoClaims ?? [],
-              createdAt: consent.createdAt.toISOString(),
-              updatedAt: consent.updatedAt.toISOString(),
-            })),
-            hasNextPage,
-            nextCursor: hasNextPage
-              ? new Cursor({
-                  indexName: "oauthConsent.id",
-                  orderDirection: "asc",
-                  pageSize,
-                  indexValues: { id: page[page.length - 1].id, userId },
-                }).encode()
-              : null,
-          });
+          return context.json(
+            await listBackofficeOAuthConsentPage(context.context.adapter, {
+              userId: context.context.session.user.id,
+              ...context.query,
+            }),
+          );
         },
       ),
       revokeBackofficeOAuthConsent: createAuthEndpoint(

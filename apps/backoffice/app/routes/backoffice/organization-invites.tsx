@@ -10,6 +10,7 @@ import { authClient } from "@/fragno/auth/auth-client";
 import { loadOrganizationInvitations } from "@/fragno/auth/auth-directory.server";
 
 import type { Route } from "./+types/organization-invites";
+import { backofficeInvitationPath } from "./auth-navigation";
 
 export async function loader({ request, context, params }: Route.LoaderArgs) {
   return await loadOrganizationInvitations({ request, context }, params.orgSlug);
@@ -197,7 +198,7 @@ export default function BackofficeOrganizationInvites() {
 
   const invitations = invitationsData?.invitations ?? [];
   const inviteLink = inviteForm.invitationId
-    ? `${origin}/backoffice/invitations/${encodeURIComponent(inviteForm.invitationId)}`
+    ? `${origin}${backofficeInvitationPath(inviteForm.invitationId)}`
     : null;
 
   return (
@@ -316,7 +317,7 @@ export default function BackofficeOrganizationInvites() {
               </thead>
               <tbody className="divide-y divide-[color:var(--bo-border)] bg-[var(--bo-panel)]">
                 {invitations.map((invitation) => {
-                  const link = `${origin || ""}/backoffice/invitations/${encodeURIComponent(invitation.id)}`;
+                  const link = `${origin || ""}${backofficeInvitationPath(invitation.id)}`;
                   return (
                     <tr key={invitation.id} className="text-[var(--bo-muted)]">
                       <td className="px-3 py-2 font-semibold text-[var(--bo-fg)]">

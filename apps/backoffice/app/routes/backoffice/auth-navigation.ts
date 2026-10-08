@@ -2,6 +2,10 @@ export const BACKOFFICE_HOME_PATH = "/backoffice";
 export const BACKOFFICE_LOGIN_PATH = "/backoffice/login";
 export const BACKOFFICE_SIGN_UP_PATH = "/backoffice/sign-up";
 export const BACKOFFICE_AUTH_BOOTSTRAP_PATH = "/backoffice/auth/bootstrap";
+
+export function backofficeInvitationPath(invitationId: string): string {
+  return `/backoffice/invitations/${encodeURIComponent(invitationId)}`;
+}
 const BACKOFFICE_RETURN_TO_PARAM = "returnTo";
 const BACKOFFICE_ORGANIZATION_ID_PARAM = "organizationId";
 
