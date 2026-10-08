@@ -1,4 +1,4 @@
-import type { Role } from "@/fragno/auth/contracts";
+import type { OrganizationRole, Role } from "@/fragno/auth/contracts";
 import type { AutomationEntityRef } from "@/fragno/automation/actors";
 
 import type { BackofficeContextScope } from "./context";
@@ -10,7 +10,8 @@ import {
 
 /**
  * Permissions that stay with system administrators and trusted internal services. Organization
- * members receive every other permission, including permissions added to the catalog later.
+ * members receive every other permission, including permissions added to the catalog later, except
+ * organization-role permissions, which resolve from live membership.
  */
 const ADMINISTRATION_PERMISSION_REQUIREMENTS: readonly BackofficePermissionRequirement[] = [
   ...Object.values(BACKOFFICE_PERMISSION.admin),
@@ -20,8 +21,38 @@ const ADMINISTRATION_PERMISSION_REQUIREMENTS: readonly BackofficePermissionRequi
   BACKOFFICE_PERMISSION.identity.revoke,
 ];
 
+/**
+ * Grants conferred by live Better Auth organization roles.
+ *
+ * Permissions in these namespaces come only from current membership, never from token snapshots
+ * or Backoffice user roles. Stored role names outside this table grant nothing.
+ */
+const ORGANIZATION_ROLE_GRANTS = {
+  owner: [
+    BACKOFFICE_PERMISSION.apps.read,
+    BACKOFFICE_PERMISSION.apps.manage,
+    BACKOFFICE_PERMISSION.org.read,
+    BACKOFFICE_PERMISSION.org.manage,
+  ],
+  admin: [
+    BACKOFFICE_PERMISSION.apps.read,
+    BACKOFFICE_PERMISSION.apps.manage,
+    BACKOFFICE_PERMISSION.org.read,
+    BACKOFFICE_PERMISSION.org.manage,
+  ],
+  member: [BACKOFFICE_PERMISSION.apps.read, BACKOFFICE_PERMISSION.org.read],
+} as const satisfies Record<OrganizationRole, readonly BackofficePermissionRequirement[]>;
+
+export const ORGANIZATION_ROLE_PERMISSION_NAMESPACES: ReadonlySet<string> = new Set(
+  Object.values(ORGANIZATION_ROLE_GRANTS).flatMap((grants) =>
+    grants.map(({ namespace }) => namespace),
+  ),
+);
+
 const organizationMemberPermissionRequirements = allBackofficePermissionRequirements.filter(
-  (requirement) => !ADMINISTRATION_PERMISSION_REQUIREMENTS.includes(requirement),
+  (requirement) =>
+    !ADMINISTRATION_PERMISSION_REQUIREMENTS.includes(requirement) &&
+    !ORGANIZATION_ROLE_PERMISSION_NAMESPACES.has(requirement.namespace),
 );
 
 /**
@@ -36,6 +67,8 @@ const organizationMemberPermissionRequirements = allBackofficePermissionRequirem
 const USER_AUTHORITY_ROLE_GRANTS = {
   "system-administrator": allBackofficePermissionRequirements,
   "user-owner": [
+    BACKOFFICE_PERMISSION.account.manage,
+    BACKOFFICE_PERMISSION.account.read,
     BACKOFFICE_PERMISSION.marketplace.publish,
     BACKOFFICE_PERMISSION.api.connectionsRead,
     BACKOFFICE_PERMISSION.capabilities.read,
@@ -173,3 +206,14 @@ export const resolveBackofficeInternalServiceAuthorityRole = ({
 export const getBackofficeAuthorityRoleGrants = (
   role: BackofficeAuthorityRole,
 ): readonly BackofficePermissionRequirement[] => BACKOFFICE_AUTHORITY_ROLE_GRANTS[role];
+
+export function getOrganizationRoleGrants(
+  roles: readonly string[],
+): readonly BackofficePermissionRequirement[] {
+  const grants = roles.flatMap((role) =>
+    Object.hasOwn(ORGANIZATION_ROLE_GRANTS, role)
+      ? ORGANIZATION_ROLE_GRANTS[role as OrganizationRole]
+      : [],
+  );
+  return [...new Set(grants)];
+}

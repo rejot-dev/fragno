@@ -2,7 +2,7 @@ import type { WorkerTypeChecker } from "@fragno-dev/codemode/compiler/compile-wo
 
 import { defaultFragnoRuntime } from "@fragno-dev/core";
 
-import { createAppInstallationAuthorityResolver } from "@/fragno/app-installations/authority";
+import { createControlPlaneAuthorityResolver } from "@/backoffice-runtime/control-plane-authority-resolver";
 import { createAutomationRouteAuthorityResolver } from "@/fragno/automation/authority";
 import type { AutomationSourceReader } from "@/fragno/automation/automation-source";
 import type { PiAvailableModel } from "@/fragno/pi-manager/pi-agent-contract";
@@ -107,7 +107,7 @@ export async function createLocalBackofficeRuntime(
     config,
     authorityResolver:
       options.authorityResolver ??
-      createAppInstallationAuthorityResolver({
+      createControlPlaneAuthorityResolver({
         resolver: createAutomationRouteAuthorityResolver({
           fallbackResolver: createBackofficeAuthorityResolver(
             {

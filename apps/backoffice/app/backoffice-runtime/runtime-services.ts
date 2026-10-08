@@ -7,7 +7,6 @@ import type { FragmentDurableObjectHostOperations } from "@fragno-dev/db/dispatc
 
 import type { FragnoRuntime } from "@fragno-dev/core";
 
-import { createAppInstallationAuthorityResolver } from "@/fragno/app-installations/authority";
 import { createAutomationRouteAuthorityResolver } from "@/fragno/automation/authority";
 import type { BackofficeCodemodeEnv } from "@/fragno/codemode/execute";
 
@@ -17,6 +16,7 @@ import {
 } from "./authority-resolver";
 import { cloudflareDatabaseAdapters } from "./cloudflare-database-adapters";
 import { createCloudflareBackofficeObjectRegistry } from "./cloudflare-durable-object-factory";
+import { createControlPlaneAuthorityResolver } from "./control-plane-authority-resolver";
 import {
   createDurableObjectDatabaseAdapterScope,
   type BackofficeDatabaseAdapterFactory,
@@ -182,7 +182,7 @@ export const createCloudflareBackofficeRuntimeServices = (
     objects,
     adapters: options.databaseScope ? adapters.forScope(options.databaseScope) : adapters,
     config: createCloudflareBackofficeRuntimeConfig(env),
-    authorityResolver: createAppInstallationAuthorityResolver({
+    authorityResolver: createControlPlaneAuthorityResolver({
       resolver: createAutomationRouteAuthorityResolver({
         fallbackResolver: createBackofficeAuthorityResolver({
           getUserAuthorityFacts: async (input) =>

@@ -27,6 +27,14 @@ declare const admin: AdminCodemodeProvider;
 
 type BackofficePermissionRequirement =
   | {
+      namespace: "account";
+      permission: "read";
+    }
+  | {
+      namespace: "account";
+      permission: "manage";
+    }
+  | {
       namespace: "admin";
       permission: "apps.manage";
     }
@@ -168,6 +176,14 @@ type BackofficePermissionRequirement =
     }
   | {
       namespace: "internal";
+      permission: "manage";
+    }
+  | {
+      namespace: "org";
+      permission: "read";
+    }
+  | {
+      namespace: "org";
       permission: "manage";
     }
   | {

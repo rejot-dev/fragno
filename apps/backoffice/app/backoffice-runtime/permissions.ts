@@ -8,6 +8,10 @@ import { z } from "zod";
  * permission to any role automatically.
  */
 export const BACKOFFICE_PERMISSION = {
+  account: {
+    read: { namespace: "account", permission: "read" },
+    manage: { namespace: "account", permission: "manage" },
+  },
   admin: {
     appsManage: { namespace: "admin", permission: "apps.manage" },
     appsRead: { namespace: "admin", permission: "apps.read" },
@@ -72,6 +76,10 @@ export const BACKOFFICE_PERMISSION = {
   },
   internal: {
     manage: { namespace: "internal", permission: "manage" },
+  },
+  org: {
+    read: { namespace: "org", permission: "read" },
+    manage: { namespace: "org", permission: "manage" },
   },
   marketplace: {
     read: { namespace: "marketplace", permission: "read" },

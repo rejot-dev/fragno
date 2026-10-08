@@ -90,6 +90,8 @@ describe("Backoffice authority role grants", () => {
 
   test("user owners can author and execute user-scoped codemode workflows", () => {
     expect(BACKOFFICE_AUTHORITY_ROLE_GRANTS["user-owner"]).toEqual([
+      BACKOFFICE_PERMISSION.account.manage,
+      BACKOFFICE_PERMISSION.account.read,
       BACKOFFICE_PERMISSION.marketplace.publish,
       ...automationAuthoringPermissions,
     ]);
