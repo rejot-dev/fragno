@@ -23,14 +23,25 @@ type AdminConfigResponse = {
   };
 };
 
-type StoredInstallState = {
+type StoredUserState = {
   userId: string;
   orgId: string;
   createdAt: number;
   expiresAt: number;
 };
 
-type StoredInstallationClaimState = StoredInstallState & {
+/**
+ * Repositories integration setup asked to link once GitHub's callback completes. A GitHub install
+ * flow yields one installation on one account, so a request names that account.
+ */
+type GitHubRepositoryInstallRequest = { owner: string; repositories: string[] };
+
+type StoredInstallState = StoredUserState & {
+  /** Null for installs started from the GitHub configuration page. */
+  repositoryRequest: GitHubRepositoryInstallRequest | null;
+};
+
+type StoredInstallationClaimState = StoredUserState & {
   returnTo: string;
   completion?: unknown;
 };
@@ -77,6 +88,7 @@ type InstallStateResolutionResult =
   | {
       ok: true;
       orgId: string;
+      repositoryRequest: GitHubRepositoryInstallRequest | null;
     }
   | {
       ok: false;
@@ -102,6 +114,7 @@ type ConsumeInstallStateResult =
       ok: true;
       installationId: string;
       orgId: string;
+      repositoryRequest: GitHubRepositoryInstallRequest | null;
     }
   | {
       ok: false;
@@ -112,6 +125,12 @@ type ConsumeInstallStateResult =
 const INSTALL_STATE_KEY_PREFIX = "github-install-state:";
 const INSTALLATION_CLAIM_STATE_KEY_PREFIX = "github-installation-claim-state:";
 const INSTALL_STATE_TTL_MS = 10 * 60 * 1000;
+/** Points at a user's newest repository install per organization and account, so setup resumes it. */
+const INSTALL_PENDING_KEY_PREFIX = "github-install-pending:";
+const installPendingKey = (orgId: string, userId: string, owner: string) =>
+  `${INSTALL_PENDING_KEY_PREFIX}${orgId}:${userId}:${owner}`;
+const installUrl = (appSlug: string, state: string) =>
+  `https://github.com/apps/${appSlug}/installations/new?state=${encodeURIComponent(state)}`;
 const INSTALLATION_ORG_KEY_PREFIX = "github-installation-org:";
 
 type GitHubWebhookRouterInstallationMapping = {
@@ -447,7 +466,79 @@ export class InMemoryGitHubWebhookRouterObject {
     };
   }
 
+  /** Whether the environment carries a complete GitHub App configuration. */
+  async isAppConfigured(): Promise<boolean> {
+    return resolveGitHubConfig(this.#env).ok;
+  }
+
   async createInstallStatefulUrl(userId: string, orgId: string): Promise<CreateInstallUrlResult> {
+    return await this.#storeInstallState(userId, orgId, null);
+  }
+
+  /**
+   * Returns an install link whose callback links the repository. The user's pending link for the
+   * same organization and account is reused, so repeated setup calls resume one GitHub consent.
+   */
+  async requestRepositoryInstall(
+    userId: string,
+    orgId: string,
+    repositoryFullName: string,
+  ): Promise<CreateInstallUrlResult> {
+    const owner = repositoryFullName.slice(0, repositoryFullName.indexOf("/"));
+    const pending = await this.#readPendingInstallState(userId.trim(), orgId.trim(), owner);
+    if (pending === null) {
+      return await this.#storeInstallState(userId, orgId, {
+        owner,
+        repositories: [repositoryFullName],
+      });
+    }
+    const { repositories } = pending.request;
+    if (!repositories.includes(repositoryFullName)) {
+      await this.#state.storage.put(`${INSTALL_STATE_KEY_PREFIX}${pending.state}`, {
+        ...pending.record,
+        repositoryRequest: { owner, repositories: [...repositories, repositoryFullName] },
+      } satisfies StoredInstallState);
+    }
+    return { ok: true, installUrl: pending.installUrl, expiresAt: pending.record.expiresAt };
+  }
+
+  /** The user's unused install link for one account and the repositories it will link. */
+  async getPendingInstall(
+    userId: string,
+    orgId: string,
+    owner: string,
+  ): Promise<{ installUrl: string; repositories: string[] } | null> {
+    const pending = await this.#readPendingInstallState(userId, orgId, owner);
+    return (
+      pending && { installUrl: pending.installUrl, repositories: pending.request.repositories }
+    );
+  }
+
+  async #readPendingInstallState(userId: string, orgId: string, owner: string) {
+    const state = await this.#state.storage.get<string>(installPendingKey(orgId, userId, owner));
+    if (!state) {
+      return null;
+    }
+    const record = await this.#state.storage.get<StoredInstallState>(
+      `${INSTALL_STATE_KEY_PREFIX}${state}`,
+    );
+    const resolution = resolveGitHubConfig(this.#env);
+    if (!record?.repositoryRequest || record.expiresAt <= Date.now() || !resolution.ok) {
+      return null;
+    }
+    return {
+      state,
+      record,
+      request: record.repositoryRequest,
+      installUrl: installUrl(resolution.config.appSlug, state),
+    };
+  }
+
+  async #storeInstallState(
+    userId: string,
+    orgId: string,
+    repositoryRequest: GitHubRepositoryInstallRequest | null,
+  ): Promise<CreateInstallUrlResult> {
     const normalizedUserId = userId.trim();
     const normalizedOrgId = orgId.trim();
     if (!normalizedUserId) {
@@ -476,19 +567,25 @@ export class InMemoryGitHubWebhookRouterObject {
     const state = createInstallNonce();
     const now = Date.now();
     const expiresAt = now + INSTALL_STATE_TTL_MS;
-    const storageKey = `${INSTALL_STATE_KEY_PREFIX}${state}`;
     const record: StoredInstallState = {
       userId: normalizedUserId,
       orgId: normalizedOrgId,
       createdAt: now,
       expiresAt,
+      repositoryRequest,
     };
 
-    await this.#state.storage.put(storageKey, record);
+    await this.#state.storage.put(`${INSTALL_STATE_KEY_PREFIX}${state}`, record);
+    if (repositoryRequest !== null) {
+      await this.#state.storage.put(
+        installPendingKey(normalizedOrgId, normalizedUserId, repositoryRequest.owner),
+        state,
+      );
+    }
 
     return {
       ok: true,
-      installUrl: `https://github.com/apps/${resolution.config.appSlug}/installations/new?state=${encodeURIComponent(state)}`,
+      installUrl: installUrl(resolution.config.appSlug, state),
       expiresAt,
     };
   }
@@ -546,6 +643,7 @@ export class InMemoryGitHubWebhookRouterObject {
     return {
       ok: true,
       orgId: record.orgId.trim(),
+      repositoryRequest: record.repositoryRequest,
     };
   }
 
@@ -570,10 +668,21 @@ export class InMemoryGitHubWebhookRouterObject {
     }
 
     await this.#state.storage.delete(`${INSTALL_STATE_KEY_PREFIX}${state}`);
+    if (resolved.repositoryRequest !== null) {
+      const pendingKey = installPendingKey(
+        resolved.orgId,
+        input.userId.trim(),
+        resolved.repositoryRequest.owner,
+      );
+      if ((await this.#state.storage.get<string>(pendingKey)) === state) {
+        await this.#state.storage.delete(pendingKey);
+      }
+    }
     return {
       ok: true,
       installationId,
       orgId: resolved.orgId,
+      repositoryRequest: resolved.repositoryRequest,
     };
   }
 
@@ -807,8 +916,28 @@ export class GitHubWebhookRouter extends DurableObject<CloudflareEnv> {
     return await this.#object.getAdminConfig(orgId, origin);
   }
 
+  async isAppConfigured(): Promise<boolean> {
+    return await this.#object.isAppConfigured();
+  }
+
   async createInstallStatefulUrl(userId: string, orgId: string): Promise<CreateInstallUrlResult> {
     return await this.#object.createInstallStatefulUrl(userId, orgId);
+  }
+
+  async requestRepositoryInstall(
+    userId: string,
+    orgId: string,
+    repositoryFullName: string,
+  ): Promise<CreateInstallUrlResult> {
+    return await this.#object.requestRepositoryInstall(userId, orgId, repositoryFullName);
+  }
+
+  async getPendingInstall(
+    userId: string,
+    orgId: string,
+    owner: string,
+  ): Promise<{ installUrl: string; repositories: string[] } | null> {
+    return await this.#object.getPendingInstall(userId, orgId, owner);
   }
 
   async resolveInstallState(

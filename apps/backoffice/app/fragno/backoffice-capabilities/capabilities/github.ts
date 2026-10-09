@@ -68,6 +68,10 @@ const githubSubjectSchema = z.object({
   installationId: z.string().min(1),
   accountId: z.string().optional(),
   accountLogin: z.string().optional(),
+  connectionId: z
+    .string()
+    .optional()
+    .describe("Integration address github#owner/repo, present for repository webhooks."),
   repositoryId: z.string().optional(),
   repositoryFullName: z.string().optional(),
   issueNumber: z.string().optional(),

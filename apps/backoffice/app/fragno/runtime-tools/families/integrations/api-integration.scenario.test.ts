@@ -42,14 +42,16 @@ import { InMemoryAuthObject } from "../../../../../workers/auth.do";
 import { InMemoryAutomationsObject } from "../../../../../workers/automations.do";
 import { InMemoryCodemodeObject } from "../../../../../workers/codemode.do";
 import { InMemoryFormsObject } from "../../../../../workers/forms.do";
+import { InMemoryGitHubWebhookRouterObject } from "../../../../../workers/github-webhook-router.do";
+import { InMemoryGitHubObject } from "../../../../../workers/github.do";
 import { InMemoryMcpObject } from "../../../../../workers/mcp.do";
+import { InMemoryOtpObject } from "../../../../../workers/otp.do";
 import { InMemoryProjectConnectorObject } from "../../../../../workers/project-connector.do";
 import { InMemoryResendObject } from "../../../../../workers/resend.do";
 import { InMemoryReson8Object } from "../../../../../workers/reson8.do";
 import { InMemoryTelegramObject } from "../../../../../workers/telegram.do";
 import { InMemoryUploadObject } from "../../../../../workers/upload.do";
 import { createApiIntegration } from "./api-integration";
-
 const scenarioObjects = {
   APPS: (input) => new InMemoryAppsObject(input),
   APP_INSTALLATIONS: (input) => new InMemoryAppInstallationsObject(input),
@@ -63,6 +65,9 @@ const scenarioObjects = {
   RESON8: (input) => new InMemoryReson8Object(input),
   TELEGRAM: (input) => new InMemoryTelegramObject(input),
   UPLOAD: (input) => new InMemoryUploadObject(input),
+  GITHUB: (input) => new InMemoryGitHubObject(input),
+  GITHUB_WEBHOOK_ROUTER: (input) => new InMemoryGitHubWebhookRouterObject(input),
+  OTP: (input) => new InMemoryOtpObject(input),
 } satisfies LocalBackofficeObjects;
 
 const orgScope = { kind: "org", orgId: "api-org" } as const;
