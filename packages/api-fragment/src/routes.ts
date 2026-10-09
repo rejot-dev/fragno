@@ -27,7 +27,12 @@ import {
 import { sha256Base64Url, utf8Bytes } from "./crypto";
 import { apiFragmentDefinition, type WebhookEndpointHookSnapshot } from "./definition";
 import { apiSchema } from "./schema";
-import { assertAllowedBaseUrl, pendingOAuthLink, projectApiAuthStatus } from "./services";
+import {
+  assertAllowedBaseUrl,
+  isApiAuthReady,
+  pendingOAuthLink,
+  projectApiAuthStatus,
+} from "./services";
 import {
   getSensitiveWebhookAuthValues,
   getWebhookAuthSecretRefs,
@@ -856,6 +861,13 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
                 status: "active",
               }),
             });
+            uow.triggerHook("onConnectionReadinessChanged", {
+              connectionId: pathParams.slug,
+              ready: isApiAuthReady(
+                body.auth.type,
+                payload === undefined ? undefined : { payload, expiresAt: null },
+              ),
+            });
             return { exists: false as const };
           })
           .execute();
@@ -1026,6 +1038,16 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
               connectionId: pathParams.slug,
               connection: connectionHookSnapshot(replaced),
             });
+            const ready = isApiAuthReady(
+              replaced.authMode,
+              payload === null ? undefined : { payload, expiresAt: null },
+            );
+            if (ready !== isApiAuthReady(connection.authMode, authSecret)) {
+              uow.triggerHook("onConnectionReadinessChanged", {
+                connectionId: pathParams.slug,
+                ready,
+              });
+            }
             return { connection: replaced };
           })
           .execute();
@@ -1209,11 +1231,12 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
               connectionId: pathParams.slug,
               connection: changedConnection,
             });
-            uow.triggerHook("onConnectionAvailable", {
-              connectionId: pathParams.slug,
-              connection: changedConnection,
-              authMode: "bearer",
-            });
+            if (!isApiAuthReady(connection.authMode, secret ?? undefined)) {
+              uow.triggerHook("onConnectionReadinessChanged", {
+                connectionId: pathParams.slug,
+                ready: true,
+              });
+            }
             return { found: true as const };
           })
           .execute();
@@ -1400,6 +1423,14 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
               connectionId: pathParams.slug,
               connection: connectionHookSnapshot(connection),
             });
+            const authSecret = secrets.find((secret) => secret.kind === "auth");
+            const ready = isApiAuthReady(connection.authMode, undefined);
+            if (ready !== isApiAuthReady(connection.authMode, authSecret)) {
+              uow.triggerHook("onConnectionReadinessChanged", {
+                connectionId: pathParams.slug,
+                ready,
+              });
+            }
             return {
               found: true as const,
               status: projectApiAuthStatus({

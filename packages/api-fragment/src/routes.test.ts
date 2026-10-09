@@ -11,7 +11,7 @@ import { apiSchema } from "./schema";
 const oauthRedirectUri = "https://app.test/oauth/callback";
 const onConnectionChanged = vi.fn();
 const onConnectionDeleted = vi.fn();
-const onConnectionAvailable = vi.fn();
+const onConnectionReadinessChanged = vi.fn();
 
 type FetchCall = {
   url: string;
@@ -108,7 +108,7 @@ const buildApiTest = async (
           fetch: fetchRecorder.fetcher,
           onConnectionChanged,
           onConnectionDeleted,
-          onConnectionAvailable,
+          onConnectionReadinessChanged,
         })
         .withRoutes([apiRoutesFactory]),
     )
@@ -307,10 +307,10 @@ describe("api-fragment", () => {
     });
 
     await drainDurableHooks(fragment);
-    expect(onConnectionAvailable).toHaveBeenCalledWith(
-      expect.objectContaining({ connectionId: "bearer", authMode: "bearer" }),
-      expect.objectContaining({ idempotencyKey: expect.any(String), hookId: expect.any(Object) }),
-    );
+    // A connection without auth is ready from creation, so adding a token changes nothing.
+    expect(onConnectionReadinessChanged.mock.calls.map(([payload]) => payload)).toEqual([
+      { connectionId: "bearer", ready: true },
+    ]);
 
     await setup.test.cleanup();
   });
@@ -350,6 +350,13 @@ describe("api-fragment", () => {
     });
     assert(restored.type === "json");
     expect(restored.data).toEqual({ mode: "bearer", credentials: "present" });
+
+    await drainDurableHooks(fragment);
+    expect(onConnectionReadinessChanged.mock.calls.map(([payload]) => payload)).toEqual([
+      { connectionId: slug, ready: true },
+      { connectionId: slug, ready: false },
+      { connectionId: slug, ready: true },
+    ]);
 
     await setup.test.cleanup();
   });
@@ -854,10 +861,13 @@ describe("api-fragment", () => {
     });
 
     await drainDurableHooks(fragment);
-    expect(onConnectionAvailable).toHaveBeenCalledWith(
-      expect.objectContaining({ connectionId: slug, authMode: "oauth" }),
-      expect.objectContaining({ idempotencyKey: expect.any(String), hookId: expect.any(Object) }),
-    );
+    // Starting consent without discarding tokens leaves readiness unchanged.
+    expect(onConnectionReadinessChanged.mock.calls.map(([payload]) => payload)).toEqual([
+      { connectionId: slug, ready: false },
+      { connectionId: slug, ready: true },
+      { connectionId: slug, ready: false },
+      { connectionId: slug, ready: true },
+    ]);
 
     // Without a refresh token, an expired access token needs fresh consent.
     const [[secret]] = await readAuthSecrets(setup, slug);
