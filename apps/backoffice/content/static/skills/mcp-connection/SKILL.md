@@ -55,8 +55,10 @@ Cataloged automation events:
 
 - `source`: `mcp`, `eventType`: `server.configuration.changed` — fires after a server refresh when
   the advertised tools differ from the previous cache.
-- `source`: `mcp`, `eventType`: `server.configuration.deleted` — fires after an MCP server
-  configuration is deleted.
+
+Connection state is reported once for every integration service: `source`: `integrations`,
+`eventType`: `connection.ready`, `connection.unavailable`, or `connection.disconnected`, with
+`subject.service` = `mcp` and `subject.connectionId` = `mcp#<slug>`.
 
 Treat MCP as a tool-backed capability: automations register servers, refresh advertised tool caches,
 and call those tools when an external MCP service is needed.

@@ -26,6 +26,19 @@ const fragment = createMcpFragment(
 );
 ```
 
+## Hooks
+
+Hooks are durable: they run after the transaction that triggered them commits, and are retried on
+failure.
+
+- `onServerReadinessChanged` receives `{ serverId, ready }` when a write changes whether stored auth
+  can authorize operations: on creation, and afterwards whenever credentials, consent, or tokens
+  flip readiness, including tokens the server rejects during an operation. Expiry without a write
+  does not trigger it.
+- `onServerConfigurationChanged` receives `{ serverId, current: { tools } }` when a refresh finds a
+  different tool list.
+- `onServerConfigurationDeleted` receives `{ serverId }` when a server is deleted.
+
 ## CLI
 
 The package ships a small local CLI for trying remote MCP servers from disk-backed SQLite storage.
