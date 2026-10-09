@@ -397,6 +397,23 @@ const verifyInstalledAppJwtWithJwks: JwtPayloadVerifier<InstalledAppJwtPayload> 
   return installedAppJwtPayloadSchema.parse(verification.payload);
 };
 
+/** API requests carry either kind of credential; the audience names which one it is. */
+const backofficeApiCredentialPayloadSchema = z.discriminatedUnion("aud", [
+  backofficeJwtPayloadSchema,
+  installedAppJwtPayloadSchema,
+]);
+export type BackofficeApiCredentialPayload = z.infer<typeof backofficeApiCredentialPayloadSchema>;
+
+const verifyBackofficeApiCredentialWithJwks: JwtPayloadVerifier<
+  BackofficeApiCredentialPayload
+> = async (token, resolver) => {
+  const verification = await jwtVerify(token, resolver, {
+    issuer: ACCESS_TOKEN_ISSUER,
+    audience: [ACCESS_TOKEN_AUDIENCE, INSTALLED_APP_ACCESS_TOKEN_AUDIENCE],
+  });
+  return backofficeApiCredentialPayloadSchema.parse(verification.payload);
+};
+
 const verifyAppInstallationCodeWithJwks: JwtPayloadVerifier<AppInstallationCodePayload> = async (
   token,
   resolver,
@@ -485,6 +502,19 @@ export async function verifyInstalledAppJwt(
     requestUrl,
     authObject,
     verifyInstalledAppJwtWithJwks,
+  );
+}
+
+export async function verifyBackofficeApiCredential(
+  token: string | null,
+  requestUrl: string,
+  authObject: JwksFetchObject,
+): Promise<JwtVerificationResult<BackofficeApiCredentialPayload>> {
+  return await verifyWithBackofficeJwks(
+    token,
+    requestUrl,
+    authObject,
+    verifyBackofficeApiCredentialWithJwks,
   );
 }
 

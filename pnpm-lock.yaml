@@ -305,6 +305,9 @@ importers:
       '@fragno-private/design-system':
         specifier: workspace:*
         version: link:../../packages-private/design-system
+      '@hono/node-server':
+        specifier: ^1.19.14
+        version: 1.19.14(hono@4.13.0)
       '@journeyapps/wa-sqlite':
         specifier: ^1.4.1
         version: 1.7.2
@@ -365,6 +368,9 @@ importers:
       express:
         specifier: ^5.2.1
         version: 5.2.1
+      hono:
+        specifier: ^4.13.0
+        version: 4.13.0
       isbot:
         specifier: ^5.1.32
         version: 5.1.42

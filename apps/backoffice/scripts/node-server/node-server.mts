@@ -4,8 +4,13 @@ import { fileURLToPath } from "node:url";
 import express from "express";
 import type { ServerBuild } from "react-router";
 
+import { getRequestListener } from "@hono/node-server";
 import { createRequestHandler } from "@react-router/express";
 
+import {
+  backofficeApiRouter,
+  isBackofficeApiPath,
+} from "../../app/backoffice-api/backoffice-api-router";
 import { BackofficeKernel } from "../../app/backoffice-runtime/kernel";
 import { createLocalBackofficeRuntime } from "../../app/backoffice-runtime/node/local-runtime";
 import { startNodeBackofficeAlarmScheduler } from "../../app/backoffice-runtime/node/node-alarm-scheduler";
@@ -61,6 +66,29 @@ app.use(
   }),
 );
 app.use(express.static(staticDirectory, { maxAge: "1m", index: false, redirect: false }));
+const backofficeApiListener = getRequestListener(async (request, { incoming }) => {
+  // Use the URL React Router sees: Express applies the trusted proxy's protocol and host, and
+  // credential verification depends on the public origin.
+  const { protocol, host, originalUrl } = incoming as express.Request;
+  return await backofficeApiRouter.fetch(
+    new Request(new URL(`${protocol}://${host}${originalUrl}`), {
+      method: request.method,
+      headers: request.headers,
+      // API bodies are small JSON documents, so buffering avoids streaming-body plumbing.
+      body:
+        request.method === "GET" || request.method === "HEAD" ? null : await request.arrayBuffer(),
+      signal: request.signal,
+    }),
+    { runtime: runtime.services, kernel },
+  );
+});
+app.use((request, response, next) => {
+  if (isBackofficeApiPath(request.path)) {
+    void backofficeApiListener(request, response);
+    return;
+  }
+  next();
+});
 app.use(
   createRequestHandler({
     build: serverBuild,

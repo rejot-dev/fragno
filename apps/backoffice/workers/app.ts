@@ -2,6 +2,10 @@ import { createRequestHandler } from "react-router";
 import System from "typebox/system";
 import * as serverBuild from "virtual:react-router/server-build";
 
+import {
+  backofficeApiRouter,
+  isBackofficeApiPath,
+} from "../app/backoffice-api/backoffice-api-router";
 import { BackofficeKernel } from "../app/backoffice-runtime/kernel";
 import { createCloudflareBackofficeRuntimeServices } from "../app/backoffice-runtime/runtime-services";
 import { BackofficePostHogContext, captureBackofficeServerException } from "../app/posthog.server";
@@ -20,9 +24,10 @@ export default {
       span.setAttribute("backoffice.request_id", requestId);
 
       const runtime = createCloudflareBackofficeRuntimeServices(env);
+      const kernel = new BackofficeKernel(runtime);
       const context = createBackofficeRouterContextProvider(request, {
         runtime,
-        kernel: new BackofficeKernel(runtime),
+        kernel,
         env,
         ctx,
       });
@@ -46,7 +51,9 @@ export default {
       let statusCode = 500;
 
       try {
-        const response = await requestHandler(request, context);
+        const response = isBackofficeApiPath(new URL(request.url).pathname)
+          ? await backofficeApiRouter.fetch(request, { runtime, kernel })
+          : await requestHandler(request, context);
         statusCode = response.status;
         const headers = new Headers(response.headers);
         headers.set("backoffice-request-id", requestId);

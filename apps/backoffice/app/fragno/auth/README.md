@@ -159,6 +159,18 @@ The browser `/api/auth/backoffice-token` session exchange reuses the same user-g
 JWT issuer. Its cookie transport, organization selection/provisioning response, and unrestricted
 credential-scope behavior are unchanged.
 
+## Versioned HTTP API
+
+`/api/v0/…` (`app/backoffice-api/backoffice-api-router.ts`) serves the `@fragno-dev/backoffice-api`
+contract. It accepts bearer credentials only, never the session cookie: user credentials act with
+the user's live permissions in the requested scope, and installed-app credentials act through their
+installation, inside the scope they were issued for. Both verify against the same JWKS in one pass,
+distinguished by audience. Each operation runs the runtime tool of the same id, so the kernel
+authorizes it exactly as it does in Bash and Codemode. `admin` and `internal` tools are never
+exposed; `cloudflare` tools wait for real Browser Run result schemas in their fragment.
+Byte-oriented operations exchange base64 through v0 adapters (`app/backoffice-api/v0-adapters.ts`)
+until dedicated file transfer APIs exist.
+
 ## Browser consent and revocation
 
 `/backoffice/device` handles first-party device approval; `/backoffice/oauth/consent` handles
