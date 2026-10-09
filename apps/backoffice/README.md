@@ -40,9 +40,9 @@ bindings. Keep that directory free of `.dev.vars` and `.env` files: Wrangler res
 secrets beside its configuration, and local credentials must not affect cached tests.
 
 Ordinary tests do not start the Codemode HTTP/WebSocket bridge. Shared Codemode execution coverage
-uses the local Cloudflare test pool's Worker Loader and the in-process compiler from
-`workers/vitest-compiler-setup.ts`. Pure Codemode helpers are tested in the owning package under
-Node.
+uses the local Cloudflare test pool's Worker Loader and the unbundled in-process compiler from
+`workers/vitest-compiler-setup.ts`. Bundling, npm installation, and type checking are tested in
+`cf-sandbox-bridge`. Pure Codemode helpers are tested in the owning package under Node.
 
 Node-specific bridge transport and recovery scenarios run separately through `test:bridge`,
 including binary codemode setup and in-flight event subscriptions. CI runs the Backoffice bridge

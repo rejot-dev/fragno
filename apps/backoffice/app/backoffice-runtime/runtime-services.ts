@@ -1,7 +1,4 @@
-import type {
-  WorkerCompiler,
-  WorkerTypeChecker,
-} from "@fragno-dev/codemode/compiler/compile-worker";
+import type { WorkerTypeChecker } from "@fragno-dev/codemode/compiler/compile-worker";
 import { createWorkerTypeCheckerServiceClient } from "@fragno-dev/codemode/compiler/compiler-service-client";
 import type { FragmentDurableObjectHostOperations } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 
@@ -173,10 +170,6 @@ export const createCloudflareBackofficeRuntimeServices = (
 ): BackofficeRuntimeServices => {
   const adapters = cloudflareDatabaseAdapters();
   const objects = createCloudflareBackofficeObjectRegistry(env);
-  const testCompilerEnv = env as CloudflareEnv & {
-    compileWorker?: WorkerCompiler;
-    typeCheckFiles?: WorkerTypeChecker;
-  };
 
   return {
     objects,
@@ -197,10 +190,10 @@ export const createCloudflareBackofficeRuntimeServices = (
       },
     }),
     kernelObserver: options.kernelObserver ?? noopBackofficeKernelObserver,
-    codemodeEnv: env.LOADER ? (testCompilerEnv as BackofficeCodemodeEnv) : null,
+    codemodeEnv: env.LOADER ? env : null,
     workerTypeChecker: env.CODEMODE_COMPILER
       ? createWorkerTypeCheckerServiceClient(env.CODEMODE_COMPILER)
-      : (testCompilerEnv.typeCheckFiles ?? null),
+      : null,
   };
 };
 

@@ -51,6 +51,23 @@ export default class extends WorkerEntrypoint {
   expect(await response.json()).toEqual({ result: 42 });
 });
 
+test("a compiler caller executes a bundle with installed npm dependencies", async () => {
+  const request = createCompileWorkerServiceRequest({
+    files: {
+      "worker.js": `import { WorkerEntrypoint } from "cloudflare:workers";
+import isNumber from "is-number";
+export default class extends WorkerEntrypoint {
+  evaluate() { return { result: isNumber(7) }; }
+}`,
+    },
+    entryPoint: "worker.js",
+    dependencies: { "is-number": "7.0.0" },
+    runtime,
+  });
+  const response = await server.requestCompiler(new Request("http://compiler/execute", request));
+  expect(await response.json()).toEqual({ result: true });
+});
+
 test("named compiler RPC type-checks streamed JavaScript against caller declarations", async () => {
   const files = {
     "workspace/example.js": "const value = declaredValue; const invalid = value.missing;",

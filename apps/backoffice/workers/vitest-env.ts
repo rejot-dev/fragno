@@ -1,8 +1,9 @@
-import { buildWorkerProject } from "@fragno-apps/cf-sandbox-bridge/compiler/build-worker-project";
 import {
   createCompileWorkerServiceResponse,
+  createCompilerServiceErrorResponse,
   readCompileWorkerServiceRequest,
 } from "@fragno-dev/codemode/compiler/compiler-service-protocol";
+import { createWorkerBundle } from "@fragno-dev/codemode/compiler/worker-bundle";
 import { DurableObject, WorkerEntrypoint } from "cloudflare:workers";
 
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
@@ -51,13 +52,25 @@ export default {
   },
 };
 
-/** Real streamed compiler RPC for dependency-free Pi extension gate scenarios. */
+/**
+ * Streamed compiler RPC for the Pi extension gate, which builds over a service binding. Like
+ * `vitest-compiler-setup.ts`, it loads modules unchanged and ignores requested dependencies.
+ */
 export class PiWorkspaceExtensionCompiler extends WorkerEntrypoint {
   async compileWorker(request: Request): Promise<Response> {
-    const input = await readCompileWorkerServiceRequest(request);
-    // These scenarios use plain exported objects; npm installation would obscure the gate regression.
-    const compiled = await buildWorkerProject({ ...input, dependencies: {} });
-    return createCompileWorkerServiceResponse(compiled);
+    try {
+      const input = await readCompileWorkerServiceRequest(request);
+      return createCompileWorkerServiceResponse({
+        bundle: createWorkerBundle({
+          mainModule: input.entryPoint,
+          modules: input.files,
+          runtime: input.runtime,
+        }),
+        warnings: [],
+      });
+    } catch (error) {
+      return createCompilerServiceErrorResponse(error);
+    }
   }
 }
 
