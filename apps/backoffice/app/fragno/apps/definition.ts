@@ -1,6 +1,8 @@
 import { defineFragment } from "@fragno-dev/core";
 import { decodeCursor, withDatabase } from "@fragno-dev/db";
 
+import { knownBackofficePermissions } from "@/backoffice-runtime/permissions";
+
 import type {
   BackofficeApp,
   BackofficeAppLookupInput,
@@ -83,7 +85,7 @@ export const appsFragmentDefinition = defineFragment("apps")
               ? {
                   id: app.id.externalId,
                   oauthClientId: app.oauthClientId,
-                  requestedPermissions: app.requestedPermissions,
+                  requestedPermissions: knownBackofficePermissions(app.requestedPermissions),
                   createdAt: app.createdAt.toISOString(),
                 }
               : null,
@@ -107,7 +109,7 @@ export const appsFragmentDefinition = defineFragment("apps")
               apps: page.items.map((app) => ({
                 id: app.id.externalId,
                 oauthClientId: app.oauthClientId,
-                requestedPermissions: app.requestedPermissions,
+                requestedPermissions: knownBackofficePermissions(app.requestedPermissions),
                 createdAt: app.createdAt.toISOString(),
               })),
               nextCursor: page.cursor?.encode() ?? null,

@@ -1,3 +1,5 @@
+import { knownBackofficePermissions } from "@/backoffice-runtime/permissions";
+
 import type {
   AutomationRouteAction,
   AutomationRouteDefinition,
@@ -44,8 +46,13 @@ function normalizeStoredAutomationRouteAction(
       authority: { ...action.authority, grants: [] },
     };
   }
-
-  return action;
+  if (action.kind !== "start_workflow" || action.authority.grants === "inherit") {
+    return action;
+  }
+  return {
+    ...action,
+    authority: { ...action.authority, grants: knownBackofficePermissions(action.authority.grants) },
+  };
 }
 
 export const normalizeAutomationRoute = (
