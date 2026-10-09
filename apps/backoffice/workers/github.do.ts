@@ -51,6 +51,7 @@ export class InMemoryGitHubObject implements GitHubObject {
     nowEpochMs,
     runtime,
     implementation,
+    fetch: fetchImpl = fetch,
   }: {
     state: BackofficeObjectState;
     env: Parameters<typeof resolveGitHubConfig>[0] &
@@ -58,6 +59,7 @@ export class InMemoryGitHubObject implements GitHubObject {
     nowEpochMs: () => number;
     runtime: BackofficeRuntimeServices;
     implementation: BackofficeObjectImplementation;
+    fetch?: typeof fetch;
   }) {
     this.#httpTransport = createBackofficeFragmentHttpTransport({
       address: {
@@ -80,6 +82,7 @@ export class InMemoryGitHubObject implements GitHubObject {
         createGitHubServer(
           {
             ...config,
+            fetch: fetchImpl,
             webhook: (register) => {
               register("*", async (event, _idempotencyKey, meta) => {
                 const runtime = this.#host.getConfigured();

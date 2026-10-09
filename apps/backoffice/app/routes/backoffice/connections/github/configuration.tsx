@@ -11,6 +11,7 @@ import {
 } from "react-router";
 
 import { findBackofficeMe } from "@/fragno/auth/auth-server";
+import { completeGitHubInstallCallback } from "@/fragno/github-install-callback";
 import {
   getGitHubDurableObject,
   getGitHubWebhookRouterDurableObject,
@@ -22,12 +23,12 @@ import { resolveAuthenticatedOrgIntegrationRuntimeScope } from "../../integratio
 import { formatTimestamp } from "../formatting";
 import type { Route } from "./+types/configuration";
 import {
+  createGitHubRouteCaller,
   fetchGitHubAdminConfig,
   fetchGitHubInstallationRepos,
   fetchGitHubInstallations,
   linkGitHubRepository,
   startGitHubOAuth,
-  syncGitHubInstallation,
   unlinkGitHubRepository,
   type GitHubInstallationSummary,
   type GitHubRepositorySummary,
@@ -49,6 +50,11 @@ const INSTALL_FLOW_MESSAGES = {
   installed_synced: {
     tone: "success",
     message: "GitHub installation callback validated, linked to this organization, and synced.",
+  },
+  installed_other_account: {
+    tone: "warning",
+    message:
+      "GitHub installation was linked to this organization, but on a different account than integration setup requested. Run setup again for a link to the requested account.",
   },
   install_requested: {
     tone: "warning",
@@ -208,79 +214,16 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     }
 
     try {
-      const githubWebhookRouterDo = getGitHubWebhookRouterDurableObject(context);
-      const consumed = await githubWebhookRouterDo.commands.consumeInstallState({
-        state: callbackState,
+      const outcome = await completeGitHubInstallCallback({
+        router: getGitHubWebhookRouterDurableObject(context).commands,
+        github: getGitHubDurableObject(context, organizationId).commands,
+        callRoute: createGitHubRouteCaller(request, context, organizationId),
         userId: me.user.id,
+        organizationId,
+        state: callbackState,
         installationId: callbackInstallationId,
       });
-
-      if (!consumed.ok) {
-        console.warn("GitHub install callback state validation failed", {
-          organizationId: organizationId,
-          code: consumed.code,
-          message: consumed.message,
-          installationId: callbackInstallationId,
-          state: toStatePreview(callbackState),
-          userId: me.user.id,
-        });
-        if (consumed.code === "EXPIRED_STATE") {
-          return redirect(buildConfigurationRedirect(requestUrl, "expired_state"));
-        }
-        if (consumed.code === "USER_MISMATCH") {
-          return redirect(buildConfigurationRedirect(requestUrl, "user_mismatch"));
-        }
-        return redirect(buildConfigurationRedirect(requestUrl, "invalid_state"));
-      }
-
-      if (consumed.orgId !== organizationId) {
-        console.warn("GitHub install callback resolved to a different organization", {
-          requestedOrgId: organizationId,
-          resolvedOrgId: consumed.orgId,
-          installationId: callbackInstallationId,
-          state: toStatePreview(callbackState),
-          userId: me.user.id,
-        });
-        return redirect(buildConfigurationRedirect(requestUrl, "callback_error"));
-      }
-
-      const mappingResult = await githubWebhookRouterDo.commands.setInstallationOrg(
-        callbackInstallationId,
-        organizationId,
-      );
-      if (!mappingResult.ok) {
-        console.error("GitHub install callback failed to map installation to organization", {
-          organizationId: organizationId,
-          installationId: callbackInstallationId,
-          state: toStatePreview(callbackState),
-          userId: me.user.id,
-          code: mappingResult.code,
-          existingOrgId: mappingResult.existingOrgId,
-          error: mappingResult.message,
-        });
-        return redirect(buildConfigurationRedirect(requestUrl, "callback_error"));
-      }
-
-      const syncResult = await syncGitHubInstallation(
-        request,
-        context,
-        organizationId,
-        callbackInstallationId,
-      );
-      if (syncResult.error || !syncResult.result) {
-        console.warn("GitHub install callback mapped installation but sync failed", {
-          organizationId: organizationId,
-          installationId: callbackInstallationId,
-          error: syncResult.error,
-        });
-
-        const githubDo = getGitHubDurableObject(context, organizationId);
-        await githubDo.commands.redeliverFailedInstallationWebhooks(callbackInstallationId);
-
-        return redirect(buildConfigurationRedirect(requestUrl, "installed_pending_webhook"));
-      }
-
-      return redirect(buildConfigurationRedirect(requestUrl, "installed_synced"));
+      return redirect(buildConfigurationRedirect(requestUrl, outcome));
     } catch (error) {
       console.error("GitHub install callback processing threw", {
         organizationId: organizationId,

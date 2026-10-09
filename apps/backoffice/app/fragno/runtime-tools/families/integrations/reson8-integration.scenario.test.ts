@@ -48,7 +48,10 @@ import { InMemoryAuthObject } from "../../../../../workers/auth.do";
 import { InMemoryAutomationsObject } from "../../../../../workers/automations.do";
 import { InMemoryCodemodeObject } from "../../../../../workers/codemode.do";
 import { InMemoryFormsObject } from "../../../../../workers/forms.do";
+import { InMemoryGitHubWebhookRouterObject } from "../../../../../workers/github-webhook-router.do";
+import { InMemoryGitHubObject } from "../../../../../workers/github.do";
 import { InMemoryMcpObject } from "../../../../../workers/mcp.do";
+import { InMemoryOtpObject } from "../../../../../workers/otp.do";
 import { InMemoryProjectConnectorObject } from "../../../../../workers/project-connector.do";
 import { InMemoryResendObject } from "../../../../../workers/resend.do";
 import { InMemoryReson8Object } from "../../../../../workers/reson8.do";
@@ -58,7 +61,6 @@ import type { IntegrationContext } from "./integration-implementation";
 import { createIntegrationRegistry } from "./integration-registry";
 import { integrationsToolFamily } from "./integration-tools";
 import { createReson8Integration } from "./reson8-integration";
-
 const scenarioObjects = {
   API: (input) => new InMemoryApiObject(input),
   APPS: (input) => new InMemoryAppsObject(input),
@@ -72,6 +74,9 @@ const scenarioObjects = {
   RESEND: (input) => new InMemoryResendObject(input),
   TELEGRAM: (input) => new InMemoryTelegramObject(input),
   UPLOAD: (input) => new InMemoryUploadObject(input),
+  GITHUB: (input) => new InMemoryGitHubObject(input),
+  GITHUB_WEBHOOK_ROUTER: (input) => new InMemoryGitHubWebhookRouterObject(input),
+  OTP: (input) => new InMemoryOtpObject(input),
 } satisfies LocalBackofficeObjects;
 
 const scope = { kind: "org", orgId: "reson8-org" } as const;
@@ -205,6 +210,7 @@ test("Codemode resolves deterministic Reson8 addresses across setup, requests, r
             services: [
               { id: "api", setupTargets: [], availability: { status: "available" } },
               { id: "mcp", setupTargets: [], availability: { status: "available" } },
+              { id: "github", setupTargets: [], availability: { status: "available" } },
               {
                 id: "reson8",
                 setupTargets: [{ kind: "connection", connectionId }],
@@ -427,6 +433,7 @@ test("terminal commands use scalar connection IDs without setup handles or persi
           expect(JSON.parse(discovery.stdout)).toMatchObject([
             { id: "api", setupTargets: [] },
             { id: "mcp", setupTargets: [] },
+            { id: "github", setupTargets: [] },
             { id: "reson8", setupTargets: [{ connectionId }] },
           ]);
           const page = await bash.exec("integrations.list --json");
@@ -763,6 +770,7 @@ test("connection IDs cannot select an owner or replace umbrella and service auth
           expect(await userHost.integrations.runtime.discover()).toMatchObject([
             { id: "api", availability: { status: "available" } },
             { id: "mcp", availability: { status: "available" } },
+            { id: "github", availability: { status: "unavailable" } },
             { id: "reson8", availability: { status: "unavailable" } },
           ]);
           expect(await userHost.integrations.runtime.list({ cursor: null })).toEqual({
