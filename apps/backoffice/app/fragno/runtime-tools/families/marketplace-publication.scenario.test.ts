@@ -620,7 +620,7 @@ describe("Marketplace package publication scenarios", () => {
         name: "Superseded publication retries cannot roll back replacement",
         vars: () => ({ first: null, second: null }),
         options: { allowErroredWorkflows: true },
-        objectFactories: {
+        objectOverrides: {
           MARKETPLACE: ({ state, env, runtime, implementation }) =>
             new (class extends InMemoryMarketplaceObject {
               override async completePackagePublish(
@@ -783,7 +783,7 @@ describe("Marketplace package publication scenarios", () => {
       await runBackofficeScenario(
         defineBackofficeScenario({
           name: `Capture detects concurrent ${mutation} changes`,
-          objectFactories: {
+          objectOverrides: {
             UPLOAD: ({ state, env, runtime, implementation }) =>
               new (class extends InMemoryUploadObject {
                 override async fetch(request: Request): Promise<Response> {
@@ -874,7 +874,7 @@ describe("Marketplace package publication scenarios", () => {
       }>({
         name: "Upload response loss and full publication restart",
         vars: () => ({ publication: null, creationsBeforeRestart: 0 }),
-        objectFactories: {
+        objectOverrides: {
           UPLOAD: ({ state, env, runtime, implementation }) =>
             new (class extends InMemoryUploadObject {
               override async fetch(request: Request): Promise<Response> {
@@ -1153,7 +1153,7 @@ describe("Marketplace package publication scenarios", () => {
         name: "Prepared replacement failure, recovery, and superseded full restart",
         vars: () => ({ abandoned: null, replacement: null }),
         options: { allowErroredWorkflows: true },
-        objectFactories: {
+        objectOverrides: {
           UPLOAD: ({ state, env, runtime, implementation }) =>
             new (class extends InMemoryUploadObject {
               override async fetch(request: Request): Promise<Response> {
@@ -1309,7 +1309,7 @@ describe("Marketplace package publication scenarios", () => {
         defineBackofficeScenario<{ publication: MarketplacePublishResult | null }>({
           name: `Temporary Auth outage during publication ${phase}`,
           vars: () => ({ publication: null }),
-          objectFactories: {
+          objectOverrides: {
             AUTH: ({ state, env, runtime, getAuthDatabase }) =>
               new (class extends InMemoryAuthObject {
                 override async getUserAuthorityFacts(

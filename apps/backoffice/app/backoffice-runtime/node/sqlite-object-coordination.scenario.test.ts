@@ -13,10 +13,11 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
 }));
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
+import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
 
 import { createInMemoryBackofficeRuntime } from "../in-memory-runtime";
-import type { LocalObjectFactoryOverrides } from "../local-object-factory";
+import type { LocalBackofficeObjects } from "../local-object-factory";
 
 function createCoordinationGate() {
   let resolve!: () => void;
@@ -37,7 +38,7 @@ test("ordinary SQL requests and alarm delivery do not acquire object-wide owners
   const alarmStarted = createCoordinationGate();
   const releaseAlarm = createCoordinationGate();
   let alarmCalls = 0;
-  const objectFactories: LocalObjectFactoryOverrides = {
+  const objectOverrides: LocalBackofficeObjects = {
     UPLOAD: ({ state }) => ({
       async fetch(request: Request) {
         switch (new URL(request.url).pathname) {
@@ -67,14 +68,14 @@ test("ordinary SQL requests and alarm delivery do not acquire object-wide owners
   };
   const processor = await createInMemoryBackofficeRuntime({
     sqliteDataDirectory: directory,
-    objectFactories,
+    objects: { ...allLocalObjects, ...objectOverrides },
   });
   try {
     await runBackofficeScenario(
       defineBackofficeScenario({
         name: "ordinary operations remain independent of async work",
         options: { drain: false, sqliteDataDirectory: directory },
-        objectFactories,
+        objectOverrides,
         steps: ({ then }) => [
           then.assert(
             "writes and alarms progress while another request is suspended",
@@ -122,7 +123,7 @@ test("blockConcurrencyWhile serializes initialization but releases before the re
   const releaseInitialization = createCoordinationGate();
   const initializationFinished = createCoordinationGate();
   const releaseRequest = createCoordinationGate();
-  const objectFactories: LocalObjectFactoryOverrides = {
+  const objectOverrides: LocalBackofficeObjects = {
     UPLOAD: ({ state }) => ({
       async fetch(request: Request) {
         if (new URL(request.url).pathname === "/initialize") {
@@ -143,14 +144,14 @@ test("blockConcurrencyWhile serializes initialization but releases before the re
   };
   const other = await createInMemoryBackofficeRuntime({
     sqliteDataDirectory: directory,
-    objectFactories,
+    objects: { ...allLocalObjects, ...objectOverrides },
   });
   try {
     await runBackofficeScenario(
       defineBackofficeScenario({
         name: "initialization has its own bounded claim",
         options: { drain: false, sqliteDataDirectory: directory },
-        objectFactories,
+        objectOverrides,
         steps: ({ then }) => [
           then.assert(
             "new events wait for initialization, not the whole request",
@@ -200,7 +201,7 @@ test("callbacks scheduled during initialization do not retain its released claim
       defineBackofficeScenario({
         name: "released initialization claims do not leak into detached work",
         options: { drain: false, sqliteDataDirectory: directory },
-        objectFactories: {
+        objectOverrides: {
           UPLOAD: ({ state }) => ({
             async fetch(request: Request) {
               if (new URL(request.url).pathname === "/initialize") {
@@ -252,7 +253,7 @@ test.each(["initialization", "alarm"] as const)(
     const releaseReplacement = createCoordinationGate();
     let calls = 0;
     let mutationErrors: string[] = [];
-    const objectFactories: LocalObjectFactoryOverrides = {
+    const objectOverrides: LocalBackofficeObjects = {
       UPLOAD: ({ state }) => {
         async function claimedWork() {
           calls += 1;
@@ -298,7 +299,7 @@ test.each(["initialization", "alarm"] as const)(
     };
     const other = await createInMemoryBackofficeRuntime({
       sqliteDataDirectory: directory,
-      objectFactories,
+      objects: { ...allLocalObjects, ...objectOverrides },
     });
     const database = new Database(path.join(directory, "objects.sqlite"));
     try {
@@ -306,7 +307,7 @@ test.each(["initialization", "alarm"] as const)(
         defineBackofficeScenario({
           name: `fence stale ${kind} work`,
           options: { drain: false, sqliteDataDirectory: directory },
-          objectFactories,
+          objectOverrides,
           steps: ({ then }) => [
             then.assert(
               "expired claims cannot affect the replacement owner",
@@ -396,7 +397,7 @@ test.each(["acknowledge", "delete", "postpone"] as const)(
     const alarmStarted = createCoordinationGate();
     const releaseAlarm = createCoordinationGate();
     let alarmCalls = 0;
-    const objectFactories: LocalObjectFactoryOverrides = {
+    const objectOverrides: LocalBackofficeObjects = {
       UPLOAD: ({ state }) => ({
         async fetch(request: Request) {
           if (new URL(request.url).pathname === "/schedule") {
@@ -421,14 +422,14 @@ test.each(["acknowledge", "delete", "postpone"] as const)(
     };
     const processor = await createInMemoryBackofficeRuntime({
       sqliteDataDirectory: directory,
-      objectFactories,
+      objects: { ...allLocalObjects, ...objectOverrides },
     });
     try {
       await runBackofficeScenario(
         defineBackofficeScenario({
           name: `preserve concurrent scheduling during alarm ${action}`,
           options: { drain: false, sqliteDataDirectory: directory },
-          objectFactories,
+          objectOverrides,
           steps: ({ then }) => [
             then.assert(
               "the newer generation survives and is delivered separately",
@@ -469,7 +470,10 @@ test.each(["acknowledge", "delete", "postpone"] as const)(
 
 test("a warm Node object reloads configured and cleared Fragment runtimes from shared storage", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "backoffice-config-refresh-"));
-  const other = await createInMemoryBackofficeRuntime({ sqliteDataDirectory: directory });
+  const other = await createInMemoryBackofficeRuntime({
+    objects: allLocalObjects,
+    sqliteDataDirectory: directory,
+  });
   try {
     await runBackofficeScenario(
       defineBackofficeScenario({

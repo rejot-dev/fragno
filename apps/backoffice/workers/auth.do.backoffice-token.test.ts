@@ -21,6 +21,7 @@ vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoin
 
 import { createInMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { backofficeMeDataSchema } from "@/fragno/auth/contracts";
 import {
   BACKOFFICE_JWT_LIFETIME_SECONDS,
@@ -32,6 +33,13 @@ import { getSetCookieHeaders } from "@/worker-runtime/http-headers";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
 import { issueTestSignUpInvitation } from "./auth-sign-up.test-support";
+import { InMemoryAuthObject } from "./auth.do";
+import { InMemoryOtpObject } from "./otp.do";
+
+const localObjects = {
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  OTP: (input) => new InMemoryOtpObject(input),
+} satisfies LocalBackofficeObjects;
 
 const runtimes: Array<Awaited<ReturnType<typeof createInMemoryBackofficeRuntime>>> = [];
 
@@ -84,6 +92,7 @@ function createRouteContext(
 
 const signUp = async () => {
   const runtime = await createInMemoryBackofficeRuntime({
+    objects: localObjects,
     env: { AUTH_EMAIL_VERIFICATION_ENABLED: "false" },
   });
   runtimes.push(runtime);

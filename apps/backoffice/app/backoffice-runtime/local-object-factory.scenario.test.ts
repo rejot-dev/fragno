@@ -25,7 +25,7 @@ test("failed alarms remain deliverable while later alarms are acknowledged", asy
     defineBackofficeScenario({
       name: "failed alarms remain deliverable while later alarms are acknowledged",
       options: { drain: false },
-      objectFactories: {
+      objectOverrides: {
         UPLOAD: ({ name, state, nowEpochMs }) => ({
           async fetch() {
             await state.storage.setAlarm(nowEpochMs());
@@ -78,7 +78,7 @@ test("an alarm rescheduled by its handler remains deliverable", async () => {
     defineBackofficeScenario({
       name: "an alarm rescheduled by its handler remains deliverable",
       options: { drain: false },
-      objectFactories: {
+      objectOverrides: {
         UPLOAD: ({ state, nowEpochMs }) => ({
           async fetch() {
             await state.storage.setAlarm(nowEpochMs());
@@ -120,7 +120,7 @@ test("a suspended alarm does not block another object's alarm", async () => {
     defineBackofficeScenario({
       name: "unrelated object alarms are delivered independently",
       options: { drain: false },
-      objectFactories: {
+      objectOverrides: {
         UPLOAD: ({ name, state, nowEpochMs }) => ({
           async fetch(request: Request) {
             if (new URL(request.url).pathname === "/state") {
@@ -188,7 +188,7 @@ test("detached alarm work observes live logical time after the drain ends", asyn
     defineBackofficeScenario({
       name: "detached alarm work observes live logical time after the drain ends",
       options: { drain: false },
-      objectFactories: {
+      objectOverrides: {
         UPLOAD: ({ state, nowEpochMs }) => ({
           async fetch() {
             await state.storage.setAlarm(nowEpochMs());

@@ -540,7 +540,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
     await runAppsSqliteScenario(
       defineBackofficeScenario({
         name: "resolve and revoke customer authority independently of the registry",
-        objectFactories: {
+        objectOverrides: {
           APPS: function captureRegistryDatabase(input) {
             registryAdapter = input.runtime.adapters.createAdapter({ kind: "apps" });
             return new InMemoryAppsObject(input);

@@ -6,6 +6,7 @@ import type { TelegramApi, TelegramMessage } from "@fragno-dev/telegram-fragment
 
 import type { SubmissionRecord } from "@earendil-works/pi-durable";
 
+import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import type { BackofficeRuntimeEnv } from "@/backoffice-runtime/backoffice-runtime-env";
 import {
   createBackofficeServiceExecution,
@@ -24,7 +25,7 @@ import {
   type BackofficeKernelAction,
   type BackofficeKernelObserver,
 } from "@/backoffice-runtime/kernel";
-import type { LocalObjectFactoryOverrides } from "@/backoffice-runtime/local-object-factory";
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import type { LocalBackofficeDurableHooks } from "@/backoffice-runtime/node/local-runtime";
 import type {
   BackofficeObjectAddress,
@@ -358,7 +359,8 @@ export type BackofficeScenarioDefinitionInput<TVars extends ScenarioVars = Scena
   files?: BackofficeScenarioFilePreset;
   vars?: () => TVars;
   fakes?: (ctx: { fake: ScenarioFakeFactory }) => ScenarioFakes;
-  objectFactories?: LocalObjectFactoryOverrides;
+  /** Replaces individual objects; every other object is the full local implementation. */
+  objectOverrides?: LocalBackofficeObjects;
   piAvailableModels?: readonly PiAvailableModel[];
   createSandboxProviders?: CreateSandboxRuntimeProviders;
   durableHooks?: LocalBackofficeDurableHooks;
@@ -4201,11 +4203,11 @@ const fakeTelegramFile = (fakeTelegram: FakeTelegramApi, fileId: string): FakeTe
   return file;
 };
 
-const createObjectFactories = (fakes: ScenarioFakes): LocalObjectFactoryOverrides => {
-  const objectFactories: LocalObjectFactoryOverrides = {};
+const createFakeObjectOverrides = (fakes: ScenarioFakes): LocalBackofficeObjects => {
+  const overrides: LocalBackofficeObjects = {};
 
   if (fakes.telegram) {
-    objectFactories.TELEGRAM = ({ state, env, runtime, implementation, nowEpochMs }) => {
+    overrides.TELEGRAM = ({ state, env, runtime, implementation, nowEpochMs }) => {
       const fakeTelegram = fakes.telegram!;
       return new (class extends InMemoryTelegramObject {
         async getAutomationFile(input: {
@@ -4248,7 +4250,7 @@ const createObjectFactories = (fakes: ScenarioFakes): LocalObjectFactoryOverride
   }
 
   if (fakes.pi) {
-    objectFactories.PI_MANAGER = ({ state, env, runtime, implementation, nowEpochMs }) => {
+    overrides.PI_MANAGER = ({ state, env, runtime, implementation, nowEpochMs }) => {
       const fakePi = fakes.pi!;
       return new (class extends InMemoryPiManagerObject {
         async fetch(request: Request): Promise<Response> {
@@ -4277,7 +4279,7 @@ const createObjectFactories = (fakes: ScenarioFakes): LocalObjectFactoryOverride
   }
 
   if (fakes.resend) {
-    objectFactories.RESEND = () => ({
+    overrides.RESEND = () => ({
       queueEmail: (input: ResendSendEmailInput, options: { idempotencyKey: string }) =>
         fakes.resend!.queueEmail(input, options),
       fetch: (request: Request) => fakes.resend!.fetch(request),
@@ -4298,7 +4300,7 @@ const createObjectFactories = (fakes: ScenarioFakes): LocalObjectFactoryOverride
   }
 
   if (fakes.mcp) {
-    objectFactories.MCP = () => {
+    overrides.MCP = () => {
       const object = {
         init: () => object,
         fetch: (request: Request) => fakes.mcp!.fetch(request),
@@ -4317,7 +4319,7 @@ const createObjectFactories = (fakes: ScenarioFakes): LocalObjectFactoryOverride
     };
   }
 
-  return objectFactories;
+  return overrides;
 };
 
 const collectDiagnostics = async (ctx: BackofficeScenarioContext): Promise<unknown> => {
@@ -4499,9 +4501,10 @@ export const runBackofficeScenario = async <TVars extends ScenarioVars = Scenari
       );
       return await readSource({ execution, path });
     },
-    objectFactories: {
-      ...createObjectFactories(fakes),
-      ...scenario.objectFactories,
+    objects: {
+      ...allLocalObjects,
+      ...createFakeObjectOverrides(fakes),
+      ...scenario.objectOverrides,
     },
     piAvailableModels: scenario.piAvailableModels,
     ...(scenario.durableHooks ? { durableHooks: scenario.durableHooks } : {}),

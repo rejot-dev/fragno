@@ -20,10 +20,18 @@ const { DurableObject, RpcTarget, WorkerEntrypoint, tracing } = vi.hoisted(() =>
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint, tracing }));
 
 import { createInMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { verifyBackofficeJwt } from "@/fragno/auth/token-lifecycle";
 import { getSetCookieHeaders } from "@/worker-runtime/http-headers";
 
 import { issueTestSignUpInvitation } from "./auth-sign-up.test-support";
+import { InMemoryAuthObject } from "./auth.do";
+import { InMemoryOtpObject } from "./otp.do";
+
+const localObjects = {
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  OTP: (input) => new InMemoryOtpObject(input),
+} satisfies LocalBackofficeObjects;
 
 const baseUrl = "https://backoffice.example";
 const deviceCodeGrantType = "urn:ietf:params:oauth:grant-type:device_code";
@@ -73,6 +81,7 @@ function authRequest(
 
 async function signUpUser(): Promise<SignedUpUser> {
   const runtime = await createInMemoryBackofficeRuntime({
+    objects: localObjects,
     env: { AUTH_EMAIL_VERIFICATION_ENABLED: "false" },
   });
   runtimes.push(runtime);

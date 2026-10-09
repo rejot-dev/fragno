@@ -19,10 +19,15 @@ vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoin
 
 import type { InMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
 import { createInMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import type { BackofficeRpcContext } from "@/backoffice-runtime/object-registry";
 import type { BillingEventInput } from "@/fragno/billing";
 
 import { Billing, InMemoryBillingObject } from "./billing.do";
+
+const localObjects = {
+  BILLING: (input) => new InMemoryBillingObject(input),
+} satisfies LocalBackofficeObjects;
 
 let runtime: InMemoryBackofficeRuntime | null = null;
 
@@ -65,7 +70,7 @@ describe("Billing Durable Object", () => {
   });
 
   test("stores events in the owning organization object", async () => {
-    runtime = await createInMemoryBackofficeRuntime();
+    runtime = await createInMemoryBackofficeRuntime({ objects: localObjects });
 
     const orgOneBilling = runtime.objects.billing.forOrg("org-1");
     const orgTwoBilling = runtime.objects.billing.forOrg("org-2");
@@ -93,7 +98,7 @@ describe("Billing Durable Object", () => {
   });
 
   test("allows user-scoped usage inside an organization billing object", async () => {
-    runtime = await createInMemoryBackofficeRuntime();
+    runtime = await createInMemoryBackofficeRuntime({ objects: localObjects });
     const billing = runtime.objects.billing.forOrg("org-1");
     await runtime.drain();
     const userScope = { kind: "user" as const, userId: "user-1" };
@@ -137,7 +142,7 @@ describe("Billing Durable Object", () => {
   });
 
   test("records usage attribution independently from the ledger owner", async () => {
-    runtime = await createInMemoryBackofficeRuntime();
+    runtime = await createInMemoryBackofficeRuntime({ objects: localObjects });
     const billing = runtime.objects.billing.forOrg("org-1");
     await runtime.drain();
 

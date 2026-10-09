@@ -101,7 +101,7 @@ test("a maximum-size release captures destination revisions in one batch without
   await runBackofficeScenario(
     defineBackofficeScenario({
       name: "Batch destination snapshots for 100-file publication",
-      objectFactories: {
+      objectOverrides: {
         UPLOAD: ({ state, env, runtime, implementation }) =>
           new (class extends InMemoryUploadObject {
             override async fetch(request: Request): Promise<Response> {
@@ -217,7 +217,7 @@ test("reused files are revision-asserted atomically with the metadata guard", as
     defineBackofficeScenario({
       name: "Concurrent edit to a reused file rejects metadata replacement",
       options: { allowErroredWorkflows: true },
-      objectFactories: {
+      objectOverrides: {
         UPLOAD: ({ state, env, runtime, implementation }) =>
           new (class extends InMemoryUploadObject {
             override async fetch(request: Request): Promise<Response> {

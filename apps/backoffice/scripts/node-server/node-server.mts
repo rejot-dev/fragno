@@ -6,6 +6,7 @@ import type { ServerBuild } from "react-router";
 
 import { createRequestHandler } from "@react-router/express";
 
+import { allLocalObjects } from "../../app/backoffice-runtime/all-local-objects";
 import { BackofficeKernel } from "../../app/backoffice-runtime/kernel";
 import { createLocalBackofficeRuntime } from "../../app/backoffice-runtime/node/local-runtime";
 import { startNodeBackofficeAlarmScheduler } from "../../app/backoffice-runtime/node/node-alarm-scheduler";
@@ -30,6 +31,7 @@ const serverBuild = (await import(
 
 const config = await createNodeBackofficeProcessConfig();
 const runtime = await createLocalBackofficeRuntime({
+  objects: allLocalObjects,
   sqliteDataDirectory: config.sqliteDataDirectory,
   runtimeEnv: config.runtimeEnv,
   workerTypeChecker: config.workerTypeChecker,

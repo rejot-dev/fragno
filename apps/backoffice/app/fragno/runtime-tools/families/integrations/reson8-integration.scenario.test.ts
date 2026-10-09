@@ -108,8 +108,8 @@ async function runReson8IntegrationScenario<TVars extends Record<string, unknown
       defineBackofficeScenario({
         ...scenario,
         options: { ...scenario.options, sqliteDataDirectory: directory },
-        objectFactories: {
-          ...scenario.objectFactories,
+        objectOverrides: {
+          ...scenario.objectOverrides,
           RESON8: (options) =>
             new InMemoryReson8Object({
               ...options,

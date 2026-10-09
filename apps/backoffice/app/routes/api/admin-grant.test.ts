@@ -13,9 +13,15 @@ import {
   type InMemoryBackofficeRuntime,
 } from "@/backoffice-runtime/in-memory-runtime";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
+import { InMemoryAuthObject } from "../../../workers/auth.do";
 import { action } from "./admin-grant";
+
+const localObjects = {
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+} satisfies LocalBackofficeObjects;
 
 const runtimes: InMemoryBackofficeRuntime[] = [];
 
@@ -52,6 +58,7 @@ function callAction(request: Request, runtime: InMemoryBackofficeRuntime) {
 
 async function createRuntime(configuredToken: string) {
   const runtime = await createInMemoryBackofficeRuntime({
+    objects: localObjects,
     env: { AUTH_ADMIN_GRANT_TOKEN: configuredToken },
   });
   runtimes.push(runtime);

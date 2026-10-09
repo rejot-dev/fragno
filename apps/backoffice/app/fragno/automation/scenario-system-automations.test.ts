@@ -47,7 +47,24 @@ vi.mock("cloudflare:workers", () => ({
   WorkerEntrypoint,
 }));
 
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
+
+import { InMemoryAppInstallationsObject } from "../../../workers/app-installations.do";
+import { InMemoryAppsObject } from "../../../workers/apps.do";
+import { InMemoryAuthObject } from "../../../workers/auth.do";
+import { InMemoryAutomationsObject } from "../../../workers/automations.do";
+import { InMemoryFormsObject } from "../../../workers/forms.do";
+import { InMemoryUploadObject } from "../../../workers/upload.do";
 import { backofficeFiles, defineBackofficeScenario, runBackofficeScenario } from "./scenario";
+
+const localObjects = {
+  APPS: (input) => new InMemoryAppsObject(input),
+  APP_INSTALLATIONS: (input) => new InMemoryAppInstallationsObject(input),
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  FORMS: (input) => new InMemoryFormsObject(input),
+  UPLOAD: (input) => new InMemoryUploadObject(input),
+} satisfies LocalBackofficeObjects;
 
 const systemUnrelatedEvent = {
   id: "github:issue.opened:1",
@@ -153,6 +170,7 @@ describe("system automation scenarios", () => {
     const orgId = "org-real";
     let runtime!: InMemoryBackofficeRuntime;
     runtime = await createInMemoryBackofficeRuntime({
+      objects: localObjects,
       readAutomationSource: ({ execution, path }) =>
         readBackofficeAutomationSource({
           objects: runtime.objects,

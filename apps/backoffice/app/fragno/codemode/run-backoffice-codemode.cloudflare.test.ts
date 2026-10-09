@@ -9,6 +9,7 @@ import {
 } from "@/backoffice-runtime/context";
 import { createInMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
 import { BackofficeKernel, noopBackofficeKernelObserver } from "@/backoffice-runtime/kernel";
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import type {
   BackofficeObjectHandle,
   BackofficeObjectRegistry,
@@ -34,6 +35,12 @@ import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-ba
 import { createTrustedSystemBackofficeToolContext } from "@/fragno/runtime-tools/runtime-tools";
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
+
+import { InMemoryAutomationsObject } from "../../../workers/automations.do";
+
+const localObjects = {
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+} satisfies LocalBackofficeObjects;
 
 describe("runBackofficeCodemode", () => {
   test("returns a compile error when no compiler is configured", async () => {
@@ -746,6 +753,7 @@ describe("runBackofficeCodemode", () => {
 
   test("runs route-backed event emit tools through codemode handles", async () => {
     const runtime = await createInMemoryBackofficeRuntime({
+      objects: localObjects,
       env: { codemode: env },
       authorityResolver: unrestrictedBackofficeAuthorityResolver,
     });
@@ -794,7 +802,10 @@ describe("runBackofficeCodemode", () => {
   });
 
   test("runs project-scoped automation store tools through codemode handles", async () => {
-    const runtime = await createInMemoryBackofficeRuntime({ env: { codemode: env } });
+    const runtime = await createInMemoryBackofficeRuntime({
+      objects: localObjects,
+      env: { codemode: env },
+    });
     try {
       const kernel = new BackofficeKernel(runtime.services);
       const routeContext = createRouteBackedRuntimeContext({

@@ -31,17 +31,23 @@ vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoin
 import type { ResendSendEmailInput } from "@fragno-dev/resend-fragment";
 
 import { createInMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { AUTH_AUTOMATION_EVENT_ORGANIZATION_CREATED } from "@/fragno/backoffice-capabilities/capabilities/auth";
 import { EMAIL_VERIFICATION_TYPE } from "@/fragno/otp";
 
 import { issueTestSignUpInvitation } from "./auth-sign-up.test-support";
-import { createOrganizationAutomationHooks } from "./auth.do";
+import { createOrganizationAutomationHooks, InMemoryAuthObject } from "./auth.do";
 import {
   InMemoryOtpObject,
   type IssueEmailVerificationInput,
   type IssueEmailVerificationResult,
 } from "./otp.do";
+
+const localObjects = {
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  OTP: (input) => new InMemoryOtpObject(input),
+} satisfies LocalBackofficeObjects;
 
 const runtimes: Array<Awaited<ReturnType<typeof createInMemoryBackofficeRuntime>>> = [];
 
@@ -104,7 +110,7 @@ afterEach(async () => {
 
 describe("Auth Durable Object administration", () => {
   test("creates organizations and manages members through privileged operations", async () => {
-    const runtime = await createInMemoryBackofficeRuntime();
+    const runtime = await createInMemoryBackofficeRuntime({ objects: localObjects });
     runtimes.push(runtime);
     const auth = runtime.objects.auth.singleton().commands;
     await auth.applyScenarioFixture({
@@ -156,7 +162,7 @@ describe("Auth Durable Object administration", () => {
   });
 
   test("preserves at least one owner when removing organization members", async () => {
-    const runtime = await createInMemoryBackofficeRuntime();
+    const runtime = await createInMemoryBackofficeRuntime({ objects: localObjects });
     runtimes.push(runtime);
     const auth = runtime.objects.auth.singleton().commands;
     await auth.applyScenarioFixture({
@@ -200,7 +206,7 @@ describe("Auth Durable Object administration", () => {
 
 describe("Auth Durable Object API errors", () => {
   test("redirects Better Auth errors to the Backoffice login", async () => {
-    const runtime = await createInMemoryBackofficeRuntime();
+    const runtime = await createInMemoryBackofficeRuntime({ objects: localObjects });
     runtimes.push(runtime);
 
     const response = await runtime.objects.auth
@@ -222,7 +228,7 @@ describe("Auth Durable Object API errors", () => {
 
 describe("Auth Durable Object account creation policy", () => {
   test("rejects direct password registration without a sign-up invitation", async () => {
-    const runtime = await createInMemoryBackofficeRuntime();
+    const runtime = await createInMemoryBackofficeRuntime({ objects: localObjects });
     runtimes.push(runtime);
 
     const response = await runtime.objects.auth.singleton().http.fetch(
@@ -245,7 +251,7 @@ describe("Auth Durable Object account creation policy", () => {
   });
 
   test("rejects explicit social sign-up while invitations are required", async () => {
-    const runtime = await createInMemoryBackofficeRuntime();
+    const runtime = await createInMemoryBackofficeRuntime({ objects: localObjects });
     runtimes.push(runtime);
     const email = "uninvited-social@example.com";
     const githubFetch = vi.fn(async (input: string | URL | Request) => {
@@ -321,7 +327,7 @@ describe("Auth Durable Object account creation policy", () => {
   });
 
   test("rejects an invitation used with a different email", async () => {
-    const runtime = await createInMemoryBackofficeRuntime();
+    const runtime = await createInMemoryBackofficeRuntime({ objects: localObjects });
     runtimes.push(runtime);
     const invitation = await issueTestSignUpInvitation(runtime, "invited@example.com");
 
@@ -347,7 +353,7 @@ describe("Auth Durable Object account creation policy", () => {
 
   test("creates rejot.dev accounts as users outside development", async () => {
     vi.stubEnv("MODE", "production");
-    const runtime = await createInMemoryBackofficeRuntime();
+    const runtime = await createInMemoryBackofficeRuntime({ objects: localObjects });
     runtimes.push(runtime);
 
     const email = "admin@rejot.dev";
@@ -373,7 +379,7 @@ describe("Auth Durable Object account creation policy", () => {
 
   test("creates rejot.dev administrators in development", async () => {
     vi.stubEnv("MODE", "development");
-    const runtime = await createInMemoryBackofficeRuntime();
+    const runtime = await createInMemoryBackofficeRuntime({ objects: localObjects });
     runtimes.push(runtime);
 
     const email = "admin@rejot.dev";
@@ -401,7 +407,7 @@ describe("Auth Durable Object account creation policy", () => {
 describe("Auth Durable Object administrator granting", () => {
   test("allows an unverified account to become the first administrator", async () => {
     vi.stubEnv("MODE", "production");
-    const runtime = await createInMemoryBackofficeRuntime();
+    const runtime = await createInMemoryBackofficeRuntime({ objects: localObjects });
     runtimes.push(runtime);
     const auth = runtime.objects.auth.singleton();
     await signUpUnverifiedBackofficeUser(runtime, "first-admin@rejot.dev");
@@ -420,7 +426,7 @@ describe("Auth Durable Object administrator granting", () => {
 
   test("requires subsequent administrators to have verified their email", async () => {
     vi.stubEnv("MODE", "production");
-    const runtime = await createInMemoryBackofficeRuntime();
+    const runtime = await createInMemoryBackofficeRuntime({ objects: localObjects });
     runtimes.push(runtime);
     const auth = runtime.objects.auth.singleton();
     await auth.commands.applyScenarioFixture({
@@ -448,7 +454,7 @@ describe("Auth Durable Object administrator granting", () => {
   });
 
   test("promotes a verified account when an administrator already exists", async () => {
-    const runtime = await createInMemoryBackofficeRuntime();
+    const runtime = await createInMemoryBackofficeRuntime({ objects: localObjects });
     runtimes.push(runtime);
     const auth = runtime.objects.auth.singleton();
     await auth.commands.applyScenarioFixture({
@@ -481,7 +487,7 @@ describe("Auth Durable Object administrator granting", () => {
 
   test("allows only one concurrent unverified grant to bootstrap administration", async () => {
     vi.stubEnv("MODE", "production");
-    const runtime = await createInMemoryBackofficeRuntime();
+    const runtime = await createInMemoryBackofficeRuntime({ objects: localObjects });
     runtimes.push(runtime);
     const auth = runtime.objects.auth.singleton();
     await signUpUnverifiedBackofficeUser(runtime, "first-admin@rejot.dev");
@@ -505,7 +511,7 @@ describe("Auth Durable Object administrator granting", () => {
   });
 
   test("reports a missing rejot.dev account", async () => {
-    const runtime = await createInMemoryBackofficeRuntime();
+    const runtime = await createInMemoryBackofficeRuntime({ objects: localObjects });
     runtimes.push(runtime);
 
     await expect(
@@ -518,7 +524,7 @@ describe("Auth Durable Object administrator granting", () => {
 
 describe("Auth Durable Object rate limiting", () => {
   test("does not rate limit the public JWKS endpoint", async () => {
-    const runtime = await createInMemoryBackofficeRuntime();
+    const runtime = await createInMemoryBackofficeRuntime({ objects: localObjects });
     runtimes.push(runtime);
     const auth = runtime.objects.auth.singleton();
 
@@ -532,7 +538,7 @@ describe("Auth Durable Object rate limiting", () => {
   });
 
   test("blocks the fourth authentication attempt within the rate-limit window", async () => {
-    const runtime = await createInMemoryBackofficeRuntime();
+    const runtime = await createInMemoryBackofficeRuntime({ objects: localObjects });
     runtimes.push(runtime);
     const auth = runtime.objects.auth.singleton();
 
@@ -557,7 +563,7 @@ describe("Auth Durable Object rate limiting", () => {
   });
 
   test("opens a new fixed window ten seconds after the first authentication attempt", async () => {
-    const runtime = await createInMemoryBackofficeRuntime();
+    const runtime = await createInMemoryBackofficeRuntime({ objects: localObjects });
     runtimes.push(runtime);
     const auth = runtime.objects.auth.singleton();
     const attempt = () =>
@@ -589,7 +595,8 @@ describe("Auth Durable Object email verification delivery", () => {
     const resend = new RecordingResendObject();
     const runtime = await createInMemoryBackofficeRuntime({
       env: { AUTH_EMAIL_VERIFICATION_ENABLED: "true" },
-      objectFactories: {
+      objects: {
+        ...localObjects,
         OTP: ({ state, env, runtime: runtimeServices, implementation }) =>
           new (class extends InMemoryOtpObject {
             override async issueEmailVerification(
@@ -675,7 +682,8 @@ describe("Auth Durable Object email verification delivery", () => {
     resend.loseNextQueueResponse = true;
     const runtime = await createInMemoryBackofficeRuntime({
       env: { AUTH_EMAIL_VERIFICATION_ENABLED: "true" },
-      objectFactories: {
+      objects: {
+        ...localObjects,
         RESEND: () => resend,
       },
     });
@@ -735,6 +743,7 @@ describe("Auth Durable Object email verification delivery", () => {
 describe("Auth session organization bootstrap", () => {
   test("sets the personal organization active after sign-up", async () => {
     const runtime = await createInMemoryBackofficeRuntime({
+      objects: localObjects,
       env: { AUTH_EMAIL_VERIFICATION_ENABLED: "false" },
     });
     runtimes.push(runtime);

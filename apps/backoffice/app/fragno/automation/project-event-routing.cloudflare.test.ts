@@ -13,14 +13,22 @@ import {
   type InMemoryBackofficeRuntime,
 } from "@/backoffice-runtime/in-memory-runtime";
 import { BackofficeKernel, noopBackofficeKernelObserver } from "@/backoffice-runtime/kernel";
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { createRuntimeStateBackend } from "@/fragno/codemode/runtime-state-backend";
 import { createEventRuntime } from "@/fragno/runtime-tools/families/event-runtime";
 import { createStateShellFileSystem } from "@/fragno/runtime-tools/state-shell-file-system";
 
+import { InMemoryAutomationsObject } from "../../../workers/automations.do";
+import { InMemoryUploadObject } from "../../../workers/upload.do";
 import { AUTOMATION_SYSTEM_INITIATOR } from "./actors";
 import { createAutomationRuntimeExecution } from "./authority";
 import type { AutomationEvent } from "./contracts";
 import { createAutomationsRouteCaller } from "./route-callers";
+
+const localObjects = {
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  UPLOAD: (input) => new InMemoryUploadObject(input),
+} satisfies LocalBackofficeObjects;
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
   class MockDurableObject {
@@ -75,7 +83,7 @@ describe("project automation event routing", () => {
   test("forwards org events into active project automation routes", async () => {
     const orgId = "org-1";
 
-    runtime = await createInMemoryBackofficeRuntime({});
+    runtime = await createInMemoryBackofficeRuntime({ objects: localObjects });
 
     const orgAutomations = runtime.objects.automations.forOrg(orgId);
     const orgRoutes = createAutomationsRouteCaller({
@@ -216,7 +224,10 @@ describe("project automation event routing", () => {
 
   test("emits project.created hooks and isolates project-scoped workspaces", async () => {
     const orgId = "org-1";
-    runtime = await createInMemoryBackofficeRuntime({ env: { codemode: env } });
+    runtime = await createInMemoryBackofficeRuntime({
+      objects: localObjects,
+      env: { codemode: env },
+    });
 
     const orgAutomations = runtime.objects.automations.forOrg(orgId);
     const orgRoutes = createAutomationsRouteCaller({ object: orgAutomations });
@@ -276,7 +287,10 @@ describe("project automation event routing", () => {
 
   test("does not instantiate project automations for archived projects", async () => {
     const orgId = "org-1";
-    runtime = await createInMemoryBackofficeRuntime({ env: { codemode: env } });
+    runtime = await createInMemoryBackofficeRuntime({
+      objects: localObjects,
+      env: { codemode: env },
+    });
 
     const orgAutomations = runtime.objects.automations.forOrg(orgId);
     const orgRoutes = createAutomationsRouteCaller({ object: orgAutomations });

@@ -13,10 +13,16 @@ import {
   type InMemoryBackofficeRuntime,
 } from "@/backoffice-runtime/in-memory-runtime";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { bytesToHex } from "@/lib/crypto";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
+import { InMemoryGitHubWebhookRouterObject } from "../../../workers/github-webhook-router.do";
 import { action } from "./github-webhooks";
+
+const localObjects = {
+  GITHUB_WEBHOOK_ROUTER: (input) => new InMemoryGitHubWebhookRouterObject(input),
+} satisfies LocalBackofficeObjects;
 
 const WEBHOOK_SECRET = "github-webhook-route-test-secret";
 const INSTALLATION_ID = "12345";
@@ -91,7 +97,10 @@ function callAction(request: Request, runtime: InMemoryBackofficeRuntime) {
 async function createRuntime(githubObject: RecordingGitHubObject) {
   const runtime = await createInMemoryBackofficeRuntime({
     env: { GITHUB_APP_WEBHOOK_SECRET: WEBHOOK_SECRET },
-    objectFactories: { GITHUB: () => githubObject },
+    objects: {
+      ...localObjects,
+      GITHUB: () => githubObject,
+    },
   });
   runtimes.push(runtime);
   return runtime;

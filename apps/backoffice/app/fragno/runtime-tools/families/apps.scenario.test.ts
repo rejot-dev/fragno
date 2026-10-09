@@ -579,7 +579,7 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
           given.auth.user({ id: "global-admin", role: "admin" }),
           given.auth.organization({ id: "org-1", ownerUserId: "global-admin" }),
         ],
-        objectFactories: {
+        objectOverrides: {
           APPS: function captureRegistryDatabase(input) {
             registryAdapter = input.runtime.adapters.createAdapter({ kind: "apps" });
             return new InMemoryAppsObject(input);

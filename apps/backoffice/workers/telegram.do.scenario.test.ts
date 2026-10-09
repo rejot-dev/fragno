@@ -413,7 +413,7 @@ describe("Telegram object authorization scenarios", () => {
         telegram = fake.telegram();
         return { telegram };
       },
-      objectFactories: {
+      objectOverrides: {
         TELEGRAM: ({ state, env, runtime, implementation, nowEpochMs }) => {
           assert(telegram);
           const ownerScope = backofficeContextScopeFromDurableObjectId(state.id, "TELEGRAM");

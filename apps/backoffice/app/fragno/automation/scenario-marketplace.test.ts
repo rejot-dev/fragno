@@ -1444,7 +1444,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         name: "replay marketplace ingestion transfer without recreating its upload",
-        objectFactories: {
+        objectOverrides: {
           UPLOAD: ({ name, state, env, runtime, implementation }) => {
             const destinationObject = name.endsWith("v1:org:org-1");
             return new (class extends InMemoryUploadObject {
@@ -1550,7 +1550,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
       await runBackofficeScenario(
         defineBackofficeScenario({
           name: "rebuild a multi-write Marketplace ingestion batch",
-          objectFactories: {
+          objectOverrides: {
             UPLOAD: ({ name, state, env, runtime, implementation }) => {
               const destinationObject = name.endsWith("v1:org:org-1");
               return new (class extends InMemoryUploadObject {
@@ -1698,7 +1698,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         name: "reject permanent marketplace ingestion Upload errors",
-        objectFactories: {
+        objectOverrides: {
           UPLOAD: ({ name, state, env, runtime, implementation }) => {
             const destinationObject = name.endsWith("v1:org:org-1");
             return new (class extends InMemoryUploadObject {
@@ -1981,7 +1981,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
       await runBackofficeScenario(
         defineBackofficeScenario({
           name: "replay marketplace publication from a durable static snapshot",
-          objectFactories: {
+          objectOverrides: {
             MARKETPLACE: ({ state, env, runtime, implementation }) =>
               new (class extends InMemoryMarketplaceObject {
                 async beginPackagePublish(
@@ -2048,7 +2048,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         name: "replay Marketplace upload creation with its existing session",
-        objectFactories: {
+        objectOverrides: {
           UPLOAD: ({ name, state, env, runtime, implementation }) => {
             const artifactUploadObject = name.endsWith(MARKETPLACE_ARTIFACT_UPLOAD_OBJECT_NAME);
             return new (class extends InMemoryUploadObject {
@@ -2128,7 +2128,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         name: "replay marketplace artifact transfer without recreating its upload",
-        objectFactories: {
+        objectOverrides: {
           UPLOAD: ({ name, state, env, runtime, implementation }) => {
             const artifactUploadObject = name.endsWith(MARKETPLACE_ARTIFACT_UPLOAD_OBJECT_NAME);
             return new (class extends InMemoryUploadObject {
@@ -2207,7 +2207,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         name: "reject permanent marketplace artifact upload errors",
-        objectFactories: {
+        objectOverrides: {
           UPLOAD: ({ name, state, env, runtime, implementation }) => {
             const artifactUploadObject = name.endsWith(MARKETPLACE_ARTIFACT_UPLOAD_OBJECT_NAME);
             return new (class extends InMemoryUploadObject {
@@ -2258,7 +2258,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         name: "retry typed transient Marketplace Upload errors",
-        objectFactories: {
+        objectOverrides: {
           UPLOAD: ({ name, state, env, runtime, implementation }) => {
             const artifactUploadObject = name.endsWith(MARKETPLACE_ARTIFACT_UPLOAD_OBJECT_NAME);
             return new (class extends InMemoryUploadObject {
@@ -2320,7 +2320,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         name: "replay a committed Marketplace publication batch",
-        objectFactories: {
+        objectOverrides: {
           UPLOAD: ({ name, state, env, runtime, implementation }) => {
             const artifactUploadObject = name.endsWith(MARKETPLACE_ARTIFACT_UPLOAD_OBJECT_NAME);
             return new (class extends InMemoryUploadObject {
@@ -2397,7 +2397,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         name: "expire a prepared Marketplace publication upload",
-        objectFactories: {
+        objectOverrides: {
           UPLOAD: ({ name, state, env, runtime, implementation }) => {
             const artifactUploadObject = name.endsWith(MARKETPLACE_ARTIFACT_UPLOAD_OBJECT_NAME);
             return new (class extends InMemoryUploadObject {
@@ -2475,7 +2475,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         name: "replay a committed marketplace ingestion batch",
-        objectFactories: {
+        objectOverrides: {
           UPLOAD: ({ name, state, env, runtime, implementation }) => {
             const destinationObject = name.endsWith("v1:org:org-1");
             return new (class extends InMemoryUploadObject {
@@ -2579,7 +2579,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         name: "reject Marketplace source changed before transfer",
-        objectFactories: {
+        objectOverrides: {
           UPLOAD: ({ name, state, env, runtime, implementation }) => {
             const destinationObject = name.endsWith("v1:org:org-1");
             return new (class extends InMemoryUploadObject {
@@ -2676,7 +2676,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         name: "reject a marketplace source changed during ingestion",
-        objectFactories: {
+        objectOverrides: {
           UPLOAD: ({ name, state, env, runtime, implementation }) => {
             const destinationObject = name.endsWith("v1:org:org-1");
             return new (class extends InMemoryUploadObject {

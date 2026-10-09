@@ -16,7 +16,7 @@ import type { BackofficeRuntimeEnv } from "../backoffice-runtime-env";
 import type { BackofficeDatabaseAdapterFactory } from "../database-adapters";
 import { createInMemoryBackofficeDatabaseAdapters } from "../in-memory-database-adapters";
 import { noopBackofficeKernelObserver, type BackofficeKernelObserver } from "../kernel";
-import { LocalObjectFactory, type LocalObjectFactoryOverrides } from "../local-object-factory";
+import { LocalObjectFactory, type LocalBackofficeObjects } from "../local-object-factory";
 import { createBackofficeObjectRegistry } from "../object-registry";
 import type { BackofficeObjectAddress, BackofficeObjectRegistry } from "../object-registry";
 import type {
@@ -53,7 +53,7 @@ export type LocalBackofficeDurableHooks = {
 export type CreateLocalBackofficeRuntimeOptions = {
   runtimeEnv: BackofficeRuntimeEnv;
   readAutomationSource?: AutomationSourceReader;
-  objectFactories?: LocalObjectFactoryOverrides;
+  objects: LocalBackofficeObjects;
   piAvailableModels?: readonly PiAvailableModel[];
   createSandboxProviders?: CreateSandboxRuntimeProviders;
   authorityResolver?: BackofficeAuthorityResolver;
@@ -87,7 +87,7 @@ export async function createLocalBackofficeRuntime(
       await options.durableHooks?.unregisterObject(objectId);
     },
     readAutomationSource: options.readAutomationSource,
-    objectFactories: options.objectFactories,
+    objects: options.objects,
     piAvailableModels: options.piAvailableModels,
     createSandboxProviders: options.createSandboxProviders,
   });

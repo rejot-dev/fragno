@@ -19,8 +19,15 @@ vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoin
 
 import type { InMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
 import { createInMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import type { MarketplaceCreateDraftListingInput } from "@/fragno/marketplace/contracts";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
+
+import { InMemoryMarketplaceObject } from "./marketplace.do";
+
+const localObjects = {
+  MARKETPLACE: (input) => new InMemoryMarketplaceObject(input),
+} satisfies LocalBackofficeObjects;
 
 let runtime: InMemoryBackofficeRuntime | null = null;
 
@@ -53,7 +60,7 @@ afterEach(async () => {
 
 describe("Marketplace Durable Object", () => {
   test("serves the public metadata routes through the production object host", async () => {
-    runtime = await createInMemoryBackofficeRuntime();
+    runtime = await createInMemoryBackofficeRuntime({ objects: localObjects });
     const marketplace = runtime.objects.marketplace.singleton();
     await runtime.drain();
 
@@ -88,7 +95,7 @@ describe("Marketplace Durable Object", () => {
   });
 
   test("runs owner mutations through the explicit RPC interface", async () => {
-    runtime = await createInMemoryBackofficeRuntime();
+    runtime = await createInMemoryBackofficeRuntime({ objects: localObjects });
     const marketplace = runtime.objects.marketplace.singleton();
     await runtime.drain();
 
@@ -134,7 +141,7 @@ describe("Marketplace Durable Object", () => {
   });
 
   test("returns domain failures as RPC-safe results", async () => {
-    runtime = await createInMemoryBackofficeRuntime();
+    runtime = await createInMemoryBackofficeRuntime({ objects: localObjects });
     const marketplace = runtime.objects.marketplace.singleton();
     await runtime.drain();
 
