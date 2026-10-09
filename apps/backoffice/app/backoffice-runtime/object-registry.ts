@@ -549,10 +549,21 @@ export type GitHubWebhookRouterObject = {
     orgId: string,
     origin: string,
   ): Promise<AwaitedMethodReturn<GitHubWebhookRouter, "getAdminConfig">>;
+  isAppConfigured(): Promise<boolean>;
   createInstallStatefulUrl(
     userId: string,
     orgId: string,
   ): Promise<AwaitedMethodReturn<GitHubWebhookRouter, "createInstallStatefulUrl">>;
+  requestRepositoryInstall(
+    userId: string,
+    orgId: string,
+    repositoryFullName: string,
+  ): Promise<AwaitedMethodReturn<GitHubWebhookRouter, "requestRepositoryInstall">>;
+  getPendingInstall(
+    userId: string,
+    orgId: string,
+    owner: string,
+  ): Promise<AwaitedMethodReturn<GitHubWebhookRouter, "getPendingInstall">>;
   resolveInstallState(
     input: unknown,
   ): Promise<AwaitedMethodReturn<GitHubWebhookRouter, "resolveInstallState">>;

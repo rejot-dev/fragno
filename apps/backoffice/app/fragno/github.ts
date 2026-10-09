@@ -14,6 +14,7 @@ import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 
 import { AUTOMATION_SYSTEM_INITIATOR } from "./automation/actors";
 import type { AutomationEvent } from "./automation/contracts";
+import { encodeGitHubRepositoryConnectionId } from "./runtime-tools/families/integrations/github-integration";
 
 export type GitHubConfig = Pick<
   GitHubAppFragmentConfig,
@@ -31,6 +32,7 @@ export type GitHubConfig = Pick<
   | "defaultLinkKey"
   | "tokenCacheTtlSeconds"
   | "webhook"
+  | "fetch"
 >;
 
 export function createGitHubServer(
@@ -52,6 +54,7 @@ export function createGitHubServer(
       "/installations",
       "/installations/:installationId/repos",
       "/repositories/linked",
+      "/repositories/:owner/:repo",
       "/repositories/:owner/:repo/pulls",
     ] as const) {
       await ifMatchesRoute("GET", path, () => {
@@ -67,6 +70,10 @@ export function createGitHubServer(
       "/oauth/complete",
       "/repositories/link",
       "/repositories/unlink",
+      "/repositories/:owner/:repo/link",
+      "/repositories/:owner/:repo/unlink",
+      // Proxied requests can write, so they need the same authority as reviews and linking.
+      "/repositories/:owner/:repo/api",
       "/repositories/:owner/:repo/pulls/:number/reviews",
     ] as const) {
       await ifMatchesRoute("POST", path, () => {
@@ -143,6 +150,7 @@ const githubSubject = (
       : {}),
     ...(repository
       ? {
+          connectionId: encodeGitHubRepositoryConnectionId(toStringValue(repository.full_name)),
           repositoryId: toStringValue(repository.id),
           repositoryFullName: toStringValue(repository.full_name),
         }
