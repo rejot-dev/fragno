@@ -1,3 +1,9 @@
+import type { backofficeApiV0 } from "@fragno-dev/backoffice-api/v0";
+import {
+  BackofficeApiRequestError,
+  BackofficeApiUnreachableError,
+  createBackofficeApiClient,
+} from "@fragno-dev/backoffice-api/v0/client";
 import { env } from "cloudflare:workers";
 import { z } from "zod";
 
@@ -8,26 +14,14 @@ export type BackofficeTarget =
   | { kind: "org"; orgId: string }
   | { kind: "project"; orgId: string; projectId: string };
 
-const eventReceiptSchema = z.object({
-  accepted: z.literal(true),
-  eventId: z.string().min(1),
-  source: z.string().min(1),
-  eventType: z.string().min(1),
-  scope: z.union([
-    z.object({ kind: z.literal("org"), orgId: z.string().min(1) }),
-    z.object({
-      kind: z.literal("project"),
-      orgId: z.string().min(1),
-      projectId: z.string().min(1),
-    }),
-  ]),
-});
 const resourceScopeSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("organization") }),
   z.object({ kind: z.literal("projects"), projectIds: z.array(z.string().min(1)).min(1) }),
 ]);
 
-export type BackofficeEventReceipt = z.infer<typeof eventReceiptSchema>;
+export type BackofficeEventReceipt = z.output<
+  (typeof backofficeApiV0)["operations"]["events.fire"]["output"]
+>;
 
 /** Every outcome the Backoffice page can act on; credentials never leave the server. */
 export type ConnectionTestResult =
@@ -250,34 +244,35 @@ export async function sendConnectionTestEvent(
     .object({ accessToken: z.string().min(1) })
     .parse(await exchanged.json());
 
-  let delivered: Response;
+  const backoffice = createBackofficeApiClient({
+    origin: new URL(env.BACKOFFICE_BASE_URL).origin,
+    accessToken,
+    fetch,
+  });
   try {
-    delivered = await fetch(
-      backofficeURL(`/api/backoffice/scopes/${targetKey(input.target)}/events`),
-      {
-        method: "POST",
-        headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
-        body: JSON.stringify({
-          eventType: CONNECTION_TESTED_EVENT_TYPE,
-          payload: {
-            message: `Hello from ${input.active.organization.name}`,
-            sentAs: input.actor,
-            sentAt: new Date().toISOString(),
-          },
-        }),
+    const receipt = await backoffice.call(input.target, "events.fire", {
+      eventType: CONNECTION_TESTED_EVENT_TYPE,
+      payload: {
+        message: `Hello from ${input.active.organization.name}`,
+        sentAs: input.actor,
+        sentAt: new Date().toISOString(),
       },
-    );
-  } catch {
-    return { status: "unconfirmed", message: "Backoffice could not be reached." };
+    });
+    return { status: "accepted", receipt };
+  } catch (error) {
+    if (error instanceof BackofficeApiUnreachableError) {
+      return { status: "unconfirmed", message: error.message };
+    }
+    if (!(error instanceof BackofficeApiRequestError)) {
+      throw error;
+    }
+    // Every API error means Backoffice decided not to record the event; other responses, such as
+    // a server failure, leave the outcome unknown.
+    return error.code === null
+      ? {
+          status: "unconfirmed",
+          message: `Backoffice responded with HTTP ${error.status}; the event may not have been recorded.`,
+        }
+      : { status: "rejected", message: error.message };
   }
-  if (delivered.status === 202) {
-    return { status: "accepted", receipt: eventReceiptSchema.parse(await delivered.json()) };
-  }
-  if (delivered.status === 403 || delivered.status === 404) {
-    return { status: "rejected", message: await readErrorMessage(delivered) };
-  }
-  return {
-    status: "unconfirmed",
-    message: `Backoffice responded with HTTP ${delivered.status}; the event may not have been recorded.`,
-  };
 }
