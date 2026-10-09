@@ -15,4 +15,5 @@ export type {
   GitHubAppWebhookOn,
 } from "./github/types";
 export type { GitHubAppFragmentDependencies, GitHubAppFragmentServices } from "./github/definition";
+export type { GitHubRepositoryAccess } from "./routes/repositories-by-name";
 export type { FragnoRouteConfig } from "@fragno-dev/core";
