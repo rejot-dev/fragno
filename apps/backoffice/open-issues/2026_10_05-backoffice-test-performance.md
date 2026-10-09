@@ -143,8 +143,28 @@ machine load.
 - Automations alone still pulls ~230 app modules (runtime tool families, MCP and Reson8 fragments),
   so files that need it stay near 570 modules.
 
-Next: let `defineBackofficeScenario` narrow its objects. The scenario files are the remaining 77
-heavy files, but scenario fakes and `given` steps reach into many objects.
+### Scenario objects and strict runtimes — October 9, 2026
+
+- `defineBackofficeScenario` requires `objects`; fakes always provide their object. 57 of 65
+  scenario files list only what they use. Pi, Pi manager, sandbox, and opt-in bridge scenarios keep
+  `allLocalObjects`.
+- Leaving an object out initially switched its feature off rather than failing, because about 30
+  code paths check `config.bindings`. Narrowing missed a sign-up OTP dependency, Connector tools,
+  and a Marketplace ingestion that skipped its MCP provider lookup.
+- Unlisted bindings now report as configured and throw "not loaded" when used; `cleanup()` fails the
+  test if any use occurred, including errors a caller caught. `null` declares an absent binding.
+
+| Node project (320 files)     | Before | Scenario narrowing | Strict |
+| ---------------------------- | -----: | -----------------: | -----: |
+| Module loads                 | 79,388 |             64,522 | 65,663 |
+| Files loading Cloudflare SDK |     77 |                  7 |      7 |
+| Files loading `pi-durable`   |     79 |                  9 |      9 |
+| Files loading typebox        |     77 |                  7 |      7 |
+| Files loading MCP SDK        |     77 |                 29 |     37 |
+| Files loading `better-auth`  |     78 |                 69 |     69 |
+
+Auth is needed by nearly every scenario, and Automations still pulls about 230 app modules, so 66
+files stay above 500 non-external modules. Wall-time impact is unmeasured on a loaded workstation.
 
 ## Measurement method and caveats
 
