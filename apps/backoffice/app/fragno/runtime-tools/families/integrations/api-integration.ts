@@ -84,7 +84,7 @@ const apiRequestActionDefinition = {
   outputSchema: z.toJSONSchema(apiRequestOutputSchema, { io: "output" }),
 };
 
-function encodeApiConnectionId(slug: string) {
+export function encodeApiConnectionId(slug: string) {
   return `api#${slug}`;
 }
 

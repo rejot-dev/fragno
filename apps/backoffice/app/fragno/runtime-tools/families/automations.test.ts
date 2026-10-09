@@ -149,7 +149,7 @@ describe("automation runtime tools", () => {
         { capabilityId: "sandbox", source: "sandbox", eventType: "instance.stopped" },
         { capabilityId: "sandbox", source: "sandbox", eventType: "instance.failed" },
         { capabilityId: "github", source: "github", eventType: "webhook.received" },
-        { capabilityId: "api", source: "api", eventType: "connection.changed" },
+        { capabilityId: "api", source: "api", eventType: "webhook.received" },
         { capabilityId: "mcp", source: "mcp", eventType: "server.configuration.changed" },
         { capabilityId: "integrations", source: "integrations", eventType: "connection.ready" },
         { capabilityId: "resend", source: "resend", eventType: "capability.configured" },

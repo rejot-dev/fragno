@@ -14,9 +14,8 @@ export type ApiConfig = Pick<
   | "allowedBaseUrls"
   | "allowedOAuthRedirectUris"
   | "fetch"
-  | "onConnectionChanged"
   | "onConnectionDeleted"
-  | "onConnectionAvailable"
+  | "onConnectionReadinessChanged"
   | "onWebhookEndpointChanged"
   | "onWebhookReceived"
 >;
@@ -31,9 +30,8 @@ export function createApiServer(
       allowedBaseUrls: config.allowedBaseUrls,
       allowedOAuthRedirectUris: config.allowedOAuthRedirectUris,
       fetch: config.fetch,
-      onConnectionChanged: config.onConnectionChanged,
       onConnectionDeleted: config.onConnectionDeleted,
-      onConnectionAvailable: config.onConnectionAvailable,
+      onConnectionReadinessChanged: config.onConnectionReadinessChanged,
       onWebhookEndpointChanged: config.onWebhookEndpointChanged,
       onWebhookReceived: config.onWebhookReceived,
     },

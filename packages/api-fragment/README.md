@@ -20,8 +20,8 @@ const api = createApiFragment(
   {
     allowedBaseUrls: (url) => url.hostname.endsWith(".example.com"),
     allowedOAuthRedirectUris: (url) => url.toString() === oauthRedirectUri,
-    onConnectionAvailable: async ({ connectionId, connection }) => {
-      console.log("API connection is ready", connectionId, connection.baseUrl);
+    onConnectionReadinessChanged: async ({ connectionId, ready }) => {
+      console.log("API connection readiness changed", connectionId, ready);
     },
   },
   fragnoConfig,
@@ -145,8 +145,8 @@ const start = await api.startOAuth.mutate(
 window.location.href = start.authorizationUrl;
 ```
 
-The callback route stores access/refresh tokens and triggers `onConnectionAvailable` after
-successful token exchange.
+The callback route stores access/refresh tokens; when the connection was not ready before, it
+triggers `onConnectionReadinessChanged` with `ready: true`.
 
 ## Executing requests
 
@@ -219,8 +219,10 @@ selected value as `text/plain`.
 
 - `onConnectionChanged` receives `{ connectionId, connection }`.
 - `onConnectionDeleted` receives `{ connectionId, previous }`.
-- `onConnectionAvailable` receives `{ connectionId, connection, authMode }` when usable auth is
-  present after bearer setup, OAuth callback, or client-credentials token acquisition.
+- `onConnectionReadinessChanged` receives `{ connectionId, ready }` when a write changes whether
+  stored auth can authorize requests: on creation, and afterwards whenever credentials, consent, or
+  token changes flip readiness. Expiry without a write does not trigger it; an expired token without
+  a refresh token is only noticed when the connection is used or its status is read.
 - `onWebhookReceived` receives the authenticated webhook payload and its derived delivery ID.
 
 Durable hook callbacks, including `onWebhookReceived`, may execute concurrently and may complete out

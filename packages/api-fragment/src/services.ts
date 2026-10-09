@@ -79,7 +79,7 @@ function secretIsUnexpired(secret: Pick<SecretRecord, "expiresAt"> | undefined) 
 /** Projects stored auth without secrets; whether credentials work can only be learned by using them. */
 export function projectApiAuthStatus(args: {
   authMode: string;
-  authSecret: SecretRecord | undefined;
+  authSecret: Pick<SecretRecord, "payload" | "expiresAt"> | undefined;
   hasPendingOAuth: boolean;
 }): ApiAuthStatus {
   // Routes write authMode only from authConfigSchema discriminators.
@@ -104,6 +104,27 @@ export function projectApiAuthStatus(args: {
     return { mode, state: "consent-pending" };
   }
   return { mode, state: tokens?.accessToken ? "expired" : "consent-required" };
+}
+
+/** Whether stored auth can authorize requests without new consent or credentials. */
+export function isApiAuthReady(
+  authMode: string,
+  authSecret: Pick<SecretRecord, "payload" | "expiresAt"> | undefined,
+): boolean {
+  // Pending consent only distinguishes states that are not ready.
+  const status = projectApiAuthStatus({ authMode, authSecret, hasPendingOAuth: false });
+  switch (status.mode) {
+    case "none":
+      return true;
+    case "oauth":
+      return status.state === "authorized";
+    case "bearer":
+    case "basic":
+    case "client_credentials":
+      return status.credentials === "present";
+    default:
+      throw new Error("Unknown API auth mode.", { cause: status satisfies never });
+  }
 }
 
 /**
