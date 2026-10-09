@@ -1,3 +1,4 @@
+import { isBackofficeScopeParseError } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { ButtonLink } from "@fragno-private/design-system/button";
 import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
 import type { MouseEvent as ReactMouseEvent } from "react";
@@ -10,7 +11,6 @@ import {
   resolveBackofficeRouteScope,
 } from "@/backoffice-runtime/resolved-scope";
 import { requireBackofficeRouteScopeFromParams } from "@/backoffice-runtime/route-scope";
-import { isBackofficeScopeCodecError } from "@/backoffice-runtime/scope-codec";
 import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import type { DurableHookQueueEntry, DurableHookQueueResponse } from "@/fragno/durable-hooks";
 import { getBackofficeObjects } from "@/worker-runtime/durable-objects";
@@ -138,7 +138,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
   try {
     routeScope = requireBackofficeRouteScopeFromParams(params);
   } catch (error) {
-    if (isBackofficeScopeCodecError(error)) {
+    if (isBackofficeScopeParseError(error)) {
       throw new Response("Not Found", { status: 404 });
     }
     throw error;

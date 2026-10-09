@@ -6,12 +6,12 @@ import {
   MARKETPLACE_LOCK_PATH,
   marketplaceLockSchema,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
+import { isBackofficeRoutableScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
 
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
-import { isBackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import { UPLOAD_PROVIDER_DATABASE } from "@/fragno/upload";
 
 /** Package listing is the current workspace's successful-installation lock, not a registry query. */

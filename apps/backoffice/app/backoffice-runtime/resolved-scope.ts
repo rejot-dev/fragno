@@ -1,7 +1,9 @@
-import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import type {
+  BackofficeContextScope,
+  BackofficeRoutableScope,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import type { BackofficeRoutableRouteScope, BackofficeRouteScope } from "./route-scope";
-import type { BackofficeRoutableScope } from "./scope-codec";
 
 /** Canonical organization identity required to address both runtime services and public routes. */
 export type BackofficeOrganizationIdentity = Readonly<{ id: string; slug: string }>;

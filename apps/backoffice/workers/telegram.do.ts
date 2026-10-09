@@ -1,13 +1,15 @@
 import type { AutomationEventSubject } from "@fragno-dev/backoffice-api/v0/events";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
-import { backofficeScopePathSegment } from "@fragno-dev/backoffice-api/v0/shared/scope";
-import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  type BackofficeContextScope,
+  backofficeContextScopesEqual,
+  backofficeScopePathSegment,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { DurableObject, RpcTarget } from "cloudflare:workers";
 import { z } from "zod";
 
 import type { TelegramApi, TelegramFragmentConfig } from "@fragno-dev/telegram-fragment";
 
-import { backofficeContextScopesEqual } from "@/backoffice-runtime/context";
 import { authorizeBackofficeFragmentRequest } from "@/backoffice-runtime/fragment-http-authorization";
 import { createBackofficeFragmentHttpTransport } from "@/backoffice-runtime/fragment-http-transport";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";

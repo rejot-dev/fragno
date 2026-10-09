@@ -1,42 +1,16 @@
-import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
-
-import { backofficeContextScopesEqual } from "./context";
-
-export type BackofficeSinglePathScope = BackofficeContextScope;
-
-export type BackofficeRoutableScope = Extract<
-  BackofficeContextScope,
-  { kind: "org" | "project" | "user" }
->;
-
-export const isBackofficeRoutableScope = (
-  scope: BackofficeContextScope,
-): scope is BackofficeRoutableScope =>
-  scope.kind === "org" || scope.kind === "project" || scope.kind === "user";
+import {
+  type BackofficeContextScope,
+  backofficeContextScopesEqual,
+  type BackofficeRoutableScope,
+  BackofficeScopeParseError,
+  isBackofficeScopeParseError,
+  parseBackofficeScopePathSegment,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 const encodeScopeComponent = (value: string) => encodeURIComponent(value);
 
-export class BackofficeScopeCodecError extends Error {
-  readonly code = "INVALID_BACKOFFICE_SCOPE";
-
-  constructor(message: string) {
-    super(message);
-    this.name = "BackofficeScopeCodecError";
-  }
-}
-
-export function isBackofficeScopeCodecError(error: unknown): error is BackofficeScopeCodecError {
-  return (
-    error instanceof BackofficeScopeCodecError ||
-    (typeof error === "object" &&
-      error !== null &&
-      "code" in error &&
-      error.code === "INVALID_BACKOFFICE_SCOPE")
-  );
-}
-
 const invalidScope = (message: string): never => {
-  throw new BackofficeScopeCodecError(message);
+  throw new BackofficeScopeParseError(message);
 };
 
 const decodeScopeComponent = (value: string, label: string): string => {
@@ -47,7 +21,7 @@ const decodeScopeComponent = (value: string, label: string): string => {
     }
     return decoded;
   } catch (error) {
-    if (isBackofficeScopeCodecError(error)) {
+    if (isBackofficeScopeParseError(error)) {
       throw error;
     }
     return invalidScope(`Invalid ${label} encoding.`);
@@ -124,7 +98,7 @@ export function requireBackofficeContextScopeFromRouteParams(params: {
 }): BackofficeContextScope {
   const scope = backofficeContextScopeFromRouteParams(params);
   if (!scope) {
-    throw new BackofficeScopeCodecError(
+    throw new BackofficeScopeParseError(
       "A scoped Backoffice runtime route did not provide a scope.",
     );
   }
@@ -142,64 +116,18 @@ export const backofficeScopeFromRouteParams = (params: {
   return scope;
 };
 
-export const backofficeRoutableScopesEqual = (
-  left: BackofficeRoutableScope,
-  right: BackofficeRoutableScope,
-) => backofficeContextScopesEqual(left, right);
-
 export const assertSameBackofficeRoutableScope = (
   existing: BackofficeRoutableScope | null,
   next: BackofficeRoutableScope,
   message = "Already configured for a different scope.",
 ) => {
-  if (existing && !backofficeRoutableScopesEqual(existing, next)) {
+  if (existing && !backofficeContextScopesEqual(existing, next)) {
     throw new Error(message);
   }
 };
 
-export const backofficeContextScopeFromSinglePathSegment = (
-  segment: string,
-): BackofficeSinglePathScope => {
-  const parts = segment.split(":");
-  const [scopeKind] = parts;
-
-  if (scopeKind === "system") {
-    if (parts.length !== 1) {
-      invalidScope("System scope does not accept id components.");
-    }
-    return { kind: "system" };
-  }
-
-  if (scopeKind === "org") {
-    if (parts.length !== 2) {
-      invalidScope("Org scope requires exactly one id component.");
-    }
-    return { kind: "org", orgId: decodeScopeComponent(parts[1] ?? "", "org id") };
-  }
-
-  if (scopeKind === "project") {
-    if (parts.length !== 3) {
-      invalidScope("Project scope requires org and project id components.");
-    }
-    return {
-      kind: "project",
-      orgId: decodeScopeComponent(parts[1] ?? "", "org id"),
-      projectId: decodeScopeComponent(parts[2] ?? "", "project id"),
-    };
-  }
-
-  if (scopeKind === "user") {
-    if (parts.length !== 2) {
-      invalidScope("User scope requires exactly one id component.");
-    }
-    return { kind: "user", userId: decodeScopeComponent(parts[1] ?? "", "user id") };
-  }
-
-  return invalidScope(`Unknown scope kind '${scopeKind}'.`);
-};
-
 export const backofficeScopeFromSinglePathSegment = (segment: string): BackofficeRoutableScope => {
-  const scope = backofficeContextScopeFromSinglePathSegment(segment);
+  const scope = parseBackofficeScopePathSegment(segment);
   if (scope.kind === "system") {
     return invalidScope("System scope is not routable here.");
   }

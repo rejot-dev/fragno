@@ -1,10 +1,10 @@
-import { backofficeScopePathSegment } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  backofficeScopePathSegment,
+  isBackofficeScopeParseError,
+  parseBackofficeScopePathSegment,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { RouterContextProvider } from "react-router";
 
-import {
-  backofficeContextScopeFromSinglePathSegment,
-  isBackofficeScopeCodecError,
-} from "@/backoffice-runtime/scope-codec";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
@@ -28,9 +28,9 @@ export async function forwardScopedWorkflowsRequest({
 
   let scope;
   try {
-    scope = backofficeContextScopeFromSinglePathSegment(params.scopeSegment);
+    scope = parseBackofficeScopePathSegment(params.scopeSegment);
   } catch (error) {
-    if (isBackofficeScopeCodecError(error)) {
+    if (isBackofficeScopeParseError(error)) {
       return new Response(error.message, { status: 400 });
     }
     throw error;

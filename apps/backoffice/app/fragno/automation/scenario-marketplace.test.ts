@@ -4,6 +4,7 @@ import { automationActorsSchema } from "@fragno-dev/backoffice-api/v0/automation
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
 import { marketplaceLockSchema } from "@fragno-dev/backoffice-api/v0/marketplace";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+import type { BackofficeRoutableScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
   class MockDurableObject {
@@ -33,7 +34,6 @@ import {
 } from "@/backoffice-runtime/context";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import type { BackofficeActionRpcContext } from "@/backoffice-runtime/object-registry";
-import type { BackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import { BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY } from "@/fragno/automation/actors";
 import {
   CODEMODE_CAPABILITY_ACTOR,

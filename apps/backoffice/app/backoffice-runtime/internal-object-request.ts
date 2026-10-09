@@ -1,10 +1,7 @@
+import { backofficeContextScopesEqual } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
 
-import {
-  backofficeContextScopesEqual,
-  backofficeExecutionContextSchema,
-  type BackofficeExecutionContext,
-} from "./context";
+import { backofficeExecutionContextSchema, type BackofficeExecutionContext } from "./context";
 import {
   encodeBackofficeObjectAddress,
   objectScopeToContextScope,

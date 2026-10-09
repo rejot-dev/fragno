@@ -1,7 +1,7 @@
 import { marketplaceIngestionRequestInputSchema } from "@fragno-dev/backoffice-api/v0/marketplace";
 import { marketplaceVersionSchema } from "@fragno-dev/backoffice-api/v0/marketplace";
+import type { BackofficeRoutableScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
-import type { BackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import { type MarketplaceArtifactManifest } from "@/fragno/marketplace/contracts";
 
 import { backofficeWorkflowActorMetadataSchema } from "./actors";
