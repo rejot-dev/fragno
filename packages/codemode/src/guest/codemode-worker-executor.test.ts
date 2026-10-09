@@ -1,10 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 
-import type { WorkerBundle } from "@fragno-dev/codemode/compiler/worker-bundle";
-import {
-  DynamicWorkerExecutor,
-  type DynamicWorkerRpcCall,
-} from "@fragno-dev/codemode/guest/codemode-worker-executor";
+import type { WorkerBundle } from "../compiler/worker-bundle";
+import { DynamicWorkerExecutor, type DynamicWorkerRpcCall } from "./codemode-worker-executor";
 
 const workerBundle: WorkerBundle = {
   mainModule: "executor.js",
