@@ -58,7 +58,7 @@ export const projectConnectorConnectionSchema = z.object({
   providerConfigId: z.string(),
   externalUserId: z.string(),
   service: z.string(),
-  connectionName: z.string().nullable(),
+  connectionName: projectConnectorNamedConnectionSchema.shape.connectionName,
   authorizationUrl: projectConnectorHttpUrlSchema,
   expiresAt: z.string(),
   state: projectConnectorConnectionStateSchema,
@@ -71,7 +71,7 @@ export const projectConnectorAccountSchema = z.object({
   providerConfigId: z.string(),
   externalUserId: z.string(),
   service: z.string(),
-  connectionName: z.string().nullable(),
+  connectionName: projectConnectorNamedConnectionSchema.shape.connectionName,
 });
 
 /** Missing named requests remain JSON results rather than empty HTTP responses. */

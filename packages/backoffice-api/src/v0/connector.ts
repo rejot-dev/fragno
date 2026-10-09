@@ -34,6 +34,15 @@ export const projectConnectorActionSchema = z.object({
   outputSchema: z.record(z.string(), z.unknown()),
 });
 
+/** Mirrors the gateway's alias rule so invalid names fail here with a usable message. */
+const projectConnectorConnectionNameSchema = z
+  .string()
+  .regex(
+    /^[a-z0-9][a-z0-9_-]*$/,
+    "Connection names may only contain lowercase letters, digits, underscores, and hyphens, and must start with a letter or digit",
+  )
+  .describe("Lowercase letters, digits, underscores, and hyphens; starts with a letter or digit.");
+
 /** Stored account selectors bind actions to a specific product user and provider. */
 export const projectConnectorAccountSchema = z.object({
   id: z.string(),
@@ -41,7 +50,7 @@ export const projectConnectorAccountSchema = z.object({
   providerConfigId: z.string(),
   externalUserId: z.string(),
   service: z.string(),
-  connectionName: z.string().nullable(),
+  connectionName: projectConnectorConnectionNameSchema,
 });
 
 /** Project authentication does not imply that an individual provider account is usable. */
@@ -106,20 +115,11 @@ export const projectConnectorConnectionSchema = z.object({
   providerConfigId: z.string(),
   externalUserId: z.string(),
   service: z.string(),
-  connectionName: z.string().nullable(),
+  connectionName: projectConnectorConnectionNameSchema,
   authorizationUrl: projectConnectorHttpUrlSchema,
   expiresAt: z.string(),
   state: projectConnectorConnectionStateSchema,
 });
-
-/** Mirrors the gateway's alias rule so invalid names fail here with a usable message. */
-const projectConnectorConnectionNameSchema = z
-  .string()
-  .regex(
-    /^[a-z0-9][a-z0-9_-]*$/,
-    "Connection names may only contain lowercase letters, digits, underscores, and hyphens, and must start with a letter or digit",
-  )
-  .describe("Lowercase letters, digits, underscores, and hyphens; starts with a letter or digit.");
 
 /** Select exactly one provider and name every connection explicitly. */
 export const projectConnectorConnectInputSchema = z.union([
