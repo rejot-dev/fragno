@@ -7,6 +7,7 @@ import { z } from "zod";
 
 import { extractW3CRequestPropagationContext } from "@fragno-dev/core";
 
+import type { BackofficeRuntimeEnv } from "@/backoffice-runtime/backoffice-runtime-env";
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import type {
   AdminOrganizationMemberRecord,
@@ -827,8 +828,16 @@ const buildBackofficeMe = async (
   };
 };
 
+type InMemoryAuthObjectEnv = Pick<
+  BackofficeRuntimeEnv,
+  | "AUTH_ACCESS_TOKEN_SECRET"
+  | "AUTH_ADMIN_GRANT_TOKEN"
+  | "GITHUB_CLIENT_ID"
+  | "GITHUB_CLIENT_SECRET"
+>;
+
 export class InMemoryAuthObject implements AuthObject {
-  readonly #env: CloudflareEnv;
+  readonly #env: InMemoryAuthObjectEnv;
   readonly #state: BackofficeObjectState;
   readonly #runtime: BackofficeRuntimeServices;
   readonly #database: Kysely<AuthDatabase>;
@@ -845,7 +854,7 @@ export class InMemoryAuthObject implements AuthObject {
     database,
   }: {
     state: BackofficeObjectState;
-    env: CloudflareEnv;
+    env: InMemoryAuthObjectEnv;
     runtime: BackofficeRuntimeServices;
     database?: Kysely<AuthDatabase>;
   }) {

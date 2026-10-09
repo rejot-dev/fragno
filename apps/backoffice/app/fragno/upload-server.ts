@@ -107,7 +107,7 @@ export function createUploadServerForProvider(
   config: StoredUploadAdminConfig,
   provider: UploadProvider,
   runtime: BackofficeFragmentRuntimeOptions,
-  env: CloudflareEnv,
+  bindings: Parameters<typeof resolveR2BindingBucket>[0],
 ): ReturnType<typeof createUploadFragment> {
   const providerConfig = getProviderConfig(config, provider);
   const limits =
@@ -150,10 +150,7 @@ export function createUploadServerForProvider(
             ]),
           })
         : createR2BindingStorageAdapter({
-            bucket: resolveR2BindingBucket(
-              env as unknown as Record<string, unknown>,
-              providerConfig.r2Binding.bindingName,
-            ),
+            bucket: resolveR2BindingBucket(bindings, providerConfig.r2Binding.bindingName),
             storageKeyPrefix,
             ...withDefined(limits, [
               "directUploadThresholdBytes",

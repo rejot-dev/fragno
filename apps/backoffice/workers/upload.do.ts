@@ -520,6 +520,8 @@ export class Upload extends DurableObject<CloudflareEnv> implements UploadObject
     super(state, env);
     this.#object = new InMemoryUploadObject({
       ...createCloudflareBackofficeObjectContext(state, env),
+      // Upload reads R2 buckets by their configured binding name and validates each one it finds.
+      env: env as unknown as Record<string, unknown>,
       durableHooks,
     });
   }

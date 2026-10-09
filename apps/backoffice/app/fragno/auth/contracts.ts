@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import type { BackofficeRuntimeEnv } from "@/backoffice-runtime/backoffice-runtime-env";
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 
 export const BACKOFFICE_AUTH_ERROR_HEADER = "x-backoffice-auth-error";
@@ -254,7 +255,10 @@ export type BackofficeAuthPrincipal = {
   };
 };
 
-export const resolveLiveAccessTokenSecret = (env: CloudflareEnv, isDev: boolean): string => {
+export const resolveLiveAccessTokenSecret = (
+  env: Pick<BackofficeRuntimeEnv, "AUTH_ACCESS_TOKEN_SECRET">,
+  isDev: boolean,
+): string => {
   const configuredSecret = env.AUTH_ACCESS_TOKEN_SECRET?.trim();
   if (configuredSecret) {
     if (configuredSecret.length < 32) {

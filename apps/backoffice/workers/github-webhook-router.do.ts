@@ -287,7 +287,7 @@ const toStateTokenPreview = (value: string) => {
 };
 
 export class InMemoryGitHubWebhookRouterObject {
-  readonly #env: CloudflareEnv;
+  readonly #env: Parameters<typeof resolveGitHubConfig>[0];
   readonly #state: GitHubWebhookRouterObjectState;
   readonly #runtime: BackofficeRuntimeServices;
 
@@ -297,7 +297,7 @@ export class InMemoryGitHubWebhookRouterObject {
     runtime,
   }: {
     state: GitHubWebhookRouterObjectState;
-    env: CloudflareEnv;
+    env: Parameters<typeof resolveGitHubConfig>[0];
     runtime: BackofficeRuntimeServices;
   }) {
     this.#env = env;
