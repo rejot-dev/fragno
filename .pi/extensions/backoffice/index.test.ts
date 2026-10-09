@@ -11,14 +11,16 @@ import {
   fauxProvider,
   fauxToolCall,
 } from "@earendil-works/pi-ai/providers/faux";
+import { createInMemoryTransportPair } from "@earendil-works/pi-mcp/testing";
 
-import { getSystemMessageText } from "@earendil-works/pi-ai";
+import { getCurrentTools, getSystemMessageText } from "@earendil-works/pi-ai";
 import {
   createAgentSession,
   createAgentSessionFromServices,
   createAgentSessionRuntime,
   createAgentSessionServices,
   createCodemodeExtension,
+  createMcpExtension,
   DefaultResourceLoader,
   ModelRuntime,
   SessionManager,
@@ -26,8 +28,20 @@ import {
   type AgentSession,
   type CreateAgentSessionRuntimeFactory,
   type ExtensionUIContext,
+  type McpTransportFactory,
 } from "@earendil-works/pi-coding-agent";
 
+import registerCloudflareMcpCommand from "../cloudflare-mcp/index.js";
+
+const nativeCodemodeExtension = {
+  name: "native-codemode",
+  factory: createCodemodeExtension(),
+  replaceable: true,
+};
+
+let createTransport: McpTransportFactory;
+let mcpConnections: string[];
+let logQueries: string[];
 let directory: string;
 let session: AgentSession;
 let server: ReturnType<typeof createServer>;
@@ -120,15 +134,15 @@ async function executeSessionTool(name: string, args: Record<string, unknown>) {
 
 async function executeBackofficeProgram(code: string) {
   faux.setResponses([
-    fauxAssistantMessage([fauxToolCall("execCodeMode", { code })], { stopReason: "toolUse" }),
+    fauxAssistantMessage([fauxToolCall("backofficeCodemode", { code })], { stopReason: "toolUse" }),
     fauxAssistantMessage("Scenario completed."),
   ]);
   await session.prompt("Run the Backoffice codemode scenario.");
   const result = session.messages
     .toReversed()
-    .find((message) => message.role === "toolResult" && message.toolName === "execCodeMode");
+    .find((message) => message.role === "toolResult" && message.toolName === "backofficeCodemode");
   if (result?.role !== "toolResult") {
-    throw new Error("Backoffice scenario did not produce an execCodeMode result.");
+    throw new Error("Backoffice scenario did not produce a backofficeCodemode result.");
   }
   return result;
 }
@@ -164,6 +178,72 @@ describe("Backoffice extension scenarios", () => {
       }),
     );
 
+    mcpConnections = [];
+    logQueries = [];
+    createTransport = (entry) => {
+      mcpConnections.push(entry.name);
+      const { client, server } = createInMemoryTransportPair();
+      server.onMessage((message) => {
+        if (!("method" in message) || !("id" in message)) {
+          return;
+        }
+        switch (message.method) {
+          case "initialize": {
+            const { protocolVersion } = message.params as { protocolVersion: string };
+            void server.send({
+              jsonrpc: "2.0",
+              id: message.id,
+              result: {
+                protocolVersion,
+                capabilities: { tools: {} },
+                serverInfo: { name: entry.name, version: "1.0.0" },
+              },
+            });
+            break;
+          }
+          case "tools/list":
+            void server.send({
+              jsonrpc: "2.0",
+              id: message.id,
+              result: {
+                tools: [
+                  {
+                    name: "query_logs",
+                    description: "Query Cloudflare Workers logs",
+                    inputSchema: {
+                      type: "object",
+                      properties: { worker: { type: "string" } },
+                      required: ["worker"],
+                    },
+                  },
+                ],
+              },
+            });
+            break;
+          case "tools/call": {
+            const { arguments: args } = message.params as { arguments: { worker: string } };
+            logQueries.push(args.worker);
+            void server.send({
+              jsonrpc: "2.0",
+              id: message.id,
+              result: { content: [{ type: "text", text: `Logs for ${args.worker}` }] },
+            });
+            break;
+          }
+          default:
+            void server.send({
+              jsonrpc: "2.0",
+              id: message.id,
+              error: {
+                code: -32601,
+                message: `Unsupported MCP scenario method: ${message.method}`,
+              },
+            });
+        }
+      });
+      void server.start();
+      return client;
+    };
     const settingsManager = SettingsManager.inMemory({ defaultTools: ["+codemode"] });
     const resourceLoader = new DefaultResourceLoader({
       cwd: directory,
@@ -173,14 +253,19 @@ describe("Backoffice extension scenarios", () => {
       noPromptTemplates: true,
       noThemes: true,
       noContextFiles: true,
-      extensionFactories: [createCodemodeExtension(), registerBackofficeExtension],
+      extensionFactories: [
+        nativeCodemodeExtension,
+        createMcpExtension({ createTransport }),
+        registerBackofficeExtension,
+        registerCloudflareMcpCommand,
+      ],
     });
     await resourceLoader.reload();
     const sessionManager = SessionManager.inMemory(directory);
     sessionManager.appendCustomEntry("backoffice-session", {
       baseUrl,
       scope: "user:scenario-user",
-      systemPrompt: "Follow the scoped Backoffice instructions.",
+      systemPrompt: "Follow the scoped Backoffice instructions. Act through execCodeMode.",
     });
     const modelRuntime = await ModelRuntime.create({
       authPath: join(directory, "pi-auth.json"),
@@ -223,7 +308,7 @@ describe("Backoffice extension scenarios", () => {
     const directRead = await executeSessionTool("read", { path: "document.txt" });
     expect(directRead.details).toMatchObject({ truncated: true });
     expect(directRead.structuredContent).toBe(remoteText);
-    const directExecution = await executeSessionTool("execCodeMode", {
+    const directExecution = await executeSessionTool("backofficeCodemode", {
       code: 'async () => ({ text: await state.readFile({ path: "document.txt" }) })',
     });
     expect(directExecution.details).toMatchObject({ truncated: true });
@@ -248,11 +333,169 @@ describe("Backoffice extension scenarios", () => {
     const localRead = await executeSessionTool("localRead", { path: "document.txt" });
     expect(localRead.content).toEqual([{ type: "text", text: "local-only content" }]);
     expect(await readFile(join(directory, "summary.txt"), "utf8")).toBe(String(remoteText.length));
-    const empty = await executeSessionTool("execCodeMode", { code: "async () => null" });
+    const empty = await executeSessionTool("backofficeCodemode", { code: "async () => null" });
     assert(empty.structuredContent === null);
   });
 
-  test("propagates remote execution failures through execCodeMode", async () => {
+  test("queries observability through localCodemode and reuses the connection with Cloudflare mode", async () => {
+    faux.setResponses([
+      (context) => {
+        const tools = getCurrentTools(context.messages);
+        const names = tools.map((tool) => tool.name);
+        expect(names).toEqual(expect.arrayContaining(["localCodemode", "backofficeCodemode"]));
+        expect(names).not.toContain("codemode");
+        expect(names).not.toContain("execCodeMode");
+        expect(tools.find((tool) => tool.name === "localCodemode")?.description).toContain(
+          "local Pi sandbox",
+        );
+        expect(tools.find((tool) => tool.name === "backofficeCodemode")?.description).toContain(
+          "remotely against the active Backoffice scope",
+        );
+        return fauxAssistantMessage(
+          [
+            fauxToolCall("localCodemode", {
+              code: `
+            const matches = await searchTools("Workers logs", {
+              namespace: "mcp__cloudflare_observability",
+            });
+            text(await tools[matches[0].name]({ worker: "backoffice" }));
+            text(await tools.localRead({ path: "document.txt" }));
+            text({ hasBackofficeState: typeof state !== "undefined" });
+            store("worker", "backoffice");
+          `,
+            }),
+          ],
+          { stopReason: "toolUse" },
+        );
+      },
+      fauxAssistantMessage("Workers logs inspected."),
+    ]);
+    await session.prompt("Inspect the Backoffice Worker logs.");
+    const result = session.messages.find(
+      (message) => message.role === "toolResult" && message.toolName === "localCodemode",
+    );
+    assert(result?.role === "toolResult");
+    expect(result.isError, JSON.stringify(result.content)).toBe(false);
+    expect(result.content).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "text",
+          text: expect.stringContaining("Logs for backoffice"),
+        }),
+      ]),
+    );
+    expect(logQueries).toEqual(["backoffice"]);
+    expect(result.content).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ text: expect.stringContaining("local-only content") }),
+        expect.objectContaining({ text: expect.stringContaining('"hasBackofficeState":false') }),
+      ]),
+    );
+
+    faux.setResponses([
+      fauxAssistantMessage(
+        [
+          fauxToolCall("localCodemode", {
+            code: 'text(load("worker")); throw new Error("local scenario failure");',
+          }),
+        ],
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage("Local script failed."),
+    ]);
+    await session.prompt("Read the stored Worker name, then fail the local script.");
+    const localFailure = session.messages
+      .toReversed()
+      .find((message) => message.role === "toolResult" && message.toolName === "localCodemode");
+    assert(localFailure?.role === "toolResult");
+    assert(localFailure.isError);
+    expect(localFailure.content).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ text: "backoffice" }),
+        expect.objectContaining({ text: expect.stringContaining("local scenario failure") }),
+      ]),
+    );
+
+    const remoteResult = await executeBackofficeProgram(
+      'async () => "Remote Backoffice execution"',
+    );
+    expect(remoteResult).toMatchObject({
+      isError: false,
+      content: [{ type: "text", text: "Remote Backoffice execution" }],
+    });
+    await session.prompt("/cloudflare");
+    await expect
+      .poll(() => session.getCallableToolNames().filter((name) => name.startsWith("mcp__")))
+      .toHaveLength(3);
+    expect(mcpConnections.filter((name) => name === "cloudflare-observability")).toHaveLength(1);
+
+    const backofficeLeafId = session.sessionManager.getLeafId();
+    assert(backofficeLeafId);
+    session.sessionManager.appendCustomEntry("backoffice-session", null);
+    const normalLeafId = session.sessionManager.getLeafId();
+    assert(normalLeafId);
+    await session.navigateTree(normalLeafId, { summarize: false });
+    await session.navigateTree(backofficeLeafId, { summarize: false });
+    expect(session.getActiveToolNames()).toContain("backofficeCodemode");
+    expect(session.getActiveToolNames()).toContain("localCodemode");
+    expect(mcpConnections.filter((name) => name === "cloudflare-observability")).toHaveLength(1);
+  });
+
+  test("reuses observability when Cloudflare mode connects before restoring a Backoffice branch", async () => {
+    const backofficeLeafId = session.sessionManager.getLeafId();
+    assert(backofficeLeafId);
+    session.sessionManager.appendCustomEntry("backoffice-session", null);
+    const services = await createAgentSessionServices({
+      cwd: directory,
+      agentDir: directory,
+      settingsManager: SettingsManager.inMemory(),
+      modelRuntime: session.modelRuntime,
+      resourceLoaderOptions: {
+        noSkills: true,
+        noPromptTemplates: true,
+        noThemes: true,
+        noContextFiles: true,
+        extensionFactories: [
+          nativeCodemodeExtension,
+          createMcpExtension({ createTransport }),
+          registerBackofficeExtension,
+          registerCloudflareMcpCommand,
+        ],
+      },
+    });
+    const { session: restoredSession } = await createAgentSessionFromServices({
+      services,
+      model: faux.getModel(),
+      sessionManager: session.sessionManager,
+    });
+    try {
+      await restoredSession.bindExtensions({});
+      const connectionCount = mcpConnections.filter(
+        (name) => name === "cloudflare-observability",
+      ).length;
+      expect(restoredSession.getCallableToolNames()).not.toContain(
+        "mcp__cloudflare_observability__query_logs",
+      );
+
+      await restoredSession.prompt("/cloudflare");
+      await expect
+        .poll(() =>
+          restoredSession.getCallableToolNames().filter((name) => name.startsWith("mcp__")),
+        )
+        .toHaveLength(3);
+      await restoredSession.navigateTree(backofficeLeafId, { summarize: false });
+      expect(restoredSession.getActiveToolNames()).toContain("backofficeCodemode");
+      expect(restoredSession.getActiveToolNames()).toContain("localCodemode");
+      expect(mcpConnections.filter((name) => name === "cloudflare-observability")).toHaveLength(
+        connectionCount + 1,
+      );
+    } finally {
+      await restoredSession.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
+      restoredSession.dispose();
+    }
+  });
+
+  test("propagates remote execution failures through backofficeCodemode", async () => {
     const result = await executeBackofficeProgram(
       'async () => { throw new Error("remote scenario failure"); }',
     );
@@ -283,7 +526,11 @@ describe("Backoffice extension scenarios", () => {
           noPromptTemplates: true,
           noThemes: true,
           noContextFiles: true,
-          extensionFactories: [createCodemodeExtension(), registerBackofficeExtension],
+          extensionFactories: [
+            nativeCodemodeExtension,
+            createMcpExtension({ createTransport }),
+            registerBackofficeExtension,
+          ],
         },
       });
       return {
@@ -345,7 +592,7 @@ describe("Backoffice extension scenarios", () => {
       const diagnosis = "Found a Backoffice bug; fix it in the local workspace.";
       faux.setResponses([
         fauxAssistantMessage(
-          [fauxToolCall("execCodeMode", { code: 'async () => "Backoffice bug reproduced"' })],
+          [fauxToolCall("backofficeCodemode", { code: 'async () => "Backoffice bug reproduced"' })],
           { stopReason: "toolUse" },
         ),
         fauxAssistantMessage(diagnosis),
@@ -357,7 +604,7 @@ describe("Backoffice extension scenarios", () => {
       assert(statuses.has("backoffice"));
       await runtime.session.prompt("/backoffice");
       assert(runtime.session.sessionId === backofficeSessionId);
-      expect(runtime.session.getActiveToolNames()).toContain("execCodeMode");
+      expect(runtime.session.getActiveToolNames()).toContain("backofficeCodemode");
       assert(statuses.has("backoffice"));
 
       await runtime.session.prompt("/backoffice");
@@ -400,9 +647,21 @@ describe("Backoffice extension scenarios", () => {
           expect(getSystemMessageText(leadingPrompt)).not.toContain(
             "Follow the scoped Backoffice instructions.",
           );
-          return fauxAssistantMessage([fauxToolCall("read", { path: "document.txt" })], {
-            stopReason: "toolUse",
-          });
+          const names = getCurrentTools(context.messages).map((tool) => tool.name);
+          expect(names).toContain("codemode");
+          expect(names).not.toContain("localCodemode");
+          expect(names).not.toContain("backofficeCodemode");
+          return fauxAssistantMessage(
+            [
+              fauxToolCall("codemode", {
+                code: 'text(await tools.read({ path: "document.txt" }));',
+              }),
+              fauxToolCall("read", { path: "document.txt" }),
+            ],
+            {
+              stopReason: "toolUse",
+            },
+          );
         },
         fauxAssistantMessage("Normal Pi session."),
       ]);
@@ -414,6 +673,14 @@ describe("Backoffice extension scenarios", () => {
         isError: false,
         content: [{ type: "text", text: "local-only content" }],
       });
+      const nativeResult = runtime.session.messages.find(
+        (message) => message.role === "toolResult" && message.toolName === "codemode",
+      );
+      expect(nativeResult).toMatchObject({ isError: false });
+      expect(nativeResult).toHaveProperty(
+        "content",
+        expect.arrayContaining([expect.objectContaining({ text: "local-only content" })]),
+      );
       const normalSessionId = runtime.session.sessionId;
       await runtime.session.prompt("/backoffice");
       expect(menus[2]).not.toContain("Exit Backoffice (restore normal Pi)");
@@ -422,8 +689,8 @@ describe("Backoffice extension scenarios", () => {
       const normalLeafId = runtime.session.sessionManager.getLeafId();
       assert(normalLeafId);
       await runtime.session.navigateTree(backofficeLeafId, { summarize: false });
-      expect(runtime.session.getActiveToolNames()).toContain("execCodeMode");
-      expect(runtime.session.getActiveToolNames()).not.toContain("codemode");
+      expect(runtime.session.getActiveToolNames()).toContain("backofficeCodemode");
+      expect(runtime.session.getActiveToolNames()).toContain("localCodemode");
       assert(statuses.has("backoffice"));
       expect(runtime.session.getToolDefinition("read")?.description).toContain(
         "active Backoffice scope",
@@ -461,7 +728,11 @@ describe("Backoffice extension scenarios", () => {
           noPromptTemplates: true,
           noThemes: true,
           noContextFiles: true,
-          extensionFactories: [createCodemodeExtension(), registerBackofficeExtension],
+          extensionFactories: [
+            nativeCodemodeExtension,
+            createMcpExtension({ createTransport }),
+            registerBackofficeExtension,
+          ],
         },
       });
       const { session: restoredSession } = await createAgentSessionFromServices({
@@ -483,9 +754,9 @@ describe("Backoffice extension scenarios", () => {
     },
   );
 
-  test("keeps Backoffice's sole executor and scoped prompt despite global native codemode settings", async () => {
-    expect(session.getActiveToolNames()).toContain("execCodeMode");
-    expect(session.getActiveToolNames()).not.toContain("codemode");
+  test("keeps the scoped prompt and distinguishes remote execution from local MCP codemode", async () => {
+    expect(session.getActiveToolNames()).toContain("backofficeCodemode");
+    expect(session.getActiveToolNames()).toContain("localCodemode");
     const { systemPromptOptions } = await session.extensionRunner.emitBeforeAgentStart(
       "Use the Backoffice scope",
       undefined,
@@ -495,6 +766,18 @@ describe("Backoffice extension scenarios", () => {
         sections: { mcp_servers: "Cloudflare MCP tools" },
       },
     );
-    assert(systemPromptOptions.forceSystemPrompt === "Follow the scoped Backoffice instructions.");
+    expect(systemPromptOptions.forceSystemPrompt).toContain(
+      "Follow the scoped Backoffice instructions.",
+    );
+    expect(systemPromptOptions.forceSystemPrompt).toContain("mcp__cloudflare_observability");
+    expect(systemPromptOptions.forceSystemPrompt).toContain(
+      "Use backofficeCodemode for remote Backoffice execution",
+    );
+    expect(systemPromptOptions.forceSystemPrompt).toContain(
+      "Use localCodemode for local Pi and MCP tool scripts",
+    );
+    expect(systemPromptOptions.forceSystemPrompt).toContain("Act through backofficeCodemode.");
+    expect(systemPromptOptions.forceSystemPrompt).not.toContain("execCodeMode");
+    expect(systemPromptOptions.forceSystemPrompt).not.toContain("Local-only project instructions");
   });
 });

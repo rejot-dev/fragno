@@ -1,5 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
+import { CLOUDFLARE_OBSERVABILITY_SERVER } from "./observability.js";
+
 const CLOUDFLARE_MCP_SERVERS = {
   cloudflare: {
     url: "https://mcp.cloudflare.com/mcp",
@@ -11,11 +13,7 @@ const CLOUDFLARE_MCP_SERVERS = {
     description: "Search Cloudflare documentation",
     exposure: "codemode",
   },
-  "cloudflare-observability": {
-    url: "https://observability.mcp.cloudflare.com/mcp",
-    description: "Inspect Cloudflare Workers logs and observability data",
-    exposure: "codemode",
-  },
+  [CLOUDFLARE_OBSERVABILITY_SERVER.name]: CLOUDFLARE_OBSERVABILITY_SERVER.config,
 } as const;
 
 const CLOUDFLARE_MODE_SYSTEM_PROMPT =
@@ -37,7 +35,9 @@ export default function registerCloudflareMcpCommand(pi: ExtensionAPI) {
       if (!cloudflareMcpEnabled) {
         try {
           for (const [name, config] of Object.entries(CLOUDFLARE_MCP_SERVERS)) {
-            pi.registerMcpServer(name, config);
+            if (!pi.getMcpServers().some((server) => server.name === name)) {
+              pi.registerMcpServer(name, config);
+            }
           }
           cloudflareMcpEnabled = true;
         } catch (error) {

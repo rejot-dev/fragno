@@ -21,6 +21,7 @@ import type { JsonValue } from "@earendil-works/pi-ai";
 import {
   createBashToolDefinition,
   createCodingTools,
+  createCodemodeExtension,
   createEditToolDefinition,
   createFindToolDefinition,
   createGrepToolDefinition,
@@ -35,15 +36,18 @@ import {
   truncateHead,
   withFileMutationQueue,
 } from "@earendil-works/pi-coding-agent";
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
 import { Container, Markdown, Text } from "@earendil-works/pi-tui";
+
+import { CLOUDFLARE_OBSERVABILITY_SERVER } from "../cloudflare-mcp/observability.js";
 
 const BACKOFFICE_SESSION_ENTRY = "backoffice-session";
 const BACKOFFICE_NORMAL_TOOLS_ENTRY = "backoffice-normal-tools";
 const BACKOFFICE_TOOL_NAMES = [
   "read",
   "search",
-  "execCodeMode",
+  "backofficeCodemode",
+  "localCodemode",
   "upload",
   "download",
   "localRead",
@@ -237,8 +241,49 @@ async function executeBackofficeCode(
   ) as JsonValue;
 }
 
+function renderCodemodeCall(
+  name: string,
+  code: string,
+  dependencyCount: number,
+  theme: Theme,
+  expanded: boolean,
+) {
+  const container = new Container();
+  const dependencySummary =
+    dependencyCount > 0
+      ? theme.fg(
+          "muted",
+          ` · ${dependencyCount} ${dependencyCount === 1 ? "dependency" : "dependencies"}`,
+        )
+      : "";
+  container.addChild(
+    new Text(`${theme.fg("toolTitle", theme.bold(name))}${dependencySummary}`, 0, 0),
+  );
+
+  const codeLines = code.split("\n");
+  const visibleLines = expanded ? codeLines : codeLines.slice(0, 30);
+  const hiddenLineCount = codeLines.length - visibleLines.length;
+  const fence = code.includes("````") ? "`````" : "````";
+  container.addChild(
+    new Markdown(
+      `${fence}javascript\n${visibleLines.join("\n")}\n${fence}`,
+      0,
+      0,
+      getMarkdownTheme(),
+    ),
+  );
+  if (hiddenLineCount > 0) {
+    container.addChild(
+      new Text(theme.fg("dim", `… ${hiddenLineCount} more lines (expand to view)`), 0, 0),
+    );
+  }
+  return container;
+}
+
 /** Registers `/backoffice` and tools for Backoffice state, local files, search, and codemode. */
 export default function registerBackofficeExtension(pi: ExtensionAPI) {
+  // Own the native registration so Backoffice can expose it through localCodemode and restore it on exit.
+  void createCodemodeExtension()(pi);
   let backofficeToolsActive = false;
 
   function registerBackofficeTools(cwd: string) {
@@ -246,6 +291,55 @@ export default function registerBackofficeExtension(pi: ExtensionAPI) {
       return;
     }
     backofficeToolsActive = true;
+
+    // Backoffice keeps both executor names visible even when normal Pi uses codemode-only mode.
+    void createCodemodeExtension({ mode: "on" })({
+      ...pi,
+      registerTool(nativeCodemode) {
+        // MCP discovery recognizes the canonical name; delegate through it so connection waits and tool hooks still run.
+        pi.registerTool({
+          ...nativeCodemode,
+          exposure: "codemode",
+          prepareLoadout: () => undefined,
+        });
+        const description =
+          "Run a JavaScript body in the local Pi sandbox to call local Pi tools and MCP tools, including Cloudflare Workers observability. This is not remote Backoffice execution: state and defineWorkflow are unavailable. Use backofficeCodemode for programs against the active Backoffice scope.";
+        pi.registerTool({
+          ...nativeCodemode,
+          name: "localCodemode",
+          label: "Local Codemode",
+          description: `${description}\n\n${nativeCodemode.description}`,
+          exposure: "model-only",
+          promptSnippet: "Run local Pi and MCP tool scripts",
+          promptGuidelines: [
+            "Use localCodemode to batch local Pi and MCP tool calls; use backofficeCodemode for remote Backoffice programs.",
+          ],
+          prepareLoadout(loadout) {
+            const changes = nativeCodemode.prepareLoadout?.(loadout);
+            return {
+              ...changes,
+              descriptions: {
+                ...changes?.descriptions,
+                localCodemode: `${description}\n\n${changes?.descriptions?.["codemode"] ?? nativeCodemode.description}`,
+              },
+              hiddenDeclarations: ["codemode"],
+            };
+          },
+          renderCall(args, theme, context) {
+            const { code } = args as { code: string };
+            return renderCodemodeCall("localCodemode", code, 0, theme, context.expanded);
+          },
+          async execute(_toolCallId, params, signal, onUpdate, ctx) {
+            const outcome = await ctx.executeTool("codemode", params, { signal, onUpdate });
+            // The nested-tool pipeline already accounts for the native executor's usage.
+            const { usage: _nestedUsage, ...result } = outcome.result as Awaited<
+              ReturnType<typeof nativeCodemode.execute>
+            >;
+            return { ...result, isError: outcome.isError };
+          },
+        });
+      },
+    });
 
     const localRead = createReadToolDefinition(cwd);
     pi.registerTool({
@@ -472,56 +566,30 @@ export default function registerBackofficeExtension(pi: ExtensionAPI) {
     });
 
     pi.registerTool({
-      name: "execCodeMode",
-      label: "Exec Code Mode",
+      name: "backofficeCodemode",
+      label: "Backoffice Codemode",
+      exposure: "model-only",
       namespace: BACKOFFICE_TOOL_NAMESPACE,
       outputSchema: Type.Unknown(),
-      description: `Execute one top-level codemode program against the active Backoffice scope. Output is limited to ${DEFAULT_MAX_LINES} lines or ${formatSize(DEFAULT_MAX_BYTES)}; return a smaller projection when truncated.`,
+      description: `Execute an async arrow function or defineWorkflow program remotely against the active Backoffice scope, with its scoped state APIs and persistent filesystem. This does not run in the local Pi sandbox and cannot call local Pi or MCP tools; use localCodemode for those. Output is limited to ${DEFAULT_MAX_LINES} lines or ${formatSize(DEFAULT_MAX_BYTES)}; return a smaller projection when truncated.`,
       parameters: Type.Object({
         code: Type.String({
           minLength: 1,
-          description: "An async arrow function or defineWorkflow program.",
+          description:
+            "A complete async arrow function or defineWorkflow program to execute remotely in Backoffice, not a local JavaScript body.",
         }),
         dependencies: Type.Optional(
           Type.Record(Type.String({ minLength: 1 }), Type.String({ minLength: 1 })),
         ),
       }),
       renderCall(args, theme, context) {
-        const container = new Container();
-        const dependencyCount = args.dependencies ? Object.keys(args.dependencies).length : 0;
-        const dependencySummary =
-          dependencyCount > 0
-            ? theme.fg(
-                "muted",
-                ` · ${dependencyCount} ${dependencyCount === 1 ? "dependency" : "dependencies"}`,
-              )
-            : "";
-        container.addChild(
-          new Text(
-            `${theme.fg("toolTitle", theme.bold("execCodeMode"))}${dependencySummary}`,
-            0,
-            0,
-          ),
+        return renderCodemodeCall(
+          "backofficeCodemode",
+          args.code,
+          args.dependencies ? Object.keys(args.dependencies).length : 0,
+          theme,
+          context.expanded,
         );
-
-        const codeLines = args.code.split("\n");
-        const visibleLines = context.expanded ? codeLines : codeLines.slice(0, 30);
-        const hiddenLineCount = codeLines.length - visibleLines.length;
-        const fence = args.code.includes("````") ? "`````" : "````";
-        container.addChild(
-          new Markdown(
-            `${fence}javascript\n${visibleLines.join("\n")}\n${fence}`,
-            0,
-            0,
-            getMarkdownTheme(),
-          ),
-        );
-        if (hiddenLineCount > 0) {
-          container.addChild(
-            new Text(theme.fg("dim", `… ${hiddenLineCount} more lines (expand to view)`), 0, 0),
-          );
-        }
-        return container;
       },
       async execute(_toolCallId, params, signal, _onUpdate, ctx) {
         const session = findBackofficeSession(ctx);
@@ -555,6 +623,7 @@ export default function registerBackofficeExtension(pi: ExtensionAPI) {
         pi.registerTool(
           createReadToolDefinition(ctx.cwd, { autoResizeImages: settings.getImageAutoResize() }),
         );
+        void createCodemodeExtension()(pi);
         backofficeToolsActive = false;
       }
       // Saved branch state survives reloads, unlike backofficeToolsActive.
@@ -563,6 +632,14 @@ export default function registerBackofficeExtension(pi: ExtensionAPI) {
       }
       ctx.ui.setStatus("backoffice", undefined);
       return;
+    }
+    if (
+      !pi.getMcpServers().some((server) => server.name === CLOUDFLARE_OBSERVABILITY_SERVER.name)
+    ) {
+      pi.registerMcpServer(
+        CLOUDFLARE_OBSERVABILITY_SERVER.name,
+        CLOUDFLARE_OBSERVABILITY_SERVER.config,
+      );
     }
     registerBackofficeTools(ctx.cwd);
     pi.setActiveTools(BACKOFFICE_TOOL_NAMES);
@@ -585,7 +662,11 @@ export default function registerBackofficeExtension(pi: ExtensionAPI) {
 
   pi.on("before_agent_start", (_event, ctx) => {
     const session = findBackofficeSession(ctx);
-    return session ? { systemPrompt: session.systemPrompt } : undefined;
+    return session
+      ? {
+          systemPrompt: `${session.systemPrompt.replaceAll("execCodeMode", "backofficeCodemode")}\n\nUse backofficeCodemode for remote Backoffice execution: submit a complete async arrow function or defineWorkflow program using the active scope's state APIs. Use localCodemode for local Pi and MCP tool scripts: submit a JavaScript body using tools, searchTools(), and describeNamespace("mcp__cloudflare_observability") to inspect Cloudflare Workers logs and observability data. localCodemode does not expose Backoffice state or defineWorkflow. If Cloudflare authentication is required, ask the user to run /mcp login cloudflare-observability.`,
+        }
+      : undefined;
   });
 
   pi.registerCommand("backoffice", {
