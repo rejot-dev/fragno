@@ -44,6 +44,8 @@ export type GitHubAppFragmentConfig = {
   tokenCacheTtlSeconds?: number;
   userAuthorizationStateTtlMs?: number;
   webhook?: GitHubAppWebhookConfig;
+  /** Transport for GitHub REST and OAuth requests; defaults to the global fetch. */
+  fetch?: typeof globalThis.fetch;
 };
 
 export type GitHubAppFragmentPublicClientConfig = FragnoPublicClientConfig;

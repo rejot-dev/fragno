@@ -14,7 +14,7 @@ export const githubAppFragmentDefinition = defineFragment<GitHubAppFragmentConfi
 )
   .extend(withDatabase(githubAppSchema))
   .withDependencies(({ config }) => ({
-    githubApiClient: createGitHubApiClient(config),
+    githubApiClient: createGitHubApiClient(config, { fetch: config.fetch }),
   }))
   .providesBaseService(({ deps, defineService }) => createGitHubServices(deps, defineService))
   .provideHooks(({ defineHook, config }) => ({
