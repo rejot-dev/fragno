@@ -6,8 +6,15 @@ import {
 } from "@/backoffice-runtime/context";
 import { createInMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
 import type { BackofficeKernelAction, BackofficeKernelObserver } from "@/backoffice-runtime/kernel";
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import { buildExternalIdentityBindingId } from "@/fragno/automation/external-identities";
+
+import { InMemoryAutomationsObject } from "./automations.do";
+
+const localObjects = {
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+} satisfies LocalBackofficeObjects;
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
   class MockDurableObject {
@@ -52,7 +59,10 @@ const actionContext = (execution = objectExecution) => ({ execution });
 describe("Automations identity binding RPCs", () => {
   test("observes one authorized action around each binding mutation", async () => {
     const observer = new RecordingKernelObserver();
-    const runtime = await createInMemoryBackofficeRuntime({ kernelObserver: observer });
+    const runtime = await createInMemoryBackofficeRuntime({
+      objects: localObjects,
+      kernelObserver: observer,
+    });
 
     try {
       const automations = runtime.objects.automations.for(scope);
@@ -140,6 +150,7 @@ describe("Automations identity binding RPCs", () => {
   test("denies bind and revoke before entering persistence", async () => {
     const observer = new RecordingKernelObserver();
     const runtime = await createInMemoryBackofficeRuntime({
+      objects: localObjects,
       kernelObserver: observer,
       authorityResolver: {
         async resolvePrincipalPermissions() {
@@ -194,7 +205,10 @@ describe("Automations identity binding RPCs", () => {
 
   test("rejects a mutation when execution scope differs from the object scope", async () => {
     const observer = new RecordingKernelObserver();
-    const runtime = await createInMemoryBackofficeRuntime({ kernelObserver: observer });
+    const runtime = await createInMemoryBackofficeRuntime({
+      objects: localObjects,
+      kernelObserver: observer,
+    });
 
     try {
       const automations = runtime.objects.automations.for(scope);

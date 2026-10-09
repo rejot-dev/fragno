@@ -17,7 +17,7 @@ export type CreateInMemoryBackofficeRuntimeOptions = Omit<
 
 /** Creates the test-only Backoffice runtime with node:vm dynamic workers and default test secrets. */
 export async function createInMemoryBackofficeRuntime(
-  options: CreateInMemoryBackofficeRuntimeOptions = {},
+  options: CreateInMemoryBackofficeRuntimeOptions,
 ): Promise<InMemoryBackofficeRuntime> {
   const { env, ...runtimeOptions } = options;
   return await createLocalBackofficeRuntime({

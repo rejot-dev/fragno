@@ -73,7 +73,7 @@ test.each(webhookCases)(
       defineBackofficeScenario({
         name: `Resend ${scopePathSegment} public webhook boundary`,
         options: { drain: false },
-        objectFactories: {
+        objectOverrides: {
           RESEND: ({ state, env, runtime, implementation, nowEpochMs }) =>
             new InMemoryResendObject({
               state,

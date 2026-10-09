@@ -29,7 +29,7 @@ import {
 } from "@/backoffice-runtime/context";
 import type { InMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
-import type { LocalObjectFactoryOverrides } from "@/backoffice-runtime/local-object-factory";
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
 import { runBackofficeCompiledModule } from "@/fragno/codemode/compiled-module-execute";
 import { javaScriptModuleArtifactSchema } from "@/fragno/codemode/javascript-module-artifact";
@@ -88,7 +88,7 @@ afterAll(async () => {
 function scriptedExtensionAgents(
   responses: FauxResponseStep[],
   reports: unknown[],
-): LocalObjectFactoryOverrides {
+): LocalBackofficeObjects {
   return {
     PI: ({ state, runtime, openPiSessionStore, piAgentIdFromConfig, nowEpochMs }) => {
       const faux = fauxProvider();
@@ -294,7 +294,7 @@ test("js.build bundles native imports once; Pi inspects and renders fresh files 
       env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
       options: { drain: false },
       piAvailableModels: [{ provider: "faux", modelId: "faux-1", label: "Faux 1" }],
-      objectFactories: scriptedExtensionAgents(
+      objectOverrides: scriptedExtensionAgents(
         [
           (context) => {
             modelCalls += 1;
@@ -442,7 +442,7 @@ test("native workspace tools and built-in hooks run through sealed codemode with
       env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
       options: { drain: false },
       piAvailableModels: [{ provider: "faux", modelId: "faux-1", label: "Faux 1" }],
-      objectFactories: scriptedExtensionAgents(
+      objectOverrides: scriptedExtensionAgents(
         [
           (context): AssistantMessage => {
             calls++;
@@ -549,7 +549,7 @@ test("user, project and system sessions do not inherit organization build artifa
       env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
       options: { drain: false },
       piAvailableModels: [{ provider: "faux", modelId: "faux-1", label: "Faux 1" }],
-      objectFactories: scriptedExtensionAgents(
+      objectOverrides: scriptedExtensionAgents(
         [
           (context) => {
             expect(JSON.stringify(context.messages)).not.toContain("Valid extension guidance");
@@ -593,7 +593,7 @@ test("source edits require an explicit rebuild and existing sessions retain thei
       env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
       options: { drain: false },
       piAvailableModels: [{ provider: "faux", modelId: "faux-1", label: "Faux 1" }],
-      objectFactories: scriptedExtensionAgents(
+      objectOverrides: scriptedExtensionAgents(
         [
           (context) => {
             modelCalls += 1;
@@ -764,7 +764,7 @@ for (const invalid of [
         env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
         options: { drain: false },
         piAvailableModels: [{ provider: "faux", modelId: "faux-1", label: "Faux 1" }],
-        objectFactories: scriptedExtensionAgents(
+        objectOverrides: scriptedExtensionAgents(
           [
             (context) => {
               expect(JSON.stringify(context.messages)).toContain("# Backoffice System Guidance");
@@ -849,7 +849,7 @@ for (const invalid of artifactFailureCases) {
         env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
         options: { drain: false },
         piAvailableModels: [{ provider: "faux", modelId: "faux-1", label: "Faux 1" }],
-        objectFactories: scriptedExtensionAgents(
+        objectOverrides: scriptedExtensionAgents(
           [
             (context) => {
               expect(JSON.stringify(context.messages)).toContain("# Backoffice System Guidance");
@@ -919,7 +919,7 @@ for (const invalid of [
         env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
         options: { drain: false },
         piAvailableModels: [{ provider: "faux", modelId: "faux-1", label: "Faux 1" }],
-        objectFactories: scriptedExtensionAgents(
+        objectOverrides: scriptedExtensionAgents(
           [
             (context) => {
               expect(JSON.stringify(context.messages)).toContain("# Backoffice System Guidance");
@@ -980,7 +980,7 @@ for (const invalid of [
         env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
         options: { drain: false },
         piAvailableModels: [{ provider: "faux", modelId: "faux-1", label: "Faux 1" }],
-        objectFactories: scriptedExtensionAgents(
+        objectOverrides: scriptedExtensionAgents(
           [
             (context) => {
               expect(JSON.stringify(context.messages)).toContain("# Backoffice System Guidance");
@@ -1060,7 +1060,7 @@ for (const invalid of [
         env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
         options: { drain: false },
         piAvailableModels: [{ provider: "faux", modelId: "faux-1", label: "Faux 1" }],
-        objectFactories: scriptedExtensionAgents(
+        objectOverrides: scriptedExtensionAgents(
           [
             () => ({
               ...fauxAssistantMessage(""),
@@ -1112,7 +1112,7 @@ test("hook-only extensions preserve native failure isolation and reject malforme
       env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
       options: { drain: false },
       piAvailableModels: [{ provider: "faux", modelId: "faux-1", label: "Faux 1" }],
-      objectFactories: scriptedExtensionAgents(
+      objectOverrides: scriptedExtensionAgents(
         [() => fauxAssistantMessage("Malformed hook did not break the session.")],
         reports,
       ),

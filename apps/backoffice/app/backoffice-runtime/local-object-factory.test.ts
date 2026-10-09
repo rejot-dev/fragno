@@ -17,6 +17,8 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
 
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
+import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
+
 import type { BackofficeDatabaseAdapterFactory } from "./database-adapters";
 import { defaultInMemoryBackofficeRuntimeEnv } from "./in-memory-runtime-env";
 import { LocalObjectFactory } from "./local-object-factory";
@@ -39,7 +41,8 @@ const createFactory = () => {
     runtimeEnv: defaultInMemoryBackofficeRuntimeEnv(),
     clearDurableHooks: async () => {},
     getRuntimeServices: () => ({ adapters }) as BackofficeRuntimeServices,
-    objectFactories: {
+    objects: {
+      ...allLocalObjects,
       UPLOAD: ({ name }) => ({ name }),
     },
   });
@@ -65,7 +68,8 @@ function createClockDrainFactory(runDrain: (nowEpochMs: () => number) => Promise
     runtimeEnv: defaultInMemoryBackofficeRuntimeEnv(),
     clearDurableHooks: async () => {},
     getRuntimeServices: () => ({ adapters }) as BackofficeRuntimeServices,
-    objectFactories: {
+    objects: {
+      ...allLocalObjects,
       UPLOAD: ({ state, nowEpochMs }) => {
         state.setBackgroundDrain(async () => {
           await runDrain(nowEpochMs);
@@ -138,7 +142,8 @@ describe("LocalObjectFactory", () => {
       runtimeEnv: defaultInMemoryBackofficeRuntimeEnv(),
       clearDurableHooks: async () => {},
       getRuntimeServices: () => ({ adapters }) as BackofficeRuntimeServices,
-      objectFactories: {
+      objects: {
+        ...allLocalObjects,
         UPLOAD: ({ state, nowEpochMs }) => {
           state.setBackgroundDrain(async () => {
             observedTimes.push(Date.now(), nowEpochMs());

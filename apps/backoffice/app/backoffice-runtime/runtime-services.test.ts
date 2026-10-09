@@ -8,6 +8,9 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
 
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
+
+import { InMemoryAuthObject } from "../../workers/auth.do";
 import { createInMemoryBackofficeRuntime } from "./in-memory-runtime";
 import {
   BackofficeKernel,
@@ -19,6 +22,10 @@ import {
   parseAuthEmailVerificationRuntimeConfig,
   parseSignUpInvitationsEnabled,
 } from "./runtime-services";
+
+const localObjects = {
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+} satisfies LocalBackofficeObjects;
 
 describe("Backoffice authority runtime wiring", () => {
   it("does not let an observer authorize when the Cloudflare authority source is unavailable", async () => {
@@ -70,7 +77,7 @@ describe("Backoffice authority runtime wiring", () => {
   });
 
   it("denies the next action after membership is revoked in the Auth object", async () => {
-    const runtime = await createInMemoryBackofficeRuntime();
+    const runtime = await createInMemoryBackofficeRuntime({ objects: localObjects });
 
     try {
       const auth = runtime.objects.auth.singleton();
@@ -221,6 +228,7 @@ describe("parseAuthEmailVerificationRuntimeConfig", () => {
   it("fails in-memory runtime construction before creating services", async () => {
     await expect(
       createInMemoryBackofficeRuntime({
+        objects: localObjects,
         env: {
           AUTH_EMAIL_VERIFICATION_ENABLED: "true",
           DOCS_PUBLIC_BASE_URL: undefined,

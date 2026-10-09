@@ -395,7 +395,7 @@ describe("marketplace lock scenarios", () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         name: "preserve concurrently changed files during a Marketplace install",
-        objectFactories: {
+        objectOverrides: {
           UPLOAD: ({ name, state, env, runtime, implementation }) =>
             new (class extends InMemoryUploadObject {
               async fetch(request: Request): Promise<Response> {
@@ -531,7 +531,7 @@ describe("marketplace lock scenarios", () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         name: "replay a committed Marketplace lock write",
-        objectFactories: {
+        objectOverrides: {
           UPLOAD: ({ name, state, env, runtime, implementation }) =>
             new (class extends InMemoryUploadObject {
               async fetch(request: Request): Promise<Response> {
@@ -604,7 +604,7 @@ describe("marketplace lock scenarios", () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         name: "preserve a concurrent Marketplace lock writer",
-        objectFactories: {
+        objectOverrides: {
           UPLOAD: ({ name, state, env, runtime, implementation }) =>
             new (class extends InMemoryUploadObject {
               async fetch(request: Request): Promise<Response> {

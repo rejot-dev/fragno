@@ -16,12 +16,21 @@ vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoin
 
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import { createInMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { createBackofficeCapabilitiesRuntime } from "@/fragno/runtime-tools/families/backoffice-capabilities";
+
+import { InMemoryApiObject } from "./api.do";
+import { InMemoryAutomationsObject } from "./automations.do";
+
+const localObjects = {
+  API: (input) => new InMemoryApiObject(input),
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+} satisfies LocalBackofficeObjects;
 
 const runtimes: Array<Awaited<ReturnType<typeof createInMemoryBackofficeRuntime>>> = [];
 
 async function createRuntime() {
-  const runtime = await createInMemoryBackofficeRuntime();
+  const runtime = await createInMemoryBackofficeRuntime({ objects: localObjects });
   runtimes.push(runtime);
   return runtime;
 }

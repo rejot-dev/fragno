@@ -45,7 +45,7 @@ import {
 } from "@/backoffice-runtime/context";
 import type { InMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
-import type { LocalObjectFactoryOverrides } from "@/backoffice-runtime/local-object-factory";
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import { issueBackofficeTokenResultSchema } from "@/fragno/auth/contracts";
 import type { CodemodeWorkflowParams } from "@/fragno/automation/engine/codemode-invocation";
@@ -76,7 +76,7 @@ const PI_SCENARIO_AVAILABLE_MODELS = [
 function scriptedAgents(
   responses: FauxResponseStep[],
   settings?: HarnessSettings,
-): LocalObjectFactoryOverrides {
+): LocalBackofficeObjects {
   return {
     PI: ({ state, runtime, openPiSessionStore, piAgentIdFromConfig, nowEpochMs }) => {
       const faux = fauxProvider();
@@ -155,7 +155,7 @@ test("durable Pi discovers scoped skills and executes read, search, codemode and
     service: { type: "automation", id: "durable-tool-scenario" },
   });
   let config: PiAgentConfig;
-  const objectFactories = scriptedAgents([
+  const objectOverrides = scriptedAgents([
     (context) => {
       if (
         context.messages.filter((message) => message.role === "user").at(-1)?.content ===
@@ -228,7 +228,7 @@ test("durable Pi discovers scoped skills and executes read, search, codemode and
     defineBackofficeScenario({
       name: "durable Pi Backoffice environment and tools",
       options: { drain: false },
-      objectFactories,
+      objectOverrides,
       piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
       setup: ({ given }) => [
         given.organization.exists({ id: "org-1" }),
@@ -281,7 +281,7 @@ for (const revocation of ["restricted", "disabled", "deleted"] as const) {
       defineBackofficeScenario({
         name: `durable Pi live route authority after ${revocation}`,
         options: { drain: false },
-        objectFactories: scriptedAgents([
+        objectOverrides: scriptedAgents([
           (context) => {
             modelCalls += 1;
             expect(JSON.stringify(context.messages)).toContain("# Backoffice System Guidance");
@@ -453,7 +453,7 @@ test("durable Pi preserves an explicit null child billing owner", async () => {
     defineBackofficeScenario({
       name: "durable Pi explicit null child billing owner",
       options: { drain: false },
-      objectFactories: scriptedAgents([
+      objectOverrides: scriptedAgents([
         fauxAssistantMessage(
           [
             fauxToolCall("execCodeMode", {
@@ -506,7 +506,7 @@ test("durable Pi delivers committed model usage to its persisted billing owner",
     defineBackofficeScenario({
       name: "durable Pi committed usage billing",
       options: { drain: false },
-      objectFactories: scriptedAgents(
+      objectOverrides: scriptedAgents(
         [
           fauxAssistantMessage("Usage was durably billed."),
           fauxAssistantMessage("Compaction usage was durably billed."),
@@ -583,7 +583,7 @@ test("durable Pi persists creator provenance rather than JWT authority and reche
     defineBackofficeScenario({
       name: "durable Pi current billing authority",
       options: { drain: false },
-      objectFactories: scriptedAgents([
+      objectOverrides: scriptedAgents([
         () => {
           modelCalls += 1;
           return fauxAssistantMessage("Must not run.");
@@ -701,7 +701,7 @@ for (const revokeBillingAccess of [false, true]) {
           "automations/saved-sentence-checker.workflow.js": savedWorkflowCode,
         }),
         options: { drain: false },
-        objectFactories: scriptedAgents([
+        objectOverrides: scriptedAgents([
           (context) => {
             if (
               context.messages.filter((message) => message.role === "user").at(-1)?.content ===
@@ -869,7 +869,7 @@ test("durable Pi restores scoped tools and reports interrupted codemode without 
     agent: InMemoryPiObject;
     options: ConstructorParameters<typeof InMemoryPiObject>[0];
   } | null = null;
-  const objectFactories: LocalObjectFactoryOverrides = {
+  const objectOverrides: LocalBackofficeObjects = {
     PI: ({ state, runtime, piAgentIdFromConfig, nowEpochMs }) => {
       const database = openNodeSqliteDatabase(":memory:");
       const faux = fauxProvider();
@@ -924,7 +924,7 @@ test("durable Pi restores scoped tools and reports interrupted codemode without 
       defineBackofficeScenario({
         name: "durable Pi interrupted codemode recovery",
         options: { drain: false },
-        objectFactories,
+        objectOverrides,
         piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
         setup: ({ given }) => [
           given.organization.exists({ id: "org-1" }),
@@ -1011,7 +1011,7 @@ test("durable Pi scoped codemode handles select a different manager instead of r
     defineBackofficeScenario({
       name: "durable Pi scoped child directory",
       options: { drain: false },
-      objectFactories: scriptedAgents([
+      objectOverrides: scriptedAgents([
         fauxAssistantMessage(
           [
             fauxToolCall("execCodeMode", {
@@ -1102,7 +1102,7 @@ test("Cloudflare backend analytics delivers verified outcomes and Pi usage witho
   const directory = await mkdtemp(path.join(os.tmpdir(), "backoffice-posthog-"));
   const deliveries: Promise<unknown>[] = [];
   let config: PiAgentConfig | null = null;
-  const objectFactories: LocalObjectFactoryOverrides = {
+  const objectOverrides: LocalBackofficeObjects = {
     PI: ({ state, runtime, openPiSessionStore, piAgentIdFromConfig, nowEpochMs }) => {
       const faux = fauxProvider();
       faux.setResponses([fauxAssistantMessage("PRIVATE_ASSISTANT_OUTPUT")]);
@@ -1136,7 +1136,7 @@ test("Cloudflare backend analytics delivers verified outcomes and Pi usage witho
       defineBackofficeScenario({
         name: "PostHog captures SQLite-backed server outcomes and durable generations",
         options: { drain: false, sqliteDataDirectory: directory },
-        objectFactories,
+        objectOverrides,
         piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
         env: { AUTH_EMAIL_VERIFICATION_ENABLED: "false", SIGN_UP_INVITATIONS_ENABLED: "false" },
         vars: () => ({ session: "" }),

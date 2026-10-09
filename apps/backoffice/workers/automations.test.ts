@@ -59,7 +59,18 @@ vi.mock("cloudflare:workers", () => ({
   WorkerEntrypoint,
 }));
 
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { readBackofficeAutomationSource } from "@/fragno/automation/read-backoffice-automation-source";
+
+import { InMemoryAutomationsObject } from "./automations.do";
+import { InMemoryMarketplaceObject } from "./marketplace.do";
+import { InMemoryUploadObject } from "./upload.do";
+
+const localObjects = {
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  MARKETPLACE: (input) => new InMemoryMarketplaceObject(input),
+  UPLOAD: (input) => new InMemoryUploadObject(input),
+} satisfies LocalBackofficeObjects;
 
 const objects = {} as BackofficeObjectRegistry;
 const USER_WORKSPACE_INGESTION_TEST_VERSION = "1.2.1";
@@ -182,7 +193,7 @@ describe("readBackofficeAutomationSource", () => {
 
 describe("Automations authorized HTTP context", () => {
   test("allows a user-scoped automation to mutate its store", async () => {
-    const runtime = await createInMemoryBackofficeRuntime();
+    const runtime = await createInMemoryBackofficeRuntime({ objects: localObjects });
 
     try {
       const scope = { kind: "user" as const, userId: "user-1" };
@@ -274,7 +285,8 @@ describe("Automations authorized HTTP context", () => {
 
   test("allows a current administrator to mutate the system store", async () => {
     const runtime = await createInMemoryBackofficeRuntime({
-      objectFactories: {
+      objects: {
+        ...localObjects,
         AUTH: () =>
           ({
             async getUserAuthorityFacts({ userId }: { userId: string }) {
@@ -349,7 +361,8 @@ describe("Automations authorized HTTP context", () => {
       throw new Error("Auth should not be called for verified access-token authority.");
     });
     const runtime = await createInMemoryBackofficeRuntime({
-      objectFactories: {
+      objects: {
+        ...localObjects,
         AUTH: () => ({ getUserAuthorityFacts }) as never,
       },
     });
@@ -387,7 +400,8 @@ describe("Automations authorized HTTP context", () => {
 
   test("denies banned users without access-token authority despite stale role and membership records", async () => {
     const runtime = await createInMemoryBackofficeRuntime({
-      objectFactories: {
+      objects: {
+        ...localObjects,
         AUTH: () =>
           ({
             async getUserAuthorityFacts() {
@@ -428,6 +442,7 @@ describe("Automations authorized HTTP context", () => {
 
   test("reports authority resolution outages as HTTP 503", async () => {
     const runtime = await createInMemoryBackofficeRuntime({
+      objects: localObjects,
       authorityResolver: unavailableBackofficeAuthorityResolver,
     });
 
@@ -461,6 +476,7 @@ describe("Automations authorized HTTP context", () => {
 
   test("preserves delegated actor capability denial reasons", async () => {
     const runtime = await createInMemoryBackofficeRuntime({
+      objects: localObjects,
       authorityResolver: {
         async resolvePrincipalPermissions() {
           return [BACKOFFICE_PERMISSION.store.modify];
@@ -511,7 +527,7 @@ describe("Automations authorized HTTP context", () => {
   });
 
   test("rejects store mutation routes without trusted action context", async () => {
-    const runtime = await createInMemoryBackofficeRuntime();
+    const runtime = await createInMemoryBackofficeRuntime({ objects: localObjects });
 
     try {
       const scope = { kind: "user" as const, userId: "user-1" };
@@ -561,6 +577,7 @@ describe("Automations authorized HTTP context", () => {
     let permissions = [BACKOFFICE_PERMISSION.router.modify, BACKOFFICE_PERMISSION.store.modify];
     const resolvePrincipalPermissions = vi.fn(async () => permissions);
     const runtime = await createInMemoryBackofficeRuntime({
+      objects: localObjects,
       authorityResolver: {
         resolvePrincipalPermissions,
         async resolveActorCapabilityGrants() {
@@ -695,7 +712,7 @@ describe("Automations authorized HTTP context", () => {
   });
 
   test("rejects workflow route mutation without trusted action context", async () => {
-    const runtime = await createInMemoryBackofficeRuntime();
+    const runtime = await createInMemoryBackofficeRuntime({ objects: localObjects });
 
     try {
       const callRoute = createAutomationsRouteCaller({
@@ -738,6 +755,7 @@ describe("Automations authorized HTTP context", () => {
       { namespace: "store" as const, permission: "modify" as const },
     ]);
     const runtime = await createInMemoryBackofficeRuntime({
+      objects: localObjects,
       authorityResolver: {
         resolvePrincipalPermissions,
         async resolveActorCapabilityGrants() {
@@ -785,6 +803,7 @@ describe("Automations authorized HTTP context", () => {
 
   test("rejects public workflow completion targets", async () => {
     const runtime = await createInMemoryBackofficeRuntime({
+      objects: localObjects,
       authorityResolver: {
         async resolvePrincipalPermissions() {
           return [
@@ -843,6 +862,7 @@ describe("Automations authorized HTTP context", () => {
 
   test("requires dedicated code execution authority for codemode creation", async () => {
     const runtime = await createInMemoryBackofficeRuntime({
+      objects: localObjects,
       authorityResolver: {
         async resolvePrincipalPermissions() {
           return [BACKOFFICE_PERMISSION.workflow.modify];
@@ -891,6 +911,7 @@ describe("Automations authorized HTTP context", () => {
 
   test("allows code-authorized single and batch creation of Pi codemode workflows", async () => {
     const runtime = await createInMemoryBackofficeRuntime({
+      objects: localObjects,
       authorityResolver: {
         async resolvePrincipalPermissions() {
           return [
@@ -949,6 +970,7 @@ describe("Automations authorized HTTP context", () => {
 
   test("rejects public codemode capability grants", async () => {
     const runtime = await createInMemoryBackofficeRuntime({
+      objects: localObjects,
       authorityResolver: {
         async resolvePrincipalPermissions() {
           return [
@@ -1021,7 +1043,7 @@ describe("Automations authorized HTTP context", () => {
   });
 
   test("does not mutate when the execution scope differs from the object scope", async () => {
-    const runtime = await createInMemoryBackofficeRuntime();
+    const runtime = await createInMemoryBackofficeRuntime({ objects: localObjects });
 
     try {
       const automations = runtime.objects.automations.forUser({
@@ -1058,7 +1080,7 @@ describe("Automations authorized HTTP context", () => {
 
 describe("Automations object scope binding", () => {
   test("rejects events whose scope does not match the object address", async () => {
-    const runtime = await createInMemoryBackofficeRuntime();
+    const runtime = await createInMemoryBackofficeRuntime({ objects: localObjects });
 
     try {
       await expect(
@@ -1070,7 +1092,7 @@ describe("Automations object scope binding", () => {
   });
 
   test("rejects events whose scope does not match an already configured object", async () => {
-    const runtime = await createInMemoryBackofficeRuntime();
+    const runtime = await createInMemoryBackofficeRuntime({ objects: localObjects });
 
     try {
       const automations = runtime.objects.automations.forOrg("org-1");
@@ -1086,7 +1108,8 @@ describe("Automations object scope binding", () => {
 
   test("ingests marketplace artifacts into an organization member's user workspace", async () => {
     const runtime = await createInMemoryBackofficeRuntime({
-      objectFactories: {
+      objects: {
+        ...localObjects,
         AUTH: () =>
           ({
             hasOrganizationMember: async ({
@@ -1168,7 +1191,8 @@ describe("Automations object scope binding", () => {
   test("revalidates user workspace membership inside the ingestion workflow", async () => {
     let membershipChecks = 0;
     const runtime = await createInMemoryBackofficeRuntime({
-      objectFactories: {
+      objects: {
+        ...localObjects,
         AUTH: () =>
           ({
             hasOrganizationMember: async () => {
@@ -1248,7 +1272,7 @@ describe("Automations object scope binding", () => {
   });
 
   test("rejects marketplace project targets from another organization", async () => {
-    const runtime = await createInMemoryBackofficeRuntime();
+    const runtime = await createInMemoryBackofficeRuntime({ objects: localObjects });
 
     try {
       await expect(

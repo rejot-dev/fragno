@@ -3,7 +3,6 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import type { FragmentDurableObjectHostOperations } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 
 import type { Storage } from "@earendil-works/pi-durable";
@@ -17,35 +16,10 @@ import {
 } from "@/fragno/pi-manager/pi-agent-contract";
 import type { CreateSandboxRuntimeProviders } from "@/sandbox/contracts";
 
-import { InMemoryApiObject } from "../../workers/api.do";
-import { InMemoryAppInstallationsObject } from "../../workers/app-installations.do";
-import { InMemoryAppsObject } from "../../workers/apps.do";
-import { InMemoryAuthObject } from "../../workers/auth.do";
-import { InMemoryAutomationsObject } from "../../workers/automations.do";
-import { InMemoryBillingObject } from "../../workers/billing.do";
-import { InMemoryCloudflareObject } from "../../workers/cloudflare.do";
-import { InMemoryFormsObject } from "../../workers/forms.do";
-import { InMemoryGitHubWebhookRouterObject } from "../../workers/github-webhook-router.do";
-import { InMemoryGitHubObject } from "../../workers/github.do";
 import { createInMemoryAuthDatabase } from "../../workers/in-memory-auth-database";
 import { noOpBackofficeConfiguredObjectLifecycle } from "../../workers/lib/backoffice-fragment-durable-object";
 import type { BackofficeObjectImplementation } from "../../workers/lib/backoffice-object-implementation";
-import {
-  createPiDurableHarnessOptions,
-  createPiDurableModels,
-  listSupportedPiDurableModels,
-} from "../../workers/lib/pi-durable-harness-options";
-import { InMemoryMarketplaceObject } from "../../workers/marketplace.do";
-import { InMemoryMcpObject } from "../../workers/mcp.do";
-import { InMemoryOtpObject } from "../../workers/otp.do";
-import { InMemoryPiManagerObject } from "../../workers/pi-manager.do";
-import { InMemoryPiObject } from "../../workers/pi.do";
-import { InMemoryProjectConnectorObject } from "../../workers/project-connector.do";
-import { InMemoryResendObject } from "../../workers/resend.do";
-import { InMemoryReson8Object } from "../../workers/reson8.do";
-import { InMemorySandboxManagerObject } from "../../workers/sandbox-manager.do";
-import { InMemoryTelegramObject } from "../../workers/telegram.do";
-import { InMemoryUploadObject } from "../../workers/upload.do";
+import type { InMemoryPiObject } from "../../workers/pi.do";
 import type { BackofficeRuntimeEnv } from "./backoffice-runtime-env";
 import { createDurableObjectDatabaseAdapterScope } from "./database-adapters";
 import {
@@ -83,12 +57,12 @@ import {
   type BackofficeRuntimeServices,
 } from "./runtime-services";
 
-type LocalObjectBindingName = BackofficeObjectBindingName | "PI";
+export type LocalObjectBindingName = BackofficeObjectBindingName | "PI";
 
-export type LocalBackofficeObjectFactory<TObject> = (input: {
+export type LocalBackofficeObjectFactoryInput = {
   id: DurableObjectId;
   name: string;
-  state: Parameters<LocalDurableObjectFactory<TObject>>[0]["state"];
+  state: Parameters<LocalDurableObjectFactory<unknown>>[0]["state"];
   env: BackofficeRuntimeEnv;
   runtime: BackofficeRuntimeServices;
   implementation: BackofficeObjectImplementation;
@@ -101,9 +75,17 @@ export type LocalBackofficeObjectFactory<TObject> = (input: {
   readonly piAgentIdFromConfig: (config: PiAgentConfig) => DurableObjectId;
   readonly openPiSessionStore: () => Promise<Storage>;
   readonly piAvailableModels: readonly PiAvailableModel[] | null;
-}) => TObject;
+};
 
-export type LocalObjectFactoryOverrides = Partial<
+export type LocalBackofficeObjectFactory<TObject> = (
+  input: LocalBackofficeObjectFactoryInput,
+) => TObject;
+
+/**
+ * The objects a local runtime registers. Unlisted bindings are unconfigured, so a test that lists
+ * only the objects it uses does not import every object implementation and its SDKs.
+ */
+export type LocalBackofficeObjects = Partial<
   Record<LocalObjectBindingName, LocalBackofficeObjectFactory<unknown>>
 >;
 
@@ -115,7 +97,7 @@ export type LocalObjectFactoryOptions = {
   ) => FragmentDurableObjectHostOperations<BackofficeRuntimeEnv> | null;
   clearDurableHooks: (objectId: string) => Promise<void>;
   readAutomationSource?: AutomationSourceReader;
-  objectFactories?: LocalObjectFactoryOverrides;
+  objects: LocalBackofficeObjects;
   piAvailableModels?: readonly PiAvailableModel[];
   createSandboxProviders?: CreateSandboxRuntimeProviders;
   sqlite?: { directory: string; storage: SqliteBackofficeObjectStorage };
@@ -148,291 +130,6 @@ function getLocalAuthDatabase(
   return database;
 }
 
-class UnavailableLocalDurableObject {
-  async fetch() {
-    return Response.json({ message: "Not configured", code: "NOT_CONFIGURED" }, { status: 400 });
-  }
-
-  async alarm() {}
-
-  async getAdminConfig() {
-    return { configured: false };
-  }
-
-  async resetAdminConfig() {
-    return { configured: false };
-  }
-
-  async setAdminConfig() {
-    return { configured: false };
-  }
-
-  async queueEmail() {
-    throw new Error("Resend is not configured.");
-  }
-
-  async getDurableHookQueue() {
-    return {
-      configured: false,
-      hooksEnabled: false,
-      namespace: null,
-      items: [],
-      cursor: undefined,
-      hasNextPage: false,
-    };
-  }
-
-  async getDurableHook() {
-    return null;
-  }
-
-  async getUserAuthorityFacts() {
-    return {
-      active: false,
-      role: null,
-      organizationMember: false,
-    } as const;
-  }
-
-  async getUserOrganizationAuthorityFacts() {
-    return {
-      active: false,
-      role: null,
-      organizationRoles: null,
-    } as const;
-  }
-
-  async getAllOrganizations() {
-    return [];
-  }
-
-  async getOrganizationBySlug() {
-    return null;
-  }
-
-  async hasOrganizationMember() {
-    return false;
-  }
-
-  async getDevOrganizations() {
-    return [];
-  }
-
-  async ensureAdminConfig() {
-    return { configured: false };
-  }
-
-  async redeliverFailedInstallationWebhooks() {}
-
-  async resolveProjectForExecution() {
-    return null;
-  }
-
-  async listSandboxInstances() {
-    return [];
-  }
-
-  async getSandboxInstance() {
-    return null;
-  }
-
-  async requestSandboxInstance() {
-    throw new Error("Automations is not configured.");
-  }
-
-  async requestSandboxInstanceStop() {
-    return null;
-  }
-
-  async requestMarketplacePackagePublish() {
-    throw new Error("Automations is not configured.");
-  }
-
-  async requestStaticMarketplacePublications() {
-    throw new Error("Automations is not configured.");
-  }
-
-  async requestMarketplaceIngestion() {
-    throw new Error("Automations is not configured.");
-  }
-
-  async restartMarketplaceIngestion() {
-    throw new Error("Automations is not configured.");
-  }
-
-  async getRuntimeStatus() {
-    return { status: "stopped" };
-  }
-
-  async getRealtimeOriginDiagnostic() {
-    return null;
-  }
-}
-
-const createUnavailableLocalObject = () => new UnavailableLocalDurableObject();
-
-const localObjectFactories = {
-  API: ({ state, env, runtime, implementation, nowEpochMs }) =>
-    new InMemoryApiObject({
-      nowEpochMs,
-      state,
-      env,
-      runtime,
-      implementation,
-    }),
-  AUTH: ({ state, env, runtime, getAuthDatabase }) =>
-    new InMemoryAuthObject({
-      state,
-      env: env as never,
-      runtime,
-      database: getAuthDatabase(),
-    }),
-  TELEGRAM: ({ state, env, runtime, implementation, nowEpochMs }) =>
-    new InMemoryTelegramObject({
-      state,
-      env,
-      runtime,
-      implementation,
-      nowEpochMs,
-    }),
-  RESEND: ({ state, env, runtime, implementation, nowEpochMs }) =>
-    new InMemoryResendObject({
-      nowEpochMs,
-      state,
-      env,
-      runtime,
-      implementation,
-    }),
-  RESON8: ({ state, env, runtime, implementation, nowEpochMs }) =>
-    new InMemoryReson8Object({
-      nowEpochMs,
-      state,
-      env,
-      runtime,
-      implementation,
-    }),
-  MCP: ({ state, env, runtime, implementation, nowEpochMs }) =>
-    new InMemoryMcpObject({
-      nowEpochMs,
-      state,
-      env,
-      runtime,
-      implementation,
-    }),
-  PROJECT_CONNECTOR: ({ state, env, runtime, implementation, nowEpochMs }) =>
-    new InMemoryProjectConnectorObject({ state, env, runtime, implementation, nowEpochMs }),
-  OTP: ({ state, env, runtime, implementation }) =>
-    new InMemoryOtpObject({
-      state,
-      env,
-      runtime,
-      implementation,
-    }),
-  UPLOAD: ({ state, env, runtime, implementation }) =>
-    new InMemoryUploadObject({
-      state,
-      env: env as never,
-      runtime,
-      implementation,
-    }),
-  SANDBOX: createUnavailableLocalObject,
-  SANDBOX_MANAGER: ({ state, runtime, implementation, createSandboxProviders }) =>
-    new InMemorySandboxManagerObject({
-      state,
-      runtime,
-      implementation,
-      sandboxProviders: createSandboxProviders(state.id.toString()),
-    }),
-  GITHUB: ({ state, env, runtime, implementation, nowEpochMs }) =>
-    new InMemoryGitHubObject({
-      nowEpochMs,
-      state,
-      env: env as never,
-      runtime,
-      implementation,
-    }),
-  GITHUB_WEBHOOK_ROUTER: ({ state, env, runtime }) =>
-    new InMemoryGitHubWebhookRouterObject({
-      state,
-      env: env as never,
-      runtime,
-    }),
-  CLOUDFLARE: ({ state, env, runtime }) =>
-    new InMemoryCloudflareObject({
-      state,
-      env,
-      runtime,
-    }),
-  FORMS: ({ state, env, runtime, implementation, nowEpochMs }) =>
-    new InMemoryFormsObject({
-      nowEpochMs,
-      state,
-      env,
-      runtime,
-      implementation,
-    }),
-  AUTOMATIONS: ({ state, env, runtime, implementation, nowEpochMs, readAutomationSource }) =>
-    new InMemoryAutomationsObject({
-      state,
-      env,
-      runtime,
-      implementation,
-      nowEpochMs,
-      readAutomationSource,
-    }),
-  PI: ({ state, env, runtime, nowEpochMs, openPiSessionStore, piAgentIdFromConfig }) =>
-    new InMemoryPiObject({
-      state,
-      options: createPiDurableHarnessOptions(env),
-      runtime,
-      openStorage: openPiSessionStore,
-      idFromConfig: piAgentIdFromConfig,
-      nowEpochMs,
-    }),
-  PI_MANAGER: ({
-    state,
-    env,
-    runtime,
-    implementation,
-    nowEpochMs,
-    getPiAgent,
-    piAvailableModels,
-  }) => {
-    const supportedAvailableModels = piAvailableModels
-      ? async () => piAvailableModels
-      : (() => {
-          const models = createPiDurableModels(env);
-          return async () => await listSupportedPiDurableModels(models);
-        })();
-    return new InMemoryPiManagerObject({
-      state,
-      env,
-      runtime,
-      implementation,
-      agent: getPiAgent,
-      supportedAvailableModels,
-      nowEpochMs,
-    });
-  },
-  BILLING: ({ state, env, runtime, implementation }) =>
-    new InMemoryBillingObject({
-      state,
-      env,
-      runtime,
-      implementation,
-    }),
-  APPS: ({ state, implementation }) => new InMemoryAppsObject({ state, implementation }),
-  APP_INSTALLATIONS: ({ state, runtime, implementation }) =>
-    new InMemoryAppInstallationsObject({ state, runtime, implementation }),
-  MARKETPLACE: ({ state, env, runtime, implementation }) =>
-    new InMemoryMarketplaceObject({
-      state,
-      env,
-      runtime,
-      implementation,
-    }),
-} satisfies Record<LocalObjectBindingName, LocalBackofficeObjectFactory<unknown>>;
-
 export class LocalObjectFactory implements BackofficeObjectFactory {
   readonly env: BackofficeRuntimeEnv;
 
@@ -442,7 +139,7 @@ export class LocalObjectFactory implements BackofficeObjectFactory {
     LocalObjectFactoryOptions["createFragmentHostOperations"]
   >;
   readonly #readAutomationSource?: LocalObjectFactoryOptions["readAutomationSource"];
-  readonly #objectFactories?: LocalObjectFactoryOverrides;
+  readonly #objects: LocalBackofficeObjects;
   readonly #piAvailableModels: readonly PiAvailableModel[] | null;
   readonly #createSandboxProviders: CreateSandboxRuntimeProviders;
   readonly #sqlite?: LocalObjectFactoryOptions["sqlite"];
@@ -465,7 +162,7 @@ export class LocalObjectFactory implements BackofficeObjectFactory {
     this.#getRuntimeServices = options.getRuntimeServices;
     this.#createFragmentHostOperations = options.createFragmentHostOperations ?? (() => null);
     this.#readAutomationSource = options.readAutomationSource;
-    this.#objectFactories = options.objectFactories;
+    this.#objects = options.objects;
     this.#piAvailableModels = options.piAvailableModels ?? null;
     this.#createSandboxProviders = options.createSandboxProviders ?? (() => ({}));
     this.#sqlite = options.sqlite;
@@ -487,7 +184,9 @@ export class LocalObjectFactory implements BackofficeObjectFactory {
     assertBackofficeObjectAddressAllowed(address);
     const namespace = this.#namespaces[address.binding];
     if (!namespace) {
-      throw new Error(`Local Backoffice object binding ${address.binding} is not registered.`);
+      throw new Error(
+        `Local Backoffice object binding ${address.binding} is not registered. Pass it in this runtime's objects.`,
+      );
     }
     const id = namespace.idFromName(encodeBackofficeObjectAddress(address));
     await namespace.restart(id);
@@ -635,8 +334,8 @@ export class LocalObjectFactory implements BackofficeObjectFactory {
   async cleanup(): Promise<void> {
     await this.#executionCoordinator.waitForIdle();
     await this.#sqliteCoordination?.waitForIdle();
-    const agents = this.#namespaces.PI as LocalDurableObjectNamespace<InMemoryPiObject>;
-    await Promise.all(agents.instances().map(({ object }) => object.close()));
+    const agents = this.#namespaces.PI as LocalDurableObjectNamespace<InMemoryPiObject> | undefined;
+    await Promise.all((agents?.instances() ?? []).map(({ object }) => object.close()));
     await Promise.all(
       [...this.#piSessionStores.values()].map(async (storage) =>
         (await storage).close(BACKGROUND_CONTEXT),
@@ -683,23 +382,15 @@ export class LocalObjectFactory implements BackofficeObjectFactory {
   }
 
   #registerNamespaces() {
-    for (const bindingName of Object.keys(localObjectFactories) as LocalObjectBindingName[]) {
-      this.#register(
-        { name: bindingName },
-        localObjectFactories[bindingName] as LocalBackofficeObjectFactory<unknown>,
-      );
+    for (const [bindingName, factory] of Object.entries(this.#objects)) {
+      this.#register({ name: bindingName as LocalObjectBindingName }, factory);
     }
   }
 
   #register<TObject>(
     binding: { name: LocalObjectBindingName },
-    createObject: LocalBackofficeObjectFactory<TObject>,
+    factory: LocalBackofficeObjectFactory<TObject>,
   ) {
-    const override = this.#objectFactories?.[binding.name] as
-      | LocalBackofficeObjectFactory<TObject>
-      | undefined;
-    const factory = override ?? createObject;
-
     this.#namespaces[binding.name] = new LocalDurableObjectNamespace({
       name: binding.name,
       executionCoordinator: this.#executionCoordinator,
@@ -770,7 +461,9 @@ export class LocalObjectFactory implements BackofficeObjectFactory {
           `pi-agent-${createHash("sha256").update(objectId).digest("hex")}.sqlite`,
         )
       : ":memory:";
-    const storage = openNodeSqliteStorage(filename);
+    const storage = import("@earendil-works/pi-durable/storage/sqlite/node").then(
+      ({ openNodeSqliteStorage }) => openNodeSqliteStorage(filename),
+    );
     this.#piSessionStores.set(objectId, storage);
     return storage;
   }
@@ -780,7 +473,9 @@ export class LocalObjectFactory implements BackofficeObjectFactory {
   ): LocalDurableObjectNamespace<TObject> {
     const namespace = this.#namespaces[binding.name];
     if (!namespace) {
-      throw new Error(`Local Backoffice object binding ${binding.name} is not registered.`);
+      throw new Error(
+        `Local Backoffice object binding ${binding.name} is not registered. Pass it in this runtime's objects.`,
+      );
     }
 
     return namespace as LocalDurableObjectNamespace<TObject>;

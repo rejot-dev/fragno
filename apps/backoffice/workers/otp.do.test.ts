@@ -21,6 +21,7 @@ import type { HookContext } from "@fragno-dev/db";
 import type { OtpConfirmedHookPayload } from "@fragno-dev/otp-fragment";
 
 import { createInMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import {
   DEFAULT_SIGN_UP_INVITATION_TTL_DAYS,
@@ -31,13 +32,21 @@ import {
 } from "@/fragno/otp";
 
 import { issueTestSignUpInvitation } from "./auth-sign-up.test-support";
-import { handleEmailVerificationConfirmed, handleIdentityClaimConfirmed } from "./otp.do";
+import { InMemoryAuthObject } from "./auth.do";
+import {
+  handleEmailVerificationConfirmed,
+  handleIdentityClaimConfirmed,
+  InMemoryOtpObject,
+} from "./otp.do";
+
+const localObjects = {
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  OTP: (input) => new InMemoryOtpObject(input),
+} satisfies LocalBackofficeObjects;
 
 const runtimes: Array<Awaited<ReturnType<typeof createInMemoryBackofficeRuntime>>> = [];
 
-const createRuntime = async (
-  options: Parameters<typeof createInMemoryBackofficeRuntime>[0] = {},
-) => {
+const createRuntime = async (options: Parameters<typeof createInMemoryBackofficeRuntime>[0]) => {
   const runtime = await createInMemoryBackofficeRuntime(options);
   runtimes.push(runtime);
   return runtime;
@@ -83,7 +92,7 @@ afterEach(async () => {
 
 describe("OTP sign-up invitations", () => {
   test("issues an email-bound link and permits idempotent sign-up retries", async () => {
-    const runtime = await createRuntime();
+    const runtime = await createRuntime({ objects: localObjects });
     const otp = runtime.objects.otp.singleton();
 
     const issued = await otp.commands.issueSignUpInvitation({
@@ -122,7 +131,7 @@ describe("OTP sign-up invitations", () => {
   });
 
   test("expires sign-up invitations using ttl days", async () => {
-    const runtime = await createRuntime();
+    const runtime = await createRuntime({ objects: localObjects });
     const otp = runtime.objects.otp.singleton();
     const issued = await otp.commands.issueSignUpInvitation({
       email: "person@example.com",
@@ -276,7 +285,10 @@ describe("OTP identity claim completion", () => {
 
 describe("OTP Durable Object email verification", () => {
   test("idempotently issues a singleton challenge and synchronously verifies the Auth email", async () => {
-    const runtime = await createRuntime({ env: { AUTH_EMAIL_VERIFICATION_ENABLED: "true" } });
+    const runtime = await createRuntime({
+      objects: localObjects,
+      env: { AUTH_EMAIL_VERIFICATION_ENABLED: "true" },
+    });
     const { userId } = await signUp(runtime, "new-user@example.com");
     assert((await signIn(runtime, "new-user@example.com")).status === 403);
     const otp = runtime.objects.otp.singleton();
@@ -319,7 +331,7 @@ describe("OTP Durable Object email verification", () => {
   });
 
   test("does not deliver a challenge after a newer request supersedes it", async () => {
-    const runtime = await createRuntime();
+    const runtime = await createRuntime({ objects: localObjects });
     const { userId } = await signUp(runtime, "superseded@example.com");
     const otp = runtime.objects.otp.singleton();
     const firstInput = {
@@ -342,7 +354,7 @@ describe("OTP Durable Object email verification", () => {
   });
 
   test("does not deliver a requested challenge after it expires", async () => {
-    const runtime = await createRuntime();
+    const runtime = await createRuntime({ objects: localObjects });
     const otp = runtime.objects.otp.singleton();
     const input = {
       userId: "user-expired-delivery",
@@ -362,7 +374,10 @@ describe("OTP Durable Object email verification", () => {
   });
 
   test("rejects a challenge issued for a different Auth email", async () => {
-    const runtime = await createRuntime({ env: { AUTH_EMAIL_VERIFICATION_ENABLED: "true" } });
+    const runtime = await createRuntime({
+      objects: localObjects,
+      env: { AUTH_EMAIL_VERIFICATION_ENABLED: "true" },
+    });
     const { userId } = await signUp(runtime, "current@example.com");
     const otp = runtime.objects.otp.singleton();
     const issued = await otp.commands.issueEmailVerification({
@@ -383,7 +398,7 @@ describe("OTP Durable Object email verification", () => {
   });
 
   test("rejects an invalid persisted payload so durable processing can retry", async () => {
-    const runtime = await createRuntime();
+    const runtime = await createRuntime({ objects: localObjects });
     const payload = {
       id: "invalid-email-verification",
       externalId: "user-invalid-payload",
@@ -403,7 +418,7 @@ describe("OTP Durable Object email verification", () => {
   });
 
   test("returns typed invalid and expired confirmation outcomes", async () => {
-    const runtime = await createRuntime();
+    const runtime = await createRuntime({ objects: localObjects });
     const otp = runtime.objects.otp.singleton();
     const issued = await otp.commands.issueEmailVerification({
       userId: "user-expiring",

@@ -14,8 +14,13 @@ vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget }));
 
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import { createInMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 
 import { InMemoryResendObject } from "./resend.do";
+
+const localObjects = {
+  RESEND: (input) => new InMemoryResendObject(input),
+} satisfies LocalBackofficeObjects;
 
 const runtimes: Array<Awaited<ReturnType<typeof createInMemoryBackofficeRuntime>>> = [];
 
@@ -30,7 +35,8 @@ describe("Resend Durable Object", () => {
       error: null,
     }));
     const runtime = await createInMemoryBackofficeRuntime({
-      objectFactories: {
+      objects: {
+        ...localObjects,
         RESEND: ({ state, env, runtime: runtimeServices, implementation, nowEpochMs }) =>
           new InMemoryResendObject({
             nowEpochMs,

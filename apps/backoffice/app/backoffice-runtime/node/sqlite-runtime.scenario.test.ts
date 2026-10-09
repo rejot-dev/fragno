@@ -11,6 +11,7 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
 }));
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
+import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
 
 import { createInMemoryBackofficeRuntime } from "../in-memory-runtime";
@@ -77,7 +78,7 @@ describe("file-backed SQLite Backoffice scenario", () => {
 
   test("foreground and background runtimes discover shared object state", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "backoffice-sqlite-processes-"));
-    const objectFactories = {
+    const objectOverrides = {
       UPLOAD: ({ state }: { state: { storage: DurableObjectStorage } }) => ({
         async fetch(request: Request) {
           if (new URL(request.url).pathname === "/schedule") {
@@ -97,11 +98,11 @@ describe("file-backed SQLite Backoffice scenario", () => {
     };
     const background = await createInMemoryBackofficeRuntime({
       sqliteDataDirectory: directory,
-      objectFactories,
+      objects: { ...allLocalObjects, ...objectOverrides },
     });
     const foreground = await createInMemoryBackofficeRuntime({
       sqliteDataDirectory: directory,
-      objectFactories,
+      objects: { ...allLocalObjects, ...objectOverrides },
     });
     const objectUrl = "https://backoffice.example";
 
@@ -132,7 +133,7 @@ describe("file-backed SQLite Backoffice scenario", () => {
   test("two background runtimes deliver one persisted alarm generation once", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "backoffice-sqlite-alarm-claim-"));
     let alarmCalls = 0;
-    const objectFactories = {
+    const objectOverrides = {
       UPLOAD: ({ state }: { state: { storage: DurableObjectStorage } }) => ({
         async fetch() {
           await state.storage.setAlarm(Date.now() - 1);
@@ -145,11 +146,11 @@ describe("file-backed SQLite Backoffice scenario", () => {
     };
     const firstRuntime = await createInMemoryBackofficeRuntime({
       sqliteDataDirectory: directory,
-      objectFactories,
+      objects: { ...allLocalObjects, ...objectOverrides },
     });
     const secondRuntime = await createInMemoryBackofficeRuntime({
       sqliteDataDirectory: directory,
-      objectFactories,
+      objects: { ...allLocalObjects, ...objectOverrides },
     });
 
     try {
@@ -177,7 +178,8 @@ describe("file-backed SQLite Backoffice scenario", () => {
       let alarmCalls = 0;
       const runtime = await createInMemoryBackofficeRuntime({
         sqliteDataDirectory: directory,
-        objectFactories: {
+        objects: {
+          ...allLocalObjects,
           UPLOAD: ({ state }: { state: { storage: DurableObjectStorage } }) => ({
             async fetch(request: Request) {
               if (new URL(request.url).pathname === "/schedule") {
@@ -256,7 +258,7 @@ describe("file-backed SQLite Backoffice scenario", () => {
   test("a failed alarm remains pending across a runtime restart", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "backoffice-sqlite-alarm-retry-"));
     let failAlarm = true;
-    const objectFactories = {
+    const objectOverrides = {
       UPLOAD: ({ state }: { state: { storage: DurableObjectStorage } }) => ({
         async fetch(request: Request) {
           if (new URL(request.url).pathname === "/schedule") {
@@ -273,7 +275,10 @@ describe("file-backed SQLite Backoffice scenario", () => {
         },
       }),
     };
-    const options = { sqliteDataDirectory: directory, objectFactories };
+    const options = {
+      sqliteDataDirectory: directory,
+      objects: { ...allLocalObjects, ...objectOverrides },
+    };
     const firstRuntime = await createInMemoryBackofficeRuntime(options);
 
     try {
@@ -308,7 +313,8 @@ describe("file-backed SQLite Backoffice scenario", () => {
     let alarmCalls = 0;
     const runtime = await createInMemoryBackofficeRuntime({
       sqliteDataDirectory: directory,
-      objectFactories: {
+      objects: {
+        ...allLocalObjects,
         UPLOAD: ({ state }: { state: { storage: DurableObjectStorage } }) => ({
           async fetch() {
             await state.storage.setAlarm(scheduledAt);
@@ -345,7 +351,8 @@ describe("file-backed SQLite Backoffice scenario", () => {
     const releaseAlarm = createVoidDeferred();
     const runtime = await createInMemoryBackofficeRuntime({
       sqliteDataDirectory: directory,
-      objectFactories: {
+      objects: {
+        ...allLocalObjects,
         UPLOAD: ({ state }: { state: { storage: DurableObjectStorage } }) => ({
           async fetch(request: Request) {
             if (new URL(request.url).pathname === "/schedule") {
@@ -400,7 +407,8 @@ describe("file-backed SQLite Backoffice scenario", () => {
     const schedulerErrors: unknown[] = [];
     const processor = await createInMemoryBackofficeRuntime({
       sqliteDataDirectory: directory,
-      objectFactories: {
+      objects: {
+        ...allLocalObjects,
         UPLOAD: ({ name, implementation, state }) => {
           if (name.endsWith("org-1")) {
             implementation.registerRuntimeRefresh(async () => {
@@ -429,7 +437,7 @@ describe("file-backed SQLite Backoffice scenario", () => {
         defineBackofficeScenario({
           name: "a broken persisted object does not block another object's alarm",
           options: { drain: false, sqliteDataDirectory: directory },
-          objectFactories: {
+          objectOverrides: {
             UPLOAD: ({ state }) => ({
               async fetch(request: Request) {
                 if (new URL(request.url).pathname === "/schedule") {
@@ -523,7 +531,7 @@ describe("file-backed SQLite Backoffice scenario", () => {
             name: "cleanup releases later resources after an earlier failure",
             durableHooks,
             options: { drain: false, sqliteDataDirectory: directory },
-            objectFactories: {
+            objectOverrides: {
               UPLOAD: ({ state }) => ({
                 async fetch() {
                   capturedStorages.push(state.storage);
@@ -553,7 +561,7 @@ describe("file-backed SQLite Backoffice scenario", () => {
 
   test("object storage and a pending alarm survive runtime restart", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "backoffice-sqlite-alarm-"));
-    const objectFactories = {
+    const objectOverrides = {
       UPLOAD: ({ state }: { state: { storage: DurableObjectStorage } }) => ({
         async fetch(request: Request) {
           if (new URL(request.url).pathname === "/schedule") {
@@ -578,7 +586,7 @@ describe("file-backed SQLite Backoffice scenario", () => {
         defineBackofficeScenario({
           name: "schedule a persisted upload object alarm",
           options,
-          objectFactories,
+          objectOverrides,
           steps: () => [
             {
               kind: "when",
@@ -599,7 +607,7 @@ describe("file-backed SQLite Backoffice scenario", () => {
         defineBackofficeScenario({
           name: "deliver persisted upload object alarm after restart",
           options,
-          objectFactories,
+          objectOverrides,
           steps: ({ then }) => [
             then.assert(
               "restored object runs its alarm and retains its configuration",

@@ -15,7 +15,7 @@ vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoin
 
 import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
 
-import type { LocalObjectFactoryOverrides } from "../local-object-factory";
+import type { LocalBackofficeObjects } from "../local-object-factory";
 import { SqliteObjectCoordination } from "./sqlite-object-coordination";
 import { SqliteBackofficeObjectStorage } from "./sqlite-object-storage";
 
@@ -51,7 +51,7 @@ async function createInitializationWaitScenario() {
   const ownerStorage = new SqliteBackofficeObjectStorage(directory);
   const coordinator = new SqliteObjectCoordination(storage);
   const database = new Database(path.join(directory, "objects.sqlite"));
-  const objectFactories: LocalObjectFactoryOverrides = {
+  const objectOverrides: LocalBackofficeObjects = {
     // Route requests use the real coordinator and SQLite, with query counts observed at storage.
     UPLOAD: ({ name }) => ({
       async fetch() {
@@ -65,7 +65,7 @@ async function createInitializationWaitScenario() {
     ownerStorage,
     coordinator,
     database,
-    objectFactories,
+    objectOverrides,
     async close() {
       await coordinator.waitForIdle();
       database.close();
@@ -88,7 +88,7 @@ test("request bursts share initialization polling and shutdown waits for the sha
       defineBackofficeScenario({
         name: "one initialization poller per object under concurrent traffic",
         options: { drain: false },
-        objectFactories: fixture.objectFactories,
+        objectOverrides: fixture.objectOverrides,
         steps: ({ then }) => [
           then.assert(
             "a burst shares polling without blocking other objects",
@@ -167,7 +167,7 @@ test("a failed shared initialization waiter is removed so subsequent requests ca
       defineBackofficeScenario({
         name: "SQLite polling failure rejects its cohort but does not poison later requests",
         options: { drain: false },
-        objectFactories: fixture.objectFactories,
+        objectOverrides: fixture.objectOverrides,
         steps: ({ then }) => [
           then.assert("requests share the failure and later recover", async ({ runtime }) => {
             const object = runtime.objects.upload.forOrg("org-1");
@@ -223,7 +223,7 @@ test("an initialization owner bypasses the shared waiter for its own object", as
       defineBackofficeScenario({
         name: "initialization does not await events that are waiting for it",
         options: { drain: false },
-        objectFactories: fixture.objectFactories,
+        objectOverrides: fixture.objectOverrides,
         steps: ({ then }) => [
           then.assert("the owner finishes while other events are queued", async ({ runtime }) => {
             const initializing = fixture.coordinator.initialize(objectId, async () => {

@@ -16,12 +16,20 @@ import {
   createInMemoryBackofficeRuntime,
   type InMemoryBackofficeRuntime,
 } from "@/backoffice-runtime/in-memory-runtime";
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
 
+import { InMemoryAutomationsObject } from "../../../workers/automations.do";
+import { InMemoryFormsObject } from "../../../workers/forms.do";
 import {
   createExternallyProcessedNodeBackofficeDurableHooks,
   createNodeBackofficeDurableHooks,
 } from "./node-durable-hooks";
+
+const localObjects = {
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  FORMS: (input) => new InMemoryFormsObject(input),
+} satisfies LocalBackofficeObjects;
 
 async function getFormsHookQueue(runtime: InMemoryBackofficeRuntime) {
   return await runtime.objects.forms.singleton().commands.getDurableHookQueue({ pageSize: 100 });
@@ -53,6 +61,7 @@ test("a separate Node processor completes hooks recorded by the server runtime",
     },
   });
   const processorRuntime = await createInMemoryBackofficeRuntime({
+    objects: localObjects,
     sqliteDataDirectory: directory,
     durableHooks: processorHooks,
   });
