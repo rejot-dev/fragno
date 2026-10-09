@@ -1,7 +1,7 @@
 import { assert, test } from "vitest";
 
 import { once } from "node:events";
-import { get } from "node:http";
+import { Agent, get } from "node:http";
 import { setTimeout as wait } from "node:timers/promises";
 
 import { startNodeBackofficeListeners, stopNodeBackofficeListeners } from "./node-server-listeners";
@@ -29,12 +29,14 @@ test("Node listener shutdown drains an ordinary response before closing", async 
   const address = listeners[0].server.address();
   assert(address && typeof address !== "string");
 
-  const request = get(`http://127.0.0.1:${address.port}/mutation`);
+  // Browsers and proxies reuse connections, so the drain must not wait for keep-alive to expire.
+  const agent = new Agent({ keepAlive: true });
+  const request = get(`http://127.0.0.1:${address.port}/mutation`, { agent });
   const responseReceived = once(request, "response");
   await handlerStarted;
 
   let shutdownCompleted = false;
-  const shutdown = stopNodeBackofficeListeners(listeners, 1_000).then(() => {
+  const shutdown = stopNodeBackofficeListeners(listeners, 60_000).then(() => {
     shutdownCompleted = true;
   });
   await wait(25);
@@ -47,7 +49,20 @@ test("Node listener shutdown drains an ordinary response before closing", async 
   for await (const chunk of clientResponse) {
     body += chunk;
   }
-  await shutdown;
+  let drainTimer: NodeJS.Timeout | undefined;
+  try {
+    await Promise.race([
+      shutdown,
+      new Promise((_resolve, reject) => {
+        drainTimer = setTimeout(() => {
+          reject(new Error("Node Backoffice listener shutdown waited for the drain deadline."));
+        }, 1_000);
+      }),
+    ]);
+  } finally {
+    clearTimeout(drainTimer);
+    agent.destroy();
+  }
 
   assert.equal(clientResponse.statusCode, 200);
   assert.equal(body, "mutation completed");
@@ -77,12 +92,17 @@ test("Node listener shutdown force-closes a stream after the drain deadline", as
   clientResponse.on("error", () => {});
   await once(clientResponse, "data");
 
-  await Promise.race([
-    stopNodeBackofficeListeners(listeners, 25),
-    wait(1_000).then(() => {
-      throw new Error("Node Backoffice listener shutdown did not close the active stream.");
-    }),
-  ]);
+  const watchdog = new AbortController();
+  try {
+    await Promise.race([
+      stopNodeBackofficeListeners(listeners, 25),
+      wait(1_000, undefined, { signal: watchdog.signal }).then(() => {
+        throw new Error("Node Backoffice listener shutdown did not close the active stream.");
+      }),
+    ]);
+  } finally {
+    watchdog.abort();
+  }
   await serverResponseClosed;
 
   assert.equal(listeners[0].activeResponses.size, 0);

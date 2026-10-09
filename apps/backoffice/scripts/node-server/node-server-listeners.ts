@@ -7,6 +7,7 @@ export type NodeBackofficeListener = {
   host: string;
   server: Server;
   activeResponses: Set<ServerResponse>;
+  stopping: boolean;
 };
 
 function formatNodeBackofficeListenUrl(host: string, port: number): string {
@@ -19,10 +20,20 @@ function listenOnNodeBackofficeHost(input: {
   port: number;
 }): Promise<NodeBackofficeListener> {
   const activeResponses = new Set<ServerResponse>();
+  const listener: Omit<NodeBackofficeListener, "server"> = {
+    host: input.host,
+    activeResponses,
+    stopping: false,
+  };
   const server = createServer((request, response) => {
     activeResponses.add(response);
     const releaseResponse = () => {
       activeResponses.delete(response);
+      // `server.close()` only closes connections idle when it is called. A keep-alive connection
+      // whose response finishes during shutdown would otherwise hold the drain until the deadline.
+      if (listener.stopping) {
+        server.closeIdleConnections();
+      }
     };
     response.once("finish", releaseResponse);
     response.once("close", releaseResponse);
@@ -36,7 +47,7 @@ function listenOnNodeBackofficeHost(input: {
     server.once("error", rejectListen);
     server.listen(input.port, input.host, () => {
       server.off("error", rejectListen);
-      resolve({ host: input.host, server, activeResponses });
+      resolve(Object.assign(listener, { server }));
     });
   });
 }
@@ -101,6 +112,9 @@ export async function stopNodeBackofficeListeners(
   listeners: readonly NodeBackofficeListener[],
   forceCloseAfterMs = NODE_BACKOFFICE_RESPONSE_DRAIN_TIMEOUT_MS,
 ): Promise<void> {
+  for (const listener of listeners) {
+    listener.stopping = true;
+  }
   const listenersStopped = Promise.all(
     listeners.map(({ server }) => closeNodeBackofficeListener(server)),
   );
