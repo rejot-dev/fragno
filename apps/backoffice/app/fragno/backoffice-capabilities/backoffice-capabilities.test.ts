@@ -20,6 +20,7 @@ describe("Capability contributions", () => {
       "codemode",
       "forms",
       "github",
+      "integrations",
       "otp",
       "sandbox",
       "scheduler",

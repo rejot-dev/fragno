@@ -30,7 +30,7 @@ type IntegrationOverview = {
   availability: IntegrationAvailability;
   /** Known named setup targets, including unconfigured fixed slots; never invented account or attempt IDs. */
   setupTargets: IntegrationConnectionSetupTarget[];
-  /** Declared event identities do not prove live event delivery. */
+  /** Source-specific activity events; declared identities do not prove live event delivery. Connection state changes arrive for every service as source integrations, keyed by subject.connectionId. */
   automationEvents: {
     source: string;
     eventType: string;
