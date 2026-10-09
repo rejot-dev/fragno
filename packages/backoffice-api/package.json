@@ -1,0 +1,64 @@
+{
+  "name": "@fragno-dev/backoffice-api",
+  "version": "0.0.0",
+  "description": "Versioned contract for the Backoffice HTTP API: operations, zod schemas, and OpenAPI.",
+  "homepage": "https://fragno.dev",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rejot-dev/fragno.git",
+    "directory": "packages/backoffice-api"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "type": "module",
+  "exports": {
+    "./api": {
+      "types": "./dist/api.d.ts",
+      "default": "./dist/api.js"
+    },
+    "./errors": {
+      "types": "./dist/errors.d.ts",
+      "default": "./dist/errors.js"
+    },
+    "./openapi": {
+      "types": "./dist/openapi.d.ts",
+      "default": "./dist/openapi.js"
+    },
+    "./v0": {
+      "types": "./dist/v0/api.d.ts",
+      "default": "./dist/v0/api.js"
+    },
+    "./v0/*": {
+      "types": "./dist/v0/*.d.ts",
+      "default": "./dist/v0/*.js"
+    },
+    "./v0/shared/*": {
+      "types": "./dist/v0/shared/*.d.ts",
+      "default": "./dist/v0/shared/*.js"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "build:watch": "tsdown --watch",
+    "types:check": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest --watch",
+    "format:package": "node ../../scripts/run-package-quality.mjs format",
+    "format:check:package": "node ../../scripts/run-package-quality.mjs format:check",
+    "lint:package": "node ../../scripts/run-package-quality.mjs lint",
+    "lint:fix:package": "node ../../scripts/run-package-quality.mjs lint:fix"
+  },
+  "devDependencies": {
+    "@fragno-private/typescript-config": "workspace:*",
+    "tsdown": "^0.22.4",
+    "typescript": "catalog:",
+    "vitest": "catalog:",
+    "zod": "^4.5.4"
+  },
+  "peerDependencies": {
+    "zod": "^4.5.4"
+  }
+}
