@@ -28,8 +28,23 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
 
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
+
+import { InMemoryApiObject } from "../../../workers/api.do";
+import { InMemoryAuthObject } from "../../../workers/auth.do";
+import { InMemoryAutomationsObject } from "../../../workers/automations.do";
+import { InMemoryFormsObject } from "../../../workers/forms.do";
 import { handleIdentityClaimConfirmed } from "../../../workers/otp.do";
+import { InMemoryUploadObject } from "../../../workers/upload.do";
 import { defineBackofficeScenario, runBackofficeScenario } from "./scenario";
+
+const scenarioObjects = {
+  API: (input) => new InMemoryApiObject(input),
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  FORMS: (input) => new InMemoryFormsObject(input),
+  UPLOAD: (input) => new InMemoryUploadObject(input),
+} satisfies LocalBackofficeObjects;
 
 const orgId = "org-1";
 const userId = "user-1";
@@ -135,6 +150,7 @@ describe("external identity retry regressions", () => {
   test("an accepted same-user claim cannot reactivate a later-revoked binding", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "accepted identity claims remain consumed after revocation",
         setup: ({ given }) => [
           given.auth.user({
@@ -194,6 +210,7 @@ describe("external identity retry regressions", () => {
   test("a retried revocation cannot revoke a newer activation for the same user", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "stale revocation cannot cross identity binding generations",
         setup: ({ given }) => [
           given.auth.user({
@@ -256,6 +273,7 @@ describe("external identity retry regressions", () => {
 
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "revoked identity claim retries do not emit completion events",
         setup: ({ given }) => [
           given.auth.user({

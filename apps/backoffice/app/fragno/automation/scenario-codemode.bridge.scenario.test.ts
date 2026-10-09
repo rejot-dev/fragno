@@ -12,6 +12,7 @@ import { isWorkflowStepStartedControlPayload } from "@fragno-dev/workflows/step-
 
 import { and, eq, queryOnce } from "@tanstack/react-db";
 
+import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import type { BackofficeRuntimeEnv } from "@/backoffice-runtime/backoffice-runtime-env";
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import { createNodeBackofficeRuntimeConfiguration } from "@/backoffice-runtime/node/node-runtime-env";
@@ -23,6 +24,8 @@ import {
 } from "./engine/codemode-invocation";
 import { backofficeFiles, defineBackofficeScenario, runBackofficeScenario } from "./scenario";
 import { createRouteBackedAutomationWorkflowRuntime } from "./workflow-route-runtime";
+
+const scenarioObjects = allLocalObjects;
 
 let server: Awaited<ReturnType<typeof createCodemodeTestServer>>;
 let runtimeEnv: BackofficeRuntimeEnv;
@@ -73,6 +76,7 @@ async function settleTestCleanupWithin(
 test("uses codemode setup helpers while keeping setup intent explicit", async () => {
   await runBackofficeScenario(
     defineBackofficeScenario({
+      objects: scenarioObjects,
       name: "codemode setup helpers arrange state through runtime tools",
       env: runtimeEnv,
       files: backofficeFiles.workspaceStarter(),
@@ -127,6 +131,7 @@ test("uses codemode setup helpers while keeping setup intent explicit", async ()
 test("scenario TanStack DB exposes an in-flight step.do lifecycle", async () => {
   await runBackofficeScenario(
     defineBackofficeScenario({
+      objects: scenarioObjects,
       name: "scenario TanStack DB exposes an in-flight step.do lifecycle",
       env: runtimeEnv,
       files: backofficeFiles.custom({

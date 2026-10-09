@@ -25,6 +25,7 @@ vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoin
 
 import { createBackofficeUserExecution } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { backofficeOAuthClientCreateResultSchema } from "@/fragno/auth/oauth-client";
 import {
   defineBackofficeScenario,
@@ -36,6 +37,20 @@ import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-hos
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
+
+import { InMemoryAppsObject } from "../workers/apps.do";
+import { InMemoryAuthObject } from "../workers/auth.do";
+import { InMemoryAutomationsObject } from "../workers/automations.do";
+import { InMemoryFormsObject } from "../workers/forms.do";
+import { InMemoryUploadObject } from "../workers/upload.do";
+
+const scenarioObjects = {
+  APPS: (input) => new InMemoryAppsObject(input),
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  FORMS: (input) => new InMemoryFormsObject(input),
+  UPLOAD: (input) => new InMemoryUploadObject(input),
+} satisfies LocalBackofficeObjects;
 
 const scriptPath = fileURLToPath(new URL("./test-oauth-client.mjs", import.meta.url));
 
@@ -216,6 +231,7 @@ describe("local OAuth client server SQLite scenarios", () => {
       try {
         await runBackofficeScenario(
           defineBackofficeScenario({
+            objects: scenarioObjects,
             name: "local OAuth callback against real Better Auth storage",
             options: { sqliteDataDirectory: directory },
             env: { AUTH_EMAIL_VERIFICATION_ENABLED: "false", SIGN_UP_INVITATIONS_ENABLED: "false" },

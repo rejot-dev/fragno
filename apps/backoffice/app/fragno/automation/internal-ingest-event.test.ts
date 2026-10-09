@@ -19,7 +19,36 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
 
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
+
+import { InMemoryApiObject } from "../../../workers/api.do";
+import { InMemoryAppInstallationsObject } from "../../../workers/app-installations.do";
+import { InMemoryAppsObject } from "../../../workers/apps.do";
+import { InMemoryAuthObject } from "../../../workers/auth.do";
+import { InMemoryAutomationsObject } from "../../../workers/automations.do";
+import { InMemoryFormsObject } from "../../../workers/forms.do";
+import { InMemoryMarketplaceObject } from "../../../workers/marketplace.do";
+import { InMemoryMcpObject } from "../../../workers/mcp.do";
+import { InMemoryOtpObject } from "../../../workers/otp.do";
+import { InMemoryResendObject } from "../../../workers/resend.do";
+import { InMemoryTelegramObject } from "../../../workers/telegram.do";
+import { InMemoryUploadObject } from "../../../workers/upload.do";
 import { defineBackofficeScenario, runBackofficeScenario } from "./scenario";
+
+const scenarioObjects = {
+  API: (input) => new InMemoryApiObject(input),
+  APPS: (input) => new InMemoryAppsObject(input),
+  APP_INSTALLATIONS: (input) => new InMemoryAppInstallationsObject(input),
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  FORMS: (input) => new InMemoryFormsObject(input),
+  MARKETPLACE: (input) => new InMemoryMarketplaceObject(input),
+  MCP: (input) => new InMemoryMcpObject(input),
+  OTP: (input) => new InMemoryOtpObject(input),
+  RESEND: (input) => new InMemoryResendObject(input),
+  TELEGRAM: (input) => new InMemoryTelegramObject(input),
+  UPLOAD: (input) => new InMemoryUploadObject(input),
+} satisfies LocalBackofficeObjects;
 
 const TELEGRAM_CHANNEL_MARKETPLACE_INSTALLATION = {
   targetScope: { kind: "org", orgId: "org-1" },
@@ -72,6 +101,7 @@ describe("automation internal ingest scenarios", () => {
 
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "duplicate automation event ingestion is idempotent",
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ when, then }) => [
@@ -91,6 +121,7 @@ describe("automation internal ingest scenarios", () => {
   test("does not call Pi when the Telegram chat is not linked", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "Telegram Channel skips Pi calls for an unlinked chat",
 
         fakes: ({ fake }) => ({

@@ -9,6 +9,7 @@ vi.mock("cloudflare:workers", () => workers);
 
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
 import {
   marketplaceListingDetailSchema,
@@ -17,7 +18,32 @@ import {
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
 import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 
+import { InMemoryApiObject } from "../../../../workers/api.do";
+import { InMemoryAppInstallationsObject } from "../../../../workers/app-installations.do";
+import { InMemoryAppsObject } from "../../../../workers/apps.do";
+import { InMemoryAuthObject } from "../../../../workers/auth.do";
+import { InMemoryAutomationsObject } from "../../../../workers/automations.do";
+import { InMemoryFormsObject } from "../../../../workers/forms.do";
+import { InMemoryMarketplaceObject } from "../../../../workers/marketplace.do";
+import { InMemoryMcpObject } from "../../../../workers/mcp.do";
+import { InMemoryResendObject } from "../../../../workers/resend.do";
+import { InMemoryTelegramObject } from "../../../../workers/telegram.do";
+import { InMemoryUploadObject } from "../../../../workers/upload.do";
 import { marketplaceSearchResultSchema } from "./marketplace-runtime";
+
+const scenarioObjects = {
+  API: (input) => new InMemoryApiObject(input),
+  APPS: (input) => new InMemoryAppsObject(input),
+  APP_INSTALLATIONS: (input) => new InMemoryAppInstallationsObject(input),
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  FORMS: (input) => new InMemoryFormsObject(input),
+  MARKETPLACE: (input) => new InMemoryMarketplaceObject(input),
+  MCP: (input) => new InMemoryMcpObject(input),
+  RESEND: (input) => new InMemoryResendObject(input),
+  TELEGRAM: (input) => new InMemoryTelegramObject(input),
+  UPLOAD: (input) => new InMemoryUploadObject(input),
+} satisfies LocalBackofficeObjects;
 
 const OWNER = { scope: { kind: "system" }, publisherName: "Fragno" } as const;
 const REPORT: MarketplaceStaticEntry = {
@@ -49,6 +75,7 @@ describe("Marketplace discovery runtime scenarios", () => {
   test("codemode searches published metadata across candidate pages and inspects releases", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "Discover published packages through the runtime catalog",
         setup: ({ given }) => [
           given.organization.exists({ id: "org-1", name: "Ada Labs" }),
@@ -123,6 +150,7 @@ describe("Marketplace discovery runtime scenarios", () => {
   test("terminal commands expose metadata, categories, cursors, help and JSON selectors", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "Marketplace discovery through generated terminal commands",
         setup: ({ given }) => [
           given.organization.exists({ id: "org-1", name: "Ada Labs" }),

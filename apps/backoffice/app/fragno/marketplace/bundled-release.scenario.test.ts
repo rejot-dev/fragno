@@ -14,6 +14,7 @@ import {
   createBackofficeSystemExecution,
   createBackofficeUserExecution,
 } from "@/backoffice-runtime/context";
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { MARKETPLACE_PACKAGE_PUBLISH_WORKFLOW_NAME } from "@/fragno/automation/marketplace-package-publish-workflow";
 import { createWorkflowsRouteCaller } from "@/fragno/automation/route-callers";
 import {
@@ -24,6 +25,9 @@ import {
 import { createRouteBackedAutomationWorkflowRuntime } from "@/fragno/automation/workflow-route-runtime";
 import { createUploadRouteCaller } from "@/fragno/upload-server";
 
+import { InMemoryAuthObject } from "../../../workers/auth.do";
+import { InMemoryAutomationsObject } from "../../../workers/automations.do";
+import { InMemoryMarketplaceObject } from "../../../workers/marketplace.do";
 import { InMemoryUploadObject } from "../../../workers/upload.do";
 import { marketplaceArtifactUploadName, type MarketplaceStaticArtifactEntry } from "./artifacts";
 import {
@@ -39,6 +43,13 @@ import {
   MARKETPLACE_RELEASE_GUARD_PATH,
   marketplaceReleaseArtifactFiles,
 } from "./release-snapshot";
+
+const scenarioObjects = {
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  MARKETPLACE: (input) => new InMemoryMarketplaceObject(input),
+  UPLOAD: (input) => new InMemoryUploadObject(input),
+} satisfies LocalBackofficeObjects;
 
 const LISTING_ID = "system#unified-release-probe";
 const CONTEXT = {
@@ -101,7 +112,8 @@ test("a maximum-size release captures destination revisions in one batch without
   await runBackofficeScenario(
     defineBackofficeScenario({
       name: "Batch destination snapshots for 100-file publication",
-      objectOverrides: {
+      objects: {
+        ...scenarioObjects,
         UPLOAD: ({ state, env, runtime, implementation }) =>
           new (class extends InMemoryUploadObject {
             override async fetch(request: Request): Promise<Response> {
@@ -217,7 +229,8 @@ test("reused files are revision-asserted atomically with the metadata guard", as
     defineBackofficeScenario({
       name: "Concurrent edit to a reused file rejects metadata replacement",
       options: { allowErroredWorkflows: true },
-      objectOverrides: {
+      objects: {
+        ...scenarioObjects,
         UPLOAD: ({ state, env, runtime, implementation }) =>
           new (class extends InMemoryUploadObject {
             override async fetch(request: Request): Promise<Response> {
@@ -311,6 +324,7 @@ test("generic workflow creation cannot forge the release publisher's provenance"
   };
   await runBackofficeScenario(
     defineBackofficeScenario<{ forgedInstanceId: string }>({
+      objects: scenarioObjects,
       name: "Captured release input cannot impersonate trusted workflow actors",
       vars: () => ({ forgedInstanceId: "" }),
       setup: ({ given }) => [given.auth.user({ id: "admin-1", role: "admin" })],
@@ -407,6 +421,7 @@ test("bundled releases use captured input, guarded replacement, and stale-restar
       originalInstanceId: string;
       markerRevision: number;
     }>({
+      objects: scenarioObjects,
       name: "One publishing lifecycle for System-owned bundled releases",
       vars: () => ({ originalRequest: null, originalInstanceId: "", markerRevision: 0 }),
       options: { allowErroredWorkflows: true },

@@ -9,9 +9,12 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
 }));
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
+import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import { createNodeBackofficeRuntimeConfiguration } from "@/backoffice-runtime/node/node-runtime-env";
 import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
 import { createSandboxRuntime } from "@/fragno/runtime-tools/families/sandbox-runtime";
+
+const scenarioObjects = allLocalObjects;
 
 const apiKey = "sandbox-bridge-scenario-key";
 const observedSandboxIds = new Set<string>();
@@ -54,6 +57,7 @@ test("Node Backoffice manages Cloudflare sandboxes through the authenticated bri
 
   await runBackofficeScenario(
     defineBackofficeScenario({
+      objects: scenarioObjects,
       name: "Node sandbox lifecycle through the Cloudflare bridge",
       env: configuration.runtimeEnv,
       createSandboxProviders: configuration.createSandboxProviders,

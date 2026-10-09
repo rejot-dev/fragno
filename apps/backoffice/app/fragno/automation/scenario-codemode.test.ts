@@ -19,15 +19,44 @@ vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoin
 
 import { createBackofficeServiceExecution } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
 import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 
+import { InMemoryApiObject } from "../../../workers/api.do";
+import { InMemoryAppInstallationsObject } from "../../../workers/app-installations.do";
+import { InMemoryAppsObject } from "../../../workers/apps.do";
+import { InMemoryAuthObject } from "../../../workers/auth.do";
+import { InMemoryAutomationsObject } from "../../../workers/automations.do";
+import { InMemoryFormsObject } from "../../../workers/forms.do";
+import { InMemoryGitHubObject } from "../../../workers/github.do";
+import { InMemoryMcpObject } from "../../../workers/mcp.do";
+import { InMemoryOtpObject } from "../../../workers/otp.do";
+import { InMemoryResendObject } from "../../../workers/resend.do";
+import { InMemoryTelegramObject } from "../../../workers/telegram.do";
+import { InMemoryUploadObject } from "../../../workers/upload.do";
 import { backofficeFiles, defineBackofficeScenario, runBackofficeScenario } from "./scenario";
+
+const scenarioObjects = {
+  API: (input) => new InMemoryApiObject(input),
+  APPS: (input) => new InMemoryAppsObject(input),
+  APP_INSTALLATIONS: (input) => new InMemoryAppInstallationsObject(input),
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  FORMS: (input) => new InMemoryFormsObject(input),
+  GITHUB: (input) => new InMemoryGitHubObject(input),
+  MCP: (input) => new InMemoryMcpObject(input),
+  OTP: (input) => new InMemoryOtpObject(input),
+  RESEND: (input) => new InMemoryResendObject(input),
+  TELEGRAM: (input) => new InMemoryTelegramObject(input),
+  UPLOAD: (input) => new InMemoryUploadObject(input),
+} satisfies LocalBackofficeObjects;
 
 describe("Backoffice codemode scenarios", () => {
   test("exposes GitHub repository credentials from project-scoped runtimes", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "project sandboxes can request GitHub repository clone credentials",
 
         files: backofficeFiles.workspaceStarter(),
@@ -80,6 +109,7 @@ describe("Backoffice codemode scenarios", () => {
   test("runs raw codemode through route-backed runtime tools", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "codemode updates upload and writes automation state",
 
         files: backofficeFiles.workspaceStarter(),
@@ -134,6 +164,7 @@ describe("Backoffice codemode scenarios", () => {
   test("leaves Telegram unconfigured when the public origin is missing", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "telegram configuration requires a public origin",
 
         env: {
@@ -170,6 +201,7 @@ describe("Backoffice codemode scenarios", () => {
     async (publicOrigin) => {
       await runBackofficeScenario(
         defineBackofficeScenario({
+          objects: scenarioObjects,
           name: `telegram configuration rejects public origin ${publicOrigin}`,
 
           env: {
@@ -205,6 +237,7 @@ describe("Backoffice codemode scenarios", () => {
   test("generates the Telegram webhook secret during runtime-tool configuration", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "telegram runtime configuration generates its webhook secret",
 
         files: backofficeFiles.workspaceStarter(),
@@ -240,6 +273,7 @@ describe("Backoffice codemode scenarios", () => {
   test("runs codemode through scoped context handles", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "codemode writes state through scoped context handles",
 
         files: backofficeFiles.workspaceStarter(),
@@ -277,6 +311,7 @@ describe("Backoffice codemode scenarios", () => {
   test("exposes user-scoped MCP connection tools from scoped codemode handles", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "codemode user scoped context uses MCP without capability setup",
 
         files: backofficeFiles.workspaceStarter(),
@@ -303,6 +338,7 @@ describe("Backoffice codemode scenarios", () => {
   test("lets the explicitly trusted scenario shell arrange another organization", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "trusted scenario codemode writes state through a scoped context",
 
         files: backofficeFiles.workspaceStarter(),
@@ -336,6 +372,7 @@ describe("Backoffice codemode scenarios", () => {
   test("uses file setup helper for multiple workspace files", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "file setup helper writes multiple workspace files",
 
         files: backofficeFiles.workspaceStarter(),
@@ -377,6 +414,7 @@ describe("Backoffice codemode scenarios", () => {
   test("uses a fake Resend runtime through codemode tools", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "fake Resend records codemode replies",
 
         files: backofficeFiles.workspaceStarter(),

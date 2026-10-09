@@ -10,8 +10,21 @@ vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoin
 import { decodeJwt } from "jose";
 
 import type { InMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { verifyBackofficeJwt } from "@/fragno/auth/token-lifecycle";
 import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
+
+import { InMemoryAuthObject } from "./auth.do";
+import { InMemoryAutomationsObject } from "./automations.do";
+import { InMemoryOtpObject } from "./otp.do";
+import { InMemoryUploadObject } from "./upload.do";
+
+const scenarioObjects = {
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  OTP: (input) => new InMemoryOtpObject(input),
+  UPLOAD: (input) => new InMemoryUploadObject(input),
+} satisfies LocalBackofficeObjects;
 
 type AuthObject = ReturnType<InMemoryBackofficeRuntime["objects"]["auth"]["singleton"]>;
 
@@ -46,6 +59,7 @@ for (const origin of ["http://localhost:5173", "http://127.0.0.1:5173"]) {
   test(`device authorization and token exchange preserve the selected origin ${origin}`, async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: `local OAuth device login through ${origin}`,
         env: { AUTH_EMAIL_VERIFICATION_ENABLED: "false" },
         vars: () => ({ cookie: "" }),

@@ -49,13 +49,30 @@ vi.mock("cloudflare:workers", () => ({
 
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 
+import { InMemoryApiObject } from "../../../workers/api.do";
 import { InMemoryAppInstallationsObject } from "../../../workers/app-installations.do";
 import { InMemoryAppsObject } from "../../../workers/apps.do";
 import { InMemoryAuthObject } from "../../../workers/auth.do";
 import { InMemoryAutomationsObject } from "../../../workers/automations.do";
 import { InMemoryFormsObject } from "../../../workers/forms.do";
+import { InMemoryMcpObject } from "../../../workers/mcp.do";
+import { InMemoryOtpObject } from "../../../workers/otp.do";
+import { InMemoryTelegramObject } from "../../../workers/telegram.do";
 import { InMemoryUploadObject } from "../../../workers/upload.do";
 import { backofficeFiles, defineBackofficeScenario, runBackofficeScenario } from "./scenario";
+
+const scenarioObjects = {
+  API: (input) => new InMemoryApiObject(input),
+  APPS: (input) => new InMemoryAppsObject(input),
+  APP_INSTALLATIONS: (input) => new InMemoryAppInstallationsObject(input),
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  FORMS: (input) => new InMemoryFormsObject(input),
+  MCP: (input) => new InMemoryMcpObject(input),
+  OTP: (input) => new InMemoryOtpObject(input),
+  TELEGRAM: (input) => new InMemoryTelegramObject(input),
+  UPLOAD: (input) => new InMemoryUploadObject(input),
+} satisfies LocalBackofficeObjects;
 
 const localObjects = {
   APPS: (input) => new InMemoryAppsObject(input),
@@ -107,6 +124,7 @@ describe("system automation scenarios", () => {
   test("sign-up reaches automation ingestion through transactional auth hooks", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "sign-up provisions an organization through trigger-backed durable hooks",
         files: backofficeFiles.systemOnly(),
         vars: () => ({ organizationId: "" }),
@@ -298,6 +316,7 @@ describe("system automation scenarios", () => {
   test("project creation exposes an empty database-backed workspace", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario<{ projectId: string }>({
+        objects: scenarioObjects,
         name: "project creation exposes an empty database-backed workspace",
         files: backofficeFiles.fullStarter(),
         vars: () => ({ projectId: "" }),
@@ -366,6 +385,7 @@ describe("system automation scenarios", () => {
   test("auth organization.created initializes workspace files", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "system organization creation initializes workspace files",
         options: { allowErroredWorkflows: true },
 
@@ -591,6 +611,7 @@ describe("system automation scenarios", () => {
   test("auth organization.updated is forwarded to the org automation queue after workspace initialization", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "production auth organization updates enqueue organization automation events after creation bootstrap",
 
         files: backofficeFiles.systemOnly(),
@@ -702,6 +723,7 @@ describe("system automation scenarios", () => {
   test("unrelated system events do not create system workflow instances", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "system router ignores unrelated automation events",
 
         files: backofficeFiles.systemOnly(),
@@ -723,6 +745,7 @@ describe("system automation scenarios", () => {
   test("configured capabilities expose codemode types from /static on demand", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "configured capabilities expose generated static codemode types",
 
         files: backofficeFiles.systemOnly(),
@@ -776,6 +799,7 @@ describe("system automation scenarios", () => {
   test("installed MCP servers expose codemode provider types from /static on demand", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "installed MCP servers expose generated static codemode provider types",
 
         files: backofficeFiles.systemOnly(),

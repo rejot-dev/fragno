@@ -23,6 +23,7 @@ import {
   type BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import {
@@ -35,7 +36,15 @@ import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-ba
 import { executeBackofficeRuntimeTool } from "@/fragno/runtime-tools/runtime-tools";
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
 
+import { InMemoryApiObject } from "../../../../../workers/api.do";
+import { InMemoryAppInstallationsObject } from "../../../../../workers/app-installations.do";
+import { InMemoryAppsObject } from "../../../../../workers/apps.do";
+import { InMemoryAuthObject } from "../../../../../workers/auth.do";
+import { InMemoryAutomationsObject } from "../../../../../workers/automations.do";
+import { InMemoryFormsObject } from "../../../../../workers/forms.do";
 import { InMemoryReson8Object } from "../../../../../workers/reson8.do";
+import { InMemoryTelegramObject } from "../../../../../workers/telegram.do";
+import { InMemoryUploadObject } from "../../../../../workers/upload.do";
 import {
   integrationListOutputSchema,
   integrationSetupProgressSchema,
@@ -44,6 +53,17 @@ import type { IntegrationContext } from "./integration-implementation";
 import { createIntegrationRegistry } from "./integration-registry";
 import { integrationsToolFamily } from "./integration-tools";
 import { createReson8Integration } from "./reson8-integration";
+
+const scenarioObjects = {
+  API: (input) => new InMemoryApiObject(input),
+  APPS: (input) => new InMemoryAppsObject(input),
+  APP_INSTALLATIONS: (input) => new InMemoryAppInstallationsObject(input),
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  FORMS: (input) => new InMemoryFormsObject(input),
+  TELEGRAM: (input) => new InMemoryTelegramObject(input),
+  UPLOAD: (input) => new InMemoryUploadObject(input),
+} satisfies LocalBackofficeObjects;
 
 const scope = { kind: "org", orgId: "reson8-org" } as const;
 const connectionId = "backoffice#reson8";
@@ -108,8 +128,9 @@ async function runReson8IntegrationScenario<TVars extends Record<string, unknown
       defineBackofficeScenario({
         ...scenario,
         options: { ...scenario.options, sqliteDataDirectory: directory },
-        objectOverrides: {
-          ...scenario.objectOverrides,
+        objects: {
+          ...scenarioObjects,
+          ...scenario.objects,
           RESON8: (options) =>
             new InMemoryReson8Object({
               ...options,
@@ -151,6 +172,7 @@ function createIntegrationScenarioContext(
 
 test("Codemode resolves deterministic Reson8 addresses across setup, requests, restart, and configuration removal", async () => {
   await runReson8IntegrationScenario((provider) => ({
+    objects: scenarioObjects,
     name: "Reson8 named setup and execution through the registered facade",
     setup: ({ given }) => [
       given.organization.exists({ id: scope.orgId, slug: "reson8", name: "Reson8" }),
@@ -340,6 +362,7 @@ test("Codemode resolves deterministic Reson8 addresses across setup, requests, r
 
 test("terminal commands use scalar connection IDs without setup handles or persistent shell variables", async () => {
   await runReson8IntegrationScenario((provider) => ({
+    objects: scenarioObjects,
     name: "Reson8 deterministic terminal addresses",
     setup: ({ given }) => [
       given.organization.exists({ id: scope.orgId, slug: "reson8", name: "Reson8" }),
@@ -562,6 +585,7 @@ test("terminal commands use scalar connection IDs without setup handles or persi
 
 test("connection IDs cannot select an owner or replace umbrella and service authority", async () => {
   await runReson8IntegrationScenario((provider) => ({
+    objects: scenarioObjects,
     name: "Integration permissions and current-scope address resolution",
     setup: ({ given }) => [
       given.auth.user({ id: "member", email: "member@example.test" }),
@@ -816,6 +840,7 @@ test.each([
   async ({ reason, receivingAuthorityResolver }) => {
     await runReson8IntegrationScenario(
       (provider) => ({
+        objects: scenarioObjects,
         name: "Receiving-object authorization remains a verification failure boundary",
         setup: ({ given }) => [
           given.organization.exists({ id: scope.orgId, slug: "reson8", name: "Reson8" }),
@@ -912,6 +937,7 @@ test.each([
 
 test("resolved Reson8 operations bind authority and validate binary contracts and live results", async () => {
   await runReson8IntegrationScenario((provider) => ({
+    objects: scenarioObjects,
     name: "Concrete Reson8 source contracts and request-bound authority",
     setup: ({ given }) => [
       given.auth.user({ id: "member", email: "member@example.test" }),
@@ -1104,6 +1130,7 @@ test("resolved Reson8 operations bind authority and validate binary contracts an
 
 test("implementation claims reject collisions and wrong publication instead of shadowing source-owned configuration", async () => {
   await runReson8IntegrationScenario((provider) => ({
+    objects: scenarioObjects,
     name: "Connection address ownership through concrete Reson8 registration",
     setup: ({ given }) => [
       given.organization.exists({ id: scope.orgId, slug: "reson8", name: "Reson8" }),

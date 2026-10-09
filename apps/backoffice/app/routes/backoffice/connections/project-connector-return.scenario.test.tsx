@@ -11,11 +11,25 @@ const workers = vi.hoisted(() => ({
 vi.mock("cloudflare:workers", () => workers);
 
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { runProjectConnectorScenario } from "@/fragno/runtime-tools/families/project-connector-scenario.test-utils";
 import { loader as callbackLoader } from "@/routes/api/project-connector";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
+import { InMemoryApiObject } from "../../../../workers/api.do";
+import { InMemoryAuthObject } from "../../../../workers/auth.do";
+import { InMemoryAutomationsObject } from "../../../../workers/automations.do";
+import { InMemoryFormsObject } from "../../../../workers/forms.do";
+import { InMemoryUploadObject } from "../../../../workers/upload.do";
 import ProjectConnectorReturn, { loader } from "./project-connector-return";
+
+const scenarioObjects = {
+  API: (input) => new InMemoryApiObject(input),
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  FORMS: (input) => new InMemoryFormsObject(input),
+  UPLOAD: (input) => new InMemoryUploadObject(input),
+} satisfies LocalBackofficeObjects;
 
 test.each(["org:ada-labs", "project:ada-labs:project-1"])(
   "rejects a non-user Connector return for %s",
@@ -40,6 +54,7 @@ test.each([
   "anonymous $scopeSegment returns render next steps without trusting provider claims",
   async ({ scopeSegment, backPath, label }) => {
     await runProjectConnectorScenario((gateway) => ({
+      objects: scenarioObjects,
       name: `Connector public landing for ${scopeSegment}`,
       env: { OOMOL_PROJECT_API_KEY: undefined },
       setup: ({ given }) => [

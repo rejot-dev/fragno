@@ -10,17 +10,33 @@ vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoin
 
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { SIGN_UP_INVITATION_TYPE } from "@/fragno/otp";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
 import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 import { sha256Hex } from "@/lib/crypto";
 
+import { InMemoryAppsObject } from "../../../workers/apps.do";
+import { InMemoryAuthObject } from "../../../workers/auth.do";
+import { InMemoryAutomationsObject } from "../../../workers/automations.do";
+import { InMemoryFormsObject } from "../../../workers/forms.do";
+import { InMemoryOtpObject } from "../../../workers/otp.do";
+import { InMemoryUploadObject } from "../../../workers/upload.do";
 import {
   defineBackofficeScenario,
   runBackofficeScenario,
   type BackofficeScenarioContext,
   type BackofficeScenarioStep,
 } from "./scenario";
+
+const scenarioObjects = {
+  APPS: (input) => new InMemoryAppsObject(input),
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  FORMS: (input) => new InMemoryFormsObject(input),
+  OTP: (input) => new InMemoryOtpObject(input),
+  UPLOAD: (input) => new InMemoryUploadObject(input),
+} satisfies LocalBackofficeObjects;
 
 type SignUpInvitationScenarioVars = {
   invitationUrl: string;
@@ -122,6 +138,7 @@ describe("Auth sign-up invitation scenarios", () => {
   test("only the invited email can create a Backoffice account", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "Backoffice account creation requires an email-bound admin invitation",
         env: { SIGN_UP_INVITATIONS_ENABLED: "true" },
         vars: (): SignUpInvitationScenarioVars => ({
@@ -166,6 +183,7 @@ describe("Auth sign-up invitation scenarios", () => {
   test("reissuing an invitation rotates the code for the hashed email id", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "Reissuing a sign-up invitation supersedes the previous email-bound link",
         env: { SIGN_UP_INVITATIONS_ENABLED: "true" },
         vars: (): SignUpInvitationScenarioVars => ({
@@ -218,6 +236,7 @@ describe("Auth sign-up invitation scenarios", () => {
   test("allows direct account creation when sign-up invitations are disabled", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "Backoffice account creation is open when sign-up invitations are disabled",
         env: { SIGN_UP_INVITATIONS_ENABLED: "false" },
         steps: ({ then }) => [

@@ -16,6 +16,7 @@ import { z } from "zod";
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import { BACKOFFICE_INTERNAL_CONTEXT_HEADER } from "@/backoffice-runtime/internal-object-request";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { telegramAutomationFileDownloadPath } from "@/backoffice-runtime/telegram-file-response";
 import {
   defineBackofficeScenario,
@@ -26,7 +27,22 @@ import {
 import { setScenarioAuthUserRole } from "@/fragno/automation/scenario-auth";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
+import { InMemoryApiObject } from "../../../workers/api.do";
+import { InMemoryAuthObject } from "../../../workers/auth.do";
+import { InMemoryAutomationsObject } from "../../../workers/automations.do";
+import { InMemoryFormsObject } from "../../../workers/forms.do";
+import { InMemoryOtpObject } from "../../../workers/otp.do";
+import { InMemoryUploadObject } from "../../../workers/upload.do";
 import { action, loader } from "./telegram";
+
+const scenarioObjects = {
+  API: (input) => new InMemoryApiObject(input),
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  FORMS: (input) => new InMemoryFormsObject(input),
+  OTP: (input) => new InMemoryOtpObject(input),
+  UPLOAD: (input) => new InMemoryUploadObject(input),
+} satisfies LocalBackofficeObjects;
 
 const orgId = "telegram-org";
 const webhookSecret = "telegram-webhook-secret";
@@ -162,6 +178,7 @@ async function assertNoTelegramDeliveries(ctx: BackofficeScenarioContext) {
 describe("Telegram public authorization scenarios", () => {
   test("anonymous callers cannot read private conversations or execute management operations", async () => {
     await runTelegramScenario({
+      objects: scenarioObjects,
       name: "Telegram webhook secrets do not authorize management APIs",
       fakes: ({ fake }) => ({ telegram: fake.telegram() }),
       setup: ({ given }) => [
@@ -218,6 +235,7 @@ describe("Telegram public authorization scenarios", () => {
 
   test("only the exact POST webhook accepts anonymous requests and still validates its secret", async () => {
     await runTelegramScenario({
+      objects: scenarioObjects,
       name: "Telegram public webhook anonymity is method and path bound",
       fakes: ({ fake }) => ({ telegram: fake.telegram() }),
       setup: ({ given }) => [
@@ -289,6 +307,7 @@ describe("Telegram public authorization scenarios", () => {
 
   test("members operate their own Telegram scopes without reaching foreign scopes", async () => {
     await runTelegramScenario({
+      objects: scenarioObjects,
       name: "Telegram member requests use canonical operation permissions",
       fakes: ({ fake }) => ({ telegram: fake.telegram() }),
       setup: ({ given }) => [
@@ -408,6 +427,7 @@ describe("Telegram public authorization scenarios", () => {
 
   test("authorized administrators can inspect persisted chats without exposing internal download routes", async () => {
     await runTelegramScenario({
+      objects: scenarioObjects,
       name: "Telegram public routes are a closed management surface",
       fakes: ({ fake }) => ({
         telegram: fake.telegram({

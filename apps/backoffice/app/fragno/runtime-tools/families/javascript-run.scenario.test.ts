@@ -17,6 +17,7 @@ import {
   createBackofficeUserExecution,
 } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
 import { javaScriptModuleArtifactSchema } from "@/fragno/codemode/javascript-module-artifact";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
@@ -24,7 +25,28 @@ import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/
 import { executeBackofficeRuntimeTool } from "@/fragno/runtime-tools/runtime-tools";
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
 
+import { InMemoryApiObject } from "../../../../workers/api.do";
+import { InMemoryAppInstallationsObject } from "../../../../workers/app-installations.do";
+import { InMemoryAppsObject } from "../../../../workers/apps.do";
+import { InMemoryAuthObject } from "../../../../workers/auth.do";
+import { InMemoryAutomationsObject } from "../../../../workers/automations.do";
+import { InMemoryFormsObject } from "../../../../workers/forms.do";
+import { InMemoryMcpObject } from "../../../../workers/mcp.do";
+import { InMemoryTelegramObject } from "../../../../workers/telegram.do";
+import { InMemoryUploadObject } from "../../../../workers/upload.do";
 import { javaScriptRunToolFamily } from "./javascript";
+
+const scenarioObjects = {
+  API: (input) => new InMemoryApiObject(input),
+  APPS: (input) => new InMemoryAppsObject(input),
+  APP_INSTALLATIONS: (input) => new InMemoryAppInstallationsObject(input),
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  FORMS: (input) => new InMemoryFormsObject(input),
+  MCP: (input) => new InMemoryMcpObject(input),
+  TELEGRAM: (input) => new InMemoryTelegramObject(input),
+  UPLOAD: (input) => new InMemoryUploadObject(input),
+} satisfies LocalBackofficeObjects;
 
 let server: Awaited<ReturnType<typeof createCodemodeTestServer>>;
 const compiler = { available: true, compilations: 0 };
@@ -53,6 +75,7 @@ const artifactPath = "/workspace/.build/example.module.json";
 test("js.run executes bundled top-level statements and dependencies with the compiler offline, ignoring exports", async () => {
   await runBackofficeScenario(
     defineBackofficeScenario({
+      objects: scenarioObjects,
       name: "public module artifact execution",
       env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
       setup: ({ given }) => [
@@ -152,6 +175,7 @@ for (const invalid of [
   test(`js.run returns ${invalid.name} as an error without fallback compilation`, async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: invalid.name,
         env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
         setup: ({ given }) => [
@@ -199,6 +223,7 @@ for (const invalid of [
 test("js.run validates artifact format, entrypoint, runtime, JSON and scope before execution", async () => {
   await runBackofficeScenario(
     defineBackofficeScenario({
+      objects: scenarioObjects,
       name: "artifact execution boundary",
       env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
       setup: ({ given }) => [

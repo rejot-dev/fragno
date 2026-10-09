@@ -7,7 +7,18 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
 }));
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
+
+import { InMemoryAuthObject } from "../../workers/auth.do";
+import { InMemoryAutomationsObject } from "../../workers/automations.do";
+import { InMemoryUploadObject } from "../../workers/upload.do";
+
+const scenarioObjects = {
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  UPLOAD: (input) => new InMemoryUploadObject(input),
+} satisfies LocalBackofficeObjects;
 
 function createVoidDeferred() {
   let resolve!: () => void;
@@ -25,7 +36,8 @@ test("failed alarms remain deliverable while later alarms are acknowledged", asy
     defineBackofficeScenario({
       name: "failed alarms remain deliverable while later alarms are acknowledged",
       options: { drain: false },
-      objectOverrides: {
+      objects: {
+        ...scenarioObjects,
         UPLOAD: ({ name, state, nowEpochMs }) => ({
           async fetch() {
             await state.storage.setAlarm(nowEpochMs());
@@ -78,7 +90,8 @@ test("an alarm rescheduled by its handler remains deliverable", async () => {
     defineBackofficeScenario({
       name: "an alarm rescheduled by its handler remains deliverable",
       options: { drain: false },
-      objectOverrides: {
+      objects: {
+        ...scenarioObjects,
         UPLOAD: ({ state, nowEpochMs }) => ({
           async fetch() {
             await state.storage.setAlarm(nowEpochMs());
@@ -120,7 +133,8 @@ test("a suspended alarm does not block another object's alarm", async () => {
     defineBackofficeScenario({
       name: "unrelated object alarms are delivered independently",
       options: { drain: false },
-      objectOverrides: {
+      objects: {
+        ...scenarioObjects,
         UPLOAD: ({ name, state, nowEpochMs }) => ({
           async fetch(request: Request) {
             if (new URL(request.url).pathname === "/state") {
@@ -188,7 +202,8 @@ test("detached alarm work observes live logical time after the drain ends", asyn
     defineBackofficeScenario({
       name: "detached alarm work observes live logical time after the drain ends",
       options: { drain: false },
-      objectOverrides: {
+      objects: {
+        ...scenarioObjects,
         UPLOAD: ({ state, nowEpochMs }) => ({
           async fetch() {
             await state.storage.setAlarm(nowEpochMs());

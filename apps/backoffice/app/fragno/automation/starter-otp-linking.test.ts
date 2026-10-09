@@ -22,7 +22,34 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
 
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
+
+import { InMemoryApiObject } from "../../../workers/api.do";
+import { InMemoryAppInstallationsObject } from "../../../workers/app-installations.do";
+import { InMemoryAppsObject } from "../../../workers/apps.do";
+import { InMemoryAuthObject } from "../../../workers/auth.do";
+import { InMemoryAutomationsObject } from "../../../workers/automations.do";
+import { InMemoryFormsObject } from "../../../workers/forms.do";
+import { InMemoryMarketplaceObject } from "../../../workers/marketplace.do";
+import { InMemoryMcpObject } from "../../../workers/mcp.do";
+import { InMemoryOtpObject } from "../../../workers/otp.do";
+import { InMemoryResendObject } from "../../../workers/resend.do";
+import { InMemoryUploadObject } from "../../../workers/upload.do";
 import { defineBackofficeScenario, runBackofficeScenario } from "./scenario";
+
+const scenarioObjects = {
+  API: (input) => new InMemoryApiObject(input),
+  APPS: (input) => new InMemoryAppsObject(input),
+  APP_INSTALLATIONS: (input) => new InMemoryAppInstallationsObject(input),
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  FORMS: (input) => new InMemoryFormsObject(input),
+  MARKETPLACE: (input) => new InMemoryMarketplaceObject(input),
+  MCP: (input) => new InMemoryMcpObject(input),
+  OTP: (input) => new InMemoryOtpObject(input),
+  RESEND: (input) => new InMemoryResendObject(input),
+  UPLOAD: (input) => new InMemoryUploadObject(input),
+} satisfies LocalBackofficeObjects;
 
 const TELEGRAM_CHANNEL_MARKETPLACE_INSTALLATION = {
   targetScope: { kind: "org", orgId: "org-1" },
@@ -129,6 +156,7 @@ describe("Telegram Channel OTP linking automation in memory", () => {
   test("routes Telegram /start through OTP confirmation and links the Telegram chat", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "starter telegram /start links a chat through OTP",
 
         fakes: ({ fake }) => ({
@@ -241,6 +269,7 @@ describe("Telegram Channel OTP linking automation in memory", () => {
   test("starts separate Telegram user-linking workflows for separate /start event ids", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "starter telegram /start creates event-keyed linking workflows",
 
         fakes: ({ fake }) => ({
@@ -301,6 +330,7 @@ describe("Telegram Channel OTP linking automation in memory", () => {
   test("resolves an already linked Telegram chat without creating another claim", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "starter telegram /start resolves an already linked chat",
         fakes: ({ fake }) => ({ telegram: fake.telegram() }),
         setup: ({ given }) => [
@@ -357,6 +387,7 @@ describe("Telegram Channel OTP linking automation in memory", () => {
   test("OTP completion with no stored workflow binding is a no-op", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "starter OTP completion without workflow binding is ignored",
 
         fakes: ({ fake }) => ({
@@ -391,6 +422,7 @@ describe("Telegram Channel OTP linking automation in memory", () => {
   test("telegram-user-linking rejects a completed claim with a different OTP id", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "telegram-user-linking rejects a mismatched OTP claim",
 
         fakes: ({ fake }) => ({
@@ -455,6 +487,7 @@ describe("Telegram Channel OTP linking automation in memory", () => {
   test("telegram-user-linking times out when the claim is not completed", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "telegram-user-linking claim wait times out",
 
         options: {

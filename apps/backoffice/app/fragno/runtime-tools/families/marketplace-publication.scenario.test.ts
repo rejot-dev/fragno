@@ -13,6 +13,7 @@ import {
   type BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import type { BackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import { createStaticFileCollection } from "@/file-collection/create-static-file-collection";
 import { MARKETPLACE_PACKAGE_PUBLISH_WORKFLOW_NAME } from "@/fragno/automation/marketplace-package-publish-workflow";
@@ -43,10 +44,30 @@ import {
   loadPublishedMarketplaceArtifactExplorer,
 } from "@/routes/backoffice/marketplace/artifact-files.server";
 
+import { InMemoryApiObject } from "../../../../workers/api.do";
+import { InMemoryAppInstallationsObject } from "../../../../workers/app-installations.do";
+import { InMemoryAppsObject } from "../../../../workers/apps.do";
 import { InMemoryAuthObject } from "../../../../workers/auth.do";
+import { InMemoryAutomationsObject } from "../../../../workers/automations.do";
+import { InMemoryFormsObject } from "../../../../workers/forms.do";
 import { InMemoryMarketplaceObject } from "../../../../workers/marketplace.do";
+import { InMemoryMcpObject } from "../../../../workers/mcp.do";
+import { InMemoryTelegramObject } from "../../../../workers/telegram.do";
 import { InMemoryUploadObject } from "../../../../workers/upload.do";
 import { createMarketplaceRuntime } from "./marketplace-runtime";
+
+const scenarioObjects = {
+  API: (input) => new InMemoryApiObject(input),
+  APPS: (input) => new InMemoryAppsObject(input),
+  APP_INSTALLATIONS: (input) => new InMemoryAppInstallationsObject(input),
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  FORMS: (input) => new InMemoryFormsObject(input),
+  MARKETPLACE: (input) => new InMemoryMarketplaceObject(input),
+  MCP: (input) => new InMemoryMcpObject(input),
+  TELEGRAM: (input) => new InMemoryTelegramObject(input),
+  UPLOAD: (input) => new InMemoryUploadObject(input),
+} satisfies LocalBackofficeObjects;
 
 const ORG_SCOPE = { kind: "org", orgId: "org-1" } as const;
 const PACKAGE_ROOT = "/workspace/packages/report";
@@ -189,6 +210,7 @@ describe("Marketplace package publication scenarios", () => {
   test("publishes a frozen binary-capable snapshot through codemode and installs the exact artifact", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario<{ publication: MarketplacePublishResult | null }>({
+        objects: scenarioObjects,
         name: "Workspace package snapshot publication and installation",
         vars: () => ({ publication: null }),
         setup: ({ given }) => [
@@ -331,6 +353,7 @@ describe("Marketplace package publication scenarios", () => {
       const USER_SCOPE = { kind: "user", userId: "member-1" } as const;
       await runBackofficeScenario(
         defineBackofficeScenario<{ publication: MarketplacePublishResult | null }>({
+          objects: scenarioObjects,
           name: "Organization ownership is separate from personal source and publishing actor",
           vars: () => ({ publication: null }),
           setup: ({ given }) => [
@@ -418,6 +441,7 @@ describe("Marketplace package publication scenarios", () => {
   test("rejects non-members and every non-System override before staging a publication", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "Publishing permission does not grant ownership or System overrides",
         setup: ({ given }) => [
           given.organization.exists({
@@ -488,6 +512,7 @@ describe("Marketplace package publication scenarios", () => {
   test("System overrides replace complete version directories without changing installed copies", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario<{ pinned: MarketplaceArtifactManifest | null }>({
+        objects: scenarioObjects,
         name: "System publishes older releases and atomic replacements",
         vars: () => ({ pinned: null }),
         setup: ({ given }) => [
@@ -620,7 +645,8 @@ describe("Marketplace package publication scenarios", () => {
         name: "Superseded publication retries cannot roll back replacement",
         vars: () => ({ first: null, second: null }),
         options: { allowErroredWorkflows: true },
-        objectOverrides: {
+        objects: {
+          ...scenarioObjects,
           MARKETPLACE: ({ state, env, runtime, implementation }) =>
             new (class extends InMemoryMarketplaceObject {
               override async completePackagePublish(
@@ -694,6 +720,7 @@ describe("Marketplace package publication scenarios", () => {
   test("identical concurrent requests deduplicate and replay after a full workflow restart", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario<{ publications: MarketplacePublishResult[] }>({
+        objects: scenarioObjects,
         name: "Identical captured requests share a durable workflow",
         vars: () => ({ publications: [] }),
         setup: ({ given }) => [
@@ -783,7 +810,8 @@ describe("Marketplace package publication scenarios", () => {
       await runBackofficeScenario(
         defineBackofficeScenario({
           name: `Capture detects concurrent ${mutation} changes`,
-          objectOverrides: {
+          objects: {
+            ...scenarioObjects,
             UPLOAD: ({ state, env, runtime, implementation }) =>
               new (class extends InMemoryUploadObject {
                 override async fetch(request: Request): Promise<Response> {
@@ -874,7 +902,8 @@ describe("Marketplace package publication scenarios", () => {
       }>({
         name: "Upload response loss and full publication restart",
         vars: () => ({ publication: null, creationsBeforeRestart: 0 }),
-        objectOverrides: {
+        objects: {
+          ...scenarioObjects,
           UPLOAD: ({ state, env, runtime, implementation }) =>
             new (class extends InMemoryUploadObject {
               override async fetch(request: Request): Promise<Response> {
@@ -989,6 +1018,7 @@ describe("Marketplace package publication scenarios", () => {
         first: MarketplacePublishResult | null;
         second: MarketplacePublishResult | null;
       }>({
+        objects: scenarioObjects,
         name: "Publishing overrides do not bypass optimistic concurrency",
         vars: () => ({ first: null, second: null }),
         options: { allowErroredWorkflows: true },
@@ -1052,6 +1082,7 @@ describe("Marketplace package publication scenarios", () => {
   test("destination revision conflicts reject all replacement writes and deletions", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario<{ replacement: MarketplacePublishResult | null }>({
+        objects: scenarioObjects,
         name: "Frozen destination revisions guard the complete replacement batch",
         vars: () => ({ replacement: null }),
         options: { allowErroredWorkflows: true },
@@ -1153,7 +1184,8 @@ describe("Marketplace package publication scenarios", () => {
         name: "Prepared replacement failure, recovery, and superseded full restart",
         vars: () => ({ abandoned: null, replacement: null }),
         options: { allowErroredWorkflows: true },
-        objectOverrides: {
+        objects: {
+          ...scenarioObjects,
           UPLOAD: ({ state, env, runtime, implementation }) =>
             new (class extends InMemoryUploadObject {
               override async fetch(request: Request): Promise<Response> {
@@ -1309,7 +1341,8 @@ describe("Marketplace package publication scenarios", () => {
         defineBackofficeScenario<{ publication: MarketplacePublishResult | null }>({
           name: `Temporary Auth outage during publication ${phase}`,
           vars: () => ({ publication: null }),
-          objectOverrides: {
+          objects: {
+            ...scenarioObjects,
             AUTH: ({ state, env, runtime, getAuthDatabase }) =>
               new (class extends InMemoryAuthObject {
                 override async getUserAuthorityFacts(
@@ -1424,6 +1457,7 @@ describe("Marketplace package publication scenarios", () => {
     const USER_SCOPE = { kind: "user", userId: "member-1" } as const;
     await runBackofficeScenario(
       defineBackofficeScenario<{ publication: MarketplacePublishResult | null }>({
+        objects: scenarioObjects,
         name: "Deferred publication checks current publishing authority",
         vars: () => ({ publication: null }),
         options: { allowErroredWorkflows: true },
@@ -1479,6 +1513,7 @@ describe("Marketplace package publication scenarios", () => {
   test("rejects invalid manifests, unsafe selections, secrets, and oversized packages without writes", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "Package validation happens before publication staging",
         setup: ({ given }) => [
           given.organization.exists({ id: "org-1", slug: "ada-labs", name: "Ada Labs" }),

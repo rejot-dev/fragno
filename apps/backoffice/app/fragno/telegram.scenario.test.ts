@@ -11,19 +11,38 @@ const workers = vi.hoisted(() => ({
 }));
 vi.mock("cloudflare:workers", () => workers);
 
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 
+import { InMemoryApiObject } from "../../workers/api.do";
+import { InMemoryAuthObject } from "../../workers/auth.do";
+import { InMemoryAutomationsObject } from "../../workers/automations.do";
+import { InMemoryFormsObject } from "../../workers/forms.do";
+import { InMemoryMcpObject } from "../../workers/mcp.do";
+import { InMemoryOtpObject } from "../../workers/otp.do";
+import { InMemoryUploadObject } from "../../workers/upload.do";
 import {
   backofficeFiles,
   defineBackofficeScenario,
   runBackofficeScenario,
 } from "./automation/scenario";
 
+const scenarioObjects = {
+  API: (input) => new InMemoryApiObject(input),
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  FORMS: (input) => new InMemoryFormsObject(input),
+  MCP: (input) => new InMemoryMcpObject(input),
+  OTP: (input) => new InMemoryOtpObject(input),
+  UPLOAD: (input) => new InMemoryUploadObject(input),
+} satisfies LocalBackofficeObjects;
+
 test("a shared Telegram conversation cannot inherit its legacy linked user's authority or issue a human claim", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "backoffice-telegram-identity-"));
   try {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "shared Telegram conversations are not human identities",
         options: { sqliteDataDirectory: directory },
         files: backofficeFiles.workspaceStarter(),

@@ -19,12 +19,23 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
 }));
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
+
 import {
   defineBackofficeScenario,
   runBackofficeScenario,
 } from "../../app/fragno/automation/scenario";
+import { InMemoryAuthObject } from "../../workers/auth.do";
+import { InMemoryAutomationsObject } from "../../workers/automations.do";
+import { InMemoryUploadObject } from "../../workers/upload.do";
 import { registerNodeBackofficeHealthCheck } from "./node-server-health";
 import { configureNodeBackofficeProxy } from "./node-server-proxy";
+
+const scenarioObjects = {
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  UPLOAD: (input) => new InMemoryUploadObject(input),
+} satisfies LocalBackofficeObjects;
 
 async function sendNodeProxyRequest(input: {
   port: number;
@@ -70,6 +81,7 @@ test("Node proxy accepts public HTTPS and direct localhost or 127.0.0.1 HTTP whi
   try {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "sign in through public HTTPS and direct loopback HTTP hosts",
         options: { sqliteDataDirectory: directory },
         env: { SIGN_UP_INVITATIONS_ENABLED: "false", AUTH_EMAIL_VERIFICATION_ENABLED: "false" },

@@ -21,6 +21,7 @@ import { createCodemodeTestServer } from "@fragno-dev/codemode/testing/codemode-
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { createRegistry, type ConversationView } from "@earendil-works/pi-durable";
 
+import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import {
   createBackofficeServiceExecution,
   createBackofficeSystemExecution,
@@ -41,6 +42,8 @@ import { executeBackofficeRuntimeTool } from "@/fragno/runtime-tools/runtime-too
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
 
 import { InMemoryPiObject } from "../../../workers/pi.do";
+
+const scenarioObjects = allLocalObjects;
 
 const scope = { kind: "org", orgId: "org-1" } as const;
 const manifestPath = "/workspace/pi/extensions.json";
@@ -203,6 +206,7 @@ function errorMessages(error: unknown): string {
 test("js.build publishes ordinary ES modules without executing or inspecting their exports", async () => {
   await runBackofficeScenario(
     defineBackofficeScenario({
+      objects: scenarioObjects,
       name: "generic JavaScript module build",
       env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
       setup: ({ given }) => [
@@ -294,29 +298,32 @@ test("js.build bundles native imports once; Pi inspects and renders fresh files 
       env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
       options: { drain: false },
       piAvailableModels: [{ provider: "faux", modelId: "faux-1", label: "Faux 1" }],
-      objectOverrides: scriptedExtensionAgents(
-        [
-          (context) => {
-            modelCalls += 1;
-            const system = JSON.stringify(
-              context.messages.filter((message) => message.role === "system"),
-            );
-            expect(system).toContain(
-              modelCalls === 1 ? "Initial workspace guidance" : "Updated workspace guidance",
-            );
-            expect(system).toContain("project_context");
-            expect(system).toContain(modelCalls === 1 ? "No later file" : "Later file exists");
-            expect(system).not.toContain("Other organization guidance");
-            expect(system).toContain("Unwrapped extension guidance");
-            expect(system).not.toContain("<plain_context>");
-            expect(system).not.toContain("omitted_context");
-            expect(system).toContain("# Backoffice System Guidance");
-            expect(system).toContain("Keep the session instruction.");
-            return fauxAssistantMessage(`Extension answer ${modelCalls}.`);
-          },
-        ],
-        reports,
-      ),
+      objects: {
+        ...scenarioObjects,
+        ...scriptedExtensionAgents(
+          [
+            (context) => {
+              modelCalls += 1;
+              const system = JSON.stringify(
+                context.messages.filter((message) => message.role === "system"),
+              );
+              expect(system).toContain(
+                modelCalls === 1 ? "Initial workspace guidance" : "Updated workspace guidance",
+              );
+              expect(system).toContain("project_context");
+              expect(system).toContain(modelCalls === 1 ? "No later file" : "Later file exists");
+              expect(system).not.toContain("Other organization guidance");
+              expect(system).toContain("Unwrapped extension guidance");
+              expect(system).not.toContain("<plain_context>");
+              expect(system).not.toContain("omitted_context");
+              expect(system).toContain("# Backoffice System Guidance");
+              expect(system).toContain("Keep the session instruction.");
+              return fauxAssistantMessage(`Extension answer ${modelCalls}.`);
+            },
+          ],
+          reports,
+        ),
+      },
       setup: ({ given }) => [
         given.organization.exists({ id: "org-1" }),
         given.organization.exists({ id: "org-2" }),
@@ -442,50 +449,53 @@ test("native workspace tools and built-in hooks run through sealed codemode with
       env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
       options: { drain: false },
       piAvailableModels: [{ provider: "faux", modelId: "faux-1", label: "Faux 1" }],
-      objectOverrides: scriptedExtensionAgents(
-        [
-          (context): AssistantMessage => {
-            calls++;
-            expect(JSON.stringify(context.messages)).toContain("Bridge request hook");
-            expect(JSON.stringify(context.messages)).toContain("Guest state 1");
-            return {
-              ...fauxAssistantMessage(""),
-              stopReason: "toolUse",
-              content: [
-                {
-                  type: "toolCall",
-                  id: "bridge-summary",
-                  name: "workspace_summary",
-                  arguments: { path: "/workspace/missing.txt" },
-                },
-                {
-                  type: "toolCall",
-                  id: "bridge-blocked",
-                  name: "execCodeMode",
-                  arguments: { code: "async () => { throw new Error('Must not execute'); }" },
-                },
-              ],
-            };
-          },
-          (context) => {
-            calls++;
-            expect(JSON.stringify(context.messages)).toContain(
-              "Hook processed: Loaded: Scoped bridge guidance",
-            );
-            expect(JSON.stringify(context.messages)).toContain(
-              "Guest hook blocked built-in codemode",
-            );
-            expect(JSON.stringify(context.messages)).not.toContain("Other scope secret");
-            return fauxAssistantMessage("First bridge answer");
-          },
-          (context) => {
-            calls++;
-            expect(JSON.stringify(context.messages)).toContain("Bridge continuation hook");
-            return fauxAssistantMessage("Final bridge answer");
-          },
-        ],
-        reports,
-      ),
+      objects: {
+        ...scenarioObjects,
+        ...scriptedExtensionAgents(
+          [
+            (context): AssistantMessage => {
+              calls++;
+              expect(JSON.stringify(context.messages)).toContain("Bridge request hook");
+              expect(JSON.stringify(context.messages)).toContain("Guest state 1");
+              return {
+                ...fauxAssistantMessage(""),
+                stopReason: "toolUse",
+                content: [
+                  {
+                    type: "toolCall",
+                    id: "bridge-summary",
+                    name: "workspace_summary",
+                    arguments: { path: "/workspace/missing.txt" },
+                  },
+                  {
+                    type: "toolCall",
+                    id: "bridge-blocked",
+                    name: "execCodeMode",
+                    arguments: { code: "async () => { throw new Error('Must not execute'); }" },
+                  },
+                ],
+              };
+            },
+            (context) => {
+              calls++;
+              expect(JSON.stringify(context.messages)).toContain(
+                "Hook processed: Loaded: Scoped bridge guidance",
+              );
+              expect(JSON.stringify(context.messages)).toContain(
+                "Guest hook blocked built-in codemode",
+              );
+              expect(JSON.stringify(context.messages)).not.toContain("Other scope secret");
+              return fauxAssistantMessage("First bridge answer");
+            },
+            (context) => {
+              calls++;
+              expect(JSON.stringify(context.messages)).toContain("Bridge continuation hook");
+              return fauxAssistantMessage("Final bridge answer");
+            },
+          ],
+          reports,
+        ),
+      },
       setup: ({ given }) => [
         given.organization.exists({ id: "org-1" }),
         given.organization.exists({ id: "org-2" }),
@@ -549,15 +559,18 @@ test("user, project and system sessions do not inherit organization build artifa
       env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
       options: { drain: false },
       piAvailableModels: [{ provider: "faux", modelId: "faux-1", label: "Faux 1" }],
-      objectOverrides: scriptedExtensionAgents(
-        [
-          (context) => {
-            expect(JSON.stringify(context.messages)).not.toContain("Valid extension guidance");
-            return fauxAssistantMessage("No inherited extension.");
-          },
-        ],
-        reports,
-      ),
+      objects: {
+        ...scenarioObjects,
+        ...scriptedExtensionAgents(
+          [
+            (context) => {
+              expect(JSON.stringify(context.messages)).not.toContain("Valid extension guidance");
+              return fauxAssistantMessage("No inherited extension.");
+            },
+          ],
+          reports,
+        ),
+      },
       setup: ({ given }) => [
         given.organization.exists({ id: "org-1" }),
         given.codemode.writeFile({ orgId: "org-1", path: extensionPath, content: simpleSource }),
@@ -593,18 +606,21 @@ test("source edits require an explicit rebuild and existing sessions retain thei
       env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
       options: { drain: false },
       piAvailableModels: [{ provider: "faux", modelId: "faux-1", label: "Faux 1" }],
-      objectOverrides: scriptedExtensionAgents(
-        [
-          (context) => {
-            modelCalls += 1;
-            expect(JSON.stringify(context.messages)).toContain(
-              modelCalls < 4 ? "Code revision one" : "Code revision two",
-            );
-            return fauxAssistantMessage(`Lifecycle answer ${modelCalls}.`);
-          },
-        ],
-        reports,
-      ),
+      objects: {
+        ...scenarioObjects,
+        ...scriptedExtensionAgents(
+          [
+            (context) => {
+              modelCalls += 1;
+              expect(JSON.stringify(context.messages)).toContain(
+                modelCalls < 4 ? "Code revision one" : "Code revision two",
+              );
+              return fauxAssistantMessage(`Lifecycle answer ${modelCalls}.`);
+            },
+          ],
+          reports,
+        ),
+      },
       setup: ({ given }) => [
         given.organization.exists({ id: "org-1" }),
         given.codemode.writeFile({ orgId: "org-1", path: manifestPath, content: manifest }),
@@ -650,6 +666,7 @@ for (const invalid of [
   test(`failed ${invalid.name} build preserves the previous artifact and does not activate source`, async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: `failed build ${invalid.name}`,
         env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
         setup: ({ given }) => [
@@ -764,15 +781,18 @@ for (const invalid of [
         env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
         options: { drain: false },
         piAvailableModels: [{ provider: "faux", modelId: "faux-1", label: "Faux 1" }],
-        objectOverrides: scriptedExtensionAgents(
-          [
-            (context) => {
-              expect(JSON.stringify(context.messages)).toContain("# Backoffice System Guidance");
-              return fauxAssistantMessage("Invalid extension does not brick the session.");
-            },
-          ],
-          reports,
-        ),
+        objects: {
+          ...scenarioObjects,
+          ...scriptedExtensionAgents(
+            [
+              (context) => {
+                expect(JSON.stringify(context.messages)).toContain("# Backoffice System Guidance");
+                return fauxAssistantMessage("Invalid extension does not brick the session.");
+              },
+            ],
+            reports,
+          ),
+        },
         setup: ({ given }) => [
           given.organization.exists({ id: "org-1" }),
           given.codemode.writeFile({
@@ -849,16 +869,19 @@ for (const invalid of artifactFailureCases) {
         env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
         options: { drain: false },
         piAvailableModels: [{ provider: "faux", modelId: "faux-1", label: "Faux 1" }],
-        objectOverrides: scriptedExtensionAgents(
-          [
-            (context) => {
-              expect(JSON.stringify(context.messages)).toContain("# Backoffice System Guidance");
-              expect(JSON.stringify(context.messages)).not.toContain("Valid extension guidance");
-              return fauxAssistantMessage("Built-in agent still works.");
-            },
-          ],
-          reports,
-        ),
+        objects: {
+          ...scenarioObjects,
+          ...scriptedExtensionAgents(
+            [
+              (context) => {
+                expect(JSON.stringify(context.messages)).toContain("# Backoffice System Guidance");
+                expect(JSON.stringify(context.messages)).not.toContain("Valid extension guidance");
+                return fauxAssistantMessage("Built-in agent still works.");
+              },
+            ],
+            reports,
+          ),
+        },
         setup: ({ given }) => [
           given.organization.exists({ id: "org-1" }),
           given.codemode.writeFile({ orgId: "org-1", path: manifestPath, content: manifest }),
@@ -919,15 +942,18 @@ for (const invalid of [
         env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
         options: { drain: false },
         piAvailableModels: [{ provider: "faux", modelId: "faux-1", label: "Faux 1" }],
-        objectOverrides: scriptedExtensionAgents(
-          [
-            (context) => {
-              expect(JSON.stringify(context.messages)).toContain("# Backoffice System Guidance");
-              return fauxAssistantMessage("No implicit build.");
-            },
-          ],
-          reports,
-        ),
+        objects: {
+          ...scenarioObjects,
+          ...scriptedExtensionAgents(
+            [
+              (context) => {
+                expect(JSON.stringify(context.messages)).toContain("# Backoffice System Guidance");
+                return fauxAssistantMessage("No implicit build.");
+              },
+            ],
+            reports,
+          ),
+        },
         setup: ({ given }) => [
           given.organization.exists({ id: "org-1" }),
           given.codemode.writeFile({
@@ -980,15 +1006,18 @@ for (const invalid of [
         env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
         options: { drain: false },
         piAvailableModels: [{ provider: "faux", modelId: "faux-1", label: "Faux 1" }],
-        objectOverrides: scriptedExtensionAgents(
-          [
-            (context) => {
-              expect(JSON.stringify(context.messages)).toContain("# Backoffice System Guidance");
-              return fauxAssistantMessage("Isolated extension failure.");
-            },
-          ],
-          reports,
-        ),
+        objects: {
+          ...scenarioObjects,
+          ...scriptedExtensionAgents(
+            [
+              (context) => {
+                expect(JSON.stringify(context.messages)).toContain("# Backoffice System Guidance");
+                return fauxAssistantMessage("Isolated extension failure.");
+              },
+            ],
+            reports,
+          ),
+        },
         setup: ({ given }) => [
           given.organization.exists({ id: "org-1" }),
           given.codemode.writeFile({ orgId: "org-1", path: manifestPath, content: manifest }),
@@ -1060,24 +1089,27 @@ for (const invalid of [
         env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
         options: { drain: false },
         piAvailableModels: [{ provider: "faux", modelId: "faux-1", label: "Faux 1" }],
-        objectOverrides: scriptedExtensionAgents(
-          [
-            () => ({
-              ...fauxAssistantMessage(""),
-              stopReason: "toolUse",
-              content: [
-                { type: "toolCall", id: "invalid-tool", name: "isolated_tool", arguments: {} },
-              ],
-            }),
-            (context) => {
-              const result = context.messages.find((message) => message.role === "toolResult");
-              expect(result).toMatchObject({ role: "toolResult", isError: true });
-              expect(JSON.stringify(result).toLowerCase()).toContain(invalid.error.toLowerCase());
-              return fauxAssistantMessage("Tool failure handled.");
-            },
-          ],
-          reports,
-        ),
+        objects: {
+          ...scenarioObjects,
+          ...scriptedExtensionAgents(
+            [
+              () => ({
+                ...fauxAssistantMessage(""),
+                stopReason: "toolUse",
+                content: [
+                  { type: "toolCall", id: "invalid-tool", name: "isolated_tool", arguments: {} },
+                ],
+              }),
+              (context) => {
+                const result = context.messages.find((message) => message.role === "toolResult");
+                expect(result).toMatchObject({ role: "toolResult", isError: true });
+                expect(JSON.stringify(result).toLowerCase()).toContain(invalid.error.toLowerCase());
+                return fauxAssistantMessage("Tool failure handled.");
+              },
+            ],
+            reports,
+          ),
+        },
         setup: ({ given }) => [
           given.organization.exists({ id: "org-1" }),
           given.codemode.writeFile({ orgId: "org-1", path: manifestPath, content: manifest }),
@@ -1112,10 +1144,13 @@ test("hook-only extensions preserve native failure isolation and reject malforme
       env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
       options: { drain: false },
       piAvailableModels: [{ provider: "faux", modelId: "faux-1", label: "Faux 1" }],
-      objectOverrides: scriptedExtensionAgents(
-        [() => fauxAssistantMessage("Malformed hook did not break the session.")],
-        reports,
-      ),
+      objects: {
+        ...scenarioObjects,
+        ...scriptedExtensionAgents(
+          [() => fauxAssistantMessage("Malformed hook did not break the session.")],
+          reports,
+        ),
+      },
       setup: ({ given }) => [
         given.organization.exists({ id: "org-1" }),
         given.codemode.writeFile({ orgId: "org-1", path: manifestPath, content: manifest }),
@@ -1148,6 +1183,7 @@ test("hook-only extensions preserve native failure isolation and reject malforme
 test("js.build validates CLI inputs and scoped modification authority before compiling", async () => {
   await runBackofficeScenario(
     defineBackofficeScenario({
+      objects: scenarioObjects,
       name: "build input and authority boundaries",
       env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
       setup: ({ given }) => [

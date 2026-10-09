@@ -9,6 +9,7 @@ vi.mock("cloudflare:workers", () => workers);
 
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import {
   defineBackofficeScenario,
   runBackofficeScenario,
@@ -18,7 +19,24 @@ import { apiPublicRoute } from "@/routes/api/api-route.server";
 import { mcpPublicRoute } from "@/routes/api/mcp-route.server";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
+import { InMemoryApiObject } from "../../workers/api.do";
+import { InMemoryAuthObject } from "../../workers/auth.do";
+import { InMemoryAutomationsObject } from "../../workers/automations.do";
+import { InMemoryFormsObject } from "../../workers/forms.do";
+import { InMemoryMcpObject } from "../../workers/mcp.do";
+import { InMemoryTelegramObject } from "../../workers/telegram.do";
+import { InMemoryUploadObject } from "../../workers/upload.do";
 import { forwardPublicFragmentRequest } from "./public-fragment-route.server";
+
+const scenarioObjects = {
+  API: (input) => new InMemoryApiObject(input),
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  FORMS: (input) => new InMemoryFormsObject(input),
+  MCP: (input) => new InMemoryMcpObject(input),
+  TELEGRAM: (input) => new InMemoryTelegramObject(input),
+  UPLOAD: (input) => new InMemoryUploadObject(input),
+} satisfies LocalBackofficeObjects;
 
 const origin = "https://backoffice.example";
 const orgId = "public-route-org";
@@ -48,6 +66,7 @@ test.each([
   async ({ name, route, managementPath }) => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: `${name} callback scope encoding`,
         options: { drain: false },
         setup: ({ given }) => [given.organization.exists({ id: orgId, slug: orgSlug })],
@@ -125,6 +144,7 @@ test.each([
 test("public API webhook scope aliases deliver to the same SQLite-backed endpoint", async () => {
   await runBackofficeScenario(
     defineBackofficeScenario({
+      objects: scenarioObjects,
       name: "API webhook scope URL encoding",
       options: { drain: false },
       setup: ({ given }) => [given.organization.exists({ id: orgId, slug: orgSlug })],

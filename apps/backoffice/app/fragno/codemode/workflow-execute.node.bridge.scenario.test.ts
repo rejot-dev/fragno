@@ -10,6 +10,7 @@ vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoin
 import { createCodemodeNodeExecutor } from "@fragno-dev/codemode/remote/codemode-node-executor";
 import { createCodemodeTestServer } from "@fragno-dev/codemode/testing/codemode-test-server";
 
+import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import { createNodeBackofficeRuntimeConfiguration } from "@/backoffice-runtime/node/node-runtime-env";
@@ -26,6 +27,8 @@ import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 
 import { runBackofficeCodemode } from "./execute";
 import { runBackofficeJavaScriptModule } from "./javascript-module-execute";
+
+const scenarioObjects = allLocalObjects;
 
 let server: Awaited<ReturnType<typeof createCodemodeTestServer>>;
 beforeAll(async () => {
@@ -45,6 +48,7 @@ test("Node checkpoints and replays workflow codemode across fresh Worker WebSock
   const execution = createBackofficeSystemExecution(scope);
   await runBackofficeScenario(
     defineBackofficeScenario({
+      objects: scenarioObjects,
       name: "Node checkpoint replay through ordinary Worker sockets",
       env,
       files: backofficeFiles.workspaceStarter({
@@ -113,6 +117,7 @@ test("remote event consumption and sleep resume with Date values intact", async 
   const execution = createBackofficeSystemExecution(scope);
   await runBackofficeScenario(
     defineBackofficeScenario({
+      objects: scenarioObjects,
       name: "remote wait, onConsume, and sleep",
       env,
       files: backofficeFiles.workspaceStarter({
@@ -176,6 +181,7 @@ test("interruption preserves host retry scheduling without falsely committing to
   const execution = createBackofficeSystemExecution(scope);
   await runBackofficeScenario(
     defineBackofficeScenario({
+      objects: scenarioObjects,
       name: "interrupted step retries through the Node runner",
       env: {
         codemode: {
@@ -238,6 +244,7 @@ test("permanent guest failures bypass the real Node runner's configured retry po
   const execution = createBackofficeSystemExecution(scope);
   await runBackofficeScenario(
     defineBackofficeScenario({
+      objects: scenarioObjects,
       name: "Cap'n Web preserves non-retryable callback outcomes",
       env,
       files: backofficeFiles.workspaceStarter({
@@ -291,6 +298,7 @@ test("Node explains denied MCP discovery for immediate, module, and scheduled ex
   const scope = { kind: "org" as const, orgId: "org-1" };
   await runBackofficeScenario(
     defineBackofficeScenario({
+      objects: scenarioObjects,
       name: "MCP discovery denial survives the Worker bridge and durable history",
       env,
       files: backofficeFiles.workspaceStarter({

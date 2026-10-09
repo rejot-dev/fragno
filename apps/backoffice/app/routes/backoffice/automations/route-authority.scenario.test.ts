@@ -4,6 +4,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import { createAutomationsRouteCaller } from "@/fragno/automation/route-callers";
 import {
@@ -12,8 +13,21 @@ import {
   runBackofficeScenario,
 } from "@/fragno/automation/scenario";
 
+import { InMemoryApiObject } from "../../../../workers/api.do";
+import { InMemoryAuthObject } from "../../../../workers/auth.do";
+import { InMemoryAutomationsObject } from "../../../../workers/automations.do";
+import { InMemoryFormsObject } from "../../../../workers/forms.do";
+import { InMemoryUploadObject } from "../../../../workers/upload.do";
 import { AutomationDetailRows } from "./detail-rows";
 import { automationRouteActionDetailRows } from "./route-action";
+
+const scenarioObjects = {
+  API: (input) => new InMemoryApiObject(input),
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  FORMS: (input) => new InMemoryFormsObject(input),
+  UPLOAD: (input) => new InMemoryUploadObject(input),
+} satisfies LocalBackofficeObjects;
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
   class MockDurableObject {
@@ -34,6 +48,7 @@ describe("route authority inspector scenario", () => {
   test("shows persisted execution identities, explicit grants, inherited permissions, and empty grants", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "route inspector explains whose permissions apply",
         files: backofficeFiles.workspaceStarter(),
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],

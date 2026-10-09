@@ -14,13 +14,36 @@ import {
   createBackofficeUserExecution,
 } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
 import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 
+import { InMemoryApiObject } from "../../../../workers/api.do";
+import { InMemoryAppInstallationsObject } from "../../../../workers/app-installations.do";
+import { InMemoryAppsObject } from "../../../../workers/apps.do";
+import { InMemoryAuthObject } from "../../../../workers/auth.do";
+import { InMemoryAutomationsObject } from "../../../../workers/automations.do";
+import { InMemoryFormsObject } from "../../../../workers/forms.do";
+import { InMemoryProjectConnectorObject } from "../../../../workers/project-connector.do";
+import { InMemoryTelegramObject } from "../../../../workers/telegram.do";
+import { InMemoryUploadObject } from "../../../../workers/upload.do";
 import { runProjectConnectorScenario } from "./project-connector-scenario.test-utils";
+
+const scenarioObjects = {
+  API: (input) => new InMemoryApiObject(input),
+  APPS: (input) => new InMemoryAppsObject(input),
+  APP_INSTALLATIONS: (input) => new InMemoryAppInstallationsObject(input),
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  FORMS: (input) => new InMemoryFormsObject(input),
+  PROJECT_CONNECTOR: (input) => new InMemoryProjectConnectorObject(input),
+  TELEGRAM: (input) => new InMemoryTelegramObject(input),
+  UPLOAD: (input) => new InMemoryUploadObject(input),
+} satisfies LocalBackofficeObjects;
 
 test("user-scoped codemode verifies OAuth before SQLite bindings, profiles, and provider actions become usable", async () => {
   await runProjectConnectorScenario((gateway) => ({
+    objects: scenarioObjects,
     name: "Connector verified Gmail flow through real SQLite and HTTP",
     setup: ({ given }) => [
       given.organization.exists({ id: "org-1", slug: "ada-labs", name: "Ada Labs" }),
@@ -129,6 +152,7 @@ test("user-scoped codemode verifies OAuth before SQLite bindings, profiles, and 
 
 test("Connector bindings are isolated between user owners", async () => {
   await runProjectConnectorScenario((gateway) => ({
+    objects: scenarioObjects,
     name: "Connector user isolation",
     setup: ({ given }) => [
       given.organization.exists({ id: "org-1", slug: "ada-labs", name: "Ada Labs" }),
@@ -172,6 +196,7 @@ test("Connector bindings are isolated between user owners", async () => {
 
 test("Connector bash commands use the same user-owned fragment as codemode", async () => {
   await runProjectConnectorScenario((gateway) => ({
+    objects: scenarioObjects,
     name: "Connector runtime bash commands",
     setup: ({ given }) => [
       given.organization.exists({ id: "org-1", slug: "ada-labs", name: "Ada Labs" }),
@@ -338,6 +363,7 @@ test("Connector bash commands use the same user-owned fragment as codemode", asy
 
 test("runtime permission failures and unavailable configuration do not contact the provider", async () => {
   await runProjectConnectorScenario((gateway) => ({
+    objects: scenarioObjects,
     name: "Connector permissions stop side effects",
     setup: ({ given }) => [
       given.auth.user({ id: "member-1", email: "member@example.test" }),
@@ -391,6 +417,7 @@ test("runtime permission failures and unavailable configuration do not contact t
 
 test("missing project credentials return an actionable configuration error without initializing a provider connection", async () => {
   await runProjectConnectorScenario((gateway) => ({
+    objects: scenarioObjects,
     name: "Connector missing project configuration",
     env: { OOMOL_PROJECT_API_KEY: undefined },
     setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],

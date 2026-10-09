@@ -10,14 +10,28 @@ vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoin
 
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
 import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 
+import { InMemoryAppsObject } from "../../../workers/apps.do";
+import { InMemoryAuthObject } from "../../../workers/auth.do";
+import { InMemoryAutomationsObject } from "../../../workers/automations.do";
+import { InMemoryFormsObject } from "../../../workers/forms.do";
+import { InMemoryUploadObject } from "../../../workers/upload.do";
 import {
   defineBackofficeScenario,
   runBackofficeScenario,
   type BackofficeScenarioContext,
 } from "./scenario";
+
+const scenarioObjects = {
+  APPS: (input) => new InMemoryAppsObject(input),
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  FORMS: (input) => new InMemoryFormsObject(input),
+  UPLOAD: (input) => new InMemoryUploadObject(input),
+} satisfies LocalBackofficeObjects;
 
 async function createSystemTerminalBash(ctx: BackofficeScenarioContext) {
   const execution = createBackofficeSystemExecution({ kind: "system" });
@@ -36,6 +50,7 @@ describe("system admin command scenarios", () => {
   test("shows organization creation help from the system terminal", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "System terminal admin organization help",
         steps: ({ then }) => [
           then.assert("system admin command help is available", async (ctx) => {
@@ -57,6 +72,7 @@ describe("system admin command scenarios", () => {
   test("creates an organization from the system terminal", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "System terminal admin organization creation",
         steps: ({ given, then }) => [
           given.auth.user({ id: "owner", email: "owner@example.com" }),
@@ -79,6 +95,7 @@ describe("system admin command scenarios", () => {
   test("administers organization membership by slug from the system terminal", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "System terminal admin organization membership",
         steps: ({ given, then }) => [
           given.auth.user({ id: "owner", email: "owner@example.com" }),

@@ -14,12 +14,15 @@ import { CODEMODE_LIMITS } from "@fragno-dev/codemode/codemode-limits";
 import { createCodemodeNodeExecutor } from "@fragno-dev/codemode/remote/codemode-node-executor";
 import { createCodemodeTestServer } from "@fragno-dev/codemode/testing/codemode-test-server";
 
+import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import { createBackofficeServiceExecution } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
 import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 
 import { runBackofficeCompiledModule } from "./compiled-module-execute";
+
+const scenarioObjects = allLocalObjects;
 
 let server: Awaited<ReturnType<typeof createCodemodeTestServer>>;
 beforeAll(async () => {
@@ -33,6 +36,7 @@ for (const interruption of ["parent cancellation", "activation deadline"] as con
   test(`compiled module ${interruption} bounds draining while retaining an in-flight workspace read`, async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: `bounded module drain: ${interruption}`,
         setup: ({ given }) => [
           given.organization.exists({ id: "org-1" }),
@@ -189,6 +193,7 @@ test("remote compiled execution keeps its full guest timeout after a delayed Web
   try {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "remote connection budget is independent of execution budget",
         setup: ({ given }) => [
           given.organization.exists({ id: "org-1" }),

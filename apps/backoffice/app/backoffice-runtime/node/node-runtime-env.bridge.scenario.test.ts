@@ -9,9 +9,12 @@ vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoin
 
 import { createCodemodeTestServer } from "@fragno-dev/codemode/testing/codemode-test-server";
 
+import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
 
 import { createNodeBackofficeRuntimeConfiguration } from "./node-runtime-env";
+
+const scenarioObjects = allLocalObjects;
 
 let server: Awaited<ReturnType<typeof createCodemodeTestServer>>;
 beforeAll(async () => {
@@ -29,6 +32,7 @@ test("Node production codemode uses the bridge WebSocket and compiler HTTP APIs"
   });
   await runBackofficeScenario(
     defineBackofficeScenario({
+      objects: scenarioObjects,
       name: "Node-authoritative state across separate WebSocket activations",
       env,
       setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],

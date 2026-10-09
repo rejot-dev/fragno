@@ -12,6 +12,7 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY } from "@/fragno/automation/actors";
 import { marketplaceArtifactUploadName } from "@/fragno/marketplace/artifacts";
 import {
@@ -22,6 +23,15 @@ import { marketplaceListingId } from "@/fragno/marketplace/owner";
 import { getStaticMarketplaceEntry } from "@/fragno/marketplace/static-entries";
 import { sha256Hex } from "@/lib/crypto";
 
+import { InMemoryApiObject } from "../../../workers/api.do";
+import { InMemoryAppInstallationsObject } from "../../../workers/app-installations.do";
+import { InMemoryAppsObject } from "../../../workers/apps.do";
+import { InMemoryAuthObject } from "../../../workers/auth.do";
+import { InMemoryAutomationsObject } from "../../../workers/automations.do";
+import { InMemoryFormsObject } from "../../../workers/forms.do";
+import { InMemoryMarketplaceObject } from "../../../workers/marketplace.do";
+import { InMemoryMcpObject } from "../../../workers/mcp.do";
+import { InMemoryTelegramObject } from "../../../workers/telegram.do";
 import { InMemoryUploadObject } from "../../../workers/upload.do";
 import {
   buildMarketplacePackageInstallWorkflowInstanceId,
@@ -33,6 +43,19 @@ import {
   runBackofficeScenario,
   type BackofficeScenarioContext,
 } from "./scenario";
+
+const scenarioObjects = {
+  API: (input) => new InMemoryApiObject(input),
+  APPS: (input) => new InMemoryAppsObject(input),
+  APP_INSTALLATIONS: (input) => new InMemoryAppInstallationsObject(input),
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  FORMS: (input) => new InMemoryFormsObject(input),
+  MARKETPLACE: (input) => new InMemoryMarketplaceObject(input),
+  MCP: (input) => new InMemoryMcpObject(input),
+  TELEGRAM: (input) => new InMemoryTelegramObject(input),
+  UPLOAD: (input) => new InMemoryUploadObject(input),
+} satisfies LocalBackofficeObjects;
 
 const LISTING_ID = marketplaceListingId({
   ownerScope: { kind: "system" },
@@ -122,6 +145,7 @@ describe("marketplace lock scenarios", () => {
     });
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "install Marketplace into a nested directory",
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ then, runner }) => [
@@ -178,6 +202,7 @@ describe("marketplace lock scenarios", () => {
     const installationRoot = "/workspace/channels";
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "install multiple Marketplace items into one root",
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ then, runner }) => [
@@ -243,6 +268,7 @@ describe("marketplace lock scenarios", () => {
     });
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "install another Marketplace version at a separate root",
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ then, runner }) => [
@@ -338,6 +364,7 @@ describe("marketplace lock scenarios", () => {
       });
       await runBackofficeScenario(
         defineBackofficeScenario({
+          objects: scenarioObjects,
           name: "preserve an invalid Marketplace lock",
           setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
           steps: ({ then, runner }) => [
@@ -395,7 +422,8 @@ describe("marketplace lock scenarios", () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         name: "preserve concurrently changed files during a Marketplace install",
-        objectOverrides: {
+        objects: {
+          ...scenarioObjects,
           UPLOAD: ({ name, state, env, runtime, implementation }) =>
             new (class extends InMemoryUploadObject {
               async fetch(request: Request): Promise<Response> {
@@ -476,6 +504,7 @@ describe("marketplace lock scenarios", () => {
       });
       await runBackofficeScenario(
         defineBackofficeScenario({
+          objects: scenarioObjects,
           name: "reserve marketplace-lock.json for installation bookkeeping",
           setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
           steps: ({ then, runner }) => [
@@ -531,7 +560,8 @@ describe("marketplace lock scenarios", () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         name: "replay a committed Marketplace lock write",
-        objectOverrides: {
+        objects: {
+          ...scenarioObjects,
           UPLOAD: ({ name, state, env, runtime, implementation }) =>
             new (class extends InMemoryUploadObject {
               async fetch(request: Request): Promise<Response> {
@@ -604,7 +634,8 @@ describe("marketplace lock scenarios", () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         name: "preserve a concurrent Marketplace lock writer",
-        objectOverrides: {
+        objects: {
+          ...scenarioObjects,
           UPLOAD: ({ name, state, env, runtime, implementation }) =>
             new (class extends InMemoryUploadObject {
               async fetch(request: Request): Promise<Response> {
@@ -691,6 +722,7 @@ describe("marketplace lock scenarios", () => {
     async (installationRoot) => {
       await runBackofficeScenario(
         defineBackofficeScenario({
+          objects: scenarioObjects,
           name: "validate Marketplace installation paths at the workflow boundary",
           setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
           steps: ({ then }) => [

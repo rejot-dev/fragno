@@ -18,6 +18,7 @@ import {
   createBackofficeSystemExecution,
 } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { requireBackofficeMe } from "@/fragno/auth/auth-server";
 import type { AutomationExternalEntityRef } from "@/fragno/automation/actors";
 import { automationEventListResultSchema } from "@/fragno/automation/events";
@@ -39,7 +40,24 @@ import {
 } from "@/routes/backoffice/automations/claims-complete";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
+import { InMemoryApiObject } from "../../../workers/api.do";
+import { InMemoryAuthObject } from "../../../workers/auth.do";
+import { InMemoryAutomationsObject } from "../../../workers/automations.do";
+import { InMemoryFormsObject } from "../../../workers/forms.do";
+import { InMemoryOtpObject } from "../../../workers/otp.do";
+import { InMemoryTelegramObject } from "../../../workers/telegram.do";
+import { InMemoryUploadObject } from "../../../workers/upload.do";
 import { action } from "./otp";
+
+const scenarioObjects = {
+  API: (input) => new InMemoryApiObject(input),
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  FORMS: (input) => new InMemoryFormsObject(input),
+  OTP: (input) => new InMemoryOtpObject(input),
+  TELEGRAM: (input) => new InMemoryTelegramObject(input),
+  UPLOAD: (input) => new InMemoryUploadObject(input),
+} satisfies LocalBackofficeObjects;
 
 type OtpEntryPoint = "public" | "object";
 type OtpOperation = "issue" | "confirm" | "invalidate";
@@ -181,6 +199,7 @@ async function assertNoIdentityClaimEffects(
 describe("OTP public boundary security scenarios", () => {
   test("an authenticated member cannot forge identity claims across organizations", async () => {
     await runOtpScenario(() => ({
+      objects: scenarioObjects,
       name: "public OTP operations cannot acquire trusted identity authority",
       setup: ({ given }) => [
         given.auth.user({ id: "victim", email: "victim@example.test" }),
@@ -227,6 +246,7 @@ describe("OTP public boundary security scenarios", () => {
 
   test("public calls cannot supersede, consume, invalidate, or recover a trusted identity claim", async () => {
     await runOtpScenario(() => ({
+      objects: scenarioObjects,
       name: "trusted identity claims retain their authenticated confirming user",
       setup: ({ given }) => [
         given.auth.user({ id: "victim", email: "victim@example.test" }),
@@ -355,6 +375,7 @@ describe("OTP public boundary security scenarios", () => {
 
   test("nonreserved OTP types retain issuance, confirmation, and invalidation behavior", async () => {
     await runOtpScenario(() => ({
+      objects: scenarioObjects,
       name: "generic public OTP operations cannot produce identity claim effects",
       steps: ({ when, then }) => [
         when.auth.signUp({ email: "custom-otp@example.test", captureSessionCookieAs: "session" }),
@@ -417,6 +438,7 @@ describe("OTP public boundary security scenarios", () => {
 
   test("singleton OTP objects cannot issue or confirm organization identity claims", async () => {
     await runOtpScenario(() => ({
+      objects: scenarioObjects,
       name: "identity claims require an organization-owned OTP object",
       steps: ({ then }) => [
         then.assert("singleton commands cannot acquire identity authority", async (ctx) => {
@@ -468,6 +490,7 @@ describe("OTP public boundary security scenarios", () => {
 
   test("a persisted claim cannot redirect its owning object's service authority", async () => {
     await runOtpScenario((directory) => ({
+      objects: scenarioObjects,
       name: "legacy identity claim organization mismatch is permanently rejected",
       setup: ({ given }) => [
         given.auth.user({ id: "owner", email: "owner@example.test" }),

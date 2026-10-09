@@ -18,7 +18,22 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
 
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
+
+import { InMemoryApiObject } from "../../../workers/api.do";
+import { InMemoryAuthObject } from "../../../workers/auth.do";
+import { InMemoryAutomationsObject } from "../../../workers/automations.do";
+import { InMemoryFormsObject } from "../../../workers/forms.do";
+import { InMemoryUploadObject } from "../../../workers/upload.do";
 import { defineBackofficeScenario, runBackofficeScenario } from "./scenario";
+
+const scenarioObjects = {
+  API: (input) => new InMemoryApiObject(input),
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  FORMS: (input) => new InMemoryFormsObject(input),
+  UPLOAD: (input) => new InMemoryUploadObject(input),
+} satisfies LocalBackofficeObjects;
 
 const workflowParams = (orgId: string, instanceId: string, actors: unknown) => ({
   program: {
@@ -112,6 +127,7 @@ describe("scenario workflow ownership", () => {
   test("derives caller-created automation event scope and actors from trusted execution", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "trusted automation workflow event context",
         setup: ({ given }) => [
           given.auth.user({ id: "owner", role: "admin" }),
@@ -175,6 +191,7 @@ describe("scenario workflow ownership", () => {
   test("authorizes user-scoped billing selections before single, batch, and restart-or-create persistence", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "workflow billing selection authorization",
         options: { drain: false },
         setup: ({ given }) => [
@@ -272,6 +289,7 @@ describe("scenario workflow ownership", () => {
   test("persists trusted workflow actors for single and batch creation", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "trusted automation workflow ownership",
         setup: ({ given }) => [
           given.auth.user({ id: "owner", role: "admin" }),
