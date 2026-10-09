@@ -1,3 +1,7 @@
+import {
+  MARKETPLACE_CATEGORIES,
+  marketplaceListingMetadataSchema,
+} from "@fragno-dev/backoffice-api/v0/marketplace";
 import { Button, ButtonLink } from "@fragno-private/design-system/button";
 import { FormContainer } from "@fragno-private/design-system/form-container";
 import { Input } from "@fragno-private/design-system/input";
@@ -6,9 +10,7 @@ import { Form, redirect, useActionData, useLocation, useNavigation } from "react
 
 import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import {
-  MARKETPLACE_CATEGORIES,
   marketplaceAddDraftVersionInputSchema,
-  marketplaceListingMetadataSchema,
   marketplacePublishVersionInputSchema,
 } from "@/fragno/marketplace/contracts";
 import {

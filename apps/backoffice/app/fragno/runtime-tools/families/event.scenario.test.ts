@@ -1,5 +1,7 @@
 import { assert, expect, test, vi } from "vitest";
 
+import { automationEventListResultSchema } from "@fragno-dev/backoffice-api/v0/events";
+
 const workers = vi.hoisted(() => ({
   DurableObject: class {},
   RpcTarget: class {},
@@ -10,7 +12,6 @@ vi.mock("cloudflare:workers", () => workers);
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
-import { automationEventListResultSchema } from "@/fragno/automation/events";
 import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";

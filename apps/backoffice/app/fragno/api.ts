@@ -1,5 +1,6 @@
 import type { ApiFragmentConfig } from "@fragno-dev/api-fragment/definition";
 import { createApiFragment } from "@fragno-dev/api-fragment/server";
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 
 import {
   authorizeBackofficeFragmentRequest,
@@ -7,7 +8,6 @@ import {
 } from "@/backoffice-runtime/fragment-http-authorization";
 import type { BackofficeFragmentRuntimeOptions } from "@/backoffice-runtime/fragment-runtime";
 import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
-import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 
 export type ApiConfig = Pick<
   ApiFragmentConfig,

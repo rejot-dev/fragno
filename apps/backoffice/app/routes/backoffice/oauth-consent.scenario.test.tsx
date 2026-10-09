@@ -5,6 +5,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+import { oauthConsentPageSchema } from "@fragno-dev/backoffice-api/v0/account";
 import { decodeJwt } from "jose";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createMemoryRouter, RouterProvider } from "react-router";
@@ -19,7 +20,6 @@ vi.mock("cloudflare:workers", () => workers);
 
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import { backofficeExecutionTokenResultSchema } from "@/fragno/auth/execution-token";
-import { backofficeOAuthConsentPageSchema } from "@/fragno/auth/oauth-consent";
 import {
   defineBackofficeScenario,
   runBackofficeScenario,
@@ -440,7 +440,7 @@ test("denial returns access_denied without creating consent; altered signed quer
     assert(location);
     assert.equal(new URL(location).searchParams.get("error"), "access_denied");
     const list = await authRequest(ctx, "/backoffice/oauth/consents", cookie);
-    expect(backofficeOAuthConsentPageSchema.parse(await list.json()).consents).toEqual([]);
+    expect(oauthConsentPageSchema.parse(await list.json()).consents).toEqual([]);
   });
 });
 
@@ -706,7 +706,7 @@ test("device consent is listed and revocation prevents refresh, pending redempti
     });
     expect(execution.accessToken).toBeTruthy();
     const list = await authRequest(ctx, "/backoffice/oauth/consents", cookie);
-    const consent = backofficeOAuthConsentPageSchema.parse(await list.json()).consents;
+    const consent = oauthConsentPageSchema.parse(await list.json()).consents;
     expect(consent).toHaveLength(1);
     expect(consent[0]).toMatchObject({
       clientId: config.clientId,
@@ -806,7 +806,7 @@ test("consent paging is user-bound, rejects forged ownership and survives Auth r
               await approveConsent(ctx, login.url, cookie);
             }
             const first = await authRequest(ctx, "/backoffice/oauth/consents?pageSize=1", cookie);
-            const page = backofficeOAuthConsentPageSchema.parse(await first.json());
+            const page = oauthConsentPageSchema.parse(await first.json());
             expect(page.consents).toHaveLength(1);
             assert(page.nextCursor);
             ctx.vars.cursor = page.nextCursor;
@@ -837,7 +837,7 @@ test("consent paging is user-bound, rejects forged ownership and survives Auth r
               `/backoffice/oauth/consents?pageSize=1&cursor=${encodeURIComponent(ctx.vars.cursor)}`,
               ctx.vars.otherSession,
             );
-            const page = backofficeOAuthConsentPageSchema.parse(await response.json());
+            const page = oauthConsentPageSchema.parse(await response.json());
             expect(page.consents).toHaveLength(1);
             expect(page.nextCursor).toBeNull();
           }),

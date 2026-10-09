@@ -1,12 +1,13 @@
 import { describe, expect, test, vi } from "vitest";
 
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+
 import {
   createBackofficeServiceExecution,
   createBackofficeSystemExecution,
 } from "@/backoffice-runtime/context";
 import { createInMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
 import type { BackofficeKernelAction, BackofficeKernelObserver } from "@/backoffice-runtime/kernel";
-import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import { buildExternalIdentityBindingId } from "@/fragno/automation/external-identities";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {

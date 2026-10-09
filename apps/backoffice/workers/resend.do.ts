@@ -1,3 +1,4 @@
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { DurableObject } from "cloudflare:workers";
 import { Resend as ResendClient } from "resend";
 import { z } from "zod";
@@ -5,7 +6,6 @@ import { z } from "zod";
 import { isUniqueConstraintError } from "@fragno-dev/db";
 import type { ResendFragmentConfig, ResendSendEmailInput } from "@fragno-dev/resend-fragment";
 
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import { createBackofficeFragmentHttpTransport } from "@/backoffice-runtime/fragment-http-transport";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import {

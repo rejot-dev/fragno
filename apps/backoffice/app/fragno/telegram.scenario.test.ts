@@ -4,14 +4,14 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+
 const workers = vi.hoisted(() => ({
   DurableObject: class {},
   RpcTarget: class {},
   WorkerEntrypoint: class {},
 }));
 vi.mock("cloudflare:workers", () => workers);
-
-import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 
 import {
   backofficeFiles,

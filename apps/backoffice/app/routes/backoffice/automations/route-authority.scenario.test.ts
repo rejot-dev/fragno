@@ -1,10 +1,10 @@
 import { assert, describe, expect, test, vi } from "vitest";
 
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
-import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import { createAutomationsRouteCaller } from "@/fragno/automation/route-callers";
 import {
   backofficeFiles,

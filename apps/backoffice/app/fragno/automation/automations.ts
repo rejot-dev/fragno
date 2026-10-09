@@ -1,3 +1,9 @@
+import type { AutomationRouteAction } from "@fragno-dev/backoffice-api/v0/automation";
+import { piAgentCreationSchema } from "@fragno-dev/backoffice-api/v0/pi";
+import {
+  BACKOFFICE_PERMISSION,
+  type BackofficePermissionRequirement,
+} from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import {
   createDurableHooksProcessor,
   type DurableHooksDispatcherDurableObjectHandler,
@@ -18,17 +24,12 @@ import {
   type BackofficeAuthorizationDenialReason,
   type BackofficeKernelAuthorizationRequirement,
 } from "@/backoffice-runtime/kernel";
-import {
-  BACKOFFICE_PERMISSION,
-  BACKOFFICE_REQUIRED_PERMISSION_HEADER,
-  type BackofficePermissionRequirement,
-} from "@/backoffice-runtime/permissions";
+import { BACKOFFICE_REQUIRED_PERMISSION_HEADER } from "@/backoffice-runtime/required-permission-header";
 import { createAutomationFragment, type AutomationFragmentConfig } from "@/fragno/automation";
 import { BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY } from "@/fragno/automation/actors";
 import { CODEMODE_WORKFLOW } from "@/fragno/automation/engine/codemode-invocation";
 import { defineCodemodeWorkflow } from "@/fragno/automation/engine/codemode-workflow";
 import { listAutomationEventDescriptors } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
-import { piAgentCreationSchema } from "@/fragno/pi-manager/pi-agent-contract";
 
 import { defineMarketplacePackageInstallWorkflow } from "./marketplace-package-install-workflow.server";
 import {
@@ -41,7 +42,6 @@ import {
   setAutomationRouteMutationActionAuthorizer,
   setAutomationRouteMutationActors,
 } from "./route-routes";
-import type { AutomationRouteAction } from "./routing";
 import {
   parseWorkflowCompletionTarget,
   workflowCompletedEventType,

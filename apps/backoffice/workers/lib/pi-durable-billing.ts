@@ -1,3 +1,5 @@
+import type { PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
+
 import type { Context } from "@earendil-works/chord";
 import {
   defineDoc,
@@ -16,7 +18,6 @@ import {
   subtractPiBillingCounters,
   type PiBillingCounters,
 } from "@/fragno/billing/pi";
-import type { PiAgentConfig } from "@/fragno/pi-manager/pi-agent-contract";
 
 type PiDurableBillingState = {
   delivered: PiBillingCounters;

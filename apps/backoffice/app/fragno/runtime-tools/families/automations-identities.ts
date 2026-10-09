@@ -1,9 +1,8 @@
-import { z } from "zod";
-
 import type { ResolveExternalIdentityResult } from "@/fragno/automation/external-identities";
 import { defineCliArgsParser } from "@/fragno/runtime-tools/bash-cli";
 
 import {
+  backofficeApiOperationToolFields,
   defineBackofficeRuntimeTool,
   defineBackofficeRuntimeToolFamily,
   type BackofficeToolContext,
@@ -22,18 +21,6 @@ export type AutomationIdentityRuntime = {
 type AutomationIdentityToolContext = BackofficeToolContext<{
   identity?: AutomationIdentityRuntime;
 }>;
-
-const resolveExternalIdentityInputSchema = z.strictObject({
-  source: z.string().trim().min(1),
-  type: z.string().trim().min(1),
-  id: z.string().trim().min(1),
-});
-
-const resolveExternalIdentityOutputSchema = z
-  .strictObject({
-    userId: z.string().trim().min(1),
-  })
-  .nullable();
 
 const getAutomationIdentityRuntime = (
   runtime: AutomationIdentityToolContext["runtimes"]["identity"],
@@ -54,15 +41,11 @@ const parseResolveExternalIdentity = defineCliArgsParser<ResolveExternalIdentity
 );
 
 const resolveExternalIdentityTool = defineBackofficeRuntimeTool({
-  id: "identity.external.resolve",
+  ...backofficeApiOperationToolFields("identity.external.resolve"),
   namespace: "identity",
   name: "resolveExternal",
   authorizationNamespace: "identity",
-  description:
-    "Resolve an active external identity binding so the workflow can choose its internal user.",
   requiredPermissions: ["resolve"],
-  inputSchema: resolveExternalIdentityInputSchema,
-  outputSchema: resolveExternalIdentityOutputSchema,
   execute: async (input, context: AutomationIdentityToolContext) =>
     await getAutomationIdentityRuntime(context.runtimes.identity).resolveExternal(input),
   adapters: {

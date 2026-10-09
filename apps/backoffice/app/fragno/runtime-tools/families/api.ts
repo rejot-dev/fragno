@@ -1,10 +1,18 @@
 import {
-  apiRequestInputSchema as apiFragmentRequestInputSchema,
-  apiRequestOutputSchema as apiFragmentRequestOutputSchema,
-  createWebhookEndpointInputSchema as apiFragmentCreateWebhookEndpointInputSchema,
-  updateWebhookEndpointInputSchema as apiFragmentUpdateWebhookEndpointInputSchema,
-  webhookEndpointOutputSchema,
-} from "@fragno-dev/api-fragment/types";
+  type ApiAuthStatus,
+  type ApiConnection,
+  type ApiListConnectionsOutput,
+  type ApiOAuthStartOutput,
+  type ApiRequestOutput,
+  type ApiWebhookEndpoint,
+  type ApiWebhookEndpointsOutput,
+  apiOAuthStartInputSchema,
+  apiSetTokenInputSchema,
+  createConnectionInputSchema,
+  requestInputSchema,
+  webhookEndpointCreateInputSchema,
+  webhookEndpointUpdateInputSchema,
+} from "@fragno-dev/backoffice-api/v0/http-api";
 import { z } from "zod";
 
 import {
@@ -15,107 +23,19 @@ import {
 } from "@/fragno/runtime-tools/bash-cli";
 
 import {
+  backofficeApiOperationToolFields,
   defineBackofficeRuntimeTool,
   defineBackofficeRuntimeToolFamily,
   type BackofficeToolContext,
 } from "../runtime-tools";
 import type { ApiRuntime } from "./api-runtime";
 
-const authSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("none") }),
-  z.object({ type: z.literal("bearer"), token: z.string().trim().min(1) }),
-  z.object({
-    type: z.literal("basic"),
-    username: z.string().trim().min(1),
-    password: z.string().min(1),
-  }),
-  z.object({
-    type: z.literal("oauth"),
-    authorizationEndpoint: z.url(),
-    tokenEndpoint: z.url(),
-    clientId: z.string().trim().min(1),
-    clientSecret: z.string().trim().min(1).optional(),
-    scopes: z.array(z.string().trim().min(1)).optional(),
-    tokenEndpointAuthMethod: z.enum(["client_secret_basic", "client_secret_post", "none"]),
-  }),
-  z.object({
-    type: z.literal("client_credentials"),
-    tokenEndpoint: z.url(),
-    clientId: z.string().trim().min(1),
-    clientSecret: z.string().trim().min(1),
-    scopes: z.array(z.string().trim().min(1)).optional(),
-    audience: z.string().trim().min(1).optional(),
-    tokenEndpointAuthMethod: z.enum(["client_secret_basic", "client_secret_post"]),
-  }),
-]);
-
-const connectionSchema = z.object({
-  slug: z.string().trim().min(1),
-  name: z.string().nullable().optional(),
-  baseUrl: z.url(),
-  authMode: z.string().trim().min(1),
-  status: z.string().trim().min(1),
-  createdAt: z.union([z.string(), z.date()]).optional(),
-  updatedAt: z.union([z.string(), z.date()]).optional(),
-});
-const connectionsOutputSchema = z.object({ connections: z.array(connectionSchema) });
-const createConnectionInputSchema = z.object({
-  slug: z
-    .string()
-    .trim()
-    .min(1)
-    .regex(/^[a-z0-9][a-z0-9-]*$/),
-  name: z.string().trim().optional(),
-  baseUrl: z.url(),
-  auth: authSchema.default({ type: "none" }),
-});
-const slugInputSchema = z.object({ slug: z.string().trim().min(1) });
-const deleteOutputSchema = z.object({ ok: z.literal(true) });
-const authStatusSchema = z.object({
-  authenticated: z.boolean(),
-  mode: z.string(),
-  expiresAt: z.union([z.string(), z.date()]).nullable().optional(),
-});
-const setTokenInputSchema = z.object({
-  slug: z.string().trim().min(1),
-  token: z.string().trim().min(1),
-});
-const oauthStartInputSchema = z.object({
-  slug: z.string().trim().min(1),
-  scopes: z.array(z.string().trim().min(1)).optional(),
-  extraAuthorizationParams: z.record(z.string(), z.string()).optional(),
-});
-const oauthStartOutputSchema = z.object({ authorizationUrl: z.url(), state: z.string() });
-const requestInputSchema = apiFragmentRequestInputSchema.extend({
-  slug: z.string().trim().min(1),
-});
 const requestCliInputSchema = requestInputSchema.omit({ body: true }).extend({
   json: z.unknown().optional(),
   text: z.string().optional(),
 });
-const requestOutputSchema = apiFragmentRequestOutputSchema;
-
-const webhookEndpointSchema = webhookEndpointOutputSchema.extend({
-  publicUrl: z.url().nullable(),
-});
-const webhookEndpointsOutputSchema = z.object({ endpoints: z.array(webhookEndpointSchema) });
-const webhookEndpointCreateInputSchema = apiFragmentCreateWebhookEndpointInputSchema.extend({
-  endpointId: z.string().trim().min(1),
-});
-const webhookEndpointUpdateInputSchema = apiFragmentUpdateWebhookEndpointInputSchema.extend({
-  endpointId: z.string().trim().min(1),
-});
-const endpointInputSchema = z.object({ endpointId: z.string().trim().min(1) });
-
-export type ApiConnection = z.infer<typeof connectionSchema>;
-export type ApiListConnectionsOutput = z.infer<typeof connectionsOutputSchema>;
-export type ApiAuthStatus = z.infer<typeof authStatusSchema>;
-export type ApiSetTokenInput = Omit<z.infer<typeof setTokenInputSchema>, "slug">;
-export type ApiOAuthStartInput = Omit<z.infer<typeof oauthStartInputSchema>, "slug">;
-export type ApiOAuthStartOutput = z.infer<typeof oauthStartOutputSchema>;
-export type ApiRequestOutput = z.infer<typeof requestOutputSchema>;
-export type ApiWebhookEndpoint = z.infer<typeof webhookEndpointSchema>;
-export type ApiWebhookEndpointsOutput = z.infer<typeof webhookEndpointsOutputSchema>;
+export type ApiSetTokenInput = Omit<z.infer<typeof apiSetTokenInputSchema>, "slug">;
+export type ApiOAuthStartInput = Omit<z.infer<typeof apiOAuthStartInputSchema>, "slug">;
 export type ApiWebhookEndpointInput = Omit<
   z.infer<typeof webhookEndpointCreateInputSchema>,
   "endpointId"
@@ -303,11 +223,14 @@ const parseConnectionCreate = defineCliArgsParser<z.input<typeof createConnectio
 const parseSlug = defineCliArgsParser<{ slug: string }>("api.connection", {
   slug: { required: true, option: "connection" },
 });
-const parseSetToken = defineCliArgsParser<z.input<typeof setTokenInputSchema>>("api.auth.token", {
-  slug: { required: true, option: "connection" },
-  token: { required: true },
-});
-const parseOAuthStart = defineCliArgsParser<z.input<typeof oauthStartInputSchema>>(
+const parseSetToken = defineCliArgsParser<z.input<typeof apiSetTokenInputSchema>>(
+  "api.auth.token",
+  {
+    slug: { required: true, option: "connection" },
+    token: { required: true },
+  },
+);
+const parseOAuthStart = defineCliArgsParser<z.input<typeof apiOAuthStartInputSchema>>(
   "api.oauth.start",
   {
     slug: { required: true, option: "connection" },
@@ -380,14 +303,11 @@ const apiPermissions = {
 
 export const apiRuntimeTools = [
   defineBackofficeRuntimeTool({
-    id: "api.connections.list",
+    ...backofficeApiOperationToolFields("api.connections.list"),
     namespace: "api",
     name: "listConnections",
     capabilityId: "api",
-    description: "List API connections configured for the current scope.",
     requiredPermissions: ["connections.read"],
-    inputSchema: z.void(),
-    outputSchema: connectionsOutputSchema,
     execute: async (_input, context: ApiToolContext) =>
       await getApiRuntime(context.runtimes.api).listConnections(),
     adapters: {
@@ -405,15 +325,12 @@ export const apiRuntimeTools = [
     },
   }),
   defineBackofficeRuntimeTool({
-    id: "api.connections.create",
+    ...backofficeApiOperationToolFields("api.connections.create"),
     namespace: "api",
     name: "createConnection",
     capabilityId: "api",
-    description: "Create an outbound HTTP API connection.",
     requiredPermissions: ["connections.create"],
     getResource: (input) => ({ slug: input.slug }),
-    inputSchema: createConnectionInputSchema,
-    outputSchema: connectionSchema,
     execute: async (input, context: ApiToolContext) =>
       await getApiRuntime(context.runtimes.api).createConnection(input),
     adapters: {
@@ -515,15 +432,12 @@ export const apiRuntimeTools = [
     },
   }),
   defineBackofficeRuntimeTool({
-    id: "api.connections.delete",
+    ...backofficeApiOperationToolFields("api.connections.delete"),
     namespace: "api",
     name: "deleteConnection",
     capabilityId: "api",
-    description: "Delete an API connection and its stored auth state.",
     requiredPermissions: ["connections.delete"],
     getResource: (input) => ({ slug: input.slug }),
-    inputSchema: slugInputSchema,
-    outputSchema: deleteOutputSchema,
     execute: async (input, context: ApiToolContext) =>
       await getApiRuntime(context.runtimes.api).deleteConnection(input),
     adapters: {
@@ -549,15 +463,12 @@ export const apiRuntimeTools = [
     },
   }),
   defineBackofficeRuntimeTool({
-    id: "api.auth.status",
+    ...backofficeApiOperationToolFields("api.auth.status"),
     namespace: "api",
     name: "getAuthStatus",
     capabilityId: "api",
-    description: "Read auth status for an API connection.",
     requiredPermissions: ["connections.read"],
     getResource: (input) => ({ slug: input.slug }),
-    inputSchema: slugInputSchema,
-    outputSchema: authStatusSchema,
     execute: async (input, context: ApiToolContext) =>
       await getApiRuntime(context.runtimes.api).getAuthStatus(input),
     adapters: {
@@ -588,15 +499,12 @@ export const apiRuntimeTools = [
     },
   }),
   defineBackofficeRuntimeTool({
-    id: "api.auth.token",
+    ...backofficeApiOperationToolFields("api.auth.token"),
     namespace: "api",
     name: "setToken",
     capabilityId: "api",
-    description: "Store a bearer token for a configured API connection.",
     requiredPermissions: ["connections.create"],
     getResource: (input) => ({ slug: input.slug }),
-    inputSchema: setTokenInputSchema,
-    outputSchema: authStatusSchema,
     execute: async (input, context: ApiToolContext) =>
       await getApiRuntime(context.runtimes.api).setToken(input),
     adapters: {
@@ -631,16 +539,12 @@ export const apiRuntimeTools = [
     },
   }),
   defineBackofficeRuntimeTool({
-    id: "api.oauth.start",
+    ...backofficeApiOperationToolFields("api.oauth.start"),
     namespace: "api",
     name: "startOAuth",
     capabilityId: "api",
-    description:
-      "Start OAuth login for a configured API connection and return the authorization URL.",
     requiredPermissions: ["connections.create"],
     getResource: (input) => ({ slug: input.slug }),
-    inputSchema: oauthStartInputSchema,
-    outputSchema: oauthStartOutputSchema,
     execute: async (input, context: ApiToolContext) =>
       await getApiRuntime(context.runtimes.api).startOAuth(input),
     adapters: {
@@ -681,15 +585,12 @@ export const apiRuntimeTools = [
     },
   }),
   defineBackofficeRuntimeTool({
-    id: "api.auth.delete",
+    ...backofficeApiOperationToolFields("api.auth.delete"),
     namespace: "api",
     name: "deleteAuth",
     capabilityId: "api",
-    description: "Delete stored auth for an API connection.",
     requiredPermissions: ["connections.delete"],
     getResource: (input) => ({ slug: input.slug }),
-    inputSchema: slugInputSchema,
-    outputSchema: deleteOutputSchema,
     execute: async (input, context: ApiToolContext) =>
       await getApiRuntime(context.runtimes.api).deleteAuth(input),
     adapters: {
@@ -715,14 +616,11 @@ export const apiRuntimeTools = [
     },
   }),
   defineBackofficeRuntimeTool({
-    id: "api.webhooks.list",
+    ...backofficeApiOperationToolFields("api.webhooks.list"),
     namespace: "api",
     name: "listWebhookEndpoints",
     capabilityId: "api",
-    description: "List API webhook endpoints configured for the current scope.",
     requiredPermissions: ["webhooks.read"],
-    inputSchema: z.void(),
-    outputSchema: webhookEndpointsOutputSchema,
     execute: async (_input, context: ApiToolContext) =>
       await getApiRuntime(context.runtimes.api).listWebhookEndpoints(),
     adapters: {
@@ -740,15 +638,12 @@ export const apiRuntimeTools = [
     },
   }),
   defineBackofficeRuntimeTool({
-    id: "api.webhooks.get",
+    ...backofficeApiOperationToolFields("api.webhooks.get"),
     namespace: "api",
     name: "getWebhookEndpoint",
     capabilityId: "api",
-    description: "Read an API webhook endpoint.",
     requiredPermissions: ["webhooks.read"],
     getResource: (input) => ({ endpointId: input.endpointId }),
-    inputSchema: endpointInputSchema,
-    outputSchema: webhookEndpointSchema,
     execute: async (input, context: ApiToolContext) =>
       await getApiRuntime(context.runtimes.api).getWebhookEndpoint(input),
     adapters: {
@@ -776,15 +671,12 @@ export const apiRuntimeTools = [
     },
   }),
   defineBackofficeRuntimeTool({
-    id: "api.webhooks.create",
+    ...backofficeApiOperationToolFields("api.webhooks.create"),
     namespace: "api",
     name: "createWebhookEndpoint",
     capabilityId: "api",
-    description: "Create or replace an API webhook endpoint.",
     requiredPermissions: ["webhooks.manage"],
     getResource: (input) => ({ endpointId: input.endpointId }),
-    inputSchema: webhookEndpointCreateInputSchema,
-    outputSchema: webhookEndpointSchema,
     execute: async (input, context: ApiToolContext) =>
       await getApiRuntime(context.runtimes.api).createWebhookEndpoint(input),
     adapters: {
@@ -842,15 +734,12 @@ export const apiRuntimeTools = [
     },
   }),
   defineBackofficeRuntimeTool({
-    id: "api.webhooks.update",
+    ...backofficeApiOperationToolFields("api.webhooks.update"),
     namespace: "api",
     name: "updateWebhookEndpoint",
     capabilityId: "api",
-    description: "Update an API webhook endpoint.",
     requiredPermissions: ["webhooks.manage"],
     getResource: (input) => ({ endpointId: input.endpointId }),
-    inputSchema: webhookEndpointUpdateInputSchema,
-    outputSchema: webhookEndpointSchema,
     execute: async (input, context: ApiToolContext) =>
       await getApiRuntime(context.runtimes.api).updateWebhookEndpoint(input),
     adapters: {
@@ -897,15 +786,12 @@ export const apiRuntimeTools = [
     },
   }),
   defineBackofficeRuntimeTool({
-    id: "api.webhooks.delete",
+    ...backofficeApiOperationToolFields("api.webhooks.delete"),
     namespace: "api",
     name: "deleteWebhookEndpoint",
     capabilityId: "api",
-    description: "Delete an API webhook endpoint.",
     requiredPermissions: ["webhooks.manage"],
     getResource: (input) => ({ endpointId: input.endpointId }),
-    inputSchema: endpointInputSchema,
-    outputSchema: deleteOutputSchema,
     execute: async (input, context: ApiToolContext) =>
       await getApiRuntime(context.runtimes.api).deleteWebhookEndpoint(input),
     adapters: {
@@ -931,15 +817,12 @@ export const apiRuntimeTools = [
     },
   }),
   defineBackofficeRuntimeTool({
-    id: "api.request",
+    ...backofficeApiOperationToolFields("api.request"),
     namespace: "api",
     name: "request",
     capabilityId: "api",
-    description: "Execute an HTTP request through a configured API connection.",
     requiredPermissions: ["requests.execute"],
     getResource: (input) => ({ slug: input.slug, path: input.path }),
-    inputSchema: requestInputSchema,
-    outputSchema: requestOutputSchema,
     execute: async (input, context: ApiToolContext) =>
       await getApiRuntime(context.runtimes.api).request(input),
     adapters: {

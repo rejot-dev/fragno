@@ -1,4 +1,5 @@
-import type { BackofficeContextScope } from "./context";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+
 import type { BackofficeRoutableRouteScope, BackofficeRouteScope } from "./route-scope";
 import type { BackofficeRoutableScope } from "./scope-codec";
 

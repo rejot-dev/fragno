@@ -1,6 +1,6 @@
 import { describe, expect, test, assert } from "vitest";
 
-import type { AutomationRouteDefinition } from "@/fragno/automation/routing";
+import type { AutomationRouteDefinition } from "@fragno-dev/backoffice-api/v0/automation";
 
 import {
   automationRouteMatchesWorkflowInstance,

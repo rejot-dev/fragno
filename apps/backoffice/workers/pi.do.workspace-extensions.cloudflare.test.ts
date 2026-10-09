@@ -3,6 +3,7 @@ import { expect, test } from "vitest";
 
 import { createModels } from "@earendil-works/pi-ai/models";
 import { fauxAssistantMessage, fauxProvider } from "@earendil-works/pi-ai/providers/faux";
+import type { PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
 import { env } from "cloudflare:workers";
 
 import { createRegistry, type ConversationView } from "@earendil-works/pi-durable";
@@ -14,7 +15,7 @@ import {
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import { createCloudflareDurableObjectRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { createRuntimeStateBackend } from "@/fragno/codemode/runtime-state-backend";
-import { piAgentObjectName, type PiAgentConfig } from "@/fragno/pi-manager/pi-agent-contract";
+import { piAgentObjectName } from "@/fragno/pi-manager/pi-agent-contract";
 import {
   javaScriptBuildToolFamily,
   javaScriptRunToolFamily,

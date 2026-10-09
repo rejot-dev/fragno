@@ -1,7 +1,3 @@
-import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
-import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
-import type { JsonValue } from "@/lib/zod/json-value";
-
 import type {
   IntegrationAction,
   IntegrationConnection,
@@ -9,8 +5,13 @@ import type {
   IntegrationInspection,
   IntegrationOverview,
   IntegrationSetupProgress,
-  IntegrationSetupOperation,
-} from "./integration-contracts";
+} from "@fragno-dev/backoffice-api/v0/integrations";
+import type { JsonValue } from "@fragno-dev/backoffice-api/v0/shared/json";
+
+import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
+import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
+
+import type { IntegrationSetupOperation } from "./integration-contracts";
 
 /** Implementations receive established execution authority, never caller-selected ownership. */
 export type IntegrationContext = {

@@ -1,13 +1,13 @@
+import {
+  marketplaceCategorySchema,
+  marketplaceListingDetailSchema,
+  marketplacePublishedListingInputSchema,
+} from "@fragno-dev/backoffice-api/v0/marketplace";
 import { z } from "zod";
 
 import { defineRoutes } from "@fragno-dev/core";
 
-import {
-  marketplaceCategorySchema,
-  marketplaceListingDetailSchema,
-  marketplaceListingPageSchema,
-  marketplacePublishedListingInputSchema,
-} from "./contracts";
+import { marketplaceListingPageSchema } from "./contracts";
 import { marketplaceFragmentDefinition } from "./definition";
 import { MarketplaceListingCursorError } from "./pagination";
 

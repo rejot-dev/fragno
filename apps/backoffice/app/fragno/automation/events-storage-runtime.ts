@@ -1,6 +1,7 @@
+import { automationEventListInputSchema } from "@fragno-dev/backoffice-api/v0/events";
+
 import type { Cursor, DatabaseServiceContext } from "@fragno-dev/db";
 
-import { automationEventListInputSchema } from "./events";
 import { automationFragmentSchema } from "./schema";
 
 type AutomationEventServiceContext = DatabaseServiceContext<Record<string, never>>;

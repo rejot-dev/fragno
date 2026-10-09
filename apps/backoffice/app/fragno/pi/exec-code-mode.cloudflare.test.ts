@@ -1,6 +1,7 @@
 import { describe, expect, test, assert } from "vitest";
 
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import { createWorkflowsTestHarness } from "@fragno-dev/workflows/test";
 import { defineRemoteWorkflow } from "@fragno-dev/workflows/workflow";
 import { env } from "cloudflare:workers";
@@ -9,7 +10,6 @@ import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 
 import { createBackofficeUserExecution } from "@/backoffice-runtime/context";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
-import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
 import { codemodeWorkflowParamsSchema } from "@/fragno/automation/engine/codemode-invocation";
 import { AutomationWorkflowRuntimeRequestError } from "@/fragno/automation/workflow-route-runtime";

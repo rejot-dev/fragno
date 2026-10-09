@@ -1,5 +1,9 @@
 import { assert, describe, expect, test, vi } from "vitest";
 
+import { packagesInstallResultSchema } from "@fragno-dev/backoffice-api/v0/marketplace";
+import { MARKETPLACE_LOCK_PATH } from "@fragno-dev/backoffice-api/v0/marketplace";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+
 const workers = vi.hoisted(() => ({
   DurableObject: class {},
   RpcTarget: class {},
@@ -11,7 +15,6 @@ import {
   createBackofficeServiceExecution,
   createBackofficeSystemExecution,
   createBackofficeUserExecution,
-  type BackofficeContextScope,
 } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import { createBackofficeExecutionForPrincipal } from "@/fragno/auth/backoffice-principal.server";
@@ -23,12 +26,9 @@ import {
   type BackofficeScenarioContext,
 } from "@/fragno/automation/scenario";
 import { createRouteBackedAutomationWorkflowRuntime } from "@/fragno/automation/workflow-route-runtime";
-import { MARKETPLACE_LOCK_PATH } from "@/fragno/marketplace/marketplace-lock";
 import { getStaticMarketplaceEntry } from "@/fragno/marketplace/static-entries";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
 import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
-
-import { packagesInstallResultSchema } from "./packages-runtime";
 
 const LISTING_ID = "system#telegram-test-command";
 const ORG_SCOPE = { kind: "org", orgId: "org-1" } as const;

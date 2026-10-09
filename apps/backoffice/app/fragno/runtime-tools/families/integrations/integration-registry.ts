@@ -1,12 +1,12 @@
-import { z } from "zod";
-
-import { BackofficeUnavailableError } from "@/backoffice-runtime/kernel";
-
 import {
   integrationConnectionIdSchema,
   type IntegrationConnectionPage,
   type IntegrationSetupInput,
-} from "./integration-contracts";
+} from "@fragno-dev/backoffice-api/v0/integrations";
+import { z } from "zod";
+
+import { BackofficeUnavailableError } from "@/backoffice-runtime/kernel";
+
 import type { IntegrationContext, IntegrationImplementation } from "./integration-implementation";
 
 const integrationListingCursorSchema = z.strictObject({

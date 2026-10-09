@@ -44,6 +44,20 @@ type DirectoryPageInput = {
   pageSize?: number;
   cursor?: string | null;
 };
+type OAuthConsentPage = {
+  consents: {
+    id: string;
+    clientId: string;
+    clientName: string;
+    scopes: string[];
+    resources: string[];
+    requestedUserInfoClaims: string[];
+    createdAt: string;
+    updatedAt: string;
+  }[];
+  nextCursor: string | null;
+  hasNextPage: boolean;
+};
 type AccountMeOutput = AccountProfile;
 type AccountProfileUpdateInput = {
   name: string;
@@ -60,17 +74,4 @@ type AccountInvitationsAcceptInput = {
 };
 type AccountInvitationsAcceptOutput = OrganizationMembershipRecord;
 type AccountApplicationsListInput = DirectoryPageInput;
-type AccountApplicationsListOutput = {
-  consents: {
-    id: string;
-    clientId: string;
-    clientName: string;
-    scopes: string[];
-    resources: string[];
-    requestedUserInfoClaims: string[];
-    createdAt: string;
-    updatedAt: string;
-  }[];
-  nextCursor: string | null;
-  hasNextPage: boolean;
-};
+type AccountApplicationsListOutput = OAuthConsentPage;

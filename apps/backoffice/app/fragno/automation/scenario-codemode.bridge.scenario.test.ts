@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, assert, test, vi } from "vitest";
 
+import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
+
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
   DurableObject: class {},
   RpcTarget: class {},
@@ -16,7 +18,6 @@ import type { BackofficeRuntimeEnv } from "@/backoffice-runtime/backoffice-runti
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import { createNodeBackofficeRuntimeConfiguration } from "@/backoffice-runtime/node/node-runtime-env";
 
-import type { AutomationEvent } from "./contracts";
 import {
   createCodemodeWorkflowInstanceInput,
   prepareCodemodeWorkflowInstance,

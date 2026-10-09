@@ -1,13 +1,13 @@
 import { oauthProviderResourceClient } from "@better-auth/oauth-provider/resource-client";
+import type {
+  AppInstallationExternalAccount,
+  AppInstallationResourceScope,
+} from "@fragno-dev/backoffice-api/v0/apps";
 import type { betterAuth } from "better-auth";
 import { APIError } from "better-auth/api";
 import { z } from "zod";
 
-import {
-  appInstallationResourceScopeContains,
-  type AppInstallationExternalAccount,
-  type AppInstallationResourceScope,
-} from "@/fragno/app-installations/contracts";
+import { appInstallationResourceScopeContains } from "@/fragno/app-installations/contracts";
 import {
   BackofficeExecutionTokenAuthenticationError,
   BackofficeExecutionTokenScopeError,

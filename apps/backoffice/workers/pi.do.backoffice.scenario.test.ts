@@ -1,5 +1,8 @@
 import { assert, expect, test, vi } from "vitest";
 
+import type { PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
   DurableObject: class {},
   RpcTarget: class {},
@@ -46,7 +49,6 @@ import {
 import type { InMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { LocalObjectFactoryOverrides } from "@/backoffice-runtime/local-object-factory";
-import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import { issueBackofficeTokenResultSchema } from "@/fragno/auth/contracts";
 import type { CodemodeWorkflowParams } from "@/fragno/automation/engine/codemode-invocation";
 import { createRouteBackedAutomationRouterRuntime } from "@/fragno/automation/routing-route-runtime";
@@ -56,7 +58,6 @@ import {
   runBackofficeScenario,
 } from "@/fragno/automation/scenario";
 import { createRouteBackedAutomationWorkflowRuntime } from "@/fragno/automation/workflow-route-runtime";
-import type { PiAgentConfig } from "@/fragno/pi-manager/pi-agent-contract";
 import { BackofficePostHogContext, captureBackofficeServerException } from "@/posthog.server";
 import {
   createPiManagerSession,

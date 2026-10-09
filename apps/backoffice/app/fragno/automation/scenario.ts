@@ -1,3 +1,22 @@
+import {
+  automationActorsSchema,
+  type AutomationActors,
+  type AutomationExternalEntityRef,
+  type AutomationRouteDefinition,
+  type AutomationRouteCreateInput,
+  type AutomationRouteUpdateInput,
+} from "@fragno-dev/backoffice-api/v0/automation";
+import {
+  type AutomationEvent,
+  automationEventListResultSchema,
+} from "@fragno-dev/backoffice-api/v0/events";
+import {
+  MARKETPLACE_LOCK_PATH,
+  marketplaceLockSchema,
+} from "@fragno-dev/backoffice-api/v0/marketplace";
+import type { PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
+import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { workflowsSchema } from "@fragno-dev/workflows/schema";
 import { InMemoryFs, type IFileSystem } from "just-bash";
 
@@ -12,7 +31,6 @@ import {
   createBackofficeSystemExecution,
   createBackofficeUserExecution,
   createBackofficeRequestExecution,
-  type BackofficeContextScope,
   type BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
 import {
@@ -30,7 +48,6 @@ import type {
   BackofficeObjectAddress,
   BackofficeObjectBindingName,
 } from "@/backoffice-runtime/object-registry";
-import type { BackofficePermissionRequirement } from "@/backoffice-runtime/permissions";
 import {
   backofficeContextScopeRoutePath,
   type BackofficeRoutableScope,
@@ -52,15 +69,10 @@ import {
 import { createRuntimeStateBackend } from "@/fragno/codemode/runtime-state-backend";
 import { isMarketplaceInternalArtifactPath } from "@/fragno/marketplace/artifacts";
 import type { MarketplaceStaticEntry } from "@/fragno/marketplace/contracts";
-import {
-  MARKETPLACE_LOCK_PATH,
-  marketplaceLockSchema,
-} from "@/fragno/marketplace/marketplace-lock";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
 import { getStaticMarketplaceEntry } from "@/fragno/marketplace/static-entries";
 import type {
   PiAgent,
-  PiAgentConfig,
   PiAgentEntryPage,
   PiAvailableModel,
 } from "@/fragno/pi-manager/pi-agent-contract";
@@ -79,25 +91,15 @@ import type { CreateSandboxRuntimeProviders } from "@/sandbox/contracts";
 import { InMemoryPiManagerObject } from "../../../workers/pi-manager.do";
 import { InMemoryTelegramObject } from "../../../workers/telegram.do";
 import { listHookScopes } from "../backoffice-capabilities/backoffice-capabilities";
-import {
-  AUTOMATION_SYSTEM_INITIATOR,
-  BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY,
-  automationActorsSchema,
-  type AutomationActors,
-  type AutomationExternalEntityRef,
-} from "./actors";
+import { AUTOMATION_SYSTEM_INITIATOR, BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY } from "./actors";
 import { createRouteBackedAutomationStoreRuntime } from "./bindings-route-runtime";
-import type { AutomationEvent } from "./contracts";
 import { createRouteBackedDurableHooksRuntime } from "./durable-hooks-route-runtime";
 import {
   CODEMODE_WORKFLOW,
   createCodemodeWorkflowInstanceInput,
   prepareCodemodeWorkflowInstance,
 } from "./engine/codemode-invocation";
-import { automationEventListResultSchema } from "./events";
-import type { AutomationRouteDefinition } from "./routing";
 import { createRouteBackedAutomationRouterRuntime } from "./routing-route-runtime";
-import type { AutomationRouteCreateInput, AutomationRouteUpdateInput } from "./routing-schemas";
 import {
   getScenarioAuthMemberRoles,
   normalizeScenarioAuthRoles,

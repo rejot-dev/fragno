@@ -1,6 +1,6 @@
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { betterAuth } from "better-auth";
 
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import type { Role } from "@/fragno/auth/contracts";
 
 type BetterAuthAdapter = Awaited<ReturnType<typeof betterAuth>["$context"]>["adapter"];

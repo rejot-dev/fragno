@@ -1,8 +1,8 @@
+import type { AppInstallationExternalAccount } from "@fragno-dev/backoffice-api/v0/apps";
+import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import { column, idColumn, schema, type Column } from "@fragno-dev/db/schema";
 
-import type { BackofficePermissionRequirement } from "@/backoffice-runtime/permissions";
-
-import type { AppInstallationExternalAccount, BackofficeAppInstallationStatus } from "./contracts";
+import type { BackofficeAppInstallationStatus } from "./contracts";
 
 /** Each organization owns its installation database; app IDs refer to the external registry. */
 export const appInstallationsFragmentSchema = schema("app-installations", (s) =>

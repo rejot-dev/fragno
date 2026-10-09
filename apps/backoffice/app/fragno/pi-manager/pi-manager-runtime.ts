@@ -1,4 +1,5 @@
 import { awaitWithContext } from "@earendil-works/chord/context";
+import type { PiAgentConfig, PiManagerSession } from "@fragno-dev/backoffice-api/v0/pi";
 
 import type { Context } from "@earendil-works/chord";
 import type { ConversationView, SubmissionRecord } from "@earendil-works/pi-durable";
@@ -11,12 +12,7 @@ import {
 } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 
-import {
-  PI_AGENT_SUBMISSION_WAIT_MAX_MS,
-  type PiAgentConfig,
-  type PiAgentSubmissionWait,
-  type PiManagerSession,
-} from "./pi-agent-contract";
+import { PI_AGENT_SUBMISSION_WAIT_MAX_MS, type PiAgentSubmissionWait } from "./pi-agent-contract";
 
 export type PiManagerCreateSessionInput = {
   requestId?: string;

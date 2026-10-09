@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
+import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
+
 import { InMemoryAdapter } from "@fragno-dev/db";
 
 import { unavailableBackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
@@ -16,7 +18,6 @@ import {
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import { createAutomationFragment, type AutomationWorkflowsService } from "@/fragno/automation";
 
-import type { AutomationEvent } from "../../automation/contracts";
 import { createEventRuntime } from "./event-runtime";
 
 const TEST_KERNEL_RUNTIME = {

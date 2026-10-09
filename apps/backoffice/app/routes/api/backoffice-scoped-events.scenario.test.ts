@@ -4,6 +4,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+import { automationEventListResultSchema } from "@fragno-dev/backoffice-api/v0/events";
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import { z } from "zod";
 
 const workers = vi.hoisted(() => ({
@@ -15,12 +17,10 @@ vi.mock("cloudflare:workers", () => workers);
 
 import { createBackofficeUserExecution } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
-import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import { backofficeScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import { createInstalledAppExecution } from "@/fragno/app-installations/authority";
 import { backofficeExecutionTokenResultSchema } from "@/fragno/auth/execution-token";
 import { createAutomationExecutionFromActors } from "@/fragno/automation/authority";
-import { automationEventListResultSchema } from "@/fragno/automation/events";
 import { createAutomationsRouteCaller } from "@/fragno/automation/route-callers";
 import {
   defineBackofficeScenario,

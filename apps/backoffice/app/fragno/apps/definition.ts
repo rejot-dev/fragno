@@ -1,9 +1,9 @@
+import type { BackofficeApp, BackofficeAppLookupInput } from "@fragno-dev/backoffice-api/v0/apps";
+
 import { defineFragment } from "@fragno-dev/core";
 import { decodeCursor, withDatabase } from "@fragno-dev/db";
 
 import type {
-  BackofficeApp,
-  BackofficeAppLookupInput,
   BackofficeAppOAuthClientLookupInput,
   BackofficeAppPage,
   BackofficeAppPageInput,

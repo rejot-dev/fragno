@@ -1,3 +1,4 @@
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { DurableObject } from "cloudflare:workers";
 
 import {
@@ -5,7 +6,6 @@ import {
   type GitHubAppFragmentConfig,
 } from "@fragno-dev/github-app-fragment";
 
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import { createBackofficeFragmentHttpTransport } from "@/backoffice-runtime/fragment-http-transport";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import {

@@ -1,4 +1,5 @@
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+
 import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 
 export const API_PUBLIC_PREFIX = "/api/http";

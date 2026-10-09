@@ -1,3 +1,8 @@
+import {
+  automationRouteSchema,
+  type AutomationRouteCreateInput,
+  type AutomationRouteUpdateInput,
+} from "@fragno-dev/backoffice-api/v0/automation";
 import { z } from "zod";
 
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
@@ -5,11 +10,6 @@ import type {
   AutomationsObject,
   BackofficeObjectHandle,
 } from "@/backoffice-runtime/object-registry";
-import {
-  automationRouteSchema,
-  type AutomationRouteCreateInput,
-  type AutomationRouteUpdateInput,
-} from "@/fragno/automation/routing-schemas";
 import type { AutomationRouterRuntime } from "@/fragno/runtime-tools/families/automations-routing";
 
 import { createAutomationsRouteCaller } from "./route-callers";

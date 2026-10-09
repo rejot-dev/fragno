@@ -1,13 +1,14 @@
-import type { OrganizationRole, Role } from "@/fragno/auth/contracts";
-import type { AutomationEntityRef } from "@/fragno/automation/actors";
-
-import type { BackofficeContextScope } from "./context";
+import type { AutomationEntityRef } from "@fragno-dev/backoffice-api/v0/automation";
+import type { OrganizationRole } from "@fragno-dev/backoffice-api/v0/organization";
 import {
   allBackofficePermissionRequirements,
   BACKOFFICE_PERMISSION,
   type BackofficePermissionNamespace,
   type BackofficePermissionRequirement,
-} from "./permissions";
+} from "@fragno-dev/backoffice-api/v0/shared/permissions";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+
+import type { Role } from "@/fragno/auth/contracts";
 
 /**
  * Grants conferred by live Better Auth organization roles.

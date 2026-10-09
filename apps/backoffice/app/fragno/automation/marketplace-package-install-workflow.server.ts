@@ -1,3 +1,14 @@
+import {
+  isMarketplaceLockPath,
+  MARKETPLACE_LOCK_PATH,
+  marketplaceLockSchema,
+} from "@fragno-dev/backoffice-api/v0/marketplace";
+import {
+  marketplaceListingIdSchema,
+  marketplaceVersionSchema,
+} from "@fragno-dev/backoffice-api/v0/marketplace";
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { createRouteCaller } from "@fragno-dev/core/api";
 import type { PreparedFileWrite, UploadFileWritePrecondition } from "@fragno-dev/upload/types";
 import {
@@ -11,11 +22,9 @@ import { createWorkflowsFragment } from "@fragno-dev/workflows";
 
 import {
   createBackofficeServiceExecution,
-  type BackofficeContextScope,
   type BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
 import type { BackofficeObjectHandle, UploadObject } from "@/backoffice-runtime/object-registry";
-import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import type { BackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import {
@@ -23,15 +32,6 @@ import {
   MARKETPLACE_INSTALL_WORKFLOW_PATH,
   normalizeMarketplaceArtifactPath,
 } from "@/fragno/marketplace/artifacts";
-import {
-  marketplaceListingIdSchema,
-  marketplaceVersionSchema,
-} from "@/fragno/marketplace/contracts";
-import {
-  isMarketplaceLockPath,
-  MARKETPLACE_LOCK_PATH,
-  marketplaceLockSchema,
-} from "@/fragno/marketplace/marketplace-lock";
 import { UPLOAD_PROVIDER_DATABASE } from "@/fragno/upload";
 import type { UploadFragment } from "@/fragno/upload-server";
 import { sha256Hex } from "@/lib/crypto";

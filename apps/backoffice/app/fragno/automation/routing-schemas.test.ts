@@ -1,16 +1,16 @@
 import { describe, expect, test } from "vitest";
 
 import {
-  allBackofficePermissionRequirements,
-  BACKOFFICE_PERMISSION,
-} from "@/backoffice-runtime/permissions";
-import { zodSchemaToTypeScriptRender } from "@/lib/zod/zod-formatter";
-
-import {
   automationRouteActionSchema,
   automationRouteCreateInputSchema,
   automationRouteSchema,
-} from "./routing-schemas";
+} from "@fragno-dev/backoffice-api/v0/automation";
+import {
+  allBackofficePermissionRequirements,
+  BACKOFFICE_PERMISSION,
+} from "@fragno-dev/backoffice-api/v0/shared/permissions";
+
+import { zodSchemaToTypeScriptRender } from "@/lib/zod/zod-formatter";
 
 function expectedBackofficePermissionRequirementDeclaration(): string {
   return `type BackofficePermissionRequirement = ${allBackofficePermissionRequirements

@@ -1,3 +1,12 @@
+import {
+  marketplaceListingPageInputSchema,
+  marketplacePublishedListingInputSchema,
+  type MarketplaceListingDetail,
+  type MarketplaceListingPageInput,
+  type MarketplaceOwner,
+  type MarketplacePublishedListingInput,
+} from "@fragno-dev/backoffice-api/v0/marketplace";
+
 import { defineFragment } from "@fragno-dev/core";
 import { withDatabase } from "@fragno-dev/db";
 
@@ -9,10 +18,8 @@ import {
   marketplaceCreateDraftListingInputSchema,
   marketplaceInsertStaticEntriesInputSchema,
   marketplaceLatestPublishedVersionsInputSchema,
-  marketplaceListingPageInputSchema,
   marketplaceOwnedListingInputSchema,
   marketplaceOwnedListingPageInputSchema,
-  marketplacePublishedListingInputSchema,
   marketplacePublishVersionInputSchema,
   marketplaceUpdateListingInputSchema,
   type MarketplaceArchiveResult,
@@ -20,16 +27,12 @@ import {
   type MarketplaceDraftResult,
   type MarketplaceInsertStaticEntriesResult,
   type MarketplaceLatestPublishedVersions,
-  type MarketplaceListingDetail,
   type MarketplaceListingPage,
-  type MarketplaceListingPageInput,
   type MarketplaceListingUpdateResult,
   type MarketplaceOwnedListingDetail,
   type MarketplaceOwnedListingPage,
   type MarketplaceOwnedListingPageInput,
   type MarketplaceOperationErrorCode,
-  type MarketplaceOwner,
-  type MarketplacePublishedListingInput,
   type MarketplacePublishVersionResult,
 } from "./contracts";
 import {

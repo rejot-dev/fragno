@@ -1,17 +1,18 @@
+import {
+  type AutomationActors,
+  automationRouteCreateInputSchema,
+  automationRouteSchema,
+  automationRouteUpdatePayloadSchema,
+} from "@fragno-dev/backoffice-api/v0/automation";
 import { z } from "zod";
 
 import { defineRoutes } from "@fragno-dev/core";
 import { isUniqueConstraintError } from "@fragno-dev/db";
 
-import { AUTOMATION_SYSTEM_INITIATOR, type AutomationActors } from "./actors";
+import { AUTOMATION_SYSTEM_INITIATOR } from "./actors";
 import { automationFragmentDefinition } from "./definition";
 import { isAutomationScheduleError } from "./route-triggers";
 import { AutomationRouteAuthorityError } from "./routing";
-import {
-  automationRouteCreateInputSchema,
-  automationRouteSchema,
-  automationRouteUpdatePayloadSchema,
-} from "./routing-schemas";
 import type { AuthorizeAutomationRouteAction } from "./routing-storage-runtime";
 
 const SYSTEM_ROUTE_MUTATION_ACTORS = {

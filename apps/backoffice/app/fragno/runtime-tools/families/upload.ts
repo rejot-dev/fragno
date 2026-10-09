@@ -1,17 +1,16 @@
+import { uploadPreparedInputSchema } from "@fragno-dev/backoffice-api/v0/upload";
+import { preparedUploadedFileReferenceSchema } from "@fragno-dev/backoffice-api/v0/upload";
 import { z } from "zod";
 
 import {
   backofficeRoutableScopesEqual,
   isBackofficeRoutableScope,
 } from "@/backoffice-runtime/scope-codec";
-import {
-  preparedUploadedFileReferenceSchema,
-  uploadedFileReferenceSchema,
-} from "@/fragno/prepared-upload";
 import { defineCliArgsParser } from "@/fragno/runtime-tools/bash-cli";
 import type { UploadRuntime } from "@/fragno/runtime-tools/families/upload-runtime";
 
 import {
+  backofficeApiOperationToolFields,
   defineBackofficeRuntimeTool,
   defineBackofficeRuntimeToolFamily,
   type BackofficeToolContext,
@@ -52,15 +51,6 @@ const uploadReadPreparedOutputSchema = z.discriminatedUnion("encoding", [
       .meta({ codemodeType: "Uint8Array" }),
   }),
 ]);
-
-const uploadPreparedInputSchema = z.object({
-  file: preparedUploadedFileReferenceSchema,
-});
-
-const uploadDiscardPreparedOutputSchema = z.object({
-  discarded: z.literal(true),
-  uploadId: z.string().trim().min(1),
-});
 
 type UploadToolContext = BackofficeToolContext<{ upload?: UploadRuntime }>;
 
@@ -177,15 +167,12 @@ const readPreparedTool = defineUploadTool({
 });
 
 const commitPreparedTool = defineUploadTool({
-  id: "upload.prepared.commit",
+  ...backofficeApiOperationToolFields("upload.prepared.commit"),
   namespace: "upload",
   name: "commitPrepared",
   capabilityId: "upload",
-  description: "Commit a prepared private upload so the file persists.",
   requiredPermissions: ["modify"],
   getResource: ({ file }) => ({ uploadId: file.uploadId }),
-  inputSchema: uploadPreparedInputSchema,
-  outputSchema: uploadedFileReferenceSchema,
   execute: async (input, context) => {
     assertPreparedFileScope(context, input.file);
     return await getUploadRuntime(context).commitPrepared(input);
@@ -213,15 +200,12 @@ const commitPreparedTool = defineUploadTool({
 });
 
 const discardPreparedTool = defineUploadTool({
-  id: "upload.prepared.discard",
+  ...backofficeApiOperationToolFields("upload.prepared.discard"),
   namespace: "upload",
   name: "discardPrepared",
   capabilityId: "upload",
-  description: "Discard a temporary prepared private upload.",
   requiredPermissions: ["modify"],
   getResource: ({ file }) => ({ uploadId: file.uploadId }),
-  inputSchema: uploadPreparedInputSchema,
-  outputSchema: uploadDiscardPreparedOutputSchema,
   execute: async (input, context) => {
     assertPreparedFileScope(context, input.file);
     return await getUploadRuntime(context).discardPrepared(input);

@@ -1,3 +1,4 @@
+import type { AutomationRouteDefinition } from "@fragno-dev/backoffice-api/v0/automation";
 import { Icon } from "@fragno-private/design-system/icon";
 import {
   BackofficeStatusLight,
@@ -25,7 +26,6 @@ import { z } from "zod";
 
 import { eq, or, useLiveQuery } from "@tanstack/react-db";
 
-import type { AutomationRouteDefinition } from "@/fragno/automation/routing";
 import { useAutomationRoutes } from "@/fragno/automation/tanstack/use-automation-routes";
 import {
   listAutomationEventDescriptors,

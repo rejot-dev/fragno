@@ -1,7 +1,8 @@
+import {
+  type BackofficeContextScope,
+  backofficeContextScopeSchema,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
-
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
-import { backofficeContextScopeSchema } from "@/backoffice-runtime/context-schema";
 
 export const billingMeterSchema = z.string().trim().min(1).max(100);
 

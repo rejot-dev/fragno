@@ -1,3 +1,10 @@
+import type { MarketplacePublishResult } from "@fragno-dev/backoffice-api/v0/marketplace";
+import type {
+  MarketplaceListingDetail,
+  MarketplaceListingPageInput,
+  MarketplacePublishedListingInput,
+} from "@fragno-dev/backoffice-api/v0/marketplace";
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { DurableObject, RpcTarget } from "cloudflare:workers";
 
@@ -10,7 +17,6 @@ import type {
   BackofficeActionRpcContext,
   MarketplaceObject,
 } from "@/backoffice-runtime/object-registry";
-import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { listUploadFiles } from "@/file-collection/create-upload-file-collection";
 import { getUploadFileSnapshots } from "@/file-collection/get-upload-file-snapshots";
@@ -30,16 +36,13 @@ import type {
   MarketplaceInsertStaticEntriesResult,
   MarketplaceLatestPublishedVersions,
   MarketplaceLatestPublishedVersionsInput,
-  MarketplaceListingDetail,
   MarketplaceListingPage,
-  MarketplaceListingPageInput,
   MarketplaceListingUpdateResult,
   MarketplaceOwnedListingDetail,
   MarketplaceOwnedListingInput,
   MarketplaceOwnedListingPage,
   MarketplaceOwnedListingPageInput,
   MarketplaceOperationResult,
-  MarketplacePublishedListingInput,
   MarketplacePublishVersionInput,
   MarketplacePublishVersionResult,
   MarketplaceUpdateListingInput,
@@ -63,7 +66,6 @@ import {
   type MarketplacePublishPackageInput,
   type MarketplacePackagePublishRequest,
   type MarketplacePackagePublishIntent,
-  type MarketplacePublishResult,
 } from "@/fragno/marketplace/package-publishing";
 import {
   captureMarketplaceReleaseSnapshot,

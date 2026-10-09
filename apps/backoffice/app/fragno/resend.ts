@@ -1,3 +1,5 @@
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+
 import { createResendFragment, type ResendFragmentConfig } from "@fragno-dev/resend-fragment";
 
 import {
@@ -6,7 +8,6 @@ import {
 } from "@/backoffice-runtime/fragment-http-authorization";
 import type { BackofficeFragmentRuntimeOptions } from "@/backoffice-runtime/fragment-runtime";
 import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
-import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 
 export type ResendConfig = Pick<
   ResendFragmentConfig,

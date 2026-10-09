@@ -1,3 +1,9 @@
+import {
+  BACKOFFICE_PERMISSION,
+  type BackofficePermissionRequirement,
+} from "@fragno-dev/backoffice-api/v0/shared/permissions";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+
 import type { BackofficeAuthorityResolver } from "./authority-resolver";
 import { resolveBackofficeInternalServiceAuthorityRole } from "./authority-roles";
 import {
@@ -5,7 +11,6 @@ import {
   backofficeExecutionContextSchema,
   backofficeScopeContains,
   backofficeExecutionScopeRestriction,
-  type BackofficeContextScope,
   type BackofficeExecutionContext,
 } from "./context";
 import type { BackofficeObjectBindingName } from "./object-registry";
@@ -13,7 +18,6 @@ import {
   backofficeObjectScopePolicy,
   isBackofficeObjectAvailableInContext,
 } from "./object-registry";
-import { BACKOFFICE_PERMISSION, type BackofficePermissionRequirement } from "./permissions";
 import { backofficeScopeSinglePathSegment } from "./scope-codec";
 
 export type BackofficeKernelAction = {

@@ -1,30 +1,18 @@
+import {
+  packagesInstallInputSchema,
+  packagesInstallResultSchema,
+} from "@fragno-dev/backoffice-api/v0/marketplace";
+import {
+  MARKETPLACE_LOCK_PATH,
+  marketplaceLockSchema,
+} from "@fragno-dev/backoffice-api/v0/marketplace";
 import { z } from "zod";
 
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import { isBackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
-import {
-  marketplaceIngestionRequestInputSchema,
-  marketplaceIngestionRestartResultSchema,
-} from "@/fragno/automation/marketplace-ingestions";
-import {
-  MARKETPLACE_LOCK_PATH,
-  marketplaceInstallationRootSchema,
-  marketplaceLockSchema,
-} from "@/fragno/marketplace/marketplace-lock";
 import { UPLOAD_PROVIDER_DATABASE } from "@/fragno/upload";
-
-/** Package installation takes its destination scope from the runtime, not caller input. */
-export const packagesInstallInputSchema = marketplaceIngestionRequestInputSchema
-  .omit({ targetScope: true })
-  .strict();
-
-/** Installation reports the existing workflow result and its organization coordinator. */
-export const packagesInstallResultSchema = marketplaceIngestionRestartResultSchema.extend({
-  installationRoot: marketplaceInstallationRootSchema,
-  workflowScope: z.object({ kind: z.literal("org"), orgId: z.string().min(1) }),
-});
 
 /** Package listing is the current workspace's successful-installation lock, not a registry query. */
 export type PackagesRuntime = {

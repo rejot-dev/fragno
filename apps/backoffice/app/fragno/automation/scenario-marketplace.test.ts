@@ -1,5 +1,10 @@
 import { assert, describe, expect, test, vi } from "vitest";
 
+import { automationActorsSchema } from "@fragno-dev/backoffice-api/v0/automation";
+import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
+import { marketplaceLockSchema } from "@fragno-dev/backoffice-api/v0/marketplace";
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
   class MockDurableObject {
     constructor(_state: unknown, _env: unknown) {}
@@ -27,13 +32,8 @@ import {
   createBackofficeUserExecution,
 } from "@/backoffice-runtime/context";
 import type { BackofficeActionRpcContext } from "@/backoffice-runtime/object-registry";
-import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import type { BackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
-import {
-  automationActorsSchema,
-  BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY,
-} from "@/fragno/automation/actors";
-import type { AutomationEvent } from "@/fragno/automation/contracts";
+import { BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY } from "@/fragno/automation/actors";
 import {
   CODEMODE_CAPABILITY_ACTOR,
   CODEMODE_WORKFLOW,
@@ -43,7 +43,6 @@ import {
   marketplaceArtifactUploadName,
 } from "@/fragno/marketplace/artifacts";
 import { captureBundledMarketplaceRelease } from "@/fragno/marketplace/bundled-release";
-import { marketplaceLockSchema } from "@/fragno/marketplace/marketplace-lock";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
 import type { MarketplacePackagePublishRequest } from "@/fragno/marketplace/package-publishing";
 import {

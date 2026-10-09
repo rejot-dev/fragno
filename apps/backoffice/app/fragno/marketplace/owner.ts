@@ -1,4 +1,4 @@
-import type { MarketplaceOwnerScope } from "./contracts";
+import type { MarketplaceOwnerScope } from "@fragno-dev/backoffice-api/v0/marketplace";
 
 const encodeOwnerId = (value: string) => encodeURIComponent(value.trim());
 

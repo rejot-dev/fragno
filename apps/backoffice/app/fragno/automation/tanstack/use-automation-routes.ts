@@ -1,6 +1,7 @@
+import type { AutomationRouteDefinition } from "@fragno-dev/backoffice-api/v0/automation";
+
 import { eq, useLiveQuery } from "@tanstack/react-db";
 
-import type { AutomationRouteDefinition } from "../routing";
 import type { AutomationBrowserCollections } from "./browser-database";
 
 type AutomationRoutesLiveState =

@@ -1,43 +1,23 @@
+import {
+  marketplaceSearchInputSchema,
+  marketplaceSearchResultSchema,
+} from "@fragno-dev/backoffice-api/v0/marketplace";
+import {
+  marketplacePublishInputSchema,
+  type MarketplacePublishResult,
+} from "@fragno-dev/backoffice-api/v0/marketplace";
+import {
+  type MarketplaceListingDetail,
+  type MarketplacePublishedListingInput,
+} from "@fragno-dev/backoffice-api/v0/marketplace";
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import { z } from "zod";
 
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { MarketplaceObject } from "@/backoffice-runtime/object-registry";
-import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
-import {
-  marketplaceListingPageInputSchema,
-  marketplacePublicListingSchema,
-  type MarketplaceListingDetail,
-  type MarketplacePublishedListingInput,
-} from "@/fragno/marketplace/contracts";
 import { captureMarketplacePackageSnapshot } from "@/fragno/marketplace/package-manifest";
-import {
-  marketplacePublishInputSchema,
-  type MarketplacePublishResult,
-} from "@/fragno/marketplace/package-publishing";
-
-/** Search cursors advance through registry candidates, including pages without matches. */
-export const marketplaceSearchInputSchema = marketplaceListingPageInputSchema.extend({
-  query: z.string().trim().min(1).max(240),
-});
-
-/** Registry search returns compact metadata and a cursor for the next candidate page. */
-export const marketplaceSearchResultSchema = z.object({
-  listings: z.array(
-    marketplacePublicListingSchema.pick({
-      listingId: true,
-      name: true,
-      summary: true,
-      publisherName: true,
-      category: true,
-      tags: true,
-      latestVersion: true,
-    }),
-  ),
-  nextCursor: z.string().nullable(),
-  hasNextPage: z.boolean(),
-});
 
 /** Marketplace discovery reads only published registry metadata, never workspace files. */
 export type MarketplaceRuntime = {

@@ -1,8 +1,8 @@
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
 import type { Dispatch, SetStateAction } from "react";
 import { isRouteErrorResponse } from "react-router";
 
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import type { BackofficeMeData } from "@/fragno/auth/contracts";
 
 import { AutomationSubpageTabs } from "../../automations/shared";

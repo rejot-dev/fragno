@@ -1,6 +1,5 @@
+import { jsonValueSchema } from "@fragno-dev/backoffice-api/v0/shared/json";
 import { z } from "zod";
-
-import { jsonValueSchema } from "@/lib/zod/json-value";
 
 /** Built-in task hooks whose asynchronous callbacks can execute in a fresh codemode activation. */
 export const PI_WORKSPACE_EXTENSION_HOOKS = {

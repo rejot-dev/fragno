@@ -1,12 +1,9 @@
+import type { McpListServersOutput, McpTool } from "@fragno-dev/backoffice-api/v0/mcp";
 import type { ToolProvider } from "@fragno-dev/codemode/runtime-api";
 import { z } from "zod";
 
 import { BackofficeForbiddenError, isBackofficeForbiddenError } from "@/backoffice-runtime/kernel";
-import type {
-  McpListServersOutput,
-  McpRuntime,
-  McpTool,
-} from "@/fragno/runtime-tools/families/mcp";
+import type { McpRuntime } from "@/fragno/runtime-tools/families/mcp";
 import { pascalCase, type RuntimeToolReference } from "@/fragno/runtime-tools/reference";
 import { NotConfiguredError } from "@/fragno/runtime-tools/runtime-errors";
 import {

@@ -1,10 +1,14 @@
+import {
+  allBackofficePermissionRequirements,
+  BACKOFFICE_PERMISSION,
+} from "@fragno-dev/backoffice-api/v0/shared/permissions";
+
 import type { BackofficeAuthorityResolver } from "./authority-resolver";
 import {
   getOrganizationRoleGrants,
   ORGANIZATION_ROLE_PERMISSION_NAMESPACES,
 } from "./authority-roles";
 import type { AuthObject } from "./object-registry";
-import { allBackofficePermissionRequirements, BACKOFFICE_PERMISSION } from "./permissions";
 
 /** Human control-plane changes are never performed under delegated capability grants. */
 const PRINCIPAL_ONLY_PERMISSION_KEYS: ReadonlySet<string> = new Set(

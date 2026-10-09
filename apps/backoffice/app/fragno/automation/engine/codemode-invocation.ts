@@ -1,3 +1,20 @@
+import {
+  automationActorsSchema,
+  automationDelegatedActorSchema,
+  automationEntityRefsEqual,
+  type AutomationActors,
+} from "@fragno-dev/backoffice-api/v0/automation";
+import {
+  type AutomationEvent,
+  type AutomationEventPayload,
+  automationEventSchema,
+} from "@fragno-dev/backoffice-api/v0/events";
+import { piAgentCreationSchema } from "@fragno-dev/backoffice-api/v0/pi";
+import {
+  backofficePermissionRequirementSchema,
+  type BackofficePermissionRequirement,
+} from "@fragno-dev/backoffice-api/v0/shared/permissions";
+import { backofficeContextScopeSchema } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
 
 import { visualizeWorkflowSource } from "@fragno-dev/workflow-visualizer-tokens";
@@ -7,22 +24,7 @@ import {
   backofficeExecutionScopeRestriction,
 } from "@/backoffice-runtime/context";
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
-import { backofficeContextScopeSchema } from "@/backoffice-runtime/context-schema";
 import type { NpmDependencyMap } from "@/backoffice-runtime/dynamic-workers/npm-dependencies";
-import {
-  backofficePermissionRequirementSchema,
-  type BackofficePermissionRequirement,
-} from "@/backoffice-runtime/permissions";
-import { piAgentCreationSchema } from "@/fragno/pi-manager/pi-agent-contract";
-
-import {
-  automationActorsSchema,
-  automationDelegatedActorSchema,
-  automationEntityRefsEqual,
-  type AutomationActors,
-} from "../actors";
-import type { AutomationEvent, AutomationEventPayload } from "../contracts";
-import { automationEventSchema } from "../events";
 
 export const CODEMODE_WORKFLOW = "codemode-script";
 

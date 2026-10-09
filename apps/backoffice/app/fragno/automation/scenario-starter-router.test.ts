@@ -1,11 +1,12 @@
 import { assert, describe, test, vi } from "vitest";
 
+import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+
 import { and, eq, queryOnce } from "@tanstack/react-db";
 
-import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import { getStaticMarketplaceEntry } from "@/fragno/marketplace/static-entries";
 
-import type { AutomationEvent } from "./contracts";
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
   class MockDurableObject {
     constructor(_state: unknown, _env: unknown) {}

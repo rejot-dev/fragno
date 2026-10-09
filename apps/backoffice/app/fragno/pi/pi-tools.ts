@@ -1,3 +1,4 @@
+import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import { Type } from "typebox";
 
 import { visualizeWorkflowSource } from "@fragno-dev/workflow-visualizer-tokens";
@@ -6,7 +7,6 @@ import { copyJson, type Context } from "@earendil-works/chord";
 import { defineTool } from "@earendil-works/pi-durable";
 
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
-import type { BackofficePermissionRequirement } from "@/backoffice-runtime/permissions";
 import type { FileSearchMatch } from "@/file-collection/file-collection";
 import {
   createCodemodeWorkflowInstanceInput,

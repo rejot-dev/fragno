@@ -1,15 +1,10 @@
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
-
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 
 export const BACKOFFICE_AUTH_ERROR_HEADER = "x-backoffice-auth-error";
 export const BACKOFFICE_TOKEN_EXPIRED_CODE = "backoffice_token_expired";
 
 export type Role = "user" | "admin";
-
-/** Organization roles defined by Better Auth's default organization access control. */
-export const organizationRoleSchema = z.enum(["owner", "admin", "member"]);
-export type OrganizationRole = z.output<typeof organizationRoleSchema>;
 
 export type AuthUser = {
   id: string;

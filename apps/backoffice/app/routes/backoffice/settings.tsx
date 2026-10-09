@@ -1,9 +1,9 @@
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { BackofficeBreadcrumbs } from "@fragno-private/design-system/breadcrumbs";
 import { OverflowTabRow } from "@fragno-private/design-system/overflow-tab-row";
 import { useOutletContext } from "react-router";
 
 import { resolveBackofficeUserAuthorityRole } from "@/backoffice-runtime/authority-roles";
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import { createBackofficeExecutionForPrincipal } from "@/fragno/auth/backoffice-principal.server";
 import { requireBackofficePrincipal } from "@/fragno/auth/request-auth.server";
 import type { BackofficeLayoutContext } from "@/layouts/backoffice-layout";

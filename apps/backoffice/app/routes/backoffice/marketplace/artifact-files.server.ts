@@ -1,3 +1,5 @@
+import { marketplaceVersionSchema } from "@fragno-dev/backoffice-api/v0/marketplace";
+
 import type {
   BackofficeObjectHandle,
   BackofficeObjectRegistry,
@@ -7,10 +9,7 @@ import { createFileTree } from "@/file-collection/create-file-tree";
 import { createUploadFileCollection } from "@/file-collection/create-upload-file-collection";
 import type { FileCollection, FileContent } from "@/file-collection/file-collection";
 import { isPathWithin, normalizeAbsolutePath } from "@/files/normalize-path";
-import {
-  marketplaceVersionSchema,
-  type MarketplaceArtifactManifest,
-} from "@/fragno/marketplace/contracts";
+import { type MarketplaceArtifactManifest } from "@/fragno/marketplace/contracts";
 import { UPLOAD_PROVIDER_DATABASE } from "@/fragno/upload";
 import { createUploadRouteCaller } from "@/fragno/upload-server";
 

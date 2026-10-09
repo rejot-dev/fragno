@@ -1,4 +1,6 @@
-import { backofficeContextScopesEqual, type BackofficeContextScope } from "./context";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+
+import { backofficeContextScopesEqual } from "./context";
 
 export type BackofficeSinglePathScope = BackofficeContextScope;
 

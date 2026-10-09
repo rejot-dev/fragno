@@ -1,5 +1,7 @@
 import { assert, describe, expect, test } from "vitest";
 
+import type { AutomationRouteDefinition } from "@fragno-dev/backoffice-api/v0/automation";
+import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
 import { getDurableHooksService } from "@fragno-dev/db/durable-hooks";
 import { defineRemoteWorkflow } from "@fragno-dev/workflows/workflow";
 
@@ -10,11 +12,9 @@ import { createWorkflowsFragment, workflowsSchema } from "@fragno-dev/workflows"
 
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 
-import type { AutomationEvent } from "./contracts";
 import type { AutomationWorkflowsService } from "./definition";
 import { CODEMODE_WORKFLOW } from "./engine/codemode-invocation";
 import { createAutomationFragment } from "./index";
-import type { AutomationRouteDefinition } from "./routing";
 import { automationFragmentSchema } from "./schema";
 import { createTestAutomationSourceReader } from "./test-automation-source-reader.test-utils";
 

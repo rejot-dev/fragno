@@ -1,5 +1,10 @@
 import { assert, describe, expect, test, vi } from "vitest";
 
+import {
+  MARKETPLACE_LOCK_PATH,
+  marketplaceLockSchema,
+} from "@fragno-dev/backoffice-api/v0/marketplace";
+
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
   class DurableObject {
     constructor(_state: unknown, _env: unknown) {}
@@ -14,10 +19,6 @@ vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoin
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import { BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY } from "@/fragno/automation/actors";
 import { marketplaceArtifactUploadName } from "@/fragno/marketplace/artifacts";
-import {
-  MARKETPLACE_LOCK_PATH,
-  marketplaceLockSchema,
-} from "@/fragno/marketplace/marketplace-lock";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
 import { getStaticMarketplaceEntry } from "@/fragno/marketplace/static-entries";
 import { sha256Hex } from "@/lib/crypto";

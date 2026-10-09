@@ -2,6 +2,8 @@ import { assert, expect, test, vi } from "vitest";
 
 import { createHmac } from "node:crypto";
 
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+
 const workers = vi.hoisted(() => ({
   DurableObject: class {},
   RpcTarget: class {},
@@ -9,7 +11,6 @@ const workers = vi.hoisted(() => ({
 }));
 vi.mock("cloudflare:workers", () => workers);
 
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import {

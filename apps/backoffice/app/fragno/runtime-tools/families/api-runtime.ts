@@ -6,7 +6,17 @@ import {
   type WebhookEndpoint,
   type WebhookEndpointInput,
 } from "@fragno-dev/api-fragment/types";
+import type {
+  ApiAuthStatus,
+  ApiConnection,
+  ApiListConnectionsOutput,
+  ApiOAuthStartOutput,
+  ApiRequestOutput,
+  webhookEndpointSchema,
+  webhookEndpointsOutputSchema,
+} from "@fragno-dev/backoffice-api/v0/http-api";
 import { createRouteCaller } from "@fragno-dev/core/api";
+import type { z } from "zod";
 
 import type { FetchObject } from "@/backoffice-runtime/object-registry";
 import type { ApiFragment } from "@/fragno/api";
@@ -21,18 +31,15 @@ import {
   throwOnRouteRuntimeError,
 } from "../runtime-errors";
 import type {
-  ApiAuthStatus,
-  ApiConnection,
-  ApiListConnectionsOutput,
   ApiOAuthStartInput,
-  ApiOAuthStartOutput,
-  ApiRequestOutput,
   ApiSetTokenInput,
-  ApiWebhookEndpoint,
   ApiWebhookEndpointInput,
-  ApiWebhookEndpointsOutput,
   ApiWebhookEndpointUpdateInput,
 } from "./api";
+
+// The runtime returns the fragment's records; tool output parsing turns their dates into ISO strings.
+type ApiWebhookEndpointResult = z.input<typeof webhookEndpointSchema>;
+type ApiWebhookEndpointsResult = z.input<typeof webhookEndpointsOutputSchema>;
 
 export type ApiRuntime = {
   listConnections: () => Promise<ApiListConnectionsOutput>;
@@ -43,14 +50,14 @@ export type ApiRuntime = {
   startOAuth: (input: { slug: string } & ApiOAuthStartInput) => Promise<ApiOAuthStartOutput>;
   deleteAuth: (input: { slug: string }) => Promise<{ ok: true }>;
   request: (input: { slug: string } & ApiRequestInput) => Promise<ApiRequestOutput>;
-  listWebhookEndpoints: () => Promise<ApiWebhookEndpointsOutput>;
-  getWebhookEndpoint: (input: { endpointId: string }) => Promise<ApiWebhookEndpoint>;
+  listWebhookEndpoints: () => Promise<ApiWebhookEndpointsResult>;
+  getWebhookEndpoint: (input: { endpointId: string }) => Promise<ApiWebhookEndpointResult>;
   createWebhookEndpoint: (
     input: { endpointId: string } & ApiWebhookEndpointInput,
-  ) => Promise<ApiWebhookEndpoint>;
+  ) => Promise<ApiWebhookEndpointResult>;
   updateWebhookEndpoint: (
     input: { endpointId: string } & ApiWebhookEndpointUpdateInput,
-  ) => Promise<ApiWebhookEndpoint>;
+  ) => Promise<ApiWebhookEndpointResult>;
   deleteWebhookEndpoint: (input: { endpointId: string }) => Promise<{ ok: true }>;
 };
 
@@ -77,7 +84,7 @@ const createApiRouteCaller = (options: CreateRouteBackedApiRuntimeOptions) =>
 const appendWebhookPublicUrl = (
   endpoint: WebhookEndpoint,
   publicBaseUrl: string,
-): ApiWebhookEndpoint => ({
+): ApiWebhookEndpointResult => ({
   ...endpoint,
   publicUrl: apiWebhookPublicUrl(publicBaseUrl, endpoint.id),
 });

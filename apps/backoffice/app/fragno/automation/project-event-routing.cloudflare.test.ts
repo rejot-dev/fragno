@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test, vi, assert } from "vitest";
 
+import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
 import { env } from "cloudflare:workers";
 
 import { unavailableBackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
@@ -19,7 +20,6 @@ import { createStateShellFileSystem } from "@/fragno/runtime-tools/state-shell-f
 
 import { AUTOMATION_SYSTEM_INITIATOR } from "./actors";
 import { createAutomationRuntimeExecution } from "./authority";
-import type { AutomationEvent } from "./contracts";
 import { createAutomationsRouteCaller } from "./route-callers";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {

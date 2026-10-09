@@ -1,6 +1,6 @@
+import { backofficeRoutableScopeSchema } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
 
-import { backofficeRoutableScopeSchema } from "@/backoffice-runtime/context-schema";
 import type { BackofficeRoutableResolvedScope } from "@/backoffice-runtime/resolved-scope";
 
 export const generatedUiUploadScopeSchema = z.union([

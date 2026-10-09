@@ -1,6 +1,5 @@
+import { jsonValueSchema } from "@fragno-dev/backoffice-api/v0/shared/json";
 import { z } from "zod";
-
-import { jsonValueSchema } from "@/lib/zod/json-value";
 
 const text = z.object({
   type: z.literal("text"),

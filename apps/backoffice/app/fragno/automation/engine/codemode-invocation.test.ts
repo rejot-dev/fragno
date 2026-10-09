@@ -1,9 +1,10 @@
 import { describe, expect, test } from "vitest";
 
-import { createBackofficeUserExecution } from "@/backoffice-runtime/context";
-import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
+import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 
-import type { AutomationEvent } from "../contracts";
+import { createBackofficeUserExecution } from "@/backoffice-runtime/context";
+
 import {
   assertCodemodeCapabilityGrantsBelongToExecution,
   CODEMODE_CAPABILITY_ACTOR,

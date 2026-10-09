@@ -1,12 +1,11 @@
-import { column, idColumn, referenceColumn, schema, type Column } from "@fragno-dev/db/schema";
-
 import type {
   MarketplaceCategory,
   MarketplaceListingContent,
-  MarketplaceListingStatus,
   MarketplaceOwnerScope,
-  MarketplaceVersionStatus,
-} from "./contracts";
+} from "@fragno-dev/backoffice-api/v0/marketplace";
+import { column, idColumn, referenceColumn, schema, type Column } from "@fragno-dev/db/schema";
+
+import type { MarketplaceListingStatus, MarketplaceVersionStatus } from "./contracts";
 import type { MarketplaceVersionPublishState } from "./package-publishing";
 
 const jsonColumn = <T>() => column("json") as Column<"json", T, T>;

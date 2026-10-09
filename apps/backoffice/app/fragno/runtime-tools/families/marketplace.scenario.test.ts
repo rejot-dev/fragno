@@ -1,5 +1,8 @@
 import { assert, describe, expect, test, vi } from "vitest";
 
+import { marketplaceSearchResultSchema } from "@fragno-dev/backoffice-api/v0/marketplace";
+import { marketplaceListingDetailSchema } from "@fragno-dev/backoffice-api/v0/marketplace";
+
 const workers = vi.hoisted(() => ({
   DurableObject: class {},
   RpcTarget: class {},
@@ -10,14 +13,9 @@ vi.mock("cloudflare:workers", () => workers);
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
-import {
-  marketplaceListingDetailSchema,
-  type MarketplaceStaticEntry,
-} from "@/fragno/marketplace/contracts";
+import { type MarketplaceStaticEntry } from "@/fragno/marketplace/contracts";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
 import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
-
-import { marketplaceSearchResultSchema } from "./marketplace-runtime";
 
 const OWNER = { scope: { kind: "system" }, publisherName: "Fragno" } as const;
 const REPORT: MarketplaceStaticEntry = {

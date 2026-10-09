@@ -1,10 +1,11 @@
+import type { PreparedUploadedFileReference } from "@fragno-dev/backoffice-api/v0/upload";
+
 import type { UploadProgress } from "@fragno-dev/upload";
 
 import {
   backofficeRuntimeScopeFromResolvedScope,
   type BackofficeRoutableResolvedScope,
 } from "@/backoffice-runtime/resolved-scope";
-import type { PreparedUploadedFileReference } from "@/fragno/prepared-upload";
 import { createScopedUploadHelpers } from "@/fragno/upload-client";
 
 const safeFilenameExtension = (filename: string): string => {

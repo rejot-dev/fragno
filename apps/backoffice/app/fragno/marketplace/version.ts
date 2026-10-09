@@ -1,11 +1,3 @@
-const MARKETPLACE_RELEASE_IDENTIFIER = String.raw`(?:0|[1-9]\d*)`;
-const MARKETPLACE_PRERELEASE_IDENTIFIER = String.raw`(?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)`;
-
-export const MARKETPLACE_VERSION_PATTERN = new RegExp(
-  String.raw`^${MARKETPLACE_RELEASE_IDENTIFIER}\.${MARKETPLACE_RELEASE_IDENTIFIER}\.${MARKETPLACE_RELEASE_IDENTIFIER}(?:-${MARKETPLACE_PRERELEASE_IDENTIFIER}(?:\.${MARKETPLACE_PRERELEASE_IDENTIFIER})*)?$`,
-  "u",
-);
-
 type ParsedMarketplaceVersion = {
   release: readonly [bigint, bigint, bigint];
   prerelease: readonly string[] | null;

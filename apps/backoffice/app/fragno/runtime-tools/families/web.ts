@@ -1,4 +1,5 @@
-import { z } from "zod";
+import { webExtractInputSchema } from "@fragno-dev/backoffice-api/v0/web";
+import type { z } from "zod";
 
 import {
   parseCliTokens,
@@ -7,6 +8,7 @@ import {
 } from "@/fragno/runtime-tools/bash-cli";
 
 import {
+  backofficeApiOperationToolFields,
   defineBackofficeRuntimeTool,
   defineBackofficeRuntimeToolFamily,
   type BackofficeToolContext,
@@ -14,25 +16,6 @@ import {
 import type { WebExtractInput, WebRuntime } from "./web-runtime";
 
 export type { WebRuntime } from "./web-runtime";
-
-const webPageInputSchema = z
-  .looseObject({
-    url: z.url().optional(),
-    html: z.string().optional(),
-  })
-  .refine((input) => input.url !== undefined || input.html !== undefined, {
-    message: "Web extraction input requires either `url` or `html`.",
-  });
-
-const webExtractInputSchema = z.discriminatedUnion("action", [
-  z.object({ action: z.literal("content"), input: webPageInputSchema }),
-  z.object({ action: z.literal("markdown"), input: webPageInputSchema }),
-]) as z.ZodType<WebExtractInput>;
-
-const webExtractResultSchema = z.discriminatedUnion("action", [
-  z.object({ action: z.literal("content"), result: z.string() }),
-  z.object({ action: z.literal("markdown"), result: z.string() }),
-]);
 
 type WebToolContext = BackofficeToolContext<{ web?: WebRuntime }>;
 
@@ -43,7 +26,7 @@ const getWebRuntime = (runtime: WebToolContext["runtimes"]["web"]): WebRuntime =
   return runtime;
 };
 
-const parseExtract = (args: string[]): WebExtractInput => {
+const parseExtract = (args: string[]): z.input<typeof webExtractInputSchema> => {
   const parsed = parseCliTokens(args);
   const inputJson = readStringOption(parsed, "input-json", true);
   if (!inputJson) {
@@ -57,16 +40,14 @@ const parseExtract = (args: string[]): WebExtractInput => {
 };
 
 const webExtractTool = defineBackofficeRuntimeTool({
-  id: "web.extract",
+  ...backofficeApiOperationToolFields("web.extract"),
   namespace: "web",
   authorizationNamespace: "cloudflare",
   name: "extract",
-  description: "Extract page content or Markdown from a URL or HTML.",
   requiredPermissions: ["browserRun"],
-  inputSchema: webExtractInputSchema,
-  outputSchema: webExtractResultSchema,
+  // The contract keeps page options open; the Cloudflare fragment validates them in full.
   execute: async (input, context: WebToolContext) =>
-    await getWebRuntime(context.runtimes.web).extract(input),
+    await getWebRuntime(context.runtimes.web).extract(input as WebExtractInput),
   adapters: {
     bash: {
       command: "web.extract",

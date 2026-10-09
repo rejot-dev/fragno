@@ -1,3 +1,4 @@
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import { Button } from "@fragno-private/design-system/button";
 import { Input } from "@fragno-private/design-system/input";
 import { useState } from "react";
@@ -6,7 +7,6 @@ import { useOutletContext, useSearchParams } from "react-router";
 import { useLiveQuery } from "@tanstack/react-db";
 
 import { isBackofficeForbiddenError } from "@/backoffice-runtime/kernel";
-import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import type { Route } from "./+types/identity-bindings";

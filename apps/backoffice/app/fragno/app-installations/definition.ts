@@ -1,22 +1,25 @@
-import { defineFragment } from "@fragno-dev/core";
-import { decodeCursor, withDatabase } from "@fragno-dev/db";
-
-import type { BackofficePermissionRequirement } from "@/backoffice-runtime/permissions";
-import type { BackofficeAppLookupInput } from "@/fragno/apps/contracts";
-import { BackofficeAppDomainError } from "@/fragno/apps/errors";
-import { appPermissionsEqual } from "@/fragno/apps/permissions";
-
 import type {
+  BackofficeAppLookupInput,
   AppInstallationExternalAccount,
   AppInstallationResourceScope,
   BackofficeAppInstallation,
   BackofficeAppInstallationAccessInput,
-  BackofficeAppInstallationClaimInput,
-  BackofficeAppInstallationClaimResult,
-  BackofficeAppInstallationInput,
   BackofficeAppInstallationMutationResult,
   BackofficeAppInstallationPage,
   BackofficeAppInstallationPageInput,
+} from "@fragno-dev/backoffice-api/v0/apps";
+import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+
+import { defineFragment } from "@fragno-dev/core";
+import { decodeCursor, withDatabase } from "@fragno-dev/db";
+
+import { BackofficeAppDomainError } from "@/fragno/apps/errors";
+import { appPermissionsEqual } from "@/fragno/apps/permissions";
+
+import type {
+  BackofficeAppInstallationClaimInput,
+  BackofficeAppInstallationClaimResult,
+  BackofficeAppInstallationInput,
   BackofficeAppInstallationStatus,
 } from "./contracts";
 import { appInstallationsFragmentSchema } from "./schema";

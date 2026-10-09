@@ -1,3 +1,6 @@
+import { marketplacePublishInputSchema } from "@fragno-dev/backoffice-api/v0/marketplace";
+import { type MarketplaceOwner } from "@fragno-dev/backoffice-api/v0/marketplace";
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import { z } from "zod";
 
 import {
@@ -5,52 +8,14 @@ import {
   type BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
-import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { sha256Hex } from "@/lib/crypto";
 
-import {
-  marketplaceListingIdSchema,
-  marketplaceOwnerSchema,
-  marketplaceOrganizationOwnerScopeSchema,
-  marketplaceVersionSchema,
-  type MarketplaceOwner,
-} from "./contracts";
 import { marketplacePackageSnapshotSchema } from "./package-manifest";
 import {
   MARKETPLACE_RELEASE_GUARD_PATH,
   marketplaceReleaseSnapshotSchema,
 } from "./release-snapshot";
-
-const marketplacePackageOwnerSchema = marketplaceOwnerSchema.extend({
-  scope: marketplaceOrganizationOwnerScopeSchema,
-});
-
-/** Publishing switches are enforced against the original caller, never the coordinator. */
-export const marketplacePublishInputSchema = z.strictObject({
-  packageRoot: z
-    .string()
-    .trim()
-    .min(1)
-    .max(512)
-    .refine(
-      (path) =>
-        path.startsWith("/") &&
-        path !== "/" &&
-        !/[\\\p{Cc}]/u.test(path) &&
-        path
-          .replace(/\/$/u, "")
-          .slice(1)
-          .split("/")
-          .every((segment) => segment && segment !== "." && segment !== ".."),
-      "Marketplace package root must be an absolute directory path without traversal.",
-    )
-    .transform((path) => path.replace(/\/$/u, ""))
-    .pipe(z.string()),
-  dryRun: z.boolean().default(false),
-  skipAuthorCheck: z.boolean().default(false),
-  skipVersionCheck: z.boolean().default(false),
-});
 
 /** Workspace manifests are validated at the author-facing boundary, not in the release publisher. */
 export const marketplacePublishPackageInputSchema = marketplacePublishInputSchema
@@ -137,27 +102,6 @@ export type MarketplacePublishReleaseResult =
       workflowScope: { kind: "system" };
     };
 
-const packageIdentitySchema = z.strictObject({
-  name: z.string(),
-  listingId: marketplaceListingIdSchema,
-  version: marketplaceVersionSchema,
-  snapshotId: z.string(),
-  owner: marketplacePackageOwnerSchema,
-  files: z.array(
-    z.strictObject({ relativePath: z.string(), sizeBytes: z.number(), checksum: z.string() }),
-  ),
-  sizeBytes: z.number(),
-});
-/** A dry run writes nothing; accepted packages return their durable System workflow identity. */
-export const marketplacePublishResultSchema = z.discriminatedUnion("state", [
-  packageIdentitySchema.extend({ state: z.literal("preview") }),
-  packageIdentitySchema.extend({
-    state: z.enum(["requested", "published"]),
-    workflowInstanceId: z.string(),
-    workflowScope: z.strictObject({ kind: z.literal("system") }),
-  }),
-]);
-export type MarketplacePublishResult = z.output<typeof marketplacePublishResultSchema>;
 export type MarketplacePackagePublishPlan =
   | { state: "new"; expectedVersionRevision: number | null }
   | { state: "requested"; workflowInstanceId: string }

@@ -1,10 +1,8 @@
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import type { z } from "zod";
 
-import {
-  backofficeContextScopesEqual,
-  type BackofficeContextScope,
-} from "@/backoffice-runtime/context";
+import { backofficeContextScopesEqual } from "@/backoffice-runtime/context";
 
 import type { BackofficeObjectState } from "./backoffice-fragment-durable-object";
 

@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 
+import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import { Bash, InMemoryFs } from "just-bash";
 import { z } from "zod";
 
@@ -10,7 +11,6 @@ import {
   type BackofficeKernelAction,
   type BackofficeKernelObserver,
 } from "@/backoffice-runtime/kernel";
-import type { BackofficePermissionRequirement } from "@/backoffice-runtime/permissions";
 
 import {
   createBackofficeBashCommands,

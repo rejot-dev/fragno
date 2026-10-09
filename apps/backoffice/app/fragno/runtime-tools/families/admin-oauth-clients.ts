@@ -1,4 +1,5 @@
-import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+
 import {
   backofficeOAuthClientCreateInputSchema,
   backofficeOAuthClientCreateResultSchema,

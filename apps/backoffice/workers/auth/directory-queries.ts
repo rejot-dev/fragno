@@ -1,18 +1,19 @@
+import type {
+  AccountInvitationRecord,
+  AccountProfile,
+} from "@fragno-dev/backoffice-api/v0/account";
+import type {
+  OrganizationMemberPage,
+  OrganizationMembershipRecord,
+  OrganizationRecord,
+} from "@fragno-dev/backoffice-api/v0/organization";
+import type { DirectoryPageInput } from "@fragno-dev/backoffice-api/v0/shared/pagination";
 import type { AuthContext } from "better-auth";
 
 import { Cursor, decodeCursor } from "@fragno-dev/db";
 
 import { splitOrganizationRoles } from "@/fragno/auth/contracts";
-import type {
-  AccountInvitationRecord,
-  AccountProfile,
-  DirectoryPageInput,
-  OrganizationInvitationPage,
-  OrganizationMemberPage,
-  OrganizationMembershipRecord,
-  OrganizationPage,
-  OrganizationRecord,
-} from "@/fragno/auth/directory-records";
+import type { OrganizationInvitationPage, OrganizationPage } from "@/fragno/auth/directory-records";
 
 type AuthAdapter = AuthContext["adapter"];
 type AuthWhere = NonNullable<Parameters<AuthAdapter["findMany"]>[0]["where"]>;

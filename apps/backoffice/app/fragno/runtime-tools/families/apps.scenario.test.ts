@@ -4,6 +4,14 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+import {
+  backofficeAppInstallationMutationResultSchema,
+  backofficeAppInstallationPageSchema,
+  backofficeAppInstallationSchema,
+  backofficeAppSchema,
+} from "@fragno-dev/backoffice-api/v0/apps";
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
@@ -18,17 +26,9 @@ import {
   createBackofficeUserExecution,
   createBackofficeSystemExecution,
   createBackofficeServiceExecution,
-  type BackofficeContextScope,
 } from "@/backoffice-runtime/context";
 import type { BackofficeDatabaseAdapterFactory } from "@/backoffice-runtime/database-adapters";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
-import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
-import {
-  backofficeAppInstallationMutationResultSchema,
-  backofficeAppInstallationPageSchema,
-  backofficeAppInstallationSchema,
-} from "@/fragno/app-installations/contracts";
-import { backofficeAppSchema } from "@/fragno/apps/contracts";
 import {
   defineBackofficeScenario,
   runBackofficeScenario,

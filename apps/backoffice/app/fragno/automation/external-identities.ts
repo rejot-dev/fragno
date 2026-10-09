@@ -1,6 +1,5 @@
+import type { AutomationExternalEntityRef } from "@fragno-dev/backoffice-api/v0/automation";
 import { z } from "zod";
-
-import type { AutomationExternalEntityRef } from "./actors";
 
 export type ExternalIdentity = AutomationExternalEntityRef;
 

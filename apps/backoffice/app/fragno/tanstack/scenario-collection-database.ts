@@ -1,3 +1,4 @@
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { AnySchema } from "@fragno-dev/db/schema";
 
 import {
@@ -12,7 +13,6 @@ import type {
   PersistedTx,
 } from "@tanstack/db-sqlite-persistence-core";
 
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 
 type ScenarioCollections = Record<string, { cleanup(): Promise<void> }>;

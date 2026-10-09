@@ -1,3 +1,5 @@
+import type { PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
+import { jsonValueSchema } from "@fragno-dev/backoffice-api/v0/shared/json";
 import { z } from "zod";
 
 import type {
@@ -7,10 +9,7 @@ import type {
   SubmissionRecord,
 } from "@earendil-works/pi-durable";
 
-import { backofficeContextScopeSchema } from "@/backoffice-runtime/context";
 import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
-import { automationActorsSchema } from "@/fragno/automation/actors";
-import { jsonValueSchema } from "@/lib/zod/json-value";
 
 /** One supported chat model whose provider credentials are available to durable Pi. */
 export const piAvailableModelSchema = z.object({
@@ -39,35 +38,6 @@ export class PiConversationViewDamagedError extends Error {
     );
   }
 }
-
-export const piAgentModelSchema = z.object({
-  provider: z.string().min(1),
-  modelId: z.string().min(1),
-});
-
-/** Session choices accepted from callers; an omitted model selects the configured default. */
-export const piAgentCreationSchema = z.object({
-  name: z.string().nullable(),
-  model: piAgentModelSchema.optional(),
-  instructions: z.string().default(""),
-  billingOrganizationId: z.string().trim().min(1).nullable().default(null),
-});
-
-/** Provisioning persists actor provenance and a concrete immutable model selection. */
-export const piAgentConfigSchema = piAgentCreationSchema.extend({
-  model: piAgentModelSchema,
-  scope: backofficeContextScopeSchema,
-  scopeRestriction: backofficeContextScopeSchema.nullable(),
-  sessionId: z.string().min(1),
-  actors: automationActorsSchema,
-});
-
-/** Directory records share the provisioning contract and use database creation time. */
-export const piManagerSessionSchema = piAgentConfigSchema.extend({ createdAt: z.string() });
-export type PiManagerSession = z.infer<typeof piManagerSessionSchema>;
-
-/** Initial agent choices are immutable; Pi owns subsequent conversation state. */
-export type PiAgentConfig = z.infer<typeof piAgentConfigSchema>;
 
 /** Request IDs deduplicate prompt admission within an agent's root conversation. */
 export const piAgentPromptSchema = z.object({

@@ -1,4 +1,4 @@
-import type { AutomationRouteDefinition } from "@/fragno/automation/routing";
+import type { AutomationRouteDefinition } from "@fragno-dev/backoffice-api/v0/automation";
 
 import { filesExplorerPathFromScopePath } from "../files/scope";
 

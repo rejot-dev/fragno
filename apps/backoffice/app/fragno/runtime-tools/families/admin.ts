@@ -1,3 +1,15 @@
+import {
+  organizationRoleSchema,
+  type OrganizationRole,
+  organizationMemberPageSchema,
+  organizationRecordSchema,
+  type OrganizationMemberPage,
+  type OrganizationRecord,
+} from "@fragno-dev/backoffice-api/v0/organization";
+import {
+  directoryPageInputSchema,
+  type DirectoryPageInput,
+} from "@fragno-dev/backoffice-api/v0/shared/pagination";
 import { z } from "zod";
 
 import type {
@@ -10,17 +22,7 @@ import type {
   BackofficeAppRegistrationInput,
   BackofficeAppRegistrationResult,
 } from "@/fragno/apps/contracts";
-import { organizationRoleSchema, type OrganizationRole } from "@/fragno/auth/contracts";
-import {
-  directoryPageInputSchema,
-  organizationMemberPageSchema,
-  organizationPageSchema,
-  organizationRecordSchema,
-  type DirectoryPageInput,
-  type OrganizationMemberPage,
-  type OrganizationPage,
-  type OrganizationRecord,
-} from "@/fragno/auth/directory-records";
+import { organizationPageSchema, type OrganizationPage } from "@/fragno/auth/directory-records";
 import type {
   BackofficeOAuthClientCreateInput,
   BackofficeOAuthClientCreateResult,

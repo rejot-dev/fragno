@@ -1,9 +1,10 @@
+import type { PiManagerSession } from "@fragno-dev/backoffice-api/v0/pi";
 import { Button } from "@fragno-private/design-system/button";
 import { Select } from "@fragno-private/design-system/select";
 import { useState } from "react";
 import { Form, Link } from "react-router";
 
-import type { PiAvailableModel, PiManagerSession } from "@/fragno/pi-manager/pi-agent-contract";
+import type { PiAvailableModel } from "@/fragno/pi-manager/pi-agent-contract";
 
 import { formatTimestamp } from "./formatting";
 

@@ -1,13 +1,9 @@
-import { z } from "zod";
+import type {
+  AutomationRouteDefinition,
+  AutomationRouteCreateInput,
+  AutomationRouteUpdateInput,
+} from "@fragno-dev/backoffice-api/v0/automation";
 
-import type { AutomationRouteDefinition } from "@/fragno/automation/routing";
-import {
-  automationRouteCreateInputSchema,
-  automationRouteSchema,
-  automationRouteUpdateInputSchema,
-  type AutomationRouteCreateInput,
-  type AutomationRouteUpdateInput,
-} from "@/fragno/automation/routing-schemas";
 import {
   defineCliArgsParser,
   defineNoInputArgsParser,
@@ -19,6 +15,7 @@ import {
 } from "@/fragno/runtime-tools/bash-cli";
 
 import {
+  backofficeApiOperationToolFields,
   defineBackofficeRuntimeTool,
   defineBackofficeRuntimeToolFamily,
   type BackofficeToolContext,
@@ -141,13 +138,10 @@ const formatRouteText = (route: AutomationRouteDefinition) =>
   );
 
 const routerListTool = defineBackofficeRuntimeTool({
-  id: "router.list",
+  ...backofficeApiOperationToolFields("router.list"),
   namespace: "router",
   name: "list",
-  description: "List database-backed automation routing rules.",
   requiredPermissions: ["read"],
-  inputSchema: z.void(),
-  outputSchema: z.array(automationRouteSchema),
   execute: async (_input, context: AutomationRouterToolContext) =>
     await getRuntime(context).listRoutes(),
   adapters: {
@@ -169,13 +163,10 @@ const routerListTool = defineBackofficeRuntimeTool({
 });
 
 const routerGetTool = defineBackofficeRuntimeTool({
-  id: "router.get",
+  ...backofficeApiOperationToolFields("router.get"),
   namespace: "router",
   name: "get",
-  description: "Get one database-backed automation routing rule.",
   requiredPermissions: ["read"],
-  inputSchema: z.object({ id: z.string().trim().min(1) }),
-  outputSchema: automationRouteSchema.nullable(),
   execute: async (input, context: AutomationRouterToolContext) =>
     await getRuntime(context).getRoute(input),
   adapters: {
@@ -207,13 +198,10 @@ const routerGetTool = defineBackofficeRuntimeTool({
 });
 
 const routerCreateTool = defineBackofficeRuntimeTool({
-  id: "router.create",
+  ...backofficeApiOperationToolFields("router.create"),
   namespace: "router",
   name: "create",
-  description: "Create a database-backed automation routing rule.",
   requiredPermissions: ["modify"],
-  inputSchema: automationRouteCreateInputSchema,
-  outputSchema: automationRouteSchema,
   execute: async (input, context: AutomationRouterToolContext) =>
     await getRuntime(context).createRoute(input),
   adapters: {
@@ -245,13 +233,10 @@ const routerCreateTool = defineBackofficeRuntimeTool({
 });
 
 const routerUpdateTool = defineBackofficeRuntimeTool({
-  id: "router.update",
+  ...backofficeApiOperationToolFields("router.update"),
   namespace: "router",
   name: "update",
-  description: "Update a database-backed automation routing rule.",
   requiredPermissions: ["modify"],
-  inputSchema: automationRouteUpdateInputSchema,
-  outputSchema: automationRouteSchema.nullable(),
   execute: async (input, context: AutomationRouterToolContext) =>
     await getRuntime(context).updateRoute(input),
   adapters: {
@@ -293,13 +278,10 @@ const routerUpdateTool = defineBackofficeRuntimeTool({
 });
 
 const routerDeleteTool = defineBackofficeRuntimeTool({
-  id: "router.delete",
+  ...backofficeApiOperationToolFields("router.delete"),
   namespace: "router",
   name: "delete",
-  description: "Idempotently delete a database-backed automation route.",
   requiredPermissions: ["modify"],
-  inputSchema: z.object({ id: z.string().trim().min(1) }),
-  outputSchema: z.object({ deleted: z.literal(true) }),
   execute: async (input, context: AutomationRouterToolContext) => {
     return { deleted: await getRuntime(context).deleteRoute(input) };
   },
@@ -318,13 +300,10 @@ const routerDeleteTool = defineBackofficeRuntimeTool({
 });
 
 const routerTriggerNowTool = defineBackofficeRuntimeTool({
-  id: "router.trigger-now",
+  ...backofficeApiOperationToolFields("router.trigger-now"),
   namespace: "router",
   name: "triggerNow",
-  description: "Trigger a scheduled automation route immediately without changing its cadence.",
   requiredPermissions: ["modify"],
-  inputSchema: z.object({ id: z.string().trim().min(1) }),
-  outputSchema: z.object({ accepted: z.literal(true), eventId: z.string() }).nullable(),
   execute: async (input, context: AutomationRouterToolContext) =>
     await getRuntime(context).triggerScheduledRouteNow(input),
   adapters: {

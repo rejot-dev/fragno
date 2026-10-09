@@ -4,6 +4,9 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+import type { PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
   DurableObject: class {},
   RpcTarget: class {},
@@ -19,13 +22,11 @@ import { createRegistry, type ConversationView, type LiveState } from "@earendil
 import {
   createBackofficeServiceExecution,
   createBackofficeSystemExecution,
-  type BackofficeContextScope,
 } from "@/backoffice-runtime/context";
 import type { InMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
 import type { LocalObjectFactoryOverrides } from "@/backoffice-runtime/local-object-factory";
 import { backofficeObjectScopeFromContextScope } from "@/backoffice-runtime/object-registry";
 import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
-import type { PiAgentConfig } from "@/fragno/pi-manager/pi-agent-contract";
 
 import { createPiScenarioHarnessOptions } from "./pi-durable-scenario.test-support";
 import { InMemoryPiObject } from "./pi.do";

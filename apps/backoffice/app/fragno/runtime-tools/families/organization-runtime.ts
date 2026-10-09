@@ -1,5 +1,6 @@
+import type { OrganizationInvitationRecord } from "@fragno-dev/backoffice-api/v0/organization";
+
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
-import type { OrganizationInvitationRecord } from "@/fragno/auth/directory-records";
 import { backofficeInvitationPath } from "@/routes/backoffice/auth-navigation";
 
 import type { OrganizationRuntime } from "./organization";

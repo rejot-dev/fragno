@@ -1,3 +1,5 @@
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+
 import { createFormsFragment, type FormsConfig } from "@fragno-dev/forms";
 
 import {
@@ -6,7 +8,6 @@ import {
 } from "@/backoffice-runtime/fragment-http-authorization";
 import type { BackofficeFragmentRuntimeOptions } from "@/backoffice-runtime/fragment-runtime";
 import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
-import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 
 /** Creates the system-scoped Forms fragment server backed by its Durable Object database. */
 export function createFormsServer(

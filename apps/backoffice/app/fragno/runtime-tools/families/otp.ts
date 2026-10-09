@@ -1,9 +1,8 @@
-import { z } from "zod";
-
 import type { IdentityCreateClaimArgs } from "@/fragno/runtime-tools/automation-types";
 import { defineCliArgsParser } from "@/fragno/runtime-tools/bash-cli";
 
 import {
+  backofficeApiOperationToolFields,
   defineBackofficeRuntimeTool,
   defineBackofficeRuntimeToolFamily,
   type BackofficeToolContext,
@@ -30,27 +29,6 @@ export type OtpRuntime = {
 
 type OtpToolContext = BackofficeToolContext<{ otp?: OtpRuntime }>;
 
-const externalIdentitySchema = z.strictObject({
-  scope: z.literal("external"),
-  source: z.string().trim().min(1),
-  type: z.string().trim().min(1),
-  id: z.string().trim().min(1),
-});
-
-const createClaimInputSchema = z.strictObject({
-  ttlMinutes: z.number().int().positive().optional(),
-});
-
-const identityClaimRecordSchema = z.object({
-  url: z.string().trim().min(1),
-  otpId: z.string().trim().min(1),
-  externalId: z.string().trim().min(1),
-  code: z.string().trim().min(1),
-  actor: externalIdentitySchema,
-  type: z.string().trim().min(1).optional(),
-  expiresAt: z.string().trim().min(1).optional(),
-});
-
 const getOtpRuntime = (runtime: OtpToolContext["runtimes"]["otp"]): OtpRuntime => {
   if (!runtime) {
     throw new Error("OTP runtime is not available in this execution context");
@@ -66,13 +44,10 @@ const parseOtpIdentityCreateClaim = defineCliArgsParser<IdentityCreateClaimArgs>
 );
 
 const createClaimTool = defineBackofficeRuntimeTool({
-  id: "otp.identity.create-claim",
+  ...backofficeApiOperationToolFields("otp.identity.create-claim"),
   namespace: "otp",
   name: "createIdentityClaim",
-  description: "Create a short-lived identity claim URL for the trusted external initiator.",
   requiredPermissions: ["create"],
-  inputSchema: createClaimInputSchema,
-  outputSchema: identityClaimRecordSchema,
   execute: async (input, context: OtpToolContext) =>
     await getOtpRuntime(context.runtimes.otp).createClaim(input),
   adapters: {

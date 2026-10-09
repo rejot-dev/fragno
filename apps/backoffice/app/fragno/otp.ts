@@ -1,3 +1,4 @@
+import type { AutomationExternalEntityRef } from "@fragno-dev/backoffice-api/v0/automation";
 import { z } from "zod";
 
 import {
@@ -8,7 +9,6 @@ import {
 
 import type { BackofficeFragmentRuntimeOptions } from "@/backoffice-runtime/fragment-runtime";
 
-import type { AutomationExternalEntityRef } from "./automation/actors";
 import type { AutomationKnownEvent } from "./automation/contracts";
 import { AUTOMATION_SOURCES, AUTOMATION_SOURCE_EVENT_TYPES } from "./automation/contracts";
 

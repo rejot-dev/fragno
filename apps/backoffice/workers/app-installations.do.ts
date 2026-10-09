@@ -1,30 +1,30 @@
+import {
+  backofficeAppInstallationAccessInputSchema,
+  backofficeAppInstallationPageInputSchema,
+  type AppInstallationResourceScope,
+  type BackofficeAppInstallation,
+  type BackofficeAppInstallationAccessInput,
+  type BackofficeAppInstallationMutationResult,
+  type BackofficeAppInstallationPage,
+  type BackofficeAppInstallationPageInput,
+  backofficeAppLookupInputSchema,
+  type BackofficeAppLookupInput,
+} from "@fragno-dev/backoffice-api/v0/apps";
 import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { DurableObject, RpcTarget } from "cloudflare:workers";
 
 import { requireBackofficeContextScopeFromDurableObjectId } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import {
-  backofficeAppInstallationAccessInputSchema,
   backofficeAppInstallationClaimInputSchema,
   backofficeAppInstallationInputSchema,
-  backofficeAppInstallationPageInputSchema,
-  type AppInstallationResourceScope,
-  type BackofficeAppInstallation,
-  type BackofficeAppInstallationAccessInput,
   type BackofficeAppInstallationClaimInput,
   type BackofficeAppInstallationClaimResult,
   type BackofficeAppInstallationInput,
-  type BackofficeAppInstallationMutationResult,
-  type BackofficeAppInstallationPage,
-  type BackofficeAppInstallationPageInput,
   type BackofficeAppInstallationsCommands,
 } from "@/fragno/app-installations/contracts";
 import type { AppInstallationsFragment } from "@/fragno/app-installations/fragment";
 import { createAppInstallationsServer } from "@/fragno/app-installations/server";
-import {
-  backofficeAppLookupInputSchema,
-  type BackofficeAppLookupInput,
-} from "@/fragno/apps/contracts";
 import {
   BackofficeAppDomainError,
   runBackofficeAppOperation,

@@ -1,5 +1,10 @@
 import { assert, describe, expect, test, vi } from "vitest";
 
+import {
+  marketplacePublishResultSchema,
+  type MarketplacePublishResult,
+} from "@fragno-dev/backoffice-api/v0/marketplace";
+
 vi.mock("cloudflare:workers", () => ({
   DurableObject: class {},
   RpcTarget: class {},
@@ -30,11 +35,7 @@ import {
 import { marketplaceArtifactUploadName } from "@/fragno/marketplace/artifacts";
 import type { MarketplaceArtifactManifest } from "@/fragno/marketplace/contracts";
 import { marketplacePackageManifestSchema } from "@/fragno/marketplace/package-manifest";
-import {
-  marketplacePublishResultSchema,
-  marketplacePackagePublishRequestSchema,
-  type MarketplacePublishResult,
-} from "@/fragno/marketplace/package-publishing";
+import { marketplacePackagePublishRequestSchema } from "@/fragno/marketplace/package-publishing";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 import { sha256Hex } from "@/lib/crypto";

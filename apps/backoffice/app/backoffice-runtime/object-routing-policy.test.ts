@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { AutomationEvent } from "@/fragno/automation";
+import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
 
 import {
   resolveEventOrgId,

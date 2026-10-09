@@ -1,20 +1,3 @@
-import { z } from "zod";
-
-import type { AutomationCommandOutputOptions } from "@/fragno/runtime-tools/automation-types";
-import {
-  defineCliArgsParser,
-  defineNoInputArgsParser,
-  readOpaqueStringOption,
-  readStringOption,
-  type ParsedCliTokens,
-} from "@/fragno/runtime-tools/bash-cli";
-import { jsonValueSchema, type JsonValue } from "@/lib/zod/json-value";
-
-import {
-  defineBackofficeRuntimeTool,
-  defineBackofficeRuntimeToolFamily,
-  type BackofficeToolContext,
-} from "../../runtime-tools";
 import {
   integrationActionSchema,
   integrationConnectionInputSchema,
@@ -25,8 +8,26 @@ import {
   integrationOverviewSchema,
   integrationSetupInputSchema,
   integrationSetupProgressSchema,
-  type IntegrationSetupOperation,
-} from "./integration-contracts";
+} from "@fragno-dev/backoffice-api/v0/integrations";
+import type { JsonValue } from "@fragno-dev/backoffice-api/v0/shared/json";
+import { z } from "zod";
+
+import type { AutomationCommandOutputOptions } from "@/fragno/runtime-tools/automation-types";
+import {
+  defineCliArgsParser,
+  defineNoInputArgsParser,
+  readOpaqueStringOption,
+  readStringOption,
+  type ParsedCliTokens,
+} from "@/fragno/runtime-tools/bash-cli";
+
+import {
+  backofficeApiOperationToolFields,
+  defineBackofficeRuntimeTool,
+  defineBackofficeRuntimeToolFamily,
+  type BackofficeToolContext,
+} from "../../runtime-tools";
+import { type IntegrationSetupOperation } from "./integration-contracts";
 
 /** Connection IDs address existing sources within the execution scope; they never confer authority. */
 export type IntegrationsRuntime = {
@@ -131,14 +132,10 @@ export const integrationsToolFamily = defineBackofficeRuntimeToolFamily({
   isAvailable: (context: IntegrationsToolContext) => !!context.runtimes.integrations,
   tools: [
     defineBackofficeRuntimeTool({
-      id: "integrations.discover",
+      ...backofficeApiOperationToolFields("integrations.discover"),
       namespace: "integrations",
       name: "discover",
-      description:
-        "Discover available services and unconfigured services in the selected scope. Service availability does not prove live health.",
       requiredPermissions: ["read"],
-      inputSchema: z.void(),
-      outputSchema: z.array(integrationOverviewSchema),
       execute: async (_input, context: IntegrationsToolContext) =>
         await requireIntegrationsRuntime(context).discover(),
       adapters: {
@@ -156,14 +153,10 @@ export const integrationsToolFamily = defineBackofficeRuntimeToolFamily({
       },
     }),
     defineBackofficeRuntimeTool({
-      id: "integrations.list",
+      ...backofficeApiOperationToolFields("integrations.list"),
       namespace: "integrations",
       name: "list",
-      description:
-        "List existing configured connections in the selected scope, one cursor page at a time. Deterministic IDs reuse source-owned identities; configuration does not imply live access.",
       requiredPermissions: ["read"],
-      inputSchema: integrationListInputSchema,
-      outputSchema: integrationListOutputSchema,
       execute: async (input, context: IntegrationsToolContext) =>
         await requireIntegrationsRuntime(context).list(input),
       adapters: {
@@ -189,14 +182,10 @@ export const integrationsToolFamily = defineBackofficeRuntimeToolFamily({
       },
     }),
     defineBackofficeRuntimeTool({
-      id: "integrations.get",
+      ...backofficeApiOperationToolFields("integrations.get"),
       namespace: "integrations",
       name: "get",
-      description:
-        "Inspect source-owned connection configuration and available evidence without performing a live health check. The connection ID resolves only within the selected scope.",
       requiredPermissions: ["read"],
-      inputSchema: integrationConnectionInputSchema,
-      outputSchema: integrationConnectionSchema,
       getResource: (input) => ({ connectionId: input.connectionId }),
       execute: async (input, context: IntegrationsToolContext) =>
         await requireIntegrationsRuntime(context).get(input),
@@ -217,14 +206,10 @@ export const integrationsToolFamily = defineBackofficeRuntimeToolFamily({
       },
     }),
     defineBackofficeRuntimeTool({
-      id: "integrations.setup",
+      ...backofficeApiOperationToolFields("integrations.setup"),
       namespace: "integrations",
       name: "setup",
-      description:
-        "Read current requirements or submit input for a deterministic connection address. Setup is source-owned; this operation retains no attempt state or independent binding. Already configured Reson8 reuses its key without replacing it.",
       requiredPermissions: ["manage"],
-      inputSchema: integrationSetupInputSchema,
-      outputSchema: integrationSetupProgressSchema,
       getResource: (input) => ({ connectionId: input.connectionId }),
       execute: async (input, context: IntegrationsToolContext) =>
         await requireIntegrationsRuntime(context).setup(input),
@@ -257,14 +242,10 @@ export const integrationsToolFamily = defineBackofficeRuntimeToolFamily({
       },
     }),
     defineBackofficeRuntimeTool({
-      id: "integrations.actions",
+      ...backofficeApiOperationToolFields("integrations.actions"),
       namespace: "integrations",
       name: "actions",
-      description:
-        "Discover the selected connection's supported actions and authoritative input/output contracts without executing them. Never infer schemas from action IDs.",
       requiredPermissions: ["read"],
-      inputSchema: integrationConnectionInputSchema,
-      outputSchema: z.array(integrationActionSchema),
       getResource: (input) => ({ connectionId: input.connectionId }),
       execute: async (input, context: IntegrationsToolContext) =>
         await requireIntegrationsRuntime(context).actions(input),
@@ -286,14 +267,10 @@ export const integrationsToolFamily = defineBackofficeRuntimeToolFamily({
       },
     }),
     defineBackofficeRuntimeTool({
-      id: "integrations.execute",
+      ...backofficeApiOperationToolFields("integrations.execute"),
       namespace: "integrations",
       name: "execute",
-      description:
-        "Execute an explicit connection action with JSON input/output, validated against its live contracts and service permissions. Binary inputs are schema-declared byte arrays; results retain the action's domain and asynchronous semantics.",
       requiredPermissions: ["execute"],
-      inputSchema: integrationExecuteInputSchema,
-      outputSchema: jsonValueSchema.meta({ codemodeType: "JsonValue" }),
       getResource: (input) => ({ connectionId: input.connectionId, actionId: input.actionId }),
       execute: async (input, context: IntegrationsToolContext) =>
         await requireIntegrationsRuntime(context).execute(input),
@@ -341,14 +318,10 @@ export const integrationsToolFamily = defineBackofficeRuntimeToolFamily({
       },
     }),
     defineBackofficeRuntimeTool({
-      id: "integrations.verify",
+      ...backofficeApiOperationToolFields("integrations.verify"),
       namespace: "integrations",
       name: "verify",
-      description:
-        "Perform explicit supported live checks without authorizing the connection or executing service actions. Return timestamped evidence, not blanket health or retained verification state.",
       requiredPermissions: ["manage"],
-      inputSchema: integrationConnectionInputSchema,
-      outputSchema: integrationConnectionSchema,
       getResource: (input) => ({ connectionId: input.connectionId }),
       execute: async (input, context: IntegrationsToolContext) =>
         await requireIntegrationsRuntime(context).verify(input),

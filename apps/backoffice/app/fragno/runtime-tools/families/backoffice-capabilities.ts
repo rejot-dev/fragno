@@ -1,6 +1,14 @@
+import {
+  type CapabilitiesListOutput,
+  type ConnectionSchemaOutput,
+  type ConnectionSetupOutput,
+  type ConnectionsListOutput,
+  type HookScopesListOutput,
+  connectionStatusSchema,
+} from "@fragno-dev/backoffice-api/v0/capabilities";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
 
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import {
   backofficeObjectScopePolicy,
   type BackofficeObjectRegistry,
@@ -27,6 +35,7 @@ import {
 } from "@/fragno/runtime-tools/bash-cli";
 
 import {
+  backofficeApiOperationToolFields,
   defineBackofficeRuntimeTool,
   defineBackofficeRuntimeToolFamily,
   type BackofficeToolContext,
@@ -51,95 +60,6 @@ export type BackofficeCapabilitiesRuntime = {
 type BackofficeCapabilitiesToolContext = BackofficeToolContext<{
   backoffice?: BackofficeCapabilitiesRuntime;
 }>;
-
-const capabilitySummarySchema = z.object({
-  id: z.string(),
-  label: z.string(),
-  kind: z.enum(["connection", "system"]),
-  available: z.boolean(),
-  configured: z.boolean(),
-  healthy: z.boolean().optional(),
-  reason: z.string().optional(),
-});
-const capabilitiesListOutputSchema = z.array(capabilitySummarySchema);
-export type CapabilitiesListOutput = z.infer<typeof capabilitiesListOutputSchema>;
-
-const hookScopeOutputSchema = z.object({
-  id: z.string(),
-  label: z.string(),
-  capabilityId: z.string(),
-  capabilityLabel: z.string(),
-  kind: z.enum(["connection", "system"]),
-  configured: z.boolean().optional(),
-  healthy: z.boolean().optional(),
-});
-const hookScopesListOutputSchema = z.array(hookScopeOutputSchema);
-export type HookScopesListOutput = z.infer<typeof hookScopesListOutputSchema>;
-
-const connectionSummarySchema = z.object({
-  id: z.string(),
-  label: z.string(),
-  kind: z.enum(["connection", "system"]),
-  configured: z.boolean(),
-  hookScopes: z.array(z.string()),
-  runtimeToolNamespaces: z.array(z.string()),
-  automationEvents: z.array(z.string()),
-  missing: z.array(z.string()).optional(),
-});
-const connectionsListOutputSchema = z.array(connectionSummarySchema);
-export type ConnectionsListOutput = z.infer<typeof connectionsListOutputSchema>;
-
-const connectionVerificationResultSchema = z.object({
-  ok: z.boolean(),
-  message: z.string(),
-});
-
-const connectionStatusSchema = z.object({
-  id: z.string(),
-  label: z.string(),
-  kind: z.enum(["connection", "system"]),
-  configured: z.boolean(),
-  config: z.record(z.string(), z.unknown()).optional(),
-  missing: z.array(z.string()).optional(),
-  nextSteps: z.array(z.string()).optional(),
-  verification: connectionVerificationResultSchema.optional(),
-});
-
-const connectionVerificationSchema = connectionStatusSchema.extend({
-  verification: connectionVerificationResultSchema,
-});
-
-const connectionSetupOutputSchema = z.object({
-  id: z.string(),
-  label: z.string(),
-  overview: z.string(),
-  manualSteps: z.array(
-    z.object({
-      id: z.string(),
-      title: z.string(),
-      instructions: z.string(),
-      expectedUserInput: z.array(z.string()).optional(),
-    }),
-  ),
-  fields: z.array(
-    z.object({
-      name: z.string(),
-      required: z.boolean().optional(),
-      secret: z.boolean().optional(),
-      description: z.string().optional(),
-    }),
-  ),
-  verify: z.object({ tool: z.string(), description: z.string() }).optional(),
-  configureExample: z.string(),
-});
-export type ConnectionSetupOutput = z.infer<typeof connectionSetupOutputSchema>;
-
-const connectionSchemaOutputSchema = z.object({
-  id: z.string(),
-  label: z.string(),
-  fields: connectionSetupOutputSchema.shape.fields,
-});
-export type ConnectionSchemaOutput = z.infer<typeof connectionSchemaOutputSchema>;
 
 const getRuntime = (context: BackofficeCapabilitiesToolContext) => {
   if (!context.runtimes.backoffice) {
@@ -334,13 +254,10 @@ const formatConnectionSetup = (data: ConnectionSetupOutput, options: OutputOptio
       };
 
 const capabilitiesListTool = defineBackofficeRuntimeTool({
-  id: "capabilities.list",
+  ...backofficeApiOperationToolFields("capabilities.list"),
   namespace: "capabilities",
   name: "list",
-  description: "List Backoffice capabilities and availability/configuration status.",
   requiredPermissions: ["read"],
-  inputSchema: z.void(),
-  outputSchema: capabilitiesListOutputSchema,
   execute: async (_input, context: BackofficeCapabilitiesToolContext) =>
     await getRuntime(context).listCapabilities(),
   adapters: {
@@ -359,13 +276,10 @@ const capabilitiesListTool = defineBackofficeRuntimeTool({
 });
 
 const hookScopesListTool = defineBackofficeRuntimeTool({
-  id: "hooks.scopes.list",
+  ...backofficeApiOperationToolFields("hooks.scopes.list"),
   namespace: "hooks",
   name: "scopesList",
-  description: "List hook scopes usable with hooks.list --fragment.",
   requiredPermissions: ["read"],
-  inputSchema: z.void(),
-  outputSchema: hookScopesListOutputSchema,
   execute: async (_input, context: BackofficeCapabilitiesToolContext) =>
     await getRuntime(context).listHookScopes(),
   adapters: {
@@ -384,13 +298,10 @@ const hookScopesListTool = defineBackofficeRuntimeTool({
 });
 
 const connectionsListTool = defineBackofficeRuntimeTool({
-  id: "connections.list",
+  ...backofficeApiOperationToolFields("connections.list"),
   namespace: "connections",
   name: "list",
-  description: "List configurable Backoffice connections and their configuration status.",
   requiredPermissions: ["read"],
-  inputSchema: z.void(),
-  outputSchema: connectionsListOutputSchema,
   execute: async (_input, context: BackofficeCapabilitiesToolContext) =>
     await getRuntime(context).listConnections(),
   adapters: {
@@ -409,13 +320,10 @@ const connectionsListTool = defineBackofficeRuntimeTool({
 });
 
 const connectionsGetTool = defineBackofficeRuntimeTool({
-  id: "connections.get",
+  ...backofficeApiOperationToolFields("connections.get"),
   namespace: "connections",
   name: "get",
-  description: "Get one Backoffice connection status with masked configuration values.",
   requiredPermissions: ["read"],
-  inputSchema: z.object({ id: z.string().trim().min(1) }),
-  outputSchema: connectionStatusSchema,
   execute: async (input, context: BackofficeCapabilitiesToolContext) =>
     await getRuntime(context).getConnection(input),
   adapters: {
@@ -442,13 +350,10 @@ const connectionsGetTool = defineBackofficeRuntimeTool({
 });
 
 const connectionsSetupTool = defineBackofficeRuntimeTool({
-  id: "connections.setup",
+  ...backofficeApiOperationToolFields("connections.setup"),
   namespace: "connections",
   name: "setup",
-  description: "Show human steps for configuring a Backoffice connection.",
   requiredPermissions: ["manage"],
-  inputSchema: z.object({ id: z.string().trim().min(1) }),
-  outputSchema: connectionSetupOutputSchema,
   execute: async (input, context: BackofficeCapabilitiesToolContext) =>
     await getRuntime(context).setupConnection(input),
   adapters: {
@@ -475,13 +380,10 @@ const connectionsSetupTool = defineBackofficeRuntimeTool({
 });
 
 const connectionsSchemaTool = defineBackofficeRuntimeTool({
-  id: "connections.schema",
+  ...backofficeApiOperationToolFields("connections.schema"),
   namespace: "connections",
   name: "schema",
-  description: "Show the accepted configuration fields for a Backoffice connection.",
   requiredPermissions: ["read"],
-  inputSchema: z.object({ id: z.string().trim().min(1) }),
-  outputSchema: connectionSchemaOutputSchema,
   execute: async (input, context: BackofficeCapabilitiesToolContext) =>
     await getRuntime(context).getConnectionSchema(input),
   adapters: {
@@ -511,13 +413,10 @@ const connectionsSchemaTool = defineBackofficeRuntimeTool({
 });
 
 const connectionsVerifyTool = defineBackofficeRuntimeTool({
-  id: "connections.verify",
+  ...backofficeApiOperationToolFields("connections.verify"),
   namespace: "connections",
   name: "verify",
-  description: "Verify a Backoffice connection without changing its configuration.",
   requiredPermissions: ["manage"],
-  inputSchema: z.object({ id: z.string().trim().min(1) }),
-  outputSchema: connectionVerificationSchema,
   execute: async (input, context: BackofficeCapabilitiesToolContext) =>
     await getRuntime(context).verifyConnection(input),
   adapters: {
@@ -547,13 +446,10 @@ const connectionsVerifyTool = defineBackofficeRuntimeTool({
 });
 
 const connectionsResetTool = defineBackofficeRuntimeTool({
-  id: "connections.reset",
+  ...backofficeApiOperationToolFields("connections.reset"),
   namespace: "connections",
   name: "reset",
-  description: "Reset a Backoffice connection configuration. Requires --confirm <id>.",
   requiredPermissions: ["manage"],
-  inputSchema: z.object({ id: z.string().trim().min(1), confirm: z.string().trim().min(1) }),
-  outputSchema: connectionStatusSchema,
   execute: async (input, context: BackofficeCapabilitiesToolContext) =>
     await getRuntime(context).resetConnection(input),
   adapters: {
@@ -587,18 +483,10 @@ const connectionsResetTool = defineBackofficeRuntimeTool({
 });
 
 const connectionsConfigureTool = defineBackofficeRuntimeTool({
-  id: "connections.configure",
+  ...backofficeApiOperationToolFields("connections.configure"),
   namespace: "connections",
   name: "configure",
-  description:
-    "Configure a Backoffice connection. Secrets are accepted in input but masked in output.",
   requiredPermissions: ["manage"],
-  inputSchema: z.object({
-    id: z.string().trim().min(1),
-    payload: z.unknown(),
-    origin: z.string().trim().min(1).optional(),
-  }),
-  outputSchema: connectionStatusSchema,
   execute: async (input, context: BackofficeCapabilitiesToolContext) =>
     await getRuntime(context).configureConnection(input),
   adapters: {

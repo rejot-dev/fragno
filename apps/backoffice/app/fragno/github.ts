@@ -1,3 +1,6 @@
+import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+
 import {
   createGitHubAppFragment,
   type GitHubAppWebhookMeta,
@@ -10,10 +13,8 @@ import {
 } from "@/backoffice-runtime/fragment-http-authorization";
 import type { BackofficeFragmentRuntimeOptions } from "@/backoffice-runtime/fragment-runtime";
 import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
-import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 
 import { AUTOMATION_SYSTEM_INITIATOR } from "./automation/actors";
-import type { AutomationEvent } from "./automation/contracts";
 
 export type GitHubConfig = Pick<
   GitHubAppFragmentConfig,

@@ -1,3 +1,4 @@
+import { automationStoreVerificationSchema } from "@fragno-dev/backoffice-api/v0/store";
 import { z } from "zod";
 
 import { Validator, type Schema } from "@cfworker/json-schema";
@@ -7,93 +8,6 @@ export const AUTOMATION_STORE_ROUTE_PATHS = {
   delete: "/store/delete",
 } as const;
 
-const idSchema = z.preprocess((value) => {
-  if (typeof value === "string") {
-    return value;
-  }
-  if (value && typeof value === "object" && "valueOf" in value) {
-    const primitive = value.valueOf();
-    if (typeof primitive === "string" || typeof primitive === "number") {
-      return String(primitive);
-    }
-  }
-  return value;
-}, z.string());
-
-const normalizeStringList = (value: unknown) => {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return [
-    ...new Set(
-      value
-        .filter((item): item is string => typeof item === "string")
-        .map((item) => item.trim())
-        .filter(Boolean),
-    ),
-  ];
-};
-
-const automationStoreCategorySchema = z.preprocess(
-  normalizeStringList,
-  z.array(z.string().trim().min(1)),
-);
-
-const automationStoreCategoryInputSchema = z
-  .array(z.string().trim().min(1))
-  .transform((value) => normalizeStringList(value));
-
-export const automationStoreVerificationSchema = z.array(
-  z.discriminatedUnion("type", [
-    z.object({
-      type: z.literal("json-schema"),
-      schema: z.unknown(),
-    }),
-  ]),
-);
-
-export const automationStoreSetInputSchema = z.strictObject({
-  key: z.string().trim().min(1),
-  value: z.string(),
-  description: z.string().trim().min(1).nullable().optional(),
-  category: automationStoreCategoryInputSchema.optional(),
-  verification: automationStoreVerificationSchema.optional(),
-});
-
-export const automationStoreListInputSchema = z.strictObject({
-  prefix: z.string().optional(),
-  limit: z.number().int().positive().max(500).optional(),
-});
-
-export const automationStoreDeleteInputSchema = z.strictObject({
-  key: z.string().trim().min(1),
-});
-
-const automationStoreValueShape = {
-  key: z.string(),
-  value: z.string(),
-  description: z.string().nullable().optional(),
-  category: automationStoreCategorySchema,
-};
-
-export const automationStoreEntrySchema = z.object({
-  id: idSchema.optional(),
-  ...automationStoreValueShape,
-  createdAt: z.iso.datetime().optional(),
-  updatedAt: z.iso.datetime().optional(),
-});
-
-export const automationStoreSetResultSchema = z.object({
-  id: idSchema,
-  ...automationStoreValueShape,
-});
-
-export const automationStoreDeleteResultSchema = z.object({
-  ok: z.literal(true),
-  key: z.string(),
-});
-
 type AutomationStoreVerification = z.infer<typeof automationStoreVerificationSchema>[number];
 
 export class AutomationStoreVerificationError extends Error {
@@ -102,10 +16,6 @@ export class AutomationStoreVerificationError extends Error {
     this.name = "AutomationStoreVerificationError";
   }
 }
-export type AutomationStoreEntry = z.infer<typeof automationStoreEntrySchema>;
-export type AutomationStoreSetResult = z.infer<typeof automationStoreSetResultSchema>;
-export type AutomationStoreDeleteResult = z.infer<typeof automationStoreDeleteResultSchema>;
-
 const asValidatorSchema = (schema: unknown): Schema | boolean => {
   if (typeof schema === "boolean") {
     return schema;

@@ -1,9 +1,8 @@
+import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+
 import type { BackofficeAuthorizedRequestContext } from "./internal-object-request";
 import { type BackofficeKernel, isBackofficeForbiddenError } from "./kernel";
-import {
-  BACKOFFICE_REQUIRED_PERMISSION_HEADER,
-  type BackofficePermissionRequirement,
-} from "./permissions";
+import { BACKOFFICE_REQUIRED_PERMISSION_HEADER } from "./required-permission-header";
 
 /** Null means no middleware rule matched: newly added fragment routes stay private by default. */
 export type BackofficeFragmentHttpAccess =

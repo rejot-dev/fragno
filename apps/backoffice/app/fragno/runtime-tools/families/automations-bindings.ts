@@ -1,16 +1,11 @@
-import { z } from "zod";
-
 import {
-  automationStoreDeleteResultSchema,
-  automationStoreEntrySchema,
-  automationStoreListInputSchema,
-  automationStoreSetInputSchema,
-  automationStoreSetResultSchema,
   automationStoreVerificationSchema,
   type AutomationStoreDeleteResult,
   type AutomationStoreEntry,
   type AutomationStoreSetResult,
-} from "@/fragno/automation/store";
+} from "@fragno-dev/backoffice-api/v0/store";
+import { z } from "zod";
+
 import type {
   StoreDeleteArgs,
   StoreGetArgs,
@@ -25,12 +20,11 @@ import {
 } from "@/fragno/runtime-tools/bash-cli";
 
 import {
+  backofficeApiOperationToolFields,
   defineBackofficeRuntimeTool,
   defineBackofficeRuntimeToolFamily,
   type BackofficeToolContext,
 } from "../runtime-tools";
-
-export type { AutomationStoreDeleteResult, AutomationStoreEntry, AutomationStoreSetResult };
 
 export type AutomationStoreRuntime = {
   get: (input: StoreGetArgs) => Promise<AutomationStoreEntry | null>;
@@ -136,13 +130,10 @@ const getAutomationStoreRuntime = (
 };
 
 const storeGetTool = defineAutomationStoreTool({
-  id: "store.get",
+  ...backofficeApiOperationToolFields("store.get"),
   namespace: "store",
   name: "get",
-  description: "Get an automation store entry by key.",
   requiredPermissions: ["read"],
-  inputSchema: z.strictObject({ key: z.string().trim().min(1) }),
-  outputSchema: automationStoreEntrySchema.nullable(),
   execute: async (input, context) =>
     await getAutomationStoreRuntime(context.runtimes.automations).get(input),
   adapters: {
@@ -173,13 +164,10 @@ const storeGetTool = defineAutomationStoreTool({
 });
 
 const storeSetTool = defineAutomationStoreTool({
-  id: "store.set",
+  ...backofficeApiOperationToolFields("store.set"),
   namespace: "store",
   name: "set",
-  description: "Create or update an automation store entry.",
   requiredPermissions: ["modify"],
-  inputSchema: automationStoreSetInputSchema,
-  outputSchema: automationStoreSetResultSchema,
   execute: async (input, context) =>
     await getAutomationStoreRuntime(context.runtimes.automations).set(input),
   adapters: {
@@ -235,13 +223,10 @@ const storeSetTool = defineAutomationStoreTool({
 });
 
 const storeListTool = defineAutomationStoreTool({
-  id: "store.list",
+  ...backofficeApiOperationToolFields("store.list"),
   namespace: "store",
   name: "list",
-  description: "List automation store entries, optionally filtered by key prefix.",
   requiredPermissions: ["read"],
-  inputSchema: automationStoreListInputSchema,
-  outputSchema: z.array(automationStoreEntrySchema),
   execute: async (input, context) =>
     await getAutomationStoreRuntime(context.runtimes.automations).list(input),
   adapters: {
@@ -278,13 +263,10 @@ const storeListTool = defineAutomationStoreTool({
 });
 
 const storeDeleteTool = defineAutomationStoreTool({
-  id: "store.delete",
+  ...backofficeApiOperationToolFields("store.delete"),
   namespace: "store",
   name: "delete",
-  description: "Delete an automation store entry by key.",
   requiredPermissions: ["modify"],
-  inputSchema: z.strictObject({ key: z.string().trim().min(1) }),
-  outputSchema: automationStoreDeleteResultSchema.nullable(),
   execute: async (input, context) =>
     await getAutomationStoreRuntime(context.runtimes.automations).delete(input),
   adapters: {

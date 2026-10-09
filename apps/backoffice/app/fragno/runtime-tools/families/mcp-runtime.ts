@@ -1,3 +1,11 @@
+import type {
+  McpAuthStatus,
+  McpCreateServerOutput,
+  McpListServersOutput,
+  McpOAuthStartOutput,
+  McpServerRefreshOutput,
+  McpToolCallOutput,
+} from "@fragno-dev/backoffice-api/v0/mcp";
 import { createRouteCaller } from "@fragno-dev/core/api";
 import {
   MCP_OAUTH_REDIRECT_URI_QUERY_PARAMETER,
@@ -14,16 +22,7 @@ import {
   isSuccessStatus,
   throwOnRouteRuntimeError,
 } from "../runtime-errors";
-import type {
-  McpAuthStatus,
-  McpCreateServerOutput,
-  McpListServersOutput,
-  McpOAuthStartInput,
-  McpOAuthStartOutput,
-  McpServerRefreshOutput,
-  McpSetTokenInput,
-  McpToolCallOutput,
-} from "./mcp";
+import type { McpOAuthStartInput, McpSetTokenInput } from "./mcp";
 
 export type McpRuntime = {
   listServers: () => Promise<McpListServersOutput>;

@@ -4,6 +4,12 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import {
+  integrationListOutputSchema,
+  integrationSetupProgressSchema,
+} from "@fragno-dev/backoffice-api/v0/integrations";
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+
 const workers = vi.hoisted(() => ({
   DurableObject: class {},
   RpcTarget: class {},
@@ -23,7 +29,6 @@ import {
   type BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
-import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import {
   defineBackofficeScenario,
@@ -36,10 +41,6 @@ import { executeBackofficeRuntimeTool } from "@/fragno/runtime-tools/runtime-too
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
 
 import { InMemoryReson8Object } from "../../../../../workers/reson8.do";
-import {
-  integrationListOutputSchema,
-  integrationSetupProgressSchema,
-} from "./integration-contracts";
 import type { IntegrationContext } from "./integration-implementation";
 import { createIntegrationRegistry } from "./integration-registry";
 import { integrationsToolFamily } from "./integration-tools";

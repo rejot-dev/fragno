@@ -4,7 +4,7 @@ import {
   allBackofficePermissionRequirements,
   BACKOFFICE_PERMISSION,
   isBackofficePermissionRequirement,
-} from "./permissions";
+} from "@fragno-dev/backoffice-api/v0/shared/permissions";
 
 describe("Backoffice permissions", () => {
   test("enumerates every permission as one unique concrete requirement", () => {

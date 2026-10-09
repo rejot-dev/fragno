@@ -1,5 +1,8 @@
 import { describe, expect, test, vi, assert } from "vitest";
 
+import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+
 import {
   BACKOFFICE_SYSTEM_ACTORS,
   createBackofficeSystemExecution,
@@ -11,13 +14,11 @@ import {
   type InMemoryBackofficeRuntime,
 } from "@/backoffice-runtime/in-memory-runtime";
 import { BackofficeKernel, noopBackofficeKernelObserver } from "@/backoffice-runtime/kernel";
-import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import { createRuntimeStateBackend } from "@/fragno/codemode/runtime-state-backend";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
 import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 import { createStateShellFileSystem } from "@/fragno/runtime-tools/state-shell-file-system";
 
-import type { AutomationEvent } from "./contracts";
 import { readBackofficeAutomationSource } from "./read-backoffice-automation-source";
 import {
   setUpScenarioAuthMember,

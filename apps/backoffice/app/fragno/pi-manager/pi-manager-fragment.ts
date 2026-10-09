@@ -1,3 +1,12 @@
+import {
+  piAgentConfigSchema,
+  piAgentCreationSchema,
+  piAgentModelSchema,
+  piManagerSessionSchema,
+  type PiAgentConfig,
+} from "@fragno-dev/backoffice-api/v0/pi";
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { column, idColumn, schema, type Column } from "@fragno-dev/db/schema";
 import { z } from "zod";
 
@@ -8,26 +17,19 @@ import {
   backofficeContextScopesEqual,
   backofficeExecutionScopeRestriction,
   type BackofficeExecutionContext,
-  type BackofficeContextScope,
 } from "@/backoffice-runtime/context";
 import { BackofficeForbiddenError, type BackofficeKernel } from "@/backoffice-runtime/kernel";
-import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 
 import {
   PiConversationViewDamagedError,
   piAgentCompactionSchema,
   piAgentCompactionStatusSchema,
-  piAgentConfigSchema,
-  piAgentCreationSchema,
   piAgentEntryPageRequestSchema,
-  piAgentModelSchema,
-  piManagerSessionSchema,
   piAgentPromptSchema,
   piAgentSubmissionWaitRequestSchema,
   piAgentSubmissionWaitSchema,
   piAgentViewStreamFrameSchema,
   piAvailableModelSchema,
-  type PiAgentConfig,
   type PiAgent,
   type PiAvailableModel,
 } from "./pi-agent-contract";

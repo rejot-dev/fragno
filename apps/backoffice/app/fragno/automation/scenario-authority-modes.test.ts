@@ -1,11 +1,14 @@
 import { describe, expect, test, vi, assert } from "vitest";
 
+import { automationActorsSchema } from "@fragno-dev/backoffice-api/v0/automation";
+import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+
 import {
   createBackofficeSystemExecution,
   createBackofficeUserExecution,
 } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
-import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
   class MockDurableObject {
@@ -24,8 +27,6 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
 
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
-import { automationActorsSchema } from "./actors";
-import type { AutomationEvent } from "./contracts";
 import { CODEMODE_WORKFLOW, codemodeWorkflowParamsSchema } from "./engine/codemode-invocation";
 import { createAutomationsRouteCaller, createWorkflowsRouteCaller } from "./route-callers";
 import { backofficeFiles, defineBackofficeScenario, runBackofficeScenario } from "./scenario";

@@ -1,8 +1,9 @@
+import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import { z } from "zod";
 
 import { backofficeContextScopesEqual } from "@/backoffice-runtime/context";
 import { isBackofficeForbiddenError } from "@/backoffice-runtime/kernel";
-import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import { backofficeScopeFromSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import { createInstalledAppExecution } from "@/fragno/app-installations/authority";
 import {
@@ -10,7 +11,6 @@ import {
   BACKOFFICE_TOKEN_EXPIRED_CODE,
 } from "@/fragno/auth/contracts";
 import { verifyInstalledAppJwt } from "@/fragno/auth/token-lifecycle";
-import type { AutomationEvent } from "@/fragno/automation/contracts";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import type { Route } from "./+types/backoffice-scoped-events";

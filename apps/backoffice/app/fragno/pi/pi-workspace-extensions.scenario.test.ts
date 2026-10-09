@@ -1,5 +1,8 @@
 import { afterAll, afterEach, beforeAll, assert, expect, test, vi } from "vitest";
 
+import type { PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
   DurableObject: class {},
   RpcTarget: class {},
@@ -25,7 +28,6 @@ import {
   createBackofficeServiceExecution,
   createBackofficeSystemExecution,
   createBackofficeUserExecution,
-  type BackofficeContextScope,
 } from "@/backoffice-runtime/context";
 import type { InMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
@@ -33,7 +35,6 @@ import type { LocalObjectFactoryOverrides } from "@/backoffice-runtime/local-obj
 import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
 import { runBackofficeCompiledModule } from "@/fragno/codemode/compiled-module-execute";
 import { javaScriptModuleArtifactSchema } from "@/fragno/codemode/javascript-module-artifact";
-import type { PiAgentConfig } from "@/fragno/pi-manager/pi-agent-contract";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
 import { javaScriptBuildToolFamily } from "@/fragno/runtime-tools/families/javascript";
 import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";

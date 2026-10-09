@@ -1,6 +1,6 @@
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
+import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
-import type { AutomationEvent } from "../automation/contracts";
 import type { AutomationCommandCallResult } from "../automation/run-result";
 
 export type AutomationCommandFormat = "text" | "json";

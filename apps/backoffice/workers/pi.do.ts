@@ -1,5 +1,6 @@
 import { BACKGROUND_CONTEXT, withAbortSignal } from "@earendil-works/chord/context";
 import { PathError } from "@earendil-works/chord/delta";
+import { piAgentConfigSchema, type PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
 import { DurableObject, RpcTarget } from "cloudflare:workers";
 import type { z } from "zod";
 
@@ -22,7 +23,6 @@ import {
 } from "@/backoffice-runtime/runtime-services";
 import {
   piAgentCompactionSchema,
-  piAgentConfigSchema,
   piAgentEntryPageRequestSchema,
   piAgentObjectName,
   piAgentPromptSchema,
@@ -30,7 +30,6 @@ import {
   PiConversationViewDamagedError,
   type PiAgent,
   type PiAgentCompactionStatus,
-  type PiAgentConfig,
   type PiAgentSubmissionWait,
 } from "@/fragno/pi-manager/pi-agent-contract";
 import { PI_THINKING_LEVEL } from "@/fragno/pi/pi-shared";

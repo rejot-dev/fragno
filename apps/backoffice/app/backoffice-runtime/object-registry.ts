@@ -1,3 +1,34 @@
+import type {
+  AccountInvitationRecord,
+  AccountProfile,
+  OAuthConsentPage,
+} from "@fragno-dev/backoffice-api/v0/account";
+import type { AutomationActor } from "@fragno-dev/backoffice-api/v0/automation";
+import type {
+  AutomationEvent,
+  AutomationEventDefinition,
+  AutomationEventDefinitionCreateInput,
+  AutomationEventDefinitionUpdateInput,
+} from "@fragno-dev/backoffice-api/v0/events";
+import type {
+  MarketplaceIngestionRequestInput,
+  MarketplaceIngestionRestartResult,
+} from "@fragno-dev/backoffice-api/v0/marketplace";
+import type { MarketplacePublishResult } from "@fragno-dev/backoffice-api/v0/marketplace";
+import type {
+  MarketplaceListingDetail,
+  MarketplaceListingPageInput,
+  MarketplacePublishedListingInput,
+} from "@fragno-dev/backoffice-api/v0/marketplace";
+import type {
+  OrganizationRole,
+  OrganizationInvitationRecord,
+  OrganizationMemberPage,
+  OrganizationMembershipRecord,
+  OrganizationRecord,
+} from "@fragno-dev/backoffice-api/v0/organization";
+import type { DirectoryPageInput } from "@fragno-dev/backoffice-api/v0/shared/pagination";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { GitHubWebhookRouter } from "workers/github-webhook-router.do";
 import type { GitHub } from "workers/github.do";
 import type { IssueIdentityClaimInput, IssueIdentityClaimResult, Otp } from "workers/otp.do";
@@ -16,24 +47,13 @@ import type {
   BackofficeMeData,
   Organization,
   OrganizationHookPayload,
-  OrganizationRole,
   UserAuthorityFacts,
   UserOrganizationAuthorityFacts,
   UserOrganizationAuthorityInput,
   VerifyUserEmailInput,
   VerifyUserEmailResult,
 } from "@/fragno/auth/contracts";
-import type {
-  AccountInvitationRecord,
-  AccountProfile,
-  DirectoryPageInput,
-  OrganizationInvitationPage,
-  OrganizationInvitationRecord,
-  OrganizationMemberPage,
-  OrganizationMembershipRecord,
-  OrganizationPage,
-  OrganizationRecord,
-} from "@/fragno/auth/directory-records";
+import type { OrganizationInvitationPage, OrganizationPage } from "@/fragno/auth/directory-records";
 import type {
   BackofficeExecutionTokenExchangeInput,
   BackofficeExecutionTokenResult,
@@ -49,20 +69,12 @@ import type {
   BackofficeOAuthClientUpdateInput,
   BackofficeOAuthClientUpdateResult,
 } from "@/fragno/auth/oauth-client";
-import type { BackofficeOAuthConsentPage } from "@/fragno/auth/oauth-consent";
 import type {
-  AutomationEvent,
-  AutomationEventDefinition,
-  AutomationEventDefinitionCreateInput,
-  AutomationEventDefinitionUpdateInput,
   AutomationIngestResult,
   AutomationProjectExecutionTarget,
-  MarketplaceIngestionRequestInput,
   MarketplaceIngestionRequestResult,
-  MarketplaceIngestionRestartResult,
   StarterAutomationRoutesSeedResult,
 } from "@/fragno/automation";
-import type { AutomationActor } from "@/fragno/automation/actors";
 import type { AutomationRouteAuthorityLookup } from "@/fragno/automation/authority";
 import type {
   AutomationEventSource,
@@ -101,16 +113,13 @@ import type {
   MarketplaceInsertStaticEntriesResult,
   MarketplaceLatestPublishedVersions,
   MarketplaceLatestPublishedVersionsInput,
-  MarketplaceListingDetail,
   MarketplaceListingPage,
-  MarketplaceListingPageInput,
   MarketplaceListingUpdateResult,
   MarketplaceOwnedListingDetail,
   MarketplaceOwnedListingInput,
   MarketplaceOwnedListingPage,
   MarketplaceOwnedListingPageInput,
   MarketplaceOperationResult,
-  MarketplacePublishedListingInput,
   MarketplaceStaticPublicationResult,
   MarketplacePublishVersionInput,
   MarketplacePublishVersionResult,
@@ -121,7 +130,6 @@ import type {
   MarketplacePublishReleaseInput,
   MarketplacePublishReleaseResult,
   MarketplacePackagePublishRequest,
-  MarketplacePublishResult,
 } from "@/fragno/marketplace/package-publishing";
 import type { TelegramAutomationFileMetadata } from "@/fragno/runtime-tools/families/telegram-runtime";
 import type {
@@ -132,7 +140,6 @@ import type {
 import type { SandboxCommandResult, SandboxInstanceStatus } from "@/sandbox/contracts";
 
 import type {
-  BackofficeContextScope,
   BackofficeExecutionContext,
   BackofficeRequestExecution,
   BackofficeDeferredExecution,
@@ -315,7 +322,7 @@ export type AuthObject = DurableHookCommands & {
   }): Promise<OrganizationMembershipRecord>;
   listAccountOAuthConsents(
     input: { userId: string } & DirectoryPageInput,
-  ): Promise<BackofficeOAuthConsentPage>;
+  ): Promise<OAuthConsentPage>;
   getOrganization(input: { organizationId: string }): Promise<OrganizationRecord | null>;
   getOrganizationMembership(input: {
     organizationId: string;

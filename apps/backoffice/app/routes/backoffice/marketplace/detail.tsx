@@ -1,3 +1,7 @@
+import {
+  MARKETPLACE_LOCK_PATH,
+  marketplaceInstallationRootSchema,
+} from "@fragno-dev/backoffice-api/v0/marketplace";
 import { Button, ButtonLink } from "@fragno-private/design-system/button";
 import { ClientOnly } from "@fragno-private/design-system/client-only";
 import { Icon } from "@fragno-private/design-system/icon";
@@ -23,10 +27,6 @@ import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.ser
 import type { BackofficeMeData } from "@/fragno/auth/contracts";
 import { buildMarketplacePackageInstallWorkflowInstanceId } from "@/fragno/automation/marketplace-package-install-identity";
 import { fetchAutomationCollectionSource } from "@/fragno/automation/tanstack/server";
-import {
-  MARKETPLACE_LOCK_PATH,
-  marketplaceInstallationRootSchema,
-} from "@/fragno/marketplace/marketplace-lock";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
 import {
   decodeMarketplacePublishedVersionCursor,

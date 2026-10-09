@@ -1,3 +1,6 @@
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+
 import {
   createTelegram,
   createTelegramFragment,
@@ -6,14 +9,12 @@ import {
   type TelegramMessageHookPayload,
 } from "@fragno-dev/telegram-fragment";
 
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import {
   authorizeBackofficeFragmentRequest,
   type BackofficeFragmentHttpAccess,
 } from "@/backoffice-runtime/fragment-http-authorization";
 import type { BackofficeFragmentRuntimeOptions } from "@/backoffice-runtime/fragment-runtime";
 import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
-import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 
 import type { AutomationKnownEvent } from "./automation/contracts";
 import { AUTOMATION_SOURCES, AUTOMATION_SOURCE_EVENT_TYPES } from "./automation/contracts";

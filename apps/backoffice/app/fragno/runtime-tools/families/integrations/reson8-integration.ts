@@ -1,3 +1,8 @@
+import type {
+  IntegrationInspection,
+  IntegrationSetupProgress,
+} from "@fragno-dev/backoffice-api/v0/integrations";
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import { createRouteCaller } from "@fragno-dev/core/api";
 import { z } from "zod";
 
@@ -8,7 +13,6 @@ import {
 
 import { authorizedBackofficeObjectHttp } from "@/backoffice-runtime/authorized-object-http";
 import { BackofficeUnavailableError } from "@/backoffice-runtime/kernel";
-import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import type { Reson8Fragment } from "@/fragno/reson8";
 
@@ -17,7 +21,6 @@ import {
   throwOnBackofficeRouteAuthorizationError,
   throwOnRouteRuntimeError,
 } from "../../runtime-errors";
-import type { IntegrationInspection, IntegrationSetupProgress } from "./integration-contracts";
 import type { IntegrationContext, IntegrationImplementation } from "./integration-implementation";
 
 const reson8ConnectionIdentity = {

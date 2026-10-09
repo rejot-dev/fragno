@@ -1,6 +1,7 @@
 import { describe, expect, test, assert } from "vitest";
 
-import { marketplaceVersionSchema } from "./contracts";
+import { marketplaceVersionSchema } from "@fragno-dev/backoffice-api/v0/marketplace";
+
 import { compareMarketplaceVersions } from "./version";
 
 describe("compareMarketplaceVersions", () => {

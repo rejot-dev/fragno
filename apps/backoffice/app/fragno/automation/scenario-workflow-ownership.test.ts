@@ -1,11 +1,12 @@
 import { assert, describe, expect, test, vi } from "vitest";
 
+import { automationActorsSchema } from "@fragno-dev/backoffice-api/v0/automation";
+
 import { createBackofficeUserExecution } from "@/backoffice-runtime/context";
 import type {
   AutomationsObject,
   BackofficeObjectHandle,
 } from "@/backoffice-runtime/object-registry";
-import { automationActorsSchema } from "@/fragno/automation/actors";
 import { CODEMODE_WORKFLOW } from "@/fragno/automation/engine/codemode-invocation";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({

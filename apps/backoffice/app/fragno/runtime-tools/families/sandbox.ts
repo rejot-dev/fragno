@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { commandResultSchema, execInputSchema } from "@fragno-dev/backoffice-api/v0/sandbox";
 
 import {
   defineCliArgsParser,
@@ -9,6 +9,7 @@ import {
 import type { StartSandboxOptions } from "@/sandbox/contracts";
 
 import {
+  backofficeApiOperationToolFields,
   defineBackofficeRuntimeTool,
   defineBackofficeRuntimeToolFamily,
   type BackofficeToolContext,
@@ -18,51 +19,6 @@ import type { SandboxExecuteCommandArgs, SandboxKillArgs, SandboxRuntime } from 
 export type { SandboxRuntime } from "./sandbox-runtime";
 
 type SandboxToolContext = BackofficeToolContext<{ sandbox?: SandboxRuntime }>;
-
-const startInputSchema = z.object({
-  id: z.string().trim().min(1),
-  keepAlive: z.boolean().optional(),
-  sleepAfter: z.union([z.string(), z.number()]).optional(),
-  startupTimeoutMs: z.number().int().positive().optional(),
-  startupCommand: z.string().trim().min(1).optional(),
-});
-
-const sandboxStatusSchema = z.enum([
-  "requested",
-  "starting",
-  "running",
-  "stopping",
-  "stopped",
-  "error",
-]);
-
-const execInputSchema = z.object({
-  sandboxId: z.string().trim().min(1),
-  command: z.string().trim().min(1),
-  timeoutMs: z.number().int().positive().optional(),
-});
-const commandResultSchema = z.discriminatedUnion("ok", [
-  z.object({ ok: z.literal(true), stdout: z.string(), stderr: z.string(), exitCode: z.number() }),
-  z.object({
-    ok: z.literal(false),
-    code: z.string(),
-    reason: z.enum([
-      "authentication_failed",
-      "command_failed",
-      "invalid_request",
-      "output_limit_exceeded",
-      "timeout",
-      "sandbox_terminated",
-      "sandbox_unavailable",
-      "internal_error",
-    ]),
-    message: z.string(),
-    stdout: z.string().optional(),
-    stderr: z.string().optional(),
-    exitCode: z.number().optional(),
-    retryable: z.boolean(),
-  }),
-]);
 
 const getSandboxRuntime = (runtime: SandboxToolContext["runtimes"]["sandbox"]): SandboxRuntime => {
   if (!runtime) {
@@ -98,16 +54,10 @@ const jsonDefault = (args: string[]) => {
 };
 
 const startSandboxTool = defineBackofficeRuntimeTool({
-  id: "sandbox.start",
+  ...backofficeApiOperationToolFields("sandbox.start"),
   namespace: "sandbox",
   name: "startSandbox",
-  description: "Start a Cloudflare sandbox for the current organization.",
   requiredPermissions: ["modify"],
-  inputSchema: startInputSchema,
-  outputSchema: z.object({
-    id: z.string().trim().min(1),
-    status: sandboxStatusSchema,
-  }),
   execute: async (input, context: SandboxToolContext) =>
     await getSandboxRuntime(context.runtimes.sandbox).startSandbox(input),
   adapters: {
@@ -158,13 +108,10 @@ const startSandboxTool = defineBackofficeRuntimeTool({
 });
 
 const listSandboxesTool = defineBackofficeRuntimeTool({
-  id: "sandbox.list",
+  ...backofficeApiOperationToolFields("sandbox.list"),
   namespace: "sandbox",
   name: "listSandboxes",
-  description: "List Cloudflare sandboxes for the current organization.",
   requiredPermissions: ["read"],
-  inputSchema: z.void(),
-  outputSchema: z.array(z.object({ id: z.string().trim().min(1), status: sandboxStatusSchema })),
   execute: async (_input, context: SandboxToolContext) =>
     await getSandboxRuntime(context.runtimes.sandbox).listSandboxes(),
   adapters: {
@@ -183,13 +130,10 @@ const listSandboxesTool = defineBackofficeRuntimeTool({
 });
 
 const killSandboxTool = defineBackofficeRuntimeTool({
-  id: "sandbox.kill",
+  ...backofficeApiOperationToolFields("sandbox.kill"),
   namespace: "sandbox",
   name: "killSandbox",
-  description: "Kill a Cloudflare sandbox for the current organization.",
   requiredPermissions: ["modify"],
-  inputSchema: z.object({ sandboxId: z.string().trim().min(1) }),
-  outputSchema: z.object({ sandboxId: z.string().trim().min(1), killed: z.literal(true) }),
   execute: async (input, context: SandboxToolContext) =>
     await getSandboxRuntime(context.runtimes.sandbox).killSandbox(input),
   adapters: {
@@ -216,13 +160,10 @@ const killSandboxTool = defineBackofficeRuntimeTool({
 });
 
 const executeCommandTool = defineBackofficeRuntimeTool({
-  id: "sandbox.exec",
+  ...backofficeApiOperationToolFields("sandbox.exec"),
   namespace: "sandbox",
   name: "executeCommand",
-  description: "Execute a command in a Cloudflare sandbox.",
   requiredPermissions: ["modify"],
-  inputSchema: execInputSchema,
-  outputSchema: commandResultSchema,
   execute: async (input, context: SandboxToolContext) =>
     await getSandboxRuntime(context.runtimes.sandbox).executeCommand(input),
   adapters: {

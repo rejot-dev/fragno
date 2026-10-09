@@ -1,16 +1,15 @@
-import type { BackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
 import type {
-  BackofficeContextScope,
-  BackofficeDeferredExecution,
-} from "@/backoffice-runtime/context";
-import type { BackofficePermissionRequirement } from "@/backoffice-runtime/permissions";
-import type { AutomationActor } from "@/fragno/automation/actors";
+  AppInstallationExternalAccount,
+  BackofficeAppInstallation,
+} from "@fragno-dev/backoffice-api/v0/apps";
+import type { AutomationActor } from "@fragno-dev/backoffice-api/v0/automation";
+import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
-import {
-  appInstallationResourceScopeContains,
-  type AppInstallationExternalAccount,
-  type BackofficeAppInstallation,
-} from "./contracts";
+import type { BackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
+import type { BackofficeDeferredExecution } from "@/backoffice-runtime/context";
+
+import { appInstallationResourceScopeContains } from "./contracts";
 
 const APP_INSTALLATION_ACTOR_TYPE = "app-installation";
 const appInstallationActorIdPattern = /^(.+):([1-9][0-9]*)$/;

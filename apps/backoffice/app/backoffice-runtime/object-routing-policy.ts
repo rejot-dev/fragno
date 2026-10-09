@@ -1,4 +1,4 @@
-import type { AutomationEvent, AutomationEventSubject } from "@/fragno/automation";
+import type { AutomationEvent, AutomationEventSubject } from "@fragno-dev/backoffice-api/v0/events";
 
 import type { BackofficeObjectAddress, BackofficeObjectBindingName } from "./object-registry";
 import { org, project, singleton, user } from "./object-registry";

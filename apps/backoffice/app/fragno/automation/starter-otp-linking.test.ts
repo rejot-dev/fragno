@@ -1,9 +1,10 @@
 import { describe, test, vi } from "vitest";
 
+import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
+
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 
 import { createAutomationRuntimeExecution } from "./authority";
-import type { AutomationEvent } from "./contracts";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
   class MockDurableObject {

@@ -1,3 +1,4 @@
+import { oauthConsentPageSchema } from "@fragno-dev/backoffice-api/v0/account";
 import { BackofficeBreadcrumbs } from "@fragno-private/design-system/breadcrumbs";
 import { Button, ButtonLink } from "@fragno-private/design-system/button";
 import { OverflowTabRow } from "@fragno-private/design-system/overflow-tab-row";
@@ -5,10 +6,7 @@ import { Form, data, redirect, useNavigation } from "react-router";
 
 import { callBetterAuth } from "@/fragno/auth/auth-server";
 import { requireBackofficeBrowserSession } from "@/fragno/auth/browser-session.server";
-import {
-  backofficeOAuthConsentPageSchema,
-  backofficeOAuthConsentRevokeInputSchema,
-} from "@/fragno/auth/oauth-consent";
+import { backofficeOAuthConsentRevokeInputSchema } from "@/fragno/auth/oauth-consent";
 
 import type { Route } from "./+types/authorized-applications";
 
@@ -23,7 +21,7 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
   if (!response.ok) {
     throw new Response("Unable to load your authorized applications.", { status: response.status });
   }
-  return data(backofficeOAuthConsentPageSchema.parse(await response.json()), {
+  return data(oauthConsentPageSchema.parse(await response.json()), {
     headers: { "cache-control": "no-store" },
   });
 }

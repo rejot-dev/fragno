@@ -1,6 +1,7 @@
 import { assert, describe, test } from "vitest";
 
-import type { AutomationEvent } from "./contracts";
+import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
+
 import {
   assertAutomationRouteDoesNotReclassifyItself,
   evaluateAutomationEventMatcher,

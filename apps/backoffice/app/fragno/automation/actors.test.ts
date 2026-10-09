@@ -1,6 +1,9 @@
 import { describe, expect, test } from "vitest";
 
-import { automationActorsSchema, type AutomationActors } from "./actors";
+import {
+  automationActorsSchema,
+  type AutomationActors,
+} from "@fragno-dev/backoffice-api/v0/automation";
 
 const telegramInitiator = {
   scope: "external",

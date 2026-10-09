@@ -1,8 +1,9 @@
+import type { AutomationRouteDefinition } from "@fragno-dev/backoffice-api/v0/automation";
+import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+
 import type { DatabaseHandlerTx } from "@fragno-dev/db";
 
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
-
-import type { AutomationEvent } from "./contracts";
 import type {
   AutomationHookUnitOfWork,
   AutomationInternalHooks,
@@ -14,7 +15,6 @@ import {
   AUTOMATION_SCHEDULE_SOURCE,
   nextAutomationScheduleOccurrence,
 } from "./route-triggers";
-import type { AutomationRouteDefinition } from "./routing";
 import { automationFragmentSchema } from "./schema";
 
 /**

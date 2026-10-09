@@ -47,20 +47,9 @@ export {
   readAutomationScript,
 } from "./automation-source";
 export type { AutomationScriptLayer } from "./automation-source";
-export type { AutomationEventRecord } from "./events";
-export type {
-  MarketplaceIngestionRequestInput,
-  MarketplaceIngestionRequestResult,
-  MarketplaceIngestionRestartResult,
-} from "./marketplace-ingestions";
-export type {
-  AutomationEventDefinition,
-  AutomationEventDefinitionCreateInput,
-  AutomationEventDefinitionUpdateInput,
-} from "./event-definitions";
-export type { AutomationRouteDefinition, StarterAutomationRoutesSeedResult } from "./routing";
+export type { MarketplaceIngestionRequestResult } from "./marketplace-ingestions";
+export type { StarterAutomationRoutesSeedResult } from "./routing";
 
 export type { AutomationIngestResult, AutomationProjectExecutionTarget };
-export type { AutomationEvent, AutomationEventSubject } from "./contracts";
 
 export type { AutomationRuntimeHostContext, AutomationRuntime } from "./engine/runtime";

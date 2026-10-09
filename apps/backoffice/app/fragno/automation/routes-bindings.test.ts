@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, test, assert } from "vitest";
 
+import type { AutomationRouteCreateInput } from "@fragno-dev/backoffice-api/v0/automation";
+import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
 import { getDurableHooksService } from "@fragno-dev/db/durable-hooks";
 
 import { InMemoryAdapter } from "@fragno-dev/db";
@@ -9,11 +11,9 @@ import { BACKOFFICE_SYSTEM_ACTORS } from "@/backoffice-runtime/context";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 
 import { SYSTEM_STARTER_AUTOMATION_ROUTES } from "./content/starter-routing";
-import type { AutomationEvent } from "./contracts";
 import type { AutomationWorkflowsService } from "./definition";
 import { createAutomationFragment } from "./index";
 import { setAutomationRouteMutationActors } from "./route-routes";
-import type { AutomationRouteCreateInput } from "./routing-schemas";
 import { createTestAutomationSourceReader } from "./test-automation-source-reader.test-utils";
 
 const createAutomation = async (
