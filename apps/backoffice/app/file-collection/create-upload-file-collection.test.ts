@@ -12,6 +12,7 @@ import {
 import { createUploadRouteCaller } from "@/fragno/upload-server";
 
 import { createUploadFileCollection } from "./create-upload-file-collection";
+import { seedReadyUploadFiles } from "./ready-upload-files.test-support";
 
 const schemaExtractionStorage: StorageAdapter = {
   name: "database",
@@ -218,13 +219,10 @@ describe("Upload file collection", () => {
   test("retrieves a complete Upload tree across metadata pages", async () => {
     const { object, requests } = createUploadObject();
 
-    for (let index = 0; index < 501; index += 1) {
-      await uploadFile(object, {
-        fileKey: `workspace/generated/file-${index}.txt`,
-        content: String(index),
-      });
-    }
-    requests.length = 0;
+    await seedReadyUploadFiles(uploadTest.fragments.upload.db, {
+      provider: "database",
+      fileKeys: Array.from({ length: 501 }, (_, index) => `workspace/generated/file-${index}.txt`),
+    });
 
     await expect(createCollection(object, "workspace/").getTree()).rejects.toThrow(
       "exceeded its 1-page retrieval limit",
@@ -242,7 +240,7 @@ describe("Upload file collection", () => {
     assert(requests.every(({ pathname }) => pathname === "/api/upload/files"));
     assert(requests[0]?.searchParams.get("cursor") === null);
     assert(requests[1]?.searchParams.has("cursor"));
-  }, 30_000);
+  });
 
   test("rejects an Upload file used as another file's parent directory", async () => {
     const { object } = createUploadObject();

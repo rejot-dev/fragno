@@ -11,6 +11,7 @@ import {
 } from "@fragno-dev/upload";
 
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
+import { seedReadyUploadFiles } from "@/file-collection/ready-upload-files.test-support";
 
 import {
   fetchPublishedMarketplaceArtifactFile,
@@ -138,10 +139,11 @@ describe("Marketplace artifact files", () => {
   });
 
   test("paginates shared listing storage across Upload metadata pages", async () => {
-    const overflowFiles = Array.from({ length: 501 }, (_, index) =>
-      createFile(`2.0.0/generated/file-${index}.txt`, "text/plain", `${index}`),
-    );
-    const { objects, requests } = await createUploadObjects({ additionalFiles: overflowFiles });
+    const { objects, requests } = await createUploadObjects();
+    await seedReadyUploadFiles(uploadTest.fragments.upload.db, {
+      provider: "database",
+      fileKeys: Array.from({ length: 501 }, (_, index) => `2.0.0/generated/file-${index}.txt`),
+    });
     const result = await loadPublishedMarketplaceArtifactExplorer({
       manifest,
       objects,
@@ -154,7 +156,7 @@ describe("Marketplace artifact files", () => {
       "2.0.0/generated/file-500.txt",
     );
     assert(requests.length === 2);
-  }, 30_000);
+  });
 
   test("rejects artifact exploration for an unpublished manifest", async () => {
     const { objects, requests } = await createUploadObjects();
@@ -216,9 +218,7 @@ describe("Marketplace artifact files", () => {
   });
 });
 
-async function createUploadObjects(
-  options: { additionalFiles?: readonly ArtifactSeedFile[] } = {},
-): Promise<{
+async function createUploadObjects(): Promise<{
   objects: BackofficeObjectRegistry;
   requests: URL[];
 }> {
@@ -230,7 +230,7 @@ async function createUploadObjects(
     },
   };
 
-  for (const file of [...files, ...(options.additionalFiles ?? [])]) {
+  for (const file of files) {
     const form = new FormData();
     form.set("provider", "database");
     form.set("fileKey", file.fileKey);
