@@ -17,6 +17,12 @@ const bearerToken = "secret";
 const oauthRedirectUri = "https://app.test/oauth/callback";
 const onServerConfigurationChanged = vi.fn();
 const onServerConfigurationDeleted = vi.fn();
+const onServerReadinessChanged = vi.fn();
+
+async function readinessChanges(fragment: McpTestFragmentResult["fragment"]) {
+  await drainDurableHooks(fragment);
+  return onServerReadinessChanged.mock.calls.map(([payload]) => payload);
+}
 
 const buildMcpTest = async (options: { allowedOAuthRedirectUris?: (url: URL) => boolean } = {}) => {
   const allowedOAuthRedirectUris =
@@ -33,6 +39,7 @@ const buildMcpTest = async (options: { allowedOAuthRedirectUris?: (url: URL) => 
           ...(allowedOAuthRedirectUris ? { allowedOAuthRedirectUris } : {}),
           onServerConfigurationChanged,
           onServerConfigurationDeleted,
+          onServerReadinessChanged,
         })
         .withRoutes([mcpRoutesFactory]),
     )
@@ -992,6 +999,12 @@ describe("mcp-fragment", () => {
 
     await consent(await start());
     expect(await readStatus()).toEqual({ mode: "oauth", state: "authorized" });
+    expect(await readinessChanges(fragment)).toEqual([
+      { serverId: slug, ready: false },
+      { serverId: slug, ready: true },
+      { serverId: slug, ready: false },
+      { serverId: slug, ready: true },
+    ]);
 
     // Without a refresh token, an expired access token needs fresh consent.
     const authSecret = await readAuthSecret(setup.fragments.mcp, slug);
@@ -1118,6 +1131,66 @@ describe("mcp-fragment", () => {
     });
     assert(restored.type === "json");
     expect(restored.data).toEqual({ mode: "bearer", credentials: "present" });
+    expect(await readinessChanges(fragment)).toEqual([
+      { serverId: slug, ready: true },
+      { serverId: slug, ready: false },
+      { serverId: slug, ready: true },
+    ]);
+  });
+
+  test("a refresh token the server rejects leaves the server not ready", async () => {
+    const slug = "revoked-refresh";
+    await createServer(fragment, {
+      slug,
+      endpointUrl: staticOAuthMcpServer.endpointUrl,
+      auth: {
+        type: "oauth",
+        clientId: "static-client",
+        clientSecret: "static-secret",
+        scopes: ["tools"],
+      },
+    });
+    const started = await fragment.callRoute("POST", "/servers/:slug/auth/start", {
+      pathParams: { slug },
+      query: { redirectUri: oauthRedirectUri },
+      body: { discardTokens: false },
+    });
+    assert(started.type === "json");
+    const authorize = await fetch(started.data.authorizationUrl, { redirect: "manual" });
+    const location = authorize.headers.get("location");
+    assert(location);
+    await fragment.callRoute("GET", "/oauth/callback", {
+      query: Object.fromEntries(new URL(location).searchParams),
+    });
+
+    const authSecret = await readAuthSecret(setup.fragments.mcp, slug);
+    assert(authSecret);
+    const payload = parseSecretPayload<{
+      tokens: { access_token: string; refresh_token: string };
+    }>(authSecret.payload);
+    payload.tokens.access_token = "revoked-access-token";
+    payload.tokens.refresh_token = "revoked-refresh-token";
+    const revoke = setup.fragments.mcp.db.createUnitOfWork("revoke").forSchema(mcpSchema);
+    revoke.update("secret", authSecret.id, (b) =>
+      b.set({ payload: stringifySecretPayload(payload), expiresAt: new Date(Date.now() - 1_000) }),
+    );
+    await revoke.executeMutations();
+
+    const called = await fragment.callRoute("POST", "/servers/:slug/tools/execute", {
+      pathParams: { slug },
+      body: { name: "echo", arguments: { text: "after revocation" } },
+    });
+    assert(called.type === "error");
+    const status = await fragment.callRoute("GET", "/servers/:slug/auth/status", {
+      pathParams: { slug },
+    });
+    assert(status.type === "json");
+    expect(status.data).toEqual({ mode: "oauth", state: "consent-required" });
+    expect(await readinessChanges(fragment)).toEqual([
+      { serverId: slug, ready: false },
+      { serverId: slug, ready: true },
+      { serverId: slug, ready: false },
+    ]);
   });
 
   test("retains existing OAuth refresh token when the refresh response omits one", async () => {

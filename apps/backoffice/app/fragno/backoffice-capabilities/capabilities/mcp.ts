@@ -5,16 +5,11 @@ import { createDurableHookRepositoryFromCommands } from "@/fragno/durable-hook-c
 
 const AUTOMATION_SOURCE = "mcp" as const;
 const AUTOMATION_EVENT_SERVER_CONFIGURATION_CHANGED = "server.configuration.changed" as const;
-const AUTOMATION_EVENT_SERVER_CONFIGURATION_DELETED = "server.configuration.deleted" as const;
 const mcpServerConfigurationChangedPayloadSchema = z.object({
   serverId: z.string().min(1),
   current: z.object({
     tools: z.array(z.unknown()),
   }),
-});
-
-const mcpServerConfigurationDeletedPayloadSchema = z.object({
-  serverId: z.string().min(1),
 });
 
 const mcpScopeSubjectSchema = z.object({
@@ -24,6 +19,7 @@ const mcpScopeSubjectSchema = z.object({
 
 const mcpServerConfigurationSubjectSchema = mcpScopeSubjectSchema.extend({
   serverId: z.string().min(1),
+  connectionId: z.string().min(1).describe("Integration address mcp#<slug>."),
 });
 
 export const mcpCapability: BackofficeCapability = {
@@ -55,17 +51,6 @@ export const mcpCapability: BackofficeCapability = {
         example: {
           serverId: "local-tools",
           current: { tools: [{ name: "new-tool" }] },
-        },
-      },
-      {
-        source: AUTOMATION_SOURCE,
-        eventType: AUTOMATION_EVENT_SERVER_CONFIGURATION_DELETED,
-        label: "MCP server configuration deleted",
-        description: "Fires when an MCP server configuration is deleted.",
-        payloadSchema: mcpServerConfigurationDeletedPayloadSchema,
-        subjectSchema: mcpServerConfigurationSubjectSchema,
-        example: {
-          serverId: "local-tools",
         },
       },
     ],

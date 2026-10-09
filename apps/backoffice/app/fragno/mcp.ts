@@ -16,6 +16,7 @@ export type McpConfig = Pick<
   | "fetch"
   | "onServerConfigurationChanged"
   | "onServerConfigurationDeleted"
+  | "onServerReadinessChanged"
 >;
 
 export function createMcpServer(
@@ -29,6 +30,7 @@ export function createMcpServer(
       fetch: config.fetch,
       onServerConfigurationChanged: config.onServerConfigurationChanged,
       onServerConfigurationDeleted: config.onServerConfigurationDeleted,
+      onServerReadinessChanged: config.onServerReadinessChanged,
     },
     {
       databaseAdapter: runtime.adapters.createAdapter({

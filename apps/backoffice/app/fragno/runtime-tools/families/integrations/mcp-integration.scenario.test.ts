@@ -399,6 +399,18 @@ test("Codemode registers an MCP server through setup, publishes its tools as act
           expect(providers.calls).toEqual(["echo", "refuse", "drift"]);
         },
       ),
+      runner.drain(),
+      then.automation.event({
+        scope: orgScope,
+        where: { source: "integrations", eventType: "connection.ready" },
+        expected: { subject: { service: "mcp", connectionId: "mcp#tools" } },
+      }),
+      runner.drain(),
+      then.automation.event({
+        scope: orgScope,
+        where: { source: "mcp", eventType: "server.configuration.changed" },
+        expected: { subject: { connectionId: "mcp#tools" } },
+      }),
       runner.restartObject({ binding: "MCP", scope: orgScope }),
       then.assert("verification lists the tools live and records nothing", async (ctx) => {
         const run = await ctx.runCodemode({
@@ -461,6 +473,12 @@ test("Codemode registers an MCP server through setup, publishes its tools as act
           expect(echoed.result).toMatchObject({ structuredContent: { echoed: "again" } });
         },
       ),
+      runner.drain(),
+      then.automation.event({
+        scope: orgScope,
+        where: { source: "integrations", eventType: "connection.unavailable" },
+        expected: { subject: { service: "mcp", connectionId: "mcp#tools" } },
+      }),
       then.assert(
         "reconfiguration replaces the server in place and disconnect requires confirmation",
         async (ctx) => {
@@ -510,6 +528,12 @@ test("Codemode registers an MCP server through setup, publishes its tools as act
           });
         },
       ),
+      runner.drain(),
+      then.automation.event({
+        scope: orgScope,
+        where: { source: "integrations", eventType: "connection.disconnected" },
+        expected: { subject: { service: "mcp", connectionId: "mcp#tools" } },
+      }),
     ],
   }));
 });
@@ -552,6 +576,12 @@ test("OAuth setup resumes source-owned consent, reauthorizes, and recovers from 
           ctx.vars.authorizationUrl = progress.authorizationUrl;
         },
       ),
+      runner.drain(),
+      then.automation.event({
+        scope: scope,
+        where: { source: "integrations", eventType: "connection.unavailable" },
+        expected: { subject: { service: "mcp", connectionId: "mcp#docs" } },
+      }),
       runner.restartObject({ binding: "MCP", scope }),
       then.assert(
         "checks after restart resume the retained link and consent publishes the tools",
@@ -585,6 +615,12 @@ test("OAuth setup resumes source-owned consent, reauthorizes, and recovers from 
           });
         },
       ),
+      runner.drain(),
+      then.automation.event({
+        scope: scope,
+        where: { source: "integrations", eventType: "connection.ready" },
+        expected: { subject: { service: "mcp", connectionId: "mcp#docs" } },
+      }),
       then.assert(
         "reauthorization discards the tokens until the new consent completes",
         async (ctx) => {

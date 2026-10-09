@@ -66,7 +66,7 @@ const mcpReauthorizeInputSchema = z.strictObject({
 });
 const mcpToolsCheck = { id: "tools.list", label: "List server tools" };
 
-function encodeMcpConnectionId(slug: string) {
+export function encodeMcpConnectionId(slug: string) {
   return `mcp#${slug}`;
 }
 

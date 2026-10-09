@@ -101,6 +101,26 @@ export function projectMcpAuthStatus(args: {
   return { mode, state: tokens?.access_token ? "expired" : "consent-required" };
 }
 
+/** Whether stored auth can authorize operations without new consent or credentials. */
+export function isMcpAuthReady(
+  authMode: string,
+  authSecret: Pick<SecretRecord, "payload" | "expiresAt"> | undefined,
+): boolean {
+  // Pending consent only distinguishes states that are not ready.
+  const status = projectMcpAuthStatus({ authMode, authSecret, hasPendingOAuth: false });
+  switch (status.mode) {
+    case "none":
+      return true;
+    case "oauth":
+      return status.state === "authorized";
+    case "bearer":
+    case "client_credentials":
+      return status.credentials === "present";
+    default:
+      throw new Error("Unknown MCP auth mode.", { cause: status satisfies never });
+  }
+}
+
 /**
  * Projects the newest unexpired, unconsumed state; any such state completes the same server.
  * States started before links were retained have no URL and cannot be resumed.
@@ -261,13 +281,13 @@ function authChangesReader(
     if (!providerHasChanges(provider.changes)) {
       return undefined;
     }
-    const tokens = provider.changes.tokens ?? authPayload.tokens;
+    const tokens = provider.tokens();
     return {
       ...(await prepareOAuthChanges(provider.changes)),
-      ...(tokens && provider.changes.tokens
+      ...(provider.changes.tokens || provider.changes.tokensInvalidated
         ? {
             authPayload: stringifySecretPayload({ ...authPayload, tokens }),
-            authExpiresAt: tokenExpiry(tokens),
+            authExpiresAt: tokens ? tokenExpiry(tokens) : null,
           }
         : {}),
     };
