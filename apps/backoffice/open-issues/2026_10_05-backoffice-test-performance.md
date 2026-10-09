@@ -123,6 +123,29 @@ comparisons, alternated before/after, are meaningful. Complete-suite wall time s
 Remaining: Marketplace installed-channel fixture (item 5), Node import graph, lifecycle barriers
 (item 6), and the source-policy test removals.
 
+### Node import graph — October 9, 2026
+
+Module counts per test file come from Vitest's `experimental.importDurations` and do not depend on
+machine load.
+
+- 77 of 320 Node files loaded 460–800 non-external modules each (median file: 23), because
+  `local-object-factory.ts` statically imported all 21 object implementations. Each of those files
+  re-evaluated the Cloudflare SDK (~158ms), `pi-durable` (~108ms), `better-auth` (~85ms), typebox,
+  and the MCP SDK: Vitest isolation gives every file a fresh module context, so externalized
+  dependencies are not cached across files.
+- Externalizing workspace `dist` output halved module transforms but not import time, for the same
+  reason, and bypassed `vi.mock` inside package code. Not adopted.
+- Local runtimes now take a required `objects` map. `all-local-objects.ts` lists every object for
+  the Node server, the hook processor, and the scenario DSL; tests that create their own runtime
+  list only the objects they use. A missing object fails with "binding X is not registered".
+- Across the 16 narrowed Node files, module loads fell from 12,970 to 6,253 (52%). Alternated runs
+  of `workers/forms.do.test.ts` cut import time from 2.2–2.5s to 1.4–1.5s.
+- Automations alone still pulls ~230 app modules (runtime tool families, MCP and Reson8 fragments),
+  so files that need it stay near 570 modules.
+
+Next: let `defineBackofficeScenario` narrow its objects. The scenario files are the remaining 77
+heavy files, but scenario fakes and `given` steps reach into many objects.
+
 ## Measurement method and caveats
 
 Environment: macOS/arm64, 12 logical CPUs, 48 GiB RAM, Node `v26.10.0`, PNPM `11.1.3`, Vitest
