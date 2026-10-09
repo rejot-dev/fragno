@@ -32,7 +32,6 @@ import { cloudflareToolFamily, type CloudflareRuntime } from "./families/cloudfl
 import { eventFireToolFamily, eventReadToolFamily, type EventRuntime } from "./families/event";
 import { eventCatalogToolFamily, type EventCatalogRuntime } from "./families/event-catalog";
 import { formsToolFamily, type FormsRuntime } from "./families/forms";
-import { githubToolFamily, type GitHubRuntime } from "./families/github";
 import {
   integrationsToolFamily,
   type IntegrationsRuntime,
@@ -85,7 +84,6 @@ export type CoreBackofficeRuntimeMap = {
   event?: EventRuntime;
   eventCatalog?: EventCatalogRuntime;
   forms?: FormsRuntime;
-  github?: GitHubRuntime;
   cloudflare?: CloudflareRuntime;
   internal?: InternalRuntime;
   api?: ApiRuntime;
@@ -122,7 +120,6 @@ export const runtimeToolFamilies = [
   eventReadToolFamily,
   eventCatalogToolFamily,
   formsToolFamily,
-  githubToolFamily,
   cloudflareToolFamily,
   webToolFamily,
   apiToolFamily,
@@ -154,7 +151,6 @@ const namespaceCapabilityIds = {
   hooks: "automations",
   events: "automations",
   forms: "forms",
-  github: "github",
   api: "api",
   mcp: "mcp",
   connector: "connector",

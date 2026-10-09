@@ -58,11 +58,11 @@ export function createGitHubServer(
       "/repositories/:owner/:repo/pulls",
     ] as const) {
       await ifMatchesRoute("GET", path, () => {
-        access = BACKOFFICE_PERMISSION.github.read;
+        access = BACKOFFICE_PERMISSION.connections.read;
       });
     }
     await ifMatchesRoute("POST", "/repositories/access-token", () => {
-      access = BACKOFFICE_PERMISSION.github.read;
+      access = BACKOFFICE_PERMISSION.connections.read;
     });
     for (const path of [
       "/installations/:installationId/sync",
