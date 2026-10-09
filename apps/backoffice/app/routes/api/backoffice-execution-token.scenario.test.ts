@@ -14,10 +14,7 @@ const workers = vi.hoisted(() => ({
 vi.mock("cloudflare:workers", () => workers);
 
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
-import {
-  authorizeBackofficeCodemodeContext,
-  requireBackofficeContext,
-} from "@/fragno/auth/backoffice-principal.server";
+import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { backofficeExecutionTokenResultSchema } from "@/fragno/auth/execution-token";
 import {
   BACKOFFICE_JWT_LIFETIME_SECONDS,
@@ -213,14 +210,6 @@ describe("Backoffice execution token SQLite scenarios", () => {
       await expect(
         requireBackofficeContext(request, context, { kind: "org", orgId: "another-org" }),
       ).rejects.toThrow("Credential scope");
-      const codemode = await authorizeBackofficeCodemodeContext(request, context, scope);
-      assert(!codemode.ok);
-      assert.equal(codemode.response.status, 403);
-      assert.equal(
-        await codemode.response.text(),
-        "Backoffice codemode requires a @rejot.dev account.",
-      );
-
       const defaults = await requestExecutionToken(ctx, exchangeRequest(token, null));
       assert.equal(defaults.status, 200);
       expect(backofficeExecutionTokenResultSchema.parse(await defaults.json()).scope).toEqual(

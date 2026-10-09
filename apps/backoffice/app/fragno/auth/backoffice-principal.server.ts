@@ -106,24 +106,3 @@ export async function authorizeBackofficeContext(
     ? authorizePrincipalForBackofficeScope(authorization, scope)
     : authorization;
 }
-
-export async function authorizeBackofficeCodemodeContext(
-  request: Request,
-  routerContext: Readonly<RouterContextProvider>,
-  scope: BackofficeContextScope,
-): Promise<BackofficeContextAuthorization> {
-  const authorization = await authorizeBackofficePrincipal(request, routerContext);
-  if (!authorization.ok) {
-    return authorization;
-  }
-  if (!authorization.principal.user.email.trim().toLowerCase().endsWith("@rejot.dev")) {
-    return {
-      ok: false,
-      response: new Response("Backoffice codemode requires a @rejot.dev account.", {
-        status: 403,
-        headers: authorization.headers,
-      }),
-    };
-  }
-  return authorizePrincipalForBackofficeScope(authorization, scope);
-}
