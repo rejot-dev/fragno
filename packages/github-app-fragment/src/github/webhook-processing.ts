@@ -12,6 +12,7 @@ import {
   toRepoCreateRecord,
   toRepoRecord,
 } from "./repo-sync";
+import { installationLinkStatusChanges } from "./repository-links";
 import type {
   GitHubAppFragmentConfig,
   GitHubAppWebhookConfig,
@@ -264,40 +265,30 @@ export const createWebhookProcessor = (config: Pick<GitHubAppFragmentConfig, "we
       event === "installation_repositories" ||
       (event === "installation" && isRepoSyncAction(action));
 
-    let existingInstallation: InstallationRow | null = null;
-    let existingRepos: Array<InstallationRepoRow & { links?: RepoLinkRow | RepoLinkRow[] }> = [];
-
-    if (needsRepoSync) {
-      [existingInstallation, existingRepos] = await this.handlerTx()
-        .retrieve(({ forSchema }) => {
-          const uow = forSchema(githubAppSchema);
-          return uow
-            .findFirst("installation", (b) =>
-              b.whereIndex("uniq_installation_id", (eb) => eb("id", "=", installationId)),
-            )
-            .find("installation_repo", (b) =>
-              b
-                .whereIndex("idx_installation_repo_installation", (eb) =>
-                  eb("installationId", "=", installationId),
-                )
-                .joinMany("links", "repo_link", (link) =>
-                  link.onIndex("uniq_repo_link_repo_id_link_key", (eb) =>
-                    eb("repoId", "=", eb.parent("id")),
-                  ),
-                ),
-            );
-        })
-        .execute();
-    } else {
-      [existingInstallation] = await this.handlerTx()
-        .retrieve(({ forSchema }) => {
-          const uow = forSchema(githubAppSchema);
-          return uow.findFirst("installation", (b) =>
+    // Repositories are read even without a repository sync: status changes affect their links.
+    const [existingInstallation, existingRepos]: [
+      InstallationRow | null,
+      Array<InstallationRepoRow & { links?: RepoLinkRow | RepoLinkRow[] }>,
+    ] = await this.handlerTx()
+      .retrieve(({ forSchema }) => {
+        const uow = forSchema(githubAppSchema);
+        return uow
+          .findFirst("installation", (b) =>
             b.whereIndex("uniq_installation_id", (eb) => eb("id", "=", installationId)),
+          )
+          .find("installation_repo", (b) =>
+            b
+              .whereIndex("idx_installation_repo_installation", (eb) =>
+                eb("installationId", "=", installationId),
+              )
+              .joinMany("links", "repo_link", (link) =>
+                link.onIndex("uniq_repo_link_repo_id_link_key", (eb) =>
+                  eb("repoId", "=", eb.parent("id")),
+                ),
+              ),
           );
-        })
-        .execute();
-    }
+      })
+      .execute();
 
     const existingStatus =
       existingInstallation && typeof existingInstallation.status === "string"
@@ -317,6 +308,7 @@ export const createWebhookProcessor = (config: Pick<GitHubAppFragmentConfig, "we
     const creates: Array<ReturnType<typeof toRepoRecord>> = [];
     const updates: Array<{ id: InstallationRepoId; data: Partial<RepoUpdateData> }> = [];
     const removals: Array<InstallationRepoId> = [];
+    const removedRepoIds = new Set<string>();
     const linksToDelete: Array<RepoLinkId> = [];
 
     if (needsRepoSync) {
@@ -368,6 +360,7 @@ export const createWebhookProcessor = (config: Pick<GitHubAppFragmentConfig, "we
           }
           if (repo.removedAt === null) {
             removals.push(repo.id);
+            removedRepoIds.add(repoId);
             const links = repoLinksByRepoId.get(repoId);
             if (links) {
               for (const link of links) {
@@ -408,6 +401,7 @@ export const createWebhookProcessor = (config: Pick<GitHubAppFragmentConfig, "we
           const existing = existingById.get(repoId);
           if (existing?.removedAt === null) {
             removals.push(existing.id);
+            removedRepoIds.add(repoId);
             const links = repoLinksByRepoId.get(repoId);
             if (links) {
               for (const link of links) {
@@ -421,6 +415,12 @@ export const createWebhookProcessor = (config: Pick<GitHubAppFragmentConfig, "we
 
     const hasRepoMutations =
       creates.length > 0 || updates.length > 0 || removals.length > 0 || linksToDelete.length > 0;
+    const linkStatusChanges = installationLinkStatusChanges({
+      previousInstallationStatus: existingStatus,
+      nextInstallationStatus: installationUpdate.status,
+      repos: existingRepos,
+      removedRepoIds,
+    });
 
     await this.handlerTx()
       .mutate(({ forSchema }) => {
@@ -459,6 +459,9 @@ export const createWebhookProcessor = (config: Pick<GitHubAppFragmentConfig, "we
           for (const id of linksToDelete) {
             uow.delete("repo_link", id);
           }
+        }
+        for (const change of linkStatusChanges) {
+          uow.triggerHook("onRepositoryLinkStatusChanged", change);
         }
       })
       .execute();

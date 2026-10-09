@@ -12,6 +12,7 @@ import type {
 } from "../github/api";
 import type { GitHubAppFragmentServices } from "../github/definition";
 import { hasRepoChanges, toRepoRecord } from "../github/repo-sync";
+import { installationLinkStatusChanges } from "../github/repository-links";
 import {
   isRecord,
   normalizeJoinedInstallation,
@@ -75,9 +76,14 @@ export const toDebugSignature = (signatureHeader: string | null) => {
   return `${signatureHeader.slice(0, 12)}…${signatureHeader.slice(-8)}`;
 };
 
+/** Link key used when neither the request nor `defaultLinkKey` names one. */
+export const GITHUB_APP_FALLBACK_LINK_KEY = "default";
+
 export const normalizeLinkKey = (linkKey: string | null | undefined, defaultLinkKey?: string) => {
   const normalized = linkKey?.trim();
-  return normalized && normalized.length > 0 ? normalized : (defaultLinkKey ?? "default");
+  return normalized && normalized.length > 0
+    ? normalized
+    : (defaultLinkKey ?? GITHUB_APP_FALLBACK_LINK_KEY);
 };
 
 export const parseLinkedOnly = (value: string | null) => value === "true" || value === "1";
@@ -179,6 +185,7 @@ export const syncInstallationFromGitHub = async (
   const creates: Array<ReturnType<typeof toRepoRecord>> = [];
   const updates: Array<{ id: RepoId; data: Partial<RepoUpdateData> }> = [];
   const removals: Array<RepoId> = [];
+  const removedRepoIds = new Set<string>();
   const linksToDelete: Array<RepoLinkId> = [];
   const seen = new Set<string>();
 
@@ -219,6 +226,7 @@ export const syncInstallationFromGitHub = async (
     if (repo.removedAt === null) {
       removed += 1;
       removals.push(repo.id as RepoId);
+      removedRepoIds.add(repoId);
       const links = repoLinksByRepoId.get(repoId);
       if (links) {
         for (const link of links) {
@@ -237,6 +245,12 @@ export const syncInstallationFromGitHub = async (
       updates,
       removals,
       linksToDelete,
+      linkStatusChanges: installationLinkStatusChanges({
+        previousInstallationStatus: existingInstallation?.status ?? null,
+        nextInstallationStatus: installationDetails.status,
+        repos: existingRepos,
+        removedRepoIds,
+      }),
     }),
   );
 

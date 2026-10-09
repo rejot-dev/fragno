@@ -1,6 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it, assert } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, assert, vi } from "vitest";
 
 import { generateKeyPairSync } from "crypto";
+
+import { drainDurableHooks } from "@fragno-dev/test";
 
 import { githubAppSchema } from "../schema";
 import { buildHarness, runGithubUowCreate } from "./test-utils";
@@ -137,6 +139,7 @@ describe("github-app installation sync", () => {
       },
     ];
 
+    const onRepositoryLinkStatusChanged = vi.fn();
     const fetchMock = createFetchMock({ installationId, repositories });
     globalThis.fetch = fetchMock;
 
@@ -148,6 +151,7 @@ describe("github-app installation sync", () => {
       callbackUrl: "https://example.com/github/callback",
       privateKeyPem: createPrivateKey(),
       webhookSecret: "secret",
+      onRepositoryLinkStatusChanged,
     });
 
     try {
@@ -247,6 +251,15 @@ describe("github-app installation sync", () => {
           .executeRetrieve()
       )[0];
       expect(repoLinks).toHaveLength(0);
+      await drainDurableHooks(fragments.githubApp.fragment);
+      expect(onRepositoryLinkStatusChanged.mock.calls.map(([payload]) => payload)).toEqual([
+        {
+          linkKey: "default",
+          repositoryId: "303",
+          fullName: "octo/removed-repo",
+          status: "unlinked",
+        },
+      ]);
 
       assert(fetchMock.calls.length === 3);
       expect(fetchMock.calls[0]?.url.pathname).toBe(`/app/installations/${installationId}`);
