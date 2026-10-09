@@ -59,6 +59,7 @@ import { InMemoryAuthObject } from "../../../workers/auth.do";
 import { InMemoryAutomationsObject } from "../../../workers/automations.do";
 import { InMemoryFormsObject } from "../../../workers/forms.do";
 import { InMemoryMarketplaceObject } from "../../../workers/marketplace.do";
+import { InMemoryMcpObject } from "../../../workers/mcp.do";
 import { InMemoryTelegramObject } from "../../../workers/telegram.do";
 import { InMemoryUploadObject } from "../../../workers/upload.do";
 import {
@@ -81,6 +82,7 @@ const scenarioObjects = {
   AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
   FORMS: (input) => new InMemoryFormsObject(input),
   MARKETPLACE: (input) => new InMemoryMarketplaceObject(input),
+  MCP: (input) => new InMemoryMcpObject(input),
   TELEGRAM: (input) => new InMemoryTelegramObject(input),
   UPLOAD: (input) => new InMemoryUploadObject(input),
 } satisfies LocalBackofficeObjects;
