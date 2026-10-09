@@ -2,9 +2,9 @@
 
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { PreparedUploadedFileReference } from "@fragno-dev/backoffice-api/v0/upload";
 
-import type { PreparedUploadedFileReference } from "@/fragno/prepared-upload";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { BackofficeUiRenderer } from "../renderer";
 import { parseBackofficeUiResult } from "../result";

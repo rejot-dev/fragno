@@ -1,11 +1,12 @@
 import { describe, expect, test, vi } from "vitest";
 
-import type { BackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
-import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import {
   allBackofficePermissionRequirements,
   BACKOFFICE_PERMISSION,
-} from "@/backoffice-runtime/permissions";
+} from "@fragno-dev/backoffice-api/v0/shared/permissions";
+
+import type { BackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
+import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 
 import { createAutomationRouteAuthorityResolver } from "./authority";
 

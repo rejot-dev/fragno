@@ -1,5 +1,7 @@
 import { describe, expect, test, assert, vi } from "vitest";
 
+import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import { createWorkflowsTestHarness } from "@fragno-dev/workflows/test";
 import { defineRemoteWorkflow } from "@fragno-dev/workflows/workflow";
 import { env } from "cloudflare:workers";
@@ -7,11 +9,9 @@ import { env } from "cloudflare:workers";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
-import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import type { AutomationRuntimeHostContext, AutomationRuntime } from "@/fragno/automation";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
-import type { AutomationEvent } from "@/fragno/automation/contracts";
 import { CODEMODE_CAPABILITY_ACTOR } from "@/fragno/automation/engine/codemode-invocation";
 import {
   MemoryUploadObject,

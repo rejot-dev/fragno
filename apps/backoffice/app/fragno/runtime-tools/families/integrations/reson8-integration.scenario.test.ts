@@ -4,6 +4,12 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import {
+  integrationListOutputSchema,
+  integrationSetupProgressSchema,
+} from "@fragno-dev/backoffice-api/v0/integrations";
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+
 const workers = vi.hoisted(() => ({
   DurableObject: class {},
   RpcTarget: class {},
@@ -24,7 +30,6 @@ import {
 } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
-import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import {
   defineBackofficeScenario,
@@ -46,10 +51,6 @@ import { InMemoryMcpObject } from "../../../../../workers/mcp.do";
 import { InMemoryReson8Object } from "../../../../../workers/reson8.do";
 import { InMemoryTelegramObject } from "../../../../../workers/telegram.do";
 import { InMemoryUploadObject } from "../../../../../workers/upload.do";
-import {
-  integrationListOutputSchema,
-  integrationSetupProgressSchema,
-} from "./integration-contracts";
 import type { IntegrationContext } from "./integration-implementation";
 import { createIntegrationRegistry } from "./integration-registry";
 import { integrationsToolFamily } from "./integration-tools";

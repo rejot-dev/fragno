@@ -1,9 +1,9 @@
+import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+
 import type { DatabaseServiceContext } from "@fragno-dev/db";
 
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
-
 import { AUTOMATION_SYSTEM_INITIATOR } from "./actors";
-import type { AutomationEvent } from "./contracts";
 import type { AutomationEventIngestionPayload, AutomationInternalHooks } from "./internal-hooks";
 import {
   automationProjectArchiveInputSchema,

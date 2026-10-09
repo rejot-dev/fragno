@@ -1,6 +1,6 @@
 import { describe, test, vi } from "vitest";
 
-import type { AutomationEvent } from "./contracts";
+import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
   class MockDurableObject {

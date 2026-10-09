@@ -1,10 +1,11 @@
-import { z } from "zod";
-
-import type { FetchObject } from "@/backoffice-runtime/object-registry";
 import type {
   PreparedUploadedFileReference,
   UploadedFileReference,
-} from "@/fragno/prepared-upload";
+} from "@fragno-dev/backoffice-api/v0/upload";
+import { z } from "zod";
+
+import type { FetchObject } from "@/backoffice-runtime/object-registry";
+import { bytesToBase64 } from "@/lib/base64";
 
 export type UploadReadPreparedInput = {
   file: PreparedUploadedFileReference;
@@ -179,15 +180,6 @@ const discardPreparedUpload = async (
   await callUpload(fetchUpload, `/uploads/${encodeURIComponent(file.uploadId)}/abort`, {
     method: "POST",
   });
-};
-
-const bytesToBase64 = (bytes: Uint8Array): string => {
-  const chunkSize = 32_768;
-  let binary = "";
-  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
-    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
-  }
-  return btoa(binary);
 };
 
 export const createUploadRuntime = (object: FetchObject): UploadRuntime => {

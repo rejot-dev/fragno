@@ -1,11 +1,9 @@
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { RouterContextProvider } from "react-router";
 
 import { extractW3CRequestPropagationContext } from "@fragno-dev/core";
 
-import type {
-  BackofficeContextScope,
-  BackofficeExecutionContext,
-} from "@/backoffice-runtime/context";
+import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import { isBackofficeForbiddenError } from "@/backoffice-runtime/kernel";
 import { getAutomationLayerForPath, readAutomationScript } from "@/fragno/automation";
 import { readBackofficeAutomationSource } from "@/fragno/automation/read-backoffice-automation-source";

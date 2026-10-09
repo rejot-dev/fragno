@@ -121,7 +121,9 @@ describe("resend runtime tools", () => {
         runtimes: { resend: runtime },
       });
     const getThread = resendRuntimeTools[0];
-    const output = await getThread.execute({ threadId: "thread-1" }, context);
+    const output = getThread.outputSchema.parse(
+      await getThread.execute({ threadId: "thread-1" }, context),
+    );
 
     expect(getThread.adapters!.bash!.format!(output, { format: "text" })).toMatchObject({
       data: output,

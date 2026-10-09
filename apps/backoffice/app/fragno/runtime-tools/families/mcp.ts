@@ -1,3 +1,16 @@
+import {
+  type McpAuthStatus,
+  type McpCreateServerOutput,
+  type McpListServersOutput,
+  type McpOAuthStartOutput,
+  type McpServerRefreshOutput,
+  type McpToolCallOutput,
+  callToolInputSchema,
+  createServerInputSchema,
+  mcpOAuthStartInputSchema,
+  serverSchema,
+  mcpSetTokenInputSchema,
+} from "@fragno-dev/backoffice-api/v0/mcp";
 import { z } from "zod";
 
 import {
@@ -8,130 +21,15 @@ import {
 } from "@/fragno/runtime-tools/bash-cli";
 
 import {
+  backofficeApiOperationToolFields,
   defineBackofficeRuntimeTool,
   defineBackofficeRuntimeToolFamily,
   type BackofficeToolContext,
 } from "../runtime-tools";
 import type { McpRuntime } from "./mcp-runtime";
 
-const authSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("none") }),
-  z.object({ type: z.literal("bearer"), token: z.string().trim().min(1) }),
-  z.object({
-    type: z.literal("oauth"),
-    clientId: z.string().trim().min(1).optional(),
-    clientSecret: z.string().trim().min(1).optional(),
-    scopes: z.array(z.string().trim().min(1)).optional(),
-  }),
-  z.object({
-    type: z.literal("client_credentials"),
-    clientId: z.string().trim().min(1),
-    clientSecret: z.string().trim().min(1),
-    scopes: z.array(z.string().trim().min(1)).optional(),
-  }),
-]);
-
-const mcpToolSchema = z.object({
-  name: z.string().trim().min(1),
-  title: z.string().optional(),
-  description: z.string().optional(),
-  inputSchema: z.record(z.string(), z.unknown()).optional(),
-  annotations: z.record(z.string(), z.unknown()).optional(),
-  _meta: z.record(z.string(), z.unknown()).optional(),
-});
-
-const serverConnectionCacheSchema = z.object({
-  protocolVersion: z.string().nullable().optional(),
-  serverInfo: z.unknown().nullable().optional(),
-  capabilities: z.unknown().nullable().optional(),
-  tools: z.array(mcpToolSchema).nullable().optional(),
-  updatedAt: z.union([z.string(), z.date()]).optional(),
-});
-
-const serverSchema = z.object({
-  slug: z.string().trim().min(1),
-  name: z.string().nullable().optional(),
-  endpointUrl: z.string().trim().min(1),
-  authMode: z.string().trim().min(1),
-  cache: serverConnectionCacheSchema.nullable().optional(),
-});
-const serversOutputSchema = z.object({ servers: z.array(serverSchema) });
-const createServerInputSchema = z.object({
-  slug: z
-    .string()
-    .trim()
-    .min(1)
-    .regex(/^[a-z0-9][a-z0-9-]*$/),
-  name: z.string().trim().optional(),
-  endpointUrl: z.url(),
-  auth: authSchema.default({ type: "none" }),
-});
-const deleteServerInputSchema = z.object({ slug: z.string().trim().min(1) });
-const deleteServerOutputSchema = z.object({ ok: z.literal(true) });
-const authStatusSchema = z.object({ authenticated: z.boolean(), mode: z.string() });
-const oauthStartInputSchema = z.object({
-  slug: z.string().trim().min(1),
-  scope: z.string().trim().optional(),
-  clientId: z.string().trim().optional(),
-  clientSecret: z.string().trim().optional(),
-});
-const oauthStartOutputSchema = z.object({ authorizationUrl: z.url(), state: z.string() });
-const setTokenInputSchema = z.object({
-  slug: z.string().trim().min(1),
-  token: z.string().trim().min(1),
-});
-const refreshServerInputSchema = z.object({ slug: z.string().trim().min(1) });
-const serverRefreshOutputSchema = z.object({
-  ok: z.boolean(),
-  tools: z.array(mcpToolSchema),
-  stage: z.enum(["auth", "list_tools"]).nullable(),
-  checkedAt: z.string(),
-  server: serverSchema.omit({ cache: true }),
-  auth: z.object({
-    authenticated: z.boolean(),
-    mode: z.string(),
-    tokenPresent: z.boolean(),
-    expiresAt: z.union([z.string(), z.date()]).nullable(),
-    expired: z.boolean().nullable(),
-    scopes: z.object({
-      requested: z.array(z.string()).nullable(),
-      granted: z.array(z.string()).nullable(),
-      missing: z.array(z.string()).nullable(),
-      raw: z.string().nullable(),
-    }),
-  }),
-  live: z.object({
-    reachable: z.boolean(),
-    listToolsOk: z.boolean(),
-    toolCount: z.number().nullable(),
-    protocolVersion: z.string().nullable(),
-    serverInfo: z.unknown().nullable(),
-    capabilities: z.unknown().nullable(),
-  }),
-  cache: z.object({
-    presentBeforeCheck: z.boolean(),
-    previousToolCount: z.number().nullable(),
-    updatedToolCount: z.number().nullable(),
-  }),
-  error: z.object({ code: z.string(), message: z.string() }).nullable(),
-});
-const callToolInputSchema = z.object({
-  slug: z.string().trim().min(1),
-  name: z.string().trim().min(1),
-  arguments: z.record(z.string(), z.unknown()).optional(),
-  timeoutMs: z.number().int().positive().max(120_000).optional(),
-});
-const callToolOutputSchema = z.record(z.string(), z.unknown());
-
-export type McpListServersOutput = z.infer<typeof serversOutputSchema>;
-export type McpCreateServerOutput = z.infer<typeof serverSchema>;
-export type McpAuthStatus = z.infer<typeof authStatusSchema>;
-export type McpOAuthStartInput = Omit<z.infer<typeof oauthStartInputSchema>, "slug">;
-export type McpOAuthStartOutput = z.infer<typeof oauthStartOutputSchema>;
-export type McpSetTokenInput = Omit<z.infer<typeof setTokenInputSchema>, "slug">;
-export type McpTool = z.infer<typeof mcpToolSchema>;
-export type McpServerRefreshOutput = z.infer<typeof serverRefreshOutputSchema>;
-export type McpToolCallOutput = z.infer<typeof callToolOutputSchema>;
+export type McpOAuthStartInput = Omit<z.infer<typeof mcpOAuthStartInputSchema>, "slug">;
+export type McpSetTokenInput = Omit<z.infer<typeof mcpSetTokenInputSchema>, "slug">;
 export type { McpRuntime } from "./mcp-runtime";
 
 type McpToolContext = BackofficeToolContext<{ mcp?: McpRuntime }>;
@@ -298,7 +196,7 @@ const parseServersAdd = defineCliArgsParser<z.input<typeof createServerInputSche
 const parseServerSlug = defineCliArgsParser<{ slug: string }>("mcp.server", {
   slug: { required: true, option: "server" },
 });
-const parseOAuthStart = defineCliArgsParser<z.input<typeof oauthStartInputSchema>>(
+const parseOAuthStart = defineCliArgsParser<z.input<typeof mcpOAuthStartInputSchema>>(
   "mcp.oauth.start",
   {
     slug: { required: true, option: "server" },
@@ -307,10 +205,13 @@ const parseOAuthStart = defineCliArgsParser<z.input<typeof oauthStartInputSchema
     clientSecret: { option: "client-secret" },
   },
 );
-const parseSetToken = defineCliArgsParser<z.input<typeof setTokenInputSchema>>("mcp.auth.token", {
-  slug: { required: true, option: "server" },
-  token: { required: true },
-});
+const parseSetToken = defineCliArgsParser<z.input<typeof mcpSetTokenInputSchema>>(
+  "mcp.auth.token",
+  {
+    slug: { required: true, option: "server" },
+    token: { required: true },
+  },
+);
 const parseToolCall = defineCliArgsParser<z.input<typeof callToolInputSchema>>("mcp.tools.call", {
   slug: { required: true, option: "server" },
   name: { required: true },
@@ -327,14 +228,11 @@ const mcpPermissions = {
 
 export const mcpRuntimeTools = [
   defineBackofficeRuntimeTool({
-    id: "mcp.servers.list",
+    ...backofficeApiOperationToolFields("mcp.servers.list"),
     namespace: "mcp",
     name: "listServers",
     capabilityId: "mcp",
-    description: "List MCP servers configured for the current organization.",
     requiredPermissions: ["servers.read"],
-    inputSchema: z.void(),
-    outputSchema: serversOutputSchema,
     execute: async (_input, context: McpToolContext) =>
       await getMcpRuntime(context.runtimes.mcp).listServers(),
     adapters: {
@@ -352,15 +250,12 @@ export const mcpRuntimeTools = [
     },
   }),
   defineBackofficeRuntimeTool({
-    id: "mcp.servers.add",
+    ...backofficeApiOperationToolFields("mcp.servers.add"),
     namespace: "mcp",
     name: "createServer",
     capabilityId: "mcp",
-    description: "Register a remote streamable HTTP MCP server.",
     requiredPermissions: ["servers.create"],
     getResource: (input) => ({ slug: input.slug }),
-    inputSchema: createServerInputSchema,
-    outputSchema: serverSchema,
     execute: async (input, context: McpToolContext) =>
       await getMcpRuntime(context.runtimes.mcp).createServer(input),
     adapters: {
@@ -429,15 +324,12 @@ export const mcpRuntimeTools = [
     },
   }),
   defineBackofficeRuntimeTool({
-    id: "mcp.servers.delete",
+    ...backofficeApiOperationToolFields("mcp.servers.delete"),
     namespace: "mcp",
     name: "deleteServer",
     capabilityId: "mcp",
-    description: "Delete an MCP server and its stored auth state.",
     requiredPermissions: ["servers.delete"],
     getResource: (input) => ({ slug: input.slug }),
-    inputSchema: deleteServerInputSchema,
-    outputSchema: deleteServerOutputSchema,
     execute: async (input, context: McpToolContext) =>
       await getMcpRuntime(context.runtimes.mcp).deleteServer(input),
     adapters: {
@@ -463,15 +355,12 @@ export const mcpRuntimeTools = [
     },
   }),
   defineBackofficeRuntimeTool({
-    id: "mcp.servers.refresh",
+    ...backofficeApiOperationToolFields("mcp.servers.refresh"),
     namespace: "mcp",
     name: "refreshServer",
     capabilityId: "mcp",
-    description: "Refresh a configured MCP server and update its cached tool list.",
     requiredPermissions: ["servers.read"],
     getResource: (input) => ({ slug: input.slug }),
-    inputSchema: refreshServerInputSchema,
-    outputSchema: serverRefreshOutputSchema,
     execute: async (input, context: McpToolContext) =>
       await getMcpRuntime(context.runtimes.mcp).refreshServer(input),
     adapters: {
@@ -500,15 +389,12 @@ export const mcpRuntimeTools = [
     },
   }),
   defineBackofficeRuntimeTool({
-    id: "mcp.tools.call",
+    ...backofficeApiOperationToolFields("mcp.tools.call"),
     namespace: "mcp",
     name: "callTool",
     capabilityId: "mcp",
-    description: "Call a tool exposed by a configured MCP server.",
     requiredPermissions: ["tools.call"],
     getResource: (input) => ({ slug: input.slug, toolName: input.name }),
-    inputSchema: callToolInputSchema,
-    outputSchema: callToolOutputSchema,
     execute: async (input, context: McpToolContext) =>
       await getMcpRuntime(context.runtimes.mcp).callTool(input),
     adapters: {
@@ -555,15 +441,12 @@ export const mcpRuntimeTools = [
     },
   }),
   defineBackofficeRuntimeTool({
-    id: "mcp.oauth.start",
+    ...backofficeApiOperationToolFields("mcp.oauth.start"),
     namespace: "mcp",
     name: "startOAuth",
     capabilityId: "mcp",
-    description: "Start OAuth login for a configured MCP server and return the authorization URL.",
     requiredPermissions: ["servers.create"],
     getResource: (input) => ({ slug: input.slug }),
-    inputSchema: oauthStartInputSchema,
-    outputSchema: oauthStartOutputSchema,
     execute: async (input, context: McpToolContext) =>
       await getMcpRuntime(context.runtimes.mcp).startOAuth(input),
     adapters: {
@@ -605,15 +488,12 @@ export const mcpRuntimeTools = [
     },
   }),
   defineBackofficeRuntimeTool({
-    id: "mcp.auth.token",
+    ...backofficeApiOperationToolFields("mcp.auth.token"),
     namespace: "mcp",
     name: "setToken",
     capabilityId: "mcp",
-    description: "Store a bearer token for a configured MCP server.",
     requiredPermissions: ["servers.create"],
     getResource: (input) => ({ slug: input.slug }),
-    inputSchema: setTokenInputSchema,
-    outputSchema: authStatusSchema,
     execute: async (input, context: McpToolContext) =>
       await getMcpRuntime(context.runtimes.mcp).setToken(input),
     adapters: {

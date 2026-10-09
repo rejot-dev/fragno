@@ -1,7 +1,7 @@
+import { marketplaceListingIdSchema } from "@fragno-dev/backoffice-api/v0/marketplace";
 import { z } from "zod";
 
 import type { BackofficeRoutableScopeSelection } from "@/backoffice-runtime/resolved-scope";
-import { marketplaceListingIdSchema } from "@/fragno/marketplace/contracts";
 
 import { marketplaceScopeTabPath } from "./scope";
 

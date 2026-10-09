@@ -1,12 +1,16 @@
 import { assert, describe, expect, test } from "vitest";
 
 import {
+  allBackofficePermissionRequirements,
+  BACKOFFICE_PERMISSION,
+} from "@fragno-dev/backoffice-api/v0/shared/permissions";
+
+import {
   BACKOFFICE_AUTHORITY_ROLE_GRANTS,
   resolveBackofficeInternalServiceAuthorityRole,
   resolveBackofficeUserAuthorityRole,
   USER_AUTHORITY_ROLE_PERMISSION_DECISIONS,
 } from "./authority-roles";
-import { allBackofficePermissionRequirements, BACKOFFICE_PERMISSION } from "./permissions";
 
 const currentKernelPermissions = [
   BACKOFFICE_PERMISSION.otp.create,

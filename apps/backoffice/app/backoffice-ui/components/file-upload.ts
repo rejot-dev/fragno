@@ -1,6 +1,5 @@
+import { preparedUploadedFileReferenceSchema } from "@fragno-dev/backoffice-api/v0/upload";
 import { z } from "zod";
-
-import { preparedUploadedFileReferenceSchema } from "@/fragno/prepared-upload";
 
 import { generatedUiUploadScopeSchema } from "../generated-ui-upload-scope";
 

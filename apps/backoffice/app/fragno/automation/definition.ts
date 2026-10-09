@@ -1,18 +1,27 @@
+import {
+  automationActorsSchema,
+  type AutomationForwardEventAction,
+  type AutomationReclassifyEventAction,
+  type AutomationRouteDefinition,
+  type AutomationSendWorkflowEventAction,
+  type AutomationStartWorkflowAction,
+} from "@fragno-dev/backoffice-api/v0/automation";
+import type {
+  AutomationEvent,
+  AutomationEventDefinition,
+} from "@fragno-dev/backoffice-api/v0/events";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { InstanceStatus } from "@fragno-dev/workflows/workflow";
 
 import { defineFragment } from "@fragno-dev/core";
 import { withDatabase, type TxResult } from "@fragno-dev/db";
 import type { WorkflowsFragmentServices } from "@fragno-dev/workflows";
 
-import {
-  createBackofficeSystemExecution,
-  type BackofficeContextScope,
-} from "@/backoffice-runtime/context";
+import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import { backofficeScopeContains } from "@/backoffice-runtime/context";
 import { BackofficeKernel, BackofficeForbiddenError } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 
-import { automationActorsSchema } from "./actors";
 import {
   automationRouteAuthority,
   createAutomationRuntimeExecution,
@@ -21,11 +30,7 @@ import {
 import { readAutomationScript, type AutomationSourceReader } from "./automation-source";
 import { createAutomationStoreServices } from "./bindings-storage-runtime";
 import { SYSTEM_STARTER_AUTOMATION_ROUTES } from "./content/starter-routing";
-import {
-  getAutomationEventIdentity,
-  type AutomationEvent,
-  type AutomationEventIdentity,
-} from "./contracts";
+import { getAutomationEventIdentity, type AutomationEventIdentity } from "./contracts";
 import {
   CODEMODE_WORKFLOW,
   createCodemodeWorkflowInstanceInput,
@@ -34,7 +39,6 @@ import {
 import {
   buildAutomationEventDefinitionId,
   validateAutomationEventPayload,
-  type AutomationEventDefinition,
 } from "./event-definitions";
 import { createAutomationEventDefinitionServices } from "./event-definitions-storage-runtime";
 import { createAutomationEventSourceServices } from "./event-sources-storage-runtime";
@@ -51,11 +55,6 @@ import {
   renderAutomationRawTemplateValue,
   renderAutomationScopeTemplate,
   renderAutomationTemplateValue,
-  type AutomationForwardEventAction,
-  type AutomationReclassifyEventAction,
-  type AutomationRouteDefinition,
-  type AutomationSendWorkflowEventAction,
-  type AutomationStartWorkflowAction,
   type StarterAutomationRoutesSeedResult,
 } from "./routing";
 import { createAutomationRouteServices } from "./routing-storage-runtime";

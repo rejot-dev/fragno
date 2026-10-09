@@ -1,18 +1,15 @@
+import type { PiAgentConfig, PiManagerSession } from "@fragno-dev/backoffice-api/v0/pi";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { createRouteCaller } from "@fragno-dev/core/api";
 import type { RouterContextProvider } from "react-router";
 
 import type { ConversationView, EntryRecord, SubmissionRecord } from "@earendil-works/pi-durable";
 
-import {
-  backofficeExecutionScopeRestriction,
-  type BackofficeContextScope,
-} from "@/backoffice-runtime/context";
+import { backofficeExecutionScopeRestriction } from "@/backoffice-runtime/context";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import type {
   PiAgentCompactionStatus,
-  PiAgentConfig,
   PiAvailableModel,
-  PiManagerSession,
 } from "@/fragno/pi-manager/pi-agent-contract";
 import type { createPiManagerFragment } from "@/fragno/pi-manager/pi-manager-fragment";
 import { captureBackofficeServerEvent } from "@/posthog.server";

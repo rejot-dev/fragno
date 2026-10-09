@@ -1,3 +1,9 @@
+import type { AutomationActors } from "@fragno-dev/backoffice-api/v0/automation";
+import {
+  type AutomationEvent,
+  automationEventListResultSchema,
+} from "@fragno-dev/backoffice-api/v0/events";
+
 import {
   backofficeContextScopesEqual,
   backofficeExecutionScopeRestriction,
@@ -6,9 +12,6 @@ import {
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 
-import type { AutomationActors } from "../../automation/actors";
-import type { AutomationEvent } from "../../automation/contracts";
-import { automationEventListResultSchema } from "../../automation/events";
 import { createAutomationsRouteCaller } from "../../automation/route-callers";
 import type { EventRuntime } from "./event";
 

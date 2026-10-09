@@ -1,25 +1,17 @@
+import { marketplaceSearchInputSchema } from "@fragno-dev/backoffice-api/v0/marketplace";
+import { marketplacePublishInputSchema } from "@fragno-dev/backoffice-api/v0/marketplace";
+import { marketplacePublishedListingInputSchema } from "@fragno-dev/backoffice-api/v0/marketplace";
 import type { z } from "zod";
 
-import {
-  marketplaceListingDetailSchema,
-  marketplacePublishedListingInputSchema,
-} from "@/fragno/marketplace/contracts";
-import {
-  marketplacePublishInputSchema,
-  marketplacePublishResultSchema,
-} from "@/fragno/marketplace/package-publishing";
 import { defineCliArgsParser } from "@/fragno/runtime-tools/bash-cli";
 
 import {
+  backofficeApiOperationToolFields,
   defineBackofficeRuntimeTool,
   defineBackofficeRuntimeToolFamily,
   type BackofficeToolContext,
 } from "../runtime-tools";
-import {
-  marketplaceSearchInputSchema,
-  marketplaceSearchResultSchema,
-  type MarketplaceRuntime,
-} from "./marketplace-runtime";
+import { type MarketplaceRuntime } from "./marketplace-runtime";
 
 type MarketplaceToolContext = BackofficeToolContext<{
   marketplace: MarketplaceRuntime | undefined;
@@ -33,14 +25,10 @@ function getMarketplaceRuntime(context: MarketplaceToolContext): MarketplaceRunt
 }
 
 const marketplaceSearchTool = defineBackofficeRuntimeTool({
-  id: "marketplace.search",
+  ...backofficeApiOperationToolFields("marketplace.search"),
   namespace: "marketplace",
   name: "search",
-  description:
-    "Search published package metadata. Follow nextCursor while hasNextPage is true, even when a candidate page has no matches.",
   requiredPermissions: ["read"],
-  inputSchema: marketplaceSearchInputSchema,
-  outputSchema: marketplaceSearchResultSchema,
   execute: async (input, context: MarketplaceToolContext) =>
     await getMarketplaceRuntime(context).search(input),
   adapters: {
@@ -96,13 +84,10 @@ const marketplaceSearchTool = defineBackofficeRuntimeTool({
 });
 
 const marketplaceViewTool = defineBackofficeRuntimeTool({
-  id: "marketplace.view",
+  ...backofficeApiOperationToolFields("marketplace.view"),
   namespace: "marketplace",
   name: "view",
-  description: "Inspect published package metadata and cursor-paginated releases.",
   requiredPermissions: ["read"],
-  inputSchema: marketplacePublishedListingInputSchema,
-  outputSchema: marketplaceListingDetailSchema,
   execute: async (input, context: MarketplaceToolContext) =>
     await getMarketplaceRuntime(context).view(input),
   adapters: {
@@ -161,14 +146,10 @@ const marketplaceViewTool = defineBackofficeRuntimeTool({
 });
 
 const marketplacePublishTool = defineBackofficeRuntimeTool({
-  id: "marketplace.publish",
+  ...backofficeApiOperationToolFields("marketplace.publish"),
   namespace: "marketplace",
   name: "publish",
-  description:
-    "Publish a captured package from a root manifest.json containing name @<organization-slug>/<package-slug>. Versions are immutable by default; System may explicitly replace them. Dry runs write nothing. Author and version overrides require System context.",
   requiredPermissions: ["publish"],
-  inputSchema: marketplacePublishInputSchema,
-  outputSchema: marketplacePublishResultSchema,
   execute: async (input, context: MarketplaceToolContext) =>
     await getMarketplaceRuntime(context).publish(input),
   adapters: {

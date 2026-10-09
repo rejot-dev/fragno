@@ -1,71 +1,15 @@
-import { z } from "zod";
+import type {
+  AutomationEventDefinition,
+  AutomationEventDefinitionCreateInput,
+} from "@fragno-dev/backoffice-api/v0/events";
+import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
 
 import { Validator, type Schema } from "@cfworker/json-schema";
 
 import { jsonSchema202012ValidationSchema } from "@/lib/json-schema/validation";
 
-import type { AutomationEvent } from "./contracts";
-
-const jsonSchemaDocumentSchema = z.record(z.string(), z.unknown());
-
 export const buildAutomationEventDefinitionId = (source: string, eventType: string) =>
   `${encodeURIComponent(source)}:${encodeURIComponent(eventType)}`;
-
-export const automationEventDefinitionSchema = z.object({
-  id: z.string().trim().min(1),
-  source: z.string().trim().min(1),
-  eventType: z.string().trim().min(1),
-  label: z.string().trim().min(1),
-  description: z.string().nullable().optional(),
-  payloadSchema: jsonSchemaDocumentSchema.nullable().optional(),
-  actorSchema: jsonSchemaDocumentSchema.nullable().optional(),
-  subjectSchema: jsonSchemaDocumentSchema.nullable().optional(),
-  example: z.unknown().nullable().optional(),
-  enabled: z.boolean(),
-  capabilityId: z.string(),
-  createdAt: z.iso.datetime().optional(),
-  updatedAt: z.iso.datetime().optional(),
-});
-
-export const automationEventDefinitionCreateInputSchema = z.object({
-  source: z.string().trim().min(1),
-  eventType: z.string().trim().min(1),
-  label: z.string().trim().min(1),
-  description: z.string().nullable().optional(),
-  payloadSchema: jsonSchemaDocumentSchema.nullable().optional(),
-  actorSchema: jsonSchemaDocumentSchema.nullable().optional(),
-  subjectSchema: jsonSchemaDocumentSchema.nullable().optional(),
-  example: z.unknown().nullable().optional(),
-  enabled: z.boolean().default(true),
-});
-
-export const automationEventDefinitionUpdatePayloadSchema = z
-  .object({
-    label: z.string().trim().min(1).optional(),
-    description: z.string().nullable().optional(),
-    payloadSchema: jsonSchemaDocumentSchema.nullable().optional(),
-    actorSchema: jsonSchemaDocumentSchema.nullable().optional(),
-    subjectSchema: jsonSchemaDocumentSchema.nullable().optional(),
-    example: z.unknown().nullable().optional(),
-    enabled: z.boolean().optional(),
-  })
-  .refine((patch) => Object.values(patch).some((value) => typeof value !== "undefined"), {
-    message: "At least one event definition field must be provided.",
-  });
-
-export const automationEventDefinitionUpdateInputSchema = z.object({
-  source: z.string().trim().min(1),
-  eventType: z.string().trim().min(1),
-  patch: automationEventDefinitionUpdatePayloadSchema,
-});
-
-export type AutomationEventDefinition = z.infer<typeof automationEventDefinitionSchema>;
-export type AutomationEventDefinitionCreateInput = z.input<
-  typeof automationEventDefinitionCreateInputSchema
->;
-export type AutomationEventDefinitionUpdateInput = z.input<
-  typeof automationEventDefinitionUpdateInputSchema
->;
 
 export class AutomationEventDefinitionValidationError extends Error {
   constructor(message: string) {

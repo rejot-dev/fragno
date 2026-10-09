@@ -1,6 +1,9 @@
 import { describe, expect, test, assert } from "vitest";
 
-import { backofficeContextScopeSchema, backofficeRoutableScopeSchema } from "./context-schema";
+import {
+  backofficeContextScopeSchema,
+  backofficeRoutableScopeSchema,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 describe("Backoffice context scope schema", () => {
   test("validates every context scope kind", () => {

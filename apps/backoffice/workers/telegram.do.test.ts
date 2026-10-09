@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi, assert } from "vitest";
 
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+
 const {
   migrateMock,
   createDurableHooksProcessorMock,
@@ -53,10 +55,7 @@ vi.mock("@/fragno/durable-hooks", () => ({
   }),
 }));
 
-import {
-  createBackofficeSystemExecution,
-  type BackofficeContextScope,
-} from "@/backoffice-runtime/context";
+import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import { createAuthorizedBackofficeObjectRequest } from "@/backoffice-runtime/internal-object-request";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import {

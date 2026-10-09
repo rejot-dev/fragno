@@ -1,3 +1,5 @@
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { DurableObject } from "cloudflare:workers";
 import { z } from "zod";
@@ -10,14 +12,12 @@ import {
   backofficeContextScopesEqual,
   type BackofficeRequestExecution,
   type BackofficeDeferredExecution,
-  type BackofficeContextScope,
 } from "@/backoffice-runtime/context";
 import { BackofficeKernel, BackofficeForbiddenError } from "@/backoffice-runtime/kernel";
 import {
   requireBackofficeContextScopeFromDurableObjectId,
   type OtpObject,
 } from "@/backoffice-runtime/object-registry";
-import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { canLinkExternalIdentity } from "@/fragno/automation/external-identities";
 import {

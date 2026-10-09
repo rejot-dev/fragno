@@ -1,7 +1,6 @@
+import { marketplaceInstallationRootSchema } from "@fragno-dev/backoffice-api/v0/marketplace";
+import { marketplaceVersionSchema } from "@fragno-dev/backoffice-api/v0/marketplace";
 import { z } from "zod";
-
-import { marketplaceVersionSchema } from "@/fragno/marketplace/contracts";
-import { marketplaceInstallationRootSchema } from "@/fragno/marketplace/marketplace-lock";
 
 import { buildMarketplacePackageTabPath } from "./package-tabs";
 

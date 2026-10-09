@@ -11,6 +11,7 @@ import {
   openNodeSqliteDatabase,
   openNodeSqliteStorage,
 } from "@earendil-works/pi-durable/storage/sqlite/node";
+import type { PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
 
 import {
   createRegistry,
@@ -24,7 +25,6 @@ import {
 
 import { BACKOFFICE_SYSTEM_ACTORS } from "@/backoffice-runtime/context";
 import type { BillingEventInput } from "@/fragno/billing/contracts";
-import type { PiAgentConfig } from "@/fragno/pi-manager/pi-agent-contract";
 
 import {
   createPiDurableBillingTask,

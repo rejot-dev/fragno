@@ -1,10 +1,11 @@
-import { decodeCursor, type Cursor } from "@fragno-dev/db";
-
 import {
   MARKETPLACE_MAX_PAGE_SIZE,
-  type MarketplaceListingStatus,
   type MarketplaceOwnerScope,
-} from "./contracts";
+} from "@fragno-dev/backoffice-api/v0/marketplace";
+
+import { decodeCursor, type Cursor } from "@fragno-dev/db";
+
+import { type MarketplaceListingStatus } from "./contracts";
 import { marketplaceOwnerKey } from "./owner";
 
 export const MARKETPLACE_LISTING_INDEX = "idx_marketplace_listing_status_publishedAt_id";

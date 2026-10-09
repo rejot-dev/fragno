@@ -1,14 +1,15 @@
 import { afterAll, assert, describe, expect, test } from "vitest";
 
+import type {
+  MarketplaceListingMetadata,
+  MarketplaceOwner,
+} from "@fragno-dev/backoffice-api/v0/marketplace";
+
 import { instantiate } from "@fragno-dev/core";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 
 import { marketplaceArtifactUploadName } from "./artifacts";
-import type {
-  MarketplaceCreateDraftListingInput,
-  MarketplaceListingMetadata,
-  MarketplaceOwner,
-} from "./contracts";
+import type { MarketplaceCreateDraftListingInput } from "./contracts";
 import {
   MarketplaceOwnerConflictError,
   marketplaceFragmentDefinition,

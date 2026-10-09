@@ -1,3 +1,9 @@
+import {
+  type GitHubRepository,
+  type GitHubRepositoryAccessToken,
+  githubRepositoryAccessTokenSchema,
+  githubRepositorySchema,
+} from "@fragno-dev/backoffice-api/v0/github";
 import { createRouteCaller } from "@fragno-dev/core/api";
 import { z } from "zod";
 
@@ -5,29 +11,6 @@ import type { FetchObject } from "@/backoffice-runtime/object-registry";
 import type { GitHubFragment } from "@/fragno/github";
 
 import { isSuccessStatus, throwOnRouteRuntimeError } from "../runtime-errors";
-
-export const githubRepositorySchema = z.object({
-  id: z.string(),
-  installationId: z.string(),
-  ownerLogin: z.string(),
-  name: z.string(),
-  fullName: z.string(),
-  isPrivate: z.boolean(),
-  defaultBranch: z.string().nullable(),
-  linkKeys: z.array(z.string()),
-});
-
-export const githubRepositoryAccessTokenSchema = z.object({
-  token: z.string().min(1),
-  expiresAt: z.string().min(1),
-  repository: z.object({
-    id: z.string(),
-    fullName: z.string(),
-  }),
-});
-
-export type GitHubRepository = z.infer<typeof githubRepositorySchema>;
-export type GitHubRepositoryAccessToken = z.infer<typeof githubRepositoryAccessTokenSchema>;
 
 export type GitHubRuntime = {
   listRepositories(input?: { linkKey?: string }): Promise<GitHubRepository[]>;

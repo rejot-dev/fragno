@@ -1,18 +1,15 @@
+import { packagesInstallInputSchema } from "@fragno-dev/backoffice-api/v0/marketplace";
 import { z } from "zod";
 
-import { marketplaceLockSchema } from "@/fragno/marketplace/marketplace-lock";
 import { defineCliArgsParser } from "@/fragno/runtime-tools/bash-cli";
 
 import {
+  backofficeApiOperationToolFields,
   defineBackofficeRuntimeTool,
   defineBackofficeRuntimeToolFamily,
   type BackofficeToolContext,
 } from "../runtime-tools";
-import {
-  packagesInstallInputSchema,
-  packagesInstallResultSchema,
-  type PackagesRuntime,
-} from "./packages-runtime";
+import { type PackagesRuntime } from "./packages-runtime";
 
 type PackagesToolContext = BackofficeToolContext<{ packages: PackagesRuntime | undefined }>;
 
@@ -24,18 +21,14 @@ function getPackagesRuntime(context: PackagesToolContext): PackagesRuntime {
 }
 
 const packagesInstallTool = defineBackofficeRuntimeTool({
-  id: "packages.install",
+  ...backofficeApiOperationToolFields("packages.install"),
   namespace: "packages",
   name: "install",
-  description:
-    "Start the existing Marketplace installation workflow in the current workspace at a required folder under /workspace. Installation is asynchronous and never overwrites differing files. Omit version to use the existing latest-release resolution.",
   requiredPermissions: ["install"],
   getResource: (input) => ({
     listingId: input.listingId,
     installationRoot: input.installationRoot,
   }),
-  inputSchema: packagesInstallInputSchema,
-  outputSchema: packagesInstallResultSchema,
   execute: async (input, context: PackagesToolContext) =>
     await getPackagesRuntime(context).install(input),
   adapters: {
@@ -84,14 +77,10 @@ const packagesInstallTool = defineBackofficeRuntimeTool({
 });
 
 const packagesListTool = defineBackofficeRuntimeTool({
-  id: "packages.ls",
+  ...backofficeApiOperationToolFields("packages.ls"),
   namespace: "packages",
   name: "ls",
-  description:
-    "List successful package installations recorded in /workspace/marketplace-lock.json for the current workspace. A missing lock is empty; malformed locks fail without being modified.",
   requiredPermissions: ["read"],
-  inputSchema: z.strictObject({}),
-  outputSchema: marketplaceLockSchema,
   execute: async (_input, context: PackagesToolContext) => await getPackagesRuntime(context).ls(),
   adapters: {
     bash: {

@@ -1,9 +1,9 @@
+import { backofficeUserScopeSchema } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import type { ProjectConnectorFragmentConfig } from "@fragno-dev/project-connector-fragment/definition";
 import { DurableObject, RpcTarget } from "cloudflare:workers";
 
 import type { BackofficeRuntimeEnv } from "@/backoffice-runtime/backoffice-runtime-env";
-import { backofficeUserScopeSchema } from "@/backoffice-runtime/context-schema";
 import { createBackofficeFragmentHttpTransport } from "@/backoffice-runtime/fragment-http-transport";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import {

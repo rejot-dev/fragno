@@ -3,6 +3,7 @@ import { z } from "zod";
 import { defineCliArgsParser } from "@/fragno/runtime-tools/bash-cli";
 
 import {
+  backofficeApiOperationToolFields,
   defineBackofficeRuntimeTool,
   defineBackofficeRuntimeToolFamily,
   type BackofficeToolContext,
@@ -156,61 +157,6 @@ type AutomationWorkflowToolContext = BackofficeToolContext<{
   workflow?: AutomationWorkflowRuntime;
 }>;
 
-const workflowInstanceStatusSchema = z.object({
-  status: z.enum(["active", "paused", "errored", "terminated", "complete", "waiting"]),
-  error: z.object({ name: z.string(), message: z.string() }).optional(),
-  output: z.unknown().optional(),
-});
-
-const workflowCreateInstanceResultSchema = z.object({
-  instanceId: z.string().trim().min(1),
-});
-
-const workflowListInstancesResultSchema = z.object({
-  instances: z.array(
-    z.object({
-      id: z.string().trim().min(1),
-      details: workflowInstanceStatusSchema,
-      createdAt: z.union([z.string(), z.date()]),
-    }),
-  ),
-  nextCursor: z.string().optional(),
-  hasNextPage: z.boolean(),
-});
-
-const workflowInstanceDetailsSchema = z.object({
-  id: z.string().trim().min(1),
-  details: workflowInstanceStatusSchema,
-  meta: z.object({
-    name: z.string().trim().min(1),
-    path: z.string().trim().min(1),
-    createdAt: z.union([z.string(), z.date()]),
-    updatedAt: z.union([z.string(), z.date()]),
-    startedAt: z.union([z.string(), z.date()]).nullable(),
-    completedAt: z.union([z.string(), z.date()]).nullable(),
-  }),
-});
-
-const workflowRetryFailedStepResultSchema = z.object({
-  accepted: z.literal(true),
-  instance: z.object({
-    id: z.string().trim().min(1),
-    details: workflowInstanceStatusSchema,
-  }),
-  retry: z.object({
-    stepKey: z.string().trim().min(1),
-    attempts: z.number(),
-    maxAttempts: z.number(),
-    scheduledAt: z.union([z.string(), z.date()]),
-  }),
-});
-
-const workflowHistorySchema = z.object({
-  steps: z.array(z.unknown()),
-  events: z.array(z.unknown()),
-  emissions: z.array(z.unknown()),
-});
-
 const defineAutomationWorkflowTool = <
   TInputSchema extends z.ZodType,
   TOutputSchema extends z.ZodType,
@@ -287,17 +233,10 @@ const parseWorkflowRetryFailedStepArgs = defineCliArgsParser<WorkflowRetryFailed
 );
 
 const workflowInstanceCreateTool = defineAutomationWorkflowTool({
-  id: "workflow.instances.create",
+  ...backofficeApiOperationToolFields("workflow.instances.create"),
   namespace: "workflow",
   name: "createInstance",
-  description: "Start a saved durable workflow from its source path.",
   requiredPermissions: ["modify"],
-  inputSchema: z.strictObject({
-    path: z.string().trim().min(1),
-    instanceId: z.string().trim().min(1),
-    payload: z.record(z.string(), z.unknown()).optional(),
-  }),
-  outputSchema: workflowCreateInstanceResultSchema,
   execute: async (input, context) =>
     await getAutomationWorkflowRuntime(context.runtimes.workflow).createInstance(input),
   reference: {
@@ -346,17 +285,10 @@ const workflowInstanceCreateTool = defineAutomationWorkflowTool({
 });
 
 const workflowInstanceSendEventTool = defineAutomationWorkflowTool({
-  id: "workflow.instances.send-event",
+  ...backofficeApiOperationToolFields("workflow.instances.send-event"),
   namespace: "workflow",
   name: "sendEvent",
-  description: "Send an event to a durable workflow instance.",
   requiredPermissions: ["modify"],
-  inputSchema: z.strictObject({
-    instanceId: z.string().trim().min(1),
-    type: z.string().trim().min(1),
-    payload: z.unknown().optional(),
-  }),
-  outputSchema: z.strictObject({ accepted: z.literal(true) }),
   execute: async (input, context) =>
     await getAutomationWorkflowRuntime(context.runtimes.workflow).sendEvent(input),
   reference: { codemode: { description: "Send an event to a waiting durable workflow instance." } },
@@ -399,16 +331,10 @@ const workflowInstanceSendEventTool = defineAutomationWorkflowTool({
 });
 
 const workflowRetryFailedStepTool = defineAutomationWorkflowTool({
-  id: "workflow.instances.retry-failed-step",
+  ...backofficeApiOperationToolFields("workflow.instances.retry-failed-step"),
   namespace: "workflow",
   name: "retryFailedStep",
-  description: "Retry the failed top-level step of an errored durable workflow instance.",
   requiredPermissions: ["modify"],
-  inputSchema: z.strictObject({
-    instanceId: z.string().trim().min(1),
-    delayMs: z.number().int().nonnegative().optional(),
-  }),
-  outputSchema: workflowRetryFailedStepResultSchema,
   execute: async (input, context) => {
     return await getAutomationWorkflowRuntime(context.runtimes.workflow).retryFailedStep(input);
   },
@@ -448,17 +374,10 @@ const workflowRetryFailedStepTool = defineAutomationWorkflowTool({
 });
 
 const workflowListInstancesTool = defineAutomationWorkflowTool({
-  id: "workflow.instances.list",
+  ...backofficeApiOperationToolFields("workflow.instances.list"),
   namespace: "workflow",
   name: "listInstances",
-  description: "List durable saved-workflow instances.",
   requiredPermissions: ["read"],
-  inputSchema: z.strictObject({
-    status: workflowInstanceStatusSchema.shape.status.optional(),
-    pageSize: z.number().int().positive().optional(),
-    cursor: z.string().trim().min(1).optional(),
-  }),
-  outputSchema: workflowListInstancesResultSchema,
   execute: async (input, context) => {
     return await getAutomationWorkflowRuntime(context.runtimes.workflow).listInstances(input);
   },
@@ -499,15 +418,10 @@ const workflowListInstancesTool = defineAutomationWorkflowTool({
 });
 
 const workflowGetInstanceTool = defineAutomationWorkflowTool({
-  id: "workflow.instances.get",
+  ...backofficeApiOperationToolFields("workflow.instances.get"),
   namespace: "workflow",
   name: "getInstance",
-  description: "Get durable workflow instance details.",
   requiredPermissions: ["read"],
-  inputSchema: z.strictObject({
-    instanceId: z.string().trim().min(1),
-  }),
-  outputSchema: workflowInstanceDetailsSchema,
   execute: async (input, context) => {
     return await getAutomationWorkflowRuntime(context.runtimes.workflow).getInstance(input);
   },
@@ -537,15 +451,10 @@ const workflowGetInstanceTool = defineAutomationWorkflowTool({
 });
 
 const workflowHistoryTool = defineAutomationWorkflowTool({
-  id: "workflow.instances.history",
+  ...backofficeApiOperationToolFields("workflow.instances.history"),
   namespace: "workflow",
   name: "getHistory",
-  description: "Get durable workflow step, event, and emission history.",
   requiredPermissions: ["read"],
-  inputSchema: z.strictObject({
-    instanceId: z.string().trim().min(1),
-  }),
-  outputSchema: workflowHistorySchema,
   execute: async (input, context) => {
     return await getAutomationWorkflowRuntime(context.runtimes.workflow).getHistory(input);
   },

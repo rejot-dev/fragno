@@ -3,7 +3,7 @@ import type {
   AutomationRouteDefinition,
   AutomationRouteTrigger,
   AutomationStartWorkflowAction,
-} from "./routing";
+} from "@fragno-dev/backoffice-api/v0/automation";
 
 /** The route shape persisted before route-scoped authority grants were introduced. */
 type LegacyAutomationStartWorkflowAction = Omit<AutomationStartWorkflowAction, "authority"> & {

@@ -1,5 +1,7 @@
-import type { AutomationForwardEventAction } from "../routing";
-import type { AutomationRouteCreateInput } from "../routing-schemas";
+import type {
+  AutomationForwardEventAction,
+  AutomationRouteCreateInput,
+} from "@fragno-dev/backoffice-api/v0/automation";
 
 type AutomationStartWorkflowInput = Extract<
   AutomationRouteCreateInput["action"],

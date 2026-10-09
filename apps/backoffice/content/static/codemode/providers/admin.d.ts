@@ -347,6 +347,13 @@ type BackofficePermissionRequirement =
       namespace: "workflow";
       permission: "read";
     };
+type BackofficeApp = {
+  id: string;
+  oauthClientId: string;
+  requestedPermissions: BackofficePermissionRequirement[];
+  /** ISO 8601 datetime string. */
+  createdAt: string;
+};
 type BackofficeOAuthClientCreateInput = {
   name: string;
   redirectUris: string[];
@@ -469,13 +476,7 @@ type AdminAppsListInput = {
   cursor?: string | null;
 };
 type AdminAppsListOutput = {
-  apps: {
-    id: string;
-    oauthClientId: string;
-    requestedPermissions: BackofficePermissionRequirement[];
-    /** ISO 8601 datetime string. */
-    createdAt: string;
-  }[];
+  apps: BackofficeApp[];
   nextCursor: string | null;
   hasNextPage: boolean;
 };

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
-import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 
 const { requireBackofficePrincipalMock } = vi.hoisted(() => ({
   requireBackofficePrincipalMock: vi.fn(),

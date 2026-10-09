@@ -1,7 +1,8 @@
 import { assert, describe, expect, test, vi } from "vitest";
 
+import type { PreparedUploadedFileReference } from "@fragno-dev/backoffice-api/v0/upload";
+
 import type { FetchObject } from "@/backoffice-runtime/object-registry";
-import type { PreparedUploadedFileReference } from "@/fragno/prepared-upload";
 
 import { createUploadRuntime } from "./upload-runtime";
 

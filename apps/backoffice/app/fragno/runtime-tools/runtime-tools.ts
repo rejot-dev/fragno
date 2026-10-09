@@ -1,12 +1,17 @@
+import { backofficeApiV0 } from "@fragno-dev/backoffice-api/v0";
+import {
+  isBackofficePermissionRequirement,
+  type BackofficePermission,
+  type BackofficePermissionNamespace,
+  type BackofficePermissionRequirement,
+} from "@fragno-dev/backoffice-api/v0/shared/permissions";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { ToolProvider } from "@fragno-dev/codemode/runtime-api";
 import { defineCommand } from "just-bash";
 import type { z } from "zod";
 
 import { unrestrictedBackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
-import type {
-  BackofficeContextScope,
-  BackofficeExecutionContext,
-} from "@/backoffice-runtime/context";
+import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import {
   BackofficeForbiddenError,
   BackofficeKernel,
@@ -14,12 +19,6 @@ import {
   noopBackofficeKernelObserver,
   type BackofficeForbiddenErrorDetails,
 } from "@/backoffice-runtime/kernel";
-import {
-  isBackofficePermissionRequirement,
-  type BackofficePermission,
-  type BackofficePermissionNamespace,
-  type BackofficePermissionRequirement,
-} from "@/backoffice-runtime/permissions";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 import type { BackofficeCapabilityId } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 import type {
@@ -158,7 +157,8 @@ export type BackofficeRuntimeTool<
   outputSchema: TOutputSchema;
   /** Secret-bearing output is returned to the caller but omitted from tool-call records. */
   resultLogging: "summary" | "redacted";
-  execute(input: z.output<TInputSchema>, context: TContext): Promise<z.output<TOutputSchema>>;
+  /** Returns the output schema's input; callers receive it parsed, e.g. with dates as ISO strings. */
+  execute(input: z.output<TInputSchema>, context: TContext): Promise<z.input<TOutputSchema>>;
   adapters?: BackofficeRuntimeToolAdapters<TInputSchema, TOutputSchema, TContext, TBashInput>;
   reference?: BackofficeRuntimeToolReferenceHints;
 };
@@ -172,6 +172,24 @@ export type BackofficeRuntimeToolFamily = {
   hidden?: boolean;
   isAvailable?: (context: BackofficeToolContext) => boolean;
 };
+
+type BackofficeApiOperations = typeof backofficeApiV0.operations;
+
+/**
+ * Tools that are API operations take their id, description, and schemas from the current API
+ * version, so Bash, Codemode, and HTTP callers share one contract.
+ */
+export function backofficeApiOperationToolFields<TId extends keyof BackofficeApiOperations>(
+  id: TId,
+): {
+  id: TId;
+  description: string;
+  inputSchema: BackofficeApiOperations[TId]["input"];
+  outputSchema: BackofficeApiOperations[TId]["output"];
+} {
+  const { description, input, output } = backofficeApiV0.operations[id];
+  return { id, description, inputSchema: input, outputSchema: output };
+}
 
 export function defineBackofficeRuntimeTool<
   TInputSchema extends z.ZodType,

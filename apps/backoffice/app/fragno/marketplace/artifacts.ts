@@ -1,8 +1,12 @@
+import {
+  marketplaceListingIdSchema,
+  marketplaceVersionSchema,
+} from "@fragno-dev/backoffice-api/v0/marketplace";
+
 import type { UploadFileTreeRecord } from "@/file-collection/create-upload-file-tree";
 import { bytesToHex } from "@/lib/crypto";
 
 import type { MarketplaceStaticEntry } from "./contracts";
-import { marketplaceListingIdSchema, marketplaceVersionSchema } from "./contracts";
 
 const TEXT_ENCODER = new TextEncoder();
 

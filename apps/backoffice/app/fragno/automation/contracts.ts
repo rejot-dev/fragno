@@ -1,4 +1,7 @@
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
+import type { AutomationExternalEntityRef } from "@fragno-dev/backoffice-api/v0/automation";
+import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+
 import {
   AUTOMATION_SOURCES,
   AUTOMATION_SOURCE_EVENT_TYPES,
@@ -8,12 +11,8 @@ import type {
   AutomationSource,
 } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 
-import type { AutomationActors, AutomationExternalEntityRef } from "./actors";
-
 export { AUTOMATION_SOURCES, AUTOMATION_SOURCE_EVENT_TYPES };
 export type { AutomationEventTypeForSource, AutomationSource };
-
-export type AutomationEventPayload = Record<string, unknown>;
 
 export type AutomationEventIdentity = {
   source: string;
@@ -35,24 +34,6 @@ export type AutomationExternalEntityDefinition<
   TType extends string = string,
 > = AutomationEntityDefinition<"external", TType> & {
   source: TSource;
-};
-
-export type AutomationEventSubject = {
-  orgId?: string;
-  userId?: string;
-  [key: string]: unknown;
-};
-
-export type AutomationEvent = {
-  id: string;
-  scope: BackofficeContextScope;
-  scopeRestriction: BackofficeContextScope | null;
-  source: string;
-  eventType: string;
-  occurredAt: string;
-  payload: AutomationEventPayload;
-  actors: AutomationActors;
-  subject?: AutomationEventSubject | null;
 };
 
 export function getAutomationEventIdentity(

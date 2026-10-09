@@ -11,6 +11,7 @@ import {
 } from "@/fragno/runtime-tools/runtime-errors";
 
 import {
+  backofficeApiOperationToolFields,
   defineBackofficeRuntimeTool,
   defineBackofficeRuntimeToolFamily,
   type BackofficeToolContext,
@@ -79,39 +80,6 @@ type TelegramFileDownloadBashArgs = TelegramFileDownloadArgs & {
 };
 
 type TelegramToolContext = BackofficeToolContext<{ telegram?: TelegramRuntime }>;
-
-const fileGetInputSchema = z.object({ fileId: z.string().trim().min(1) });
-const fileDownloadInputSchema = z.object({ fileId: z.string().trim().min(1) });
-const fileMetadataOutputSchema = z.object({
-  fileId: z.string().trim().min(1),
-  fileUniqueId: z.string().nullable().optional(),
-  filePath: z.string().nullable().optional(),
-  fileSize: z.number().int().nullable().optional(),
-});
-const downloadedFileOutputSchema = z.object({
-  bytes: z.array(z.number().int().min(0).max(255)),
-  contentType: z.string().optional(),
-});
-const sendMessageInputSchema = z.object({
-  chatId: z.string().trim().min(1),
-  text: z.string().trim().min(1),
-  parseMode: z.enum(["MarkdownV2", "Markdown", "HTML"]).optional(),
-  disableWebPagePreview: z.boolean().optional(),
-  replyToMessageId: z.number().int().optional(),
-});
-const sendActionInputSchema = z.object({
-  chatId: z.string().trim().min(1),
-  action: z.literal("typing"),
-});
-const editMessageInputSchema = z.object({
-  chatId: z.string().trim().min(1),
-  messageId: z.string().trim().min(1),
-  text: z.string().trim().min(1),
-  parseMode: z.enum(["MarkdownV2", "Markdown", "HTML"]).optional(),
-  disableWebPagePreview: z.boolean().optional(),
-});
-const queuedMessageOutputSchema = z.object({ ok: z.boolean(), queued: z.boolean() });
-const actionOutputSchema = z.object({ ok: z.boolean() });
 
 const getTelegramRuntime = (
   runtime: TelegramToolContext["runtimes"]["telegram"],
@@ -253,13 +221,10 @@ const readTelegramDownload = async (response: Response): Promise<TelegramDownloa
 
 export const telegramRuntimeTools = [
   defineBackofficeRuntimeTool({
-    id: "telegram.file.get",
+    ...backofficeApiOperationToolFields("telegram.file.get"),
     namespace: "telegram",
     name: "getFile",
-    description: "Resolve Telegram attachment metadata.",
     requiredPermissions: ["read"],
-    inputSchema: fileGetInputSchema,
-    outputSchema: fileMetadataOutputSchema,
     execute: async (input, context: TelegramToolContext) =>
       await getTelegramRuntime(context.runtimes.telegram).getFile(input),
     adapters: {
@@ -289,13 +254,10 @@ export const telegramRuntimeTools = [
     },
   }),
   defineBackofficeRuntimeTool({
-    id: "telegram.file.download",
+    ...backofficeApiOperationToolFields("telegram.file.download"),
     namespace: "telegram",
     name: "downloadFile",
-    description: "Download a Telegram file and return its bytes.",
     requiredPermissions: ["read"],
-    inputSchema: fileDownloadInputSchema,
-    outputSchema: downloadedFileOutputSchema,
     execute: async (input, context: TelegramToolContext) =>
       await readTelegramDownload(
         await getTelegramRuntime(context.runtimes.telegram).downloadFile(input),
@@ -353,13 +315,10 @@ export const telegramRuntimeTools = [
     },
   }),
   defineBackofficeRuntimeTool({
-    id: "telegram.chat.send",
+    ...backofficeApiOperationToolFields("telegram.chat.send"),
     namespace: "telegram",
     name: "sendMessage",
-    description: "Queue a message to be sent to a Telegram chat.",
     requiredPermissions: ["send"],
-    inputSchema: sendMessageInputSchema,
-    outputSchema: queuedMessageOutputSchema,
     execute: async (input, context: TelegramToolContext) =>
       await getTelegramRuntime(context.runtimes.telegram).sendMessage(input),
     adapters: {
@@ -411,13 +370,10 @@ export const telegramRuntimeTools = [
     },
   }),
   defineBackofficeRuntimeTool({
-    id: "telegram.chat.actions",
+    ...backofficeApiOperationToolFields("telegram.chat.actions"),
     namespace: "telegram",
     name: "sendChatAction",
-    description: "Send a Telegram chat action.",
     requiredPermissions: ["send"],
-    inputSchema: sendActionInputSchema,
-    outputSchema: actionOutputSchema,
     execute: async (input, context: TelegramToolContext) =>
       await getTelegramRuntime(context.runtimes.telegram).sendChatAction(input),
     adapters: {
@@ -453,13 +409,10 @@ export const telegramRuntimeTools = [
     },
   }),
   defineBackofficeRuntimeTool({
-    id: "telegram.message.edit",
+    ...backofficeApiOperationToolFields("telegram.message.edit"),
     namespace: "telegram",
     name: "editMessage",
-    description: "Queue an edit of an existing Telegram message.",
     requiredPermissions: ["send"],
-    inputSchema: editMessageInputSchema,
-    outputSchema: queuedMessageOutputSchema,
     execute: async (input, context: TelegramToolContext) =>
       await getTelegramRuntime(context.runtimes.telegram).editMessage(input),
     adapters: {

@@ -1,18 +1,16 @@
-import { defineWorkflow, NonRetryableError } from "@fragno-dev/workflows/workflow";
-import { z } from "zod";
-
-import {
-  createBackofficeSystemExecution,
-  type BackofficeContextScope,
-} from "@/backoffice-runtime/context";
-import { isBackofficeForbiddenError } from "@/backoffice-runtime/kernel";
-import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
-import { marketplaceArtifactUploadName } from "@/fragno/marketplace/artifacts";
 import {
   marketplaceListingIdSchema,
   marketplaceSlugSchema,
   marketplaceVersionSchema,
-} from "@/fragno/marketplace/contracts";
+} from "@fragno-dev/backoffice-api/v0/marketplace";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import { defineWorkflow, NonRetryableError } from "@fragno-dev/workflows/workflow";
+import { z } from "zod";
+
+import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
+import { isBackofficeForbiddenError } from "@/backoffice-runtime/kernel";
+import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
+import { marketplaceArtifactUploadName } from "@/fragno/marketplace/artifacts";
 import {
   marketplacePackagePublishRequestSchema,
   marketplacePackagePublishWorkflowInstanceId,

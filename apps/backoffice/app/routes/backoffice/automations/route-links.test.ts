@@ -1,6 +1,6 @@
 import { assert, describe, it } from "vitest";
 
-import type { AutomationRouteDefinition } from "@/fragno/automation/routing";
+import type { AutomationRouteDefinition } from "@fragno-dev/backoffice-api/v0/automation";
 
 import { automationEventCatalogLink, automationRouteScriptLink } from "./route-links";
 

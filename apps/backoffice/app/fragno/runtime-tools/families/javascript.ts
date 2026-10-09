@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { javaScriptBuildInputSchema } from "@fragno-dev/backoffice-api/v0/javascript";
 
 import {
   parseCliTokens,
@@ -7,6 +7,7 @@ import {
   type ParsedCliTokens,
 } from "@/fragno/runtime-tools/bash-cli";
 import {
+  backofficeApiOperationToolFields,
   defineBackofficeRuntimeTool,
   defineBackofficeRuntimeToolFamily,
   type BackofficeToolContext,
@@ -18,53 +19,6 @@ import type {
   JavaScriptRunFileOutput,
   JavaScriptRuntime,
 } from "./javascript-runtime";
-
-const javaScriptFileInputSchema = z.object({
-  path: z.string().trim().min(1),
-});
-const javaScriptBuildInputSchema = z.strictObject({
-  path: z.string().trim().min(1),
-  out: z.string().trim().min(1),
-});
-const javaScriptBuildOutputSchema = z.discriminatedUnion("status", [
-  z.strictObject({
-    status: z.literal("success"),
-    path: z.string(),
-    artifactPath: z.string(),
-    warnings: z.array(z.string()),
-  }),
-  z.strictObject({
-    status: z.literal("error"),
-    path: z.string(),
-    artifactPath: z.string(),
-    error: z.string(),
-  }),
-]);
-const javaScriptCheckDiagnosticSchema = z.object({
-  code: z.number().int(),
-  path: z.string().nullable(),
-  line: z.number().int().positive().nullable(),
-  column: z.number().int().positive().nullable(),
-  message: z.string(),
-});
-const javaScriptCheckOutputSchema = z.object({
-  path: z.string(),
-  valid: z.boolean(),
-  diagnostics: z.array(javaScriptCheckDiagnosticSchema),
-});
-const javaScriptRunOutputSchema = z.discriminatedUnion("status", [
-  z.object({
-    status: z.literal("success"),
-    path: z.string(),
-    logs: z.array(z.string()),
-  }),
-  z.object({
-    status: z.literal("error"),
-    path: z.string(),
-    error: z.string(),
-    logs: z.array(z.string()),
-  }),
-]);
 
 type JavaScriptToolContext = BackofficeToolContext<{
   javascript?: JavaScriptRuntime;
@@ -172,15 +126,11 @@ function formatJavaScriptBuildOutput(
 }
 
 const javaScriptBuildTool = defineBackofficeRuntimeTool({
-  id: "js.build",
+  ...backofficeApiOperationToolFields("js.build"),
   namespace: "js",
   name: "build",
   authorizationNamespace: "upload",
-  description:
-    "Compile a saved JavaScript ES module into a reusable JSON artifact under /workspace without executing or activating it. Consumers validate exports.",
   requiredPermissions: ["read", "modify"],
-  inputSchema: javaScriptBuildInputSchema,
-  outputSchema: javaScriptBuildOutputSchema,
   execute: async (input, context: JavaScriptToolContext) =>
     await getJavaScriptBuildFile(context)(input),
   adapters: {
@@ -239,15 +189,11 @@ export const javaScriptBuildToolFamily = defineBackofficeRuntimeToolFamily({
 });
 
 const javaScriptCheckTool = defineBackofficeRuntimeTool({
-  id: "js.check",
+  ...backofficeApiOperationToolFields("js.check"),
   namespace: "js",
   name: "check",
   authorizationNamespace: "upload",
-  description:
-    "Type check a standalone JavaScript file under /static or /workspace against static declarations.",
   requiredPermissions: ["read"],
-  inputSchema: javaScriptFileInputSchema,
-  outputSchema: javaScriptCheckOutputSchema,
   execute: async (input, context: JavaScriptToolContext) =>
     await getJavaScriptCheckFile(context)(input),
   adapters: {
@@ -276,15 +222,11 @@ const javaScriptCheckTool = defineBackofficeRuntimeTool({
 });
 
 const javaScriptRunTool = defineBackofficeRuntimeTool({
-  id: "js.run",
+  ...backofficeApiOperationToolFields("js.run"),
   namespace: "js",
   name: "run",
   authorizationNamespace: "upload",
-  description:
-    "Run top-level statements in a saved .js source file or a built .json module artifact under /static or /workspace. Ignores exports; artifacts run without compilation and startup errors are returned.",
   requiredPermissions: ["read"],
-  inputSchema: javaScriptFileInputSchema,
-  outputSchema: javaScriptRunOutputSchema,
   execute: async (input, context: JavaScriptToolContext) =>
     await getJavaScriptRunFile(context)(input, context),
   adapters: {

@@ -1,3 +1,4 @@
+import type { PreparedUploadedFileReference } from "@fragno-dev/backoffice-api/v0/upload";
 import { Button } from "@fragno-private/design-system/button";
 import { Icon } from "@fragno-private/design-system/icon";
 import { useEffect, useId, useRef, useState } from "react";
@@ -5,8 +6,6 @@ import { useEffect, useId, useRef, useState } from "react";
 import type { UploadProgress } from "@fragno-dev/upload";
 
 import { useBoundProp, type ComponentFn } from "@json-render/react";
-
-import type { PreparedUploadedFileReference } from "@/fragno/prepared-upload";
 
 import type { backofficeUiCatalog } from "../catalog";
 import { useWorkflowUiInteractionHost } from "../workflow-interaction";

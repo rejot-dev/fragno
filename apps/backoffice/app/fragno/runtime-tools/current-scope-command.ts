@@ -1,6 +1,5 @@
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { defineCommand } from "just-bash";
-
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 
 import type { AutomationCommandHelp } from "./automation-types";
 import {

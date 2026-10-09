@@ -1,3 +1,4 @@
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import type { ProjectConnectorFragmentConfig } from "@fragno-dev/project-connector-fragment/definition";
 
 import { createProjectConnectorFragment } from "@fragno-dev/project-connector-fragment";
@@ -8,7 +9,6 @@ import {
 } from "@/backoffice-runtime/fragment-http-authorization";
 import type { BackofficeFragmentRuntimeOptions } from "@/backoffice-runtime/fragment-runtime";
 import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
-import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 
 /** Mounts Connector on a user-owned scoped database adapter. */
 export function createProjectConnectorServer(

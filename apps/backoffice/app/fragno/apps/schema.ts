@@ -1,6 +1,5 @@
+import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import { column, idColumn, schema, type Column } from "@fragno-dev/db/schema";
-
-import type { BackofficePermissionRequirement } from "@/backoffice-runtime/permissions";
 
 /** The singleton registry owns registrations only; organization grants live in separate objects. */
 export const appsFragmentSchema = schema("apps", (s) =>

@@ -1,5 +1,6 @@
 import "@fragno-private/design-system/components.css";
 
+import type { AppInstallationResourceScope } from "@fragno-dev/backoffice-api/v0/apps";
 import { AuthorizationScreen } from "@fragno-private/design-system/authorization-screen";
 import { Button } from "@fragno-private/design-system/button";
 import { useState } from "react";
@@ -13,7 +14,6 @@ import {
   useSubmit,
 } from "react-router";
 
-import type { AppInstallationResourceScope } from "@/fragno/app-installations/contracts";
 import { requireBackofficeBrowserSession } from "@/fragno/auth/browser-session.server";
 
 import type { Route } from "./+types/app-install";

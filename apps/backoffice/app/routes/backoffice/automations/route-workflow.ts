@@ -1,5 +1,6 @@
+import type { AutomationRouteDefinition } from "@fragno-dev/backoffice-api/v0/automation";
+
 import { CODEMODE_WORKFLOW } from "@/fragno/automation/engine/codemode-invocation";
-import type { AutomationRouteDefinition } from "@/fragno/automation/routing";
 
 export type AutomationRouteWorkflowIdentity = {
   workflowName: string;

@@ -1,6 +1,7 @@
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+
 import { decodeCursor, type Cursor } from "@fragno-dev/db";
 
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 
 import { BILLING_TRACKER_MAX_PAGE_SIZE } from "./contracts";

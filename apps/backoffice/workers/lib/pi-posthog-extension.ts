@@ -1,8 +1,7 @@
+import type { PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
 import type { PostHog } from "posthog-node";
 
 import { defineExtension, GenerationTask, hook } from "@earendil-works/pi-durable";
-
-import type { PiAgentConfig } from "@/fragno/pi-manager/pi-agent-contract";
 
 async function generationEventUuid(key: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(key));

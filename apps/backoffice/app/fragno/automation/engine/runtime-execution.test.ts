@@ -1,12 +1,13 @@
 import { describe, expect, test } from "vitest";
 
+import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
+
 import {
   appendAutomationDelegate,
   AutomationAuthorityModeError,
   automationRouteAuthority,
   createAutomationRuntimeExecution,
 } from "../authority";
-import type { AutomationEvent } from "../contracts";
 
 const event = {
   id: "event-1",

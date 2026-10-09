@@ -1,6 +1,6 @@
+import { appInstallationExternalAccountSchema } from "@fragno-dev/backoffice-api/v0/apps";
 import { z } from "zod";
 
-import { appInstallationExternalAccountSchema } from "@/fragno/app-installations/contracts";
 import { verifyAppInstallationCode } from "@/fragno/auth/token-lifecycle";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 

@@ -1,5 +1,6 @@
 import { defineRequestState } from "@better-auth/core/context";
 import { decodeBasicCredentials } from "@better-auth/core/oauth2";
+import type { OAuthConsentPage } from "@fragno-dev/backoffice-api/v0/account";
 import type { AuthContext, BetterAuthPlugin } from "better-auth";
 import {
   APIError,
@@ -27,7 +28,6 @@ import {
   backofficeOAuthConsentRequestSchema,
   backofficeOAuthConsentListInputSchema,
   backofficeOAuthConsentRevokeInputSchema,
-  type BackofficeOAuthConsentPage,
 } from "@/fragno/auth/oauth-consent";
 
 type StoredOAuthConsent = {
@@ -111,7 +111,7 @@ export async function enforceBackofficeOAuthTokenResponseConsent(
 export async function listBackofficeOAuthConsentPage(
   adapter: AuthContext["adapter"],
   input: { userId: string; pageSize: number; cursor: string | null },
-): Promise<BackofficeOAuthConsentPage> {
+): Promise<OAuthConsentPage> {
   const { userId, pageSize, cursor } = input;
   let afterId: string | null = null;
   if (cursor !== null) {

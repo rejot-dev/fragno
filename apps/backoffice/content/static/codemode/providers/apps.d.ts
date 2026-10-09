@@ -15,6 +15,13 @@ type AppsCodemodeProvider = {
 };
 declare const apps: AppsCodemodeProvider;
 
+type BackofficeApp = {
+  id: string;
+  oauthClientId: string;
+  requestedPermissions: BackofficePermissionRequirement[];
+  /** ISO 8601 datetime string. */
+  createdAt: string;
+};
 type BackofficePermissionRequirement =
   | {
       namespace: "account";
@@ -300,48 +307,24 @@ type BackofficePermissionRequirement =
       namespace: "workflow";
       permission: "read";
     };
-type AppsGetInput = {
-  appId: string;
-};
-type AppsGetOutput = {
-  id: string;
-  oauthClientId: string;
-  requestedPermissions: BackofficePermissionRequirement[];
-  /** ISO 8601 datetime string. */
-  createdAt: string;
-} | null;
-type AppsInstallInput = {
-  appId: string;
-  grantedPermissions: BackofficePermissionRequirement[];
-  resourceScope?:
-    | {
-        kind: "organization";
-      }
-    | {
-        kind: "projects";
-        projectIds: string[];
-      };
-};
-type AppsInstallOutput = {
+type AppInstallationResourceScope =
+  | {
+      kind: "organization";
+    }
+  | {
+      kind: "projects";
+      projectIds: string[];
+    };
+type BackofficeAppInstallationMutationResult = {
   installationId: string;
   changed: boolean;
 };
-type AppsGetInstallationInput = {
-  appId: string;
-};
-type AppsGetInstallationOutput = {
+type BackofficeAppInstallation = {
   id: string;
   appId: string;
   organizationId: string;
   grantedPermissions: BackofficePermissionRequirement[];
-  resourceScope:
-    | {
-        kind: "organization";
-      }
-    | {
-        kind: "projects";
-        projectIds: unknown;
-      };
+  resourceScope: AppInstallationResourceScope;
   externalAccount: {
     id: string;
     label: string;
@@ -353,60 +336,38 @@ type AppsGetInstallationOutput = {
   createdAt: string;
   /** ISO 8601 datetime string. */
   updatedAt: string;
-} | null;
+};
+type BackofficeAppInstallationPage = {
+  installations: BackofficeAppInstallation[];
+  nextCursor: string | null;
+  hasNextPage: boolean;
+};
+type AppsGetInput = {
+  appId: string;
+};
+type AppsGetOutput = BackofficeApp | null;
+type AppsInstallInput = {
+  appId: string;
+  grantedPermissions: BackofficePermissionRequirement[];
+  resourceScope?: AppInstallationResourceScope;
+};
+type AppsInstallOutput = BackofficeAppInstallationMutationResult;
+type AppsGetInstallationInput = {
+  appId: string;
+};
+type AppsGetInstallationOutput = BackofficeAppInstallation | null;
 type AppsListInstallationsInput = {
   pageSize?: number;
   cursor?: string | null;
 };
-type AppsListInstallationsOutput = {
-  installations: {
-    id: string;
-    appId: string;
-    organizationId: string;
-    grantedPermissions: BackofficePermissionRequirement[];
-    resourceScope:
-      | {
-          kind: "organization";
-        }
-      | {
-          kind: "projects";
-          projectIds: unknown;
-        };
-    externalAccount: {
-      id: string;
-      label: string;
-    } | null;
-    installedByUserId: string;
-    status: "active" | "uninstalled";
-    activation: number;
-    /** ISO 8601 datetime string. */
-    createdAt: string;
-    /** ISO 8601 datetime string. */
-    updatedAt: string;
-  }[];
-  nextCursor: string | null;
-  hasNextPage: boolean;
-};
+type AppsListInstallationsOutput = BackofficeAppInstallationPage;
 type AppsUpdateInstallationInput = {
   appId: string;
   grantedPermissions: BackofficePermissionRequirement[];
-  resourceScope:
-    | {
-        kind: "organization";
-      }
-    | {
-        kind: "projects";
-        projectIds: string[];
-      };
+  resourceScope: AppInstallationResourceScope;
 };
-type AppsUpdateInstallationOutput = {
-  installationId: string;
-  changed: boolean;
-};
+type AppsUpdateInstallationOutput = BackofficeAppInstallationMutationResult;
 type AppsUninstallInput = {
   appId: string;
 };
-type AppsUninstallOutput = {
-  installationId: string;
-  changed: boolean;
-};
+type AppsUninstallOutput = BackofficeAppInstallationMutationResult;

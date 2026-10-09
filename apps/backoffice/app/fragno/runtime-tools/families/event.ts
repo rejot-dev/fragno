@@ -1,12 +1,11 @@
-import { z } from "zod";
-
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
-import { backofficeContextScopeSchema } from "@/backoffice-runtime/context-schema";
+import type { EventListInput } from "@fragno-dev/backoffice-api/v0/events";
 import {
-  automationEventListInputSchema,
   automationEventListResultSchema,
   type AutomationEventRecord,
-} from "@/fragno/automation/events";
+} from "@fragno-dev/backoffice-api/v0/events";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import { z } from "zod";
+
 import type { EventEmitArgs } from "@/fragno/runtime-tools/automation-types";
 import {
   defineCliArgsParser,
@@ -15,6 +14,7 @@ import {
 } from "@/fragno/runtime-tools/bash-cli";
 
 import {
+  backofficeApiOperationToolFields,
   defineBackofficeRuntimeTool,
   defineBackofficeRuntimeToolFamily,
   type BackofficeToolContext,
@@ -35,28 +35,7 @@ export type EventRuntime = {
   getEvent(input: { id: string }): Promise<AutomationEventRecord | null>;
 };
 
-const eventListInputSchema = automationEventListInputSchema.extend({
-  cursor: z.string().trim().min(1).optional(),
-});
-
-type EventListInput = z.infer<typeof eventListInputSchema>;
 type EventToolContext = BackofficeToolContext<{ event?: EventRuntime }>;
-
-const eventEmitInputSchema = z.strictObject({
-  eventType: z.string().trim().min(1),
-  source: z.string().trim().min(1).optional(),
-  subjectUserId: z.string().trim().min(1).optional(),
-  payload: z.record(z.string(), z.unknown()).optional(),
-  targetScope: backofficeContextScopeSchema.optional(),
-});
-
-const eventEmitOutputSchema = z.object({
-  accepted: z.boolean(),
-  eventId: z.string().trim().min(1),
-  scope: backofficeContextScopeSchema,
-  source: z.string().trim().min(1),
-  eventType: z.string().trim().min(1),
-});
 
 const getEventRuntime = (runtime: EventToolContext["runtimes"]["event"]): EventRuntime => {
   if (!runtime) {
@@ -74,13 +53,10 @@ const parseEventFireArgs = defineCliArgsParser<EventEmitArgs>("events.fire", {
 });
 
 const fireEventTool = defineBackofficeRuntimeTool({
-  id: "events.fire",
+  ...backofficeApiOperationToolFields("events.fire"),
   namespace: "events",
   name: "fire",
-  description: "Fire an automation event for the current context or a selected target scope.",
   requiredPermissions: ["emit"],
-  inputSchema: eventEmitInputSchema,
-  outputSchema: eventEmitOutputSchema,
   execute: async (input, context: EventToolContext) =>
     await getEventRuntime(context.runtimes.event).emitEvent(input),
   adapters: {
@@ -137,13 +113,10 @@ function readEventOutputOptions(args: string[]) {
 }
 
 const listEventsTool = defineBackofficeRuntimeTool({
-  id: "events.list",
+  ...backofficeApiOperationToolFields("events.list"),
   namespace: "events",
   name: "list",
-  description: "List stored automation events in the current scope, newest first.",
   requiredPermissions: ["read"],
-  inputSchema: eventListInputSchema,
-  outputSchema: automationEventListResultSchema,
   execute: async (input, context: EventToolContext) =>
     await getEventRuntime(context.runtimes.event).listEvents(input),
   adapters: {
@@ -198,13 +171,10 @@ const listEventsTool = defineBackofficeRuntimeTool({
 });
 
 const getEventTool = defineBackofficeRuntimeTool({
-  id: "events.get",
+  ...backofficeApiOperationToolFields("events.get"),
   namespace: "events",
   name: "get",
-  description: "Get one stored automation event by id in the current scope.",
   requiredPermissions: ["read"],
-  inputSchema: z.object({ id: z.string().trim().min(1) }),
-  outputSchema: automationEventListResultSchema.shape.events.element.nullable(),
   execute: async (input, context: EventToolContext) =>
     await getEventRuntime(context.runtimes.event).getEvent(input),
   adapters: {

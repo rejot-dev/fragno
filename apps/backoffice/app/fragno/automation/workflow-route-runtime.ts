@@ -1,3 +1,7 @@
+import {
+  backofficePermissionRequirementSchema,
+  type BackofficePermissionRequirement,
+} from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import { z } from "zod";
 
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
@@ -5,11 +9,7 @@ import type {
   AutomationsObject,
   BackofficeObjectHandle,
 } from "@/backoffice-runtime/object-registry";
-import {
-  BACKOFFICE_REQUIRED_PERMISSION_HEADER,
-  backofficePermissionRequirementSchema,
-  type BackofficePermissionRequirement,
-} from "@/backoffice-runtime/permissions";
+import { BACKOFFICE_REQUIRED_PERMISSION_HEADER } from "@/backoffice-runtime/required-permission-header";
 
 import type {
   AutomationWorkflowRuntime,

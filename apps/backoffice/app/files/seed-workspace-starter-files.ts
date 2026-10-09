@@ -1,4 +1,5 @@
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import { createStaticFileCollection } from "@/file-collection/create-static-file-collection";
 import { createBackofficeStateBackend } from "@/fragno/codemode/state-backend";

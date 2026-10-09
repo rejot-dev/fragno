@@ -1,23 +1,16 @@
-import { z } from "zod";
+import type {
+  AccountInvitationRecord,
+  AccountProfile,
+  OAuthConsentPage,
+} from "@fragno-dev/backoffice-api/v0/account";
+import type { OrganizationMembershipRecord } from "@fragno-dev/backoffice-api/v0/organization";
+import type { DirectoryPageInput } from "@fragno-dev/backoffice-api/v0/shared/pagination";
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 
-import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
-import {
-  accountInvitationRecordSchema,
-  accountProfileSchema,
-  directoryPageInputSchema,
-  organizationMembershipRecordSchema,
-  type AccountInvitationRecord,
-  type AccountProfile,
-  type DirectoryPageInput,
-  type OrganizationMembershipRecord,
-} from "@/fragno/auth/directory-records";
-import {
-  backofficeOAuthConsentPageSchema,
-  type BackofficeOAuthConsentPage,
-} from "@/fragno/auth/oauth-consent";
 import { defineCliArgsParser, defineNoInputArgsParser } from "@/fragno/runtime-tools/bash-cli";
 
 import {
+  backofficeApiOperationToolFields,
   defineBackofficeRuntimeTool,
   defineBackofficeRuntimeToolFamily,
   type BackofficeToolContext,
@@ -30,7 +23,7 @@ export type AccountRuntime = {
   listOrganizations(): Promise<OrganizationMembershipRecord[]>;
   listInvitations(): Promise<AccountInvitationRecord[]>;
   acceptInvitation(input: { invitationId: string }): Promise<OrganizationMembershipRecord>;
-  listApplications(input: DirectoryPageInput): Promise<BackofficeOAuthConsentPage>;
+  listApplications(input: DirectoryPageInput): Promise<OAuthConsentPage>;
 };
 
 type AccountToolContext = BackofficeToolContext<{ account?: AccountRuntime }>;
@@ -57,13 +50,10 @@ function formatMembershipText({ organization, roles }: OrganizationMembershipRec
 }
 
 const getProfileTool = defineBackofficeRuntimeTool({
-  id: "account.me",
+  ...backofficeApiOperationToolFields("account.me"),
   namespace: "account",
   name: "me",
-  description: "Read your own Backoffice account profile.",
   requiredPermissions: [BACKOFFICE_PERMISSION.account.read.permission],
-  inputSchema: z.void(),
-  outputSchema: accountProfileSchema,
   execute: async (_input, context: AccountToolContext) =>
     await getAccountRuntime(context.runtimes.account).getProfile(),
   adapters: {
@@ -84,13 +74,10 @@ const getProfileTool = defineBackofficeRuntimeTool({
 });
 
 const updateProfileTool = defineBackofficeRuntimeTool({
-  id: "account.profile.update",
+  ...backofficeApiOperationToolFields("account.profile.update"),
   namespace: "account",
   name: "profileUpdate",
-  description: "Change the display name on your own Backoffice account.",
   requiredPermissions: [BACKOFFICE_PERMISSION.account.manage.permission],
-  inputSchema: z.strictObject({ name: z.string().trim().min(1) }),
-  outputSchema: accountProfileSchema,
   execute: async (input, context: AccountToolContext) =>
     await getAccountRuntime(context.runtimes.account).updateProfile(input),
   adapters: {
@@ -120,13 +107,10 @@ const updateProfileTool = defineBackofficeRuntimeTool({
 });
 
 const listOrganizationsTool = defineBackofficeRuntimeTool({
-  id: "account.orgs.list",
+  ...backofficeApiOperationToolFields("account.orgs.list"),
   namespace: "account",
   name: "orgsList",
-  description: "List the organizations you belong to and your roles in each.",
   requiredPermissions: [BACKOFFICE_PERMISSION.account.read.permission],
-  inputSchema: z.void(),
-  outputSchema: z.strictObject({ organizations: z.array(organizationMembershipRecordSchema) }),
   execute: async (_input, context: AccountToolContext) => {
     const organizations = await getAccountRuntime(context.runtimes.account).listOrganizations();
     return { organizations };
@@ -158,13 +142,10 @@ const listOrganizationsTool = defineBackofficeRuntimeTool({
 });
 
 const listInvitationsTool = defineBackofficeRuntimeTool({
-  id: "account.invitations.list",
+  ...backofficeApiOperationToolFields("account.invitations.list"),
   namespace: "account",
   name: "invitationsList",
-  description: "List pending, unexpired organization invitations addressed to your email.",
   requiredPermissions: [BACKOFFICE_PERMISSION.account.read.permission],
-  inputSchema: z.void(),
-  outputSchema: z.strictObject({ invitations: z.array(accountInvitationRecordSchema) }),
   execute: async (_input, context: AccountToolContext) => {
     const invitations = await getAccountRuntime(context.runtimes.account).listInvitations();
     return { invitations };
@@ -202,13 +183,10 @@ const listInvitationsTool = defineBackofficeRuntimeTool({
 });
 
 const acceptInvitationTool = defineBackofficeRuntimeTool({
-  id: "account.invitations.accept",
+  ...backofficeApiOperationToolFields("account.invitations.accept"),
   namespace: "account",
   name: "invitationsAccept",
-  description: "Accept a pending organization invitation addressed to your email.",
   requiredPermissions: [BACKOFFICE_PERMISSION.account.manage.permission],
-  inputSchema: z.strictObject({ invitationId: z.string().trim().min(1) }),
-  outputSchema: organizationMembershipRecordSchema,
   execute: async (input, context: AccountToolContext) =>
     await getAccountRuntime(context.runtimes.account).acceptInvitation(input),
   adapters: {
@@ -238,14 +216,10 @@ const acceptInvitationTool = defineBackofficeRuntimeTool({
 });
 
 const listApplicationsTool = defineBackofficeRuntimeTool({
-  id: "account.applications.list",
+  ...backofficeApiOperationToolFields("account.applications.list"),
   namespace: "account",
   name: "applicationsList",
-  description:
-    "List OAuth applications you have authorized and their granted scopes, using cursor pagination. Never exposes tokens.",
   requiredPermissions: [BACKOFFICE_PERMISSION.account.read.permission],
-  inputSchema: directoryPageInputSchema,
-  outputSchema: backofficeOAuthConsentPageSchema,
   execute: async (input, context: AccountToolContext) =>
     await getAccountRuntime(context.runtimes.account).listApplications(input),
   adapters: {

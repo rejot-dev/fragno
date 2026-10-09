@@ -1,3 +1,19 @@
+import type {
+  AutomationEvent,
+  AutomationEventDefinition,
+  AutomationEventDefinitionCreateInput,
+  AutomationEventDefinitionUpdateInput,
+} from "@fragno-dev/backoffice-api/v0/events";
+import type {
+  MarketplaceIngestionRequestInput,
+  MarketplaceIngestionRestartResult,
+} from "@fragno-dev/backoffice-api/v0/marketplace";
+import { marketplaceIngestionRequestInputSchema } from "@fragno-dev/backoffice-api/v0/marketplace";
+import {
+  BACKOFFICE_PERMISSION,
+  type BackofficePermissionRequirement,
+} from "@fragno-dev/backoffice-api/v0/shared/permissions";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { InstanceStatus } from "@fragno-dev/workflows/workflow";
 import { DurableObject, RpcTarget } from "cloudflare:workers";
 
@@ -7,7 +23,6 @@ import {
   createBackofficeSystemExecution,
   backofficeExecutionContextSchema,
   backofficeExecutionScopeRestriction,
-  type BackofficeContextScope,
   type BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
 import {
@@ -24,23 +39,13 @@ import {
   type BackofficeActionRpcContext,
   type BackofficeRpcContext,
 } from "@/backoffice-runtime/object-registry";
-import {
-  BACKOFFICE_PERMISSION,
-  type BackofficePermissionRequirement,
-} from "@/backoffice-runtime/permissions";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { backofficeScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import type {
-  AutomationEvent,
-  AutomationEventDefinition,
-  AutomationEventDefinitionCreateInput,
-  AutomationEventDefinitionUpdateInput,
   AutomationFragmentConfig,
   AutomationIngestResult,
   AutomationProjectExecutionTarget,
-  MarketplaceIngestionRequestInput,
   MarketplaceIngestionRequestResult,
-  MarketplaceIngestionRestartResult,
   StarterAutomationRoutesSeedResult,
 } from "@/fragno/automation";
 import { BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY } from "@/fragno/automation/actors";
@@ -68,7 +73,6 @@ import {
 import {
   assertMarketplaceIngestionTargetAccessible,
   assertMarketplaceIngestionTargetBelongsToOrganization,
-  marketplaceIngestionRequestInputSchema,
   resolveMarketplaceIngestionArtifactVersion,
 } from "@/fragno/automation/marketplace-ingestions";
 import {

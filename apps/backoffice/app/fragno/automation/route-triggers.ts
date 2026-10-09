@@ -1,5 +1,5 @@
+import type { AutomationScheduleCadence } from "@fragno-dev/backoffice-api/v0/automation";
 import { Cron } from "croner";
-import { z } from "zod";
 
 export const AUTOMATION_SCHEDULE_SOURCE = "scheduler" as const;
 export const AUTOMATION_SCHEDULE_EVENT_TYPE = "schedule.triggered" as const;
@@ -20,20 +20,6 @@ export const isAutomationScheduleError = (
   cause: unknown,
 ): cause is Error & { readonly code: "SCHEDULE_CADENCE_INVALID" } =>
   cause instanceof AutomationScheduleError;
-
-export const automationScheduleCadenceSchema = z.discriminatedUnion("kind", [
-  z.object({
-    kind: z.literal("once"),
-    at: z.iso.datetime(),
-  }),
-  z.object({
-    kind: z.literal("cron"),
-    expression: z.string().trim().min(1),
-    timeZone: z.string().trim().min(1).default("UTC"),
-  }),
-]);
-
-export type AutomationScheduleCadence = z.infer<typeof automationScheduleCadenceSchema>;
 
 const validateTimeZone = (timeZone: string) => {
   try {

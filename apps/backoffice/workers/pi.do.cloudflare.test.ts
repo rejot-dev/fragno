@@ -4,6 +4,8 @@ import { describe, expect, test, assert } from "vitest";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { createModels } from "@earendil-works/pi-ai/models";
 import { fauxAssistantMessage, fauxProvider, fauxText } from "@earendil-works/pi-ai/providers/faux";
+import { piAgentConfigSchema, type PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { env } from "cloudflare:workers";
 
 import { createRegistry, Harness, type ConversationView } from "@earendil-works/pi-durable";
@@ -12,7 +14,6 @@ import {
   BACKOFFICE_SYSTEM_ACTORS,
   createBackofficeServiceExecution,
   createBackofficeSystemExecution,
-  type BackofficeContextScope,
 } from "@/backoffice-runtime/context";
 import { createAuthorizedBackofficeObjectRequest } from "@/backoffice-runtime/internal-object-request";
 import {
@@ -20,11 +21,7 @@ import {
   encodeBackofficeObjectAddress,
 } from "@/backoffice-runtime/object-registry";
 import { createCloudflareDurableObjectRuntimeServices } from "@/backoffice-runtime/runtime-services";
-import {
-  piAgentConfigSchema,
-  piAgentObjectName,
-  type PiAgentConfig,
-} from "@/fragno/pi-manager/pi-agent-contract";
+import { piAgentObjectName } from "@/fragno/pi-manager/pi-agent-contract";
 
 import { openPiSessionStore } from "./lib/pi-session-store";
 import { InMemoryPiObject, type Pi } from "./pi.do";

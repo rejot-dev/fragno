@@ -1,4 +1,6 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import type { PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 
 import type { Context } from "@earendil-works/chord";
 import {
@@ -11,9 +13,7 @@ import {
 
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
-import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
-import type { PiAgentConfig } from "@/fragno/pi-manager/pi-agent-contract";
 import { createPiManagerRuntime } from "@/fragno/pi-manager/pi-manager-runtime";
 import { buildBackofficePiSystemPrompt } from "@/fragno/pi/pi-agent-environment";
 import {
