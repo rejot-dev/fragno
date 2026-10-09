@@ -1,8 +1,8 @@
+import { backofficeScopePathSegment } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { RouterContextProvider } from "react-router";
 
 import {
   backofficeContextScopeFromSinglePathSegment,
-  backofficeContextScopeSinglePathSegment,
   isBackofficeScopeCodecError,
 } from "@/backoffice-runtime/scope-codec";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
@@ -42,7 +42,7 @@ export async function forwardScopedWorkflowsRequest({
   const suffix = params["*"] ? `/${params["*"]}` : "";
   const url = new URL(request.url);
   url.pathname = `/api/workflows${suffix}`;
-  url.searchParams.set("scope", backofficeContextScopeSinglePathSegment(scope));
+  url.searchParams.set("scope", backofficeScopePathSegment(scope));
 
   return await automationsObject.http.fetchAuthorized(new Request(url.toString(), request), {
     execution,

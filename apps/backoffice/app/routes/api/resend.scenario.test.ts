@@ -2,6 +2,7 @@ import { assert, expect, test, vi } from "vitest";
 
 import { createHmac } from "node:crypto";
 
+import { backofficeScopePathSegment } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 const workers = vi.hoisted(() => ({
@@ -12,7 +13,6 @@ const workers = vi.hoisted(() => ({
 vi.mock("cloudflare:workers", () => workers);
 
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
-import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import {
   defineBackofficeScenario,
   runBackofficeScenario,
@@ -45,7 +45,7 @@ async function callPublicResend(
     body: string;
   },
 ) {
-  const scopeSegment = backofficeContextScopeSinglePathSegment(input.scope);
+  const scopeSegment = backofficeScopePathSegment(input.scope);
   const url = new URL(`/api/resend/${input.scopePathSegment}${input.suffix}`, origin);
   const request = new Request(url, {
     method: input.method,

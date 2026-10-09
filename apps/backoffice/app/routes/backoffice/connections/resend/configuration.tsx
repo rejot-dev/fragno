@@ -1,3 +1,4 @@
+import { backofficeScopePathSegment } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { Button } from "@fragno-private/design-system/button";
 import { FormContainer, FormField } from "@fragno-private/design-system/form-container";
 import { Input } from "@fragno-private/design-system/input";
@@ -5,7 +6,6 @@ import { WizardStepper } from "@fragno-private/design-system/wizard-stepper";
 import { useEffect, useState } from "react";
 import { Form, useActionData, useNavigation, useOutletContext } from "react-router";
 
-import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import { resolveAuthenticatedIntegrationContext } from "../../integrations/scope";
@@ -176,7 +176,7 @@ export default function BackofficeOrganizationResendConfiguration() {
 
   const isConfigured = Boolean(configState?.configured);
   const webhookBaseUrl = formState.webhookBaseUrl.trim();
-  const resendScopeSegment = backofficeContextScopeSinglePathSegment(scope);
+  const resendScopeSegment = backofficeScopePathSegment(scope);
   const webhookUrl = `${webhookBaseUrl.replace(/\/+$/, "")}/api/resend/${resendScopeSegment}/webhook`;
   const webhookBaseUrlError = validateRequiredUrl(
     formState.webhookBaseUrl.trim(),

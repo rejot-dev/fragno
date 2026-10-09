@@ -1,5 +1,7 @@
 import { assert, describe, expect, test, vi } from "vitest";
 
+import { backofficeScopePathSegment } from "@fragno-dev/backoffice-api/v0/shared/scope";
+
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
   class MockDurableObject {
     constructor(_state: unknown, _env: unknown) {}
@@ -22,7 +24,6 @@ import { migrate } from "@fragno-dev/db";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import { encodeBackofficeObjectAddress, org } from "@/backoffice-runtime/object-registry";
 import { backofficeRouteScopeSinglePathSegment } from "@/backoffice-runtime/route-scope";
-import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import { createApiServer } from "@/fragno/api";
 import { bytesToHex } from "@/lib/crypto";
 import { action as receiveApiWebhook } from "@/routes/api/api";
@@ -183,7 +184,7 @@ const postAcmeWebhookDelivery = (): BackofficeScenarioStep => ({
   label: "post an Acme record-created webhook delivery",
   async run(untypedContext) {
     const ctx = untypedContext as BackofficeScenarioContext<EventSourceScenarioVars>;
-    const scopeSegment = backofficeContextScopeSinglePathSegment({
+    const scopeSegment = backofficeScopePathSegment({
       kind: "org",
       orgId: ORG_ID,
     });

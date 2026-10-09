@@ -1,3 +1,4 @@
+import { backofficeScopePathSegment } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { DurableObject } from "cloudflare:workers";
 import { Resend as ResendClient } from "resend";
@@ -14,7 +15,6 @@ import {
   backofficeObjectScopeFromContextScope,
 } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
-import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 import { resendConfigureInputSchema } from "@/fragno/backoffice-capabilities/capabilities/resend";
 import { type DurableHookQueueOptions } from "@/fragno/durable-hooks";
@@ -239,7 +239,7 @@ const buildConfigResponse = (config: StoredResendConfig | null): ConfigResponse 
 const resolveWebhookUrl = (origin: string, scope: ResendConfigScope, baseUrl?: string) => {
   const resolvedOrigin = baseUrl ?? origin;
   const trimmed = resolvedOrigin.replace(/\/+$/, "");
-  const scopeSegment = backofficeContextScopeSinglePathSegment(scope);
+  const scopeSegment = backofficeScopePathSegment(scope);
   return `${trimmed}/api/resend/${scopeSegment}/webhook`;
 };
 
@@ -457,7 +457,7 @@ export class InMemoryResendObject implements ResendObject {
 
       const client = this.#createClient(stored.apiKey);
       const webhookUrl = resolveWebhookUrl(origin, scope, stored.webhookBaseUrl);
-      const scopeLabel = backofficeContextScopeSinglePathSegment(scope);
+      const scopeLabel = backofficeScopePathSegment(scope);
 
       let webhookResult: WebhookResult;
 

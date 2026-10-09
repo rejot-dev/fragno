@@ -1,14 +1,14 @@
 import { describe, expect, test, assert } from "vitest";
 
+import { backofficeScopePathSegment } from "@fragno-dev/backoffice-api/v0/shared/scope";
+
 import {
   backofficeContextScopeFromRouteParams,
   backofficeContextScopeFromSinglePathSegment,
   backofficeContextScopeRouteId,
   backofficeContextScopeRoutePath,
-  backofficeContextScopeSinglePathSegment,
   backofficeScopeFromRouteParams,
   backofficeScopeFromSinglePathSegment,
-  backofficeScopeSinglePathSegment,
   BackofficeScopeCodecError,
   isBackofficeScopeCodecError,
 } from "./scope-codec";
@@ -34,7 +34,7 @@ describe("backoffice scope codec", () => {
       orgId: "user:alice",
     });
     assert(
-      backofficeScopeSinglePathSegment({ kind: "project", orgId: "org:1", projectId: "p/2" }) ===
+      backofficeScopePathSegment({ kind: "project", orgId: "org:1", projectId: "p/2" }) ===
         "project:org%3A1:p%2F2",
     );
   });
@@ -72,7 +72,7 @@ describe("backoffice scope codec", () => {
   });
 
   test("supports system scopes for object-address metadata and public callbacks", () => {
-    assert(backofficeContextScopeSinglePathSegment({ kind: "system" }) === "system");
+    assert(backofficeScopePathSegment({ kind: "system" }) === "system");
     expect(backofficeContextScopeFromSinglePathSegment("system")).toEqual({ kind: "system" });
     expect(() => backofficeScopeFromSinglePathSegment("system")).toThrow(
       "System scope is not routable here.",

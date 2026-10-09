@@ -1,5 +1,6 @@
 import type { AutomationEventSubject } from "@fragno-dev/backoffice-api/v0/events";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+import { backofficeScopePathSegment } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { DurableObject, RpcTarget } from "cloudflare:workers";
 import { z } from "zod";
@@ -16,7 +17,6 @@ import {
   type TelegramObject,
 } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
-import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import {
   createTelegramAutomationFileResponse,
   telegramAutomationFileIdFromDownloadPath,
@@ -176,7 +176,7 @@ function buildConfigResponse(config: StoredTelegramConfig | null): TelegramAdmin
 
 const resolveWebhookUrl = (origin: string, scope: BackofficeContextScope) => {
   const trimmed = origin.replace(/\/+$/, "");
-  return `${trimmed}/api/telegram/${backofficeContextScopeSinglePathSegment(scope)}/telegram/webhook`;
+  return `${trimmed}/api/telegram/${backofficeScopePathSegment(scope)}/telegram/webhook`;
 };
 
 const assertTelegramObjectScope = (

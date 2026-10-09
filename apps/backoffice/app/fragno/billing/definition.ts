@@ -1,7 +1,7 @@
+import { backofficeScopePathSegment } from "@fragno-dev/backoffice-api/v0/shared/scope";
+
 import { defineFragment } from "@fragno-dev/core";
 import { withDatabase } from "@fragno-dev/db";
-
-import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 
 import {
   billingEventInputSchema,
@@ -160,7 +160,7 @@ export const billingFragmentDefinition = defineFragment("billing")
         const input = billingEventInputSchema.parse(rawInput);
         const occurredAt = new Date(input.occurredAt);
         const period = billingPeriodForDate(occurredAt);
-        const scopeKey = backofficeContextScopeSinglePathSegment(input.scope);
+        const scopeKey = backofficeScopePathSegment(input.scope);
 
         return this.serviceTx(billingFragmentSchema, { name: "billing.recordEvent" })
           .retrieve((uow) =>
@@ -275,7 +275,7 @@ export const billingFragmentDefinition = defineFragment("billing")
       getTrackers: function (rawInput: BillingTrackerPageInput) {
         const input = billingTrackerPageInputSchema.parse(rawInput);
         const period = billingPeriodSchema.parse(input.period);
-        const scopeKey = backofficeContextScopeSinglePathSegment(input.scope);
+        const scopeKey = backofficeScopePathSegment(input.scope);
         const cursor = decodeBillingTrackerCursor({
           encodedCursor: input.cursor,
           scope: input.scope,

@@ -1,6 +1,5 @@
+import { backofficeScopePathSegment } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
-
-import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 
 export const API_PUBLIC_PREFIX = "/api/http";
 export const API_INTERNAL_PREFIX = "/api/api";
@@ -19,7 +18,7 @@ export type ScopedPublicFragmentAddress = {
 };
 
 export const appendBackofficeScopeQuery = (url: URL, scope: BackofficeContextScope) => {
-  url.searchParams.set("scope", backofficeContextScopeSinglePathSegment(scope));
+  url.searchParams.set("scope", backofficeScopePathSegment(scope));
 };
 
 /** Decodes only the scope segment, preserving the suffix for exact public ingress matching. */
@@ -57,7 +56,7 @@ export const scopedPublicMountPath = ({
 }: {
   publicPrefix: string;
   scope: BackofficeContextScope;
-}) => `${publicPrefix}/${encodeURIComponent(backofficeContextScopeSinglePathSegment(scope))}`;
+}) => `${publicPrefix}/${encodeURIComponent(backofficeScopePathSegment(scope))}`;
 
 export const scopedPublicBaseUrlForPathSegment = ({
   baseUrl,

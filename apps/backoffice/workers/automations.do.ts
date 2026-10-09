@@ -13,6 +13,7 @@ import {
   BACKOFFICE_PERMISSION,
   type BackofficePermissionRequirement,
 } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+import { backofficeScopePathSegment } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { InstanceStatus } from "@fragno-dev/workflows/workflow";
 import { DurableObject, RpcTarget } from "cloudflare:workers";
@@ -40,7 +41,6 @@ import {
   type BackofficeRpcContext,
 } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
-import { backofficeScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import type {
   AutomationFragmentConfig,
   AutomationIngestResult,
@@ -142,7 +142,7 @@ const createAutomationsObjectExecution = (
     scope,
     service: {
       type: "object",
-      id: `automations:${backofficeScopeSinglePathSegment(scope)}`,
+      id: `automations:${backofficeScopePathSegment(scope)}`,
     },
   });
 };
@@ -333,7 +333,7 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
   async #dispatchInitialized(scope: BackofficeContextScope) {
     await this.#host.dispatch({
       id: `automations.initialized:${
-        scope.kind === "system" ? "system" : backofficeScopeSinglePathSegment(scope)
+        scope.kind === "system" ? "system" : backofficeScopePathSegment(scope)
       }`,
       type: "automations.initialized",
       createdAt: new Date().toISOString(),

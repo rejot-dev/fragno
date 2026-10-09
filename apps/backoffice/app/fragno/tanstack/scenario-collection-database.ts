@@ -1,3 +1,4 @@
+import { backofficeScopePathSegment } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { AnySchema } from "@fragno-dev/db/schema";
 
@@ -12,8 +13,6 @@ import type {
   PersistenceAdapter,
   PersistedTx,
 } from "@tanstack/db-sqlite-persistence-core";
-
-import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 
 type ScenarioCollections = Record<string, { cleanup(): Promise<void> }>;
 
@@ -39,7 +38,7 @@ export type ScenarioCollectionDatabaseRuntime<TCollections extends ScenarioColle
     cleanup(): Promise<void>;
   };
 
-const scopeKey = (scope: BackofficeContextScope) => backofficeContextScopeSinglePathSegment(scope);
+const scopeKey = (scope: BackofficeContextScope) => backofficeScopePathSegment(scope);
 
 export function createScenarioCollectionDatabase<
   const TSchemas extends readonly AnySchema[],

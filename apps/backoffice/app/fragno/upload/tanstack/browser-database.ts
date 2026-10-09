@@ -1,12 +1,10 @@
+import { backofficeScopePathSegment } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { uploadSchema } from "@fragno-dev/upload/schema";
 
 import { createFragnoOutboxCoordinator } from "@fragno-dev/tanstack-db-adapter";
 
 import type { BackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
-import {
-  backofficeContextScopeRoutePath,
-  backofficeScopeSinglePathSegment,
-} from "@/backoffice-runtime/scope-codec";
+import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
 import { backofficeFetch } from "@/fragno/auth/browser-auth.client";
 import {
   createBrowserCollectionDatabaseLoader,
@@ -22,7 +20,7 @@ export type UploadCollectionSource = {
 };
 
 export function describeUploadCollectionSource(source: UploadCollectionSource) {
-  const scopeKey = backofficeScopeSinglePathSegment(source.scope);
+  const scopeKey = backofficeScopePathSegment(source.scope);
   return {
     resourceKey: JSON.stringify([scopeKey, source.adapterIdentity]),
     baseUrl: `/api/upload-scoped/${backofficeContextScopeRoutePath(source.scope)}`,
