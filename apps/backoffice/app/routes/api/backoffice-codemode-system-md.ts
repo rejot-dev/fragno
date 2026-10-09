@@ -1,6 +1,6 @@
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import { requireBackofficeContextScopeFromRouteParams } from "@/backoffice-runtime/scope-codec";
-import { authorizeBackofficeCodemodeContext } from "@/fragno/auth/backoffice-principal.server";
+import { authorizeBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { renderCodemodeSystemPrompt } from "@/fragno/codemode/codemode-dts";
 import { createRuntimeStateBackend } from "@/fragno/codemode/runtime-state-backend";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
@@ -21,7 +21,7 @@ const readOrgSystemGuidance = async ({
 
 export async function loader({ request, context, params }: Route.LoaderArgs) {
   const scope = requireBackofficeContextScopeFromRouteParams(params);
-  const authorization = await authorizeBackofficeCodemodeContext(request, context, scope);
+  const authorization = await authorizeBackofficeContext(request, context, scope);
   if (!authorization.ok) {
     return authorization.response;
   }
