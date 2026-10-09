@@ -257,7 +257,6 @@ const capabilitiesListTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("capabilities.list"),
   namespace: "capabilities",
   name: "list",
-  requiredPermissions: ["read"],
   execute: async (_input, context: BackofficeCapabilitiesToolContext) =>
     await getRuntime(context).listCapabilities(),
   adapters: {
@@ -279,7 +278,6 @@ const hookScopesListTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("hooks.scopes.list"),
   namespace: "hooks",
   name: "scopesList",
-  requiredPermissions: ["read"],
   execute: async (_input, context: BackofficeCapabilitiesToolContext) =>
     await getRuntime(context).listHookScopes(),
   adapters: {
@@ -301,7 +299,6 @@ const connectionsListTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("connections.list"),
   namespace: "connections",
   name: "list",
-  requiredPermissions: ["read"],
   execute: async (_input, context: BackofficeCapabilitiesToolContext) =>
     await getRuntime(context).listConnections(),
   adapters: {
@@ -323,7 +320,6 @@ const connectionsGetTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("connections.get"),
   namespace: "connections",
   name: "get",
-  requiredPermissions: ["read"],
   execute: async (input, context: BackofficeCapabilitiesToolContext) =>
     await getRuntime(context).getConnection(input),
   adapters: {
@@ -353,7 +349,6 @@ const connectionsSetupTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("connections.setup"),
   namespace: "connections",
   name: "setup",
-  requiredPermissions: ["manage"],
   execute: async (input, context: BackofficeCapabilitiesToolContext) =>
     await getRuntime(context).setupConnection(input),
   adapters: {
@@ -383,7 +378,6 @@ const connectionsSchemaTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("connections.schema"),
   namespace: "connections",
   name: "schema",
-  requiredPermissions: ["read"],
   execute: async (input, context: BackofficeCapabilitiesToolContext) =>
     await getRuntime(context).getConnectionSchema(input),
   adapters: {
@@ -416,7 +410,6 @@ const connectionsVerifyTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("connections.verify"),
   namespace: "connections",
   name: "verify",
-  requiredPermissions: ["manage"],
   execute: async (input, context: BackofficeCapabilitiesToolContext) =>
     await getRuntime(context).verifyConnection(input),
   adapters: {
@@ -449,7 +442,6 @@ const connectionsResetTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("connections.reset"),
   namespace: "connections",
   name: "reset",
-  requiredPermissions: ["manage"],
   execute: async (input, context: BackofficeCapabilitiesToolContext) =>
     await getRuntime(context).resetConnection(input),
   adapters: {
@@ -486,7 +478,6 @@ const connectionsConfigureTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("connections.configure"),
   namespace: "connections",
   name: "configure",
-  requiredPermissions: ["manage"],
   execute: async (input, context: BackofficeCapabilitiesToolContext) =>
     await getRuntime(context).configureConnection(input),
   adapters: {
@@ -787,10 +778,6 @@ export const backofficeCapabilitiesRuntimeTools = [
 
 export const backofficeCapabilitiesToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "backoffice-capabilities",
-  permissions: {
-    read: "Read capabilities, hook scopes, connection status, and schemas.",
-    manage: "Set up, verify, configure, and reset capability connections.",
-  },
   tools: backofficeCapabilitiesRuntimeTools,
   isAvailable: (context: BackofficeCapabilitiesToolContext) => !!context.runtimes.backoffice,
 });

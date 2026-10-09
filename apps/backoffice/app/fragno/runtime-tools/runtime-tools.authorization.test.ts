@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 
 import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import { Bash, InMemoryFs } from "just-bash";
 import { z } from "zod";
 
@@ -66,7 +67,7 @@ describe("runtime tool authorization", () => {
       namespace: "store",
       name: "testModify",
       description: "Test store permissions.",
-      requiredPermissions: ["read", "modify"],
+      requiredPermissions: [BACKOFFICE_PERMISSION.store.read, BACKOFFICE_PERMISSION.store.modify],
       inputSchema: z.object({}),
       outputSchema: z.object({ ok: z.boolean() }),
       execute,
@@ -90,7 +91,7 @@ describe("runtime tool authorization", () => {
     expect(execute).not.toHaveBeenCalled();
   });
 
-  test("uses the authorization namespace and resource declared by the tool", async () => {
+  test("authorizes permissions from another namespace against the tool's resource", async () => {
     const authorized: BackofficeKernelAction[] = [];
     const observer: BackofficeKernelObserver = {
       async observeAuthorization(action) {
@@ -103,10 +104,9 @@ describe("runtime tool authorization", () => {
     const tool = defineBackofficeRuntimeTool({
       id: "automations.identity.resolve",
       namespace: "automations",
-      authorizationNamespace: "identity",
       name: "identityResolve",
       description: "Resolve an identity.",
-      requiredPermissions: ["resolve"],
+      requiredPermissions: [BACKOFFICE_PERMISSION.identity.resolve],
       inputSchema: z.object({ subjectId: z.string() }),
       outputSchema: z.object({ ok: z.boolean() }),
       getResource: (input) => ({ subjectId: input.subjectId }),
@@ -138,7 +138,7 @@ describe("runtime tool authorization", () => {
       namespace: "internal",
       name: "testBash",
       description: "Test custom Bash adapter authorization.",
-      requiredPermissions: ["manage"],
+      requiredPermissions: [BACKOFFICE_PERMISSION.internal.manage],
       inputSchema: z.object({}),
       outputSchema: z.object({ ok: z.boolean() }),
       execute: async () => ({ ok: true }),

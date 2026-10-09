@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { BackofficeApiOperation } from "../api";
+import { BACKOFFICE_PERMISSION } from "./shared/permissions";
 
 /** Only HTTP(S) URLs can be used as OAuth return destinations. */
 export const projectConnectorHttpUrlSchema = z.url().refine((value) => {
@@ -161,46 +162,54 @@ export const connectorOperations = {
   "connector.providers.list": {
     description:
       "List the project's OAuth provider configuration overviews without action IDs. Use listProviderActions for a selected providerConfigId; discovery does not verify user accounts.",
+    permissions: [BACKOFFICE_PERMISSION.connector.providersRead],
     input: noInputSchema,
     output: projectConnectorProviderConfigsSchema,
   },
   "connector.providers.actions": {
     description:
       "List authoritative action definitions, including input/output JSON Schemas, allowed by one exact OAuth provider configuration. Catalog discovery never grants execution permission.",
+    permissions: [BACKOFFICE_PERMISSION.connector.providersRead],
     input: providerActionsInputSchema,
     output: projectConnectorProviderActionsSchema,
   },
   "connector.status": {
     description: "Check gateway project-key authentication, not individual provider availability.",
+    permissions: [BACKOFFICE_PERMISSION.connector.accountsRead],
     input: noInputSchema,
     output: projectConnectorStatusSchema,
   },
   "connector.connect": {
     description:
       "Start provider OAuth for the owning user. Return the authorization URL and retain the request ID for refresh.",
+    permissions: [BACKOFFICE_PERMISSION.connector.connectionsCreate],
     input: connectInputSchema,
     output: projectConnectorConnectionSchema,
   },
   "connector.connections.refresh": {
     description:
       "Verify a saved OAuth request against the gateway and persist a confirmed account binding. Callback query parameters are not proof.",
+    permissions: [BACKOFFICE_PERMISSION.connector.connectionsCreate],
     input: requestInputSchema,
     output: projectConnectorConnectionSchema,
   },
   "connector.accounts.list": {
     description: "List the owning user's locally verified accounts, one cursor page at a time.",
+    permissions: [BACKOFFICE_PERMISSION.connector.accountsRead],
     input: accountsInputSchema,
     output: projectConnectorAccountsSchema,
   },
   "connector.accounts.profile": {
     description:
       "Read the provider identity of a verified account; this does not read Gmail messages.",
+    permissions: [BACKOFFICE_PERMISSION.connector.accountsRead],
     input: profileInputSchema,
     output: projectConnectorProfileSchema,
   },
   "connector.actions.execute": {
     description:
       "Execute an explicit provider action on a verified account. Actions can write external data and are never automatically retried.",
+    permissions: [BACKOFFICE_PERMISSION.connector.actionsExecute],
     input: actionInputSchema,
     output: projectConnectorExecutionSchema,
   },

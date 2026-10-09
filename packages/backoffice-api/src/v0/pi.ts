@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import type { BackofficeApiOperation } from "../api";
 import { automationActorsSchema } from "./automation";
+import { BACKOFFICE_PERMISSION } from "./shared/permissions";
 import { backofficeContextScopeSchema } from "./shared/scope";
 
 export const piAgentModelSchema = z.object({
@@ -105,36 +106,43 @@ export const piOperations = {
   "pi.session.create": {
     description:
       "Create a durable Pi agent in the current scoped directory. User-scoped child sessions inherit the calling Pi session or workflow's billing organization when billingOrganizationId is omitted.",
+    permissions: [BACKOFFICE_PERMISSION.pi.modify],
     input: sessionCreateInputSchema,
     output: piRuntimeSessionOutputSchema,
   },
   "pi.session.get": {
     description: "Get a durable Pi directory record and its conversation view.",
+    permissions: [BACKOFFICE_PERMISSION.pi.read],
     input: z.strictObject({ sessionId: z.string().trim().min(1) }),
     output: piSessionDetailOutputSchema,
   },
   "pi.session.list": {
     description: "List one cursor-paginated page from the durable Pi directory.",
+    permissions: [BACKOFFICE_PERMISSION.pi.read],
     input: sessionListInputSchema,
     output: piSessionPageOutputSchema,
   },
   "pi.prompt.submit": {
     description: "Durably admit a prompt and return its deduplicated submission receipt.",
+    permissions: [BACKOFFICE_PERMISSION.pi.modify],
     input: promptSubmitInputSchema,
     output: piPromptReceiptOutputSchema,
   },
   "pi.submission.get": {
     description: "Get the durable status of one prompt submission.",
+    permissions: [BACKOFFICE_PERMISSION.pi.read],
     input: submissionGetInputSchema,
     output: z.unknown(),
   },
   "pi.prompt.run": {
     description: "Durably admit a prompt, wait for settlement, and return its conversation view.",
+    permissions: [BACKOFFICE_PERMISSION.pi.modify],
     input: promptRunInputSchema,
     output: piPromptResultOutputSchema,
   },
   "pi.session.abort": {
     description: "Abort active foreground and background work in a durable Pi agent.",
+    permissions: [BACKOFFICE_PERMISSION.pi.modify],
     input: z.strictObject({ sessionId: z.string().trim().min(1) }),
     output: z.object({ aborted: z.literal(true) }),
   },

@@ -128,7 +128,6 @@ export const automationEventsCatalogListTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("events.catalog.list"),
   namespace: "events",
   name: "catalogList",
-  requiredPermissions: ["read"],
   execute: async (_input, context: EventCatalogToolContext) =>
     await getEventCatalogRuntime(context).listAutomationEvents(),
   adapters: {
@@ -151,7 +150,6 @@ export const automationEventsCatalogGetTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("events.catalog.get"),
   namespace: "events",
   name: "catalogGet",
-  requiredPermissions: ["read"],
   execute: async (input, context: EventCatalogToolContext) =>
     await getEventCatalogRuntime(context).getAutomationEvent(input),
   adapters: {
@@ -195,7 +193,6 @@ export const automationEventsCatalogCreateTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("events.catalog.create"),
   namespace: "events",
   name: "catalogCreate",
-  requiredPermissions: ["manage"],
   execute: async (input, context: EventCatalogToolContext) =>
     await getEventCatalogRuntime(context).createAutomationEvent(input),
   adapters: {
@@ -285,10 +282,6 @@ export const eventCatalogRuntimeTools = [
 /** Event catalog availability is independent of event emission and stored event reads. */
 export const eventCatalogToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "events",
-  permissions: {
-    read: "Read automation event catalog entries.",
-    manage: "Manage dynamic automation event catalog entries.",
-  },
   tools: eventCatalogRuntimeTools,
   isAvailable: (context: EventCatalogToolContext) => !!context.runtimes.eventCatalog,
 });

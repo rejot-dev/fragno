@@ -104,13 +104,6 @@ function formatConnectorProviderActions(
 /** Provider actions require an explicit account and independent execution permission. */
 export const projectConnectorToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "connector",
-  permissions: {
-    "providers.read":
-      "Read the project's OAuth provider overviews and configuration-specific action contracts.",
-    "accounts.read": "Read verified account bindings, profiles, and project authentication status.",
-    "connections.create": "Start OAuth and confirm connection requests for the owning user.",
-    "actions.execute": "Execute provider actions on an explicitly selected connected account.",
-  },
   isAvailable: (context: ProjectConnectorToolContext) => !!context.runtimes.projectConnector,
   tools: [
     defineBackofficeRuntimeTool({
@@ -118,7 +111,6 @@ export const projectConnectorToolFamily = defineBackofficeRuntimeToolFamily({
       namespace: "connector",
       name: "listProviderConfigs",
       capabilityId: "connector",
-      requiredPermissions: ["providers.read"],
       execute: async (_input, context: ProjectConnectorToolContext) =>
         await getProjectConnectorRuntime(context).listProviderConfigs(),
       adapters: {
@@ -141,7 +133,6 @@ export const projectConnectorToolFamily = defineBackofficeRuntimeToolFamily({
       namespace: "connector",
       name: "listProviderActions",
       capabilityId: "connector",
-      requiredPermissions: ["providers.read"],
       getResource: (input) => ({ providerConfigId: input.providerConfigId }),
       execute: async (input, context: ProjectConnectorToolContext) =>
         await getProjectConnectorRuntime(context).listProviderActions(input),
@@ -178,7 +169,6 @@ export const projectConnectorToolFamily = defineBackofficeRuntimeToolFamily({
       namespace: "connector",
       name: "check",
       capabilityId: "connector",
-      requiredPermissions: ["accounts.read"],
       execute: async (_input, context: ProjectConnectorToolContext) =>
         await getProjectConnectorRuntime(context).check(),
       adapters: {
@@ -199,7 +189,6 @@ export const projectConnectorToolFamily = defineBackofficeRuntimeToolFamily({
       namespace: "connector",
       name: "connect",
       capabilityId: "connector",
-      requiredPermissions: ["connections.create"],
       execute: async (input, context: ProjectConnectorToolContext) =>
         await getProjectConnectorRuntime(context).connect(input),
       adapters: {
@@ -237,7 +226,6 @@ export const projectConnectorToolFamily = defineBackofficeRuntimeToolFamily({
       namespace: "connector",
       name: "refreshConnection",
       capabilityId: "connector",
-      requiredPermissions: ["connections.create"],
       getResource: (input) => ({ requestId: input.requestId }),
       execute: async (input, context: ProjectConnectorToolContext) =>
         await getProjectConnectorRuntime(context).refreshConnection(input),
@@ -269,7 +257,6 @@ export const projectConnectorToolFamily = defineBackofficeRuntimeToolFamily({
       namespace: "connector",
       name: "listAccounts",
       capabilityId: "connector",
-      requiredPermissions: ["accounts.read"],
       execute: async (input, context: ProjectConnectorToolContext) =>
         await getProjectConnectorRuntime(context).listAccounts(input),
       adapters: {
@@ -299,7 +286,6 @@ export const projectConnectorToolFamily = defineBackofficeRuntimeToolFamily({
       namespace: "connector",
       name: "getProfile",
       capabilityId: "connector",
-      requiredPermissions: ["accounts.read"],
       getResource: (input) => ({ accountId: input.accountId }),
       execute: async (input, context: ProjectConnectorToolContext) =>
         await getProjectConnectorRuntime(context).getProfile(input),
@@ -331,7 +317,6 @@ export const projectConnectorToolFamily = defineBackofficeRuntimeToolFamily({
       namespace: "connector",
       name: "executeAction",
       capabilityId: "connector",
-      requiredPermissions: ["actions.execute"],
       getResource: (input) => ({ accountId: input.accountId, actionId: input.actionId }),
       execute: async (input, context: ProjectConnectorToolContext) =>
         await getProjectConnectorRuntime(context).executeAction(input),

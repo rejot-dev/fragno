@@ -47,7 +47,6 @@ const createClaimTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("otp.identity.create-claim"),
   namespace: "otp",
   name: "createIdentityClaim",
-  requiredPermissions: ["create"],
   execute: async (input, context: OtpToolContext) =>
     await getOtpRuntime(context.runtimes.otp).createClaim(input),
   adapters: {
@@ -79,9 +78,6 @@ export const otpRuntimeTools = [createClaimTool] as const;
 
 export const otpToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "otp",
-  permissions: {
-    create: "Create OTP identity claims.",
-  },
   tools: otpRuntimeTools,
   isAvailable: (context: OtpToolContext) => !!context.runtimes.otp,
 });

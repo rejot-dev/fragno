@@ -39,7 +39,7 @@ const createOAuthClientTool = defineBackofficeRuntimeTool(
     name: "oauthClientsCreate",
     description:
       "Create an Auth-owned authorization-code OAuth web or native client for the current System administrator. Confidential clients return an initial secret and may use client credentials; public clients use PKCE without a secret. Does not register or install a Backoffice app.",
-    requiredPermissions: [BACKOFFICE_PERMISSION.admin.oauthClientsManage.permission],
+    requiredPermissions: [BACKOFFICE_PERMISSION.admin.oauthClientsManage],
     inputSchema: backofficeOAuthClientCreateInputSchema,
     outputSchema: backofficeOAuthClientCreateResultSchema,
     execute: async function createAdministratorOAuthClient(
@@ -128,7 +128,7 @@ const listOAuthClientsTool = defineBackofficeRuntimeTool({
   name: "oauthClientsList",
   description:
     "List the global Auth-owned OAuth client catalog, including other owners and the internal Codemode client, using cursor pagination. Never exposes credentials or credential hashes.",
-  requiredPermissions: [BACKOFFICE_PERMISSION.admin.oauthClientsRead.permission],
+  requiredPermissions: [BACKOFFICE_PERMISSION.admin.oauthClientsRead],
   inputSchema: backofficeOAuthClientListInputSchema,
   outputSchema: backofficeOAuthClientPageSchema,
   execute: async function listAdministratorOAuthClients(
@@ -215,7 +215,7 @@ const updateOAuthClientTool = defineBackofficeRuntimeTool({
   name: "oauthClientsUpdate",
   description:
     "Replace the redirect URIs, OAuth scopes, and client-credentials access of an OAuth client owned by the current System administrator. Widened scopes apply to new authorizations only; existing users authorize again.",
-  requiredPermissions: [BACKOFFICE_PERMISSION.admin.oauthClientsManage.permission],
+  requiredPermissions: [BACKOFFICE_PERMISSION.admin.oauthClientsManage],
   inputSchema: backofficeOAuthClientUpdateInputSchema,
   outputSchema: backofficeOAuthClientUpdateResultSchema,
   execute: async function updateAdministratorOAuthClient(
@@ -287,7 +287,7 @@ const rotateOAuthClientSecretTool = defineBackofficeRuntimeTool(
     name: "oauthClientsRotateSecret",
     description:
       "Replace the secret of a confidential OAuth client owned by the current System administrator. The previous secret stops working immediately; the new one is returned once.",
-    requiredPermissions: [BACKOFFICE_PERMISSION.admin.oauthClientsManage.permission],
+    requiredPermissions: [BACKOFFICE_PERMISSION.admin.oauthClientsManage],
     inputSchema: backofficeOAuthClientRotateSecretInputSchema,
     outputSchema: backofficeOAuthClientRotateSecretResultSchema,
     execute: async function rotateAdministratorOAuthClientSecret(

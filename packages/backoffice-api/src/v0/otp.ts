@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { BackofficeApiOperation } from "../api";
+import { BACKOFFICE_PERMISSION } from "./shared/permissions";
 
 export const externalIdentitySchema = z.strictObject({
   scope: z.literal("external"),
@@ -26,6 +27,7 @@ const identityClaimRecordSchema = z.object({
 export const otpOperations = {
   "otp.identity.create-claim": {
     description: "Create a short-lived identity claim URL for the trusted external initiator.",
+    permissions: [BACKOFFICE_PERMISSION.otp.create],
     input: createClaimInputSchema,
     output: identityClaimRecordSchema,
   },

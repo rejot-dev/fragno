@@ -10,6 +10,7 @@ import {
   directoryPageInputSchema,
   type DirectoryPageInput,
 } from "@fragno-dev/backoffice-api/v0/shared/pagination";
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import { z } from "zod";
 
 import type {
@@ -155,7 +156,7 @@ const createSignUpInvitationTool = defineBackofficeRuntimeTool({
   namespace: "admin",
   name: "signupInvitationsCreate",
   description: "Create an email-bound link that authorizes one Backoffice account sign-up.",
-  requiredPermissions: ["sign-up-invitations.manage"],
+  requiredPermissions: [BACKOFFICE_PERMISSION.admin.signUpInvitationsManage],
   inputSchema: createSignUpInvitationInputSchema,
   outputSchema: signUpInvitationRecordSchema,
   execute: async (input, context: AdminToolContext) =>
@@ -211,7 +212,7 @@ const createOrganizationTool = defineBackofficeRuntimeTool({
   namespace: "admin",
   name: "orgCreate",
   description: "Create an organization and assign its owner.",
-  requiredPermissions: ["organizations.manage"],
+  requiredPermissions: [BACKOFFICE_PERMISSION.admin.organizationsManage],
   inputSchema: createOrganizationInputSchema,
   outputSchema: organizationCreatedRecordSchema,
   execute: async (input, context: AdminToolContext) =>
@@ -260,7 +261,7 @@ const listOrganizationsTool = defineBackofficeRuntimeTool({
   namespace: "admin",
   name: "orgList",
   description: "List every organization, using cursor pagination.",
-  requiredPermissions: ["organizations.manage"],
+  requiredPermissions: [BACKOFFICE_PERMISSION.admin.organizationsManage],
   inputSchema: directoryPageInputSchema,
   outputSchema: organizationPageSchema,
   execute: async (input, context: AdminToolContext) =>
@@ -303,7 +304,7 @@ const getOrganizationTool = defineBackofficeRuntimeTool({
   namespace: "admin",
   name: "orgGet",
   description: "Read one organization by slug.",
-  requiredPermissions: ["organizations.manage"],
+  requiredPermissions: [BACKOFFICE_PERMISSION.admin.organizationsManage],
   inputSchema: z.strictObject({ organizationSlug: z.string().trim().min(1) }),
   outputSchema: organizationRecordSchema,
   execute: async (input, context: AdminToolContext) =>
@@ -332,7 +333,7 @@ const listOrganizationMembersTool = defineBackofficeRuntimeTool({
   namespace: "admin",
   name: "orgMembersList",
   description: "List members of any organization with their roles, using cursor pagination.",
-  requiredPermissions: ["organizations.manage"],
+  requiredPermissions: [BACKOFFICE_PERMISSION.admin.organizationsManage],
   inputSchema: directoryPageInputSchema.extend({
     organizationSlug: z.string().trim().min(1),
   }),
@@ -382,7 +383,7 @@ const addOrganizationMemberTool = defineBackofficeRuntimeTool({
   namespace: "admin",
   name: "orgMembersAdd",
   description: "Add a user to an organization with explicit roles.",
-  requiredPermissions: ["organizations.manage"],
+  requiredPermissions: [BACKOFFICE_PERMISSION.admin.organizationsManage],
   inputSchema: addOrganizationMemberInputSchema,
   outputSchema: organizationMemberChangeRecordSchema,
   execute: async (input, context: AdminToolContext) =>
@@ -426,7 +427,7 @@ const removeOrganizationMemberTool = defineBackofficeRuntimeTool({
   namespace: "admin",
   name: "orgMembersRemove",
   description: "Remove a user from an organization.",
-  requiredPermissions: ["organizations.manage"],
+  requiredPermissions: [BACKOFFICE_PERMISSION.admin.organizationsManage],
   inputSchema: removeOrganizationMemberInputSchema,
   outputSchema: organizationMemberChangeRecordSchema,
   execute: async (input, context: AdminToolContext) =>
@@ -470,16 +471,6 @@ export const adminRuntimeTools = [
 
 export const adminToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "admin",
-  permissions: {
-    "apps.manage": "Register apps for existing OAuth clients (System administrators only).",
-    "apps.read": "List global app registrations (System administrators only).",
-    "oauth-clients.manage":
-      "Create Auth-owned OAuth clients, and update or rotate secrets of clients you own (System administrators only).",
-    "oauth-clients.read":
-      "List the global OAuth client catalog without credentials (System administrators only).",
-    "sign-up-invitations.manage": "Create links that authorize Backoffice account sign-up.",
-    "organizations.manage": "List, read, and create organizations and manage their membership.",
-  },
   tools: adminRuntimeTools,
   isAvailable: (context: AdminToolContext) => !!context.runtimes.admin,
 });

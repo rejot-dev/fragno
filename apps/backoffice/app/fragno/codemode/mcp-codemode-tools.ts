@@ -1,4 +1,5 @@
 import type { McpListServersOutput, McpTool } from "@fragno-dev/backoffice-api/v0/mcp";
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import type { ToolProvider } from "@fragno-dev/codemode/runtime-api";
 import { z } from "zod";
 
@@ -219,9 +220,8 @@ const createMcpCodemodeRuntimeTools = ({
         id: `mcp.${server.slug}.${tool.originalName}`,
         namespace: server.providerName,
         name: tool.codemodeName,
-        authorizationNamespace: "mcp",
         description: tool.description,
-        requiredPermissions: ["tools.call"],
+        requiredPermissions: [BACKOFFICE_PERMISSION.mcp.toolsCall],
         getResource: () => ({ slug: server.slug, toolName: tool.originalName }),
         inputSchema: z.record(z.string(), z.unknown()).optional().default({}),
         outputSchema: z.record(z.string(), z.unknown()),

@@ -1,17 +1,21 @@
 import type { z } from "zod";
 
+/** A permission named by its namespace, e.g. `{ namespace: "events", permission: "emit" }`. */
+export type BackofficeApiPermission = { readonly namespace: string; readonly permission: string };
+
 /**
  * One callable operation. Its id is its key in the API's operation map. The caller names the scope
  * it runs in in the request path; Backoffice decides per request whether the operation is
- * available there for the credential. Input and output are
- * validated by the server; a `z.void()` input means the request has no body, and a `z.void()`
- * output means the response has none.
+ * available there for the credential, and requires every listed permission in that scope. Input
+ * and output are validated by the server; a `z.void()` input means the request has no body, and a
+ * `z.void()` output means the response has none.
  */
 export type BackofficeApiOperation<
   TInput extends z.ZodType = z.ZodType,
   TOutput extends z.ZodType = z.ZodType,
 > = {
   description: string;
+  permissions: readonly BackofficeApiPermission[];
   input: TInput;
   output: TOutput;
 };

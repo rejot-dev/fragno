@@ -144,7 +144,7 @@ export const BACKOFFICE_PERMISSION = {
 
 type ValueOf<T> = T[keyof T];
 
-export type BackofficePermissionNamespace = keyof typeof BACKOFFICE_PERMISSION;
+type BackofficePermissionNamespace = keyof typeof BACKOFFICE_PERMISSION;
 
 /** A valid namespace-permission pair checked by the kernel. */
 export type BackofficePermissionRequirement = ValueOf<{
@@ -152,8 +152,6 @@ export type BackofficePermissionRequirement = ValueOf<{
     (typeof BACKOFFICE_PERMISSION)[TNamespace]
   >;
 }>;
-
-export type BackofficePermission = BackofficePermissionRequirement["permission"];
 
 const backofficePermissionNamespaces = Object.values(BACKOFFICE_PERMISSION) as readonly Readonly<
   Record<string, BackofficePermissionRequirement>
@@ -163,15 +161,6 @@ const backofficePermissionNamespaces = Object.values(BACKOFFICE_PERMISSION) as r
 export const allBackofficePermissionRequirements = backofficePermissionNamespaces.flatMap(
   (namespacePermissions) => Object.values(namespacePermissions),
 );
-
-export const isBackofficePermissionRequirement = (input: {
-  namespace: string;
-  permission: string;
-}): input is BackofficePermissionRequirement =>
-  allBackofficePermissionRequirements.some(
-    (requirement) =>
-      requirement.namespace === input.namespace && requirement.permission === input.permission,
-  );
 
 type BackofficePermissionRequirementSchema = z.ZodType<BackofficePermissionRequirement>;
 

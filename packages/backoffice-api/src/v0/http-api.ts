@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import type { BackofficeApiOperation } from "../api";
 import { dateTimeStringOutputSchema } from "./shared/datetime";
+import { BACKOFFICE_PERMISSION } from "./shared/permissions";
 
 export const webhookSecretRefSchema = z.string().trim().min(1);
 
@@ -345,67 +346,80 @@ export type ApiWebhookEndpointsOutput = z.infer<typeof webhookEndpointsOutputSch
 export const httpApiOperations = {
   "api.connections.list": {
     description: "List API connections configured for the current scope.",
+    permissions: [BACKOFFICE_PERMISSION.api.connectionsRead],
     input: z.void(),
     output: connectionsOutputSchema,
   },
   "api.connections.create": {
     description: "Create an outbound HTTP API connection.",
+    permissions: [BACKOFFICE_PERMISSION.api.connectionsCreate],
     input: createConnectionInputSchema,
     output: connectionSchema,
   },
   "api.connections.delete": {
     description: "Delete an API connection and its stored auth state.",
+    permissions: [BACKOFFICE_PERMISSION.api.connectionsDelete],
     input: slugInputSchema,
     output: deleteOutputSchema,
   },
   "api.auth.status": {
     description: "Read auth status for an API connection.",
+    permissions: [BACKOFFICE_PERMISSION.api.connectionsRead],
     input: slugInputSchema,
     output: apiAuthStatusSchema,
   },
   "api.auth.token": {
     description: "Store a bearer token for a configured API connection.",
+    permissions: [BACKOFFICE_PERMISSION.api.connectionsCreate],
     input: apiSetTokenInputSchema,
     output: apiAuthStatusSchema,
   },
   "api.oauth.start": {
     description:
       "Start OAuth login for a configured API connection and return the authorization URL.",
+    permissions: [BACKOFFICE_PERMISSION.api.connectionsCreate],
     input: apiOAuthStartInputSchema,
     output: apiOAuthStartOutputSchema,
   },
   "api.auth.delete": {
     description: "Delete stored auth for an API connection.",
+    permissions: [BACKOFFICE_PERMISSION.api.connectionsDelete],
     input: slugInputSchema,
     output: deleteOutputSchema,
   },
   "api.webhooks.list": {
     description: "List API webhook endpoints configured for the current scope.",
+    permissions: [BACKOFFICE_PERMISSION.api.webhooksRead],
     input: z.void(),
     output: webhookEndpointsOutputSchema,
   },
   "api.webhooks.get": {
     description: "Read an API webhook endpoint.",
+    permissions: [BACKOFFICE_PERMISSION.api.webhooksRead],
     input: endpointInputSchema,
     output: webhookEndpointSchema,
   },
   "api.webhooks.create": {
     description: "Create or replace an API webhook endpoint.",
+    permissions: [BACKOFFICE_PERMISSION.api.webhooksManage],
     input: webhookEndpointCreateInputSchema,
     output: webhookEndpointSchema,
   },
   "api.webhooks.update": {
     description: "Update an API webhook endpoint.",
+    permissions: [BACKOFFICE_PERMISSION.api.webhooksManage],
     input: webhookEndpointUpdateInputSchema,
     output: webhookEndpointSchema,
   },
   "api.webhooks.delete": {
     description: "Delete an API webhook endpoint.",
+    permissions: [BACKOFFICE_PERMISSION.api.webhooksManage],
     input: endpointInputSchema,
     output: deleteOutputSchema,
   },
   "api.request": {
     description: "Execute an HTTP request through a configured API connection.",
+    permissions: [BACKOFFICE_PERMISSION.api.requestsExecute],
     input: requestInputSchema,
     output: requestOutputSchema,
   },

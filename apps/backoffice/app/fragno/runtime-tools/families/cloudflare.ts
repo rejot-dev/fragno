@@ -1,3 +1,4 @@
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import {
   browserRunCaptureInputSchema,
   browserRunCrawlActionInputSchema,
@@ -97,7 +98,7 @@ const browserRunCaptureTool = defineBackofficeRuntimeTool({
   namespace: "cloudflare",
   name: "browserRunCapture",
   description: "Capture a page as a PDF or screenshot with Cloudflare Browser Run.",
-  requiredPermissions: ["browserRun"],
+  requiredPermissions: [BACKOFFICE_PERMISSION.cloudflare.browserRun],
   inputSchema: browserRunCaptureInputSchema,
   outputSchema: browserRunCaptureResultSchema,
   execute: async (input, context: CloudflareToolContext) =>
@@ -165,7 +166,7 @@ const browserRunCrawlTool = defineBackofficeRuntimeTool({
   namespace: "cloudflare",
   name: "browserRunCrawl",
   description: "Start, inspect, or cancel a Cloudflare Browser Run crawl job.",
-  requiredPermissions: ["browserRun"],
+  requiredPermissions: [BACKOFFICE_PERMISSION.cloudflare.browserRun],
   inputSchema: browserRunCrawlActionInputSchema,
   outputSchema: browserRunCrawlActionResultSchema,
   execute: async (input, context: CloudflareToolContext) =>
@@ -212,9 +213,6 @@ export const cloudflareRuntimeTools = [browserRunCaptureTool, browserRunCrawlToo
 
 export const cloudflareToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "cloudflare",
-  permissions: {
-    browserRun: "Run Cloudflare Browser Run actions.",
-  },
   tools: cloudflareRuntimeTools,
   isAvailable: (context: CloudflareToolContext) => !!context.runtimes.cloudflare,
 });

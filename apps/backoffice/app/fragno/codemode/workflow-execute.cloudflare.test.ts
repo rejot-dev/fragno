@@ -440,7 +440,6 @@ describe("codemode workflow execution", () => {
           families: [
             defineBackofficeRuntimeToolFamily({
               namespace: "math",
-              permissions: {},
               tools: [doubleTool],
             }),
           ],

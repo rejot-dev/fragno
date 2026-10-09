@@ -158,6 +158,14 @@ export function createOpenApiDocument(
         operationId,
         description: operation.description,
         tags: [operationId.split(".")[0]],
+        // OpenAPI 3.1 lets non-OAuth schemes list the roles a requirement needs.
+        security: [
+          {
+            bearer: operation.permissions.map(
+              ({ namespace, permission }) => `${namespace}.${permission}`,
+            ),
+          },
+        ],
         parameters: [SCOPE_PARAMETER],
         ...(input && {
           requestBody: {

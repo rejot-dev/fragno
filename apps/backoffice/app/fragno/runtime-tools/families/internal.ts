@@ -1,3 +1,4 @@
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
 
@@ -82,7 +83,7 @@ const filesSeedExecuteTool = defineBackofficeRuntimeTool({
   namespace: "internal",
   name: "filesSeedExecute",
   description: "Seed the org workspace with starter files if they do not already exist.",
-  requiredPermissions: ["manage"],
+  requiredPermissions: [BACKOFFICE_PERMISSION.internal.manage],
   inputSchema: z.object({ force: z.boolean().optional() }),
   outputSchema: workspaceStarterFilesSeedOutputSchema,
   execute: async (input, context: InternalToolContext) => {
@@ -161,7 +162,7 @@ const marketplacePushTool = defineBackofficeRuntimeTool({
   namespace: "internal",
   name: "marketplacePush",
   description: "Publish the bundled static marketplace entries from System context.",
-  requiredPermissions: ["manage"],
+  requiredPermissions: [BACKOFFICE_PERMISSION.internal.manage],
   inputSchema: z.object({ force: z.boolean().optional() }).optional().default({}),
   outputSchema: marketplaceStaticPublicationResultSchema,
   execute: async (input, context: InternalToolContext) => {
@@ -199,9 +200,6 @@ const marketplacePushTool = defineBackofficeRuntimeTool({
 
 export const internalWorkspaceToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "internal",
-  permissions: {
-    manage: "Run internal runtime maintenance tasks.",
-  },
   tools: [filesSeedExecuteTool],
   hidden: true,
   isAvailable: (context: InternalToolContext) =>
@@ -211,9 +209,6 @@ export const internalWorkspaceToolFamily = defineBackofficeRuntimeToolFamily({
 
 export const internalMarketplaceToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "internal",
-  permissions: {
-    manage: "Run internal runtime maintenance tasks.",
-  },
   tools: [marketplacePushTool],
   hidden: true,
   isAvailable: (context: InternalToolContext) =>

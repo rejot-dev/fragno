@@ -236,7 +236,6 @@ const workflowInstanceCreateTool = defineAutomationWorkflowTool({
   ...backofficeApiOperationToolFields("workflow.instances.create"),
   namespace: "workflow",
   name: "createInstance",
-  requiredPermissions: ["modify"],
   execute: async (input, context) =>
     await getAutomationWorkflowRuntime(context.runtimes.workflow).createInstance(input),
   reference: {
@@ -288,7 +287,6 @@ const workflowInstanceSendEventTool = defineAutomationWorkflowTool({
   ...backofficeApiOperationToolFields("workflow.instances.send-event"),
   namespace: "workflow",
   name: "sendEvent",
-  requiredPermissions: ["modify"],
   execute: async (input, context) =>
     await getAutomationWorkflowRuntime(context.runtimes.workflow).sendEvent(input),
   reference: { codemode: { description: "Send an event to a waiting durable workflow instance." } },
@@ -334,7 +332,6 @@ const workflowRetryFailedStepTool = defineAutomationWorkflowTool({
   ...backofficeApiOperationToolFields("workflow.instances.retry-failed-step"),
   namespace: "workflow",
   name: "retryFailedStep",
-  requiredPermissions: ["modify"],
   execute: async (input, context) => {
     return await getAutomationWorkflowRuntime(context.runtimes.workflow).retryFailedStep(input);
   },
@@ -377,7 +374,6 @@ const workflowListInstancesTool = defineAutomationWorkflowTool({
   ...backofficeApiOperationToolFields("workflow.instances.list"),
   namespace: "workflow",
   name: "listInstances",
-  requiredPermissions: ["read"],
   execute: async (input, context) => {
     return await getAutomationWorkflowRuntime(context.runtimes.workflow).listInstances(input);
   },
@@ -421,7 +417,6 @@ const workflowGetInstanceTool = defineAutomationWorkflowTool({
   ...backofficeApiOperationToolFields("workflow.instances.get"),
   namespace: "workflow",
   name: "getInstance",
-  requiredPermissions: ["read"],
   execute: async (input, context) => {
     return await getAutomationWorkflowRuntime(context.runtimes.workflow).getInstance(input);
   },
@@ -454,7 +449,6 @@ const workflowHistoryTool = defineAutomationWorkflowTool({
   ...backofficeApiOperationToolFields("workflow.instances.history"),
   namespace: "workflow",
   name: "getHistory",
-  requiredPermissions: ["read"],
   execute: async (input, context) => {
     return await getAutomationWorkflowRuntime(context.runtimes.workflow).getHistory(input);
   },
@@ -496,10 +490,6 @@ export const automationWorkflowRuntimeTools = [
 
 export const automationWorkflowToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "automations-workflow",
-  permissions: {
-    read: "Read durable workflow instances and history.",
-    modify: "Create, signal, and retry durable workflow instances.",
-  },
   tools: automationWorkflowRuntimeTools,
   isAvailable: (context: AutomationWorkflowToolContext) => Boolean(context.runtimes.workflow),
 });

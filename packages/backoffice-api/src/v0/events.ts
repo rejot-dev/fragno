@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import type { BackofficeApiOperation } from "../api";
 import { type AutomationActors, automationActorsSchema } from "./automation";
+import { BACKOFFICE_PERMISSION } from "./shared/permissions";
 import { type BackofficeContextScope, backofficeContextScopeSchema } from "./shared/scope";
 
 export type AutomationEventPayload = Record<string, unknown>;
@@ -182,32 +183,38 @@ const automationEventCatalogGetInputSchema = z.object({
 export const eventsOperations = {
   "events.fire": {
     description: "Fire an automation event for the current context or a selected target scope.",
+    permissions: [BACKOFFICE_PERMISSION.events.emit],
     input: eventEmitInputSchema,
     output: eventEmitOutputSchema,
   },
   "events.list": {
     description: "List stored automation events in the current scope, newest first.",
+    permissions: [BACKOFFICE_PERMISSION.events.read],
     input: eventListInputSchema,
     output: automationEventListResultSchema,
   },
   "events.get": {
     description: "Get one stored automation event by id in the current scope.",
+    permissions: [BACKOFFICE_PERMISSION.events.read],
     input: z.object({ id: z.string().trim().min(1) }),
     output: automationEventListResultSchema.shape.events.element.nullable(),
   },
   "events.catalog.list": {
     description:
       "List known automation event source/type pairs from the Backoffice capability registry.",
+    permissions: [BACKOFFICE_PERMISSION.events.read],
     input: z.void(),
     output: automationEventsCatalogListOutputSchema,
   },
   "events.catalog.get": {
     description: "Get one automation event descriptor and its JSON schemas.",
+    permissions: [BACKOFFICE_PERMISSION.events.read],
     input: automationEventCatalogGetInputSchema,
     output: automationEventDescriptorSchema.nullable(),
   },
   "events.catalog.create": {
     description: "Create a scoped dynamic automation event definition with optional JSON schemas.",
+    permissions: [BACKOFFICE_PERMISSION.events.manage],
     input: automationEventDefinitionCreateInputSchema,
     output: automationEventDefinitionSchema,
   },

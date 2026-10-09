@@ -26,7 +26,10 @@ Every operation is `POST /api/<version>/scopes/<scope>/<operationId>` with a bea
 operation's input as the JSON body. Operations whose input is `z.void()` take no body. The scope is
 `system`, `user:<userId>`, `org:<orgId>`, or `project:<orgId>:<projectId>`, with each id
 URI-encoded. An operation that is not available to the credential in that scope, such as an
-organization operation in a project scope, answers `404`.
+organization operation in a project scope, answers `404`. Each operation lists the permissions it
+requires in the request's scope (`permissions`, from `v0/shared/permissions`); the OpenAPI document
+repeats them as the roles of the operation's `bearer` security requirement. A credential lacking one
+answers `403`.
 
 Successful calls return `200` with the operation's output, or `204` when the output is `z.void()`.
 Bytes travel as standard base64 strings (`v0/shared/bytes`). This is temporary: dedicated file

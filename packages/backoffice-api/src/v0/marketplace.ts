@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { BackofficeApiOperation } from "../api";
+import { BACKOFFICE_PERMISSION } from "./shared/permissions";
 import {
   backofficeOrganizationScopeSchema,
   backofficeProjectScopeSchema,
@@ -342,17 +343,20 @@ export const marketplaceOperations = {
   "marketplace.search": {
     description:
       "Search published package metadata. Follow nextCursor while hasNextPage is true, even when a candidate page has no matches.",
+    permissions: [BACKOFFICE_PERMISSION.marketplace.read],
     input: marketplaceSearchInputSchema,
     output: marketplaceSearchResultSchema,
   },
   "marketplace.view": {
     description: "Inspect published package metadata and cursor-paginated releases.",
+    permissions: [BACKOFFICE_PERMISSION.marketplace.read],
     input: marketplacePublishedListingInputSchema,
     output: marketplaceListingDetailSchema,
   },
   "marketplace.publish": {
     description:
       "Publish a captured package from a root manifest.json containing name @<organization-slug>/<package-slug>. Versions are immutable by default; System may explicitly replace them. Dry runs write nothing. Author and version overrides require System context.",
+    permissions: [BACKOFFICE_PERMISSION.marketplace.publish],
     input: marketplacePublishInputSchema,
     output: marketplacePublishResultSchema,
   },
@@ -362,12 +366,14 @@ export const packagesOperations = {
   "packages.install": {
     description:
       "Start the existing Marketplace installation workflow in the current workspace at a required folder under /workspace. Installation is asynchronous and never overwrites differing files. Omit version to use the existing latest-release resolution.",
+    permissions: [BACKOFFICE_PERMISSION.packages.install],
     input: packagesInstallInputSchema,
     output: packagesInstallResultSchema,
   },
   "packages.ls": {
     description:
       "List successful package installations recorded in /workspace/marketplace-lock.json for the current workspace. A missing lock is empty; malformed locks fail without being modified.",
+    permissions: [BACKOFFICE_PERMISSION.packages.read],
     input: z.strictObject({}),
     output: marketplaceLockSchema,
   },

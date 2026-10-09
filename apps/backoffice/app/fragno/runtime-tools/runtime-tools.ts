@@ -1,10 +1,5 @@
 import { backofficeApiV0 } from "@fragno-dev/backoffice-api/v0";
-import {
-  isBackofficePermissionRequirement,
-  type BackofficePermission,
-  type BackofficePermissionNamespace,
-  type BackofficePermissionRequirement,
-} from "@fragno-dev/backoffice-api/v0/shared/permissions";
+import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { ToolProvider } from "@fragno-dev/codemode/runtime-api";
 import { defineCommand } from "just-bash";
@@ -149,9 +144,9 @@ export type BackofficeRuntimeTool<
   namespace: string;
   name: string;
   capabilityId?: BackofficeCapabilityId;
-  authorizationNamespace?: BackofficePermissionNamespace;
   description: string;
-  requiredPermissions: readonly BackofficePermission[];
+  /** Every listed permission is required in the execution's scope. */
+  requiredPermissions: readonly BackofficePermissionRequirement[];
   getResource?(input: z.output<TInputSchema>): unknown;
   inputSchema: TInputSchema;
   outputSchema: TOutputSchema;
@@ -167,7 +162,6 @@ export type AnyBackofficeRuntimeTool = BackofficeRuntimeTool;
 
 export type BackofficeRuntimeToolFamily = {
   namespace: string;
-  permissions: Readonly<Record<string, string>>;
   tools: readonly AnyBackofficeRuntimeTool[];
   hidden?: boolean;
   isAvailable?: (context: BackofficeToolContext) => boolean;
@@ -176,19 +170,26 @@ export type BackofficeRuntimeToolFamily = {
 type BackofficeApiOperations = typeof backofficeApiV0.operations;
 
 /**
- * Tools that are API operations take their id, description, and schemas from the current API
- * version, so Bash, Codemode, and HTTP callers share one contract.
+ * Tools that are API operations take their id, description, permissions, and schemas from the
+ * current API version, so Bash, Codemode, and HTTP callers share one contract.
  */
 export function backofficeApiOperationToolFields<TId extends keyof BackofficeApiOperations>(
   id: TId,
 ): {
   id: TId;
   description: string;
+  requiredPermissions: BackofficeApiOperations[TId]["permissions"];
   inputSchema: BackofficeApiOperations[TId]["input"];
   outputSchema: BackofficeApiOperations[TId]["output"];
 } {
-  const { description, input, output } = backofficeApiV0.operations[id];
-  return { id, description, inputSchema: input, outputSchema: output };
+  const { description, permissions, input, output } = backofficeApiV0.operations[id];
+  return {
+    id,
+    description,
+    requiredPermissions: permissions,
+    inputSchema: input,
+    outputSchema: output,
+  };
 }
 
 export function defineBackofficeRuntimeTool<
@@ -203,14 +204,6 @@ export function defineBackofficeRuntimeTool<
   >,
   resultLogging: "summary" | "redacted" = "summary",
 ): BackofficeRuntimeTool<TInputSchema, TOutputSchema, TContext, TBashInput> {
-  const authorizationNamespace = tool.authorizationNamespace ?? tool.namespace;
-  for (const permission of tool.requiredPermissions) {
-    if (!isBackofficePermissionRequirement({ namespace: authorizationNamespace, permission })) {
-      throw new Error(
-        `Runtime tool '${tool.id}' requires unknown permission '${authorizationNamespace}.${permission}'.`,
-      );
-    }
-  }
   return { ...tool, resultLogging };
 }
 
@@ -218,31 +211,17 @@ export const defineBackofficeRuntimeToolFamily = <
   TContext extends BackofficeToolContext = BackofficeToolContext,
 >({
   namespace,
-  permissions,
   tools,
   hidden,
   isAvailable,
 }: {
   namespace: string;
-  permissions: Readonly<Record<string, string>>;
   tools: readonly BackofficeRuntimeTool<z.ZodType, z.ZodType, TContext, unknown>[];
   hidden?: boolean;
   isAvailable?: (context: TContext) => boolean;
 }): BackofficeRuntimeToolFamily => {
-  const declaredPermissions = { ...permissions };
-  for (const tool of tools) {
-    for (const permission of tool.requiredPermissions) {
-      if (!declaredPermissions[permission]) {
-        throw new Error(
-          `Runtime tool '${tool.id}' requires undeclared permission '${permission}' in family '${namespace}'.`,
-        );
-      }
-    }
-  }
-
   return {
     namespace,
-    permissions: declaredPermissions,
     tools: tools as readonly AnyBackofficeRuntimeTool[],
     ...(hidden ? { hidden } : {}),
     ...(isAvailable
@@ -313,18 +292,10 @@ const authorizeBackofficeRuntimeTool = async (
   parsedInput: unknown,
   context: BackofficeToolContext,
 ) => {
-  const namespace = tool.authorizationNamespace ?? tool.namespace;
   const resource = tool.getResource?.(parsedInput) ?? { kind: "runtime-tool", toolId: tool.id };
 
   // TODO: Express this ordered authorization chain without triggering async-await-in-loop.
-  for (const permission of tool.requiredPermissions) {
-    const operation = { namespace, permission };
-    if (!isBackofficePermissionRequirement(operation)) {
-      throw new Error(
-        `Runtime tool '${tool.id}' requires unknown permission '${namespace}.${permission}'.`,
-      );
-    }
-
+  for (const operation of tool.requiredPermissions) {
     try {
       await context.kernel.assertAuthorized({
         execution: context.execution,

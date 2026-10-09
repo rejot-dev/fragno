@@ -56,7 +56,6 @@ const listRepositoriesTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("github.repositories.list"),
   namespace: "github",
   name: "listRepositories",
-  requiredPermissions: ["read"],
   execute: async (input, context: GitHubToolContext) =>
     await getGitHubRuntime(context.runtimes.github).listRepositories(input),
   adapters: {
@@ -94,7 +93,6 @@ const createRepositoryAccessTokenTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("github.repositories.create-access-token"),
   namespace: "github",
   name: "createRepositoryAccessToken",
-  requiredPermissions: ["read"],
   execute: async (input, context: GitHubToolContext) =>
     await getGitHubRuntime(context.runtimes.github).createRepositoryAccessToken(input),
   adapters: {
@@ -152,9 +150,6 @@ export const githubRuntimeTools = [listRepositoriesTool, createRepositoryAccessT
 
 export const githubToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "github",
-  permissions: {
-    read: "Create read-only clone credentials for linked GitHub repositories.",
-  },
   tools: githubRuntimeTools,
   isAvailable: (context: GitHubToolContext) => !!context.runtimes.github,
 });

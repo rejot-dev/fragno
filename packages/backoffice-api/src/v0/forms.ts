@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import type { BackofficeApiOperation } from "../api";
 import { isoDateTimeOutputSchema } from "./shared/datetime";
+import { BACKOFFICE_PERMISSION } from "./shared/permissions";
 
 const formStatusInputValues = ["draft", "open", "closed"] as const;
 
@@ -58,21 +59,25 @@ export const updateFormInputSchema = createFormInputSchema.partial().extend({
 export const formsOperations = {
   "forms.list": {
     description: "List forms stored in the global system Forms integration.",
+    permissions: [BACKOFFICE_PERMISSION.forms.read],
     input: z.void(),
     output: z.object({ forms: z.array(formOutputSchema) }),
   },
   "forms.submissions.list": {
     description: "List responses submitted to a system form.",
+    permissions: [BACKOFFICE_PERMISSION.forms.read],
     input: listFormSubmissionsInputSchema,
     output: listFormSubmissionsOutputSchema,
   },
   "forms.update": {
     description: "Update a schema-backed form in the global system Forms integration.",
+    permissions: [BACKOFFICE_PERMISSION.forms.update],
     input: updateFormInputSchema,
     output: z.object({ updated: z.literal(true) }),
   },
   "forms.create": {
     description: "Create a schema-backed form in the global system Forms integration.",
+    permissions: [BACKOFFICE_PERMISSION.forms.create],
     input: createFormInputSchema,
     output: z.object({ id: z.string() }),
   },

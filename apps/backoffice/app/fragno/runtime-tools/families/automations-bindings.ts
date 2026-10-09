@@ -133,7 +133,6 @@ const storeGetTool = defineAutomationStoreTool({
   ...backofficeApiOperationToolFields("store.get"),
   namespace: "store",
   name: "get",
-  requiredPermissions: ["read"],
   execute: async (input, context) =>
     await getAutomationStoreRuntime(context.runtimes.automations).get(input),
   adapters: {
@@ -167,7 +166,6 @@ const storeSetTool = defineAutomationStoreTool({
   ...backofficeApiOperationToolFields("store.set"),
   namespace: "store",
   name: "set",
-  requiredPermissions: ["modify"],
   execute: async (input, context) =>
     await getAutomationStoreRuntime(context.runtimes.automations).set(input),
   adapters: {
@@ -226,7 +224,6 @@ const storeListTool = defineAutomationStoreTool({
   ...backofficeApiOperationToolFields("store.list"),
   namespace: "store",
   name: "list",
-  requiredPermissions: ["read"],
   execute: async (input, context) =>
     await getAutomationStoreRuntime(context.runtimes.automations).list(input),
   adapters: {
@@ -266,7 +263,6 @@ const storeDeleteTool = defineAutomationStoreTool({
   ...backofficeApiOperationToolFields("store.delete"),
   namespace: "store",
   name: "delete",
-  requiredPermissions: ["modify"],
   execute: async (input, context) =>
     await getAutomationStoreRuntime(context.runtimes.automations).delete(input),
   adapters: {
@@ -305,10 +301,6 @@ export const automationStoreRuntimeTools = [
 
 export const automationStoreToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "store",
-  permissions: {
-    read: "Read automation store entries.",
-    modify: "Create, update, and delete automation store entries.",
-  },
   tools: automationStoreRuntimeTools,
   isAvailable: (context: AutomationStoreToolContext) => !!context.runtimes.automations,
 });

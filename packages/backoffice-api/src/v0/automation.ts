@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { BackofficeApiOperation } from "../api";
+import { BACKOFFICE_PERMISSION } from "./shared/permissions";
 import {
   backofficePermissionRequirementSchema,
   type BackofficePermissionRequirement,
@@ -652,31 +653,37 @@ export type AutomationRouteUpdateInput = z.infer<typeof automationRouteUpdateInp
 export const automationRouterOperations = {
   "router.list": {
     description: "List database-backed automation routing rules.",
+    permissions: [BACKOFFICE_PERMISSION.router.read],
     input: z.void(),
     output: z.array(automationRouteSchema),
   },
   "router.get": {
     description: "Get one database-backed automation routing rule.",
+    permissions: [BACKOFFICE_PERMISSION.router.read],
     input: z.object({ id: z.string().trim().min(1) }),
     output: automationRouteSchema.nullable(),
   },
   "router.create": {
     description: "Create a database-backed automation routing rule.",
+    permissions: [BACKOFFICE_PERMISSION.router.modify],
     input: automationRouteCreateInputSchema,
     output: automationRouteSchema,
   },
   "router.update": {
     description: "Update a database-backed automation routing rule.",
+    permissions: [BACKOFFICE_PERMISSION.router.modify],
     input: automationRouteUpdateInputSchema,
     output: automationRouteSchema.nullable(),
   },
   "router.delete": {
     description: "Idempotently delete a database-backed automation route.",
+    permissions: [BACKOFFICE_PERMISSION.router.modify],
     input: z.object({ id: z.string().trim().min(1) }),
     output: z.object({ deleted: z.literal(true) }),
   },
   "router.trigger-now": {
     description: "Trigger a scheduled automation route immediately without changing its cadence.",
+    permissions: [BACKOFFICE_PERMISSION.router.modify],
     input: z.object({ id: z.string().trim().min(1) }),
     output: z.object({ accepted: z.literal(true), eventId: z.string() }).nullable(),
   },

@@ -69,7 +69,6 @@ const listFormsTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("forms.list"),
   namespace: "forms",
   name: "listForms",
-  requiredPermissions: ["read"],
   execute: async (_input, context: FormsToolContext) => {
     const forms = await requireFormsRuntime(context.runtimes.forms).listForms();
     return z.object({ forms: z.array(formOutputSchema) }).parse(
@@ -99,7 +98,6 @@ const listFormSubmissionsTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("forms.submissions.list"),
   namespace: "forms",
   name: "listSubmissions",
-  requiredPermissions: ["read"],
   execute: async (input, context: FormsToolContext) => {
     const page = await requireFormsRuntime(context.runtimes.forms).listSubmissions(input);
     return listFormSubmissionsOutputSchema.parse(normalizeRuntimeOutput(page));
@@ -143,7 +141,6 @@ const updateFormTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("forms.update"),
   namespace: "forms",
   name: "updateForm",
-  requiredPermissions: ["update"],
   execute: async ({ formId, ...input }, context: FormsToolContext) =>
     await requireFormsRuntime(context.runtimes.forms).updateForm(formId, input),
   adapters: {
@@ -187,7 +184,6 @@ const createFormTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("forms.create"),
   namespace: "forms",
   name: "createForm",
-  requiredPermissions: ["create"],
   execute: async (input, context: FormsToolContext) =>
     await requireFormsRuntime(context.runtimes.forms).createForm(input),
   adapters: {
@@ -235,11 +231,6 @@ export const formsRuntimeTools = [
 
 export const formsToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "forms",
-  permissions: {
-    read: "List system forms and their submissions.",
-    create: "Create system forms.",
-    update: "Update system forms.",
-  },
   tools: formsRuntimeTools,
   isAvailable: (context: FormsToolContext) => !!context.runtimes.forms,
 });

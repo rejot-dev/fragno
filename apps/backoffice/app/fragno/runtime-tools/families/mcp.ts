@@ -219,20 +219,12 @@ const parseToolCall = defineCliArgsParser<z.input<typeof callToolInputSchema>>("
   timeoutMs: { option: "timeout-ms", kind: "integer" },
 });
 
-const mcpPermissions = {
-  "servers.read": "Read MCP server configuration and cached tool metadata.",
-  "servers.create": "Create MCP server configuration and auth state.",
-  "servers.delete": "Delete MCP server configuration and auth state.",
-  "tools.call": "Call tools exposed by configured MCP servers.",
-} as const;
-
 export const mcpRuntimeTools = [
   defineBackofficeRuntimeTool({
     ...backofficeApiOperationToolFields("mcp.servers.list"),
     namespace: "mcp",
     name: "listServers",
     capabilityId: "mcp",
-    requiredPermissions: ["servers.read"],
     execute: async (_input, context: McpToolContext) =>
       await getMcpRuntime(context.runtimes.mcp).listServers(),
     adapters: {
@@ -254,7 +246,6 @@ export const mcpRuntimeTools = [
     namespace: "mcp",
     name: "createServer",
     capabilityId: "mcp",
-    requiredPermissions: ["servers.create"],
     getResource: (input) => ({ slug: input.slug }),
     execute: async (input, context: McpToolContext) =>
       await getMcpRuntime(context.runtimes.mcp).createServer(input),
@@ -328,7 +319,6 @@ export const mcpRuntimeTools = [
     namespace: "mcp",
     name: "deleteServer",
     capabilityId: "mcp",
-    requiredPermissions: ["servers.delete"],
     getResource: (input) => ({ slug: input.slug }),
     execute: async (input, context: McpToolContext) =>
       await getMcpRuntime(context.runtimes.mcp).deleteServer(input),
@@ -359,7 +349,6 @@ export const mcpRuntimeTools = [
     namespace: "mcp",
     name: "refreshServer",
     capabilityId: "mcp",
-    requiredPermissions: ["servers.read"],
     getResource: (input) => ({ slug: input.slug }),
     execute: async (input, context: McpToolContext) =>
       await getMcpRuntime(context.runtimes.mcp).refreshServer(input),
@@ -393,7 +382,6 @@ export const mcpRuntimeTools = [
     namespace: "mcp",
     name: "callTool",
     capabilityId: "mcp",
-    requiredPermissions: ["tools.call"],
     getResource: (input) => ({ slug: input.slug, toolName: input.name }),
     execute: async (input, context: McpToolContext) =>
       await getMcpRuntime(context.runtimes.mcp).callTool(input),
@@ -445,7 +433,6 @@ export const mcpRuntimeTools = [
     namespace: "mcp",
     name: "startOAuth",
     capabilityId: "mcp",
-    requiredPermissions: ["servers.create"],
     getResource: (input) => ({ slug: input.slug }),
     execute: async (input, context: McpToolContext) =>
       await getMcpRuntime(context.runtimes.mcp).startOAuth(input),
@@ -492,7 +479,6 @@ export const mcpRuntimeTools = [
     namespace: "mcp",
     name: "setToken",
     capabilityId: "mcp",
-    requiredPermissions: ["servers.create"],
     getResource: (input) => ({ slug: input.slug }),
     execute: async (input, context: McpToolContext) =>
       await getMcpRuntime(context.runtimes.mcp).setToken(input),
@@ -531,7 +517,6 @@ export const mcpRuntimeTools = [
 
 export const mcpToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "mcp",
-  permissions: mcpPermissions,
   tools: mcpRuntimeTools,
   isAvailable: (context: McpToolContext) => !!context.runtimes.mcp,
 });

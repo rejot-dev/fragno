@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { BackofficeApiOperation } from "../api";
+import { BACKOFFICE_PERMISSION } from "./shared/permissions";
 
 export const idSchema = z.preprocess((value) => {
   if (typeof value === "string") {
@@ -98,21 +99,25 @@ export type AutomationStoreDeleteResult = z.infer<typeof automationStoreDeleteRe
 export const storeOperations = {
   "store.get": {
     description: "Get an automation store entry by key.",
+    permissions: [BACKOFFICE_PERMISSION.store.read],
     input: z.strictObject({ key: z.string().trim().min(1) }),
     output: automationStoreEntrySchema.nullable(),
   },
   "store.set": {
     description: "Create or update an automation store entry.",
+    permissions: [BACKOFFICE_PERMISSION.store.modify],
     input: automationStoreSetInputSchema,
     output: automationStoreSetResultSchema,
   },
   "store.list": {
     description: "List automation store entries, optionally filtered by key prefix.",
+    permissions: [BACKOFFICE_PERMISSION.store.read],
     input: automationStoreListInputSchema,
     output: z.array(automationStoreEntrySchema),
   },
   "store.delete": {
     description: "Delete an automation store entry by key.",
+    permissions: [BACKOFFICE_PERMISSION.store.modify],
     input: z.strictObject({ key: z.string().trim().min(1) }),
     output: automationStoreDeleteResultSchema.nullable(),
   },

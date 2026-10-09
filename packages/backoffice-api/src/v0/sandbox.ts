@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { BackofficeApiOperation } from "../api";
+import { BACKOFFICE_PERMISSION } from "./shared/permissions";
 
 export const commandResultSchema = z.discriminatedUnion("ok", [
   z.object({ ok: z.literal(true), stdout: z.string(), stderr: z.string(), exitCode: z.number() }),
@@ -51,6 +52,7 @@ const startInputSchema = z.object({
 export const sandboxOperations = {
   "sandbox.start": {
     description: "Start a Cloudflare sandbox for the current organization.",
+    permissions: [BACKOFFICE_PERMISSION.sandbox.modify],
     input: startInputSchema,
     output: z.object({
       id: z.string().trim().min(1),
@@ -59,16 +61,19 @@ export const sandboxOperations = {
   },
   "sandbox.list": {
     description: "List Cloudflare sandboxes for the current organization.",
+    permissions: [BACKOFFICE_PERMISSION.sandbox.read],
     input: z.void(),
     output: z.array(z.object({ id: z.string().trim().min(1), status: sandboxStatusSchema })),
   },
   "sandbox.kill": {
     description: "Kill a Cloudflare sandbox for the current organization.",
+    permissions: [BACKOFFICE_PERMISSION.sandbox.modify],
     input: z.object({ sandboxId: z.string().trim().min(1) }),
     output: z.object({ sandboxId: z.string().trim().min(1), killed: z.literal(true) }),
   },
   "sandbox.exec": {
     description: "Execute a command in a Cloudflare sandbox.",
+    permissions: [BACKOFFICE_PERMISSION.sandbox.modify],
     input: execInputSchema,
     output: commandResultSchema,
   },

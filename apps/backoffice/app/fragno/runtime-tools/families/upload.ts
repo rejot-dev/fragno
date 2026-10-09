@@ -1,3 +1,4 @@
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import { uploadPreparedInputSchema } from "@fragno-dev/backoffice-api/v0/upload";
 import { preparedUploadedFileReferenceSchema } from "@fragno-dev/backoffice-api/v0/upload";
 import { z } from "zod";
@@ -111,7 +112,7 @@ const readPreparedTool = defineUploadTool({
   name: "readPrepared",
   capabilityId: "upload",
   description: "Read the content of a prepared private upload before commit or discard.",
-  requiredPermissions: ["read"],
+  requiredPermissions: [BACKOFFICE_PERMISSION.upload.read],
   getResource: ({ file }) => ({ uploadId: file.uploadId }),
   inputSchema: uploadReadPreparedInputSchema,
   outputSchema: uploadReadPreparedOutputSchema,
@@ -171,7 +172,6 @@ const commitPreparedTool = defineUploadTool({
   namespace: "upload",
   name: "commitPrepared",
   capabilityId: "upload",
-  requiredPermissions: ["modify"],
   getResource: ({ file }) => ({ uploadId: file.uploadId }),
   execute: async (input, context) => {
     assertPreparedFileScope(context, input.file);
@@ -204,7 +204,6 @@ const discardPreparedTool = defineUploadTool({
   namespace: "upload",
   name: "discardPrepared",
   capabilityId: "upload",
-  requiredPermissions: ["modify"],
   getResource: ({ file }) => ({ uploadId: file.uploadId }),
   execute: async (input, context) => {
     assertPreparedFileScope(context, input.file);
@@ -240,10 +239,6 @@ export const uploadRuntimeTools = [
 
 export const uploadToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "upload",
-  permissions: {
-    read: "Read prepared private uploads.",
-    modify: "Commit or discard prepared private uploads.",
-  },
   tools: uploadRuntimeTools,
   isAvailable: (context: UploadToolContext) => !!context.runtimes.upload,
 });

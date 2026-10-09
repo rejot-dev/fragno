@@ -4,6 +4,7 @@ import type { BackofficeApiOperation } from "../api";
 import { base64BytesSchema } from "./shared/bytes";
 import { isoDateTimeOutputSchema } from "./shared/datetime";
 import { jsonValueSchema } from "./shared/json";
+import { BACKOFFICE_PERMISSION } from "./shared/permissions";
 
 export const fileSearchOptionsSchema = z.strictObject({
   caseSensitive: z.boolean().optional(),
@@ -96,16 +97,19 @@ export const appliedFileEditSchema = z.strictObject({
 export const stateOperations = {
   "state.readFileBytes": {
     description: "Read a file from the scope's state as base64-encoded bytes.",
+    permissions: [BACKOFFICE_PERMISSION.upload.read],
     input: pathInputSchema,
     output: base64BytesSchema,
   },
   "state.writeFileBytes": {
     description: "Write base64-encoded bytes to a file in the scope's state.",
+    permissions: [BACKOFFICE_PERMISSION.upload.modify],
     input: z.strictObject({ path: z.string(), content: base64BytesSchema }),
     output: z.void(),
   },
   "state.appendFile": {
     description: "Append UTF-8 text, or base64-encoded bytes, to a file in the scope's state.",
+    permissions: [BACKOFFICE_PERMISSION.upload.modify],
     input: z.strictObject({
       path: z.string(),
       content: z.string(),
@@ -115,11 +119,13 @@ export const stateOperations = {
   },
   "state.readFile": {
     description: "Read a UTF-8 text file from codemode state.",
+    permissions: [BACKOFFICE_PERMISSION.upload.read],
     input: pathInputSchema,
     output: z.string(),
   },
   "state.writeFile": {
     description: "Write a UTF-8 text file to mutable codemode state.",
+    permissions: [BACKOFFICE_PERMISSION.upload.modify],
     input: z.strictObject({
       path: z.string(),
       content: z.string(),
@@ -128,31 +134,37 @@ export const stateOperations = {
   },
   "state.exists": {
     description: "Check whether a codemode state path exists.",
+    permissions: [BACKOFFICE_PERMISSION.upload.read],
     input: pathInputSchema,
     output: z.boolean(),
   },
   "state.stat": {
     description: "Read metadata for a codemode state path.",
+    permissions: [BACKOFFICE_PERMISSION.upload.read],
     input: pathInputSchema,
     output: statOutputSchema,
   },
   "state.lstat": {
     description: "Read metadata for a codemode state path without following links.",
+    permissions: [BACKOFFICE_PERMISSION.upload.read],
     input: pathInputSchema,
     output: statOutputSchema,
   },
   "state.mkdir": {
     description: "Create a directory in mutable codemode state.",
+    permissions: [BACKOFFICE_PERMISSION.upload.modify],
     input: pathInputSchema,
     output: z.void(),
   },
   "state.readdir": {
     description: "List the names directly below a codemode state directory.",
+    permissions: [BACKOFFICE_PERMISSION.upload.read],
     input: pathInputSchema,
     output: z.array(z.string()),
   },
   "state.readdirWithFileTypes": {
     description: "List names and entry types directly below a codemode state directory.",
+    permissions: [BACKOFFICE_PERMISSION.upload.read],
     input: pathInputSchema,
     output: z.array(
       z.strictObject({
@@ -163,6 +175,7 @@ export const stateOperations = {
   },
   "state.rm": {
     description: "Remove a file or empty directory from mutable codemode state.",
+    permissions: [BACKOFFICE_PERMISSION.upload.modify],
     input: z.strictObject({
       path: z.string(),
       options: z
@@ -175,6 +188,7 @@ export const stateOperations = {
   },
   "state.cp": {
     description: "Copy one file within mutable codemode state.",
+    permissions: [BACKOFFICE_PERMISSION.upload.read, BACKOFFICE_PERMISSION.upload.modify],
     input: z.strictObject({
       src: z.string(),
       dest: z.string(),
@@ -183,6 +197,7 @@ export const stateOperations = {
   },
   "state.mv": {
     description: "Move one file within mutable codemode state.",
+    permissions: [BACKOFFICE_PERMISSION.upload.read, BACKOFFICE_PERMISSION.upload.modify],
     input: z.strictObject({
       src: z.string(),
       dest: z.string(),
@@ -191,11 +206,13 @@ export const stateOperations = {
   },
   "state.realpath": {
     description: "Resolve and validate a codemode state path.",
+    permissions: [BACKOFFICE_PERMISSION.upload.read],
     input: pathInputSchema,
     output: z.string(),
   },
   "state.resolvePath": {
     description: "Resolve a path against a base path without accessing storage.",
+    permissions: [],
     input: z.strictObject({
       base: z.string(),
       path: z.string(),
@@ -204,6 +221,7 @@ export const stateOperations = {
   },
   "state.glob": {
     description: "Find codemode state paths matching a glob pattern.",
+    permissions: [BACKOFFICE_PERMISSION.upload.read],
     input: z.strictObject({
       pattern: z.string(),
     }),
@@ -211,11 +229,13 @@ export const stateOperations = {
   },
   "state.readJson": {
     description: "Read and parse a JSON file from codemode state.",
+    permissions: [BACKOFFICE_PERMISSION.upload.read],
     input: pathInputSchema,
     output: jsonValueSchema,
   },
   "state.writeJson": {
     description: "Serialize and write a JSON value to mutable codemode state.",
+    permissions: [BACKOFFICE_PERMISSION.upload.modify],
     input: z.strictObject({
       path: z.string(),
       value: jsonValueSchema,
@@ -229,6 +249,7 @@ export const stateOperations = {
   },
   "state.applyEdits": {
     description: "Atomically apply text and JSON edits to mutable codemode state files.",
+    permissions: [BACKOFFICE_PERMISSION.upload.modify],
     input: z.strictObject({
       edits: z.array(fileEditSchema),
     }),
@@ -239,6 +260,7 @@ export const stateOperations = {
   },
   "state.searchText": {
     description: "Search for text within one codemode state file.",
+    permissions: [BACKOFFICE_PERMISSION.upload.read],
     input: z.strictObject({
       path: z.string(),
       query: z.string(),
@@ -248,6 +270,7 @@ export const stateOperations = {
   },
   "state.searchFiles": {
     description: "Search for text across codemode state files matching a glob pattern.",
+    permissions: [BACKOFFICE_PERMISSION.upload.read],
     input: z.strictObject({
       pattern: z.string(),
       query: z.string(),
@@ -260,6 +283,7 @@ export const stateOperations = {
   },
   "state.hashFile": {
     description: "Hash the bytes of one codemode state file.",
+    permissions: [BACKOFFICE_PERMISSION.upload.read],
     input: z.strictObject({
       path: z.string(),
       algorithm: z.enum(["md5", "sha1", "sha256"]).default("sha256"),

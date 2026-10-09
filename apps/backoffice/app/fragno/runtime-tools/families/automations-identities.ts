@@ -44,8 +44,6 @@ const resolveExternalIdentityTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("identity.external.resolve"),
   namespace: "identity",
   name: "resolveExternal",
-  authorizationNamespace: "identity",
-  requiredPermissions: ["resolve"],
   execute: async (input, context: AutomationIdentityToolContext) =>
     await getAutomationIdentityRuntime(context.runtimes.identity).resolveExternal(input),
   adapters: {
@@ -93,9 +91,6 @@ export const automationIdentityRuntimeTools = [resolveExternalIdentityTool] as c
 
 export const automationIdentityToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "identity",
-  permissions: {
-    resolve: "Resolve active external identity bindings from workflow logic.",
-  },
   tools: automationIdentityRuntimeTools,
   isAvailable: (context: AutomationIdentityToolContext) => !!context.runtimes.identity,
 });

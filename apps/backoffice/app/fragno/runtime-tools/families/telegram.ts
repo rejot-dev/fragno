@@ -224,7 +224,6 @@ export const telegramRuntimeTools = [
     ...backofficeApiOperationToolFields("telegram.file.get"),
     namespace: "telegram",
     name: "getFile",
-    requiredPermissions: ["read"],
     execute: async (input, context: TelegramToolContext) =>
       await getTelegramRuntime(context.runtimes.telegram).getFile(input),
     adapters: {
@@ -257,7 +256,6 @@ export const telegramRuntimeTools = [
     ...backofficeApiOperationToolFields("telegram.file.download"),
     namespace: "telegram",
     name: "downloadFile",
-    requiredPermissions: ["read"],
     execute: async (input, context: TelegramToolContext) =>
       await readTelegramDownload(
         await getTelegramRuntime(context.runtimes.telegram).downloadFile(input),
@@ -318,7 +316,6 @@ export const telegramRuntimeTools = [
     ...backofficeApiOperationToolFields("telegram.chat.send"),
     namespace: "telegram",
     name: "sendMessage",
-    requiredPermissions: ["send"],
     execute: async (input, context: TelegramToolContext) =>
       await getTelegramRuntime(context.runtimes.telegram).sendMessage(input),
     adapters: {
@@ -373,7 +370,6 @@ export const telegramRuntimeTools = [
     ...backofficeApiOperationToolFields("telegram.chat.actions"),
     namespace: "telegram",
     name: "sendChatAction",
-    requiredPermissions: ["send"],
     execute: async (input, context: TelegramToolContext) =>
       await getTelegramRuntime(context.runtimes.telegram).sendChatAction(input),
     adapters: {
@@ -412,7 +408,6 @@ export const telegramRuntimeTools = [
     ...backofficeApiOperationToolFields("telegram.message.edit"),
     namespace: "telegram",
     name: "editMessage",
-    requiredPermissions: ["send"],
     execute: async (input, context: TelegramToolContext) =>
       await getTelegramRuntime(context.runtimes.telegram).editMessage(input),
     adapters: {
@@ -467,10 +462,6 @@ export const telegramRuntimeTools = [
 
 export const telegramToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "telegram",
-  permissions: {
-    read: "Read Telegram files.",
-    send: "Send Telegram messages, chat actions, and message edits.",
-  },
   tools: telegramRuntimeTools,
   isAvailable: (context: TelegramToolContext) => !!context.runtimes.telegram,
 });

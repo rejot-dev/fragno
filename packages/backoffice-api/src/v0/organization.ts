@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import type { BackofficeApiOperation } from "../api";
 import { directoryPageInputSchema } from "./shared/pagination";
+import { BACKOFFICE_PERMISSION } from "./shared/permissions";
 
 export const organizationRoleSchema = z.enum(["owner", "admin", "member"]);
 export type OrganizationRole = z.output<typeof organizationRoleSchema>;
@@ -76,29 +77,34 @@ export type OrganizationInvitationLinkPage = z.output<typeof organizationInvitat
 export const organizationOperations = {
   "org.get": {
     description: "Read the current organization and your roles in it.",
+    permissions: [BACKOFFICE_PERMISSION.org.read],
     input: z.void(),
     output: organizationMembershipRecordSchema,
   },
   "org.update": {
     description: "Rename the current organization. Requires the owner or admin role.",
+    permissions: [BACKOFFICE_PERMISSION.org.manage],
     input: z.strictObject({ name: z.string().trim().min(1) }),
     output: organizationRecordSchema,
   },
   "org.members.list": {
     description:
       "List members of the current organization with their roles, using cursor pagination.",
+    permissions: [BACKOFFICE_PERMISSION.org.read],
     input: directoryPageInputSchema,
     output: organizationMemberPageSchema,
   },
   "org.invitations.list": {
     description:
       "List pending, unexpired invitations to the current organization with their shareable links, using cursor pagination.",
+    permissions: [BACKOFFICE_PERMISSION.org.read],
     input: directoryPageInputSchema,
     output: organizationInvitationLinkPageSchema,
   },
   "org.invitations.create": {
     description:
       "Invite an email address to the current organization and return a shareable link. Invitations are not emailed. Requires the owner or admin role; only owners may invite owners.",
+    permissions: [BACKOFFICE_PERMISSION.org.manage],
     input: z.strictObject({
       email: z.string().trim().toLowerCase().pipe(z.email()),
       roles: z.array(organizationRoleSchema).min(1),

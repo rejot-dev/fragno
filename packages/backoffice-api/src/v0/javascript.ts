@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { BackofficeApiOperation } from "../api";
+import { BACKOFFICE_PERMISSION } from "./shared/permissions";
 
 const javaScriptCheckDiagnosticSchema = z.object({
   code: z.number().int(),
@@ -58,18 +59,21 @@ export const javascriptOperations = {
   "js.build": {
     description:
       "Compile a saved JavaScript ES module into a reusable JSON artifact under /workspace without executing or activating it. Consumers validate exports.",
+    permissions: [BACKOFFICE_PERMISSION.upload.read, BACKOFFICE_PERMISSION.upload.modify],
     input: javaScriptBuildInputSchema,
     output: javaScriptBuildOutputSchema,
   },
   "js.check": {
     description:
       "Type check a standalone JavaScript file under /static or /workspace against static declarations.",
+    permissions: [BACKOFFICE_PERMISSION.upload.read],
     input: javaScriptFileInputSchema,
     output: javaScriptCheckOutputSchema,
   },
   "js.run": {
     description:
       "Run top-level statements in a saved .js source file or a built .json module artifact under /static or /workspace. Ignores exports; artifacts run without compilation and startup errors are returned.",
+    permissions: [BACKOFFICE_PERMISSION.upload.read],
     input: javaScriptFileInputSchema,
     output: javaScriptRunOutputSchema,
   },

@@ -1,4 +1,8 @@
-import type { BackofficeApi, BackofficeApiImplementation } from "@fragno-dev/backoffice-api/api";
+import type {
+  BackofficeApi,
+  BackofficeApiImplementation,
+  BackofficeApiPermission,
+} from "@fragno-dev/backoffice-api/api";
 import type { z } from "zod";
 
 import {
@@ -36,12 +40,20 @@ export type RuntimeToolAdapters<TApi extends BackofficeApi> = {
   ) => Promise<unknown>;
 };
 
+function permissionList(permissions: readonly BackofficeApiPermission[]): string {
+  return permissions
+    .map(({ namespace, permission }) => `${namespace}.${permission}`)
+    .sort()
+    .join(", ");
+}
+
 /**
  * Serves every operation with the runtime tool of the same id, and requires every tool outside the
  * denied and pending families to be an operation.
  *
  * A tool must use its operation's schema instances, which makes the tool's types the contract's
- * types, unless an adapter converts between the operation's wire shape and the tool's.
+ * types, unless an adapter converts between the operation's wire shape and the tool's. Either way it
+ * must require exactly the operation's permissions, so the contract states what the kernel checks.
  */
 export function createRuntimeToolHandlers<TApi extends BackofficeApi>(
   api: TApi,
@@ -66,6 +78,11 @@ export function createRuntimeToolHandlers<TApi extends BackofficeApi>(
       );
     }
     const { family, tool } = entry;
+    if (permissionList(tool.requiredPermissions) !== permissionList(operation.permissions)) {
+      throw new Error(
+        `API ${api.version} operation '${operationId}' declares permissions [${permissionList(operation.permissions)}], but its runtime tool requires [${permissionList(tool.requiredPermissions)}].`,
+      );
+    }
     if (API_DENIED_FAMILY_NAMESPACES.has(family.namespace)) {
       throw new Error(
         `API ${api.version} operation '${operationId}' exposes the denied '${family.namespace}' tools.`,
