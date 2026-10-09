@@ -1253,10 +1253,16 @@ describe("starter automation router scenarios", () => {
     );
   });
 
-  test("Telegram /pi skips an unlinked chat", async () => {
+  test("Telegram inputs from an unlinked chat start no Pi session or starter workflow", async () => {
+    const unlinkedChatMessage = {
+      orgId: "org-1",
+      chatId: "1001",
+      from: { id: 1_001, firstName: "Ada", username: "ada_lovelace" },
+    };
+
     await runBackofficeScenario(
       defineBackofficeScenario({
-        name: "Telegram Channel /pi skips an unlinked chat",
+        name: "Telegram Channel ignores unlinked and unrelated inputs",
 
         fakes: ({ fake }) => ({
           telegram: fake.telegram(),
@@ -1275,183 +1281,72 @@ describe("starter automation router scenarios", () => {
           }),
         ],
 
-        steps: ({ when, then }) => [
-          when.marketplace.install(TELEGRAM_CHANNEL_MARKETPLACE_INSTALLATION),
-          when.telegram.receivesMessage({
-            orgId: "org-1",
-            updateId: 20_006,
-            messageId: 606,
-            chatId: "1001",
-            text: "/pi",
-            from: { id: 1_001, firstName: "Ada", username: "ada_lovelace" },
-          }),
+        steps: ({ when, then }) => {
+          // Each input is asserted on its own, so an earlier input cannot hide a later regression.
+          const thenNothingStarted = () => [
+            then.telegram.noMessages(),
+            then.assert("assert Pi was not called", (ctx) => {
+              const calls = ctx.fakes.pi?.createSessionCalls ?? [];
+              if (calls.length !== 0) {
+                throw new Error(`Expected no Pi session creation, got ${calls.length}.`);
+              }
+            }),
+            then.workflow.missing({ remoteWorkflowName: "telegram-user-linking" }),
+            then.workflow.missing({ remoteWorkflowName: "telegram-test-command" }),
+            then.workflow.missing({ remoteWorkflowName: "telegram-user-pi-linking" }),
+            then.workflow.noErrored({ orgId: "org-1" }),
+          ];
 
-          then.telegram.noMessages(),
-          then.assert("assert Pi was not called", (ctx) => {
-            const calls = ctx.fakes.pi?.createSessionCalls ?? [];
-            if (calls.length !== 0) {
-              throw new Error(`Expected no Pi session creation, got ${calls.length}.`);
-            }
-          }),
-          then.workflow.missing({
-            remoteWorkflowName: "telegram-user-pi-linking",
-          }),
-          then.workflow.noErrored({ orgId: "org-1" }),
-        ],
-      }),
-    );
-  });
+          return [
+            when.marketplace.install(TELEGRAM_CHANNEL_MARKETPLACE_INSTALLATION),
 
-  test("Telegram text skips an unlinked chat", async () => {
-    await runBackofficeScenario(
-      defineBackofficeScenario({
-        name: "Telegram Channel text skips an unlinked chat",
+            when.telegram.receivesMessage({
+              ...unlinkedChatMessage,
+              updateId: 20_006,
+              messageId: 606,
+              text: "/pi",
+            }),
+            ...thenNothingStarted(),
 
-        fakes: ({ fake }) => ({
-          telegram: fake.telegram(),
-          pi: fake.pi(),
-        }),
+            when.telegram.receivesMessage({
+              ...unlinkedChatMessage,
+              updateId: 20_007,
+              messageId: 607,
+              text: "Hello Pi",
+            }),
+            ...thenNothingStarted(),
 
-        setup: ({ given }) => [
-          given.organization.exists({ id: "org-1", name: "Ada Labs" }),
-          given.telegram.configured({
-            orgId: "org-1",
-            botUsername: "fragno_bot",
-          }),
-          given.pi.defaultAgent({
-            orgId: "org-1",
-            value: "openai::gpt-5-mini",
-          }),
-        ],
+            when.telegram.receivesMessage({
+              ...unlinkedChatMessage,
+              updateId: 20_008,
+              messageId: 608,
+              text: "/help",
+            }),
+            ...thenNothingStarted(),
 
-        steps: ({ when, then }) => [
-          when.marketplace.install(TELEGRAM_CHANNEL_MARKETPLACE_INSTALLATION),
-          when.telegram.receivesMessage({
-            orgId: "org-1",
-            updateId: 20_007,
-            messageId: 607,
-            chatId: "1001",
-            text: "Hello Pi",
-            from: { id: 1_001, firstName: "Ada", username: "ada_lovelace" },
-          }),
-
-          then.telegram.noMessages(),
-          then.assert("assert Pi was not called", (ctx) => {
-            const calls = ctx.fakes.pi?.createSessionCalls ?? [];
-            if (calls.length !== 0) {
-              throw new Error(`Expected no Pi session creation, got ${calls.length}.`);
-            }
-          }),
-          then.workflow.missing({
-            remoteWorkflowName: "telegram-user-pi-linking",
-          }),
-          then.workflow.noErrored({ orgId: "org-1" }),
-        ],
-      }),
-    );
-  });
-
-  test("Telegram unrelated slash commands do not create starter workflows", async () => {
-    await runBackofficeScenario(
-      defineBackofficeScenario({
-        name: "Telegram Channel slash command is ignored",
-
-        fakes: ({ fake }) => ({
-          telegram: fake.telegram(),
-          pi: fake.pi(),
-        }),
-
-        setup: ({ given }) => [
-          given.organization.exists({ id: "org-1", name: "Ada Labs" }),
-          given.telegram.configured({
-            orgId: "org-1",
-            botUsername: "fragno_bot",
-          }),
-          given.pi.defaultAgent({
-            orgId: "org-1",
-            value: "openai::gpt-5-mini",
-          }),
-        ],
-
-        steps: ({ when, then }) => [
-          when.marketplace.install(TELEGRAM_CHANNEL_MARKETPLACE_INSTALLATION),
-          when.telegram.receivesMessage({
-            orgId: "org-1",
-            updateId: 20_008,
-            messageId: 608,
-            chatId: "1001",
-            text: "/help",
-            from: { id: 1_001, firstName: "Ada", username: "ada_lovelace" },
-          }),
-
-          then.telegram.noMessages(),
-          then.workflow.missing({
-            remoteWorkflowName: "telegram-user-linking",
-          }),
-          then.workflow.missing({
-            remoteWorkflowName: "telegram-test-command",
-          }),
-          then.workflow.missing({
-            remoteWorkflowName: "telegram-user-pi-linking",
-          }),
-          then.workflow.noErrored({ orgId: "org-1" }),
-        ],
-      }),
-    );
-  });
-
-  test("raw Telegram webhooks without messages do not create starter workflows", async () => {
-    await runBackofficeScenario(
-      defineBackofficeScenario({
-        name: "starter raw Telegram webhook without message is ignored",
-
-        fakes: ({ fake }) => ({
-          telegram: fake.telegram(),
-        }),
-
-        setup: ({ given }) => [
-          given.organization.exists({ id: "org-1", name: "Ada Labs" }),
-          given.telegram.configured({
-            orgId: "org-1",
-            botUsername: "fragno_bot",
-          }),
-        ],
-
-        steps: ({ when, then }) => [
-          when.marketplace.install(TELEGRAM_CHANNEL_MARKETPLACE_INSTALLATION),
-          when.telegram.webhook({
-            orgId: "org-1",
-            label: "receive Telegram webhook without a message",
-            update: {
-              update_id: 21_001,
-              my_chat_member: {
-                chat: { id: 1001, type: "private" },
-                from: { id: 2001, is_bot: false, first_name: "Ada" },
-                date: 1_780_000_000,
-                old_chat_member: {
-                  status: "member",
-                  user: { id: 123, is_bot: true },
-                },
-                new_chat_member: {
-                  status: "kicked",
-                  user: { id: 123, is_bot: true },
+            when.telegram.webhook({
+              orgId: "org-1",
+              label: "receive Telegram webhook without a message",
+              update: {
+                update_id: 21_001,
+                my_chat_member: {
+                  chat: { id: 1001, type: "private" },
+                  from: { id: 2001, is_bot: false, first_name: "Ada" },
+                  date: 1_780_000_000,
+                  old_chat_member: {
+                    status: "member",
+                    user: { id: 123, is_bot: true },
+                  },
+                  new_chat_member: {
+                    status: "kicked",
+                    user: { id: 123, is_bot: true },
+                  },
                 },
               },
-            },
-          }),
-
-          then.telegram.noMessages(),
-          then.workflow.missing({
-            remoteWorkflowName: "telegram-user-linking",
-          }),
-          then.workflow.missing({
-            remoteWorkflowName: "telegram-test-command",
-          }),
-          then.workflow.missing({
-            remoteWorkflowName: "telegram-user-pi-linking",
-          }),
-          then.workflow.noErrored({ orgId: "org-1" }),
-        ],
+            }),
+            ...thenNothingStarted(),
+          ];
+        },
       }),
     );
   });
