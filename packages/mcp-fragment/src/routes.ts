@@ -28,6 +28,7 @@ import {
 import { mcpSchema } from "./schema";
 import {
   createMcpOperationAuth,
+  isMcpAuthReady,
   projectMcpAuthStatus,
   pendingOAuthLink,
   withoutOAuthConsent,
@@ -138,6 +139,13 @@ export const mcpRoutesFactory = defineRoutes(mcpFragmentDefinition).create(
               if (body.auth.type !== "oauth") {
                 uow.triggerHook("internalRefreshServerConfiguration", { serverId: body.slug });
               }
+              uow.triggerHook("onServerReadinessChanged", {
+                serverId: body.slug,
+                ready: isMcpAuthReady(
+                  authMode(body.auth),
+                  payload === undefined ? undefined : { payload, expiresAt: null },
+                ),
+              });
               return { exists: false as const };
             })
             .execute();
@@ -283,6 +291,13 @@ export const mcpRoutesFactory = defineRoutes(mcpFragmentDefinition).create(
                 uow.triggerHook("internalRefreshServerConfiguration", {
                   serverId: pathParams.slug,
                 });
+              }
+              const ready = isMcpAuthReady(
+                replaced.authMode,
+                payload === null ? undefined : { payload, expiresAt: null },
+              );
+              if (ready !== isMcpAuthReady(server.authMode, authSecret)) {
+                uow.triggerHook("onServerReadinessChanged", { serverId: pathParams.slug, ready });
               }
               return { server: replaced };
             })
@@ -469,6 +484,12 @@ export const mcpRoutesFactory = defineRoutes(mcpFragmentDefinition).create(
                 });
               }
               uow.triggerHook("internalRefreshServerConfiguration", { serverId: pathParams.slug });
+              if (!isMcpAuthReady(server.authMode, secret ?? undefined)) {
+                uow.triggerHook("onServerReadinessChanged", {
+                  serverId: pathParams.slug,
+                  ready: true,
+                });
+              }
               return { found: true as const };
             })
             .execute();
@@ -606,16 +627,16 @@ export const mcpRoutesFactory = defineRoutes(mcpFragmentDefinition).create(
               }
               const uow = forSchema(mcpSchema);
               const authSecret = secrets.find((secret) => secret.kind === "auth");
+              // Only OAuth consent is cleared: the registered client and discovery state stay usable.
+              const remainingAuth =
+                server.authMode === "oauth" && authSecret
+                  ? { payload: withoutOAuthConsent(authSecret.payload), expiresAt: null }
+                  : undefined;
               if (server.authMode === "oauth") {
-                // Only consent is cleared: the registered client and discovery state stay usable.
-                if (authSecret) {
+                if (authSecret && remainingAuth) {
                   uow.update("secret", authSecret.id, (b) =>
                     b
-                      .set({
-                        payload: withoutOAuthConsent(authSecret.payload),
-                        expiresAt: null,
-                        updatedAt: b.now(),
-                      })
+                      .set({ payload: remainingAuth.payload, expiresAt: null, updatedAt: b.now() })
                       .check(),
                   );
                 }
@@ -623,6 +644,10 @@ export const mcpRoutesFactory = defineRoutes(mcpFragmentDefinition).create(
                 for (const secret of secrets) {
                   uow.delete("secret", secret.id);
                 }
+              }
+              const ready = isMcpAuthReady(server.authMode, remainingAuth);
+              if (ready !== isMcpAuthReady(server.authMode, authSecret)) {
+                uow.triggerHook("onServerReadinessChanged", { serverId: pathParams.slug, ready });
               }
               for (const oauthState of oauthStates) {
                 uow.delete("oauthState", oauthState.id);
@@ -787,11 +812,16 @@ export const mcpRoutesFactory = defineRoutes(mcpFragmentDefinition).create(
                 );
               }
               if (preparedOperation.authChanges?.authPayload) {
-                upsertSecret(
-                  "auth",
-                  preparedOperation.authChanges.authPayload,
-                  preparedOperation.authChanges.authExpiresAt ?? null,
-                );
+                const after = {
+                  payload: preparedOperation.authChanges.authPayload,
+                  expiresAt: preparedOperation.authChanges.authExpiresAt ?? null,
+                };
+                upsertSecret("auth", after.payload, after.expiresAt);
+                const before = secrets.find((secret) => secret.kind === "auth");
+                const ready = isMcpAuthReady(server.authMode, after);
+                if (ready !== isMcpAuthReady(server.authMode, before)) {
+                  uow.triggerHook("onServerReadinessChanged", { serverId, ready });
+                }
               }
 
               const auth = buildAuthDiagnostics({
@@ -974,11 +1004,19 @@ export const mcpRoutesFactory = defineRoutes(mcpFragmentDefinition).create(
                   );
                 }
                 if (preparedOperation.authChanges?.authPayload) {
-                  upsertSecret(
-                    "auth",
-                    preparedOperation.authChanges.authPayload,
-                    preparedOperation.authChanges.authExpiresAt ?? null,
-                  );
+                  const after = {
+                    payload: preparedOperation.authChanges.authPayload,
+                    expiresAt: preparedOperation.authChanges.authExpiresAt ?? null,
+                  };
+                  upsertSecret("auth", after.payload, after.expiresAt);
+                  const before = secrets.find((secret) => secret.kind === "auth");
+                  const ready = isMcpAuthReady(server.authMode, after);
+                  if (ready !== isMcpAuthReady(server.authMode, before)) {
+                    uow.triggerHook("onServerReadinessChanged", {
+                      serverId: preparedOperation.serverId,
+                      ready,
+                    });
+                  }
                 }
 
                 const toolOperation = preparedOperation.toolOperation;
