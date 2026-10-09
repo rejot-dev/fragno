@@ -10,10 +10,7 @@ import {
   automationEventSchema,
 } from "@fragno-dev/backoffice-api/v0/events";
 import { piAgentCreationSchema } from "@fragno-dev/backoffice-api/v0/pi";
-import {
-  backofficePermissionRequirementSchema,
-  type BackofficePermissionRequirement,
-} from "@fragno-dev/backoffice-api/v0/shared/permissions";
+import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import {
   backofficeContextScopeSchema,
   backofficeContextScopesEqual,
@@ -25,6 +22,7 @@ import { visualizeWorkflowSource } from "@fragno-dev/workflow-visualizer-tokens"
 import { backofficeExecutionScopeRestriction } from "@/backoffice-runtime/context";
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { NpmDependencyMap } from "@/backoffice-runtime/dynamic-workers/npm-dependencies";
+import { knownBackofficePermissions } from "@/backoffice-runtime/stored-permissions";
 
 export const CODEMODE_WORKFLOW = "codemode-script";
 
@@ -44,7 +42,10 @@ export type CodemodeCapabilityGrant = {
 
 const codemodeCapabilityGrantSchema: z.ZodType<CodemodeCapabilityGrant> = z.strictObject({
   actor: automationDelegatedActorSchema,
-  permissions: z.array(backofficePermissionRequirementSchema),
+  // Workflow snapshots are replayed after permissions may have been removed from the kernel.
+  permissions: z
+    .array(z.strictObject({ namespace: z.string(), permission: z.string() }))
+    .transform(knownBackofficePermissions),
 });
 
 export type CodemodeWorkflowTrigger<T extends AutomationEventPayload> =

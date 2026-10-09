@@ -1,6 +1,6 @@
 import { assert, describe, expect, test, vi } from "vitest";
 
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -12,6 +12,7 @@ import {
 } from "@fragno-dev/backoffice-api/v0/apps";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import Database from "better-sqlite3";
 import { z } from "zod";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
@@ -137,6 +138,95 @@ async function runAppsSqliteScenario<TVars extends Record<string, unknown>>(
 }
 
 describe("organization app installation runtime tool SQLite scenarios", () => {
+  test("apps and installations that stored a since-removed permission stay readable", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "backoffice-removed-app-permission-"));
+    try {
+      await runBackofficeScenario(
+        defineBackofficeScenario({
+          objects: scenarioObjects,
+          name: "stored app permissions outlive a removed kernel permission",
+          options: { sqliteDataDirectory: directory },
+          setup: ({ given }) => [
+            given.auth.user({ id: "global-admin", role: "admin" }),
+            given.auth.user({ id: "owner" }),
+            given.auth.organization({ id: "org-1", ownerUserId: "owner" }),
+          ],
+          steps: ({ then }) => [
+            then.assert(
+              "the stored app and grant name a permission that no longer exists",
+              async (ctx) => {
+                const appId = await registerApp(ctx);
+                const installed = await executeBackofficeRuntimeTool(
+                  appTool("install"),
+                  { appId, grantedPermissions: [BACKOFFICE_PERMISSION.events.emit] },
+                  createBackofficeToolContext(appContext(ctx, "owner")),
+                );
+                expect(installed).toMatchObject({ changed: true });
+                const removed = { namespace: "github", permission: "read" };
+                let changed = 0;
+                for (const file of await readdir(directory)) {
+                  if (!file.endsWith(".sqlite")) {
+                    continue;
+                  }
+                  const database = new Database(path.join(directory, file));
+                  try {
+                    const tables = database
+                      .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
+                      .all() as { name: string }[];
+                    for (const { name } of tables) {
+                      const columns = (
+                        database.prepare(`PRAGMA table_info("${name}")`).all() as { name: string }[]
+                      ).map((column) => column.name);
+                      // Historical rows bypass current validation, as rows written before the removal did.
+                      if (columns.includes("requestedPermissions")) {
+                        changed += database
+                          .prepare(`UPDATE "${name}" SET requestedPermissions = ?`)
+                          .run(JSON.stringify([removed, ...requestedPermissions])).changes;
+                      }
+                      if (columns.includes("grantedPermissions")) {
+                        changed += database
+                          .prepare(`UPDATE "${name}" SET grantedPermissions = ?`)
+                          .run(
+                            JSON.stringify([removed, BACKOFFICE_PERMISSION.events.emit]),
+                          ).changes;
+                      }
+                    }
+                  } finally {
+                    database.close();
+                  }
+                }
+                expect(changed).toBe(2);
+
+                const ownerContext = appContext(ctx, "owner");
+                assert(ownerContext.stateBackend);
+                const { bash } = createInteractiveBashHost({
+                  context: { ...ownerContext, stateBackend: ownerContext.stateBackend },
+                });
+                const app = await bash.exec(`apps.get --app-id ${appId} --format json`);
+                assert.equal(app.exitCode, 0, app.stderr);
+                expect(
+                  backofficeAppSchema.parse(JSON.parse(app.stdout)).requestedPermissions,
+                ).toEqual(requestedPermissions);
+                const installation = await bash.exec(
+                  `apps.installations.get --app-id ${appId} --format json`,
+                );
+                assert.equal(installation.exitCode, 0, installation.stderr);
+                expect(
+                  backofficeAppInstallationSchema.parse(JSON.parse(installation.stdout))
+                    .grantedPermissions,
+                ).toEqual([BACKOFFICE_PERMISSION.events.emit]);
+                const listed = await bash.exec("apps.installations.list");
+                assert.equal(listed.exitCode, 0, listed.stderr);
+              },
+            ),
+          ],
+        }),
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   test("owners review declarations and approve, update, uninstall, and reinstall through Codemode and Bash", async () => {
     await runAppsSqliteScenario(
       defineBackofficeScenario({

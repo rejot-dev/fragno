@@ -13,6 +13,7 @@ import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api
 import { defineFragment } from "@fragno-dev/core";
 import { decodeCursor, withDatabase } from "@fragno-dev/db";
 
+import { knownBackofficePermissions } from "@/backoffice-runtime/stored-permissions";
 import { BackofficeAppDomainError } from "@/fragno/apps/errors";
 import { appPermissionsEqual } from "@/fragno/apps/permissions";
 
@@ -87,7 +88,7 @@ function toBackofficeAppInstallation(installation: {
     id: installation.id.externalId,
     appId: installation.appId,
     organizationId: installation.organizationId,
-    grantedPermissions: installation.grantedPermissions,
+    grantedPermissions: knownBackofficePermissions(installation.grantedPermissions),
     resourceScope: toResourceScope(installation.resourceProjectIds),
     externalAccount: installation.externalAccount,
     installedByUserId: installation.installedByUserId,

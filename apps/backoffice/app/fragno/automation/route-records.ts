@@ -5,6 +5,8 @@ import type {
   AutomationStartWorkflowAction,
 } from "@fragno-dev/backoffice-api/v0/automation";
 
+import { knownBackofficePermissions } from "@/backoffice-runtime/stored-permissions";
+
 /** The route shape persisted before route-scoped authority grants were introduced. */
 type LegacyAutomationStartWorkflowAction = Omit<AutomationStartWorkflowAction, "authority"> & {
   authority: { kind: "organization-automation"; grants?: never };
@@ -44,8 +46,13 @@ function normalizeStoredAutomationRouteAction(
       authority: { ...action.authority, grants: [] },
     };
   }
-
-  return action;
+  if (action.kind !== "start_workflow" || action.authority.grants === "inherit") {
+    return action;
+  }
+  return {
+    ...action,
+    authority: { ...action.authority, grants: knownBackofficePermissions(action.authority.grants) },
+  };
 }
 
 export const normalizeAutomationRoute = (
