@@ -55,7 +55,9 @@ export const integrationOverviewSchema = z
       ),
     automationEvents: z
       .array(z.strictObject({ source: z.string(), eventType: z.string() }))
-      .describe("Declared event identities do not prove live event delivery."),
+      .describe(
+        "Source-specific activity events; declared identities do not prove live event delivery. Connection state changes arrive for every service as source integrations, keyed by subject.connectionId.",
+      ),
   })
   .meta({ id: "IntegrationOverview" });
 const integrationConfigurationStatusSchema = z

@@ -20,8 +20,9 @@ import {
 import type { IntegrationInspection, IntegrationSetupProgress } from "./integration-contracts";
 import type { IntegrationContext, IntegrationImplementation } from "./integration-implementation";
 
+export const reson8ConnectionId = "backoffice#reson8";
 const reson8ConnectionIdentity = {
-  connectionId: "backoffice#reson8",
+  connectionId: reson8ConnectionId,
   integrationId: "reson8",
   name: "Reson8",
 };
@@ -244,7 +245,7 @@ export function createReson8Integration({
           setupTargets: [
             { kind: "connection", connectionId: reson8ConnectionIdentity.connectionId },
           ],
-          automationEvents: [{ source: "reson8", eventType: "capability.configured" }],
+          automationEvents: [],
         },
       ];
     },

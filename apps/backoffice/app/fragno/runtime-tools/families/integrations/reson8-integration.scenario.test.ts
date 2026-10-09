@@ -289,6 +289,12 @@ test("Codemode resolves deterministic Reson8 addresses across setup, requests, r
           expect(provider.transcriptions).toEqual([{ bytes: [0, 127, 255], query: {} }]);
         },
       ),
+      runner.drain(),
+      then.automation.event({
+        scope,
+        where: { source: "integrations", eventType: "connection.ready" },
+        expected: { subject: { service: "reson8", connectionId: "backoffice#reson8" } },
+      }),
       runner.restartObject({ binding: "RESON8", scope }),
       then.assert(
         "the same address survives recreation without the standalone Reson8 tool runtime",
@@ -371,6 +377,12 @@ test("Codemode resolves deterministic Reson8 addresses across setup, requests, r
           expect(provider.reads).toHaveLength(2);
         },
       ),
+      runner.drain(),
+      then.automation.event({
+        scope,
+        where: { source: "integrations", eventType: "connection.disconnected" },
+        expected: { subject: { service: "reson8", connectionId: "backoffice#reson8" } },
+      }),
     ],
   }));
 });
