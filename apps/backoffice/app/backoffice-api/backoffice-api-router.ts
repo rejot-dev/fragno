@@ -17,7 +17,10 @@ import {
 import { isBackofficeForbiddenError, type BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { backofficeContextScopeFromSinglePathSegment } from "@/backoffice-runtime/scope-codec";
-import { createInstalledAppExecution } from "@/fragno/app-installations/authority";
+import {
+  createInstalledAppExecution,
+  installedAppEventSource,
+} from "@/fragno/app-installations/authority";
 import { createBackofficeExecutionForPrincipal } from "@/fragno/auth/backoffice-principal.server";
 import {
   BACKOFFICE_AUTH_ERROR_HEADER,
@@ -55,14 +58,20 @@ function apiError(
 /**
  * Turns a bearer credential into an execution for the requested scope. User credentials act with
  * the user's live permissions; installed-app credentials act through the installation, whose
- * activation, grants, and approved resources the kernel checks live on every operation.
+ * activation, grants, and approved resources the kernel checks live on every operation, and emit
+ * events only under the app's own source.
  */
 async function authorizeApiRequest(
   request: Request,
   scope: BackofficeContextScope,
   runtime: BackofficeRuntimeServices,
 ): Promise<
-  { ok: true; execution: BackofficeExecutionContext } | { ok: false; response: Response }
+  | {
+      ok: true;
+      execution: BackofficeExecutionContext;
+      emittedEventSource: string | undefined;
+    }
+  | { ok: false; response: Response }
 > {
   const authorization = request.headers.get("authorization");
   const bearer = authorization ? /^Bearer\s+([^\s]+)$/iu.exec(authorization.trim()) : null;
@@ -98,6 +107,7 @@ async function authorizeApiRequest(
           principalFromBackofficeJwt(credential, "bearer"),
           scope,
         ),
+        emittedEventSource: undefined,
       };
     } catch (error) {
       if (isBackofficeForbiddenError(error)) {
@@ -122,6 +132,7 @@ async function authorizeApiRequest(
       actor: credential.actor,
       installation: credential.installation,
     }),
+    emittedEventSource: installedAppEventSource(credential.installation.appId),
   };
 }
 
@@ -186,6 +197,7 @@ function createVersionRouter<TApi extends BackofficeApi>(
             kernel,
             execution: authorization.execution,
             billingOrganizationId: null,
+            emittedEventSource: authorization.emittedEventSource,
           }),
         ),
       );

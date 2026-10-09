@@ -305,7 +305,6 @@ export default [
     route("backoffice/cli-config", "routes/api/backoffice-cli-config.ts"),
     route("backoffice/execution-token", "routes/api/backoffice-execution-token.ts"),
     route("backoffice/me", "routes/api/backoffice-me.ts"),
-    route("backoffice/scopes/:scopeSegment/events", "routes/api/backoffice-scoped-events.ts"),
     route("backoffice/app-installations/claim", "routes/api/backoffice-app-installation-claim.ts"),
     route("cloudflare/*", "routes/api/cloudflare.ts"),
     route("forms/*", "routes/api/forms.ts"),
