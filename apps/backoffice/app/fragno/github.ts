@@ -32,6 +32,7 @@ export type GitHubConfig = Pick<
   | "defaultLinkKey"
   | "tokenCacheTtlSeconds"
   | "webhook"
+  | "onRepositoryLinkStatusChanged"
   | "fetch"
 >;
 

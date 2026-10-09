@@ -2,7 +2,9 @@ import { DurableObject } from "cloudflare:workers";
 
 import {
   getGitHubAppFromFragment,
+  GITHUB_APP_FALLBACK_LINK_KEY,
   type GitHubAppFragmentConfig,
+  type GitHubRepositoryLinkStatus,
 } from "@fragno-dev/github-app-fragment";
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
@@ -20,6 +22,8 @@ import {
   createGitHubServer,
   type GitHubFragment,
 } from "@/fragno/github";
+import { encodeGitHubRepositoryConnectionId } from "@/fragno/runtime-tools/families/integrations/github-integration";
+import { recordIntegrationConnectionState } from "@/fragno/runtime-tools/families/integrations/integration-events";
 
 import { configsEqual, extractFragmentConfig, resolveGitHubConfig } from "./github.shared";
 import type {
@@ -33,6 +37,21 @@ type StoredGitHubConfig = {
   scope: Extract<BackofficeContextScope, { kind: "org" }>;
   source: GitHubAppFragmentConfig;
 };
+
+function connectionStateOfLink(status: GitHubRepositoryLinkStatus) {
+  switch (status) {
+    case "active":
+      return "ready";
+    case "inactive":
+      return "unavailable";
+    case "unlinked":
+      return "disconnected";
+    default:
+      throw new Error("Unknown GitHub repository link status.", {
+        cause: status satisfies never,
+      });
+  }
+}
 
 export class InMemoryGitHubObject implements GitHubObject {
   readonly #httpTransport: ReturnType<typeof createBackofficeFragmentHttpTransport>;
@@ -83,6 +102,25 @@ export class InMemoryGitHubObject implements GitHubObject {
           {
             ...config,
             fetch: fetchImpl,
+            onRepositoryLinkStatusChanged: async (payload, context) => {
+              // Integrations link only under the default key; other keys are not connections.
+              if (payload.linkKey !== (config.defaultLinkKey ?? GITHUB_APP_FALLBACK_LINK_KEY)) {
+                return;
+              }
+              const { scope } = this.#host.requireConfigured().stored;
+              await recordIntegrationConnectionState(
+                this.#runtimeServices.objects.automations.for(scope).commands,
+                {
+                  id: context.hookId.toString(),
+                  scope,
+                  service: "github",
+                  connectionId: encodeGitHubRepositoryConnectionId(payload.fullName),
+                  state: connectionStateOfLink(payload.status),
+                  occurredAt: context.createdAt,
+                },
+                { propagationContext: context.capturePropagationContext() },
+              );
+            },
             webhook: (register) => {
               register("*", async (event, _idempotencyKey, meta) => {
                 const runtime = this.#host.getConfigured();

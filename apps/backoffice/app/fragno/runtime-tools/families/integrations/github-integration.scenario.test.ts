@@ -55,6 +55,7 @@ type FakeGitHub = {
 
 const project = { id: 101, name: "project", full_name: "acme/project", private: false };
 const web = { id: 102, name: "web", full_name: "acme/web", private: true };
+const githubAccount = { login: "acme", id: 77, type: "Organization" };
 
 async function runGitHubIntegrationScenario<TVars extends Record<string, unknown>>(
   defineScenario: (github: FakeGitHub) => BackofficeScenarioDefinitionInput<TVars>,
@@ -65,11 +66,10 @@ async function runGitHubIntegrationScenario<TVars extends Record<string, unknown
     const url = new URL(request.url);
     assert(url.origin === "https://api.github.com", `Unexpected GitHub request to ${url.origin}`);
     github.requests.push(`${request.method} ${url.pathname}`);
-    const account = { login: "acme", id: 77, type: "Organization" };
     if (request.method === "GET" && url.pathname === `/app/installations/${installationId}`) {
       return Response.json({
         id: Number(installationId),
-        account,
+        account: githubAccount,
         suspended_at: null,
         permissions: { pull_requests: "read" },
         events: ["pull_request"],
@@ -332,6 +332,12 @@ test("a repository becomes a connection after the GitHub App is installed, linke
           });
         },
       ),
+      runner.drain(),
+      then.automation.event({
+        scope,
+        where: { source: "integrations", eventType: "connection.ready" },
+        expected: { subject: { service: "github", connectionId: "github#acme/project" } },
+      }),
       then.assert(
         "a repository added on GitHub without a webhook is found by setup's refresh",
         async (ctx) => {
@@ -418,6 +424,31 @@ test("a repository becomes a connection after the GitHub App is installed, linke
           subject: { connectionId: "github#acme/project", pullRequestNumber: "7" },
         },
       }),
+      then.assert("GitHub suspends the installation", async (ctx) => {
+        await deliverGitHubWebhook(ctx, "installation", {
+          action: "suspend",
+          installation: { id: Number(installationId), account: githubAccount },
+        });
+      }),
+      runner.drain(),
+      then.automation.event({
+        scope,
+        where: { source: "integrations", eventType: "connection.unavailable" },
+        expected: { subject: { service: "github", connectionId: "github#acme/web" } },
+      }),
+      then.assert("GitHub restores the installation", async (ctx) => {
+        await deliverGitHubWebhook(ctx, "installation", {
+          action: "unsuspend",
+          installation: { id: Number(installationId), account: githubAccount },
+        });
+      }),
+      runner.drain(),
+      then.assert("restored repositories are available again", async (ctx) => {
+        const system = createTerminal(ctx, createBackofficeSystemExecution(scope));
+        expect(
+          await system.json(`integrations.get --connection-id 'github#acme/web'`),
+        ).toMatchObject({ authorization: { status: "available" } });
+      }),
       then.assert(
         "disconnecting unlinks the repository but leaves GitHub access in place",
         async (ctx) => {
@@ -453,6 +484,12 @@ test("a repository becomes a connection after the GitHub App is installed, linke
           });
         },
       ),
+      runner.drain(),
+      then.automation.event({
+        scope,
+        where: { source: "integrations", eventType: "connection.disconnected" },
+        expected: { subject: { service: "github", connectionId: "github#acme/project" } },
+      }),
     ],
   }));
 });

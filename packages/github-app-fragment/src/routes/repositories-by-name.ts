@@ -126,9 +126,11 @@ async function readRepositoryByName(
       : { status: "not-installed" };
   return {
     access,
-    link: linkedRow
-      ? normalizeJoinedLinks(linkedRow.row.links).find((link) => link.linkKey === linkKey)
-      : undefined,
+    linked: linkedRow && {
+      repositoryId: toExternalId(linkedRow.row.id),
+      // linkedRow was selected because it has a link with this key.
+      link: normalizeJoinedLinks(linkedRow.row.links).find((link) => link.linkKey === linkKey)!,
+    },
   };
 }
 
@@ -178,7 +180,14 @@ export const githubAppRepositoryByNameRoutesFactory = defineRoutes(
         try {
           await this.handlerTx()
             .mutate(({ forSchema }) => {
-              forSchema(githubAppSchema).create("repo_link", { repoId, linkKey });
+              const uow = forSchema(githubAppSchema);
+              uow.create("repo_link", { repoId, linkKey });
+              uow.triggerHook("onRepositoryLinkStatusChanged", {
+                linkKey,
+                repositoryId: repoId,
+                fullName: `${pathParams.owner}/${pathParams.repo}`,
+                status: "active",
+              });
             })
             .execute();
         } catch (createError) {
@@ -198,16 +207,23 @@ export const githubAppRepositoryByNameRoutesFactory = defineRoutes(
     handler: async function ({ pathParams, input }, { json }) {
       const values = await input.valid();
       const linkKey = normalizeLinkKey(values.linkKey, config.defaultLinkKey);
-      const { link } = await readRepositoryByName(this.handlerTx.bind(this), {
+      const { linked } = await readRepositoryByName(this.handlerTx.bind(this), {
         ...pathParams,
         linkKey,
       });
-      if (link === undefined) {
+      if (linked === undefined) {
         return json({ status: "not-linked" });
       }
       await this.handlerTx()
         .mutate(({ forSchema }) => {
-          forSchema(githubAppSchema).delete("repo_link", link.id as RepoLinkId);
+          const uow = forSchema(githubAppSchema);
+          uow.delete("repo_link", linked.link.id as RepoLinkId);
+          uow.triggerHook("onRepositoryLinkStatusChanged", {
+            linkKey,
+            repositoryId: linked.repositoryId,
+            fullName: `${pathParams.owner}/${pathParams.repo}`,
+            status: "unlinked",
+          });
         })
         .execute();
       return json({ status: "unlinked" });

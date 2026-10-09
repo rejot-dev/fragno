@@ -133,6 +133,10 @@ const config: GitHubAppFragmentConfig = {
       console.log("GitHub app uninstalled", payload.installation.id);
     });
   },
+  // Optional: durable hook for repository links becoming usable or not; see below.
+  onRepositoryLinkStatusChanged: async ({ fullName, linkKey, status }) => {
+    console.log("GitHub repository link", fullName, linkKey, status);
+  },
   // Optional: replaces the global fetch for GitHub REST and OAuth requests, e.g. a fake GitHub API
   // in tests.
   // fetch: fakeGitHubFetch,
@@ -149,6 +153,14 @@ const githubApiClient = fragment.services.githubApiClient;
 
 export const { GET, POST } = fragment.handlersFor("next-js");
 ```
+
+`onRepositoryLinkStatusChanged` receives `{ linkKey, repositoryId, fullName, status }`. A link is
+`active` while it exists and its installation is active, `inactive` while the installation is
+suspended or deleted, and `unlinked` once the link is removed, including when the repository is
+removed from the installation on GitHub. It fires for the link routes, installation webhooks, and
+installation sync. Installation webhooks are processed as durable hooks without ordering guarantees,
+so overlapping installation changes, such as a suspend and an unsuspend delivered together, can be
+reported out of order or not at all.
 
 ## Routes
 
