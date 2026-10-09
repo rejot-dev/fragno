@@ -252,7 +252,7 @@ test("Codemode creates a custom API through setup and keeps one address across r
                 availability: { status: "available" },
                 setupTargets: [],
                 automationEvents: expect.arrayContaining([
-                  { source: "api", eventType: "connection.changed" },
+                  { source: "api", eventType: "webhook.received" },
                 ]),
               },
             ]),
@@ -370,6 +370,12 @@ test("Codemode creates a custom API through setup and keeps one address across r
           ]);
         },
       ),
+      runner.drain(),
+      then.automation.event({
+        scope: orgScope,
+        where: { source: "integrations", eventType: "connection.ready" },
+        expected: { subject: { service: "api", connectionId: "api#billing" } },
+      }),
       runner.restartObject({ binding: "API", scope: orgScope }),
       then.assert(
         "verification after restart reports stored state without contacting the provider",
@@ -418,6 +424,12 @@ test("Codemode creates a custom API through setup and keeps one address across r
           });
         },
       ),
+      runner.drain(),
+      then.automation.event({
+        scope: orgScope,
+        where: { source: "integrations", eventType: "connection.unavailable" },
+        expected: { subject: { service: "api", connectionId: "api#billing" } },
+      }),
       then.assert(
         "reconfiguration replaces the base URL and credentials in place and describe reports them",
         async (ctx) => {
@@ -524,6 +536,12 @@ test("Codemode creates a custom API through setup and keeps one address across r
           expect(provider.requests).toHaveLength(4);
         },
       ),
+      runner.drain(),
+      then.automation.event({
+        scope: orgScope,
+        where: { source: "integrations", eventType: "connection.disconnected" },
+        expected: { subject: { service: "api", connectionId: "api#billing" } },
+      }),
     ],
   }));
 });
@@ -571,6 +589,12 @@ test("OAuth setup resumes source-owned consent across restarts, native restarts,
           ctx.vars.authorizationUrl = progress.authorizationUrl;
         },
       ),
+      runner.drain(),
+      then.automation.event({
+        scope: scope,
+        where: { source: "integrations", eventType: "connection.unavailable" },
+        expected: { subject: { service: "api", connectionId: "api#invoices" } },
+      }),
       runner.restartObject({ binding: "API", scope }),
       then.assert(
         "checking after restart resumes the persisted link instead of starting another flow",
@@ -640,6 +664,12 @@ test("OAuth setup resumes source-owned consent across restarts, native restarts,
           ]);
         },
       ),
+      runner.drain(),
+      then.automation.event({
+        scope: scope,
+        where: { source: "integrations", eventType: "connection.ready" },
+        expected: { subject: { service: "api", connectionId: "api#invoices" } },
+      }),
       then.assert(
         "reauthorizing discards working tokens until the new consent completes",
         async (ctx) => {
