@@ -1,6 +1,7 @@
 # Backoffice test performance and usefulness audit
 
-Status: open — baseline retained; Codemode test environment split implemented October 6, 2026.
+Status: open — baseline retained; Codemode test environment split implemented October 6, 2026;
+low-hanging items 1–4 and the Cloudflare compiler setup implemented October 9, 2026.
 
 Created: October 5, 2026
 
@@ -89,6 +90,38 @@ pnpm exec turbo run test:bridge --filter=@fragno-apps/backoffice-rr --filter=@fr
 
 The package-owned disposal test and small Pi schema test are still follow-up opportunities. The
 pagination, listener, and Telegram fixture optimizations have not been implemented.
+
+## Implementation follow-up — October 9, 2026
+
+Measurements were taken on a loaded workstation (load average 9–18), so only per-test and per-file
+comparisons, alternated before/after, are meaningful. Complete-suite wall time stayed within noise
+(~65–75s).
+
+| Change                                                                             | Before             | After       |
+| ---------------------------------------------------------------------------------- | ------------------ | ----------- |
+| Cloudflare compiler setup: unbundled in-process compiler, no TypeScript or esbuild | 2–13s setup/file   | 0s          |
+| `workflow-execute.cloudflare.test.ts` (file)                                       | ~15.2s             | ~4.6s       |
+| Cloudflare project                                                                 | ~38s               | 25–31s      |
+| Listener ordinary-response drain (production keep-alive fix)                       | 1,011ms            | 35ms        |
+| Upload tree and Marketplace artifact pagination (ready-row fixture)                | ~1.8s each         | 83ms / 96ms |
+| Four Telegram negative scenarios, merged with per-input assertions                 | ~1.8s              | 299ms       |
+| `codemode-executor` → Codemode package; `typebox-failure` → `exec-code-mode` suite | 2 Cloudflare files | 0           |
+
+- `typeCheckFiles` was never called by the Cloudflare suite; `compileWorker` was needed only to load
+  already-generated JavaScript. Bundling, npm installation, and type checking are tested in
+  `cf-sandbox-bridge`, including executing a Worker with an installed npm dependency.
+- A compiler behind a service binding into the test Worker loads `vitest-env.ts` and every Durable
+  Object during the first compiling test (~5.5s, timing out under contention). Keep the test
+  compiler in-process.
+- The listener drain previously waited for the force-close deadline (8s in production) whenever a
+  keep-alive client finished a response during shutdown.
+- Both Vitest projects share `maxWorkers`; Cloudflare files occupy the slots for the first ~25s and
+  no Node file starts before then. Raising `maxWorkers` to 12 was not faster and caused timeouts:
+  the suite is CPU-bound.
+- Imports now dominate both projects (Node: ~120–180s summed imports vs ~70s test bodies).
+
+Remaining: Marketplace installed-channel fixture (item 5), Node import graph, lifecycle barriers
+(item 6), and the source-policy test removals.
 
 ## Measurement method and caveats
 
@@ -483,13 +516,13 @@ optimization.
 
 - [ ] Keep a complete-suite pass with the same production-behavior coverage; explain any deliberate
       change in test count.
-- [ ] Listener scenario proves prompt ordinary-response drain and separately preserves
+- [x] Listener scenario proves prompt ordinary-response drain and separately preserves
       pooled-client/active-stream shutdown guarantees.
-- [ ] Pure Codemode tests live with their owning package; no unnecessary Backoffice Cloudflare
+- [x] Pure Codemode tests live with their owning package; no unnecessary Backoffice Cloudflare
       compiler initialization for them.
-- [ ] Pagination tests still exercise real SQLite, actual 500/501 metadata boundaries, real cursor
+- [x] Pagination tests still exercise real SQLite, actual 500/501 metadata boundaries, real cursor
       traversal, and Marketplace overflow propagation.
-- [ ] All Telegram negative inputs remain individually asserted inside a scenario; no cross-test
+- [x] All Telegram negative inputs remain individually asserted inside a scenario; no cross-test
       mutable fixture sharing.
 - [ ] Marketplace prerequisite fixtures do not replace publication/installation coverage where that
       behavior is the subject.
