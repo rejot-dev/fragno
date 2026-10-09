@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import {
   authConfigSchema,
+  type ApiAuthStatus,
   type ApiFragmentConfig,
   type ApiRequestInput,
   type ApiRequestOutput,
@@ -75,6 +76,69 @@ function secretIsUnexpired(secret: Pick<SecretRecord, "expiresAt"> | undefined) 
   return !secret?.expiresAt || secretExpiresInFuture(secret);
 }
 
+/** Projects stored auth without secrets; whether credentials work can only be learned by using them. */
+export function projectApiAuthStatus(args: {
+  authMode: string;
+  authSecret: Pick<SecretRecord, "payload" | "expiresAt"> | undefined;
+  hasPendingOAuth: boolean;
+}): ApiAuthStatus {
+  // Routes write authMode only from authConfigSchema discriminators.
+  const mode = args.authMode as AuthConfig["type"];
+  if (mode === "none") {
+    return { mode };
+  }
+  if (mode !== "oauth") {
+    return { mode, credentials: args.authSecret ? "present" : "missing" };
+  }
+  if (!args.authSecret) {
+    return { mode, state: "client-missing" };
+  }
+  const auth = storedAuthPayloadSchema.parse(JSON.parse(args.authSecret.payload));
+  const tokens = auth.type === "oauth" ? auth.tokens : undefined;
+  // Matches request-time resolution: a refresh token renews an expired access token.
+  if (tokens?.accessToken && (tokens.refreshToken || secretIsUnexpired(args.authSecret))) {
+    return { mode, state: "authorized" };
+  }
+  // Expired tokens without a refresh token are unusable, so a pending link is the actionable state.
+  if (args.hasPendingOAuth) {
+    return { mode, state: "consent-pending" };
+  }
+  return { mode, state: tokens?.accessToken ? "expired" : "consent-required" };
+}
+
+/** Whether stored auth can authorize requests without new consent or credentials. */
+export function isApiAuthReady(
+  authMode: string,
+  authSecret: Pick<SecretRecord, "payload" | "expiresAt"> | undefined,
+): boolean {
+  // Pending consent only distinguishes states that are not ready.
+  const status = projectApiAuthStatus({ authMode, authSecret, hasPendingOAuth: false });
+  switch (status.mode) {
+    case "none":
+      return true;
+    case "oauth":
+      return status.state === "authorized";
+    case "bearer":
+    case "basic":
+    case "client_credentials":
+      return status.credentials === "present";
+    default:
+      throw new Error("Unknown API auth mode.", { cause: status satisfies never });
+  }
+}
+
+/**
+ * Projects the newest unexpired, unconsumed state; any such state completes the same connection.
+ * States started before links were retained have no URL and cannot be resumed.
+ */
+export function pendingOAuthLink(
+  state: { authorizationUrl: string | null; expiresAt: Date } | null,
+): { authorizationUrl: string; expiresAt: Date } | null {
+  return state?.authorizationUrl
+    ? { authorizationUrl: state.authorizationUrl, expiresAt: state.expiresAt }
+    : null;
+}
+
 export async function createOAuthStartSnapshot(args: {
   connection: { id: { toString(): string } | string };
   auth: Extract<AuthConfig, { type: "oauth" }>;
@@ -103,6 +167,8 @@ export async function createOAuthStartSnapshot(args: {
     oauthState: {
       id: args.stateId,
       connectionId: args.connection.id.toString(),
+      // The link carries only the PKCE challenge, never the verifier.
+      authorizationUrl: authorizationUrl.toString(),
       codeVerifier,
       redirectUri: args.redirectUri,
       scope: scopes?.join(" ") ?? null,

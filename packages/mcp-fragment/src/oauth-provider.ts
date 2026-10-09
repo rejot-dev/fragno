@@ -45,6 +45,8 @@ export interface OAuthProviderChanges {
   };
   consumeStateId?: string;
   invalidate?: "all" | "client" | "tokens" | "verifier" | "discovery";
+  /** The server rejected the stored tokens, so they must be removed unless new ones were saved. */
+  tokensInvalidated?: boolean;
 }
 
 export class BufferedOAuthClientProvider implements OAuthClientProvider {
@@ -100,7 +102,9 @@ export class BufferedOAuthClientProvider implements OAuthClientProvider {
   }
 
   tokens() {
-    return this.changes.tokens ?? this.snapshot.tokens;
+    return (
+      this.changes.tokens ?? (this.changes.tokensInvalidated ? undefined : this.snapshot.tokens)
+    );
   }
 
   saveTokens(tokens: OAuthTokens) {
@@ -151,6 +155,11 @@ export class BufferedOAuthClientProvider implements OAuthClientProvider {
 
   invalidateCredentials(scope: "all" | "client" | "tokens" | "verifier" | "discovery") {
     this.changes.invalidate = scope;
+    if (scope === "all" || scope === "tokens") {
+      // Retrying rejected tokens within the same operation would fail the same way.
+      this.changes.tokens = undefined;
+      this.changes.tokensInvalidated = true;
+    }
   }
 
   prepareTokenRequest(scope?: string) {

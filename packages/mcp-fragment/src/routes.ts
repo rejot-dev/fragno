@@ -7,27 +7,39 @@ import { buildAuthDiagnostics, errorMessage, refreshOutputSchema } from "./diagn
 import {
   assertAllowedEndpoint,
   callMcpTool,
-  parseSecretPayload,
   stringifySecretPayload,
   listMcpTools,
 } from "./mcp-api";
 import {
   createServerInputSchema,
   MCP_OAUTH_REDIRECT_URI_QUERY_PARAMETER,
+  mcpAuthStatusSchema,
+  mcpOAuthPendingSchema,
   mcpOAuthRedirectUriSchema,
+  mcpToolCallResultSchema,
+  mcpToolSchema,
   oauthStartInputSchema,
+  replaceServerConfigurationInputSchema,
   tokenAuthInputSchema,
   toolCallInputSchema,
   type AuthConfig,
+  type McpTool,
 } from "./mcp-types";
 import { mcpSchema } from "./schema";
-import { createMcpOperationAuth, type AuthPersistenceChanges } from "./services";
+import {
+  createMcpOperationAuth,
+  isMcpAuthReady,
+  projectMcpAuthStatus,
+  pendingOAuthLink,
+  withoutOAuthConsent,
+  type AuthPersistenceChanges,
+} from "./services";
 
 const serverConnectionCacheOutputSchema = z.object({
   protocolVersion: z.string().nullable().optional(),
   serverInfo: z.unknown().nullable().optional(),
   capabilities: z.unknown().nullable().optional(),
-  tools: z.array(z.unknown()).nullable().optional(),
+  tools: z.array(mcpToolSchema).nullable().optional(),
   updatedAt: z.union([z.string(), z.date()]).optional(),
 });
 
@@ -65,7 +77,8 @@ function publicServer(
             protocolVersion: cache.protocolVersion ?? null,
             serverInfo: cache.serverInfo ?? null,
             capabilities: cache.capabilities ?? null,
-            tools: Array.isArray(cache.tools) ? cache.tools : null,
+            // Cached tools come from the SDK's validated tools/list result.
+            tools: Array.isArray(cache.tools) ? (cache.tools as McpTool[]) : null,
             updatedAt: cache.updatedAt,
           },
         }
@@ -126,6 +139,13 @@ export const mcpRoutesFactory = defineRoutes(mcpFragmentDefinition).create(
               if (body.auth.type !== "oauth") {
                 uow.triggerHook("internalRefreshServerConfiguration", { serverId: body.slug });
               }
+              uow.triggerHook("onServerReadinessChanged", {
+                serverId: body.slug,
+                ready: isMcpAuthReady(
+                  authMode(body.auth),
+                  payload === undefined ? undefined : { payload, expiresAt: null },
+                ),
+              });
               return { exists: false as const };
             })
             .execute();
@@ -184,6 +204,112 @@ export const mcpRoutesFactory = defineRoutes(mcpFragmentDefinition).create(
       }),
 
       defineRoute({
+        method: "PUT",
+        path: "/servers/:slug/configuration",
+        inputSchema: replaceServerConfigurationInputSchema,
+        outputSchema: serverOutputSchema,
+        errorCodes: ["SERVER_NOT_FOUND", "ENDPOINT_NOT_ALLOWED"],
+        handler: async function ({ input, pathParams }, { json, error }) {
+          const body = await input.valid();
+          try {
+            assertAllowedEndpoint(body.endpointUrl, config);
+          } catch (err) {
+            return error({ code: "ENDPOINT_NOT_ALLOWED", message: (err as Error).message }, 400);
+          }
+          const payload = body.auth.type === "none" ? null : stringifySecretPayload(body.auth);
+          const result = await this.handlerTx()
+            .retrieve(({ forSchema }) =>
+              forSchema(mcpSchema)
+                .findFirst("server_configuration", (b) =>
+                  b.whereIndex("primary", (eb) => eb("id", "=", pathParams.slug)),
+                )
+                .find("secret", (b) =>
+                  b.whereIndex("idx_secret_server_kind", (eb) =>
+                    eb("serverId", "=", pathParams.slug),
+                  ),
+                )
+                .find("oauthState", (b) =>
+                  b.whereIndex("idx_oauth_state_server", (eb) =>
+                    eb("serverId", "=", pathParams.slug),
+                  ),
+                )
+                .findFirst("server_connection_cache", (b) =>
+                  b.whereIndex("primary", (eb) => eb("id", "=", pathParams.slug)),
+                ),
+            )
+            .mutate(({ forSchema, retrieveResult: [server, secrets, oauthStates, cache] }) => {
+              if (!server) {
+                return { server: null };
+              }
+              const uow = forSchema(mcpSchema);
+              const replaced = {
+                ...server,
+                name: body.name ?? null,
+                endpointUrl: body.endpointUrl,
+                authMode: authMode(body.auth),
+              };
+              uow.update("server_configuration", server.id, (b) =>
+                b
+                  .set({
+                    name: replaced.name,
+                    endpointUrl: replaced.endpointUrl,
+                    authMode: replaced.authMode,
+                    updatedAt: b.now(),
+                  })
+                  .check(),
+              );
+              // Tokens, registered clients, discovery state, and pending links belong to the old
+              // endpoint and credentials, so only the replacement auth survives.
+              const authSecret = secrets.find((secret) => secret.kind === "auth");
+              for (const secret of secrets) {
+                if (secret !== authSecret || payload === null) {
+                  uow.delete("secret", secret.id);
+                }
+              }
+              if (payload !== null) {
+                if (authSecret) {
+                  uow.update("secret", authSecret.id, (b) =>
+                    b.set({ payload, expiresAt: null, updatedAt: b.now() }).check(),
+                  );
+                } else {
+                  uow.create("secret", {
+                    id: `${pathParams.slug}:auth`,
+                    serverId: pathParams.slug,
+                    kind: "auth",
+                    payload,
+                    expiresAt: null,
+                  });
+                }
+              }
+              for (const oauthState of oauthStates) {
+                uow.delete("oauthState", oauthState.id);
+              }
+              if (cache) {
+                uow.delete("server_connection_cache", cache.id);
+              }
+              if (body.auth.type !== "oauth") {
+                uow.triggerHook("internalRefreshServerConfiguration", {
+                  serverId: pathParams.slug,
+                });
+              }
+              const ready = isMcpAuthReady(
+                replaced.authMode,
+                payload === null ? undefined : { payload, expiresAt: null },
+              );
+              if (ready !== isMcpAuthReady(server.authMode, authSecret)) {
+                uow.triggerHook("onServerReadinessChanged", { serverId: pathParams.slug, ready });
+              }
+              return { server: replaced };
+            })
+            .execute();
+          if (!result.server) {
+            return error({ code: "SERVER_NOT_FOUND", message: "MCP server not found" }, 404);
+          }
+          return json(publicServer(result.server));
+        },
+      }),
+
+      defineRoute({
         method: "DELETE",
         path: "/servers/:slug",
         errorCodes: ["SERVER_NOT_FOUND"],
@@ -237,10 +363,10 @@ export const mcpRoutesFactory = defineRoutes(mcpFragmentDefinition).create(
       defineRoute({
         method: "GET",
         path: "/servers/:slug/auth/status",
-        outputSchema: z.object({ authenticated: z.boolean(), mode: z.string() }),
+        outputSchema: mcpAuthStatusSchema,
         errorCodes: ["SERVER_NOT_FOUND"],
         handler: async function ({ pathParams }, { json, error }) {
-          const [server, secret] = await this.handlerTx()
+          const [server, secret, pendingState] = await this.handlerTx()
             .retrieve(({ forSchema }) =>
               forSchema(mcpSchema)
                 .findFirst("server_configuration", (b) =>
@@ -250,26 +376,62 @@ export const mcpRoutesFactory = defineRoutes(mcpFragmentDefinition).create(
                   b.whereIndex("idx_secret_server_kind", (eb) =>
                     eb.and(eb("serverId", "=", pathParams.slug), eb("kind", "=", "auth")),
                   ),
+                )
+                .findFirst("oauthState", (b) =>
+                  b
+                    .whereIndex("idx_oauth_state_pending", (eb) =>
+                      eb.and(
+                        eb("serverId", "=", pathParams.slug),
+                        eb.isNull("consumedAt"),
+                        eb("expiresAt", ">", eb.now()),
+                      ),
+                    )
+                    .orderByIndex("idx_oauth_state_pending", "desc"),
                 ),
             )
             .execute();
           if (!server) {
             return error({ code: "SERVER_NOT_FOUND", message: "MCP server not found" }, 404);
           }
-          const auth = secret
-            ? parseSecretPayload<{
-                type: string;
-                token?: string;
-                tokens?: { access_token: string };
-              }>(secret.payload)
-            : undefined;
-          return json({
-            authenticated:
-              server.authMode === "none" ||
-              Boolean(auth?.token) ||
-              Boolean(auth?.tokens?.access_token),
-            mode: server.authMode,
-          });
+          return json(
+            projectMcpAuthStatus({
+              authMode: server.authMode,
+              authSecret: secret ?? undefined,
+              hasPendingOAuth: pendingOAuthLink(pendingState) !== null,
+            }),
+          );
+        },
+      }),
+
+      defineRoute({
+        method: "GET",
+        path: "/servers/:slug/auth/pending",
+        outputSchema: mcpOAuthPendingSchema,
+        errorCodes: ["SERVER_NOT_FOUND"],
+        handler: async function ({ pathParams }, { json, error }) {
+          const [server, pendingState] = await this.handlerTx()
+            .retrieve(({ forSchema }) =>
+              forSchema(mcpSchema)
+                .findFirst("server_configuration", (b) =>
+                  b.whereIndex("primary", (eb) => eb("id", "=", pathParams.slug)),
+                )
+                .findFirst("oauthState", (b) =>
+                  b
+                    .whereIndex("idx_oauth_state_pending", (eb) =>
+                      eb.and(
+                        eb("serverId", "=", pathParams.slug),
+                        eb.isNull("consumedAt"),
+                        eb("expiresAt", ">", eb.now()),
+                      ),
+                    )
+                    .orderByIndex("idx_oauth_state_pending", "desc"),
+                ),
+            )
+            .execute();
+          if (!server) {
+            return error({ code: "SERVER_NOT_FOUND", message: "MCP server not found" }, 404);
+          }
+          return json({ pending: pendingOAuthLink(pendingState) });
         },
       }),
 
@@ -277,7 +439,7 @@ export const mcpRoutesFactory = defineRoutes(mcpFragmentDefinition).create(
         method: "POST",
         path: "/servers/:slug/auth/token",
         inputSchema: tokenAuthInputSchema,
-        outputSchema: z.object({ authenticated: z.boolean(), mode: z.string() }),
+        outputSchema: mcpAuthStatusSchema,
         errorCodes: ["SERVER_NOT_FOUND"],
         handler: async function ({ input, pathParams }, { json, error }) {
           const { token } = await input.valid();
@@ -322,13 +484,19 @@ export const mcpRoutesFactory = defineRoutes(mcpFragmentDefinition).create(
                 });
               }
               uow.triggerHook("internalRefreshServerConfiguration", { serverId: pathParams.slug });
+              if (!isMcpAuthReady(server.authMode, secret ?? undefined)) {
+                uow.triggerHook("onServerReadinessChanged", {
+                  serverId: pathParams.slug,
+                  ready: true,
+                });
+              }
               return { found: true as const };
             })
             .execute();
           if (!result.found) {
             return error({ code: "SERVER_NOT_FOUND", message: "MCP server not found" }, 404);
           }
-          return json({ authenticated: true, mode: "bearer" });
+          return json({ mode: "bearer" as const, credentials: "present" as const });
         },
       }),
 
@@ -381,6 +549,7 @@ export const mcpRoutesFactory = defineRoutes(mcpFragmentDefinition).create(
                       scope: body.scope,
                       clientId: body.clientId,
                       clientSecret: body.clientSecret,
+                      discardTokens: body.discardTokens,
                     }),
                   ] as const,
               )
@@ -429,6 +598,7 @@ export const mcpRoutesFactory = defineRoutes(mcpFragmentDefinition).create(
       defineRoute({
         method: "DELETE",
         path: "/servers/:slug/auth",
+        outputSchema: mcpAuthStatusSchema,
         errorCodes: ["SERVER_NOT_FOUND"],
         handler: async function ({ pathParams }, { json, error }) {
           const result = await this.handlerTx()
@@ -456,8 +626,28 @@ export const mcpRoutesFactory = defineRoutes(mcpFragmentDefinition).create(
                 return { found: false as const };
               }
               const uow = forSchema(mcpSchema);
-              for (const secret of secrets) {
-                uow.delete("secret", secret.id);
+              const authSecret = secrets.find((secret) => secret.kind === "auth");
+              // Only OAuth consent is cleared: the registered client and discovery state stay usable.
+              const remainingAuth =
+                server.authMode === "oauth" && authSecret
+                  ? { payload: withoutOAuthConsent(authSecret.payload), expiresAt: null }
+                  : undefined;
+              if (server.authMode === "oauth") {
+                if (authSecret && remainingAuth) {
+                  uow.update("secret", authSecret.id, (b) =>
+                    b
+                      .set({ payload: remainingAuth.payload, expiresAt: null, updatedAt: b.now() })
+                      .check(),
+                  );
+                }
+              } else {
+                for (const secret of secrets) {
+                  uow.delete("secret", secret.id);
+                }
+              }
+              const ready = isMcpAuthReady(server.authMode, remainingAuth);
+              if (ready !== isMcpAuthReady(server.authMode, authSecret)) {
+                uow.triggerHook("onServerReadinessChanged", { serverId: pathParams.slug, ready });
               }
               for (const oauthState of oauthStates) {
                 uow.delete("oauthState", oauthState.id);
@@ -465,16 +655,24 @@ export const mcpRoutesFactory = defineRoutes(mcpFragmentDefinition).create(
               if (cache) {
                 uow.delete("server_connection_cache", cache.id);
               }
+              // Keep the mode: clearing credentials must not turn the server unauthenticated.
               uow.update("server_configuration", server.id, (b) =>
-                b.set({ authMode: "none", updatedAt: b.now() }).check(),
+                b.set({ updatedAt: b.now() }).check(),
               );
-              return { found: true as const };
+              return {
+                found: true as const,
+                status: projectMcpAuthStatus({
+                  authMode: server.authMode,
+                  authSecret: undefined,
+                  hasPendingOAuth: false,
+                }),
+              };
             })
             .execute();
           if (!result.found) {
             return error({ code: "SERVER_NOT_FOUND", message: "MCP server not found" }, 404);
           }
-          return json({ authenticated: true, mode: "none" });
+          return json(result.status);
         },
       }),
 
@@ -614,11 +812,16 @@ export const mcpRoutesFactory = defineRoutes(mcpFragmentDefinition).create(
                 );
               }
               if (preparedOperation.authChanges?.authPayload) {
-                upsertSecret(
-                  "auth",
-                  preparedOperation.authChanges.authPayload,
-                  preparedOperation.authChanges.authExpiresAt ?? null,
-                );
+                const after = {
+                  payload: preparedOperation.authChanges.authPayload,
+                  expiresAt: preparedOperation.authChanges.authExpiresAt ?? null,
+                };
+                upsertSecret("auth", after.payload, after.expiresAt);
+                const before = secrets.find((secret) => secret.kind === "auth");
+                const ready = isMcpAuthReady(server.authMode, after);
+                if (ready !== isMcpAuthReady(server.authMode, before)) {
+                  uow.triggerHook("onServerReadinessChanged", { serverId, ready });
+                }
               }
 
               const auth = buildAuthDiagnostics({
@@ -711,7 +914,7 @@ export const mcpRoutesFactory = defineRoutes(mcpFragmentDefinition).create(
         method: "POST",
         path: "/servers/:slug/tools/execute",
         inputSchema: toolCallInputSchema,
-        outputSchema: z.record(z.string(), z.unknown()),
+        outputSchema: mcpToolCallResultSchema,
         errorCodes: ["SERVER_NOT_FOUND", "MCP_ERROR"],
         handler: async function ({ input, pathParams }, { json, error }) {
           const body = await input.valid();
@@ -801,11 +1004,19 @@ export const mcpRoutesFactory = defineRoutes(mcpFragmentDefinition).create(
                   );
                 }
                 if (preparedOperation.authChanges?.authPayload) {
-                  upsertSecret(
-                    "auth",
-                    preparedOperation.authChanges.authPayload,
-                    preparedOperation.authChanges.authExpiresAt ?? null,
-                  );
+                  const after = {
+                    payload: preparedOperation.authChanges.authPayload,
+                    expiresAt: preparedOperation.authChanges.authExpiresAt ?? null,
+                  };
+                  upsertSecret("auth", after.payload, after.expiresAt);
+                  const before = secrets.find((secret) => secret.kind === "auth");
+                  const ready = isMcpAuthReady(server.authMode, after);
+                  if (ready !== isMcpAuthReady(server.authMode, before)) {
+                    uow.triggerHook("onServerReadinessChanged", {
+                      serverId: preparedOperation.serverId,
+                      ready,
+                    });
+                  }
                 }
 
                 const toolOperation = preparedOperation.toolOperation;

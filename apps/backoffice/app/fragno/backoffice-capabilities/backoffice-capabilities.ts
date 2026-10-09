@@ -27,6 +27,7 @@ import {
   formsCapability,
 } from "./capabilities/forms";
 import { githubCapability } from "./capabilities/github";
+import { integrationsCapability } from "./capabilities/integrations";
 import { mcpCapability } from "./capabilities/mcp";
 import { otpCapability } from "./capabilities/otp";
 import { piCapability } from "./capabilities/pi";
@@ -45,6 +46,7 @@ export type BackofficeCapabilityId =
   | "auth"
   | "forms"
   | "github"
+  | "integrations"
   | "mcp"
   | "connector"
   | "otp"
@@ -203,6 +205,7 @@ export const backofficeCapabilities: readonly BackofficeCapability[] = [
   otpCapability,
   automationsCapability,
   githubCapability,
+  integrationsCapability,
   authCapability,
   formsCapability,
 ];

@@ -5,6 +5,8 @@ import { type DatabaseServiceContext, type TxResult } from "@fragno-dev/db";
 
 import { githubAppSchema } from "../schema";
 import { createGitHubApiClient, type GitHubInstallationDetails } from "./api";
+import type { GitHubAppHooksMap } from "./definition";
+import type { GitHubRepositoryLinkStatusChangedPayload } from "./repository-links";
 
 export type GitHubAppFragmentDependencies = {
   githubApiClient: ReturnType<typeof createGitHubApiClient>;
@@ -63,6 +65,7 @@ export type GitHubInstallationSyncMutation = {
   updates: GitHubInstallationRepoUpdate[];
   removals: RepoId[];
   linksToDelete: RepoLinkId[];
+  linkStatusChanges: GitHubRepositoryLinkStatusChangedPayload[];
 };
 
 export type GitHubAppFragmentServices = {
@@ -87,7 +90,7 @@ const toInstallationSyncUpdate = (
 
 export const createGitHubServices = (
   deps: GitHubAppFragmentDependencies,
-  defineService: <T>(svc: T & ThisType<DatabaseServiceContext<{}>>) => T,
+  defineService: <T>(svc: T & ThisType<DatabaseServiceContext<GitHubAppHooksMap>>) => T,
 ): GitHubAppFragmentServices =>
   defineService({
     app: deps.githubApiClient.app,
@@ -151,6 +154,9 @@ export const createGitHubServices = (
           }
           for (const id of input.linksToDelete) {
             uow.delete("repo_link", id);
+          }
+          for (const change of input.linkStatusChanges) {
+            uow.triggerHook("onRepositoryLinkStatusChanged", change);
           }
         })
         .build();

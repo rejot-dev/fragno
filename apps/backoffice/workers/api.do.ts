@@ -19,6 +19,8 @@ import {
   loadDurableHookQueue,
   type DurableHookQueueOptions,
 } from "@/fragno/durable-hooks";
+import { encodeApiConnectionId } from "@/fragno/runtime-tools/families/integrations/api-integration";
+import { recordIntegrationConnectionState } from "@/fragno/runtime-tools/families/integrations/integration-events";
 import {
   API_PUBLIC_PREFIX,
   isScopedPublicOAuthRedirectUriAllowed,
@@ -45,6 +47,7 @@ export class InMemoryApiObject extends RpcTarget implements ApiObject {
   readonly #forwardHttpRequest: ReturnType<typeof createBackofficeFragmentHttpTransport>;
   readonly #host: FragmentDurableObjectHost<ApiConfig, ApiFragment>;
   readonly #scopedRuntime: ScopedFragmentDurableObjectRuntime<ApiFragment, BackofficeRoutableScope>;
+  readonly #fetch: typeof fetch;
 
   constructor({
     state,
@@ -52,15 +55,18 @@ export class InMemoryApiObject extends RpcTarget implements ApiObject {
     nowEpochMs,
     runtime,
     implementation,
+    fetch: fetchImpl = fetch,
   }: {
     state: BackofficeObjectState;
     env: Pick<CloudflareEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">;
     nowEpochMs: () => number;
     runtime: BackofficeRuntimeServices;
     implementation: BackofficeObjectImplementation;
+    fetch?: typeof fetch;
   }) {
     super();
     this.#runtimeServices = runtime;
+    this.#fetch = fetchImpl;
     this.#forwardHttpRequest = createBackofficeFragmentHttpTransport({
       address: {
         binding: "API",
@@ -99,77 +105,37 @@ export class InMemoryApiObject extends RpcTarget implements ApiObject {
 
   #createConfig(ownerScope: BackofficeRoutableScope): ApiConfig {
     return {
+      fetch: this.#fetch,
       allowedOAuthRedirectUris: (redirectUri) =>
         isScopedPublicOAuthRedirectUriAllowed({
           publicOrigin: this.#runtimeServices.config.docsPublicBaseUrl,
           publicPrefix: API_PUBLIC_PREFIX,
           redirectUri,
         }),
-      onConnectionChanged: async (payload, context) => {
-        const scope = ownerScope;
-        await this.#runtimeServices.objects.automations.for(scope).commands.ingestEvent(
-          {
-            id: context.hookId.toString(),
-            scopeRestriction: null,
-            scope,
-            source: "api",
-            eventType: "connection.changed",
-            occurredAt: new Date().toISOString(),
-            payload: { ...payload },
-            actors: {
-              initiator: AUTOMATION_SYSTEM_INITIATOR,
-              principal: null,
-              delegation: [],
-            },
-            subject: scopeSubject(scope, {
-              connectionId: payload.connectionId,
-            }),
-          },
-          { propagationContext: context.capturePropagationContext() },
-        );
-      },
       onConnectionDeleted: async (payload, context) => {
-        const scope = ownerScope;
-        await this.#runtimeServices.objects.automations.for(scope).commands.ingestEvent(
+        await recordIntegrationConnectionState(
+          this.#runtimeServices.objects.automations.for(ownerScope).commands,
           {
             id: context.hookId.toString(),
-            scopeRestriction: null,
-            scope,
-            source: "api",
-            eventType: "connection.deleted",
-            occurredAt: new Date().toISOString(),
-            payload: { ...payload },
-            actors: {
-              initiator: AUTOMATION_SYSTEM_INITIATOR,
-              principal: null,
-              delegation: [],
-            },
-            subject: scopeSubject(scope, {
-              connectionId: payload.connectionId,
-            }),
+            scope: ownerScope,
+            service: "api",
+            connectionId: encodeApiConnectionId(payload.connectionId),
+            state: "disconnected",
+            occurredAt: context.createdAt,
           },
           { propagationContext: context.capturePropagationContext() },
         );
       },
-      onConnectionAvailable: async (payload, context) => {
-        const scope = ownerScope;
-        await this.#runtimeServices.objects.automations.for(scope).commands.ingestEvent(
+      onConnectionReadinessChanged: async (payload, context) => {
+        await recordIntegrationConnectionState(
+          this.#runtimeServices.objects.automations.for(ownerScope).commands,
           {
             id: context.hookId.toString(),
-            scopeRestriction: null,
-            scope,
-            source: "api",
-            eventType: "connection.available",
-            occurredAt: new Date().toISOString(),
-            payload: { ...payload },
-            actors: {
-              initiator: AUTOMATION_SYSTEM_INITIATOR,
-              principal: null,
-              delegation: [],
-            },
-            subject: scopeSubject(scope, {
-              connectionId: payload.connectionId,
-            }),
+            scope: ownerScope,
+            service: "api",
+            connectionId: encodeApiConnectionId(payload.connectionId),
+            state: payload.ready ? "ready" : "unavailable",
+            occurredAt: context.createdAt,
           },
           { propagationContext: context.capturePropagationContext() },
         );

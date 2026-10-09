@@ -5,6 +5,7 @@ import { githubAppInstallationRoutesFactory } from "./routes/installations";
 import { githubAppOAuthRoutesFactory } from "./routes/oauth";
 import { githubAppPullRoutesFactory } from "./routes/pulls";
 import { githubAppRepositoryRoutesFactory } from "./routes/repositories";
+import { githubAppRepositoryByNameRoutesFactory } from "./routes/repositories-by-name";
 import { githubAppRepositoryAccessRoutesFactory } from "./routes/repository-access";
 import { githubAppWebhookRoutesFactory } from "./routes/webhooks";
 
@@ -13,6 +14,7 @@ export { githubAppInstallationRoutesFactory } from "./routes/installations";
 export { githubAppPullRoutesFactory } from "./routes/pulls";
 export { githubAppRepositoryAccessRoutesFactory } from "./routes/repository-access";
 export { githubAppRepositoryRoutesFactory } from "./routes/repositories";
+export { githubAppRepositoryByNameRoutesFactory } from "./routes/repositories-by-name";
 export { githubAppWebhookRoutesFactory } from "./routes/webhooks";
 
 export const githubAppRoutesFactory = defineRoutes(githubAppFragmentDefinition).create(
@@ -21,6 +23,7 @@ export const githubAppRoutesFactory = defineRoutes(githubAppFragmentDefinition).
     ...githubAppOAuthRoutesFactory(context),
     ...githubAppInstallationRoutesFactory(context),
     ...githubAppRepositoryRoutesFactory(context),
+    ...githubAppRepositoryByNameRoutesFactory(context),
     ...githubAppRepositoryAccessRoutesFactory(context),
     ...githubAppPullRoutesFactory(context),
   ],

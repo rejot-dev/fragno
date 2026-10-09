@@ -10,6 +10,7 @@ import { apiSchema } from "./schema";
 import {
   createOAuthCallbackSnapshot,
   createOAuthStartSnapshot,
+  isApiAuthReady,
   performApiRequest,
   resolveApiOperationAuth,
   storedAuthPayloadSchema,
@@ -33,10 +34,10 @@ export interface ApiConnectionDeletedPayload {
   previous: ApiConnectionHookSnapshot;
 }
 
-export interface ApiConnectionAvailablePayload {
+export interface ApiConnectionReadinessChangedPayload {
   connectionId: string;
-  connection: ApiConnectionHookSnapshot;
-  authMode: string;
+  /** Whether stored auth can authorize requests; providers can still reject it. */
+  ready: boolean;
 }
 
 interface InternalWebhookReceivedPayload {
@@ -86,8 +87,12 @@ export interface ApiFragmentHooksConfig {
     payload: ApiConnectionDeletedPayload,
     context: HookContext,
   ) => Promise<void> | void;
-  onConnectionAvailable?: (
-    payload: ApiConnectionAvailablePayload,
+  /**
+   * Fires when a write changes whether the connection can authorize requests, including creation.
+   * Expiry without a write does not fire: an expired token is only noticed when it is used.
+   */
+  onConnectionReadinessChanged?: (
+    payload: ApiConnectionReadinessChangedPayload,
     context: HookContext,
   ) => Promise<void> | void;
   onWebhookEndpointChanged?: (
@@ -105,7 +110,7 @@ export type ApiFragmentConfig = BaseApiFragmentConfig & ApiFragmentHooksConfig;
 export type ApiHooksMap = {
   onConnectionChanged: HookFn<ApiConnectionChangedPayload>;
   onConnectionDeleted: HookFn<ApiConnectionDeletedPayload>;
-  onConnectionAvailable: HookFn<ApiConnectionAvailablePayload>;
+  onConnectionReadinessChanged: HookFn<ApiConnectionReadinessChangedPayload>;
   onWebhookEndpointChanged: HookFn<WebhookEndpointChangedPayload>;
   onWebhookReceived: HookFn<InternalWebhookReceivedPayload>;
 };
@@ -135,8 +140,8 @@ export const apiFragmentDefinition = defineFragment<ApiFragmentConfig>("api-frag
     onConnectionDeleted: defineHook(async function (payload) {
       await config.onConnectionDeleted?.(payload, this);
     }),
-    onConnectionAvailable: defineHook(async function (payload) {
-      await config.onConnectionAvailable?.(payload, this);
+    onConnectionReadinessChanged: defineHook(async function (payload) {
+      await config.onConnectionReadinessChanged?.(payload, this);
     }),
     onWebhookEndpointChanged: defineHook(async function (payload) {
       await config.onWebhookEndpointChanged?.(payload, this);
@@ -165,6 +170,7 @@ export const apiFragmentDefinition = defineFragment<ApiFragmentConfig>("api-frag
         redirectUri: string;
         scopes?: string[];
         extraAuthorizationParams?: Record<string, string>;
+        discardTokens: boolean;
       }) {
         return this.serviceTx(apiSchema)
           .retrieve((uow) =>
@@ -197,10 +203,22 @@ export const apiFragmentDefinition = defineFragment<ApiFragmentConfig>("api-frag
               scopes: input.scopes,
               extraAuthorizationParams: input.extraAuthorizationParams,
             });
+            // Keeps the client configuration; only consent evidence is discarded.
+            const clientPayload = JSON.stringify({
+              ...auth,
+              tokens: undefined,
+              redirectUri: undefined,
+            });
             return {
               found: true as const,
               authorizationUrl: snapshot.authorizationUrl.toString(),
               oauthState: snapshot.oauthState,
+              connectionId: connection.id.toString(),
+              secretId: secret.id,
+              clientPayload,
+              discardChangesReadiness:
+                isApiAuthReady(connection.authMode, secret) !==
+                isApiAuthReady(connection.authMode, { payload: clientPayload, expiresAt: null }),
             };
           })
           .mutate(({ uow, retrieveResult }) => {
@@ -210,12 +228,30 @@ export const apiFragmentDefinition = defineFragment<ApiFragmentConfig>("api-frag
             uow.create("oauthState", {
               id: retrieveResult.oauthState.id,
               connectionId: retrieveResult.oauthState.connectionId,
+              authorizationUrl: retrieveResult.oauthState.authorizationUrl,
               codeVerifier: retrieveResult.oauthState.codeVerifier,
               redirectUri: retrieveResult.oauthState.redirectUri,
               scope: retrieveResult.oauthState.scope,
               expiresAt: retrieveResult.oauthState.expiresAt,
               consumedAt: null,
             });
+            if (input.discardTokens) {
+              uow.update("secret", retrieveResult.secretId, (b) =>
+                b
+                  .set({
+                    payload: retrieveResult.clientPayload,
+                    expiresAt: null,
+                    updatedAt: b.now(),
+                  })
+                  .check(),
+              );
+              if (retrieveResult.discardChangesReadiness) {
+                uow.triggerHook("onConnectionReadinessChanged", {
+                  connectionId: retrieveResult.connectionId,
+                  ready: false,
+                });
+              }
+            }
             return { found: true as const, authorizationUrl: retrieveResult.authorizationUrl };
           })
           .transform(({ retrieveResult }) => retrieveResult)
@@ -264,7 +300,12 @@ export const apiFragmentDefinition = defineFragment<ApiFragmentConfig>("api-frag
               state,
               auth,
             });
-            return { found: true as const, connection, changes };
+            return {
+              found: true as const,
+              connection,
+              changes,
+              wasReady: isApiAuthReady(connection.authMode, secret),
+            };
           })
           .mutate(({ uow, retrieveResult }) => {
             if (!retrieveResult.found) {
@@ -287,11 +328,13 @@ export const apiFragmentDefinition = defineFragment<ApiFragmentConfig>("api-frag
                 authMode: "oauth",
               });
               uow.triggerHook("onConnectionChanged", { connectionId, connection });
-              uow.triggerHook("onConnectionAvailable", {
-                connectionId,
-                connection,
-                authMode: "oauth",
+              const ready = isApiAuthReady("oauth", {
+                payload: retrieveResult.changes.authPayload,
+                expiresAt: retrieveResult.changes.authExpiresAt ?? null,
               });
+              if (ready !== retrieveResult.wasReady) {
+                uow.triggerHook("onConnectionReadinessChanged", { connectionId, ready });
+              }
             }
             uow.update("oauthState", input.stateId, (b) => b.set({ consumedAt: b.now() }));
             return { found: true as const };
@@ -366,6 +409,14 @@ export const apiFragmentDefinition = defineFragment<ApiFragmentConfig>("api-frag
                 connectionId,
                 connection: connectionHookSnapshot(retrieveResult.connection),
               });
+              const { authMode } = retrieveResult.connection;
+              const ready = isApiAuthReady(authMode, {
+                payload: authChanges.authPayload,
+                expiresAt: authChanges.authExpiresAt ?? null,
+              });
+              if (ready !== isApiAuthReady(authMode, existing)) {
+                uow.triggerHook("onConnectionReadinessChanged", { connectionId, ready });
+              }
             }
             return { found: true as const, response: retrieveResult.response };
           })
@@ -403,14 +454,15 @@ export const apiFragmentDefinition = defineFragment<ApiFragmentConfig>("api-frag
             if (!retrieveResult.found) {
               return retrieveResult;
             }
-            if (retrieveResult.authChanges?.authPayload) {
+            const authChanges = retrieveResult.authChanges;
+            if (authChanges?.authPayload) {
               const existing = retrieveResult.secrets.find((secret) => secret.kind === "auth");
               if (existing) {
                 uow.update("secret", existing.id, (b) =>
                   b
                     .set({
-                      payload: retrieveResult.authChanges!.authPayload!,
-                      expiresAt: retrieveResult.authChanges!.authExpiresAt ?? null,
+                      payload: authChanges.authPayload,
+                      expiresAt: authChanges.authExpiresAt ?? null,
                       updatedAt: b.now(),
                     })
                     .check(),
@@ -419,11 +471,14 @@ export const apiFragmentDefinition = defineFragment<ApiFragmentConfig>("api-frag
               const connectionId = retrieveResult.connection.id.toString();
               const connection = connectionHookSnapshot(retrieveResult.connection);
               uow.triggerHook("onConnectionChanged", { connectionId, connection });
-              uow.triggerHook("onConnectionAvailable", {
-                connectionId,
-                connection,
-                authMode: retrieveResult.connection.authMode,
+              const { authMode } = retrieveResult.connection;
+              const ready = isApiAuthReady(authMode, {
+                payload: authChanges.authPayload,
+                expiresAt: authChanges.authExpiresAt ?? null,
               });
+              if (ready !== isApiAuthReady(authMode, existing)) {
+                uow.triggerHook("onConnectionReadinessChanged", { connectionId, ready });
+              }
             }
             return { found: true as const, tokenPresent: retrieveResult.tokenPresent };
           })

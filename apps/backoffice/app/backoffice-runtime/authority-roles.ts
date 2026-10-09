@@ -81,7 +81,6 @@ export const USER_AUTHORITY_ROLE_PERMISSION_DECISIONS = {
     connections: { manage: "grant", read: "grant" },
     events: { emit: "grant", manage: "grant", read: "grant", route: "grant" },
     forms: { create: "grant", read: "grant", update: "grant" },
-    github: { read: "grant" },
     hooks: { read: "grant" },
     identity: { link: "grant", bind: "grant", read: "grant", resolve: "grant", revoke: "grant" },
     integrations: { read: "grant", manage: "grant", execute: "grant" },
@@ -136,7 +135,6 @@ export const USER_AUTHORITY_ROLE_PERMISSION_DECISIONS = {
     connections: { manage: "grant", read: "grant" },
     events: { emit: "grant", manage: "grant", read: "grant", route: "deny" },
     forms: { create: "grant", read: "grant", update: "grant" },
-    github: { read: "grant" },
     hooks: { read: "grant" },
     identity: { link: "deny", bind: "deny", read: "grant", resolve: "deny", revoke: "deny" },
     integrations: { read: "grant", manage: "grant", execute: "grant" },
@@ -193,7 +191,6 @@ export const USER_AUTHORITY_ROLE_PERMISSION_DECISIONS = {
     connections: { manage: "grant", read: "grant" },
     events: { emit: "grant", manage: "grant", read: "grant", route: "grant" },
     forms: { create: "grant", read: "grant", update: "grant" },
-    github: { read: "grant" },
     hooks: { read: "grant" },
     // Binding or revoking an external identity for an arbitrary user lets the caller act as them.
     identity: { link: "grant", bind: "deny", read: "grant", resolve: "grant", revoke: "deny" },

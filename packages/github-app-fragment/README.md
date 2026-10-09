@@ -7,8 +7,9 @@ CLI to run a local server and call all fragment routes for integration testing.
 
 - JWT + installation access token auth
 - Webhook-driven installation and repository tracking
-- Explicit repo linking for access control
+- Explicit repo linking for access control, by repository ID or by `owner/repo` name
 - Pull request listing + review creation
+- Short-lived read tokens and a REST proxy, both restricted to one linked repository
 - CLI for serving and exercising all routes
 
 ## GitHub App Setup (UI)
@@ -22,11 +23,19 @@ CLI to run a local server and call all fragment routes for integration testing.
 3. Permissions (Repository):
    - **Pull requests**: Read & write
    - **Metadata**: Read-only (default)
+   - **Contents**: Read-only, for `POST /repositories/access-token`
+
+   These permissions are also the upper bound for `POST /repositories/:owner/:repo/api`: the proxy
+   can call any repository endpoint, but only with what the installation was granted.
+
 4. Subscribe to webhook events:
    - `installation`
    - `installation_repositories`
 5. Generate a **private key** and download the `.pem` file.
-6. Install the App on the repositories you want to test with.
+6. If your app sends users through GitHub's install page and handles the redirect (the **Setup URL**
+   under _Post installation_), also enable **Redirect on update**. Without it, GitHub only redirects
+   after the first install, not when a user later adds repositories to an existing installation.
+7. Install the App on the repositories you want to test with.
 
 ### Generating the PEM private key
 
@@ -124,6 +133,13 @@ const config: GitHubAppFragmentConfig = {
       console.log("GitHub app uninstalled", payload.installation.id);
     });
   },
+  // Optional: durable hook for repository links becoming usable or not; see below.
+  onRepositoryLinkStatusChanged: async ({ fullName, linkKey, status }) => {
+    console.log("GitHub repository link", fullName, linkKey, status);
+  },
+  // Optional: replaces the global fetch for GitHub REST and OAuth requests, e.g. a fake GitHub API
+  // in tests.
+  // fetch: fakeGitHubFetch,
 };
 
 const fragment = createGitHubAppFragment(config, {
@@ -138,17 +154,71 @@ const githubApiClient = fragment.services.githubApiClient;
 export const { GET, POST } = fragment.handlersFor("next-js");
 ```
 
+`onRepositoryLinkStatusChanged` receives `{ linkKey, repositoryId, fullName, status }`. A link is
+`active` while it exists and its installation is active, `inactive` while the installation is
+suspended or deleted, and `unlinked` once the link is removed, including when the repository is
+removed from the installation on GitHub. It fires for the link routes, installation webhooks, and
+installation sync. Installation webhooks are processed as durable hooks without ordering guarantees,
+so overlapping installation changes, such as a suspend and an unsuspend delivered together, can be
+reported out of order or not at all.
+
 ## Routes
 
+Repository links carry a link key, so one repository can be linked for several contexts. Routes that
+accept `linkKey` fall back to the configured `defaultLinkKey`, or `default`.
+
+Webhooks and user authorization:
+
 - `POST /webhooks`
+- `POST /oauth/start`
+- `POST /oauth/complete`
+
+Installations:
+
 - `GET /installations`
 - `GET /installations/:installationId/repos`
+- `POST /installations/:installationId/sync` — re-read the installation's repositories from GitHub
+
+Repositories by ID:
+
 - `GET /repositories/linked`
 - `POST /repositories/link`
 - `POST /repositories/unlink`
+- `POST /repositories/access-token` — a short-lived token that can only read one linked repository's
+  contents
+
+Repositories by name:
+
+- `GET /repositories/:owner/:repo` — whether the repository is `not-installed` (no installation on
+  `owner`), `not-granted` (an installation on `owner` cannot reach it), or `reachable`, and whether
+  it is linked
+- `POST /repositories/:owner/:repo/link` — link a reachable repository; `REPO_NOT_REACHABLE` until
+  GitHub grants the installation access
+- `POST /repositories/:owner/:repo/unlink` — reports `unlinked` or `not-linked`
+- `POST /repositories/:owner/:repo/api` — the REST proxy described below
+
+Pull requests:
+
 - `GET /repositories/:owner/:repo/pulls`
 - `POST /repositories/:owner/:repo/pulls/:number/reviews`
-- `POST /installations/:installationId/sync`
+
+### Repository REST proxy
+
+`POST /repositories/:owner/:repo/api` sends one GitHub REST request on behalf of a linked
+repository:
+
+```json
+{ "method": "GET", "path": "/issues", "query": { "state": "open" }, "body": null }
+```
+
+- `path` is relative to `/repos/{owner}/{repo}`; use `""` for the repository itself. Paths with `.`
+  or `..` segments (including percent-encoded ones), `?`, `#`, or `\` are rejected, so a request
+  cannot leave the repository.
+- The request uses an installation token restricted to this one repository, with the installation's
+  permissions.
+- The response is `{ status, headers, body }`. GitHub's error statuses are returned as results, not
+  route errors. `headers` contains only `link` and the `x-ratelimit-*` headers.
+- Bodies are JSON in both directions.
 
 ## Client Usage
 

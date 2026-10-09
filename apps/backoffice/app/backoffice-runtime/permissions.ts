@@ -56,9 +56,6 @@ export const BACKOFFICE_PERMISSION = {
     read: { namespace: "forms", permission: "read" },
     update: { namespace: "forms", permission: "update" },
   },
-  github: {
-    read: { namespace: "github", permission: "read" },
-  },
   hooks: {
     read: { namespace: "hooks", permission: "read" },
   },
@@ -175,6 +172,16 @@ export const isBackofficePermissionRequirement = (input: {
     (requirement) =>
       requirement.namespace === input.namespace && requirement.permission === input.permission,
   );
+
+/**
+ * Stored permission lists can name permissions removed since they were written. Those authorize
+ * nothing, so readers of stored grants drop them instead of failing to parse the whole record.
+ */
+export function knownBackofficePermissions(
+  permissions: readonly { namespace: string; permission: string }[],
+): BackofficePermissionRequirement[] {
+  return permissions.filter(isBackofficePermissionRequirement);
+}
 
 type BackofficePermissionRequirementSchema = z.ZodType<BackofficePermissionRequirement>;
 

@@ -131,11 +131,11 @@ type GitHubOAuthCompleteResult = {
   error: string | null;
 };
 
-const createGitHubRouteCaller = (
+export const createGitHubRouteCaller = (
   request: Request,
   context: Readonly<RouterContextProvider>,
   organizationId: string,
-) => {
+): ReturnType<typeof createRouteCaller<GitHubFragment>> => {
   const githubDo = getGitHubDurableObject(context, organizationId);
   return createRouteCaller<GitHubFragment>({
     baseUrl: request.url,

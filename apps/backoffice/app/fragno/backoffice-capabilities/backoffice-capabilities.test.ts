@@ -19,6 +19,7 @@ describe("Capability contributions", () => {
       "automations",
       "forms",
       "github",
+      "integrations",
       "otp",
       "sandbox",
       "scheduler",

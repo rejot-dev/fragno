@@ -10,7 +10,7 @@ import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import { backofficeContextScopeSchema } from "@/backoffice-runtime/context-schema";
 import type { NpmDependencyMap } from "@/backoffice-runtime/dynamic-workers/npm-dependencies";
 import {
-  backofficePermissionRequirementSchema,
+  knownBackofficePermissions,
   type BackofficePermissionRequirement,
 } from "@/backoffice-runtime/permissions";
 import { piAgentCreationSchema } from "@/fragno/pi-manager/pi-agent-contract";
@@ -42,7 +42,10 @@ export type CodemodeCapabilityGrant = {
 
 const codemodeCapabilityGrantSchema: z.ZodType<CodemodeCapabilityGrant> = z.strictObject({
   actor: automationDelegatedActorSchema,
-  permissions: z.array(backofficePermissionRequirementSchema),
+  // Workflow snapshots are replayed after permissions may have been removed from the kernel.
+  permissions: z
+    .array(z.strictObject({ namespace: z.string(), permission: z.string() }))
+    .transform(knownBackofficePermissions),
 });
 
 export type CodemodeWorkflowTrigger<T extends AutomationEventPayload> =

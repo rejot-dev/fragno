@@ -30,16 +30,23 @@ const projectConnectorConnectionNameSchema = z
   )
   .describe("Lowercase letters, digits, underscores, and hyphens; starts with a letter or digit.");
 
+/** Named selectors preserve exact source identity; user ownership comes only from authentication. */
+export const projectConnectorNamedConnectionSchema = z.strictObject({
+  projectId: z.string().min(1),
+  providerConfigId: z.string().min(1),
+  connectionName: projectConnectorConnectionNameSchema,
+});
+
 /** Select exactly one provider and name every connection explicitly. */
 export const projectConnectorConnectInputSchema = z.union([
   z.strictObject({
     service: z.string().regex(/^[a-z0-9_-]+$/),
-    connectionName: projectConnectorConnectionNameSchema,
+    connectionName: projectConnectorNamedConnectionSchema.shape.connectionName,
     returnUri: projectConnectorHttpUrlSchema,
   }),
   z.strictObject({
-    providerConfigId: z.string().min(1),
-    connectionName: projectConnectorConnectionNameSchema,
+    providerConfigId: projectConnectorNamedConnectionSchema.shape.providerConfigId,
+    connectionName: projectConnectorNamedConnectionSchema.shape.connectionName,
     returnUri: projectConnectorHttpUrlSchema,
   }),
 ]);
@@ -51,7 +58,7 @@ export const projectConnectorConnectionSchema = z.object({
   providerConfigId: z.string(),
   externalUserId: z.string(),
   service: z.string(),
-  connectionName: z.string().nullable(),
+  connectionName: projectConnectorNamedConnectionSchema.shape.connectionName,
   authorizationUrl: projectConnectorHttpUrlSchema,
   expiresAt: z.string(),
   state: projectConnectorConnectionStateSchema,
@@ -64,7 +71,17 @@ export const projectConnectorAccountSchema = z.object({
   providerConfigId: z.string(),
   externalUserId: z.string(),
   service: z.string(),
-  connectionName: z.string().nullable(),
+  connectionName: projectConnectorNamedConnectionSchema.shape.connectionName,
+});
+
+/** Missing named requests remain JSON results rather than empty HTTP responses. */
+export const projectConnectorNamedRequestSchema = z.strictObject({
+  request: projectConnectorConnectionSchema.nullable(),
+});
+
+/** Missing named accounts remain JSON results rather than empty HTTP responses. */
+export const projectConnectorNamedAccountSchema = z.strictObject({
+  account: projectConnectorAccountSchema.nullable(),
 });
 
 /** Account pagination is owned by the fragment rather than the provider gateway. */

@@ -7,12 +7,23 @@ import {
   type IntegrationConnectionPage,
   type IntegrationSetupInput,
 } from "./integration-contracts";
-import type { IntegrationContext, IntegrationImplementation } from "./integration-implementation";
+import type {
+  IntegrationCapability,
+  IntegrationContext,
+  IntegrationImplementation,
+} from "./integration-implementation";
 
 const integrationListingCursorSchema = z.strictObject({
   source: z.string().min(1),
   cursor: z.string().nullable(),
 });
+
+function requireCapability<TRun>(capability: IntegrationCapability<TRun>) {
+  if (capability.kind === "unsupported") {
+    throw new BackofficeUnavailableError(capability.reason);
+  }
+  return capability;
+}
 
 /** Registration reserves code-owned addresses, not credentials, connections, or retained runtime handles. */
 export function createIntegrationRegistry(implementations: readonly IntegrationImplementation[]) {
@@ -78,6 +89,23 @@ export function createIntegrationRegistry(implementations: readonly IntegrationI
     }
   }
 
+  async function runProgressOperation(
+    operationName: "setup" | "reconfigure",
+    context: IntegrationContext,
+    input: IntegrationSetupInput,
+  ) {
+    const { connectionId, ...operation } = input;
+    const { implementation, localId } = resolveConnectionOwner(connectionId);
+    const capability = requireCapability(implementation[operationName]);
+    const progress = await capability.run(context, { localId, operation });
+    if (progress.connectionId !== connectionId) {
+      throw new Error(
+        `Integrations source returned ${operationName} for a different connection ID.`,
+      );
+    }
+    return progress;
+  }
+
   return {
     async discover(context: IntegrationContext) {
       return (
@@ -103,28 +131,25 @@ export function createIntegrationRegistry(implementations: readonly IntegrationI
         }
         sourceCursor = decoded.cursor;
       }
+      // Finished sources are combined into one page, so a page stops only at a source with more
+      // pages; each source's own page size still bounds the result.
+      const connections: IntegrationConnectionPage["connections"] = [];
       for (; index < entries.length; index++) {
         const entry = entries[index];
         const page = await entry.implementation.list(context, sourceCursor);
         for (const connection of page.connections) {
           assertPublishedConnectionOwner(connection.connectionId, entry.implementation);
         }
+        connections.push(...page.connections);
         if (page.cursor !== null) {
           return {
-            connections: page.connections,
+            connections,
             cursor: JSON.stringify({ source: entry.key, cursor: page.cursor }),
-          };
-        }
-        if (page.connections.length > 0) {
-          const next = entries[index + 1];
-          return {
-            connections: page.connections,
-            cursor: next ? JSON.stringify({ source: next.key, cursor: null }) : null,
           };
         }
         sourceCursor = null;
       }
-      return { connections: [], cursor: null };
+      return { connections, cursor: null };
     },
     async resolve(context: IntegrationContext, connectionId: string) {
       const { implementation, localId } = resolveConnectionOwner(connectionId);
@@ -134,20 +159,20 @@ export function createIntegrationRegistry(implementations: readonly IntegrationI
       }
       return connection;
     },
-    async setup(context: IntegrationContext, input: IntegrationSetupInput) {
-      const { connectionId, ...operation } = input;
+    setup(context: IntegrationContext, input: IntegrationSetupInput) {
+      return runProgressOperation("setup", context, input);
+    },
+    reconfigure(context: IntegrationContext, input: IntegrationSetupInput) {
+      return runProgressOperation("reconfigure", context, input);
+    },
+    async disconnect(context: IntegrationContext, connectionId: string) {
       const { implementation, localId } = resolveConnectionOwner(connectionId);
-      if (implementation.setup.kind === "unsupported") {
-        throw new BackofficeUnavailableError(implementation.setup.reason);
+      const capability = requireCapability(implementation.disconnect);
+      const result = await capability.run(context, { localId });
+      if (result.connectionId !== connectionId) {
+        throw new Error("Integrations source disconnected a different connection ID.");
       }
-      const progress = await implementation.setup.run(context, {
-        localId,
-        operation,
-      });
-      if (progress.connectionId !== connectionId) {
-        throw new Error("Integrations source returned setup for a different connection ID.");
-      }
-      return progress;
+      return result;
     },
   };
 }

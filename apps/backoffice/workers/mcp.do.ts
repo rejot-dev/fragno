@@ -19,6 +19,8 @@ import {
   type DurableHookQueueOptions,
 } from "@/fragno/durable-hooks";
 import { createMcpServer, type McpConfig, type McpFragment } from "@/fragno/mcp";
+import { recordIntegrationConnectionState } from "@/fragno/runtime-tools/families/integrations/integration-events";
+import { encodeMcpConnectionId } from "@/fragno/runtime-tools/families/integrations/mcp-integration";
 import {
   isScopedPublicOAuthRedirectUriAllowed,
   MCP_PUBLIC_PREFIX,
@@ -34,11 +36,12 @@ import {
 
 type McpObjectEnv = Pick<CloudflareEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">;
 
-function scopeSubject(scope: BackofficeRoutableScope, serverId?: string) {
+function serverSubject(scope: BackofficeRoutableScope, serverId: string) {
   return {
     scope,
     ...(scope.kind === "org" || scope.kind === "project" ? { orgId: scope.orgId } : {}),
-    ...(serverId ? { serverId } : {}),
+    serverId,
+    connectionId: encodeMcpConnectionId(serverId),
   };
 }
 
@@ -47,6 +50,7 @@ export class InMemoryMcpObject extends RpcTarget implements McpObject {
   readonly #forwardHttpRequest: ReturnType<typeof createBackofficeFragmentHttpTransport>;
   readonly #host: FragmentDurableObjectHost<McpConfig, McpFragment>;
   readonly #scopedRuntime: ScopedFragmentDurableObjectRuntime<McpFragment, BackofficeRoutableScope>;
+  readonly #fetch: typeof fetch;
 
   constructor({
     state,
@@ -54,15 +58,18 @@ export class InMemoryMcpObject extends RpcTarget implements McpObject {
     nowEpochMs,
     runtime,
     implementation,
+    fetch: fetchImpl = fetch,
   }: {
     state: BackofficeObjectState;
     env?: McpObjectEnv;
     nowEpochMs: () => number;
     runtime: BackofficeRuntimeServices;
     implementation: BackofficeObjectImplementation;
+    fetch?: typeof fetch;
   }) {
     super();
     this.#runtimeServices = runtime;
+    this.#fetch = fetchImpl;
     this.#forwardHttpRequest = createBackofficeFragmentHttpTransport({
       address: {
         binding: "MCP",
@@ -101,6 +108,7 @@ export class InMemoryMcpObject extends RpcTarget implements McpObject {
 
   #createConfig(ownerScope: BackofficeRoutableScope): McpConfig {
     return {
+      fetch: this.#fetch,
       allowedOAuthRedirectUris: (redirectUri) =>
         isScopedPublicOAuthRedirectUriAllowed({
           publicOrigin: this.#runtimeServices.config.docsPublicBaseUrl,
@@ -123,28 +131,35 @@ export class InMemoryMcpObject extends RpcTarget implements McpObject {
               principal: null,
               delegation: [],
             },
-            subject: scopeSubject(scope, payload.serverId),
+            subject: serverSubject(scope, payload.serverId),
           },
           { propagationContext: context.capturePropagationContext() },
         );
       },
       onServerConfigurationDeleted: async (payload, context) => {
-        const scope = ownerScope;
-        await this.#runtimeServices.objects.automations.for(scope).commands.ingestEvent(
+        await recordIntegrationConnectionState(
+          this.#runtimeServices.objects.automations.for(ownerScope).commands,
           {
             id: context.hookId.toString(),
-            scopeRestriction: null,
-            scope,
-            source: "mcp",
-            eventType: "server.configuration.deleted",
-            occurredAt: new Date().toISOString(),
-            payload: { ...payload },
-            actors: {
-              initiator: AUTOMATION_SYSTEM_INITIATOR,
-              principal: null,
-              delegation: [],
-            },
-            subject: scopeSubject(scope, payload.serverId),
+            scope: ownerScope,
+            service: "mcp",
+            connectionId: encodeMcpConnectionId(payload.serverId),
+            state: "disconnected",
+            occurredAt: context.createdAt,
+          },
+          { propagationContext: context.capturePropagationContext() },
+        );
+      },
+      onServerReadinessChanged: async (payload, context) => {
+        await recordIntegrationConnectionState(
+          this.#runtimeServices.objects.automations.for(ownerScope).commands,
+          {
+            id: context.hookId.toString(),
+            scope: ownerScope,
+            service: "mcp",
+            connectionId: encodeMcpConnectionId(payload.serverId),
+            state: payload.ready ? "ready" : "unavailable",
+            occurredAt: context.createdAt,
           },
           { propagationContext: context.capturePropagationContext() },
         );

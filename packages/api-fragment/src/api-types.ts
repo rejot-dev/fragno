@@ -46,6 +46,14 @@ export const authConfigSchema = z.discriminatedUnion("type", [
   }),
 ]);
 
+/** Slugs are URL path segments; whitespace and dot segments would make a connection unaddressable. */
+export const apiConnectionSlugSchema = z
+  .string()
+  .regex(
+    /^[A-Za-z0-9][A-Za-z0-9._-]*$/,
+    "API connection slugs start with a letter or digit and contain only letters, digits, '.', '_', or '-'.",
+  );
+
 export const createApiConnectionInputSchema = z.object({
   name: z.string().min(1).optional(),
   baseUrl: z.url(),
@@ -62,6 +70,41 @@ export const apiConnectionOutputSchema = z.object({
   updatedAt: z.union([z.string(), z.date()]).optional(),
 });
 
+export const apiConnectionsPageSchema = z.object({
+  connections: z.array(apiConnectionOutputSchema),
+  cursor: z.string().nullable().describe("Null means every connection has been listed."),
+});
+
+const apiCredentialsPresenceSchema = z
+  .enum(["present", "missing"])
+  .describe("Whether credentials are stored, not whether the provider accepts them.");
+
+/** Sanitized auth state derived from stored configuration; it never proves live provider access. */
+export const apiAuthStatusSchema = z.discriminatedUnion("mode", [
+  z.object({ mode: z.literal("none") }),
+  z.object({ mode: z.literal("bearer"), credentials: apiCredentialsPresenceSchema }),
+  z.object({ mode: z.literal("basic"), credentials: apiCredentialsPresenceSchema }),
+  z.object({ mode: z.literal("client_credentials"), credentials: apiCredentialsPresenceSchema }),
+  z.object({
+    mode: z.literal("oauth"),
+    state: z
+      .enum(["client-missing", "consent-required", "consent-pending", "authorized", "expired"])
+      .describe(
+        "Expired means the access token expired and no refresh token is stored; pending means an unexpired authorization link exists.",
+      ),
+  }),
+]);
+
+/** The pending link embeds the callback state, so reading it requires connection-create authority. */
+export const apiOAuthPendingSchema = z.object({
+  pending: z
+    .object({ authorizationUrl: z.url(), expiresAt: z.union([z.string(), z.date()]) })
+    .nullable()
+    .describe(
+      "The newest unexpired, unconsumed authorization link; any pending link completes it.",
+    ),
+});
+
 export const tokenAuthInputSchema = z.object({ token: z.string().min(1) });
 
 /** Query parameter carrying the OAuth callback URI for an OAuth start request. */
@@ -75,6 +118,12 @@ export const oauthRedirectUriSchema = z.url().refine((value) => {
 export const oauthStartInputSchema = z.object({
   scopes: z.array(z.string()).optional(),
   extraAuthorizationParams: z.record(z.string(), z.string()).optional(),
+  discardTokens: z
+    .boolean()
+    .default(false)
+    .describe(
+      "Drop stored tokens so status reports pending consent until this new consent completes.",
+    ),
 });
 
 export const apiRequestBodySchema = z.discriminatedUnion("type", [
@@ -209,6 +258,9 @@ export const updateWebhookEndpointInputSchema = z.object({
 export type AuthConfig = z.infer<typeof authConfigSchema>;
 export type ApiConnectionInput = z.infer<typeof createApiConnectionInputSchema>;
 export type ApiConnection = z.infer<typeof apiConnectionOutputSchema>;
+export type ApiConnectionsPage = z.infer<typeof apiConnectionsPageSchema>;
+export type ApiAuthStatus = z.infer<typeof apiAuthStatusSchema>;
+export type ApiOAuthPending = z.infer<typeof apiOAuthPendingSchema>;
 export type ApiRequestBody = z.infer<typeof apiRequestBodySchema>;
 export type ApiRequestInput = z.infer<typeof apiRequestInputSchema>;
 export type ApiResponseBody = z.infer<typeof apiResponseBodySchema>;

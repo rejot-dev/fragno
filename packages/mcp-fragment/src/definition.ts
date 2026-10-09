@@ -8,7 +8,10 @@ import {
   createOAuthCallbackSnapshot,
   createMcpOperationAuth,
   createOAuthStartSnapshot,
+  isMcpAuthReady,
   resolveMcpOperationAuth,
+  resolveOAuthStartClient,
+  withoutOAuthConsent,
   type AuthPersistenceChanges,
 } from "./services";
 
@@ -23,6 +26,12 @@ export interface McpServerConfigurationDeletedPayload {
   serverId: string;
 }
 
+export interface McpServerReadinessChangedPayload {
+  serverId: string;
+  /** Whether stored auth can authorize operations; the server can still reject it. */
+  ready: boolean;
+}
+
 export interface McpFragmentHooksConfig {
   onServerConfigurationChanged?: (
     payload: McpServerConfigurationChangedPayload,
@@ -30,6 +39,15 @@ export interface McpFragmentHooksConfig {
   ) => Promise<void> | void;
   onServerConfigurationDeleted?: (
     payload: McpServerConfigurationDeletedPayload,
+    context: HookContext,
+  ) => Promise<void> | void;
+  /**
+   * Fires when a write changes whether the server can authorize operations, including creation
+   * and credentials the server invalidates during an operation. Expiry without a write does not
+   * fire: an expired token is only noticed when it is used.
+   */
+  onServerReadinessChanged?: (
+    payload: McpServerReadinessChangedPayload,
     context: HookContext,
   ) => Promise<void> | void;
 }
@@ -44,6 +62,7 @@ export type McpHooksMap = {
   internalRefreshServerConfiguration: HookFn<McpInternalRefreshServerConfigurationPayload>;
   onServerConfigurationChanged: HookFn<McpServerConfigurationChangedPayload>;
   onServerConfigurationDeleted: HookFn<McpServerConfigurationDeletedPayload>;
+  onServerReadinessChanged: HookFn<McpServerReadinessChangedPayload>;
 };
 
 export const mcpFragmentDefinition = defineFragment<McpFragmentConfig>("mcp-fragment")
@@ -128,11 +147,16 @@ export const mcpFragmentDefinition = defineFragment<McpFragmentConfig>("mcp-frag
             );
           }
           if (preparedOperation.authChanges?.authPayload) {
-            upsertSecret(
-              "auth",
-              preparedOperation.authChanges.authPayload,
-              preparedOperation.authChanges.authExpiresAt ?? null,
-            );
+            const after = {
+              payload: preparedOperation.authChanges.authPayload,
+              expiresAt: preparedOperation.authChanges.authExpiresAt ?? null,
+            };
+            upsertSecret("auth", after.payload, after.expiresAt);
+            const before = secrets.find((secret) => secret.kind === "auth");
+            const ready = isMcpAuthReady(server.authMode, after);
+            if (ready !== isMcpAuthReady(server.authMode, before)) {
+              uow.triggerHook("onServerReadinessChanged", { serverId, ready });
+            }
           }
 
           if (!preparedOperation.toolsOperation.ok) {
@@ -180,6 +204,9 @@ export const mcpFragmentDefinition = defineFragment<McpFragmentConfig>("mcp-frag
     onServerConfigurationDeleted: defineHook(async function (payload) {
       await config.onServerConfigurationDeleted?.(payload, this);
     }),
+    onServerReadinessChanged: defineHook(async function (payload) {
+      await config.onServerReadinessChanged?.(payload, this);
+    }),
   }))
   .providesBaseService(({ defineService, config }) =>
     defineService({
@@ -190,6 +217,7 @@ export const mcpFragmentDefinition = defineFragment<McpFragmentConfig>("mcp-frag
         scope?: string;
         clientId?: string;
         clientSecret?: string;
+        discardTokens: boolean;
       }) {
         return this.serviceTx(mcpSchema)
           .retrieve((uow) =>
@@ -211,14 +239,13 @@ export const mcpFragmentDefinition = defineFragment<McpFragmentConfig>("mcp-frag
               secrets,
               stateId: input.stateId,
               redirectUri: input.redirectUri,
-              scope: input.scope,
-              clientId: input.clientId,
-              clientSecret: input.clientSecret,
+              ...resolveOAuthStartClient(secrets, input),
             });
             return {
               found: true as const,
               authorizationUrl: authorizationUrl.toString(),
               serverId: server.id.toString(),
+              authMode: server.authMode,
               secrets,
               changes,
             };
@@ -251,10 +278,28 @@ export const mcpFragmentDefinition = defineFragment<McpFragmentConfig>("mcp-frag
             if (retrieveResult.changes.discoveryStatePayload) {
               upsertSecret("oauth-discovery", retrieveResult.changes.discoveryStatePayload, null);
             }
+            const authSecret = retrieveResult.secrets.find((secret) => secret.kind === "auth");
+            if (input.discardTokens && authSecret) {
+              // Keeps the client configuration; only consent evidence is discarded.
+              const payload = withoutOAuthConsent(authSecret.payload);
+              uow.update("secret", authSecret.id, (b) =>
+                b.set({ payload, expiresAt: null, updatedAt: b.now() }).check(),
+              );
+              const { authMode } = retrieveResult;
+              const ready = isMcpAuthReady(authMode, { payload, expiresAt: null });
+              if (ready !== isMcpAuthReady(authMode, authSecret)) {
+                uow.triggerHook("onServerReadinessChanged", {
+                  serverId: retrieveResult.serverId,
+                  ready,
+                });
+              }
+            }
             if (retrieveResult.changes.oauthState) {
               uow.create("oauthState", {
                 id: retrieveResult.changes.oauthState.id,
                 serverId: retrieveResult.serverId,
+                // The link carries only the PKCE challenge, never the verifier.
+                authorizationUrl: retrieveResult.authorizationUrl,
                 codeVerifier: retrieveResult.changes.oauthState.codeVerifier,
                 redirectUri: retrieveResult.changes.oauthState.redirectUri,
                 scope: retrieveResult.changes.oauthState.scope ?? null,
@@ -341,14 +386,19 @@ export const mcpFragmentDefinition = defineFragment<McpFragmentConfig>("mcp-frag
               upsertSecret("oauth-discovery", retrieveResult.changes.discoveryStatePayload, null);
             }
             if (retrieveResult.changes.authPayload) {
-              upsertSecret(
-                "auth",
-                retrieveResult.changes.authPayload,
-                retrieveResult.changes.authExpiresAt ?? null,
-              );
+              const after = {
+                payload: retrieveResult.changes.authPayload,
+                expiresAt: retrieveResult.changes.authExpiresAt ?? null,
+              };
+              upsertSecret("auth", after.payload, after.expiresAt);
               uow.update("server_configuration", retrieveResult.server.id, (b) =>
                 b.set({ authMode: "oauth", updatedAt: b.now() }).check(),
               );
+              const before = retrieveResult.secrets.find((secret) => secret.kind === "auth");
+              const ready = isMcpAuthReady("oauth", after);
+              if (ready !== isMcpAuthReady(retrieveResult.server.authMode, before)) {
+                uow.triggerHook("onServerReadinessChanged", { serverId, ready });
+              }
               if (retrieveResult.cache) {
                 uow.delete("server_connection_cache", retrieveResult.cache.id);
               }

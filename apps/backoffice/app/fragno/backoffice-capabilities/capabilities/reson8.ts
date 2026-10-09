@@ -15,16 +15,6 @@ export const reson8ConfigureInputSchema = z.object({
   apiKey: apiKeyValueSchema,
 });
 
-const reson8CapabilityConfiguredPayloadSchema = z.object({
-  capabilityId: z.literal("reson8"),
-  capabilityLabel: z.literal("Reson8"),
-});
-
-const reson8CapabilityConfiguredSubjectSchema = z.object({
-  orgId: z.string().trim().min(1),
-  capabilityId: z.literal("reson8"),
-});
-
 const connectionStatusIdentity = {
   id: "reson8",
   label: "Reson8",
@@ -84,19 +74,6 @@ export const reson8Capability: BackofficeCapability = {
     hookScopes: [],
     skillPaths: ["skills/reson8-integration/SKILL.md"],
     externalEntities: [],
-    automationEvents: [
-      {
-        source: "reson8",
-        eventType: "capability.configured",
-        label: "Reson8 configured",
-        description: "Fires after Reson8 is configured for an organization for the first time.",
-        payloadSchema: reson8CapabilityConfiguredPayloadSchema,
-        subjectSchema: reson8CapabilityConfiguredSubjectSchema,
-        example: {
-          capabilityId: "reson8",
-          capabilityLabel: "Reson8",
-        },
-      },
-    ],
+    automationEvents: [],
   },
 };

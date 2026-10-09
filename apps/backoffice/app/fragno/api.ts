@@ -13,9 +13,9 @@ export type ApiConfig = Pick<
   ApiFragmentConfig,
   | "allowedBaseUrls"
   | "allowedOAuthRedirectUris"
-  | "onConnectionChanged"
+  | "fetch"
   | "onConnectionDeleted"
-  | "onConnectionAvailable"
+  | "onConnectionReadinessChanged"
   | "onWebhookEndpointChanged"
   | "onWebhookReceived"
 >;
@@ -29,9 +29,9 @@ export function createApiServer(
     {
       allowedBaseUrls: config.allowedBaseUrls,
       allowedOAuthRedirectUris: config.allowedOAuthRedirectUris,
-      onConnectionChanged: config.onConnectionChanged,
+      fetch: config.fetch,
       onConnectionDeleted: config.onConnectionDeleted,
-      onConnectionAvailable: config.onConnectionAvailable,
+      onConnectionReadinessChanged: config.onConnectionReadinessChanged,
       onWebhookEndpointChanged: config.onWebhookEndpointChanged,
       onWebhookReceived: config.onWebhookReceived,
     },
@@ -63,6 +63,10 @@ export function createApiServer(
     await ifMatchesRoute("PUT", "/connections/:slug", () => {
       access = BACKOFFICE_PERMISSION.api.connectionsCreate;
     });
+    // Replacement writes connection and auth state, which creation authority governs.
+    await ifMatchesRoute("PUT", "/connections/:slug/configuration", () => {
+      access = BACKOFFICE_PERMISSION.api.connectionsCreate;
+    });
     await ifMatchesRoute("DELETE", "/connections/:slug", () => {
       access = BACKOFFICE_PERMISSION.api.connectionsDelete;
     });
@@ -70,6 +74,10 @@ export function createApiServer(
       access = BACKOFFICE_PERMISSION.api.connectionsRead;
     });
     await ifMatchesRoute("POST", "/connections/:slug/auth/token", () => {
+      access = BACKOFFICE_PERMISSION.api.connectionsCreate;
+    });
+    // A pending link embeds the callback state, so only setup authority may resume it.
+    await ifMatchesRoute("GET", "/connections/:slug/auth/oauth/pending", () => {
       access = BACKOFFICE_PERMISSION.api.connectionsCreate;
     });
     await ifMatchesRoute("POST", "/connections/:slug/auth/oauth/start", () => {

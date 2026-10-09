@@ -17,6 +17,12 @@ const bearerToken = "secret";
 const oauthRedirectUri = "https://app.test/oauth/callback";
 const onServerConfigurationChanged = vi.fn();
 const onServerConfigurationDeleted = vi.fn();
+const onServerReadinessChanged = vi.fn();
+
+async function readinessChanges(fragment: McpTestFragmentResult["fragment"]) {
+  await drainDurableHooks(fragment);
+  return onServerReadinessChanged.mock.calls.map(([payload]) => payload);
+}
 
 const buildMcpTest = async (options: { allowedOAuthRedirectUris?: (url: URL) => boolean } = {}) => {
   const allowedOAuthRedirectUris =
@@ -33,6 +39,7 @@ const buildMcpTest = async (options: { allowedOAuthRedirectUris?: (url: URL) => 
           ...(allowedOAuthRedirectUris ? { allowedOAuthRedirectUris } : {}),
           onServerConfigurationChanged,
           onServerConfigurationDeleted,
+          onServerReadinessChanged,
         })
         .withRoutes([mcpRoutesFactory]),
     )
@@ -50,7 +57,7 @@ async function createServer(
     auth?:
       | { type: "none" }
       | { type: "bearer"; token: string }
-      | { type: "oauth" }
+      | { type: "oauth"; clientId?: string; clientSecret?: string; scopes?: string[] }
       | { type: "client_credentials"; clientId: string; clientSecret: string; scopes?: string[] };
   },
 ) {
@@ -102,6 +109,7 @@ async function completeOAuthFlow(
     pathParams: { slug: input.slug },
     query: { redirectUri: oauthRedirectUri },
     body: {
+      discardTokens: false,
       clientId: input.clientId,
       clientSecret: input.clientSecret,
       scope: input.scope,
@@ -168,7 +176,7 @@ describe("mcp-fragment", () => {
     jsonMcpServer = await startStreamableHttpTestMcpServer({ enableJsonResponse: true });
     noToolsMcpServer = await startStreamableHttpTestMcpServer({
       enableJsonResponse: true,
-      registerEchoTool: false,
+      tools: [],
     });
     staticOAuthMcpServer = await startStreamableHttpTestMcpServer({
       oauth: true,
@@ -305,7 +313,7 @@ describe("mcp-fragment", () => {
     });
     assert(status.type === "json");
 
-    expect(status.data).toEqual({ authenticated: true, mode: "bearer" });
+    expect(status.data).toEqual({ mode: "bearer", credentials: "present" });
   });
 
   test("rejects duplicate server slugs", async () => {
@@ -351,7 +359,7 @@ describe("mcp-fragment", () => {
     });
     assert(second.type === "json");
 
-    expect(second.data).toEqual({ authenticated: true, mode: "bearer" });
+    expect(second.data).toEqual({ mode: "bearer", credentials: "present" });
 
     const allowed = await fragment.callRoute("POST", "/servers/:slug/tools/execute", {
       pathParams: { slug: "token-upsert" },
@@ -359,7 +367,7 @@ describe("mcp-fragment", () => {
     });
     assert(allowed.type === "json");
 
-    expect(allowed.data["structuredContent"]).toEqual({ echoed: "hello" });
+    expect(allowed.data.structuredContent).toEqual({ echoed: "hello" });
   });
 
   test("lists tools and calls tools against a real SSE streamable HTTP MCP server", async () => {
@@ -390,6 +398,7 @@ describe("mcp-fragment", () => {
     assert(result.type === "json");
 
     expect(result.data).toEqual({
+      isError: false,
       content: [{ type: "text", text: "hello" }],
       structuredContent: { echoed: "hello" },
     });
@@ -601,7 +610,7 @@ describe("mcp-fragment", () => {
     const result = await fragment.callRoute("POST", "/servers/:slug/auth/start", {
       pathParams: { slug: "oauth-server" },
       query: { redirectUri: "javascript:alert(1)" },
-      body: {},
+      body: { discardTokens: false },
     });
 
     assert(result.type === "error");
@@ -613,7 +622,7 @@ describe("mcp-fragment", () => {
     const result = await fragment.callRoute("POST", "/servers/:slug/auth/start", {
       pathParams: { slug: "oauth-server" },
       query: { redirectUri: "https://attacker.example/oauth/callback" },
-      body: {},
+      body: { discardTokens: false },
     });
 
     assert(result.type === "error");
@@ -628,7 +637,7 @@ describe("mcp-fragment", () => {
     const result = await noPolicyFragment.callRoute("POST", "/servers/:slug/auth/start", {
       pathParams: { slug: "oauth-server" },
       query: { redirectUri: oauthRedirectUri },
-      body: {},
+      body: { discardTokens: false },
     });
 
     assert(result.type === "error");
@@ -648,6 +657,7 @@ describe("mcp-fragment", () => {
       pathParams: { slug: "oauth-refresh-after-callback" },
       query: { redirectUri: oauthRedirectUri },
       body: {
+        discardTokens: false,
         clientId: "static-client",
         clientSecret: "static-secret",
         scope: "tools",
@@ -852,7 +862,7 @@ describe("mcp-fragment", () => {
     });
   });
 
-  test("surfaces remote errors when executing an unknown tool", async () => {
+  test("returns tool errors as results instead of route errors", async () => {
     await createServer(fragment, { slug: "unknown-tool", endpointUrl: jsonMcpServer.endpointUrl });
 
     const result = await fragment.callRoute("POST", "/servers/:slug/tools/execute", {
@@ -860,12 +870,12 @@ describe("mcp-fragment", () => {
       body: { name: "missing-tool", arguments: {} },
     });
 
-    assert(result.type === "error");
-    if (result.type === "error") {
-      assert(result.status === 502);
-      assert(result.error.code === "MCP_ERROR");
-      expect(result.error.message).toContain("missing-tool");
-    }
+    assert(result.type === "json");
+    expect(result.data).toEqual({
+      isError: true,
+      content: [{ type: "text", text: expect.stringContaining("missing-tool") }],
+      structuredContent: null,
+    });
   });
 
   test("persists explicit OAuth client credentials across the auth callback", async () => {
@@ -881,6 +891,7 @@ describe("mcp-fragment", () => {
       pathParams: { slug: "static-oauth-tools" },
       query: { redirectUri: oauthRedirectUri },
       body: {
+        discardTokens: false,
         clientId: "static-client",
         clientSecret: "static-secret",
         scope: "tools",
@@ -906,8 +917,280 @@ describe("mcp-fragment", () => {
       body: { name: "echo", arguments: { text: "from-static-oauth" } },
     });
     assert(result.type === "json");
-    expect(result.data["structuredContent"]).toEqual({ echoed: "from-static-oauth" });
+    expect(result.data.structuredContent).toEqual({ echoed: "from-static-oauth" });
     assert(staticOAuthMcpServer.getTokenRequestCount() === tokenRequestsBefore + 2);
+  });
+
+  test("OAuth consent uses the configured client, resumes pending links, and survives clearing", async () => {
+    const slug = "configured-oauth-client";
+    const readStatus = async () => {
+      const status = await fragment.callRoute("GET", "/servers/:slug/auth/status", {
+        pathParams: { slug },
+      });
+      assert(status.type === "json");
+      return status.data;
+    };
+    const readPending = async () => {
+      const pending = await fragment.callRoute("GET", "/servers/:slug/auth/pending", {
+        pathParams: { slug },
+      });
+      assert(pending.type === "json");
+      return pending.data.pending;
+    };
+    // Start requests carry no client: the server has no dynamic registration, so only the
+    // configuration stored at creation can satisfy its token endpoint.
+    const start = async () => {
+      const started = await fragment.callRoute("POST", "/servers/:slug/auth/start", {
+        pathParams: { slug },
+        query: { redirectUri: oauthRedirectUri },
+        body: { discardTokens: false },
+      });
+      assert(started.type === "json");
+      return started.data.authorizationUrl;
+    };
+    const consent = async (authorizationUrl: string) => {
+      const authorize = await fetch(authorizationUrl, { redirect: "manual" });
+      const location = authorize.headers.get("location");
+      assert(location);
+      const callback = await fragment.callRoute("GET", "/oauth/callback", {
+        query: Object.fromEntries(new URL(location).searchParams),
+      });
+      assert(callback.type === "json");
+    };
+
+    await createServer(fragment, {
+      slug,
+      endpointUrl: staticOAuthMcpServer.endpointUrl,
+      auth: {
+        type: "oauth",
+        clientId: "static-client",
+        clientSecret: "static-secret",
+        scopes: ["tools"],
+      },
+    });
+    expect(await readStatus()).toEqual({ mode: "oauth", state: "consent-required" });
+    expect(await readPending()).toBeNull();
+
+    const first = await start();
+    const second = await start();
+    assert(new URL(first).searchParams.get("scope") === "tools");
+    // Repeated starts leave several links pending; each one completes the same server.
+    expect(await readStatus()).toEqual({ mode: "oauth", state: "consent-pending" });
+    expect([first, second]).toContain((await readPending())?.authorizationUrl);
+
+    await consent(first);
+    expect(await readStatus()).toEqual({ mode: "oauth", state: "authorized" });
+    const called = await fragment.callRoute("POST", "/servers/:slug/tools/execute", {
+      pathParams: { slug },
+      body: { name: "echo", arguments: { text: "configured" } },
+    });
+    assert(called.type === "json");
+    expect(called.data.structuredContent).toEqual({ echoed: "configured" });
+
+    const cleared = await fragment.callRoute("DELETE", "/servers/:slug/auth", {
+      pathParams: { slug },
+    });
+    assert(cleared.type === "json");
+    expect(cleared.data).toEqual({ mode: "oauth", state: "consent-required" });
+    const server = await fragment.callRoute("GET", "/servers/:slug", { pathParams: { slug } });
+    assert(server.type === "json");
+    assert(server.data.authMode === "oauth");
+    expect(await readPending()).toBeNull();
+
+    await consent(await start());
+    expect(await readStatus()).toEqual({ mode: "oauth", state: "authorized" });
+    expect(await readinessChanges(fragment)).toEqual([
+      { serverId: slug, ready: false },
+      { serverId: slug, ready: true },
+      { serverId: slug, ready: false },
+      { serverId: slug, ready: true },
+    ]);
+
+    // Without a refresh token, an expired access token needs fresh consent.
+    const authSecret = await readAuthSecret(setup.fragments.mcp, slug);
+    assert(authSecret);
+    const payload = parseSecretPayload<{ tokens: { refresh_token?: string } }>(authSecret.payload);
+    delete payload.tokens.refresh_token;
+    const expire = setup.fragments.mcp.db.createUnitOfWork("expire-oauth").forSchema(mcpSchema);
+    expire.update("secret", authSecret.id, (b) =>
+      b.set({ payload: stringifySecretPayload(payload), expiresAt: new Date(Date.now() - 1_000) }),
+    );
+    await expire.executeMutations();
+    expect(await readStatus()).toEqual({ mode: "oauth", state: "expired" });
+  });
+
+  test("replacing configuration swaps endpoint and credentials and reauthorization discards tokens", async () => {
+    const slug = "replaced-server";
+    const readStatus = async () => {
+      const status = await fragment.callRoute("GET", "/servers/:slug/auth/status", {
+        pathParams: { slug },
+      });
+      assert(status.type === "json");
+      return status.data;
+    };
+    const consent = async (discardTokens: boolean) => {
+      const started = await fragment.callRoute("POST", "/servers/:slug/auth/start", {
+        pathParams: { slug },
+        query: { redirectUri: oauthRedirectUri },
+        body: { discardTokens },
+      });
+      assert(started.type === "json");
+      return started.data.authorizationUrl;
+    };
+    const complete = async (authorizationUrl: string) => {
+      const authorize = await fetch(authorizationUrl, { redirect: "manual" });
+      const location = authorize.headers.get("location");
+      assert(location);
+      const callback = await fragment.callRoute("GET", "/oauth/callback", {
+        query: Object.fromEntries(new URL(location).searchParams),
+      });
+      assert(callback.type === "json");
+    };
+
+    await createServer(fragment, {
+      slug,
+      endpointUrl: sseMcpServer.endpointUrl,
+      auth: { type: "bearer", token: "wrong" },
+    });
+    await drainDurableHooks(fragment);
+    const replaced = await fragment.callRoute("PUT", "/servers/:slug/configuration", {
+      pathParams: { slug },
+      body: {
+        name: "Replaced",
+        endpointUrl: staticOAuthMcpServer.endpointUrl,
+        auth: {
+          type: "oauth",
+          clientId: "static-client",
+          clientSecret: "static-secret",
+          scopes: ["tools"],
+        },
+      },
+    });
+    assert(replaced.type === "json");
+    expect(replaced.data).toMatchObject({
+      slug,
+      name: "Replaced",
+      endpointUrl: staticOAuthMcpServer.endpointUrl,
+      authMode: "oauth",
+    });
+    expect(await readConnectionCache(setup.fragments.mcp, slug)).toBeNull();
+    expect(await readStatus()).toEqual({ mode: "oauth", state: "consent-required" });
+
+    await complete(await consent(false));
+    expect(await readStatus()).toEqual({ mode: "oauth", state: "authorized" });
+
+    // Reauthorization keeps the client but makes completion observable until the callback.
+    const reauthorization = await consent(true);
+    expect(await readStatus()).toEqual({ mode: "oauth", state: "consent-pending" });
+    await complete(reauthorization);
+    expect(await readStatus()).toEqual({ mode: "oauth", state: "authorized" });
+    const called = await fragment.callRoute("POST", "/servers/:slug/tools/execute", {
+      pathParams: { slug },
+      body: { name: "echo", arguments: { text: "replaced" } },
+    });
+    assert(called.type === "json");
+    expect(called.data.structuredContent).toEqual({ echoed: "replaced" });
+
+    const missing = await fragment.callRoute("PUT", "/servers/:slug/configuration", {
+      pathParams: { slug: "missing-server" },
+      body: { endpointUrl: jsonMcpServer.endpointUrl, auth: { type: "none" } },
+    });
+    assert(missing.type === "error");
+    assert(missing.error.code === "SERVER_NOT_FOUND");
+  });
+
+  test("clearing bearer auth keeps the mode and reports missing credentials", async () => {
+    const slug = "cleared-bearer";
+    await createServer(fragment, {
+      slug,
+      endpointUrl: sseMcpServer.endpointUrl,
+      auth: { type: "bearer", token: bearerToken },
+    });
+
+    const cleared = await fragment.callRoute("DELETE", "/servers/:slug/auth", {
+      pathParams: { slug },
+    });
+    assert(cleared.type === "json");
+    expect(cleared.data).toEqual({ mode: "bearer", credentials: "missing" });
+    const server = await fragment.callRoute("GET", "/servers/:slug", { pathParams: { slug } });
+    assert(server.type === "json");
+    assert(server.data.authMode === "bearer");
+    const denied = await fragment.callRoute("POST", "/servers/:slug/tools/execute", {
+      pathParams: { slug },
+      body: { name: "echo", arguments: { text: "hello" } },
+    });
+    assert(denied.type === "error");
+    assert(denied.error.code === "MCP_ERROR");
+
+    await fragment.callRoute("POST", "/servers/:slug/auth/token", {
+      pathParams: { slug },
+      body: { token: bearerToken },
+    });
+    const restored = await fragment.callRoute("GET", "/servers/:slug/auth/status", {
+      pathParams: { slug },
+    });
+    assert(restored.type === "json");
+    expect(restored.data).toEqual({ mode: "bearer", credentials: "present" });
+    expect(await readinessChanges(fragment)).toEqual([
+      { serverId: slug, ready: true },
+      { serverId: slug, ready: false },
+      { serverId: slug, ready: true },
+    ]);
+  });
+
+  test("a refresh token the server rejects leaves the server not ready", async () => {
+    const slug = "revoked-refresh";
+    await createServer(fragment, {
+      slug,
+      endpointUrl: staticOAuthMcpServer.endpointUrl,
+      auth: {
+        type: "oauth",
+        clientId: "static-client",
+        clientSecret: "static-secret",
+        scopes: ["tools"],
+      },
+    });
+    const started = await fragment.callRoute("POST", "/servers/:slug/auth/start", {
+      pathParams: { slug },
+      query: { redirectUri: oauthRedirectUri },
+      body: { discardTokens: false },
+    });
+    assert(started.type === "json");
+    const authorize = await fetch(started.data.authorizationUrl, { redirect: "manual" });
+    const location = authorize.headers.get("location");
+    assert(location);
+    await fragment.callRoute("GET", "/oauth/callback", {
+      query: Object.fromEntries(new URL(location).searchParams),
+    });
+
+    const authSecret = await readAuthSecret(setup.fragments.mcp, slug);
+    assert(authSecret);
+    const payload = parseSecretPayload<{
+      tokens: { access_token: string; refresh_token: string };
+    }>(authSecret.payload);
+    payload.tokens.access_token = "revoked-access-token";
+    payload.tokens.refresh_token = "revoked-refresh-token";
+    const revoke = setup.fragments.mcp.db.createUnitOfWork("revoke").forSchema(mcpSchema);
+    revoke.update("secret", authSecret.id, (b) =>
+      b.set({ payload: stringifySecretPayload(payload), expiresAt: new Date(Date.now() - 1_000) }),
+    );
+    await revoke.executeMutations();
+
+    const called = await fragment.callRoute("POST", "/servers/:slug/tools/execute", {
+      pathParams: { slug },
+      body: { name: "echo", arguments: { text: "after revocation" } },
+    });
+    assert(called.type === "error");
+    const status = await fragment.callRoute("GET", "/servers/:slug/auth/status", {
+      pathParams: { slug },
+    });
+    assert(status.type === "json");
+    expect(status.data).toEqual({ mode: "oauth", state: "consent-required" });
+    expect(await readinessChanges(fragment)).toEqual([
+      { serverId: slug, ready: false },
+      { serverId: slug, ready: true },
+      { serverId: slug, ready: false },
+    ]);
   });
 
   test("retains existing OAuth refresh token when the refresh response omits one", async () => {
@@ -932,6 +1215,7 @@ describe("mcp-fragment", () => {
         pathParams: { slug: "refresh-token-not-rotated" },
         query: { redirectUri: oauthRedirectUri },
         body: {
+          discardTokens: false,
           clientId: "no-rotate-client",
           clientSecret: "no-rotate-secret",
           scope: "tools",
@@ -990,6 +1274,7 @@ describe("mcp-fragment", () => {
       pathParams: { slug: "rotating-oauth-tools" },
       query: { redirectUri: oauthRedirectUri },
       body: {
+        discardTokens: false,
         clientId: "rotating-client",
         clientSecret: "rotating-secret",
         scope: "tools",
@@ -1017,7 +1302,8 @@ describe("mcp-fragment", () => {
       body: { name: "missing-tool", arguments: {} },
     });
 
-    assert(result.type === "error");
+    assert(result.type === "json");
+    assert(result.data.isError);
     const authSecret = await readAuthSecret(setup.fragments.mcp, "rotating-oauth-tools");
     assert(authSecret);
     expect(parseSecretPayload<{ tokens: { refresh_token?: string } }>(authSecret.payload)).toEqual(
@@ -1038,6 +1324,7 @@ describe("mcp-fragment", () => {
       pathParams: { slug: "rotating-oauth-list-tools" },
       query: { redirectUri: oauthRedirectUri },
       body: {
+        discardTokens: false,
         clientId: "failing-rotating-client",
         clientSecret: "failing-rotating-secret",
         scope: "tools",
@@ -1122,7 +1409,7 @@ describe("mcp-fragment", () => {
       body: { name: "echo", arguments: { text: "from-client-credentials" } },
     });
     assert(result.type === "json");
-    expect(result.data["structuredContent"]).toEqual({ echoed: "from-client-credentials" });
+    expect(result.data.structuredContent).toEqual({ echoed: "from-client-credentials" });
     expect(clientCredentialsMcpServer.getTokenRequestCount()).toBe(tokenRequestsBefore + 1);
 
     const tools = await fragment.callRoute("POST", "/servers/:slug/refresh", {

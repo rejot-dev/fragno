@@ -55,7 +55,9 @@ export const integrationOverviewSchema = z
       ),
     automationEvents: z
       .array(z.strictObject({ source: z.string(), eventType: z.string() }))
-      .describe("Declared event identities do not prove live event delivery."),
+      .describe(
+        "Source-specific activity events; declared identities do not prove live event delivery. Connection state changes arrive for every service as source integrations, keyed by subject.connectionId.",
+      ),
   })
   .meta({ id: "IntegrationOverview" });
 const integrationConfigurationStatusSchema = z
@@ -225,6 +227,28 @@ export const integrationSetupInputSchema = z.discriminatedUnion("kind", [
   integrationSetupSubmissionSchema.extend(integrationConnectionInputSchema.shape),
 ]);
 
+/** Disconnecting repeats the address, so removal is never a side effect of an edited command. */
+export const integrationDisconnectInputSchema = integrationConnectionInputSchema
+  .extend({
+    confirm: integrationConnectionIdSchema.describe(
+      "Repeat connectionId to confirm removing its source-owned configuration and credentials.",
+    ),
+  })
+  .refine((input) => input.confirm === input.connectionId, {
+    message: "Integration disconnect confirmation must repeat the connection ID.",
+    path: ["confirm"],
+  });
+
+/** Disconnect results report source state; the address stays valid for a later setup. */
+export const integrationDisconnectResultSchema = z
+  .strictObject({
+    connectionId: integrationConnectionIdSchema,
+    status: z
+      .enum(["disconnected", "not-configured"])
+      .describe("Not-configured means nothing was stored at this address in the selected scope."),
+  })
+  .meta({ id: "IntegrationDisconnectResult" });
+
 /** Action values are JSON; action-specific validation still precedes service side effects. */
 export const integrationExecuteInputSchema = integrationConnectionInputSchema.extend({
   actionId: z.string().min(1),
@@ -255,6 +279,9 @@ export type IntegrationSetupOperation = z.output<typeof integrationSetupOperatio
 
 /** Setup requests select a scoped address and carry one explicit operation, without private continuation data. */
 export type IntegrationSetupInput = z.output<typeof integrationSetupInputSchema>;
+
+/** Disconnect results never retain a removed connection's configuration. */
+export type IntegrationDisconnectResult = z.output<typeof integrationDisconnectResultSchema>;
 
 /** Integration action metadata contains contracts but no executable handler. */
 export type IntegrationAction = z.output<typeof integrationActionSchema>;

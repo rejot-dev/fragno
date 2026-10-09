@@ -64,8 +64,8 @@ type CreateProjectConnectorSdk = (config: ProjectConnectorConfig) => ProjectConn
 function createOomolProjectConnectorSdk(config: ProjectConnectorConfig): ProjectConnectorSdk {
   return new ProjectConnector({
     ...config,
-    // The SDK calls fetch as a transport method; Workers rejects that native fetch binding.
-    fetch: (input, init) => globalThis.fetch(input, init),
+    // The wrapper also avoids the SDK calling native Workers fetch with a transport receiver.
+    fetch: fetchProjectConnectorWithoutRedirects,
   });
 }
 
@@ -371,7 +371,7 @@ export function confirmProjectConnectorRequest(
     providerConfigId: string;
     externalUserId: string;
     service: string;
-    connectionName: string | null;
+    connectionName: string;
   },
   actual: Awaited<
     ReturnType<ReturnType<typeof createProjectConnectorClient>["getConnectionRequest"]>

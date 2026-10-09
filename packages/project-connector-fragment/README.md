@@ -133,6 +133,81 @@ authorization. Credentials and extra upstream fields stay outside the public res
 deployments and upstream failures return `PROJECT_CONNECTOR_ERROR`, rather than an invented,
 partial, or cached catalog.
 
+## Named connections and resumable OAuth
+
+A named connection is the exact tuple `{ projectId, providerConfigId, connectionName }` within the
+user identity established by `getExternalUserId`. Use the project/configuration IDs from discovery;
+connection names follow the gateway's alias rule: lowercase letters, digits, underscores, and
+hyphens, starting with a letter or digit. Every request and account has a name.
+
+- `GET /connection-requests/by-name?projectId=...&providerConfigId=...&connectionName=...` returns
+  the single matching saved OAuth request as `{ request }`, with `request: null` when absent.
+- `GET /accounts/by-name` with the same query returns `{ account }`, with `account: null` when
+  absent.
+
+Both reads use indexed local state. They do not contact the gateway, refresh consent, execute
+actions, or establish provider health. An OAuth request and its confirmed account have separate
+meanings: a replacement authorization may be pending while the previously confirmed account remains
+available.
+
+Named lookup is additive: `POST /connection-requests` still starts a fresh attempt on every call,
+including repeated or concurrent calls with the same name. Earlier request IDs remain usable, and
+confirmed accounts remain addressable by their account IDs. Refreshing a new account does not remove
+other accounts sharing its name. Reauthorization returning the same owned account ID updates that
+binding without duplicating it; an incoming ID belonging to another user cannot replace their
+binding.
+
+If either lookup matches more than one record, it returns `CONNECTION_AMBIGUOUS` (409), even when
+only one request is pending. The fragment does not choose the newest record, prefer a status, or
+infer a current attempt. Lookups inspect at most two matching records plus the pagination lookahead;
+no historical reconciliation or current-selection store is introduced. Use an already-known request
+or account ID when a name is ambiguous.
+
+After a page reload or server restart, recover the source-owned request instead of keeping a
+separate setup handle:
+
+```ts
+const selector = {
+  projectId: "your-project-id",
+  providerConfigId: "your-gmail-provider-config-id",
+  connectionName: "work",
+};
+const query = new URLSearchParams(selector);
+const response = await fetch(
+  `/api/project-connector-fragment/connection-requests/by-name?${query}`,
+);
+if (!response.ok) throw new Error("Could not read the named authorization request");
+const { request: pending } = await response.json();
+if (pending) {
+  await connector.refreshConnection().mutate({ path: { requestId: pending.id } });
+}
+```
+
+`useNamedConnectionRequest` and `useNamedAccount` provide the same reads as client stores. Creating
+an OAuth request invalidates named request stores; refreshing invalidates named request, named
+account, and account-list stores. Missing/empty selector fields return `INVALID_SELECTOR` (400).
+User identity is never accepted in the selector; another user's records remain absent.
+
+The gateway alias is not an idempotency key. Each start creates its own remote authorization link;
+link creation happens outside the retried local save. A lost gateway response or failed local save
+is not claimed to be recoverable by alias, and this fragment does not introduce remote cleanup
+machinery. Repeating a start is not a way to resume an existing attempt.
+
+**Schema migration:** version 4 adds non-unique named lookup indexes; databases keep duplicate names
+without reconciliation or a reset. Version 6 makes `connectionName` non-null on requests and
+accounts. Every start has required a name, so stored rows are expected to have one; the migration
+fails on a database that holds a null name.
+
+### Readiness hook
+
+`onConnectionReadinessChanged` is an optional durable hook in the fragment config. It receives
+`{ externalUserId, service, connection, ready }`, where `connection` is the named selector, when a
+write changes whether the name has a confirmed account: `ready: false` when the first request for a
+name starts, and `ready: true` when a refresh confirms the name's first account. Further attempts
+for a name that already has an account fire nothing. The gateway does not notify the fragment of
+consent or revocation, so readiness changes only when `POST /connection-requests/:requestId/refresh`
+runs.
+
 ## Client flow
 
 ```ts
@@ -165,22 +240,25 @@ entrypoints also export `createProjectConnectorFragmentClient` with their native
 conventions.
 
 Client operations: `useProviderConfigs`, `useProviderActions`, `useStatus`, `useAccounts`,
-`useProfile`, `connect`, `refreshConnection`, and `executeAction`. Refreshing a connection
-invalidates the account-list store. The account list is cursor-paginated (25 items per page); it
-lists local verified bindings, not live provider availability.
+`useNamedAccount`, `useNamedConnectionRequest`, `useProfile`, `connect`, `refreshConnection`, and
+`executeAction`. Refreshing a connection invalidates account and named-request stores. The account
+list is cursor-paginated (25 items per page); it lists local verified bindings, not live provider
+availability.
 
 ## Routes
 
-| Method | Path                                          | Purpose                                                         |
-| ------ | --------------------------------------------- | --------------------------------------------------------------- |
-| GET    | `/provider-configs`                           | Overview of this project's available OAuth configurations       |
-| GET    | `/provider-configs/:providerConfigId/actions` | List allowed action contracts for one exact OAuth configuration |
-| GET    | `/status`                                     | Check project-key authentication                                |
-| POST   | `/connection-requests`                        | Create an OAuth authorization link and save expected identity   |
-| POST   | `/connection-requests/:requestId/refresh`     | Verify gateway status and bind a completed account              |
-| GET    | `/accounts?cursor=...`                        | List this user's locally verified account bindings              |
-| GET    | `/accounts/:accountId/profile`                | Read and verify the provider account profile                    |
-| POST   | `/accounts/:accountId/actions/:actionId`      | Execute `{ "input": { ... } }` using the saved selector         |
+| Method | Path                                                                                 | Purpose                                                         |
+| ------ | ------------------------------------------------------------------------------------ | --------------------------------------------------------------- |
+| GET    | `/provider-configs`                                                                  | Overview of this project's available OAuth configurations       |
+| GET    | `/provider-configs/:providerConfigId/actions`                                        | List allowed action contracts for one exact OAuth configuration |
+| GET    | `/status`                                                                            | Check project-key authentication                                |
+| GET    | `/connection-requests/by-name?projectId=...&providerConfigId=...&connectionName=...` | Read an unambiguous request by exact name                       |
+| POST   | `/connection-requests`                                                               | Start a fresh OAuth request                                     |
+| POST   | `/connection-requests/:requestId/refresh`                                            | Verify gateway status and bind a completed account              |
+| GET    | `/accounts?cursor=...`                                                               | List this user's locally verified account bindings              |
+| GET    | `/accounts/by-name?projectId=...&providerConfigId=...&connectionName=...`            | Read an unambiguous confirmed account by exact name             |
+| GET    | `/accounts/:accountId/profile`                                                       | Read and verify the provider account profile                    |
+| POST   | `/accounts/:accountId/actions/:actionId`                                             | Execute `{ "input": { ... } }` using the saved selector         |
 
 A connection is bound only when the authenticated gateway response is `connected` and matches the
 saved request ID, project, provider config, external user, service, and connection name. `failed`

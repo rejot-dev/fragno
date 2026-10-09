@@ -11,7 +11,7 @@ import { apiSchema } from "./schema";
 const oauthRedirectUri = "https://app.test/oauth/callback";
 const onConnectionChanged = vi.fn();
 const onConnectionDeleted = vi.fn();
-const onConnectionAvailable = vi.fn();
+const onConnectionReadinessChanged = vi.fn();
 
 type FetchCall = {
   url: string;
@@ -108,7 +108,7 @@ const buildApiTest = async (
           fetch: fetchRecorder.fetcher,
           onConnectionChanged,
           onConnectionDeleted,
-          onConnectionAvailable,
+          onConnectionReadinessChanged,
         })
         .withRoutes([apiRoutesFactory]),
     )
@@ -142,6 +142,7 @@ describe("api-fragment", () => {
     expect(clients.useConnections).toBeDefined();
     expect(clients.useConnection).toBeDefined();
     expect(clients.useAuthStatus).toBeDefined();
+    expect(clients.usePendingOAuth).toBeDefined();
     expect(clients.createConnection).toBeDefined();
     expect(clients.deleteConnection).toBeDefined();
     expect(clients.setBearerToken).toBeDefined();
@@ -164,7 +165,10 @@ describe("api-fragment", () => {
 
     const list = await fragment.callRoute("GET", "/connections");
     assert(list.type === "json");
-    expect(list.data.connections).toEqual([expect.objectContaining({ slug: "example" })]);
+    expect(list.data).toEqual({
+      connections: [expect.objectContaining({ slug: "example" })],
+      cursor: null,
+    });
 
     const read = await fragment.callRoute("GET", "/connections/:slug", {
       pathParams: { slug: "example" },
@@ -219,6 +223,51 @@ describe("api-fragment", () => {
     assert(disallowed.type === "error");
     assert(disallowed.error.code === "BASE_URL_NOT_ALLOWED");
 
+    for (const slug of [" padded", "-leading", "has:colon", "has space"]) {
+      const invalid = await fragment.callRoute("PUT", "/connections/:slug", {
+        pathParams: { slug },
+        body: { baseUrl: "https://api.test", auth: { type: "none" } },
+      });
+      assert(invalid.type === "error");
+      assert(invalid.error.code === "INVALID_SLUG");
+    }
+
+    await setup.test.cleanup();
+  });
+
+  test("lists connections in bounded cursor pages", async () => {
+    const setup = await buildApiTest();
+    const fragment = setup.fragments.api.fragment;
+    const slugs = Array.from(
+      { length: 51 },
+      (_, index) => `conn-${String(index).padStart(2, "0")}`,
+    );
+    for (const slug of slugs) {
+      await fragment.callRoute("PUT", "/connections/:slug", {
+        pathParams: { slug },
+        body: { baseUrl: "https://api.test", auth: { type: "none" } },
+      });
+    }
+
+    const first = await fragment.callRoute("GET", "/connections");
+    assert(first.type === "json");
+    assert(first.data.cursor !== null);
+    const second = await fragment.callRoute("GET", "/connections", {
+      query: { cursor: first.data.cursor },
+    });
+    assert(second.type === "json");
+    expect(second.data.cursor).toBeNull();
+    expect([...first.data.connections, ...second.data.connections].map(({ slug }) => slug)).toEqual(
+      slugs,
+    );
+    expect(first.data.connections).toHaveLength(50);
+
+    const invalid = await fragment.callRoute("GET", "/connections", {
+      query: { cursor: "not-a-cursor" },
+    });
+    assert(invalid.type === "error");
+    assert(invalid.error.code === "INVALID_CURSOR");
+
     await setup.test.cleanup();
   });
 
@@ -236,7 +285,7 @@ describe("api-fragment", () => {
       body: { token: "secret-token" },
     });
     assert(token.type === "json");
-    expect(token.data).toMatchObject({ authenticated: true, mode: "bearer" });
+    expect(token.data).toEqual({ mode: "bearer", credentials: "present" });
 
     const secrets = await readAuthSecrets(setup, "bearer");
     expect(secrets).toHaveLength(1);
@@ -258,10 +307,144 @@ describe("api-fragment", () => {
     });
 
     await drainDurableHooks(fragment);
-    expect(onConnectionAvailable).toHaveBeenCalledWith(
-      expect.objectContaining({ connectionId: "bearer", authMode: "bearer" }),
-      expect.objectContaining({ idempotencyKey: expect.any(String), hookId: expect.any(Object) }),
-    );
+    // A connection without auth is ready from creation, so adding a token changes nothing.
+    expect(onConnectionReadinessChanged.mock.calls.map(([payload]) => payload)).toEqual([
+      { connectionId: "bearer", ready: true },
+    ]);
+
+    await setup.test.cleanup();
+  });
+
+  test("clearing auth keeps the mode, reports missing credentials, and accepts a new token", async () => {
+    const setup = await buildApiTest();
+    const fragment = setup.fragments.api.fragment;
+    const slug = "cleared";
+
+    await fragment.callRoute("PUT", "/connections/:slug", {
+      pathParams: { slug },
+      body: { baseUrl: "https://api.test", auth: { type: "bearer", token: "first-token" } },
+    });
+    const cleared = await fragment.callRoute("DELETE", "/connections/:slug/auth", {
+      pathParams: { slug },
+    });
+    assert(cleared.type === "json");
+    expect(cleared.data).toEqual({ mode: "bearer", credentials: "missing" });
+
+    const connection = await fragment.callRoute("GET", "/connections/:slug", {
+      pathParams: { slug },
+    });
+    assert(connection.type === "json");
+    assert(connection.data.authMode === "bearer");
+    const status = await fragment.callRoute("GET", "/connections/:slug/auth/status", {
+      pathParams: { slug },
+    });
+    assert(status.type === "json");
+    expect(status.data).toEqual({ mode: "bearer", credentials: "missing" });
+
+    await fragment.callRoute("POST", "/connections/:slug/auth/token", {
+      pathParams: { slug },
+      body: { token: "second-token" },
+    });
+    const restored = await fragment.callRoute("GET", "/connections/:slug/auth/status", {
+      pathParams: { slug },
+    });
+    assert(restored.type === "json");
+    expect(restored.data).toEqual({ mode: "bearer", credentials: "present" });
+
+    await drainDurableHooks(fragment);
+    expect(onConnectionReadinessChanged.mock.calls.map(([payload]) => payload)).toEqual([
+      { connectionId: slug, ready: true },
+      { connectionId: slug, ready: false },
+      { connectionId: slug, ready: true },
+    ]);
+
+    await setup.test.cleanup();
+  });
+
+  test("replacing configuration swaps credentials and discards OAuth state", async () => {
+    const setup = await buildApiTest();
+    const fragment = setup.fragments.api.fragment;
+    const slug = "replaced";
+
+    await fragment.callRoute("PUT", "/connections/:slug", {
+      pathParams: { slug },
+      body: {
+        baseUrl: "https://api.test/v1",
+        auth: {
+          type: "oauth",
+          authorizationEndpoint: "https://auth.test/authorize",
+          tokenEndpoint: "https://auth.test/token",
+          clientId: "client",
+          tokenEndpointAuthMethod: "none",
+        },
+      },
+    });
+    const start = await fragment.callRoute("POST", "/connections/:slug/auth/oauth/start", {
+      pathParams: { slug },
+      query: { redirectUri: oauthRedirectUri },
+      body: { discardTokens: false },
+    });
+    assert(start.type === "json");
+
+    const replaced = await fragment.callRoute("PUT", "/connections/:slug/configuration", {
+      pathParams: { slug },
+      body: {
+        name: "Replaced",
+        baseUrl: "https://api.test/v2",
+        auth: { type: "bearer", token: "replacement-token" },
+      },
+    });
+    assert(replaced.type === "json");
+    expect(replaced.data).toMatchObject({
+      slug,
+      name: "Replaced",
+      baseUrl: "https://api.test/v2",
+      authMode: "bearer",
+    });
+    const status = await fragment.callRoute("GET", "/connections/:slug/auth/status", {
+      pathParams: { slug },
+    });
+    assert(status.type === "json");
+    expect(status.data).toEqual({ mode: "bearer", credentials: "present" });
+    const pending = await fragment.callRoute("GET", "/connections/:slug/auth/oauth/pending", {
+      pathParams: { slug },
+    });
+    assert(pending.type === "json");
+    expect(pending.data.pending).toBeNull();
+    // The old client's link can no longer complete consent for the replaced configuration.
+    const callback = await fragment.callRoute("GET", "/oauth/callback", {
+      query: { code: "auth-code", state: start.data.state },
+    });
+    assert(callback.type === "error");
+    assert(callback.error.code === "INVALID_OAUTH_STATE");
+
+    const result = await fragment.callRoute("POST", "/connections/:slug/request", {
+      pathParams: { slug },
+      body: { method: "GET", path: "/resource", body: { type: "empty" } },
+    });
+    assert(result.type === "json");
+    assert(result.data.ok);
+    expect(result.data.response.body).toEqual({
+      type: "json",
+      value: expect.objectContaining({
+        authorization: "Bearer replacement-token",
+        url: "https://api.test/v2/resource",
+      }),
+    });
+
+    const unauthenticated = await fragment.callRoute("PUT", "/connections/:slug/configuration", {
+      pathParams: { slug },
+      body: { baseUrl: "https://api.test/v2", auth: { type: "none" } },
+    });
+    assert(unauthenticated.type === "json");
+    expect(await readAuthSecrets(setup, slug)).toEqual([[]]);
+
+    const missing = await fragment.callRoute("PUT", "/connections/:slug/configuration", {
+      pathParams: { slug: "missing" },
+      body: { baseUrl: "https://api.test", auth: { type: "none" } },
+    });
+    assert(missing.type === "error");
+    assert(missing.error.code === "CONNECTION_NOT_FOUND");
 
     await setup.test.cleanup();
   });
@@ -288,7 +471,7 @@ describe("api-fragment", () => {
       pathParams: { slug: "jira" },
     });
     assert(status.type === "json");
-    expect(status.data).toMatchObject({ authenticated: true, mode: "basic", tokenPresent: true });
+    expect(status.data).toEqual({ mode: "basic", credentials: "present" });
 
     const result = await fragment.callRoute("POST", "/connections/:slug/request", {
       pathParams: { slug: "jira" },
@@ -448,6 +631,13 @@ describe("api-fragment", () => {
       },
     });
 
+    // Stored client credentials are usable before the first token is acquired.
+    const status = await fragment.callRoute("GET", "/connections/:slug/auth/status", {
+      pathParams: { slug: "machine" },
+    });
+    assert(status.type === "json");
+    expect(status.data).toEqual({ mode: "client_credentials", credentials: "present" });
+
     const first = await fragment.callRoute("POST", "/connections/:slug/request", {
       pathParams: { slug: "machine" },
       body: { method: "GET", path: "/one", body: { type: "empty" } },
@@ -526,7 +716,7 @@ describe("api-fragment", () => {
     const start = await fragment.callRoute("POST", "/connections/:slug/auth/oauth/start", {
       pathParams: { slug: "oauth-api" },
       query: { redirectUri: "javascript:alert(1)" },
-      body: {},
+      body: { discardTokens: false },
     });
 
     assert(start.type === "error");
@@ -543,7 +733,7 @@ describe("api-fragment", () => {
     const start = await fragment.callRoute("POST", "/connections/:slug/auth/oauth/start", {
       pathParams: { slug: "oauth-api" },
       query: { redirectUri: "https://attacker.example/oauth/callback" },
-      body: {},
+      body: { discardTokens: false },
     });
 
     assert(start.type === "error");
@@ -560,7 +750,7 @@ describe("api-fragment", () => {
     const start = await fragment.callRoute("POST", "/connections/:slug/auth/oauth/start", {
       pathParams: { slug: "oauth-api" },
       query: { redirectUri: oauthRedirectUri },
-      body: {},
+      body: { discardTokens: false },
     });
 
     assert(start.type === "error");
@@ -573,7 +763,21 @@ describe("api-fragment", () => {
   test("OAuth start and callback store tokens and make the connection available", async () => {
     const setup = await buildApiTest();
     const fragment = setup.fragments.api.fragment;
-    const slug = "oauth:colon";
+    const slug = "oauth-flow";
+    const readStatus = async () => {
+      const status = await fragment.callRoute("GET", "/connections/:slug/auth/status", {
+        pathParams: { slug },
+      });
+      assert(status.type === "json");
+      return status.data;
+    };
+    const readPending = async () => {
+      const pending = await fragment.callRoute("GET", "/connections/:slug/auth/oauth/pending", {
+        pathParams: { slug },
+      });
+      assert(pending.type === "json");
+      return pending.data.pending;
+    };
 
     await fragment.callRoute("PUT", "/connections/:slug", {
       pathParams: { slug },
@@ -591,12 +795,34 @@ describe("api-fragment", () => {
       },
     });
 
+    expect(await readStatus()).toEqual({ mode: "oauth", state: "consent-required" });
+    expect(await readPending()).toBeNull();
+
     const start = await fragment.callRoute("POST", "/connections/:slug/auth/oauth/start", {
       pathParams: { slug },
       query: { redirectUri: oauthRedirectUri },
-      body: {},
+      body: { discardTokens: false },
     });
     assert(start.type === "json");
+    const restart = await fragment.callRoute("POST", "/connections/:slug/auth/oauth/start", {
+      pathParams: { slug },
+      query: { redirectUri: oauthRedirectUri },
+      body: { discardTokens: false },
+    });
+    assert(restart.type === "json");
+    // Repeated starts leave several links pending; each one completes the same connection.
+    expect(await readStatus()).toEqual({ mode: "oauth", state: "consent-pending" });
+    expect([start.data.authorizationUrl, restart.data.authorizationUrl]).toContain(
+      (await readPending())?.authorizationUrl,
+    );
+    const expireRestart = setup.fragments.api.db
+      .createUnitOfWork("expire-oauth-state")
+      .forSchema(apiSchema);
+    expireRestart.update("oauthState", restart.data.state, (b) =>
+      b.set({ expiresAt: new Date(Date.now() - 1000) }),
+    );
+    await expireRestart.executeMutations();
+    expect(await readPending()).toMatchObject({ authorizationUrl: start.data.authorizationUrl });
     const authorizationUrl = new URL(start.data.authorizationUrl);
     assert(authorizationUrl.searchParams.get("code_challenge_method") === "S256");
     assert.equal(authorizationUrl.searchParams.get("redirect_uri"), oauthRedirectUri);
@@ -607,6 +833,21 @@ describe("api-fragment", () => {
     });
     assert(callback.type === "json");
     expect(callback.data).toEqual({ authenticated: true, mode: "oauth" });
+    expect(await readStatus()).toEqual({ mode: "oauth", state: "authorized" });
+
+    // Re-consent can discard working tokens, so completion is observable through status.
+    const reconsent = await fragment.callRoute("POST", "/connections/:slug/auth/oauth/start", {
+      pathParams: { slug },
+      query: { redirectUri: oauthRedirectUri },
+      body: { discardTokens: true },
+    });
+    assert(reconsent.type === "json");
+    expect(await readStatus()).toEqual({ mode: "oauth", state: "consent-pending" });
+    const reconsented = await fragment.callRoute("GET", "/oauth/callback", {
+      query: { code: "auth-code", state: reconsent.data.state },
+    });
+    assert(reconsented.type === "json");
+    expect(await readStatus()).toEqual({ mode: "oauth", state: "authorized" });
 
     const request = await fragment.callRoute("POST", "/connections/:slug/request", {
       pathParams: { slug },
@@ -620,10 +861,35 @@ describe("api-fragment", () => {
     });
 
     await drainDurableHooks(fragment);
-    expect(onConnectionAvailable).toHaveBeenCalledWith(
-      expect.objectContaining({ connectionId: slug, authMode: "oauth" }),
-      expect.objectContaining({ idempotencyKey: expect.any(String), hookId: expect.any(Object) }),
+    // Starting consent without discarding tokens leaves readiness unchanged.
+    expect(onConnectionReadinessChanged.mock.calls.map(([payload]) => payload)).toEqual([
+      { connectionId: slug, ready: false },
+      { connectionId: slug, ready: true },
+      { connectionId: slug, ready: false },
+      { connectionId: slug, ready: true },
+    ]);
+
+    // Without a refresh token, an expired access token needs fresh consent.
+    const [[secret]] = await readAuthSecrets(setup, slug);
+    assert(secret);
+    const payload = JSON.parse(secret.payload);
+    delete payload.tokens.refreshToken;
+    const expire = setup.fragments.api.db.createUnitOfWork("expire-oauth").forSchema(apiSchema);
+    expire.update("secret", secret.id, (b) =>
+      b.set({ payload: JSON.stringify(payload), expiresAt: new Date(Date.now() - 1000) }),
     );
+    await expire.executeMutations();
+    expect(await readStatus()).toEqual({ mode: "oauth", state: "expired" });
+
+    // A new link outranks unusable tokens, so the restarted consent can be resumed.
+    const renewal = await fragment.callRoute("POST", "/connections/:slug/auth/oauth/start", {
+      pathParams: { slug },
+      query: { redirectUri: oauthRedirectUri },
+      body: { discardTokens: false },
+    });
+    assert(renewal.type === "json");
+    expect(await readStatus()).toEqual({ mode: "oauth", state: "consent-pending" });
+    expect(await readPending()).toMatchObject({ authorizationUrl: renewal.data.authorizationUrl });
 
     await setup.test.cleanup();
   });

@@ -15,6 +15,7 @@ import {
 } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
+import { encodeConnectorConnectionId } from "@/fragno/runtime-tools/families/integrations/connector-connection-id";
 import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 
 import { runProjectConnectorScenario } from "./project-connector-scenario.test-utils";
@@ -123,6 +124,157 @@ test("user-scoped codemode verifies OAuth before SQLite bindings, profiles, and 
           expect(gateway.executions).toHaveLength(2);
         },
       ),
+      then.assert(
+        "integrations list the account under the named address its connection events use",
+        async (ctx) => {
+          const connectionId = encodeConnectorConnectionId([
+            "named",
+            "project-1",
+            "gmail-provider",
+            "work",
+          ]);
+          const run = await ctx.runCodemode({
+            scope: { kind: "org", orgId: "org-1" },
+            code: `async () => {
+              const integrations = context.user("user-1").integrations;
+              return {
+                page: await integrations.list({ cursor: null }),
+                inspected: await integrations.get({ connectionId: ${JSON.stringify(connectionId)} }),
+              };
+            }`,
+          });
+          expect(run.result).toMatchObject({
+            page: {
+              connections: [{ connectionId, integrationId: "gmail", name: "work" }],
+              cursor: null,
+            },
+            inspected: { connectionId, authorization: { status: "available" } },
+          });
+        },
+      ),
+    ],
+  }));
+});
+
+test("native named lookup resumes consent after a scoped object restart without public setup handles", async () => {
+  await runProjectConnectorScenario((gateway) => ({
+    name: "Connector source-owned named setup across restart",
+    setup: ({ given }) => [
+      given.organization.exists({ id: "org-1", slug: "ada-labs", name: "Ada Labs" }),
+    ],
+    steps: ({ then, runner }) => [
+      then.assert(
+        "recover and confirm the exact named request through authorized native routes",
+        async (ctx) => {
+          function createRuntime(userId: string) {
+            const host = createCodemodeRouteBackedRuntimeContext({
+              runtime: ctx.runtime.services,
+              kernel: new BackofficeKernel(ctx.runtime.services),
+              execution: createBackofficeServiceExecution({
+                scope: { kind: "user", userId },
+                service: { type: "automation", id: "connector-named-setup" },
+              }),
+              billingOrganizationId: null,
+            });
+            assert(host.projectConnector);
+            return host.projectConnector.runtime;
+          }
+          const selector = {
+            projectId: "project-1",
+            providerConfigId: "gmail-provider",
+            connectionName: "work",
+          };
+          const connector = createRuntime("user-1");
+          expect(await connector.getNamedConnectionRequest(selector)).toBeNull();
+          expect(await connector.getNamedAccount(selector)).toBeNull();
+          const started = await connector.connect({
+            providerConfigId: selector.providerConfigId,
+            connectionName: selector.connectionName,
+          });
+          expect(gateway.links).toHaveLength(1);
+          await ctx.runtime.restartObject({
+            binding: "PROJECT_CONNECTOR",
+            scope: { kind: "user", userId: "user-1" },
+          });
+          const recreated = createRuntime("user-1");
+          const recovered = await recreated.getNamedConnectionRequest(selector);
+          expect(recovered).toEqual(started);
+          assert(recovered);
+          expect(await createRuntime("user-2").getNamedConnectionRequest(selector)).toBeNull();
+          assert(gateway.control.requestReads === 0);
+          gateway.authorize(recovered.id, "named-account");
+          expect(await recreated.refreshConnection({ requestId: recovered.id })).toMatchObject({
+            state: { status: "connected", connectedAccountId: "named-account" },
+          });
+          const account = await recreated.getNamedAccount(selector);
+          expect(account).toEqual({
+            id: "named-account",
+            ...selector,
+            externalUserId: "user:user-1",
+            service: "gmail",
+          });
+          expect(await createRuntime("user-2").getNamedAccount(selector)).toBeNull();
+          const second = await recreated.connect({
+            providerConfigId: selector.providerConfigId,
+            connectionName: selector.connectionName,
+          });
+          expect(second.id).not.toBe(started.id);
+          await expect(recreated.getNamedConnectionRequest(selector)).rejects.toThrow(
+            "matches multiple OAuth requests",
+          );
+          expect(await recreated.getNamedAccount(selector)).toEqual(account);
+          gateway.authorize(second.id, "second-named-account");
+          await recreated.refreshConnection({ requestId: second.id });
+          await expect(recreated.getNamedAccount(selector)).rejects.toThrow(
+            "matches multiple confirmed accounts",
+          );
+          expect(await recreated.refreshConnection({ requestId: started.id })).toMatchObject({
+            id: started.id,
+            state: { status: "connected", connectedAccountId: "named-account" },
+          });
+          expect(await recreated.getProfile({ accountId: "named-account" })).toMatchObject({
+            connectedAccountId: "named-account",
+          });
+          expect(await recreated.listAccounts({ cursor: null })).toMatchObject({
+            accounts: [{ id: "named-account" }, { id: "second-named-account" }],
+          });
+          expect(await createRuntime("user-2").getNamedConnectionRequest(selector)).toBeNull();
+          expect(await createRuntime("user-2").getNamedAccount(selector)).toBeNull();
+          expect(gateway.links).toHaveLength(2);
+          expect(gateway.executions).toEqual([]);
+        },
+      ),
+      runner.drain(),
+      then.automation.event({
+        scope: { kind: "user", userId: "user-1" },
+        where: { source: "integrations", eventType: "connection.unavailable" },
+        expected: {
+          subject: {
+            service: "gmail",
+            connectionId: encodeConnectorConnectionId([
+              "named",
+              "project-1",
+              "gmail-provider",
+              "work",
+            ]),
+          },
+        },
+      }),
+      then.automation.event({
+        scope: { kind: "user", userId: "user-1" },
+        where: { source: "integrations", eventType: "connection.ready" },
+        expected: {
+          subject: {
+            service: "gmail",
+            connectionId: encodeConnectorConnectionId([
+              "named",
+              "project-1",
+              "gmail-provider",
+              "work",
+            ]),
+          },
+        },
+      }),
     ],
   }));
 });
@@ -356,14 +508,28 @@ test("runtime permission failures and unavailable configuration do not contact t
           scope: { kind: "user", userId: "member-1" },
           userId: "member-2",
         });
-        const { bash } = createInteractiveBashHost({
-          context: createCodemodeRouteBackedRuntimeContext({
-            runtime: ctx.runtime.services,
-            kernel: new BackofficeKernel(ctx.runtime.services),
-            execution,
-            billingOrganizationId: null,
-          }),
+        const host = createCodemodeRouteBackedRuntimeContext({
+          runtime: ctx.runtime.services,
+          kernel: new BackofficeKernel(ctx.runtime.services),
+          execution,
+          billingOrganizationId: null,
         });
+        const { bash } = createInteractiveBashHost({ context: host });
+        assert(host.projectConnector);
+        const selector = {
+          projectId: "project-1",
+          providerConfigId: "gmail-provider",
+          connectionName: "work",
+        };
+        await expect(
+          host.projectConnector.runtime.getNamedConnectionRequest(selector),
+        ).rejects.toMatchObject({
+          name: "BackofficeForbiddenError",
+          reason: "context-access-denied",
+        });
+        await expect(host.projectConnector.runtime.getNamedAccount(selector)).rejects.toMatchObject(
+          { name: "BackofficeForbiddenError", reason: "context-access-denied" },
+        );
         const discovery = await bash.exec("connector.providers.list");
         expect(discovery.exitCode).not.toBe(0);
         expect(discovery.stderr).toContain("connector.providers.read");

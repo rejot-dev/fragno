@@ -77,5 +77,5 @@ Execution requires both `integrations.execute` and native `reson8.use`. Setup an
 require `integrations.manage`; configuration reads require `connections.read`, and submitted keys
 require `connections.manage`. Reading an audio file also requires the applicable state/file access.
 
-The existing organization event remains `source: "reson8"`, `eventType: "capability.configured"`. It
-fires after Reson8 is configured for the organization for the first time.
+Setup, key replacement, and disconnect report `source: "integrations"` events `connection.ready` and
+`connection.disconnected` with `subject.connectionId` = `backoffice#reson8`.

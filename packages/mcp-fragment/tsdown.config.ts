@@ -36,6 +36,7 @@ export default defineConfig([
       "./src/routes.ts",
       "./src/schema.ts",
       "./src/mcp-types.ts",
+      "./src/testing/mcp-test-server.ts",
     ],
     dts: true,
     failOnWarn: true,

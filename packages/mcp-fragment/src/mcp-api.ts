@@ -2,7 +2,7 @@ import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
-import type { McpFragmentConfig } from "./mcp-types";
+import type { McpFragmentConfig, McpToolCallResult } from "./mcp-types";
 
 export interface StoredServerAuth {
   mode: string;
@@ -138,10 +138,15 @@ export async function callMcpTool<TAuthChanges = unknown>(args: {
           timeout: args.timeoutMs,
         },
       );
-      if (result.isError) {
-        throw new Error(`MCP tool ${args.name} returned an error`);
-      }
-      return result;
+      // Tool errors are results for the caller, not protocol failures (MCP spec, tools/call).
+      return {
+        isError: result.isError === true,
+        content: Array.isArray(result.content) ? result.content : [],
+        structuredContent:
+          result.structuredContent && typeof result.structuredContent === "object"
+            ? (result.structuredContent as Record<string, unknown>)
+            : null,
+      } satisfies McpToolCallResult;
     },
   });
 }

@@ -1,7 +1,10 @@
 import { defineFragment } from "@fragno-dev/core";
 import { decodeCursor, withDatabase } from "@fragno-dev/db";
 
-import type { BackofficePermissionRequirement } from "@/backoffice-runtime/permissions";
+import {
+  knownBackofficePermissions,
+  type BackofficePermissionRequirement,
+} from "@/backoffice-runtime/permissions";
 import type { BackofficeAppLookupInput } from "@/fragno/apps/contracts";
 import { BackofficeAppDomainError } from "@/fragno/apps/errors";
 import { appPermissionsEqual } from "@/fragno/apps/permissions";
@@ -143,7 +146,7 @@ export const appInstallationsFragmentDefinition = defineFragment<AppInstallation
                   id: installation.id.externalId,
                   appId: installation.appId,
                   organizationId: installation.organizationId,
-                  grantedPermissions: installation.grantedPermissions,
+                  grantedPermissions: knownBackofficePermissions(installation.grantedPermissions),
                   installedByUserId: installation.installedByUserId,
                   status: installation.status,
                   createdAt: installation.createdAt.toISOString(),
@@ -174,7 +177,7 @@ export const appInstallationsFragmentDefinition = defineFragment<AppInstallation
                 id: installation.id.externalId,
                 appId: installation.appId,
                 organizationId: installation.organizationId,
-                grantedPermissions: installation.grantedPermissions,
+                grantedPermissions: knownBackofficePermissions(installation.grantedPermissions),
                 installedByUserId: installation.installedByUserId,
                 status: installation.status,
                 createdAt: installation.createdAt.toISOString(),

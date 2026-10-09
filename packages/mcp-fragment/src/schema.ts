@@ -54,5 +54,13 @@ export const mcpSchema = schema("mcp-fragment", (s) => {
           column("timestamp").defaultTo((b) => b.now()),
         )
         .createIndex("idx_server_connection_cache_server", ["serverId"], { unique: true }),
+    )
+    .alterTable("oauthState", (t) =>
+      // Null only for states started before links were retained; those cannot be resumed.
+      t.addColumn("authorizationUrl", column("text").nullable()),
+    )
+    .alterTable("oauthState", (t) =>
+      // States are retained after use, so pending reads seek the newest live one instead of scanning.
+      t.createIndex("idx_oauth_state_pending", ["serverId", "consumedAt", "expiresAt"]),
     );
 });

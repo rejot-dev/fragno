@@ -166,10 +166,6 @@ type BackofficePermissionRequirement =
       permission: "update";
     }
   | {
-      namespace: "github";
-      permission: "read";
-    }
-  | {
       namespace: "hooks";
       permission: "read";
     }

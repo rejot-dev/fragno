@@ -2,16 +2,17 @@
 name: mcp-connection
 description: >
   Register and use low-level MCP connections with mcp.*. Use when the user requests MCP or supplies
-  an MCP endpoint, and for server authentication, tool discovery, and MCP tool calls. Named services
-  without a native integration default to Open Connector connections.
+  an MCP endpoint, and for server authentication, tool discovery, and MCP tool calls. Connecting a
+  named service starts with configuring-integrations.
 ---
 
 # Low-Level MCP Connections
 
 Read `/static/codemode/providers/mcp.d.ts` before executing MCP calls. This skill registers remote
 MCP endpoints and their authentication with `mcp.*`. These low-level connections belong to
-`mcp.listServers()`, separately from native integration configuration, low-level API connections,
-and Open Connector connections.
+`mcp.listServers()`; `integrations.*` addresses the same servers as `mcp#<slug>`. To connect a
+service, start with `/static/skills/configuring-integrations/SKILL.md`; use `mcp.*` for tools the
+integration does not offer as actions.
 
 Resolve the provider's streamable HTTP MCP endpoint from available context or provider documentation
 before registration; a service name alone does not establish an endpoint.
@@ -23,7 +24,9 @@ The MCP capability is available automatically for the current scope.
 - Register each remote MCP server with a stable lowercase slug, a display name, the streamable HTTP
   endpoint URL, and an auth mode.
 - For OAuth servers, create the server first with `auth: { type: "oauth" }`, then start OAuth and
-  send the returned `authorizationUrl` to the user.
+  send the returned `authorizationUrl` to the user. If the server does not support dynamic client
+  registration, include `clientId`, `clientSecret`, and `scopes` in `auth` at creation; later OAuth
+  starts reuse them.
 - For bearer-token servers, create the server with `auth: { type: "bearer", token }` or set the
   token after creation.
 
@@ -52,8 +55,10 @@ Cataloged automation events:
 
 - `source`: `mcp`, `eventType`: `server.configuration.changed` — fires after a server refresh when
   the advertised tools differ from the previous cache.
-- `source`: `mcp`, `eventType`: `server.configuration.deleted` — fires after an MCP server
-  configuration is deleted.
+
+Connection state is reported once for every integration service: `source`: `integrations`,
+`eventType`: `connection.ready`, `connection.unavailable`, or `connection.disconnected`, with
+`subject.service` = `mcp` and `subject.connectionId` = `mcp#<slug>`.
 
 Treat MCP as a tool-backed capability: automations register servers, refresh advertised tool caches,
 and call those tools when an external MCP service is needed.
@@ -83,3 +88,6 @@ await mcp.callTool({
   arguments: { query: "Durable Objects alarms" },
 });
 ```
+
+`callTool` returns `{ isError, content, structuredContent }`. A tool error is a result with
+`isError: true` whose `content` explains it; auth, transport, and protocol failures throw.
