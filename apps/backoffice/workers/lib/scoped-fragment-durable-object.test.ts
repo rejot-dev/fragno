@@ -1,8 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 
+import { backofficeRoutableScopeSchema } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
-
-import { backofficeRoutableScopeSchema } from "@/backoffice-runtime/context-schema";
 
 import type { BackofficeObjectState } from "./backoffice-fragment-durable-object";
 import { createScopedFragmentDurableObjectRuntime } from "./scoped-fragment-durable-object";

@@ -1,5 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+
 import {
   createBackofficeServiceExecution,
   createBackofficeSystemExecution,
@@ -7,7 +9,6 @@ import {
 import { createInMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
 import type { BackofficeKernelAction, BackofficeKernelObserver } from "@/backoffice-runtime/kernel";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
-import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import { buildExternalIdentityBindingId } from "@/fragno/automation/external-identities";
 
 import { InMemoryAutomationsObject } from "./automations.do";

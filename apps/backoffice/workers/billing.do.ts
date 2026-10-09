@@ -1,7 +1,7 @@
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { DurableObject, RpcTarget } from "cloudflare:workers";
 
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import {
   requireBackofficeContextScopeFromDurableObjectId,
   type BackofficeRpcContext,

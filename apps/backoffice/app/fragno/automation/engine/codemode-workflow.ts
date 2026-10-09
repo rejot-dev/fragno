@@ -1,3 +1,4 @@
+import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
 import { defineRemoteWorkflow } from "@fragno-dev/workflows/workflow";
 
 import { withBackofficeActorCapabilityGrants } from "@/backoffice-runtime/authority-resolver";
@@ -9,7 +10,6 @@ import { createEventRuntime } from "@/fragno/runtime-tools/families/event-runtim
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 
 import type { AutomationSourceReader } from "../automation-source";
-import type { AutomationEvent } from "../contracts";
 import {
   assertCodemodeCapabilityGrantsBelongToExecution,
   CODEMODE_WORKFLOW,

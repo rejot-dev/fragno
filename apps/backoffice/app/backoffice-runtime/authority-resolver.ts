@@ -1,10 +1,18 @@
 import {
+  automationEntityRefsEqual,
+  type AutomationActors,
+} from "@fragno-dev/backoffice-api/v0/automation";
+import {
+  allBackofficePermissionRequirements,
+  type BackofficePermissionRequirement,
+} from "@fragno-dev/backoffice-api/v0/shared/permissions";
+
+import {
   backofficeScopeContains,
   type BackofficeExecutionContext,
   type BackofficeRequestExecution,
 } from "@/backoffice-runtime/context";
 import type { Role, UserAuthorityFacts } from "@/fragno/auth/contracts";
-import { automationEntityRefsEqual, type AutomationActors } from "@/fragno/automation/actors";
 import { automationRouteIdFromActor } from "@/fragno/automation/authority";
 
 import {
@@ -12,10 +20,6 @@ import {
   resolveBackofficeInternalServiceAuthorityRole,
   resolveBackofficeUserAuthorityRole,
 } from "./authority-roles";
-import {
-  allBackofficePermissionRequirements,
-  type BackofficePermissionRequirement,
-} from "./permissions";
 
 /**
  * Resolves the current authority of the identities named by trusted Backoffice provenance.

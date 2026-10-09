@@ -1,7 +1,9 @@
+import type { AutomationRouteDefinition } from "@fragno-dev/backoffice-api/v0/automation";
+import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
+
 import type { DatabaseServiceContext, TypedUnitOfWork } from "@fragno-dev/db";
 
-import type { AutomationEvent, AutomationEventIdentity } from "./contracts";
-import type { AutomationRouteDefinition } from "./routing";
+import type { AutomationEventIdentity } from "./contracts";
 import { automationFragmentSchema } from "./schema";
 
 export type AutomationEventIngestionPayload = {

@@ -1,16 +1,9 @@
-import {
-  appInstallationResourceScopeSchema,
-  backofficeAppInstallationAccessInputSchema,
-  backofficeAppInstallationMutationResultSchema,
-  backofficeAppInstallationPageInputSchema,
-  backofficeAppInstallationPageSchema,
-  backofficeAppInstallationSchema,
-  type BackofficeAppInstallation,
-} from "@/fragno/app-installations/contracts";
-import { backofficeAppLookupInputSchema, backofficeAppSchema } from "@/fragno/apps/contracts";
+import type { BackofficeAppInstallation } from "@fragno-dev/backoffice-api/v0/apps";
+
 import { defineCliArgsParser } from "@/fragno/runtime-tools/bash-cli";
 
 import {
+  backofficeApiOperationToolFields,
   defineBackofficeRuntimeTool,
   defineBackofficeRuntimeToolFamily,
   type BackofficeToolContext,
@@ -56,13 +49,10 @@ const resourceScopeDescription =
   'Resources the grants apply to: {"kind":"organization"} or {"kind":"projects","projectIds":["..."]}';
 
 const getAppTool = defineBackofficeRuntimeTool({
-  id: "apps.get",
+  ...backofficeApiOperationToolFields("apps.get"),
   namespace: "apps",
   name: "get",
-  description: "Review a registered app's requested permissions before approving an installation.",
   requiredPermissions: ["read"],
-  inputSchema: backofficeAppLookupInputSchema,
-  outputSchema: backofficeAppSchema.nullable(),
   execute: async (input, context: AppsToolContext) =>
     await requireAppsContext(context).apps.getApp(input),
   adapters: {
@@ -94,16 +84,10 @@ const getAppTool = defineBackofficeRuntimeTool({
 });
 
 const installAppTool = defineBackofficeRuntimeTool({
-  id: "apps.install",
+  ...backofficeApiOperationToolFields("apps.install"),
   namespace: "apps",
   name: "install",
-  description:
-    "Approve an app installation in the selected organization, limited to explicit permissions and resources. Installer identity comes from the authenticated user.",
   requiredPermissions: ["manage"],
-  inputSchema: backofficeAppInstallationAccessInputSchema.extend({
-    resourceScope: appInstallationResourceScopeSchema.default({ kind: "organization" }),
-  }),
-  outputSchema: backofficeAppInstallationMutationResultSchema,
   execute: async (input, context: AppsToolContext) => {
     const { apps, userId } = requireAppsContext(context);
     return await apps.installApp(input, userId);
@@ -146,14 +130,10 @@ const installAppTool = defineBackofficeRuntimeTool({
 });
 
 const getInstallationTool = defineBackofficeRuntimeTool({
-  id: "apps.installations.get",
+  ...backofficeApiOperationToolFields("apps.installations.get"),
   namespace: "apps",
   name: "getInstallation",
-  description:
-    "Inspect one app installation in the selected organization, including approved grants.",
   requiredPermissions: ["read"],
-  inputSchema: backofficeAppLookupInputSchema,
-  outputSchema: backofficeAppInstallationSchema.nullable(),
   execute: async (input, context: AppsToolContext) =>
     await requireAppsContext(context).apps.getInstallation(input),
   adapters: {
@@ -197,17 +177,10 @@ function renderInstallation(installation: BackofficeAppInstallation) {
 }
 
 const listInstallationsTool = defineBackofficeRuntimeTool({
-  id: "apps.installations.list",
+  ...backofficeApiOperationToolFields("apps.installations.list"),
   namespace: "apps",
   name: "listInstallations",
-  description:
-    "List the selected organization's active and uninstalled apps using cursor pagination. Does not expose other organizations or OAuth credentials.",
   requiredPermissions: ["read"],
-  inputSchema: backofficeAppInstallationPageInputSchema.extend({
-    pageSize: backofficeAppInstallationPageInputSchema.shape.pageSize.default(25),
-    cursor: backofficeAppInstallationPageInputSchema.shape.cursor.default(null),
-  }),
-  outputSchema: backofficeAppInstallationPageSchema,
   execute: async (input, context: AppsToolContext) =>
     await requireAppsContext(context).apps.listInstallations(input),
   adapters: {
@@ -258,14 +231,10 @@ const listInstallationsTool = defineBackofficeRuntimeTool({
 });
 
 const updateInstallationTool = defineBackofficeRuntimeTool({
-  id: "apps.installations.update",
+  ...backofficeApiOperationToolFields("apps.installations.update"),
   namespace: "apps",
   name: "updateInstallation",
-  description:
-    "Replace an active installation's approved permissions and resources. Takes effect immediately, including for issued app credentials. Does not change installer attribution.",
   requiredPermissions: ["manage"],
-  inputSchema: backofficeAppInstallationAccessInputSchema,
-  outputSchema: backofficeAppInstallationMutationResultSchema,
   execute: async (input, context: AppsToolContext) =>
     await requireAppsContext(context).apps.updateInstallationAccess(input),
   adapters: {
@@ -306,14 +275,10 @@ const updateInstallationTool = defineBackofficeRuntimeTool({
 });
 
 const uninstallAppTool = defineBackofficeRuntimeTool({
-  id: "apps.uninstall",
+  ...backofficeApiOperationToolFields("apps.uninstall"),
   namespace: "apps",
   name: "uninstall",
-  description:
-    "Uninstall an app in the selected organization, clearing approved grants and its linked account while retaining installation identity. Immediately invalidates app credentials. Does not revoke personal OAuth consent.",
   requiredPermissions: ["manage"],
-  inputSchema: backofficeAppLookupInputSchema,
-  outputSchema: backofficeAppInstallationMutationResultSchema,
   execute: async (input, context: AppsToolContext) =>
     await requireAppsContext(context).apps.uninstallApp(input),
   adapters: {

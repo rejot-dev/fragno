@@ -1,5 +1,7 @@
 import { describe, expect, test, assert } from "vitest";
 
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 
 import {
@@ -8,7 +10,6 @@ import {
   withBackofficeActorCapabilityGrants,
 } from "./authority-resolver";
 import { BACKOFFICE_AUTHORITY_ROLE_GRANTS } from "./authority-roles";
-import { BACKOFFICE_PERMISSION } from "./permissions";
 
 class MemoryIdentityDirectory implements BackofficeIdentityDirectory {
   lookupCount = 0;

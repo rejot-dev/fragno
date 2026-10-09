@@ -1,12 +1,13 @@
 import { assert, describe, expect, test, vi } from "vitest";
 
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+
 import type { HookContext } from "@fragno-dev/db";
 import type { OtpConfirmedHookPayload } from "@fragno-dev/otp-fragment";
 
 import { eq, queryOnce } from "@tanstack/react-db";
 
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
-import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import type { BackofficeScenarioStep } from "@/fragno/automation/scenario";
 import { IDENTITY_LINK_TYPE } from "@/fragno/otp";

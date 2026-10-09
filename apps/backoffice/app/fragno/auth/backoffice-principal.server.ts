@@ -1,10 +1,10 @@
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { RouterContextProvider } from "react-router";
 
 import { resolveBackofficeUserAuthorityRole } from "@/backoffice-runtime/authority-roles";
 import {
   createBackofficeRequestExecution,
   backofficeScopeContains,
-  type BackofficeContextScope,
   type BackofficeExecutionContext,
   type BackofficeRequestExecution,
 } from "@/backoffice-runtime/context";

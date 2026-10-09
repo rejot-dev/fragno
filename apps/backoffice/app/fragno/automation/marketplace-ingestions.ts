@@ -1,36 +1,10 @@
-import { z } from "zod";
+import { marketplaceIngestionRequestInputSchema } from "@fragno-dev/backoffice-api/v0/marketplace";
+import { marketplaceVersionSchema } from "@fragno-dev/backoffice-api/v0/marketplace";
 
-import {
-  backofficeOrganizationScopeSchema,
-  backofficeProjectScopeSchema,
-  backofficeUserScopeSchema,
-} from "@/backoffice-runtime/context-schema";
 import type { BackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
-import {
-  marketplaceListingIdSchema,
-  marketplaceVersionSchema,
-  type MarketplaceArtifactManifest,
-} from "@/fragno/marketplace/contracts";
-import { marketplaceInstallationRootSchema } from "@/fragno/marketplace/marketplace-lock";
+import { type MarketplaceArtifactManifest } from "@/fragno/marketplace/contracts";
 
 import { backofficeWorkflowActorMetadataSchema } from "./actors";
-
-const marketplaceIngestionTargetScopeSchema = z.discriminatedUnion("kind", [
-  backofficeOrganizationScopeSchema,
-  backofficeProjectScopeSchema,
-  backofficeUserScopeSchema,
-]);
-
-export const marketplaceIngestionRequestInputSchema = z.object({
-  targetScope: marketplaceIngestionTargetScopeSchema,
-  installationRoot: marketplaceInstallationRootSchema,
-  listingId: marketplaceListingIdSchema,
-  version: marketplaceVersionSchema.optional(),
-});
-
-export type MarketplaceIngestionRequestInput = z.infer<
-  typeof marketplaceIngestionRequestInputSchema
->;
 
 export const marketplaceIngestionWorkflowInputSchema =
   marketplaceIngestionRequestInputSchema.extend({
@@ -132,16 +106,3 @@ export type MarketplaceIngestionRequestResult = MarketplaceIngestionRequestIdent
         error: { name: string; message: string };
       }
   );
-
-/** Installation callers share the existing workflow restart result contract. */
-export const marketplaceIngestionRestartResultSchema = z.object({
-  listingId: marketplaceListingIdSchema,
-  version: marketplaceVersionSchema,
-  workflowInstanceId: z.string().min(1),
-  action: z.enum(["created", "restarted", "unchanged"]),
-  workflowStatus: z.enum(["active", "paused", "errored", "terminated", "complete", "waiting"]),
-});
-
-export type MarketplaceIngestionRestartResult = z.infer<
-  typeof marketplaceIngestionRestartResultSchema
->;

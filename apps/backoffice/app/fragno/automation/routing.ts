@@ -1,105 +1,29 @@
-import type { AutomationActor, AutomationActorRole } from "./actors";
-import type { AutomationAuthorityMode } from "./authority";
-import type { AutomationEvent } from "./contracts";
-import type { AutomationScheduleCadence } from "./route-triggers";
-
-type AutomationActorIdentityMatcher =
-  | {
-      scope: "internal";
-      source?: never;
-      type?: string;
-      id?: string;
-    }
-  | {
-      scope: "external";
-      source?: string;
-      type?: string;
-      id?: string;
-    };
-
-export type AutomationActorMatcher =
-  | (AutomationActorIdentityMatcher & { participation: "initiator" })
-  | (AutomationActorIdentityMatcher & { participation: "principal" })
-  | (AutomationActorIdentityMatcher & {
-      participation: "delegation";
-      role?: Extract<AutomationActorRole, "delegate" | "assistant">;
-    });
-
-export type AutomationEventMatcher =
-  | { actor: AutomationActorMatcher }
-  | { path: string; op: "exists" }
-  | { path: string; op: "eq" | "neq" | "startsWith" | "includes"; value: unknown }
-  | { all: AutomationEventMatcher[] }
-  | { any: AutomationEventMatcher[] }
-  | { not: AutomationEventMatcher };
-
-export type AutomationRouteScopeTemplate =
-  | { kind: "system" }
-  | { kind: "org"; orgIdTemplate: string }
-  | { kind: "project"; orgIdTemplate: string; projectIdTemplate: string }
-  | { kind: "user"; userIdTemplate: string };
+import type {
+  AutomationActor,
+  AutomationAuthorityMode,
+} from "@fragno-dev/backoffice-api/v0/automation";
+import {
+  AUTOMATION_ROUTE_AUTHORITY_ERROR_MESSAGE,
+  type AutomationActorIdentityMatcher,
+  type AutomationActorMatcher,
+  type AutomationEventMatcher,
+  type AutomationEventPayloadProjection,
+  type AutomationRouteAction,
+  type AutomationRouteEventTrigger,
+  type AutomationRouteScheduleTrigger,
+  type AutomationRouteScopeTemplate,
+  type AutomationRouteTrigger,
+  type AutomationSendWorkflowEventAction,
+  type AutomationStartWorkflowAction,
+  isAutomationActorProvenancePath,
+} from "@fragno-dev/backoffice-api/v0/automation";
+import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
 
 type AutomationRouteScope =
   | { kind: "system" }
   | { kind: "org"; orgId: string }
   | { kind: "project"; orgId: string; projectId: string }
   | { kind: "user"; userId: string };
-
-export type AutomationStartWorkflowAction = {
-  kind: "start_workflow";
-  authority: AutomationAuthorityMode;
-  workflowScriptPath: string;
-  instanceIdTemplate: string;
-};
-
-export type AutomationWorkflowEventTarget =
-  | { kind: "instance_id"; template: string }
-  | { kind: "stored_instance_id"; keyTemplate: string };
-
-export type AutomationSendWorkflowEventAction = {
-  kind: "send_workflow_event";
-  target: AutomationWorkflowEventTarget;
-  eventType: string;
-  payload?: unknown;
-};
-
-export type AutomationForwardEventAction = {
-  kind: "forward_event";
-  targetScope: AutomationRouteScopeTemplate;
-  idTemplate?: string;
-};
-
-export type AutomationEventPayloadProjection = {
-  kind: "projection";
-  fields: Record<string, string>;
-};
-
-export type AutomationReclassifyEventAction = {
-  kind: "reclassify_event";
-  source: string;
-  eventType: string;
-  payload: AutomationEventPayloadProjection;
-};
-
-export type AutomationRouteAction =
-  | AutomationStartWorkflowAction
-  | AutomationSendWorkflowEventAction
-  | AutomationForwardEventAction
-  | AutomationReclassifyEventAction;
-
-type AutomationRouteEventTrigger = {
-  kind: "event";
-  source: string;
-  eventType: string;
-  matcher: AutomationEventMatcher | null;
-};
-
-type AutomationRouteScheduleTrigger = {
-  kind: "schedule";
-  cadence: AutomationScheduleCadence;
-};
-
-export type AutomationRouteTrigger = AutomationRouteEventTrigger | AutomationRouteScheduleTrigger;
 
 type AutomationRouteConfiguration =
   | { trigger: AutomationRouteEventTrigger; action: AutomationRouteAction }
@@ -113,8 +37,7 @@ type AutomationRouteConfiguration =
     };
 
 export class AutomationRouteAuthorityError extends Error {
-  static readonly message =
-    "Scheduled workflows require organization-automation authority. Linked-user authority requires an external sender; delegated-user authority requires a user principal.";
+  static readonly message = AUTOMATION_ROUTE_AUTHORITY_ERROR_MESSAGE;
 
   constructor() {
     super(AutomationRouteAuthorityError.message);
@@ -156,45 +79,11 @@ export function assertAutomationRouteDoesNotReclassifyItself({
   }
 }
 
-export type AutomationRouteManagedBy = {
-  kind: "marketplace";
-  listingId: string;
-  resourceKey: string;
-  version: string;
-};
-
-export type AutomationRouteMetadata = {
-  createdByActors: AutomationEvent["actors"];
-  updatedByActors: AutomationEvent["actors"];
-  managedBy: AutomationRouteManagedBy | null;
-};
-
-/** Persisted routes may predate the authority rules enforced on create and activation. */
-export type AutomationRouteDefinition = {
-  trigger: AutomationRouteTrigger;
-  action: AutomationRouteAction;
-  id: string;
-  name: string;
-  enabled: boolean;
-  priority: number;
-  description?: string | null;
-  metadata?: AutomationRouteMetadata | null;
-  nextOccurrenceAt: string | null;
-};
-
 export type StarterAutomationRoutesSeedResult = {
   created: string[];
   removed: string[];
   skipped: string[];
 };
-
-export const isAutomationActorProvenancePath = (path: string) =>
-  path === "$.actor" ||
-  path.startsWith("$.actor.") ||
-  path.startsWith("$.actor[") ||
-  path === "$.actors" ||
-  path.startsWith("$.actors.") ||
-  path.startsWith("$.actors[");
 
 /**
  * Makes a rendered template segment safe for workflow instance ids.

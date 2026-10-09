@@ -1,14 +1,16 @@
+import {
+  backofficeAppLookupInputSchema,
+  type BackofficeApp,
+  type BackofficeAppLookupInput,
+} from "@fragno-dev/backoffice-api/v0/apps";
 import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { DurableObject, RpcTarget } from "cloudflare:workers";
 
 import { requireBackofficeContextScopeFromDurableObjectId } from "@/backoffice-runtime/object-registry";
 import {
-  backofficeAppLookupInputSchema,
   backofficeAppOAuthClientLookupInputSchema,
   backofficeAppPageInputSchema,
   backofficeAppRegistrationInputSchema,
-  type BackofficeApp,
-  type BackofficeAppLookupInput,
   type BackofficeAppOAuthClientLookupInput,
   type BackofficeAppPage,
   type BackofficeAppPageInput,

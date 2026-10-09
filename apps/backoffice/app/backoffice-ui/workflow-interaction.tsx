@@ -1,8 +1,7 @@
+import type { PreparedUploadedFileReference } from "@fragno-dev/backoffice-api/v0/upload";
 import { createContext, useContext, type ReactNode } from "react";
 
 import type { UploadProgress } from "@fragno-dev/upload";
-
-import type { PreparedUploadedFileReference } from "@/fragno/prepared-upload";
 
 import type { GeneratedUiUploadScope } from "./generated-ui-upload-scope";
 

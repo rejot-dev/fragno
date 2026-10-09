@@ -1,3 +1,5 @@
+import type { AutomationActors } from "@fragno-dev/backoffice-api/v0/automation";
+
 import { authorizedBackofficeObjectHttp } from "@/backoffice-runtime/authorized-object-http";
 import {
   backofficeContextScopesEqual,
@@ -14,7 +16,6 @@ import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-ser
 import { isBackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import { createStaticFileCollection } from "@/file-collection/create-static-file-collection";
 import { createBackofficeStaticFileCollection } from "@/files/content/static";
-import type { AutomationActors } from "@/fragno/automation/actors";
 import {
   readAutomationScript,
   type AutomationSourceReader,

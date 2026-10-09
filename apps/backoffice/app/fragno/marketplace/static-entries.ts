@@ -1,12 +1,12 @@
-import { z } from "zod";
-
-import type { MarketplaceStaticArtifactEntry, MarketplaceStaticArtifactListing } from "./artifacts";
 import {
   marketplaceListingMetadataSchema,
   marketplaceOwnerSchema,
   marketplaceSlugSchema,
   marketplaceVersionSchema,
-} from "./contracts";
+} from "@fragno-dev/backoffice-api/v0/marketplace";
+import { z } from "zod";
+
+import type { MarketplaceStaticArtifactEntry, MarketplaceStaticArtifactListing } from "./artifacts";
 
 export const marketplaceManifestSchema = z.object({
   owner: marketplaceOwnerSchema,

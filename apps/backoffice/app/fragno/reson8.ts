@@ -1,3 +1,5 @@
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+
 import { createReson8Fragment } from "@fragno-dev/reson8-fragment";
 
 import {
@@ -5,7 +7,6 @@ import {
   type BackofficeFragmentHttpAccess,
 } from "@/backoffice-runtime/fragment-http-authorization";
 import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
-import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 
 export type Reson8Config = {
   apiKey: string;

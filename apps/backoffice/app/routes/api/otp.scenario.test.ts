@@ -4,6 +4,9 @@ import { mkdtemp, readdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+import type { AutomationExternalEntityRef } from "@fragno-dev/backoffice-api/v0/automation";
+import { automationEventListResultSchema } from "@fragno-dev/backoffice-api/v0/events";
+
 const workers = vi.hoisted(() => ({
   DurableObject: class {},
   RpcTarget: class {},
@@ -20,8 +23,6 @@ import {
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { requireBackofficeMe } from "@/fragno/auth/auth-server";
-import type { AutomationExternalEntityRef } from "@/fragno/automation/actors";
-import { automationEventListResultSchema } from "@/fragno/automation/events";
 import {
   defineBackofficeScenario,
   runBackofficeScenario,

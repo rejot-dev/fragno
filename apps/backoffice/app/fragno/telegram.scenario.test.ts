@@ -4,6 +4,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+
 const workers = vi.hoisted(() => ({
   DurableObject: class {},
   RpcTarget: class {},
@@ -12,7 +14,6 @@ const workers = vi.hoisted(() => ({
 vi.mock("cloudflare:workers", () => workers);
 
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
-import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 
 import { InMemoryApiObject } from "../../workers/api.do";
 import { InMemoryAuthObject } from "../../workers/auth.do";

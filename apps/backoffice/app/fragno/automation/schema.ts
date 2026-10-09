@@ -1,13 +1,15 @@
-import { column, idColumn, schema, type Column } from "@fragno-dev/db/schema";
-
-import type { AutomationEvent } from "./contracts";
-import type { AutomationEventDefinition } from "./event-definitions";
-import type { AutomationEventSource } from "./event-sources";
 import type {
   AutomationRouteAction,
   AutomationRouteMetadata,
   AutomationRouteTrigger,
-} from "./routing";
+} from "@fragno-dev/backoffice-api/v0/automation";
+import type {
+  AutomationEvent,
+  AutomationEventDefinition,
+} from "@fragno-dev/backoffice-api/v0/events";
+import { column, idColumn, schema, type Column } from "@fragno-dev/db/schema";
+
+import type { AutomationEventSource } from "./event-sources";
 
 const jsonColumn = <T>() => column("json") as Column<"json", T, T>;
 

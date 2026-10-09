@@ -1,3 +1,4 @@
+import { jsonValueSchema } from "@fragno-dev/backoffice-api/v0/shared/json";
 import type { WorkerBundle } from "@fragno-dev/codemode/compiler/worker-bundle";
 import type { ResolvedProvider } from "@fragno-dev/codemode/runtime-api";
 import { Compile } from "typebox/compile";
@@ -24,7 +25,6 @@ import {
 } from "@/fragno/codemode/execute";
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
-import { jsonValueSchema } from "@/lib/zod/json-value";
 
 import { requirePiStateBackend, type PiRuntimeToolContext } from "./pi-runtime-context";
 import { piWorkspaceExtensionMetadataSchema } from "./pi-workspace-extension-metadata";

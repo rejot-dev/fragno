@@ -1,14 +1,14 @@
-import { z } from "zod";
-
-import { sha256Hex } from "@/lib/crypto";
-
 import {
   marketplaceListingIdSchema,
   marketplaceListingMetadataSchema,
   marketplaceOwnerSchema,
   marketplaceSlugSchema,
   marketplaceVersionSchema,
-} from "./contracts";
+} from "@fragno-dev/backoffice-api/v0/marketplace";
+import { z } from "zod";
+
+import { sha256Hex } from "@/lib/crypto";
+
 import { marketplaceListingId } from "./owner";
 
 /** Capture limits bound durable release input; the publisher's commit guard is additional. */

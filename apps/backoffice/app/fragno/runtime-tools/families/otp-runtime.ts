@@ -1,7 +1,8 @@
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { OtpObject } from "@/backoffice-runtime/object-registry";
-import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import type { BackofficeResolvedScope } from "@/backoffice-runtime/resolved-scope";
 import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
 import { buildIdentityClaimCompletionUrl } from "@/fragno/otp";

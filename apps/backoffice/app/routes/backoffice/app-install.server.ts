@@ -1,16 +1,16 @@
+import type {
+  AppInstallationResourceScope,
+  BackofficeAppInstallation,
+} from "@fragno-dev/backoffice-api/v0/apps";
+import {
+  BACKOFFICE_PERMISSION,
+  type BackofficePermissionRequirement,
+} from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import type { RouterContextProvider } from "react-router";
 import { z } from "zod";
 
 import { createBackofficeUserExecution } from "@/backoffice-runtime/context";
 import { isBackofficeForbiddenError } from "@/backoffice-runtime/kernel";
-import {
-  BACKOFFICE_PERMISSION,
-  type BackofficePermissionRequirement,
-} from "@/backoffice-runtime/permissions";
-import type {
-  AppInstallationResourceScope,
-  BackofficeAppInstallation,
-} from "@/fragno/app-installations/contracts";
 import { BackofficeAppDomainError, requireBackofficeAppOperationValue } from "@/fragno/apps/errors";
 import { createAutomationsRouteCaller } from "@/fragno/automation/route-callers";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";

@@ -1,9 +1,10 @@
 import { describe, expect, test, assert } from "vitest";
 
-import { automationEventDefinitionSchema } from "./event-definitions";
+import { automationRouteSchema } from "@fragno-dev/backoffice-api/v0/automation";
+import { automationEventDefinitionSchema } from "@fragno-dev/backoffice-api/v0/events";
+import { automationStoreEntrySchema } from "@fragno-dev/backoffice-api/v0/store";
+
 import { normalizeAutomationEventRecord } from "./events";
-import { automationRouteSchema } from "./routing-schemas";
-import { automationStoreEntrySchema } from "./store";
 
 const actor = {
   scope: "internal" as const,

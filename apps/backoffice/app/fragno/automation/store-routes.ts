@@ -1,18 +1,17 @@
-import { z } from "zod";
-
-import { defineRoutes } from "@fragno-dev/core";
-
-import { automationFragmentDefinition } from "./definition";
 import {
-  AUTOMATION_STORE_ROUTE_PATHS,
-  AutomationStoreVerificationError,
   automationStoreDeleteInputSchema,
   automationStoreDeleteResultSchema,
   automationStoreEntrySchema,
   automationStoreListInputSchema,
   automationStoreSetInputSchema,
   automationStoreSetResultSchema,
-} from "./store";
+} from "@fragno-dev/backoffice-api/v0/store";
+import { z } from "zod";
+
+import { defineRoutes } from "@fragno-dev/core";
+
+import { automationFragmentDefinition } from "./definition";
+import { AUTOMATION_STORE_ROUTE_PATHS, AutomationStoreVerificationError } from "./store";
 
 export const automationStoreRoutes = defineRoutes(automationFragmentDefinition).create(
   ({ defineRoute, services }) => [

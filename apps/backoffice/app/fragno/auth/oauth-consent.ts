@@ -22,25 +22,6 @@ export const backofficeOAuthConsentListInputSchema = z.strictObject({
   cursor: z.string().min(1).nullable().default(null),
 });
 
-/** User-facing authorizations contain no access tokens, refresh tokens, or client secrets. */
-export const backofficeOAuthConsentPageSchema = z.object({
-  consents: z.array(
-    z.object({
-      id: z.string(),
-      clientId: z.string(),
-      clientName: z.string(),
-      scopes: z.array(z.string()),
-      resources: z.array(z.string()),
-      requestedUserInfoClaims: z.array(z.string()),
-      createdAt: z.string(),
-      updatedAt: z.string(),
-    }),
-  ),
-  nextCursor: z.string().nullable(),
-  hasNextPage: z.boolean(),
-});
-export type BackofficeOAuthConsentPage = z.output<typeof backofficeOAuthConsentPageSchema>;
-
 /** Revocation always derives the grant owner from the live browser session. */
 export const backofficeOAuthConsentRevokeInputSchema = z.strictObject({
   clientId: z.string().min(1).max(191),

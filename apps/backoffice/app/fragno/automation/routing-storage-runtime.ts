@@ -1,6 +1,14 @@
+import {
+  type AutomationActors,
+  type AutomationRouteAction,
+  automationRouteCreateInputSchema,
+  automationRouteUpdateInputSchema,
+  type AutomationRouteCreateInput,
+  type AutomationRouteUpdateInput,
+} from "@fragno-dev/backoffice-api/v0/automation";
+
 import type { DatabaseServiceContext } from "@fragno-dev/db";
 
-import type { AutomationActors } from "./actors";
 import type { AutomationInternalHooks } from "./internal-hooks";
 import { normalizeAutomationRoute } from "./route-records";
 import {
@@ -12,14 +20,7 @@ import {
 import {
   assertAutomationRouteAuthorityMatchesTrigger,
   assertAutomationRouteDoesNotReclassifyItself,
-  type AutomationRouteAction,
 } from "./routing";
-import {
-  automationRouteCreateInputSchema,
-  automationRouteUpdateInputSchema,
-  type AutomationRouteCreateInput,
-  type AutomationRouteUpdateInput,
-} from "./routing-schemas";
 import { automationFragmentSchema } from "./schema";
 
 type AutomationRouteServiceContext = DatabaseServiceContext<AutomationInternalHooks>;

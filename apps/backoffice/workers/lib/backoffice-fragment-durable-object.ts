@@ -1,3 +1,4 @@
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import {
   createFragmentDurableObjectHost,
   type FragmentDurableObjectHost,
@@ -12,10 +13,7 @@ import type { DurableHooksInstrumentation } from "@fragno-dev/db/hooks";
 
 import type { FragnoRequestLifecycleContext } from "@fragno-dev/core";
 
-import {
-  backofficeContextScopesEqual,
-  type BackofficeContextScope,
-} from "@/backoffice-runtime/context";
+import { backofficeContextScopesEqual } from "@/backoffice-runtime/context";
 import { backofficeContextScopeFromSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import {
   createUnconfiguredDurableHookQueueResponse,

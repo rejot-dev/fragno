@@ -1,3 +1,10 @@
+import {
+  automationEventDefinitionCreateInputSchema,
+  automationEventDefinitionUpdateInputSchema,
+  type AutomationEventDefinitionCreateInput,
+  type AutomationEventDefinitionUpdateInput,
+} from "@fragno-dev/backoffice-api/v0/events";
+
 import type { DatabaseServiceContext } from "@fragno-dev/db";
 
 import { listAutomationEventDescriptors } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
@@ -5,11 +12,7 @@ import { listAutomationEventDescriptors } from "@/fragno/backoffice-capabilities
 import {
   AutomationEventDefinitionValidationError,
   assertAutomationEventDefinitionSchemas,
-  automationEventDefinitionCreateInputSchema,
-  automationEventDefinitionUpdateInputSchema,
   buildAutomationEventDefinitionId,
-  type AutomationEventDefinitionCreateInput,
-  type AutomationEventDefinitionUpdateInput,
 } from "./event-definitions";
 import { automationFragmentSchema } from "./schema";
 

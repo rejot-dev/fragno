@@ -1,5 +1,6 @@
+import type { MarketplaceOwner } from "@fragno-dev/backoffice-api/v0/marketplace";
+
 import type { BackofficeMeData } from "@/fragno/auth/contracts";
-import type { MarketplaceOwner } from "@/fragno/marketplace/contracts";
 
 type MarketplaceOrganizationOwner = MarketplaceOwner & {
   scope: { kind: "org"; orgId: string };

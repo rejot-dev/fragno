@@ -1,65 +1,22 @@
+import {
+  createFormInputSchema,
+  formOutputSchema,
+  listFormSubmissionsInputSchema,
+  listFormSubmissionsOutputSchema,
+  updateFormInputSchema,
+} from "@fragno-dev/backoffice-api/v0/forms";
 import { z } from "zod";
 
 import { defineCliArgsParser, defineNoInputArgsParser } from "@/fragno/runtime-tools/bash-cli";
 import type { FormsRuntime } from "@/fragno/runtime-tools/families/forms-runtime";
 
-import { isoDateTimeOutputSchema, normalizeRuntimeOutput } from "../output-schemas";
+import { normalizeRuntimeOutput } from "../output-schemas";
 import {
+  backofficeApiOperationToolFields,
   defineBackofficeRuntimeTool,
   defineBackofficeRuntimeToolFamily,
   type BackofficeToolContext,
 } from "../runtime-tools";
-
-const formStatusInputValues = ["draft", "open", "closed"] as const;
-
-const createFormInputSchema = z.object({
-  title: z.string().trim().min(1),
-  slug: z.string().trim().min(1),
-  description: z.string().nullable().optional(),
-  status: z.enum(formStatusInputValues).default("draft"),
-  dataSchema: z.record(z.string(), z.unknown()),
-  uiSchema: z.record(z.string(), z.unknown()).optional(),
-});
-
-const updateFormInputSchema = createFormInputSchema.partial().extend({
-  formId: z.string().trim().min(1),
-  status: z.enum(formStatusInputValues).optional(),
-});
-
-const formOutputSchema = z.object({
-  id: z.string(),
-  title: z.string(),
-  description: z.string().nullable().optional(),
-  slug: z.string(),
-  status: z.enum(["draft", "open", "closed", "static"]),
-  dataSchema: z.record(z.string(), z.unknown()),
-  uiSchema: z.record(z.string(), z.unknown()).nullable(),
-  version: z.number(),
-  createdAt: isoDateTimeOutputSchema,
-  updatedAt: isoDateTimeOutputSchema,
-});
-
-const formSubmissionOutputSchema = z.object({
-  id: z.string(),
-  formId: z.string().nullable(),
-  formVersion: z.number(),
-  data: z.record(z.string(), z.unknown()),
-  submittedAt: isoDateTimeOutputSchema,
-  ip: z.string().nullable(),
-  userAgent: z.string().nullable(),
-});
-
-const listFormSubmissionsInputSchema = z.object({
-  formId: z.string().trim().min(1),
-  sortOrder: z.enum(["asc", "desc"]).default("desc"),
-  pageSize: z.coerce.number().int().min(1).max(100).default(25),
-  cursor: z.string().nullable().default(null),
-});
-const listFormSubmissionsOutputSchema = z.object({
-  submissions: z.array(formSubmissionOutputSchema),
-  nextCursor: z.string().nullable(),
-  hasNextPage: z.boolean(),
-});
 
 type FormsToolContext = BackofficeToolContext<{ forms?: FormsRuntime }>;
 
@@ -109,13 +66,10 @@ const parseFormsUpdate = defineCliArgsParser<z.input<typeof updateFormInputSchem
 );
 
 const listFormsTool = defineBackofficeRuntimeTool({
-  id: "forms.list",
+  ...backofficeApiOperationToolFields("forms.list"),
   namespace: "forms",
   name: "listForms",
-  description: "List forms stored in the global system Forms integration.",
   requiredPermissions: ["read"],
-  inputSchema: z.void(),
-  outputSchema: z.object({ forms: z.array(formOutputSchema) }),
   execute: async (_input, context: FormsToolContext) => {
     const forms = await requireFormsRuntime(context.runtimes.forms).listForms();
     return z.object({ forms: z.array(formOutputSchema) }).parse(
@@ -142,13 +96,10 @@ const listFormsTool = defineBackofficeRuntimeTool({
 });
 
 const listFormSubmissionsTool = defineBackofficeRuntimeTool({
-  id: "forms.submissions.list",
+  ...backofficeApiOperationToolFields("forms.submissions.list"),
   namespace: "forms",
   name: "listSubmissions",
-  description: "List responses submitted to a system form.",
   requiredPermissions: ["read"],
-  inputSchema: listFormSubmissionsInputSchema,
-  outputSchema: listFormSubmissionsOutputSchema,
   execute: async (input, context: FormsToolContext) => {
     const page = await requireFormsRuntime(context.runtimes.forms).listSubmissions(input);
     return listFormSubmissionsOutputSchema.parse(normalizeRuntimeOutput(page));
@@ -189,13 +140,10 @@ const listFormSubmissionsTool = defineBackofficeRuntimeTool({
 });
 
 const updateFormTool = defineBackofficeRuntimeTool({
-  id: "forms.update",
+  ...backofficeApiOperationToolFields("forms.update"),
   namespace: "forms",
   name: "updateForm",
-  description: "Update a schema-backed form in the global system Forms integration.",
   requiredPermissions: ["update"],
-  inputSchema: updateFormInputSchema,
-  outputSchema: z.object({ updated: z.literal(true) }),
   execute: async ({ formId, ...input }, context: FormsToolContext) =>
     await requireFormsRuntime(context.runtimes.forms).updateForm(formId, input),
   adapters: {
@@ -236,13 +184,10 @@ const updateFormTool = defineBackofficeRuntimeTool({
 });
 
 const createFormTool = defineBackofficeRuntimeTool({
-  id: "forms.create",
+  ...backofficeApiOperationToolFields("forms.create"),
   namespace: "forms",
   name: "createForm",
-  description: "Create a schema-backed form in the global system Forms integration.",
   requiredPermissions: ["create"],
-  inputSchema: createFormInputSchema,
-  outputSchema: z.object({ id: z.string() }),
   execute: async (input, context: FormsToolContext) =>
     await requireFormsRuntime(context.runtimes.forms).createForm(input),
   adapters: {

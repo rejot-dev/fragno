@@ -1,4 +1,4 @@
-import { z } from "zod";
+import type { GitHubRepository } from "@fragno-dev/backoffice-api/v0/github";
 
 import {
   defineCliArgsParser,
@@ -7,29 +7,16 @@ import {
 } from "@/fragno/runtime-tools/bash-cli";
 
 import {
+  backofficeApiOperationToolFields,
   defineBackofficeRuntimeTool,
   defineBackofficeRuntimeToolFamily,
   type BackofficeToolContext,
 } from "../runtime-tools";
-import {
-  githubRepositoryAccessTokenSchema,
-  githubRepositorySchema,
-  type GitHubRepository,
-  type GitHubRuntime,
-} from "./github-runtime";
+import type { GitHubRuntime } from "./github-runtime";
 
 export type { GitHubRuntime } from "./github-runtime";
 
 type GitHubToolContext = BackofficeToolContext<{ github?: GitHubRuntime }>;
-
-const listRepositoriesInputSchema = z.object({
-  linkKey: z.string().trim().min(1).optional(),
-});
-
-const createRepositoryAccessTokenInputSchema = z.object({
-  repoId: z.string().trim().min(1),
-  linkKey: z.string().trim().min(1).optional(),
-});
 
 const getGitHubRuntime = (runtime: GitHubToolContext["runtimes"]["github"]): GitHubRuntime => {
   if (!runtime) {
@@ -66,13 +53,10 @@ const formatRepositoriesTable = (repositories: GitHubRepository[]) => {
 };
 
 const listRepositoriesTool = defineBackofficeRuntimeTool({
-  id: "github.repositories.list",
+  ...backofficeApiOperationToolFields("github.repositories.list"),
   namespace: "github",
   name: "listRepositories",
-  description: "List GitHub repositories connected to the current organization and their ids.",
   requiredPermissions: ["read"],
-  inputSchema: listRepositoriesInputSchema,
-  outputSchema: z.array(githubRepositorySchema),
   execute: async (input, context: GitHubToolContext) =>
     await getGitHubRuntime(context.runtimes.github).listRepositories(input),
   adapters: {
@@ -107,14 +91,10 @@ const listRepositoriesTool = defineBackofficeRuntimeTool({
 });
 
 const createRepositoryAccessTokenTool = defineBackofficeRuntimeTool({
-  id: "github.repositories.create-access-token",
+  ...backofficeApiOperationToolFields("github.repositories.create-access-token"),
   namespace: "github",
   name: "createRepositoryAccessToken",
-  description:
-    "Create a repository-scoped, read-only GitHub App installation token for cloning a linked repository. The token expires after one hour.",
   requiredPermissions: ["read"],
-  inputSchema: createRepositoryAccessTokenInputSchema,
-  outputSchema: githubRepositoryAccessTokenSchema,
   execute: async (input, context: GitHubToolContext) =>
     await getGitHubRuntime(context.runtimes.github).createRepositoryAccessToken(input),
   adapters: {

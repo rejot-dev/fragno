@@ -1,12 +1,12 @@
+import type { AutomationEventSubject } from "@fragno-dev/backoffice-api/v0/events";
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { DurableObject, RpcTarget } from "cloudflare:workers";
 import { z } from "zod";
 
 import type { TelegramApi, TelegramFragmentConfig } from "@fragno-dev/telegram-fragment";
 
-import {
-  backofficeContextScopesEqual,
-  type BackofficeContextScope,
-} from "@/backoffice-runtime/context";
+import { backofficeContextScopesEqual } from "@/backoffice-runtime/context";
 import { authorizeBackofficeFragmentRequest } from "@/backoffice-runtime/fragment-http-authorization";
 import { createBackofficeFragmentHttpTransport } from "@/backoffice-runtime/fragment-http-transport";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
@@ -15,7 +15,6 @@ import {
   backofficeObjectScopeFromContextScope,
   type TelegramObject,
 } from "@/backoffice-runtime/object-registry";
-import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import {
@@ -23,7 +22,6 @@ import {
   telegramAutomationFileIdFromDownloadPath,
 } from "@/backoffice-runtime/telegram-file-response";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
-import type { AutomationEventSubject } from "@/fragno/automation/contracts";
 import { telegramConfigureInputSchema } from "@/fragno/backoffice-capabilities/capabilities/telegram";
 import { type DurableHookQueueOptions } from "@/fragno/durable-hooks";
 import type { TelegramAutomationFileMetadata } from "@/fragno/runtime-tools/families/telegram-runtime";

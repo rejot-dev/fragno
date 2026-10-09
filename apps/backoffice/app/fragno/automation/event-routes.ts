@@ -1,8 +1,12 @@
+import {
+  automationEventListInputSchema,
+  automationEventListResultSchema,
+} from "@fragno-dev/backoffice-api/v0/events";
+
 import { defineRoutes } from "@fragno-dev/core";
 import { decodeCursor } from "@fragno-dev/db";
 
 import { automationFragmentDefinition } from "./definition";
-import { automationEventListInputSchema, automationEventListResultSchema } from "./events";
 
 export const automationEventRoutes = defineRoutes(automationFragmentDefinition).create(
   ({ defineRoute, services }) => [

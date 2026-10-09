@@ -1,13 +1,12 @@
 import { describe, expect, test } from "vitest";
 
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+
 import type {
   AutomationsObject,
   BackofficeObjectHandle,
 } from "@/backoffice-runtime/object-registry";
-import {
-  BACKOFFICE_PERMISSION,
-  BACKOFFICE_REQUIRED_PERMISSION_HEADER,
-} from "@/backoffice-runtime/permissions";
+import { BACKOFFICE_REQUIRED_PERMISSION_HEADER } from "@/backoffice-runtime/required-permission-header";
 
 import { CODEMODE_WORKFLOW } from "./engine/codemode-invocation";
 import {

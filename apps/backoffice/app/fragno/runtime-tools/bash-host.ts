@@ -1,9 +1,7 @@
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { Bash as BashRuntime, defineCommand, type Bash } from "just-bash";
 
-import type {
-  BackofficeContextScope,
-  BackofficeExecutionContext,
-} from "@/backoffice-runtime/context";
+import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
 import {

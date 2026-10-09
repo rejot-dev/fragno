@@ -1,3 +1,5 @@
+import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
+
 import { unavailableBackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import {
@@ -24,8 +26,7 @@ import {
   type EventRuntime,
 } from "../../runtime-tools/families/event-runtime";
 import type {} from "../../runtime-tools/families/otp";
-import { type OtpRuntime } from "../../runtime-tools/families/otp-runtime";
-import type { AutomationEvent } from "../contracts";
+import type { OtpRuntime } from "../../runtime-tools/families/otp-runtime";
 
 export type AutomationRuntime = AutomationStoreRuntime &
   AutomationRouterRuntime &

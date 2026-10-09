@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { posix } from "node:path";
 
+import type { JsonValue } from "@fragno-dev/backoffice-api/v0/shared/json";
 import {
   findTextLineIndex,
   getStaticGlobPrefix,
@@ -29,7 +30,6 @@ import { inferFileContentType } from "@/file-collection/file-content-type";
 import { systemFileCollection } from "@/files/content/system";
 import { UPLOAD_PROVIDER_DATABASE } from "@/fragno/upload";
 import { createUploadRouteCaller, type UploadRouteCaller } from "@/fragno/upload-server";
-import type { JsonValue } from "@/lib/zod/json-value";
 
 const UPLOAD_MOUNT_POINT = "/workspace";
 const STATIC_MOUNT_POINT = "/static";

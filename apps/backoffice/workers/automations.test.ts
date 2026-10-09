@@ -1,5 +1,8 @@
 import { assert, describe, expect, test, vi } from "vitest";
 
+import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+
 import { unavailableBackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
 import {
   createBackofficeRequestExecution,
@@ -12,14 +15,10 @@ import {
 import { createInMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
 import { BackofficeKernel, noopBackofficeKernelObserver } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
-import {
-  BACKOFFICE_PERMISSION,
-  BACKOFFICE_REQUIRED_PERMISSION_HEADER,
-} from "@/backoffice-runtime/permissions";
+import { BACKOFFICE_REQUIRED_PERMISSION_HEADER } from "@/backoffice-runtime/required-permission-header";
 import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
 import { createAutomationRuntimeExecution } from "@/fragno/automation/authority";
 import { readAutomationScript } from "@/fragno/automation/automation-source";
-import type { AutomationEvent } from "@/fragno/automation/contracts";
 import {
   CODEMODE_CAPABILITY_ACTOR,
   CODEMODE_WORKFLOW,

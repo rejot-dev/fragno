@@ -1,10 +1,10 @@
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { createRouteCaller } from "@fragno-dev/core/api";
 import type { InstanceStatus } from "@fragno-dev/workflows/workflow";
 import type { RouterContextProvider } from "react-router";
 
 import type { createWorkflowsFragment } from "@fragno-dev/workflows";
 
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { getScopedAutomationsDurableObject } from "@/worker-runtime/durable-objects";
 

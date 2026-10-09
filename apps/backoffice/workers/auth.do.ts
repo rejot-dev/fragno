@@ -1,3 +1,18 @@
+import type {
+  AccountInvitationRecord,
+  AccountProfile,
+  OAuthConsentPage,
+} from "@fragno-dev/backoffice-api/v0/account";
+import {
+  type OrganizationRole,
+  organizationRoleSchema,
+  type OrganizationInvitationRecord,
+  type OrganizationMemberPage,
+  type OrganizationMembershipRecord,
+  type OrganizationRecord,
+} from "@fragno-dev/backoffice-api/v0/organization";
+import type { DirectoryPageInput } from "@fragno-dev/backoffice-api/v0/shared/pagination";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { DurableObjectDialect } from "@fragno-dev/db/dialects/durable-object";
 import { betterAuth, type BetterAuthOptions } from "better-auth";
 import { APIError } from "better-auth/api";
@@ -8,7 +23,6 @@ import { z } from "zod";
 import { extractW3CRequestPropagationContext } from "@fragno-dev/core";
 
 import type { BackofficeRuntimeEnv } from "@/backoffice-runtime/backoffice-runtime-env";
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import type {
   AdminOrganizationMemberRecord,
   AdminOrganizationRecord,
@@ -31,9 +45,7 @@ import {
   type OrganizationHooks,
   type OrganizationInvitation,
   type OrganizationMember,
-  type OrganizationRole,
   type Role,
-  organizationRoleSchema,
   resolveLiveAccessTokenSecret,
   splitOrganizationRoles,
   type UserAuthorityFacts,
@@ -44,17 +56,7 @@ import {
   type VerifyUserEmailInput,
   type VerifyUserEmailResult,
 } from "@/fragno/auth/contracts";
-import type {
-  AccountInvitationRecord,
-  AccountProfile,
-  DirectoryPageInput,
-  OrganizationInvitationPage,
-  OrganizationInvitationRecord,
-  OrganizationMemberPage,
-  OrganizationMembershipRecord,
-  OrganizationPage,
-  OrganizationRecord,
-} from "@/fragno/auth/directory-records";
+import type { OrganizationInvitationPage, OrganizationPage } from "@/fragno/auth/directory-records";
 import {
   backofficeExecutionTokenExchangeInputSchema,
   type BackofficeExecutionTokenExchangeInput,
@@ -75,7 +77,6 @@ import {
   type BackofficeOAuthClientUpdateInput,
   type BackofficeOAuthClientUpdateResult,
 } from "@/fragno/auth/oauth-client";
-import type { BackofficeOAuthConsentPage } from "@/fragno/auth/oauth-consent";
 import { issueAppInstallationCode } from "@/fragno/auth/token-lifecycle";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 import {
@@ -1798,7 +1799,7 @@ export class InMemoryAuthObject implements AuthObject {
 
   async listAccountOAuthConsents(
     input: { userId: string } & DirectoryPageInput,
-  ): Promise<BackofficeOAuthConsentPage> {
+  ): Promise<OAuthConsentPage> {
     const { adapter } = await this.#authContext();
     return await listBackofficeOAuthConsentPage(adapter, input);
   }

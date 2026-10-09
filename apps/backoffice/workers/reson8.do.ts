@@ -1,7 +1,7 @@
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { DurableObject } from "cloudflare:workers";
 import { z } from "zod";
 
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import { createBackofficeFragmentHttpTransport } from "@/backoffice-runtime/fragment-http-transport";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import {

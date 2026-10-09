@@ -1,13 +1,13 @@
+import {
+  marketplaceListingMetadataSchema,
+  marketplaceSlugSchema,
+  marketplaceVersionSchema,
+} from "@fragno-dev/backoffice-api/v0/marketplace";
 import { z } from "zod";
 
 import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
 import { sha256Hex } from "@/lib/crypto";
 
-import {
-  marketplaceListingMetadataSchema,
-  marketplaceSlugSchema,
-  marketplaceVersionSchema,
-} from "./contracts";
 import {
   MARKETPLACE_RELEASE_LIMITS,
   MARKETPLACE_RELEASE_GUARD_PATH,

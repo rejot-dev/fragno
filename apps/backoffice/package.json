@@ -55,6 +55,7 @@
     "@earendil-works/pi-ai": "1.0.0",
     "@earendil-works/pi-durable": "1.0.0",
     "@fragno-dev/api-fragment": "workspace:*",
+    "@fragno-dev/backoffice-api": "workspace:*",
     "@fragno-dev/cloudflare-fragment": "workspace:*",
     "@fragno-dev/codemode": "workspace:*",
     "@fragno-dev/core": "workspace:*",

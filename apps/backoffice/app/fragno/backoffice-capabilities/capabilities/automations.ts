@@ -1,10 +1,10 @@
+import { automationScheduleCadenceSchema } from "@fragno-dev/backoffice-api/v0/automation";
 import { z } from "zod";
 
 import type {
   AutomationsDurableHookFragment,
   AutomationsObject,
 } from "@/backoffice-runtime/object-registry";
-import { automationScheduleCadenceSchema } from "@/fragno/automation/route-triggers";
 import type { BackofficeCapability } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 import { createDurableHookRepositoryFromCommands } from "@/fragno/durable-hook-command-repository";
 import type { DurableHookRepository } from "@/fragno/durable-hooks";

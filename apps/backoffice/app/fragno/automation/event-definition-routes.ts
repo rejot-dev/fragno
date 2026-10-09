@@ -1,15 +1,15 @@
+import {
+  automationEventDefinitionCreateInputSchema,
+  automationEventDefinitionSchema,
+  automationEventDefinitionUpdatePayloadSchema,
+} from "@fragno-dev/backoffice-api/v0/events";
 import { z } from "zod";
 
 import { defineRoutes } from "@fragno-dev/core";
 import { isUniqueConstraintError } from "@fragno-dev/db";
 
 import { automationFragmentDefinition } from "./definition";
-import {
-  AutomationEventDefinitionValidationError,
-  automationEventDefinitionCreateInputSchema,
-  automationEventDefinitionSchema,
-  automationEventDefinitionUpdatePayloadSchema,
-} from "./event-definitions";
+import { AutomationEventDefinitionValidationError } from "./event-definitions";
 
 export const automationEventDefinitionRoutes = defineRoutes(automationFragmentDefinition).create(
   ({ defineRoute, services }) => [

@@ -1,4 +1,8 @@
 import { Tabs } from "@base-ui/react/tabs";
+import type {
+  AutomationEventMatcher,
+  AutomationRouteDefinition,
+} from "@fragno-dev/backoffice-api/v0/automation";
 import { Icon } from "@fragno-private/design-system/icon";
 import { UnderlineTab, UnderlineTabList } from "@fragno-private/design-system/underline-tabs";
 import type { ReactNode } from "react";
@@ -6,10 +10,6 @@ import { Streamdown } from "streamdown";
 
 import { visualizeWorkflowSource } from "@fragno-dev/workflow-visualizer-tokens";
 
-import type {
-  AutomationEventMatcher,
-  AutomationRouteDefinition,
-} from "@/fragno/automation/routing";
 import type { ResolvedWorkflowRuntimeToolCall } from "@/fragno/runtime-tools/workflow-catalog";
 import { parseFrontmatter } from "@/lib/frontmatter";
 import { formatTimestampInTimeZone } from "@/routes/backoffice/automations/formatting";

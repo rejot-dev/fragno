@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 
-import type { PreparedUploadedFileReference } from "@/fragno/prepared-upload";
+import type { PreparedUploadedFileReference } from "@fragno-dev/backoffice-api/v0/upload";
 
 import {
   createTrustedSystemBackofficeToolContext,

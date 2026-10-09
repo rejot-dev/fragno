@@ -1,7 +1,7 @@
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { IFileSystem } from "just-bash";
 import type { RouterContextProvider } from "react-router";
 
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { createRuntimeStateBackend } from "@/fragno/codemode/runtime-state-backend";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";

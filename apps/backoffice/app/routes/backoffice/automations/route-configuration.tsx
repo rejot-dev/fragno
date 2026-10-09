@@ -1,12 +1,11 @@
-import { Icon } from "@fragno-private/design-system/icon";
-import type { ReactNode } from "react";
-
 import type {
   AutomationActorMatcher,
   AutomationEventMatcher,
   AutomationRouteScopeTemplate,
   AutomationWorkflowEventTarget,
-} from "@/fragno/automation/routing";
+} from "@fragno-dev/backoffice-api/v0/automation";
+import { Icon } from "@fragno-private/design-system/icon";
+import type { ReactNode } from "react";
 
 type AutomationRouteTarget = AutomationRouteScopeTemplate | AutomationWorkflowEventTarget;
 

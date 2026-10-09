@@ -1,5 +1,3 @@
-import { z } from "zod";
-
 import {
   getHookScope,
   listHookScopes,
@@ -8,23 +6,21 @@ import type { DurableHookQueueResponse } from "@/fragno/durable-hooks";
 import { defineCliArgsParser } from "@/fragno/runtime-tools/bash-cli";
 
 import {
+  backofficeApiOperationToolFields,
   defineBackofficeRuntimeTool,
   defineBackofficeRuntimeToolFamily,
   type BackofficeToolContext,
 } from "../runtime-tools";
 
-const durableHookFragmentSchema = z
-  .string()
-  .trim()
-  .min(1)
-  .superRefine((value, context) => {
-    if (!getHookScope(value)) {
-      context.addIssue({
-        code: "custom",
-        message: `Unknown hook fragment '${value}'. Run hooks.scopes.list to discover available hook scopes.`,
-      });
-    }
-  });
+/** Hook fragments come from Backoffice's capability registry, which the API contract cannot know. */
+function requireKnownHookFragment(fragment: string): string {
+  if (!getHookScope(fragment)) {
+    throw new Error(
+      `Unknown hook fragment '${fragment}'. Run hooks.scopes.list to discover available hook scopes.`,
+    );
+  }
+  return fragment;
+}
 
 export type DurableHookFragment = string;
 
@@ -50,26 +46,6 @@ type DurableHooksToolContext = BackofficeToolContext<{
   durableHooks?: DurableHooksRuntime;
 }>;
 
-const durableHookRecordSchema = z.object({
-  id: z.string(),
-  hookName: z.string(),
-  status: z.string(),
-  attempts: z.number(),
-  maxAttempts: z.number(),
-  lastAttemptAt: z.string().nullable(),
-  nextRetryAt: z.string().nullable(),
-  createdAt: z.string().nullable(),
-  error: z.string().nullable(),
-  payload: z.unknown(),
-});
-const durableHookQueueResponseSchema = z.object({
-  configured: z.boolean(),
-  hooksEnabled: z.boolean(),
-  namespace: z.string().nullable(),
-  items: z.array(durableHookRecordSchema),
-  cursor: z.string().optional(),
-  hasNextPage: z.boolean(),
-});
 const getDurableHooksRuntime = (
   runtime: DurableHooksToolContext["runtimes"]["durableHooks"],
 ): DurableHooksRuntime => {
@@ -109,19 +85,15 @@ const formatDurableHookRecord = (
 };
 
 const listHooksTool = defineBackofficeRuntimeTool({
-  id: "hooks.list",
+  ...backofficeApiOperationToolFields("hooks.list"),
   namespace: "hooks",
   name: "list",
-  description: "List durable hook queue entries for a runtime fragment.",
   requiredPermissions: ["read"],
-  inputSchema: z.object({
-    fragment: durableHookFragmentSchema,
-    cursor: z.string().trim().min(1).optional(),
-    pageSize: z.number().int().positive().optional(),
-  }),
-  outputSchema: durableHookQueueResponseSchema,
   execute: async (input, context: DurableHooksToolContext) =>
-    await getDurableHooksRuntime(context.runtimes.durableHooks).listHooks(input),
+    await getDurableHooksRuntime(context.runtimes.durableHooks).listHooks({
+      ...input,
+      fragment: requireKnownHookFragment(input.fragment),
+    }),
   adapters: {
     bash: {
       command: "hooks.list",
@@ -156,7 +128,7 @@ const listHooksTool = defineBackofficeRuntimeTool({
         ],
       },
       parse: defineCliArgsParser<DurableHooksListArgs>("hooks.list", {
-        fragment: { required: true, transform: (value) => durableHookFragmentSchema.parse(value) },
+        fragment: { required: true, transform: (value) => requireKnownHookFragment(value.trim()) },
         cursor: {},
         pageSize: { kind: "positiveInteger" },
       }),
@@ -166,15 +138,15 @@ const listHooksTool = defineBackofficeRuntimeTool({
 });
 
 const getHookTool = defineBackofficeRuntimeTool({
-  id: "hooks.get",
+  ...backofficeApiOperationToolFields("hooks.get"),
   namespace: "hooks",
   name: "get",
-  description: "Get a durable hook queue entry by id.",
   requiredPermissions: ["read"],
-  inputSchema: z.object({ fragment: durableHookFragmentSchema, hookId: z.string().trim().min(1) }),
-  outputSchema: durableHookRecordSchema.nullable(),
   execute: async (input, context: DurableHooksToolContext) =>
-    await getDurableHooksRuntime(context.runtimes.durableHooks).getHook(input),
+    await getDurableHooksRuntime(context.runtimes.durableHooks).getHook({
+      ...input,
+      fragment: requireKnownHookFragment(input.fragment),
+    }),
   adapters: {
     bash: {
       command: "hooks.get",
@@ -199,7 +171,7 @@ const getHookTool = defineBackofficeRuntimeTool({
         examples: ["hooks.get --fragment automations --hook-id hook_123 --format json"],
       },
       parse: defineCliArgsParser<DurableHooksGetArgs>("hooks.get", {
-        fragment: { required: true, transform: (value) => durableHookFragmentSchema.parse(value) },
+        fragment: { required: true, transform: (value) => requireKnownHookFragment(value.trim()) },
         hookId: { required: true },
       }),
       format: formatDurableHookRecord,

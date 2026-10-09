@@ -1,12 +1,14 @@
 import {
-  projectConnectorAccountsSchema,
-  projectConnectorConnectInputSchema,
-  projectConnectorConnectionSchema,
-  projectConnectorExecutionSchema,
-  projectConnectorProfileSchema,
+  accountsInputSchema,
+  actionInputSchema,
+  connectInputSchema,
+  profileInputSchema,
+  providerActionsInputSchema,
+  requestInputSchema,
+} from "@fragno-dev/backoffice-api/v0/connector";
+import {
   projectConnectorProviderActionsSchema,
   projectConnectorProviderConfigsSchema,
-  projectConnectorStatusSchema,
 } from "@fragno-dev/project-connector-fragment/contracts";
 import { z } from "zod";
 
@@ -19,30 +21,13 @@ import {
   type ParsedCliTokens,
 } from "../bash-cli";
 import {
+  backofficeApiOperationToolFields,
   defineBackofficeRuntimeTool,
   defineBackofficeRuntimeToolFamily,
   type BackofficeToolContext,
 } from "../runtime-tools";
 import type { ProjectConnectorRuntime } from "./project-connector-runtime";
 
-const connectInputSchema = z.union([
-  projectConnectorConnectInputSchema.options[0].omit({ returnUri: true }),
-  projectConnectorConnectInputSchema.options[1].omit({ returnUri: true }),
-]);
-const requestInputSchema = z.strictObject({ requestId: z.string().min(1) });
-const accountsInputSchema = z
-  .strictObject({ cursor: z.string().nullable().default(null) })
-  .optional()
-  .default({ cursor: null });
-const profileInputSchema = z.strictObject({ accountId: z.string().min(1) });
-const actionInputSchema = profileInputSchema.extend({
-  actionId: z.string().min(1),
-  input: z.record(z.string(), z.unknown()),
-});
-const providerActionsInputSchema = z.strictObject({
-  providerConfigId: projectConnectorProviderActionsSchema.shape.providerConfigId,
-});
-const noInputSchema = z.void();
 type ProjectConnectorToolContext = BackofficeToolContext<{
   projectConnector: ProjectConnectorRuntime | undefined;
 }>;
@@ -129,15 +114,11 @@ export const projectConnectorToolFamily = defineBackofficeRuntimeToolFamily({
   isAvailable: (context: ProjectConnectorToolContext) => !!context.runtimes.projectConnector,
   tools: [
     defineBackofficeRuntimeTool({
-      id: "connector.providers.list",
+      ...backofficeApiOperationToolFields("connector.providers.list"),
       namespace: "connector",
       name: "listProviderConfigs",
       capabilityId: "connector",
-      description:
-        "List the project's OAuth provider configuration overviews without action IDs. Use listProviderActions for a selected providerConfigId; discovery does not verify user accounts.",
       requiredPermissions: ["providers.read"],
-      inputSchema: noInputSchema,
-      outputSchema: projectConnectorProviderConfigsSchema,
       execute: async (_input, context: ProjectConnectorToolContext) =>
         await getProjectConnectorRuntime(context).listProviderConfigs(),
       adapters: {
@@ -156,15 +137,11 @@ export const projectConnectorToolFamily = defineBackofficeRuntimeToolFamily({
       },
     }),
     defineBackofficeRuntimeTool({
-      id: "connector.providers.actions",
+      ...backofficeApiOperationToolFields("connector.providers.actions"),
       namespace: "connector",
       name: "listProviderActions",
       capabilityId: "connector",
-      description:
-        "List authoritative action definitions, including input/output JSON Schemas, allowed by one exact OAuth provider configuration. Catalog discovery never grants execution permission.",
       requiredPermissions: ["providers.read"],
-      inputSchema: providerActionsInputSchema,
-      outputSchema: projectConnectorProviderActionsSchema,
       getResource: (input) => ({ providerConfigId: input.providerConfigId }),
       execute: async (input, context: ProjectConnectorToolContext) =>
         await getProjectConnectorRuntime(context).listProviderActions(input),
@@ -197,15 +174,11 @@ export const projectConnectorToolFamily = defineBackofficeRuntimeToolFamily({
       },
     }),
     defineBackofficeRuntimeTool({
-      id: "connector.status",
+      ...backofficeApiOperationToolFields("connector.status"),
       namespace: "connector",
       name: "check",
       capabilityId: "connector",
-      description:
-        "Check gateway project-key authentication, not individual provider availability.",
       requiredPermissions: ["accounts.read"],
-      inputSchema: noInputSchema,
-      outputSchema: projectConnectorStatusSchema,
       execute: async (_input, context: ProjectConnectorToolContext) =>
         await getProjectConnectorRuntime(context).check(),
       adapters: {
@@ -222,15 +195,11 @@ export const projectConnectorToolFamily = defineBackofficeRuntimeToolFamily({
       },
     }),
     defineBackofficeRuntimeTool({
-      id: "connector.connect",
+      ...backofficeApiOperationToolFields("connector.connect"),
       namespace: "connector",
       name: "connect",
       capabilityId: "connector",
-      description:
-        "Start provider OAuth for the owning user. Return the authorization URL and retain the request ID for refresh.",
       requiredPermissions: ["connections.create"],
-      inputSchema: connectInputSchema,
-      outputSchema: projectConnectorConnectionSchema,
       execute: async (input, context: ProjectConnectorToolContext) =>
         await getProjectConnectorRuntime(context).connect(input),
       adapters: {
@@ -264,15 +233,11 @@ export const projectConnectorToolFamily = defineBackofficeRuntimeToolFamily({
       },
     }),
     defineBackofficeRuntimeTool({
-      id: "connector.connections.refresh",
+      ...backofficeApiOperationToolFields("connector.connections.refresh"),
       namespace: "connector",
       name: "refreshConnection",
       capabilityId: "connector",
-      description:
-        "Verify a saved OAuth request against the gateway and persist a confirmed account binding. Callback query parameters are not proof.",
       requiredPermissions: ["connections.create"],
-      inputSchema: requestInputSchema,
-      outputSchema: projectConnectorConnectionSchema,
       getResource: (input) => ({ requestId: input.requestId }),
       execute: async (input, context: ProjectConnectorToolContext) =>
         await getProjectConnectorRuntime(context).refreshConnection(input),
@@ -300,14 +265,11 @@ export const projectConnectorToolFamily = defineBackofficeRuntimeToolFamily({
       },
     }),
     defineBackofficeRuntimeTool({
-      id: "connector.accounts.list",
+      ...backofficeApiOperationToolFields("connector.accounts.list"),
       namespace: "connector",
       name: "listAccounts",
       capabilityId: "connector",
-      description: "List the owning user's locally verified accounts, one cursor page at a time.",
       requiredPermissions: ["accounts.read"],
-      inputSchema: accountsInputSchema,
-      outputSchema: projectConnectorAccountsSchema,
       execute: async (input, context: ProjectConnectorToolContext) =>
         await getProjectConnectorRuntime(context).listAccounts(input),
       adapters: {
@@ -333,15 +295,11 @@ export const projectConnectorToolFamily = defineBackofficeRuntimeToolFamily({
       },
     }),
     defineBackofficeRuntimeTool({
-      id: "connector.accounts.profile",
+      ...backofficeApiOperationToolFields("connector.accounts.profile"),
       namespace: "connector",
       name: "getProfile",
       capabilityId: "connector",
-      description:
-        "Read the provider identity of a verified account; this does not read Gmail messages.",
       requiredPermissions: ["accounts.read"],
-      inputSchema: profileInputSchema,
-      outputSchema: projectConnectorProfileSchema,
       getResource: (input) => ({ accountId: input.accountId }),
       execute: async (input, context: ProjectConnectorToolContext) =>
         await getProjectConnectorRuntime(context).getProfile(input),
@@ -369,15 +327,11 @@ export const projectConnectorToolFamily = defineBackofficeRuntimeToolFamily({
       },
     }),
     defineBackofficeRuntimeTool({
-      id: "connector.actions.execute",
+      ...backofficeApiOperationToolFields("connector.actions.execute"),
       namespace: "connector",
       name: "executeAction",
       capabilityId: "connector",
-      description:
-        "Execute an explicit provider action on a verified account. Actions can write external data and are never automatically retried.",
       requiredPermissions: ["actions.execute"],
-      inputSchema: actionInputSchema,
-      outputSchema: projectConnectorExecutionSchema,
       getResource: (input) => ({ accountId: input.accountId, actionId: input.actionId }),
       execute: async (input, context: ProjectConnectorToolContext) =>
         await getProjectConnectorRuntime(context).executeAction(input),

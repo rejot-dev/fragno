@@ -1,40 +1,23 @@
-import { z } from "zod";
+import type {
+  OrganizationInvitationLink,
+  OrganizationInvitationLinkPage,
+  OrganizationMemberPage,
+  OrganizationMembershipRecord,
+  OrganizationRecord,
+  OrganizationRole,
+} from "@fragno-dev/backoffice-api/v0/organization";
+import type { DirectoryPageInput } from "@fragno-dev/backoffice-api/v0/shared/pagination";
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 
-import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
-import { organizationRoleSchema, type OrganizationRole } from "@/fragno/auth/contracts";
-import {
-  directoryPageInputSchema,
-  organizationInvitationRecordSchema,
-  organizationMemberPageSchema,
-  organizationMembershipRecordSchema,
-  organizationRecordSchema,
-  type DirectoryPageInput,
-  type OrganizationMemberPage,
-  type OrganizationMembershipRecord,
-  type OrganizationPage,
-  type OrganizationRecord,
-} from "@/fragno/auth/directory-records";
+import type { OrganizationPage } from "@/fragno/auth/directory-records";
 import { defineCliArgsParser, defineNoInputArgsParser } from "@/fragno/runtime-tools/bash-cli";
 
 import {
+  backofficeApiOperationToolFields,
   defineBackofficeRuntimeTool,
   defineBackofficeRuntimeToolFamily,
   type BackofficeToolContext,
 } from "../runtime-tools";
-
-const organizationInvitationLinkSchema = organizationInvitationRecordSchema
-  .extend({ url: z.url() })
-  .meta({ id: "OrganizationInvitationLink" });
-type OrganizationInvitationLink = z.output<typeof organizationInvitationLinkSchema>;
-
-const organizationInvitationLinkPageSchema = z
-  .strictObject({
-    invitations: z.array(organizationInvitationLinkSchema),
-    nextCursor: z.string().nullable(),
-    hasNextPage: z.boolean(),
-  })
-  .meta({ id: "OrganizationInvitationLinkPage" });
-type OrganizationInvitationLinkPage = z.output<typeof organizationInvitationLinkPageSchema>;
 
 /** Acts on the scoped organization as the current user principal; neither is caller input. */
 export type OrganizationRuntime = {
@@ -130,13 +113,10 @@ function formatInvitationText(invitation: OrganizationInvitationLink): string {
 }
 
 const getOrganizationTool = defineBackofficeRuntimeTool({
-  id: "org.get",
+  ...backofficeApiOperationToolFields("org.get"),
   namespace: "org",
   name: "get",
-  description: "Read the current organization and your roles in it.",
   requiredPermissions: [BACKOFFICE_PERMISSION.org.read.permission],
-  inputSchema: z.void(),
-  outputSchema: organizationMembershipRecordSchema,
   execute: async (_input, context: OrganizationToolContext) =>
     await getOrganizationRuntime(context.runtimes.org).get(),
   adapters: {
@@ -160,13 +140,10 @@ const getOrganizationTool = defineBackofficeRuntimeTool({
 });
 
 const updateOrganizationTool = defineBackofficeRuntimeTool({
-  id: "org.update",
+  ...backofficeApiOperationToolFields("org.update"),
   namespace: "org",
   name: "update",
-  description: "Rename the current organization. Requires the owner or admin role.",
   requiredPermissions: [BACKOFFICE_PERMISSION.org.manage.permission],
-  inputSchema: z.strictObject({ name: z.string().trim().min(1) }),
-  outputSchema: organizationRecordSchema,
   execute: async (input, context: OrganizationToolContext) =>
     await getOrganizationRuntime(context.runtimes.org).update(input),
   adapters: {
@@ -194,14 +171,10 @@ const updateOrganizationTool = defineBackofficeRuntimeTool({
 });
 
 const listMembersTool = defineBackofficeRuntimeTool({
-  id: "org.members.list",
+  ...backofficeApiOperationToolFields("org.members.list"),
   namespace: "org",
   name: "membersList",
-  description:
-    "List members of the current organization with their roles, using cursor pagination.",
   requiredPermissions: [BACKOFFICE_PERMISSION.org.read.permission],
-  inputSchema: directoryPageInputSchema,
-  outputSchema: organizationMemberPageSchema,
   execute: async (input, context: OrganizationToolContext) =>
     await getOrganizationRuntime(context.runtimes.org).listMembers(input),
   adapters: {
@@ -226,14 +199,10 @@ const listMembersTool = defineBackofficeRuntimeTool({
 });
 
 const listInvitationsTool = defineBackofficeRuntimeTool({
-  id: "org.invitations.list",
+  ...backofficeApiOperationToolFields("org.invitations.list"),
   namespace: "org",
   name: "invitationsList",
-  description:
-    "List pending, unexpired invitations to the current organization with their shareable links, using cursor pagination.",
   requiredPermissions: [BACKOFFICE_PERMISSION.org.read.permission],
-  inputSchema: directoryPageInputSchema,
-  outputSchema: organizationInvitationLinkPageSchema,
   execute: async (input, context: OrganizationToolContext) =>
     await getOrganizationRuntime(context.runtimes.org).listInvitations(input),
   adapters: {
@@ -268,17 +237,10 @@ const listInvitationsTool = defineBackofficeRuntimeTool({
 });
 
 const createInvitationTool = defineBackofficeRuntimeTool({
-  id: "org.invitations.create",
+  ...backofficeApiOperationToolFields("org.invitations.create"),
   namespace: "org",
   name: "invitationsCreate",
-  description:
-    "Invite an email address to the current organization and return a shareable link. Invitations are not emailed. Requires the owner or admin role; only owners may invite owners.",
   requiredPermissions: [BACKOFFICE_PERMISSION.org.manage.permission],
-  inputSchema: z.strictObject({
-    email: z.string().trim().toLowerCase().pipe(z.email()),
-    roles: z.array(organizationRoleSchema).min(1),
-  }),
-  outputSchema: organizationInvitationLinkSchema,
   execute: async (input, context: OrganizationToolContext) =>
     await getOrganizationRuntime(context.runtimes.org).createInvitation(input),
   adapters: {

@@ -1,3 +1,4 @@
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { createRouteCaller } from "@fragno-dev/core/api";
 import type { RouterContextProvider } from "react-router";
 
@@ -22,7 +23,6 @@ import type {
   ResendThreadSummary,
 } from "@fragno-dev/resend-fragment";
 
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import type { ResendFragment } from "@/fragno/resend";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";

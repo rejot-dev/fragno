@@ -1,6 +1,6 @@
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { z } from "zod";
 
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import type {
   BackofficeObjectBindingName,
   BackofficeObjectRegistry,

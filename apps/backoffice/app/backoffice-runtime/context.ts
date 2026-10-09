@@ -1,19 +1,14 @@
+import {
+  automationActorsSchema,
+  type AutomationActors,
+} from "@fragno-dev/backoffice-api/v0/automation";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
 
 import type { Role } from "@/fragno/auth/contracts";
-import {
-  automationActorsSchema,
-  AUTOMATION_SYSTEM_INITIATOR,
-  type AutomationActors,
-} from "@/fragno/automation/actors";
+import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 
 import type { BackofficeInternalServiceAuthorityRole } from "./authority-roles";
-
-export type BackofficeContextScope =
-  | { kind: "system" }
-  | { kind: "org"; orgId: string }
-  | { kind: "user"; userId: string }
-  | { kind: "project"; orgId: string; projectId: string };
 
 /** Validates a serialized Backoffice execution scope at an HTTP or storage boundary. */
 export const backofficeContextScopeSchema = z.discriminatedUnion("kind", [

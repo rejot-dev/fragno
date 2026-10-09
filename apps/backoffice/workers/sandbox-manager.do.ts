@@ -1,14 +1,14 @@
+import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { DurableObject, RpcTarget } from "cloudflare:workers";
 
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import {
   requireBackofficeContextScopeFromDurableObjectId,
   type SandboxManagerObject,
 } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
-import type { AutomationEvent } from "@/fragno/automation/contracts";
 import type {
   SandboxInstanceRecord,
   SandboxInstanceRequestInput,

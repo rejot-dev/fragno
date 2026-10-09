@@ -1,9 +1,9 @@
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import { createRouteCaller } from "@fragno-dev/core/api";
 
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectHandle, TelegramObject } from "@/backoffice-runtime/object-registry";
-import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import { telegramAutomationFileDownloadPath } from "@/backoffice-runtime/telegram-file-response";
 import type {
   TelegramRuntime,

@@ -1,76 +1,20 @@
-import type { BackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
-import type {
-  BackofficeContextScope,
-  BackofficeExecutionContext,
-} from "@/backoffice-runtime/context";
-import {
-  allBackofficePermissionRequirements,
-  type BackofficePermissionRequirement,
-} from "@/backoffice-runtime/permissions";
-
+import type { AutomationAuthorityMode } from "@fragno-dev/backoffice-api/v0/automation";
 import {
   automationActorsSchema,
   automationEntityRefsEqual,
   type AutomationActor,
   type AutomationActors,
-} from "./actors";
-import type { AutomationEvent } from "./contracts";
-import type { AutomationRouteDefinition } from "./routing";
+  type AutomationRouteDefinition,
+} from "@fragno-dev/backoffice-api/v0/automation";
+import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
+import {
+  allBackofficePermissionRequirements,
+  type BackofficePermissionRequirement,
+} from "@fragno-dev/backoffice-api/v0/shared/permissions";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
-/**
- * Explicit grants narrow the user's authority. `inherit` leaves the user's current permissions
- * unrestricted by the route delegate.
- */
-type AutomationUserRouteGrants = readonly BackofficePermissionRequirement[] | "inherit";
-
-/**
- * Selects whose current permissions authorize protected work started by an automation route.
- *
- * A delegate is an additional capability boundary, not an impersonated principal. The kernel
- * requires both the principal and every delegate to grant an operation, so delegation can narrow
- * authority but can never give the principal permissions they do not already have.
- */
-export type AutomationAuthorityMode =
-  | {
-      /**
-       * Run on behalf of the internal user principal carried by the triggering event.
-       *
-       * The user remains the principal and the stable route automation identity is appended as a
-       * delegate. For each protected operation, the authority resolver looks up the user's current
-       * role, status, and organization membership, then resolves the internal automation delegate
-       * from the owning route's current grants. The kernel requires both resulting grant sets to
-       * contain the operation. Missing, disabled, or changed routes and missing, invalid, banned,
-       * or no-longer-authorized users therefore fail closed. The delegate can restrict but never
-       * elevate the user.
-       */
-      kind: "delegated-user";
-      grants: AutomationUserRouteGrants;
-    }
-  | {
-      /**
-       * Resolve the external initiator's active identity binding before starting the workflow.
-       *
-       * The linked internal user becomes the principal and the stable route automation identity is
-       * appended as a delegate. Events without an active binding do not start the workflow.
-       */
-      kind: "linked-user";
-      grants: AutomationUserRouteGrants;
-    }
-  | {
-      /**
-       * Run as an organization-owned automation independently of the triggering user's authority.
-       *
-       * The stable `automation-route:<routeId>` identity becomes the principal while the original
-       * initiator remains provenance and supplies no authority. For each protected operation, the
-       * authority resolver reads the owning route's current grants. The stable route ID provides
-       * identity for persistence and auditing while making grant changes and route disablement
-       * visible to already-running workflows. The route can therefore continue after its creator or
-       * triggering user loses organization access, while remaining limited to its current explicit
-       * grants.
-       */
-      kind: "organization-automation";
-      grants: readonly BackofficePermissionRequirement[];
-    };
+import type { BackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
+import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 
 export type AutomationRuntimeAuthority = Readonly<{
   mode: AutomationAuthorityMode;

@@ -4,13 +4,12 @@ import type {
   BackofficeAppInstallationMutationResult,
   BackofficeAppInstallationPage,
   BackofficeAppInstallationPageInput,
-  BackofficeAppInstallationsCommands,
-} from "@/fragno/app-installations/contracts";
-import type {
   BackofficeApp,
   BackofficeAppLookupInput,
-  BackofficeAppsCommands,
-} from "@/fragno/apps/contracts";
+} from "@fragno-dev/backoffice-api/v0/apps";
+
+import type { BackofficeAppInstallationsCommands } from "@/fragno/app-installations/contracts";
+import type { BackofficeAppsCommands } from "@/fragno/apps/contracts";
 import { requireBackofficeAppOperationValue } from "@/fragno/apps/errors";
 
 export type AppsRuntime = {

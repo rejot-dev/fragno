@@ -1,6 +1,5 @@
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { column, idColumn, schema, type Column } from "@fragno-dev/db/schema";
-
-import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 
 import type { BillingMeasurementInput } from "./contracts";
 

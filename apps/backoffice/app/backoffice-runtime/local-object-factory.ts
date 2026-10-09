@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import type { PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
 import type { FragmentDurableObjectHostOperations } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 
 import type { Storage } from "@earendil-works/pi-durable";
@@ -11,7 +12,6 @@ import type { AutomationSourceReader } from "@/fragno/automation/automation-sour
 import {
   piAgentObjectName,
   type PiAgent,
-  type PiAgentConfig,
   type PiAvailableModel,
 } from "@/fragno/pi-manager/pi-agent-contract";
 import type { CreateSandboxRuntimeProviders } from "@/sandbox/contracts";
