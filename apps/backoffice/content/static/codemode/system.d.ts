@@ -14,7 +14,6 @@
 /// <reference path="/static/codemode/providers/workflow.d.ts" />
 /// <reference path="/static/codemode/providers/events.d.ts" />
 /// <reference path="/static/codemode/providers/forms.d.ts" />
-/// <reference path="/static/codemode/providers/github.d.ts" />
 /// <reference path="/static/codemode/providers/cloudflare.d.ts" />
 /// <reference path="/static/codemode/providers/web.d.ts" />
 /// <reference path="/static/codemode/providers/api.d.ts" />
@@ -53,7 +52,6 @@ interface BackofficeCodemodeScopedProviders {
   workflow: WorkflowCodemodeProvider;
   events: EventsCodemodeProvider;
   forms: FormsCodemodeProvider;
-  github: GithubCodemodeProvider;
   cloudflare: CloudflareCodemodeProvider;
   web: WebCodemodeProvider;
   api: ApiCodemodeProvider;

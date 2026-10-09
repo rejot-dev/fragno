@@ -54,7 +54,6 @@ import { createCloudflareRuntime } from "@/fragno/runtime-tools/families/cloudfl
 import { createEventCatalogRuntime } from "@/fragno/runtime-tools/families/event-catalog";
 import { createEventRuntime } from "@/fragno/runtime-tools/families/event-runtime";
 import { createFormsRuntime } from "@/fragno/runtime-tools/families/forms-runtime";
-import { createGitHubRuntime } from "@/fragno/runtime-tools/families/github-runtime";
 import { createIntegrationsRuntime } from "@/fragno/runtime-tools/families/integrations/integrations-runtime";
 import { createInternalRuntime } from "@/fragno/runtime-tools/families/internal";
 import { createJavaScriptRuntime } from "@/fragno/runtime-tools/families/javascript-runtime";
@@ -435,17 +434,6 @@ export const createRouteBackedRuntimeContext = ({
                 }
               : null;
           })()
-        : null,
-    github:
-      runtime.config.bindings.github && org
-        ? {
-            runtime: createGitHubRuntime(
-              authorizedBackofficeObjectHttp(
-                runtime.objects.github.forOrg(org.orgId).http,
-                execution,
-              ),
-            ),
-          }
         : null,
     internal: internalScope
       ? {
