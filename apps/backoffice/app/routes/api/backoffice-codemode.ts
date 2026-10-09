@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { requireBackofficeContextScopeFromRouteParams } from "@/backoffice-runtime/scope-codec";
-import { authorizeBackofficeCodemodeContext } from "@/fragno/auth/backoffice-principal.server";
+import { authorizeBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { runBackofficeCodemode } from "@/fragno/codemode/execute";
 import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
@@ -23,7 +23,7 @@ export async function loader() {
 
 export async function action({ request, context, params }: Route.ActionArgs) {
   const scope = requireBackofficeContextScopeFromRouteParams(params);
-  const authorization = await authorizeBackofficeCodemodeContext(request, context, scope);
+  const authorization = await authorizeBackofficeContext(request, context, scope);
   if (!authorization.ok) {
     return authorization.response;
   }

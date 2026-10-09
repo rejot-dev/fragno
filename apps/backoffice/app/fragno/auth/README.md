@@ -151,8 +151,7 @@ The selected origin is preserved through configuration, browser approval links, 
 refresh, and execution-token exchange. `localhost` and `127.0.0.1` are distinct issuer and browser
 session origins; neither is rewritten to the other. Sign in using the same hostname as the CLI.
 
-Codemode HTTP entry points keep their `@rejot.dev` account restriction. That product restriction is
-not part of OAuth verification or generic execution-token issuance. System scope still requires a
+Codemode HTTP entry points authorize like every other scoped entry point: system scope requires a
 global administrator, and scoped runtime tools remain kernel-authorized.
 
 The browser `/api/auth/backoffice-token` session exchange reuses the same user-grant resolver and
