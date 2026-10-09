@@ -2,15 +2,17 @@ import {
   BACKOFFICE_PERMISSION,
   type BackofficePermissionRequirement,
 } from "@fragno-dev/backoffice-api/v0/shared/permissions";
-import { backofficeScopePathSegment } from "@fragno-dev/backoffice-api/v0/shared/scope";
-import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  type BackofficeContextScope,
+  backofficeContextScopesEqual,
+  backofficeScopeContains,
+  backofficeScopePathSegment,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import type { BackofficeAuthorityResolver } from "./authority-resolver";
 import { resolveBackofficeInternalServiceAuthorityRole } from "./authority-roles";
 import {
-  backofficeContextScopesEqual,
   backofficeExecutionContextSchema,
-  backofficeScopeContains,
   backofficeExecutionScopeRestriction,
   type BackofficeExecutionContext,
 } from "./context";

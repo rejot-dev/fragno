@@ -1,10 +1,11 @@
 import type { AutomationActors } from "@fragno-dev/backoffice-api/v0/automation";
-
-import { authorizedBackofficeObjectHttp } from "@/backoffice-runtime/authorized-object-http";
 import {
   backofficeContextScopesEqual,
-  type BackofficeExecutionContext,
-} from "@/backoffice-runtime/context";
+  isBackofficeRoutableScope,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
+
+import { authorizedBackofficeObjectHttp } from "@/backoffice-runtime/authorized-object-http";
+import { type BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import { isBackofficeUnavailableError, type BackofficeKernel } from "@/backoffice-runtime/kernel";
 import { isBackofficeObjectAvailableInContext } from "@/backoffice-runtime/object-registry";
 import {
@@ -13,7 +14,6 @@ import {
 } from "@/backoffice-runtime/resolved-scope";
 import { backofficeRouteScopeSinglePathSegment } from "@/backoffice-runtime/route-scope";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
-import { isBackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import { createStaticFileCollection } from "@/file-collection/create-static-file-collection";
 import { createBackofficeStaticFileCollection } from "@/files/content/static";
 import {

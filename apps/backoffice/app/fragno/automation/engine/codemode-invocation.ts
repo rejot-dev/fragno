@@ -14,15 +14,15 @@ import {
   backofficePermissionRequirementSchema,
   type BackofficePermissionRequirement,
 } from "@fragno-dev/backoffice-api/v0/shared/permissions";
-import { backofficeContextScopeSchema } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  backofficeContextScopeSchema,
+  backofficeContextScopesEqual,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
 
 import { visualizeWorkflowSource } from "@fragno-dev/workflow-visualizer-tokens";
 
-import {
-  backofficeContextScopesEqual,
-  backofficeExecutionScopeRestriction,
-} from "@/backoffice-runtime/context";
+import { backofficeExecutionScopeRestriction } from "@/backoffice-runtime/context";
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { NpmDependencyMap } from "@/backoffice-runtime/dynamic-workers/npm-dependencies";
 

@@ -1,4 +1,5 @@
-import { backofficeContextScopeFromSinglePathSegment } from "@/backoffice-runtime/scope-codec";
+import { parseBackofficeScopePathSegment } from "@fragno-dev/backoffice-api/v0/shared/scope";
+
 import { authorizeBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { scopedPublicFragmentPathSuffix } from "@/fragno/scoped-public-fragment-routes";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
@@ -16,7 +17,7 @@ async function forwardToResend(
 
   let scope;
   try {
-    scope = backofficeContextScopeFromSinglePathSegment(scopeSegment);
+    scope = parseBackofficeScopePathSegment(scopeSegment);
   } catch {
     return new Response("Invalid Resend scope", { status: 404 });
   }

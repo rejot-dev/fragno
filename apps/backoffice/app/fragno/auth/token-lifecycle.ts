@@ -1,9 +1,10 @@
-import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  type BackofficeContextScope,
+  backofficeContextScopeSchema,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { signJWT } from "better-auth/plugins/jwt";
 import { createLocalJWKSet, errors, jwtVerify, type JSONWebKeySet } from "jose";
 import { z } from "zod";
-
-import { backofficeContextScopeSchema } from "@/backoffice-runtime/context";
 
 export const ACCESS_TOKEN_ISSUER = "fragno-backoffice-auth";
 export const ACCESS_TOKEN_AUDIENCE = "fragno-backoffice";

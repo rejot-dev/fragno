@@ -1,3 +1,4 @@
+import type { BackofficeRoutableScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { Button, ButtonLink } from "@fragno-private/design-system/button";
 import { Input } from "@fragno-private/design-system/input";
 import { useEffect } from "react";
@@ -13,7 +14,6 @@ import {
   useSearchParams,
 } from "react-router";
 
-import type { BackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import {
   type SandboxCommandResult,

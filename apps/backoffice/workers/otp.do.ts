@@ -1,5 +1,8 @@
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
-import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  type BackofficeContextScope,
+  backofficeContextScopesEqual,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { DurableObject } from "cloudflare:workers";
 import { z } from "zod";
@@ -9,7 +12,6 @@ import { otpSchema, type OtpConfirmedHookPayload } from "@fragno-dev/otp-fragmen
 
 import {
   createBackofficeServiceExecution,
-  backofficeContextScopesEqual,
   type BackofficeRequestExecution,
   type BackofficeDeferredExecution,
 } from "@/backoffice-runtime/context";

@@ -1,4 +1,8 @@
-import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  type BackofficeContextScope,
+  backofficeContextScopesEqual,
+  parseBackofficeScopePathSegment,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import {
   createFragmentDurableObjectHost,
   type FragmentDurableObjectHost,
@@ -13,8 +17,6 @@ import type { DurableHooksInstrumentation } from "@fragno-dev/db/hooks";
 
 import type { FragnoRequestLifecycleContext } from "@fragno-dev/core";
 
-import { backofficeContextScopesEqual } from "@/backoffice-runtime/context";
-import { backofficeContextScopeFromSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import {
   createUnconfiguredDurableHookQueueResponse,
   loadDurableHook,
@@ -312,7 +314,7 @@ const scopeFromRequestGuard = (request: Request) => {
   }
 
   try {
-    return { ok: true as const, scope: backofficeContextScopeFromSinglePathSegment(encodedScope) };
+    return { ok: true as const, scope: parseBackofficeScopePathSegment(encodedScope) };
   } catch {
     return { ok: false as const, response: invalidScopeGuardResponse("Invalid scope guard.") };
   }

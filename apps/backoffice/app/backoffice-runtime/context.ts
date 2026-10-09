@@ -2,25 +2,16 @@ import {
   automationActorsSchema,
   type AutomationActors,
 } from "@fragno-dev/backoffice-api/v0/automation";
-import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  type BackofficeContextScope,
+  backofficeContextScopeSchema,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
 
 import type { Role } from "@/fragno/auth/contracts";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 
 import type { BackofficeInternalServiceAuthorityRole } from "./authority-roles";
-
-/** Validates a serialized Backoffice execution scope at an HTTP or storage boundary. */
-export const backofficeContextScopeSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("system") }),
-  z.strictObject({ kind: z.literal("org"), orgId: z.string().trim().min(1) }),
-  z.strictObject({ kind: z.literal("user"), userId: z.string().trim().min(1) }),
-  z.strictObject({
-    kind: z.literal("project"),
-    orgId: z.string().trim().min(1),
-    projectId: z.string().trim().min(1),
-  }),
-]) satisfies z.ZodType<BackofficeContextScope>;
 
 export const backofficeContextScopeLabel = (scope: BackofficeContextScope): string => {
   switch (scope.kind) {
@@ -32,26 +23,6 @@ export const backofficeContextScopeLabel = (scope: BackofficeContextScope): stri
       return scope.userId;
     case "project":
       return `${scope.orgId} / ${scope.projectId}`;
-  }
-
-  throw new Error("Unsupported Backoffice context scope kind.");
-};
-
-export const backofficeContextScopesEqual = (
-  left: BackofficeContextScope,
-  right: BackofficeContextScope,
-): boolean => {
-  switch (left.kind) {
-    case "system":
-      return right.kind === "system";
-    case "org":
-      return right.kind === "org" && left.orgId === right.orgId;
-    case "user":
-      return right.kind === "user" && left.userId === right.userId;
-    case "project":
-      return (
-        right.kind === "project" && left.orgId === right.orgId && left.projectId === right.projectId
-      );
   }
 
   throw new Error("Unsupported Backoffice context scope kind.");
@@ -147,17 +118,6 @@ export function deferBackofficeExecution(
     actors: execution.actors,
     scopeRestriction: backofficeExecutionScopeRestriction(execution),
   };
-}
-
-/** A credential scope is an upper bound, not a selected organization or navigation preference. */
-export function backofficeScopeContains(
-  restriction: BackofficeContextScope,
-  target: BackofficeContextScope,
-): boolean {
-  return (
-    backofficeContextScopesEqual(restriction, target) ||
-    (restriction.kind === "org" && target.kind === "project" && restriction.orgId === target.orgId)
-  );
 }
 
 export const BACKOFFICE_SYSTEM_ACTORS = {

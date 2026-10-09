@@ -4,6 +4,7 @@ import {
   marketplacePublishResultSchema,
   type MarketplacePublishResult,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
+import type { BackofficeRoutableScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 vi.mock("cloudflare:workers", () => ({
   DurableObject: class {},
@@ -18,7 +19,6 @@ import {
   type BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
-import type { BackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import { createStaticFileCollection } from "@/file-collection/create-static-file-collection";
 import { MARKETPLACE_PACKAGE_PUBLISH_WORKFLOW_NAME } from "@/fragno/automation/marketplace-package-publish-workflow";
 import { createWorkflowsRouteCaller } from "@/fragno/automation/route-callers";

@@ -1,4 +1,7 @@
-import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  type BackofficeContextScope,
+  isBackofficeScopeParseError,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import {
   createContext,
   redirect,
@@ -12,7 +15,6 @@ import {
   backofficeRuntimeScopeFromResolvedScope,
   type BackofficeResolvedScope,
 } from "@/backoffice-runtime/resolved-scope";
-import { isBackofficeScopeCodecError } from "@/backoffice-runtime/scope-codec";
 import { createBackofficeExecutionForPrincipal } from "@/fragno/auth/backoffice-principal.server";
 import type {
   BackofficeAuthPrincipal,
@@ -83,7 +85,7 @@ export async function establishBackofficeShellRequest(
       organizations: me.organizations.map(({ organization }) => organization),
     });
   } catch (error) {
-    if (!isBackofficeScopeCodecError(error)) {
+    if (!isBackofficeScopeParseError(error)) {
       throw error;
     }
     resolvedScope = defaultScope;

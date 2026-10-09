@@ -6,7 +6,10 @@ import {
   type PiAgentConfig,
 } from "@fragno-dev/backoffice-api/v0/pi";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
-import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  type BackofficeContextScope,
+  backofficeContextScopesEqual,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { column, idColumn, schema, type Column } from "@fragno-dev/db/schema";
 import { z } from "zod";
 
@@ -14,7 +17,6 @@ import { defineFragment, defineRoutes, instantiate } from "@fragno-dev/core";
 import { decodeCursor, withDatabase, type FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
 
 import {
-  backofficeContextScopesEqual,
   backofficeExecutionScopeRestriction,
   type BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";

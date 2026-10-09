@@ -1,8 +1,8 @@
+import type { BackofficeRoutableScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { RouterContextProvider } from "react-router";
 
 import { fetchFragnoOutboxDescription } from "@fragno-dev/tanstack-db-adapter";
 
-import type { BackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { getBackofficeObjects } from "@/worker-runtime/durable-objects";
 

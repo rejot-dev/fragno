@@ -1,6 +1,6 @@
+import type { BackofficeRoutableScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { RouterContextProvider } from "react-router";
 
-import type { BackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import {
   createSandboxRuntime,
   type SandboxRuntime,

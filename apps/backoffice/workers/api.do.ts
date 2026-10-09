@@ -1,4 +1,7 @@
-import { backofficeRoutableScopeSchema } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  type BackofficeRoutableScope,
+  backofficeRoutableScopeSchema,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { DurableObject, RpcTarget } from "cloudflare:workers";
 
@@ -11,7 +14,6 @@ import {
   type ApiObject,
 } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
-import type { BackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import { createApiServer, type ApiConfig, type ApiFragment } from "@/fragno/api";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 import {

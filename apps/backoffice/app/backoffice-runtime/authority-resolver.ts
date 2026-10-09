@@ -6,9 +6,9 @@ import {
   allBackofficePermissionRequirements,
   type BackofficePermissionRequirement,
 } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+import { backofficeScopeContains } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import {
-  backofficeScopeContains,
   type BackofficeExecutionContext,
   type BackofficeRequestExecution,
 } from "@/backoffice-runtime/context";

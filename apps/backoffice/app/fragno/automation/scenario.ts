@@ -16,7 +16,10 @@ import {
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 import type { PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
 import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api/v0/shared/permissions";
-import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import type {
+  BackofficeContextScope,
+  BackofficeRoutableScope,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { workflowsSchema } from "@fragno-dev/workflows/schema";
 import { InMemoryFs, type IFileSystem } from "just-bash";
 
@@ -48,10 +51,7 @@ import type {
   BackofficeObjectAddress,
   BackofficeObjectBindingName,
 } from "@/backoffice-runtime/object-registry";
-import {
-  backofficeContextScopeRoutePath,
-  type BackofficeRoutableScope,
-} from "@/backoffice-runtime/scope-codec";
+import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
 import { createTelegramAutomationFileResponse } from "@/backoffice-runtime/telegram-file-response";
 import { WORKSPACE_STARTER_CONTENT } from "@/files/content/starter";
 import { STATIC_FILE_CONTENT } from "@/files/content/static";

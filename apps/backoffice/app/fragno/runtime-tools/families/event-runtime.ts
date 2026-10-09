@@ -3,9 +3,9 @@ import {
   type AutomationEvent,
   automationEventListResultSchema,
 } from "@fragno-dev/backoffice-api/v0/events";
+import { backofficeContextScopesEqual } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import {
-  backofficeContextScopesEqual,
   backofficeExecutionScopeRestriction,
   type BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";

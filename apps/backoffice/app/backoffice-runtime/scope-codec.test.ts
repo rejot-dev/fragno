@@ -1,16 +1,11 @@
-import { describe, expect, test, assert } from "vitest";
-
-import { backofficeScopePathSegment } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import { describe, expect, test } from "vitest";
 
 import {
   backofficeContextScopeFromRouteParams,
-  backofficeContextScopeFromSinglePathSegment,
   backofficeContextScopeRouteId,
   backofficeContextScopeRoutePath,
   backofficeScopeFromRouteParams,
   backofficeScopeFromSinglePathSegment,
-  BackofficeScopeCodecError,
-  isBackofficeScopeCodecError,
 } from "./scope-codec";
 
 describe("backoffice scope codec", () => {
@@ -21,21 +16,6 @@ describe("backoffice scope codec", () => {
     expect(routeId).toBe("org%3Aone:proj~two");
     expect(backofficeScopeFromRouteParams({ scopeKind: "project", scopeId: routeId })).toEqual(
       project,
-    );
-  });
-
-  test("requires explicit kind tags for single path segments", () => {
-    expect(backofficeScopeFromSinglePathSegment("user:alice")).toEqual({
-      kind: "user",
-      userId: "alice",
-    });
-    expect(backofficeScopeFromSinglePathSegment("org:user%3Aalice")).toEqual({
-      kind: "org",
-      orgId: "user:alice",
-    });
-    assert(
-      backofficeScopePathSegment({ kind: "project", orgId: "org:1", projectId: "p/2" }) ===
-        "project:org%3A1:p%2F2",
     );
   });
 
@@ -71,34 +51,13 @@ describe("backoffice scope codec", () => {
     ).toThrow("System scope requires the system id.");
   });
 
-  test("supports system scopes for object-address metadata and public callbacks", () => {
-    assert(backofficeScopePathSegment({ kind: "system" }) === "system");
-    expect(backofficeContextScopeFromSinglePathSegment("system")).toEqual({ kind: "system" });
+  test("accepts only routable scopes where resources are owned", () => {
+    expect(backofficeScopeFromSinglePathSegment("org:org-1")).toEqual({
+      kind: "org",
+      orgId: "org-1",
+    });
     expect(() => backofficeScopeFromSinglePathSegment("system")).toThrow(
       "System scope is not routable here.",
-    );
-  });
-
-  test("recognizes scope codec errors across module and HMR boundaries", () => {
-    assert(isBackofficeScopeCodecError(new BackofficeScopeCodecError("Invalid scope.")));
-    const crossModuleError = Object.assign(new Error("Invalid scope."), {
-      code: "INVALID_BACKOFFICE_SCOPE",
-    });
-    assert(isBackofficeScopeCodecError(crossModuleError));
-    assert(isBackofficeScopeCodecError({ code: "INVALID_BACKOFFICE_SCOPE" }));
-    assert(!isBackofficeScopeCodecError(new Error("Other failure.")));
-  });
-
-  test("throws for malformed scope segments instead of falling back to org scope", () => {
-    expect(() => backofficeScopeFromSinglePathSegment("project:broken")).toThrow(
-      "Project scope requires org and project id components.",
-    );
-    expect(() => backofficeScopeFromSinglePathSegment("user:")).toThrow("Missing user id.");
-    expect(() => backofficeScopeFromSinglePathSegment("org:%E0%A4%A")).toThrow(
-      "Invalid org id encoding.",
-    );
-    expect(() => backofficeScopeFromSinglePathSegment("legacy-org-id")).toThrow(
-      "Unknown scope kind 'legacy-org-id'.",
     );
   });
 });

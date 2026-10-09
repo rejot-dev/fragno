@@ -1,7 +1,8 @@
+import { BackofficeScopeParseError } from "@fragno-dev/backoffice-api/v0/shared/scope";
+
 import type { BackofficeResolvedScope } from "@/backoffice-runtime/resolved-scope";
 import { resolveBackofficeRouteScope } from "@/backoffice-runtime/resolved-scope";
 import { requireBackofficeRouteScopeFromParams } from "@/backoffice-runtime/route-scope";
-import { BackofficeScopeCodecError } from "@/backoffice-runtime/scope-codec";
 
 type BackofficeRouteScopeParams = {
   scopeKind?: string;
@@ -25,7 +26,7 @@ export function resolveCurrentBackofficeScope<TOrganization extends { id: string
     if (!resolvedScope) {
       const organizationSlug =
         routeScope.kind === "org" || routeScope.kind === "project" ? routeScope.orgSlug : null;
-      throw new BackofficeScopeCodecError(
+      throw new BackofficeScopeParseError(
         organizationSlug
           ? `Backoffice route organization slug '${organizationSlug}' was not found.`
           : "Backoffice route scope could not be resolved.",
@@ -40,7 +41,7 @@ export function resolveCurrentBackofficeScope<TOrganization extends { id: string
       organizations,
     );
     if (!resolvedScope) {
-      throw new BackofficeScopeCodecError(
+      throw new BackofficeScopeParseError(
         `Backoffice route organization slug '${params.orgSlug}' was not found.`,
       );
     }
