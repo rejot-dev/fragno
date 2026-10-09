@@ -1,8 +1,10 @@
-import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  type BackofficeContextScope,
+  isBackofficeRoutableScope,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { RouterContextProvider } from "react-router";
 
 import { backofficeRuntimeScopeFromResolvedScope } from "@/backoffice-runtime/resolved-scope";
-import { isBackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import type {
   FilesExplorerSelectedContent,
   FilesExplorerSource,

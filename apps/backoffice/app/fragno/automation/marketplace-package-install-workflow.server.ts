@@ -8,7 +8,10 @@ import {
   marketplaceVersionSchema,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
-import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import type {
+  BackofficeContextScope,
+  BackofficeRoutableScope,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { createRouteCaller } from "@fragno-dev/core/api";
 import type { PreparedFileWrite, UploadFileWritePrecondition } from "@fragno-dev/upload/types";
 import {
@@ -26,7 +29,6 @@ import {
 } from "@/backoffice-runtime/context";
 import type { BackofficeObjectHandle, UploadObject } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
-import type { BackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import {
   isMarketplaceInternalArtifactPath,
   MARKETPLACE_INSTALL_WORKFLOW_PATH,

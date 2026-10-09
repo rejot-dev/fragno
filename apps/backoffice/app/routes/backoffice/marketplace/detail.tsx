@@ -2,6 +2,7 @@ import {
   MARKETPLACE_LOCK_PATH,
   marketplaceInstallationRootSchema,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
+import type { BackofficeRoutableScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { Button, ButtonLink } from "@fragno-private/design-system/button";
 import { ClientOnly } from "@fragno-private/design-system/client-only";
 import { Icon } from "@fragno-private/design-system/icon";
@@ -21,7 +22,6 @@ import {
   type ShouldRevalidateFunctionArgs,
 } from "react-router";
 
-import type { BackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import type { BackofficeMeData } from "@/fragno/auth/contracts";

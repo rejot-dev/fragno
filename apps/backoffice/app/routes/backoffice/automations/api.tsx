@@ -6,7 +6,10 @@ import {
   webhookVerificationConfigSchema,
   type WebhookVerificationConfig,
 } from "@fragno-dev/api-fragment/webhooks/verification";
-import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  type BackofficeContextScope,
+  isBackofficeRoutableScope,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { createRouteCaller, type RouteCallerForFragment } from "@fragno-dev/core/api";
 import { Button } from "@fragno-private/design-system/button";
 import { FormField } from "@fragno-private/design-system/form-container";
@@ -24,7 +27,6 @@ import {
 import type { RouterContextProvider } from "react-router";
 
 import { backofficeRouteScopeSinglePathSegmentFromParams } from "@/backoffice-runtime/route-scope";
-import { isBackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import type { ApiFragment } from "@/fragno/api";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import {

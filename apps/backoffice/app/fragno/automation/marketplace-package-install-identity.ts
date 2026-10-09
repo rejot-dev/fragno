@@ -2,9 +2,11 @@ import {
   marketplaceListingIdSchema,
   marketplaceVersionSchema,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
-import { backofficeScopePathSegment } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  type BackofficeRoutableScope,
+  backofficeScopePathSegment,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 
-import { type BackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import { sha256Hex } from "@/lib/crypto";
 
 /** Package installation is coordinated by the destination's organization Automations object. */

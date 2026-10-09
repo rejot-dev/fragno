@@ -1,9 +1,11 @@
-import { backofficeScopePathSegment } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  type BackofficeRoutableScope,
+  backofficeScopePathSegment,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { uploadSchema } from "@fragno-dev/upload/schema";
 
 import { createFragnoOutboxCoordinator } from "@fragno-dev/tanstack-db-adapter";
 
-import type { BackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
 import { backofficeFetch } from "@/fragno/auth/browser-auth.client";
 import {

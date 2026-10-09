@@ -1,4 +1,4 @@
-import { BackofficeScopeCodecError } from "./scope-codec";
+import { BackofficeScopeParseError } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 /** Untrusted, slug-backed scope identity read from or written to a public Backoffice route. */
 export type BackofficeRouteScope =
@@ -10,7 +10,7 @@ export type BackofficeRouteScope =
 export type BackofficeRoutableRouteScope = Exclude<BackofficeRouteScope, { kind: "system" }>;
 
 function invalidRouteScope(message: string): never {
-  throw new BackofficeScopeCodecError(message);
+  throw new BackofficeScopeParseError(message);
 }
 
 function encodeRouteScopeComponent(value: string): string {
@@ -25,7 +25,7 @@ function decodeRouteScopeComponent(value: string, label: string): string {
     }
     return decoded;
   } catch (error) {
-    if (error instanceof BackofficeScopeCodecError) {
+    if (error instanceof BackofficeScopeParseError) {
       throw error;
     }
     return invalidRouteScope(`Invalid ${label} encoding.`);
@@ -99,7 +99,7 @@ export function requireBackofficeRouteScopeFromParams(params: {
 }): BackofficeRouteScope {
   const routeScope = backofficeRouteScopeFromParams(params);
   if (!routeScope) {
-    throw new BackofficeScopeCodecError("A scoped Backoffice route did not provide a scope.");
+    throw new BackofficeScopeParseError("A scoped Backoffice route did not provide a scope.");
   }
   return routeScope;
 }
@@ -111,7 +111,7 @@ export function backofficeRouteScopeSinglePathSegmentFromParams(params: {
 }): string {
   const routeScope = requireBackofficeRouteScopeFromParams(params);
   if (routeScope.kind === "system") {
-    throw new BackofficeScopeCodecError("A public fragment route requires a routable scope.");
+    throw new BackofficeScopeParseError("A public fragment route requires a routable scope.");
   }
   return backofficeRouteScopeSinglePathSegment(routeScope);
 }

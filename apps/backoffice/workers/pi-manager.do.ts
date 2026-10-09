@@ -1,10 +1,12 @@
 import type { PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
-import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  type BackofficeContextScope,
+  backofficeContextScopeSchema,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { DurableObject, RpcTarget } from "cloudflare:workers";
 
 import type { BackofficeRuntimeEnv } from "@/backoffice-runtime/backoffice-runtime-env";
-import { backofficeContextScopeSchema } from "@/backoffice-runtime/context";
 import {
   BackofficeInternalRequestError,
   verifyAuthorizedBackofficeObjectRequest,

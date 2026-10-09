@@ -13,13 +13,15 @@ import {
   BACKOFFICE_PERMISSION,
   type BackofficePermissionRequirement,
 } from "@fragno-dev/backoffice-api/v0/shared/permissions";
-import { backofficeScopePathSegment } from "@fragno-dev/backoffice-api/v0/shared/scope";
-import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  type BackofficeContextScope,
+  backofficeContextScopesEqual,
+  backofficeScopePathSegment,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { InstanceStatus } from "@fragno-dev/workflows/workflow";
 import { DurableObject, RpcTarget } from "cloudflare:workers";
 
 import {
-  backofficeContextScopesEqual,
   createBackofficeServiceExecution,
   createBackofficeSystemExecution,
   backofficeExecutionContextSchema,

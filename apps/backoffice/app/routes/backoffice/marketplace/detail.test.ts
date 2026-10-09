@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, test, vi, assert } from "vitest";
 
-import { backofficeScopePathSegment } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  type BackofficeRoutableScope,
+  backofficeScopePathSegment,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createMemoryRouter, Outlet, RouterProvider, RouterContextProvider } from "react-router";
@@ -51,7 +54,6 @@ import {
   backofficeRouteScopePath,
   type BackofficeRoutableRouteScope,
 } from "@/backoffice-runtime/route-scope";
-import { type BackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import { buildMarketplacePackageInstallWorkflowInstanceId } from "@/fragno/automation/marketplace-package-install-identity";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
 

@@ -1,11 +1,11 @@
-import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  type BackofficeContextScope,
+  type BackofficeRoutableScope,
+  isBackofficeRoutableScope,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { createRouteCaller, type RouteCallerForFragment } from "@fragno-dev/core/api";
 import type { RouterContextProvider } from "react-router";
 
-import {
-  isBackofficeRoutableScope,
-  type BackofficeRoutableScope,
-} from "@/backoffice-runtime/scope-codec";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import type { McpFragment } from "@/fragno/mcp";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";

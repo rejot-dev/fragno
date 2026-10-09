@@ -1,5 +1,6 @@
+import { parseBackofficeScopePathSegment } from "@fragno-dev/backoffice-api/v0/shared/scope";
+
 import { removeBackofficeInternalContextHeader } from "@/backoffice-runtime/internal-object-request";
-import { backofficeContextScopeFromSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import { authorizeBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { appendBackofficeScopeQuery } from "@/fragno/scoped-public-fragment-routes";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
@@ -19,7 +20,7 @@ async function forwardToTelegram(
 
   let scope;
   try {
-    scope = backofficeContextScopeFromSinglePathSegment(scopeSegment);
+    scope = parseBackofficeScopePathSegment(scopeSegment);
   } catch {
     return new Response("Invalid scope", { status: 400 });
   }

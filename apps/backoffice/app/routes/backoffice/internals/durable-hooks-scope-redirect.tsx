@@ -1,3 +1,4 @@
+import { isBackofficeScopeParseError } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { redirect } from "react-router";
 
 import {
@@ -5,7 +6,6 @@ import {
   resolveBackofficeRouteScope,
 } from "@/backoffice-runtime/resolved-scope";
 import { requireBackofficeRouteScopeFromParams } from "@/backoffice-runtime/route-scope";
-import { isBackofficeScopeCodecError } from "@/backoffice-runtime/scope-codec";
 import { findBackofficeMe } from "@/fragno/auth/auth-server";
 
 import type { Route } from "./+types/durable-hooks-scope-redirect";
@@ -21,7 +21,7 @@ export async function loader({ request, context, params, url }: Route.LoaderArgs
   try {
     routeScope = requireBackofficeRouteScopeFromParams(params);
   } catch (error) {
-    if (isBackofficeScopeCodecError(error)) {
+    if (isBackofficeScopeParseError(error)) {
       throw new Response("Not Found", { status: 404 });
     }
     throw error;

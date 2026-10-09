@@ -1,6 +1,5 @@
+import { backofficeContextScopeSchema } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
-
-import { backofficeContextScopeSchema } from "@/backoffice-runtime/context";
 
 /** OAuth execution token requests choose a scope, never a client policy or principal. */
 export const backofficeExecutionTokenRequestSchema = z.strictObject({

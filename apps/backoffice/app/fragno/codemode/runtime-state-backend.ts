@@ -1,7 +1,8 @@
+import { isBackofficeRoutableScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
-import { isBackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import { createBackofficeStaticFileCollection } from "@/files/content/static";
 
 import {

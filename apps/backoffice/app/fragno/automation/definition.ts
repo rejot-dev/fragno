@@ -10,7 +10,10 @@ import type {
   AutomationEvent,
   AutomationEventDefinition,
 } from "@fragno-dev/backoffice-api/v0/events";
-import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  type BackofficeContextScope,
+  backofficeScopeContains,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { InstanceStatus } from "@fragno-dev/workflows/workflow";
 
 import { defineFragment } from "@fragno-dev/core";
@@ -18,7 +21,6 @@ import { withDatabase, type TxResult } from "@fragno-dev/db";
 import type { WorkflowsFragmentServices } from "@fragno-dev/workflows";
 
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
-import { backofficeScopeContains } from "@/backoffice-runtime/context";
 import { BackofficeKernel, BackofficeForbiddenError } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 

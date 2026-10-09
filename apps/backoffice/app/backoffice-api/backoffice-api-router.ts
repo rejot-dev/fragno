@@ -6,17 +6,17 @@ import {
 } from "@fragno-dev/backoffice-api/errors";
 import { createOpenApiDocument } from "@fragno-dev/backoffice-api/openapi";
 import { backofficeApiV0 } from "@fragno-dev/backoffice-api/v0";
-import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  type BackofficeContextScope,
+  backofficeScopeContains,
+  parseBackofficeScopePathSegment,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { Hono } from "hono";
 import { z } from "zod";
 
-import {
-  backofficeScopeContains,
-  type BackofficeExecutionContext,
-} from "@/backoffice-runtime/context";
+import { type BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import { isBackofficeForbiddenError, type BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
-import { backofficeContextScopeFromSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import {
   createInstalledAppExecution,
   installedAppEventSource,
@@ -156,7 +156,7 @@ function createVersionRouter<TApi extends BackofficeApi>(
     let scope: BackofficeContextScope;
     try {
       // Hono decodes path parameters, but scope ids are URI-encoded inside the segment.
-      scope = backofficeContextScopeFromSinglePathSegment(c.req.path.split("/").at(-2) ?? "");
+      scope = parseBackofficeScopePathSegment(c.req.path.split("/").at(-2) ?? "");
     } catch (error) {
       return apiError(
         "invalid_request",

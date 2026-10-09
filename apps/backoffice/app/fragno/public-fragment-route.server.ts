@@ -1,3 +1,4 @@
+import type { BackofficeRoutableScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { RouterContextProvider } from "react-router";
 
 import type { BackofficeObjectHandle } from "@/backoffice-runtime/object-registry";
@@ -9,7 +10,6 @@ import {
   backofficeRouteScopeFromSinglePathSegment,
   type BackofficeRoutableRouteScope,
 } from "@/backoffice-runtime/route-scope";
-import type { BackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import { authorizeBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
