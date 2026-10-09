@@ -34,3 +34,19 @@ export const backofficeContextScopeSchema = z.discriminatedUnion("kind", [
   backofficeUserScopeSchema,
   backofficeProjectScopeSchema,
 ]);
+
+/**
+ * Names a scope in one URL path segment, e.g. `project:<orgId>:<projectId>`. Ids are
+ * URI-encoded, so `:` only ever separates components.
+ */
+export function backofficeScopePathSegment(scope: BackofficeContextScope): string {
+  if (scope.kind === "system") {
+    return "system";
+  }
+  if (scope.kind === "project") {
+    return `project:${encodeURIComponent(scope.orgId)}:${encodeURIComponent(scope.projectId)}`;
+  }
+  return scope.kind === "org"
+    ? `org:${encodeURIComponent(scope.orgId)}`
+    : `user:${encodeURIComponent(scope.userId)}`;
+}

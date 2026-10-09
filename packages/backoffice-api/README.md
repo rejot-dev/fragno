@@ -34,6 +34,29 @@ transfer APIs will replace it for large files. Errors return `{ error: { code, m
 (`@fragno-dev/backoffice-api/errors`), where the code determines the status: `invalid_request` 400,
 `authentication_failed` 401, `forbidden` 403, `not_found` 404, and `operation_failed` 422.
 
+## Client
+
+```ts
+import { createBackofficeApiClient } from "@fragno-dev/backoffice-api/v0/client";
+
+const backoffice = createBackofficeApiClient({
+  origin: "https://backoffice.example",
+  accessToken,
+  fetch,
+});
+const receipt = await backoffice.call({ kind: "org", orgId }, "events.fire", {
+  eventType: "bookkeeping.connection.tested",
+  payload: { message: "Hello" },
+});
+```
+
+`call` checks the operation id and input at compile time and parses the output with the operation's
+schema. Error responses reject with `BackofficeApiRequestError`, whose `code` is the error
+envelope's code, or `null` when the response was not an API error (for example a server failure), so
+the outcome is unknown. Network failures reject with `BackofficeApiUnreachableError`, whose outcome
+is also unknown. Anything else, such as a success body that does not match the client's contract, is
+a bug and rejects unchanged.
+
 ## OpenAPI
 
 ```ts
