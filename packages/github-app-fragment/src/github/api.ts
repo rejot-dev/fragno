@@ -1,4 +1,4 @@
-import { App, Octokit } from "octokit";
+import { App, Octokit, RequestError } from "octokit";
 
 import type { GitHubAppFragmentConfig } from "./types";
 
@@ -28,7 +28,49 @@ export type GitHubAppInstance = {
     installationId: number,
     repositoryId: number,
   ) => Promise<GitHubInstallationAccessToken>;
+  /**
+   * Sends a REST request with an installation token restricted to one repository, so the
+   * installation's other repositories stay out of reach. GitHub's error statuses are returned,
+   * not thrown.
+   */
+  requestAsRepository: (
+    installationId: number,
+    repositoryId: number,
+    request: GitHubRepositoryRequest,
+  ) => Promise<GitHubRepositoryResponse>;
 };
+
+export type GitHubRepositoryRequest = {
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+  /** Absolute API path including any query string, resolved against the API base URL. */
+  url: string;
+  body: unknown;
+};
+
+export type GitHubRepositoryResponse = {
+  status: number;
+  headers: Record<string, string>;
+  body: unknown;
+};
+
+/** Pagination and rate-limit headers are the ones REST callers need to continue safely. */
+const FORWARDED_RESPONSE_HEADERS = [
+  "link",
+  "x-ratelimit-limit",
+  "x-ratelimit-remaining",
+  "x-ratelimit-reset",
+];
+
+function forwardedHeaders(headers: Record<string, string | number | undefined>) {
+  const forwarded: Record<string, string> = {};
+  for (const name of FORWARDED_RESPONSE_HEADERS) {
+    const value = headers[name];
+    if (value !== undefined) {
+      forwarded[name] = String(value);
+    }
+  }
+  return forwarded;
+}
 
 export type GitHubInstallationRepository = {
   id: number;
@@ -223,6 +265,35 @@ export const createGitHubApiClient = (
         token: authentication.token,
         expiresAt: authentication.expiresAt,
       };
+    },
+    requestAsRepository: async (installationId, repositoryId, request) => {
+      const authentication = (await octokitApp.octokit.auth({
+        type: "installation",
+        installationId,
+        repositoryIds: [repositoryId],
+      })) as GitHubInstallationAccessToken;
+      const octokit = new OctokitForApp({ auth: authentication.token });
+      try {
+        const response = await octokit.request({
+          method: request.method,
+          url: request.url,
+          ...(request.body === null ? {} : { data: request.body }),
+        });
+        return {
+          status: response.status,
+          headers: forwardedHeaders(response.headers),
+          body: response.data ?? null,
+        };
+      } catch (cause) {
+        if (cause instanceof RequestError && cause.response) {
+          return {
+            status: cause.status,
+            headers: forwardedHeaders(cause.response.headers),
+            body: cause.response.data ?? null,
+          };
+        }
+        throw cause;
+      }
     },
   };
 
