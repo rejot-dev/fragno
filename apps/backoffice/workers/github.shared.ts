@@ -62,7 +62,27 @@ export const resolveWebhookUrl = (origin: string) => {
 const resolveUserAuthorizationCallbackUrl = (publicBaseUrl: string) =>
   new URL("/backoffice/connections/github/oauth-callback", publicBaseUrl).toString();
 
-export const resolveGitHubConfig = (env: CloudflareEnv): RuntimeConfigResolution => {
+export const resolveGitHubConfig = (
+  env: Partial<
+    Pick<
+      CloudflareEnv,
+      | "DOCS_PUBLIC_BASE_URL"
+      | "GITHUB_APP_API_BASE_URL"
+      | "GITHUB_APP_API_VERSION"
+      | "GITHUB_APP_CLIENT_ID"
+      | "GITHUB_APP_CLIENT_SECRET"
+      | "GITHUB_APP_DEFAULT_LINK_KEY"
+      | "GITHUB_APP_ID"
+      | "GITHUB_APP_PRIVATE_KEY"
+      | "GITHUB_APP_PRIVATE_KEY_FILE"
+      | "GITHUB_APP_SLUG"
+      | "GITHUB_APP_TOKEN_CACHE_TTL_SECONDS"
+      | "GITHUB_APP_WEBHOOK_DEBUG"
+      | "GITHUB_APP_WEBHOOK_SECRET"
+      | "GITHUB_APP_WEB_BASE_URL"
+    >
+  >,
+): RuntimeConfigResolution => {
   const appId = env.GITHUB_APP_ID?.trim() ?? "";
   const appSlug = env.GITHUB_APP_SLUG?.trim() ?? "";
   const clientId = env.GITHUB_APP_CLIENT_ID?.trim() ?? "";
