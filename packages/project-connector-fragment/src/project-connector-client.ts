@@ -371,7 +371,7 @@ export function confirmProjectConnectorRequest(
     providerConfigId: string;
     externalUserId: string;
     service: string;
-    connectionName: string | null;
+    connectionName: string;
   },
   actual: Awaited<
     ReturnType<ReturnType<typeof createProjectConnectorClient>["getConnectionRequest"]>

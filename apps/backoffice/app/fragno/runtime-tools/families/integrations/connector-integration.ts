@@ -417,9 +417,15 @@ export function createConnectorIntegration({
       }
       return {
         connections: response.data.accounts.map((account) => ({
-          connectionId: encodeConnectorConnectionId(["account", account.id]),
+          // The named setup address also keys connection events.
+          connectionId: encodeConnectorConnectionId([
+            "named",
+            account.projectId,
+            account.providerConfigId,
+            account.connectionName,
+          ]),
           integrationId: account.service,
-          name: account.connectionName ?? account.id,
+          name: account.connectionName,
           ...inspectConnectorAccount(account),
           configuration: { status: "configured" },
         })),
@@ -440,7 +446,7 @@ export function createConnectorIntegration({
           throw new Error("Connector integration account not found.");
         }
         service = account.service;
-        name = account.connectionName ?? account.id;
+        name = account.connectionName;
         projectId = account.projectId;
         providerConfigId = account.providerConfigId;
       } else {

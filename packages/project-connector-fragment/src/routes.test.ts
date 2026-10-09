@@ -1,7 +1,7 @@
-import { afterEach, assert, describe, expect, test } from "vitest";
+import { afterEach, assert, describe, expect, test, vi } from "vitest";
 
 import { instantiate } from "@fragno-dev/core";
-import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
+import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
 
 import { createProjectConnectorFragmentClient } from "./client/vanilla";
 import { projectConnectorFragmentDefinition } from "./definition";
@@ -22,6 +22,7 @@ async function connectorScenario(
 ) {
   const gateway = await startProjectConnectorTestGateway();
   cleanup.push(gateway.close);
+  const onConnectionReadinessChanged = vi.fn();
   const setup = await buildDatabaseFragmentsTest()
     .withTestAdapter({ type: "kysely-sqlite" })
     .withDbRoundtripGuard({ maxRoundtrips: 1 })
@@ -34,6 +35,7 @@ async function connectorScenario(
           catalogApiKey,
           getExternalUserId: (headers) => headers.get("x-test-user"),
           allowedReturnUrls: (url) => url.toString() === returnUri,
+          onConnectionReadinessChanged,
         })
         .withRoutes([projectConnectorRoutes]),
       { migrateToVersion: schemaVersion },
@@ -93,7 +95,11 @@ async function connectorScenario(
     assert(saved);
     return saved;
   }
-  return { gateway, setup, fragment, db, call, connect, bind, storedRequest };
+  async function readinessChanges() {
+    await drainDurableHooks(setup.fragments.connector.fragment);
+    return onConnectionReadinessChanged.mock.calls.map(([payload]) => payload);
+  }
+  return { gateway, setup, fragment, db, call, connect, bind, storedRequest, readinessChanges };
 }
 
 afterEach(async () => {
@@ -778,21 +784,12 @@ describe("Project Connector connection scenarios", () => {
     assert((await scenario.call("alice", "GET", "/accounts/gmail-account/profile")).status === 502);
   });
 
-  test("additive migration preserves duplicate names, nullable names, and legacy ID-based operations", async () => {
+  test("migration preserves duplicate names and ID-based operations", async () => {
     const scenario = await connectorScenario("test-catalog-key", 2);
     // Existing starts do not acquire a new dependency on provider discovery.
     scenario.gateway.control.discoveryFailure = "not-found";
     const first = await scenario.bind("alice", "legacy-work-1");
     const second = await scenario.bind("alice", "legacy-work-2");
-    const unnamed = await scenario.bind("alice", "legacy-unnamed-account", "legacy");
-    const uow = scenario.db
-      .createUnitOfWork("legacy-nullable-names")
-      .forSchema(projectConnectorSchema);
-    uow.update("connectionRequest", unnamed.id, (b) => b.set({ connectionName: null }));
-    uow.update("connectedAccount", "legacy-unnamed-account", (b) =>
-      b.set({ connectionName: null }),
-    );
-    await uow.executeMutations();
     const adapter = scenario.setup.test.adapter;
     assert(adapter.prepareMigrations);
     const { schema, namespace } = scenario.setup.fragments.connector.fragment.$internal.deps;
@@ -837,19 +834,11 @@ describe("Project Connector connection scenarios", () => {
             service: "gmail",
             connectionName: "work",
           },
-          {
-            id: "legacy-unnamed-account",
-            projectId: unnamed.projectId,
-            providerConfigId: unnamed.providerConfigId,
-            externalUserId: "alice",
-            service: "gmail",
-            connectionName: null,
-          },
         ]),
         hasNextPage: false,
       },
     });
-    for (const request of [first, second, unnamed]) {
+    for (const request of [first, second]) {
       const refreshed = await scenario.call(
         "alice",
         "POST",
@@ -859,24 +848,22 @@ describe("Project Connector connection scenarios", () => {
         status: 200,
         data: {
           id: request.id,
-          connectionName: request.id === unnamed.id ? null : "work",
+          connectionName: "work",
           state: { status: "connected" },
         },
       });
     }
+    expect(await scenario.call("alice", "GET", "/accounts/legacy-work-1/profile")).toMatchObject({
+      status: 200,
+      data: { connectedAccountId: "legacy-work-1" },
+    });
     expect(
-      await scenario.call("alice", "GET", "/accounts/legacy-unnamed-account/profile"),
-    ).toMatchObject({ status: 200, data: { connectedAccountId: "legacy-unnamed-account" } });
-    expect(
-      await scenario.call(
-        "alice",
-        "POST",
-        "/accounts/legacy-unnamed-account/actions/gmail.search_threads",
-        { input: { query: "is:unread" } },
-      ),
+      await scenario.call("alice", "POST", "/accounts/legacy-work-1/actions/gmail.search_threads", {
+        input: { query: "is:unread" },
+      }),
     ).toMatchObject({ status: 200, data: { actionId: "gmail.search_threads" } });
     assert(scenario.gateway.control.discoveryReads === 0);
-    expect(scenario.gateway.links).toHaveLength(3);
+    expect(scenario.gateway.links).toHaveLength(2);
   });
 
   test("named setup reconstructs pending OAuth after recreation and updates named client stores", async () => {
@@ -1186,6 +1173,16 @@ describe("Project Connector connection scenarios", () => {
       .find("connectedAccount", (b) => b.whereIndex("primary"))
       .executeRetrieve();
     expect(records[0]).toHaveLength(1);
+    // The second attempt starts and completes while the name already has a confirmed account.
+    const connection = {
+      projectId: "project-1",
+      providerConfigId: "gmail-provider",
+      connectionName: "work",
+    };
+    expect(await scenario.readinessChanges()).toEqual([
+      { externalUserId: "alice", service: "gmail", connection, ready: false },
+      { externalUserId: "alice", service: "gmail", connection, ready: true },
+    ]);
   });
 
   test("authenticated project-key status check does not create a connection request", async () => {

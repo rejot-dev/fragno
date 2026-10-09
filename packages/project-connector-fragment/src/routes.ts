@@ -154,9 +154,36 @@ export const projectConnectorRoutes = defineRoutes(projectConnectorFragmentDefin
             expiresAt: remote.expiresAt,
             state: { status: "initiated" as const },
           };
+          const named = {
+            projectId: remote.projectId,
+            providerConfigId: remote.providerConfigId,
+            connectionName: body.connectionName,
+          };
           await this.handlerTx()
-            .mutate(({ forSchema }) => {
-              forSchema(projectConnectorSchema).create("connectionRequest", connection);
+            .retrieve(({ forSchema }) =>
+              forSchema(projectConnectorSchema).findFirst("connectedAccount", (b) =>
+                b.whereIndex("idx_account_named_connection", (eb) =>
+                  eb.and(
+                    eb("externalUserId", "=", externalUserId),
+                    eb("projectId", "=", named.projectId),
+                    eb("providerConfigId", "=", named.providerConfigId),
+                    eb("connectionName", "=", named.connectionName),
+                  ),
+                ),
+              ),
+            )
+            .mutate(({ forSchema, retrieveResult: [account] }) => {
+              const uow = forSchema(projectConnectorSchema);
+              uow.create("connectionRequest", connection);
+              // Another attempt leaves a name that already has a confirmed account ready.
+              if (!account) {
+                uow.triggerHook("onConnectionReadinessChanged", {
+                  externalUserId,
+                  service: remote.service,
+                  connection: named,
+                  ready: false,
+                });
+              }
             })
             .execute();
           return json(connection);
@@ -244,7 +271,7 @@ export const projectConnectorRoutes = defineRoutes(projectConnectorFragmentDefin
                     .whereIndex("idx_account_external_user_id", (eb) =>
                       eb("externalUserId", "=", externalUserId),
                     )
-                    .select(["id"]),
+                    .select(["id", "projectId", "providerConfigId", "connectionName"]),
                 ),
             )
             .afterRetrieve(async (_uow, [saved]) => {
@@ -288,6 +315,24 @@ export const projectConnectorRoutes = defineRoutes(projectConnectorFragmentDefin
                     service: saved.service,
                     connectionName: saved.connectionName,
                   });
+                  const wasReady = accounts.some(
+                    (account) =>
+                      account.projectId === saved.projectId &&
+                      account.providerConfigId === saved.providerConfigId &&
+                      account.connectionName === saved.connectionName,
+                  );
+                  if (!wasReady) {
+                    uow.triggerHook("onConnectionReadinessChanged", {
+                      externalUserId,
+                      service: saved.service,
+                      connection: {
+                        projectId: saved.projectId,
+                        providerConfigId: saved.providerConfigId,
+                        connectionName: saved.connectionName,
+                      },
+                      ready: true,
+                    });
+                  }
                 }
               }
               return serializeProjectConnectorRequest({ ...saved, state });

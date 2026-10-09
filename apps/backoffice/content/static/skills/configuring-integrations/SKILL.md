@@ -137,6 +137,23 @@ Open Connector supports neither; to consent again, set up a fresh connection nam
 **Complete when** reconfiguration reaches `ready` and step 4 proves access again, or disconnect
 returns `disconnected` or `not-configured`.
 
+## React to connection changes
+
+Every source reports connection state as automation events with `source: "integrations"`:
+
+- `connection.ready`: configuration and authorization are stored.
+- `connection.unavailable`: the connection exists but cannot be used, for example while consent is
+  pending, after credentials were cleared, or while a GitHub installation is suspended.
+- `connection.disconnected`: the connection was removed.
+
+They fire for changes made anywhere, including native pages, OAuth callbacks, and provider webhooks,
+and can repeat. Route one connection with
+`{ path: "$.subject.connectionId", op: "eq", value: connectionId }`, or one source with
+`$.subject.service`. A token expiring fires nothing; `integrations.get` reads the current state.
+
+Open Connector learns about consent only when setup is checked, so its `connection.ready` follows
+the next check rather than the browser consent, and revocation is never reported.
+
 ## Use the connection
 
 `integrations.actions({ connectionId })` returns each action's authoritative input and output

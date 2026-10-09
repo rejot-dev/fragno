@@ -73,7 +73,8 @@ type ConnectorConnectOutput = {
   providerConfigId: string;
   externalUserId: string;
   service: string;
-  connectionName: string | null;
+  /** Lowercase letters, digits, underscores, and hyphens; starts with a letter or digit. */
+  connectionName: string;
   authorizationUrl: string;
   expiresAt: string;
   state:
@@ -102,7 +103,8 @@ type ConnectorRefreshConnectionOutput = {
   providerConfigId: string;
   externalUserId: string;
   service: string;
-  connectionName: string | null;
+  /** Lowercase letters, digits, underscores, and hyphens; starts with a letter or digit. */
+  connectionName: string;
   authorizationUrl: string;
   expiresAt: string;
   state:
@@ -132,7 +134,8 @@ type ConnectorListAccountsOutput = {
     providerConfigId: string;
     externalUserId: string;
     service: string;
-    connectionName: string | null;
+    /** Lowercase letters, digits, underscores, and hyphens; starts with a letter or digit. */
+    connectionName: string;
   }[];
   cursor: string | null;
   hasNextPage: boolean;

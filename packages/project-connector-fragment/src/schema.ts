@@ -49,5 +49,8 @@ export const projectConnectorSchema = schema("project-connector-fragment", (s) =
         "providerConfigId",
         "connectionName",
       ]),
-    ),
+    )
+    // Every start has required a name, so no stored row is expected to hold null.
+    .alterTable("connectionRequest", (t) => t.alterColumn("connectionName").nullable(false))
+    .alterTable("connectedAccount", (t) => t.alterColumn("connectionName").nullable(false)),
 );

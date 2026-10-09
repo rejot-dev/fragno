@@ -18,6 +18,8 @@ import {
   createProjectConnectorServer,
   type ProjectConnectorFragment,
 } from "@/fragno/project-connector";
+import { encodeConnectorConnectionId } from "@/fragno/runtime-tools/families/integrations/connector-connection-id";
+import { recordIntegrationConnectionState } from "@/fragno/runtime-tools/families/integrations/integration-events";
 import {
   isScopedPublicOAuthRedirectUriAllowed,
   PROJECT_CONNECTOR_PUBLIC_PREFIX,
@@ -113,6 +115,26 @@ export class InMemoryProjectConnectorObject extends RpcTarget implements Project
           apiKey,
           catalogApiKey: env.OOMOL_CONNECTOR_CATALOG_API_KEY?.trim() || null,
           getExternalUserId: () => externalUserId,
+          onConnectionReadinessChanged: async (payload, context) => {
+            await recordIntegrationConnectionState(
+              runtime.objects.automations.for(scope).commands,
+              {
+                id: context.hookId.toString(),
+                scope,
+                service: payload.service,
+                // Events name the setup address: a pending or failed attempt has no account yet.
+                connectionId: encodeConnectorConnectionId([
+                  "named",
+                  payload.connection.projectId,
+                  payload.connection.providerConfigId,
+                  payload.connection.connectionName,
+                ]),
+                state: payload.ready ? "ready" : "unavailable",
+                occurredAt: context.createdAt,
+              },
+              { propagationContext: context.capturePropagationContext() },
+            );
+          },
           allowedReturnUrls: (redirectUri) =>
             isScopedPublicOAuthRedirectUriAllowed({
               publicOrigin: runtime.config.docsPublicBaseUrl,
