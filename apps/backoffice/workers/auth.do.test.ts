@@ -38,6 +38,7 @@ import { EMAIL_VERIFICATION_TYPE } from "@/fragno/otp";
 
 import { issueTestSignUpInvitation } from "./auth-sign-up.test-support";
 import { createOrganizationAutomationHooks, InMemoryAuthObject } from "./auth.do";
+import { InMemoryAutomationsObject } from "./automations.do";
 import {
   InMemoryOtpObject,
   type IssueEmailVerificationInput,
@@ -46,6 +47,7 @@ import {
 
 const localObjects = {
   AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
   OTP: (input) => new InMemoryOtpObject(input),
 } satisfies LocalBackofficeObjects;
 

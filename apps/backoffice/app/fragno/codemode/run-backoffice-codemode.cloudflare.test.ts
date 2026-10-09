@@ -37,9 +37,11 @@ import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 
 import { InMemoryAutomationsObject } from "../../../workers/automations.do";
+import { InMemoryMcpObject } from "../../../workers/mcp.do";
 
 const localObjects = {
   AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  MCP: (input) => new InMemoryMcpObject(input),
 } satisfies LocalBackofficeObjects;
 
 describe("runBackofficeCodemode", () => {

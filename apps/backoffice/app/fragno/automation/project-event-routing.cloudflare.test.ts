@@ -19,6 +19,7 @@ import { createEventRuntime } from "@/fragno/runtime-tools/families/event-runtim
 import { createStateShellFileSystem } from "@/fragno/runtime-tools/state-shell-file-system";
 
 import { InMemoryAutomationsObject } from "../../../workers/automations.do";
+import { InMemoryMcpObject } from "../../../workers/mcp.do";
 import { InMemoryUploadObject } from "../../../workers/upload.do";
 import { AUTOMATION_SYSTEM_INITIATOR } from "./actors";
 import { createAutomationRuntimeExecution } from "./authority";
@@ -27,6 +28,7 @@ import { createAutomationsRouteCaller } from "./route-callers";
 
 const localObjects = {
   AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  MCP: (input) => new InMemoryMcpObject(input),
   UPLOAD: (input) => new InMemoryUploadObject(input),
 } satisfies LocalBackofficeObjects;
 

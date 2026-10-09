@@ -24,6 +24,7 @@ import { InMemoryAppsObject } from "../../../../workers/apps.do";
 import { InMemoryAuthObject } from "../../../../workers/auth.do";
 import { InMemoryAutomationsObject } from "../../../../workers/automations.do";
 import { InMemoryFormsObject } from "../../../../workers/forms.do";
+import { InMemoryMcpObject } from "../../../../workers/mcp.do";
 import { InMemoryProjectConnectorObject } from "../../../../workers/project-connector.do";
 import { InMemoryTelegramObject } from "../../../../workers/telegram.do";
 import { InMemoryUploadObject } from "../../../../workers/upload.do";
@@ -36,6 +37,7 @@ const scenarioObjects = {
   AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
   AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
   FORMS: (input) => new InMemoryFormsObject(input),
+  MCP: (input) => new InMemoryMcpObject(input),
   PROJECT_CONNECTOR: (input) => new InMemoryProjectConnectorObject(input),
   TELEGRAM: (input) => new InMemoryTelegramObject(input),
   UPLOAD: (input) => new InMemoryUploadObject(input),

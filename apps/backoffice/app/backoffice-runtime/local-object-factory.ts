@@ -82,11 +82,15 @@ export type LocalBackofficeObjectFactory<TObject> = (
 ) => TObject;
 
 /**
- * The objects a local runtime registers. Unlisted bindings are unconfigured, so a test that lists
- * only the objects it uses does not import every object implementation and its SDKs.
+ * The objects a local runtime loads. Tests list only the objects they use, so they do not import
+ * every object implementation and its SDKs.
+ *
+ * `null` declares that the runtime has no such object: it reports the binding as unconfigured, as a
+ * deployment without it would. Unlisted bindings report as configured but fail when used, so a
+ * missing object fails loudly instead of silently switching its feature off.
  */
 export type LocalBackofficeObjects = Partial<
-  Record<LocalObjectBindingName, LocalBackofficeObjectFactory<unknown>>
+  Record<LocalObjectBindingName, LocalBackofficeObjectFactory<unknown> | null>
 >;
 
 export type LocalObjectFactoryOptions = {
@@ -151,6 +155,8 @@ export class LocalObjectFactory implements BackofficeObjectFactory {
     owned: new Set(),
   };
   readonly #piSessionStores = new Map<string, Promise<Storage>>();
+  /** Unlisted bindings that were used; callers may have caught the error and degraded. */
+  readonly #unloadedUses = new Set<string>();
   #timeOffsetMs = 0;
   readonly #drainTimeEpochMs = new AsyncLocalStorage<{
     epochMs: number;
@@ -184,9 +190,7 @@ export class LocalObjectFactory implements BackofficeObjectFactory {
     assertBackofficeObjectAddressAllowed(address);
     const namespace = this.#namespaces[address.binding];
     if (!namespace) {
-      throw new Error(
-        `Local Backoffice object binding ${address.binding} is not registered. Pass it in this runtime's objects.`,
-      );
+      throw this.#missingBindingError(address.binding);
     }
     const id = namespace.idFromName(encodeBackofficeObjectAddress(address));
     await namespace.restart(id);
@@ -202,6 +206,9 @@ export class LocalObjectFactory implements BackofficeObjectFactory {
       );
     }
     assertBackofficeObjectAddressAllowed(address);
+    if (!this.#namespaces[binding.name] && this.#isConfigured(binding.name)) {
+      return this.#unloadedHandle<TCommands>(binding.name);
+    }
     const namespace = this.#namespace<TCommands>(binding);
     const encodedName = encodeBackofficeObjectAddress(address);
     const id = namespace.idFromName(encodedName);
@@ -344,6 +351,13 @@ export class LocalObjectFactory implements BackofficeObjectFactory {
     this.#piSessionStores.clear();
     await Promise.all([...this.#authDatabases.owned].map(async (database) => database.destroy()));
     this.#authDatabases.owned.clear();
+    if (this.#unloadedUses.size > 0) {
+      const bindings = [...this.#unloadedUses].sort().join(", ");
+      this.#unloadedUses.clear();
+      throw new Error(
+        `Objects not loaded in this runtime were used: ${bindings}. Add them to objects, or set them to null to run without them.`,
+      );
+    }
   }
 
   createRuntimeConfig(): BackofficeRuntimeConfig {
@@ -358,32 +372,34 @@ export class LocalObjectFactory implements BackofficeObjectFactory {
       signUpInvitationsEnabled: parseSignUpInvitationsEnabled({
         enabled: this.env.SIGN_UP_INVITATIONS_ENABLED,
         publicBaseUrl: this.env.DOCS_PUBLIC_BASE_URL,
-        accountCreationAvailable: this.#hasNamespace("AUTH"),
+        accountCreationAvailable: this.#isConfigured("AUTH"),
       }),
       bindings: {
-        api: this.#hasNamespace("API"),
-        auth: this.#hasNamespace("AUTH"),
-        automations: this.#hasNamespace("AUTOMATIONS"),
-        billing: this.#hasNamespace("BILLING"),
-        marketplace: this.#hasNamespace("MARKETPLACE"),
-        telegram: this.#hasNamespace("TELEGRAM"),
-        otp: this.#hasNamespace("OTP"),
-        resend: this.#hasNamespace("RESEND"),
-        reson8: this.#hasNamespace("RESON8"),
-        mcp: this.#hasNamespace("MCP"),
-        projectConnector: this.#hasNamespace("PROJECT_CONNECTOR"),
-        upload: this.#hasNamespace("UPLOAD"),
-        github: this.#hasNamespace("GITHUB"),
-        githubWebhookRouter: this.#hasNamespace("GITHUB_WEBHOOK_ROUTER"),
-        cloudflare: this.#hasNamespace("CLOUDFLARE"),
-        sandbox: this.#hasNamespace("SANDBOX"),
+        api: this.#isConfigured("API"),
+        auth: this.#isConfigured("AUTH"),
+        automations: this.#isConfigured("AUTOMATIONS"),
+        billing: this.#isConfigured("BILLING"),
+        marketplace: this.#isConfigured("MARKETPLACE"),
+        telegram: this.#isConfigured("TELEGRAM"),
+        otp: this.#isConfigured("OTP"),
+        resend: this.#isConfigured("RESEND"),
+        reson8: this.#isConfigured("RESON8"),
+        mcp: this.#isConfigured("MCP"),
+        projectConnector: this.#isConfigured("PROJECT_CONNECTOR"),
+        upload: this.#isConfigured("UPLOAD"),
+        github: this.#isConfigured("GITHUB"),
+        githubWebhookRouter: this.#isConfigured("GITHUB_WEBHOOK_ROUTER"),
+        cloudflare: this.#isConfigured("CLOUDFLARE"),
+        sandbox: this.#isConfigured("SANDBOX"),
       },
     };
   }
 
   #registerNamespaces() {
     for (const [bindingName, factory] of Object.entries(this.#objects)) {
-      this.#register({ name: bindingName as LocalObjectBindingName }, factory);
+      if (factory) {
+        this.#register({ name: bindingName as LocalObjectBindingName }, factory);
+      }
     }
   }
 
@@ -473,16 +489,44 @@ export class LocalObjectFactory implements BackofficeObjectFactory {
   ): LocalDurableObjectNamespace<TObject> {
     const namespace = this.#namespaces[binding.name];
     if (!namespace) {
-      throw new Error(
-        `Local Backoffice object binding ${binding.name} is not registered. Pass it in this runtime's objects.`,
-      );
+      throw this.#missingBindingError(binding.name);
     }
 
     return namespace as LocalDurableObjectNamespace<TObject>;
   }
 
-  #hasNamespace(bindingName: BackofficeObjectBindingName) {
-    return Boolean(this.#namespaces[bindingName]);
+  #isConfigured(bindingName: BackofficeObjectBindingName) {
+    return this.#objects[bindingName] !== null;
+  }
+
+  /**
+   * Runtime contexts acquire handles for every configured binding up front, so an unlisted binding
+   * fails when it is used, not when its handle is created.
+   */
+  #unloadedHandle<TCommands>(
+    bindingName: BackofficeObjectBindingName,
+  ): BackofficeObjectHandle<TCommands> {
+    const fail = () => {
+      this.#unloadedUses.add(bindingName);
+      throw this.#missingBindingError(bindingName);
+    };
+    const commands = new Proxy(
+      {},
+      {
+        // Awaiting or inspecting a handle is not a use of its object.
+        get: (_target, property) =>
+          property === "then" || typeof property === "symbol" ? undefined : fail,
+      },
+    ) as TCommands;
+    return { commands, http: { fetch: async () => fail(), fetchAuthorized: async () => fail() } };
+  }
+
+  #missingBindingError(bindingName: string) {
+    return new Error(
+      this.#objects[bindingName as LocalObjectBindingName] === null
+        ? `Local Backoffice object binding ${bindingName} is unconfigured in this runtime; check config.bindings before using it.`
+        : `Local Backoffice object binding ${bindingName} is not loaded in this runtime. Add it to objects, or set it to null to run without it.`,
+    );
   }
 
   #resolvePersistedObject(id: string) {

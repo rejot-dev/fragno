@@ -26,10 +26,12 @@ import { getSetCookieHeaders } from "@/worker-runtime/http-headers";
 
 import { issueTestSignUpInvitation } from "./auth-sign-up.test-support";
 import { InMemoryAuthObject } from "./auth.do";
+import { InMemoryAutomationsObject } from "./automations.do";
 import { InMemoryOtpObject } from "./otp.do";
 
 const localObjects = {
   AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
   OTP: (input) => new InMemoryOtpObject(input),
 } satisfies LocalBackofficeObjects;
 
