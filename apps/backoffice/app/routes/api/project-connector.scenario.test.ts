@@ -12,11 +12,37 @@ vi.mock("cloudflare:workers", () => workers);
 import { projectConnectorConnectionSchema } from "@fragno-dev/project-connector-fragment/contracts";
 
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import type { BackofficeScenarioContext } from "@/fragno/automation/scenario";
 import { runProjectConnectorScenario } from "@/fragno/runtime-tools/families/project-connector-scenario.test-utils";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
+import { InMemoryApiObject } from "../../../workers/api.do";
+import { InMemoryAppInstallationsObject } from "../../../workers/app-installations.do";
+import { InMemoryAppsObject } from "../../../workers/apps.do";
+import { InMemoryAuthObject } from "../../../workers/auth.do";
+import { InMemoryAutomationsObject } from "../../../workers/automations.do";
+import { InMemoryFormsObject } from "../../../workers/forms.do";
+import { InMemoryMcpObject } from "../../../workers/mcp.do";
+import { InMemoryOtpObject } from "../../../workers/otp.do";
+import { InMemoryProjectConnectorObject } from "../../../workers/project-connector.do";
+import { InMemoryTelegramObject } from "../../../workers/telegram.do";
+import { InMemoryUploadObject } from "../../../workers/upload.do";
 import { action, loader } from "./project-connector";
+
+const scenarioObjects = {
+  API: (input) => new InMemoryApiObject(input),
+  APPS: (input) => new InMemoryAppsObject(input),
+  APP_INSTALLATIONS: (input) => new InMemoryAppInstallationsObject(input),
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  FORMS: (input) => new InMemoryFormsObject(input),
+  MCP: (input) => new InMemoryMcpObject(input),
+  OTP: (input) => new InMemoryOtpObject(input),
+  PROJECT_CONNECTOR: (input) => new InMemoryProjectConnectorObject(input),
+  TELEGRAM: (input) => new InMemoryTelegramObject(input),
+  UPLOAD: (input) => new InMemoryUploadObject(input),
+} satisfies LocalBackofficeObjects;
 
 async function callPublicProjectConnector(
   ctx: BackofficeScenarioContext,
@@ -80,6 +106,7 @@ async function issueBackofficeAccessCookie(
 
 test("an anonymous OAuth browser return cannot create or forge a Connector account binding", async () => {
   await runProjectConnectorScenario((gateway) => ({
+    objects: scenarioObjects,
     name: "Connector callback query parameters are navigation only",
     setup: ({ given }) => [
       given.organization.exists({ id: "org-1", slug: "ada-labs", name: "Ada Labs" }),
@@ -190,6 +217,7 @@ test("an anonymous OAuth browser return cannot create or forge a Connector accou
 
 test("public action requests enforce verified execution permissions before contacting a user's provider", async () => {
   await runProjectConnectorScenario((gateway) => ({
+    objects: scenarioObjects,
     name: "Connector public actions cannot bypass kernel permissions",
     env: { DOCS_PUBLIC_BASE_URL: "https://backoffice.example" },
     fakes: ({ fake }) => ({ resend: fake.resend() }),
@@ -281,6 +309,7 @@ test("public action requests enforce verified execution permissions before conta
 
 test("public routes authenticate access tokens and reject foreign or non-user scopes", async () => {
   await runProjectConnectorScenario((gateway) => ({
+    objects: scenarioObjects,
     name: "Connector enforces authenticated user routing",
     env: { DOCS_PUBLIC_BASE_URL: "https://backoffice.example" },
     fakes: ({ fake }) => ({ resend: fake.resend() }),

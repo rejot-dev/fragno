@@ -18,6 +18,7 @@ import {
   type BackofficeContextScope,
 } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import {
   backofficeOAuthClientCreateResultSchema,
@@ -38,8 +39,27 @@ import { executeBackofficeRuntimeTool } from "@/fragno/runtime-tools/runtime-too
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 
+import { InMemoryApiObject } from "../../../../workers/api.do";
+import { InMemoryAppInstallationsObject } from "../../../../workers/app-installations.do";
+import { InMemoryAppsObject } from "../../../../workers/apps.do";
+import { InMemoryAuthObject } from "../../../../workers/auth.do";
+import { InMemoryAutomationsObject } from "../../../../workers/automations.do";
+import { InMemoryFormsObject } from "../../../../workers/forms.do";
+import { InMemoryOtpObject } from "../../../../workers/otp.do";
+import { InMemoryUploadObject } from "../../../../workers/upload.do";
 import { adminAppsRuntimeTools } from "./admin-apps";
 import { adminOAuthClientsRuntimeTools } from "./admin-oauth-clients";
+
+const scenarioObjects = {
+  API: (input) => new InMemoryApiObject(input),
+  APPS: (input) => new InMemoryAppsObject(input),
+  APP_INSTALLATIONS: (input) => new InMemoryAppInstallationsObject(input),
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  FORMS: (input) => new InMemoryFormsObject(input),
+  OTP: (input) => new InMemoryOtpObject(input),
+  UPLOAD: (input) => new InMemoryUploadObject(input),
+} satisfies LocalBackofficeObjects;
 
 const clientInput = {
   name: "Accounting",
@@ -159,6 +179,7 @@ describe("admin OAuth client SQLite scenarios", () => {
     async (provider, providerName) => {
       await runOAuthAdminSqliteScenario(
         defineBackofficeScenario({
+          objects: scenarioObjects,
           name: "OAuth credential redaction across direct and scoped Codemode",
           setup: ({ given }) => [given.auth.user({ id: "admin-1", role: "admin" })],
           steps: ({ then }) => [
@@ -219,6 +240,7 @@ describe("admin OAuth client SQLite scenarios", () => {
   test("mounted multi-role updates retain OAuth administration while banned multi-role users remain denied", async () => {
     await runOAuthAdminSqliteScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "OAuth administrator checks use the canonical stored role",
         vars: () => ({ setterCookie: "", cookie: "" }),
         steps: ({ when, then }) => [
@@ -336,6 +358,7 @@ describe("admin OAuth client SQLite scenarios", () => {
   test("Bash renders confidential credentials, secretless public clients, and metadata catalogs as text with redacted creation logs", async () => {
     await runOAuthAdminSqliteScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "readable Bash OAuth client management output",
         setup: ({ given }) => [given.auth.user({ id: "admin-1", role: "admin" })],
         steps: ({ then }) => [
@@ -432,6 +455,7 @@ describe("admin OAuth client SQLite scenarios", () => {
     const expected: string[] = [];
     await runOAuthAdminSqliteScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "paginate the global OAuth client catalog",
         setup: ({ given }) => [
           given.auth.user({ id: "admin-1", role: "admin" }),
@@ -536,6 +560,7 @@ describe("admin OAuth client SQLite scenarios", () => {
   test("ordinary users and banned administrators cannot enumerate the global catalog", async () => {
     await runOAuthAdminSqliteScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "OAuth client catalog reads fail closed on current authority",
         setup: ({ given }) => [
           given.auth.user({ id: "admin-1", role: "admin" }),
@@ -582,6 +607,7 @@ describe("admin OAuth client SQLite scenarios", () => {
   test("Codemode and Bash provision real Auth credentials independently of app registration and survive restart", async () => {
     await runOAuthAdminSqliteScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "create OAuth credentials then register a Backoffice app",
         vars: () => ({ cookie: "", userId: "", clientId: "", clientSecret: "" }),
         steps: ({ when, then, runner }) => [
@@ -761,6 +787,7 @@ describe("admin OAuth client SQLite scenarios", () => {
     let reusedContext: ReturnType<typeof oauthAdminContext> | null = null;
     await runOAuthAdminSqliteScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "OAuth management checks live global administrator authority",
         vars: () => ({ cookie: "", userId: "" }),
         steps: ({ when, then }) => [
@@ -861,6 +888,7 @@ describe("admin OAuth client SQLite scenarios", () => {
   test("OAuth provisioning is unavailable outside System and cannot forge a credential owner", async () => {
     await runOAuthAdminSqliteScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "restrict OAuth provisioning to the administrator principal",
         setup: ({ given }) => [given.auth.user({ id: "admin-1", role: "admin" })],
         steps: ({ then }) => [
@@ -915,6 +943,7 @@ describe("admin OAuth client SQLite scenarios", () => {
   test("concurrent provisioning does not seed HTTP sessions or mix client ownership", async () => {
     await runOAuthAdminSqliteScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "keep OAuth endpoint session context isolated",
         vars: () => ({ cookie: "", userId: "" }),
         steps: ({ when, then }) => [

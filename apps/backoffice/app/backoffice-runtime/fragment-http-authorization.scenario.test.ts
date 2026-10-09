@@ -13,6 +13,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import {
   loadOrganizationMembers,
   loadOrganizationInvitations,
@@ -39,6 +40,14 @@ import { mcpPublicRoute } from "@/routes/api/mcp-route.server";
 import { loader as loadInvitationPreview } from "@/routes/backoffice/invitation-accept";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
+import { InMemoryApiObject } from "../../workers/api.do";
+import { InMemoryAuthObject } from "../../workers/auth.do";
+import { InMemoryAutomationsObject } from "../../workers/automations.do";
+import { InMemoryFormsObject } from "../../workers/forms.do";
+import { InMemoryMcpObject } from "../../workers/mcp.do";
+import { InMemoryOtpObject } from "../../workers/otp.do";
+import { InMemoryReson8Object } from "../../workers/reson8.do";
+import { InMemoryUploadObject } from "../../workers/upload.do";
 import { authorizedBackofficeObjectHttp } from "./authorized-object-http";
 import {
   createBackofficeServiceExecution,
@@ -48,6 +57,17 @@ import {
 import { deferBackofficeExecution } from "./context";
 import { BackofficeKernel } from "./kernel";
 import { backofficeObjectScopeFromContextScope } from "./object-registry";
+
+const scenarioObjects = {
+  API: (input) => new InMemoryApiObject(input),
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  FORMS: (input) => new InMemoryFormsObject(input),
+  MCP: (input) => new InMemoryMcpObject(input),
+  OTP: (input) => new InMemoryOtpObject(input),
+  RESON8: (input) => new InMemoryReson8Object(input),
+  UPLOAD: (input) => new InMemoryUploadObject(input),
+} satisfies LocalBackofficeObjects;
 
 const origin = "https://backoffice.example";
 
@@ -88,6 +108,7 @@ async function runHttpAuthorityScenario(check: (ctx: BackofficeScenarioContext) 
   try {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "fragment HTTP authority",
         options: { sqliteDataDirectory: directory },
         env: { AUTH_EMAIL_VERIFICATION_ENABLED: "false", SIGN_UP_INVITATIONS_ENABLED: "false" },

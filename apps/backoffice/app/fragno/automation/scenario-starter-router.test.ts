@@ -27,7 +27,32 @@ vi.mock("cloudflare:workers", () => ({
   WorkerEntrypoint,
 }));
 
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
+
+import { InMemoryApiObject } from "../../../workers/api.do";
+import { InMemoryAppInstallationsObject } from "../../../workers/app-installations.do";
+import { InMemoryAppsObject } from "../../../workers/apps.do";
+import { InMemoryAuthObject } from "../../../workers/auth.do";
+import { InMemoryAutomationsObject } from "../../../workers/automations.do";
+import { InMemoryFormsObject } from "../../../workers/forms.do";
+import { InMemoryMarketplaceObject } from "../../../workers/marketplace.do";
+import { InMemoryMcpObject } from "../../../workers/mcp.do";
+import { InMemoryTelegramObject } from "../../../workers/telegram.do";
+import { InMemoryUploadObject } from "../../../workers/upload.do";
 import { backofficeFiles, defineBackofficeScenario, runBackofficeScenario } from "./scenario";
+
+const scenarioObjects = {
+  API: (input) => new InMemoryApiObject(input),
+  APPS: (input) => new InMemoryAppsObject(input),
+  APP_INSTALLATIONS: (input) => new InMemoryAppInstallationsObject(input),
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  FORMS: (input) => new InMemoryFormsObject(input),
+  MARKETPLACE: (input) => new InMemoryMarketplaceObject(input),
+  MCP: (input) => new InMemoryMcpObject(input),
+  TELEGRAM: (input) => new InMemoryTelegramObject(input),
+  UPLOAD: (input) => new InMemoryUploadObject(input),
+} satisfies LocalBackofficeObjects;
 
 const telegramTestCommandEntry = getStaticMarketplaceEntry({
   slug: "telegram-test-command",
@@ -145,6 +170,7 @@ describe("starter automation router scenarios", () => {
   test("scenario TanStack DB helper drains and queries frontend-visible data", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "scenario TanStack DB helper drains and queries frontend-visible data",
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ then, when }) => [
@@ -191,6 +217,7 @@ describe("starter automation router scenarios", () => {
   test("scenario TanStack DB exposes workflow state through the automation outbox", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "scenario TanStack DB exposes automation workflow state",
         files: marketplaceTelegramTestWorkspace(),
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
@@ -243,6 +270,7 @@ describe("starter automation router scenarios", () => {
   test("scenario router helpers inspect Marketplace channel routes", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "scenario router helpers inspect Marketplace channel routes",
 
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
@@ -296,6 +324,7 @@ describe("starter automation router scenarios", () => {
   test("disabling a custom route stops it from starting workflows", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "scenario router disables custom route",
 
         files: backofficeFiles.workspaceStarter(),
@@ -323,6 +352,7 @@ describe("starter automation router scenarios", () => {
   test("updating a custom route matcher changes which events start it", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "scenario router updates starter matcher",
 
         files: marketplaceTelegramTestWorkspace(),
@@ -374,6 +404,7 @@ describe("starter automation router scenarios", () => {
   test("creating a route starts a custom workflow for matching events", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "scenario router creates custom start route",
 
         files: backofficeFiles.workspaceStarter(),
@@ -517,6 +548,7 @@ describe("starter automation router scenarios", () => {
   test("a broken start_workflow route does not block another matched route", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "scenario router missing workflow file skips",
 
         files: backofficeFiles.workspaceStarter(),
@@ -612,6 +644,7 @@ describe("starter automation router scenarios", () => {
 
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "retry failed route fan-out after creating its workflow target",
 
         files: backofficeFiles.workspaceStarter(),
@@ -767,6 +800,7 @@ describe("starter automation router scenarios", () => {
   test("send_workflow_event routes wake a workflow from a stored instance id", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "scenario router sends workflow event",
 
         files: backofficeFiles.workspaceStarter(),
@@ -868,6 +902,7 @@ describe("starter automation router scenarios", () => {
   test("Telegram /pi creates a Pi session for an authorized linked chat", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "Telegram Channel /pi creates a Pi session",
 
         fakes: ({ fake }) => ({
@@ -1060,6 +1095,7 @@ describe("starter automation router scenarios", () => {
   test("Telegram /pi creates a session for a fresh organization without stored Pi configuration", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "Telegram Channel /pi uses the environment-backed default model",
 
         fakes: ({ fake }) => ({
@@ -1160,6 +1196,7 @@ describe("starter automation router scenarios", () => {
   test("Telegram identity revocation returns the Pi workflow to unlinked behavior", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "revoked Telegram identity is unlinked in the Pi workflow",
         fakes: ({ fake }) => ({
           telegram: fake.telegram(),
@@ -1262,6 +1299,7 @@ describe("starter automation router scenarios", () => {
 
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "Telegram Channel ignores unlinked and unrelated inputs",
 
         fakes: ({ fake }) => ({
@@ -1354,6 +1392,7 @@ describe("starter automation router scenarios", () => {
   test("Telegram text reuses a Pi session and forwards assistant text", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "Telegram Channel text reuses a Pi session",
 
         fakes: ({ fake }) => ({
@@ -1482,6 +1521,7 @@ describe("starter automation router scenarios", () => {
   test("Telegram /pi reuses an active stored Pi session", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "Telegram Channel /pi reuses an active Pi session",
 
         fakes: ({ fake }) => ({
@@ -1601,6 +1641,7 @@ describe("starter automation router scenarios", () => {
   test("Telegram /pi replaces a missing stored Pi session", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "Telegram Channel /pi replaces a missing stored Pi session",
 
         fakes: ({ fake }) => ({
@@ -1710,6 +1751,7 @@ describe("starter automation router scenarios", () => {
   test("Telegram text with no Pi assistant text sends no response message", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "Telegram Channel text sends no message when Pi has no assistant text",
 
         fakes: ({ fake }) => ({
@@ -1825,6 +1867,7 @@ describe("starter automation router scenarios", () => {
   test("Telegram /test sends the delayed reply after time advances", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "Telegram Channel /test waits before sending a reply",
 
         files: marketplaceTelegramTestWorkspace(),
@@ -1916,6 +1959,7 @@ describe("starter automation router scenarios", () => {
   test("telegram-test-command skips non-/test events", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "telegram-test-command skips non-test Telegram events",
 
         files: marketplaceTelegramTestWorkspace(),

@@ -12,12 +12,24 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
 import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
 
+import { InMemoryAuthObject } from "../../../workers/auth.do";
+import { InMemoryAutomationsObject } from "../../../workers/automations.do";
+import { InMemoryOtpObject } from "../../../workers/otp.do";
+import { InMemoryUploadObject } from "../../../workers/upload.do";
 import { createInMemoryBackofficeRuntime } from "../in-memory-runtime";
 import type { LocalBackofficeDurableHooks } from "./local-runtime";
 import { startNodeBackofficeAlarmScheduler } from "./node-alarm-scheduler";
 import { SqliteBackofficeObjectStorage } from "./sqlite-object-storage";
+
+const scenarioObjects = {
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  OTP: (input) => new InMemoryOtpObject(input),
+  UPLOAD: (input) => new InMemoryUploadObject(input),
+} satisfies LocalBackofficeObjects;
 
 function createVoidDeferred() {
   let resolve!: () => void;
@@ -34,6 +46,7 @@ describe("file-backed SQLite Backoffice scenario", () => {
       const options = { sqliteDataDirectory: directory };
       await runBackofficeScenario(
         defineBackofficeScenario({
+          objects: scenarioObjects,
           name: "register account on SQLite",
           options,
           steps: ({ when, then }) => [
@@ -52,6 +65,7 @@ describe("file-backed SQLite Backoffice scenario", () => {
 
       await runBackofficeScenario(
         defineBackofficeScenario({
+          objects: scenarioObjects,
           name: "sign in to account after process restart",
           options,
           steps: ({ then }) => [
@@ -437,7 +451,8 @@ describe("file-backed SQLite Backoffice scenario", () => {
         defineBackofficeScenario({
           name: "a broken persisted object does not block another object's alarm",
           options: { drain: false, sqliteDataDirectory: directory },
-          objectOverrides: {
+          objects: {
+            ...scenarioObjects,
             UPLOAD: ({ state }) => ({
               async fetch(request: Request) {
                 if (new URL(request.url).pathname === "/schedule") {
@@ -496,6 +511,7 @@ describe("file-backed SQLite Backoffice scenario", () => {
     try {
       await runBackofficeScenario(
         defineBackofficeScenario({
+          objects: scenarioObjects,
           name: "removed persisted bindings do not prevent startup",
           options: { drain: false, sqliteDataDirectory: directory },
           steps: ({ then }) => [
@@ -531,7 +547,8 @@ describe("file-backed SQLite Backoffice scenario", () => {
             name: "cleanup releases later resources after an earlier failure",
             durableHooks,
             options: { drain: false, sqliteDataDirectory: directory },
-            objectOverrides: {
+            objects: {
+              ...scenarioObjects,
               UPLOAD: ({ state }) => ({
                 async fetch() {
                   capturedStorages.push(state.storage);
@@ -586,7 +603,7 @@ describe("file-backed SQLite Backoffice scenario", () => {
         defineBackofficeScenario({
           name: "schedule a persisted upload object alarm",
           options,
-          objectOverrides,
+          objects: { ...scenarioObjects, ...objectOverrides },
           steps: () => [
             {
               kind: "when",
@@ -607,7 +624,7 @@ describe("file-backed SQLite Backoffice scenario", () => {
         defineBackofficeScenario({
           name: "deliver persisted upload object alarm after restart",
           options,
-          objectOverrides,
+          objects: { ...scenarioObjects, ...objectOverrides },
           steps: ({ then }) => [
             then.assert(
               "restored object runs its alarm and retains its configuration",

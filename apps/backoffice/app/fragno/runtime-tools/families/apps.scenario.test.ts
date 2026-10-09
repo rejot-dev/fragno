@@ -22,6 +22,7 @@ import {
 } from "@/backoffice-runtime/context";
 import type { BackofficeDatabaseAdapterFactory } from "@/backoffice-runtime/database-adapters";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import {
   backofficeAppInstallationMutationResultSchema,
@@ -42,8 +43,26 @@ import { executeBackofficeRuntimeTool } from "@/fragno/runtime-tools/runtime-too
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 
+import { InMemoryApiObject } from "../../../../workers/api.do";
+import { InMemoryAppInstallationsObject } from "../../../../workers/app-installations.do";
 import { InMemoryAppsObject } from "../../../../workers/apps.do";
+import { InMemoryAuthObject } from "../../../../workers/auth.do";
+import { InMemoryAutomationsObject } from "../../../../workers/automations.do";
+import { InMemoryFormsObject } from "../../../../workers/forms.do";
+import { InMemoryTelegramObject } from "../../../../workers/telegram.do";
+import { InMemoryUploadObject } from "../../../../workers/upload.do";
 import { appsToolFamily } from "./apps";
+
+const scenarioObjects = {
+  API: (input) => new InMemoryApiObject(input),
+  APPS: (input) => new InMemoryAppsObject(input),
+  APP_INSTALLATIONS: (input) => new InMemoryAppInstallationsObject(input),
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  FORMS: (input) => new InMemoryFormsObject(input),
+  TELEGRAM: (input) => new InMemoryTelegramObject(input),
+  UPLOAD: (input) => new InMemoryUploadObject(input),
+} satisfies LocalBackofficeObjects;
 
 const requestedPermissions = [BACKOFFICE_PERMISSION.events.emit, BACKOFFICE_PERMISSION.events.read];
 
@@ -114,6 +133,7 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
   test("owners review declarations and approve, update, uninstall, and reinstall through Codemode and Bash", async () => {
     await runAppsSqliteScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "organization-owned approval lifecycle through both adapters",
         setup: ({ given }) => [
           given.auth.user({ id: "global-admin", role: "admin" }),
@@ -285,6 +305,7 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
   test("members can inspect but cannot approve; forged attribution, ownership, and undeclared grants leave storage unchanged", async () => {
     await runAppsSqliteScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "installation management establishes authority and validates caller input",
         setup: ({ given }) => [
           given.auth.user({ id: "global-admin", role: "admin" }),
@@ -459,6 +480,7 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
     let appId = "";
     await runAppsSqliteScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "installation approval uses live Auth rather than cached role snapshots",
         setup: ({ given }) => [
           given.auth.user({ id: "global-admin", role: "admin" }),
@@ -579,7 +601,8 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
           given.auth.user({ id: "global-admin", role: "admin" }),
           given.auth.organization({ id: "org-1", ownerUserId: "global-admin" }),
         ],
-        objectOverrides: {
+        objects: {
+          ...scenarioObjects,
           APPS: function captureRegistryDatabase(input) {
             registryAdapter = input.runtime.adapters.createAdapter({ kind: "apps" });
             return new InMemoryAppsObject(input);
@@ -646,6 +669,7 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
     let firstId = "";
     await runAppsSqliteScenario(
       defineBackofficeScenario<{ projectId: string }>({
+        objects: scenarioObjects,
         name: "installation tools remain bound to the selected organization",
         vars: () => ({ projectId: "" }),
         setup: ({ given }) => [

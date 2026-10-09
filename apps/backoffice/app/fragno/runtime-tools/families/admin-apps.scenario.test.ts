@@ -18,6 +18,7 @@ import {
   type BackofficeContextScope,
 } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import {
   backofficeAppPageSchema,
@@ -36,7 +37,26 @@ import { executeBackofficeRuntimeTool } from "@/fragno/runtime-tools/runtime-too
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 
+import { InMemoryApiObject } from "../../../../workers/api.do";
+import { InMemoryAppInstallationsObject } from "../../../../workers/app-installations.do";
+import { InMemoryAppsObject } from "../../../../workers/apps.do";
+import { InMemoryAuthObject } from "../../../../workers/auth.do";
+import { InMemoryAutomationsObject } from "../../../../workers/automations.do";
+import { InMemoryFormsObject } from "../../../../workers/forms.do";
+import { InMemoryTelegramObject } from "../../../../workers/telegram.do";
+import { InMemoryUploadObject } from "../../../../workers/upload.do";
 import { adminAppsRuntimeTools } from "./admin-apps";
+
+const scenarioObjects = {
+  API: (input) => new InMemoryApiObject(input),
+  APPS: (input) => new InMemoryAppsObject(input),
+  APP_INSTALLATIONS: (input) => new InMemoryAppInstallationsObject(input),
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  FORMS: (input) => new InMemoryFormsObject(input),
+  TELEGRAM: (input) => new InMemoryTelegramObject(input),
+  UPLOAD: (input) => new InMemoryUploadObject(input),
+} satisfies LocalBackofficeObjects;
 
 const permissions = [BACKOFFICE_PERMISSION.events.emit];
 
@@ -71,6 +91,7 @@ describe("admin app runtime tool SQLite scenarios", () => {
   test("Bash renders empty catalogs, registration outcomes, and app metadata as text without breaking print selectors", async () => {
     await runAppAdminSqliteScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "readable Bash app management output",
         setup: ({ given }) => [given.auth.user({ id: "admin-1", role: "admin" })],
         steps: ({ then }) => [
@@ -126,6 +147,7 @@ describe("admin app runtime tool SQLite scenarios", () => {
   test("an administrator creates and lists registrations through Codemode and Bash without exposing credentials", async () => {
     await runAppAdminSqliteScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "register an Auth-owned client from System admin tools",
         setup: ({ given }) => [given.auth.user({ id: "admin-1", role: "admin" })],
         steps: ({ then }) => [
@@ -208,6 +230,7 @@ describe("admin app runtime tool SQLite scenarios", () => {
     let context: ReturnType<typeof appAdminContext> | null = null;
     await runAppAdminSqliteScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "app tools check current global administrator authority",
         setup: ({ given }) => [
           given.auth.user({ id: "admin-1", role: "admin" }),
@@ -291,6 +314,7 @@ describe("admin app runtime tool SQLite scenarios", () => {
   test("app tools are unavailable outside System even for administrators", async () => {
     await runAppAdminSqliteScenario(
       defineBackofficeScenario<{ projectId: string }>({
+        objects: scenarioObjects,
         name: "app catalog management belongs to System context",
         vars: () => ({ projectId: "" }),
         setup: ({ given }) => [
@@ -351,6 +375,7 @@ describe("admin app runtime tool SQLite scenarios", () => {
   test("unknown OAuth clients and invalid permission declarations fail before registration", async () => {
     await runAppAdminSqliteScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "app creation establishes identity at the Auth boundary",
         setup: ({ given }) => [given.auth.user({ id: "admin-1", role: "admin" })],
         steps: ({ then }) => [
@@ -409,6 +434,7 @@ describe("admin app runtime tool SQLite scenarios", () => {
     const registeredIds: string[] = [];
     await runAppAdminSqliteScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "paginate the authoritative registration catalog",
         setup: ({ given }) => [
           given.organization.exists({ id: "org-1", ownerUserId: "admin-1" }),

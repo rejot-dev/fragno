@@ -8,6 +8,7 @@ const workers = vi.hoisted(() => ({
 vi.mock("cloudflare:workers", () => workers);
 
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { issueBackofficeTokenResultSchema } from "@/fragno/auth/contracts";
 import {
   defineBackofficeScenario,
@@ -21,8 +22,19 @@ import {
 } from "@/layouts/backoffice-shell-request.server";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
+import { InMemoryAuthObject } from "../../../workers/auth.do";
+import { InMemoryAutomationsObject } from "../../../workers/automations.do";
+import { InMemoryOtpObject } from "../../../workers/otp.do";
+import { InMemoryUploadObject } from "../../../workers/upload.do";
 import { buildBackofficeLoginPath } from "./auth-navigation";
 import { action, loader } from "./login";
+
+const scenarioObjects = {
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  OTP: (input) => new InMemoryOtpObject(input),
+  UPLOAD: (input) => new InMemoryUploadObject(input),
+} satisfies LocalBackofficeObjects;
 
 const origin = "https://backoffice.example";
 
@@ -40,6 +52,7 @@ test.each(["dashboard?tab=runs", "mcp?oauth=success&server=agensi"])(
   async (destination) => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: `password login preserves the organization slug for ${destination}`,
         env: { AUTH_EMAIL_VERIFICATION_ENABLED: "false", SIGN_UP_INVITATIONS_ENABLED: "false" },
         vars: () => ({ session: "" }),

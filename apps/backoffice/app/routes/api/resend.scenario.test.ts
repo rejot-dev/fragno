@@ -11,6 +11,7 @@ vi.mock("cloudflare:workers", () => workers);
 
 import type { BackofficeContextScope } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import {
   defineBackofficeScenario,
@@ -19,8 +20,17 @@ import {
 } from "@/fragno/automation/scenario";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
+import { InMemoryAuthObject } from "../../../workers/auth.do";
+import { InMemoryAutomationsObject } from "../../../workers/automations.do";
 import { InMemoryResendObject } from "../../../workers/resend.do";
+import { InMemoryUploadObject } from "../../../workers/upload.do";
 import { action, loader } from "./resend";
+
+const scenarioObjects = {
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  UPLOAD: (input) => new InMemoryUploadObject(input),
+} satisfies LocalBackofficeObjects;
 
 const origin = "https://backoffice.example";
 const signingKey = Buffer.from("resend-webhook-scenario-signing-key");
@@ -73,7 +83,8 @@ test.each(webhookCases)(
       defineBackofficeScenario({
         name: `Resend ${scopePathSegment} public webhook boundary`,
         options: { drain: false },
-        objectOverrides: {
+        objects: {
+          ...scenarioObjects,
           RESEND: ({ state, env, runtime, implementation, nowEpochMs }) =>
             new InMemoryResendObject({
               state,

@@ -6,7 +6,6 @@ import type { TelegramApi, TelegramMessage } from "@fragno-dev/telegram-fragment
 
 import type { SubmissionRecord } from "@earendil-works/pi-durable";
 
-import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import type { BackofficeRuntimeEnv } from "@/backoffice-runtime/backoffice-runtime-env";
 import {
   createBackofficeServiceExecution,
@@ -77,8 +76,7 @@ import {
 } from "@/fragno/tanstack/scenario-collection-database";
 import type { CreateSandboxRuntimeProviders } from "@/sandbox/contracts";
 
-import { InMemoryPiManagerObject } from "../../../workers/pi-manager.do";
-import { InMemoryTelegramObject } from "../../../workers/telegram.do";
+import type { InMemoryTelegramObject } from "../../../workers/telegram.do";
 import { listHookScopes } from "../backoffice-capabilities/backoffice-capabilities";
 import {
   AUTOMATION_SYSTEM_INITIATOR,
@@ -359,8 +357,11 @@ export type BackofficeScenarioDefinitionInput<TVars extends ScenarioVars = Scena
   files?: BackofficeScenarioFilePreset;
   vars?: () => TVars;
   fakes?: (ctx: { fake: ScenarioFakeFactory }) => ScenarioFakes;
-  /** Replaces individual objects; every other object is the full local implementation. */
-  objectOverrides?: LocalBackofficeObjects;
+  /**
+   * The objects this scenario's runtime registers; only these are loaded. Fakes provide their own
+   * object (`fake.telegram()` provides TELEGRAM, for example), whether or not this lists it.
+   */
+  objects: LocalBackofficeObjects;
   piAvailableModels?: readonly PiAvailableModel[];
   createSandboxProviders?: CreateSandboxRuntimeProviders;
   durableHooks?: LocalBackofficeDurableHooks;
@@ -4203,10 +4204,11 @@ const fakeTelegramFile = (fakeTelegram: FakeTelegramApi, fileId: string): FakeTe
   return file;
 };
 
-const createFakeObjectOverrides = (fakes: ScenarioFakes): LocalBackofficeObjects => {
+const createFakeObjectOverrides = async (fakes: ScenarioFakes): Promise<LocalBackofficeObjects> => {
   const overrides: LocalBackofficeObjects = {};
 
   if (fakes.telegram) {
+    const { InMemoryTelegramObject } = await import("../../../workers/telegram.do");
     overrides.TELEGRAM = ({ state, env, runtime, implementation, nowEpochMs }) => {
       const fakeTelegram = fakes.telegram!;
       return new (class extends InMemoryTelegramObject {
@@ -4250,6 +4252,7 @@ const createFakeObjectOverrides = (fakes: ScenarioFakes): LocalBackofficeObjects
   }
 
   if (fakes.pi) {
+    const { InMemoryPiManagerObject } = await import("../../../workers/pi-manager.do");
     overrides.PI_MANAGER = ({ state, env, runtime, implementation, nowEpochMs }) => {
       const fakePi = fakes.pi!;
       return new (class extends InMemoryPiManagerObject {
@@ -4501,11 +4504,7 @@ export const runBackofficeScenario = async <TVars extends ScenarioVars = Scenari
       );
       return await readSource({ execution, path });
     },
-    objects: {
-      ...allLocalObjects,
-      ...createFakeObjectOverrides(fakes),
-      ...scenario.objectOverrides,
-    },
+    objects: { ...scenario.objects, ...(await createFakeObjectOverrides(fakes)) },
     piAvailableModels: scenario.piAvailableModels,
     ...(scenario.durableHooks ? { durableHooks: scenario.durableHooks } : {}),
   });

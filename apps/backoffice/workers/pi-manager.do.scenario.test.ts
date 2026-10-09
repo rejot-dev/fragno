@@ -16,6 +16,7 @@ import { fauxAssistantMessage, fauxProvider, fauxText } from "@earendil-works/pi
 
 import { createRegistry, type ConversationView, type LiveState } from "@earendil-works/pi-durable";
 
+import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import {
   createBackofficeServiceExecution,
   createBackofficeSystemExecution,
@@ -29,6 +30,8 @@ import type { PiAgentConfig } from "@/fragno/pi-manager/pi-agent-contract";
 
 import { createPiScenarioHarnessOptions } from "./pi-durable-scenario.test-support";
 import { InMemoryPiObject } from "./pi.do";
+
+const scenarioObjects = allLocalObjects;
 
 const PI_SCENARIO_AVAILABLE_MODELS = [
   { provider: "faux", modelId: "faux-1", label: "Faux 1" },
@@ -122,7 +125,7 @@ test("the Pi manager idempotently creates one session for a stable request", asy
       name: "idempotent durable Pi session creation",
       piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
       options: { drain: false },
-      objectOverrides,
+      objects: { ...scenarioObjects, ...objectOverrides },
       steps: ({ then }) => [
         then.assert("reuse the first session created for one request", async ({ runtime }) => {
           const input = {
@@ -161,7 +164,7 @@ test("local Pi managers isolate all Automations scopes and execute real durable 
       name: "local durable Pi directories and agent handoff in every scope",
       piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
       options: { drain: false },
-      objectOverrides,
+      objects: { ...scenarioObjects, ...objectOverrides },
       steps: ({ then }) => [
         then.assert(
           "create scoped directories and hand off prompts to distinct agents",
@@ -288,7 +291,7 @@ test("the Pi manager long-polls a server-side submission waiter", async () => {
       name: "wait for durable Pi submission settlement",
       piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
       options: { drain: false },
-      objectOverrides,
+      objects: { ...scenarioObjects, ...objectOverrides },
       steps: ({ then }) => [
         then.assert(
           "resolve the manager request when the submission settles",
@@ -336,7 +339,8 @@ test("the local Pi view stream publishes durable generation partials before comp
       name: "stream durable Pi generation partials",
       piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
       options: { drain: false },
-      objectOverrides: {
+      objects: {
+        ...scenarioObjects,
         PI: ({ state, runtime, openPiSessionStore, piAgentIdFromConfig, nowEpochMs }) => {
           const faux = fauxProvider({ tokensPerSecond: 100, tokenSize: { min: 1, max: 1 } });
           faux.setResponses([
@@ -419,7 +423,8 @@ test("durable Pi paginates history, streams exports, and compacts without deleti
       name: "durable Pi history export and compaction",
       options: { drain: false },
       piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
-      objectOverrides: {
+      objects: {
+        ...scenarioObjects,
         PI: ({ state, runtime, openPiSessionStore, piAgentIdFromConfig, nowEpochMs }) => {
           const faux = fauxProvider();
           faux.setResponses([
@@ -544,7 +549,7 @@ test("SQLite Pi directories and agent transcripts survive a complete local runti
         name: "persist scoped Pi directories and agents",
         piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
         options: { sqliteDataDirectory: directory, drain: false },
-        objectOverrides,
+        objects: { ...scenarioObjects, ...objectOverrides },
         steps: ({ then }) => [
           then.assert(
             "commit each directory and agent transcript to SQLite",
@@ -575,7 +580,7 @@ test("SQLite Pi directories and agent transcripts survive a complete local runti
         name: "restore scoped Pi directories and agents",
         piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
         options: { sqliteDataDirectory: directory, drain: false },
-        objectOverrides,
+        objects: { ...scenarioObjects, ...objectOverrides },
         steps: ({ then }) => [
           then.assert(
             "restore directory ownership, transcript, and submission deduplication",
@@ -628,7 +633,8 @@ test("a cold local agent alarm resumes unfinished SQLite work without duplicatin
         name: "persist unfinished local Pi work",
         piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
         options: { sqliteDataDirectory: directory, drain: false },
-        objectOverrides: {
+        objects: {
+          ...scenarioObjects,
           PI: ({ state, runtime, openPiSessionStore, piAgentIdFromConfig, nowEpochMs }) => {
             // Short chunks keep cancellation bounded while the full answer remains deliberately slow.
             const slow = fauxProvider({ tokensPerSecond: 1, tokenSize: { min: 1, max: 1 } });
@@ -674,7 +680,7 @@ test("a cold local agent alarm resumes unfinished SQLite work without duplicatin
         name: "resume unfinished local Pi work",
         piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
         options: { sqliteDataDirectory: directory, drain: false },
-        objectOverrides,
+        objects: { ...scenarioObjects, ...objectOverrides },
         steps: ({ then }) => [
           then.assert(
             "deliver the restored alarm and finish the original submission",

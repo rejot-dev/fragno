@@ -26,6 +26,7 @@ import {
   createBackofficeSystemExecution,
   createBackofficeUserExecution,
 } from "@/backoffice-runtime/context";
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import type { BackofficeActionRpcContext } from "@/backoffice-runtime/object-registry";
 import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import type { BackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
@@ -51,7 +52,14 @@ import {
   getStaticMarketplaceEntry,
 } from "@/fragno/marketplace/static-entries";
 
+import { InMemoryApiObject } from "../../../workers/api.do";
+import { InMemoryAppInstallationsObject } from "../../../workers/app-installations.do";
+import { InMemoryAppsObject } from "../../../workers/apps.do";
+import { InMemoryAuthObject } from "../../../workers/auth.do";
+import { InMemoryAutomationsObject } from "../../../workers/automations.do";
+import { InMemoryFormsObject } from "../../../workers/forms.do";
 import { InMemoryMarketplaceObject } from "../../../workers/marketplace.do";
+import { InMemoryTelegramObject } from "../../../workers/telegram.do";
 import { InMemoryUploadObject } from "../../../workers/upload.do";
 import {
   buildMarketplacePackageInstallWorkflowInstanceId,
@@ -64,6 +72,18 @@ import {
   runBackofficeScenario,
   type BackofficeScenarioContext,
 } from "./scenario";
+
+const scenarioObjects = {
+  API: (input) => new InMemoryApiObject(input),
+  APPS: (input) => new InMemoryAppsObject(input),
+  APP_INSTALLATIONS: (input) => new InMemoryAppInstallationsObject(input),
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  FORMS: (input) => new InMemoryFormsObject(input),
+  MARKETPLACE: (input) => new InMemoryMarketplaceObject(input),
+  TELEGRAM: (input) => new InMemoryTelegramObject(input),
+  UPLOAD: (input) => new InMemoryUploadObject(input),
+} satisfies LocalBackofficeObjects;
 
 const MARKETPLACE_LISTING_ID = marketplaceListingId({
   ownerScope: { kind: "system" },
@@ -311,6 +331,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
     try {
       await runBackofficeScenario(
         defineBackofficeScenario({
+          objects: scenarioObjects,
           name: "No capture work for already-published bundled versions",
           steps: ({ then, runner }) => [
             then.assert("request the bundled releases", async (ctx) => {
@@ -356,6 +377,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
   test("force-publishes with fresh workflow IDs and overwrites artifact files", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "force-publish bundled Marketplace artifacts",
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ then, runner }) => [
@@ -418,6 +440,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
 
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "install the built-in Telegram and GitHub channels",
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ when, then, runner }) => [
@@ -569,6 +592,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
 
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "install Telegram Channel outside the organization scope",
         setup: ({ given }) => [
           given.organization.exists({
@@ -666,6 +690,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
   test("ingests a published artifact into organization and project workspaces", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "ingest marketplace artifact into scoped workspaces",
 
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
@@ -811,6 +836,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
 
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "configure the Marketplace Telegram test command",
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ then, runner }) => [
@@ -936,6 +962,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
       async () => {
         await runBackofficeScenario(
           defineBackofficeScenario({
+            objects: scenarioObjects,
             name: "deny unauthorized Marketplace installer operation",
             setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
             steps: ({ then, runner }) => [
@@ -1022,6 +1049,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
 
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "reconcile a Marketplace-owned automation route",
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ then, runner }) => [
@@ -1255,6 +1283,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
 
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "reject an unmanaged legacy Marketplace automation route",
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ when, then, runner }) => [
@@ -1351,6 +1380,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
 
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "reject an unrelated Marketplace route collision",
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ when, then, runner }) => [
@@ -1444,7 +1474,8 @@ describe("marketplace scenarios", { concurrent: false }, () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         name: "replay marketplace ingestion transfer without recreating its upload",
-        objectOverrides: {
+        objects: {
+          ...scenarioObjects,
           UPLOAD: ({ name, state, env, runtime, implementation }) => {
             const destinationObject = name.endsWith("v1:org:org-1");
             return new (class extends InMemoryUploadObject {
@@ -1550,7 +1581,8 @@ describe("marketplace scenarios", { concurrent: false }, () => {
       await runBackofficeScenario(
         defineBackofficeScenario({
           name: "rebuild a multi-write Marketplace ingestion batch",
-          objectOverrides: {
+          objects: {
+            ...scenarioObjects,
             UPLOAD: ({ name, state, env, runtime, implementation }) => {
               const destinationObject = name.endsWith("v1:org:org-1");
               return new (class extends InMemoryUploadObject {
@@ -1698,7 +1730,8 @@ describe("marketplace scenarios", { concurrent: false }, () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         name: "reject permanent marketplace ingestion Upload errors",
-        objectOverrides: {
+        objects: {
+          ...scenarioObjects,
           UPLOAD: ({ name, state, env, runtime, implementation }) => {
             const destinationObject = name.endsWith("v1:org:org-1");
             return new (class extends InMemoryUploadObject {
@@ -1769,6 +1802,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
 
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "preserve an existing Marketplace ingestion target file",
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ when, then, runner }) => [
@@ -1869,6 +1903,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
 
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "reject Marketplace ingestion over a legacy starter-seeded version",
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ when, then, runner }) => [
@@ -1981,7 +2016,8 @@ describe("marketplace scenarios", { concurrent: false }, () => {
       await runBackofficeScenario(
         defineBackofficeScenario({
           name: "replay marketplace publication from a durable static snapshot",
-          objectOverrides: {
+          objects: {
+            ...scenarioObjects,
             MARKETPLACE: ({ state, env, runtime, implementation }) =>
               new (class extends InMemoryMarketplaceObject {
                 async beginPackagePublish(
@@ -2048,7 +2084,8 @@ describe("marketplace scenarios", { concurrent: false }, () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         name: "replay Marketplace upload creation with its existing session",
-        objectOverrides: {
+        objects: {
+          ...scenarioObjects,
           UPLOAD: ({ name, state, env, runtime, implementation }) => {
             const artifactUploadObject = name.endsWith(MARKETPLACE_ARTIFACT_UPLOAD_OBJECT_NAME);
             return new (class extends InMemoryUploadObject {
@@ -2128,7 +2165,8 @@ describe("marketplace scenarios", { concurrent: false }, () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         name: "replay marketplace artifact transfer without recreating its upload",
-        objectOverrides: {
+        objects: {
+          ...scenarioObjects,
           UPLOAD: ({ name, state, env, runtime, implementation }) => {
             const artifactUploadObject = name.endsWith(MARKETPLACE_ARTIFACT_UPLOAD_OBJECT_NAME);
             return new (class extends InMemoryUploadObject {
@@ -2207,7 +2245,8 @@ describe("marketplace scenarios", { concurrent: false }, () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         name: "reject permanent marketplace artifact upload errors",
-        objectOverrides: {
+        objects: {
+          ...scenarioObjects,
           UPLOAD: ({ name, state, env, runtime, implementation }) => {
             const artifactUploadObject = name.endsWith(MARKETPLACE_ARTIFACT_UPLOAD_OBJECT_NAME);
             return new (class extends InMemoryUploadObject {
@@ -2258,7 +2297,8 @@ describe("marketplace scenarios", { concurrent: false }, () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         name: "retry typed transient Marketplace Upload errors",
-        objectOverrides: {
+        objects: {
+          ...scenarioObjects,
           UPLOAD: ({ name, state, env, runtime, implementation }) => {
             const artifactUploadObject = name.endsWith(MARKETPLACE_ARTIFACT_UPLOAD_OBJECT_NAME);
             return new (class extends InMemoryUploadObject {
@@ -2320,7 +2360,8 @@ describe("marketplace scenarios", { concurrent: false }, () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         name: "replay a committed Marketplace publication batch",
-        objectOverrides: {
+        objects: {
+          ...scenarioObjects,
           UPLOAD: ({ name, state, env, runtime, implementation }) => {
             const artifactUploadObject = name.endsWith(MARKETPLACE_ARTIFACT_UPLOAD_OBJECT_NAME);
             return new (class extends InMemoryUploadObject {
@@ -2397,7 +2438,8 @@ describe("marketplace scenarios", { concurrent: false }, () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         name: "expire a prepared Marketplace publication upload",
-        objectOverrides: {
+        objects: {
+          ...scenarioObjects,
           UPLOAD: ({ name, state, env, runtime, implementation }) => {
             const artifactUploadObject = name.endsWith(MARKETPLACE_ARTIFACT_UPLOAD_OBJECT_NAME);
             return new (class extends InMemoryUploadObject {
@@ -2475,7 +2517,8 @@ describe("marketplace scenarios", { concurrent: false }, () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         name: "replay a committed marketplace ingestion batch",
-        objectOverrides: {
+        objects: {
+          ...scenarioObjects,
           UPLOAD: ({ name, state, env, runtime, implementation }) => {
             const destinationObject = name.endsWith("v1:org:org-1");
             return new (class extends InMemoryUploadObject {
@@ -2579,7 +2622,8 @@ describe("marketplace scenarios", { concurrent: false }, () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         name: "reject Marketplace source changed before transfer",
-        objectOverrides: {
+        objects: {
+          ...scenarioObjects,
           UPLOAD: ({ name, state, env, runtime, implementation }) => {
             const destinationObject = name.endsWith("v1:org:org-1");
             return new (class extends InMemoryUploadObject {
@@ -2676,7 +2720,8 @@ describe("marketplace scenarios", { concurrent: false }, () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         name: "reject a marketplace source changed during ingestion",
-        objectOverrides: {
+        objects: {
+          ...scenarioObjects,
           UPLOAD: ({ name, state, env, runtime, implementation }) => {
             const destinationObject = name.endsWith("v1:org:org-1");
             return new (class extends InMemoryUploadObject {
@@ -2757,6 +2802,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
   test("rejects invalid marketplace workflow params before creating instances", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "validate marketplace workflow params",
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ then }) => [
@@ -2808,6 +2854,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
   test("keeps archived bundled marketplace listings archived", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "preserve archived bundled marketplace listing",
 
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
@@ -2857,6 +2904,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
   test("inserts marketplace entries through scenario setup", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "insert scenario marketplace entries",
 
         setup: ({ given }) => [

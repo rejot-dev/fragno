@@ -20,6 +20,7 @@ import { z } from "zod";
 import { migrate } from "@fragno-dev/db";
 
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { encodeBackofficeObjectAddress, org } from "@/backoffice-runtime/object-registry";
 import { backofficeRouteScopeSinglePathSegment } from "@/backoffice-runtime/route-scope";
 import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
@@ -28,12 +29,33 @@ import { bytesToHex } from "@/lib/crypto";
 import { action as receiveApiWebhook } from "@/routes/api/api";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
+import { InMemoryApiObject } from "../../../workers/api.do";
+import { InMemoryAppInstallationsObject } from "../../../workers/app-installations.do";
+import { InMemoryAppsObject } from "../../../workers/apps.do";
+import { InMemoryAuthObject } from "../../../workers/auth.do";
+import { InMemoryAutomationsObject } from "../../../workers/automations.do";
+import { InMemoryFormsObject } from "../../../workers/forms.do";
+import { InMemoryMcpObject } from "../../../workers/mcp.do";
+import { InMemoryTelegramObject } from "../../../workers/telegram.do";
+import { InMemoryUploadObject } from "../../../workers/upload.do";
 import {
   defineBackofficeScenario,
   runBackofficeScenario,
   type BackofficeScenarioContext,
   type BackofficeScenarioStep,
 } from "./scenario";
+
+const scenarioObjects = {
+  API: (input) => new InMemoryApiObject(input),
+  APPS: (input) => new InMemoryAppsObject(input),
+  APP_INSTALLATIONS: (input) => new InMemoryAppInstallationsObject(input),
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  FORMS: (input) => new InMemoryFormsObject(input),
+  MCP: (input) => new InMemoryMcpObject(input),
+  TELEGRAM: (input) => new InMemoryTelegramObject(input),
+  UPLOAD: (input) => new InMemoryUploadObject(input),
+} satisfies LocalBackofficeObjects;
 
 const ORG_ID = "org-1";
 const ORG_SLUG = "ada-labs";
@@ -260,6 +282,7 @@ describe("API webhook scenarios", () => {
   test("existing webhook endpoint writes reconcile missing and stale event sources", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "API webhook endpoint event-source reconciliation",
         setup: ({ given }) => [
           given.organization.exists({ id: ORG_ID, name: "Ada Labs" }),
@@ -381,6 +404,7 @@ describe("API webhook scenarios", () => {
   test("a webhook endpoint provisions a source for cataloged and reclassified events", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario<EventSourceScenarioVars>({
+        objects: scenarioObjects,
         name: "API webhook event source, catalog, and routing",
         vars: () => ({ acceptedDelivery: null }),
         setup: ({ given }) => [given.organization.exists({ id: ORG_ID, name: "Ada Labs" })],
@@ -573,6 +597,7 @@ describe("API webhook scenarios", () => {
   test("Slack verification authenticates and echoes before normal deliveries reach automations", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario<ApiWebhookScenarioVars>({
+        objects: scenarioObjects,
         name: "Slack webhook verification and delivery",
         vars: () => ({
           rejectedChallenge: null,

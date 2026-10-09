@@ -25,8 +25,29 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
 
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
+
+import { InMemoryApiObject } from "../../../workers/api.do";
+import { InMemoryAppInstallationsObject } from "../../../workers/app-installations.do";
+import { InMemoryAppsObject } from "../../../workers/apps.do";
+import { InMemoryAuthObject } from "../../../workers/auth.do";
+import { InMemoryAutomationsObject } from "../../../workers/automations.do";
+import { InMemoryFormsObject } from "../../../workers/forms.do";
+import { InMemoryTelegramObject } from "../../../workers/telegram.do";
+import { InMemoryUploadObject } from "../../../workers/upload.do";
 import { createRouteBackedAutomationRouterRuntime } from "./routing-route-runtime";
 import { backofficeFiles, defineBackofficeScenario, runBackofficeScenario } from "./scenario";
+
+const scenarioObjects = {
+  API: (input) => new InMemoryApiObject(input),
+  APPS: (input) => new InMemoryAppsObject(input),
+  APP_INSTALLATIONS: (input) => new InMemoryAppInstallationsObject(input),
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  FORMS: (input) => new InMemoryFormsObject(input),
+  TELEGRAM: (input) => new InMemoryTelegramObject(input),
+  UPLOAD: (input) => new InMemoryUploadObject(input),
+} satisfies LocalBackofficeObjects;
 
 describe("scheduled automation route scenario", () => {
   test.each(["linked-user", "delegated-user"] as const)(
@@ -34,6 +55,7 @@ describe("scheduled automation route scenario", () => {
     async (kind) => {
       await runBackofficeScenario(
         defineBackofficeScenario({
+          objects: scenarioObjects,
           name: `scheduled routes reject ${kind} authority`,
           files: backofficeFiles.workspaceStarter(),
           setup: ({ given }) => [
@@ -221,6 +243,7 @@ describe("scheduled automation route scenario", () => {
       try {
         await runBackofficeScenario(
           defineBackofficeScenario({
+            objects: scenarioObjects,
             name: `manage legacy scheduled ${kind} route`,
             options: { sqliteDataDirectory: directory },
             setup: ({ given }) => [
@@ -357,6 +380,7 @@ describe("scheduled automation route scenario", () => {
   test("schedules can still send workflow events without workflow-start authority", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "non-start-workflow scheduled actions remain valid",
         files: backofficeFiles.workspaceStarter(),
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
@@ -403,6 +427,7 @@ describe("scheduled automation route scenario", () => {
   test("a scheduled route starts its workflow", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "scheduled route starts a workflow",
         files: backofficeFiles.workspaceStarter(),
         setup: ({ given }) => [

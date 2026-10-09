@@ -19,12 +19,28 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
 
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
+
+import { InMemoryApiObject } from "../../../workers/api.do";
+import { InMemoryAuthObject } from "../../../workers/auth.do";
+import { InMemoryAutomationsObject } from "../../../workers/automations.do";
+import { InMemoryFormsObject } from "../../../workers/forms.do";
+import { InMemoryUploadObject } from "../../../workers/upload.do";
 import { defineBackofficeScenario, runBackofficeScenario } from "./scenario";
+
+const scenarioObjects = {
+  API: (input) => new InMemoryApiObject(input),
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  FORMS: (input) => new InMemoryFormsObject(input),
+  UPLOAD: (input) => new InMemoryUploadObject(input),
+} satisfies LocalBackofficeObjects;
 
 describe("scenario auth authority fixtures", () => {
   test("seeds and changes the authoritative user and organization membership state", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "scenario auth authority changes",
         setup: ({ given }) => [
           given.auth.user({

@@ -35,6 +35,7 @@ import {
   type HarnessSettings,
 } from "@earendil-works/pi-durable";
 
+import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import {
   createBackofficeRequestExecution,
   BACKOFFICE_SYSTEM_ACTORS,
@@ -68,6 +69,8 @@ import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-c
 import { shutdownCloudflarePostHog } from "./lib/cloudflare-posthog";
 import { createPiPostHogExtension } from "./lib/pi-posthog-extension";
 import { InMemoryPiObject } from "./pi.do";
+
+const scenarioObjects = allLocalObjects;
 
 const PI_SCENARIO_AVAILABLE_MODELS = [
   { provider: "faux", modelId: "faux-1", label: "Faux 1" },
@@ -228,7 +231,7 @@ test("durable Pi discovers scoped skills and executes read, search, codemode and
     defineBackofficeScenario({
       name: "durable Pi Backoffice environment and tools",
       options: { drain: false },
-      objectOverrides,
+      objects: { ...scenarioObjects, ...objectOverrides },
       piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
       setup: ({ given }) => [
         given.organization.exists({ id: "org-1" }),
@@ -281,27 +284,30 @@ for (const revocation of ["restricted", "disabled", "deleted"] as const) {
       defineBackofficeScenario({
         name: `durable Pi live route authority after ${revocation}`,
         options: { drain: false },
-        objectOverrides: scriptedAgents([
-          (context) => {
-            modelCalls += 1;
-            expect(JSON.stringify(context.messages)).toContain("# Backoffice System Guidance");
-            return fauxAssistantMessage(
-              [
-                fauxToolCall("execCodeMode", {
-                  code: `async () => await store.set({ key: "linked-pi/result", value: "written" })`,
-                }),
-              ],
-              { stopReason: "toolUse" },
-            );
-          },
-          (context) => {
-            modelCalls += 1;
-            const result = context.messages.find((message) => message.role === "toolResult");
-            assert(result?.role === "toolResult");
-            expect(result.isError, JSON.stringify(result)).toBe(false);
-            return fauxAssistantMessage("The linked-user agent answered.");
-          },
-        ]),
+        objects: {
+          ...scenarioObjects,
+          ...scriptedAgents([
+            (context) => {
+              modelCalls += 1;
+              expect(JSON.stringify(context.messages)).toContain("# Backoffice System Guidance");
+              return fauxAssistantMessage(
+                [
+                  fauxToolCall("execCodeMode", {
+                    code: `async () => await store.set({ key: "linked-pi/result", value: "written" })`,
+                  }),
+                ],
+                { stopReason: "toolUse" },
+              );
+            },
+            (context) => {
+              modelCalls += 1;
+              const result = context.messages.find((message) => message.role === "toolResult");
+              assert(result?.role === "toolResult");
+              expect(result.isError, JSON.stringify(result)).toBe(false);
+              return fauxAssistantMessage("The linked-user agent answered.");
+            },
+          ]),
+        },
         piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
         setup: ({ given }) => [
           given.auth.user({ id: "owner", role: "admin" }),
@@ -453,22 +459,25 @@ test("durable Pi preserves an explicit null child billing owner", async () => {
     defineBackofficeScenario({
       name: "durable Pi explicit null child billing owner",
       options: { drain: false },
-      objectOverrides: scriptedAgents([
-        fauxAssistantMessage(
-          [
-            fauxToolCall("execCodeMode", {
-              code: `async () => await pi.createSession({
+      objects: {
+        ...scenarioObjects,
+        ...scriptedAgents([
+          fauxAssistantMessage(
+            [
+              fauxToolCall("execCodeMode", {
+                code: `async () => await pi.createSession({
                 requestId: "explicit-null-child",
                 name: "Unbilled child",
                 model: { provider: "faux", modelId: "faux-1" },
                 billingOrganizationId: null,
               });`,
-            }),
-          ],
-          { stopReason: "toolUse" },
-        ),
-        fauxAssistantMessage("The child session was created."),
-      ]),
+              }),
+            ],
+            { stopReason: "toolUse" },
+          ),
+          fauxAssistantMessage("The child session was created."),
+        ]),
+      },
       piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
       setup: ({ given }) => [given.organization.exists({ id: "org-1" })],
       steps: ({ then }) => [
@@ -506,13 +515,16 @@ test("durable Pi delivers committed model usage to its persisted billing owner",
     defineBackofficeScenario({
       name: "durable Pi committed usage billing",
       options: { drain: false },
-      objectOverrides: scriptedAgents(
-        [
-          fauxAssistantMessage("Usage was durably billed."),
-          fauxAssistantMessage("Compaction usage was durably billed."),
-        ],
-        { compaction: { keepRecentTokens: 1 } },
-      ),
+      objects: {
+        ...scenarioObjects,
+        ...scriptedAgents(
+          [
+            fauxAssistantMessage("Usage was durably billed."),
+            fauxAssistantMessage("Compaction usage was durably billed."),
+          ],
+          { compaction: { keepRecentTokens: 1 } },
+        ),
+      },
       piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
       setup: ({ given }) => [given.organization.exists({ id: "org-1" })],
       steps: ({ then }) => [
@@ -583,12 +595,15 @@ test("durable Pi persists creator provenance rather than JWT authority and reche
     defineBackofficeScenario({
       name: "durable Pi current billing authority",
       options: { drain: false },
-      objectOverrides: scriptedAgents([
-        () => {
-          modelCalls += 1;
-          return fauxAssistantMessage("Must not run.");
-        },
-      ]),
+      objects: {
+        ...scenarioObjects,
+        ...scriptedAgents([
+          () => {
+            modelCalls += 1;
+            return fauxAssistantMessage("Must not run.");
+          },
+        ]),
+      },
       piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
       setup: ({ given }) => [
         given.auth.user({ id: "owner", role: "admin" }),
@@ -701,26 +716,29 @@ for (const revokeBillingAccess of [false, true]) {
           "automations/saved-sentence-checker.workflow.js": savedWorkflowCode,
         }),
         options: { drain: false },
-        objectOverrides: scriptedAgents([
-          (context) => {
-            if (
-              context.messages.filter((message) => message.role === "user").at(-1)?.content ===
-              "Classify this sentence"
-            ) {
-              classifierCalls += 1;
-              return fauxAssistantMessage("Not naughty.");
-            }
-            return fauxAssistantMessage([fauxToolCall("execCodeMode", { code: workflowCode })], {
-              stopReason: "toolUse",
-            });
-          },
-          (context) => {
-            const results = context.messages.filter((message) => message.role === "toolResult");
-            expect(results).toHaveLength(1);
-            expect(results[0]?.isError, JSON.stringify(results)).toBe(false);
-            return fauxAssistantMessage("Sentence checker is waiting.");
-          },
-        ]),
+        objects: {
+          ...scenarioObjects,
+          ...scriptedAgents([
+            (context) => {
+              if (
+                context.messages.filter((message) => message.role === "user").at(-1)?.content ===
+                "Classify this sentence"
+              ) {
+                classifierCalls += 1;
+                return fauxAssistantMessage("Not naughty.");
+              }
+              return fauxAssistantMessage([fauxToolCall("execCodeMode", { code: workflowCode })], {
+                stopReason: "toolUse",
+              });
+            },
+            (context) => {
+              const results = context.messages.filter((message) => message.role === "toolResult");
+              expect(results).toHaveLength(1);
+              expect(results[0]?.isError, JSON.stringify(results)).toBe(false);
+              return fauxAssistantMessage("Sentence checker is waiting.");
+            },
+          ]),
+        },
         piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
         setup: ({ given }) => [
           given.auth.user({ id: "owner", role: "admin" }),
@@ -924,7 +942,7 @@ test("durable Pi restores scoped tools and reports interrupted codemode without 
       defineBackofficeScenario({
         name: "durable Pi interrupted codemode recovery",
         options: { drain: false },
-        objectOverrides,
+        objects: { ...scenarioObjects, ...objectOverrides },
         piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
         setup: ({ given }) => [
           given.organization.exists({ id: "org-1" }),
@@ -1011,28 +1029,31 @@ test("durable Pi scoped codemode handles select a different manager instead of r
     defineBackofficeScenario({
       name: "durable Pi scoped child directory",
       options: { drain: false },
-      objectOverrides: scriptedAgents([
-        fauxAssistantMessage(
-          [
-            fauxToolCall("execCodeMode", {
-              code: `async () => {
+      objects: {
+        ...scenarioObjects,
+        ...scriptedAgents([
+          fauxAssistantMessage(
+            [
+              fauxToolCall("execCodeMode", {
+                code: `async () => {
         const user = context.user("org-1");
         return await user.pi.createSession({
           name: "User child",
           model: { provider: "faux", modelId: "faux-1" },
         });
       }`,
-            }),
-          ],
-          { stopReason: "toolUse" },
-        ),
-        (context) => {
-          const result = context.messages.find((message) => message.role === "toolResult");
-          assert(result?.role === "toolResult");
-          expect(result.isError, JSON.stringify(result)).toBe(false);
-          return fauxAssistantMessage("Child created in the user scope.");
-        },
-      ]),
+              }),
+            ],
+            { stopReason: "toolUse" },
+          ),
+          (context) => {
+            const result = context.messages.find((message) => message.role === "toolResult");
+            assert(result?.role === "toolResult");
+            expect(result.isError, JSON.stringify(result)).toBe(false);
+            return fauxAssistantMessage("Child created in the user scope.");
+          },
+        ]),
+      },
       piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
       steps: ({ then }) => [
         then.assert("scope changes rebuild the manager runtime", async ({ runtime }) => {
@@ -1136,7 +1157,7 @@ test("Cloudflare backend analytics delivers verified outcomes and Pi usage witho
       defineBackofficeScenario({
         name: "PostHog captures SQLite-backed server outcomes and durable generations",
         options: { drain: false, sqliteDataDirectory: directory },
-        objectOverrides,
+        objects: { ...scenarioObjects, ...objectOverrides },
         piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
         env: { AUTH_EMAIL_VERIFICATION_ENABLED: "false", SIGN_UP_INVITATIONS_ENABLED: "false" },
         vars: () => ({ session: "" }),

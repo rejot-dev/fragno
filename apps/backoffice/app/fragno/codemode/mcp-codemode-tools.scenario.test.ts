@@ -9,6 +9,7 @@ vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoin
 
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import { CODEMODE_WORKFLOW } from "@/fragno/automation/engine/codemode-invocation";
 import { createWorkflowsRouteCaller } from "@/fragno/automation/route-callers";
@@ -21,7 +22,28 @@ import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 
+import { InMemoryApiObject } from "../../../workers/api.do";
+import { InMemoryAppInstallationsObject } from "../../../workers/app-installations.do";
+import { InMemoryAppsObject } from "../../../workers/apps.do";
+import { InMemoryAuthObject } from "../../../workers/auth.do";
+import { InMemoryAutomationsObject } from "../../../workers/automations.do";
+import { InMemoryFormsObject } from "../../../workers/forms.do";
+import { InMemoryMcpObject } from "../../../workers/mcp.do";
+import { InMemoryTelegramObject } from "../../../workers/telegram.do";
+import { InMemoryUploadObject } from "../../../workers/upload.do";
 import { runBackofficeCodemode } from "./execute";
+
+const scenarioObjects = {
+  API: (input) => new InMemoryApiObject(input),
+  APPS: (input) => new InMemoryAppsObject(input),
+  APP_INSTALLATIONS: (input) => new InMemoryAppInstallationsObject(input),
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  FORMS: (input) => new InMemoryFormsObject(input),
+  MCP: (input) => new InMemoryMcpObject(input),
+  TELEGRAM: (input) => new InMemoryTelegramObject(input),
+  UPLOAD: (input) => new InMemoryUploadObject(input),
+} satisfies LocalBackofficeObjects;
 
 const cases = [
   {
@@ -71,6 +93,7 @@ describe("MCP permission diagnostic scenarios", () => {
     const scope = { kind: "org" as const, orgId: "org-1" };
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "local immediate MCP permission diagnostics",
         files: backofficeFiles.workspaceStarter(),
         setup: ({ given }) => [
@@ -146,6 +169,7 @@ describe("MCP permission diagnostic scenarios", () => {
     async ({ name, body, grants, expectedName, expectedMessage, stepError }) => {
       await runBackofficeScenario(
         defineBackofficeScenario({
+          objects: scenarioObjects,
           name,
           files: backofficeFiles.workspaceStarter({
             "automations/mcp-diagnostic.workflow.js": `defineWorkflow({ name: "mcp-diagnostic" }, async (_event, step) => { ${body} });`,

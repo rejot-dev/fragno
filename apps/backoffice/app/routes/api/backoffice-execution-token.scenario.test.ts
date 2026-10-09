@@ -14,6 +14,7 @@ const workers = vi.hoisted(() => ({
 vi.mock("cloudflare:workers", () => workers);
 
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import {
   authorizeBackofficeCodemodeContext,
   requireBackofficeContext,
@@ -30,7 +31,22 @@ import {
 } from "@/fragno/automation/scenario";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
+import { InMemoryAppInstallationsObject } from "../../../workers/app-installations.do";
+import { InMemoryAppsObject } from "../../../workers/apps.do";
+import { InMemoryAuthObject } from "../../../workers/auth.do";
+import { InMemoryAutomationsObject } from "../../../workers/automations.do";
+import { InMemoryOtpObject } from "../../../workers/otp.do";
+import { InMemoryUploadObject } from "../../../workers/upload.do";
 import { action } from "./backoffice-execution-token";
+
+const scenarioObjects = {
+  APPS: (input) => new InMemoryAppsObject(input),
+  APP_INSTALLATIONS: (input) => new InMemoryAppInstallationsObject(input),
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  OTP: (input) => new InMemoryOtpObject(input),
+  UPLOAD: (input) => new InMemoryUploadObject(input),
+} satisfies LocalBackofficeObjects;
 
 const origin = "https://backoffice.example";
 const deviceGrant = "urn:ietf:params:oauth:grant-type:device_code";
@@ -137,6 +153,7 @@ async function runExecutionTokenScenario(check: (ctx: BackofficeScenarioContext)
   try {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "shared OAuth execution token exchange",
         options: { sqliteDataDirectory: directory },
         env: { AUTH_EMAIL_VERIFICATION_ENABLED: "false", SIGN_UP_INVITATIONS_ENABLED: "false" },

@@ -12,6 +12,7 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
 import type { BackofficeDatabaseAdapterFactory } from "@/backoffice-runtime/database-adapters";
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { BACKOFFICE_PERMISSION } from "@/backoffice-runtime/permissions";
 import type { BackofficeAppOperationResult } from "@/fragno/apps/errors";
 import {
@@ -22,7 +23,25 @@ import {
   type BackofficeScenarioStep,
 } from "@/fragno/automation/scenario";
 
+import { InMemoryApiObject } from "./api.do";
+import { InMemoryAppInstallationsObject } from "./app-installations.do";
 import { InMemoryAppsObject } from "./apps.do";
+import { InMemoryAuthObject } from "./auth.do";
+import { InMemoryAutomationsObject } from "./automations.do";
+import { InMemoryFormsObject } from "./forms.do";
+import { InMemoryTelegramObject } from "./telegram.do";
+import { InMemoryUploadObject } from "./upload.do";
+
+const scenarioObjects = {
+  API: (input) => new InMemoryApiObject(input),
+  APPS: (input) => new InMemoryAppsObject(input),
+  APP_INSTALLATIONS: (input) => new InMemoryAppInstallationsObject(input),
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  FORMS: (input) => new InMemoryFormsObject(input),
+  TELEGRAM: (input) => new InMemoryTelegramObject(input),
+  UPLOAD: (input) => new InMemoryUploadObject(input),
+} satisfies LocalBackofficeObjects;
 
 const requestedPermissions = [BACKOFFICE_PERMISSION.events.emit, BACKOFFICE_PERMISSION.resend.send];
 
@@ -56,6 +75,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
     let installationId = "";
     await runAppsSqliteScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "install one external app into two organization objects",
         setup: ({ given }) => [
           given.organization.exists({ id: "customer-one" }),
@@ -203,6 +223,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
     let installationId = "";
     await runAppsSqliteScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "validate organization-scoped installation grants",
         steps: ({ then }) => [
           appsCommandStep("reject malformed registration input", async ({ runtime }) => {
@@ -352,6 +373,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
     let firstPageIds: string[] = [];
     await runAppsSqliteScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "paginate within organization object identity",
         steps: ({ then, runner }) => [
           appsCommandStep("install three apps into the first organization", async ({ runtime }) => {
@@ -463,6 +485,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
       const options = { sqliteDataDirectory: directory };
       await runBackofficeScenario(
         defineBackofficeScenario({
+          objects: scenarioObjects,
           name: "persist registration and two installations",
           options,
           steps: () => [
@@ -490,6 +513,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
       );
       await runBackofficeScenario(
         defineBackofficeScenario({
+          objects: scenarioObjects,
           name: "read all app state in a fresh runtime",
           options,
           steps: ({ then }) => [
@@ -540,7 +564,8 @@ describe("App registry and organization installation SQLite scenarios", () => {
     await runAppsSqliteScenario(
       defineBackofficeScenario({
         name: "resolve and revoke customer authority independently of the registry",
-        objectOverrides: {
+        objects: {
+          ...scenarioObjects,
           APPS: function captureRegistryDatabase(input) {
             registryAdapter = input.runtime.adapters.createAdapter({ kind: "apps" });
             return new InMemoryAppsObject(input);

@@ -16,8 +16,19 @@ vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoin
 import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
 
+import { InMemoryAuthObject } from "../../../workers/auth.do";
+import { InMemoryAutomationsObject } from "../../../workers/automations.do";
+import { InMemoryReson8Object } from "../../../workers/reson8.do";
+import { InMemoryUploadObject } from "../../../workers/upload.do";
 import { createInMemoryBackofficeRuntime } from "../in-memory-runtime";
 import type { LocalBackofficeObjects } from "../local-object-factory";
+
+const scenarioObjects = {
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  RESON8: (input) => new InMemoryReson8Object(input),
+  UPLOAD: (input) => new InMemoryUploadObject(input),
+} satisfies LocalBackofficeObjects;
 
 function createCoordinationGate() {
   let resolve!: () => void;
@@ -75,7 +86,7 @@ test("ordinary SQL requests and alarm delivery do not acquire object-wide owners
       defineBackofficeScenario({
         name: "ordinary operations remain independent of async work",
         options: { drain: false, sqliteDataDirectory: directory },
-        objectOverrides,
+        objects: { ...scenarioObjects, ...objectOverrides },
         steps: ({ then }) => [
           then.assert(
             "writes and alarms progress while another request is suspended",
@@ -151,7 +162,7 @@ test("blockConcurrencyWhile serializes initialization but releases before the re
       defineBackofficeScenario({
         name: "initialization has its own bounded claim",
         options: { drain: false, sqliteDataDirectory: directory },
-        objectOverrides,
+        objects: { ...scenarioObjects, ...objectOverrides },
         steps: ({ then }) => [
           then.assert(
             "new events wait for initialization, not the whole request",
@@ -201,7 +212,8 @@ test("callbacks scheduled during initialization do not retain its released claim
       defineBackofficeScenario({
         name: "released initialization claims do not leak into detached work",
         options: { drain: false, sqliteDataDirectory: directory },
-        objectOverrides: {
+        objects: {
+          ...scenarioObjects,
           UPLOAD: ({ state }) => ({
             async fetch(request: Request) {
               if (new URL(request.url).pathname === "/initialize") {
@@ -307,7 +319,7 @@ test.each(["initialization", "alarm"] as const)(
         defineBackofficeScenario({
           name: `fence stale ${kind} work`,
           options: { drain: false, sqliteDataDirectory: directory },
-          objectOverrides,
+          objects: { ...scenarioObjects, ...objectOverrides },
           steps: ({ then }) => [
             then.assert(
               "expired claims cannot affect the replacement owner",
@@ -429,7 +441,7 @@ test.each(["acknowledge", "delete", "postpone"] as const)(
         defineBackofficeScenario({
           name: `preserve concurrent scheduling during alarm ${action}`,
           options: { drain: false, sqliteDataDirectory: directory },
-          objectOverrides,
+          objects: { ...scenarioObjects, ...objectOverrides },
           steps: ({ then }) => [
             then.assert(
               "the newer generation survives and is delivered separately",
@@ -477,6 +489,7 @@ test("a warm Node object reloads configured and cleared Fragment runtimes from s
   try {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "derived runtime configuration follows SQLite",
         options: { drain: false, sqliteDataDirectory: directory },
         steps: ({ then }) => [

@@ -19,6 +19,7 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
 
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { EMAIL_VERIFICATION_TYPE } from "@/fragno/otp";
 import {
   action as submitEmailVerificationAction,
@@ -26,12 +27,25 @@ import {
 } from "@/routes/backoffice/verify-email";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
+import { InMemoryAuthObject } from "../../../workers/auth.do";
+import { InMemoryAutomationsObject } from "../../../workers/automations.do";
+import { InMemoryOtpObject } from "../../../workers/otp.do";
+import { InMemoryResendObject } from "../../../workers/resend.do";
+import { InMemoryUploadObject } from "../../../workers/upload.do";
 import {
   defineBackofficeScenario,
   runBackofficeScenario,
   type BackofficeScenarioContext,
   type BackofficeScenarioStep,
 } from "./scenario";
+
+const scenarioObjects = {
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  OTP: (input) => new InMemoryOtpObject(input),
+  RESEND: (input) => new InMemoryResendObject(input),
+  UPLOAD: (input) => new InMemoryUploadObject(input),
+} satisfies LocalBackofficeObjects;
 
 const getEmailVerificationRequestedHook = async (ctx: BackofficeScenarioContext) => {
   const queue = await ctx.runtime.objects.auth
@@ -152,6 +166,7 @@ describe("Auth email verification scenarios", () => {
   test("sign-up queues and confirms the email verification link", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "auth sign-up queues and confirms the email verification link",
         env: { AUTH_EMAIL_VERIFICATION_ENABLED: "true" },
         fakes: ({ fake }) => ({ resend: fake.resend() }),
@@ -210,6 +225,7 @@ describe("Auth email verification scenarios", () => {
   test("resend supersedes the previous challenge and only the latest link verifies", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "auth verification resend supersedes the previous challenge",
         env: { AUTH_EMAIL_VERIFICATION_ENABLED: "true" },
         fakes: ({ fake }) => ({ resend: fake.resend() }),
@@ -251,6 +267,7 @@ describe("Auth email verification scenarios", () => {
   test("resend returns the generic accepted response for an unknown email", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "auth verification resend resists account enumeration",
         env: { AUTH_EMAIL_VERIFICATION_ENABLED: "true" },
         fakes: ({ fake }) => ({ resend: fake.resend() }),
@@ -269,6 +286,7 @@ describe("Auth email verification scenarios", () => {
   test("signup remains committed while Auth retries an unconfigured Resend", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "Auth email delivery retries when singleton Resend is unconfigured",
         env: { AUTH_EMAIL_VERIFICATION_ENABLED: "true" },
         steps: ({ when, then }) => [
@@ -305,6 +323,7 @@ describe("Auth email verification scenarios", () => {
   test("public organization OTP issuance cannot send signup verification email", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "public OTP issuance has no auth email delivery side effect",
         env: { AUTH_EMAIL_VERIFICATION_ENABLED: "true" },
         fakes: ({ fake }) => ({ resend: fake.resend() }),
@@ -325,6 +344,7 @@ describe("Auth email verification scenarios", () => {
   test("sign-up authenticates immediately when email verification is disabled", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "auth sign-up skips verification delivery when disabled",
         fakes: ({ fake }) => ({ resend: fake.resend() }),
         steps: ({ when, then }) => [

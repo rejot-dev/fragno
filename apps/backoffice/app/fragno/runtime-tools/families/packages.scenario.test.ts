@@ -14,6 +14,7 @@ import {
   type BackofficeContextScope,
 } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { createBackofficeExecutionForPrincipal } from "@/fragno/auth/backoffice-principal.server";
 import { CODEMODE_WORKFLOW } from "@/fragno/automation/engine/codemode-invocation";
 import { MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME } from "@/fragno/automation/marketplace-package-install-identity";
@@ -28,7 +29,28 @@ import { getStaticMarketplaceEntry } from "@/fragno/marketplace/static-entries";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
 import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 
+import { InMemoryApiObject } from "../../../../workers/api.do";
+import { InMemoryAppInstallationsObject } from "../../../../workers/app-installations.do";
+import { InMemoryAppsObject } from "../../../../workers/apps.do";
+import { InMemoryAuthObject } from "../../../../workers/auth.do";
+import { InMemoryAutomationsObject } from "../../../../workers/automations.do";
+import { InMemoryFormsObject } from "../../../../workers/forms.do";
+import { InMemoryMarketplaceObject } from "../../../../workers/marketplace.do";
+import { InMemoryTelegramObject } from "../../../../workers/telegram.do";
+import { InMemoryUploadObject } from "../../../../workers/upload.do";
 import { packagesInstallResultSchema } from "./packages-runtime";
+
+const scenarioObjects = {
+  API: (input) => new InMemoryApiObject(input),
+  APPS: (input) => new InMemoryAppsObject(input),
+  APP_INSTALLATIONS: (input) => new InMemoryAppInstallationsObject(input),
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  FORMS: (input) => new InMemoryFormsObject(input),
+  MARKETPLACE: (input) => new InMemoryMarketplaceObject(input),
+  TELEGRAM: (input) => new InMemoryTelegramObject(input),
+  UPLOAD: (input) => new InMemoryUploadObject(input),
+} satisfies LocalBackofficeObjects;
 
 const LISTING_ID = "system#telegram-test-command";
 const ORG_SCOPE = { kind: "org", orgId: "org-1" } as const;
@@ -67,6 +89,7 @@ describe("Workspace package runtime scenarios", () => {
   test("codemode installs through the existing restart flow and terminal lists the successful root lock", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario<{ instanceId: string; version: string }>({
+        objects: scenarioObjects,
         name: "Package runtime installation preserves the UI workflow semantics",
         vars: () => ({ instanceId: "", version: "" }),
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
@@ -192,6 +215,7 @@ describe("Workspace package runtime scenarios", () => {
   test("personal and project installations use organization coordination but isolated destination locks", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario<{ projectId: string }>({
+        objects: scenarioObjects,
         name: "Package installation scopes are destinations, not publishers or workflow coordinators",
         vars: () => ({ projectId: "" }),
         setup: ({ given }) => [
@@ -271,6 +295,7 @@ describe("Workspace package runtime scenarios", () => {
   test("authenticated personal installations prefer request authority over the billing organization", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "Request authority selects personal package installation coordination",
         setup: ({ given }) => [
           given.organization.exists({ id: "org-1", name: "Ada Labs", ownerUserId: "owner-1" }),
@@ -324,6 +349,7 @@ describe("Workspace package runtime scenarios", () => {
   test("missing locks are empty, malformed locks fail without writes, and invalid install inputs are rejected", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "Package tool boundaries preserve workspace data",
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ then }) => [
@@ -384,6 +410,7 @@ describe("Workspace package runtime scenarios", () => {
   test("file conflicts still fail in the existing workflow without replacing local content or recording success", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario<{ instanceId: string }>({
+        objects: scenarioObjects,
         name: "Package runtime retains non-destructive installation",
         vars: () => ({ instanceId: "" }),
         options: { allowErroredWorkflows: true },
@@ -427,6 +454,7 @@ describe("Workspace package runtime scenarios", () => {
   test("tools retain authorization, unavailable scopes, and personal organization membership requirements", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "Package runtime permission and scope boundaries",
         setup: ({ given }) => [
           given.organization.exists({ id: "org-1", name: "Ada Labs", ownerUserId: "owner-1" }),

@@ -21,6 +21,7 @@ import {
   type BackofficeContextScope,
 } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { MARKETPLACE_PACKAGE_PUBLISH_WORKFLOW_NAME } from "@/fragno/automation/marketplace-package-publish-workflow";
 import {
   backofficeFiles,
@@ -38,12 +39,36 @@ import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-ba
 import { executeBackofficeRuntimeTool } from "@/fragno/runtime-tools/runtime-tools";
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
 
+import { InMemoryApiObject } from "../../../../workers/api.do";
+import { InMemoryAppInstallationsObject } from "../../../../workers/app-installations.do";
+import { InMemoryAppsObject } from "../../../../workers/apps.do";
+import { InMemoryAuthObject } from "../../../../workers/auth.do";
+import { InMemoryAutomationsObject } from "../../../../workers/automations.do";
+import { InMemoryFormsObject } from "../../../../workers/forms.do";
+import { InMemoryMarketplaceObject } from "../../../../workers/marketplace.do";
+import { InMemoryMcpObject } from "../../../../workers/mcp.do";
+import { InMemoryTelegramObject } from "../../../../workers/telegram.do";
+import { InMemoryUploadObject } from "../../../../workers/upload.do";
 import { internalMarketplaceToolFamily } from "./internal";
+
+const scenarioObjects = {
+  API: (input) => new InMemoryApiObject(input),
+  APPS: (input) => new InMemoryAppsObject(input),
+  APP_INSTALLATIONS: (input) => new InMemoryAppInstallationsObject(input),
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  FORMS: (input) => new InMemoryFormsObject(input),
+  MARKETPLACE: (input) => new InMemoryMarketplaceObject(input),
+  MCP: (input) => new InMemoryMcpObject(input),
+  TELEGRAM: (input) => new InMemoryTelegramObject(input),
+  UPLOAD: (input) => new InMemoryUploadObject(input),
+} satisfies LocalBackofficeObjects;
 
 describe("internal maintenance scope scenarios", () => {
   test("publishes bundled marketplace entries in System without an organization", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "System owns bundled marketplace publication",
         files: backofficeFiles.systemOnly(),
         setup: ({ given }) => [
@@ -115,6 +140,7 @@ describe("internal maintenance scope scenarios", () => {
   test("rejects publication in organization, project, and user contexts at every entry point", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario<{ projectId: string }>({
+        objects: scenarioObjects,
         name: "non-System contexts cannot publish bundled marketplace entries",
         vars: () => ({ projectId: "" }),
         options: { allowErroredWorkflows: true },
@@ -247,6 +273,7 @@ describe("internal maintenance scope scenarios", () => {
   test("System context still requires internal.manage authorization", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "System publication retains maintenance authorization",
         setup: ({ given }) => [given.auth.user({ id: "user-1", email: "user@example.com" })],
         steps: ({ then }) => [

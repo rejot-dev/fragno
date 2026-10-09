@@ -20,18 +20,30 @@ import {
   createAuthorizedBackofficeObjectRequest,
 } from "@/backoffice-runtime/internal-object-request";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
-import { backofficeContextScopeFromDurableObjectId } from "@/backoffice-runtime/object-registry";
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { telegramAutomationFileDownloadPath } from "@/backoffice-runtime/telegram-file-response";
 import {
   defineBackofficeScenario,
   runBackofficeScenario,
   type BackofficeScenarioContext,
   type BackofficeScenarioDefinitionInput,
-  type FakeTelegramApi,
 } from "@/fragno/automation/scenario";
 import { createTelegramRuntime } from "@/fragno/runtime-tools/families/telegram-runtime";
 
+import { InMemoryApiObject } from "./api.do";
+import { InMemoryAuthObject } from "./auth.do";
+import { InMemoryAutomationsObject } from "./automations.do";
+import { InMemoryFormsObject } from "./forms.do";
 import { InMemoryTelegramObject } from "./telegram.do";
+import { InMemoryUploadObject } from "./upload.do";
+
+const scenarioObjects = {
+  API: (input) => new InMemoryApiObject(input),
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  FORMS: (input) => new InMemoryFormsObject(input),
+  UPLOAD: (input) => new InMemoryUploadObject(input),
+} satisfies LocalBackofficeObjects;
 
 const scope = { kind: "org", orgId: "telegram-org" } as const;
 const address = { binding: "TELEGRAM", scope } as const;
@@ -68,9 +80,18 @@ async function assertTelegramStateUnchanged(ctx: BackofficeScenarioContext) {
   expect(await messages.json()).toMatchObject({ messages: [{ text: "private message" }] });
 }
 
+/** Sends requests to the object itself; handle HTTP strips the internal context header. */
+function nativeTelegramObject(ctx: BackofficeScenarioContext, orgId: string) {
+  return ctx.runtime.objects.telegram.forOrg(orgId).commands as unknown as Pick<
+    InMemoryTelegramObject,
+    "fetch"
+  >;
+}
+
 describe("Telegram object authorization scenarios", () => {
   test("direct object requests cannot bypass management or download authorization", async () => {
     await runTelegramObjectScenario({
+      objects: scenarioObjects,
       name: "Telegram native fetch requires trusted execution",
       fakes: ({ fake }) => ({
         telegram: fake.telegram({
@@ -176,6 +197,7 @@ describe("Telegram object authorization scenarios", () => {
 
   test("middleware enforces operation grants on signed native requests", async () => {
     await runTelegramObjectScenario({
+      objects: scenarioObjects,
       name: "Telegram direct signed requests retain kernel permission checks",
       fakes: ({ fake }) => ({
         telegram: fake.telegram({
@@ -301,6 +323,7 @@ describe("Telegram object authorization scenarios", () => {
 
   test("bootstrap send, action, and edit permissions stay bound to the initiating chat", async () => {
     await runTelegramObjectScenario({
+      objects: scenarioObjects,
       name: "Telegram middleware authorizes the typed chat resource",
       fakes: ({ fake }) => ({ telegram: fake.telegram() }),
       setup: ({ given }) => [
@@ -405,32 +428,10 @@ describe("Telegram object authorization scenarios", () => {
   });
 
   test("signed execution cannot be moved to another scope, target, method, or lifetime", async () => {
-    const nativeObjects = new Map<string, InMemoryTelegramObject>();
-    let telegram: FakeTelegramApi | null = null;
     await runTelegramObjectScenario({
+      objects: scenarioObjects,
       name: "Telegram signed context remains bound to its owning object and request",
-      fakes: ({ fake }) => {
-        telegram = fake.telegram();
-        return { telegram };
-      },
-      objectOverrides: {
-        TELEGRAM: ({ state, env, runtime, implementation, nowEpochMs }) => {
-          assert(telegram);
-          const ownerScope = backofficeContextScopeFromDurableObjectId(state.id, "TELEGRAM");
-          assert(ownerScope?.kind === "org");
-          const object = new InMemoryTelegramObject({
-            state,
-            env,
-            runtime,
-            implementation,
-            nowEpochMs,
-            api: telegram.api,
-            adminApi: telegram.adminApi,
-          });
-          nativeObjects.set(ownerScope.orgId, object);
-          return object;
-        },
-      },
+      fakes: ({ fake }) => ({ telegram: fake.telegram() }),
       setup: ({ given }) => [
         given.organization.exists({ id: scope.orgId }),
         given.telegram.configured({ orgId: scope.orgId, botUsername: "fragno_bot" }),
@@ -456,8 +457,7 @@ describe("Telegram object authorization scenarios", () => {
             env,
             nowEpochMs: ctx.runtime.now(),
           });
-          const stub = nativeObjects.get(scope.orgId);
-          assert(stub);
+          const stub = nativeTelegramObject(ctx, scope.orgId);
           const valid = await stub.fetch(new Request(signed.url, { headers: signed.headers }));
           assert.equal(valid.status, 200);
           const forged = await stub.fetch(
@@ -478,9 +478,7 @@ describe("Telegram object authorization scenarios", () => {
             new Request(signed.url, { method: "POST", headers: signed.headers, body: "{}" }),
           );
           assert.equal(changedMethod.status, 401);
-          await ctx.runtime.objects.telegram.forOrg("other-org").commands.getAdminConfig();
-          const otherObject = nativeObjects.get("other-org");
-          assert(otherObject);
+          const otherObject = nativeTelegramObject(ctx, "other-org");
           const wrongObject = await otherObject.fetch(
             new Request(signed.url, { headers: signed.headers }),
           );

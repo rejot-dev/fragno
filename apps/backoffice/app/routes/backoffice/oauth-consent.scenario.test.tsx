@@ -18,6 +18,7 @@ const workers = vi.hoisted(() => ({
 vi.mock("cloudflare:workers", () => workers);
 
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { backofficeExecutionTokenResultSchema } from "@/fragno/auth/execution-token";
 import { backofficeOAuthConsentPageSchema } from "@/fragno/auth/oauth-consent";
 import {
@@ -27,6 +28,12 @@ import {
 } from "@/fragno/automation/scenario";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
+import { InMemoryApiObject } from "../../../workers/api.do";
+import { InMemoryAuthObject } from "../../../workers/auth.do";
+import { InMemoryAutomationsObject } from "../../../workers/automations.do";
+import { InMemoryFormsObject } from "../../../workers/forms.do";
+import { InMemoryOtpObject } from "../../../workers/otp.do";
+import { InMemoryUploadObject } from "../../../workers/upload.do";
 import { action as executionTokenAction } from "../api/backoffice-execution-token";
 import AuthorizedApplications, {
   loader as applicationsLoader,
@@ -35,6 +42,15 @@ import AuthorizedApplications, {
 import DeviceScreen, { loader as deviceLoader, action as deviceAction } from "./device";
 import { action as loginAction, loader as loginLoader } from "./login";
 import ConsentScreen, { loader, action } from "./oauth-consent";
+
+const scenarioObjects = {
+  API: (input) => new InMemoryApiObject(input),
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  FORMS: (input) => new InMemoryFormsObject(input),
+  OTP: (input) => new InMemoryOtpObject(input),
+  UPLOAD: (input) => new InMemoryUploadObject(input),
+} satisfies LocalBackofficeObjects;
 
 const origin = "https://backoffice.example";
 
@@ -182,6 +198,7 @@ async function runConsentScenario(check: (ctx: BackofficeScenarioContext) => Pro
   try {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "OAuth consent lifecycle",
         options: { sqliteDataDirectory: directory },
         env: { AUTH_EMAIL_VERIFICATION_ENABLED: "false", SIGN_UP_INVITATIONS_ENABLED: "false" },
@@ -785,6 +802,7 @@ test("consent paging is user-bound, rejects forged ownership and survives Auth r
   try {
     await runBackofficeScenario(
       defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "persisted OAuth consents",
         options: { sqliteDataDirectory: directory },
         env: { AUTH_EMAIL_VERIFICATION_ENABLED: "false", SIGN_UP_INVITATIONS_ENABLED: "false" },
