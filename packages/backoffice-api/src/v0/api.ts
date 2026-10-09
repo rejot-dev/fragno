@@ -6,7 +6,6 @@ import { capabilitiesOperations } from "./capabilities";
 import { connectorOperations } from "./connector";
 import { eventsOperations } from "./events";
 import { formsOperations } from "./forms";
-import { githubOperations } from "./github";
 import { hooksOperations } from "./hooks";
 import { httpApiOperations } from "./http-api";
 import { identityOperations } from "./identity";
@@ -38,7 +37,6 @@ export const backofficeApiV0 = {
     ...connectorOperations,
     ...eventsOperations,
     ...formsOperations,
-    ...githubOperations,
     ...hooksOperations,
     ...httpApiOperations,
     ...identityOperations,

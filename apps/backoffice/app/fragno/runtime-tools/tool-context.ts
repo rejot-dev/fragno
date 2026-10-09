@@ -20,7 +20,6 @@ export const createBackofficeToolContext = (
     event: context.automation?.runtime ?? context.event?.runtime,
     eventCatalog: context.eventCatalog?.runtime,
     forms: context.forms?.runtime,
-    github: context.github?.runtime,
     integrations: context.integrations?.runtime,
     internal: context.internal?.runtime,
     api: context.api?.runtime,
