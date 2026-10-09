@@ -346,51 +346,14 @@ describe("Pi execCodeMode tool", () => {
     );
   });
 
-  test("schedules and runs a workflow with an npm dependency", async () => {
-    const workflow = defineRemoteWorkflow({ name: "codemode-script" }, async (event, remote) => {
-      const params = codemodeWorkflowParamsSchema.parse(event.payload);
-      const result = await runBackofficeCodemodeWorkflow({
-        code: params.program.code,
-        dependencies: params.program.dependencies,
-        event: {
-          id: event.instanceId,
-          payload: params.trigger.type === "manual" ? params.trigger.payload : {},
-          instanceId: event.instanceId,
-          timestamp: event.timestamp,
-        },
-        remote,
-        env,
-        allowedHooks: [],
-        families: runtimeToolFamilies,
-        toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
-      });
-      if (result.error) {
-        throw new Error(result.error);
-      }
-      return result.result;
-    });
-    const harness = await createWorkflowsTestHarness({
-      workflows: { PI_CODEMODE_SCRIPT: workflow },
-      adapter: { type: "in-memory" },
-      testBuilder: buildDatabaseFragmentsTest(),
-      autoTickHooks: false,
-    });
-
+  // cf-sandbox-bridge's compiler tests install and execute npm dependencies.
+  test("schedules a workflow with its requested npm dependencies", async () => {
+    const scheduledParams: unknown[] = [];
     const tool = await createExecCodeModeTool({
       workflowRuntime: createPiWorkflowRuntime({
-        createInternalInstance: async ({
-          workflowName,
-          remoteWorkflowName,
-          instanceId,
-          params,
-        }) => {
-          const resolvedInstanceId = instanceId ?? "generated-instance-id";
-          await harness.createInstance(workflowName, {
-            id: resolvedInstanceId,
-            params,
-            remoteWorkflowName,
-          });
-          return { workflowName, instanceId: resolvedInstanceId };
+        createInternalInstance: async ({ workflowName, instanceId, params }) => {
+          scheduledParams.push(params);
+          return { workflowName, instanceId: instanceId ?? "generated-instance-id" };
         },
       }),
     });
@@ -409,17 +372,12 @@ describe("Pi execCodeMode tool", () => {
       BACKGROUND_CONTEXT,
     );
 
-    const details = result.details as { result?: { instanceId?: string } };
-    assert(details.result?.instanceId === "18tfv3i1e4o7fe");
-    await harness.runUntilIdle({
-      workflowName: "codemode-script",
-      instanceId: "18tfv3i1e4o7fe",
-      reason: "create",
-    });
-    await expect(harness.getStatus("PI_CODEMODE_SCRIPT", "18tfv3i1e4o7fe")).resolves.toMatchObject({
-      status: "complete",
-      output: true,
-    });
+    expect(result.details).toMatchObject({ result: { instanceId: "18tfv3i1e4o7fe" } });
+    expect(scheduledParams.map((params) => codemodeWorkflowParamsSchema.parse(params))).toEqual([
+      expect.objectContaining({
+        program: expect.objectContaining({ dependencies: { "is-number": "7.0.0" } }),
+      }),
+    ]);
   });
 
   test("rejects codemode details that cannot be persisted as strict JSON", async () => {
