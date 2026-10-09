@@ -1,3 +1,4 @@
+import { backofficeScopePathSegment } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { RouterContextProvider } from "react-router";
 
@@ -8,7 +9,6 @@ import {
   type BackofficeScopeSelection,
 } from "@/backoffice-runtime/resolved-scope";
 import { requireBackofficeRouteScopeFromParams } from "@/backoffice-runtime/route-scope";
-import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import type { BackofficeMeData } from "@/fragno/auth/contracts";
 
@@ -156,7 +156,7 @@ export const resolveIntegrationContext = ({
     label: scopeLabel(scope, me),
     basePath: scopedBasePath,
     integrationsPath: `${automationScopeBasePath(uiScope)}/integrations`,
-    scopeSegment: backofficeContextScopeSinglePathSegment(scope),
+    scopeSegment: backofficeScopePathSegment(scope),
     isScopedRoute,
   };
 };

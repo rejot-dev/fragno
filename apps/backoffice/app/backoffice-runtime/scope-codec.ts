@@ -142,24 +142,6 @@ export const backofficeScopeFromRouteParams = (params: {
   return scope;
 };
 
-export const backofficeContextScopeSinglePathSegment = (scope: BackofficeSinglePathScope) => {
-  switch (scope.kind) {
-    case "system":
-      return "system";
-    case "org":
-      return `org:${encodeScopeComponent(scope.orgId)}`;
-    case "project":
-      return `project:${encodeScopeComponent(scope.orgId)}:${encodeScopeComponent(scope.projectId)}`;
-    case "user":
-      return `user:${encodeScopeComponent(scope.userId)}`;
-  }
-
-  throw new Error("Unsupported single-path Backoffice scope kind.");
-};
-
-export const backofficeScopeSinglePathSegment = (scope: BackofficeRoutableScope) =>
-  backofficeContextScopeSinglePathSegment(scope);
-
 export const backofficeRoutableScopesEqual = (
   left: BackofficeRoutableScope,
   right: BackofficeRoutableScope,

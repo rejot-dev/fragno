@@ -2,6 +2,7 @@ import {
   BACKOFFICE_PERMISSION,
   type BackofficePermissionRequirement,
 } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+import { backofficeScopePathSegment } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import type { BackofficeAuthorityResolver } from "./authority-resolver";
@@ -18,7 +19,6 @@ import {
   backofficeObjectScopePolicy,
   isBackofficeObjectAvailableInContext,
 } from "./object-registry";
-import { backofficeScopeSinglePathSegment } from "./scope-codec";
 
 export type BackofficeKernelAction = {
   execution: BackofficeExecutionContext;
@@ -535,9 +535,9 @@ export class BackofficeKernel {
   }) {
     const deny = () => {
       const ownerLabel =
-        ownerScope.kind === "system" ? "system" : backofficeScopeSinglePathSegment(ownerScope);
+        ownerScope.kind === "system" ? "system" : backofficeScopePathSegment(ownerScope);
       const targetLabel =
-        targetScope.kind === "system" ? "system" : backofficeScopeSinglePathSegment(targetScope);
+        targetScope.kind === "system" ? "system" : backofficeScopePathSegment(targetScope);
       throw new BackofficeForbiddenError(
         `${operation} cannot use ${targetLabel} within ${ownerLabel}.`,
       );

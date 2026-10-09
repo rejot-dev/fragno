@@ -1,3 +1,4 @@
+import { backofficeScopePathSegment } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { workflowsSchema } from "@fragno-dev/workflows/schema";
 
 import {
@@ -12,10 +13,7 @@ import {
   type BackofficeOrganizationIdentity,
   type BackofficeResolvedScope,
 } from "@/backoffice-runtime/resolved-scope";
-import {
-  backofficeContextScopeRoutePath,
-  backofficeContextScopeSinglePathSegment,
-} from "@/backoffice-runtime/scope-codec";
+import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
 import { backofficeFetch } from "@/fragno/auth/browser-auth.client";
 
 import { automationFragmentSchema } from "../schema";
@@ -49,7 +47,7 @@ export function describeAutomationCollectionSource(
   source: AutomationCollectionSource,
 ): AutomationCollectionSourceDescription {
   const runtimeScope = backofficeRuntimeScopeFromResolvedScope(source.resolvedScope);
-  const scopeKey = backofficeContextScopeSinglePathSegment(runtimeScope);
+  const scopeKey = backofficeScopePathSegment(runtimeScope);
   const baseUrl = `/api/automations-scoped/${backofficeContextScopeRoutePath(runtimeScope)}`;
 
   return {
