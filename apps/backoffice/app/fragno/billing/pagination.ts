@@ -1,8 +1,7 @@
+import { backofficeScopePathSegment } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import { decodeCursor, type Cursor } from "@fragno-dev/db";
-
-import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 
 import { BILLING_TRACKER_MAX_PAGE_SIZE } from "./contracts";
 
@@ -28,7 +27,7 @@ export const decodeBillingTrackerCursor = (input: {
 
   try {
     const cursor = decodeCursor(input.encodedCursor);
-    const expectedScopeKey = backofficeContextScopeSinglePathSegment(input.scope);
+    const expectedScopeKey = backofficeScopePathSegment(input.scope);
 
     if (
       cursor.indexName !== BILLING_TRACKER_INDEX_NAME ||

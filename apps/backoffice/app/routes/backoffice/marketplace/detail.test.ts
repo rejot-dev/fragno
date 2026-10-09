@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test, vi, assert } from "vitest";
 
+import { backofficeScopePathSegment } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createMemoryRouter, Outlet, RouterProvider, RouterContextProvider } from "react-router";
@@ -50,10 +51,7 @@ import {
   backofficeRouteScopePath,
   type BackofficeRoutableRouteScope,
 } from "@/backoffice-runtime/route-scope";
-import {
-  backofficeScopeSinglePathSegment,
-  type BackofficeRoutableScope,
-} from "@/backoffice-runtime/scope-codec";
+import { type BackofficeRoutableScope } from "@/backoffice-runtime/scope-codec";
 import { buildMarketplacePackageInstallWorkflowInstanceId } from "@/fragno/automation/marketplace-package-install-identity";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
 
@@ -691,7 +689,7 @@ describe("marketplace ingestion action", () => {
       version: "1.0.0",
       extraFormEntries: {
         organizationId: "org-other",
-        targetScope: backofficeScopeSinglePathSegment({ kind: "user", userId: "user-2" }),
+        targetScope: backofficeScopePathSegment({ kind: "user", userId: "user-2" }),
       },
     });
 

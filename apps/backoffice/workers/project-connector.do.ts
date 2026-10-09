@@ -1,4 +1,7 @@
-import { backofficeUserScopeSchema } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  backofficeUserScopeSchema,
+  backofficeScopePathSegment,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import type { ProjectConnectorFragmentConfig } from "@fragno-dev/project-connector-fragment/definition";
 import { DurableObject, RpcTarget } from "cloudflare:workers";
@@ -13,7 +16,6 @@ import {
   type ProjectConnectorObject,
 } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
-import { backofficeContextScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import {
   createProjectConnectorServer,
   type ProjectConnectorFragment,
@@ -107,7 +109,7 @@ export class InMemoryProjectConnectorObject extends RpcTarget implements Project
       ): ProjectConnectorFragmentConfig {
         // Provider accounts are user-owned. Use the ID-backed user scope upstream; caller-supplied
         // identities and organization slugs are not authoritative account owners.
-        const externalUserId = backofficeContextScopeSinglePathSegment(scope);
+        const externalUserId = backofficeScopePathSegment(scope);
         return {
           baseUrl,
           apiKey,

@@ -6,6 +6,7 @@ import path from "node:path";
 
 import { automationEventListResultSchema } from "@fragno-dev/backoffice-api/v0/events";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+import { backofficeScopePathSegment } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
 
 const workers = vi.hoisted(() => ({
@@ -18,7 +19,6 @@ vi.mock("cloudflare:workers", () => workers);
 import { createBackofficeUserExecution } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
-import { backofficeScopeSinglePathSegment } from "@/backoffice-runtime/scope-codec";
 import { createInstalledAppExecution } from "@/fragno/app-installations/authority";
 import { backofficeExecutionTokenResultSchema } from "@/fragno/auth/execution-token";
 import { createAutomationExecutionFromActors } from "@/fragno/automation/authority";
@@ -194,7 +194,7 @@ async function sendEvent(
   ctx: Ctx,
   input: { credential: string; scope?: AppScope; body?: unknown },
 ): Promise<Response> {
-  const scopeSegment = backofficeScopeSinglePathSegment(input.scope ?? orgScope(ctx.vars.orgId));
+  const scopeSegment = backofficeScopePathSegment(input.scope ?? orgScope(ctx.vars.orgId));
   const request = new Request(`${origin}/api/backoffice/scopes/${scopeSegment}/events`, {
     method: "POST",
     headers: { "content-type": "application/json", authorization: `Bearer ${input.credential}` },
