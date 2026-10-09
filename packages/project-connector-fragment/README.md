@@ -138,8 +138,7 @@ partial, or cached catalog.
 A named connection is the exact tuple `{ projectId, providerConfigId, connectionName }` within the
 user identity established by `getExternalUserId`. Use the project/configuration IDs from discovery;
 connection names follow the gateway's alias rule: lowercase letters, digits, underscores, and
-hyphens, starting with a letter or digit. Existing nullable request/account names remain valid and addressable through the ID-based
-routes.
+hyphens, starting with a letter or digit. Every request and account has a name.
 
 - `GET /connection-requests/by-name?projectId=...&providerConfigId=...&connectionName=...` returns
   the single matching saved OAuth request as `{ request }`, with `request: null` when absent.
@@ -194,10 +193,20 @@ link creation happens outside the retried local save. A lost gateway response or
 is not claimed to be recoverable by alias, and this fragment does not introduce remote cleanup
 machinery. Repeating a start is not a way to resume an existing attempt.
 
-**Schema migration:** version 4 adds only non-unique named lookup indexes. Version 2 databases keep
-all existing requests and accounts, including duplicate names and null names, without reconciliation
-or a reset. The stored fields and existing response contracts remain nullable; only the new named
-selector requires a non-empty name.
+**Schema migration:** version 4 adds non-unique named lookup indexes; databases keep duplicate names
+without reconciliation or a reset. Version 6 makes `connectionName` non-null on requests and
+accounts. Every start has required a name, so stored rows are expected to have one; the migration
+fails on a database that holds a null name.
+
+### Readiness hook
+
+`onConnectionReadinessChanged` is an optional durable hook in the fragment config. It receives
+`{ externalUserId, service, connection, ready }`, where `connection` is the named selector, when a
+write changes whether the name has a confirmed account: `ready: false` when the first request for a
+name starts, and `ready: true` when a refresh confirms the name's first account. Further attempts
+for a name that already has an account fire nothing. The gateway does not notify the fragment of
+consent or revocation, so readiness changes only when `POST /connection-requests/:requestId/refresh`
+runs.
 
 ## Client flow
 

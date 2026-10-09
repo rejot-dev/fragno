@@ -16,6 +16,7 @@ import {
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
+import { encodeConnectorConnectionId } from "@/fragno/runtime-tools/families/integrations/connector-connection-id";
 import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 
 import { InMemoryApiObject } from "../../../../workers/api.do";
@@ -150,6 +151,34 @@ test("user-scoped codemode verifies OAuth before SQLite bindings, profiles, and 
           expect(gateway.executions).toHaveLength(2);
         },
       ),
+      then.assert(
+        "integrations list the account under the named address its connection events use",
+        async (ctx) => {
+          const connectionId = encodeConnectorConnectionId([
+            "named",
+            "project-1",
+            "gmail-provider",
+            "work",
+          ]);
+          const run = await ctx.runCodemode({
+            scope: { kind: "org", orgId: "org-1" },
+            code: `async () => {
+              const integrations = context.user("user-1").integrations;
+              return {
+                page: await integrations.list({ cursor: null }),
+                inspected: await integrations.get({ connectionId: ${JSON.stringify(connectionId)} }),
+              };
+            }`,
+          });
+          expect(run.result).toMatchObject({
+            page: {
+              connections: [{ connectionId, integrationId: "gmail", name: "work" }],
+              cursor: null,
+            },
+            inspected: { connectionId, authorization: { status: "available" } },
+          });
+        },
+      ),
     ],
   }));
 });
@@ -161,7 +190,7 @@ test("native named lookup resumes consent after a scoped object restart without 
     setup: ({ given }) => [
       given.organization.exists({ id: "org-1", slug: "ada-labs", name: "Ada Labs" }),
     ],
-    steps: ({ then }) => [
+    steps: ({ then, runner }) => [
       then.assert(
         "recover and confirm the exact named request through authorized native routes",
         async (ctx) => {
@@ -243,6 +272,37 @@ test("native named lookup resumes consent after a scoped object restart without 
           expect(gateway.executions).toEqual([]);
         },
       ),
+      runner.drain(),
+      then.automation.event({
+        scope: { kind: "user", userId: "user-1" },
+        where: { source: "integrations", eventType: "connection.unavailable" },
+        expected: {
+          subject: {
+            service: "gmail",
+            connectionId: encodeConnectorConnectionId([
+              "named",
+              "project-1",
+              "gmail-provider",
+              "work",
+            ]),
+          },
+        },
+      }),
+      then.automation.event({
+        scope: { kind: "user", userId: "user-1" },
+        where: { source: "integrations", eventType: "connection.ready" },
+        expected: {
+          subject: {
+            service: "gmail",
+            connectionId: encodeConnectorConnectionId([
+              "named",
+              "project-1",
+              "gmail-provider",
+              "work",
+            ]),
+          },
+        },
+      }),
     ],
   }));
 });
