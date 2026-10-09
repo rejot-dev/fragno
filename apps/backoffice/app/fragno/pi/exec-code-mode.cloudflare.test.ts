@@ -3,6 +3,7 @@ import { describe, expect, test, assert } from "vitest";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { createWorkflowsTestHarness } from "@fragno-dev/workflows/test";
 import { defineRemoteWorkflow } from "@fragno-dev/workflows/workflow";
+import Ajv from "ajv";
 import { env } from "cloudflare:workers";
 
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
@@ -26,7 +27,7 @@ import type {
 import { createTrustedSystemBackofficeToolContext } from "../runtime-tools/runtime-tools";
 import { runtimeToolFamilies } from "../runtime-tools/tool-families";
 import { createPiCodemodeRuntime } from "./pi-codemode";
-import { createBackofficePiTools } from "./pi-tools";
+import { createBackofficePiTools, execCodeModeParametersSchema } from "./pi-tools";
 
 const unusedObjects = {} as BackofficeObjectRegistry;
 const testRuntimeConfig: BackofficeRuntimeConfig = {
@@ -101,6 +102,17 @@ const createPiWorkflowRuntime = (
 });
 
 describe("Pi execCodeMode tool", () => {
+  test("its parameter schema rejects empty programs and accepts immediate and durable ones", () => {
+    const validate = new Ajv().compile(execCodeModeParametersSchema);
+
+    assert(!validate({ code: "" }));
+    expect(validate.errors).toEqual(
+      expect.arrayContaining([expect.objectContaining({ keyword: "minLength" })]),
+    );
+    assert(validate({ code: "async () => ({ ok: true })" }));
+    assert(validate({ code: 'defineWorkflow({ name: "demo" }, async () => ({}))' }));
+  });
+
   test("runs codemode against the session Upload mount and persists writes", async () => {
     const stateBackend = createTestStateBackend({
       upload: new MemoryUploadObject({ "input.txt": "hello" }),
