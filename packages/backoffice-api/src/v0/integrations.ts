@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { BackofficeApiOperation } from "../api";
 import { isoDateTimeOutputSchema } from "./shared/datetime";
 import { jsonValueSchema } from "./shared/json";
+import { BACKOFFICE_PERMISSION } from "./shared/permissions";
 
 export const integrationVerificationCheckShape = {
   id: z.string().min(1),
@@ -266,42 +267,49 @@ export const integrationsOperations = {
   "integrations.discover": {
     description:
       "Discover available services and unconfigured services in the selected scope. Service availability does not prove live health.",
+    permissions: [BACKOFFICE_PERMISSION.integrations.read],
     input: z.void(),
     output: z.array(integrationOverviewSchema),
   },
   "integrations.list": {
     description:
       "List existing configured connections in the selected scope, one cursor page at a time. Deterministic IDs reuse source-owned identities; configuration does not imply live access.",
+    permissions: [BACKOFFICE_PERMISSION.integrations.read],
     input: integrationListInputSchema,
     output: integrationListOutputSchema,
   },
   "integrations.get": {
     description:
       "Inspect source-owned connection configuration and available evidence without performing a live health check. The connection ID resolves only within the selected scope.",
+    permissions: [BACKOFFICE_PERMISSION.integrations.read],
     input: integrationConnectionInputSchema,
     output: integrationConnectionSchema,
   },
   "integrations.setup": {
     description:
       "Read current requirements or submit input for a deterministic connection address. Setup is source-owned; this operation retains no attempt state or independent binding. Already configured Reson8 reuses its key without replacing it.",
+    permissions: [BACKOFFICE_PERMISSION.integrations.manage],
     input: integrationSetupInputSchema,
     output: integrationSetupProgressSchema,
   },
   "integrations.actions": {
     description:
       "Discover the selected connection's supported actions and authoritative input/output contracts without executing them. Never infer schemas from action IDs.",
+    permissions: [BACKOFFICE_PERMISSION.integrations.read],
     input: integrationConnectionInputSchema,
     output: z.array(integrationActionSchema),
   },
   "integrations.execute": {
     description:
       "Execute an explicit connection action with JSON input/output, validated against its live contracts and service permissions. Binary inputs are schema-declared byte arrays; results retain the action's domain and asynchronous semantics.",
+    permissions: [BACKOFFICE_PERMISSION.integrations.execute],
     input: integrationExecuteInputSchema,
     output: jsonValueSchema.meta({ codemodeType: "JsonValue" }),
   },
   "integrations.verify": {
     description:
       "Perform explicit supported live checks without authorizing the connection or executing service actions. Return timestamped evidence, not blanket health or retained verification state.",
+    permissions: [BACKOFFICE_PERMISSION.integrations.manage],
     input: integrationConnectionInputSchema,
     output: integrationConnectionSchema,
   },

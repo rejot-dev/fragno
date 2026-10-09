@@ -35,7 +35,7 @@ const createAppTool = defineBackofficeRuntimeTool({
   name: "appsCreate",
   description:
     "Register a Backoffice app for an existing Better Auth OAuth client. Does not provision OAuth credentials or install the app.",
-  requiredPermissions: [BACKOFFICE_PERMISSION.admin.appsManage.permission],
+  requiredPermissions: [BACKOFFICE_PERMISSION.admin.appsManage],
   inputSchema: backofficeAppRegistrationInputSchema,
   outputSchema: backofficeAppRegistrationResultSchema,
   execute: async (input, context: AdminAppsToolContext) =>
@@ -91,7 +91,7 @@ const listAppsTool = defineBackofficeRuntimeTool({
   name: "appsList",
   description:
     "List global Backoffice app registrations using cursor pagination. Does not expose OAuth credentials or organization installations.",
-  requiredPermissions: [BACKOFFICE_PERMISSION.admin.appsRead.permission],
+  requiredPermissions: [BACKOFFICE_PERMISSION.admin.appsRead],
   inputSchema: listAppsInputSchema,
   outputSchema: backofficeAppPageSchema,
   execute: async (input, context: AdminAppsToolContext) =>

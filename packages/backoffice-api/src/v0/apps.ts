@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { BackofficeApiOperation } from "../api";
+import { BACKOFFICE_PERMISSION } from "./shared/permissions";
 import { backofficePermissionRequirementSchema } from "./shared/permissions";
 
 /** App permission declarations and grants are sets; duplicate entries are malformed input. */
@@ -125,12 +126,14 @@ export const appsOperations = {
   "apps.get": {
     description:
       "Review a registered app's requested permissions before approving an installation.",
+    permissions: [BACKOFFICE_PERMISSION.apps.read],
     input: backofficeAppLookupInputSchema,
     output: backofficeAppSchema.nullable(),
   },
   "apps.install": {
     description:
       "Approve an app installation in the selected organization, limited to explicit permissions and resources. Installer identity comes from the authenticated user.",
+    permissions: [BACKOFFICE_PERMISSION.apps.manage],
     input: backofficeAppInstallationAccessInputSchema.extend({
       resourceScope: appInstallationResourceScopeSchema.default({ kind: "organization" }),
     }),
@@ -139,12 +142,14 @@ export const appsOperations = {
   "apps.installations.get": {
     description:
       "Inspect one app installation in the selected organization, including approved grants.",
+    permissions: [BACKOFFICE_PERMISSION.apps.read],
     input: backofficeAppLookupInputSchema,
     output: backofficeAppInstallationSchema.nullable(),
   },
   "apps.installations.list": {
     description:
       "List the selected organization's active and uninstalled apps using cursor pagination. Does not expose other organizations or OAuth credentials.",
+    permissions: [BACKOFFICE_PERMISSION.apps.read],
     input: backofficeAppInstallationPageInputSchema.extend({
       pageSize: backofficeAppInstallationPageInputSchema.shape.pageSize.default(25),
       cursor: backofficeAppInstallationPageInputSchema.shape.cursor.default(null),
@@ -154,12 +159,14 @@ export const appsOperations = {
   "apps.installations.update": {
     description:
       "Replace an active installation's approved permissions and resources. Takes effect immediately, including for issued app credentials. Does not change installer attribution.",
+    permissions: [BACKOFFICE_PERMISSION.apps.manage],
     input: backofficeAppInstallationAccessInputSchema,
     output: backofficeAppInstallationMutationResultSchema,
   },
   "apps.uninstall": {
     description:
       "Uninstall an app in the selected organization, clearing approved grants and its linked account while retaining installation identity. Immediately invalidates app credentials. Does not revoke personal OAuth consent.",
+    permissions: [BACKOFFICE_PERMISSION.apps.manage],
     input: backofficeAppLookupInputSchema,
     output: backofficeAppInstallationMutationResultSchema,
   },

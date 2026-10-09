@@ -52,7 +52,6 @@ const getAppTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("apps.get"),
   namespace: "apps",
   name: "get",
-  requiredPermissions: ["read"],
   execute: async (input, context: AppsToolContext) =>
     await requireAppsContext(context).apps.getApp(input),
   adapters: {
@@ -87,7 +86,6 @@ const installAppTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("apps.install"),
   namespace: "apps",
   name: "install",
-  requiredPermissions: ["manage"],
   execute: async (input, context: AppsToolContext) => {
     const { apps, userId } = requireAppsContext(context);
     return await apps.installApp(input, userId);
@@ -133,7 +131,6 @@ const getInstallationTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("apps.installations.get"),
   namespace: "apps",
   name: "getInstallation",
-  requiredPermissions: ["read"],
   execute: async (input, context: AppsToolContext) =>
     await requireAppsContext(context).apps.getInstallation(input),
   adapters: {
@@ -180,7 +177,6 @@ const listInstallationsTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("apps.installations.list"),
   namespace: "apps",
   name: "listInstallations",
-  requiredPermissions: ["read"],
   execute: async (input, context: AppsToolContext) =>
     await requireAppsContext(context).apps.listInstallations(input),
   adapters: {
@@ -234,7 +230,6 @@ const updateInstallationTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("apps.installations.update"),
   namespace: "apps",
   name: "updateInstallation",
-  requiredPermissions: ["manage"],
   execute: async (input, context: AppsToolContext) =>
     await requireAppsContext(context).apps.updateInstallationAccess(input),
   adapters: {
@@ -278,7 +273,6 @@ const uninstallAppTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("apps.uninstall"),
   namespace: "apps",
   name: "uninstall",
-  requiredPermissions: ["manage"],
   execute: async (input, context: AppsToolContext) =>
     await requireAppsContext(context).apps.uninstallApp(input),
   adapters: {
@@ -304,11 +298,6 @@ const uninstallAppTool = defineBackofficeRuntimeTool({
 
 export const appsToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "apps",
-  permissions: {
-    read: "Review app declarations and the selected organization's installations.",
-    manage:
-      "Approve installations, replace permissions and resources, and uninstall apps as an organization owner/admin.",
-  },
   tools: [
     getAppTool,
     installAppTool,

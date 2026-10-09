@@ -42,9 +42,7 @@ const parseExtract = (args: string[]): z.input<typeof webExtractInputSchema> => 
 const webExtractTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("web.extract"),
   namespace: "web",
-  authorizationNamespace: "cloudflare",
   name: "extract",
-  requiredPermissions: ["browserRun"],
   // The contract keeps page options open; the Cloudflare fragment validates them in full.
   execute: async (input, context: WebToolContext) =>
     await getWebRuntime(context.runtimes.web).extract(input as WebExtractInput),
@@ -85,9 +83,6 @@ export const webRuntimeTools = [webExtractTool] as const;
 
 export const webToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "web",
-  permissions: {
-    browserRun: "Extract content from web pages.",
-  },
   tools: webRuntimeTools,
   isAvailable: (context: WebToolContext) => !!context.runtimes.web,
 });

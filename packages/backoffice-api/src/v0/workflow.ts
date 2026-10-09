@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import type { BackofficeApiOperation } from "../api";
 import { dateTimeStringOutputSchema } from "./shared/datetime";
+import { BACKOFFICE_PERMISSION } from "./shared/permissions";
 
 export const workflowCreateInstanceResultSchema = z.object({
   instanceId: z.string().trim().min(1),
@@ -61,6 +62,7 @@ export const workflowRetryFailedStepResultSchema = z.object({
 export const workflowOperations = {
   "workflow.instances.create": {
     description: "Start a saved durable workflow from its source path.",
+    permissions: [BACKOFFICE_PERMISSION.workflow.modify],
     input: z.strictObject({
       path: z.string().trim().min(1),
       instanceId: z.string().trim().min(1),
@@ -70,6 +72,7 @@ export const workflowOperations = {
   },
   "workflow.instances.send-event": {
     description: "Send an event to a durable workflow instance.",
+    permissions: [BACKOFFICE_PERMISSION.workflow.modify],
     input: z.strictObject({
       instanceId: z.string().trim().min(1),
       type: z.string().trim().min(1),
@@ -79,6 +82,7 @@ export const workflowOperations = {
   },
   "workflow.instances.retry-failed-step": {
     description: "Retry the failed top-level step of an errored durable workflow instance.",
+    permissions: [BACKOFFICE_PERMISSION.workflow.modify],
     input: z.strictObject({
       instanceId: z.string().trim().min(1),
       delayMs: z.number().int().nonnegative().optional(),
@@ -87,6 +91,7 @@ export const workflowOperations = {
   },
   "workflow.instances.list": {
     description: "List durable saved-workflow instances.",
+    permissions: [BACKOFFICE_PERMISSION.workflow.read],
     input: z.strictObject({
       status: workflowInstanceStatusSchema.shape.status.optional(),
       pageSize: z.number().int().positive().optional(),
@@ -96,6 +101,7 @@ export const workflowOperations = {
   },
   "workflow.instances.get": {
     description: "Get durable workflow instance details.",
+    permissions: [BACKOFFICE_PERMISSION.workflow.read],
     input: z.strictObject({
       instanceId: z.string().trim().min(1),
     }),
@@ -103,6 +109,7 @@ export const workflowOperations = {
   },
   "workflow.instances.history": {
     description: "Get durable workflow step, event, and emission history.",
+    permissions: [BACKOFFICE_PERMISSION.workflow.read],
     input: z.strictObject({
       instanceId: z.string().trim().min(1),
     }),

@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { BackofficeApiOperation } from "../api";
 import { organizationMembershipRecordSchema, organizationRecordSchema } from "./organization";
 import { directoryPageInputSchema } from "./shared/pagination";
+import { BACKOFFICE_PERMISSION } from "./shared/permissions";
 
 /** The signed-in user's own profile; it never describes another user. */
 const accountProfileSchema = z
@@ -52,32 +53,38 @@ export type OAuthConsentPage = z.output<typeof oauthConsentPageSchema>;
 export const accountOperations = {
   "account.me": {
     description: "Read your own Backoffice account profile.",
+    permissions: [BACKOFFICE_PERMISSION.account.read],
     input: z.void(),
     output: accountProfileSchema,
   },
   "account.profile.update": {
     description: "Change the display name on your own Backoffice account.",
+    permissions: [BACKOFFICE_PERMISSION.account.manage],
     input: z.strictObject({ name: z.string().trim().min(1) }),
     output: accountProfileSchema,
   },
   "account.orgs.list": {
     description: "List the organizations you belong to and your roles in each.",
+    permissions: [BACKOFFICE_PERMISSION.account.read],
     input: z.void(),
     output: z.strictObject({ organizations: z.array(organizationMembershipRecordSchema) }),
   },
   "account.invitations.list": {
     description: "List pending, unexpired organization invitations addressed to your email.",
+    permissions: [BACKOFFICE_PERMISSION.account.read],
     input: z.void(),
     output: z.strictObject({ invitations: z.array(accountInvitationRecordSchema) }),
   },
   "account.invitations.accept": {
     description: "Accept a pending organization invitation addressed to your email.",
+    permissions: [BACKOFFICE_PERMISSION.account.manage],
     input: z.strictObject({ invitationId: z.string().trim().min(1) }),
     output: organizationMembershipRecordSchema,
   },
   "account.applications.list": {
     description:
       "List OAuth applications you have authorized and their granted scopes, using cursor pagination. Never exposes tokens.",
+    permissions: [BACKOFFICE_PERMISSION.account.read],
     input: directoryPageInputSchema,
     output: oauthConsentPageSchema,
   },

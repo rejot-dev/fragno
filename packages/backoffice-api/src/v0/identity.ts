@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { BackofficeApiOperation } from "../api";
+import { BACKOFFICE_PERMISSION } from "./shared/permissions";
 
 const resolveExternalIdentityInputSchema = z.strictObject({
   source: z.string().trim().min(1),
@@ -18,6 +19,7 @@ export const identityOperations = {
   "identity.external.resolve": {
     description:
       "Resolve an active external identity binding so the workflow can choose its internal user.",
+    permissions: [BACKOFFICE_PERMISSION.identity.resolve],
     input: resolveExternalIdentityInputSchema,
     output: resolveExternalIdentityOutputSchema,
   },

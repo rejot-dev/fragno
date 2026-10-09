@@ -56,7 +56,6 @@ const fireEventTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("events.fire"),
   namespace: "events",
   name: "fire",
-  requiredPermissions: ["emit"],
   execute: async (input, context: EventToolContext) =>
     await getEventRuntime(context.runtimes.event).emitEvent(input),
   adapters: {
@@ -116,7 +115,6 @@ const listEventsTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("events.list"),
   namespace: "events",
   name: "list",
-  requiredPermissions: ["read"],
   execute: async (input, context: EventToolContext) =>
     await getEventRuntime(context.runtimes.event).listEvents(input),
   adapters: {
@@ -174,7 +172,6 @@ const getEventTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("events.get"),
   namespace: "events",
   name: "get",
-  requiredPermissions: ["read"],
   execute: async (input, context: EventToolContext) =>
     await getEventRuntime(context.runtimes.event).getEvent(input),
   adapters: {
@@ -232,10 +229,6 @@ export const eventRuntimeTools = [fireEventTool, listEventsTool, getEventTool] a
 
 export const eventFireToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "events",
-  permissions: {
-    emit: "Fire automation events within the current scope.",
-    route: "Route automation events to another selected scope.",
-  },
   tools: [fireEventTool],
   isAvailable: (context: EventToolContext) => !!context.runtimes.event,
 });
@@ -243,7 +236,6 @@ export const eventFireToolFamily = defineBackofficeRuntimeToolFamily({
 /** Stored event reads use the events.read permission in the current scope. */
 export const eventReadToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "events",
-  permissions: { read: "Read stored automation events in the current scope." },
   tools: [listEventsTool, getEventTool],
   isAvailable: (context: EventToolContext) => !!context.runtimes.event,
 });

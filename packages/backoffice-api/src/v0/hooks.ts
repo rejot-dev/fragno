@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { BackofficeApiOperation } from "../api";
+import { BACKOFFICE_PERMISSION } from "./shared/permissions";
 
 const durableHookFragmentSchema = z.string().trim().min(1);
 
@@ -29,6 +30,7 @@ const durableHookQueueResponseSchema = z.object({
 export const hooksOperations = {
   "hooks.list": {
     description: "List durable hook queue entries for a runtime fragment.",
+    permissions: [BACKOFFICE_PERMISSION.hooks.read],
     input: z.object({
       fragment: durableHookFragmentSchema,
       cursor: z.string().trim().min(1).optional(),
@@ -38,6 +40,7 @@ export const hooksOperations = {
   },
   "hooks.get": {
     description: "Get a durable hook queue entry by id.",
+    permissions: [BACKOFFICE_PERMISSION.hooks.read],
     input: z.object({ fragment: durableHookFragmentSchema, hookId: z.string().trim().min(1) }),
     output: durableHookRecordSchema.nullable(),
   },

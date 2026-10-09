@@ -105,7 +105,6 @@ const sessionCreateTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("pi.session.create"),
   namespace: "pi",
   name: "createSession",
-  requiredPermissions: ["modify"],
   execute: async (input, context: PiToolContext) => {
     const session = await requirePiManagerRuntime(context.runtimes.pi).createSession(input);
     return serializePiRuntimeSession(session);
@@ -158,7 +157,6 @@ const sessionGetTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("pi.session.get"),
   namespace: "pi",
   name: "getSession",
-  requiredPermissions: ["read"],
   execute: async (input, context: PiToolContext) => {
     const session = await requirePiManagerRuntime(context.runtimes.pi).getSession(input);
     return {
@@ -192,7 +190,6 @@ const sessionListTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("pi.session.list"),
   namespace: "pi",
   name: "listSessions",
-  requiredPermissions: ["read"],
   execute: async (input, context: PiToolContext) => {
     const page = await requirePiManagerRuntime(context.runtimes.pi).listSessions(input);
     return {
@@ -228,7 +225,6 @@ const promptSubmitTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("pi.prompt.submit"),
   namespace: "pi",
   name: "submitPrompt",
-  requiredPermissions: ["modify"],
   execute: async (input, context: PiToolContext) => {
     return piPromptReceiptOutputSchema.parse(
       normalizeRuntimeOutput(
@@ -281,7 +277,6 @@ const submissionGetTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("pi.submission.get"),
   namespace: "pi",
   name: "getSubmission",
-  requiredPermissions: ["read"],
   execute: async (input, context: PiToolContext) => {
     return normalizeRuntimeOutput(
       await requirePiManagerRuntime(context.runtimes.pi).getSubmission(input),
@@ -320,7 +315,6 @@ const promptRunTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("pi.prompt.run"),
   namespace: "pi",
   name: "runPrompt",
-  requiredPermissions: ["modify"],
   execute: async (input, context: PiToolContext) => {
     const result = await requirePiManagerRuntime(context.runtimes.pi).runPrompt(input);
     return {
@@ -384,7 +378,6 @@ const sessionAbortTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("pi.session.abort"),
   namespace: "pi",
   name: "abortSession",
-  requiredPermissions: ["modify"],
   execute: async (input, context: PiToolContext) => {
     await requirePiManagerRuntime(context.runtimes.pi).abortSession(input);
     return { aborted: true as const };
@@ -423,10 +416,6 @@ export const piRuntimeTools = [
 
 export const piToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "pi",
-  permissions: {
-    read: "Read durable Pi sessions and submissions.",
-    modify: "Create durable Pi sessions, submit prompts, and abort active work.",
-  },
   tools: piRuntimeTools,
   isAvailable: (context: PiToolContext) => !!context.runtimes.pi,
 });

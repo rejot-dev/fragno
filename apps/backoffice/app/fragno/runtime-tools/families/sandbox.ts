@@ -57,7 +57,6 @@ const startSandboxTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("sandbox.start"),
   namespace: "sandbox",
   name: "startSandbox",
-  requiredPermissions: ["modify"],
   execute: async (input, context: SandboxToolContext) =>
     await getSandboxRuntime(context.runtimes.sandbox).startSandbox(input),
   adapters: {
@@ -111,7 +110,6 @@ const listSandboxesTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("sandbox.list"),
   namespace: "sandbox",
   name: "listSandboxes",
-  requiredPermissions: ["read"],
   execute: async (_input, context: SandboxToolContext) =>
     await getSandboxRuntime(context.runtimes.sandbox).listSandboxes(),
   adapters: {
@@ -133,7 +131,6 @@ const killSandboxTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("sandbox.kill"),
   namespace: "sandbox",
   name: "killSandbox",
-  requiredPermissions: ["modify"],
   execute: async (input, context: SandboxToolContext) =>
     await getSandboxRuntime(context.runtimes.sandbox).killSandbox(input),
   adapters: {
@@ -163,7 +160,6 @@ const executeCommandTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("sandbox.exec"),
   namespace: "sandbox",
   name: "executeCommand",
-  requiredPermissions: ["modify"],
   execute: async (input, context: SandboxToolContext) =>
     await getSandboxRuntime(context.runtimes.sandbox).executeCommand(input),
   adapters: {
@@ -245,10 +241,6 @@ export const sandboxRuntimeTools = [
 
 export const sandboxToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "sandbox",
-  permissions: {
-    read: "List sandboxes.",
-    modify: "Start, stop, and execute commands in sandboxes.",
-  },
   tools: sandboxRuntimeTools,
   isAvailable: (context: SandboxToolContext) => !!context.runtimes.sandbox,
 });

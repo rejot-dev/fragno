@@ -5,7 +5,6 @@ import type {
 } from "@fragno-dev/backoffice-api/v0/account";
 import type { OrganizationMembershipRecord } from "@fragno-dev/backoffice-api/v0/organization";
 import type { DirectoryPageInput } from "@fragno-dev/backoffice-api/v0/shared/pagination";
-import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 
 import { defineCliArgsParser, defineNoInputArgsParser } from "@/fragno/runtime-tools/bash-cli";
 
@@ -53,7 +52,6 @@ const getProfileTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("account.me"),
   namespace: "account",
   name: "me",
-  requiredPermissions: [BACKOFFICE_PERMISSION.account.read.permission],
   execute: async (_input, context: AccountToolContext) =>
     await getAccountRuntime(context.runtimes.account).getProfile(),
   adapters: {
@@ -77,7 +75,6 @@ const updateProfileTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("account.profile.update"),
   namespace: "account",
   name: "profileUpdate",
-  requiredPermissions: [BACKOFFICE_PERMISSION.account.manage.permission],
   execute: async (input, context: AccountToolContext) =>
     await getAccountRuntime(context.runtimes.account).updateProfile(input),
   adapters: {
@@ -110,7 +107,6 @@ const listOrganizationsTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("account.orgs.list"),
   namespace: "account",
   name: "orgsList",
-  requiredPermissions: [BACKOFFICE_PERMISSION.account.read.permission],
   execute: async (_input, context: AccountToolContext) => {
     const organizations = await getAccountRuntime(context.runtimes.account).listOrganizations();
     return { organizations };
@@ -145,7 +141,6 @@ const listInvitationsTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("account.invitations.list"),
   namespace: "account",
   name: "invitationsList",
-  requiredPermissions: [BACKOFFICE_PERMISSION.account.read.permission],
   execute: async (_input, context: AccountToolContext) => {
     const invitations = await getAccountRuntime(context.runtimes.account).listInvitations();
     return { invitations };
@@ -186,7 +181,6 @@ const acceptInvitationTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("account.invitations.accept"),
   namespace: "account",
   name: "invitationsAccept",
-  requiredPermissions: [BACKOFFICE_PERMISSION.account.manage.permission],
   execute: async (input, context: AccountToolContext) =>
     await getAccountRuntime(context.runtimes.account).acceptInvitation(input),
   adapters: {
@@ -219,7 +213,6 @@ const listApplicationsTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("account.applications.list"),
   namespace: "account",
   name: "applicationsList",
-  requiredPermissions: [BACKOFFICE_PERMISSION.account.read.permission],
   execute: async (input, context: AccountToolContext) =>
     await getAccountRuntime(context.runtimes.account).listApplications(input),
   adapters: {
@@ -284,10 +277,6 @@ export const accountRuntimeTools = [
 
 export const accountToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "account",
-  permissions: {
-    read: "Read your own profile, organizations, invitations, and authorized applications.",
-    manage: "Change your display name and accept invitations addressed to you.",
-  },
   tools: accountRuntimeTools,
   isAvailable: (context: AccountToolContext) => !!context.runtimes.account,
 });

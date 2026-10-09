@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import type { BackofficeApiOperation } from "../api";
 import { dateTimeStringOutputSchema } from "./shared/datetime";
+import { BACKOFFICE_PERMISSION } from "./shared/permissions";
 
 export const authSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("none") }),
@@ -141,36 +142,43 @@ export const mcpSetTokenInputSchema = z.object({
 export const mcpOperations = {
   "mcp.servers.list": {
     description: "List MCP servers configured for the current organization.",
+    permissions: [BACKOFFICE_PERMISSION.mcp.serversRead],
     input: z.void(),
     output: serversOutputSchema,
   },
   "mcp.servers.add": {
     description: "Register a remote streamable HTTP MCP server.",
+    permissions: [BACKOFFICE_PERMISSION.mcp.serversCreate],
     input: createServerInputSchema,
     output: serverSchema,
   },
   "mcp.servers.delete": {
     description: "Delete an MCP server and its stored auth state.",
+    permissions: [BACKOFFICE_PERMISSION.mcp.serversDelete],
     input: deleteServerInputSchema,
     output: deleteServerOutputSchema,
   },
   "mcp.servers.refresh": {
     description: "Refresh a configured MCP server and update its cached tool list.",
+    permissions: [BACKOFFICE_PERMISSION.mcp.serversRead],
     input: refreshServerInputSchema,
     output: serverRefreshOutputSchema,
   },
   "mcp.tools.call": {
     description: "Call a tool exposed by a configured MCP server.",
+    permissions: [BACKOFFICE_PERMISSION.mcp.toolsCall],
     input: callToolInputSchema,
     output: callToolOutputSchema,
   },
   "mcp.oauth.start": {
     description: "Start OAuth login for a configured MCP server and return the authorization URL.",
+    permissions: [BACKOFFICE_PERMISSION.mcp.serversCreate],
     input: mcpOAuthStartInputSchema,
     output: mcpOAuthStartOutputSchema,
   },
   "mcp.auth.token": {
     description: "Store a bearer token for a configured MCP server.",
+    permissions: [BACKOFFICE_PERMISSION.mcp.serversCreate],
     input: mcpSetTokenInputSchema,
     output: mcpAuthStatusSchema,
   },
