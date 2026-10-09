@@ -41,7 +41,7 @@ export type BackofficeRequestStateDependencies = {
   ): Promise<AutomationCollectionSource<TOrganization>>;
 };
 
-function principalFromBackofficeJwt(
+export function principalFromBackofficeJwt(
   payload: BackofficeJwtPayload,
   transport: "bearer" | "cookie",
 ): BackofficeAuthPrincipal {
