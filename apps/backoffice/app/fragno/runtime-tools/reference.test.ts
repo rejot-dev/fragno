@@ -35,7 +35,6 @@ const findBashFamily = (namespace: string): BackofficeRuntimeToolFamily => {
   }
   return {
     namespace,
-    permissions: Object.assign({}, ...families.map((family) => family.permissions)),
     tools: families.flatMap((family) => family.tools),
   };
 };

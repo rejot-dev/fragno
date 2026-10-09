@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { BackofficeApiOperation } from "../api";
+import { BACKOFFICE_PERMISSION } from "./shared/permissions";
 
 const webPageInputSchema = z
   .looseObject({
@@ -24,6 +25,7 @@ const webExtractResultSchema = z.discriminatedUnion("action", [
 export const webOperations = {
   "web.extract": {
     description: "Extract page content or Markdown from a URL or HTML.",
+    permissions: [BACKOFFICE_PERMISSION.cloudflare.browserRun],
     input: webExtractInputSchema,
     output: webExtractResultSchema,
   },

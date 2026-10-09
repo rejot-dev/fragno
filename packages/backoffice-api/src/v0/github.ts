@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { BackofficeApiOperation } from "../api";
+import { BACKOFFICE_PERMISSION } from "./shared/permissions";
 
 export const githubRepositorySchema = z.object({
   id: z.string(),
@@ -38,12 +39,14 @@ const createRepositoryAccessTokenInputSchema = z.object({
 export const githubOperations = {
   "github.repositories.list": {
     description: "List GitHub repositories connected to the current organization and their ids.",
+    permissions: [BACKOFFICE_PERMISSION.github.read],
     input: listRepositoriesInputSchema,
     output: z.array(githubRepositorySchema),
   },
   "github.repositories.create-access-token": {
     description:
       "Create a repository-scoped, read-only GitHub App installation token for cloning a linked repository. The token expires after one hour.",
+    permissions: [BACKOFFICE_PERMISSION.github.read],
     input: createRepositoryAccessTokenInputSchema,
     output: githubRepositoryAccessTokenSchema,
   },

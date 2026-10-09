@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import type { BackofficeApiOperation } from "../api";
 import { isoDateTimeOutputSchema, nullableIsoDateTimeOutputSchema } from "./shared/datetime";
+import { BACKOFFICE_PERMISSION } from "./shared/permissions";
 
 export const MAX_PAGE_SIZE = 100;
 
@@ -102,16 +103,19 @@ export const threadSnapshotOutputSchema = z.object({
 export const resendOperations = {
   "resend.threads.get": {
     description: "Load a Resend thread with a page of messages and a Markdown snapshot.",
+    permissions: [BACKOFFICE_PERMISSION.resend.read],
     input: threadMessagesInputSchema,
     output: threadSnapshotOutputSchema,
   },
   "resend.threads.list": {
     description: "List Resend email threads.",
+    permissions: [BACKOFFICE_PERMISSION.resend.read],
     input: threadListInputSchema,
     output: resendListThreadsOutputSchema,
   },
   "resend.threads.reply": {
     description: "Send a text reply into an existing Resend thread.",
+    permissions: [BACKOFFICE_PERMISSION.resend.send],
     input: threadReplyInputSchema,
     output: resendThreadMutationOutputSchema,
   },

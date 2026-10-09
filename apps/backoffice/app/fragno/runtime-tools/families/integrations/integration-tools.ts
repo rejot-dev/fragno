@@ -124,18 +124,12 @@ function formatIntegrationCommandOutput(data: unknown, options: AutomationComman
 /** Registered tools generate both Codemode contracts and terminal commands from their canonical schemas. */
 export const integrationsToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "integrations",
-  permissions: {
-    read: "Discover services and actions, and inspect scoped integration state.",
-    manage: "Set up and verify scoped integrations using their existing service-owned stores.",
-    execute: "Dispatch scoped integration actions, subject to their own authorization checks.",
-  },
   isAvailable: (context: IntegrationsToolContext) => !!context.runtimes.integrations,
   tools: [
     defineBackofficeRuntimeTool({
       ...backofficeApiOperationToolFields("integrations.discover"),
       namespace: "integrations",
       name: "discover",
-      requiredPermissions: ["read"],
       execute: async (_input, context: IntegrationsToolContext) =>
         await requireIntegrationsRuntime(context).discover(),
       adapters: {
@@ -156,7 +150,6 @@ export const integrationsToolFamily = defineBackofficeRuntimeToolFamily({
       ...backofficeApiOperationToolFields("integrations.list"),
       namespace: "integrations",
       name: "list",
-      requiredPermissions: ["read"],
       execute: async (input, context: IntegrationsToolContext) =>
         await requireIntegrationsRuntime(context).list(input),
       adapters: {
@@ -185,7 +178,6 @@ export const integrationsToolFamily = defineBackofficeRuntimeToolFamily({
       ...backofficeApiOperationToolFields("integrations.get"),
       namespace: "integrations",
       name: "get",
-      requiredPermissions: ["read"],
       getResource: (input) => ({ connectionId: input.connectionId }),
       execute: async (input, context: IntegrationsToolContext) =>
         await requireIntegrationsRuntime(context).get(input),
@@ -209,7 +201,6 @@ export const integrationsToolFamily = defineBackofficeRuntimeToolFamily({
       ...backofficeApiOperationToolFields("integrations.setup"),
       namespace: "integrations",
       name: "setup",
-      requiredPermissions: ["manage"],
       getResource: (input) => ({ connectionId: input.connectionId }),
       execute: async (input, context: IntegrationsToolContext) =>
         await requireIntegrationsRuntime(context).setup(input),
@@ -245,7 +236,6 @@ export const integrationsToolFamily = defineBackofficeRuntimeToolFamily({
       ...backofficeApiOperationToolFields("integrations.actions"),
       namespace: "integrations",
       name: "actions",
-      requiredPermissions: ["read"],
       getResource: (input) => ({ connectionId: input.connectionId }),
       execute: async (input, context: IntegrationsToolContext) =>
         await requireIntegrationsRuntime(context).actions(input),
@@ -270,7 +260,6 @@ export const integrationsToolFamily = defineBackofficeRuntimeToolFamily({
       ...backofficeApiOperationToolFields("integrations.execute"),
       namespace: "integrations",
       name: "execute",
-      requiredPermissions: ["execute"],
       getResource: (input) => ({ connectionId: input.connectionId, actionId: input.actionId }),
       execute: async (input, context: IntegrationsToolContext) =>
         await requireIntegrationsRuntime(context).execute(input),
@@ -321,7 +310,6 @@ export const integrationsToolFamily = defineBackofficeRuntimeToolFamily({
       ...backofficeApiOperationToolFields("integrations.verify"),
       namespace: "integrations",
       name: "verify",
-      requiredPermissions: ["manage"],
       getResource: (input) => ({ connectionId: input.connectionId }),
       execute: async (input, context: IntegrationsToolContext) =>
         await requireIntegrationsRuntime(context).verify(input),

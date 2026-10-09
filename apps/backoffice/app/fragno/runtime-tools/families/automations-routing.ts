@@ -141,7 +141,6 @@ const routerListTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("router.list"),
   namespace: "router",
   name: "list",
-  requiredPermissions: ["read"],
   execute: async (_input, context: AutomationRouterToolContext) =>
     await getRuntime(context).listRoutes(),
   adapters: {
@@ -166,7 +165,6 @@ const routerGetTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("router.get"),
   namespace: "router",
   name: "get",
-  requiredPermissions: ["read"],
   execute: async (input, context: AutomationRouterToolContext) =>
     await getRuntime(context).getRoute(input),
   adapters: {
@@ -201,7 +199,6 @@ const routerCreateTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("router.create"),
   namespace: "router",
   name: "create",
-  requiredPermissions: ["modify"],
   execute: async (input, context: AutomationRouterToolContext) =>
     await getRuntime(context).createRoute(input),
   adapters: {
@@ -236,7 +233,6 @@ const routerUpdateTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("router.update"),
   namespace: "router",
   name: "update",
-  requiredPermissions: ["modify"],
   execute: async (input, context: AutomationRouterToolContext) =>
     await getRuntime(context).updateRoute(input),
   adapters: {
@@ -281,7 +277,6 @@ const routerDeleteTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("router.delete"),
   namespace: "router",
   name: "delete",
-  requiredPermissions: ["modify"],
   execute: async (input, context: AutomationRouterToolContext) => {
     return { deleted: await getRuntime(context).deleteRoute(input) };
   },
@@ -303,7 +298,6 @@ const routerTriggerNowTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("router.trigger-now"),
   namespace: "router",
   name: "triggerNow",
-  requiredPermissions: ["modify"],
   execute: async (input, context: AutomationRouterToolContext) =>
     await getRuntime(context).triggerScheduledRouteNow(input),
   adapters: {
@@ -334,10 +328,6 @@ export const automationRouterRuntimeTools = [
 
 export const automationRouterToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "router",
-  permissions: {
-    read: "Read automation routing rules.",
-    modify: "Create and update automation routing rules.",
-  },
   tools: automationRouterRuntimeTools,
   isAvailable: (context: AutomationRouterToolContext) => Boolean(context.runtimes.automations),
 });

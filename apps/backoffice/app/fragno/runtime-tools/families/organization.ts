@@ -7,7 +7,6 @@ import type {
   OrganizationRole,
 } from "@fragno-dev/backoffice-api/v0/organization";
 import type { DirectoryPageInput } from "@fragno-dev/backoffice-api/v0/shared/pagination";
-import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 
 import type { OrganizationPage } from "@/fragno/auth/directory-records";
 import { defineCliArgsParser, defineNoInputArgsParser } from "@/fragno/runtime-tools/bash-cli";
@@ -116,7 +115,6 @@ const getOrganizationTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("org.get"),
   namespace: "org",
   name: "get",
-  requiredPermissions: [BACKOFFICE_PERMISSION.org.read.permission],
   execute: async (_input, context: OrganizationToolContext) =>
     await getOrganizationRuntime(context.runtimes.org).get(),
   adapters: {
@@ -143,7 +141,6 @@ const updateOrganizationTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("org.update"),
   namespace: "org",
   name: "update",
-  requiredPermissions: [BACKOFFICE_PERMISSION.org.manage.permission],
   execute: async (input, context: OrganizationToolContext) =>
     await getOrganizationRuntime(context.runtimes.org).update(input),
   adapters: {
@@ -174,7 +171,6 @@ const listMembersTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("org.members.list"),
   namespace: "org",
   name: "membersList",
-  requiredPermissions: [BACKOFFICE_PERMISSION.org.read.permission],
   execute: async (input, context: OrganizationToolContext) =>
     await getOrganizationRuntime(context.runtimes.org).listMembers(input),
   adapters: {
@@ -202,7 +198,6 @@ const listInvitationsTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("org.invitations.list"),
   namespace: "org",
   name: "invitationsList",
-  requiredPermissions: [BACKOFFICE_PERMISSION.org.read.permission],
   execute: async (input, context: OrganizationToolContext) =>
     await getOrganizationRuntime(context.runtimes.org).listInvitations(input),
   adapters: {
@@ -240,7 +235,6 @@ const createInvitationTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("org.invitations.create"),
   namespace: "org",
   name: "invitationsCreate",
-  requiredPermissions: [BACKOFFICE_PERMISSION.org.manage.permission],
   execute: async (input, context: OrganizationToolContext) =>
     await getOrganizationRuntime(context.runtimes.org).createInvitation(input),
   adapters: {
@@ -290,10 +284,6 @@ export const organizationRuntimeTools = [
 
 export const organizationToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "org",
-  permissions: {
-    read: "Read the current organization, its members, and pending invitations.",
-    manage: "Rename the current organization and invite members (owners and admins only).",
-  },
   tools: organizationRuntimeTools,
   isAvailable: (context: OrganizationToolContext) => !!context.runtimes.org,
 });

@@ -24,7 +24,6 @@ const packagesInstallTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("packages.install"),
   namespace: "packages",
   name: "install",
-  requiredPermissions: ["install"],
   getResource: (input) => ({
     listingId: input.listingId,
     installationRoot: input.installationRoot,
@@ -80,7 +79,6 @@ const packagesListTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("packages.ls"),
   namespace: "packages",
   name: "ls",
-  requiredPermissions: ["read"],
   execute: async (_input, context: PackagesToolContext) => await getPackagesRuntime(context).ls(),
   adapters: {
     bash: {
@@ -106,10 +104,6 @@ const packagesListTool = defineBackofficeRuntimeTool({
 /** Workspace package tools do not introduce upgrade or reinstall policy. */
 export const packagesToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "packages",
-  permissions: {
-    read: "Read the current workspace's package lock.",
-    install: "Run Marketplace installation workflows in the current workspace.",
-  },
   tools: [packagesInstallTool, packagesListTool],
   isAvailable: (context: PackagesToolContext) => !!context.runtimes.packages,
 });

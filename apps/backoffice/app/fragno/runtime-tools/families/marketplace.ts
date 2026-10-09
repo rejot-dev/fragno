@@ -28,7 +28,6 @@ const marketplaceSearchTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("marketplace.search"),
   namespace: "marketplace",
   name: "search",
-  requiredPermissions: ["read"],
   execute: async (input, context: MarketplaceToolContext) =>
     await getMarketplaceRuntime(context).search(input),
   adapters: {
@@ -87,7 +86,6 @@ const marketplaceViewTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("marketplace.view"),
   namespace: "marketplace",
   name: "view",
-  requiredPermissions: ["read"],
   execute: async (input, context: MarketplaceToolContext) =>
     await getMarketplaceRuntime(context).view(input),
   adapters: {
@@ -149,7 +147,6 @@ const marketplacePublishTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("marketplace.publish"),
   namespace: "marketplace",
   name: "publish",
-  requiredPermissions: ["publish"],
   execute: async (input, context: MarketplaceToolContext) =>
     await getMarketplaceRuntime(context).publish(input),
   adapters: {
@@ -215,10 +212,6 @@ const marketplacePublishTool = defineBackofficeRuntimeTool({
 /** Registry publishing uses the source filesystem; installation remains a workspace operation. */
 export const marketplaceToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "marketplace",
-  permissions: {
-    read: "Discover published Marketplace packages and releases.",
-    publish: "Publish packages for an organization; publishing overrides require System context.",
-  },
   tools: [marketplaceSearchTool, marketplaceViewTool, marketplacePublishTool],
   isAvailable: (context: MarketplaceToolContext) => !!context.runtimes.marketplace,
 });

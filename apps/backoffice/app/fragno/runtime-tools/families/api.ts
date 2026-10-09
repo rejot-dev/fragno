@@ -292,22 +292,12 @@ const parseWebhookUpdate = defineCliArgsParser<z.input<typeof webhookEndpointUpd
   },
 );
 
-const apiPermissions = {
-  "connections.read": "Read API connection configuration and auth status.",
-  "connections.create": "Create API connections and auth state.",
-  "connections.delete": "Delete API connections and auth state.",
-  "requests.execute": "Execute HTTP requests through configured API connections.",
-  "webhooks.read": "Read API webhook endpoint configuration.",
-  "webhooks.manage": "Create, update, and delete API webhook endpoints.",
-} as const;
-
 export const apiRuntimeTools = [
   defineBackofficeRuntimeTool({
     ...backofficeApiOperationToolFields("api.connections.list"),
     namespace: "api",
     name: "listConnections",
     capabilityId: "api",
-    requiredPermissions: ["connections.read"],
     execute: async (_input, context: ApiToolContext) =>
       await getApiRuntime(context.runtimes.api).listConnections(),
     adapters: {
@@ -329,7 +319,6 @@ export const apiRuntimeTools = [
     namespace: "api",
     name: "createConnection",
     capabilityId: "api",
-    requiredPermissions: ["connections.create"],
     getResource: (input) => ({ slug: input.slug }),
     execute: async (input, context: ApiToolContext) =>
       await getApiRuntime(context.runtimes.api).createConnection(input),
@@ -436,7 +425,6 @@ export const apiRuntimeTools = [
     namespace: "api",
     name: "deleteConnection",
     capabilityId: "api",
-    requiredPermissions: ["connections.delete"],
     getResource: (input) => ({ slug: input.slug }),
     execute: async (input, context: ApiToolContext) =>
       await getApiRuntime(context.runtimes.api).deleteConnection(input),
@@ -467,7 +455,6 @@ export const apiRuntimeTools = [
     namespace: "api",
     name: "getAuthStatus",
     capabilityId: "api",
-    requiredPermissions: ["connections.read"],
     getResource: (input) => ({ slug: input.slug }),
     execute: async (input, context: ApiToolContext) =>
       await getApiRuntime(context.runtimes.api).getAuthStatus(input),
@@ -503,7 +490,6 @@ export const apiRuntimeTools = [
     namespace: "api",
     name: "setToken",
     capabilityId: "api",
-    requiredPermissions: ["connections.create"],
     getResource: (input) => ({ slug: input.slug }),
     execute: async (input, context: ApiToolContext) =>
       await getApiRuntime(context.runtimes.api).setToken(input),
@@ -543,7 +529,6 @@ export const apiRuntimeTools = [
     namespace: "api",
     name: "startOAuth",
     capabilityId: "api",
-    requiredPermissions: ["connections.create"],
     getResource: (input) => ({ slug: input.slug }),
     execute: async (input, context: ApiToolContext) =>
       await getApiRuntime(context.runtimes.api).startOAuth(input),
@@ -589,7 +574,6 @@ export const apiRuntimeTools = [
     namespace: "api",
     name: "deleteAuth",
     capabilityId: "api",
-    requiredPermissions: ["connections.delete"],
     getResource: (input) => ({ slug: input.slug }),
     execute: async (input, context: ApiToolContext) =>
       await getApiRuntime(context.runtimes.api).deleteAuth(input),
@@ -620,7 +604,6 @@ export const apiRuntimeTools = [
     namespace: "api",
     name: "listWebhookEndpoints",
     capabilityId: "api",
-    requiredPermissions: ["webhooks.read"],
     execute: async (_input, context: ApiToolContext) =>
       await getApiRuntime(context.runtimes.api).listWebhookEndpoints(),
     adapters: {
@@ -642,7 +625,6 @@ export const apiRuntimeTools = [
     namespace: "api",
     name: "getWebhookEndpoint",
     capabilityId: "api",
-    requiredPermissions: ["webhooks.read"],
     getResource: (input) => ({ endpointId: input.endpointId }),
     execute: async (input, context: ApiToolContext) =>
       await getApiRuntime(context.runtimes.api).getWebhookEndpoint(input),
@@ -675,7 +657,6 @@ export const apiRuntimeTools = [
     namespace: "api",
     name: "createWebhookEndpoint",
     capabilityId: "api",
-    requiredPermissions: ["webhooks.manage"],
     getResource: (input) => ({ endpointId: input.endpointId }),
     execute: async (input, context: ApiToolContext) =>
       await getApiRuntime(context.runtimes.api).createWebhookEndpoint(input),
@@ -738,7 +719,6 @@ export const apiRuntimeTools = [
     namespace: "api",
     name: "updateWebhookEndpoint",
     capabilityId: "api",
-    requiredPermissions: ["webhooks.manage"],
     getResource: (input) => ({ endpointId: input.endpointId }),
     execute: async (input, context: ApiToolContext) =>
       await getApiRuntime(context.runtimes.api).updateWebhookEndpoint(input),
@@ -790,7 +770,6 @@ export const apiRuntimeTools = [
     namespace: "api",
     name: "deleteWebhookEndpoint",
     capabilityId: "api",
-    requiredPermissions: ["webhooks.manage"],
     getResource: (input) => ({ endpointId: input.endpointId }),
     execute: async (input, context: ApiToolContext) =>
       await getApiRuntime(context.runtimes.api).deleteWebhookEndpoint(input),
@@ -821,7 +800,6 @@ export const apiRuntimeTools = [
     namespace: "api",
     name: "request",
     capabilityId: "api",
-    requiredPermissions: ["requests.execute"],
     getResource: (input) => ({ slug: input.slug, path: input.path }),
     execute: async (input, context: ApiToolContext) =>
       await getApiRuntime(context.runtimes.api).request(input),
@@ -898,7 +876,6 @@ export const apiRuntimeTools = [
 
 export const apiToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "api",
-  permissions: apiPermissions,
   tools: apiRuntimeTools,
   isAvailable: (context: ApiToolContext) => !!context.runtimes.api,
 });

@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { BackofficeApiOperation } from "../api";
+import { BACKOFFICE_PERMISSION } from "./shared/permissions";
 
 export const hookScopeOutputSchema = z.object({
   id: z.string(),
@@ -102,47 +103,56 @@ export type HookScopesListOutput = z.infer<typeof hookScopesListOutputSchema>;
 export const capabilitiesOperations = {
   "capabilities.list": {
     description: "List Backoffice capabilities and availability/configuration status.",
+    permissions: [BACKOFFICE_PERMISSION.capabilities.read],
     input: z.void(),
     output: capabilitiesListOutputSchema,
   },
   "hooks.scopes.list": {
     description: "List hook scopes usable with hooks.list --fragment.",
+    permissions: [BACKOFFICE_PERMISSION.hooks.read],
     input: z.void(),
     output: hookScopesListOutputSchema,
   },
   "connections.list": {
     description: "List configurable Backoffice connections and their configuration status.",
+    permissions: [BACKOFFICE_PERMISSION.connections.read],
     input: z.void(),
     output: connectionsListOutputSchema,
   },
   "connections.get": {
     description: "Get one Backoffice connection status with masked configuration values.",
+    permissions: [BACKOFFICE_PERMISSION.connections.read],
     input: z.object({ id: z.string().trim().min(1) }),
     output: connectionStatusSchema,
   },
   "connections.setup": {
     description: "Show human steps for configuring a Backoffice connection.",
+    permissions: [BACKOFFICE_PERMISSION.connections.manage],
     input: z.object({ id: z.string().trim().min(1) }),
     output: connectionSetupOutputSchema,
   },
   "connections.schema": {
     description: "Show the accepted configuration fields for a Backoffice connection.",
+    permissions: [BACKOFFICE_PERMISSION.connections.read],
     input: z.object({ id: z.string().trim().min(1) }),
     output: connectionSchemaOutputSchema,
   },
   "connections.verify": {
     description: "Verify a Backoffice connection without changing its configuration.",
+    permissions: [BACKOFFICE_PERMISSION.connections.manage],
     input: z.object({ id: z.string().trim().min(1) }),
     output: connectionVerificationSchema,
   },
   "connections.reset": {
     description: "Reset a Backoffice connection configuration. Requires --confirm <id>.",
+    permissions: [BACKOFFICE_PERMISSION.connections.manage],
     input: z.object({ id: z.string().trim().min(1), confirm: z.string().trim().min(1) }),
     output: connectionStatusSchema,
   },
   "connections.configure": {
     description:
       "Configure a Backoffice connection. Secrets are accepted in input but masked in output.",
+    permissions: [BACKOFFICE_PERMISSION.connections.manage],
     input: z.object({
       id: z.string().trim().min(1),
       payload: z.unknown(),

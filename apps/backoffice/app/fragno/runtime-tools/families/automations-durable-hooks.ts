@@ -88,7 +88,6 @@ const listHooksTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("hooks.list"),
   namespace: "hooks",
   name: "list",
-  requiredPermissions: ["read"],
   execute: async (input, context: DurableHooksToolContext) =>
     await getDurableHooksRuntime(context.runtimes.durableHooks).listHooks({
       ...input,
@@ -141,7 +140,6 @@ const getHookTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("hooks.get"),
   namespace: "hooks",
   name: "get",
-  requiredPermissions: ["read"],
   execute: async (input, context: DurableHooksToolContext) =>
     await getDurableHooksRuntime(context.runtimes.durableHooks).getHook({
       ...input,
@@ -183,9 +181,6 @@ export const hooksRuntimeTools = [listHooksTool, getHookTool] as const;
 
 export const hooksToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "hooks",
-  permissions: {
-    read: "Read durable hooks.",
-  },
   tools: hooksRuntimeTools,
   isAvailable: (context: DurableHooksToolContext) => !!context.runtimes.durableHooks,
 });

@@ -129,8 +129,6 @@ const javaScriptBuildTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("js.build"),
   namespace: "js",
   name: "build",
-  authorizationNamespace: "upload",
-  requiredPermissions: ["read", "modify"],
   execute: async (input, context: JavaScriptToolContext) =>
     await getJavaScriptBuildFile(context)(input),
   adapters: {
@@ -183,7 +181,6 @@ const javaScriptBuildTool = defineBackofficeRuntimeTool({
 /** Building requires workspace read and write authority, unlike checking or execution. */
 export const javaScriptBuildToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "js",
-  permissions: { read: "Read JavaScript source.", modify: "Publish compiled module artifacts." },
   tools: [javaScriptBuildTool],
   isAvailable: (context: JavaScriptToolContext) => Boolean(context.runtimes.javascript?.buildFile),
 });
@@ -192,8 +189,6 @@ const javaScriptCheckTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("js.check"),
   namespace: "js",
   name: "check",
-  authorizationNamespace: "upload",
-  requiredPermissions: ["read"],
   execute: async (input, context: JavaScriptToolContext) =>
     await getJavaScriptCheckFile(context)(input),
   adapters: {
@@ -225,8 +220,6 @@ const javaScriptRunTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("js.run"),
   namespace: "js",
   name: "run",
-  authorizationNamespace: "upload",
-  requiredPermissions: ["read"],
   execute: async (input, context: JavaScriptToolContext) =>
     await getJavaScriptRunFile(context)(input, context),
   adapters: {
@@ -259,9 +252,6 @@ const javaScriptRunTool = defineBackofficeRuntimeTool({
 /** Runtime tool family for checking saved JavaScript files. */
 export const javaScriptCheckToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "js",
-  permissions: {
-    read: "Read JavaScript source and declaration files.",
-  },
   tools: [javaScriptCheckTool],
   isAvailable: (context: JavaScriptToolContext) =>
     context.runtimes.javascript?.checkFile !== null &&
@@ -271,9 +261,6 @@ export const javaScriptCheckToolFamily = defineBackofficeRuntimeToolFamily({
 /** Runtime tool family for executing JavaScript source and precompiled module artifacts. */
 export const javaScriptRunToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "js",
-  permissions: {
-    read: "Read JavaScript source or module artifacts for execution.",
-  },
   tools: [javaScriptRunTool],
   isAvailable: (context: JavaScriptToolContext) =>
     context.runtimes.javascript?.runFile !== null &&

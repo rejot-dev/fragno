@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import type { BackofficeApiOperation } from "../api";
 import { base64BytesSchema } from "./shared/bytes";
+import { BACKOFFICE_PERMISSION } from "./shared/permissions";
 import { backofficeRoutableScopeSchema } from "./shared/scope";
 
 export const preparedUploadedFileReferenceSchema = z.strictObject({
@@ -41,6 +42,7 @@ const uploadReadPreparedOutputFields = {
 export const uploadOperations = {
   "upload.prepared.read": {
     description: "Read one prepared private upload as UTF-8 text or base64-encoded bytes.",
+    permissions: [BACKOFFICE_PERMISSION.upload.read],
     input: z.object({
       file: preparedUploadedFileReferenceSchema,
       encoding: z.enum(["utf8", "base64"]).optional(),
@@ -66,11 +68,13 @@ export const uploadOperations = {
   },
   "upload.prepared.commit": {
     description: "Commit a prepared private upload so the file persists.",
+    permissions: [BACKOFFICE_PERMISSION.upload.modify],
     input: uploadPreparedInputSchema,
     output: uploadedFileReferenceSchema,
   },
   "upload.prepared.discard": {
     description: "Discard a temporary prepared private upload.",
+    permissions: [BACKOFFICE_PERMISSION.upload.modify],
     input: uploadPreparedInputSchema,
     output: uploadDiscardPreparedOutputSchema,
   },

@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { BackofficeApiOperation } from "../api";
+import { BACKOFFICE_PERMISSION } from "./shared/permissions";
 
 const actionOutputSchema = z.object({ ok: z.boolean() });
 
@@ -46,26 +47,31 @@ const sendMessageInputSchema = z.object({
 export const telegramOperations = {
   "telegram.file.get": {
     description: "Resolve Telegram attachment metadata.",
+    permissions: [BACKOFFICE_PERMISSION.telegram.read],
     input: fileGetInputSchema,
     output: fileMetadataOutputSchema,
   },
   "telegram.file.download": {
     description: "Download a Telegram file and return its bytes.",
+    permissions: [BACKOFFICE_PERMISSION.telegram.read],
     input: fileDownloadInputSchema,
     output: downloadedFileOutputSchema,
   },
   "telegram.chat.send": {
     description: "Queue a message to be sent to a Telegram chat.",
+    permissions: [BACKOFFICE_PERMISSION.telegram.send],
     input: sendMessageInputSchema,
     output: queuedMessageOutputSchema,
   },
   "telegram.chat.actions": {
     description: "Send a Telegram chat action.",
+    permissions: [BACKOFFICE_PERMISSION.telegram.send],
     input: sendActionInputSchema,
     output: actionOutputSchema,
   },
   "telegram.message.edit": {
     description: "Queue an edit of an existing Telegram message.",
+    permissions: [BACKOFFICE_PERMISSION.telegram.send],
     input: editMessageInputSchema,
     output: queuedMessageOutputSchema,
   },
