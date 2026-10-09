@@ -191,10 +191,16 @@ export const githubAppRepositoryRoutesFactory = defineRoutes(githubAppFragmentDe
             await this.handlerTx()
               .mutate(({ forSchema }) => {
                 const uow = forSchema(githubAppSchema);
-                return uow.create("repo_link", {
+                uow.create("repo_link", {
                   repoId: values.repoId,
                   linkKey,
                   linkedAt,
+                });
+                uow.triggerHook("onRepositoryLinkStatusChanged", {
+                  linkKey,
+                  repositoryId: values.repoId,
+                  fullName: repo.fullName,
+                  status: "active",
                 });
               })
               .execute();
@@ -287,6 +293,12 @@ export const githubAppRepositoryRoutesFactory = defineRoutes(githubAppFragmentDe
             .mutate(({ forSchema }) => {
               const uow = forSchema(githubAppSchema);
               uow.delete("repo_link", link.id as RepoLinkId);
+              uow.triggerHook("onRepositoryLinkStatusChanged", {
+                linkKey,
+                repositoryId: values.repoId,
+                fullName: repo.fullName,
+                status: "unlinked",
+              });
             })
             .execute();
 
