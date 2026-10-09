@@ -393,7 +393,8 @@ its installation:
    authorization-code flow for a member, or the client-credentials grant for the installation.
 4. It exchanges that token at `POST /api/backoffice/execution-token` with an organization or
    approved project scope, receiving a 15-minute app-bound credential.
-5. It calls `POST /api/backoffice/scopes/:scopeSegment/events` with that credential.
+5. It calls the versioned API (`POST /api/v0/scopes/:scope/<operationId>`) with that credential,
+   e.g. with `createBackofficeApiClient` from `@fragno-dev/backoffice-api/v0/client`.
 
 Every protected operation resolves the installation live. Acting for a member requires the member's
 current permissions **and** the installation's grants; acting as the installation requires its

@@ -89,6 +89,8 @@ export type RouteBackedRuntimeContextOptions = {
   execution: BackofficeExecutionContext;
   billingOrganizationId: string | null;
   emittedEventActors?: AutomationActors;
+  /** Fixes the source of events emitted here; see `CreateEventRuntimeOptions`. */
+  emittedEventSource?: string;
   pi?:
     | { runtime: PiManagerRuntime }
     | ((execution: BackofficeExecutionContext) => { runtime: PiManagerRuntime })
@@ -168,6 +170,7 @@ export const createRouteBackedRuntimeContext = ({
   execution,
   billingOrganizationId,
   emittedEventActors,
+  emittedEventSource,
   pi,
   workflowSourceReader,
 }: RouteBackedRuntimeContextOptions): InteractiveRuntimeToolContext => {
@@ -263,6 +266,7 @@ export const createRouteBackedRuntimeContext = ({
         },
         billingOrganizationId,
         emittedEventActors,
+        emittedEventSource,
         pi,
         workflowSourceReader: backofficeContextScopesEqual(execution.scope, scope)
           ? workflowSourceReader
@@ -334,6 +338,7 @@ export const createRouteBackedRuntimeContext = ({
         kernel,
         execution,
         emittedEventActors,
+        emittedEventSource,
       }),
     },
     automations: {

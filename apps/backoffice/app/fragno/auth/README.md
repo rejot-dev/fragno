@@ -86,27 +86,24 @@ member, banning the user, or uninstalling therefore affects already-issued crede
 Each reinstallation increments the activation, so credentials and deferred work from an earlier
 activation stay invalid. Installation management (`apps.*`) is never available to an app.
 
-Installed-app credentials are accepted only by:
+Installed-app credentials are accepted only by the [versioned HTTP API](#versioned-http-api), in
+organization or project scopes inside the credential's scope:
 
 ```http
-POST /api/backoffice/scopes/:scopeSegment/events
+POST /api/v0/scopes/:scope/events.fire
 Authorization: Bearer <installed-app credential>
 Content-Type: application/json
 
 { "eventType": "bookkeeping.connection.tested", "payload": { "message": "Hello" } }
 ```
 
-`:scopeSegment` is `org:<orgId>` or `project:<orgId>:<projectId>` and must equal the credential's
-scope; archived projects return `404`. The body may contain only `eventType` and a `payload` object;
-source, actors, and scope come from the credential. Events use source `app:<appId>`. Acting for a
-user, the actors are the app (initiator), the user (principal), and the installation activation
-(restricting delegate). Acting as the installation, the linked external account (or the app) is the
-initiator and the installation activation is the principal. Automation started from these events
-keeps the same restrictions. The response is `202` with
-`{ accepted, eventId, scope, source, eventType }` once the event is durably stored and queued; it
-does not mean downstream automation has completed. Failures return `401 authentication_failed`,
-`403 forbidden`, `400 invalid_request`, `404 not_found`, or `422 invalid_payload` for a registered
-event definition's payload schema.
+Actors come from the credential, and events always use source `app:<appId>`; a request naming
+another source is `403 forbidden`. Acting for a user, the actors are the app (initiator), the user
+(principal), and the installation activation (restricting delegate). Acting as the installation, the
+linked external account (or the app) is the initiator and the installation activation is the
+principal. Automation started from these events keeps the same restrictions. The response is `200`
+with `{ accepted, eventId, scope, source, eventType }` once the event is durably stored and queued;
+it does not mean downstream automation has completed.
 
 ### App-initiated installation
 
@@ -165,10 +162,10 @@ contract. It accepts bearer credentials only, never the session cookie: user cre
 the user's live permissions in the requested scope, and installed-app credentials act through their
 installation, inside the scope they were issued for. Both verify against the same JWKS in one pass,
 distinguished by audience. Each operation runs the runtime tool of the same id, so the kernel
-authorizes it exactly as it does in Bash and Codemode. `admin` and `internal` tools are never
-exposed; `cloudflare` tools wait for real Browser Run result schemas in their fragment.
-Byte-oriented operations exchange base64 through v0 adapters (`app/backoffice-api/v0-adapters.ts`)
-until dedicated file transfer APIs exist.
+authorizes it exactly as it does in Bash and Codemode; installed apps can emit events only under
+their own `app:<appId>` source. `admin` and `internal` tools are never exposed; `cloudflare` tools
+wait for real Browser Run result schemas in their fragment. Byte-oriented operations exchange base64
+through v0 adapters (`app/backoffice-api/v0-adapters.ts`) until dedicated file transfer APIs exist.
 
 ## Browser consent and revocation
 
@@ -197,7 +194,8 @@ tokens.
   management, and client-policy resolution.
 - `app/fragno/app-installations/authority.ts`: installed-app execution and live installation grant
   and resource resolution.
-- `app/routes/api/backoffice-scoped-events.ts`: the installed-app event endpoint.
+- `app/backoffice-api/backoffice-api-router.ts`: the versioned HTTP API, the only endpoint that
+  accepts installed-app credentials.
 - `app/routes/backoffice/app-install.tsx` and `app-install.server.ts`: the app-initiated install
   page.
 - `app/routes/api/backoffice-app-installation-claim.ts`: installation claims by the app's server.
@@ -211,6 +209,7 @@ tokens.
 `app/routes/api/backoffice-execution-token.scenario.test.ts` exercises real SQLite-backed OAuth,
 Auth, route, and kernel boundaries, including scope restrictions, forged input, audience/signature
 validation, live authority removal, and app-bound credentials for external clients.
-`app/routes/api/backoffice-scoped-events.scenario.test.ts` drives an external confidential client
-through authorization code, exchange, and event delivery, including revocation and reinstallation,
-and through the install page, claim, and client-credentials delivery limited to approved projects.
+`app/backoffice-api/installed-app.scenario.test.ts` drives an external confidential client through
+authorization code, exchange, and event delivery with the published API client, including revocation
+and reinstallation, and through the install page, claim, and client-credentials delivery limited to
+approved projects.

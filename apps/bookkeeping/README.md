@@ -127,12 +127,12 @@ approved target (the organization, or one of the approved projects):
   are currently a member there and may emit events yourself.
 
 Either way, Bookkeeping's server exchanges its OAuth token at `POST /api/backoffice/execution-token`
-for a 15-minute credential bound to that target, then posts to
-`POST /api/backoffice/scopes/:scopeSegment/events`. The page shows the accepted event ID, which
-organization members can inspect in Backoffice with `events.get --id EVENT_ID`. If Backoffice
-rejects your own token (for example after revoking Bookkeeping, or for a sign-in made before the
-`backoffice` scope was configured), the page asks you to reauthorize. A delivery that cannot be
-confirmed is reported, not retried, to avoid duplicates.
+for a 15-minute credential bound to that target, then calls the `events.fire` operation of the
+Backoffice API with the typed client from `@fragno-dev/backoffice-api/v0/client`. The page shows the
+accepted event ID, which organization members can inspect in Backoffice with
+`events.get --id EVENT_ID`. If Backoffice rejects your own token (for example after revoking
+Bookkeeping, or for a sign-in made before the `backoffice` scope was configured), the page asks you
+to reauthorize. A delivery that cannot be confirmed is reported, not retried, to avoid duplicates.
 
 Uninstalling Bookkeeping, narrowing its permissions or projects, or removing a member in Backoffice
 takes effect immediately, including for credentials already issued.

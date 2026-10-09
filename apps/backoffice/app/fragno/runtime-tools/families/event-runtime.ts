@@ -9,7 +9,7 @@ import {
   backofficeExecutionScopeRestriction,
   type BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
-import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import { BackofficeForbiddenError, BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 
 import { createAutomationsRouteCaller } from "../../automation/route-callers";
@@ -23,6 +23,8 @@ export type CreateEventRuntimeOptions = {
   kernel: BackofficeKernel;
   execution: BackofficeExecutionContext;
   emittedEventActors?: AutomationActors;
+  /** Installed apps always emit as `app:<appId>`, so automations can trust that source. */
+  emittedEventSource?: string;
 };
 
 const normalizeEventPayload = (payload: Record<string, unknown> | undefined) =>
@@ -96,7 +98,17 @@ export function createEventRuntime(options: CreateEventRuntimeOptions): EventRun
         throw new Error(`Project '${resolvedTargetScope.projectId}' is not available.`);
       }
 
-      const nextSource = source ?? parentEvent?.source;
+      const { emittedEventSource } = options;
+      if (
+        emittedEventSource !== undefined &&
+        source !== undefined &&
+        source !== emittedEventSource
+      ) {
+        throw new BackofficeForbiddenError(
+          `Events from this credential have the source '${emittedEventSource}'.`,
+        );
+      }
+      const nextSource = emittedEventSource ?? source ?? parentEvent?.source;
       if (!nextSource) {
         throw new Error("events.fire source is required without a parent automation event.");
       }

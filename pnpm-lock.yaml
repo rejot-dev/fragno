@@ -551,6 +551,9 @@ importers:
 
   apps/bookkeeping:
     dependencies:
+      '@fragno-dev/backoffice-api':
+        specifier: workspace:*
+        version: link:../../packages/backoffice-api
       '@fragno-dev/db':
         specifier: workspace:*
         version: link:../../packages/fragno-db

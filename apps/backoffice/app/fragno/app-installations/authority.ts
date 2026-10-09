@@ -19,6 +19,11 @@ type InstalledAppActivation = { appId: string; activation: number };
 /** Who an installed app acts as: a signed-in member, or the installation itself. */
 export type InstalledAppActor = { kind: "user"; userId: string } | { kind: "installation" };
 
+/** The source of every event an installed app emits, and of its linked external account. */
+export function installedAppEventSource(appId: string): string {
+  return `app:${appId}`;
+}
+
 /**
  * Creates execution for an installed app inside the organization resources it was approved for.
  *
@@ -67,7 +72,7 @@ export function createInstalledAppExecution({
             initiator: installation.externalAccount
               ? {
                   scope: "external",
-                  source: `app:${installation.appId}`,
+                  source: installedAppEventSource(installation.appId),
                   type: "account",
                   id: installation.externalAccount.id,
                   role: "initiator",

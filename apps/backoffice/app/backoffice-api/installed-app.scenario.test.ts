@@ -4,9 +4,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+import type { BackofficeApiErrorCode } from "@fragno-dev/backoffice-api/errors";
+import type { backofficeApiV0 } from "@fragno-dev/backoffice-api/v0";
+import { createBackofficeApiClient } from "@fragno-dev/backoffice-api/v0/client";
 import { automationEventListResultSchema } from "@fragno-dev/backoffice-api/v0/events";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
-import { backofficeScopePathSegment } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
 
 const workers = vi.hoisted(() => ({
@@ -30,12 +32,12 @@ import {
 } from "@/fragno/automation/scenario";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
+import { action as claimAction } from "@/routes/api/backoffice-app-installation-claim";
+import { action as exchangeAction } from "@/routes/api/backoffice-execution-token";
+import { action as installAction, loader as installLoader } from "@/routes/backoffice/app-install";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
-import { action as installAction, loader as installLoader } from "../backoffice/app-install";
-import { action as claimAction } from "./backoffice-app-installation-claim";
-import { action as exchangeAction } from "./backoffice-execution-token";
-import { action as eventsAction } from "./backoffice-scoped-events";
+import { backofficeApiRouter } from "./backoffice-api-router";
 
 const wholeOrganization = { kind: "organization" } as const;
 
@@ -170,25 +172,35 @@ async function issueCredential(ctx: Ctx): Promise<string> {
   return backofficeExecutionTokenResultSchema.parse(await response.json()).accessToken;
 }
 
+type EventFireInput = z.input<(typeof backofficeApiV0)["operations"]["events.fire"]["input"]>;
+
+/** Plays Bookkeeping's server: the published client, with requests served by the API router. */
 async function sendEvent(
   ctx: Ctx,
-  input: { credential: string; scope?: AppScope; body?: unknown },
-): Promise<Response> {
-  const scopeSegment = backofficeScopePathSegment(input.scope ?? orgScope(ctx.vars.orgId));
-  const request = new Request(`${origin}/api/backoffice/scopes/${scopeSegment}/events`, {
-    method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${input.credential}` },
-    body: JSON.stringify(
-      input.body ?? { eventType: connectionTested, payload: { message: "Hello from Bookkeeping" } },
-    ),
+  input: { credential: string; scope?: AppScope; body?: Record<string, unknown> },
+) {
+  const client = createBackofficeApiClient({
+    origin,
+    accessToken: input.credential,
+    fetch: async (url, init) =>
+      await backofficeApiRouter.fetch(new Request(url, init), {
+        runtime: ctx.runtime.services,
+        kernel: new BackofficeKernel(ctx.runtime.services),
+      }),
   });
-  return await eventsAction({
-    request,
-    context: routerContext(ctx, request),
-    params: { scopeSegment },
-    url: new URL(request.url),
-    pattern: "/api/backoffice/scopes/:scopeSegment/events",
-  });
+  return await client.call(
+    input.scope ?? orgScope(ctx.vars.orgId),
+    "events.fire",
+    // Forged bodies deliberately step outside the contract.
+    (input.body ?? {
+      eventType: connectionTested,
+      payload: { message: "Hello from Bookkeeping" },
+    }) as EventFireInput,
+  );
+}
+
+async function expectApiError(delivery: Promise<unknown>, code: BackofficeApiErrorCode) {
+  await expect(delivery).rejects.toMatchObject({ name: "BackofficeApiRequestError", code });
 }
 
 const installReturnUri = "https://bookkeeping.example/dashboard/backoffice/callback";
@@ -439,19 +451,9 @@ describe("installed-app event delivery SQLite scenarios", () => {
   test("Bookkeeping sends an event on behalf of a member, and an organization member inspects it", async () => {
     await runInstalledAppScenario("Bookkeeping delivers a connection test event", (then) => [
       then("Backoffice durably accepts the event and returns a receipt", async (ctx) => {
-        const response = await sendEvent(ctx, { credential: ctx.vars.credential });
-        assert.equal(response.status, 202, await response.clone().text());
-        assert.equal(response.headers.get("cache-control"), "no-store");
-        const receipt = z
-          .object({
-            accepted: z.literal(true),
-            eventId: z.string(),
-            scope: z.unknown(),
-            source: z.string(),
-            eventType: z.string(),
-          })
-          .parse(await response.json());
+        const receipt = await sendEvent(ctx, { credential: ctx.vars.credential });
         expect(receipt).toMatchObject({
+          accepted: true,
           scope: { kind: "org", orgId: ctx.vars.orgId },
           source: `app:${ctx.vars.appId}`,
           eventType: connectionTested,
@@ -514,26 +516,42 @@ describe("installed-app event delivery SQLite scenarios", () => {
     ]);
   });
 
-  test("forged fields, other organizations, user credentials, and human-only authority are rejected", async () => {
+  test("forged fields, other organizations, raw OAuth tokens, and human-only authority are rejected", async () => {
     await runInstalledAppScenario(
       "installed-app credentials stay inside their approval",
       (then) => [
         then("request bodies cannot choose identity, source, or target scope", async (ctx) => {
           for (const forged of [
-            { source: "github" },
             { actors: { principal: { scope: "internal", type: "user", id: ctx.vars.ownerId } } },
             { scope: { kind: "org", orgId: ctx.vars.memberOrgId } },
             { userId: ctx.vars.ownerId },
           ]) {
-            await expectDenied(
-              await sendEvent(ctx, {
+            await expectApiError(
+              sendEvent(ctx, {
                 credential: ctx.vars.credential,
                 body: { eventType: connectionTested, payload: {}, ...forged },
               }),
-              400,
               "invalid_request",
             );
           }
+          for (const forged of [
+            { source: "github" },
+            { targetScope: orgScope(ctx.vars.memberOrgId) },
+          ]) {
+            await expectApiError(
+              sendEvent(ctx, {
+                credential: ctx.vars.credential,
+                body: { eventType: connectionTested, payload: {}, ...forged },
+              }),
+              "forbidden",
+            );
+          }
+          expect(
+            await sendEvent(ctx, {
+              credential: ctx.vars.credential,
+              body: { eventType: connectionTested, payload: {}, source: `app:${ctx.vars.appId}` },
+            }),
+          ).toMatchObject({ source: `app:${ctx.vars.appId}` });
         }),
         then(
           "a credential stays bound to its organization, even where the app is also installed",
@@ -552,12 +570,11 @@ describe("installed-app event delivery SQLite scenarios", () => {
                 resourceScope: wholeOrganization,
               });
             assert(installed.ok);
-            await expectDenied(
-              await sendEvent(ctx, {
+            await expectApiError(
+              sendEvent(ctx, {
                 credential: ctx.vars.credential,
                 scope: orgScope(ctx.vars.memberOrgId),
               }),
-              403,
               "forbidden",
             );
             const exchanged = await exchange(
@@ -569,38 +586,17 @@ describe("installed-app event delivery SQLite scenarios", () => {
             const otherOrganizationCredential = backofficeExecutionTokenResultSchema.parse(
               await exchanged.json(),
             ).accessToken;
-            const delivered = await sendEvent(ctx, {
-              credential: otherOrganizationCredential,
-              scope: orgScope(ctx.vars.memberOrgId),
-            });
-            assert.equal(delivered.status, 202, await delivered.clone().text());
+            expect(
+              await sendEvent(ctx, {
+                credential: otherOrganizationCredential,
+                scope: orgScope(ctx.vars.memberOrgId),
+              }),
+            ).toMatchObject({ scope: orgScope(ctx.vars.memberOrgId) });
           },
         ),
-        then("user credentials and raw OAuth tokens cannot use the app endpoint", async (ctx) => {
-          await expectDenied(
-            await sendEvent(ctx, { credential: ctx.vars.oauthAccessToken }),
-            401,
-            "authentication_failed",
-          );
-          const issued = await ctx.runtime.objects.auth.singleton().http.fetch(
-            new Request(`${origin}/api/auth/backoffice-token`, {
-              method: "POST",
-              headers: {
-                origin,
-                cookie: ctx.vars.memberCookie,
-                "content-type": "application/json",
-              },
-              body: JSON.stringify({ selection: "required", organizationId: ctx.vars.orgId }),
-            }),
-          );
-          assert(issued.ok, await issued.clone().text());
-          const userCredential = /fragno-backoffice\.access_token=([^;]+)/u.exec(
-            issued.headers.get("set-cookie") ?? "",
-          )?.[1];
-          assert(userCredential);
-          await expectDenied(
-            await sendEvent(ctx, { credential: userCredential }),
-            401,
+        then("raw OAuth access tokens cannot call the API", async (ctx) => {
+          await expectApiError(
+            sendEvent(ctx, { credential: ctx.vars.oauthAccessToken }),
             "authentication_failed",
           );
         }),
@@ -635,13 +631,11 @@ describe("installed-app event delivery SQLite scenarios", () => {
         "removing the emit grant stops an issued credential until it is restored",
         async (ctx) => {
           await updateGrants(ctx, []);
-          await expectDenied(
-            await sendEvent(ctx, { credential: ctx.vars.credential }),
-            403,
-            "forbidden",
-          );
+          await expectApiError(sendEvent(ctx, { credential: ctx.vars.credential }), "forbidden");
           await updateGrants(ctx, [emit]);
-          assert.equal((await sendEvent(ctx, { credential: ctx.vars.credential })).status, 202);
+          expect(await sendEvent(ctx, { credential: ctx.vars.credential })).toMatchObject({
+            accepted: true,
+          });
         },
       ),
       then("removing the member stops delivery and new exchanges", async (ctx) => {
@@ -649,11 +643,7 @@ describe("installed-app event delivery SQLite scenarios", () => {
         await auth.applyScenarioFixture({
           removedMembers: [{ organizationId: ctx.vars.orgId, userId: ctx.vars.memberId }],
         });
-        await expectDenied(
-          await sendEvent(ctx, { credential: ctx.vars.credential }),
-          403,
-          "forbidden",
-        );
+        await expectApiError(sendEvent(ctx, { credential: ctx.vars.credential }), "forbidden");
         await expectDenied(
           await exchange(ctx, ctx.vars.oauthAccessToken, orgScope(ctx.vars.orgId)),
           403,
@@ -664,7 +654,9 @@ describe("installed-app event delivery SQLite scenarios", () => {
             { organizationId: ctx.vars.orgId, userId: ctx.vars.memberId, roles: ["member"] },
           ],
         });
-        assert.equal((await sendEvent(ctx, { credential: ctx.vars.credential })).status, 202);
+        expect(await sendEvent(ctx, { credential: ctx.vars.credential })).toMatchObject({
+          accepted: true,
+        });
       }),
       then(
         "uninstalling revokes credentials, and reinstalling does not revive them",
@@ -673,11 +665,7 @@ describe("installed-app event delivery SQLite scenarios", () => {
             ctx.vars.orgId,
           ).commands;
           assert((await installations.uninstallApp({ appId: ctx.vars.appId })).ok);
-          await expectDenied(
-            await sendEvent(ctx, { credential: ctx.vars.credential }),
-            403,
-            "forbidden",
-          );
+          await expectApiError(sendEvent(ctx, { credential: ctx.vars.credential }), "forbidden");
           await expectDenied(
             await exchange(ctx, ctx.vars.oauthAccessToken, orgScope(ctx.vars.orgId)),
             403,
@@ -694,15 +682,10 @@ describe("installed-app event delivery SQLite scenarios", () => {
             status: "active",
             activation: 2,
           });
-          await expectDenied(
-            await sendEvent(ctx, { credential: ctx.vars.credential }),
-            403,
-            "forbidden",
-          );
-          assert.equal(
-            (await sendEvent(ctx, { credential: await issueCredential(ctx) })).status,
-            202,
-          );
+          await expectApiError(sendEvent(ctx, { credential: ctx.vars.credential }), "forbidden");
+          expect(await sendEvent(ctx, { credential: await issueCredential(ctx) })).toMatchObject({
+            accepted: true,
+          });
         },
       ),
       then("revoking OAuth consent prevents further credential exchanges", async (ctx) => {
@@ -890,17 +873,13 @@ describe("installed-app event delivery SQLite scenarios", () => {
             const installationCredential = backofficeExecutionTokenResultSchema.parse(
               await exchanged.json(),
             ).accessToken;
-            await expectDenied(
-              await sendEvent(ctx, { credential: installationCredential }),
-              403,
+            await expectApiError(
+              sendEvent(ctx, { credential: installationCredential }),
               "forbidden",
             );
-            const delivered = await sendEvent(ctx, {
-              credential: installationCredential,
-              scope: finance,
-            });
-            assert.equal(delivered.status, 202, await delivered.clone().text());
-            expect(await delivered.json()).toMatchObject({
+            expect(
+              await sendEvent(ctx, { credential: installationCredential, scope: finance }),
+            ).toMatchObject({
               scope: finance,
               source: `app:${ctx.vars.appId}`,
             });
@@ -957,9 +936,8 @@ describe("installed-app event delivery SQLite scenarios", () => {
                 resourceScope: { kind: "projects", projectIds: [ctx.vars.payrollProjectId] },
               });
             assert(narrowed.ok);
-            await expectDenied(
-              await sendEvent(ctx, { credential: installationCredential, scope: finance }),
-              403,
+            await expectApiError(
+              sendEvent(ctx, { credential: installationCredential, scope: finance }),
               "forbidden",
             );
           },

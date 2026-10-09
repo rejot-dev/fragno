@@ -11,6 +11,7 @@
     "types:check": "pnpm run types:generate && tsc --noEmit"
   },
   "dependencies": {
+    "@fragno-dev/backoffice-api": "workspace:*",
     "@fragno-dev/db": "workspace:*",
     "@fragno-private/design-system": "workspace:*",
     "better-auth": "1.7.1",
