@@ -1,14 +1,9 @@
-# @fragno-dev/project-connector-fragment
+# @rejot-dev/backoffice-cli
 
-## 0.0.2
+## 0.1.1
 
 ### Patch Changes
 
-- 208ada8: feat: expose allowlisted action contracts using separate catalog credentials.
-- 00dfaee: fix: validate connection names and log Project Connector gateway failures
-- 48b97c8: feat: add OAuth provider configuration and action discovery.
-- 4c27980: feat: add verified provider connections, profiles, actions, and a CLI.
-- 5c96e4a: fix: reject catalog redirects before forwarding credentials.
 - Updated dependencies [0d4cbe8]
 - Updated dependencies [2797663]
 - Updated dependencies [fcecfed]
@@ -23,14 +18,12 @@
 - Updated dependencies [a8010b8]
 - Updated dependencies [26a21e3]
 - Updated dependencies [eb6ea3e]
-- Updated dependencies [0186a7a]
 - Updated dependencies [4fd5010]
 - Updated dependencies [3f9d1bb]
 - Updated dependencies [767c934]
 - Updated dependencies [d9a5ffe]
 - Updated dependencies [d92f4ce]
 - Updated dependencies [1d2125e]
-- Updated dependencies [fe0e92d]
 - Updated dependencies [20324e7]
 - Updated dependencies [c1255e4]
 - Updated dependencies [318921d]
@@ -43,18 +36,14 @@
 - Updated dependencies [9ea7170]
 - Updated dependencies [187d67e]
 - Updated dependencies [aff91d1]
-- Updated dependencies [03d5a5c]
 - Updated dependencies [a28094e]
 - Updated dependencies [033a643]
 - Updated dependencies [c41c1e2]
-- Updated dependencies [6cc8f36]
 - Updated dependencies [f42c8c6]
 - Updated dependencies [9cd79f3]
 - Updated dependencies [7a625f6]
 - Updated dependencies [49ca4fb]
 - Updated dependencies [0e63275]
-- Updated dependencies [4944ecf]
-- Updated dependencies [d9ac2a3]
 - Updated dependencies [4e5d611]
 - Updated dependencies [2dbc550]
 - Updated dependencies [2dbc550]
@@ -64,19 +53,14 @@
 - Updated dependencies [f297b5d]
 - Updated dependencies [caf581b]
 - Updated dependencies [7de0078]
-- Updated dependencies [ff3673f]
 - Updated dependencies [d7236a2]
 - Updated dependencies [1e1088b]
 - Updated dependencies [9e2ee05]
 - Updated dependencies [3734573]
 - Updated dependencies [1c57f29]
-- Updated dependencies [2e7263b]
-- Updated dependencies [801e6ab]
 - Updated dependencies [48c0094]
 - Updated dependencies [7a60491]
 - Updated dependencies [6649e1f]
-- Updated dependencies [d125074]
-- Updated dependencies [8afaf3d]
 - Updated dependencies [2d729a4]
 - Updated dependencies [85be413]
 - Updated dependencies [fa21507]
@@ -84,21 +68,11 @@
 - Updated dependencies [e7b36e1]
 - Updated dependencies [a61b3a5]
 - Updated dependencies [4dc14bf]
-- Updated dependencies [3328fe3]
 - Updated dependencies [a64dc64]
 - Updated dependencies [ea8ea88]
 - Updated dependencies [5599183]
 - Updated dependencies [e2cad8d]
 - Updated dependencies [93bc657]
-- Updated dependencies [5e0cfe8]
 - Updated dependencies [9919fdd]
   - @fragno-dev/db@0.5.0
-  - @fragno-dev/core@0.2.3
-
-## Unreleased
-
-- Added project-scoped OAuth connections with verified, user-owned account bindings.
-- Added account profiles, cursor-based account listing, and explicit action execution.
-- Added `fragno-project-connector` CLI commands for project-key checks, Gmail authorization,
-  profiles, and actions, with environment-file loading, SQLite persistence, and optional
-  authorization beeps.
+  - @rejot-dev/backoffice-local@0.1.1
