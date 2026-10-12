@@ -288,7 +288,7 @@ export const createRouteBackedRuntimeContext = ({
         }
       : null,
     eventCatalog: isBackofficeRoutableScope(execution.scope)
-      ? { runtime: createEventCatalogRuntime({ objects: runtime.objects, scope: execution.scope }) }
+      ? { runtime: createEventCatalogRuntime({ objects: runtime.objects, kernel, execution }) }
       : null,
     automation: null,
     marketplace: runtime.config.bindings.marketplace

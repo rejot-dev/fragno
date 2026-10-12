@@ -535,6 +535,18 @@ describe("Backoffice API v0 SQLite scenarios", () => {
           "conflict",
         );
       }),
+      then("an event definition cannot be defined twice", async (ctx) => {
+        const create = {
+          path: orgOperation(ctx.vars.orgId, "events.catalog.create"),
+          credential: ctx.vars.ownerCredential,
+          body: { source: "books", eventType: "invoice.paid", label: "Invoice paid" },
+        };
+        expect(await expectOk(await callApi(ctx, create))).toMatchObject({
+          source: "books",
+          eventType: "invoice.paid",
+        });
+        await expectError(await callApi(ctx, create), 409, "conflict");
+      }),
       then(
         "unknown apps are not found, and malformed cursors are invalid requests",
         async (ctx) => {

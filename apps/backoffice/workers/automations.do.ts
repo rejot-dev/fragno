@@ -1,7 +1,6 @@
 import type {
   AutomationEvent,
   AutomationEventDefinition,
-  AutomationEventDefinitionCreateInput,
   AutomationEventDefinitionUpdateInput,
 } from "@fragno-dev/backoffice-api/v0/events";
 import type {
@@ -959,17 +958,6 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
       : null;
   }
 
-  async createEventDefinition(
-    input: AutomationEventDefinitionCreateInput,
-  ): Promise<AutomationEventDefinition> {
-    await this.#ensureConfigured({ scope: this.#requireScope() });
-    const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
-
-    return await runtime.automationFragment.callServices(() =>
-      runtime.automationFragment.services.createEventDefinition(input),
-    );
-  }
-
   async updateEventDefinition(
     input: AutomationEventDefinitionUpdateInput,
   ): Promise<AutomationEventDefinition | null> {
@@ -1147,10 +1135,6 @@ export class Automations extends DurableObject<CloudflareEnv> implements Automat
 
   async getEventDefinition(input: { source: string; eventType: string }) {
     return await this.#object.getEventDefinition(input);
-  }
-
-  async createEventDefinition(input: AutomationEventDefinitionCreateInput) {
-    return await this.#object.createEventDefinition(input);
   }
 
   async updateEventDefinition(input: AutomationEventDefinitionUpdateInput) {
