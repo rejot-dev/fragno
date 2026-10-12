@@ -12,6 +12,7 @@ import {
   resolveMcpOperationAuth,
   resolveOAuthStartClient,
   withoutOAuthConsent,
+  writeOAuthSecretChanges,
   type AuthPersistenceChanges,
 } from "./services";
 
@@ -132,19 +133,18 @@ export const mcpFragmentDefinition = defineFragment<McpFragmentConfig>("mcp-frag
             });
           };
 
-          if (preparedOperation.authChanges?.clientInformationPayload) {
-            upsertSecret(
-              "oauth-client",
-              preparedOperation.authChanges.clientInformationPayload,
-              null,
-            );
-          }
-          if (preparedOperation.authChanges?.discoveryStatePayload) {
-            upsertSecret(
-              "oauth-discovery",
-              preparedOperation.authChanges.discoveryStatePayload,
-              null,
-            );
+          if (preparedOperation.authChanges) {
+            writeOAuthSecretChanges(preparedOperation.authChanges, {
+              upsert: (kind, payload) => {
+                upsertSecret(kind, payload, null);
+              },
+              remove: (kind) => {
+                const existing = secrets.find((secret) => secret.kind === kind);
+                if (existing) {
+                  uow.delete("secret", existing.id);
+                }
+              },
+            });
           }
           if (preparedOperation.authChanges?.authPayload) {
             const after = {
@@ -272,12 +272,17 @@ export const mcpFragmentDefinition = defineFragment<McpFragmentConfig>("mcp-frag
               });
             };
 
-            if (retrieveResult.changes.clientInformationPayload) {
-              upsertSecret("oauth-client", retrieveResult.changes.clientInformationPayload, null);
-            }
-            if (retrieveResult.changes.discoveryStatePayload) {
-              upsertSecret("oauth-discovery", retrieveResult.changes.discoveryStatePayload, null);
-            }
+            writeOAuthSecretChanges(retrieveResult.changes, {
+              upsert: (kind, payload) => {
+                upsertSecret(kind, payload, null);
+              },
+              remove: (kind) => {
+                const existing = retrieveResult.secrets.find((secret) => secret.kind === kind);
+                if (existing) {
+                  uow.delete("secret", existing.id);
+                }
+              },
+            });
             const authSecret = retrieveResult.secrets.find((secret) => secret.kind === "auth");
             if (input.discardTokens && authSecret) {
               // Keeps the client configuration; only consent evidence is discarded.
@@ -379,12 +384,17 @@ export const mcpFragmentDefinition = defineFragment<McpFragmentConfig>("mcp-frag
               });
             };
 
-            if (retrieveResult.changes.clientInformationPayload) {
-              upsertSecret("oauth-client", retrieveResult.changes.clientInformationPayload, null);
-            }
-            if (retrieveResult.changes.discoveryStatePayload) {
-              upsertSecret("oauth-discovery", retrieveResult.changes.discoveryStatePayload, null);
-            }
+            writeOAuthSecretChanges(retrieveResult.changes, {
+              upsert: (kind, payload) => {
+                upsertSecret(kind, payload, null);
+              },
+              remove: (kind) => {
+                const existing = retrieveResult.secrets.find((secret) => secret.kind === kind);
+                if (existing) {
+                  uow.delete("secret", existing.id);
+                }
+              },
+            });
             if (retrieveResult.changes.authPayload) {
               const after = {
                 payload: retrieveResult.changes.authPayload,

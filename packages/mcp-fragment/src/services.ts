@@ -9,16 +9,49 @@ import {
   type OAuthProviderSnapshot,
 } from "./oauth-provider";
 
+/** A buffered OAuth secret is kept, replaced, or removed because the server rejected it. */
+type OAuthSecretChange =
+  | { action: "keep" }
+  | { action: "save"; payload: string }
+  | { action: "remove" };
+
+function oauthSecretChange(value: unknown, invalidated: boolean | undefined): OAuthSecretChange {
+  if (value) {
+    return { action: "save", payload: stringifySecretPayload(value) };
+  }
+  return invalidated ? { action: "remove" } : { action: "keep" };
+}
+
 export async function prepareOAuthChanges(changes: OAuthProviderChanges) {
   return {
     ...changes,
-    clientInformationPayload: changes.clientInformation
-      ? stringifySecretPayload(changes.clientInformation)
-      : undefined,
-    discoveryStatePayload: changes.discoveryState
-      ? stringifySecretPayload(changes.discoveryState)
-      : undefined,
+    clientChange: oauthSecretChange(changes.clientInformation, changes.clientInvalidated),
+    discoveryChange: oauthSecretChange(changes.discoveryState, changes.discoveryInvalidated),
   };
+}
+
+/** Applies the client and discovery changes through a write site's own secret writers. */
+export function writeOAuthSecretChanges(
+  changes: Pick<AuthPersistenceChanges, "clientChange" | "discoveryChange">,
+  writers: { upsert(kind: string, payload: string): void; remove(kind: string): void },
+) {
+  for (const [kind, change] of [
+    ["oauth-client", changes.clientChange],
+    ["oauth-discovery", changes.discoveryChange],
+  ] as const) {
+    switch (change.action) {
+      case "keep":
+        break;
+      case "save":
+        writers.upsert(kind, change.payload);
+        break;
+      case "remove":
+        writers.remove(kind);
+        break;
+      default:
+        throw new Error("Unknown OAuth secret change.", { cause: change satisfies never });
+    }
+  }
 }
 
 export function tokenExpiry(tokens: NonNullable<OAuthProviderChanges["tokens"]>): Date | null {
@@ -270,7 +303,12 @@ export async function createOAuthCallbackSnapshot(args: {
 
 const providerHasChanges = (changes: OAuthProviderChanges) =>
   Boolean(
-    changes.clientInformation || changes.discoveryState || changes.tokens || changes.invalidate,
+    changes.clientInformation ||
+    changes.discoveryState ||
+    changes.tokens ||
+    changes.tokensInvalidated ||
+    changes.clientInvalidated ||
+    changes.discoveryInvalidated,
   );
 
 function authChangesReader(
