@@ -8,7 +8,8 @@
     "preview": "vite preview",
     "deploy": "pnpm run build && wrangler deploy",
     "types:generate": "wrangler types --env-interface CloudflareEnv --env-file .dev.vars.example && react-router typegen",
-    "types:check": "pnpm run types:generate && tsc --noEmit"
+    "types:check": "pnpm run types:generate && tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@fragno-dev/backoffice-api": "workspace:*",
@@ -32,6 +33,7 @@
     "tailwindcss": "^4.2.1",
     "typescript": "catalog:",
     "vite": "catalog:",
+    "vitest": "catalog:",
     "wrangler": "catalog:"
   }
 }

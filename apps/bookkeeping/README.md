@@ -137,10 +137,16 @@ to reauthorize. A delivery that cannot be confirmed is reported, not retried, to
 Uninstalling Bookkeeping, narrowing its permissions or projects, or removing a member in Backoffice
 takes effect immediately, including for credentials already issued.
 
+## Bookkeeping schema
+
+The SQLite schema for an administration's books lives in `workers/schema`; see its README. No route
+or Durable Object uses it yet.
+
 ## Checks
 
 ```sh
 pnpm types:check
+pnpm test
 pnpm build
 ```
 
