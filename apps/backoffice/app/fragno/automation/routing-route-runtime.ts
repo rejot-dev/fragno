@@ -10,12 +10,19 @@ import type {
   AutomationsObject,
   BackofficeObjectHandle,
 } from "@/backoffice-runtime/object-registry";
+import {
+  BackofficeOperationError,
+  backofficeOperationErrorKindForStatus,
+} from "@/backoffice-runtime/operation-error";
 import type { AutomationRouterRuntime } from "@/fragno/runtime-tools/families/automations-routing";
 
 import { createAutomationsRouteCaller } from "./route-callers";
 
 const raiseRouteError = (status: number, message: string): never => {
-  throw new Error(`Automations backend returned ${status}: ${message}`);
+  throw new BackofficeOperationError(
+    backofficeOperationErrorKindForStatus(status),
+    `Automations backend returned ${status}: ${message}`,
+  );
 };
 
 export const createRouteBackedAutomationRouterRuntime = ({
@@ -36,7 +43,10 @@ export const createRouteBackedAutomationRouterRuntime = ({
       if (response.type === "error") {
         raiseRouteError(response.status, response.error.message);
       }
-      throw new Error(`Automations backend returned ${response.status}`);
+      throw new BackofficeOperationError(
+        backofficeOperationErrorKindForStatus(response.status),
+        `Automations backend returned ${response.status}`,
+      );
     },
     getRoute: async ({ id }) => {
       const response = await callRoute("GET", "/routes/:routeId", {
@@ -51,7 +61,10 @@ export const createRouteBackedAutomationRouterRuntime = ({
       if (response.type === "error") {
         raiseRouteError(response.status, response.error.message);
       }
-      throw new Error(`Automations backend returned ${response.status}`);
+      throw new BackofficeOperationError(
+        backofficeOperationErrorKindForStatus(response.status),
+        `Automations backend returned ${response.status}`,
+      );
     },
     createRoute: async (input: AutomationRouteCreateInput) => {
       const response = await callRoute("POST", "/routes", { body: input });
@@ -61,7 +74,10 @@ export const createRouteBackedAutomationRouterRuntime = ({
       if (response.type === "error") {
         raiseRouteError(response.status, response.error.message);
       }
-      throw new Error(`Automations backend returned ${response.status}`);
+      throw new BackofficeOperationError(
+        backofficeOperationErrorKindForStatus(response.status),
+        `Automations backend returned ${response.status}`,
+      );
     },
     updateRoute: async (input: AutomationRouteUpdateInput) => {
       const { id, ...body } = input;
@@ -78,7 +94,10 @@ export const createRouteBackedAutomationRouterRuntime = ({
       if (response.type === "error") {
         raiseRouteError(response.status, response.error.message);
       }
-      throw new Error(`Automations backend returned ${response.status}`);
+      throw new BackofficeOperationError(
+        backofficeOperationErrorKindForStatus(response.status),
+        `Automations backend returned ${response.status}`,
+      );
     },
     deleteRoute: async ({ id }) => {
       const response = await callRoute("DELETE", "/routes/:routeId", {
@@ -90,7 +109,10 @@ export const createRouteBackedAutomationRouterRuntime = ({
       if (response.type === "error") {
         raiseRouteError(response.status, response.error.message);
       }
-      throw new Error(`Automations backend returned ${response.status}`);
+      throw new BackofficeOperationError(
+        backofficeOperationErrorKindForStatus(response.status),
+        `Automations backend returned ${response.status}`,
+      );
     },
     triggerScheduledRouteNow: async ({ id }) => {
       const response = await callRoute("POST", "/routes/:routeId/trigger-now", {
@@ -105,7 +127,10 @@ export const createRouteBackedAutomationRouterRuntime = ({
       if (response.type === "error") {
         raiseRouteError(response.status, response.error.message);
       }
-      throw new Error(`Automations backend returned ${response.status}`);
+      throw new BackofficeOperationError(
+        backofficeOperationErrorKindForStatus(response.status),
+        `Automations backend returned ${response.status}`,
+      );
     },
   };
 };

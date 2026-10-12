@@ -13,6 +13,7 @@ import {
 
 import { authorizedBackofficeObjectHttp } from "@/backoffice-runtime/authorized-object-http";
 import { BackofficeUnavailableError } from "@/backoffice-runtime/kernel";
+import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import type { Reson8Fragment } from "@/fragno/reson8";
 
@@ -101,7 +102,7 @@ function describeReson8Setup(configured: boolean): IntegrationSetupProgress {
 
 function assertReson8LocalId(localId: string) {
   if (localId !== reson8ConnectionIdentity.integrationId) {
-    throw new Error("Reson8 integration connection not found.");
+    throw new BackofficeOperationError("not_found", "Reson8 integration connection not found.");
   }
 }
 
@@ -195,7 +196,10 @@ export function createReson8Integration({
     },
     async list(context, cursor) {
       if (cursor !== null) {
-        throw new Error("Reson8 integration listing cursor is invalid.");
+        throw new BackofficeOperationError(
+          "invalid_request",
+          "Reson8 integration listing cursor is invalid.",
+        );
       }
       if (context.execution.scope.kind !== "org" || !runtime.config.bindings.reson8) {
         return { connections: [], cursor: null };

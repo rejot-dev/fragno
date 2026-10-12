@@ -6,6 +6,7 @@ import type {
 import type { WorkerBundle } from "@fragno-dev/codemode/compiler/worker-bundle";
 import jsTokens, { type Token } from "js-tokens";
 
+import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
 import { isPathWithin, normalizeAbsolutePath } from "@/files/normalize-path";
 import type { BackofficeCodemodeExecuteResult } from "@/fragno/codemode/execute";
 import { javaScriptModuleArtifactSchema } from "@/fragno/codemode/javascript-module-artifact";
@@ -74,14 +75,18 @@ export type JavaScriptRuntime = {
 
 function parseJavaScriptFilePath(path: string, kind: "source" | "run") {
   if (!path.trim().startsWith("/")) {
-    throw new Error("JavaScript file path must be absolute.");
+    throw new BackofficeOperationError("invalid_request", "JavaScript file path must be absolute.");
   }
   const normalizedPath = normalizeAbsolutePath(path);
   if (!JAVASCRIPT_FILE_ROOTS.some((root) => isPathWithin(normalizedPath, root))) {
-    throw new Error("JavaScript file path must be under /static or /workspace.");
+    throw new BackofficeOperationError(
+      "invalid_request",
+      "JavaScript file path must be under /static or /workspace.",
+    );
   }
   if (!normalizedPath.endsWith(".js") && (kind === "source" || !normalizedPath.endsWith(".json"))) {
-    throw new Error(
+    throw new BackofficeOperationError(
+      "invalid_request",
       kind === "source"
         ? "JavaScript file path must identify a .js file."
         : "JavaScript run path must identify a .js source file or .json module artifact.",
@@ -280,7 +285,10 @@ export function createJavaScriptRuntime({
             if (sourcePath.endsWith(".json")) {
               const file = await stateBackend.stat(sourcePath);
               if (file?.type !== "file") {
-                throw new Error(`JAVASCRIPT_RUN_ARTIFACT_MISSING: ${sourcePath}`);
+                throw new BackofficeOperationError(
+                  "not_found",
+                  `JAVASCRIPT_RUN_ARTIFACT_MISSING: ${sourcePath}`,
+                );
               }
               if (file.size > CODEMODE_LIMITS.maxBundleBytes) {
                 throw new Error("JAVASCRIPT_RUN_ARTIFACT_TOO_LARGE");

@@ -10,6 +10,10 @@ import {
   BackofficeForbiddenError,
   isBackofficeForbiddenError,
 } from "@/backoffice-runtime/kernel";
+import {
+  BackofficeOperationError,
+  backofficeOperationErrorKindForStatus,
+} from "@/backoffice-runtime/operation-error";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 
 import { PI_AGENT_SUBMISSION_WAIT_MAX_MS, type PiAgentSubmissionWait } from "./pi-agent-contract";
@@ -47,12 +51,12 @@ export type PiManagerPromptResult = PiManagerSessionDetail & {
 };
 
 /** Structured manager failures survive runtime-tool and codemode boundaries. */
-export class PiManagerRuntimeRequestError extends Error {
+export class PiManagerRuntimeRequestError extends BackofficeOperationError {
   readonly status: number;
   readonly code: string;
 
   constructor(status: number, code: string, message: string) {
-    super(message);
+    super(backofficeOperationErrorKindForStatus(status), message);
     this.name = "PiManagerRuntimeRequestError";
     this.status = status;
     this.code = code;

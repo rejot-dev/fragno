@@ -3,6 +3,10 @@ import type {
   AutomationsObject,
   BackofficeObjectHandle,
 } from "@/backoffice-runtime/object-registry";
+import {
+  BackofficeOperationError,
+  backofficeOperationErrorKindForStatus,
+} from "@/backoffice-runtime/operation-error";
 
 import type { AutomationStoreRuntime } from "../runtime-tools/families/automations-bindings";
 import { createAutomationsRouteCaller } from "./route-callers";
@@ -29,12 +33,16 @@ export const createRouteBackedAutomationStoreRuntime = ({
       }
 
       if (response.type === "error") {
-        throw new Error(
+        throw new BackofficeOperationError(
+          backofficeOperationErrorKindForStatus(response.status),
           `Automations backend returned ${response.status}: ${response.error.message}`,
         );
       }
 
-      throw new Error(`Automations backend returned ${response.status}`);
+      throw new BackofficeOperationError(
+        backofficeOperationErrorKindForStatus(response.status),
+        `Automations backend returned ${response.status}`,
+      );
     },
     set: async (args) => {
       const response = await callRoute("POST", "/store/set", { body: args });
@@ -44,12 +52,16 @@ export const createRouteBackedAutomationStoreRuntime = ({
       }
 
       if (response.type === "error") {
-        throw new Error(
+        throw new BackofficeOperationError(
+          backofficeOperationErrorKindForStatus(response.status),
           `Automations backend returned ${response.status}: ${response.error.message}`,
         );
       }
 
-      throw new Error(`Automations backend returned ${response.status}`);
+      throw new BackofficeOperationError(
+        backofficeOperationErrorKindForStatus(response.status),
+        `Automations backend returned ${response.status}`,
+      );
     },
     delete: async (args) => {
       const response = await callRoute("POST", "/store/delete", { body: args });
@@ -63,12 +75,16 @@ export const createRouteBackedAutomationStoreRuntime = ({
       }
 
       if (response.type === "error") {
-        throw new Error(
+        throw new BackofficeOperationError(
+          backofficeOperationErrorKindForStatus(response.status),
           `Automations backend returned ${response.status}: ${response.error.message}`,
         );
       }
 
-      throw new Error(`Automations backend returned ${response.status}`);
+      throw new BackofficeOperationError(
+        backofficeOperationErrorKindForStatus(response.status),
+        `Automations backend returned ${response.status}`,
+      );
     },
     list: async ({ prefix, limit }) => {
       const response = await callRoute("GET", "/store", {
@@ -83,12 +99,16 @@ export const createRouteBackedAutomationStoreRuntime = ({
       }
 
       if (response.type === "error") {
-        throw new Error(
+        throw new BackofficeOperationError(
+          backofficeOperationErrorKindForStatus(response.status),
           `Automations backend returned ${response.status}: ${response.error.message}`,
         );
       }
 
-      throw new Error(`Automations backend returned ${response.status}`);
+      throw new BackofficeOperationError(
+        backofficeOperationErrorKindForStatus(response.status),
+        `Automations backend returned ${response.status}`,
+      );
     },
   };
 };

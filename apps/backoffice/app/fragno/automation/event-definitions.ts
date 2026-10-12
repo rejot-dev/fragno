@@ -6,6 +6,7 @@ import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
 
 import { Validator, type Schema } from "@cfworker/json-schema";
 
+import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
 import { jsonSchema202012ValidationSchema } from "@/lib/json-schema/validation";
 
 export const buildAutomationEventDefinitionId = (source: string, eventType: string) =>
@@ -16,6 +17,17 @@ export class AutomationEventDefinitionValidationError extends Error {
     super(message);
     this.name = "AutomationEventDefinitionValidationError";
   }
+}
+
+/**
+ * Rethrows a definition validation failure from the automations object as a caller error. Object
+ * RPC keeps an error's name but not its class, so it is recognized by name.
+ */
+export function rethrowAutomationEventDefinitionFailure(error: unknown): never {
+  if (error instanceof Error && error.name === "AutomationEventDefinitionValidationError") {
+    throw new BackofficeOperationError("invalid_request", error.message);
+  }
+  throw error;
 }
 
 const formatSchemaErrors = (errors: Array<{ instanceLocation: string; error: string }>) =>

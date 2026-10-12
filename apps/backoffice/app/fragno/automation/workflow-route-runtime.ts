@@ -9,6 +9,10 @@ import type {
   AutomationsObject,
   BackofficeObjectHandle,
 } from "@/backoffice-runtime/object-registry";
+import {
+  BackofficeOperationError,
+  backofficeOperationErrorKindForStatus,
+} from "@/backoffice-runtime/operation-error";
 import { BACKOFFICE_REQUIRED_PERMISSION_HEADER } from "@/backoffice-runtime/required-permission-header";
 
 import type {
@@ -36,14 +40,14 @@ type WorkflowBackendErrorResponse = {
 };
 
 /** Stable workflow backend failure fields for runtime tools and durable Pi diagnostics. */
-export class AutomationWorkflowRuntimeRequestError extends Error {
+export class AutomationWorkflowRuntimeRequestError extends BackofficeOperationError {
   constructor(
     readonly status: number,
     readonly code: string,
     message: string,
     readonly requiredPermission: BackofficePermissionRequirement | null,
   ) {
-    super(message);
+    super(backofficeOperationErrorKindForStatus(status), message);
     this.name = "AutomationWorkflowRuntimeRequestError";
   }
 

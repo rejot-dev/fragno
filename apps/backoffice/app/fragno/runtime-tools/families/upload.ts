@@ -7,6 +7,7 @@ import { uploadPreparedInputSchema } from "@fragno-dev/backoffice-api/v0/upload"
 import { preparedUploadedFileReferenceSchema } from "@fragno-dev/backoffice-api/v0/upload";
 import { z } from "zod";
 
+import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
 import { defineCliArgsParser } from "@/fragno/runtime-tools/bash-cli";
 import type { UploadRuntime } from "@/fragno/runtime-tools/families/upload-runtime";
 
@@ -77,7 +78,8 @@ const assertPreparedFileScope = (
     !isBackofficeRoutableScope(context.execution.scope) ||
     !backofficeContextScopesEqual(context.execution.scope, file.scope)
   ) {
-    throw new Error(
+    throw new BackofficeOperationError(
+      "invalid_request",
       "Prepared upload scope must match the scoped Upload provider used for the operation.",
     );
   }

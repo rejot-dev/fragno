@@ -1,3 +1,4 @@
+import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
 import {
   getHookScope,
   listHookScopes,
@@ -15,7 +16,8 @@ import {
 /** Hook fragments come from Backoffice's capability registry, which the API contract cannot know. */
 function requireKnownHookFragment(fragment: string): string {
   if (!getHookScope(fragment)) {
-    throw new Error(
+    throw new BackofficeOperationError(
+      "invalid_request",
       `Unknown hook fragment '${fragment}'. Run hooks.scopes.list to discover available hook scopes.`,
     );
   }

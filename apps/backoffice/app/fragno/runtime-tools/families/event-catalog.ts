@@ -10,6 +10,7 @@ import type {
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
+import { rethrowAutomationEventDefinitionFailure } from "@/fragno/automation/event-definitions";
 import { listAutomationEventDescriptors } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 import {
   defineCliArgsParser,
@@ -268,7 +269,10 @@ export function createEventCatalogRuntime({
       };
     },
     createAutomationEvent: async (input) =>
-      await objects.automations.for(scope).commands.createEventDefinition(input),
+      await objects.automations
+        .for(scope)
+        .commands.createEventDefinition(input)
+        .catch(rethrowAutomationEventDefinitionFailure),
   };
 }
 

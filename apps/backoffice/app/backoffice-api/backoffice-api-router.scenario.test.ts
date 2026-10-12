@@ -511,6 +511,57 @@ describe("Backoffice API v0 SQLite scenarios", () => {
     ]);
   });
 
+  test("domain failures report what went wrong instead of a generic failure", async () => {
+    await runApiScenario("v0 API domain errors", (then) => [
+      then("missing files are not found, and existing directories conflict", async (ctx) => {
+        const credential = ctx.vars.ownerCredential;
+        await expectError(
+          await callApi(ctx, {
+            path: orgOperation(ctx.vars.orgId, "state.readFile"),
+            credential,
+            body: { path: "/workspace/missing.txt" },
+          }),
+          404,
+          "not_found",
+        );
+        const mkdir = { path: orgOperation(ctx.vars.orgId, "state.mkdir"), credential };
+        assert.equal(
+          (await callApi(ctx, { ...mkdir, body: { path: "/workspace/books" } })).status,
+          204,
+        );
+        await expectError(
+          await callApi(ctx, { ...mkdir, body: { path: "/workspace/books" } }),
+          409,
+          "conflict",
+        );
+      }),
+      then(
+        "unknown apps are not found, and malformed cursors are invalid requests",
+        async (ctx) => {
+          const credential = ctx.vars.ownerCredential;
+          await expectError(
+            await callApi(ctx, {
+              path: orgOperation(ctx.vars.orgId, "apps.uninstall"),
+              credential,
+              body: { appId: "no-such-app" },
+            }),
+            404,
+            "not_found",
+          );
+          await expectError(
+            await callApi(ctx, {
+              path: orgOperation(ctx.vars.orgId, "apps.installations.list"),
+              credential,
+              body: { cursor: "not-a-cursor" },
+            }),
+            400,
+            "invalid_request",
+          );
+        },
+      ),
+    ]);
+  });
+
   test("installed apps act within their grants, and never manage the organization", async () => {
     await runApiScenario("installed-app credentials on the v0 API", (then) => [
       then(

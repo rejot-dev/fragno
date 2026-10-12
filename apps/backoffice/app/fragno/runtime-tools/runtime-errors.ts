@@ -1,8 +1,12 @@
 import { BackofficeForbiddenError, isBackofficeForbiddenError } from "@/backoffice-runtime/kernel";
+import {
+  BackofficeOperationError,
+  backofficeOperationErrorKindForStatus,
+} from "@/backoffice-runtime/operation-error";
 
-export class NotConfiguredError extends Error {
+export class NotConfiguredError extends BackofficeOperationError {
   constructor(message: string) {
-    super(message);
+    super("not_found", message);
     this.name = "NotConfiguredError";
   }
 }
@@ -77,10 +81,16 @@ export const throwOnRouteRuntimeError = (
   }
 
   if (message) {
-    throw new Error(`${options.runtimeLabel} returned ${response.status}: ${message}`);
+    throw new BackofficeOperationError(
+      backofficeOperationErrorKindForStatus(response.status),
+      `${options.runtimeLabel} returned ${response.status}: ${message}`,
+    );
   }
 
-  throw new Error(`${options.runtimeLabel} returned ${response.status} (${options.label})`);
+  throw new BackofficeOperationError(
+    backofficeOperationErrorKindForStatus(response.status),
+    `${options.runtimeLabel} returned ${response.status} (${options.label})`,
+  );
 };
 
 const readResponseErrorInfo = async (response: Response) => {

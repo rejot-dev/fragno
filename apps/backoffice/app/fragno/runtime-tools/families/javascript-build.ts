@@ -1,5 +1,6 @@
 import { CODEMODE_LIMITS } from "@fragno-dev/codemode/codemode-limits";
 
+import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
 import { buildBackofficeJavaScriptModule } from "@/fragno/codemode/compiled-module-execute";
 import type { BackofficeCodemodeEnv } from "@/fragno/codemode/execute";
 import {
@@ -23,11 +24,17 @@ export async function buildJavaScriptModuleFile(input: {
     /\p{Cc}/u.test(input.path) ||
     input.path.length > 512
   ) {
-    throw new Error(`JAVASCRIPT_BUILD_INVALID_SOURCE_PATH: ${input.path}`);
+    throw new BackofficeOperationError(
+      "invalid_request",
+      `JAVASCRIPT_BUILD_INVALID_SOURCE_PATH: ${input.path}`,
+    );
   }
   const path = input.state.resolvePath("/workspace", input.path);
   if ((!path.startsWith("/workspace/") && !path.startsWith("/static/")) || !path.endsWith(".js")) {
-    throw new Error(`JAVASCRIPT_BUILD_INVALID_SOURCE_PATH: ${input.path}`);
+    throw new BackofficeOperationError(
+      "invalid_request",
+      `JAVASCRIPT_BUILD_INVALID_SOURCE_PATH: ${input.path}`,
+    );
   }
   if (!input.out.startsWith("/")) {
     throw new Error("JAVASCRIPT_BUILD_INVALID_OUTPUT_PATH: build output must be absolute.");
@@ -35,7 +42,7 @@ export async function buildJavaScriptModuleFile(input: {
   const artifactPath = resolveJavaScriptModuleArtifactPath(input.out, input.state, "/workspace");
   const source = await input.state.stat(path);
   if (source?.type !== "file") {
-    throw new Error(`JAVASCRIPT_BUILD_SOURCE_MISSING: ${path}`);
+    throw new BackofficeOperationError("not_found", `JAVASCRIPT_BUILD_SOURCE_MISSING: ${path}`);
   }
   if (source.size > CODEMODE_LIMITS.maxSourceBytes) {
     throw new Error("CODEMODE_SOURCE_LIMIT_EXCEEDED");

@@ -15,6 +15,10 @@ import type { AppliedFileEdit, FileEditOperation, FileEditSearchOptions } from "
 
 import type { FetchObject } from "@/backoffice-runtime/object-registry";
 import {
+  BackofficeOperationError,
+  type BackofficeOperationErrorKind,
+} from "@/backoffice-runtime/operation-error";
+import {
   createUploadFileCollection,
   listUploadFiles,
 } from "@/file-collection/create-upload-file-collection";
@@ -512,7 +516,8 @@ class SystemStaticStateBackend implements BackofficeStateBackend {
       return { kind: "static", absolutePath, relativePath: staticRelativePath };
     }
     throw Object.assign(
-      new Error(
+      new BackofficeOperationError(
+        "not_found",
         `State path '${path}' is outside '${this.#system.mountPoint}' and '${this.#static.mountPoint}'.`,
       ),
       { code: "ENOENT" },
@@ -1261,8 +1266,27 @@ const joinMountPath = (mountPoint: string, relativePath: string): string =>
 const isDirectoryMarkerEntry = (entry: FileTreeEntry): boolean =>
   entry.kind === "directory" && entry.metadata?.__docsDirectoryMarker === true;
 
-function stateError(code: string, operation: string, path: string): Error {
-  return Object.assign(new Error(`${code}: ${operation} '${path}'`), { code });
+/** POSIX codes stay on the error because the shell file system branches on them. */
+const STATE_ERROR_KIND = {
+  ENOENT: "not_found",
+  EEXIST: "conflict",
+  ENOTEMPTY: "conflict",
+  EISDIR: "invalid_request",
+  ENOTDIR: "invalid_request",
+  ENOTSUP: "invalid_request",
+  EPERM: "invalid_request",
+  EROFS: "invalid_request",
+} as const satisfies Record<string, BackofficeOperationErrorKind>;
+
+function stateError(
+  code: keyof typeof STATE_ERROR_KIND,
+  operation: string,
+  path: string,
+): BackofficeOperationError {
+  return Object.assign(
+    new BackofficeOperationError(STATE_ERROR_KIND[code], `${code}: ${operation} '${path}'`),
+    { code },
+  );
 }
 
 const requireContentRevision = (

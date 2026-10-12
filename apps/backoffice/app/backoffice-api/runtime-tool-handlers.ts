@@ -5,6 +5,7 @@ import type {
 } from "@fragno-dev/backoffice-api/api";
 import type { z } from "zod";
 
+import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
 import {
   executeBackofficeRuntimeTool,
   type BackofficeToolContext,
@@ -12,9 +13,12 @@ import {
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 
 /** The operation's family is not available to this execution, e.g. without a user principal. */
-export class BackofficeApiOperationUnavailableError extends Error {
+class BackofficeApiOperationUnavailableError extends BackofficeOperationError {
   constructor(operationId: string, scopeKind: string) {
-    super(`'${operationId}' is not available to this credential in ${scopeKind} scope.`);
+    super(
+      "not_found",
+      `'${operationId}' is not available to this credential in ${scopeKind} scope.`,
+    );
     this.name = "BackofficeApiOperationUnavailableError";
   }
 }
