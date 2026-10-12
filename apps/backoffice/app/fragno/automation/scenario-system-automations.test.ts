@@ -788,8 +788,8 @@ describe("system automation scenarios", () => {
           }),
           then.files.contains({
             orgId: "org-1",
-            path: "/static/codemode/providers/telegram.d.ts",
-            text: "declare const telegram",
+            path: "/static/codemode/providers/integrations.d.ts",
+            text: "declare const integrations",
           }),
           then.workflow.noErrored({ orgId: "org-1" }),
         ],

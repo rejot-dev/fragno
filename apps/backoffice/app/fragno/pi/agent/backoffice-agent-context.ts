@@ -17,8 +17,6 @@ import type {
   RegisteredAutomationsRuntime,
 } from "@/fragno/runtime-tools/bash-host";
 import type { OtpRuntime } from "@/fragno/runtime-tools/families/otp-runtime";
-import type { ResendRuntime } from "@/fragno/runtime-tools/families/resend";
-import type { TelegramRuntime } from "@/fragno/runtime-tools/families/telegram-runtime";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 
 /** Runtime services available to Backoffice tools executed by a durable Pi agent. */
@@ -26,8 +24,6 @@ export type PiRuntimeToolContext = InteractiveRuntimeToolContext & {
   automations: { runtime: RegisteredAutomationsRuntime };
   otp: { runtime: OtpRuntime };
   pi: { runtime: PiManagerRuntime };
-  resend: { runtime: ResendRuntime };
-  telegram: { runtime: TelegramRuntime };
 };
 
 /** Backoffice authority and services that one agent's extensions run with. */

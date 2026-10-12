@@ -12,6 +12,7 @@ import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-ser
 import { generateTelegramWebhookSecretToken } from "@/fragno/telegram-webhook-secret";
 
 import { createTelegramRuntime } from "../telegram-runtime";
+import type { IntegrationSetupOperation } from "./integration-contracts";
 import type {
   IntegrationActionImplementation,
   IntegrationContext,
@@ -84,8 +85,7 @@ function defineTelegramAction<
   };
 }
 
-// Each action calls the same object routes as the native telegram.* tools, so the receiving object
-// enforces telegram.read or telegram.send.
+// The receiving object enforces integrations.execute on each action's routes.
 const telegramActions = [
   defineTelegramAction({
     id: "messages.send",
@@ -99,12 +99,7 @@ const telegramActions = [
       replyToMessageId: z.number().int().nullable().describe("Null sends a standalone message."),
     }),
     output: z.strictObject({ ok: z.boolean(), queued: z.boolean() }),
-    run: (runtime, { parseMode, replyToMessageId, ...input }) =>
-      runtime.sendMessage({
-        ...input,
-        ...(parseMode === null ? {} : { parseMode }),
-        ...(replyToMessageId === null ? {} : { replyToMessageId }),
-      }),
+    run: (runtime, input) => runtime.sendMessage(input),
   }),
   defineTelegramAction({
     id: "messages.edit",
@@ -118,8 +113,7 @@ const telegramActions = [
       disableWebPagePreview: z.boolean(),
     }),
     output: z.strictObject({ ok: z.boolean(), queued: z.boolean() }),
-    run: (runtime, { parseMode, ...input }) =>
-      runtime.editMessage({ ...input, ...(parseMode === null ? {} : { parseMode }) }),
+    run: (runtime, input) => runtime.editMessage(input),
   }),
   defineTelegramAction({
     id: "chat-actions.send",
@@ -138,15 +132,7 @@ const telegramActions = [
     description: "Resolve a received attachment's metadata.",
     input: fileIdInputSchema,
     output: fileMetadataOutputSchema,
-    run: async (runtime, input) => {
-      const file = await runtime.getFile(input);
-      return {
-        fileId: file.fileId,
-        fileUniqueId: file.fileUniqueId ?? null,
-        filePath: file.filePath ?? null,
-        fileSize: file.fileSize ?? null,
-      };
-    },
+    run: (runtime, input) => runtime.getFile(input),
   }),
   defineTelegramAction({
     id: "files.download",
@@ -262,54 +248,52 @@ export function createTelegramIntegration({
     return { status: "ready", connectionId: telegramConnectionId };
   }
 
+  /**
+   * Setup fills an empty slot and reconfigure replaces a filled one; both read the slot again and
+   * save through the same native command. Setup ignores input once configured, so it never replaces
+   * stored credentials.
+   */
+  async function progress(
+    context: IntegrationContext,
+    localId: string,
+    operation: IntegrationSetupOperation,
+    intent: "setup" | "reconfigure",
+  ): Promise<IntegrationSetupProgress> {
+    assertTelegramLocalId(localId);
+    if (unavailableReason !== null) {
+      return { status: "blocked", connectionId: telegramConnectionId, reason: unavailableReason };
+    }
+    const configured = await readConfigured(context);
+    if (intent === "setup" && configured) {
+      return { status: "ready", connectionId: telegramConnectionId };
+    }
+    if (intent === "reconfigure" && !configured) {
+      return {
+        status: "blocked",
+        connectionId: telegramConnectionId,
+        reason: "Telegram is not configured in this scope. Run setup instead.",
+      };
+    }
+    if (operation.kind === "input") {
+      return await saveBot(context, operation.input);
+    }
+    return requestTelegramInput(
+      intent === "setup"
+        ? "Provide a bot token. Without a bot, the user opens @BotFather in Telegram, sends /newbot, chooses a display name and a username ending in bot, and copies the token it returns. The token works like a password: regenerate it in BotFather if it leaks. Backoffice registers this deployment as the bot's webhook."
+        : "Submit the bot token to use. It replaces the stored bot immediately and registers the webhook again.",
+    );
+  }
+
   return {
     connectionIds: [{ kind: "exact", connectionId: telegramConnectionId }],
     setup: {
       kind: "supported",
-      async run(context, { localId, operation }) {
-        assertTelegramLocalId(localId);
-        if (unavailableReason !== null) {
-          return {
-            status: "blocked",
-            connectionId: telegramConnectionId,
-            reason: unavailableReason,
-          };
-        }
-        // Setup is reconstructed from current configuration, not an earlier attempt or caller claim.
-        if (await readConfigured(context)) {
-          return { status: "ready", connectionId: telegramConnectionId };
-        }
-        return operation.kind === "check"
-          ? requestTelegramInput(
-              "Provide the bot token from BotFather. Backoffice registers this deployment as the bot's webhook.",
-            )
-          : await saveBot(context, operation.input);
-      },
+      run: (context, { localId, operation }) => progress(context, localId, operation, "setup"),
     },
     reconfigure: {
       kind: "supported",
-      async run(context, { localId, operation }) {
-        assertTelegramLocalId(localId);
-        if (unavailableReason !== null) {
-          return {
-            status: "blocked",
-            connectionId: telegramConnectionId,
-            reason: unavailableReason,
-          };
-        }
-        if (!(await readConfigured(context))) {
-          return {
-            status: "blocked",
-            connectionId: telegramConnectionId,
-            reason: "Telegram is not configured in this scope. Run setup instead.",
-          };
-        }
-        return operation.kind === "check"
-          ? requestTelegramInput(
-              "Submit the bot token to use. It replaces the stored bot immediately and registers the webhook again.",
-            )
-          : await saveBot(context, operation.input);
-      },
+      run: (context, { localId, operation }) =>
+        progress(context, localId, operation, "reconfigure"),
     },
     disconnect: {
       kind: "supported",

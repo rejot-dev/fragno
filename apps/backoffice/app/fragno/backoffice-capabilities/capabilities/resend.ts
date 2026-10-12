@@ -98,7 +98,7 @@ export const resendCapability: BackofficeCapability = {
         ),
     },
     eventSources: [],
-    actionProviders: ["resend"],
+    actionProviders: ["integrations"],
     hookScopes: [
       {
         id: "resend",
@@ -107,7 +107,7 @@ export const resendCapability: BackofficeCapability = {
           createDurableHookRepositoryFromCommands(getResendDo(objects, orgId).commands),
       },
     ],
-    skillPaths: ["skills/resend-integration/SKILL.md"],
+    skillPaths: [],
     externalEntities: [],
     automationEvents: [],
   },

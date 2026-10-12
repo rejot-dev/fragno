@@ -67,7 +67,7 @@ describe("Backoffice authority runtime wiring", () => {
             delegation: [],
           },
         },
-        operation: { namespace: "telegram", permission: "send" },
+        operation: { namespace: "events", permission: "emit" },
         execute,
       }),
     ).rejects.toMatchObject({ reason: "authority-unavailable" });
@@ -136,7 +136,7 @@ describe("Backoffice authority runtime wiring", () => {
       await expect(
         kernel.invoke({
           execution,
-          operation: { namespace: "telegram", permission: "send" },
+          operation: { namespace: "events", permission: "emit" },
           execute: async () => "sent",
         }),
       ).resolves.toBe("sent");
@@ -149,7 +149,7 @@ describe("Backoffice authority runtime wiring", () => {
       await expect(
         kernel.invoke({
           execution,
-          operation: { namespace: "telegram", permission: "send" },
+          operation: { namespace: "events", permission: "emit" },
           execute: executeAfterRevocation,
         }),
       ).rejects.toMatchObject({ reason: "principal-permission-denied" });

@@ -738,7 +738,6 @@ export function defineMarketplacePackageInstallWorkflow(
                     BACKOFFICE_PERMISSION.router.read,
                     BACKOFFICE_PERMISSION.store.modify,
                     BACKOFFICE_PERMISSION.store.read,
-                    BACKOFFICE_PERMISSION.telegram.send,
                   ],
                 },
               ],

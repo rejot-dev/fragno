@@ -52,7 +52,10 @@ import type {
   BackofficeObjectBindingName,
 } from "@/backoffice-runtime/object-registry";
 import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
-import { createTelegramAutomationFileResponse } from "@/backoffice-runtime/telegram-file-response";
+import {
+  createTelegramAutomationFileResponse,
+  type TelegramAutomationFileMetadata,
+} from "@/backoffice-runtime/telegram-file-response";
 import { WORKSPACE_STARTER_CONTENT } from "@/files/content/starter";
 import { STATIC_FILE_CONTENT } from "@/files/content/static";
 import { SYSTEM_FILE_CONTENT } from "@/files/content/system";
@@ -77,7 +80,6 @@ import type {
   PiAgentEntryPage,
   PiAvailableModel,
 } from "@/fragno/pi/agent/pi-agent-contract";
-import type { TelegramAutomationFileMetadata } from "@/fragno/runtime-tools/families/telegram-runtime";
 import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 import type { BackofficeRuntimeToolCall } from "@/fragno/runtime-tools/runtime-tools";
 import { createStateShellFileSystem } from "@/fragno/runtime-tools/state-shell-file-system";

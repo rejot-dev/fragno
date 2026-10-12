@@ -874,7 +874,6 @@ test("connection IDs cannot select an owner or replace umbrella and service auth
               grants: [
                 BACKOFFICE_PERMISSION.integrations.read,
                 BACKOFFICE_PERMISSION.integrations.execute,
-                BACKOFFICE_PERMISSION.reson8.use,
                 BACKOFFICE_PERMISSION.upload.read,
               ],
             }),
@@ -956,7 +955,6 @@ test.each([
                   grants: [
                     BACKOFFICE_PERMISSION.integrations.manage,
                     BACKOFFICE_PERMISSION.connections.read,
-                    BACKOFFICE_PERMISSION.reson8.use,
                     BACKOFFICE_PERMISSION.upload.read,
                   ],
                 }),

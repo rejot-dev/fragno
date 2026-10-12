@@ -443,21 +443,12 @@ export class BackofficeKernel {
     }
     const target = resource as Record<string, unknown>;
 
-    if (backofficePermissionsEqual(operation, BACKOFFICE_PERMISSION.otp.create)) {
-      return (
-        target.kind === "external-identity" &&
-        target.source === initiator.source &&
-        target.externalType === initiator.type &&
-        target.externalId === initiator.id
-      );
-    }
-
     return (
-      backofficePermissionsEqual(operation, BACKOFFICE_PERMISSION.telegram.send) &&
-      initiator.source === "telegram" &&
-      initiator.type === "chat" &&
-      target.kind === "telegram-chat" &&
-      target.chatId === initiator.id
+      backofficePermissionsEqual(operation, BACKOFFICE_PERMISSION.otp.create) &&
+      target.kind === "external-identity" &&
+      target.source === initiator.source &&
+      target.externalType === initiator.type &&
+      target.externalId === initiator.id
     );
   }
 

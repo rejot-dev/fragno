@@ -105,13 +105,6 @@ export const BACKOFFICE_PERMISSION = {
     modify: { namespace: "pi", permission: "modify" },
     read: { namespace: "pi", permission: "read" },
   },
-  resend: {
-    read: { namespace: "resend", permission: "read" },
-    send: { namespace: "resend", permission: "send" },
-  },
-  reson8: {
-    use: { namespace: "reson8", permission: "use" },
-  },
   router: {
     modify: { namespace: "router", permission: "modify" },
     read: { namespace: "router", permission: "read" },
@@ -123,10 +116,6 @@ export const BACKOFFICE_PERMISSION = {
   store: {
     modify: { namespace: "store", permission: "modify" },
     read: { namespace: "store", permission: "read" },
-  },
-  telegram: {
-    read: { namespace: "telegram", permission: "read" },
-    send: { namespace: "telegram", permission: "send" },
   },
   upload: {
     modify: { namespace: "upload", permission: "modify" },

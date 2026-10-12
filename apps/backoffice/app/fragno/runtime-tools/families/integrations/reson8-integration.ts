@@ -301,7 +301,7 @@ export function createReson8Integration({
                 }
                 return await context.kernel.invoke({
                   execution: context.execution,
-                  operation: BACKOFFICE_PERMISSION.reson8.use,
+                  operation: BACKOFFICE_PERMISSION.integrations.execute,
                   resource: { actionId: "prerecorded.transcribe" },
                   execute: async () => {
                     const response = await callRoute("POST", "/speech-to-text/prerecorded", {
@@ -333,7 +333,7 @@ export function createReson8Integration({
           const callRoute = createReson8Caller(context);
           const response = await context.kernel.invoke({
             execution: context.execution,
-            operation: BACKOFFICE_PERMISSION.reson8.use,
+            operation: BACKOFFICE_PERMISSION.connections.read,
             resource: { checkId: "custom-models.read" },
             execute: () => callRoute("GET", "/custom-model"),
           });

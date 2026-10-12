@@ -4,7 +4,7 @@ type HooksCodemodeProvider = {
   scopesList(): Promise<HooksScopesListOutput>;
   /** List durable hook queue entries for a runtime fragment. */
   list(input: HooksListInput): Promise<HooksListOutput>;
-  /** Get a durable hook queue entry by id. */
+  /** Get a durable hook queue entry by id. An automations ingest entry's payload is the event envelope, so the event's own payload is at payload.payload. */
   get(input: HooksGetInput): Promise<HooksGetOutput>;
 };
 declare const hooks: HooksCodemodeProvider;

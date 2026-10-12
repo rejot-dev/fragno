@@ -122,41 +122,36 @@ export function createTelegramServer(
     requestContext,
   }) {
     let access: BackofficeFragmentHttpAccess = null;
-    let resource: { kind: "telegram-chat"; chatId: string } | null = null;
     await ifMatchesRoute("POST", "/telegram/webhook", ({ path }) => {
       // Route matching can normalize aliases; only the exact webhook URL is public.
       if (new URL(request.url).pathname === `${fragment.mountRoute}${path}`) {
         access = "public-ingress";
       }
     });
-    await ifMatchesRoute("GET", "/commands", () => {
-      access = BACKOFFICE_PERMISSION.telegram.read;
-    });
-    await ifMatchesRoute("GET", "/chats", () => {
-      access = BACKOFFICE_PERMISSION.telegram.read;
-    });
-    await ifMatchesRoute("GET", "/chats/:chatId", () => {
-      access = BACKOFFICE_PERMISSION.telegram.read;
-    });
-    await ifMatchesRoute("GET", "/chats/:chatId/messages", () => {
-      access = BACKOFFICE_PERMISSION.telegram.read;
-    });
+    // Bot data is read and sent on behalf of integrations.* actions and the native pages alike.
+    for (const path of [
+      "/commands",
+      "/chats",
+      "/chats/:chatId",
+      "/chats/:chatId/messages",
+    ] as const) {
+      await ifMatchesRoute("GET", path, () => {
+        access = BACKOFFICE_PERMISSION.integrations.execute;
+      });
+    }
     await ifMatchesRoute("POST", "/commands/bind", () => {
       access = BACKOFFICE_PERMISSION.connections.manage;
     });
-    await ifMatchesRoute("POST", "/chats/:chatId/send", ({ pathParams }) => {
-      access = BACKOFFICE_PERMISSION.telegram.send;
-      resource = { kind: "telegram-chat", chatId: pathParams.chatId };
-    });
-    await ifMatchesRoute("POST", "/chats/:chatId/actions", ({ pathParams }) => {
-      access = BACKOFFICE_PERMISSION.telegram.send;
-      resource = { kind: "telegram-chat", chatId: pathParams.chatId };
-    });
-    await ifMatchesRoute("POST", "/chats/:chatId/messages/:messageId/edit", ({ pathParams }) => {
-      access = BACKOFFICE_PERMISSION.telegram.send;
-      resource = { kind: "telegram-chat", chatId: pathParams.chatId };
-    });
-    return await authorizeBackofficeFragmentRequest(kernel, requestContext, access, resource);
+    for (const path of [
+      "/chats/:chatId/send",
+      "/chats/:chatId/actions",
+      "/chats/:chatId/messages/:messageId/edit",
+    ] as const) {
+      await ifMatchesRoute("POST", path, () => {
+        access = BACKOFFICE_PERMISSION.integrations.execute;
+      });
+    }
+    return await authorizeBackofficeFragmentRequest(kernel, requestContext, access, null);
   });
 }
 

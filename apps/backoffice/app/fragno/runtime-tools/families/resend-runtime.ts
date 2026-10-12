@@ -1,11 +1,8 @@
-import { createRouteCaller, type RouteCallerForFragment } from "@fragno-dev/core/api";
+import { createRouteCaller } from "@fragno-dev/core/api";
 
 import type {
-  ResendListThreadMessagesOutput,
-  ResendListThreadsOutput,
   ResendThreadDetail,
   ResendThreadMessage,
-  ResendThreadMutationOutput,
   ResendThreadSummary,
 } from "@fragno-dev/resend-fragment";
 
@@ -13,306 +10,110 @@ import type { FetchObject } from "@/backoffice-runtime/object-registry";
 import type { ResendFragment } from "@/fragno/resend";
 
 import {
-  NotConfiguredError,
   createOrganizationNotConfiguredMessage,
   isSuccessStatus,
   throwOnRouteRuntimeError,
 } from "../runtime-errors";
 
-const MAX_PAGE_SIZE = 100;
-
-export type ResendThreadOrder = "asc" | "desc";
-
-export type ResendThreadListArgs = {
-  cursor?: string;
-  pageSize?: number;
-  order?: ResendThreadOrder;
+/** Null selects the route default; callers validate bounds at the edge. */
+type ResendPage = {
+  cursor: string | null;
+  pageSize: number | null;
+  order: "asc" | "desc" | null;
 };
 
-export type ResendThreadMessagesArgs = ResendThreadListArgs & {
-  threadId: string;
-};
+const RESEND_NOT_CONFIGURED = createOrganizationNotConfiguredMessage("Resend");
+const REPLY_CONTEXT_PAGE_SIZE = 100;
 
-export type ResendThreadsGetArgs = ResendThreadMessagesArgs;
-
-export type ResendThreadsReplyArgs = {
-  threadId: string;
-  subject?: string;
-  body: string;
-};
-
-export type ResendThreadsGetResult = {
-  thread: ResendThreadDetail;
-  messages: ResendThreadMessage[];
-  cursor?: string;
-  hasNextPage: boolean;
-  markdown: string;
-};
-
-export type ResendRuntime = {
-  listThreads: (args?: ResendThreadListArgs) => Promise<ResendListThreadsOutput>;
-  getThread: (args: { threadId: string }) => Promise<ResendThreadDetail>;
-  listThreadMessages: (args: ResendThreadMessagesArgs) => Promise<ResendListThreadMessagesOutput>;
-  getThreadSnapshot: (args: ResendThreadsGetArgs) => Promise<ResendThreadsGetResult>;
-  replyToThread: (args: ResendThreadsReplyArgs) => Promise<ResendThreadMutationOutput>;
-};
-
-export type RegisteredResendCommandContext = {
-  runtime: ResendRuntime;
-};
-
-type CreateRouteBackedResendRuntimeOptions = {
-  baseUrl: string;
-  headers?: HeadersInit;
-  fetch: (request: Request) => Promise<Response>;
-};
-
-const normalizeOrder = (value: string | undefined): ResendThreadOrder | undefined => {
-  if (typeof value === "undefined") {
-    return undefined;
-  }
-
-  if (value !== "asc" && value !== "desc") {
-    throw new Error("--order must be one of: asc, desc");
-  }
-
-  return value;
-};
-
-const normalizePageSize = (value: number | undefined, optionName = "page-size") => {
-  if (typeof value === "undefined") {
-    return undefined;
-  }
-
-  if (value < 1 || value > MAX_PAGE_SIZE) {
-    throw new Error(`--${optionName} must be between 1 and ${MAX_PAGE_SIZE}`);
-  }
-
-  return value;
-};
-
-const createResendRouteCaller = (
-  options: CreateRouteBackedResendRuntimeOptions,
-): RouteCallerForFragment<ResendFragment> => {
-  return createRouteCaller<ResendFragment>({
-    baseUrl: options.baseUrl,
-    mountRoute: "/api/resend",
-    ...(options.headers ? { baseHeaders: options.headers } : {}),
-    fetch: options.fetch,
-  });
-};
-
-const toQuery = (args: ResendThreadListArgs | undefined): Record<string, string> => {
-  const query: Record<string, string> = {};
-
-  if (args?.cursor) {
-    query.cursor = args.cursor;
-  }
-  if (typeof args?.pageSize === "number") {
-    query.pageSize = String(normalizePageSize(args.pageSize));
-  }
-  if (args?.order) {
-    query.order = normalizeOrder(args.order) ?? args.order;
-  }
-
-  return query;
-};
-
-export const createRouteBackedResendRuntime = (
-  options: CreateRouteBackedResendRuntimeOptions,
-): ResendRuntime => {
-  const baseUrl = options.baseUrl.trim();
-  if (!baseUrl) {
-    throw new Error("Resend runtime requires a base URL");
-  }
-
-  const callRoute = createResendRouteCaller({
-    ...options,
-    baseUrl,
-  });
-
+function toQuery(page: ResendPage): Record<string, string> {
   return {
-    listThreads: async (args = {}) => {
-      const response = await callRoute("GET", "/threads", {
-        query: toQuery(args),
-      });
-      if (response.type === "json" && isSuccessStatus(response.status)) {
-        return response.data;
-      }
-      return throwOnRouteRuntimeError(response, {
-        runtimeLabel: "Resend fragment",
-        label: "resend.threads.list",
-        notConfiguredMessage: RESEND_NOT_CONFIGURED,
-      });
-    },
-    getThread: async ({ threadId }) => {
-      const normalizedThreadId = threadId.trim();
-      if (!normalizedThreadId) {
-        throw new Error("Resend thread lookup requires a thread id");
-      }
-
-      const response = await callRoute("GET", "/threads/:threadId", {
-        pathParams: { threadId: normalizedThreadId },
-      });
-      if (response.type === "json" && isSuccessStatus(response.status)) {
-        return response.data;
-      }
-      return throwOnRouteRuntimeError(response, {
-        runtimeLabel: "Resend fragment",
-        label: "resend.threads.get detail",
-        notConfiguredMessage: RESEND_NOT_CONFIGURED,
-      });
-    },
-    listThreadMessages: async ({ threadId, ...args }) => {
-      const normalizedThreadId = threadId.trim();
-      if (!normalizedThreadId) {
-        throw new Error("Resend thread messages lookup requires a thread id");
-      }
-
-      const response = await callRoute("GET", "/threads/:threadId/messages", {
-        pathParams: { threadId: normalizedThreadId },
-        query: toQuery(args),
-      });
-      if (response.type === "json" && isSuccessStatus(response.status)) {
-        return response.data;
-      }
-      return throwOnRouteRuntimeError(response, {
-        runtimeLabel: "Resend fragment",
-        label: "resend.threads.get messages",
-        notConfiguredMessage: RESEND_NOT_CONFIGURED,
-      });
-    },
-    getThreadSnapshot: async ({ threadId, order, pageSize, cursor }) => {
-      const normalizedThreadId = threadId.trim();
-      if (!normalizedThreadId) {
-        throw new Error("resend.threads.get requires a thread id");
-      }
-
-      const [thread, messagePage] = await Promise.all([
-        callRoute("GET", "/threads/:threadId", {
-          pathParams: { threadId: normalizedThreadId },
-        }),
-        callRoute("GET", "/threads/:threadId/messages", {
-          pathParams: { threadId: normalizedThreadId },
-          query: toQuery({ order, pageSize, cursor }),
-        }),
-      ]);
-
-      if (thread.type !== "json" || !isSuccessStatus(thread.status)) {
-        return throwOnRouteRuntimeError(thread, {
-          runtimeLabel: "Resend fragment",
-          label: "resend.threads.get detail",
-          notConfiguredMessage: RESEND_NOT_CONFIGURED,
-        });
-      }
-      if (messagePage.type !== "json" || !isSuccessStatus(messagePage.status)) {
-        return throwOnRouteRuntimeError(messagePage, {
-          runtimeLabel: "Resend fragment",
-          label: "resend.threads.get messages",
-          notConfiguredMessage: RESEND_NOT_CONFIGURED,
-        });
-      }
-
-      const messages = messagePage.data.messages ?? [];
-      return {
-        thread: thread.data,
-        messages,
-        cursor: messagePage.data.cursor,
-        hasNextPage: messagePage.data.hasNextPage ?? false,
-        markdown: buildResendThreadMarkdown(thread.data, messages),
-      };
-    },
-    replyToThread: async ({ threadId, subject, body }) => {
-      const normalizedThreadId = threadId.trim();
-      if (!normalizedThreadId) {
-        throw new Error("resend.threads.reply requires a thread id");
-      }
-
-      const normalizedBody = body.trim();
-      if (!normalizedBody) {
-        throw new Error("resend.threads.reply requires non-empty body text");
-      }
-
-      const [thread, messagePage] = await Promise.all([
-        callRoute("GET", "/threads/:threadId", {
-          pathParams: { threadId: normalizedThreadId },
-        }),
-        callRoute("GET", "/threads/:threadId/messages", {
-          pathParams: { threadId: normalizedThreadId },
-          query: toQuery({ order: "desc", pageSize: MAX_PAGE_SIZE }),
-        }),
-      ]);
-
-      if (thread.type !== "json" || !isSuccessStatus(thread.status)) {
-        return throwOnRouteRuntimeError(thread, {
-          runtimeLabel: "Resend fragment",
-          label: "resend.threads.reply detail",
-          notConfiguredMessage: RESEND_NOT_CONFIGURED,
-        });
-      }
-      if (messagePage.type !== "json" || !isSuccessStatus(messagePage.status)) {
-        return throwOnRouteRuntimeError(messagePage, {
-          runtimeLabel: "Resend fragment",
-          label: "resend.threads.reply messages",
-          notConfiguredMessage: RESEND_NOT_CONFIGURED,
-        });
-      }
-
-      const recipients = inferReplyRecipients(messagePage.data.messages ?? []);
-      if (recipients.length === 0) {
-        throw new Error(
-          "resend.threads.reply could not infer recipients from the thread. Use the backoffice UI or extend the command to accept explicit recipients.",
-        );
-      }
-
-      const normalizedSubject = subject?.trim();
-      const response = await callRoute("POST", "/threads/:threadId/reply", {
-        pathParams: { threadId: normalizedThreadId },
-        body: {
-          to: recipients,
-          ...(normalizedSubject ? { subject: normalizedSubject } : {}),
-          text: normalizedBody,
-        },
-      });
-      if (response.type === "json" && isSuccessStatus(response.status)) {
-        return response.data;
-      }
-      return throwOnRouteRuntimeError(response, {
-        runtimeLabel: "Resend fragment",
-        label: "resend.threads.reply",
-        notConfiguredMessage: RESEND_NOT_CONFIGURED,
-      });
-    },
+    ...(page.cursor === null ? {} : { cursor: page.cursor }),
+    ...(page.pageSize === null ? {} : { pageSize: String(page.pageSize) }),
+    ...(page.order === null ? {} : { order: page.order }),
   };
-};
+}
 
-export const createResendRouteRuntime = ({ object }: { object: FetchObject }): ResendRuntime =>
-  createRouteBackedResendRuntime({
+function routeError(label: string) {
+  return { runtimeLabel: "Resend fragment", label, notConfiguredMessage: RESEND_NOT_CONFIGURED };
+}
+
+/** Calls the Resend object's thread routes; the receiving object enforces integrations.execute. */
+export function createResendRuntime({ object }: { object: FetchObject }) {
+  const callRoute = createRouteCaller<ResendFragment>({
     baseUrl: "https://resend.do",
+    mountRoute: "/api/resend",
     fetch: object.fetch.bind(object),
   });
 
-const RESEND_NOT_CONFIGURED = createOrganizationNotConfiguredMessage("Resend");
+  async function readThread(threadId: string, page: ResendPage, label: string) {
+    const [thread, messagePage] = await Promise.all([
+      callRoute("GET", "/threads/:threadId", { pathParams: { threadId } }),
+      callRoute("GET", "/threads/:threadId/messages", {
+        pathParams: { threadId },
+        query: toQuery(page),
+      }),
+    ]);
+    if (thread.type !== "json" || !isSuccessStatus(thread.status)) {
+      return throwOnRouteRuntimeError(thread, routeError(`${label} detail`));
+    }
+    if (messagePage.type !== "json" || !isSuccessStatus(messagePage.status)) {
+      return throwOnRouteRuntimeError(messagePage, routeError(`${label} messages`));
+    }
+    return { thread: thread.data, messagePage: messagePage.data };
+  }
 
-export const createUnavailableResendRuntime = (message = RESEND_NOT_CONFIGURED): ResendRuntime => ({
-  listThreads: async () => {
-    throw new Error(message);
-  },
-  getThread: async () => {
-    throw new Error(message);
-  },
-  listThreadMessages: async () => {
-    throw new Error(message);
-  },
-  getThreadSnapshot: async () => {
-    throw new Error(message);
-  },
-  replyToThread: async () => {
-    throw new Error(message);
-  },
-});
+  return {
+    async listThreads(page: ResendPage) {
+      const response = await callRoute("GET", "/threads", { query: toQuery(page) });
+      if (response.type === "json" && isSuccessStatus(response.status)) {
+        return { ...response.data, cursor: response.data.cursor ?? null };
+      }
+      return throwOnRouteRuntimeError(response, routeError("Resend thread listing"));
+    },
+    async getThreadSnapshot({ threadId, ...page }: { threadId: string } & ResendPage) {
+      const { thread, messagePage } = await readThread(threadId, page, "Resend thread read");
+      const messages = messagePage.messages ?? [];
+      return {
+        thread,
+        messages,
+        cursor: messagePage.cursor ?? null,
+        hasNextPage: messagePage.hasNextPage ?? false,
+        markdown: buildResendThreadMarkdown(thread, messages),
+      };
+    },
+    async replyToThread({
+      threadId,
+      subject,
+      body,
+    }: {
+      threadId: string;
+      subject: string | null;
+      body: string;
+    }) {
+      const { messagePage } = await readThread(
+        threadId,
+        { cursor: null, pageSize: REPLY_CONTEXT_PAGE_SIZE, order: "desc" },
+        "Resend thread reply",
+      );
+      const recipients = inferReplyRecipients(messagePage.messages ?? []);
+      if (recipients.length === 0) {
+        throw new Error(
+          "The Resend thread has no sender or recipient to reply to. Reply from the Backoffice Resend page instead.",
+        );
+      }
+      const response = await callRoute("POST", "/threads/:threadId/reply", {
+        pathParams: { threadId },
+        body: { to: recipients, ...(subject === null ? {} : { subject }), text: body },
+      });
+      if (response.type === "json" && isSuccessStatus(response.status)) {
+        return response.data;
+      }
+      return throwOnRouteRuntimeError(response, routeError("Resend thread reply"));
+    },
+  };
+}
 
-const inferReplyRecipients = (messages: ResendThreadMessage[]): string[] => {
+function inferReplyRecipients(messages: ResendThreadMessage[]): string[] {
   const latestInbound = messages.find((message) => message.direction === "inbound") ?? null;
   if (latestInbound) {
     if (latestInbound.replyTo.length > 0) {
@@ -329,11 +130,11 @@ const inferReplyRecipients = (messages: ResendThreadMessage[]): string[] => {
   }
 
   return [];
-};
+}
 
 const UNKNOWN_DATE_LABEL = "—";
 
-const toDate = (value: string | Date | undefined | null): Date | null => {
+function toDate(value: string | Date | undefined | null): Date | null {
   if (!value) {
     return null;
   }
@@ -344,9 +145,9 @@ const toDate = (value: string | Date | undefined | null): Date | null => {
 
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
-};
+}
 
-const formatDate = (value: string | Date | undefined | null): string => {
+function formatDate(value: string | Date | undefined | null): string {
   const date = toDate(value);
   if (!date) {
     return UNKNOWN_DATE_LABEL;
@@ -356,23 +157,25 @@ const formatDate = (value: string | Date | undefined | null): string => {
     dateStyle: "medium",
     timeStyle: "short",
   });
-};
+}
 
-const formatAddressList = (values: string[]) => (values.length > 0 ? values.join(", ") : "—");
+function formatAddressList(values: string[]) {
+  return values.length > 0 ? values.join(", ") : "—";
+}
 
-const buildCodeFence = (value: string): string => {
+function buildCodeFence(value: string): string {
   let fence = "```";
   while (value.includes(fence)) {
     fence += "`";
   }
 
   return fence;
-};
+}
 
-export const buildResendThreadMarkdown = (
+function buildResendThreadMarkdown(
   thread: ResendThreadSummary | ResendThreadDetail,
   messages: ResendThreadMessage[],
-): string => {
+): string {
   const lines: string[] = [];
 
   lines.push(`# ${thread.subject ?? "Resend thread"}`);
@@ -447,6 +250,4 @@ export const buildResendThreadMarkdown = (
   });
 
   return lines.join("\n");
-};
-
-export { NotConfiguredError };
+}

@@ -19,7 +19,7 @@ describe("Backoffice static file collection", () => {
         "SYSTEM.md",
         "codemode",
         "codemode/system.d.ts",
-        "codemode/providers/telegram.d.ts",
+        "codemode/providers/integrations.d.ts",
         "codemode/sources/mcp.d.ts",
         "skills/generating-backoffice-uis/SKILL.md",
         "skills/marketplace-publishing/SKILL.md",

@@ -46,7 +46,10 @@ const scenarioObjects = {
 
 const wholeOrganization = { kind: "organization" } as const;
 
-const requestedPermissions = [BACKOFFICE_PERMISSION.events.emit, BACKOFFICE_PERMISSION.resend.send];
+const requestedPermissions = [
+  BACKOFFICE_PERMISSION.events.emit,
+  BACKOFFICE_PERMISSION.integrations.execute,
+];
 
 function appOperationValue<T>(result: BackofficeAppOperationResult<T>): T {
   assert(result.ok, JSON.stringify(result));
@@ -146,7 +149,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
                   appId,
                   installedByUserId: "customer-two-owner",
                   resourceScope: wholeOrganization,
-                  grantedPermissions: [BACKOFFICE_PERMISSION.resend.send],
+                  grantedPermissions: [BACKOFFICE_PERMISSION.integrations.execute],
                 }),
               );
               expect(
@@ -196,7 +199,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
               });
               expect(await second.getInstallation({ appId })).toMatchObject({
                 organizationId: "customer-two",
-                grantedPermissions: [BACKOFFICE_PERMISSION.resend.send],
+                grantedPermissions: [BACKOFFICE_PERMISSION.integrations.execute],
                 status: "active",
               });
               const page = appOperationValue(
@@ -216,7 +219,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
               });
               expect(await second.getInstallation({ appId })).toMatchObject({
                 status: "active",
-                grantedPermissions: [BACKOFFICE_PERMISSION.resend.send],
+                grantedPermissions: [BACKOFFICE_PERMISSION.integrations.execute],
               });
             },
           ),
@@ -359,7 +362,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
                     appId,
                     installedByUserId: "new-installer",
                     resourceScope: wholeOrganization,
-                    grantedPermissions: [BACKOFFICE_PERMISSION.resend.send],
+                    grantedPermissions: [BACKOFFICE_PERMISSION.integrations.execute],
                   }),
                 ),
               ).toEqual({ installationId, changed: true });
@@ -378,7 +381,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
                 status: "active",
                 installedByUserId: "new-installer",
                 resourceScope: wholeOrganization,
-                grantedPermissions: [BACKOFFICE_PERMISSION.resend.send],
+                grantedPermissions: [BACKOFFICE_PERMISSION.integrations.execute],
               });
             },
           ),
@@ -422,7 +425,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
                 appId: registeredAppIds[0],
                 installedByUserId: "other-installer",
                 resourceScope: wholeOrganization,
-                grantedPermissions: [BACKOFFICE_PERMISSION.resend.send],
+                grantedPermissions: [BACKOFFICE_PERMISSION.integrations.execute],
               }),
             );
             const page = appOperationValue(

@@ -1,4 +1,10 @@
-import type { TelegramAutomationFileMetadata } from "@/fragno/runtime-tools/families/telegram-runtime";
+/** Telegram omits optional file fields; the object reports each one, null when absent. */
+export type TelegramAutomationFileMetadata = {
+  fileId: string;
+  fileUniqueId: string | null;
+  filePath: string | null;
+  fileSize: number | null;
+};
 
 const TELEGRAM_FILE_PATH_HEADER = "x-backoffice-telegram-file-path";
 const TELEGRAM_FILE_SIZE_HEADER = "x-backoffice-telegram-file-size";

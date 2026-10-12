@@ -38,7 +38,5 @@ export const EMPTY_BASH_HOST_CONTEXT: BashHostContext = {
   projectConnector: null,
   otp: null,
   pi: null,
-  resend: null,
   sandbox: null,
-  telegram: null,
 };

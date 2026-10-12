@@ -128,8 +128,44 @@ if (
 }
 const TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE =
   BASE_STATIC_MARKETPLACE_VERSION.files[MARKETPLACE_ARTIFACT_FILE_KEY];
-const UPDATED_TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE =
-  UPDATED_STATIC_MARKETPLACE_VERSION.files[MARKETPLACE_ARTIFACT_FILE_KEY];
+const CURRENT_TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE = getStaticMarketplaceEntry({
+  slug: "telegram-test-command",
+  version: "1.4.0",
+})?.files[MARKETPLACE_ARTIFACT_FILE_KEY];
+
+/**
+ * From 1.3.0, the test command's installer waits for its reply message before creating its route.
+ * Project installers run in their organization's automations object.
+ */
+async function submitTelegramTestCommandInstaller(
+  ctx: BackofficeScenarioContext,
+  targetScope: Extract<BackofficeRoutableScope, { kind: "org" | "project" }>,
+) {
+  const coordinator = { kind: "org" as const, orgId: targetScope.orgId };
+  const ingestionInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
+    installationRoot: "/workspace",
+    targetScope,
+    listingId: MARKETPLACE_LISTING_ID,
+    version: "1.4.0",
+  });
+  const workflows = createWorkflowsRouteCaller({
+    object: ctx.runtime.objects.automations.for(coordinator),
+    context: { execution: createBackofficeSystemExecution(coordinator), propagationContext: null },
+  });
+  const submitted = await workflows("POST", "/:workflowName/instances/:instanceId/events", {
+    pathParams: {
+      workflowName: CODEMODE_WORKFLOW,
+      instanceId: `${ingestionInstanceId}:installation`,
+    },
+    body: {
+      // Event IDs are unique within the coordinating object, which hosts every project installer.
+      id: `configure:${ingestionInstanceId}`,
+      type: "telegram-test-command.message-configured",
+      payload: { message: "Telegram integration verified after a 3 second delay." },
+    },
+  });
+  assert(submitted.type === "json");
+}
 
 async function readMarketplaceLockEntry(
   ctx: BackofficeScenarioContext,
@@ -423,7 +459,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                 .commands.getArtifactManifest({ listingId: MARKETPLACE_LISTING_ID }),
             ).resolves.toMatchObject({
               listingStatus: "published",
-              versions: ["1.3.0", "1.2.1", "1.1.0", "1.0.0"],
+              versions: ["1.4.0", "1.3.0", "1.2.1", "1.1.0", "1.0.0"],
             });
           }),
         ],
@@ -465,12 +501,12 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                 {
                   installationRoot: "/workspace",
                   listingId: telegramChannelListingId,
-                  version: "1.0.1",
+                  version: "1.1.0",
                   targetScope: { kind: "org", orgId: "org-1" },
                 },
                 execution,
               ),
-            ).resolves.toMatchObject({ state: "requested", version: "1.0.1" });
+            ).resolves.toMatchObject({ state: "requested", version: "1.1.0" });
             await expect(
               automations.commands.requestMarketplaceIngestion(
                 {
@@ -487,9 +523,9 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           then.assert("both channels own their installed routes", async (ctx) => {
             const automations = ctx.runtime.objects.automations.forOrg("org-1");
             const expectedRoutes = [
-              ["telegram-start-linking", telegramChannelListingId, "1.0.1"],
-              ["telegram-identity-claim-completed", telegramChannelListingId, "1.0.1"],
-              ["telegram-pi-linking", telegramChannelListingId, "1.0.1"],
+              ["telegram-start-linking", telegramChannelListingId, "1.1.0"],
+              ["telegram-identity-claim-completed", telegramChannelListingId, "1.1.0"],
+              ["telegram-pi-linking", telegramChannelListingId, "1.1.0"],
               ["github-issues-opened-reclassify", githubChannelListingId, "1.0.0"],
               ["github-issue-comment-created-reclassify", githubChannelListingId, "1.0.0"],
               ["github-pull-request-opened-reclassify", githubChannelListingId, "1.0.0"],
@@ -637,12 +673,12 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                   {
                     installationRoot: "/workspace",
                     listingId: telegramChannelListingId,
-                    version: "1.0.1",
+                    version: "1.1.0",
                     targetScope,
                   },
                   execution,
                 ),
-              ).resolves.toMatchObject({ state: "requested", version: "1.0.1" });
+              ).resolves.toMatchObject({ state: "requested", version: "1.1.0" });
             }
           }),
           runner.drain(),
@@ -659,7 +695,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                   listingId: telegramChannelListingId,
                   targetScope,
                 }),
-              ).resolves.toMatchObject({ version: "1.0.1" });
+              ).resolves.toMatchObject({ version: "1.1.0" });
 
               const targetAutomations = ctx.runtime.objects.automations.for(targetScope);
               for (const routeId of [
@@ -677,7 +713,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                     managedBy: {
                       kind: "marketplace",
                       listingId: telegramChannelListingId,
-                      version: "1.0.1",
+                      version: "1.1.0",
                     },
                   },
                 });
@@ -731,7 +767,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                 {
                   installationRoot: "/workspace",
                   listingId,
-                  version: "1.2.1",
+                  version: "1.4.0",
                   targetScope: { kind: "org", orgId: "org-1" },
                 },
                 {
@@ -739,13 +775,13 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                   propagationContext: null,
                 },
               ),
-            ).resolves.toMatchObject({ state: "requested", version: "1.2.1" });
+            ).resolves.toMatchObject({ state: "requested", version: "1.4.0" });
             await expect(
               automations.commands.requestMarketplaceIngestion(
                 {
                   installationRoot: "/workspace",
                   listingId,
-                  version: "1.2.1",
+                  version: "1.4.0",
                   targetScope: { kind: "project", orgId: "org-1", projectId: project.id },
                 },
                 {
@@ -753,11 +789,20 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                   propagationContext: null,
                 },
               ),
-            ).resolves.toMatchObject({ state: "requested", version: "1.2.1" });
+            ).resolves.toMatchObject({ state: "requested", version: "1.4.0" });
 
             ctx.vars.projectId = project.id;
           }),
 
+          runner.drain(),
+          then.assert("each installer receives its reply message", async (ctx) => {
+            await submitTelegramTestCommandInstaller(ctx, { kind: "org", orgId: "org-1" });
+            await submitTelegramTestCommandInstaller(ctx, {
+              kind: "project",
+              orgId: "org-1",
+              projectId: String(ctx.vars.projectId),
+            });
+          }),
           runner.drain(),
 
           then.assert(
@@ -778,7 +823,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                 const response = await upload.http.fetch(new Request(url));
                 assert(response.ok);
                 await expect(response.text()).resolves.toBe(
-                  UPDATED_TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE,
+                  CURRENT_TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE,
                 );
 
                 const listingReadmeUrl = new URL(
@@ -815,7 +860,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                       kind: "marketplace",
                       listingId: MARKETPLACE_LISTING_ID,
                       resourceKey: "telegram-test-command-route",
-                      version: "1.2.1",
+                      version: "1.4.0",
                     },
                   },
                 });
@@ -832,7 +877,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
       installationRoot: "/workspace",
       targetScope: { kind: "org", orgId: "org-1" },
       listingId: MARKETPLACE_LISTING_ID,
-      version: "1.3.0",
+      version: "1.4.0",
     });
     const installationWorkflowInstanceId = `${workflowInstanceId}:installation`;
     const configuredMessage = "Marketplace generated UI configured this reply.";
@@ -849,13 +894,13 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               .commands.requestStaticMarketplacePublications();
           }),
           runner.drain(),
-          then.assert("version 1.3.0 installation is requested", async (ctx) => {
+          then.assert("version 1.4.0 installation is requested", async (ctx) => {
             await expect(
               ctx.runtime.objects.automations.forOrg("org-1").commands.requestMarketplaceIngestion(
                 {
                   installationRoot: "/workspace",
                   listingId: MARKETPLACE_LISTING_ID,
-                  version: "1.3.0",
+                  version: "1.4.0",
                   targetScope: { kind: "org", orgId: "org-1" },
                 },
                 {
@@ -865,7 +910,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               ),
             ).resolves.toMatchObject({
               state: "requested",
-              version: "1.3.0",
+              version: "1.4.0",
               workflowInstanceId,
             });
           }),
@@ -1038,7 +1083,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
       installationRoot: "/workspace",
       targetScope: { kind: "org", orgId: "org-1" },
       listingId: MARKETPLACE_LISTING_ID,
-      version: "1.2.1",
+      version: "1.4.0",
     });
     const creatorExecution = createBackofficeServiceExecution({
       scope: { kind: "org", orgId: "org-1" },
@@ -1103,7 +1148,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               {
                 installationRoot: "/workspace",
                 listingId: MARKETPLACE_LISTING_ID,
-                version: "1.2.1",
+                version: "1.4.0",
                 targetScope: { kind: "org", orgId: "org-1" },
               },
               { execution: installerExecution, propagationContext: null },
@@ -1112,13 +1157,17 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               {
                 installationRoot: "/workspace",
                 listingId: MARKETPLACE_LISTING_ID,
-                version: "1.2.1",
+                version: "1.4.0",
                 targetScope: { kind: "org", orgId: "org-1" },
               },
               { execution: installerExecution, propagationContext: null },
             );
             expect(replayedRequest.workflowInstanceId).toBe(firstRequest.workflowInstanceId);
           }),
+          runner.drain(),
+          then.assert("the installer receives its reply message", (ctx) =>
+            submitTelegramTestCommandInstaller(ctx, { kind: "org", orgId: "org-1" }),
+          ),
           runner.drain(),
           then.workflow.instance({
             workflowName: MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
@@ -1227,7 +1276,10 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                 kind: "start_workflow",
                 authority: {
                   kind: "organization-automation",
-                  grants: [BACKOFFICE_PERMISSION.telegram.send],
+                  grants: [
+                    BACKOFFICE_PERMISSION.integrations.execute,
+                    BACKOFFICE_PERMISSION.store.read,
+                  ],
                 },
                 workflowScriptPath: "/workspace/automations/telegram-test-command.workflow.js",
                 instanceIdTemplate: "telegram-test-${event.id}",
@@ -1260,7 +1312,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                   kind: "marketplace",
                   listingId: MARKETPLACE_LISTING_ID,
                   resourceKey: "telegram-test-command-route",
-                  version: "1.2.1",
+                  version: "1.4.0",
                 },
               },
             });
@@ -2896,7 +2948,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               marketplace.commands.getArtifactManifest({ listingId }),
             ).resolves.toMatchObject({
               listingStatus: "archived",
-              versions: ["1.3.0", "1.2.1", "1.1.0", "1.0.0"],
+              versions: ["1.4.0", "1.3.0", "1.2.1", "1.1.0", "1.0.0"],
             });
           }),
         ],

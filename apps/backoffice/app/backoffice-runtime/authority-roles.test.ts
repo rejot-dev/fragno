@@ -15,7 +15,6 @@ import {
 const currentKernelPermissions = [
   BACKOFFICE_PERMISSION.otp.create,
   BACKOFFICE_PERMISSION.store.modify,
-  BACKOFFICE_PERMISSION.telegram.send,
   BACKOFFICE_PERMISSION.upload.modify,
   BACKOFFICE_PERMISSION.upload.read,
 ];
@@ -138,7 +137,7 @@ describe("Backoffice authority role grants", () => {
     ]);
     for (const [role, grants] of Object.entries(BACKOFFICE_AUTHORITY_ROLE_GRANTS)) {
       if (!unrestrictedRoles.has(role)) {
-        expect(grants).not.toContain(BACKOFFICE_PERMISSION.telegram.read);
+        expect(grants).not.toContain(BACKOFFICE_PERMISSION.integrations.read);
       }
     }
   });

@@ -66,8 +66,6 @@ describe("cloudflare runtime tools", () => {
         automations: null,
         otp: null,
         pi: null,
-        resend: null,
-        telegram: null,
         cloudflare: { runtime: createRuntime() },
       },
     });

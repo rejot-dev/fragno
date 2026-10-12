@@ -4,10 +4,9 @@ import type {
   IntegrationSetupProgress,
 } from "@fragno-dev/backoffice-api/v0/integrations";
 import {
-  resendThreadDetailOutputSchema,
-  resendThreadMessageOutputSchema,
-  resendThreadSummaryOutputSchema,
-} from "@fragno-dev/backoffice-api/v0/resend";
+  isoDateTimeOutputSchema,
+  nullableIsoDateTimeOutputSchema,
+} from "@fragno-dev/backoffice-api/v0/shared/datetime";
 import type { JsonValue } from "@fragno-dev/backoffice-api/v0/shared/json";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import { z } from "zod";
@@ -16,7 +15,8 @@ import { authorizedBackofficeObjectHttp } from "@/backoffice-runtime/authorized-
 import { BackofficeUnavailableError } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 
-import { createResendRouteRuntime, type ResendRuntime } from "../resend-runtime";
+import { createResendRuntime } from "../resend-runtime";
+import type { IntegrationSetupOperation } from "./integration-contracts";
 import type {
   IntegrationActionImplementation,
   IntegrationContext,
@@ -42,11 +42,71 @@ const resendSetupInputSchema = z.strictObject({
 });
 const resendWebhookCheckIdentity = { id: "webhook.read", label: "Read webhook registration" };
 
+type ResendRuntime = ReturnType<typeof createResendRuntime>;
+
 const pageInputShape = {
   cursor: z.string().trim().min(1).nullable().describe("Null starts from the first page."),
   pageSize: z.number().int().min(1).max(100).nullable().describe("Null uses the default size."),
   order: z.enum(["asc", "desc"]).nullable().describe("Null uses the default order."),
 };
+const resendThreadSummaryOutputSchema = z.object({
+  id: z.string(),
+  subject: z.string().nullable(),
+  normalizedSubject: z.string(),
+  participants: z.array(z.string()),
+  messageCount: z.number().int().nonnegative(),
+  firstMessageAt: isoDateTimeOutputSchema,
+  lastMessageAt: isoDateTimeOutputSchema,
+  lastDirection: z.string().nullable(),
+  lastMessagePreview: z.string().nullable(),
+  createdAt: isoDateTimeOutputSchema,
+  updatedAt: isoDateTimeOutputSchema,
+});
+
+const resendThreadDetailOutputSchema = resendThreadSummaryOutputSchema.extend({
+  replyToAddress: z.string().nullable(),
+});
+
+const resendThreadMessageOutputSchema = z.object({
+  id: z.string(),
+  threadId: z.string(),
+  direction: z.enum(["inbound", "outbound"]),
+  status: z.string(),
+  from: z.string().nullable(),
+  to: z.array(z.string()),
+  cc: z.array(z.string()),
+  bcc: z.array(z.string()),
+  replyTo: z.array(z.string()),
+  subject: z.string().nullable(),
+  normalizedSubject: z.string(),
+  participants: z.array(z.string()),
+  messageId: z.string().nullable(),
+  inReplyTo: z.string().nullable(),
+  references: z.array(z.string()),
+  providerEmailId: z.string().nullable(),
+  attachments: z.array(
+    z.object({
+      id: z.string(),
+      filename: z.string().nullable(),
+      size: z.number().int().nonnegative(),
+      contentType: z.string(),
+      contentDisposition: z.string().nullable(),
+      contentId: z.string().nullable(),
+    }),
+  ),
+  html: z.string().nullable(),
+  text: z.string().nullable(),
+  headers: z.record(z.string(), z.string()).nullable(),
+  occurredAt: isoDateTimeOutputSchema,
+  scheduledAt: nullableIsoDateTimeOutputSchema,
+  sentAt: nullableIsoDateTimeOutputSchema,
+  lastEventType: z.string().nullable(),
+  lastEventAt: nullableIsoDateTimeOutputSchema,
+  errorCode: z.string().nullable(),
+  errorMessage: z.string().nullable(),
+  createdAt: isoDateTimeOutputSchema,
+  updatedAt: isoDateTimeOutputSchema,
+});
 
 function defineResendAction<
   TInput extends z.ZodType,
@@ -78,21 +138,7 @@ function defineResendAction<
   };
 }
 
-/** The runtime treats undefined as "use the default"; the public contract spells it null. */
-function pageArgs(input: {
-  cursor: string | null;
-  pageSize: number | null;
-  order: "asc" | "desc" | null;
-}) {
-  return {
-    ...(input.cursor === null ? {} : { cursor: input.cursor }),
-    ...(input.pageSize === null ? {} : { pageSize: input.pageSize }),
-    ...(input.order === null ? {} : { order: input.order }),
-  };
-}
-
-// Each action calls the same object routes as the native resend.* tools, so the receiving object
-// enforces resend.read or resend.send.
+// The receiving object enforces integrations.execute on each action's routes.
 const resendActions = [
   defineResendAction({
     id: "threads.list",
@@ -104,10 +150,7 @@ const resendActions = [
       cursor: z.string().nullable().describe("Null means there are no further pages."),
       hasNextPage: z.boolean(),
     }),
-    run: async (runtime, input) => {
-      const page = await runtime.listThreads(pageArgs(input));
-      return { ...page, cursor: page.cursor ?? null };
-    },
+    run: (runtime, input) => runtime.listThreads(input),
   }),
   defineResendAction({
     id: "threads.get",
@@ -121,10 +164,7 @@ const resendActions = [
       hasNextPage: z.boolean(),
       markdown: z.string(),
     }),
-    run: async (runtime, { threadId, ...page }) => {
-      const snapshot = await runtime.getThreadSnapshot({ threadId, ...pageArgs(page) });
-      return { ...snapshot, cursor: snapshot.cursor ?? null };
-    },
+    run: (runtime, input) => runtime.getThreadSnapshot(input),
   }),
   defineResendAction({
     id: "threads.reply",
@@ -140,8 +180,7 @@ const resendActions = [
       thread: resendThreadDetailOutputSchema,
       message: resendThreadMessageOutputSchema,
     }),
-    run: (runtime, { subject, ...input }) =>
-      runtime.replyToThread({ ...input, ...(subject === null ? {} : { subject }) }),
+    run: (runtime, input) => runtime.replyToThread(input),
   }),
 ];
 
@@ -269,56 +308,53 @@ export function createResendIntegration({
     return { status: "ready", connectionId: resendConnectionId };
   }
 
+  /**
+   * Setup fills an empty slot and reconfigure replaces a filled one; both read the slot again and
+   * save through the same native command. Setup ignores input once configured, so it never replaces
+   * stored credentials.
+   */
+  async function progress(
+    context: IntegrationContext,
+    localId: string,
+    operation: IntegrationSetupOperation,
+    intent: "setup" | "reconfigure",
+  ): Promise<IntegrationSetupProgress> {
+    assertResendLocalId(localId);
+    const availability = saveAvailability(context);
+    if (availability.status === "blocked") {
+      return { status: "blocked", connectionId: resendConnectionId, reason: availability.reason };
+    }
+    const configured = await readConfigured(context);
+    if (intent === "setup" && configured) {
+      return { status: "ready", connectionId: resendConnectionId };
+    }
+    if (intent === "reconfigure" && !configured) {
+      return {
+        status: "blocked",
+        connectionId: resendConnectionId,
+        reason: "Resend is not configured in this scope. Run setup instead.",
+      };
+    }
+    if (operation.kind === "input") {
+      return await save(context, availability.publicBaseUrl, operation.input);
+    }
+    return requestResendInput(
+      intent === "setup"
+        ? "Provide a Resend API key and sender address. Backoffice registers this deployment as the account's webhook for sent and received email."
+        : "Submit the Resend values to use. They replace the stored ones once Resend accepts the webhook.",
+    );
+  }
+
   return {
     connectionIds: [{ kind: "exact", connectionId: resendConnectionId }],
     setup: {
       kind: "supported",
-      async run(context, { localId, operation }) {
-        assertResendLocalId(localId);
-        const availability = saveAvailability(context);
-        if (availability.status === "blocked") {
-          return {
-            status: "blocked",
-            connectionId: resendConnectionId,
-            reason: availability.reason,
-          };
-        }
-        // Setup is reconstructed from current configuration, not an earlier attempt or caller claim.
-        if (await readConfigured(context)) {
-          return { status: "ready", connectionId: resendConnectionId };
-        }
-        return operation.kind === "check"
-          ? requestResendInput(
-              "Provide a Resend API key and sender address. Backoffice registers this deployment as the account's webhook for sent and received email.",
-            )
-          : await save(context, availability.publicBaseUrl, operation.input);
-      },
+      run: (context, { localId, operation }) => progress(context, localId, operation, "setup"),
     },
     reconfigure: {
       kind: "supported",
-      async run(context, { localId, operation }) {
-        assertResendLocalId(localId);
-        const availability = saveAvailability(context);
-        if (availability.status === "blocked") {
-          return {
-            status: "blocked",
-            connectionId: resendConnectionId,
-            reason: availability.reason,
-          };
-        }
-        if (!(await readConfigured(context))) {
-          return {
-            status: "blocked",
-            connectionId: resendConnectionId,
-            reason: "Resend is not configured in this scope. Run setup instead.",
-          };
-        }
-        return operation.kind === "check"
-          ? requestResendInput(
-              "Submit the Resend values to use. They replace the stored ones once Resend accepts the webhook.",
-            )
-          : await save(context, availability.publicBaseUrl, operation.input);
-      },
+      run: (context, { localId, operation }) =>
+        progress(context, localId, operation, "reconfigure"),
     },
     disconnect: {
       kind: "supported",
@@ -345,7 +381,7 @@ export function createResendIntegration({
           label: resendConnectionIdentity.name,
           description:
             context.execution.scope.kind === "system"
-              ? "The platform Resend account Backoffice sends its own email through, such as email verification."
+              ? "The platform Resend account Backoffice sends its own email through, such as email verification. Disconnecting or misconfiguring it stops that email for every user."
               : "Email threads sent and received through the organization's Resend account.",
           connectionCardinality: "singleton",
           availability:
@@ -382,7 +418,7 @@ export function createResendIntegration({
           return inspectResendConfiguration(await readConfigured(context));
         },
         async actions() {
-          const resend = createResendRouteRuntime({
+          const resend = createResendRuntime({
             object: authorizedBackofficeObjectHttp(object.http, context.execution),
           });
           return resendActions.map((action) => action.bind(resend));

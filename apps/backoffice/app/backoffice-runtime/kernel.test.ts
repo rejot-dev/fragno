@@ -1,5 +1,7 @@
 import { assert, describe, expect, test, vi } from "vitest";
 
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+
 import type { BackofficeAuthorityResolver } from "./authority-resolver";
 import {
   unavailableBackofficeAuthorityResolver,
@@ -55,7 +57,7 @@ const linkedExecution = {
   },
 };
 
-const operation = { namespace: "telegram", permission: "send" } as const;
+const operation = { namespace: "events", permission: "emit" } as const;
 const secondOperation = { namespace: "store", permission: "modify" } as const;
 
 class RecordingKernelObserver implements BackofficeKernelObserver {
@@ -164,7 +166,7 @@ describe("BackofficeKernel authorization assertions", () => {
       kernel.assertAuthorizedAll({
         execution: linkedExecution,
         requirements: [
-          { operation, resource: { kind: "telegram-chat", chatId: "chat-1" } },
+          { operation, resource: { kind: "event", eventType: "report.ready" } },
           { operation: secondOperation, resource: { kind: "store-key", key: "reports/latest" } },
         ],
       }),
@@ -176,7 +178,7 @@ describe("BackofficeKernel authorization assertions", () => {
       {
         execution: linkedExecution,
         operation,
-        resource: { kind: "telegram-chat", chatId: "chat-1" },
+        resource: { kind: "event", eventType: "report.ready" },
       },
       {
         execution: linkedExecution,
@@ -536,21 +538,27 @@ describe("BackofficeKernel.invoke", () => {
       kernelObserver: noopBackofficeKernelObserver,
     });
 
+    const claim = (externalId: string) => ({
+      kind: "external-identity",
+      source: "telegram",
+      externalType: "chat",
+      externalId,
+    });
     await expect(
       kernel.invoke({
         execution,
-        operation: operation,
-        resource: { kind: "telegram-chat", chatId: "chat-1" },
-        execute: async () => "sent",
+        operation: BACKOFFICE_PERMISSION.otp.create,
+        resource: claim("chat-1"),
+        execute: async () => "claimed",
       }),
-    ).resolves.toBe("sent");
+    ).resolves.toBe("claimed");
 
     await expect(
       kernel.invoke({
         execution,
-        operation: operation,
-        resource: { kind: "telegram-chat", chatId: "chat-2" },
-        execute: async () => "sent",
+        operation: BACKOFFICE_PERMISSION.otp.create,
+        resource: claim("chat-2"),
+        execute: async () => "claimed",
       }),
     ).rejects.toMatchObject({ reason: "principal-permission-denied" });
   });

@@ -5,11 +5,10 @@ existing service-owned configuration. They do not own credentials, binding recor
 history.
 
 API, MCP, GitHub, Reson8, Telegram, Resend, and Connector are implemented sources. Codemode and
-terminal commands use the same contracts, runtime, and permissions. Reson8 and GitHub execution is
-exposed only through `integrations.*`; their former standalone tool families have been removed.
-Connector's, API's, MCP's, Telegram's, and Resend's native tools remain available; published
-marketplace packages call the Telegram ones directly. All retain their underlying Fragments, Durable
-Objects, native permissions, ownership, and configuration controls.
+terminal commands use the same contracts, runtime, and permissions. Reson8, GitHub, Telegram, and
+Resend execution is exposed only through `integrations.*`; their former standalone tool families
+have been removed. Connector's, API's, and MCP's native tools remain available. All retain their
+underlying Fragments, Durable Objects, native permissions, ownership, and configuration controls.
 
 ## Public surface
 
@@ -85,9 +84,11 @@ lists every server in one read, so listing returns a single page.
 `backoffice#telegram` and `backoffice#resend` name the selected scope's existing configuration slot,
 like `backoffice#reson8`. Telegram has a bot in every scope, including system. Resend has an account
 per organization, and in system scope the same address names the platform account Backoffice sends
-its own email through, such as email verification. Each keeps its native configuration page and
-tools; the integration actions call the same object routes, so `telegram.*` and `resend.*`
-permissions still gate them.
+its own email through, such as email verification. Each keeps its native configuration page.
+
+Reson8, Telegram, and Resend have no permissions of their own. Their object routes, which serve both
+the integration actions and the native pages, require `integrations.execute`; configuration reads
+and the read-only live checks require `connections.read`.
 
 ### Connector addresses
 
@@ -439,9 +440,9 @@ integrations.execute --connection-id 'connector#n_ACJwcm9qZWN0LTEiACJnbWFpbC1wcm
 
 Umbrella `integrations.read`, `.manage`, and `.execute` apply at the tool boundary. Setup,
 reconfigure, disconnect, and verification require manage. They neither replace native permissions
-nor broaden role grants. For Reson8, configuration inspection/setup reads require
-`connections.read`; submitted or replaced keys and disconnect require `connections.manage`;
-transcription and live checks require `reson8.use`.
+nor broaden role grants. For Reson8, Telegram, and Resend, configuration inspection, setup reads,
+and live checks require `connections.read`; submitted or replaced configuration and disconnect
+require `connections.manage`; actions require `integrations.execute`.
 
 Connector discovery and action contracts require `connector.providers.read`. Listing, source-account
 selection, and profile checks require `connector.accounts.read`. Named request lookup, OAuth start,
