@@ -746,7 +746,20 @@ describe("installed-app event delivery SQLite scenarios", () => {
             const ownerPage = await openInstallPage(ctx, ctx.vars.ownerCookie);
             expect(ownerPage).toMatchObject({
               clientName: "Bookkeeping",
-              requestedPermissions: ["events.emit", "events.read"],
+              requestedPermissions: [
+                {
+                  permission: "events.emit",
+                  operations: [
+                    "Fire an automation event for the current context or a selected target scope.",
+                  ],
+                },
+                {
+                  permission: "events.read",
+                  operations: expect.arrayContaining([
+                    "List stored automation events in the current scope, newest first.",
+                  ]),
+                },
+              ],
               returnOrigin: "https://bookkeeping.example",
               organizations: [{ id: ctx.vars.orgId }],
               selectedOrganizationId: ctx.vars.orgId,

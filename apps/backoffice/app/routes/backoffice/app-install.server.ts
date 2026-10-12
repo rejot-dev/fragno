@@ -1,3 +1,5 @@
+import { backofficeApiOperationSummary } from "@fragno-dev/backoffice-api/api";
+import { backofficeApiV0 } from "@fragno-dev/backoffice-api/v0";
 import type {
   AppInstallationResourceScope,
   BackofficeAppInstallation,
@@ -82,6 +84,27 @@ export async function resolveAppInstallRequest(
     redirectUri: query.data.redirect_uri,
     state: query.data.state,
   };
+}
+
+/**
+ * What each requested permission lets the app do. Apps reach Backoffice only through the API, so
+ * that is the summaries of the API operations requiring it; an operation runs only once all of its
+ * permissions are granted.
+ */
+export function describeAppPermissions(
+  permissions: readonly BackofficePermissionRequirement[],
+): { permission: string; operations: string[] }[] {
+  const operations = Object.values(backofficeApiV0.operations);
+  return permissions.map(({ namespace, permission }) => ({
+    permission: `${namespace}.${permission}`,
+    operations: operations
+      .filter((operation) =>
+        operation.permissions.some(
+          (required) => required.namespace === namespace && required.permission === permission,
+        ),
+      )
+      .map(backofficeApiOperationSummary),
+  }));
 }
 
 /** Organizations where this user may approve installations, with the selected one's details. */

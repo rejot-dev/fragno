@@ -20,6 +20,12 @@ export type BackofficeApiOperation<
   output: TOutput;
 };
 
+/** The first sentence of an operation's description: a one-line answer to what it does. */
+export function backofficeApiOperationSummary(operation: BackofficeApiOperation): string {
+  const [summary = operation.description] = operation.description.split(/(?<=\.)\s+(?=[A-Z])/u, 1);
+  return summary;
+}
+
 /** One version of the API, served under `/api/<version>`. */
 export type BackofficeApi<
   TOperations extends Record<string, BackofficeApiOperation> = Record<

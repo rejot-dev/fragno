@@ -1,6 +1,10 @@
 import { z } from "zod";
 
-import type { BackofficeApi } from "./api";
+import {
+  type BackofficeApi,
+  type BackofficeApiOperation,
+  backofficeApiOperationSummary,
+} from "./api";
 import {
   BACKOFFICE_API_ERROR_DESCRIPTIONS,
   BACKOFFICE_API_ERROR_STATUS,
@@ -159,7 +163,7 @@ export function createOpenApiDocument(
     paths[`/api/${api.version}/scopes/{scope}/${operationId}`] = {
       post: {
         operationId,
-        ...summarize(operation.description),
+        ...summarize(operation),
         tags: [operationId.split(".")[0]],
         // OpenAPI 3.1 lets non-OAuth schemes list the roles a requirement needs.
         security: [
@@ -209,12 +213,14 @@ export function createOpenApiDocument(
   };
 }
 
-/** The first sentence is the summary; the description repeats it only when there is more to say. */
+/** The description repeats the summary only when there is more to say. */
 function summarize(
-  description: string,
+  operation: BackofficeApiOperation,
 ): { summary: string } | { summary: string; description: string } {
-  const [summary = description] = description.split(/(?<=\.)\s+(?=[A-Z])/u, 1);
-  return summary === description ? { summary } : { summary, description };
+  const summary = backofficeApiOperationSummary(operation);
+  return summary === operation.description
+    ? { summary }
+    : { summary, description: operation.description };
 }
 
 /**

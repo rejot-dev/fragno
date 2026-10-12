@@ -19,6 +19,7 @@ import { requireBackofficeBrowserSession } from "@/fragno/auth/browser-session.s
 import type { Route } from "./+types/app-install";
 import {
   decideAppInstallation,
+  describeAppPermissions,
   loadAppInstallChoices,
   resolveAppInstallRequest,
 } from "./app-install.server";
@@ -48,9 +49,7 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
     {
       userEmail: user.email,
       clientName: installRequest.client.name,
-      requestedPermissions: installRequest.app.requestedPermissions.map(
-        ({ namespace, permission }) => `${namespace}.${permission}`,
-      ),
+      requestedPermissions: describeAppPermissions(installRequest.app.requestedPermissions),
       returnOrigin: new URL(installRequest.redirectUri).origin,
       appRequest: {
         client_id: installRequest.client.clientId,
@@ -162,16 +161,29 @@ export default function BackofficeAppInstall({
                     This app requests no permissions.
                   </p>
                 ) : (
-                  install.requestedPermissions.map((permission) => (
-                    <label key={permission} className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        name="permission"
-                        value={permission}
-                        defaultChecked={grantedByDefault(permission)}
-                      />
-                      <span className="font-mono">{permission}</span>
-                    </label>
+                  install.requestedPermissions.map(({ permission, operations }) => (
+                    <div key={permission} className="space-y-1">
+                      <label className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          name="permission"
+                          value={permission}
+                          defaultChecked={grantedByDefault(permission)}
+                        />
+                        <span className="font-mono">{permission}</span>
+                      </label>
+                      {operations.length === 0 ? (
+                        <p className="pl-6 text-xs text-[var(--bo-muted)]">
+                          No API operation uses this permission yet.
+                        </p>
+                      ) : (
+                        <ul className="list-disc space-y-0.5 pl-10 text-xs leading-5 text-[var(--bo-muted)]">
+                          {operations.map((operation) => (
+                            <li key={operation}>{operation}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
                   ))
                 )}
               </fieldset>
