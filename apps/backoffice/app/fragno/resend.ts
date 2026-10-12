@@ -41,12 +41,12 @@ export function createResendServer(
       "/threads/:threadId/messages",
     ] as const) {
       await ifMatchesRoute("GET", path, () => {
-        access = BACKOFFICE_PERMISSION.resend.read;
+        access = BACKOFFICE_PERMISSION.integrations.execute;
       });
     }
     for (const path of ["/emails", "/threads", "/threads/:threadId/reply"] as const) {
       await ifMatchesRoute("POST", path, () => {
-        access = BACKOFFICE_PERMISSION.resend.send;
+        access = BACKOFFICE_PERMISSION.integrations.execute;
       });
     }
     return await authorizeBackofficeFragmentRequest(kernel, requestContext, access, null);

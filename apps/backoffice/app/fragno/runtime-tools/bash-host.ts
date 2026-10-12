@@ -38,9 +38,7 @@ import type { RegisteredOtpCommandContext } from "./families/otp-runtime";
 import type { PackagesRuntime } from "./families/packages-runtime";
 import type { RegisteredPiCommandContext } from "./families/pi";
 import type { ProjectConnectorRuntime } from "./families/project-connector-runtime";
-import type { RegisteredResendCommandContext } from "./families/resend-runtime";
 import type { SandboxRuntime } from "./families/sandbox-runtime";
-import type { RegisteredTelegramCommandContext } from "./families/telegram-runtime";
 import type { UploadRuntime } from "./families/upload-runtime";
 import type { WebRuntime } from "./families/web-runtime";
 import { isomorphicGitCommands } from "./isomorphic-git-command";
@@ -83,9 +81,7 @@ export type BashHostContext = {
   projectConnector: { runtime: ProjectConnectorRuntime } | null;
   otp: RegisteredOtpCommandContext | null;
   pi: RegisteredPiCommandContext | null;
-  resend: RegisteredResendCommandContext | null;
   sandbox?: { runtime: SandboxRuntime } | null;
-  telegram: RegisteredTelegramCommandContext | null;
   javascript?: { runtime: JavaScriptRuntime } | null;
   upload?: { runtime: UploadRuntime } | null;
   web?: { runtime: WebRuntime } | null;
@@ -101,9 +97,7 @@ export type InteractiveRuntimeToolContext = Omit<BashHostContext, "automation"> 
   mcp?: BashHostContext["mcp"];
   otp: NonNullable<BashHostContext["otp"]>;
   pi: NonNullable<BashHostContext["pi"]>;
-  resend: NonNullable<BashHostContext["resend"]>;
   sandbox?: BashHostContext["sandbox"];
-  telegram: NonNullable<BashHostContext["telegram"]>;
 };
 
 type BashOptions = NonNullable<ConstructorParameters<typeof BashRuntime>[0]>;

@@ -240,18 +240,6 @@ type BackofficePermissionRequirement =
       permission: "read";
     }
   | {
-      namespace: "resend";
-      permission: "read";
-    }
-  | {
-      namespace: "resend";
-      permission: "send";
-    }
-  | {
-      namespace: "reson8";
-      permission: "use";
-    }
-  | {
       namespace: "router";
       permission: "modify";
     }
@@ -274,14 +262,6 @@ type BackofficePermissionRequirement =
   | {
       namespace: "store";
       permission: "read";
-    }
-  | {
-      namespace: "telegram";
-      permission: "read";
-    }
-  | {
-      namespace: "telegram";
-      permission: "send";
     }
   | {
       namespace: "upload";

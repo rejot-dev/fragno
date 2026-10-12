@@ -192,7 +192,10 @@ describe("external identity retry regressions", () => {
           then.auth.permissions({
             userId,
             scope,
-            include: [BACKOFFICE_PERMISSION.store.modify, BACKOFFICE_PERMISSION.telegram.send],
+            include: [
+              BACKOFFICE_PERMISSION.store.modify,
+              BACKOFFICE_PERMISSION.integrations.execute,
+            ],
             exclude: [BACKOFFICE_PERMISSION.identity.bind],
           }),
           whenIdentityIsBound("claim-1"),
@@ -252,7 +255,10 @@ describe("external identity retry regressions", () => {
           then.auth.permissions({
             userId,
             scope,
-            include: [BACKOFFICE_PERMISSION.store.modify, BACKOFFICE_PERMISSION.telegram.send],
+            include: [
+              BACKOFFICE_PERMISSION.store.modify,
+              BACKOFFICE_PERMISSION.integrations.execute,
+            ],
             exclude: [BACKOFFICE_PERMISSION.identity.bind],
           }),
           whenIdentityIsBound("claim-1"),
@@ -315,7 +321,10 @@ describe("external identity retry regressions", () => {
           then.auth.permissions({
             userId,
             scope,
-            include: [BACKOFFICE_PERMISSION.store.modify, BACKOFFICE_PERMISSION.telegram.send],
+            include: [
+              BACKOFFICE_PERMISSION.store.modify,
+              BACKOFFICE_PERMISSION.integrations.execute,
+            ],
             exclude: [BACKOFFICE_PERMISSION.identity.bind],
           }),
           whenIdentityIsBound("claim-1"),

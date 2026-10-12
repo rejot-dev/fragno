@@ -25,13 +25,14 @@ export function createReson8Server(
   ).withMiddleware(async function authorizeReson8Routes({ ifMatchesRoute, requestContext }) {
     let access: BackofficeFragmentHttpAccess = null;
     for (const path of ["/custom-model", "/custom-model/:id"] as const) {
+      // Listing custom models is the read-only access check integrations.verify runs.
       await ifMatchesRoute("GET", path, () => {
-        access = BACKOFFICE_PERMISSION.reson8.use;
+        access = BACKOFFICE_PERMISSION.connections.read;
       });
     }
     for (const path of ["/auth/token", "/custom-model", "/speech-to-text/prerecorded"] as const) {
       await ifMatchesRoute("POST", path, () => {
-        access = BACKOFFICE_PERMISSION.reson8.use;
+        access = BACKOFFICE_PERMISSION.integrations.execute;
       });
     }
     return await authorizeBackofficeFragmentRequest(kernel, requestContext, access, null);

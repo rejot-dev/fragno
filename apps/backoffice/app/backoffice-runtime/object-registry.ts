@@ -40,6 +40,7 @@ import type { Upload } from "workers/upload.do";
 import type { FragnoExecutionContext } from "@fragno-dev/core";
 import type { ResendSendEmailInput } from "@fragno-dev/resend-fragment";
 
+import type { TelegramAutomationFileMetadata } from "@/backoffice-runtime/telegram-file-response";
 import type { BackofficeAppInstallationsCommands } from "@/fragno/app-installations/contracts";
 import type { BackofficeAppsCommands } from "@/fragno/apps/contracts";
 import type {
@@ -139,7 +140,6 @@ import type {
   MarketplacePublishReleaseResult,
   MarketplacePackagePublishRequest,
 } from "@/fragno/marketplace/package-publishing";
-import type { TelegramAutomationFileMetadata } from "@/fragno/runtime-tools/families/telegram-runtime";
 import type {
   SandboxInstanceRecord,
   SandboxInstanceRequestInput,

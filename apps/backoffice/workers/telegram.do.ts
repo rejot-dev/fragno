@@ -22,12 +22,12 @@ import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-ser
 import {
   createTelegramAutomationFileResponse,
   telegramAutomationFileIdFromDownloadPath,
+  type TelegramAutomationFileMetadata,
 } from "@/backoffice-runtime/telegram-file-response";
 import { telegramConfigureInputSchema } from "@/fragno/backoffice-capabilities/capabilities/telegram";
 import { type DurableHookQueueOptions } from "@/fragno/durable-hooks";
 import { recordIntegrationConnectionState } from "@/fragno/runtime-tools/families/integrations/integration-events";
 import { telegramConnectionId } from "@/fragno/runtime-tools/families/integrations/telegram-integration";
-import type { TelegramAutomationFileMetadata } from "@/fragno/runtime-tools/families/telegram-runtime";
 import {
   buildTelegramAutomationEvent,
   createTelegramServer,
@@ -669,7 +669,7 @@ export class InMemoryTelegramObject extends RpcTarget implements TelegramObject 
         const denied = await authorizeBackofficeFragmentRequest(
           this.#kernel,
           options.requestContext,
-          BACKOFFICE_PERMISSION.telegram.read,
+          BACKOFFICE_PERMISSION.integrations.execute,
           null,
         );
         return denied ?? (await this.downloadAutomationFile({ fileId: automationFileId }));

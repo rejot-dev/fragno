@@ -215,7 +215,6 @@ type AutomationContextOptions = {
   backofficeRuntime?: BackofficeCapabilitiesRuntime;
   otpRuntime?: AutomationRuntimeHostContext["otp"]["runtime"];
   piRuntime?: NonNullable<AutomationRuntimeHostContext["pi"]>["runtime"] | null;
-  telegramRuntime?: NonNullable<AutomationRuntimeHostContext["telegram"]>["runtime"];
   binding?: Partial<AutomationRuntimeHostContext["automation"]["binding"]>;
 };
 
@@ -250,8 +249,6 @@ const createAutomationContext = (
     automations: { runtime },
     otp: { runtime: options.otpRuntime ?? runtime },
     pi: options.piRuntime ? { runtime: options.piRuntime } : null,
-    resend: { runtime: createUnavailableRuntime("resend") },
-    telegram: { runtime: options.telegramRuntime ?? createUnavailableRuntime("telegram") },
   };
 };
 
@@ -303,15 +300,3 @@ const createRecordingBackofficeRuntime = (calls: unknown[]): BackofficeCapabilit
       },
     },
   ) as BackofficeCapabilitiesRuntime;
-
-const createUnavailableRuntime = (name: string) =>
-  new Proxy(
-    {},
-    {
-      get() {
-        return async () => {
-          throw new Error(`${name} runtime should not be called in this test.`);
-        };
-      },
-    },
-  ) as never;

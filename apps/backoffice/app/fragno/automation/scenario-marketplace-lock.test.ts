@@ -19,6 +19,7 @@ vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoin
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY } from "@/fragno/automation/actors";
+import { CODEMODE_WORKFLOW } from "@/fragno/automation/engine/codemode-invocation";
 import { marketplaceArtifactUploadName } from "@/fragno/marketplace/artifacts";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
 import { getStaticMarketplaceEntry } from "@/fragno/marketplace/static-entries";
@@ -93,6 +94,35 @@ async function installMarketplaceArtifact(
     );
 }
 
+/** From 1.3.0, the test command's installer waits for its reply message before creating its route. */
+async function submitTestCommandInstaller(
+  ctx: BackofficeScenarioContext,
+  installationRoot: string,
+) {
+  const ingestionInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
+    targetScope: TARGET_SCOPE,
+    installationRoot,
+    listingId: LISTING_ID,
+    version: "1.4.0",
+  });
+  const workflows = createWorkflowsRouteCaller({
+    object: ctx.runtime.objects.automations.for(TARGET_SCOPE),
+    context: { execution: createBackofficeSystemExecution(TARGET_SCOPE), propagationContext: null },
+  });
+  const submitted = await workflows("POST", "/:workflowName/instances/:instanceId/events", {
+    pathParams: {
+      workflowName: CODEMODE_WORKFLOW,
+      instanceId: `${ingestionInstanceId}:installation`,
+    },
+    body: {
+      id: `configure:${ingestionInstanceId}`,
+      type: "telegram-test-command.message-configured",
+      payload: { message: "Telegram integration verified after a 3 second delay." },
+    },
+  });
+  assert(submitted.type === "json");
+}
+
 async function readWorkspaceFile(ctx: BackofficeScenarioContext, path: string) {
   const url = new URL("https://upload.test/api/upload/files/by-key/content");
   url.searchParams.set("provider", "database");
@@ -142,7 +172,7 @@ describe("marketplace lock scenarios", () => {
       targetScope: TARGET_SCOPE,
       installationRoot,
       listingId: LISTING_ID,
-      version: "1.2.1",
+      version: "1.4.0",
     });
     await runBackofficeScenario(
       defineBackofficeScenario({
@@ -156,11 +186,15 @@ describe("marketplace lock scenarios", () => {
             await expect(
               installMarketplaceArtifact(ctx, {
                 listingId: LISTING_ID,
-                version: "1.2.1",
+                version: "1.4.0",
                 installationRoot: `${installationRoot}/`,
               }),
             ).resolves.toMatchObject({ action: "created", workflowInstanceId });
           }),
+          runner.drain(),
+          then.assert("the installer receives its reply message", (ctx) =>
+            submitTestCommandInstaller(ctx, installationRoot),
+          ),
           runner.drain(),
           then.workflow.instance({
             workflowName: MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
@@ -172,9 +206,9 @@ describe("marketplace lock scenarios", () => {
             async (ctx) => {
               const file = await readWorkspaceFile(ctx, `${installationRoot}/${WORKFLOW_FILE}`);
               assert(file.ok);
-              await expect(file.text()).resolves.toBe(publishedWorkflowSource("1.2.1"));
+              await expect(file.text()).resolves.toBe(publishedWorkflowSource("1.4.0"));
               expect(await readMarketplaceLock(ctx)).toEqual({
-                entries: [{ listingId: LISTING_ID, version: "1.2.1", installationRoot }],
+                entries: [{ listingId: LISTING_ID, version: "1.4.0", installationRoot }],
               });
               assert((await readWorkspaceFile(ctx, `/workspace/${WORKFLOW_FILE}`)).status === 404);
               assert(
@@ -212,7 +246,7 @@ describe("marketplace lock scenarios", () => {
           then.assert("install the Telegram channel", async (ctx) => {
             await installMarketplaceArtifact(ctx, {
               listingId: TELEGRAM_CHANNEL_ID,
-              version: "1.0.1",
+              version: "1.1.0",
               installationRoot,
             });
           }),
@@ -229,7 +263,7 @@ describe("marketplace lock scenarios", () => {
             await expect(
               installMarketplaceArtifact(ctx, {
                 listingId: TELEGRAM_CHANNEL_ID,
-                version: "1.0.1",
+                version: "1.1.0",
                 installationRoot,
               }),
             ).resolves.toMatchObject({ action: "restarted" });
@@ -238,7 +272,7 @@ describe("marketplace lock scenarios", () => {
           then.assert("the root records both successful items exactly once", async (ctx) => {
             expect(await readMarketplaceLock(ctx)).toEqual({
               entries: [
-                { listingId: TELEGRAM_CHANNEL_ID, version: "1.0.1", installationRoot },
+                { listingId: TELEGRAM_CHANNEL_ID, version: "1.1.0", installationRoot },
                 { listingId: GITHUB_CHANNEL_ID, version: "1.0.0", installationRoot },
               ],
             });
@@ -265,7 +299,7 @@ describe("marketplace lock scenarios", () => {
       targetScope: TARGET_SCOPE,
       installationRoot,
       listingId: LISTING_ID,
-      version: "1.2.1",
+      version: "1.4.0",
     });
     await runBackofficeScenario(
       defineBackofficeScenario({
@@ -286,7 +320,7 @@ describe("marketplace lock scenarios", () => {
           then.assert("request another version at the occupied root", async (ctx) => {
             await installMarketplaceArtifact(ctx, {
               listingId: LISTING_ID,
-              version: "1.2.1",
+              version: "1.4.0",
               installationRoot,
             });
           }),
@@ -305,11 +339,15 @@ describe("marketplace lock scenarios", () => {
             await expect(file.text()).resolves.toBe(publishedWorkflowSource("1.0.0"));
             const result = await installMarketplaceArtifact(ctx, {
               listingId: LISTING_ID,
-              version: "1.2.1",
+              version: "1.4.0",
               installationRoot: "/workspace/second",
             });
             expect(result.workflowInstanceId).not.toBe(newerWorkflowId);
           }),
+          runner.drain(),
+          then.assert("the second installer receives its reply message", (ctx) =>
+            submitTestCommandInstaller(ctx, "/workspace/second"),
+          ),
           runner.drain(),
           then.assert(
             "both versions have separate files and entries in the workspace lock",
@@ -319,7 +357,7 @@ describe("marketplace lock scenarios", () => {
                   { listingId: LISTING_ID, version: "1.0.0", installationRoot },
                   {
                     listingId: LISTING_ID,
-                    version: "1.2.1",
+                    version: "1.4.0",
                     installationRoot: "/workspace/second",
                   },
                 ],
@@ -331,7 +369,7 @@ describe("marketplace lock scenarios", () => {
               }
               const file = await readWorkspaceFile(ctx, `/workspace/second/${WORKFLOW_FILE}`);
               assert(file.ok);
-              await expect(file.text()).resolves.toBe(publishedWorkflowSource("1.2.1"));
+              await expect(file.text()).resolves.toBe(publishedWorkflowSource("1.4.0"));
             },
           ),
         ],

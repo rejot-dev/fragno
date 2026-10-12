@@ -57,7 +57,7 @@ const scenarioObjects = {
 
 const telegramTestCommandEntry = getStaticMarketplaceEntry({
   slug: "telegram-test-command",
-  version: "1.0.0",
+  version: "1.4.0",
 });
 if (!telegramTestCommandEntry) {
   throw new Error("Expected the built-in Telegram test command Marketplace entry.");
@@ -66,7 +66,7 @@ if (!telegramTestCommandEntry) {
 const TELEGRAM_CHANNEL_MARKETPLACE_INSTALLATION = {
   targetScope: { kind: "org", orgId: "org-1" },
   slug: "telegram-channel",
-  version: "1.0.1",
+  version: "1.1.0",
   installationRoot: "/workspace",
 } as const;
 
@@ -91,7 +91,7 @@ const telegramTestCommandRoute = {
     kind: "start_workflow" as const,
     authority: {
       kind: "organization-automation" as const,
-      grants: [BACKOFFICE_PERMISSION.store.read, BACKOFFICE_PERMISSION.telegram.send],
+      grants: [BACKOFFICE_PERMISSION.integrations.execute, BACKOFFICE_PERMISSION.store.read],
     },
     workflowScriptPath: "/workspace/automations/telegram-test-command.workflow.js",
     instanceIdTemplate: "telegram-test-${event.id}",
@@ -394,8 +394,7 @@ describe("starter automation router scenarios", () => {
           then.workflow.instance({
             remoteWorkflowName: "telegram-test-command",
             instanceId: "telegram-test-bang-test",
-            status: "complete",
-            output: { skipped: true, reason: "not-test-command" },
+            status: "waiting",
           }),
           then.workflow.noErrored({ orgId: "org-1" }),
         ],
@@ -971,7 +970,10 @@ describe("starter automation router scenarios", () => {
           then.auth.permissions({
             userId: "user-1",
             scope: { kind: "org", orgId: "org-1" },
-            include: [BACKOFFICE_PERMISSION.store.modify, BACKOFFICE_PERMISSION.telegram.send],
+            include: [
+              BACKOFFICE_PERMISSION.integrations.execute,
+              BACKOFFICE_PERMISSION.store.modify,
+            ],
             exclude: [BACKOFFICE_PERMISSION.identity.bind],
           }),
           then.identity.resolves({
@@ -1160,7 +1162,10 @@ describe("starter automation router scenarios", () => {
           then.auth.permissions({
             userId: "user-1",
             scope: { kind: "org", orgId: "org-1" },
-            include: [BACKOFFICE_PERMISSION.store.modify, BACKOFFICE_PERMISSION.telegram.send],
+            include: [
+              BACKOFFICE_PERMISSION.integrations.execute,
+              BACKOFFICE_PERMISSION.store.modify,
+            ],
             exclude: [BACKOFFICE_PERMISSION.identity.bind],
           }),
 
@@ -1258,7 +1263,10 @@ describe("starter automation router scenarios", () => {
           then.auth.permissions({
             userId: "user-1",
             scope: { kind: "org", orgId: "org-1" },
-            include: [BACKOFFICE_PERMISSION.store.modify, BACKOFFICE_PERMISSION.telegram.send],
+            include: [
+              BACKOFFICE_PERMISSION.integrations.execute,
+              BACKOFFICE_PERMISSION.store.modify,
+            ],
             exclude: [BACKOFFICE_PERMISSION.identity.bind],
           }),
 
@@ -1461,7 +1469,10 @@ describe("starter automation router scenarios", () => {
           then.auth.permissions({
             userId: "user-1",
             scope: { kind: "org", orgId: "org-1" },
-            include: [BACKOFFICE_PERMISSION.store.modify, BACKOFFICE_PERMISSION.telegram.send],
+            include: [
+              BACKOFFICE_PERMISSION.integrations.execute,
+              BACKOFFICE_PERMISSION.store.modify,
+            ],
             exclude: [BACKOFFICE_PERMISSION.identity.bind],
           }),
 
@@ -1590,7 +1601,10 @@ describe("starter automation router scenarios", () => {
           then.auth.permissions({
             userId: "user-1",
             scope: { kind: "org", orgId: "org-1" },
-            include: [BACKOFFICE_PERMISSION.store.modify, BACKOFFICE_PERMISSION.telegram.send],
+            include: [
+              BACKOFFICE_PERMISSION.integrations.execute,
+              BACKOFFICE_PERMISSION.store.modify,
+            ],
             exclude: [BACKOFFICE_PERMISSION.identity.bind],
           }),
 
@@ -1715,7 +1729,10 @@ describe("starter automation router scenarios", () => {
           then.auth.permissions({
             userId: "user-1",
             scope: { kind: "org", orgId: "org-1" },
-            include: [BACKOFFICE_PERMISSION.store.modify, BACKOFFICE_PERMISSION.telegram.send],
+            include: [
+              BACKOFFICE_PERMISSION.integrations.execute,
+              BACKOFFICE_PERMISSION.store.modify,
+            ],
             exclude: [BACKOFFICE_PERMISSION.identity.bind],
           }),
 
@@ -1820,7 +1837,10 @@ describe("starter automation router scenarios", () => {
           then.auth.permissions({
             userId: "user-1",
             scope: { kind: "org", orgId: "org-1" },
-            include: [BACKOFFICE_PERMISSION.store.modify, BACKOFFICE_PERMISSION.telegram.send],
+            include: [
+              BACKOFFICE_PERMISSION.integrations.execute,
+              BACKOFFICE_PERMISSION.store.modify,
+            ],
             exclude: [BACKOFFICE_PERMISSION.identity.bind],
           }),
 
@@ -1940,7 +1960,7 @@ describe("starter automation router scenarios", () => {
 
           then.telegram.sentMessage({
             chatId: "1001",
-            text: "Delayed /test reply after 3 seconds.",
+            text: "Telegram integration verified after a 3 second delay.",
           }),
           then.workflow.instance({
             remoteWorkflowName: "telegram-test-command",
@@ -1951,51 +1971,6 @@ describe("starter automation router scenarios", () => {
           then.workflow.steps({
             remoteWorkflowName: "telegram-test-command",
             include: ["wait 3 seconds", "send delayed test reply"],
-          }),
-          then.workflow.noErrored({ orgId: "org-1" }),
-        ],
-      }),
-    );
-  });
-
-  test("telegram-test-command skips non-/test events", async () => {
-    await runBackofficeScenario(
-      defineBackofficeScenario({
-        objects: scenarioObjects,
-        name: "telegram-test-command skips non-test Telegram events",
-
-        files: marketplaceTelegramTestWorkspace(),
-
-        fakes: ({ fake }) => ({
-          telegram: fake.telegram(),
-        }),
-
-        setup: ({ given }) => [
-          given.organization.exists({ id: "org-1", name: "Ada Labs" }),
-          given.telegram.configured({
-            orgId: "org-1",
-            botUsername: "fragno_bot",
-          }),
-        ],
-
-        steps: ({ when, then }) => [
-          when.workflow.createInstance({
-            orgId: "org-1",
-            remoteWorkflowName: "telegram-test-command",
-            instanceId: "telegram-test-non-test-command",
-            path: "/workspace/automations/telegram-test-command.workflow.js",
-            event: telegramMessageEvent({
-              id: "telegram:message:non-test-command",
-              text: "/start",
-            }),
-          }),
-
-          then.telegram.noMessages(),
-          then.workflow.instance({
-            remoteWorkflowName: "telegram-test-command",
-            instanceId: "telegram-test-non-test-command",
-            status: "complete",
-            output: { skipped: true, reason: "not-test-command" },
           }),
           then.workflow.noErrored({ orgId: "org-1" }),
         ],

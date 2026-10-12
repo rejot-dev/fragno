@@ -39,7 +39,8 @@ export const hooksOperations = {
     output: durableHookQueueResponseSchema,
   },
   "hooks.get": {
-    description: "Get a durable hook queue entry by id.",
+    description:
+      "Get a durable hook queue entry by id. An automations ingest entry's payload is the event envelope, so the event's own payload is at payload.payload.",
     permissions: [BACKOFFICE_PERMISSION.hooks.read],
     input: z.object({ fragment: durableHookFragmentSchema, hookId: z.string().trim().min(1) }),
     output: durableHookRecordSchema.nullable(),

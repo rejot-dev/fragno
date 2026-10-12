@@ -62,9 +62,9 @@ describe("getAvailablePiTerminalCommandSpecs", () => {
     );
 
   test("includes only the runtime-tool commands whose runtime is wired", () => {
-    const commands = commandsFor({ telegram: {} });
+    const commands = commandsFor({ otp: {} });
 
-    assert(commands.some((command) => command.startsWith("telegram.")));
+    assert(commands.some((command) => command.startsWith("otp.")));
     // The automation store runtime is not wired, so its commands are excluded.
     assert(!commands.some((command) => command.startsWith("store.")));
   });
@@ -93,7 +93,7 @@ describe("getAvailablePiTerminalCommandSpecs", () => {
 
   test("is a subset of the static superset", () => {
     const superset = new Set(PI_TERMINAL_COMMAND_SPECS.map((spec) => spec.command));
-    const available = commandsFor({ telegram: {}, otp: {} });
+    const available = commandsFor({ integrations: {} as never, otp: {} });
 
     for (const command of available) {
       assert(superset.has(command));

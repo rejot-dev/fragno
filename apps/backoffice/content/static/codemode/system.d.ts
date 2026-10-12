@@ -21,9 +21,7 @@
 /// <reference path="/static/codemode/providers/connector.d.ts" />
 /// <reference path="/static/codemode/providers/otp.d.ts" />
 /// <reference path="/static/codemode/providers/pi.d.ts" />
-/// <reference path="/static/codemode/providers/resend.d.ts" />
 /// <reference path="/static/codemode/providers/sandbox.d.ts" />
-/// <reference path="/static/codemode/providers/telegram.d.ts" />
 /// <reference path="/static/codemode/providers/js.d.ts" />
 /// <reference path="/static/codemode/providers/upload.d.ts" />
 /// <reference path="/static/codemode/providers/marketplace.d.ts" />
@@ -59,9 +57,7 @@ interface BackofficeCodemodeScopedProviders {
   connector: ConnectorCodemodeProvider;
   otp: OtpCodemodeProvider;
   pi: PiCodemodeProvider;
-  resend: ResendCodemodeProvider;
   sandbox: SandboxCodemodeProvider;
-  telegram: TelegramCodemodeProvider;
   js: JsCodemodeProvider;
   upload: UploadCodemodeProvider;
   marketplace: MarketplaceCodemodeProvider;

@@ -66,15 +66,7 @@ import {
 } from "@/fragno/runtime-tools/families/otp-runtime";
 import { createPackagesRuntime } from "@/fragno/runtime-tools/families/packages-runtime";
 import { createProjectConnectorRuntime } from "@/fragno/runtime-tools/families/project-connector-runtime";
-import {
-  createResendRouteRuntime,
-  createUnavailableResendRuntime,
-} from "@/fragno/runtime-tools/families/resend-runtime";
 import { createSandboxRouteRuntime } from "@/fragno/runtime-tools/families/sandbox-route-runtime";
-import {
-  createTelegramRuntime,
-  createUnavailableTelegramRuntime,
-} from "@/fragno/runtime-tools/families/telegram-runtime";
 import { createUploadRuntime } from "@/fragno/runtime-tools/families/upload-runtime";
 import { createWebRuntime } from "@/fragno/runtime-tools/families/web-runtime";
 import {
@@ -534,17 +526,6 @@ export const createRouteBackedRuntimeContext = ({
     integrations: {
       runtime: createIntegrationsRuntime({ runtime, kernel, execution, nowEpochMs: Date.now }),
     },
-    resend: {
-      runtime:
-        selectedOrg && runtime.config.bindings.resend
-          ? createResendRouteRuntime({
-              object: authorizedBackofficeObjectHttp(
-                kernel.scoped("RESEND", execution.scope, runtime.objects.resend).http,
-                execution,
-              ),
-            })
-          : createUnavailableResendRuntime(unavailableMessage("RESEND", execution)),
-    },
     sandbox:
       runtime.config.bindings.sandbox && runtime.config.bindings.automations
         ? {
@@ -634,20 +615,6 @@ export const createRouteBackedRuntimeContext = ({
             ),
           }
         : null,
-    telegram:
-      execution.scope.kind === "org" && runtime.config.bindings.telegram
-        ? {
-            runtime: createTelegramRuntime({
-              object: kernel.scoped("TELEGRAM", execution.scope, runtime.objects.telegram),
-              execution,
-              kernel,
-            }),
-          }
-        : {
-            runtime: createUnavailableTelegramRuntime(
-              `TELEGRAM is not available in ${execution.scope.kind} context.`,
-            ),
-          },
   };
 };
 

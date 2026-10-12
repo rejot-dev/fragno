@@ -225,10 +225,10 @@ describe("Telegram object authorization scenarios", () => {
           text: "private message",
           messageId: 100,
         }),
-        then.assert("trusted scope context alone does not grant read access", async (ctx) => {
+        then.assert("trusted scope context alone does not grant bot access", async (ctx) => {
           const object = ctx.runtime.objects.telegram.for(scope);
-          // Agents may send to Telegram but hold no Telegram read permission.
-          const sender = {
+          // Agents hold no integrations.execute, which every bot read and send requires.
+          const agent = {
             execution: createBackofficeServiceExecution({
               scope,
               service: { type: "agent", id: "telegram-sender" },
@@ -244,11 +244,20 @@ describe("Telegram object authorization scenarios", () => {
           ]) {
             const response = await object.http.fetchAuthorized(
               new Request(`https://telegram.do${path}`),
-              sender,
+              agent,
             );
             assert.equal(response.status, 403);
             expect(await response.json()).toMatchObject({ code: "principal-permission-denied" });
           }
+          const deniedSend = await object.http.fetchAuthorized(
+            new Request("https://telegram.do/api/telegram/chats/1234/send", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ text: "agent send" }),
+            }),
+            agent,
+          );
+          assert.equal(deniedSend.status, 403);
           const unlisted = await object.http.fetchAuthorized(
             new Request("https://telegram.do/api/telegram/_internal"),
             {
@@ -258,25 +267,30 @@ describe("Telegram object authorization scenarios", () => {
           );
           assert.equal(unlisted.status, 404);
           expect(await unlisted.json()).toMatchObject({ code: "FRAGMENT_ROUTE_NOT_EXPOSED" });
-          const runtime = createTelegramRuntime({
+          const kernel = new BackofficeKernel(ctx.runtime.services);
+          const agentRuntime = createTelegramRuntime({
             object,
-            execution: sender.execution,
-            kernel: new BackofficeKernel(ctx.runtime.services),
+            execution: agent.execution,
+            kernel,
           });
-          await expect(runtime.getFile({ fileId: "private-file" })).rejects.toMatchObject({
+          await expect(agentRuntime.getFile({ fileId: "private-file" })).rejects.toMatchObject({
             reason: "principal-permission-denied",
           });
-          await expect(runtime.downloadFile({ fileId: "private-file" })).rejects.toMatchObject({
-            reason: "principal-permission-denied",
-          });
+          await expect(agentRuntime.downloadFile({ fileId: "private-file" })).rejects.toMatchObject(
+            { reason: "principal-permission-denied" },
+          );
           await assertTelegramStateUnchanged(ctx);
+          const trusted = {
+            execution: createBackofficeSystemExecution(scope),
+            propagationContext: null,
+          };
           const sent = await object.http.fetchAuthorized(
             new Request("https://telegram.do/api/telegram/chats/1234/send", {
               method: "POST",
               headers: { "content-type": "application/json" },
               body: JSON.stringify({ text: "authorized send" }),
             }),
-            sender,
+            trusted,
           );
           assert.equal(sent.status, 200);
           await ctx.runtime.drain();
@@ -284,7 +298,14 @@ describe("Telegram object authorization scenarios", () => {
           expect(ctx.fakes.telegram.sendMessageCalls).toMatchObject([
             { body: { chat_id: "1234", text: "authorized send" } },
           ]);
-          const queued = await runtime.sendMessage({ chatId: "1234", text: "runtime send" });
+          const runtime = createTelegramRuntime({ object, execution: trusted.execution, kernel });
+          const queued = await runtime.sendMessage({
+            chatId: "1234",
+            text: "runtime send",
+            parseMode: null,
+            disableWebPagePreview: false,
+            replyToMessageId: null,
+          });
           expect(queued).toEqual({ ok: true, queued: true });
           await ctx.runtime.drain();
           expect(ctx.fakes.telegram.sendMessageCalls).toMatchObject([
@@ -316,112 +337,6 @@ describe("Telegram object authorization scenarios", () => {
           assert(file.ok);
           assert.equal(await file.text(), "private");
           expect(ctx.fakes.telegram.downloadFileCalls).toEqual([{ fileId: "private-file" }]);
-        }),
-      ],
-    });
-  });
-
-  test("bootstrap send, action, and edit permissions stay bound to the initiating chat", async () => {
-    await runTelegramObjectScenario({
-      objects: scenarioObjects,
-      name: "Telegram middleware authorizes the typed chat resource",
-      fakes: ({ fake }) => ({ telegram: fake.telegram() }),
-      setup: ({ given }) => [
-        given.organization.exists({ id: scope.orgId }),
-        given.telegram.configured({ orgId: scope.orgId, botUsername: "fragno_bot" }),
-      ],
-      steps: ({ when, then }) => [
-        when.telegram.receivesMessage({
-          orgId: scope.orgId,
-          updateId: 1,
-          messageId: 100,
-          chatId: "1234",
-          text: "private message",
-        }),
-        when.telegram.receivesMessage({
-          orgId: scope.orgId,
-          updateId: 2,
-          messageId: 100,
-          chatId: "5678",
-          text: "other private message",
-        }),
-        then.assert("foreign chat paths cannot borrow bootstrap authority", async (ctx) => {
-          const object = ctx.runtime.objects.telegram.for(scope);
-          const bootstrap = {
-            execution: {
-              kind: "deferred" as const,
-              scopeRestriction: null,
-              scope,
-              actors: {
-                initiator: {
-                  scope: "external" as const,
-                  source: "telegram",
-                  type: "chat",
-                  id: "1234",
-                  role: "initiator" as const,
-                },
-                principal: null,
-                delegation: [],
-              },
-            },
-            propagationContext: null,
-          };
-          const operations = [
-            { suffix: "/send", body: { text: "bootstrap reply" } },
-            { suffix: "/actions", body: { action: "typing" } },
-            { suffix: "/messages/100/edit", body: { text: "bootstrap edit" } },
-          ];
-          for (const { suffix, body } of operations) {
-            const denied = await object.http.fetchAuthorized(
-              new Request(`https://telegram.do/api/telegram/chats/5678${suffix}`, {
-                method: "POST",
-                headers: { "content-type": "application/json" },
-                body: JSON.stringify({ ...body, chatId: "1234" }),
-              }),
-              bootstrap,
-            );
-            assert.equal(denied.status, 403);
-            expect(await denied.json()).toMatchObject({ code: "principal-permission-denied" });
-          }
-          const deniedRead = await object.http.fetchAuthorized(
-            new Request("https://telegram.do/api/telegram/chats/1234/messages"),
-            bootstrap,
-          );
-          assert.equal(deniedRead.status, 403);
-          await assertTelegramStateUnchanged(ctx);
-          for (const { suffix, body } of operations) {
-            const allowed = await object.http.fetchAuthorized(
-              new Request(`https://telegram.do/api/telegram/chats/1234${suffix}`, {
-                method: "POST",
-                headers: { "content-type": "application/json" },
-                body: JSON.stringify(body),
-              }),
-              bootstrap,
-            );
-            assert(allowed.ok, await allowed.clone().text());
-          }
-          await ctx.runtime.drain();
-          assert(ctx.fakes.telegram);
-          expect(ctx.fakes.telegram.sendMessageCalls).toMatchObject([
-            { body: { chat_id: "1234", text: "bootstrap reply" } },
-          ]);
-          expect(ctx.fakes.telegram.sendChatActionCalls).toMatchObject([
-            { body: { chat_id: "1234", action: "typing" } },
-          ]);
-          expect(ctx.fakes.telegram.editMessageTextCalls).toMatchObject([
-            { body: { chat_id: "1234", text: "bootstrap edit" } },
-          ]);
-          const untouched = await object.http.fetchAuthorized(
-            new Request("https://telegram.do/api/telegram/chats/5678/messages"),
-            {
-              execution: createBackofficeSystemExecution(scope),
-              propagationContext: null,
-            },
-          );
-          assert(untouched.ok);
-          expect(await untouched.json()).toMatchObject({
-            messages: [{ text: "other private message" }],
-          });
         }),
       ],
     });

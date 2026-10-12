@@ -12,7 +12,6 @@ import { EMPTY_BASH_HOST_CONTEXT } from "./bash-host.test-utils";
 import { createUnavailableAutomationRouterRuntime } from "./families/automations-routing";
 import { createUnavailableEventRuntime } from "./families/event-runtime";
 import type { OtpRuntime } from "./families/otp-runtime";
-import type { ResendRuntime } from "./families/resend-runtime";
 
 const automationStoreActor = {
   scope: "external",
@@ -49,97 +48,6 @@ const createOtpRuntime = (): OtpRuntime => ({
     otpId: "otp_123456",
     code: "123456",
     actor: automationStoreActor,
-  }),
-});
-
-const createResendRuntime = (): ResendRuntime => ({
-  listThreads: async () => ({
-    threads: [],
-    hasNextPage: false,
-  }),
-  getThread: async ({ threadId }) => ({
-    id: threadId,
-    subject: "Invoice Update",
-    normalizedSubject: "invoice update",
-    participants: ["customer@example.com", "support@example.com"],
-    messageCount: 1,
-    firstMessageAt: new Date("2026-01-01T00:00:00.000Z"),
-    lastMessageAt: new Date("2026-01-01T00:00:00.000Z"),
-    lastDirection: "outbound",
-    lastMessagePreview: "Hello there",
-    createdAt: new Date("2026-01-01T00:00:00.000Z"),
-    updatedAt: new Date("2026-01-01T00:00:00.000Z"),
-    replyToAddress: "reply@example.com",
-  }),
-  listThreadMessages: async () => ({
-    messages: [],
-    hasNextPage: false,
-  }),
-  getThreadSnapshot: async ({ threadId }) => ({
-    thread: {
-      id: threadId,
-      subject: "Invoice Update",
-      normalizedSubject: "invoice update",
-      participants: ["customer@example.com", "support@example.com"],
-      messageCount: 1,
-      firstMessageAt: new Date("2026-01-01T00:00:00.000Z"),
-      lastMessageAt: new Date("2026-01-01T00:00:00.000Z"),
-      lastDirection: "outbound",
-      lastMessagePreview: "Hello there",
-      createdAt: new Date("2026-01-01T00:00:00.000Z"),
-      updatedAt: new Date("2026-01-01T00:00:00.000Z"),
-      replyToAddress: "reply@example.com",
-    },
-    messages: [],
-    hasNextPage: false,
-    markdown: "# Invoice Update\n",
-  }),
-  replyToThread: async ({ threadId, subject, body }) => ({
-    thread: {
-      id: threadId,
-      subject: subject ?? "Invoice Update",
-      normalizedSubject: "invoice update",
-      participants: ["customer@example.com", "support@example.com"],
-      messageCount: 2,
-      firstMessageAt: new Date("2026-01-01T00:00:00.000Z"),
-      lastMessageAt: new Date("2026-01-01T00:00:00.000Z"),
-      lastDirection: "outbound",
-      lastMessagePreview: body,
-      createdAt: new Date("2026-01-01T00:00:00.000Z"),
-      updatedAt: new Date("2026-01-01T00:00:00.000Z"),
-      replyToAddress: "reply@example.com",
-    },
-    message: {
-      id: "reply-1",
-      threadId,
-      direction: "outbound",
-      status: "queued",
-      from: "support@example.com",
-      to: ["customer@example.com"],
-      cc: [],
-      bcc: [],
-      replyTo: [],
-      subject: subject ?? "Invoice Update",
-      normalizedSubject: "invoice update",
-      participants: ["customer@example.com", "support@example.com"],
-      messageId: null,
-      inReplyTo: null,
-      references: [],
-      providerEmailId: null,
-      attachments: [],
-      html: null,
-      text: body,
-      headers: null,
-      occurredAt: new Date("2026-01-01T00:00:00.000Z"),
-      scheduledAt: null,
-      sentAt: null,
-      lastEventType: null,
-      lastEventAt: null,
-      errorCode: null,
-      errorMessage: null,
-      createdAt: new Date("2026-01-01T00:00:00.000Z"),
-      updatedAt: new Date("2026-01-01T00:00:00.000Z"),
-    },
   }),
 });
 
@@ -203,19 +111,6 @@ const createPiRuntime = (): PiManagerRuntime => {
     abortSession: async () => undefined,
   };
 };
-
-const createTelegramRuntime = () => ({
-  getFile: async ({ fileId }: { fileId: string }) => ({
-    fileId,
-    fileUniqueId: `unique-${fileId}`,
-    filePath: `voice/${fileId}.ogg`,
-    fileSize: 4,
-  }),
-  downloadFile: async () => new Response(new Uint8Array([0, 255, 1, 2])),
-  sendMessage: async () => ({ ok: true, queued: true }),
-  sendChatAction: async () => ({ ok: true }),
-  editMessage: async () => ({ ok: true, queued: true }),
-});
 
 const createAutomationContext = () => ({
   event: {
@@ -287,7 +182,7 @@ describe("interactive bash host", () => {
 });
 
 describe("bash host command assembly", () => {
-  it("loads pi, automations, otp, and resend command families without exposing automation event commands", async () => {
+  it("loads pi, automations, and otp command families without exposing automation event commands", async () => {
     const { bash, commandCallsResult } = createBashHost({
       fs: new InMemoryFs(),
       context: {
@@ -302,19 +197,12 @@ describe("bash host command assembly", () => {
         pi: {
           runtime: createPiRuntime(),
         },
-        resend: {
-          runtime: createResendRuntime(),
-        },
-        telegram: null,
       },
     });
 
     const piHelp = await bash.exec("pi.session.get --help");
     const automationsHelp = await bash.exec("store.get --help");
     const otpHelp = await bash.exec("otp.identity.create-claim --help");
-    const resendGetHelp = await bash.exec("resend.threads.get --help");
-    const resendListHelp = await bash.exec("resend.threads.list --help");
-    const resendReplyHelp = await bash.exec("resend.threads.reply --help");
     const missingEvent = await bash.exec("events.fire --event-type test");
 
     assert(piHelp.exitCode === 0);
@@ -323,12 +211,6 @@ describe("bash host command assembly", () => {
     expect(automationsHelp.stdout).toContain("store.get");
     assert(otpHelp.exitCode === 0);
     expect(otpHelp.stdout).toContain("otp.identity.create-claim");
-    assert(resendGetHelp.exitCode === 0);
-    expect(resendGetHelp.stdout).toContain("resend.threads.get");
-    assert(resendListHelp.exitCode === 0);
-    expect(resendListHelp.stdout).toContain("resend.threads.list");
-    assert(resendReplyHelp.exitCode === 0);
-    expect(resendReplyHelp.stdout).toContain("resend.threads.reply");
     assert(missingEvent.exitCode === 127);
     expect(missingEvent.stderr).toContain("bash: events.fire: command not found");
     expect(commandCallsResult).toEqual([
@@ -347,21 +229,6 @@ describe("bash host command assembly", () => {
         output: expect.stringContaining("otp.identity.create-claim"),
         exitCode: 0,
       },
-      {
-        command: "resend.threads.get",
-        output: expect.stringContaining("resend.threads.get"),
-        exitCode: 0,
-      },
-      {
-        command: "resend.threads.list",
-        output: expect.stringContaining("resend.threads.list"),
-        exitCode: 0,
-      },
-      {
-        command: "resend.threads.reply",
-        output: expect.stringContaining("resend.threads.reply"),
-        exitCode: 0,
-      },
     ]);
   });
 
@@ -374,8 +241,6 @@ describe("bash host command assembly", () => {
         automations: null,
         otp: null,
         pi: null,
-        resend: null,
-        telegram: null,
       },
     });
 
@@ -390,38 +255,6 @@ describe("bash host command assembly", () => {
       {
         command: "events.fire",
         output: expect.stringContaining("events.fire"),
-        exitCode: 0,
-      },
-    ]);
-  });
-
-  it("loads telegram file commands only when telegram context is provided", async () => {
-    const { bash, commandCallsResult } = createBashHost({
-      fs: new InMemoryFs(),
-      context: {
-        ...EMPTY_BASH_HOST_CONTEXT,
-        automation: null,
-        automations: null,
-        otp: null,
-        pi: null,
-        resend: null,
-        telegram: {
-          runtime: createTelegramRuntime(),
-        },
-      },
-    });
-
-    const telegramHelp = await bash.exec("telegram.file.get --help");
-    const missingPi = await bash.exec("pi.session.create");
-
-    assert(telegramHelp.exitCode === 0);
-    expect(telegramHelp.stdout).toContain("telegram.file.get");
-    assert(missingPi.exitCode === 127);
-    expect(missingPi.stderr).toContain("bash: pi.session.create: command not found");
-    expect(commandCallsResult).toEqual([
-      {
-        command: "telegram.file.get",
-        output: expect.stringContaining("telegram.file.get"),
         exitCode: 0,
       },
     ]);

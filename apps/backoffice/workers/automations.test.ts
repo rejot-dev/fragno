@@ -74,7 +74,8 @@ const localObjects = {
 } satisfies LocalBackofficeObjects;
 
 const objects = {} as BackofficeObjectRegistry;
-const USER_WORKSPACE_INGESTION_TEST_VERSION = "1.2.1";
+// 1.0.0 has no installer, so ingestion completes without the form later versions wait for.
+const USER_WORKSPACE_INGESTION_TEST_VERSION = "1.0.0";
 const config: BackofficeRuntimeConfig = {
   authEmailVerification: { enabled: false },
   signUpInvitationsEnabled: true,

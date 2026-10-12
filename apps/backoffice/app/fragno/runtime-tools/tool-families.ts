@@ -58,9 +58,7 @@ import type { PackagesRuntime } from "./families/packages-runtime";
 import { piToolFamily } from "./families/pi";
 import { projectConnectorToolFamily } from "./families/project-connector";
 import type { ProjectConnectorRuntime } from "./families/project-connector-runtime";
-import { resendToolFamily, type ResendRuntime } from "./families/resend";
 import { sandboxToolFamily, type SandboxRuntime } from "./families/sandbox";
-import { telegramToolFamily, type TelegramRuntime } from "./families/telegram";
 import { uploadToolFamily } from "./families/upload";
 import type { UploadRuntime } from "./families/upload-runtime";
 import { webToolFamily, type WebRuntime } from "./families/web";
@@ -94,9 +92,7 @@ export type CoreBackofficeRuntimeMap = {
   projectConnector: ProjectConnectorRuntime | undefined;
   otp?: OtpRuntime;
   pi?: PiManagerRuntime;
-  resend?: ResendRuntime;
   sandbox?: SandboxRuntime;
-  telegram?: TelegramRuntime;
   javascript?: JavaScriptRuntime;
   upload?: UploadRuntime;
   web?: WebRuntime;
@@ -128,9 +124,7 @@ export const runtimeToolFamilies = [
   projectConnectorToolFamily,
   otpToolFamily,
   piToolFamily,
-  resendToolFamily,
   sandboxToolFamily,
-  telegramToolFamily,
   javaScriptCheckToolFamily,
   javaScriptRunToolFamily,
   javaScriptLogsToolFamily,
@@ -158,9 +152,7 @@ const namespaceCapabilityIds = {
   connector: "connector",
   otp: "otp",
   pi: "pi",
-  resend: "resend",
   sandbox: "sandbox",
-  telegram: "telegram",
   upload: "upload",
 } as const;
 

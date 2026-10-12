@@ -47,11 +47,26 @@ const telegramAutomationExternalEntities = {
 } as const satisfies Record<string, AutomationExternalEntityDefinition<typeof AUTOMATION_SOURCE>>;
 
 const telegramMessageReceivedPayloadSchema = z.object({
-  messageId: z.string().min(1),
-  chatId: z.string().min(1),
-  fromUserId: z.string().min(1).nullable(),
-  text: z.string().nullable(),
-  attachments: z.array(telegramAttachmentSchema).optional(),
+  messageId: z.string().min(1).describe("Telegram message ID; messages.edit takes it."),
+  chatId: z
+    .string()
+    .min(1)
+    .describe("Telegram chat ID, also the initiator's id; backoffice#telegram actions take it."),
+  fromUserId: z
+    .string()
+    .min(1)
+    .nullable()
+    .describe("Sender's Telegram user ID; null when Telegram omits the sender."),
+  text: z
+    .string()
+    .nullable()
+    .describe("Message text; null for messages without text, such as attachments."),
+  attachments: z
+    .array(telegramAttachmentSchema)
+    .optional()
+    .describe(
+      "Voice notes, photos, and files as metadata; files.get and files.download take each fileId.",
+    ),
 });
 
 const telegramMessageReceivedActorSchema = z.object({
@@ -126,7 +141,7 @@ export const telegramCapability: BackofficeConfigurableConnectionCapability = {
         description: "Messages received by the connected Telegram bot.",
       },
     ],
-    actionProviders: ["telegram"],
+    actionProviders: ["integrations"],
     hookScopes: [
       {
         id: "telegram",
@@ -135,7 +150,7 @@ export const telegramCapability: BackofficeConfigurableConnectionCapability = {
           createDurableHookRepositoryFromCommands(getTelegramDo(objects, orgId).commands),
       },
     ],
-    skillPaths: ["skills/telegram-integration/SKILL.md"],
+    skillPaths: [],
     externalEntities: [telegramAutomationExternalEntities.chat],
     automationEvents: [
       {

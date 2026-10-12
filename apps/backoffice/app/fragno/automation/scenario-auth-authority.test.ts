@@ -81,11 +81,7 @@ describe("scenario auth authority fixtures", () => {
           then.auth.permissions({
             userId: "member-1",
             scope: { kind: "org", orgId: "org-1" },
-            include: [
-              BACKOFFICE_PERMISSION.otp.create,
-              BACKOFFICE_PERMISSION.store.modify,
-              BACKOFFICE_PERMISSION.telegram.send,
-            ],
+            include: [BACKOFFICE_PERMISSION.otp.create, BACKOFFICE_PERMISSION.store.modify],
             exclude: [BACKOFFICE_PERMISSION.identity.bind],
           }),
 

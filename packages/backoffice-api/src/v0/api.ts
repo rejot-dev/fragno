@@ -17,11 +17,9 @@ import { mcpOperations } from "./mcp";
 import { organizationOperations } from "./organization";
 import { otpOperations } from "./otp";
 import { piOperations } from "./pi";
-import { resendOperations } from "./resend";
 import { sandboxOperations } from "./sandbox";
 import { stateOperations } from "./state";
 import { storeOperations } from "./store";
-import { telegramOperations } from "./telegram";
 import { uploadOperations } from "./upload";
 import { webOperations } from "./web";
 import { workflowOperations } from "./workflow";
@@ -48,11 +46,9 @@ export const backofficeApiV0 = {
     ...otpOperations,
     ...packagesOperations,
     ...piOperations,
-    ...resendOperations,
     ...sandboxOperations,
     ...stateOperations,
     ...storeOperations,
-    ...telegramOperations,
     ...uploadOperations,
     ...webOperations,
     ...workflowOperations,

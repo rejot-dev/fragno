@@ -34,7 +34,6 @@ import { type EventRuntime } from "@/fragno/runtime-tools/families/event";
 import { createUnavailableEventRuntime } from "@/fragno/runtime-tools/families/event-runtime";
 import type { McpRuntime } from "@/fragno/runtime-tools/families/mcp-runtime";
 import { type OtpRuntime } from "@/fragno/runtime-tools/families/otp";
-import { type TelegramRuntime } from "@/fragno/runtime-tools/families/telegram";
 import type { UploadRuntime } from "@/fragno/runtime-tools/families/upload-runtime";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 import { createTrustedSystemBackofficeToolContext } from "@/fragno/runtime-tools/runtime-tools";
@@ -430,68 +429,6 @@ describe("runBackofficeCodemode", () => {
 
     expect(result.error).toBeUndefined();
     expect(result.result).toEqual({ isUint8Array: true, bytes: [0, 1, 2, 255] });
-  });
-
-  test("calls telegram tools through codemode providers", async () => {
-    const calls: unknown[] = [];
-    const telegramRuntime: TelegramRuntime = {
-      getFile: async (input) => {
-        calls.push(["getFile", input]);
-        return { fileId: input.fileId, filePath: `voice/${input.fileId}.ogg`, fileSize: 4 };
-      },
-      downloadFile: async (input) => {
-        calls.push(["downloadFile", input]);
-        return new Response(new Uint8Array([0, 1, 2]), {
-          headers: { "content-type": "application/octet-stream" },
-        });
-      },
-      sendMessage: async (input) => {
-        calls.push(["sendMessage", input]);
-        return { ok: true, queued: true };
-      },
-      sendChatAction: async (input) => {
-        calls.push(["sendChatAction", input]);
-        return { ok: true };
-      },
-      editMessage: async (input) => {
-        calls.push(["editMessage", input]);
-        return { ok: true, queued: true };
-      },
-    };
-
-    const result = await runBackofficeCodemode({
-      codemode,
-      families: runtimeToolFamilies,
-      toolContext: createTrustedSystemBackofficeToolContext({
-        runtimes: { telegram: telegramRuntime },
-      }),
-      code: `async () => {
-        const file = await telegram.getFile({ fileId: "file-1" });
-        const sent = await telegram.sendMessage({ chatId: "chat-1", text: "Hello" });
-        const downloaded = await telegram.downloadFile({ fileId: file.fileId });
-        return { file, sent, downloaded };
-      }`,
-    });
-
-    expect(result.error).toBeUndefined();
-    expect(result.result).toEqual({
-      file: { fileId: "file-1", filePath: "voice/file-1.ogg", fileSize: 4 },
-      sent: { ok: true, queued: true },
-      downloaded: {
-        bytes: [0, 1, 2],
-        contentType: "application/octet-stream",
-      },
-    });
-    expect(calls).toEqual([
-      ["getFile", { fileId: "file-1" }],
-      ["sendMessage", { chatId: "chat-1", text: "Hello" }],
-      ["downloadFile", { fileId: "file-1" }],
-    ]);
-    expect(result.toolCalls).toMatchObject([
-      { providerName: "telegram", toolName: "getFile", toolId: "telegram.file.get" },
-      { providerName: "telegram", toolName: "sendMessage", toolId: "telegram.chat.send" },
-      { providerName: "telegram", toolName: "downloadFile", toolId: "telegram.file.download" },
-    ]);
   });
 
   test("calls cached MCP tools through dispatcher-safe codemode providers", async () => {

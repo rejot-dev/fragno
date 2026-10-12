@@ -251,7 +251,7 @@ describe("Workspace package runtime scenarios", () => {
               });
               const { bash } = createInteractiveBashHost({ context });
               const personal = await bash.exec(
-                `packages.install --listing-id '${LISTING_ID}' --version 1.2.1 --installation-root ${INSTALLATION_ROOT} --format json`,
+                `packages.install --listing-id '${LISTING_ID}' --version 1.0.0 --installation-root ${INSTALLATION_ROOT} --format json`,
               );
               assert(personal.exitCode === 0, personal.stderr);
               expect(JSON.parse(personal.stdout)).toMatchObject({
@@ -259,7 +259,7 @@ describe("Workspace package runtime scenarios", () => {
               });
               const project = await ctx.runCodemode({
                 scope: ORG_SCOPE,
-                code: `async () => await context.project(${JSON.stringify(ctx.vars.projectId)}).packages.install(${JSON.stringify({ listingId: LISTING_ID, version: "1.2.1", installationRoot: INSTALLATION_ROOT })})`,
+                code: `async () => await context.project(${JSON.stringify(ctx.vars.projectId)}).packages.install(${JSON.stringify({ listingId: LISTING_ID, version: "1.0.0", installationRoot: INSTALLATION_ROOT })})`,
               });
               expect(project.result).toMatchObject({ workflowScope: ORG_SCOPE, action: "created" });
             },
@@ -275,7 +275,7 @@ describe("Workspace package runtime scenarios", () => {
               } as const;
               const expected = {
                 entries: [
-                  { listingId: LISTING_ID, version: "1.2.1", installationRoot: INSTALLATION_ROOT },
+                  { listingId: LISTING_ID, version: "1.0.0", installationRoot: INSTALLATION_ROOT },
                 ],
               };
               for (const target of [{ kind: "user", userId: "owner-1" } as const, scope]) {
@@ -329,7 +329,7 @@ describe("Workspace package runtime scenarios", () => {
               billingOrganizationId: "org-2",
             });
             const result = await createInteractiveBashHost({ context }).bash.exec(
-              `packages.install --listing-id '${LISTING_ID}' --version 1.2.1 --installation-root ${INSTALLATION_ROOT} --format json`,
+              `packages.install --listing-id '${LISTING_ID}' --version 1.0.0 --installation-root ${INSTALLATION_ROOT} --format json`,
             );
             assert(result.exitCode === 0, result.stderr);
             expect(JSON.parse(result.stdout)).toMatchObject({ workflowScope: ORG_SCOPE });
@@ -342,7 +342,7 @@ describe("Workspace package runtime scenarios", () => {
             });
             expect(result.result).toEqual({
               entries: [
-                { listingId: LISTING_ID, version: "1.2.1", installationRoot: INSTALLATION_ROOT },
+                { listingId: LISTING_ID, version: "1.0.0", installationRoot: INSTALLATION_ROOT },
               ],
             });
           }),

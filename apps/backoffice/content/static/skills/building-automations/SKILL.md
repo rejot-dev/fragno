@@ -98,10 +98,11 @@ reclassifies the event, or forwards it to another scope.
    narrow the user's authority.
 
    `organization-automation` has no user principal to inherit from. Give it the explicit canonical
-   permissions used by its runtime tools. Creating or updating an explicit grant array requires the
-   configuring execution to hold every requested grant. **Complete when** the authority mode names
-   the intended principal and its grant policy is either inherited user authority or the smallest
-   explicit automation grant set.
+   permissions used by its runtime tools; actions on Reson8, Telegram, and Resend need only
+   `integrations.execute`. Creating or updating an explicit grant array requires the configuring
+   execution to hold every requested grant. **Complete when** the authority mode names the intended
+   principal and its grant policy is either inherited user authority or the smallest explicit
+   automation grant set.
 
    Signal an existing durable workflow on a schedule, with an explicit IANA time zone:
 

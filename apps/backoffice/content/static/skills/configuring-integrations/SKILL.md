@@ -2,26 +2,32 @@
 name: configuring-integrations
 description: >
   Connect, set up, verify, reconfigure, or disconnect a service. Walks a source ladder: native
-  Backoffice services such as Telegram, Resend, Reson8, and Upload first, then Open Connector OAuth
+  Backoffice integrations (Reson8, Telegram, Resend, and GitHub) first, then Open Connector OAuth
   providers, then remote MCP servers, then direct HTTP API connections. Load with the service's
-  provider-specific skill.
+  provider-specific skill when one exists.
 ---
 
 # Configuring Integrations
 
-`integrations.*` is one facade over four connection sources. Every connection has a scoped address
+`integrations.*` is one facade over every connection source. Every connection has a scoped address
 `namespace#local-id`; copy addresses from discovery and listing verbatim. Read
 `/static/codemode/providers/integrations.d.ts` before calling it.
 
-| Rung | Source          | Address                                    | Owning scope       |
-| ---- | --------------- | ------------------------------------------ | ------------------ |
-| 1    | Backoffice      | `backoffice#<service>`, or `connections.*` | organization¹      |
-| 2    | Open Connector  | `connector#n_…`, `connector#a_…` (opaque)  | user               |
-| 3    | MCP server      | `mcp#<slug>`, slug chosen by you           | org, user, project |
-| 4    | Direct HTTP API | `api#<slug>`, slug chosen by you           | org, user, project |
+| Rung | Source          | Address                                   | Owning scope       |
+| ---- | --------------- | ----------------------------------------- | ------------------ |
+| 1    | Backoffice      | see the native list below                 | see below          |
+| 2    | Open Connector  | `connector#n_…`, `connector#a_…` (opaque) | user               |
+| 3    | MCP server      | `mcp#<slug>`, slug chosen by you          | org, user, project |
+| 4    | Direct HTTP API | `api#<slug>`, slug chosen by you          | org, user, project |
 
-¹ Telegram has a bot in every scope. In system scope, `backoffice#resend` is the platform email
-account.
+These are all the native Backoffice integrations:
+
+| Service  | Address               | Owning scope                                       | Provides                              |
+| -------- | --------------------- | -------------------------------------------------- | ------------------------------------- |
+| Reson8   | `backoffice#reson8`   | organization                                       | speech-to-text                        |
+| Telegram | `backoffice#telegram` | every scope, each with its own bot                 | bot messages, `message.received`      |
+| Resend   | `backoffice#resend`   | organization; system is the platform email account | email threads and replies             |
+| GitHub   | `github#owner/repo`   | organization, one connection per repository        | repository API through the GitHub App |
 
 ## 1. Discover
 
@@ -30,7 +36,6 @@ async () => ({
   scope: await context.getCurrentScope(),
   services: await integrations.discover(),
   page: await integrations.list({ cursor: null }),
-  nativeCatalog: await connections.list(),
 });
 ```
 
@@ -46,9 +51,10 @@ straight to step 3.
 
 Take the highest rung that offers the requested service:
 
-1. **Backoffice**: a service whose setup target is `backoffice#…`. A native service that appears
-   only in `nativeCatalog`, such as Upload, is configured through `connections.*`: follow
-   `/static/skills/configuring-integrations/CONNECTIONS.md` in place of steps 3 and 4.
+1. **Backoffice**: a service from the native list. Fixed addresses such as `backoffice#telegram`
+   appear as setup targets. For GitHub, address the repository as `github#owner/repo`, with GitHub's
+   casing since addresses are case-sensitive; when the GitHub App cannot reach it yet, submitting
+   `{ link: true }` returns the GitHub link that grants access.
 2. **Open Connector**: a service whose `id` names the provider, such as `gmail`, with
    `connector#n_…` targets. Use the target unchanged; it preassigns the connection name. Several
    targets mean several provider configurations: use the user's choice.
@@ -61,11 +67,11 @@ Take the highest rung that offers the requested service:
    auth method from provider documentation; a service name alone establishes neither.
 
 An `unavailable` service names its reason, usually the owning scope; use that scope when the user
-owns it. Read the service's provider-specific skill, such as
-`/static/skills/telegram-integration/SKILL.md`, for its fields, events, and tools.
+owns it. Each service's setup instructions, action schemas, and event catalog entries describe its
+fields, actions, and events.
 
-**Complete when** exactly one `connectionId`, or one `connections.*` catalog ID, is selected from
-the highest rung that offers the service.
+**Complete when** exactly one `connectionId` is selected from the highest rung that offers the
+service.
 
 ## 3. Run the setup loop
 
@@ -134,7 +140,9 @@ Both operations replace or delete live credentials, so run them on the user's in
   configuration and credentials. `not-configured` means nothing was stored. The address stays valid
   for a later setup.
 
-Open Connector supports neither; to consent again, set up a fresh connection name.
+Open Connector supports neither; to consent again, set up a fresh connection name. GitHub does not
+support reconfigure, since repository access is changed in the GitHub App's installation settings;
+its disconnect unlinks the repository from this organization.
 
 **Complete when** reconfiguration reaches `ready` and step 4 proves access again, or disconnect
 returns `disconnected` or `not-configured`.
@@ -160,6 +168,10 @@ the next check rather than the browser consent, and revocation is never reported
 
 `integrations.actions({ connectionId })` returns each action's authoritative input and output
 schemas; build input from the selected `inputSchema`.
+
+Binary inputs, such as audio for `backoffice#reson8`'s `prerecorded.transcribe`, are byte arrays of
+real file content: read the file with `state.readFileBytes({ path })` and pass `Array.from(bytes)`.
+Action inputs list every field; pass `null` for a default.
 
 Obtain the user's instruction before any action that writes or sends. `integrations.execute` runs
 once; an output failure arrives after the action has run, so report it rather than repeating the
@@ -200,8 +212,9 @@ Inbound webhooks are endpoints, not connections: configure them with `api.webhoo
 
 Discovery, listing, inspection, and action contracts require `integrations.read`; setup,
 reconfigure, disconnect, and verification require `integrations.manage`; execution requires
-`integrations.execute`. Each source also enforces its native permissions. Report a permission
-failure as it stands, in the current scope and source.
+`integrations.execute`. Reson8, Telegram, and Resend actions need nothing more. GitHub also enforces
+`connections.read` and `connections.manage`, and Open Connector, MCP, and direct API enforce their
+native permissions. Report a permission failure as it stands, in the current scope and source.
 
 Terminal commands share the names, e.g.
 `integrations.setup --connection-id 'api#stripe' --input-json '{...}'` and
