@@ -9,6 +9,7 @@ import { createGitHubIntegration } from "./github-integration";
 import { createIntegrationRegistry } from "./integration-registry";
 import type { IntegrationsRuntime } from "./integration-tools";
 import { createMcpIntegration } from "./mcp-integration";
+import { createResendIntegration } from "./resend-integration";
 import { createReson8Integration } from "./reson8-integration";
 import { createTelegramIntegration } from "./telegram-integration";
 
@@ -30,6 +31,7 @@ export function createIntegrationsRuntime({
     createGitHubIntegration({ runtime, nowEpochMs }),
     createReson8Integration({ runtime, nowEpochMs }),
     createTelegramIntegration({ runtime, nowEpochMs }),
+    createResendIntegration({ runtime, nowEpochMs }),
     ...(execution.scope.kind === "user"
       ? [createConnectorIntegration({ runtime, nowEpochMs })]
       : []),

@@ -1,10 +1,10 @@
 # Native `connections.*` services
 
-Resend, Upload, and other native services without a `backoffice#` setup target keep their
-configuration controls in `connections.*`. Catalog IDs name services, not Open Connector accounts or
-API connection slugs. Read `/static/codemode/providers/connections.d.ts` before calling it. These
-steps replace the setup loop and verification of the main skill; treat them as a handshake:
-**inspect → collect → configure → verify**.
+Upload and other native services without a `backoffice#` setup target keep their configuration
+controls in `connections.*`. Catalog IDs name services, not Open Connector accounts or API
+connection slugs. Read `/static/codemode/providers/connections.d.ts` before calling it. These steps
+replace the setup loop and verification of the main skill; treat them as a handshake: **inspect →
+collect → configure → verify**.
 
 1. Inspect the selected service by its catalog ID:
 

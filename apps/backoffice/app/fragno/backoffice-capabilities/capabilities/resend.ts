@@ -35,16 +35,6 @@ export const resendConfigureInputSchema = z.object({
   webhookBaseUrl: requiredHttpUrl,
 });
 
-const resendCapabilityConfiguredPayloadSchema = z.object({
-  capabilityId: z.literal("resend"),
-  capabilityLabel: z.literal("Resend"),
-});
-
-const resendCapabilityConfiguredSubjectSchema = z.object({
-  orgId: z.string().trim().min(1),
-  capabilityId: z.literal("resend"),
-});
-
 const connectionStatusIdentity = {
   id: "resend",
   label: "Resend",
@@ -119,19 +109,6 @@ export const resendCapability: BackofficeCapability = {
     ],
     skillPaths: ["skills/resend-integration/SKILL.md"],
     externalEntities: [],
-    automationEvents: [
-      {
-        source: "resend",
-        eventType: "capability.configured",
-        label: "Resend configured",
-        description: "Fires after Resend is configured for an organization for the first time.",
-        payloadSchema: resendCapabilityConfiguredPayloadSchema,
-        subjectSchema: resendCapabilityConfiguredSubjectSchema,
-        example: {
-          capabilityId: "resend",
-          capabilityLabel: "Resend",
-        },
-      },
-    ],
+    automationEvents: [],
   },
 };

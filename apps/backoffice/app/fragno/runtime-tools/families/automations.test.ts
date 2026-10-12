@@ -152,7 +152,6 @@ describe("automation runtime tools", () => {
         { capabilityId: "api", source: "api", eventType: "webhook.received" },
         { capabilityId: "mcp", source: "mcp", eventType: "server.configuration.changed" },
         { capabilityId: "integrations", source: "integrations", eventType: "connection.ready" },
-        { capabilityId: "resend", source: "resend", eventType: "capability.configured" },
         { capabilityId: "upload", source: "upload", eventType: "capability.configured" },
       ]),
     );

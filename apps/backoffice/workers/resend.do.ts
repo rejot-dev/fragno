@@ -11,14 +11,16 @@ import { createBackofficeFragmentHttpTransport } from "@/backoffice-runtime/frag
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import {
   type ResendObject,
+  type WebhookRegistrationCheck,
   requireBackofficeContextScopeFromDurableObjectId,
   backofficeObjectScopeFromContextScope,
 } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
-import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 import { resendConfigureInputSchema } from "@/fragno/backoffice-capabilities/capabilities/resend";
 import { type DurableHookQueueOptions } from "@/fragno/durable-hooks";
 import { createResendServer, type ResendConfig, type ResendFragment } from "@/fragno/resend";
+import { recordIntegrationConnectionState } from "@/fragno/runtime-tools/families/integrations/integration-events";
+import { resendConnectionId } from "@/fragno/runtime-tools/families/integrations/resend-integration";
 
 import type {
   BackofficeFragmentDurableObject,
@@ -366,36 +368,22 @@ export class InMemoryResendObject implements ResendObject {
         createResendServer(config, implementation.fragmentDatabase, new BackofficeKernel(runtime)),
       outbox: {
         dispatch: async (item, { stored }) => {
-          if (item.type !== "capability.configured") {
-            return;
-          }
-
           const { scope } = stored;
-          if (scope.kind === "system") {
+          if (item.type !== "connection.ready") {
             return;
           }
-
-          await this.#runtimeServices.objects.automations.for(scope).commands.ingestEvent({
-            id: item.id,
-            scopeRestriction: null,
-            scope,
-            source: "resend",
-            eventType: "capability.configured",
-            occurredAt: item.createdAt,
-            payload: {
-              capabilityId: "resend",
-              capabilityLabel: "Resend",
+          await recordIntegrationConnectionState(
+            this.#runtimeServices.objects.automations.for(scope).commands,
+            {
+              id: item.id,
+              scope,
+              service: "resend",
+              connectionId: resendConnectionId,
+              state: "ready",
+              occurredAt: new Date(item.createdAt),
             },
-            actors: {
-              initiator: AUTOMATION_SYSTEM_INITIATOR,
-              principal: null,
-              delegation: [],
-            },
-            subject: {
-              orgId: scope.orgId,
-              capabilityId: "resend",
-            },
-          });
+            { propagationContext: null },
+          );
         },
       },
     });
@@ -415,6 +403,23 @@ export class InMemoryResendObject implements ResendObject {
   }
 
   async resetAdminConfig(): Promise<ConfigResponse> {
+    const stored = await this.#host.loadStored();
+    if (stored) {
+      // Clearing drops the outbox, so report first: a failed report leaves the configuration in place
+      // for a retry, and the ID derived from the stored version keeps repeated reports to one event.
+      await recordIntegrationConnectionState(
+        this.#runtimeServices.objects.automations.for(stored.scope).commands,
+        {
+          id: `resend:${backofficeScopePathSegment(stored.scope)}:${stored.updatedAt}`,
+          scope: stored.scope,
+          service: "resend",
+          connectionId: resendConnectionId,
+          state: "disconnected",
+          occurredAt: new Date(),
+        },
+        { propagationContext: null },
+      );
+    }
     await this.#state.blockConcurrencyWhile(async () => {
       await this.#host.clearConfig();
     });
@@ -482,7 +487,7 @@ export class InMemoryResendObject implements ResendObject {
           const configuredAt = new Date().toISOString();
           await this.#host.dispatch({
             id: crypto.randomUUID(),
-            type: "capability.configured",
+            type: "connection.ready",
             createdAt: configuredAt,
           });
         } catch (error) {
@@ -523,6 +528,40 @@ export class InMemoryResendObject implements ResendObject {
         return;
       }
       throw cause;
+    }
+  }
+
+  async checkWebhook(): Promise<WebhookRegistrationCheck> {
+    const { stored } = this.#host.requireConfigured("Resend is not configured.");
+    const { webhookId, webhookBaseUrl } = stored;
+    // Configurations saved before the webhook base URL was required may lack either value.
+    if (!webhookId || !webhookBaseUrl) {
+      return {
+        registered: false,
+        message:
+          "No webhook is recorded for this configuration; reconfigure Resend to register one.",
+      };
+    }
+    try {
+      const { data, error } = await this.#createClient(stored.apiKey).webhooks.get(webhookId);
+      if (error) {
+        return { registered: false, message: error.message };
+      }
+      const expectedUrl = resolveWebhookUrl(webhookBaseUrl, stored.scope);
+      if (data.endpoint !== expectedUrl) {
+        return {
+          registered: false,
+          message: "Resend delivers this webhook to a different URL.",
+        };
+      }
+      return data.status === "enabled"
+        ? { registered: true, message: "Resend delivers email events to this deployment." }
+        : { registered: false, message: "Resend has disabled this webhook." };
+    } catch (error) {
+      return {
+        registered: false,
+        message: error instanceof Error ? error.message : "Resend webhook request failed.",
+      };
     }
   }
 
@@ -574,6 +613,10 @@ export class Resend extends DurableObject<CloudflareEnv> implements ResendObject
     options: { idempotencyKey: string },
   ): Promise<void> {
     await this.#object.queueEmail(input, options);
+  }
+
+  async checkWebhook() {
+    return await this.#object.checkWebhook();
   }
 
   async getDurableHookQueue(options?: DurableHookQueueOptions) {
