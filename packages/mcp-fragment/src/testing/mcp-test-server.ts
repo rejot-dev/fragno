@@ -34,6 +34,8 @@ export interface TestMcpServer {
   fetch: (request: Request) => Promise<Response>;
   getMcpRequestCount: () => number;
   getTokenRequestCount: () => number;
+  /** Rejects every client registered so far, as a server that lost its registrations would. */
+  forgetRegisteredClients: () => void;
   close: () => Promise<void>;
 }
 
@@ -66,13 +68,26 @@ function json(body: unknown, status = 200) {
   return Response.json(body, { status });
 }
 
+function requestClientId(request: Request, form: URLSearchParams) {
+  const authorization = request.headers.get("authorization");
+  if (authorization?.startsWith("Basic ")) {
+    return atob(authorization.slice("Basic ".length)).split(":")[0];
+  }
+  return form.get("client_id");
+}
+
 function hasExpectedClientAuth(
   request: Request,
   form: URLSearchParams,
   options: TestMcpServerOptions,
+  registeredClients: ReadonlySet<string>,
 ) {
   if (!options.requiredClientId) {
-    return true;
+    // Registered clients authenticate only while the server still knows them.
+    return (
+      options.disableDynamicRegistration === true ||
+      registeredClients.has(requestClientId(request, form) ?? "")
+    );
   }
   const authorization = request.headers.get("authorization");
   if (authorization?.startsWith("Basic ")) {
@@ -112,9 +127,13 @@ function createMcpProtocolServer(tools: readonly TestMcpTool[]) {
   return server;
 }
 
-async function handleToken(request: Request, options: TestMcpServerOptions) {
+async function handleToken(
+  request: Request,
+  options: TestMcpServerOptions,
+  registeredClients: ReadonlySet<string>,
+) {
   const form = new URLSearchParams(await request.text());
-  if (!hasExpectedClientAuth(request, form, options)) {
+  if (!hasExpectedClientAuth(request, form, options, registeredClients)) {
     return json({ error: "invalid_client" }, 401);
   }
   const grantType = form.get("grant_type");
@@ -168,6 +187,8 @@ export function createTestMcpServer(options: TestMcpServerOptions = {}): TestMcp
   >();
   let mcpRequestCount = 0;
   let tokenRequestCount = 0;
+  let registrationCount = 0;
+  const registeredClients = new Set<string>();
 
   async function createSession() {
     const server = createMcpProtocolServer(tools);
@@ -215,13 +236,23 @@ export function createTestMcpServer(options: TestMcpServerOptions = {}): TestMcp
     ) {
       const rawBody = await request.text();
       const metadata = rawBody ? (JSON.parse(rawBody) as Record<string, unknown>) : {};
-      return json({ ...metadata, client_id: "test-client", client_secret: "test-secret" });
+      registrationCount += 1;
+      const clientId = `test-client-${registrationCount}`;
+      registeredClients.add(clientId);
+      return json({ ...metadata, client_id: clientId, client_secret: "test-secret" });
     }
     if (options.oauth && url.pathname === "/authorize") {
       // Consent is immediate: the redirect carries a fixed code and the caller's state.
       const redirectUri = url.searchParams.get("redirect_uri");
       if (!redirectUri) {
         return new Response("Missing redirect_uri", { status: 400 });
+      }
+      if (
+        !options.disableDynamicRegistration &&
+        !options.requiredClientId &&
+        !registeredClients.has(url.searchParams.get("client_id") ?? "")
+      ) {
+        return new Response("Unknown client", { status: 400 });
       }
       const redirect = new URL(redirectUri);
       redirect.searchParams.set("code", "valid-code");
@@ -233,7 +264,7 @@ export function createTestMcpServer(options: TestMcpServerOptions = {}): TestMcp
     }
     if (options.oauth && url.pathname === "/token" && request.method === "POST") {
       tokenRequestCount += 1;
-      return await handleToken(request, options);
+      return await handleToken(request, options, registeredClients);
     }
     if (url.pathname !== "/mcp") {
       return new Response("Not found", { status: 404 });
@@ -273,6 +304,9 @@ export function createTestMcpServer(options: TestMcpServerOptions = {}): TestMcp
     },
     getMcpRequestCount: () => mcpRequestCount,
     getTokenRequestCount: () => tokenRequestCount,
+    forgetRegisteredClients: () => {
+      registeredClients.clear();
+    },
     close: async () => {
       for (const session of sessions.values()) {
         await session.server.close();

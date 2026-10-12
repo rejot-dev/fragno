@@ -1193,6 +1193,72 @@ describe("mcp-fragment", () => {
     ]);
   });
 
+  test("a registered client the server forgets is replaced on the next consent", async () => {
+    const oauthServer = await startStreamableHttpTestMcpServer({
+      oauth: true,
+      enableJsonResponse: true,
+      requiredBearerToken: "registered-client-access-token",
+    });
+    const slug = "forgotten-client";
+    const consent = async () => {
+      const started = await fragment.callRoute("POST", "/servers/:slug/auth/start", {
+        pathParams: { slug },
+        query: { redirectUri: oauthRedirectUri },
+        body: { discardTokens: false },
+      });
+      assert(started.type === "json");
+      const authorize = await fetch(started.data.authorizationUrl, { redirect: "manual" });
+      const location = authorize.headers.get("location");
+      assert(location, `authorization failed with ${authorize.status}`);
+      await fragment.callRoute("GET", "/oauth/callback", {
+        query: Object.fromEntries(new URL(location).searchParams),
+      });
+    };
+    try {
+      await createServer(fragment, {
+        slug,
+        endpointUrl: oauthServer.endpointUrl,
+        auth: { type: "oauth" },
+      });
+      await consent();
+
+      // A stale access token makes the next operation refresh with the forgotten client.
+      oauthServer.forgetRegisteredClients();
+      const authSecret = await readAuthSecret(setup.fragments.mcp, slug);
+      assert(authSecret);
+      const payload = parseSecretPayload<{ tokens: { access_token: string } }>(authSecret.payload);
+      payload.tokens.access_token = "stale-access-token";
+      const expire = setup.fragments.mcp.db.createUnitOfWork("expire").forSchema(mcpSchema);
+      expire.update("secret", authSecret.id, (b) =>
+        b.set({
+          payload: stringifySecretPayload(payload),
+          expiresAt: new Date(Date.now() - 1_000),
+        }),
+      );
+      await expire.executeMutations();
+      const rejected = await fragment.callRoute("POST", "/servers/:slug/tools/execute", {
+        pathParams: { slug },
+        body: { name: "echo", arguments: { text: "with a forgotten client" } },
+      });
+      assert(rejected.type === "error");
+
+      await consent();
+      const status = await fragment.callRoute("GET", "/servers/:slug/auth/status", {
+        pathParams: { slug },
+      });
+      assert(status.type === "json");
+      expect(status.data).toEqual({ mode: "oauth", state: "authorized" });
+      const called = await fragment.callRoute("POST", "/servers/:slug/tools/execute", {
+        pathParams: { slug },
+        body: { name: "echo", arguments: { text: "with a new client" } },
+      });
+      assert(called.type === "json");
+      expect(called.data).toMatchObject({ structuredContent: { echoed: "with a new client" } });
+    } finally {
+      await oauthServer.close();
+    }
+  });
+
   test("retains existing OAuth refresh token when the refresh response omits one", async () => {
     const oauthServer = await startStreamableHttpTestMcpServer({
       oauth: true,

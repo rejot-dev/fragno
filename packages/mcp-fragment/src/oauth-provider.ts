@@ -44,9 +44,12 @@ export interface OAuthProviderChanges {
     expiresAt: Date;
   };
   consumeStateId?: string;
-  invalidate?: "all" | "client" | "tokens" | "verifier" | "discovery";
   /** The server rejected the stored tokens, so they must be removed unless new ones were saved. */
   tokensInvalidated?: boolean;
+  /** The server rejected the registered client, so it must be removed unless a new one was saved. */
+  clientInvalidated?: boolean;
+  /** The discovered metadata failed, so it must be removed unless it was discovered again. */
+  discoveryInvalidated?: boolean;
 }
 
 export class BufferedOAuthClientProvider implements OAuthClientProvider {
@@ -94,7 +97,10 @@ export class BufferedOAuthClientProvider implements OAuthClientProvider {
       this.changes.clientInformation ??= clientInformation;
       return clientInformation;
     }
-    return this.changes.clientInformation ?? this.snapshot.clientInformation;
+    return (
+      this.changes.clientInformation ??
+      (this.changes.clientInvalidated ? undefined : this.snapshot.clientInformation)
+    );
   }
 
   saveClientInformation(clientInformation: OAuthClientInformationMixed) {
@@ -150,15 +156,30 @@ export class BufferedOAuthClientProvider implements OAuthClientProvider {
   }
 
   discoveryState() {
-    return this.changes.discoveryState ?? this.snapshot.discoveryState;
+    return (
+      this.changes.discoveryState ??
+      (this.changes.discoveryInvalidated ? undefined : this.snapshot.discoveryState)
+    );
   }
 
+  /**
+   * The SDK retries authorization right after invalidating, so later reads skip what it dropped:
+   * retrying a rejected client or token fails the same way. A configured client is configuration,
+   * not a registration, so it is kept. The code verifier lives in the pending OAuth state, which
+   * the callback consumes either way.
+   */
   invalidateCredentials(scope: "all" | "client" | "tokens" | "verifier" | "discovery") {
-    this.changes.invalidate = scope;
     if (scope === "all" || scope === "tokens") {
-      // Retrying rejected tokens within the same operation would fail the same way.
       this.changes.tokens = undefined;
       this.changes.tokensInvalidated = true;
+    }
+    if (scope === "all" || scope === "client") {
+      this.changes.clientInformation = undefined;
+      this.changes.clientInvalidated = true;
+    }
+    if (scope === "all" || scope === "discovery") {
+      this.changes.discoveryState = undefined;
+      this.changes.discoveryInvalidated = true;
     }
   }
 

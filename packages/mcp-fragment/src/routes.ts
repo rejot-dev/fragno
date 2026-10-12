@@ -32,6 +32,7 @@ import {
   projectMcpAuthStatus,
   pendingOAuthLink,
   withoutOAuthConsent,
+  writeOAuthSecretChanges,
   type AuthPersistenceChanges,
 } from "./services";
 
@@ -797,19 +798,18 @@ export const mcpRoutesFactory = defineRoutes(mcpFragmentDefinition).create(
                 });
               };
 
-              if (preparedOperation.authChanges?.clientInformationPayload) {
-                upsertSecret(
-                  "oauth-client",
-                  preparedOperation.authChanges.clientInformationPayload,
-                  null,
-                );
-              }
-              if (preparedOperation.authChanges?.discoveryStatePayload) {
-                upsertSecret(
-                  "oauth-discovery",
-                  preparedOperation.authChanges.discoveryStatePayload,
-                  null,
-                );
+              if (preparedOperation.authChanges) {
+                writeOAuthSecretChanges(preparedOperation.authChanges, {
+                  upsert: (kind, payload) => {
+                    upsertSecret(kind, payload, null);
+                  },
+                  remove: (kind) => {
+                    const existing = secrets.find((secret) => secret.kind === kind);
+                    if (existing) {
+                      uow.delete("secret", existing.id);
+                    }
+                  },
+                });
               }
               if (preparedOperation.authChanges?.authPayload) {
                 const after = {
@@ -989,19 +989,18 @@ export const mcpRoutesFactory = defineRoutes(mcpFragmentDefinition).create(
                   });
                 };
 
-                if (preparedOperation.authChanges?.clientInformationPayload) {
-                  upsertSecret(
-                    "oauth-client",
-                    preparedOperation.authChanges.clientInformationPayload,
-                    null,
-                  );
-                }
-                if (preparedOperation.authChanges?.discoveryStatePayload) {
-                  upsertSecret(
-                    "oauth-discovery",
-                    preparedOperation.authChanges.discoveryStatePayload,
-                    null,
-                  );
+                if (preparedOperation.authChanges) {
+                  writeOAuthSecretChanges(preparedOperation.authChanges, {
+                    upsert: (kind, payload) => {
+                      upsertSecret(kind, payload, null);
+                    },
+                    remove: (kind) => {
+                      const existing = secrets.find((secret) => secret.kind === kind);
+                      if (existing) {
+                        uow.delete("secret", existing.id);
+                      }
+                    },
+                  });
                 }
                 if (preparedOperation.authChanges?.authPayload) {
                   const after = {

@@ -9,6 +9,7 @@ export interface TestMcpServerHandle {
   endpointUrl: string;
   getMcpRequestCount: () => number;
   getTokenRequestCount: () => number;
+  forgetRegisteredClients: () => void;
   close: () => Promise<void>;
 }
 
@@ -68,6 +69,7 @@ export async function startStreamableHttpTestMcpServer(
     endpointUrl: `http://127.0.0.1:${address.port}/mcp`,
     getMcpRequestCount: mcpServer.getMcpRequestCount,
     getTokenRequestCount: mcpServer.getTokenRequestCount,
+    forgetRegisteredClients: mcpServer.forgetRegisteredClients,
     close: async () => {
       await mcpServer.close();
       httpServer.closeAllConnections();
