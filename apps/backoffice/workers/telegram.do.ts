@@ -26,7 +26,10 @@ import {
 } from "@/backoffice-runtime/telegram-file-response";
 import { telegramConfigureInputSchema } from "@/fragno/backoffice-capabilities/capabilities/telegram";
 import { type DurableHookQueueOptions } from "@/fragno/durable-hooks";
-import { recordIntegrationConnectionState } from "@/fragno/runtime-tools/families/integrations/integration-events";
+import {
+  recordIntegrationSlotChange,
+  type IntegrationSlotOutboxItem,
+} from "@/fragno/runtime-tools/families/integrations/integration-events";
 import { telegramConnectionId } from "@/fragno/runtime-tools/families/integrations/telegram-integration";
 import {
   buildTelegramAutomationEvent,
@@ -332,7 +335,8 @@ export class InMemoryTelegramObject extends RpcTarget implements TelegramObject 
   readonly #host: BackofficeFragmentDurableObject<
     StoredTelegramConfig,
     TelegramFragmentConfig,
-    TelegramFragment
+    TelegramFragment,
+    IntegrationSlotOutboxItem
   >;
 
   constructor({
@@ -398,24 +402,12 @@ export class InMemoryTelegramObject extends RpcTarget implements TelegramObject 
           },
         }),
       outbox: {
-        dispatch: async (item, { stored }) => {
-          const { scope } = stored;
-          if (item.type !== "connection.ready") {
-            return;
-          }
-          await recordIntegrationConnectionState(
-            this.#runtime.objects.automations.for(scope).commands,
-            {
-              id: item.id,
-              scope,
-              service: "telegram",
-              connectionId: telegramConnectionId,
-              state: "ready",
-              occurredAt: new Date(item.createdAt),
-            },
-            { propagationContext: null },
-          );
-        },
+        dispatch: (item: IntegrationSlotOutboxItem) =>
+          recordIntegrationSlotChange(
+            (scope) => this.#runtime.objects.automations.for(scope).commands,
+            item,
+            { service: "telegram", connectionId: telegramConnectionId },
+          ),
       },
     });
 
@@ -539,26 +531,17 @@ export class InMemoryTelegramObject extends RpcTarget implements TelegramObject 
   }
 
   async resetAdminConfig(): Promise<TelegramAdminConfigResponse> {
-    const stored = await this.#host.loadStored();
-    this.#assertStoredScope(stored);
-    if (stored) {
-      // Clearing drops the outbox, so report first: a failed report leaves the configuration in place
-      // for a retry, and the ID derived from the stored version keeps repeated reports to one event.
-      await recordIntegrationConnectionState(
-        this.#runtime.objects.automations.for(stored.scope).commands,
-        {
-          id: `telegram:${backofficeScopePathSegment(stored.scope)}:${stored.updatedAt}`,
-          scope: stored.scope,
-          service: "telegram",
-          connectionId: telegramConnectionId,
-          state: "disconnected",
-          occurredAt: new Date(),
-        },
-        { propagationContext: null },
-      );
-    }
     await this.#state.blockConcurrencyWhile(async () => {
-      await this.#host.clearConfig();
+      const stored = await this.#host.loadStored();
+      this.#assertStoredScope(stored);
+      await this.#host.clearConfig(
+        stored && {
+          id: `telegram:${backofficeScopePathSegment(stored.scope)}:${stored.updatedAt}`,
+          type: "connection.disconnected",
+          createdAt: new Date().toISOString(),
+          scope: stored.scope,
+        },
+      );
     });
     return { configured: false };
   }
@@ -588,6 +571,7 @@ export class InMemoryTelegramObject extends RpcTarget implements TelegramObject 
           id: crypto.randomUUID(),
           type: "connection.ready",
           createdAt: configuredAt,
+          scope,
         });
       });
     } catch {

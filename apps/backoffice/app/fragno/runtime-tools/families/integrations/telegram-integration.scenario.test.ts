@@ -233,3 +233,43 @@ test("Telegram connects, acts, checks its webhook, and disconnects through integ
     }),
   );
 });
+
+test("a personal bot removed before its setup report dispatches still reports both changes", async () => {
+  const userScope = { kind: "user", userId: "user-1" } as const;
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      objects: scenarioObjects,
+      name: "Telegram slot reports survive a reset",
+      fakes: ({ fake }) => ({ telegram: fake.telegram() }),
+      setup: ({ given }) => [given.auth.user({ id: "user-1", email: "user@example.test" })],
+      steps: ({ then, runner }) => [
+        then.assert("setup and disconnect run back to back", async (ctx) => {
+          const run = await ctx.runCodemode({
+            scope: userScope,
+            code: `async () => {
+              const target = { connectionId: "backoffice#telegram" };
+              const ready = await integrations.setup({ ...target, kind: "input", input: { botToken: "555:user-bot-token", botUsername: null } });
+              const disconnected = await integrations.disconnect({ ...target, confirm: target.connectionId });
+              return { ready, disconnected };
+            }`,
+          });
+          expect(run.result).toMatchObject({
+            ready: { status: "ready", connectionId },
+            disconnected: { status: "disconnected", connectionId },
+          });
+        }),
+        runner.drain(),
+        then.automation.event({
+          scope: userScope,
+          where: { source: "integrations", eventType: "connection.ready" },
+          expected: { subject: { service: "telegram", connectionId } },
+        }),
+        then.automation.event({
+          scope: userScope,
+          where: { source: "integrations", eventType: "connection.disconnected" },
+          expected: { subject: { service: "telegram", connectionId } },
+        }),
+      ],
+    }),
+  );
+});

@@ -237,7 +237,8 @@ export class InMemoryUploadObject implements UploadObject {
       }),
       outbox: {
         dispatch: async (item, { stored }) => {
-          if (item.type !== "capability.configured" || stored.namespace.kind !== "org") {
+          // A reset clears the namespace the event names, so the configuration is no longer reported.
+          if (item.type !== "capability.configured" || stored?.namespace.kind !== "org") {
             return;
           }
 
@@ -406,7 +407,7 @@ export class InMemoryUploadObject implements UploadObject {
 
     const baseline = createDefaultUploadConfig(this.#storagePolicy);
     await this.#state.blockConcurrencyWhile(async () => {
-      await this.#host.clearConfig();
+      await this.#host.clearConfig(null);
       await this.#host.storeAndInitialize(baseline);
     });
     return buildUploadAdminConfigResponse(baseline);

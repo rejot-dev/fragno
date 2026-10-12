@@ -182,9 +182,12 @@ export type BackofficeFragmentDurableObjectDefinition<
   getStoredScope?: (stored: TStored) => BackofficeContextScope | null;
   /** Request routing table for multi-fragment runtimes. Omit for a single fragment with `handler`. */
   mounts?: readonly FragmentDurableObjectMount<TRuntime>[];
-  /** Minimal persisted outbox support. Items are stored separately from config. */
+  /**
+   * Minimal persisted outbox support. Items are stored separately from config and outlive it, so
+   * an item written while clearing still dispatches; `stored` is null once config is cleared.
+   */
   outbox?: {
-    dispatch: (item: TOutbox, context: { env: TEnv; stored: TStored }) => Promise<void>;
+    dispatch: (item: TOutbox, context: { env: TEnv; stored: TStored | null }) => Promise<void>;
     retryDelayMs?: number;
   };
 };
@@ -230,8 +233,13 @@ export type BackofficeFragmentDurableObject<
   storeAndInitialize: (
     stored: TStored,
   ) => Promise<BackofficeFragmentRuntimeState<TStored, TSource, TRuntime>>;
-  /** Delete the persisted config and mark the runtime unconfigured. */
-  clearConfig: () => Promise<BackofficeFragmentRuntimeState<TStored, TSource, TRuntime>>;
+  /**
+   * Delete the persisted config and mark the runtime unconfigured. `finalItem` is enqueued in the
+   * same storage write, so a report of the removal cannot be lost or outlive a failed clear.
+   */
+  clearConfig: (
+    finalItem: TOutbox | null,
+  ) => Promise<BackofficeFragmentRuntimeState<TStored, TSource, TRuntime>>;
   /** Return the current cached runtime state without doing storage I/O. */
   getState: () => BackofficeFragmentRuntimeState<TStored, TSource, TRuntime>;
   /** Return the configured runtime state, or `null` if this DO is not currently configured. */
@@ -533,10 +541,6 @@ export function createBackofficeFragmentDurableObject<
     }
 
     const stored = await loadStored();
-    if (!stored) {
-      return;
-    }
-
     const items = await loadOutboxItems();
     const pending = items.filter((item) => !item.dispatchedAt);
     if (!pending.length) {
@@ -618,11 +622,17 @@ export function createBackofficeFragmentDurableObject<
       await options.state.storage.put(configKey, stored);
       return await initializeFromStored(stored);
     },
-    async clearConfig() {
-      const outboxItemKeys = [
-        ...(await options.state.storage.list<TOutbox>({ prefix: outboxItemKeyPrefix })).keys(),
-      ];
-      await options.state.storage.delete([configKey, outboxKey, ...outboxItemKeys]);
+    async clearConfig(finalItem) {
+      // A null config reads as unconfigured; one multi-entry put is atomic in every storage backend.
+      await options.state.storage.put({
+        [configKey]: null,
+        ...(finalItem ? { [getOutboxItemKey(finalItem.id)]: finalItem } : {}),
+      });
+      // Dispatched items are history; pending ones still report changes made before the clear.
+      const dispatchedKeys = [
+        ...(await options.state.storage.list<TOutbox>({ prefix: outboxItemKeyPrefix })),
+      ].flatMap(([key, item]) => (item.dispatchedAt ? [key] : []));
+      await options.state.storage.delete(dispatchedKeys);
       return await initializeFromStored(null);
     },
     getState: () => current,
