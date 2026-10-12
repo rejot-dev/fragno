@@ -1,6 +1,7 @@
 import type { OrganizationInvitationRecord } from "@fragno-dev/backoffice-api/v0/organization";
 
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
+import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
 import { backofficeInvitationPath } from "@/routes/backoffice/auth-navigation";
 
 import type { OrganizationRuntime } from "./organization";
@@ -36,7 +37,10 @@ export function createOrganizationRuntime({
     get: async () => {
       const membership = await auth().getOrganizationMembership({ organizationId, userId });
       if (!membership) {
-        throw new Error(`User '${userId}' is not a member of organization '${organizationId}'.`);
+        throw new BackofficeOperationError(
+          "not_found",
+          `User '${userId}' is not a member of organization '${organizationId}'.`,
+        );
       }
       return membership;
     },

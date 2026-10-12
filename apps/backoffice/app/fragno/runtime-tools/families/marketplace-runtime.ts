@@ -16,6 +16,7 @@ import { z } from "zod";
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { MarketplaceObject } from "@/backoffice-runtime/object-registry";
+import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
 import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
 import { captureMarketplacePackageSnapshot } from "@/fragno/marketplace/package-manifest";
 
@@ -103,7 +104,10 @@ export function createMarketplaceRuntime(
     async view(input) {
       const detail = await object.getPublishedListing(input);
       if (!detail) {
-        throw new Error(`Marketplace listing '${input.listingId}' was not found.`);
+        throw new BackofficeOperationError(
+          "not_found",
+          `Marketplace listing '${input.listingId}' was not found.`,
+        );
       }
       return detail;
     },

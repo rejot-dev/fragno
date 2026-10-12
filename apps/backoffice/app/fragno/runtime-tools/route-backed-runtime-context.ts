@@ -8,6 +8,7 @@ import { authorizedBackofficeObjectHttp } from "@/backoffice-runtime/authorized-
 import { type BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import { isBackofficeUnavailableError, type BackofficeKernel } from "@/backoffice-runtime/kernel";
 import { isBackofficeObjectAvailableInContext } from "@/backoffice-runtime/object-registry";
+import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
 import {
   backofficeRouteScopeFromResolvedScope,
   resolveBackofficeRuntimeScope,
@@ -159,7 +160,10 @@ async function resolveRuntimeOrganization(
     ({ id }) => id === organizationId,
   );
   if (!organization) {
-    throw new Error(`Organization '${organizationId}' could not be found.`);
+    throw new BackofficeOperationError(
+      "not_found",
+      `Organization '${organizationId}' could not be found.`,
+    );
   }
   return { id: organization.id, slug: organization.slug };
 }

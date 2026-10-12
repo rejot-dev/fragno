@@ -1,5 +1,6 @@
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 
 import { createIntegrationRegistry } from "./integration-registry";
@@ -39,7 +40,7 @@ export function createIntegrationsRuntime({
         (action) => action.definition.id === actionId,
       );
       if (!action) {
-        throw new Error("Integrations action not found.");
+        throw new BackofficeOperationError("not_found", "Integrations action not found.");
       }
       return await action.invoke(input);
     },

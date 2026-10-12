@@ -5,6 +5,7 @@ const backofficeApiErrorCodeSchema = z.enum([
   "authentication_failed",
   "forbidden",
   "not_found",
+  "conflict",
   "operation_failed",
 ]);
 export type BackofficeApiErrorCode = z.output<typeof backofficeApiErrorCodeSchema>;
@@ -25,14 +26,19 @@ export const BACKOFFICE_API_ERROR_STATUS = {
   authentication_failed: 401,
   forbidden: 403,
   not_found: 404,
-  // The operation ran and failed, e.g. a domain rule rejected the request.
+  conflict: 409,
+  // The operation ran and failed for a reason no other code describes.
   operation_failed: 422,
 } as const satisfies Record<BackofficeApiErrorCode, number>;
 
 export const BACKOFFICE_API_ERROR_DESCRIPTIONS = {
-  invalid_request: "The scope or the request body is invalid.",
+  invalid_request:
+    "The scope or the request body is invalid, including values a domain rule rejects.",
   authentication_failed: "The bearer credential is missing, invalid, or expired.",
   forbidden: "The credential may not perform this operation in this scope.",
-  not_found: "The operation does not exist, or is not available to the credential in this scope.",
-  operation_failed: "The operation ran and failed.",
+  not_found:
+    "The operation or something the request names does not exist, or is not available to the credential in this scope.",
+  conflict:
+    "The request conflicts with the current state, e.g. something with that name already exists.",
+  operation_failed: "The operation ran and failed for a reason no other code describes.",
 } as const satisfies Record<BackofficeApiErrorCode, string>;

@@ -11,7 +11,12 @@ import {
 } from "@/backoffice-runtime/context";
 import { BackofficeForbiddenError, BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
+import {
+  BackofficeOperationError,
+  backofficeOperationErrorKindForStatus,
+} from "@/backoffice-runtime/operation-error";
 
+import { rethrowAutomationEventDefinitionFailure } from "../../automation/event-definitions";
 import { createAutomationsRouteCaller } from "../../automation/route-callers";
 import type { EventRuntime } from "./event";
 
@@ -53,7 +58,8 @@ export function createEventRuntime(options: CreateEventRuntimeOptions): EventRun
       if (response.type === "json") {
         return automationEventListResultSchema.parse(response.data);
       }
-      throw new Error(
+      throw new BackofficeOperationError(
+        backofficeOperationErrorKindForStatus(response.status),
         `Events backend returned ${response.status}${response.type === "error" ? `: ${response.error.message}` : ""}`,
       );
     },
@@ -65,7 +71,8 @@ export function createEventRuntime(options: CreateEventRuntimeOptions): EventRun
       if (response.type === "json") {
         return automationEventListResultSchema.shape.events.element.parse(response.data);
       }
-      throw new Error(
+      throw new BackofficeOperationError(
+        backofficeOperationErrorKindForStatus(response.status),
         `Events backend returned ${response.status}${response.type === "error" ? `: ${response.error.message}` : ""}`,
       );
     },
@@ -95,7 +102,10 @@ export function createEventRuntime(options: CreateEventRuntimeOptions): EventRun
           : null;
 
       if (resolvedTargetScope.kind === "project" && !targetProject) {
-        throw new Error(`Project '${resolvedTargetScope.projectId}' is not available.`);
+        throw new BackofficeOperationError(
+          "not_found",
+          `Project '${resolvedTargetScope.projectId}' is not available.`,
+        );
       }
 
       const { emittedEventSource } = options;
@@ -140,7 +150,9 @@ export function createEventRuntime(options: CreateEventRuntimeOptions): EventRun
         resolvedTargetScope,
         options.objects.automations,
       );
-      await targetObject.commands.triggerIngestEvent(nextEvent);
+      await targetObject.commands
+        .triggerIngestEvent(nextEvent)
+        .catch(rethrowAutomationEventDefinitionFailure);
 
       return {
         accepted: true,

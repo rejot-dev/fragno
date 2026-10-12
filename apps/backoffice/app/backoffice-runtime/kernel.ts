@@ -21,6 +21,7 @@ import {
   backofficeObjectScopePolicy,
   isBackofficeObjectAvailableInContext,
 } from "./object-registry";
+import { BackofficeOperationError } from "./operation-error";
 
 export type BackofficeKernelAction = {
   execution: BackofficeExecutionContext;
@@ -68,9 +69,10 @@ export const BACKOFFICE_SCOPE_OPERATIONS = ["automation.forward-event"] as const
 
 export type BackofficeScopeOperation = (typeof BACKOFFICE_SCOPE_OPERATIONS)[number];
 
-export class BackofficeUnavailableError extends Error {
+/** A required object or binding is not configured here, so the operation cannot run. */
+export class BackofficeUnavailableError extends BackofficeOperationError {
   constructor(message: string) {
-    super(message);
+    super("not_found", message);
     this.name = "BackofficeUnavailableError";
   }
 }

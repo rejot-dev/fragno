@@ -16,6 +16,7 @@ import { z } from "zod";
 
 import { type BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import { isBackofficeForbiddenError, type BackofficeKernel } from "@/backoffice-runtime/kernel";
+import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import {
   createInstalledAppExecution,
@@ -35,10 +36,7 @@ import type { BackofficeToolContext } from "@/fragno/runtime-tools/runtime-tools
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
 import { principalFromBackofficeJwt } from "@/worker-runtime/request-state.server";
 
-import {
-  BackofficeApiOperationUnavailableError,
-  createRuntimeToolHandlers,
-} from "./runtime-tool-handlers";
+import { createRuntimeToolHandlers } from "./runtime-tool-handlers";
 import { backofficeApiV0Adapters } from "./v0-adapters";
 
 /** Per-request services; both hosts create them before dispatching here. */
@@ -202,13 +200,14 @@ function createVersionRouter<TApi extends BackofficeApi>(
         ),
       );
     } catch (error) {
-      if (error instanceof BackofficeApiOperationUnavailableError) {
-        return apiError("not_found", error.message);
-      }
+      // Kernel denials can cross object RPC, which keeps their name but not their class.
       if (isBackofficeForbiddenError(error)) {
         return apiError("forbidden", error.message);
       }
-      // Tools report domain failures as errors with user-facing messages, as in Bash and Codemode.
+      if (error instanceof BackofficeOperationError) {
+        return apiError(error.kind, error.message);
+      }
+      // Untyped failures still carry user-facing messages, as in Bash and Codemode.
       return apiError(
         "operation_failed",
         error instanceof Error ? error.message : "The operation failed.",

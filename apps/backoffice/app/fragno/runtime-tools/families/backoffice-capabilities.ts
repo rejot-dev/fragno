@@ -14,6 +14,7 @@ import {
   type BackofficeObjectRegistry,
   type BackofficeObjectScopeKind,
 } from "@/backoffice-runtime/object-registry";
+import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
 import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
 import {
   backofficeCapabilities,
@@ -554,7 +555,10 @@ export const createBackofficeCapabilitiesRuntime = ({
 
   const assertConnectionAvailable = (id: string, capability: BackofficeCapability) => {
     if (!scopeSupported(capability)) {
-      throw new Error(`Connection ${id} is not available in ${scope.kind} context.`);
+      throw new BackofficeOperationError(
+        "not_found",
+        `Connection ${id} is not available in ${scope.kind} context.`,
+      );
     }
   };
 
@@ -672,7 +676,7 @@ export const createBackofficeCapabilitiesRuntime = ({
     getConnection: async ({ id }) => {
       const capability = getConnectionCapability(id);
       if (!capability) {
-        throw new Error(`Unknown configurable connection: ${id}`);
+        throw new BackofficeOperationError("not_found", `Unknown configurable connection: ${id}`);
       }
       assertConnectionAvailable(id, capability);
       return await capability.contributions.connection.getStatus(capabilityContext);
@@ -680,7 +684,7 @@ export const createBackofficeCapabilitiesRuntime = ({
     setupConnection: async ({ id }) => {
       const capability = getConnectionCapability(id);
       if (!capability) {
-        throw new Error(`Unknown configurable connection: ${id}`);
+        throw new BackofficeOperationError("not_found", `Unknown configurable connection: ${id}`);
       }
       assertConnectionAvailable(id, capability);
       const connection = capability.contributions.connection;
@@ -712,7 +716,7 @@ export const createBackofficeCapabilitiesRuntime = ({
     getConnectionSchema: async ({ id }) => {
       const capability = getConnectionCapability(id);
       if (!capability) {
-        throw new Error(`Unknown configurable connection: ${id}`);
+        throw new BackofficeOperationError("not_found", `Unknown configurable connection: ${id}`);
       }
       assertConnectionAvailable(id, capability);
       return {
@@ -724,7 +728,7 @@ export const createBackofficeCapabilitiesRuntime = ({
     verifyConnection: async ({ id }) => {
       const capability = getConnectionCapability(id);
       if (!capability) {
-        throw new Error(`Unknown configurable connection: ${id}`);
+        throw new BackofficeOperationError("not_found", `Unknown configurable connection: ${id}`);
       }
       assertConnectionAvailable(id, capability);
       const connection = capability.contributions.connection;
@@ -739,7 +743,10 @@ export const createBackofficeCapabilitiesRuntime = ({
       const capability = getConnectionCapability(id);
       const connection = capability?.contributions.connection;
       if (!capability || !connection?.reset) {
-        throw new Error(`Connection cannot be reset through runtime tools: ${id}`);
+        throw new BackofficeOperationError(
+          "invalid_request",
+          `Connection cannot be reset through runtime tools: ${id}`,
+        );
       }
       assertConnectionAvailable(id, capability);
       return await connection.reset(capabilityContext);
@@ -748,7 +755,10 @@ export const createBackofficeCapabilitiesRuntime = ({
       const capability = getConnectionCapability(id);
       const connection = capability?.contributions.connection;
       if (!capability || !connection?.configure) {
-        throw new Error(`Connection is not configurable through runtime tools: ${id}`);
+        throw new BackofficeOperationError(
+          "invalid_request",
+          `Connection is not configurable through runtime tools: ${id}`,
+        );
       }
       assertConnectionAvailable(id, capability);
       const parsedPayload = connection.configureInputSchema?.parse(payload) ?? payload;

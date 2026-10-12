@@ -35,7 +35,9 @@ Successful calls return `200` with the operation's output, or `204` when the out
 Bytes travel as standard base64 strings (`v0/shared/bytes`). This is temporary: dedicated file
 transfer APIs will replace it for large files. Errors return `{ error: { code, message } }`
 (`@fragno-dev/backoffice-api/errors`), where the code determines the status: `invalid_request` 400,
-`authentication_failed` 401, `forbidden` 403, `not_found` 404, and `operation_failed` 422.
+`authentication_failed` 401, `forbidden` 403, `not_found` 404, `conflict` 409, and
+`operation_failed` 422. `not_found` also covers things the request names, such as an unknown id, and
+`operation_failed` is reserved for failures no other code describes.
 
 ## Client
 

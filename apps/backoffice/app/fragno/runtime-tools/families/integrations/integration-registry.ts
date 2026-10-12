@@ -6,6 +6,7 @@ import {
 import { z } from "zod";
 
 import { BackofficeUnavailableError } from "@/backoffice-runtime/kernel";
+import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
 
 import type { IntegrationContext, IntegrationImplementation } from "./integration-implementation";
 
@@ -64,7 +65,7 @@ export function createIntegrationRegistry(implementations: readonly IntegrationI
   function resolveConnectionOwner(connectionId: string) {
     const implementation = findConnectionOwner(connectionId);
     if (!implementation) {
-      throw new Error("Integrations connection not found.");
+      throw new BackofficeOperationError("not_found", "Integrations connection not found.");
     }
     return { implementation, localId: connectionId.slice(connectionId.indexOf("#") + 1) };
   }
@@ -95,11 +96,17 @@ export function createIntegrationRegistry(implementations: readonly IntegrationI
         try {
           decoded = integrationListingCursorSchema.parse(JSON.parse(cursor));
         } catch {
-          throw new Error("Integrations listing cursor is invalid.");
+          throw new BackofficeOperationError(
+            "invalid_request",
+            "Integrations listing cursor is invalid.",
+          );
         }
         index = entries.findIndex((entry) => entry.key === decoded.source);
         if (index < 0) {
-          throw new Error("Integrations listing cursor is invalid.");
+          throw new BackofficeOperationError(
+            "invalid_request",
+            "Integrations listing cursor is invalid.",
+          );
         }
         sourceCursor = decoded.cursor;
       }

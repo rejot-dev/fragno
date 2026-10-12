@@ -5,6 +5,7 @@ import type {
 import { z } from "zod";
 
 import type { FetchObject } from "@/backoffice-runtime/object-registry";
+import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
 import { bytesToBase64 } from "@/lib/base64";
 
 export type UploadReadPreparedInput = {
@@ -188,7 +189,10 @@ export const createUploadRuntime = (object: FetchObject): UploadRuntime => {
   return {
     readPrepared: async ({ file, encoding = "utf8", maxBytes = DEFAULT_MAX_READ_BYTES }) => {
       if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0 || maxBytes > MAX_READ_BYTES) {
-        throw new Error(`upload.readPrepared maxBytes must be between 1 and ${MAX_READ_BYTES}.`);
+        throw new BackofficeOperationError(
+          "invalid_request",
+          `upload.readPrepared maxBytes must be between 1 and ${MAX_READ_BYTES}.`,
+        );
       }
       if (file.sizeBytes > maxBytes) {
         throw preparedUploadReadLimitError(file.sizeBytes, maxBytes);
