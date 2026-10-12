@@ -1,5 +1,5 @@
 import { evictDurableObject, runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
-import { describe, expect, test, assert } from "vitest";
+import { describe, expect, test, assert, vi } from "vitest";
 
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { createModels } from "@earendil-works/pi-ai/models";
@@ -76,6 +76,15 @@ async function readPiViewStreamFrame(
     }
     state.buffer += decoder.decode(result.value, { stream: true });
   }
+}
+
+/** A turn settles before its alarm clears the wake heartbeat, so the clear is observed eventually. */
+async function expectAlarmCleared(agent: DurableObjectStub<Pi>) {
+  await vi.waitFor(async () => {
+    await runInDurableObject(agent, async (_instance, state) => {
+      expect(await state.storage.getAlarm()).toBeNull();
+    });
+  });
 }
 
 async function createSession(organizationId: string, name: string) {
@@ -157,8 +166,8 @@ describe("Pi durable agent scenarios", () => {
     expect(new TextDecoder().decode(await exported.arrayBuffer())).toContain(
       '"type":"pi-durable-session"',
     );
+    await expectAlarmCleared(agent);
     await runInDurableObject(agent, async (_instance, state) => {
-      expect(await state.storage.getAlarm()).toBeNull();
       const tables = state.storage.sql
         .exec<{ name: string }>("SELECT name FROM sqlite_master WHERE type = 'table'")
         .toArray();
@@ -312,19 +321,25 @@ describe("Pi durable agent scenarios", () => {
       await state.storage.setAlarm(Date.now() + 86_400_000);
     });
     await evictDurableObject(agent);
+    // The woken object schedules its own alarm for now, which may resume the input before this
+    // alarm call does; wait for the input to settle either way.
+    const waiting = managerRequest(
+      organizationId,
+      `/sessions/${config.sessionId}/submissions/recovery-1/wait?waitMs=5000`,
+    );
     await runDurableObjectAlarm(agent);
-    const submission = await (
-      await managerRequest(organizationId, `/sessions/${config.sessionId}/submissions/recovery-1`)
-    ).json();
-    expect(submission).toMatchObject({ status: "done", requestId: "recovery-1" });
+    const waited = await waiting;
+    expect(waited.status, await waited.clone().text()).toBe(200);
+    expect(await waited.json()).toMatchObject({
+      status: "settled",
+      submission: { status: "done", requestId: "recovery-1" },
+    });
     const view = await (
       await managerRequest(organizationId, `/sessions/${config.sessionId}/view`)
     ).json<ConversationView>();
     expect(view.entries.filter((entry) => entry.kind === "pi.user")).toHaveLength(1);
     expect(JSON.stringify(view.entries)).toContain("durable answer");
-    await runInDurableObject(agent, async (_instance, state) => {
-      expect(await state.storage.getAlarm()).toBeNull();
-    });
+    await expectAlarmCleared(agent);
   });
 
   test.each(["view", "alarm"] as const)(
@@ -379,7 +394,8 @@ describe("Pi durable agent scenarios", () => {
             content: "Finish the recovered session.",
             whenBusy: "followUp",
           });
-          expect(await state.storage.getAlarm()).not.toBeNull();
+          // The real object's alarm may already have consumed the one this submission scheduled;
+          // running this object's alarm performs the turn either way.
           await object.alarm();
           expect(JSON.stringify(await object.getView(config))).toContain(
             "Recovered after startup.",
