@@ -7,7 +7,6 @@ import type { AutomationActor } from "@fragno-dev/backoffice-api/v0/automation";
 import type {
   AutomationEvent,
   AutomationEventDefinition,
-  AutomationEventDefinitionCreateInput,
   AutomationEventDefinitionUpdateInput,
 } from "@fragno-dev/backoffice-api/v0/events";
 import type {
@@ -481,9 +480,6 @@ export type AutomationsObject = {
     source: string;
     eventType: string;
   }): Promise<AutomationEventDefinition | null>;
-  createEventDefinition(
-    input: AutomationEventDefinitionCreateInput,
-  ): Promise<AutomationEventDefinition>;
   updateEventDefinition(
     input: AutomationEventDefinitionUpdateInput,
   ): Promise<AutomationEventDefinition | null>;

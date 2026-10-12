@@ -3,14 +3,22 @@ import type {
   AutomationEventCatalogGetInput,
   AutomationEventsCatalogListOutput,
 } from "@fragno-dev/backoffice-api/v0/events";
-import type {
-  AutomationEventDefinition,
-  AutomationEventDefinitionCreateInput,
+import {
+  type AutomationEventDefinition,
+  type AutomationEventDefinitionCreateInput,
+  automationEventDefinitionCreateInputSchema,
+  automationEventDefinitionSchema,
 } from "@fragno-dev/backoffice-api/v0/events";
-import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import type { z } from "zod";
 
+import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
+import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
-import { rethrowAutomationEventDefinitionFailure } from "@/fragno/automation/event-definitions";
+import {
+  BackofficeOperationError,
+  backofficeOperationErrorKindForStatus,
+} from "@/backoffice-runtime/operation-error";
+import { createAutomationsRouteCaller } from "@/fragno/automation/route-callers";
 import { listAutomationEventDescriptors } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 import {
   defineCliArgsParser,
@@ -34,7 +42,7 @@ export type EventCatalogRuntime = {
     input: AutomationEventCatalogGetInput,
   ): Promise<AutomationEventCatalogEntry | null>;
   createAutomationEvent(
-    input: AutomationEventDefinitionCreateInput,
+    input: z.output<typeof automationEventDefinitionCreateInputSchema>,
   ): Promise<AutomationEventDefinition>;
 };
 
@@ -224,11 +232,19 @@ export const automationEventsCatalogCreateTool = defineBackofficeRuntimeTool({
 /** Builds the event catalog from static descriptors and scoped dynamic definitions. */
 export function createEventCatalogRuntime({
   objects,
-  scope,
+  kernel,
+  execution,
 }: {
   objects: BackofficeObjectRegistry;
-  scope: BackofficeContextScope;
+  kernel: BackofficeKernel;
+  execution: BackofficeExecutionContext;
 }): EventCatalogRuntime {
+  const { scope } = execution;
+  // Creation goes through the route, which reports duplicate and invalid definitions.
+  const callRoute = createAutomationsRouteCaller({
+    object: kernel.scoped("AUTOMATIONS", scope, objects.automations),
+    context: { execution },
+  });
   return {
     listAutomationEvents: async () => {
       const staticEvents = listAutomationEventDescriptors().map(
@@ -268,11 +284,18 @@ export function createEventCatalogRuntime({
         example: dynamicEvent.example ?? undefined,
       };
     },
-    createAutomationEvent: async (input) =>
-      await objects.automations
-        .for(scope)
-        .commands.createEventDefinition(input)
-        .catch(rethrowAutomationEventDefinitionFailure),
+    createAutomationEvent: async (input) => {
+      const response = await callRoute("POST", "/event-definitions", { body: input });
+      if (response.type === "json") {
+        return automationEventDefinitionSchema.parse(response.data);
+      }
+      throw new BackofficeOperationError(
+        backofficeOperationErrorKindForStatus(response.status),
+        response.type === "error"
+          ? response.error.message
+          : `Event definitions backend returned ${response.status}`,
+      );
+    },
   };
 }
 
