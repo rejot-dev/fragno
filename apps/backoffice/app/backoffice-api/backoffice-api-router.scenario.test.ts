@@ -611,6 +611,25 @@ describe("Backoffice API v0 SQLite scenarios", () => {
           assert(installed.ok);
         },
       ),
+      then("the owner's own credential cannot send events as Bookkeeping", async (ctx) => {
+        const fire = {
+          path: orgOperation(ctx.vars.orgId, "events.fire"),
+          credential: ctx.vars.ownerCredential,
+        };
+        await expectError(
+          await callApi(ctx, {
+            ...fire,
+            body: { eventType: "invoice.paid", source: `app:${ctx.vars.appId}` },
+          }),
+          403,
+          "forbidden",
+        );
+        expect(
+          await expectOk(
+            await callApi(ctx, { ...fire, body: { eventType: "invoice.paid", source: "owner" } }),
+          ),
+        ).toMatchObject({ accepted: true, source: "owner" });
+      }),
       then(
         "acting for the owner, Bookkeeping reads the organization but cannot rename it",
         async (ctx) => {

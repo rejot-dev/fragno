@@ -19,9 +19,16 @@ type InstalledAppActivation = { appId: string; activation: number };
 /** Who an installed app acts as: a signed-in member, or the installation itself. */
 export type InstalledAppActor = { kind: "user"; userId: string } | { kind: "installation" };
 
+const INSTALLED_APP_EVENT_SOURCE_PREFIX = "app:";
+
 /** The source of every event an installed app emits, and of its linked external account. */
 export function installedAppEventSource(appId: string): string {
-  return `app:${appId}`;
+  return `${INSTALLED_APP_EVENT_SOURCE_PREFIX}${appId}`;
+}
+
+/** Automations trust these sources, so only the app's own credential may emit them. */
+export function isInstalledAppEventSource(source: string): boolean {
+  return source.startsWith(INSTALLED_APP_EVENT_SOURCE_PREFIX);
 }
 
 /**

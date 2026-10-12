@@ -98,12 +98,14 @@ Content-Type: application/json
 ```
 
 Actors come from the credential, and events always use source `app:<appId>`; a request naming
-another source is `403 forbidden`. Acting for a user, the actors are the app (initiator), the user
-(principal), and the installation activation (restricting delegate). Acting as the installation, the
-linked external account (or the app) is the initiator and the installation activation is the
-principal. Automation started from these events keeps the same restrictions. The response is `200`
-with `{ accepted, eventId, scope, source, eventType }` once the event is durably stored and queued;
-it does not mean downstream automation has completed.
+another source is `403 forbidden`. No other caller may name an `app:` source, so automations can
+trust it; an automation started by an app's event still inherits that source when it names none.
+Acting for a user, the actors are the app (initiator), the user (principal), and the installation
+activation (restricting delegate). Acting as the installation, the linked external account (or the
+app) is the initiator and the installation activation is the principal. Automation started from
+these events keeps the same restrictions. The response is `200` with
+`{ accepted, eventId, scope, source, eventType }` once the event is durably stored and queued; it
+does not mean downstream automation has completed.
 
 ### App-initiated installation
 

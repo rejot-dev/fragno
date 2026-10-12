@@ -182,7 +182,8 @@ const automationEventCatalogGetInputSchema = z.object({
 
 export const eventsOperations = {
   "events.fire": {
-    description: "Fire an automation event for the current context or a selected target scope.",
+    description:
+      "Fire an automation event for the current context or a selected target scope. Sources starting with `app:` belong to installed apps, and only an app's own credential emits them.",
     permissions: [BACKOFFICE_PERMISSION.events.emit],
     input: eventEmitInputSchema,
     output: eventEmitOutputSchema,
