@@ -1,4 +1,4 @@
-import type { BackofficeRoutableScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
 
 import type { AutomationsObject, BackofficeRpcContext } from "@/backoffice-runtime/object-registry";
@@ -63,7 +63,7 @@ export async function recordIntegrationConnectionState(
   change: {
     /** Unique per source change, such as the durable hook ID, so redelivery records one event. */
     id: string;
-    scope: BackofficeRoutableScope;
+    scope: BackofficeContextScope;
     service: string;
     connectionId: string;
     state: IntegrationConnectionState;

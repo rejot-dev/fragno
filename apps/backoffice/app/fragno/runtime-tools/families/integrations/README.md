@@ -4,11 +4,12 @@ The registered `integrations` tools provide scope-bound discovery, setup, and ex
 existing service-owned configuration. They do not own credentials, binding records, or setup-attempt
 history.
 
-Reson8, Connector, API, and MCP are implemented sources. Codemode and terminal commands use the same
-contracts, runtime, and permissions. Reson8 execution is exposed only through `integrations.*`; its
-former standalone tool family and runtime have been removed. Connector's, API's, and MCP's existing
-native tools remain available. All retain their underlying Fragments, Durable Objects, native
-permissions, ownership, and configuration controls.
+API, MCP, GitHub, Reson8, Telegram, and Connector are implemented sources. Codemode and terminal
+commands use the same contracts, runtime, and permissions. Reson8 and GitHub execution is exposed
+only through `integrations.*`; their former standalone tool families have been removed. Connector's,
+API's, MCP's, and Telegram's native tools remain available; published marketplace packages call the
+Telegram ones directly. All retain their underlying Fragments, Durable Objects, native permissions,
+ownership, and configuration controls.
 
 ## Public surface
 
@@ -78,6 +79,13 @@ suffix exactly; registration accepts only the Fragment's canonical slugs: a lowe
 digit, then lowercase letters, digits, or `-`. Discovery publishes one `mcp` service with `multiple`
 cardinality and no setup targets, and every listed server uses `integrationId: "mcp"`. The Fragment
 lists every server in one read, so listing returns a single page.
+
+### Telegram addresses
+
+`backoffice#telegram` names the selected scope's existing bot slot, like `backoffice#reson8`.
+Telegram has a bot in every scope, including system. It keeps its native configuration page and
+tools; the integration actions call the same object routes, so `telegram.*` permissions still gate
+them.
 
 ### Connector addresses
 
@@ -197,7 +205,12 @@ is that requests fail until consent completes, which suits the revoked-access ca
 Changing scopes or endpoints is a full replacement. API disconnect deletes the connection with its
 secrets and OAuth state.
 
-Reson8 reconfigure replaces the organization's API key through the same configuration command setup
+Telegram setup registers this deployment as the bot's webhook, so `ready` also means Telegram
+accepted it. Telegram saves the bot before registering: a rejection returns `blocked` with
+Telegram's message, since sending works but received messages will not arrive. Verify asks Telegram
+where it delivers the bot's updates and fails unless that is this deployment.
+
+Reson8 and Telegram reconfigure replace the stored configuration through the same command setup
 uses, and disconnect resets that configuration. Connector declares both unsupported: the gateway
 owns credentials, and the source has no account removal. Consenting again uses a fresh connection
 name.
@@ -233,6 +246,8 @@ in a public token, or add an integrations-owned attempt store to fit it into nam
 - `integrations-runtime.ts`: production source assembly and public operation dispatch.
 - `reson8-integration.ts`: existing organization configuration, authorized Fragno routes, and action
   validation, with injected provider fetch for scenarios.
+- `telegram-integration.ts`: existing scope configuration, webhook checks, and actions over the
+  native tool runtime.
 - `connector-connection-id.ts`: canonical, lossless base64url encoding of native Connector
   selectors.
 - `connector-integration.ts`: user-owned native requests/accounts, source-qualified addresses,
@@ -290,12 +305,12 @@ and unsupported dynamic-reference/vocabulary semantics fail before actions are p
 Self-contained ordinary references are supported; no remote schema fetch or inferred output contract
 is introduced.
 
-The registry reads sources in registration order (API, MCP, Reson8, then Connector in user scope)
-and combines every source that finishes into the same page. A page ends only at a source that
-returns its own next cursor, so each source's page size still bounds the result and nothing is
-materialized beyond those pages. The opaque cursor identifies that source and its unchanged cursor.
-An unknown source or malformed cursor fails rather than silently restarting. Pagination never
-changes execution scope or grants access.
+The registry reads sources in registration order (API, MCP, GitHub, Reson8, Telegram, then Connector
+in user scope) and combines every source that finishes into the same page. A page ends only at a
+source that returns its own next cursor, so each source's page size still bounds the result and
+nothing is materialized beyond those pages. The opaque cursor identifies that source and its
+unchanged cursor. An unknown source or malformed cursor fails rather than silently restarting.
+Pagination never changes execution scope or grants access.
 
 ## Codemode usage
 

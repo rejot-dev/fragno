@@ -266,6 +266,8 @@ export type FakeTelegramApi = {
   getFileCalls: TelegramGetFileCall[];
   downloadFileCalls: TelegramDownloadFileCall[];
   setWebhookCalls: Parameters<TelegramAdminApi["setWebhook"]>[0][];
+  /** Telegram's webhook registration; a rejection makes the next registrations fail with it. */
+  webhook: { registeredUrl: string | null; rejection: string | null };
   setFile(input: FakeTelegramFile): void;
   getFileFixture(fileId: string): FakeTelegramFile | null;
 };
@@ -1010,6 +1012,7 @@ const createFakeTelegramApi = (input: { files?: FakeTelegramFile[] } = {}): Fake
   const getFileCalls: TelegramGetFileCall[] = [];
   const downloadFileCalls: TelegramDownloadFileCall[] = [];
   const setWebhookCalls: Parameters<TelegramAdminApi["setWebhook"]>[0][] = [];
+  const webhook: FakeTelegramApi["webhook"] = { registeredUrl: null, rejection: null };
   const filesById = new Map<string, FakeTelegramFile>();
 
   const setFile = (file: FakeTelegramFile) => {
@@ -1042,13 +1045,23 @@ const createFakeTelegramApi = (input: { files?: FakeTelegramFile[] } = {}): Fake
     getFileCalls,
     downloadFileCalls,
     setWebhookCalls,
+    webhook,
     setFile,
     getFileFixture: (fileId) => filesById.get(fileId) ?? null,
     adminApi: {
       setWebhook: async (input) => {
         setWebhookCalls.push(input);
+        if (webhook.rejection !== null) {
+          return { ok: false, message: webhook.rejection };
+        }
+        webhook.registeredUrl = input.webhookUrl;
         return { ok: true, message: "webhook set" };
       },
+      getWebhookInfo: async () => ({
+        ok: true,
+        url: webhook.registeredUrl ?? "",
+        lastErrorMessage: null,
+      }),
     },
     api: {
       call: async () => ({ ok: false, description: "Unsupported fake Telegram API call" }),

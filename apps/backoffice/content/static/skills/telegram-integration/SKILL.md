@@ -1,15 +1,16 @@
 ---
 name: telegram-integration
 description: >
-  Use the native Backoffice Telegram integration and telegram.* runtime tools. Load with
-  configuring-integrations for bot setup; also use for message.received events, chat replies,
+  Use Telegram through integrations.* (backoffice#telegram) or the telegram.* runtime tools. Load
+  with configuring-integrations for bot setup; also use for message.received events, chat replies,
   Telegram files, and hook debugging.
 ---
 
 # Telegram Integration
 
-Use this skill for the organization-scoped Telegram bot integration: bot setup details, inbound
-message semantics, Telegram hook scope, and Telegram-specific runtime tool purposes.
+Use this skill for the Telegram bot integration: bot setup details, inbound message semantics,
+Telegram hook scope, and Telegram actions. Every scope, including system, has its own bot, addressed
+as `backoffice#telegram` in that scope.
 
 # Telegram configuration
 
@@ -19,7 +20,9 @@ User-supplied configuration fields:
 - `botUsername`: optional bot username, with or without `@`.
 - `apiBaseUrl`: optional Telegram API base URL override.
 
-Backoffice generates the webhook secret during configuration.
+Backoffice generates the webhook secret during configuration. Integration setup takes
+`{ botToken, botUsername }`, with `botUsername` null when unset; the API base URL override is only
+available through `connections.*`.
 
 Setup procedure:
 
@@ -29,7 +32,12 @@ Setup procedure:
    - Copy the bot token BotFather returns and enter it in the Backoffice Telegram integration.
    - Treat the bot token like a password and regenerate it in BotFather if it is exposed.
 2. Save the integration configuration. Backoffice generates a cryptographically secure webhook
-   secret, derives the organization-scoped webhook URL, and registers both with Telegram.
+   secret, derives the scope's webhook URL, and registers both with Telegram. If Telegram rejects
+   the webhook, setup is `blocked`: the token is saved and sending works, but received messages do
+   not arrive until a reconfiguration registers the webhook.
+
+`integrations.verify({ connectionId: "backoffice#telegram" })` asks Telegram where it delivers the
+bot's updates and fails unless that is this deployment's webhook.
 
 The stored secret must match the `X-Telegram-Bot-Api-Secret-Token` header Telegram sends to the
 webhook.
@@ -79,15 +87,12 @@ Actor:
 Common automation pattern: filter on `event.source === "telegram"` and
 `event.eventType === "message.received"`, then route slash commands, plain text, or attachments.
 
-## Capability configured
+## Connection state
 
-Fires after Telegram is configured for an organization for the first time. Use it to bootstrap
-Telegram-specific automation state.
-
-Catalog identity:
-
-- `source`: `telegram`
-- `eventType`: `capability.configured`
+Saving a bot reports `connection.ready` and resetting it reports `connection.disconnected`, both
+with `source: "integrations"`, `subject.service: "telegram"`, and
+`subject.connectionId: "backoffice#telegram"`. Use `connection.ready` to bootstrap Telegram-specific
+automation state.
 
 Hook scope: `telegram`.
 
@@ -101,8 +106,10 @@ Telegram tools can:
 - resolve Telegram file metadata;
 - download Telegram files.
 
-Use codemode first. The `telegram` provider methods are `sendMessage`, `sendChatAction`,
-`editMessage`, `getFile`, and `downloadFile`.
+In new automations, call them as integration actions on `backoffice#telegram`: `messages.send`,
+`messages.edit`, `chat-actions.send`, `files.get`, and `files.download`. Read their schemas with
+`integrations.actions`. The `telegram` provider methods `sendMessage`, `sendChatAction`,
+`editMessage`, `getFile`, and `downloadFile` remain for existing automations.
 
 Example:
 

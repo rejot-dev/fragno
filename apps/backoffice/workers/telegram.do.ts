@@ -1,4 +1,3 @@
-import type { AutomationEventSubject } from "@fragno-dev/backoffice-api/v0/events";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import {
   type BackofficeContextScope,
@@ -17,15 +16,17 @@ import {
   backofficeContextScopeFromDurableObjectId,
   backofficeObjectScopeFromContextScope,
   type TelegramObject,
+  type WebhookRegistrationCheck,
 } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import {
   createTelegramAutomationFileResponse,
   telegramAutomationFileIdFromDownloadPath,
 } from "@/backoffice-runtime/telegram-file-response";
-import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 import { telegramConfigureInputSchema } from "@/fragno/backoffice-capabilities/capabilities/telegram";
 import { type DurableHookQueueOptions } from "@/fragno/durable-hooks";
+import { recordIntegrationConnectionState } from "@/fragno/runtime-tools/families/integrations/integration-events";
+import { telegramConnectionId } from "@/fragno/runtime-tools/families/integrations/telegram-integration";
 import type { TelegramAutomationFileMetadata } from "@/fragno/runtime-tools/families/telegram-runtime";
 import {
   buildTelegramAutomationEvent,
@@ -81,8 +82,15 @@ type TelegramAdminApiSetWebhookInput = {
   scope: BackofficeContextScope;
 };
 
+type TelegramWebhookInfo =
+  | { ok: true; url: string; lastErrorMessage: string | null }
+  | { ok: false; message: string };
+
 type TelegramAdminApi = {
   setWebhook(input: TelegramAdminApiSetWebhookInput): Promise<TelegramWebhookRegistrationResult>;
+  getWebhookInfo(
+    input: Pick<TelegramAdminApiSetWebhookInput, "botToken" | "apiBaseUrl">,
+  ): Promise<TelegramWebhookInfo>;
 };
 
 const DEFAULT_TELEGRAM_API_BASE_URL = "https://api.telegram.org";
@@ -126,6 +134,10 @@ const telegramApiResponseSchema = z.object({
 
 const telegramGetFileResponseSchema = telegramApiResponseSchema.extend({
   result: z.unknown().optional(),
+});
+
+const telegramWebhookInfoResponseSchema = telegramApiResponseSchema.extend({
+  result: z.object({ url: z.string(), last_error_message: z.string().optional() }).optional(),
 });
 
 const telegramFileMetadataPayloadSchema = z.object({
@@ -189,15 +201,6 @@ const assertTelegramObjectScope = (
     throw new Error("Backoffice object method scope does not match object address scope.");
   }
 };
-
-const telegramCapabilityConfiguredSubject = (
-  scope: BackofficeContextScope,
-): AutomationEventSubject => ({
-  ...(scope.kind === "org" || scope.kind === "project" ? { orgId: scope.orgId } : {}),
-  ...(scope.kind === "project" ? { projectId: scope.projectId } : {}),
-  ...(scope.kind === "user" ? { userId: scope.userId } : {}),
-  capabilityId: "telegram",
-});
 
 const normalizeTelegramApiBaseUrl = (apiBaseUrl?: string | null) =>
   (apiBaseUrl ?? DEFAULT_TELEGRAM_API_BASE_URL).replace(/\/+$/, "");
@@ -293,6 +296,28 @@ const createFetchTelegramAdminApi = (): TelegramAdminApi => ({
       message: payload.description ?? "Webhook registered with Telegram.",
     };
   },
+  async getWebhookInfo({ botToken, apiBaseUrl }) {
+    const response = await fetch(
+      `${normalizeTelegramApiBaseUrl(apiBaseUrl)}/bot${botToken}/getWebhookInfo`,
+      { method: "GET", signal: AbortSignal.timeout(8000) },
+    );
+    const payloadResult = telegramWebhookInfoResponseSchema.safeParse(
+      await response.json().catch(() => null),
+    );
+    const payload = payloadResult.success ? payloadResult.data : null;
+    if (!response.ok || !payload?.ok || !payload.result) {
+      return {
+        ok: false,
+        message:
+          payload?.description ?? `Telegram API rejected getWebhookInfo (${response.status}).`,
+      };
+    }
+    return {
+      ok: true,
+      url: payload.result.url,
+      lastErrorMessage: payload.result.last_error_message ?? null,
+    };
+  },
 });
 
 export class InMemoryTelegramObject extends RpcTarget implements TelegramObject {
@@ -374,29 +399,22 @@ export class InMemoryTelegramObject extends RpcTarget implements TelegramObject 
         }),
       outbox: {
         dispatch: async (item, { stored }) => {
-          if (item.type !== "capability.configured") {
+          const { scope } = stored;
+          if (item.type !== "connection.ready") {
             return;
           }
-
-          const { scope } = stored;
-          await this.#runtime.objects.automations.for(scope).commands.ingestEvent({
-            id: item.id,
-            scopeRestriction: null,
-            scope,
-            source: "telegram",
-            eventType: "capability.configured",
-            occurredAt: item.createdAt,
-            payload: {
-              capabilityId: "telegram",
-              capabilityLabel: "Telegram",
+          await recordIntegrationConnectionState(
+            this.#runtime.objects.automations.for(scope).commands,
+            {
+              id: item.id,
+              scope,
+              service: "telegram",
+              connectionId: telegramConnectionId,
+              state: "ready",
+              occurredAt: new Date(item.createdAt),
             },
-            actors: {
-              initiator: AUTOMATION_SYSTEM_INITIATOR,
-              principal: null,
-              delegation: [],
-            },
-            subject: telegramCapabilityConfiguredSubject(scope),
-          });
+            { propagationContext: null },
+          );
         },
       },
     });
@@ -521,7 +539,24 @@ export class InMemoryTelegramObject extends RpcTarget implements TelegramObject 
   }
 
   async resetAdminConfig(): Promise<TelegramAdminConfigResponse> {
-    this.#assertStoredScope(await this.#host.loadStored());
+    const stored = await this.#host.loadStored();
+    this.#assertStoredScope(stored);
+    if (stored) {
+      // Clearing drops the outbox, so report first: a failed report leaves the configuration in place
+      // for a retry, and the ID derived from the stored version keeps repeated reports to one event.
+      await recordIntegrationConnectionState(
+        this.#runtime.objects.automations.for(stored.scope).commands,
+        {
+          id: `telegram:${backofficeScopePathSegment(stored.scope)}:${stored.updatedAt}`,
+          scope: stored.scope,
+          service: "telegram",
+          connectionId: telegramConnectionId,
+          state: "disconnected",
+          occurredAt: new Date(),
+        },
+        { propagationContext: null },
+      );
+    }
     await this.#state.blockConcurrencyWhile(async () => {
       await this.#host.clearConfig();
     });
@@ -551,7 +586,7 @@ export class InMemoryTelegramObject extends RpcTarget implements TelegramObject 
         const configuredAt = new Date().toISOString();
         await this.#host.dispatch({
           id: crypto.randomUUID(),
-          type: "capability.configured",
+          type: "connection.ready",
           createdAt: configuredAt,
         });
       });
@@ -579,6 +614,33 @@ export class InMemoryTelegramObject extends RpcTarget implements TelegramObject 
       },
       webhook: webhookResult,
     };
+  }
+
+  async checkWebhook(): Promise<WebhookRegistrationCheck> {
+    const { stored } = this.#host.requireConfigured();
+    this.#assertStoredScope(stored);
+    const expectedUrl = resolveWebhookUrl(readTelegramPublicOrigin(this.#env), stored.scope);
+    const info = await (this.#adminApi ?? createFetchTelegramAdminApi()).getWebhookInfo({
+      botToken: stored.botToken,
+      apiBaseUrl: stored.apiBaseUrl,
+    });
+    if (!info.ok) {
+      return { registered: false, message: info.message };
+    }
+    if (info.url !== expectedUrl) {
+      return {
+        registered: false,
+        message: info.url
+          ? "Telegram delivers this bot's updates to a different webhook URL."
+          : "Telegram has no webhook registered for this bot.",
+      };
+    }
+    return info.lastErrorMessage === null
+      ? { registered: true, message: "Telegram delivers this bot's updates to this deployment." }
+      : {
+          registered: true,
+          message: `The webhook is registered; Telegram's last delivery failed: ${info.lastErrorMessage}`,
+        };
   }
 
   async getDurableHookQueue(options?: DurableHookQueueOptions) {
@@ -646,6 +708,10 @@ export class Telegram extends DurableObject<CloudflareEnv> implements TelegramOb
 
   async getAutomationFile(input: { fileId: string }) {
     return await this.#object.getAutomationFile(input);
+  }
+
+  async checkWebhook() {
+    return await this.#object.checkWebhook();
   }
 
   async getDurableHookQueue(options?: DurableHookQueueOptions) {

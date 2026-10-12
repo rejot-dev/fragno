@@ -15,10 +15,12 @@ description: >
 
 | Rung | Source          | Address                                    | Owning scope       |
 | ---- | --------------- | ------------------------------------------ | ------------------ |
-| 1    | Backoffice      | `backoffice#<service>`, or `connections.*` | organization       |
+| 1    | Backoffice      | `backoffice#<service>`, or `connections.*` | organization¹      |
 | 2    | Open Connector  | `connector#n_…`, `connector#a_…` (opaque)  | user               |
 | 3    | MCP server      | `mcp#<slug>`, slug chosen by you           | org, user, project |
 | 4    | Direct HTTP API | `api#<slug>`, slug chosen by you           | org, user, project |
+
+¹ Telegram has a bot in every scope.
 
 ## 1. Discover
 
@@ -44,9 +46,8 @@ straight to step 3.
 Take the highest rung that offers the requested service:
 
 1. **Backoffice**: a service whose setup target is `backoffice#…`. A native service that appears
-   only in `nativeCatalog`, such as Telegram, Resend, or Upload, is configured through
-   `connections.*`: follow `/static/skills/configuring-integrations/CONNECTIONS.md` in place of
-   steps 3 and 4.
+   only in `nativeCatalog`, such as Resend or Upload, is configured through `connections.*`: follow
+   `/static/skills/configuring-integrations/CONNECTIONS.md` in place of steps 3 and 4.
 2. **Open Connector**: a service whose `id` names the provider, such as `gmail`, with
    `connector#n_…` targets. Use the target unchanged; it preassigns the connection name. Several
    targets mean several provider configurations: use the user's choice.

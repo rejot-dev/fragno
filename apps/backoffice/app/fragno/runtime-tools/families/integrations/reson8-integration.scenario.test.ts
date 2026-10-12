@@ -216,6 +216,7 @@ test("Codemode resolves deterministic Reson8 addresses across setup, requests, r
                 setupTargets: [{ kind: "connection", connectionId }],
                 availability: { status: "available" },
               },
+              { id: "telegram", availability: { status: "available" } },
             ],
             page: { connections: [], cursor: null },
             removed: [
@@ -447,6 +448,7 @@ test("terminal commands use scalar connection IDs without setup handles or persi
             { id: "mcp", setupTargets: [] },
             { id: "github", setupTargets: [] },
             { id: "reson8", setupTargets: [{ connectionId }] },
+            { id: "telegram", setupTargets: [{ connectionId: "backoffice#telegram" }] },
           ]);
           const page = await bash.exec("integrations.list --json");
           expect(page.exitCode, page.stderr).toBe(0);
@@ -784,6 +786,7 @@ test("connection IDs cannot select an owner or replace umbrella and service auth
             { id: "mcp", availability: { status: "available" } },
             { id: "github", availability: { status: "unavailable" } },
             { id: "reson8", availability: { status: "unavailable" } },
+            { id: "telegram", availability: { status: "available" } },
           ]);
           expect(await userHost.integrations.runtime.list({ cursor: null })).toEqual({
             connections: [],
