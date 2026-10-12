@@ -12,7 +12,10 @@ import {
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { reson8ConfigureInputSchema } from "@/fragno/backoffice-capabilities/capabilities/reson8";
 import { createReson8Server, type Reson8Fragment } from "@/fragno/reson8";
-import { recordIntegrationConnectionState } from "@/fragno/runtime-tools/families/integrations/integration-events";
+import {
+  recordIntegrationSlotChange,
+  type IntegrationSlotOutboxItem,
+} from "@/fragno/runtime-tools/families/integrations/integration-events";
 import { reson8ConnectionId } from "@/fragno/runtime-tools/families/integrations/reson8-integration";
 
 import type {
@@ -100,7 +103,12 @@ export class InMemoryReson8Object implements Reson8Object {
   readonly #httpTransport: ReturnType<typeof createBackofficeFragmentHttpTransport>;
   readonly #state: BackofficeObjectState;
   readonly #runtime: BackofficeRuntimeServices;
-  readonly #host: BackofficeFragmentDurableObject<StoredReson8Config, Reson8Source, Reson8Fragment>;
+  readonly #host: BackofficeFragmentDurableObject<
+    StoredReson8Config,
+    Reson8Source,
+    Reson8Fragment,
+    IntegrationSlotOutboxItem
+  >;
   readonly #fetch: typeof fetch;
 
   constructor({
@@ -143,23 +151,12 @@ export class InMemoryReson8Object implements Reson8Object {
       getMigrationFragments: () => [],
       getHookFragments: () => [],
       outbox: {
-        dispatch: async (item, { stored }) => {
-          if (item.type !== "connection.ready") {
-            return;
-          }
-          await recordIntegrationConnectionState(
-            this.#runtime.objects.automations.for(stored.scope).commands,
-            {
-              id: item.id,
-              scope: stored.scope,
-              service: "reson8",
-              connectionId: reson8ConnectionId,
-              state: "ready",
-              occurredAt: new Date(item.createdAt),
-            },
-            { propagationContext: null },
-          );
-        },
+        dispatch: (item: IntegrationSlotOutboxItem) =>
+          recordIntegrationSlotChange(
+            (scope) => this.#runtime.objects.automations.for(scope).commands,
+            item,
+            { service: "reson8", connectionId: reson8ConnectionId },
+          ),
       },
     });
 
@@ -178,25 +175,16 @@ export class InMemoryReson8Object implements Reson8Object {
   }
 
   async resetAdminConfig(): Promise<ConfigResponse> {
-    const stored = await this.#host.loadStored();
-    if (stored) {
-      // Clearing drops the outbox, so report first: a failed report leaves the configuration in place
-      // for a retry, and the ID derived from the stored version keeps repeated reports to one event.
-      await recordIntegrationConnectionState(
-        this.#runtime.objects.automations.for(stored.scope).commands,
-        {
-          id: `reson8:${stored.scope.orgId}:${stored.updatedAt}`,
-          scope: stored.scope,
-          service: "reson8",
-          connectionId: reson8ConnectionId,
-          state: "disconnected",
-          occurredAt: new Date(),
-        },
-        { propagationContext: null },
-      );
-    }
     await this.#state.blockConcurrencyWhile(async () => {
-      await this.#host.clearConfig();
+      const stored = await this.#host.loadStored();
+      await this.#host.clearConfig(
+        stored && {
+          id: `reson8:${stored.scope.orgId}:${stored.updatedAt}`,
+          type: "connection.disconnected",
+          createdAt: new Date().toISOString(),
+          scope: stored.scope,
+        },
+      );
     });
     return { configured: false };
   }
@@ -315,6 +303,7 @@ export class InMemoryReson8Object implements Reson8Object {
         id: crypto.randomUUID(),
         type: "connection.ready",
         createdAt: configuredAt,
+        scope: stored.scope,
       });
     });
 

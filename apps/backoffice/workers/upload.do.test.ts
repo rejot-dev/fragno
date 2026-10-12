@@ -54,8 +54,14 @@ const createState = (durableObjectName = "v1:org:acme") => {
   let alarm: number | null = null;
   const storage = {
     get: vi.fn(async (key: string) => store.get(key)),
-    put: vi.fn(async (key: string, value: unknown) => {
-      store.set(key, value);
+    put: vi.fn(async (keyOrEntries: string | Record<string, unknown>, value?: unknown) => {
+      const entries =
+        typeof keyOrEntries === "string"
+          ? [[keyOrEntries, value] as const]
+          : Object.entries(keyOrEntries);
+      for (const [key, entryValue] of entries) {
+        store.set(key, entryValue);
+      }
     }),
     list: vi.fn(async ({ prefix }: { prefix: string }) => {
       return new Map([...store].filter(([key]) => key.startsWith(prefix)));

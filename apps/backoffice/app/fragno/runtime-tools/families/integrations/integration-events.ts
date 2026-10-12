@@ -93,3 +93,33 @@ export async function recordIntegrationConnectionState(
     context,
   );
 }
+
+/**
+ * Outbox item a singleton configuration slot writes when it is saved or cleared. It carries its
+ * scope because clearing removes the stored configuration the item is dispatched after.
+ */
+export type IntegrationSlotOutboxItem = {
+  id: string;
+  type: "connection.ready" | "connection.disconnected";
+  createdAt: string;
+  scope: BackofficeContextScope;
+};
+
+/** Records a slot outbox item as the connection state it reports. */
+export async function recordIntegrationSlotChange(
+  automationsFor: (scope: BackofficeContextScope) => Pick<AutomationsObject, "ingestEvent">,
+  item: IntegrationSlotOutboxItem,
+  connection: { service: string; connectionId: string },
+) {
+  await recordIntegrationConnectionState(
+    automationsFor(item.scope),
+    {
+      id: item.id,
+      scope: item.scope,
+      ...connection,
+      state: item.type === "connection.ready" ? "ready" : "disconnected",
+      occurredAt: new Date(item.createdAt),
+    },
+    { propagationContext: null },
+  );
+}

@@ -19,7 +19,10 @@ import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-ser
 import { resendConfigureInputSchema } from "@/fragno/backoffice-capabilities/capabilities/resend";
 import { type DurableHookQueueOptions } from "@/fragno/durable-hooks";
 import { createResendServer, type ResendConfig, type ResendFragment } from "@/fragno/resend";
-import { recordIntegrationConnectionState } from "@/fragno/runtime-tools/families/integrations/integration-events";
+import {
+  recordIntegrationSlotChange,
+  type IntegrationSlotOutboxItem,
+} from "@/fragno/runtime-tools/families/integrations/integration-events";
 import { resendConnectionId } from "@/fragno/runtime-tools/families/integrations/resend-integration";
 
 import type {
@@ -313,7 +316,8 @@ export class InMemoryResendObject implements ResendObject {
   readonly #host: BackofficeFragmentDurableObject<
     StoredResendConfig,
     ResendFragmentConfig,
-    ResendFragment
+    ResendFragment,
+    IntegrationSlotOutboxItem
   >;
   readonly #createClient: (apiKey: string) => ResendClient;
   readonly #runtimeMode: string;
@@ -367,24 +371,12 @@ export class InMemoryResendObject implements ResendObject {
       createRuntime: (config) =>
         createResendServer(config, implementation.fragmentDatabase, new BackofficeKernel(runtime)),
       outbox: {
-        dispatch: async (item, { stored }) => {
-          const { scope } = stored;
-          if (item.type !== "connection.ready") {
-            return;
-          }
-          await recordIntegrationConnectionState(
-            this.#runtimeServices.objects.automations.for(scope).commands,
-            {
-              id: item.id,
-              scope,
-              service: "resend",
-              connectionId: resendConnectionId,
-              state: "ready",
-              occurredAt: new Date(item.createdAt),
-            },
-            { propagationContext: null },
-          );
-        },
+        dispatch: (item: IntegrationSlotOutboxItem) =>
+          recordIntegrationSlotChange(
+            (scope) => this.#runtimeServices.objects.automations.for(scope).commands,
+            item,
+            { service: "resend", connectionId: resendConnectionId },
+          ),
       },
     });
 
@@ -403,25 +395,16 @@ export class InMemoryResendObject implements ResendObject {
   }
 
   async resetAdminConfig(): Promise<ConfigResponse> {
-    const stored = await this.#host.loadStored();
-    if (stored) {
-      // Clearing drops the outbox, so report first: a failed report leaves the configuration in place
-      // for a retry, and the ID derived from the stored version keeps repeated reports to one event.
-      await recordIntegrationConnectionState(
-        this.#runtimeServices.objects.automations.for(stored.scope).commands,
-        {
-          id: `resend:${backofficeScopePathSegment(stored.scope)}:${stored.updatedAt}`,
-          scope: stored.scope,
-          service: "resend",
-          connectionId: resendConnectionId,
-          state: "disconnected",
-          occurredAt: new Date(),
-        },
-        { propagationContext: null },
-      );
-    }
     await this.#state.blockConcurrencyWhile(async () => {
-      await this.#host.clearConfig();
+      const stored = await this.#host.loadStored();
+      await this.#host.clearConfig(
+        stored && {
+          id: `resend:${backofficeScopePathSegment(stored.scope)}:${stored.updatedAt}`,
+          type: "connection.disconnected",
+          createdAt: new Date().toISOString(),
+          scope: stored.scope,
+        },
+      );
     });
     return { configured: false };
   }
@@ -489,6 +472,7 @@ export class InMemoryResendObject implements ResendObject {
             id: crypto.randomUUID(),
             type: "connection.ready",
             createdAt: configuredAt,
+            scope,
           });
         } catch (error) {
           console.log("Migration failed", { error });
