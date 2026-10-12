@@ -1870,13 +1870,9 @@ const runScenarioCodemode = async (
     billingOrganizationId: null,
   });
   const toolContext = createBackofficeToolContext(runtimeContext);
-  const codemode = ctx.runtime.env.codemode;
-  if (!codemode) {
-    throw new Error("Backoffice scenario codemode requires an executor.");
-  }
   const result = await runBackofficeCodemode({
     code: input.code,
-    env: codemode,
+    codemode: ctx.runtime.objects.codemode.for(input.scope).commands,
     timeout: input.timeout,
     families: runtimeToolFamilies,
     toolContext: toolContext,

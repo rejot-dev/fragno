@@ -41,6 +41,7 @@ import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 import { InMemoryAppsObject } from "../workers/apps.do";
 import { InMemoryAuthObject } from "../workers/auth.do";
 import { InMemoryAutomationsObject } from "../workers/automations.do";
+import { InMemoryCodemodeObject } from "../workers/codemode.do";
 import { InMemoryFormsObject } from "../workers/forms.do";
 import { InMemoryUploadObject } from "../workers/upload.do";
 
@@ -48,6 +49,7 @@ const scenarioObjects = {
   APPS: (input) => new InMemoryAppsObject(input),
   AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
   AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  CODEMODE: (input) => new InMemoryCodemodeObject(input),
   FORMS: (input) => new InMemoryFormsObject(input),
   UPLOAD: (input) => new InMemoryUploadObject(input),
 } satisfies LocalBackofficeObjects;
@@ -181,10 +183,9 @@ async function createNativeTestClient(
       expect.objectContaining({ command: "admin.oauth-clients.create", output: "[redacted]" }),
     );
   } else {
-    assert(ctx.runtime.env.codemode);
     const created = await runBackofficeCodemode({
       code: `async () => await admin.oauthClientsCreate(${JSON.stringify({ name: "Local OAuth PKCE Test", applicationType: "native", clientType: "confidential", redirectUris: [redirectUri], scopes: ["openid", "profile", "email"] })})`,
-      env: ctx.runtime.env.codemode,
+      codemode: ctx.runtime.objects.codemode.for(context.execution.scope).commands,
       families: runtimeToolFamilies,
       toolContext: createBackofficeToolContext(context),
     });

@@ -40,11 +40,6 @@
   ],
   "services": [
     {
-      "binding": "OUTBOUND",
-      "service": "rejot-backoffice",
-      "entrypoint": "OutboundProxy",
-    },
-    {
       "binding": "CODEMODE_COMPILER",
       "service": "cf-sandbox-bridge",
       "entrypoint": "CodemodeCompiler",
@@ -130,6 +125,11 @@
       {
         "name": "BILLING",
         "class_name": "Billing",
+        "script_name": "rejot-backoffice",
+      },
+      {
+        "name": "CODEMODE",
+        "class_name": "Codemode",
         "script_name": "rejot-backoffice",
       },
       {

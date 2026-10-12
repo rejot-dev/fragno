@@ -1,3 +1,6 @@
+// The Workers test pool loads the main module on first Durable Object access; load it untimed.
+import "../../../workers/vitest-env";
+
 import { describe, expect, test, assert } from "vitest";
 
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
@@ -9,6 +12,7 @@ import { env } from "cloudflare:workers";
 
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 
+import { createCloudflareBackofficeObjectRegistry } from "@/backoffice-runtime/cloudflare-durable-object-factory";
 import { createBackofficeUserExecution } from "@/backoffice-runtime/context";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
@@ -599,7 +603,13 @@ const createExecCodeModeTool = async ({
     sessionId: "session-1",
     execution: createPiSystemFileContext().execution,
     billingOrganizationId: "org-1",
-    codemode: { ...createPiCodemodeRuntime(env), workflow: workflowRuntime },
+    codemode: {
+      ...createPiCodemodeRuntime(
+        createCloudflareBackofficeObjectRegistry(env as CloudflareEnv).codemode.singleton()
+          .commands,
+      ),
+      workflow: workflowRuntime,
+    },
     authorizeExecution: async () => undefined,
     createRuntimeToolContext: () => runtimeToolContext,
   }).execCodeMode;

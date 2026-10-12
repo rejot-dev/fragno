@@ -46,6 +46,7 @@ import { InMemoryAppInstallationsObject } from "../../../../../workers/app-insta
 import { InMemoryAppsObject } from "../../../../../workers/apps.do";
 import { InMemoryAuthObject } from "../../../../../workers/auth.do";
 import { InMemoryAutomationsObject } from "../../../../../workers/automations.do";
+import { InMemoryCodemodeObject } from "../../../../../workers/codemode.do";
 import { InMemoryFormsObject } from "../../../../../workers/forms.do";
 import { InMemoryMcpObject } from "../../../../../workers/mcp.do";
 import { InMemoryReson8Object } from "../../../../../workers/reson8.do";
@@ -62,6 +63,7 @@ const scenarioObjects = {
   APP_INSTALLATIONS: (input) => new InMemoryAppInstallationsObject(input),
   AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
   AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  CODEMODE: (input) => new InMemoryCodemodeObject(input),
   FORMS: (input) => new InMemoryFormsObject(input),
   MCP: (input) => new InMemoryMcpObject(input),
   TELEGRAM: (input) => new InMemoryTelegramObject(input),

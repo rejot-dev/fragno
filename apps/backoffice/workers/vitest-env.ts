@@ -1,10 +1,4 @@
-import {
-  createCompileWorkerServiceResponse,
-  createCompilerServiceErrorResponse,
-  readCompileWorkerServiceRequest,
-} from "@fragno-dev/codemode/compiler/compiler-service-protocol";
-import { createWorkerBundle } from "@fragno-dev/codemode/compiler/worker-bundle";
-import { DurableObject, WorkerEntrypoint } from "cloudflare:workers";
+import { DurableObject } from "cloudflare:workers";
 
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import type { BackofficeMeData } from "@/fragno/auth/contracts";
@@ -12,13 +6,14 @@ import { piAgentObjectName, type PiAgent } from "@/fragno/pi-manager/pi-agent-co
 
 import { Auth, InMemoryAuthObject } from "./auth.do";
 import { Automations } from "./automations.do";
+import { Codemode } from "./codemode.do";
 import { createCloudflareBackofficeObjectContext } from "./lib/cloudflare-backoffice-object-implementation";
 import { Mcp } from "./mcp.do";
 import { PiScenarioAgent } from "./pi-durable-scenario.test-support";
 import { InMemoryPiManagerObject } from "./pi-manager.do";
 import { Upload } from "./upload.do";
 
-export { PiScenarioAgent, Auth, Automations, Mcp, Upload };
+export { PiScenarioAgent, Auth, Automations, Codemode, Mcp, Upload };
 
 /** Cloudflare test manager exposes the faux catalog used by PiScenarioAgent. */
 export class PiScenarioManager extends DurableObject<CloudflareEnv> {
@@ -51,28 +46,6 @@ export default {
     return new Response("Backoffice Vitest worker");
   },
 };
-
-/**
- * Streamed compiler RPC for the Pi extension gate, which builds over a service binding. Like
- * `vitest-compiler-setup.ts`, it loads modules unchanged and ignores requested dependencies.
- */
-export class PiWorkspaceExtensionCompiler extends WorkerEntrypoint {
-  async compileWorker(request: Request): Promise<Response> {
-    try {
-      const input = await readCompileWorkerServiceRequest(request);
-      return createCompileWorkerServiceResponse({
-        bundle: createWorkerBundle({
-          mainModule: input.entryPoint,
-          modules: input.files,
-          runtime: input.runtime,
-        }),
-        warnings: [],
-      });
-    } catch (error) {
-      return createCompilerServiceErrorResponse(error);
-    }
-  }
-}
 
 export class OutboxHarnessDurableObject extends DurableObject {
   async alarm() {}

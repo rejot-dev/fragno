@@ -32,7 +32,9 @@ import {
 import { requirePiStateBackend, type PiRuntimeToolContext } from "./pi-runtime-context";
 
 export type PiCodemodeRuntime = {
-  execute(input: Omit<RunBackofficeCodemodeInput, "env">): Promise<BackofficeCodemodeExecuteResult>;
+  execute(
+    input: Omit<RunBackofficeCodemodeInput, "codemode">,
+  ): Promise<BackofficeCodemodeExecuteResult>;
   workflow?: AutomationWorkflowRuntime &
     Pick<InternalAutomationWorkflowRuntime, "createInternalInstance">;
 };

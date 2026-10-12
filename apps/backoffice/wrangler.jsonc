@@ -87,18 +87,7 @@
       "binding": "LOADER",
     },
   ],
-  /**
-   * Outbound egress for codemode/workflow sandboxes. A self service binding to
-   * the `OutboundProxy` entrypoint (see workers/objects.ts) handed to dynamically
-   * loaded Workers as their `globalOutbound`, so `fetch()` inside a workflow
-   * step can reach the internet through the object host.
-   */
   "services": [
-    {
-      "binding": "OUTBOUND",
-      "service": "rejot-backoffice",
-      "entrypoint": "OutboundProxy",
-    },
     {
       "binding": "CODEMODE_COMPILER",
       "service": "cf-sandbox-bridge",
@@ -197,6 +186,10 @@
         "class_name": "Billing",
       },
       {
+        "name": "CODEMODE",
+        "class_name": "Codemode",
+      },
+      {
         "name": "MARKETPLACE",
         "class_name": "Marketplace",
       },
@@ -234,6 +227,7 @@
     "Pi": { "type": "durable-object", "storage": "sqlite" },
     "PiManager": { "type": "durable-object", "storage": "sqlite" },
     "Billing": { "type": "durable-object", "storage": "sqlite" },
+    "Codemode": { "type": "durable-object", "storage": "sqlite" },
     "Marketplace": { "type": "durable-object", "storage": "sqlite" },
     "Cloudflare": { "type": "durable-object", "storage": "sqlite" },
     "Forms": { "type": "durable-object", "storage": "sqlite" },

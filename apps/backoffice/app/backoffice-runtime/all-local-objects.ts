@@ -5,6 +5,7 @@ import { InMemoryAuthObject } from "../../workers/auth.do";
 import { InMemoryAutomationsObject } from "../../workers/automations.do";
 import { InMemoryBillingObject } from "../../workers/billing.do";
 import { InMemoryCloudflareObject } from "../../workers/cloudflare.do";
+import { InMemoryCodemodeObject } from "../../workers/codemode.do";
 import { InMemoryFormsObject } from "../../workers/forms.do";
 import { InMemoryGitHubWebhookRouterObject } from "../../workers/github-webhook-router.do";
 import { InMemoryGitHubObject } from "../../workers/github.do";
@@ -194,6 +195,7 @@ export const allLocalObjects = {
     });
   },
   BILLING: (input) => new InMemoryBillingObject(input),
+  CODEMODE: (input) => new InMemoryCodemodeObject(input),
   APPS: (input) => new InMemoryAppsObject(input),
   APP_INSTALLATIONS: (input) => new InMemoryAppInstallationsObject(input),
   MARKETPLACE: (input) => new InMemoryMarketplaceObject(input),

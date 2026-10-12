@@ -17,12 +17,10 @@ import {
 } from "@earendil-works/pi-durable";
 
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
+import type { CodemodeObject } from "@/backoffice-runtime/object-registry";
 import { backofficeContextScopeRouteId } from "@/backoffice-runtime/scope-codec";
 import { runBackofficeCompiledModule } from "@/fragno/codemode/compiled-module-execute";
-import {
-  createBackofficeCodemodeResolvedProviders,
-  type BackofficeCodemodeEnv,
-} from "@/fragno/codemode/execute";
+import { createBackofficeCodemodeResolvedProviders } from "@/fragno/codemode/execute";
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 
@@ -54,7 +52,7 @@ export function createPiWorkspaceExtensionBridge(input: {
   bundle: WorkerBundle;
   path: string;
   execution: BackofficeExecutionContext;
-  env: BackofficeCodemodeEnv;
+  codemode: CodemodeObject;
   createRuntimeToolContext: (context: Context, invocationId: string) => PiRuntimeToolContext;
   authorizeExecution: () => Promise<void>;
 }): Extension {
@@ -171,7 +169,7 @@ export function createPiWorkspaceExtensionBridge(input: {
           environmentId: `${input.execution.scope.kind}:${backofficeContextScopeRouteId(input.execution.scope)}`,
         },
         providers: authorizedProviders,
-        env: input.env,
+        codemode: input.codemode,
         signal: context.abortSignal ?? null,
       });
       // Native results often contain omitted optional properties set to undefined. All other non-JSON data is rejected.

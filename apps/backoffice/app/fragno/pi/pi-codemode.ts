@@ -1,8 +1,10 @@
-import { runBackofficeCodemode, type BackofficeCodemodeEnv } from "../codemode/execute";
+import type { CodemodeObject } from "@/backoffice-runtime/object-registry";
+
+import { runBackofficeCodemode } from "../codemode/execute";
 import type { PiCodemodeRuntime } from "./pi-tools";
 
-export const createPiCodemodeRuntime = (env: BackofficeCodemodeEnv): PiCodemodeRuntime => ({
-  execute: (input) => runBackofficeCodemode({ ...input, env }),
+export const createPiCodemodeRuntime = (codemode: CodemodeObject): PiCodemodeRuntime => ({
+  execute: (input) => runBackofficeCodemode({ ...input, codemode }),
 });
 
 export const createUnavailablePiCodemodeRuntime = (): PiCodemodeRuntime => ({

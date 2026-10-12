@@ -23,6 +23,7 @@ import { InMemoryAppInstallationsObject } from "../../../../workers/app-installa
 import { InMemoryAppsObject } from "../../../../workers/apps.do";
 import { InMemoryAuthObject } from "../../../../workers/auth.do";
 import { InMemoryAutomationsObject } from "../../../../workers/automations.do";
+import { InMemoryCodemodeObject } from "../../../../workers/codemode.do";
 import { InMemoryFormsObject } from "../../../../workers/forms.do";
 import { InMemoryMarketplaceObject } from "../../../../workers/marketplace.do";
 import { InMemoryMcpObject } from "../../../../workers/mcp.do";
@@ -36,6 +37,7 @@ const scenarioObjects = {
   APP_INSTALLATIONS: (input) => new InMemoryAppInstallationsObject(input),
   AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
   AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  CODEMODE: (input) => new InMemoryCodemodeObject(input),
   FORMS: (input) => new InMemoryFormsObject(input),
   MARKETPLACE: (input) => new InMemoryMarketplaceObject(input),
   MCP: (input) => new InMemoryMcpObject(input),

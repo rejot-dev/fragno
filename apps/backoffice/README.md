@@ -11,6 +11,11 @@ Compilation and type-checking live in the separately deployed
 Backoffice's own Worker Loader. There is no standalone compiler Worker. For local Cloudflare
 codemode development, start the bridge's `dev` script alongside Backoffice.
 
+Every codemode activation except workflows (execCodeMode, `js.build`, `js.run`, and Pi workspace
+extensions) goes through the scope's `CODEMODE` Durable Object, which talks to the bridge and keeps
+seven days of run history: outcome, error, and bounded logs. Guests have no network egress; use the
+`web.*` tools for internet access.
+
 ## Tests
 
 Run Backoffice's Node and Cloudflare suites from the repository root:

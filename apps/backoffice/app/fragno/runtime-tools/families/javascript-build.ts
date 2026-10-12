@@ -1,8 +1,8 @@
 import { CODEMODE_LIMITS } from "@fragno-dev/codemode/codemode-limits";
 
+import type { CodemodeObject } from "@/backoffice-runtime/object-registry";
 import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
 import { buildBackofficeJavaScriptModule } from "@/fragno/codemode/compiled-module-execute";
-import type { BackofficeCodemodeEnv } from "@/fragno/codemode/execute";
 import {
   javaScriptModuleArtifactSchema,
   resolveJavaScriptModuleArtifactPath,
@@ -16,7 +16,7 @@ export async function buildJavaScriptModuleFile(input: {
   path: string;
   out: string;
   state: BackofficeStateBackend;
-  env: BackofficeCodemodeEnv;
+  codemode: CodemodeObject;
 }): Promise<{ path: string; artifactPath: string; warnings: string[] }> {
   if (
     !input.path.startsWith("/") ||
@@ -50,7 +50,7 @@ export async function buildJavaScriptModuleFile(input: {
   const compiled = await buildBackofficeJavaScriptModule({
     code: await input.state.readFile(path),
     dependencies: { "@earendil-works/pi-durable": dependencies["@earendil-works/pi-durable"] },
-    env: input.env,
+    codemode: input.codemode,
   });
   const artifact = JSON.stringify({
     format: javaScriptModuleArtifactSchema.shape.format.value,

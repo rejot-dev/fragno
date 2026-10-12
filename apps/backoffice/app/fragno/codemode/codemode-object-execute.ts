@@ -1,0 +1,44 @@
+import { createCodemodeHost } from "@fragno-dev/codemode/host/codemode-host-capabilities";
+import { sanitizeToolName, type ResolvedProvider } from "@fragno-dev/codemode/runtime-api";
+
+import type { CodemodeObject } from "@/backoffice-runtime/object-registry";
+
+import type { CodemodeRunActivation, CodemodeRunCompletion } from "./codemode-fragment";
+
+/** Advertises the caller's tool names to the guest; the tools themselves stay in the caller's host. */
+export function codemodeProviderManifest(providers: readonly ResolvedProvider[]) {
+  return providers.map((provider) => ({
+    name: provider.name,
+    tools: Object.keys(provider.fns).map(sanitizeToolName),
+  }));
+}
+
+/** The Codemode object owns the guest and host lifecycle; a cancelled caller only revokes its host. */
+export async function executeCodemodeInObject(
+  codemode: CodemodeObject,
+  activation: CodemodeRunActivation,
+  providers: ResolvedProvider[],
+  signal: AbortSignal | null,
+): Promise<CodemodeRunCompletion> {
+  signal?.throwIfAborted();
+  const host = createCodemodeHost(providers, null);
+  const execution = codemode.execute(activation, host);
+  if (signal === null) {
+    return (await execution).completion;
+  }
+  let rejectCancelled: (reason: unknown) => void;
+  const cancelled = new Promise<never>((_resolve, reject) => {
+    rejectCancelled = reject;
+  });
+  const cancel = () => {
+    host.close();
+    rejectCancelled(signal.reason);
+  };
+  signal.addEventListener("abort", cancel, { once: true });
+  try {
+    // The abandoned run keeps executing with revoked capabilities until the object records its outcome.
+    return (await Promise.race([execution, cancelled])).completion;
+  } finally {
+    signal.removeEventListener("abort", cancel);
+  }
+}
