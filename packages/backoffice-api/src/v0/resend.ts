@@ -6,7 +6,7 @@ import { BACKOFFICE_PERMISSION } from "./shared/permissions";
 
 export const MAX_PAGE_SIZE = 100;
 
-const resendThreadSummaryOutputSchema = z.object({
+export const resendThreadSummaryOutputSchema = z.object({
   id: z.string(),
   subject: z.string().nullable(),
   normalizedSubject: z.string(),
@@ -20,11 +20,11 @@ const resendThreadSummaryOutputSchema = z.object({
   updatedAt: isoDateTimeOutputSchema,
 });
 
-const resendThreadDetailOutputSchema = resendThreadSummaryOutputSchema.extend({
+export const resendThreadDetailOutputSchema = resendThreadSummaryOutputSchema.extend({
   replyToAddress: z.string().nullable(),
 });
 
-const resendThreadMessageOutputSchema = z.object({
+export const resendThreadMessageOutputSchema = z.object({
   id: z.string(),
   threadId: z.string(),
   direction: z.enum(["inbound", "outbound"]),
