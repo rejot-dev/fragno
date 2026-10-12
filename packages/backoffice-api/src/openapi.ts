@@ -12,7 +12,7 @@ type SchemaIo = "input" | "output";
 
 export type OpenApiDocument = {
   openapi: "3.1.0";
-  info: { title: string; version: string };
+  info: { title: string; version: string; license: { name: string; identifier: string } };
   servers: { url: string }[];
   security: { bearer: [] }[];
   paths: Record<string, { post: JsonSchema }>;
@@ -77,12 +77,15 @@ export function createOpenApiDocument(
     );
     for (const [id, definition] of Object.entries(localizedDefinitions)) {
       const existing = definitions[io].get(id);
-      if (existing && JSON.stringify(existing) !== JSON.stringify(definition)) {
+      if (
+        existing &&
+        JSON.stringify(existing) !== JSON.stringify(simplifyCompositions(definition))
+      ) {
         throw new Error(`Two different schemas use the OpenAPI component id '${id}'.`);
       }
-      definitions[io].set(id, definition);
+      definitions[io].set(id, simplifyCompositions(definition));
     }
-    return localizedRoot;
+    return simplifyCompositions(localizedRoot);
   }
 
   const operations = Object.entries(api.operations).map(([operationId, operation]) => ({
@@ -156,7 +159,7 @@ export function createOpenApiDocument(
     paths[`/api/${api.version}/scopes/{scope}/${operationId}`] = {
       post: {
         operationId,
-        description: operation.description,
+        ...summarize(operation.description),
         tags: [operationId.split(".")[0]],
         // OpenAPI 3.1 lets non-OAuth schemes list the roles a requirement needs.
         security: [
@@ -190,7 +193,12 @@ export function createOpenApiDocument(
 
   return {
     openapi: "3.1.0",
-    info: { title: "Backoffice API", version: api.version },
+    // The repository, Backoffice included, is MIT licensed.
+    info: {
+      title: "Backoffice API",
+      version: api.version,
+      license: { name: "MIT", identifier: "MIT" },
+    },
     servers: [{ url: serverUrl }],
     security: [{ bearer: [] }],
     paths,
@@ -199,6 +207,58 @@ export function createOpenApiDocument(
       securitySchemes: { bearer: { type: "http", scheme: "bearer", bearerFormat: "JWT" } },
     },
   };
+}
+
+/** The first sentence is the summary; the description repeats it only when there is more to say. */
+function summarize(
+  description: string,
+): { summary: string } | { summary: string; description: string } {
+  const [summary = description] = description.split(/(?<=\.)\s+(?=[A-Z])/u, 1);
+  return summary === description ? { summary } : { summary, description };
+}
+
+/**
+ * zod writes `z.unknown().nullable()` as `anyOf: [{}, { type: "null" }]` and a one-member union as a
+ * one-element `oneOf`. Both are valid but illogical: an empty member already matches anything, and
+ * a single member is the schema itself.
+ */
+function simplifyCompositions(schema: JsonSchema): JsonSchema {
+  const simplify = (value: unknown): unknown => {
+    if (Array.isArray(value)) {
+      return value.map(simplify);
+    }
+    if (value === null || typeof value !== "object") {
+      return value;
+    }
+    const node = Object.fromEntries(
+      Object.entries(value).map(([key, child]) => [key, simplify(child)]),
+    ) as JsonSchema;
+    for (const keyword of ["anyOf", "oneOf"] as const) {
+      const members = node[keyword];
+      if (!Array.isArray(members)) {
+        continue;
+      }
+      const { [keyword]: _members, ...rest } = node;
+      if (members.some((member) => isEmptySchema(member))) {
+        return rest;
+      }
+      const [only] = members as JsonSchema[];
+      if (members.length === 1 && only && Object.keys(only).every((key) => !(key in rest))) {
+        return { ...rest, ...only };
+      }
+    }
+    return node;
+  };
+  return simplify(schema) as JsonSchema;
+}
+
+function isEmptySchema(schema: unknown): boolean {
+  return (
+    schema !== null &&
+    typeof schema === "object" &&
+    !Array.isArray(schema) &&
+    Object.keys(schema).length === 0
+  );
 }
 
 function referencedDefinitionIds(schema: JsonSchema): string[] {
