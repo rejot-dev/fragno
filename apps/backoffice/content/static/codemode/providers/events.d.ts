@@ -1,6 +1,6 @@
 // events tools
 type EventsCodemodeProvider = {
-  /** Fire an automation event for the current context or a selected target scope. */
+  /** Fire an automation event for the current context or a selected target scope. Sources starting with `app:` belong to installed apps, and only an app's own credential emits them. */
   fire(input: EventsFireInput): Promise<EventsFireOutput>;
   /** List stored automation events in the current scope, newest first. */
   list(input: EventsListInput): Promise<EventsListOutput>;

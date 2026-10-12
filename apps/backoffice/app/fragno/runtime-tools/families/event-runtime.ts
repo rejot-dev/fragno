@@ -16,6 +16,7 @@ import {
   backofficeOperationErrorKindForStatus,
 } from "@/backoffice-runtime/operation-error";
 
+import { isInstalledAppEventSource } from "../../app-installations/authority";
 import { rethrowAutomationEventDefinitionFailure } from "../../automation/event-definitions";
 import { createAutomationsRouteCaller } from "../../automation/route-callers";
 import type { EventRuntime } from "./event";
@@ -109,14 +110,18 @@ export function createEventRuntime(options: CreateEventRuntimeOptions): EventRun
       }
 
       const { emittedEventSource } = options;
-      if (
-        emittedEventSource !== undefined &&
-        source !== undefined &&
-        source !== emittedEventSource
-      ) {
-        throw new BackofficeForbiddenError(
-          `Events from this credential have the source '${emittedEventSource}'.`,
-        );
+      if (source !== undefined && source !== emittedEventSource) {
+        if (emittedEventSource !== undefined) {
+          throw new BackofficeForbiddenError(
+            `Events from this credential have the source '${emittedEventSource}'.`,
+          );
+        }
+        // Inheriting a parent event's app source stays allowed: that event came from the app.
+        if (isInstalledAppEventSource(source)) {
+          throw new BackofficeForbiddenError(
+            `The event source '${source}' belongs to an installed app.`,
+          );
+        }
       }
       const nextSource = emittedEventSource ?? source ?? parentEvent?.source;
       if (!nextSource) {
