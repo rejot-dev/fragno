@@ -40,6 +40,7 @@ import { InMemoryAppInstallationsObject } from "../../../../workers/app-installa
 import { InMemoryAppsObject } from "../../../../workers/apps.do";
 import { InMemoryAuthObject } from "../../../../workers/auth.do";
 import { InMemoryAutomationsObject } from "../../../../workers/automations.do";
+import { InMemoryCodemodeObject } from "../../../../workers/codemode.do";
 import { InMemoryFormsObject } from "../../../../workers/forms.do";
 import { InMemoryMcpObject } from "../../../../workers/mcp.do";
 import { InMemoryTelegramObject } from "../../../../workers/telegram.do";
@@ -52,6 +53,7 @@ const scenarioObjects = {
   APP_INSTALLATIONS: (input) => new InMemoryAppInstallationsObject(input),
   AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
   AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  CODEMODE: (input) => new InMemoryCodemodeObject(input),
   FORMS: (input) => new InMemoryFormsObject(input),
   MCP: (input) => new InMemoryMcpObject(input),
   TELEGRAM: (input) => new InMemoryTelegramObject(input),
@@ -167,7 +169,6 @@ describe("admin app runtime tool SQLite scenarios", () => {
             const input = { oauthClientId: client.clientId, requestedPermissions: permissions };
             const context = appAdminContext(ctx, "admin-1");
             assert(context.stateBackend);
-            assert(ctx.runtime.env.codemode);
             const toolContext = createBackofficeToolContext(context);
             const result = await runBackofficeCodemode({
               code: `async () => {
@@ -175,7 +176,7 @@ describe("admin app runtime tool SQLite scenarios", () => {
             const page = await admin.appsList({});
             return { created, page };
           }`,
-              env: ctx.runtime.env.codemode,
+              codemode: ctx.runtime.objects.codemode.for(toolContext.execution.scope).commands,
               families: runtimeToolFamilies,
               toolContext,
             });
@@ -277,10 +278,9 @@ describe("admin app runtime tool SQLite scenarios", () => {
               assert.notEqual(result.exitCode, 0);
               expect(result.stderr).toContain(`Required permission: ${permission}.`);
             }
-            assert(ctx.runtime.env.codemode);
             const denied = await runBackofficeCodemode({
               code: "async () => await admin.appsList({})",
-              env: ctx.runtime.env.codemode,
+              codemode: ctx.runtime.objects.codemode.for(userTools.execution.scope).commands,
               families: runtimeToolFamilies,
               toolContext: userTools,
             });

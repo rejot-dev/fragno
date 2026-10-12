@@ -52,8 +52,6 @@ export type BackofficeCodemodeWorkflowOptions = {
   toolContext: BackofficeToolContext;
   /** Hook identities the trusted host permits this sandbox to trigger. */
   allowedHooks: readonly RemoteWorkflowAllowedHook[];
-  /** Local sandboxes are sealed unless explicitly granted an allowlisting Fetcher. Remote sandboxes are always sealed. */
-  globalOutbound?: Fetcher | null;
   dependencies?: NpmDependencyMap;
 };
 
@@ -64,20 +62,18 @@ type WorkflowExecutionInput<TParams> = {
   env: BackofficeCodemodeEnv;
 } & BackofficeCodemodeWorkflowOptions;
 
+// TODO(codemode): run workflow activations through the scope's Codemode object, like every other
+// activation, so workflow runs get recorded history. Required first:
+// - replace this Cloudflare path's own guest build and DynamicWorkerExecutor call with
+//   executeCodemodeActivation;
+// - let the object return host.settle() suspensions (its loader path currently discards them) and
+//   record `suspended` runs with their reason and workflow instance id, since each tick is a new run;
+// - prove in a Cloudflare scenario that step callbacks, onConsume, and tx.onEvent subscriptions
+//   (duplicated stubs) survive the extra Automations -> Codemode -> guest RPC hop.
 async function executeBackofficeCodemodeWorkflow<TParams, TOutput>(
   input: WorkflowExecutionInput<TParams>,
 ): Promise<TOutput> {
-  const {
-    code,
-    event,
-    remote,
-    env,
-    families,
-    toolContext,
-    globalOutbound,
-    dependencies,
-    allowedHooks,
-  } = input;
+  const { code, event, remote, env, families, toolContext, dependencies, allowedHooks } = input;
   const { providers, mcpDiscoveryError } = await createBackofficeCodemodeResolvedProviders({
     families,
     toolContext,
@@ -86,9 +82,6 @@ async function executeBackofficeCodemodeWorkflow<TParams, TOutput>(
     explainMcpCodemodeError(mcpDiscoveryError, error),
   );
   if ("remoteExecutor" in env) {
-    if (globalOutbound) {
-      throw new Error("CODEMODE_REMOTE_EGRESS_UNSUPPORTED");
-    }
     const { host, manifest } = createBackofficeCodemodeRemoteHost(providers, {
       step: stepTarget,
     });
@@ -119,10 +112,7 @@ async function executeBackofficeCodemodeWorkflow<TParams, TOutput>(
     }
   }
   const host = createCodemodeHost(providers, stepTarget);
-  const executor = new DynamicWorkerExecutor({
-    loader: env.LOADER,
-    globalOutbound: globalOutbound ?? null,
-  });
+  const executor = new DynamicWorkerExecutor({ loader: env.LOADER });
   const compiled = await resolveBackofficeWorkerCompiler(env)({
     files: {
       "remote-workflow.js": createCodemodeWorkflowSource({

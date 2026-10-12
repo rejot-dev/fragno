@@ -1,8 +1,12 @@
+// The Workers test pool loads the main module on first Durable Object access; load it untimed.
+import "../../../../workers/vitest-env";
+
 import { assert, describe, expect, test } from "vitest";
 
 import { env } from "cloudflare:workers";
 import { InMemoryFs } from "just-bash";
 
+import { createCloudflareBackofficeObjectRegistry } from "@/backoffice-runtime/cloudflare-durable-object-factory";
 import { runBackofficeJavaScriptModule } from "@/fragno/codemode/javascript-module-execute";
 import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
 import { createTrustedSystemBackofficeToolContext } from "@/fragno/runtime-tools/runtime-tools";
@@ -44,7 +48,9 @@ describe("JavaScript file execution in workerd", () => {
       executeModule: async (program, toolContext) =>
         await runBackofficeJavaScriptModule({
           program,
-          env,
+          codemode: createCloudflareBackofficeObjectRegistry(
+            env as CloudflareEnv,
+          ).codemode.singleton().commands,
           families: runtimeToolFamilies,
           toolContext,
         }),

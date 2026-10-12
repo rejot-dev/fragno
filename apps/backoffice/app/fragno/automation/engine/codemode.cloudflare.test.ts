@@ -1,4 +1,4 @@
-import { describe, expect, test, assert, vi } from "vitest";
+import { describe, expect, test } from "vitest";
 
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
@@ -13,191 +13,16 @@ import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-ser
 import type { AutomationRuntimeHostContext, AutomationRuntime } from "@/fragno/automation";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 import { CODEMODE_CAPABILITY_ACTOR } from "@/fragno/automation/engine/codemode-invocation";
-import {
-  MemoryUploadObject,
-  createTestStateBackend,
-} from "@/fragno/codemode/state-backend.test-utils";
-import { createBashHost } from "@/fragno/runtime-tools/bash-host";
+import { createTestStateBackend } from "@/fragno/codemode/state-backend.test-utils";
 import { EMPTY_BASH_HOST_CONTEXT } from "@/fragno/runtime-tools/bash-host.test-utils";
 import { createUnavailableAutomationRouterRuntime } from "@/fragno/runtime-tools/families/automations-routing";
 import type { BackofficeCapabilitiesRuntime } from "@/fragno/runtime-tools/families/backoffice-capabilities";
 import { createUnavailableEventRuntime } from "@/fragno/runtime-tools/families/event-runtime";
-import { createStateShellFileSystem } from "@/fragno/runtime-tools/state-shell-file-system";
 
-import { executeCodemodeAutomation, executeWorkflowCodemodeAutomation } from "./codemode";
+import { executeWorkflowCodemodeAutomation } from "./codemode";
 import { defineCodemodeWorkflow } from "./codemode-workflow";
 
-describe("executeCodemodeAutomation", () => {
-  test("runs a .cm.js automation with state.* against Upload", async () => {
-    const event: AutomationEvent = {
-      id: "event-codemode-1",
-      scopeRestriction: null,
-      scope: { kind: "org", orgId: "org-1" },
-      source: "test",
-      eventType: "message.received",
-      occurredAt: "2026-06-03T00:00:00.000Z",
-      payload: { text: "hello" },
-      actors: {
-        initiator: AUTOMATION_SYSTEM_INITIATOR,
-        principal: null,
-        delegation: [],
-      },
-    };
-
-    const stateBackend = createTestStateBackend({
-      upload: new MemoryUploadObject({ "event.json": JSON.stringify(event) }),
-    });
-    const context = createAutomationContext(event);
-    context.stateBackend = stateBackend;
-    const result = await executeCodemodeAutomation({
-      env,
-      context,
-      script: `async () => {
-        const event = JSON.parse(await state.readFile({ path: "/workspace/event.json" }));
-        await state.writeFile({
-          path: "/workspace/output.json",
-          content: JSON.stringify({
-            id: event.id,
-            text: event.payload.text,
-          }),
-        });
-        console.log("codemode automation wrote output");
-        return { ok: true, eventId: event.id };
-      }`,
-    });
-
-    expect(result).toMatchObject({
-      runtime: "codemode",
-      eventId: "event-codemode-1",
-      scriptId: "script:codemode@1:scripts/context-writer.cm.js",
-      exitCode: 0,
-      stderr: "",
-      logs: ["codemode automation wrote output"],
-      result: { ok: true, eventId: "event-codemode-1" },
-      stdout: JSON.stringify({ ok: true, eventId: "event-codemode-1" }),
-      toolCalls: [
-        expect.objectContaining({ toolId: "state.readFile", status: "success" }),
-        expect.objectContaining({ toolId: "state.writeFile", status: "success" }),
-      ],
-    });
-    await expect(stateBackend.readFile("/workspace/output.json")).resolves.toBe(
-      JSON.stringify({ id: "event-codemode-1", text: "hello" }),
-    );
-  });
-
-  test("exposes domain-only automation store tools to codemode automations", async () => {
-    const calls: unknown[] = [];
-    const runtime = createRecordingAutomationRuntime(calls);
-    const event: AutomationEvent = {
-      id: "event-codemode-bind-actor",
-      scopeRestriction: null,
-      scope: { kind: "org", orgId: "org-1" },
-      source: "telegram",
-      eventType: "message.received",
-      occurredAt: "2026-06-03T00:00:00.000Z",
-      payload: { chatId: "chat-123" },
-      actors: {
-        initiator: AUTOMATION_SYSTEM_INITIATOR,
-        principal: null,
-        delegation: [],
-      },
-    };
-
-    const result = await executeCodemodeAutomation({
-      env,
-      context: createAutomationContext(event, runtime),
-      script: `async () => await store.set({
-        key: "telegram/chat-123",
-        value: "user-55",
-      })`,
-    });
-
-    expect(result).toMatchObject({
-      runtime: "codemode",
-      eventId: "event-codemode-bind-actor",
-      exitCode: 0,
-      stderr: "",
-      result: {
-        key: "telegram/chat-123",
-        value: "user-55",
-        category: [],
-      },
-      commandCalls: [],
-      toolCalls: [
-        {
-          providerName: "store",
-          toolName: "set",
-          toolId: "store.set",
-          inputSummary: '{"key":"telegram/chat-123","value":"user-55"}',
-          status: "success",
-        },
-      ],
-    });
-    expect(calls).toEqual([
-      [
-        "set",
-        {
-          key: "telegram/chat-123",
-          value: "user-55",
-        },
-      ],
-    ]);
-  });
-
-  test("exposes connection configuration tools to codemode automations", async () => {
-    const calls: unknown[] = [];
-    const event: AutomationEvent = {
-      id: "event-codemode-configure-upload",
-      scopeRestriction: null,
-      scope: { kind: "org", orgId: "org-1" },
-      source: "auth",
-      eventType: "organization.created",
-      occurredAt: "2026-06-12T00:00:00.000Z",
-      payload: { id: "org-1", name: "Org 1", slug: "org-1" },
-      actors: {
-        initiator: AUTOMATION_SYSTEM_INITIATOR,
-        principal: null,
-        delegation: [],
-      },
-    };
-
-    const result = await executeCodemodeAutomation({
-      env,
-      context: createAutomationContext(event, {
-        backofficeRuntime: createRecordingBackofficeRuntime(calls),
-      }),
-      script: `async () => {
-        return await connections.configure({
-          id: "upload",
-          payload: { provider: "database" },
-        });
-      }`,
-    });
-
-    expect(result).toMatchObject({
-      runtime: "codemode",
-      eventId: "event-codemode-configure-upload",
-      exitCode: 0,
-      stderr: "",
-      result: {
-        id: "upload",
-        configured: true,
-        config: { provider: "database" },
-      },
-      toolCalls: [
-        {
-          providerName: "connections",
-          toolName: "configure",
-          toolId: "connections.configure",
-          status: "success",
-        },
-      ],
-    });
-    expect(calls).toEqual([
-      ["configureConnection", { id: "upload", payload: { provider: "database" } }],
-    ]);
-  });
-
+describe("executeWorkflowCodemodeAutomation", () => {
   test("exposes connection configuration tools to workflow codemode automations", async () => {
     const calls: unknown[] = [];
     const event: AutomationEvent = {
@@ -324,8 +149,7 @@ describe("executeCodemodeAutomation", () => {
     });
   });
 
-  test("seals workflow codemode egress even when the host has an outbound binding", async () => {
-    const outboundFetch = vi.fn(async () => new Response("unexpected outbound response"));
+  test("seals workflow codemode egress", async () => {
     const event: AutomationEvent = {
       id: "event-workflow-egress",
       scopeRestriction: null,
@@ -344,7 +168,7 @@ describe("executeCodemodeAutomation", () => {
       { name: "codemode-workflow-egress-test" },
       async (workflowEvent, remote) =>
         await executeWorkflowCodemodeAutomation({
-          env: { ...env, OUTBOUND: { fetch: outboundFetch } as unknown as Fetcher },
+          env,
           workflowEvent,
           remote,
           context: createAutomationContext(event),
@@ -383,161 +207,6 @@ describe("executeCodemodeAutomation", () => {
         stderr: expect.stringContaining("not permitted to access the internet"),
       }),
     });
-    expect(outboundFetch).not.toHaveBeenCalled();
-  });
-
-  test("exposes event tools to codemode automations", async () => {
-    const calls: unknown[] = [];
-    const runtime = createRecordingAutomationRuntime(calls);
-    const eventFixture: AutomationEvent = {
-      id: "event-codemode-emit-event",
-      scopeRestriction: null,
-      scope: { kind: "org", orgId: "org-1" },
-      source: "telegram",
-      eventType: "message.received",
-      occurredAt: "2026-06-03T00:00:00.000Z",
-      payload: { plan: "basic" },
-      actors: {
-        initiator: AUTOMATION_SYSTEM_INITIATOR,
-        principal: null,
-        delegation: [],
-      },
-    };
-
-    const result = await executeCodemodeAutomation({
-      env,
-      context: createAutomationContext(eventFixture, runtime),
-      script: `async () => await events.fire({
-        eventType: "identity.bound",
-        source: "telegram",
-        payload: { plan: "basic" },
-      })`,
-    });
-
-    expect(result).toMatchObject({
-      runtime: "codemode",
-      eventId: "event-codemode-emit-event",
-      exitCode: 0,
-      stderr: "",
-      result: {
-        accepted: true,
-        eventId: "emitted-1",
-        source: "telegram",
-        eventType: "identity.bound",
-      },
-      toolCalls: [
-        {
-          providerName: "events",
-          toolName: "fire",
-          toolId: "events.fire",
-          status: "success",
-        },
-      ],
-    });
-    expect(calls).toEqual([
-      [
-        "emitEvent",
-        { eventType: "identity.bound", source: "telegram", payload: { plan: "basic" } },
-      ],
-    ]);
-  });
-
-  test("uses the same automation identity tool definition through bash and codemode", async () => {
-    const calls: unknown[] = [];
-    const runtime = createRecordingAutomationRuntime(calls);
-    const event: AutomationEvent = {
-      id: "event-shared-tool-definition",
-      scopeRestriction: null,
-      scope: { kind: "org", orgId: "org-1" },
-      source: "telegram",
-      eventType: "message.received",
-      occurredAt: "2026-06-03T00:00:00.000Z",
-      payload: {},
-      actors: {
-        initiator: AUTOMATION_SYSTEM_INITIATOR,
-        principal: null,
-        delegation: [],
-      },
-    };
-    const context = createAutomationContext(event, runtime);
-
-    const { bash } = createBashHost({
-      context,
-      fs: createStateShellFileSystem(context.stateBackend!),
-    });
-    const bashResult = await bash.exec("store.set --key telegram/bash-chat --value user-bash");
-    const codemodeResult = await executeCodemodeAutomation({
-      env,
-      context,
-      script: `async () => {
-        return await store.set({
-          key: "telegram/codemode-chat",
-          value: "user-codemode",
-        });
-      }`,
-    });
-
-    expect(bashResult).toMatchObject({ exitCode: 0 });
-    expect(codemodeResult).toMatchObject({
-      runtime: "codemode",
-      exitCode: 0,
-      commandCalls: [],
-      toolCalls: [{ toolId: "store.set", status: "success" }],
-    });
-    expect(calls).toEqual([
-      [
-        "set",
-        {
-          key: "telegram/bash-chat",
-          value: "user-bash",
-        },
-      ],
-      [
-        "set",
-        {
-          key: "telegram/codemode-chat",
-          value: "user-codemode",
-        },
-      ],
-    ]);
-  });
-
-  test("returns a useful failed result when a codemode automation domain call is invalid", async () => {
-    const calls: unknown[] = [];
-    const event: AutomationEvent = {
-      id: "event-codemode-invalid-tool-call",
-      scopeRestriction: null,
-      scope: { kind: "org", orgId: "org-1" },
-      source: "telegram",
-      eventType: "message.received",
-      occurredAt: "2026-06-03T00:00:00.000Z",
-      payload: {},
-      actors: {
-        initiator: AUTOMATION_SYSTEM_INITIATOR,
-        principal: null,
-        delegation: [],
-      },
-    };
-
-    const result = await executeCodemodeAutomation({
-      env,
-      context: createAutomationContext(event, createRecordingAutomationRuntime(calls)),
-      script: `async () => {
-        return await store.set({ key: "", value: "" });
-      }`,
-    });
-
-    assert(result.exitCode === 1);
-    expect(result.stderr).toContain("Too small");
-    expect(result.toolCalls).toMatchObject([
-      {
-        providerName: "store",
-        toolName: "set",
-        toolId: "store.set",
-        status: "error",
-      },
-    ]);
-    expect(calls).toEqual([]);
   });
 });
 
@@ -634,45 +303,6 @@ const createRecordingBackofficeRuntime = (calls: unknown[]): BackofficeCapabilit
       },
     },
   ) as BackofficeCapabilitiesRuntime;
-
-const createRecordingAutomationRuntime = (calls: unknown[]): AutomationRuntime => ({
-  ...createUnavailableAutomationRouterRuntime(),
-  ...createUnavailableEventRuntime(),
-  get: async (input) => {
-    calls.push(["get", input]);
-    return null;
-  },
-  set: async (input) => {
-    calls.push(["set", input]);
-    return {
-      id: input.key,
-      key: input.key,
-      value: input.value,
-      category: input.category ?? [],
-    };
-  },
-  delete: async (input) => {
-    calls.push(["delete", input]);
-    return { ok: true, key: input.key };
-  },
-  list: async (input) => {
-    calls.push(["list", input]);
-    return [];
-  },
-  createClaim: async () => {
-    throw new Error("createClaim should not be called in this test.");
-  },
-  emitEvent: async (input) => {
-    calls.push(["emitEvent", input]);
-    return {
-      accepted: true,
-      eventId: "emitted-1",
-      scope: input.targetScope ?? { kind: "org", orgId: "org-1" },
-      source: input.source ?? "telegram",
-      eventType: input.eventType,
-    };
-  },
-});
 
 const createUnavailableRuntime = (name: string) =>
   new Proxy(

@@ -27,9 +27,9 @@ import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context
 import { openPiSessionStore } from "./lib/pi-session-store";
 import { InMemoryPiObject } from "./pi.do";
 
-/** Builds through native streamed RPC, then opens and restarts with only a Worker Loader. */
+/** Builds through the scope's Codemode object, then opens and restarts an agent with only a Worker Loader. */
 test("precompiled workspace extensions open concurrently and after restart without a compiler", async () => {
-  const testEnv = env as CloudflareEnv & { PI_EXTENSION_COMPILER: Fetcher };
+  const testEnv = env as CloudflareEnv;
   const scope = { kind: "org", orgId: `extension-gate-${crypto.randomUUID()}` } as const;
   const config: PiAgentConfig = {
     scope,
@@ -43,13 +43,7 @@ test("precompiled workspace extensions open concurrently and after restart witho
   };
   const stub = testEnv.PI.getByName(piAgentObjectName(config));
   await runInDurableObject(stub, async (_instance, state) => {
-    const runtime = {
-      ...createCloudflareDurableObjectRuntimeServices(testEnv, state),
-      codemodeEnv: {
-        LOADER: testEnv.LOADER,
-        CODEMODE_COMPILER: testEnv.PI_EXTENSION_COMPILER,
-      },
-    };
+    const runtime = createCloudflareDurableObjectRuntimeServices(testEnv, state);
     const files = createRuntimeStateBackend({
       runtime,
       kernel: new BackofficeKernel(runtime),

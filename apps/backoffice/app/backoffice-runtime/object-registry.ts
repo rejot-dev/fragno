@@ -28,6 +28,7 @@ import type {
 } from "@fragno-dev/backoffice-api/v0/organization";
 import type { DirectoryPageInput } from "@fragno-dev/backoffice-api/v0/shared/pagination";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import type { CodemodeHost } from "@fragno-dev/codemode/execution/codemode-activation-contract";
 import type { GitHubWebhookRouter } from "workers/github-webhook-router.do";
 import type { GitHub } from "workers/github.do";
 import type { IssueIdentityClaimInput, IssueIdentityClaimResult, Otp } from "workers/otp.do";
@@ -95,6 +96,13 @@ import type {
   BillingTrackerPage,
   BillingTrackerPageInput,
 } from "@/fragno/billing";
+import type {
+  CodemodeExecution,
+  CodemodeRunActivation,
+  CodemodeRun,
+  CodemodeRunPage,
+  CodemodeRunPageInput,
+} from "@/fragno/codemode/codemode-fragment";
 import type {
   DurableHookQueueEntry,
   DurableHookQueueOptions,
@@ -375,6 +383,13 @@ export type BillingObject = {
   getTrackers(input: BillingTrackerPageInput): Promise<BillingTrackerPage>;
 };
 
+/** Executes non-workflow activations through the codemode bridge and records each one as a run. */
+export type CodemodeObject = {
+  execute(activation: CodemodeRunActivation, host: CodemodeHost): Promise<CodemodeExecution>;
+  getRun(runId: string): Promise<CodemodeRun | null>;
+  listRuns(input: CodemodeRunPageInput): Promise<CodemodeRunPage>;
+};
+
 export type MarketplaceObject = {
   publishRelease(
     input: MarketplacePublishReleaseInput,
@@ -619,6 +634,7 @@ export type BackofficeObjectBindingName =
   | "AUTOMATIONS"
   | "PI_MANAGER"
   | "BILLING"
+  | "CODEMODE"
   | "MARKETPLACE"
   | "TELEGRAM"
   | "OTP"
@@ -661,6 +677,7 @@ export const backofficeObjectScopePolicy = {
   AUTOMATIONS: ["singleton", "org", "user", "project"],
   PI_MANAGER: ["singleton", "org", "user", "project"],
   BILLING: ["org"],
+  CODEMODE: ["singleton", "org", "user", "project"],
   MARKETPLACE: ["singleton"],
 
   TELEGRAM: ["singleton", "org", "user", "project"],
@@ -939,6 +956,7 @@ export const createBackofficeObjectRegistry = (factory: BackofficeObjectFactory)
   automations: scoped(factory, binding<AutomationsObject>("AUTOMATIONS")),
   piManager: scoped(factory, binding<Record<never, never>>("PI_MANAGER")),
   billing: scoped(factory, binding<BillingObject>("BILLING")),
+  codemode: scoped(factory, binding<CodemodeObject>("CODEMODE")),
   marketplace: scoped(factory, binding<MarketplaceObject>("MARKETPLACE")),
   telegram: scoped(factory, binding<TelegramObject>("TELEGRAM")),
   otp: scoped(factory, binding<OtpObject>("OTP")),

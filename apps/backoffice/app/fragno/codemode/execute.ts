@@ -1,16 +1,14 @@
-import type { CompiledWorker, WorkerCompiler } from "@fragno-dev/codemode/compiler/compile-worker";
+import type { WorkerCompiler } from "@fragno-dev/codemode/compiler/compile-worker";
 import { createWorkerCompilerServiceClient } from "@fragno-dev/codemode/compiler/compiler-service-client";
 import type { CodemodeRemoteExecutor } from "@fragno-dev/codemode/execution/codemode-activation-contract";
-import { createCodemodeFunctionSource } from "@fragno-dev/codemode/guest/codemode-function-source";
-import { DynamicWorkerExecutor } from "@fragno-dev/codemode/guest/codemode-worker-executor";
 import {
-  normalizeCode,
   resolveProvider,
   type ExecuteResult,
   type ResolvedProvider,
 } from "@fragno-dev/codemode/runtime-api";
 
 import type { NpmDependencyMap } from "@/backoffice-runtime/dynamic-workers/npm-dependencies";
+import type { CodemodeObject } from "@/backoffice-runtime/object-registry";
 import {
   createMcpCodemodeProviders,
   explainMcpCodemodeError,
@@ -26,22 +24,15 @@ import type {
 } from "@/fragno/runtime-tools/runtime-tools";
 import type { CoreBackofficeToolContext } from "@/fragno/runtime-tools/tool-families";
 
-import { runBackofficeRemoteImmediate } from "./remote-immediate-execute";
+import { codemodeProviderManifest, executeCodemodeInObject } from "./codemode-object-execute";
 
 export type BackofficeCodemodeEnv =
   | LocalBackofficeCodemodeEnv
   | { remoteExecutor: CodemodeRemoteExecutor };
 
+/** Guests have no network egress; internet access goes through authorized `web.*` tools. */
 export type LocalBackofficeCodemodeEnv = {
   LOADER: WorkerLoader;
-  /**
-   * Outbound egress capability for workflow sandboxes (the `OutboundProxy`
-   * service binding; see workers/objects.ts). When present it is handed to the
-   * dynamic worker as its `globalOutbound`, letting `fetch()` inside a workflow
-   * step reach the internet. Absent (e.g. the Workers test pool) keeps the
-   * sandbox sealed.
-   */
-  OUTBOUND?: Fetcher;
   CODEMODE_COMPILER?: Fetcher;
   compileWorker?: WorkerCompiler;
 };
@@ -49,18 +40,10 @@ export type LocalBackofficeCodemodeEnv = {
 export type RunBackofficeCodemodeInput = {
   code: string;
   dependencies?: NpmDependencyMap;
-  env: BackofficeCodemodeEnv;
+  codemode: CodemodeObject;
   timeout?: number;
   families: readonly BackofficeRuntimeToolFamily[];
   toolContext: CoreBackofficeToolContext;
-  /**
-   * Outbound network policy for the codemode sandbox.
-   * - `undefined` (default): grant egress via the host's `env.OUTBOUND`
-   *   capability when bound, so `fetch()` reaches the internet; else sealed.
-   * - a `Fetcher`: route every `fetch()` through a custom/allowlisting outbound.
-   * - `null`: seal the sandbox (any `fetch()` throws the egress error).
-   */
-  globalOutbound?: Fetcher | null;
 };
 
 export type BackofficeCodemodeProvidersInput = {
@@ -78,9 +61,6 @@ export type BackofficeCodemodeExecuteResult = ExecuteResult & {
   toolCalls: BackofficeRuntimeToolCall[];
   workflowDefinition?: BackofficeCodemodeWorkflowDefinition;
 };
-
-export const normalizeBackofficeCodemodeCode = (code: string): string =>
-  normalizeCode(code.trim().replace(/;*$/, "")).trim().replace(/;*$/, "");
 
 type ScopedCodemodeCallInput = {
   scope:
@@ -240,11 +220,10 @@ export function resolveBackofficeWorkerCompiler(env: LocalBackofficeCodemodeEnv)
 export const runBackofficeCodemode = async ({
   code,
   dependencies,
-  env,
+  codemode,
   timeout,
   families,
   toolContext,
-  globalOutbound,
 }: RunBackofficeCodemodeInput): Promise<BackofficeCodemodeExecuteResult> => {
   const toolCalls: BackofficeRuntimeToolCall[] = [];
 
@@ -253,59 +232,30 @@ export const runBackofficeCodemode = async ({
     toolContext,
     toolCalls,
   });
-  if ("remoteExecutor" in env) {
-    if (globalOutbound) {
-      throw new Error("CODEMODE_REMOTE_EGRESS_UNSUPPORTED");
-    }
-    const result = await runBackofficeRemoteImmediate({
-      execute: env.remoteExecutor,
+  const completion = await executeCodemodeInObject(
+    codemode,
+    {
       kind: "immediate",
       code,
       dependencies: dependencies ?? {},
-      timeout,
-      providers,
-    });
-    return {
-      ...result,
-      ...(result.error ? { error: explainMcpCodemodeError(mcpDiscoveryError, result.error) } : {}),
-      toolCalls,
-    };
-  }
-  const executor = new DynamicWorkerExecutor({
-    loader: env.LOADER,
-    globalOutbound: globalOutbound === undefined ? (env.OUTBOUND ?? null) : globalOutbound,
-  });
-  const executableCode = normalizeBackofficeCodemodeCode(code);
-  let compiled: CompiledWorker;
-  try {
-    const compile = resolveBackofficeWorkerCompiler(env);
-    compiled = await compile({
-      files: {
-        "executor.js": createCodemodeFunctionSource(executableCode, providers, timeout),
-      },
-      entryPoint: "executor.js",
-      dependencies: dependencies ?? {},
-      runtime: {
-        compatibilityDate: "2026-05-07",
-        compatibilityFlags: ["nodejs_compat"],
-      },
-    });
-  } catch (error) {
+      providers: codemodeProviderManifest(providers),
+      timeoutMs: timeout ?? 30_000,
+    },
+    providers,
+    null,
+  );
+  if (completion.status === "failed") {
     return {
       result: undefined,
-      error: `Failed to compile codemode: ${error instanceof Error ? error.message : String(error)}`,
+      error: explainMcpCodemodeError(mcpDiscoveryError, completion.error.message),
+      logs: completion.logs,
       toolCalls,
     };
   }
-
-  const result = (await executor.execute(
-    compiled.bundle,
-    providers,
-  )) as BackofficeCodemodeExecuteResult;
   return {
-    ...result,
-    ...(result.error ? { error: explainMcpCodemodeError(mcpDiscoveryError, result.error) } : {}),
-    logs: [...compiled.warnings, ...(result.logs ?? [])],
+    result: completion.value,
+    logs: completion.logs,
+    ...(completion.workflowDefinition ? { workflowDefinition: completion.workflowDefinition } : {}),
     toolCalls,
   };
 };

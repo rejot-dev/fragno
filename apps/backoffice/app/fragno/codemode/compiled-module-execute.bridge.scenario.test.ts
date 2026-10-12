@@ -38,6 +38,7 @@ for (const interruption of ["parent cancellation", "activation deadline"] as con
       defineBackofficeScenario({
         objects: scenarioObjects,
         name: `bounded module drain: ${interruption}`,
+        env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
         setup: ({ given }) => [
           given.organization.exists({ id: "org-1" }),
           given.codemode.writeFile({
@@ -101,7 +102,7 @@ for (const interruption of ["parent cancellation", "activation deadline"] as con
                     },
                   },
                 ],
-                env: { remoteExecutor: createCodemodeNodeExecutor(server) },
+                codemode: runtime.objects.codemode.forOrg("org-1").commands,
                 signal: cancellation.signal,
               });
               const outcome = execution.then(
@@ -195,6 +196,14 @@ test("remote compiled execution keeps its full guest timeout after a delayed Web
       defineBackofficeScenario({
         objects: scenarioObjects,
         name: "remote connection budget is independent of execution budget",
+        env: {
+          codemode: {
+            remoteExecutor: createCodemodeNodeExecutor({
+              url: `http://127.0.0.1:${address.port}`,
+              apiKey: server.apiKey,
+            }),
+          },
+        },
         setup: ({ given }) => [
           given.organization.exists({ id: "org-1" }),
           given.codemode.writeFile({
@@ -238,12 +247,7 @@ test("remote compiled execution keeps its full guest timeout after a delayed Web
                     },
                   },
                 ],
-                env: {
-                  remoteExecutor: createCodemodeNodeExecutor({
-                    url: `http://127.0.0.1:${address.port}`,
-                    apiKey: server.apiKey,
-                  }),
-                },
+                codemode: runtime.objects.codemode.forOrg("org-1").commands,
                 signal: null,
               });
               expect(result).toBe("Guidance after valid guest work");

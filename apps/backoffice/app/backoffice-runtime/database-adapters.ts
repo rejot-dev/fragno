@@ -14,6 +14,7 @@ export type BackofficeDatabaseAdapterKind =
   | "sandbox-manager"
   | "billing"
   | "cloudflare"
+  | "codemode"
   | "forms"
   | "marketplace"
   | "github"

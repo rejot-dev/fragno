@@ -207,6 +207,9 @@ export const createRouteBackedRuntimeContext = ({
     codemodeEnv !== null &&
     ("remoteExecutor" in codemodeEnv ||
       Boolean(codemodeEnv.CODEMODE_COMPILER || codemodeEnv.compileWorker));
+  // Resolved per use: a local runtime instantiates an object as soon as its handle is created.
+  const codemodeObject = () =>
+    kernel.scoped("CODEMODE", execution.scope, runtime.objects.codemode).commands;
 
   const formsObjects = runtime.objects.forms;
 
@@ -594,7 +597,7 @@ export const createRouteBackedRuntimeContext = ({
                         await import("@/fragno/codemode/javascript-module-execute");
                       return await runBackofficeJavaScriptModule({
                         program,
-                        env: codemodeEnv,
+                        codemode: codemodeObject(),
                         families: runtimeToolFamilies,
                         toolContext,
                       });
@@ -609,7 +612,7 @@ export const createRouteBackedRuntimeContext = ({
                           path: input.path,
                           out: input.out,
                           state: javaScriptStateBackend,
-                          env: codemodeEnv,
+                          codemode: codemodeObject(),
                         });
                         return { status: "success", ...output };
                       } catch (error) {

@@ -7,13 +7,13 @@ import { Auth } from "./auth.do";
 import { Automations } from "./automations.do";
 import { Billing } from "./billing.do";
 import { Cloudflare } from "./cloudflare.do";
+import { Codemode } from "./codemode.do";
 import { Forms } from "./forms.do";
 import { GitHubWebhookRouter } from "./github-webhook-router.do";
 import { GitHub } from "./github.do";
 import { Marketplace } from "./marketplace.do";
 import { Mcp } from "./mcp.do";
 import { Otp } from "./otp.do";
-import { OutboundProxy } from "./outbound-proxy";
 import { PiManager } from "./pi-manager.do";
 import { Pi } from "./pi.do";
 import { ProjectConnectorDurableObject } from "./project-connector.do";
@@ -41,6 +41,7 @@ export {
   Automations,
   Billing,
   Cloudflare,
+  Codemode,
   Forms,
   GitHub,
   GitHubWebhookRouter,
@@ -50,7 +51,6 @@ export {
   Otp,
   Pi,
   PiManager,
-  OutboundProxy,
   Resend,
   Reson8,
   Sandbox,

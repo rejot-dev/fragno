@@ -31,7 +31,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
 
   const body = backofficeCodemodeBodySchema.parse(await request.json());
 
-  const { env, runtime, kernel } = context.get(BackofficeWorkerContext);
+  const { runtime, kernel } = context.get(BackofficeWorkerContext);
 
   const routeRuntimeContext = createCodemodeRouteBackedRuntimeContext({
     runtime,
@@ -44,7 +44,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   const result = await runBackofficeCodemode({
     code: body.code,
     dependencies: body.dependencies,
-    env,
+    codemode: kernel.scoped("CODEMODE", execution.scope, runtime.objects.codemode).commands,
     timeout: body.timeout,
     toolContext: toolContext,
     families: runtimeToolFamilies,

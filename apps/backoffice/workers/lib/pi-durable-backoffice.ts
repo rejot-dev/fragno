@@ -44,8 +44,11 @@ export async function createBackofficePiDurableHarnessOptions(input: {
     scopeRestriction: config.scopeRestriction,
     actors: config.actors,
   };
-  const codemode = runtime.codemodeEnv
-    ? createPiCodemodeRuntime(runtime.codemodeEnv)
+  const codemodeObject = runtime.codemodeEnv
+    ? kernel.scoped("CODEMODE", config.scope, runtime.objects.codemode).commands
+    : null;
+  const codemode = codemodeObject
+    ? createPiCodemodeRuntime(codemodeObject)
     : createUnavailablePiCodemodeRuntime();
 
   async function authorizeExecution() {
@@ -135,7 +138,7 @@ export async function createBackofficePiDurableHarnessOptions(input: {
     execution,
     createRuntimeToolContext: (context, invocationId) =>
       createToolContext(`${config.sessionId}:${invocationId}`, context),
-    env: runtime.codemodeEnv ?? null,
+    codemode: codemodeObject,
     registry: registry.snapshot(),
     authorizeExecution,
     report,

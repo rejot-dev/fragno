@@ -1,8 +1,12 @@
+// The Workers test pool loads the main module on first Durable Object access; load it untimed.
+import "../../../workers/vitest-env";
+
 import { describe, expect, test, assert } from "vitest";
 
 import { env } from "cloudflare:workers";
 
 import { unrestrictedBackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
+import { createCloudflareBackofficeObjectRegistry } from "@/backoffice-runtime/cloudflare-durable-object-factory";
 import {
   createBackofficeSystemExecution,
   createBackofficeUserExecution,
@@ -37,27 +41,41 @@ import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 
 import { InMemoryAutomationsObject } from "../../../workers/automations.do";
+import { InMemoryCodemodeObject } from "../../../workers/codemode.do";
 import { InMemoryMcpObject } from "../../../workers/mcp.do";
 
 const localObjects = {
   AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  CODEMODE: (input) => new InMemoryCodemodeObject(input),
   MCP: (input) => new InMemoryMcpObject(input),
 } satisfies LocalBackofficeObjects;
 
-describe("runBackofficeCodemode", () => {
-  test("returns a compile error when no compiler is configured", async () => {
-    const result = await runBackofficeCodemode({
-      env: { LOADER: env.LOADER },
-      families: runtimeToolFamilies,
-      toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
-      code: "42",
-    });
+const codemode = createCloudflareBackofficeObjectRegistry(env as CloudflareEnv).codemode.singleton()
+  .commands;
 
-    expect(result).toEqual({
-      result: undefined,
-      error: "Failed to compile codemode: Backoffice codemode compiler service is not configured.",
-      toolCalls: [],
+describe("runBackofficeCodemode", () => {
+  test("returns a compile error when the Codemode object has no compiler", async () => {
+    const runtime = await createInMemoryBackofficeRuntime({
+      objects: localObjects,
+      env: { codemode: { LOADER: env.LOADER } },
     });
+    try {
+      const result = await runBackofficeCodemode({
+        codemode: runtime.objects.codemode.singleton().commands,
+        families: runtimeToolFamilies,
+        toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
+        code: "42",
+      });
+
+      expect(result).toEqual({
+        result: undefined,
+        error: "Backoffice codemode compiler service is not configured.",
+        logs: [],
+        toolCalls: [],
+      });
+    } finally {
+      await runtime.cleanup();
+    }
   });
 
   test("runs dynamic worker code with state.* against Upload", async () => {
@@ -65,7 +83,7 @@ describe("runBackofficeCodemode", () => {
     const stateBackend = createTestStateBackend({ upload });
 
     const result = await runBackofficeCodemode({
-      env,
+      codemode,
       families: runtimeToolFamilies,
       toolContext: createTrustedSystemBackofficeToolContext({
         runtimes: { state: stateBackend },
@@ -90,7 +108,7 @@ describe("runBackofficeCodemode", () => {
     });
 
     const result = await runBackofficeCodemode({
-      env,
+      codemode,
       families: runtimeToolFamilies,
       toolContext: createTrustedSystemBackofficeToolContext({
         runtimes: { state: stateBackend },
@@ -121,7 +139,7 @@ describe("runBackofficeCodemode", () => {
     },
   ])("reports $label throws as execution errors", async ({ code, error }) => {
     const result = await runBackofficeCodemode({
-      env,
+      codemode,
       families: runtimeToolFamilies,
       toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
       code,
@@ -133,7 +151,7 @@ describe("runBackofficeCodemode", () => {
   test("returns the exact current execution scope", async () => {
     const toolContext = createTrustedSystemBackofficeToolContext({ runtimes: {} });
     const result = await runBackofficeCodemode({
-      env,
+      codemode,
       families: runtimeToolFamilies,
       toolContext: toolContext.createScopedContext({ kind: "org", orgId: "org-1" }),
       code: `async () => await context.getCurrentScope()`,
@@ -146,7 +164,7 @@ describe("runBackofficeCodemode", () => {
 
   test("discovers state files with glob", async () => {
     const result = await runBackofficeCodemode({
-      env,
+      codemode,
       families: runtimeToolFamilies,
       toolContext: createTrustedSystemBackofficeToolContext({
         runtimes: {
@@ -195,7 +213,7 @@ describe("runBackofficeCodemode", () => {
     };
 
     const result = await runBackofficeCodemode({
-      env,
+      codemode,
       families: runtimeToolFamilies,
       toolContext: createTrustedSystemBackofficeToolContext({
         runtimes: { automations: automationsRuntime },
@@ -266,7 +284,7 @@ describe("runBackofficeCodemode", () => {
     };
 
     const result = await runBackofficeCodemode({
-      env,
+      codemode,
       families: runtimeToolFamilies,
       toolContext: createTrustedSystemBackofficeToolContext({ runtimes: { event: eventRuntime } }),
       code: `async () => {
@@ -322,7 +340,7 @@ describe("runBackofficeCodemode", () => {
     };
 
     const result = await runBackofficeCodemode({
-      env,
+      codemode,
       families: runtimeToolFamilies,
       toolContext: createTrustedSystemBackofficeToolContext({ runtimes: { otp: otpRuntime } }),
       code: `async () => {
@@ -378,7 +396,7 @@ describe("runBackofficeCodemode", () => {
     });
 
     const result = await runBackofficeCodemode({
-      env,
+      codemode,
       families: runtimeToolFamilies,
       toolContext: systemContext.createScopedContext({ kind: "org", orgId: "org-1" }),
       code: `async () => {
@@ -435,7 +453,7 @@ describe("runBackofficeCodemode", () => {
     };
 
     const result = await runBackofficeCodemode({
-      env,
+      codemode,
       families: runtimeToolFamilies,
       toolContext: createTrustedSystemBackofficeToolContext({
         runtimes: { telegram: telegramRuntime },
@@ -531,7 +549,7 @@ describe("runBackofficeCodemode", () => {
     };
 
     const result = await runBackofficeCodemode({
-      env,
+      codemode,
       families: runtimeToolFamilies,
       toolContext: createTrustedSystemBackofficeToolContext({ runtimes: { mcp: mcpRuntime } }),
       code: `async () => {
@@ -596,7 +614,7 @@ describe("runBackofficeCodemode", () => {
 
     await expect(
       runBackofficeCodemode({
-        env,
+        codemode,
         families: runtimeToolFamilies,
         toolContext: createTrustedSystemBackofficeToolContext({ runtimes: { mcp: mcpRuntime } }),
         code: `async () => "ok"`,
@@ -606,7 +624,7 @@ describe("runBackofficeCodemode", () => {
 
   test("does not expose runtime tools that were not provided", async () => {
     const result = await runBackofficeCodemode({
-      env,
+      codemode,
       families: runtimeToolFamilies,
       toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
       code: `async () => {
@@ -646,7 +664,7 @@ describe("runBackofficeCodemode", () => {
     };
 
     const result = await runBackofficeCodemode({
-      env,
+      codemode,
       families: runtimeToolFamilies,
       toolContext: createTrustedSystemBackofficeToolContext({
         runtimes: { automations: automationsRuntime },
@@ -678,7 +696,7 @@ describe("runBackofficeCodemode", () => {
     };
 
     const result = await runBackofficeCodemode({
-      env,
+      codemode,
       families: runtimeToolFamilies,
       toolContext: createTrustedSystemBackofficeToolContext({ runtimes: { otp: otpRuntime } }),
       code: `async () => {
@@ -714,7 +732,7 @@ describe("runBackofficeCodemode", () => {
     const context = createBackofficeToolContext(routeContext);
 
     const result = await runBackofficeCodemode({
-      env,
+      codemode,
       families: runtimeToolFamilies,
       toolContext: context,
       code: `async () => {
@@ -771,7 +789,7 @@ describe("runBackofficeCodemode", () => {
       });
 
       const result = await runBackofficeCodemode({
-        env,
+        codemode: runtime.objects.codemode.for(routeContext.execution.scope).commands,
         families: runtimeToolFamilies,
         toolContext: createBackofficeToolContext(routeContext),
         code: `async () => {
@@ -818,7 +836,7 @@ describe("runBackofficeCodemode", () => {
       });
 
       const result = await runBackofficeCodemode({
-        env,
+        codemode: runtime.objects.codemode.for(routeContext.execution.scope).commands,
         families: runtimeToolFamilies,
         toolContext: createBackofficeToolContext(routeContext),
         code: `async () => {
@@ -882,7 +900,7 @@ describe("runBackofficeCodemode", () => {
 
   test("blocks direct network access by default", async () => {
     const result = await runBackofficeCodemode({
-      env,
+      codemode,
       families: runtimeToolFamilies,
       toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
       code: `async () => {

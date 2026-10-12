@@ -347,8 +347,11 @@ test("Node explains denied MCP discovery for immediate, module, and scheduled ex
                 billingOrganizationId: null,
               }),
             );
-            assert(env.codemode);
-            const options = { env: env.codemode, toolContext, families: runtimeToolFamilies };
+            const options = {
+              codemode: ctx.runtime.objects.codemode.for(scope).commands,
+              toolContext,
+              families: runtimeToolFamilies,
+            };
             const denied = await runBackofficeCodemode({
               ...options,
               code: "async () => await mcp_agensi.search({})",

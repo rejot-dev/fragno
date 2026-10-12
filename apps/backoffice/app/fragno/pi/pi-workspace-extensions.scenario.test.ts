@@ -244,15 +244,14 @@ test("js.build publishes ordinary ES modules without executing or inspecting the
             await context.stateBackend.rm("/workspace/scripts/math.js");
             const before = compiler.compilations;
             compiler.available = false;
-            const env = runtime.services.codemodeEnv;
-            assert(env);
+            const codemode = runtime.objects.codemode.for(scope).commands;
             assert.equal(
               await runBackofficeCompiledModule({
                 bundle,
                 invocation: "(module, input) => module.add(...input)",
                 input: [20, 22],
                 providers: [],
-                env,
+                codemode,
                 signal: null,
               }),
               42,
@@ -263,7 +262,7 @@ test("js.build publishes ordinary ES modules without executing or inspecting the
                 invocation: "module => module.default.greeting",
                 input: null,
                 providers: [],
-                env,
+                codemode,
                 signal: null,
               }),
               "hello",
@@ -277,7 +276,7 @@ test("js.build publishes ordinary ES modules without executing or inspecting the
                 invocation: "module => module.value",
                 input: null,
                 providers: [],
-                env,
+                codemode,
                 signal: null,
               }),
             ).rejects.toThrow("Only execution may run this");

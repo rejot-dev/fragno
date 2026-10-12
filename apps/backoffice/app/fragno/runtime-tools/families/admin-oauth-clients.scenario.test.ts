@@ -42,6 +42,7 @@ import { InMemoryAppInstallationsObject } from "../../../../workers/app-installa
 import { InMemoryAppsObject } from "../../../../workers/apps.do";
 import { InMemoryAuthObject } from "../../../../workers/auth.do";
 import { InMemoryAutomationsObject } from "../../../../workers/automations.do";
+import { InMemoryCodemodeObject } from "../../../../workers/codemode.do";
 import { InMemoryFormsObject } from "../../../../workers/forms.do";
 import { InMemoryOtpObject } from "../../../../workers/otp.do";
 import { InMemoryUploadObject } from "../../../../workers/upload.do";
@@ -54,6 +55,7 @@ const scenarioObjects = {
   APP_INSTALLATIONS: (input) => new InMemoryAppInstallationsObject(input),
   AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
   AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  CODEMODE: (input) => new InMemoryCodemodeObject(input),
   FORMS: (input) => new InMemoryFormsObject(input),
   OTP: (input) => new InMemoryOtpObject(input),
   UPLOAD: (input) => new InMemoryUploadObject(input),
@@ -182,10 +184,9 @@ describe("admin OAuth client SQLite scenarios", () => {
           setup: ({ given }) => [given.auth.user({ id: "admin-1", role: "admin" })],
           steps: ({ then }) => [
             then.assert("credentials reach the caller but never the tool records", async (ctx) => {
-              assert(ctx.runtime.env.codemode);
               const result = await runBackofficeCodemode({
                 code: `async () => await ${provider}.oauthClientsCreate(${JSON.stringify(clientInput)})`,
-                env: ctx.runtime.env.codemode,
+                codemode: ctx.runtime.objects.codemode.for({ kind: "system" }).commands,
                 families: runtimeToolFamilies,
                 toolContext: createBackofficeToolContext(oauthAdminContext(ctx, "admin-1")),
               });
@@ -209,7 +210,7 @@ describe("admin OAuth client SQLite scenarios", () => {
               expect(JSON.stringify(result.toolCalls)).not.toContain(created.clientSecret);
               const listed = await runBackofficeCodemode({
                 code: `async () => await ${provider}.oauthClientsList({})`,
-                env: ctx.runtime.env.codemode,
+                codemode: ctx.runtime.objects.codemode.for({ kind: "system" }).commands,
                 families: runtimeToolFamilies,
                 toolContext: createBackofficeToolContext(oauthAdminContext(ctx, "admin-1")),
               });
@@ -623,11 +624,10 @@ describe("admin OAuth client SQLite scenarios", () => {
             async (ctx) => {
               ctx.vars.userId = await promoteOAuthAdministrator(ctx, "oauth-admin@example.com");
               const context = oauthAdminContext(ctx, ctx.vars.userId);
-              assert(ctx.runtime.env.codemode);
               assert(context.stateBackend);
               const result = await runBackofficeCodemode({
                 code: `async () => await admin.oauthClientsCreate(${JSON.stringify(clientInput)})`,
-                env: ctx.runtime.env.codemode,
+                codemode: ctx.runtime.objects.codemode.for(context.execution.scope).commands,
                 families: runtimeToolFamilies,
                 toolContext: createBackofficeToolContext(context),
               });
@@ -757,7 +757,7 @@ describe("admin OAuth client SQLite scenarios", () => {
               expect(publicClient.clientSecret).toBeNull();
               const listed = await runBackofficeCodemode({
                 code: "async () => await admin.oauthClientsList({})",
-                env: ctx.runtime.env.codemode,
+                codemode: ctx.runtime.objects.codemode.for(context.execution.scope).commands,
                 families: runtimeToolFamilies,
                 toolContext: createBackofficeToolContext(context),
               });
@@ -905,17 +905,16 @@ describe("admin OAuth client SQLite scenarios", () => {
               const deniedList = await bash.exec("admin.oauth-clients.list --format json");
               assert.notEqual(deniedList.exitCode, 0);
               expect(deniedList.stderr).toContain("Required permission: admin.oauth-clients.read.");
-              assert(ctx.runtime.env.codemode);
               const codemode = await runBackofficeCodemode({
                 code: `async () => await admin.oauthClientsCreate(${JSON.stringify(clientInput)})`,
-                env: ctx.runtime.env.codemode,
+                codemode: ctx.runtime.objects.codemode.for(tools.execution.scope).commands,
                 families: runtimeToolFamilies,
                 toolContext: tools,
               });
               expect(codemode.error).toContain("Required permission: admin.oauth-clients.manage.");
               const deniedCatalog = await runBackofficeCodemode({
                 code: "async () => await admin.oauthClientsList({})",
-                env: ctx.runtime.env.codemode,
+                codemode: ctx.runtime.objects.codemode.for(tools.execution.scope).commands,
                 families: runtimeToolFamilies,
                 toolContext: tools,
               });

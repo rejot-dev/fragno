@@ -6,8 +6,8 @@ import type { Context } from "@earendil-works/chord";
 import { createRegistry, type Extension, type RegistrySnapshot } from "@earendil-works/pi-durable";
 
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
+import type { CodemodeObject } from "@/backoffice-runtime/object-registry";
 import { runBackofficeCompiledModule } from "@/fragno/codemode/compiled-module-execute";
-import type { BackofficeCodemodeEnv } from "@/fragno/codemode/execute";
 import {
   javaScriptModuleArtifactSchema,
   resolveJavaScriptModuleArtifactPath,
@@ -28,7 +28,7 @@ const extensionFilePathSchema = z
 type WorkspaceExtensionLoaderInput = {
   execution: BackofficeExecutionContext;
   createRuntimeToolContext: (context: Context, invocationId: string) => PiRuntimeToolContext;
-  env: BackofficeCodemodeEnv | null;
+  codemode: CodemodeObject | null;
   registry: RegistrySnapshot;
   authorizeExecution: () => Promise<void>;
   report: (error: unknown) => void;
@@ -57,13 +57,13 @@ export async function loadPiWorkspaceExtensions(
   ]);
   const tools = new Set(input.registry.tools().map(({ tool }) => tool.name));
   const validationRegistry = createRegistry();
-  let prepared: { paths: string[]; env: BackofficeCodemodeEnv };
+  let prepared: { paths: string[]; codemode: CodemodeObject };
   try {
     await input.authorizeExecution();
     if (!(await state.exists(PI_WORKSPACE_EXTENSION_MANIFEST))) {
       return [];
     }
-    if (input.env === null) {
+    if (input.codemode === null) {
       throw new Error("PI_EXTENSION_CODEMODE_UNAVAILABLE");
     }
     const manifest = z
@@ -84,14 +84,14 @@ export async function loadPiWorkspaceExtensions(
     if (new Set(paths).size !== paths.length) {
       throw new Error("PI_EXTENSION_DUPLICATE_PATH");
     }
-    prepared = { paths, env: input.env };
+    prepared = { paths, codemode: input.codemode };
   } catch (error) {
     input.report(
       new Error(`PI_EXTENSION_LOAD_FAILED: ${PI_WORKSPACE_EXTENSION_MANIFEST}`, { cause: error }),
     );
     return [];
   }
-  const { env, paths } = prepared;
+  const { codemode, paths } = prepared;
   const invocation = createPiWorkspaceExtensionInvocation([]);
   for (const path of paths) {
     try {
@@ -116,7 +116,7 @@ export async function loadPiWorkspaceExtensions(
           invocation,
           input: { operation: "inspect" },
           providers: [],
-          env,
+          codemode,
           signal: null,
         }),
       );
@@ -138,7 +138,7 @@ export async function loadPiWorkspaceExtensions(
         metadata,
         bundle: artifact.bundle,
         path,
-        env,
+        codemode,
       });
       // Reuse native registration rules inside per-artifact recovery, before the real host installation.
       validationRegistry.install(extension);
