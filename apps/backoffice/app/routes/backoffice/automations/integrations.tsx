@@ -1,3 +1,4 @@
+import type { AutomationEventSubject } from "@fragno-dev/backoffice-api/v0/events";
 import { ButtonLink } from "@fragno-private/design-system/button";
 import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
 import { useOutletContext } from "react-router";
@@ -37,18 +38,19 @@ export function meta() {
 
 export default function BackofficeAutomationIntegrations() {
   const { selectedScope, collections } = useOutletContext<AutomationLayoutContext>();
-  const configuredSourcesQuery = useLiveQuery(
+  const connectionEventsQuery = useLiveQuery(
     (query) =>
       query
         .from({ event: collections.events })
-        .where(({ event }) => eq(event.eventType, "capability.configured"))
-        .select(({ event }) => ({ source: event.source }))
-        .distinct(),
+        .where(({ event }) => eq(event.source, "integrations"))
+        .select(({ event }) => ({
+          eventType: event.eventType,
+          subject: event.subject,
+          occurredAt: event.occurredAt,
+        })),
     [collections.events],
   );
-  const configuredSources = new Set(
-    (configuredSourcesQuery.data ?? []).map((event) => event.source),
-  );
+  const connectedServices = readyServices(connectionEventsQuery.data ?? []);
   const integrations = backofficeConnectionCatalog.filter((connection) =>
     SCOPED_INTEGRATION_IDS.includes(connection.id as ScopedIntegrationId),
   );
@@ -86,11 +88,11 @@ export default function BackofficeAutomationIntegrations() {
             ? { label: "Unavailable", tone: "muted" }
             : !integration.configurable
               ? null
-              : configuredSourcesQuery.isError
+              : connectionEventsQuery.isError
                 ? { label: "Status unavailable", tone: "failed" }
-                : !configuredSourcesQuery.isReady
+                : !connectionEventsQuery.isReady
                   ? { label: "Checking", tone: "info" }
-                  : configuredSources.has(id)
+                  : connectedServices.has(id)
                     ? { label: "Connected", tone: "live" }
                     : { label: "Setup required", tone: "waiting" };
 
@@ -125,6 +127,32 @@ export default function BackofficeAutomationIntegrations() {
         })}
       </section>
     </div>
+  );
+}
+
+/** A singleton service is connected when its most recent connection event reports it ready. */
+function readyServices(
+  events: readonly {
+    eventType: string;
+    subject: AutomationEventSubject | undefined;
+    occurredAt: Date;
+  }[],
+) {
+  const latest = new Map<string, { eventType: string; occurredAt: Date }>();
+  for (const event of events) {
+    const service = event.subject?.service;
+    if (typeof service !== "string") {
+      continue;
+    }
+    const current = latest.get(service);
+    if (!current || current.occurredAt < event.occurredAt) {
+      latest.set(service, event);
+    }
+  }
+  return new Set(
+    [...latest].flatMap(([service, event]) =>
+      event.eventType === "connection.ready" ? [service] : [],
+    ),
   );
 }
 
