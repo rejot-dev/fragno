@@ -80,10 +80,7 @@ export async function executeCodemodeActivation(
   if ("error" in validation) {
     throw new Error(validation.error);
   }
-  const executor = new DynamicWorkerExecutor({
-    loader: services.loader,
-    globalOutbound: null,
-  });
+  const executor = new DynamicWorkerExecutor({ loader: services.loader });
   let compiled: CompiledWorker;
   if (activation.kind === "compiled") {
     if (
@@ -121,12 +118,7 @@ export async function executeCodemodeActivation(
       warnings: [],
     };
   } else {
-    const sourceBytes =
-      new TextEncoder().encode(activation.code).byteLength +
-      (activation.kind === "module-invoke"
-        ? new TextEncoder().encode(activation.invocation).byteLength
-        : 0);
-    if (sourceBytes > CODEMODE_LIMITS.maxSourceBytes) {
+    if (new TextEncoder().encode(activation.code).byteLength > CODEMODE_LIMITS.maxSourceBytes) {
       throw new Error("CODEMODE_SOURCE_LIMIT_EXCEEDED");
     }
     if (!services.compile) {
@@ -143,32 +135,18 @@ export async function executeCodemodeActivation(
           }
         : activation.kind === "module-build"
           ? { "script.js": activation.code }
-          : activation.kind === "module-invoke"
+          : activation.kind === "module"
             ? {
-                "executor.js": createCodemodeModuleInvocationSource(
-                  activation.invocation,
+                "executor.js": createCodemodeModuleSource(
+                  "./script.js",
                   providers,
                   activation.timeoutMs,
-                  "./script.js",
                 ),
                 "script.js": activation.code,
               }
-            : activation.kind === "module"
-              ? {
-                  "executor.js": createCodemodeModuleSource(
-                    "./script.js",
-                    providers,
-                    activation.timeoutMs,
-                  ),
-                  "script.js": activation.code,
-                }
-              : {
-                  "executor.js": createCodemodeFunctionSource(
-                    code,
-                    providers,
-                    activation.timeoutMs,
-                  ),
-                };
+            : {
+                "executor.js": createCodemodeFunctionSource(code, providers, activation.timeoutMs),
+              };
     const compileDeadline = setTimeout(() => {
       interrupt(new CodemodeInterruptedError("CODEMODE_COMPILATION_TIMED_OUT"));
     }, CODEMODE_LIMITS.compileTimeoutMs);

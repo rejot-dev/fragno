@@ -114,22 +114,6 @@ const workflowBase = {
   },
 };
 
-test("module invocation calls exported closures and returns values through registered providers", async () => {
-  const host = providerHost();
-  const result = await execute(
-    {
-      ...base,
-      kind: "module-invoke",
-      code: `const prefix = "module";
-        export default { render: value => prefix + ":" + value };`,
-      invocation: `async module => await store.write(module.default.render("invoked"))`,
-    },
-    host,
-  );
-  expect(result).toMatchObject({ status: "completed", value: "module:invoked" });
-  expect(host.writes).toEqual(["module:invoked"]);
-});
-
 test("generic module bundles accept consumer invocations with fresh inputs and providers when compilation is unavailable", async () => {
   let available = true;
   let compilations = 0;
@@ -409,35 +393,6 @@ test("precompiled guests cannot bypass their host-owned wall deadline", async ()
   } finally {
     host.close();
   }
-});
-
-test("module invocation failures do not become successful undefined results", async () => {
-  const result = await execute(
-    {
-      ...base,
-      kind: "module-invoke",
-      code: "export default {};",
-      invocation: "module => module.default.missing()",
-    },
-    providerHost(),
-  );
-  expect(result).toMatchObject({ status: "failed", error: { kind: "error" } });
-});
-
-test("module invocation counts both source and invocation against the source byte limit", async () => {
-  const result = await execute(
-    {
-      ...base,
-      kind: "module-invoke",
-      code: "//" + "a".repeat(CODEMODE_LIMITS.maxSourceBytes / 2),
-      invocation: "//" + "b".repeat(CODEMODE_LIMITS.maxSourceBytes / 2),
-    },
-    providerHost(),
-  );
-  expect(result).toMatchObject({
-    status: "failed",
-    error: { message: "CODEMODE_SOURCE_LIMIT_EXCEEDED" },
-  });
 });
 
 test("the bridge rejects mismatched application versions and accepts only one execution per socket", async () => {

@@ -86,11 +86,6 @@ export const codemodeActivationSchema = z.discriminatedUnion("kind", [
     input: z.unknown(),
   }),
   z.strictObject({
-    kind: z.literal("module-invoke"),
-    ...activationBase,
-    invocation: z.string().min(1).max(CODEMODE_LIMITS.maxSourceBytes),
-  }),
-  z.strictObject({
     kind: z.literal("workflow"),
     ...activationBase,
     event: z

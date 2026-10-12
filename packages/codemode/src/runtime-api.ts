@@ -57,7 +57,6 @@ export type CodemodeWorkerEvaluation = z.infer<typeof codemodeWorkerEvaluationSc
 
 export type DynamicWorkerExecutorOptions = {
   loader: WorkerLoader;
-  globalOutbound?: Fetcher | null;
 };
 
 export const normalizeCode = (code: string): string => {

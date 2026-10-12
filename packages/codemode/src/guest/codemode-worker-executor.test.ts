@@ -31,7 +31,12 @@ describe("DynamicWorkerExecutor", () => {
     } as unknown as WorkerLoader;
     const executor = new DynamicWorkerExecutor({ loader });
 
-    await expect(executor.evaluateWorkerBundle(workerBundle, {})).resolves.toEqual(response);
+    await expect(
+      executor.runEntrypoint<typeof entrypoint, typeof response>({
+        bundle: workerBundle,
+        run: (target) => target.evaluate(),
+      }),
+    ).resolves.toEqual(response);
 
     expect(disposeRpcCall).toHaveBeenCalledOnce();
     expect(disposeEntrypoint).toHaveBeenCalledOnce();

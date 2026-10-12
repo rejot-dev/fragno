@@ -1,12 +1,5 @@
 import type { WorkerBundle } from "../compiler/worker-bundle";
-import { createCodemodeDispatchers } from "../host/codemode-tool-dispatcher";
-import { codemodeWorkerEvaluationSchema } from "../runtime-api";
-import type {
-  CodemodeWorkerEvaluation,
-  DynamicWorkerExecutorOptions,
-  ExecuteResult,
-  ResolvedProvider,
-} from "../runtime-api";
+import type { DynamicWorkerExecutorOptions } from "../runtime-api";
 
 /** RPC capabilities passed to a single loaded guest entrypoint. */
 export type DynamicWorkerRpcTargetMap = Record<string, unknown>;
@@ -19,7 +12,6 @@ export type DynamicWorkerRpcCall<TResult extends object> = Promise<TResult> & {
 /** Runs a compiled bundle; the caller owns guest source generation and compilation. */
 export type DynamicWorkerEntrypointRunOptions<TEntrypoint, TResult extends object> = {
   bundle: WorkerBundle;
-  globalOutbound?: Fetcher | null;
   rpcTargets?: DynamicWorkerRpcTargetMap;
   run: (
     entrypoint: TEntrypoint,
@@ -30,52 +22,13 @@ export type DynamicWorkerEntrypointRunOptions<TEntrypoint, TResult extends objec
 /** Owns dynamic Worker loading and disposal, not guest source generation or compilation. */
 export class DynamicWorkerExecutor {
   readonly #loader: WorkerLoader;
-  readonly #globalOutbound: Fetcher | null;
 
   constructor(options: DynamicWorkerExecutorOptions) {
     this.#loader = options.loader;
-    this.#globalOutbound = options.globalOutbound ?? null;
-  }
-
-  async execute(
-    bundle: WorkerBundle,
-    providersOrFns: ResolvedProvider[] | Record<string, (...args: unknown[]) => Promise<unknown>>,
-  ): Promise<ExecuteResult> {
-    const providers = Array.isArray(providersOrFns)
-      ? providersOrFns
-      : [{ name: "codemode", fns: providersOrFns }];
-
-    const dispatcherResult = createCodemodeDispatchers(providers);
-    if ("error" in dispatcherResult) {
-      return { result: undefined, error: dispatcherResult.error };
-    }
-
-    const response = await this.evaluateWorkerBundle(bundle, {
-      __dispatchers: dispatcherResult.dispatchers,
-    });
-
-    if (!response.ok) {
-      return {
-        result: undefined,
-        error: response.error,
-        logs: response.logs,
-      };
-    }
-
-    return {
-      result: response.result,
-      logs: response.logs,
-      ...(response.workflowDefinition ? { workflowDefinition: response.workflowDefinition } : {}),
-    };
   }
 
   async runEntrypoint<TEntrypoint, TResult extends object>(
-    {
-      bundle,
-      globalOutbound = this.#globalOutbound,
-      rpcTargets = {},
-      run,
-    }: DynamicWorkerEntrypointRunOptions<TEntrypoint, TResult>,
+    { bundle, rpcTargets = {}, run }: DynamicWorkerEntrypointRunOptions<TEntrypoint, TResult>,
     execution: {
       signal: AbortSignal | null;
       limits: { cpuMs: number; subRequests: number } | null;
@@ -91,7 +44,8 @@ export class DynamicWorkerExecutor {
         bundle.runtime.compatibilityFlags.length > 0
           ? [...bundle.runtime.compatibilityFlags]
           : undefined,
-      globalOutbound,
+      // Guests have no network egress; internet access goes through host-authorized tools.
+      globalOutbound: null,
       limits: limits ?? undefined,
     }));
 
@@ -113,24 +67,5 @@ export class DynamicWorkerExecutor {
     } finally {
       (entrypoint as unknown as Partial<Disposable>)[Symbol.dispose]?.();
     }
-  }
-
-  async evaluateWorkerBundle(
-    bundle: WorkerBundle,
-    rpcTargets: DynamicWorkerRpcTargetMap,
-  ): Promise<CodemodeWorkerEvaluation> {
-    const evaluation = await this.runEntrypoint<
-      {
-        evaluate(
-          rpcTargets: DynamicWorkerRpcTargetMap,
-        ): DynamicWorkerRpcCall<CodemodeWorkerEvaluation>;
-      },
-      CodemodeWorkerEvaluation
-    >({
-      bundle,
-      rpcTargets,
-      run: (entrypoint, targets) => entrypoint.evaluate(targets),
-    });
-    return codemodeWorkerEvaluationSchema.parse(evaluation);
   }
 }
