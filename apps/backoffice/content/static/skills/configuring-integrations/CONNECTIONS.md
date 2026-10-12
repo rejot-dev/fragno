@@ -1,6 +1,6 @@
 # Native `connections.*` services
 
-Telegram, Resend, Upload, and other native services without a `backoffice#` setup target keep their
+Resend, Upload, and other native services without a `backoffice#` setup target keep their
 configuration controls in `connections.*`. Catalog IDs name services, not Open Connector accounts or
 API connection slugs. Read `/static/codemode/providers/connections.d.ts` before calling it. These
 steps replace the setup loop and verification of the main skill; treat them as a handshake:
@@ -10,9 +10,9 @@ steps replace the setup loop and verification of the main skill; treat them as a
 
    ```js
    async () => ({
-     status: await connections.get({ id: "telegram" }),
-     schema: await connections.schema({ id: "telegram" }),
-     setup: await connections.setup({ id: "telegram" }),
+     status: await connections.get({ id: "upload" }),
+     schema: await connections.schema({ id: "upload" }),
+     setup: await connections.setup({ id: "upload" }),
    });
    ```
 
@@ -28,7 +28,7 @@ steps replace the setup loop and verification of the main skill; treat them as a
 3. Configure with a payload that matches the live schema:
 
    ```js
-   async () => await connections.configure({ id: "telegram", payload: { botToken: "..." } });
+   async () => await connections.configure({ id: "upload", payload });
    ```
 
    When the schema exposes no configurable fields or setup marks the service as managed, follow its
@@ -39,8 +39,8 @@ steps replace the setup loop and verification of the main skill; treat them as a
 
    ```js
    async () => {
-     const result = await connections.verify({ id: "telegram" });
-     return { result, finalStatus: await connections.get({ id: "telegram" }) };
+     const result = await connections.verify({ id: "upload" });
+     return { result, finalStatus: await connections.get({ id: "upload" }) };
    };
    ```
 

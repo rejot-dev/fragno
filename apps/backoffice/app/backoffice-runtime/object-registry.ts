@@ -196,6 +196,9 @@ type ScopedObjects<TObject> = {
   forProject(input: { orgId: string; projectId: string }): TObject;
 };
 
+/** Live provider evidence that inbound deliveries reach this deployment's webhook URL. */
+export type WebhookRegistrationCheck = { registered: boolean; message: string };
+
 export type AdminConfigurableObject<TConfig = unknown> = {
   getAdminConfig(): Promise<TConfig>;
   resetAdminConfig(): Promise<TConfig>;
@@ -523,6 +526,8 @@ export type AutomationsObject = {
 export type TelegramObject = DurableHookCommands &
   AdminConfigurableObject<TelegramAdminConfigResponse> & {
     getAutomationFile(input: { fileId: string }): Promise<TelegramAutomationFileMetadata>;
+    /** Throws when Telegram is not configured. */
+    checkWebhook(): Promise<WebhookRegistrationCheck>;
   };
 
 export type OtpObject = DurableHookCommands & {

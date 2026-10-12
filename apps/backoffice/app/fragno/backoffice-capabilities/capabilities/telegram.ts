@@ -14,7 +14,6 @@ import type { TelegramAdminConfigResponse } from "../../../../workers/telegram.d
 
 const AUTOMATION_SOURCE = "telegram" as const;
 const AUTOMATION_EVENT_MESSAGE_RECEIVED = "message.received" as const;
-const AUTOMATION_EVENT_CAPABILITY_CONFIGURED = "capability.configured" as const;
 
 const optionalTrimmedString = z
   .string()
@@ -61,17 +60,6 @@ const telegramMessageReceivedActorSchema = z.object({
   type: z.literal("chat"),
   id: z.string().min(1),
   role: z.literal("initiator"),
-});
-
-const telegramCapabilityConfiguredPayloadSchema = z.object({
-  capabilityId: z.literal("telegram"),
-  capabilityLabel: z.literal("Telegram"),
-});
-
-const telegramCapabilityConfiguredSubjectSchema = z.object({
-  orgId: z.string().trim().min(1).optional(),
-  userId: z.string().trim().min(1).optional(),
-  capabilityId: z.literal("telegram"),
 });
 
 const connectionStatusIdentity = {
@@ -170,18 +158,6 @@ export const telegramCapability: BackofficeConfigurableConnectionCapability = {
               mimeType: "audio/ogg",
             },
           ],
-        },
-      },
-      {
-        source: AUTOMATION_SOURCE,
-        eventType: AUTOMATION_EVENT_CAPABILITY_CONFIGURED,
-        label: "Telegram configured",
-        description: "Fires after Telegram is configured for an organization for the first time.",
-        payloadSchema: telegramCapabilityConfiguredPayloadSchema,
-        subjectSchema: telegramCapabilityConfiguredSubjectSchema,
-        example: {
-          capabilityId: "telegram",
-          capabilityLabel: "Telegram",
         },
       },
     ],
