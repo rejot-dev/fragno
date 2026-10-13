@@ -2,7 +2,7 @@ import { decodeCursor, type Cursor } from "@fragno-dev/db/cursor";
 import { z } from "zod";
 
 import { defineRoutes } from "@fragno-dev/core";
-import { isUniqueConstraintError } from "@fragno-dev/db";
+import { isUniqueConstraintError, type TypedUnitOfWork } from "@fragno-dev/db";
 
 import {
   API_OAUTH_REDIRECT_URI_QUERY_PARAMETER,
@@ -20,12 +20,18 @@ import {
   tokenAuthInputSchema,
   updateWebhookEndpointInputSchema,
   webhookEndpointOutputSchema,
+  webhookRejectionCodeSchema,
   type WebhookDeliveryIdentity,
   type WebhookEndpoint,
   type WebhookEndpointAuthInput,
+  type WebhookRejectionCode,
 } from "./api-types";
 import { sha256Base64Url, utf8Bytes } from "./crypto";
-import { apiFragmentDefinition, type WebhookEndpointHookSnapshot } from "./definition";
+import {
+  apiFragmentDefinition,
+  type ApiHooksMap,
+  type WebhookEndpointHookSnapshot,
+} from "./definition";
 import { apiSchema } from "./schema";
 import {
   assertAllowedBaseUrl,
@@ -196,14 +202,8 @@ type WebhookDeliveryIdentityResult =
 type WebhookRequestFailure = {
   ok: false;
   code:
-    | "WEBHOOK_ENDPOINT_NOT_FOUND"
-    | "WEBHOOK_ENDPOINT_DISABLED"
-    | "WEBHOOK_ENDPOINT_DRAFT"
-    | "WEBHOOK_AUTH_FAILED"
-    | "WEBHOOK_VERIFICATION_RESPONSE_INVALID"
-    | "WEBHOOK_BODY_INVALID"
-    | "WEBHOOK_DELIVERY_ID_MISSING"
-    | "WEBHOOK_DELIVERY_ID_INVALID";
+    | Exclude<WebhookRejectionCode, "WEBHOOK_VERIFICATION_NOT_MATCHED">
+    | "WEBHOOK_ENDPOINT_NOT_FOUND";
 };
 
 type WebhookReceiveResult =
@@ -254,6 +254,13 @@ function webhookVerificationResponse(body: string) {
   });
 }
 
+/** Configuration writes reset delivery evidence, which then covers only the new configuration. */
+const noWebhookDeliveryEvidence = {
+  lastAcceptedAt: null,
+  lastRejectedAt: null,
+  lastRejectionCode: null,
+} as const;
+
 function publicWebhookEndpoint(endpoint: {
   id: { toString(): string } | string;
   name: string;
@@ -261,6 +268,9 @@ function publicWebhookEndpoint(endpoint: {
   authConfig: WebhookAuthConfig;
   verification: WebhookVerificationConfig;
   deliveryIdentity: WebhookDeliveryIdentity;
+  lastAcceptedAt: Date | null;
+  lastRejectedAt: Date | null;
+  lastRejectionCode: string | null;
   createdAt?: Date;
   updatedAt?: Date;
 }): WebhookEndpoint {
@@ -272,9 +282,39 @@ function publicWebhookEndpoint(endpoint: {
     verification: endpoint.verification,
     deliveryIdentity: endpoint.deliveryIdentity,
     secretRefs: [...getWebhookAuthSecretRefs(endpoint.authConfig)],
+    deliveries: {
+      lastAcceptedAt: endpoint.lastAcceptedAt?.toISOString() ?? null,
+      // The receive routes write both rejection columns together.
+      lastRejection:
+        endpoint.lastRejectedAt === null
+          ? null
+          : {
+              receivedAt: endpoint.lastRejectedAt.toISOString(),
+              code: webhookRejectionCodeSchema.parse(endpoint.lastRejectionCode),
+            },
+    },
     createdAt: endpoint.createdAt,
     updatedAt: endpoint.updatedAt,
   };
+}
+
+/**
+ * Records the outcome of a receive request; unknown endpoints have no row to record on. Writes skip
+ * the version check, so concurrent deliveries never conflict and the last one wins.
+ */
+function recordWebhookRequestOutcome(
+  uow: TypedUnitOfWork<typeof apiSchema, [], unknown, ApiHooksMap>,
+  endpointId: string,
+  rejection: WebhookRejectionCode | "WEBHOOK_ENDPOINT_NOT_FOUND" | null,
+) {
+  if (rejection === "WEBHOOK_ENDPOINT_NOT_FOUND") {
+    return;
+  }
+  uow.update("webhookEndpoint", endpointId, (b) =>
+    rejection === null
+      ? b.set({ lastAcceptedAt: b.now() })
+      : b.set({ lastRejectedAt: b.now(), lastRejectionCode: rejection }),
+  );
 }
 
 export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
@@ -308,6 +348,7 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
               authConfig: authStorage.authConfig,
               verification: body.verification,
               deliveryIdentity: body.deliveryIdentity,
+              ...noWebhookDeliveryEvidence,
               createdAt: existing?.createdAt,
             };
             if (existing) {
@@ -319,6 +360,7 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
                     authConfig: endpoint.authConfig,
                     verification: endpoint.verification,
                     deliveryIdentity: endpoint.deliveryIdentity,
+                    ...noWebhookDeliveryEvidence,
                     updatedAt: b.now(),
                   })
                   .check(),
@@ -359,11 +401,21 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
               }
             }
 
-            uow.triggerHook("onWebhookEndpointChanged", {
-              change: existing ? "updated" : "created",
-              endpointId: pathParams.endpointId,
-              endpoint: webhookEndpointHookSnapshot(endpoint),
-            });
+            uow.triggerHook(
+              "onWebhookEndpointChanged",
+              existing
+                ? {
+                    change: "updated",
+                    endpointId: pathParams.endpointId,
+                    endpoint: webhookEndpointHookSnapshot(endpoint),
+                    previousStatus: parseWebhookEndpointStatus(existing.status),
+                  }
+                : {
+                    change: "created",
+                    endpointId: pathParams.endpointId,
+                    endpoint: webhookEndpointHookSnapshot(endpoint),
+                  },
+            );
 
             return { created: !existing, endpoint };
           })
@@ -474,7 +526,14 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
             }
             return { ok: true as const, body: verification.body };
           })
-          .mutate(({ retrieveResult }) => retrieveResult)
+          .mutate(({ forSchema, retrieveResult }) => {
+            recordWebhookRequestOutcome(
+              forSchema(apiSchema),
+              pathParams.endpointId,
+              retrieveResult.ok ? null : retrieveResult.code,
+            );
+            return retrieveResult;
+          })
           .execute();
 
         if (!result.ok) {
@@ -608,6 +667,12 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
               };
             })
             .mutate(({ forSchema, retrieveResult }) => {
+              const uow = forSchema(apiSchema);
+              recordWebhookRequestOutcome(
+                uow,
+                pathParams.endpointId,
+                retrieveResult.ok ? null : retrieveResult.code,
+              );
               if (!retrieveResult.ok || retrieveResult.type === "verification") {
                 return retrieveResult;
               }
@@ -624,7 +689,6 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
                 ),
               );
 
-              const uow = forSchema(apiSchema);
               uow.triggerHook(
                 "onWebhookReceived",
                 {
@@ -721,6 +785,7 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
               authConfig,
               verification,
               deliveryIdentity,
+              ...noWebhookDeliveryEvidence,
               createdAt: endpoint.createdAt,
             };
             uow.update("webhookEndpoint", endpoint.id, (b) =>
@@ -731,6 +796,7 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
                   authConfig,
                   verification,
                   deliveryIdentity,
+                  ...noWebhookDeliveryEvidence,
                   updatedAt: b.now(),
                 })
                 .check(),
@@ -752,6 +818,7 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
               change: "updated",
               endpointId: pathParams.endpointId,
               endpoint: webhookEndpointHookSnapshot(next),
+              previousStatus: parseWebhookEndpointStatus(endpoint.status),
             });
             return { found: true as const, endpoint: next };
           })
@@ -793,6 +860,10 @@ export const apiRoutesFactory = defineRoutes(apiFragmentDefinition).create(
               uow.delete("webhookSecret", secret.id);
             }
             uow.delete("webhookEndpoint", endpoint.id);
+            uow.triggerHook("onWebhookEndpointChanged", {
+              change: "deleted",
+              endpointId: pathParams.endpointId,
+            });
             return { deleted: true as const };
           })
           .execute();

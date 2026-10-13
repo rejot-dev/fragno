@@ -375,6 +375,65 @@ describe("webhook receiving", () => {
     await setup.test.cleanup();
   });
 
+  test("keeps the latest accepted and rejected request until the configuration changes", async () => {
+    const setup = await buildApiTest();
+    const fragment = setup.fragments.api.fragment;
+    async function readDeliveries() {
+      const endpoint = await fragment.callRoute("GET", "/webhooks/endpoints/:endpointId", {
+        pathParams: { endpointId: "bearer" },
+      });
+      assert(endpoint.type === "json");
+      return endpoint.data.deliveries;
+    }
+    function deliver(token: string, eventId: string) {
+      return fragment.handler(
+        webhookRequest("bearer", {
+          method: "POST",
+          headers: { authorization: `Bearer ${token}`, "x-event-id": eventId },
+          body: "{}",
+        }),
+      );
+    }
+
+    await fragment.callRoute("PUT", "/webhooks/endpoints/:endpointId", {
+      pathParams: { endpointId: "bearer" },
+      body: {
+        name: "Bearer",
+        status: "active",
+        verification: { type: "none" },
+        deliveryIdentity: { type: "header", name: "x-event-id" },
+        auth: { type: "bearer", token: "expected-token" },
+      },
+    });
+    expect(await readDeliveries()).toEqual({ lastAcceptedAt: null, lastRejection: null });
+
+    assert((await deliver("wrong-token", "evt_1")).status === 401);
+    expect(await readDeliveries()).toEqual({
+      lastAcceptedAt: null,
+      lastRejection: { receivedAt: expect.any(String), code: "WEBHOOK_AUTH_FAILED" },
+    });
+
+    assert((await deliver("expected-token", "evt_2")).status === 202);
+    const afterAccepted = await readDeliveries();
+    expect(afterAccepted).toEqual({
+      lastAcceptedAt: expect.any(String),
+      lastRejection: { receivedAt: expect.any(String), code: "WEBHOOK_AUTH_FAILED" },
+    });
+    assert(afterAccepted.lastAcceptedAt !== null && afterAccepted.lastRejection !== null);
+    expect(Date.parse(afterAccepted.lastAcceptedAt)).toBeGreaterThanOrEqual(
+      Date.parse(afterAccepted.lastRejection.receivedAt),
+    );
+
+    // Evidence describes the configuration it was collected under.
+    await fragment.callRoute("PATCH", "/webhooks/endpoints/:endpointId", {
+      pathParams: { endpointId: "bearer" },
+      body: { name: "Renamed" },
+    });
+    expect(await readDeliveries()).toEqual({ lastAcceptedAt: null, lastRejection: null });
+
+    await setup.test.cleanup();
+  });
+
   test("rejects disabled and missing webhook endpoints without durable hook processing", async () => {
     const setup = await buildApiTest();
     const fragment = setup.fragments.api.fragment;

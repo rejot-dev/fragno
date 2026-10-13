@@ -227,6 +227,33 @@ export const webhookEndpointAuthInputSchema = z.discriminatedUnion("type", [
 
 export const webhookEndpointStatusSchema = z.enum(["draft", "active", "disabled"]);
 
+/** Why the receive routes refused a request for an existing endpoint. */
+export const webhookRejectionCodeSchema = z.enum([
+  "WEBHOOK_ENDPOINT_DISABLED",
+  "WEBHOOK_ENDPOINT_DRAFT",
+  "WEBHOOK_AUTH_FAILED",
+  "WEBHOOK_VERIFICATION_NOT_MATCHED",
+  "WEBHOOK_VERIFICATION_RESPONSE_INVALID",
+  "WEBHOOK_BODY_INVALID",
+  "WEBHOOK_DELIVERY_ID_MISSING",
+  "WEBHOOK_DELIVERY_ID_INVALID",
+]);
+
+export const webhookDeliveryEvidenceSchema = z
+  .object({
+    lastAcceptedAt: z
+      .string()
+      .nullable()
+      .describe("Last accepted delivery or answered verification challenge."),
+    lastRejection: z
+      .object({ receivedAt: z.string(), code: webhookRejectionCodeSchema })
+      .nullable()
+      .describe(
+        "Last refused request. Anyone with the URL can cause one, so it is diagnostic, not proof of a provider problem.",
+      ),
+  })
+  .describe("Requests since the endpoint's configuration last changed.");
+
 export const webhookEndpointOutputSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -235,6 +262,7 @@ export const webhookEndpointOutputSchema = z.object({
   verification: webhookVerificationConfigSchema,
   deliveryIdentity: webhookDeliveryIdentitySchema,
   secretRefs: z.array(z.string()),
+  deliveries: webhookDeliveryEvidenceSchema,
   createdAt: z.union([z.string(), z.date()]).optional(),
   updatedAt: z.union([z.string(), z.date()]).optional(),
 });
@@ -271,3 +299,5 @@ export type WebhookEndpointAuthInput = z.infer<typeof webhookEndpointAuthInputSc
 export type WebhookEndpointInput = z.infer<typeof createWebhookEndpointInputSchema>;
 export type UpdateWebhookEndpointInput = z.infer<typeof updateWebhookEndpointInputSchema>;
 export type WebhookEndpoint = z.infer<typeof webhookEndpointOutputSchema>;
+export type WebhookRejectionCode = z.infer<typeof webhookRejectionCodeSchema>;
+export type WebhookDeliveryEvidence = z.infer<typeof webhookDeliveryEvidenceSchema>;
