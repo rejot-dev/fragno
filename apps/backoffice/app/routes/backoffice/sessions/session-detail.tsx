@@ -592,7 +592,7 @@ function BackofficeOrganizationPiSession({ loaderData }: Route.ComponentProps) {
           session={{ id: session.sessionId, name: session.name }}
           options={
             <SessionDisplayOptions
-              exportHref={`${basePath}/${encodeURIComponent(session.sessionId)}/export`}
+              exportHref={`${basePath}/${encodeURIComponent(session.sessionId)}.jsonl`}
               exportFilename={`pi-session-${session.sessionId}.jsonl`}
               showToolCalls={displayOptions.showToolCalls}
               showThinking={displayOptions.showThinking}

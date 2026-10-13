@@ -245,6 +245,9 @@ export default [
           route(":sessionId/view-stream", "routes/backoffice/sessions/session-view-stream.ts"),
           route(":sessionId/entries", "routes/backoffice/sessions/session-entries.ts"),
           route(":sessionId/export", "routes/backoffice/sessions/session-export.ts"),
+          route(":sessionId.jsonl", "routes/backoffice/sessions/session-export.ts", {
+            id: "sessions/session-jsonl",
+          }),
           route(
             ":sessionId/compactions/:taskId",
             "routes/backoffice/sessions/session-compaction.ts",
