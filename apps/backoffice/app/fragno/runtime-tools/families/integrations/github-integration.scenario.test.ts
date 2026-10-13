@@ -83,6 +83,8 @@ type GitHubRepositoryFixture = { id: number; name: string; full_name: string; pr
 /** GitHub's view of the installation: what the user selected on github.com. */
 type FakeGitHub = {
   repositories: GitHubRepositoryFixture[];
+  /** A suspended installation issues no tokens; webhooks only announce the change. */
+  suspended: boolean;
   requests: string[];
   /** Restrictions requested for each installation token, in order. */
   tokenRequests: unknown[];
@@ -95,7 +97,12 @@ const githubAccount = { login: "acme", id: 77, type: "Organization" };
 async function runGitHubIntegrationScenario<TVars extends Record<string, unknown>>(
   defineScenario: (github: FakeGitHub) => Omit<BackofficeScenarioDefinitionInput<TVars>, "objects">,
 ) {
-  const github: FakeGitHub = { repositories: [project], requests: [], tokenRequests: [] };
+  const github: FakeGitHub = {
+    repositories: [project],
+    suspended: false,
+    requests: [],
+    tokenRequests: [],
+  };
   const githubFetch: typeof fetch = async (input, init) => {
     const request = new Request(input, init);
     const url = new URL(request.url);
@@ -105,7 +112,7 @@ async function runGitHubIntegrationScenario<TVars extends Record<string, unknown
       return Response.json({
         id: Number(installationId),
         account: githubAccount,
-        suspended_at: null,
+        suspended_at: github.suspended ? "2024-01-01T00:00:00Z" : null,
         permissions: { pull_requests: "read" },
         events: ["pull_request"],
       });
@@ -114,6 +121,9 @@ async function runGitHubIntegrationScenario<TVars extends Record<string, unknown
       request.method === "POST" &&
       url.pathname === `/app/installations/${installationId}/access_tokens`
     ) {
+      if (github.suspended) {
+        return Response.json({ message: "This installation has been suspended" }, { status: 403 });
+      }
       const text = await request.text();
       const restriction = text ? JSON.parse(text) : null;
       github.tokenRequests.push(restriction);
@@ -460,6 +470,7 @@ test("a repository becomes a connection after the GitHub App is installed, linke
         },
       }),
       then.assert("GitHub suspends the installation", async (ctx) => {
+        github.suspended = true;
         await deliverGitHubWebhook(ctx, "installation", {
           action: "suspend",
           installation: { id: Number(installationId), account: githubAccount },
@@ -472,6 +483,7 @@ test("a repository becomes a connection after the GitHub App is installed, linke
         expected: { subject: { service: "github", connectionId: "github#acme/web" } },
       }),
       then.assert("GitHub restores the installation", async (ctx) => {
+        github.suspended = false;
         await deliverGitHubWebhook(ctx, "installation", {
           action: "unsuspend",
           installation: { id: Number(installationId), account: githubAccount },

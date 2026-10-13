@@ -17,7 +17,6 @@ type InstallationRepoRow = TableToColumnValues<
   (typeof githubAppSchema)["tables"]["installation_repo"]
 >;
 type RepoLinkRow = TableToColumnValues<(typeof githubAppSchema)["tables"]["repo_link"]>;
-type InstallationId = string | FragnoId;
 type RepoId = string | FragnoId;
 type RepoLinkId = string | FragnoId;
 
@@ -47,9 +46,17 @@ export type GitHubInstallationRepoUpdate = {
 };
 
 export type GitHubInstallationSyncMutation = {
-  existingInstallationId: InstallationId | null;
-  installationDetails: GitHubInstallationDetails;
+  /** GitHub's current installation, or the deletion of one GitHub no longer has. */
+  installation:
+    | {
+        kind: "current";
+        existingInstallationId: FragnoId | null;
+        details: GitHubInstallationDetails;
+      }
+    | { kind: "deleted"; existingInstallationId: FragnoId };
   now: Date;
+  /** When a webhook delivery prompted the sync, which records it as the latest delivery. */
+  webhookReceivedAt: Date | null;
   creates: Array<{
     id: string;
     installationId: string;
@@ -125,20 +132,42 @@ export const createGitHubServices = (
     applyInstallationSync(input: GitHubInstallationSyncMutation) {
       return this.serviceTx(githubAppSchema)
         .mutate(({ uow }) => {
-          if (input.existingInstallationId) {
-            uow.update("installation", input.existingInstallationId, (b) =>
-              b.set(toInstallationSyncUpdate(input.installationDetails, input.now)),
-            );
-          } else {
-            uow.create("installation", {
-              id: input.installationDetails.id,
-              accountId: input.installationDetails.accountId,
-              accountLogin: input.installationDetails.accountLogin,
-              accountType: input.installationDetails.accountType,
-              status: input.installationDetails.status,
-              permissions: input.installationDetails.permissions,
-              events: input.installationDetails.events,
-            });
+          const { installation, webhookReceivedAt } = input;
+          const delivery = webhookReceivedAt ? { lastWebhookAt: webhookReceivedAt } : {};
+          // Checks make a sync that read an older row retry with a fresh read of GitHub.
+          switch (installation.kind) {
+            case "current":
+              if (installation.existingInstallationId) {
+                uow.update("installation", installation.existingInstallationId, (b) =>
+                  b
+                    .set({
+                      ...toInstallationSyncUpdate(installation.details, input.now),
+                      ...delivery,
+                    })
+                    .check(),
+                );
+              } else {
+                uow.create("installation", {
+                  id: installation.details.id,
+                  accountId: installation.details.accountId,
+                  accountLogin: installation.details.accountLogin,
+                  accountType: installation.details.accountType,
+                  status: installation.details.status,
+                  permissions: installation.details.permissions,
+                  events: installation.details.events,
+                  lastWebhookAt: webhookReceivedAt,
+                });
+              }
+              break;
+            case "deleted":
+              uow.update("installation", installation.existingInstallationId, (b) =>
+                b.set({ status: "deleted", updatedAt: input.now, ...delivery }).check(),
+              );
+              break;
+            default:
+              throw new Error("Unknown installation sync.", {
+                cause: installation satisfies never,
+              });
           }
 
           for (const record of input.creates) {

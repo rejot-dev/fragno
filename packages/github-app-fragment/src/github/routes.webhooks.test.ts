@@ -1,16 +1,17 @@
-import { afterEach, beforeEach, describe, expect, it, vi, assert } from "vitest";
+import { describe, expect, it, vi, assert } from "vitest";
 
 import { createHmac, generateKeyPairSync } from "crypto";
 
 import { drainDurableHooks } from "@fragno-dev/test";
 
 import { githubAppSchema } from "../schema";
-import { buildHarness, runGithubUowCreate } from "./test-utils";
-
-type FetchCall = {
-  url: URL;
-  init?: RequestInit;
-};
+import {
+  buildHarness,
+  createFakeGitHub,
+  type FakeGitHubInstallation,
+  testPrivateKeyPem,
+} from "./test-utils";
+import type { GitHubAppFragmentConfig } from "./types";
 
 const toExternalId = (value: unknown) => {
   if (value === null || value === undefined) {
@@ -65,62 +66,7 @@ const getHandler = (fragment: unknown) => {
     .handler;
 };
 
-const createFetchMock = (options: {
-  installationId: string;
-  repositories: Array<Record<string, unknown>>;
-}) => {
-  const calls: FetchCall[] = [];
-  const fetchMock = async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url =
-      typeof input === "string"
-        ? new URL(input)
-        : input instanceof URL
-          ? input
-          : new URL(input.url);
-
-    calls.push({ url, init });
-
-    if (url.pathname === `/app/installations/${options.installationId}/access_tokens`) {
-      return new Response(
-        JSON.stringify({
-          token: "installation-token",
-          expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
-        }),
-        { status: 201, headers: { "content-type": "application/json" } },
-      );
-    }
-
-    if (url.pathname === "/installation/repositories") {
-      return new Response(JSON.stringify({ repositories: options.repositories }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      });
-    }
-
-    return new Response(JSON.stringify({ message: "Not found" }), {
-      status: 404,
-      headers: { "content-type": "application/json" },
-    });
-  };
-
-  return Object.assign(fetchMock, { calls });
-};
-
 describe("github-app webhooks", () => {
-  let restoreFetch: (() => void) | null = null;
-
-  beforeEach(() => {
-    const originalFetch = globalThis.fetch;
-    restoreFetch = () => {
-      globalThis.fetch = originalFetch;
-    };
-  });
-
-  afterEach(() => {
-    restoreFetch?.();
-    restoreFetch = null;
-  });
-
   it("rejects invalid signatures", async () => {
     const { fragments, test } = await buildHarness({
       appId: "42",
@@ -331,525 +277,185 @@ describe("github-app webhooks", () => {
     }
   });
 
-  it("processes installation events via durable hooks", async () => {
-    const installationId = "123";
+  const octo = { id: 1, login: "octo", type: "User" };
+  const installationPayload = (id: number) => ({
+    id,
+    account: octo,
+    permissions: { contents: "read" },
+    events: ["installation"],
+  });
+  const repository = (id: number, name: string) => ({
+    id,
+    name,
+    full_name: `octo/${name}`,
+    private: false,
+    owner: { login: "octo" },
+  });
 
-    const { fragments, test } = await buildHarness({
+  /** A harness whose GitHub answers from `installations`, delivering signed webhooks to it. */
+  async function webhookScenario(
+    installations: Map<string, FakeGitHubInstallation>,
+    webhook?: GitHubAppFragmentConfig["webhook"],
+  ) {
+    const harness = await buildHarness({
       appId: "42",
       appSlug: "test-app",
       clientId: "test-client-id",
       clientSecret: "test-client-secret",
       callbackUrl: "https://example.com/github/callback",
-      privateKeyPem: createPrivateKey(),
+      privateKeyPem: testPrivateKeyPem,
       webhookSecret: "secret",
+      fetch: createFakeGitHub(installations),
+      webhook,
     });
-
-    try {
-      const payload = JSON.stringify({
-        action: "created",
-        installation: {
-          id: Number(installationId),
-          account: { id: 1, login: "octo", type: "User" },
-          permissions: { contents: "read" },
-          events: ["installation"],
-        },
-        repositories: [
-          {
-            id: 101,
-            name: "new-repo",
-            full_name: "octo/new-repo",
-            private: false,
-            node_id: "R_abc",
-          },
-        ],
-      });
-
-      const signature = createSignature("secret", payload);
-
-      const response = await getHandler(fragments.githubApp)(
-        createWebhookRequest(payload, {
-          "x-hub-signature-256": signature,
-          "x-github-delivery": "delivery-2",
-          "x-github-event": "installation",
-        }),
-      );
-
-      assert(response.status === 204);
-
-      await drainDurableHooks(fragments.githubApp.fragment);
-
-      const installations = (
-        await fragments.githubApp.db
-          .createUnitOfWork("read")
-          .forSchema(githubAppSchema)
-          .find("installation", (b) => b.whereIndex("primary"))
-          .executeRetrieve()
-      )[0];
-      expect(installations).toHaveLength(1);
-      expect(toExternalId(installations[0]?.id)).toBe(installationId);
-      assert(installations[0]?.status === "active");
-      assert(installations[0]?.accountLogin === "octo");
-      expect(installations[0]?.lastWebhookAt).toBeInstanceOf(Date);
-
-      const repos = (
-        await fragments.githubApp.db
-          .createUnitOfWork("read")
-          .forSchema(githubAppSchema)
-          .find("installation_repo", (b) => b.whereIndex("primary"))
-          .executeRetrieve()
-      )[0];
-      expect(repos).toHaveLength(1);
-      assert(repos[0]?.fullName === "octo/new-repo");
-
-      const duplicate = await getHandler(fragments.githubApp)(
-        createWebhookRequest(payload, {
-          "x-hub-signature-256": signature,
-          "x-github-delivery": "delivery-2",
-          "x-github-event": "installation",
-        }),
-      );
-
-      assert(duplicate.status === 204);
-
-      await drainDurableHooks(fragments.githubApp.fragment);
-
-      const reposAfter = (
-        await fragments.githubApp.db
-          .createUnitOfWork("read")
-          .forSchema(githubAppSchema)
-          .find("installation_repo", (b) => b.whereIndex("primary"))
-          .executeRetrieve()
-      )[0];
-      expect(reposAfter).toHaveLength(1);
-    } finally {
-      await test.cleanup();
-    }
-  });
-
-  it("handles installation created with no repositories", async () => {
-    const installationId = "321";
-
-    const { fragments, test } = await buildHarness({
-      appId: "42",
-      appSlug: "test-app",
-      clientId: "test-client-id",
-      clientSecret: "test-client-secret",
-      callbackUrl: "https://example.com/github/callback",
-      privateKeyPem: createPrivateKey(),
-      webhookSecret: "secret",
-    });
-
-    try {
-      const payload = JSON.stringify({
-        action: "created",
-        installation: {
-          id: Number(installationId),
-          account: { id: 2, login: "octo-empty", type: "User" },
-          permissions: { contents: "read" },
-          events: ["installation"],
-        },
-      });
-
-      const signature = createSignature("secret", payload);
-
-      const response = await getHandler(fragments.githubApp)(
-        createWebhookRequest(payload, {
-          "x-hub-signature-256": signature,
-          "x-github-delivery": "delivery-no-repos",
-          "x-github-event": "installation",
-        }),
-      );
-
-      assert(response.status === 204);
-
-      await drainDurableHooks(fragments.githubApp.fragment);
-
-      const installations = (
-        await fragments.githubApp.db
-          .createUnitOfWork("read")
-          .forSchema(githubAppSchema)
-          .find("installation", (b) => b.whereIndex("primary"))
-          .executeRetrieve()
-      )[0];
-      expect(installations).toHaveLength(1);
-      expect(toExternalId(installations[0]?.id)).toBe(installationId);
-      assert(installations[0]?.status === "active");
-
-      const repos = (
-        await fragments.githubApp.db
-          .createUnitOfWork("read")
-          .forSchema(githubAppSchema)
-          .find("installation_repo", (b) => b.whereIndex("primary"))
-          .executeRetrieve()
-      )[0];
-      expect(repos).toHaveLength(0);
-    } finally {
-      await test.cleanup();
-    }
-  });
-
-  it("uses installation webhook repositories payload when available", async () => {
-    const installationId = "789";
-    const payloadRepositories = [
-      {
-        id: 201,
-        node_id: "R_kgDOA",
-        name: "payload-repo",
-        full_name: "octo/payload-repo",
-        private: false,
+    let delivery = 0;
+    return {
+      ...harness,
+      async deliver(event: string, action: string, payload: Record<string, unknown>) {
+        delivery += 1;
+        const body = JSON.stringify({ action, ...payload });
+        const response = await getHandler(harness.fragments.githubApp)(
+          createWebhookRequest(body, {
+            "x-hub-signature-256": createSignature("secret", body),
+            "x-github-delivery": `delivery-${delivery}`,
+            "x-github-event": event,
+          }),
+        );
+        assert(response.status === 204);
+        await drainDurableHooks(harness.fragments.githubApp.fragment);
       },
-    ];
-
-    const fetchMock = createFetchMock({
-      installationId,
-      repositories: [
-        {
-          id: 999,
-          name: "api-repo",
-          full_name: "octo/api-repo",
-          private: false,
-          fork: false,
-          default_branch: "main",
-          owner: { login: "octo" },
-        },
-      ],
-    });
-    globalThis.fetch = fetchMock;
-
-    const { fragments, test } = await buildHarness({
-      appId: "42",
-      appSlug: "test-app",
-      clientId: "test-client-id",
-      clientSecret: "test-client-secret",
-      callbackUrl: "https://example.com/github/callback",
-      privateKeyPem: createPrivateKey(),
-      webhookSecret: "secret",
-    });
-
-    try {
-      const payload = JSON.stringify({
-        action: "created",
-        installation: {
-          id: Number(installationId),
-          account: { id: 1, login: "octo", type: "User" },
-          permissions: { contents: "read" },
-          events: ["installation"],
-        },
-        repositories: payloadRepositories,
-      });
-
-      const signature = createSignature("secret", payload);
-
-      const response = await getHandler(fragments.githubApp)(
-        createWebhookRequest(payload, {
-          "x-hub-signature-256": signature,
-          "x-github-delivery": "delivery-uses-payload-repos",
-          "x-github-event": "installation",
-        }),
-      );
-
-      assert(response.status === 204);
-
-      await drainDurableHooks(fragments.githubApp.fragment);
-
-      const repos = (
-        await fragments.githubApp.db
+      async installation(installationId: string) {
+        const [rows] = await harness.fragments.githubApp.db
+          .createUnitOfWork("read")
+          .forSchema(githubAppSchema)
+          .find("installation", (b) => b.whereIndex("primary"))
+          .executeRetrieve();
+        return rows.find((row) => toExternalId(row.id) === installationId);
+      },
+      async presentRepositories() {
+        const [rows] = await harness.fragments.githubApp.db
           .createUnitOfWork("read")
           .forSchema(githubAppSchema)
           .find("installation_repo", (b) => b.whereIndex("primary"))
-          .executeRetrieve()
-      )[0];
-      expect(repos).toHaveLength(1);
-      assert(repos[0]?.fullName === "octo/payload-repo");
-      assert(toExternalId(repos[0]?.id) === "201");
-      expect(repos[0]?.isFork).toBeNull();
-      expect(repos[0]?.defaultBranch).toBeNull();
+          .executeRetrieve();
+        return rows
+          .filter((row) => row.removedAt === null)
+          .map((row) => row.fullName)
+          .sort();
+      },
+    };
+  }
 
-      const installationRepoCalls = fetchMock.calls.filter(
-        (call) => call.url.pathname === "/installation/repositories",
-      );
-      expect(installationRepoCalls).toHaveLength(0);
-    } finally {
-      await test.cleanup();
-    }
-  });
-
-  it("does not overwrite fork/default branch when installation payload omits them", async () => {
-    const installationId = "790";
-
-    const { fragments, test } = await buildHarness({
-      appId: "42",
-      appSlug: "test-app",
-      clientId: "test-client-id",
-      clientSecret: "test-client-secret",
-      callbackUrl: "https://example.com/github/callback",
-      privateKeyPem: createPrivateKey(),
-      webhookSecret: "secret",
-    });
-
+  it("installation deliveries store the installation GitHub reports, not their payload", async () => {
+    const github: FakeGitHubInstallation = {
+      account: octo,
+      suspended: false,
+      repositories: [repository(101, "api"), repository(102, "web")],
+    };
+    const scenario = await webhookScenario(new Map([["123", github]]));
     try {
-      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation", {
-        id: installationId,
-        accountId: "1",
-        accountLogin: "octo",
-        accountType: "User",
-        status: "active",
-        permissions: {},
-        events: [],
+      await scenario.deliver("installation", "created", {
+        installation: installationPayload(123),
+        repositories: [repository(103, "stale")],
       });
+      const installation = await scenario.installation("123");
+      expect(installation).toMatchObject({ status: "active", accountLogin: "octo" });
+      expect(installation?.lastWebhookAt).toBeInstanceOf(Date);
+      expect(await scenario.presentRepositories()).toEqual(["octo/api", "octo/web"]);
 
-      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation_repo", {
-        id: "201",
-        installationId,
-        ownerLogin: "octo",
-        name: "payload-repo",
-        fullName: "octo/payload-repo",
-        isPrivate: false,
-        isFork: true,
-        defaultBranch: "develop",
-        removedAt: null,
+      github.repositories = [repository(101, "api")];
+      await scenario.deliver("installation_repositories", "removed", {
+        installation: installationPayload(123),
+        repositories_added: [],
+        repositories_removed: [repository(102, "web")],
       });
-
-      const payload = JSON.stringify({
-        action: "new_permissions_accepted",
-        installation: {
-          id: Number(installationId),
-          account: { id: 1, login: "octo", type: "User" },
-          permissions: { contents: "read" },
-          events: ["installation"],
-        },
-        repositories: [
-          {
-            id: 201,
-            node_id: "R_kgDOA",
-            name: "payload-repo",
-            full_name: "octo/payload-repo",
-            private: false,
-          },
-        ],
-      });
-
-      const signature = createSignature("secret", payload);
-
-      const response = await getHandler(fragments.githubApp)(
-        createWebhookRequest(payload, {
-          "x-hub-signature-256": signature,
-          "x-github-delivery": "delivery-preserve-fork-default-branch",
-          "x-github-event": "installation",
-        }),
-      );
-
-      assert(response.status === 204);
-
-      await drainDurableHooks(fragments.githubApp.fragment);
-
-      const repos = (
-        await fragments.githubApp.db
-          .createUnitOfWork("read")
-          .forSchema(githubAppSchema)
-          .find("installation_repo", (b) => b.whereIndex("primary"))
-          .executeRetrieve()
-      )[0];
-      expect(repos).toHaveLength(1);
-      assert(repos[0]?.isFork);
-      assert(repos[0]?.defaultBranch === "develop");
+      expect(await scenario.presentRepositories()).toEqual(["octo/api"]);
     } finally {
-      await test.cleanup();
+      await scenario.test.cleanup();
     }
   });
 
-  it("handles installation_repositories updates", async () => {
-    const installationId = "456";
-
-    const { fragments, test } = await buildHarness({
-      appId: "42",
-      appSlug: "test-app",
-      clientId: "test-client-id",
-      clientSecret: "test-client-secret",
-      callbackUrl: "https://example.com/github/callback",
-      privateKeyPem: createPrivateKey(),
-      webhookSecret: "secret",
-    });
-
+  it("deliveries arriving out of order cannot roll back GitHub's current state", async () => {
+    const github: FakeGitHubInstallation = {
+      account: octo,
+      suspended: false,
+      repositories: [repository(101, "api")],
+    };
+    const scenario = await webhookScenario(new Map([["123", github]]));
     try {
-      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation", {
-        id: installationId,
-        accountId: "1",
-        accountLogin: "octo",
-        accountType: "User",
-        status: "active",
-        permissions: {},
-        events: [],
+      await scenario.deliver("installation", "created", {
+        installation: installationPayload(123),
       });
-
-      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation_repo", {
-        id: "10",
-        installationId,
-        ownerLogin: "octo",
-        name: "removed-repo",
-        fullName: "octo/removed-repo",
-        isPrivate: false,
-        isFork: false,
-        defaultBranch: "main",
-        removedAt: null,
+      // GitHub suspended and restored the installation, then removed and re-added the repository.
+      await scenario.deliver("installation", "suspend", {
+        installation: installationPayload(123),
       });
-
-      await runGithubUowCreate(fragments.githubApp.db, "seed", "repo_link", {
-        repoId: "10",
-        linkKey: "default",
+      await scenario.deliver("installation_repositories", "removed", {
+        installation: installationPayload(123),
+        repositories_added: [],
+        repositories_removed: [repository(101, "api")],
       });
+      expect(await scenario.installation("123")).toMatchObject({ status: "active" });
+      expect(await scenario.presentRepositories()).toEqual(["octo/api"]);
 
-      const payload = JSON.stringify({
-        action: "added",
-        installation: {
-          id: Number(installationId),
-          account: { id: 1, login: "octo", type: "User" },
-          permissions: { contents: "read" },
-          events: ["installation_repositories"],
-        },
-        repositories_added: [
-          {
-            id: 20,
-            name: "added-repo",
-            full_name: "octo/added-repo",
-            private: false,
-            fork: false,
-            default_branch: "main",
-            owner: { login: "octo" },
-          },
-        ],
-        repositories_removed: [
-          {
-            id: 10,
-            name: "removed-repo",
-            full_name: "octo/removed-repo",
-            private: false,
-            fork: false,
-            default_branch: "main",
-            owner: { login: "octo" },
-          },
-        ],
+      // A suspended installation issues no tokens, so its repositories keep their last state.
+      github.suspended = true;
+      github.repositories = [];
+      await scenario.deliver("installation", "unsuspend", {
+        installation: installationPayload(123),
       });
-
-      const signature = createSignature("secret", payload);
-
-      const response = await getHandler(fragments.githubApp)(
-        createWebhookRequest(payload, {
-          "x-hub-signature-256": signature,
-          "x-github-delivery": "delivery-3",
-          "x-github-event": "installation_repositories",
-        }),
-      );
-
-      assert(response.status === 204);
-
-      await drainDurableHooks(fragments.githubApp.fragment);
-
-      const repos = (
-        await fragments.githubApp.db
-          .createUnitOfWork("read")
-          .forSchema(githubAppSchema)
-          .find("installation_repo", (b) => b.whereIndex("primary"))
-          .executeRetrieve()
-      )[0];
-      const byId = new Map(repos.map((repo) => [toExternalId(repo.id), repo]));
-
-      expect(byId.get("20")?.removedAt).toBeNull();
-      assert(byId.get("20")?.fullName === "octo/added-repo");
-      expect(byId.get("10")?.removedAt).toBeInstanceOf(Date);
-
-      const links = (
-        await fragments.githubApp.db
-          .createUnitOfWork("read")
-          .forSchema(githubAppSchema)
-          .find("repo_link", (b) => b.whereIndex("primary"))
-          .executeRetrieve()
-      )[0];
-      expect(links).toHaveLength(0);
+      expect(await scenario.installation("123")).toMatchObject({ status: "suspended" });
+      expect(await scenario.presentRepositories()).toEqual(["octo/api"]);
     } finally {
-      await test.cleanup();
+      await scenario.test.cleanup();
     }
   });
 
-  it("calls configured webhook handlers when installation is deleted", async () => {
-    const installationId = "654";
+  it("an installation GitHub deleted is marked deleted and still reaches configured handlers", async () => {
     const onInstallationDeleted = vi.fn<
       (payload: unknown, idempotencyKey: string) => Promise<void>
     >(async () => {});
     const onInstallation = vi.fn<(payload: unknown, idempotencyKey: string) => Promise<void>>(
       async () => {},
     );
-
-    const { fragments, test } = await buildHarness({
-      appId: "42",
-      appSlug: "test-app",
-      clientId: "test-client-id",
-      clientSecret: "test-client-secret",
-      callbackUrl: "https://example.com/github/callback",
-      privateKeyPem: createPrivateKey(),
-      webhookSecret: "secret",
-      webhook: (register) => {
-        register("installation.deleted", onInstallationDeleted);
-        register("installation", onInstallation);
-      },
+    const installations = new Map<string, FakeGitHubInstallation>([
+      ["654", { account: octo, suspended: false, repositories: [] }],
+    ]);
+    const scenario = await webhookScenario(installations, (register) => {
+      register("installation.deleted", onInstallationDeleted);
+      register("installation", onInstallation);
     });
-
     try {
-      await runGithubUowCreate(fragments.githubApp.db, "seed", "installation", {
-        id: installationId,
-        accountId: "1",
-        accountLogin: "octo",
-        accountType: "User",
-        status: "active",
-        permissions: {},
-        events: [],
+      await scenario.deliver("installation", "created", {
+        installation: installationPayload(654),
+      });
+      installations.delete("654");
+      await scenario.deliver("installation", "deleted", {
+        installation: installationPayload(654),
       });
 
-      const payload = JSON.stringify({
-        action: "deleted",
-        installation: {
-          id: Number(installationId),
-          account: { id: 1, login: "octo", type: "User" },
-          permissions: { contents: "read" },
-          events: ["installation"],
-        },
-      });
-
-      const signature = createSignature("secret", payload);
-
-      const response = await getHandler(fragments.githubApp)(
-        createWebhookRequest(payload, {
-          "x-hub-signature-256": signature,
-          "x-github-delivery": "delivery-deleted",
-          "x-github-event": "installation",
-        }),
-      );
-
-      assert(response.status === 204);
-
-      await drainDurableHooks(fragments.githubApp.fragment);
-
+      expect(await scenario.installation("654")).toMatchObject({ status: "deleted" });
       expect(onInstallationDeleted).toHaveBeenCalledTimes(1);
       expect(onInstallationDeleted).toHaveBeenCalledWith(
         expect.objectContaining({
-          id: "delivery-deleted",
+          id: "delivery-2",
           name: "installation",
           payload: expect.objectContaining({
             action: "deleted",
-            installation: expect.objectContaining({ id: Number(installationId) }),
+            installation: expect.objectContaining({ id: 654 }),
           }),
         }),
         expect.any(String),
         expect.objectContaining({
-          deliveryId: "delivery-deleted",
+          deliveryId: "delivery-2",
           event: "installation",
           action: "deleted",
-          installationId,
+          installationId: "654",
         }),
       );
-      expect(onInstallation).toHaveBeenCalledTimes(1);
+      expect(onInstallation).toHaveBeenCalledTimes(2);
     } finally {
-      await test.cleanup();
+      await scenario.test.cleanup();
     }
   });
 });

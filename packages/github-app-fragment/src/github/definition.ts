@@ -22,15 +22,11 @@ export const githubAppFragmentDefinition = defineFragment<GitHubAppFragmentConfi
   .withDependencies(({ config }) => ({
     githubApiClient: createGitHubApiClient(config, { fetch: config.fetch }),
   }))
-  .provideHooks<GitHubAppHooksMap>(({ defineHook, config }) => ({
-    processWebhook: defineHook(
-      createWebhookProcessor({
-        webhook: config.webhook,
-      }),
-    ),
+  .providesBaseService(({ deps, defineService }) => createGitHubServices(deps, defineService))
+  .provideHooks<GitHubAppHooksMap>(({ defineHook, config, services }) => ({
+    processWebhook: defineHook(createWebhookProcessor({ webhook: config.webhook }, services)),
     onRepositoryLinkStatusChanged: defineHook(async function (payload) {
       await config.onRepositoryLinkStatusChanged?.(payload, this);
     }),
   }))
-  .providesBaseService(({ deps, defineService }) => createGitHubServices(deps, defineService))
   .build();

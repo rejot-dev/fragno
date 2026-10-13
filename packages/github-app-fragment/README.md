@@ -158,9 +158,16 @@ export const { GET, POST } = fragment.handlersFor("next-js");
 `active` while it exists and its installation is active, `inactive` while the installation is
 suspended or deleted, and `unlinked` once the link is removed, including when the repository is
 removed from the installation on GitHub. It fires for the link routes, installation webhooks, and
-installation sync. Installation webhooks are processed as durable hooks without ordering guarantees,
-so overlapping installation changes, such as a suspend and an unsuspend delivered together, can be
-reported out of order or not at all.
+installation sync.
+
+Installation webhooks do not apply their payload. Each `installation` and
+`installation_repositories` delivery is processed as a durable hook that syncs the installation from
+GitHub, so deliveries can arrive in any order and the stored state still converges on GitHub's.
+Changes that cancel out before the sync reads GitHub, such as a suspend and an unsuspend, report
+nothing. Processing a delivery needs the app's GitHub API access; a failed request retries it. A
+suspended installation keeps its repositories, since GitHub issues no installation tokens while
+suspended, and an installation GitHub answers 404 for is marked `deleted`. Configured `webhook`
+handlers run after the sync.
 
 ## Routes
 
@@ -177,7 +184,8 @@ Installations:
 
 - `GET /installations`
 - `GET /installations/:installationId/repos`
-- `POST /installations/:installationId/sync` — re-read the installation's repositories from GitHub
+- `POST /installations/:installationId/sync` — re-read the installation and its repositories from
+  GitHub, as installation webhooks do
 
 Repositories by ID:
 

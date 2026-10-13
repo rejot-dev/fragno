@@ -1,47 +1,15 @@
-import type { TableToColumnValues } from "@fragno-dev/db/query";
-
 import type { HookContext } from "@fragno-dev/db";
 
 import type { EmitterWebhookEvent } from "@octokit/webhooks";
 
-import { githubAppSchema } from "../schema";
-import type { GitHubInstallationRepository } from "./api";
-import {
-  hasRepoChanges,
-  type InstallationRepoRow,
-  toRepoCreateRecord,
-  toRepoRecord,
-} from "./repo-sync";
-import { installationLinkStatusChanges } from "./repository-links";
+import { syncInstallationFromGitHub } from "./installation-sync";
+import type { GitHubAppFragmentServices } from "./services";
 import type {
   GitHubAppFragmentConfig,
   GitHubAppWebhookConfig,
   GitHubAppWebhookMeta,
   GitHubAppWebhookOn,
 } from "./types";
-import { normalizeJoinedLinks, toExternalId } from "./utils";
-
-type InstallationRow = TableToColumnValues<(typeof githubAppSchema)["tables"]["installation"]>;
-type RepoLinkRow = TableToColumnValues<(typeof githubAppSchema)["tables"]["repo_link"]>;
-type InstallationRepoId = InstallationRepoRow["id"];
-type RepoLinkId = RepoLinkRow["id"];
-
-type GitHubWebhookPayload<TEventName extends EmitterWebhookEvent["name"]> = Extract<
-  EmitterWebhookEvent,
-  { name: TEventName }
->["payload"];
-
-type InstallationPayload = GitHubWebhookPayload<"installation">;
-type InstallationRepositoriesPayload = GitHubWebhookPayload<"installation_repositories">;
-
-/** Single discriminated union for supported events. One cast at entry derives all typed data. */
-type SupportedWebhook =
-  | { event: "installation"; action: string | null; payload: InstallationPayload }
-  | {
-      event: "installation_repositories";
-      action: string | null;
-      payload: InstallationRepositoriesPayload;
-    };
 
 export type WebhookProcessingPayload = {
   deliveryId: string;
@@ -52,14 +20,8 @@ export type WebhookProcessingPayload = {
   receivedAt?: string | null;
 };
 
-const SUPPORTED_EVENTS = ["installation", "installation_repositories"] as const;
-
-function asSupportedWebhook(data: WebhookProcessingPayload): SupportedWebhook | null {
-  if (!SUPPORTED_EVENTS.includes(data.event as (typeof SUPPORTED_EVENTS)[number])) {
-    return null;
-  }
-  return data as unknown as SupportedWebhook;
-}
+/** Events that change the installation or its repositories, which GitHub reports on request. */
+const INSTALLATION_EVENTS = new Set(["installation", "installation_repositories"]);
 
 type InternalWebhookHandler = (
   event: EmitterWebhookEvent,
@@ -135,26 +97,6 @@ const createWebhookEventDispatcher = (configureOn?: GitHubAppWebhookConfig) => {
   };
 };
 
-type WebhookRepoSnapshot =
-  | NonNullable<InstallationPayload["repositories"]>[number]
-  | InstallationRepositoriesPayload["repositories_added"][number];
-
-const normalizeInstallationStatus = (action: string | null) => {
-  switch (action) {
-    case "created":
-    case "new_permissions_accepted":
-    case "unsuspend":
-      return "active";
-    case "suspend":
-      return "suspended";
-    case "deleted":
-      return "deleted";
-    case null:
-    default:
-      return null;
-  }
-};
-
 const resolveReceivedAt = (receivedAt?: string | null) => {
   if (!receivedAt) {
     return new Date();
@@ -163,79 +105,13 @@ const resolveReceivedAt = (receivedAt?: string | null) => {
   return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
 };
 
-const parseOwnerLoginFromFullName = (fullName: string) => {
-  const separatorIndex = fullName.indexOf("/");
-  if (separatorIndex <= 0) {
-    return "";
-  }
-  return fullName.slice(0, separatorIndex);
-};
-
-// Webhook repo snapshots can omit `fork` and `default_branch`.
-// Leave them unset so updates do not overwrite previously synced values.
-const toInstallationRepoFromWebhookRepository = (
-  repo: WebhookRepoSnapshot,
-): GitHubInstallationRepository => {
-  const ownerLogin = parseOwnerLoginFromFullName(repo.full_name);
-  const mapped: GitHubInstallationRepository = {
-    id: repo.id,
-    name: repo.name,
-    full_name: repo.full_name,
-    private: repo.private,
-    owner: { login: ownerLogin },
-  };
-  if ("fork" in repo && typeof repo.fork === "boolean") {
-    mapped.fork = repo.fork;
-  }
-  if ("default_branch" in repo) {
-    const defaultBranch = repo.default_branch;
-    if (typeof defaultBranch === "string" || defaultBranch === null) {
-      mapped.default_branch = defaultBranch;
-    }
-  }
-  return mapped;
-};
-
-function extractAccountFromInstallation(
-  installation: NonNullable<SupportedWebhook["payload"]["installation"]>,
-) {
-  const account = installation.account;
-  if (!account) {
-    throw new Error("Webhook payload installation missing account");
-  }
-  const accountId = `${account.id}`;
-  if ("login" in account) {
-    return { accountId, accountLogin: account.login, accountType: account.type ?? "" };
-  }
-  return { accountId, accountLogin: account.slug, accountType: "Enterprise" };
-}
-
-const isRepoSyncAction = (action: string | null) => {
-  return action === "created" || action === "new_permissions_accepted";
-};
-
-type RepoUpdateData = Omit<ReturnType<typeof toRepoRecord>, "id">;
-
-const toRepoUpdateData = (
-  record: ReturnType<typeof toRepoRecord>,
-  now: Date,
-): Partial<RepoUpdateData> => ({
-  installationId: record.installationId,
-  ownerLogin: record.ownerLogin,
-  name: record.name,
-  fullName: record.fullName,
-  isPrivate: record.isPrivate,
-  ...(record.isFork !== undefined ? { isFork: record.isFork } : {}),
-  ...(record.defaultBranch !== undefined ? { defaultBranch: record.defaultBranch } : {}),
-  removedAt: null,
-  updatedAt: now,
-});
-
-export const createWebhookProcessor = (config: Pick<GitHubAppFragmentConfig, "webhook"> = {}) => {
+export const createWebhookProcessor = (
+  config: Pick<GitHubAppFragmentConfig, "webhook">,
+  services: GitHubAppFragmentServices,
+) => {
   const dispatchWebhookEvent = createWebhookEventDispatcher(config.webhook);
 
   return async function processWebhook(this: HookContext, data: WebhookProcessingPayload) {
-    const emitterEvent = toEmitterWebhookEvent(data);
     const meta: GitHubAppWebhookMeta = {
       deliveryId: data.deliveryId,
       event: data.event,
@@ -244,227 +120,19 @@ export const createWebhookProcessor = (config: Pick<GitHubAppFragmentConfig, "we
       hookId: this.hookId.toString(),
       receivedAt: data.receivedAt ?? null,
     };
-    const webhook = asSupportedWebhook(data);
-    if (!webhook) {
-      await dispatchWebhookEvent(emitterEvent, this.idempotencyKey, meta);
-      return;
-    }
-
-    const { event, action, payload } = webhook;
-    const now = resolveReceivedAt(data.receivedAt);
-    const installationId = data.installationId;
-
-    const installation = payload.installation;
-    if (!installation) {
-      throw new Error("Webhook payload missing installation (required for installation events)");
-    }
-    const { accountId, accountLogin, accountType } = extractAccountFromInstallation(installation);
-
-    const statusOverride = normalizeInstallationStatus(action);
-    const needsRepoSync =
-      event === "installation_repositories" ||
-      (event === "installation" && isRepoSyncAction(action));
-
-    // Repositories are read even without a repository sync: status changes affect their links.
-    const [existingInstallation, existingRepos]: [
-      InstallationRow | null,
-      Array<InstallationRepoRow & { links?: RepoLinkRow | RepoLinkRow[] }>,
-    ] = await this.handlerTx()
-      .retrieve(({ forSchema }) => {
-        const uow = forSchema(githubAppSchema);
-        return uow
-          .findFirst("installation", (b) =>
-            b.whereIndex("uniq_installation_id", (eb) => eb("id", "=", installationId)),
-          )
-          .find("installation_repo", (b) =>
-            b
-              .whereIndex("idx_installation_repo_installation", (eb) =>
-                eb("installationId", "=", installationId),
-              )
-              .joinMany("links", "repo_link", (link) =>
-                link.onIndex("uniq_repo_link_repo_id_link_key", (eb) =>
-                  eb("repoId", "=", eb.parent("id")),
-                ),
-              ),
-          );
-      })
-      .execute();
-
-    const existingStatus =
-      existingInstallation && typeof existingInstallation.status === "string"
-        ? existingInstallation.status
-        : null;
-    const installationUpdate = {
-      accountId,
-      accountLogin,
-      accountType,
-      status: statusOverride || existingStatus || "active",
-      permissions: installation.permissions ?? existingInstallation?.permissions ?? null,
-      events: installation.events ?? existingInstallation?.events ?? null,
-      updatedAt: now,
-      lastWebhookAt: now,
-    };
-
-    const creates: Array<ReturnType<typeof toRepoRecord>> = [];
-    const updates: Array<{ id: InstallationRepoId; data: Partial<RepoUpdateData> }> = [];
-    const removals: Array<InstallationRepoId> = [];
-    const removedRepoIds = new Set<string>();
-    const linksToDelete: Array<RepoLinkId> = [];
-
-    if (needsRepoSync) {
-      const existingById = new Map<string, InstallationRepoRow>();
-      for (const repo of existingRepos) {
-        const id = toExternalId(repo.id);
-        if (id) {
-          existingById.set(id, repo);
-        }
-      }
-
-      const repoLinksByRepoId = new Map<string, RepoLinkRow[]>();
-      for (const repo of existingRepos) {
-        const repoId = toExternalId(repo.id);
-        if (!repoId) {
-          continue;
-        }
-        const linkEntries = normalizeJoinedLinks(repo.links);
-        if (linkEntries.length === 0) {
-          continue;
-        }
-        repoLinksByRepoId.set(repoId, linkEntries);
-      }
-
-      if (event === "installation") {
-        // `repositories` is optional in the webhook payload — absent means no repos
-        // were selected during installation, not that the data was truncated.
-        const repos = (payload.repositories ?? []).map(toInstallationRepoFromWebhookRepository);
-        const seen = new Set<string>();
-
-        for (const repo of repos) {
-          const record = toRepoRecord(installationId, repo, now);
-          seen.add(record.id);
-          const existing = existingById.get(record.id);
-
-          if (!existing) {
-            creates.push(record);
-            continue;
-          }
-
-          if (hasRepoChanges(existing, record)) {
-            updates.push({ id: existing.id, data: toRepoUpdateData(record, now) });
-          }
-        }
-
-        for (const [repoId, repo] of existingById.entries()) {
-          if (seen.has(repoId)) {
-            continue;
-          }
-          if (repo.removedAt === null) {
-            removals.push(repo.id);
-            removedRepoIds.add(repoId);
-            const links = repoLinksByRepoId.get(repoId);
-            if (links) {
-              for (const link of links) {
-                linksToDelete.push(link.id);
-              }
-            }
-          }
-        }
-      }
-
-      if (event === "installation_repositories") {
-        const added = payload.repositories_added;
-        const removed = payload.repositories_removed;
-
-        for (const repo of added) {
-          const record = toRepoRecord(
-            installationId,
-            toInstallationRepoFromWebhookRepository(repo),
-            now,
-          );
-          const existing = existingById.get(record.id);
-
-          if (!existing) {
-            creates.push(record);
-            continue;
-          }
-
-          if (hasRepoChanges(existing, record)) {
-            updates.push({ id: existing.id, data: toRepoUpdateData(record, now) });
-          }
-        }
-
-        for (const repo of removed) {
-          const repoId = toExternalId(repo.id) || null;
-          if (!repoId) {
-            continue;
-          }
-          const existing = existingById.get(repoId);
-          if (existing?.removedAt === null) {
-            removals.push(existing.id);
-            removedRepoIds.add(repoId);
-            const links = repoLinksByRepoId.get(repoId);
-            if (links) {
-              for (const link of links) {
-                linksToDelete.push(link.id);
-              }
-            }
-          }
-        }
+    // Deliveries arrive in any order, so they prompt a sync instead of applying their payload.
+    if (INSTALLATION_EVENTS.has(data.event)) {
+      const synced = await syncInstallationFromGitHub(
+        this.handlerTx.bind(this),
+        services,
+        data.installationId,
+        resolveReceivedAt(data.receivedAt),
+      );
+      // Throwing retries the delivery; a 404 already recorded the deletion.
+      if (!synced.ok && synced.code === "GITHUB_API_ERROR") {
+        throw new Error(synced.message);
       }
     }
-
-    const hasRepoMutations =
-      creates.length > 0 || updates.length > 0 || removals.length > 0 || linksToDelete.length > 0;
-    const linkStatusChanges = installationLinkStatusChanges({
-      previousInstallationStatus: existingStatus,
-      nextInstallationStatus: installationUpdate.status,
-      repos: existingRepos,
-      removedRepoIds,
-    });
-
-    await this.handlerTx()
-      .mutate(({ forSchema }) => {
-        const uow = forSchema(githubAppSchema);
-
-        if (existingInstallation) {
-          uow.update("installation", installationId, (b) => b.set(installationUpdate));
-        } else {
-          uow.create("installation", {
-            id: installationId,
-            accountId: installationUpdate.accountId,
-            accountLogin: installationUpdate.accountLogin,
-            accountType: installationUpdate.accountType,
-            status: installationUpdate.status,
-            permissions: installationUpdate.permissions,
-            events: installationUpdate.events,
-            createdAt: now,
-            updatedAt: now,
-            lastWebhookAt: now,
-          });
-        }
-
-        if (hasRepoMutations) {
-          for (const record of creates) {
-            uow.create("installation_repo", toRepoCreateRecord(record));
-          }
-
-          for (const update of updates) {
-            uow.update("installation_repo", update.id, (b) => b.set(update.data));
-          }
-
-          for (const id of removals) {
-            uow.update("installation_repo", id, (b) => b.set({ removedAt: now, updatedAt: now }));
-          }
-
-          for (const id of linksToDelete) {
-            uow.delete("repo_link", id);
-          }
-        }
-        for (const change of linkStatusChanges) {
-          uow.triggerHook("onRepositoryLinkStatusChanged", change);
-        }
-      })
-      .execute();
-    await dispatchWebhookEvent(emitterEvent, this.idempotencyKey, meta);
+    await dispatchWebhookEvent(toEmitterWebhookEvent(data), this.idempotencyKey, meta);
   };
 };
