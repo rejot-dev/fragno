@@ -4,6 +4,8 @@ type JsCodemodeProvider = {
   check(input: JsCheckInput): Promise<JsCheckOutput>;
   /** Run top-level statements in a saved .js source file or a built .json module artifact under /static or /workspace. Ignores exports; artifacts run without compilation and startup errors are returned. */
   run(input: JsRunInput): Promise<JsRunOutput>;
+  /** Show the console logs and outcome of a codemode run in the current scope, by run ID. Readable only with at least the authority the run had: same principal, no extra delegation, no narrower scope restriction. Codemode run events carry run IDs; runs are kept for 7 days. */
+  logs(input: JsLogsInput): Promise<JsLogsOutput>;
   /** Compile a saved JavaScript ES module into a reusable JSON artifact under /workspace without executing or activating it. Consumers validate exports. */
   build(input: JsBuildInput): Promise<JsBuildOutput>;
 };
@@ -37,6 +39,25 @@ type JsRunOutput =
       path: string;
       error: string;
       logs: string[];
+    };
+type JsLogsInput = {
+  runId: string;
+};
+type JsLogsOutput =
+  | {
+      runId: string;
+      status: "running";
+    }
+  | {
+      runId: string;
+      status: "completed";
+      logs: string[];
+    }
+  | {
+      runId: string;
+      status: "failed";
+      logs: string[];
+      error: string;
     };
 type JsBuildInput = {
   path: string;

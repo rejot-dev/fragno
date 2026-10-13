@@ -45,6 +45,7 @@ import {
 import {
   javaScriptBuildToolFamily,
   javaScriptCheckToolFamily,
+  javaScriptLogsToolFamily,
   javaScriptRunToolFamily,
 } from "./families/javascript";
 import type { JavaScriptRuntime } from "./families/javascript-runtime";
@@ -135,6 +136,7 @@ export const runtimeToolFamilies = [
   telegramToolFamily,
   javaScriptCheckToolFamily,
   javaScriptRunToolFamily,
+  javaScriptLogsToolFamily,
   javaScriptBuildToolFamily,
   uploadToolFamily,
   marketplaceToolFamily,

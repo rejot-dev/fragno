@@ -2,8 +2,9 @@
 name: javascript-runtime
 description: >
   Use js.check, js.build, and js.run to check saved JavaScript, compile reusable module artifacts,
-  execute source or bundles, and diagnose build or startup errors. Load when a task uses the js.*
-  runtime; Pi workspace extension authoring also uses the pi-extensions skill.
+  execute source or bundles, diagnose build or startup errors, and review past runs' outcomes and
+  logs with js.logs. Load when a task uses the js.* runtime; Pi workspace extension authoring also
+  uses the pi-extensions skill.
 ---
 
 # JavaScript runtime
@@ -148,7 +149,40 @@ calls. Let the error surface; keep initialization pure and use immediate codemod
 callback for request-time I/O. There is no rewrite or source-compilation fallback after an artifact
 failure. Malformed or incompatible artifacts should be rebuilt with the available runtime, not
 hand-edited to bypass validation. A transport interruption leaves effects already performed with an
-unknown outcome; inspect state before repeating effectful work.
+unknown outcome; inspect state and the run history below before repeating effectful work.
+
+### Run history
+
+Every build and run, like immediate codemode, is recorded as a run in the current scope and emits
+`codemode` events: `run.started`, then `run.completed` or `run.failed`.
+
+| Field                                     | Contents                                                                                |
+| ----------------------------------------- | --------------------------------------------------------------------------------------- |
+| `subject.runId`                           | Links a run's started and outcome events                                                |
+| `payload.activationKind`                  | `module-build` (`js.build`), `module` (`js.run` source), `compiled` (`js.run` artifact) |
+| `payload.origin`                          | `{ kind: "file", path }` for saved files; `{ kind: "inline" }` for immediate code       |
+| `payload.startedAt`, `payload.finishedAt` | Run timing; `finishedAt` is on outcome events only                                      |
+| `payload.error`                           | Why a `run.failed` run failed                                                           |
+| `actors`                                  | Whoever started the run                                                                 |
+
+Use `events.list({ limit: 50 })` (newest first; requires `events.read`) and match
+`source === "codemode"` and `payload.origin.path` locally; `events.get({ id })` shows one event.
+Events arrive shortly after the run's state commits, so a run that just finished can appear a moment
+later. A `run.started` with no outcome event for its `runId` never reported finishing: treat its
+effects as unknown.
+
+Events omit console output. Read it with the run ID:
+
+```bash
+js.logs <run-id>
+```
+
+`js.logs({ runId })` returns `status: "running"` without logs, or the finished run's `logs` (and
+`error` when it failed). Reading requires at least the authority the run had: the same principal, a
+delegation chain the run's chain extends (a delegate cannot read its principal's direct runs, while
+the principal can read its delegates' runs), and a scope restriction that contains the run's.
+Otherwise `js.logs` fails with `CODEMODE_RUN_FORBIDDEN`. Runs are kept for 7 days; an older run ID
+fails with `CODEMODE_RUN_NOT_FOUND`, while its events remain.
 
 **Complete only when** the observed run succeeds and its expected logs or authorized effects are
 verified, or the observed failure and blocking requirement are reported. Running a Pi artifact

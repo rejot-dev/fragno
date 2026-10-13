@@ -1,4 +1,7 @@
-import { javaScriptBuildInputSchema } from "@fragno-dev/backoffice-api/v0/javascript";
+import {
+  javaScriptBuildInputSchema,
+  javaScriptLogsInputSchema,
+} from "@fragno-dev/backoffice-api/v0/javascript";
 
 import {
   parseCliTokens,
@@ -17,6 +20,7 @@ import type {
   JavaScriptBuildFileOutput,
   JavaScriptCheckFileOutput,
   JavaScriptRunFileOutput,
+  JavaScriptRunLogsOutput,
   JavaScriptRuntime,
 } from "./javascript-runtime";
 
@@ -53,6 +57,14 @@ function getJavaScriptBuildFile(context: JavaScriptToolContext) {
     throw new Error("JavaScript building is not available in this execution context.");
   }
   return buildFile;
+}
+
+function getJavaScriptReadRunLogs(context: JavaScriptToolContext) {
+  const readRunLogs = getJavaScriptRuntime(context).readRunLogs;
+  if (!readRunLogs) {
+    throw new Error("Codemode run logs are not available in this execution context.");
+  }
+  return readRunLogs;
 }
 
 const STANDARD_JAVASCRIPT_COMMAND_OPTIONS = new Set(["help", "print", "format", "json"]);
@@ -104,6 +116,23 @@ function formatJavaScriptRunOutput(
 
   const stdout = output.logs.length > 0 ? `${output.logs.join("\n")}\n` : "";
   if (output.status === "error") {
+    return { stdout, stderr: `${output.error}\n`, exitCode: 1 };
+  }
+  return { stdout };
+}
+
+function formatJavaScriptRunLogsOutput(
+  output: JavaScriptRunLogsOutput,
+  options: ReturnType<typeof readOutputOptions>,
+) {
+  if (options.format === "json" || options.print) {
+    return { data: output, ...(output.status === "failed" ? { exitCode: 1 } : {}) };
+  }
+  if (output.status === "running") {
+    return { stderr: `${output.runId} is still running; its logs are stored when it finishes.\n` };
+  }
+  const stdout = output.logs.length > 0 ? `${output.logs.join("\n")}\n` : "";
+  if (output.status === "failed") {
     return { stdout, stderr: `${output.error}\n`, exitCode: 1 };
   }
   return { stdout };
@@ -265,4 +294,48 @@ export const javaScriptRunToolFamily = defineBackofficeRuntimeToolFamily({
   isAvailable: (context: JavaScriptToolContext) =>
     context.runtimes.javascript?.runFile !== null &&
     context.runtimes.javascript?.runFile !== undefined,
+});
+
+const javaScriptLogsTool = defineBackofficeRuntimeTool({
+  ...backofficeApiOperationToolFields("js.logs"),
+  namespace: "js",
+  name: "logs",
+  execute: async (input, context: JavaScriptToolContext) =>
+    await getJavaScriptReadRunLogs(context)(input),
+  adapters: {
+    bash: {
+      command: "js.logs",
+      help: {
+        summary: "js.logs prints the console logs of a codemode run in the current scope.",
+        usage: "js.logs <run-id> [options]",
+        options: [],
+        examples: ["js.logs run-1", "js.logs run-1 --format json"],
+      },
+      parse: (args) => {
+        const parsed = parseCliTokens(args);
+        for (const option of parsed.options.keys()) {
+          if (!STANDARD_JAVASCRIPT_COMMAND_OPTIONS.has(option)) {
+            throw new Error(`js.logs does not accept option --${option}`);
+          }
+        }
+        if (parsed.positionals.length !== 1) {
+          throw new Error("js.logs requires exactly one run ID");
+        }
+        return javaScriptLogsInputSchema.parse({ runId: parsed.positionals[0] });
+      },
+      outputOptions: (_args, parsed: ParsedCliTokens) => readOutputOptions(parsed),
+      execute: async ({ input, context, commandOutput }) => {
+        const output = await getJavaScriptReadRunLogs(context)(input);
+        return formatJavaScriptRunLogsOutput(output, commandOutput);
+      },
+    },
+  },
+});
+
+/** Runtime tool family for reading the logs of past codemode runs. */
+export const javaScriptLogsToolFamily = defineBackofficeRuntimeToolFamily({
+  namespace: "js",
+  tools: [javaScriptLogsTool],
+  isAvailable: (context: JavaScriptToolContext) =>
+    Boolean(context.runtimes.javascript?.readRunLogs),
 });
