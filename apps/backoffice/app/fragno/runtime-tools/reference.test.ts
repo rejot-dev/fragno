@@ -324,13 +324,11 @@ describe("runtime tool reference generation", () => {
 
   test("renders void-input tools as zero-argument methods", () => {
     const file = createCodemodeTypeFiles({ families: runtimeToolFamilies }).find(
-      (candidate) => candidate.path === "/static/codemode/providers/api.d.ts",
+      (candidate) => candidate.path === "/static/codemode/providers/integrations.d.ts",
     );
     assert(file);
 
-    expect(file.content).toContain(
-      "listWebhookEndpoints(): Promise<ApiListWebhookEndpointsOutput>;",
-    );
-    expect(file.content).not.toContain("ApiListWebhookEndpointsInput");
+    expect(file.content).toContain("discover(): Promise<IntegrationsDiscoverOutput>;");
+    expect(file.content).not.toContain("IntegrationsDiscoverInput");
   });
 });

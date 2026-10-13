@@ -298,9 +298,8 @@ test("Codemode creates a custom API through setup and keeps one address across r
                 connectionCardinality: "multiple",
                 availability: { status: "available" },
                 setupTargets: [],
-                automationEvents: expect.arrayContaining([
-                  { source: "api", eventType: "webhook.received" },
-                ]),
+                // Inbound webhooks are their own service.
+                automationEvents: [],
               },
             ]),
             check: {

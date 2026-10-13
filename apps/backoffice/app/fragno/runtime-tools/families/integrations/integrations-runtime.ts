@@ -12,6 +12,7 @@ import { createMcpIntegration } from "./mcp-integration";
 import { createResendIntegration } from "./resend-integration";
 import { createReson8Integration } from "./reson8-integration";
 import { createTelegramIntegration } from "./telegram-integration";
+import { createWebhookIntegration } from "./webhook-integration";
 
 /** Every request resolves deterministic addresses against the selected scope's authoritative source. */
 export function createIntegrationsRuntime({
@@ -27,6 +28,7 @@ export function createIntegrationsRuntime({
 }): IntegrationsRuntime {
   const registry = createIntegrationRegistry([
     createApiIntegration({ runtime }),
+    createWebhookIntegration({ runtime }),
     createMcpIntegration({ runtime, nowEpochMs }),
     createGitHubIntegration({ runtime, nowEpochMs }),
     createReson8Integration({ runtime, nowEpochMs }),

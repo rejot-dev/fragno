@@ -172,6 +172,7 @@ function RecentEventInspector({
         .select(({ event }) => ({
           id: event.id,
           occurredAt: event.occurredAt,
+          subject: event.subject,
           payload: event.payload,
         })),
     [collections.events, eventDefinition.eventType, eventDefinition.source],
@@ -204,9 +205,9 @@ function RecentEventInspector({
                   {formatTimestamp(event.occurredAt)}
                 </p>
               </summary>
-              <pre className="backoffice-scroll mt-2 max-h-64 overflow-auto bg-[var(--bo-panel-2)] p-3 font-mono text-[11px] whitespace-pre-wrap text-[var(--bo-fg)]">
-                {JSON.stringify(event.payload, null, 2)}
-              </pre>
+              <EventJson label="Payload" value={event.payload} />
+              {/* Some events, such as connection state changes, carry everything in the subject. */}
+              {event.subject === null ? null : <EventJson label="Subject" value={event.subject} />}
             </details>
           ))}
         </div>
@@ -215,6 +216,19 @@ function RecentEventInspector({
           {recentEventsQuery.isLoading ? "Loading recent events…" : "No recent events recorded."}
         </p>
       )}
+    </div>
+  );
+}
+
+function EventJson({ label, value }: { label: string; value: unknown }) {
+  return (
+    <div className="mt-2">
+      <p className="text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
+        {label}
+      </p>
+      <pre className="backoffice-scroll mt-1 max-h-64 overflow-auto bg-[var(--bo-panel-2)] p-3 font-mono text-[11px] whitespace-pre-wrap text-[var(--bo-fg)]">
+        {JSON.stringify(value, null, 2)}
+      </pre>
     </div>
   );
 }

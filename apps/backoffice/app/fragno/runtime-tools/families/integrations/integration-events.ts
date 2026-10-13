@@ -20,7 +20,7 @@ const integrationConnectionSubjectSchema = z.object({
 
 // Every change that leaves the state fires, so consumers must tolerate repeats.
 const repeatNote =
-  "Fires for changes made through integrations.*, native pages, OAuth callbacks, and provider webhooks, each time a change leaves the connection in this state. Time passing alone, such as a token expiring, does not fire.";
+  "Fires for changes made through integrations.*, native pages, OAuth callbacks, and provider webhooks, each time a change leaves the connection in this state.";
 
 /** Connection state changes every integration service reports, keyed by the integration address. */
 export const integrationConnectionEvents = [
@@ -37,7 +37,7 @@ export const integrationConnectionEvents = [
     source: INTEGRATIONS_EVENT_SOURCE,
     eventType: "connection.unavailable",
     label: "Integration connection unavailable",
-    description: `The connection exists but cannot be used, for example while consent is pending, after credentials were cleared or rejected, or while the provider installation is suspended. integrations.describe lists the next steps. ${repeatNote}`,
+    description: `The connection exists but cannot be used, for example while consent is pending, after credentials were cleared or rejected, or while the provider installation is suspended. It also fires when an API or MCP access token without a refresh token expires. integrations.get lists the next steps. ${repeatNote}`,
     payloadSchema: z.strictObject({}),
     subjectSchema: integrationConnectionSubjectSchema,
     example: {},

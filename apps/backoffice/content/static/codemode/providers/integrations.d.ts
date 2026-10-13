@@ -118,7 +118,7 @@ type IntegrationSetupProgress =
       status: "needs-input";
       instructions: string;
       inputSchema: IntegrationJsonSchema;
-      /** Secret property names for input controls, never secret values. */
+      /** Secret property names for input controls, as dot-separated paths when nested; never secret values. */
       secretFields: string[];
     }
   | {

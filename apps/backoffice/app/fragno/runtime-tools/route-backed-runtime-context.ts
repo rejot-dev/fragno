@@ -47,7 +47,6 @@ import {
 } from "@/fragno/pi/manager/pi-manager-runtime";
 import { createAccountRuntime } from "@/fragno/runtime-tools/families/account-runtime";
 import { createAdminRuntime } from "@/fragno/runtime-tools/families/admin-runtime";
-import { createApiRuntime } from "@/fragno/runtime-tools/families/api-runtime";
 import { createAppsRuntime } from "@/fragno/runtime-tools/families/apps-runtime";
 import { createBackofficeCapabilitiesRuntime } from "@/fragno/runtime-tools/families/backoffice-capabilities";
 import { createCloudflareRuntime } from "@/fragno/runtime-tools/families/cloudflare-runtime";
@@ -68,14 +67,10 @@ import { createPackagesRuntime } from "@/fragno/runtime-tools/families/packages-
 import { createSandboxRouteRuntime } from "@/fragno/runtime-tools/families/sandbox-route-runtime";
 import { createUploadRuntime } from "@/fragno/runtime-tools/families/upload-runtime";
 import { createWebRuntime } from "@/fragno/runtime-tools/families/web-runtime";
-import { apiPublicAddress } from "@/fragno/scoped-public-fragment-routes";
 
 import type { InteractiveRuntimeToolContext } from "./bash-host";
 import { buildJavaScriptModuleFile } from "./families/javascript-build";
-import {
-  resolveRuntimeOrganization,
-  resolveRuntimePublicScopePathSegment,
-} from "./runtime-public-scope";
+import { resolveRuntimeOrganization } from "./runtime-public-scope";
 import { getRuntimeToolNamespacesByCapability, runtimeToolFamilies } from "./tool-families";
 
 export type RouteBackedRuntimeContextOptions = {
@@ -425,25 +420,6 @@ export const createRouteBackedRuntimeContext = ({
             scope: internalScope,
           }),
         }
-      : null,
-    api: runtime.config.bindings.api
-      ? (() => {
-          const object = isBackofficeObjectAvailableInContext("API", execution.scope)
-            ? kernel.scoped("API", execution.scope, runtime.objects.api)
-            : null;
-          return object
-            ? {
-                runtime: createApiRuntime(
-                  authorizedBackofficeObjectHttp(object.http, execution),
-                  async () =>
-                    apiPublicAddress(
-                      runtime.config.docsPublicBaseUrl,
-                      await resolveRuntimePublicScopePathSegment(runtime, execution.scope, "API"),
-                    ),
-                ),
-              }
-            : null;
-        })()
       : null,
     mcp: runtime.config.bindings.mcp
       ? (() => {
