@@ -72,11 +72,7 @@ export async function createFilesOverviewCollections({
       readOnly: true,
       persistence: "persistent",
       collection: createBackofficeStaticFileCollection(
-        createCodemodeStaticArtifactsResolver({
-          objects: runtime.objects,
-          config: runtime.config,
-          execution,
-        }),
+        createCodemodeStaticArtifactsResolver({ objects: runtime.objects, execution }),
       ),
     });
   }

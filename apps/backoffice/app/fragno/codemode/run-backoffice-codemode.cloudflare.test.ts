@@ -472,24 +472,6 @@ describe("runBackofficeCodemode", () => {
           content: [{ type: "text", text: `result for ${String(input.arguments?.query ?? "")}` }],
         };
       },
-      createServer: async () => {
-        throw new Error("not used");
-      },
-      deleteServer: async () => {
-        throw new Error("not used");
-      },
-      refreshServer: async () => {
-        throw new Error("not used");
-      },
-      startOAuth: async () => {
-        throw new Error("not used");
-      },
-      setToken: async () => {
-        throw new Error("not used");
-      },
-      getAuthStatus: async () => {
-        throw new Error("not used");
-      },
     };
 
     const result = await runBackofficeCodemode({
@@ -534,24 +516,6 @@ describe("runBackofficeCodemode", () => {
         throw new Error("MCP server list failed");
       },
       callTool: async () => {
-        throw new Error("not used");
-      },
-      createServer: async () => {
-        throw new Error("not used");
-      },
-      deleteServer: async () => {
-        throw new Error("not used");
-      },
-      refreshServer: async () => {
-        throw new Error("not used");
-      },
-      startOAuth: async () => {
-        throw new Error("not used");
-      },
-      setToken: async () => {
-        throw new Error("not used");
-      },
-      getAuthStatus: async () => {
         throw new Error("not used");
       },
     };
@@ -680,29 +644,23 @@ describe("runBackofficeCodemode", () => {
       families: runtimeToolFamilies,
       toolContext: context,
       code: `async () => {
-        const org = await context.org("org-1").mcp.listServers();
-        const user = await context.user("user-1").mcp.listServers();
-        const current = await mcp.listServers();
-        const project = await context.project("project-1").mcp.listServers();
-        const projectError = null;
-        let deleteError = null;
-        try {
-          await context.org("org-1").mcp.deleteServer({ slug: "blocked" });
-        } catch (error) {
-          deleteError = error.message;
-        }
-        return { org, user, current, project, projectError, deleteError };
+        const list = async (handle) =>
+          (await handle.list({ cursor: null })).connections.map((connection) => connection.connectionId);
+        return {
+          org: await list(context.org("org-1").integrations),
+          user: await list(context.user("user-1").integrations),
+          current: await list(integrations),
+          project: await list(context.project("project-1").integrations),
+        };
       }`,
     });
 
     expect(result.error).toBeUndefined();
-    expect(result.result).toMatchObject({
-      org: { servers: [{ slug: "org-org-1" }] },
-      user: { servers: [{ slug: "user-user-1" }] },
-      current: { servers: [{ slug: "org-org-1" }] },
-      project: { servers: [{ slug: "project-org-1:project-1" }] },
-      projectError: null,
-      deleteError: null,
+    expect(result.result).toEqual({
+      org: ["mcp#org-org-1"],
+      user: ["mcp#user-user-1"],
+      current: ["mcp#org-org-1"],
+      project: ["mcp#project-org-1:project-1"],
     });
     expect(calls).toEqual([
       // Installed MCP provider discovery for the selected current scope.
@@ -711,7 +669,6 @@ describe("runBackofficeCodemode", () => {
       { scope: "user:user-1", method: "GET", pathname: "/api/mcp/servers" },
       { scope: "org:org-1", method: "GET", pathname: "/api/mcp/servers" },
       { scope: "project:org-1:project-1", method: "GET", pathname: "/api/mcp/servers" },
-      { scope: "org:org-1", method: "DELETE", pathname: "/api/mcp/servers/blocked" },
     ]);
   });
 
@@ -885,9 +842,6 @@ const createScopedMcpRuntimeServices = (
             },
           ],
         });
-      }
-      if (request.method === "DELETE") {
-        return Response.json({ ok: true });
       }
       return Response.json({ error: "Unexpected MCP request" }, { status: 500 });
     };

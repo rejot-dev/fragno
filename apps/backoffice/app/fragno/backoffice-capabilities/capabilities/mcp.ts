@@ -29,7 +29,7 @@ export const mcpCapability: BackofficeCapability = {
   contributions: {
     connection: null,
     eventSources: [],
-    actionProviders: ["mcp"],
+    actionProviders: ["integrations"],
     hookScopes: [
       {
         id: "mcp",
@@ -38,7 +38,7 @@ export const mcpCapability: BackofficeCapability = {
           createDurableHookRepositoryFromCommands(objects.mcp.for(scope).commands),
       },
     ],
-    skillPaths: ["skills/mcp-connection/SKILL.md"],
+    skillPaths: ["skills/configuring-integrations/SKILL.md"],
     externalEntities: [],
     automationEvents: [
       {

@@ -26,13 +26,16 @@ import { InMemoryAuthObject } from "../../../workers/auth.do";
 import { InMemoryAutomationsObject } from "../../../workers/automations.do";
 import { InMemoryCodemodeObject } from "../../../workers/codemode.do";
 import { InMemoryFormsObject } from "../../../workers/forms.do";
+import { InMemoryGitHubWebhookRouterObject } from "../../../workers/github-webhook-router.do";
+import { InMemoryGitHubObject } from "../../../workers/github.do";
 import { InMemoryMcpObject } from "../../../workers/mcp.do";
 import { InMemoryOtpObject } from "../../../workers/otp.do";
+import { InMemoryProjectConnectorObject } from "../../../workers/project-connector.do";
 import { InMemoryResendObject } from "../../../workers/resend.do";
+import { InMemoryReson8Object } from "../../../workers/reson8.do";
 import { InMemoryTelegramObject } from "../../../workers/telegram.do";
 import { InMemoryUploadObject } from "../../../workers/upload.do";
 import { backofficeFiles, defineBackofficeScenario, runBackofficeScenario } from "./scenario";
-
 const scenarioObjects = {
   API: (input) => new InMemoryApiObject(input),
   APPS: (input) => new InMemoryAppsObject(input),
@@ -46,6 +49,10 @@ const scenarioObjects = {
   RESEND: (input) => new InMemoryResendObject(input),
   TELEGRAM: (input) => new InMemoryTelegramObject(input),
   UPLOAD: (input) => new InMemoryUploadObject(input),
+  GITHUB: (input) => new InMemoryGitHubObject(input),
+  GITHUB_WEBHOOK_ROUTER: (input) => new InMemoryGitHubWebhookRouterObject(input),
+  PROJECT_CONNECTOR: (input) => new InMemoryProjectConnectorObject(input),
+  RESON8: (input) => new InMemoryReson8Object(input),
 } satisfies LocalBackofficeObjects;
 
 describe("Backoffice codemode scenarios", () => {
@@ -251,11 +258,11 @@ describe("Backoffice codemode scenarios", () => {
     );
   });
 
-  test("exposes user-scoped MCP connection tools from scoped codemode handles", async () => {
+  test("exposes user-scoped integrations from scoped codemode handles", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         objects: scenarioObjects,
-        name: "codemode user scoped context uses MCP without capability setup",
+        name: "codemode user scoped context lists integrations without capability setup",
 
         files: backofficeFiles.workspaceStarter(),
 
@@ -264,14 +271,14 @@ describe("Backoffice codemode scenarios", () => {
         steps: ({ when, then }) => [
           when.codemode.run({
             scope: { kind: "org", orgId: "org-1" },
-            label: "use user-scoped MCP from codemode",
-            code: `async () => await context.user("scenario-user").mcp.listServers()`,
-            assertToolCalls: ["user:mcp.listServers"],
+            label: "use user-scoped integrations from codemode",
+            code: `async () => await context.user("scenario-user").integrations.list({ cursor: null })`,
+            assertToolCalls: ["user:integrations.list"],
           }),
 
-          then.assert("user scoped MCP was available without setup", (ctx) => {
-            const result = ctx.codemodeRuns.at(-1)?.result.result as { servers?: unknown[] };
-            expect(result.servers).toEqual([]);
+          then.assert("user scoped integrations were available without setup", (ctx) => {
+            const result = ctx.codemodeRuns.at(-1)?.result.result as { connections?: unknown[] };
+            expect(result.connections).toEqual([]);
           }),
         ],
       }),

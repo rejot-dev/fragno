@@ -82,14 +82,6 @@ const cases = [
     expectedMessage: "mcp_agensi is not defined",
     stepError: false,
   },
-  {
-    name: "missing tool call permission after successful discovery",
-    body: 'return await step.do("call MCP", { retries: { limit: 0, delay: 0 } }, async () => await mcp.callTool({ slug: "agensi", name: "search", arguments: {} }));',
-    grants: [BACKOFFICE_PERMISSION.mcp.serversRead],
-    expectedName: "BackofficeForbiddenError",
-    expectedMessage: "Required permission: mcp.tools.call.",
-    stepError: true,
-  },
 ];
 
 describe("MCP permission diagnostic scenarios", () => {

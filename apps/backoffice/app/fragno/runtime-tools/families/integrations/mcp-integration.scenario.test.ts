@@ -890,12 +890,28 @@ test("mcp addresses resolve only in their own scope and require both authority l
       then.assert(
         "listing combines finished sources and pauses only at a source with more pages",
         async (ctx) => {
+          // The API page creates connections directly through the Fragment.
+          const api = ctx.runtime.objects.api.for(orgScope).http;
+          for (let index = 0; index < 51; index++) {
+            const created = await api.fetchAuthorized(
+              new Request(
+                `https://api.do/api/api/connections/conn-${String(index).padStart(2, "0")}`,
+                {
+                  method: "PUT",
+                  headers: { "content-type": "application/json" },
+                  body: JSON.stringify({
+                    baseUrl: "https://api.provider.test",
+                    auth: { type: "none" },
+                  }),
+                },
+              ),
+              { execution: createBackofficeSystemExecution(orgScope) },
+            );
+            assert(created.ok, await created.clone().text());
+          }
           const run = await ctx.runCodemode({
             scope: orgScope,
             code: `async () => {
-              for (let index = 0; index < 51; index++) {
-                await api.createConnection({ slug: "conn-" + String(index).padStart(2, "0"), baseUrl: "https://api.provider.test" });
-              }
               const first = await integrations.list({ cursor: null });
               const second = await integrations.list({ cursor: first.cursor });
               return {

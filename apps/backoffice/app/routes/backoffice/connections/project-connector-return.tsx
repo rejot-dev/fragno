@@ -92,10 +92,10 @@ export default function BackofficeProjectConnectorReturn() {
                   Using the Backoffice terminal?
                 </summary>
                 <p className="mt-2 leading-6 text-[var(--bo-muted)]">
-                  Use the request ID from your original connect command:
+                  Check setup again with the connection ID from your original setup command:
                 </p>
                 <pre className="mt-3 overflow-x-auto border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4 text-xs leading-6">
-                  <code>connector.connections.refresh --request-id REQUEST_ID --format json</code>
+                  <code>integrations.setup --connection-id CONNECTION_ID</code>
                 </pre>
               </details>
               <p className="mt-4 text-sm leading-6 text-pretty text-[var(--bo-muted)]">

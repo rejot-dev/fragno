@@ -65,15 +65,10 @@ import {
   createUnavailableOtpRuntime,
 } from "@/fragno/runtime-tools/families/otp-runtime";
 import { createPackagesRuntime } from "@/fragno/runtime-tools/families/packages-runtime";
-import { createProjectConnectorRuntime } from "@/fragno/runtime-tools/families/project-connector-runtime";
 import { createSandboxRouteRuntime } from "@/fragno/runtime-tools/families/sandbox-route-runtime";
 import { createUploadRuntime } from "@/fragno/runtime-tools/families/upload-runtime";
 import { createWebRuntime } from "@/fragno/runtime-tools/families/web-runtime";
-import {
-  apiPublicAddress,
-  mcpPublicAddress,
-  projectConnectorPublicAddress,
-} from "@/fragno/scoped-public-fragment-routes";
+import { apiPublicAddress } from "@/fragno/scoped-public-fragment-routes";
 
 import type { InteractiveRuntimeToolContext } from "./bash-host";
 import { buildJavaScriptModuleFile } from "./families/javascript-build";
@@ -158,11 +153,7 @@ function createExecutionStaticFileCollection({
   execution,
 }: Pick<RouteBackedRuntimeContextOptions, "runtime" | "execution">) {
   return createBackofficeStaticFileCollection(
-    createCodemodeStaticArtifactsResolver({
-      objects: runtime.objects,
-      config: runtime.config,
-      execution,
-    }),
+    createCodemodeStaticArtifactsResolver({ objects: runtime.objects, execution }),
   );
 }
 
@@ -461,37 +452,7 @@ export const createRouteBackedRuntimeContext = ({
             : null;
           return object
             ? {
-                runtime: createMcpRuntime(
-                  authorizedBackofficeObjectHttp(object.http, execution),
-                  async () =>
-                    mcpPublicAddress(
-                      runtime.config.docsPublicBaseUrl,
-                      await resolveRuntimePublicScopePathSegment(runtime, execution.scope, "MCP"),
-                    ),
-                ),
-              }
-            : null;
-        })()
-      : null,
-    projectConnector: runtime.config.bindings.projectConnector
-      ? (() => {
-          const object = isBackofficeObjectAvailableInContext("PROJECT_CONNECTOR", execution.scope)
-            ? kernel.scoped("PROJECT_CONNECTOR", execution.scope, runtime.objects.projectConnector)
-            : null;
-          return object
-            ? {
-                runtime: createProjectConnectorRuntime(
-                  authorizedBackofficeObjectHttp(object.http, execution),
-                  async () =>
-                    projectConnectorPublicAddress(
-                      runtime.config.docsPublicBaseUrl,
-                      await resolveRuntimePublicScopePathSegment(
-                        runtime,
-                        execution.scope,
-                        "Connector",
-                      ),
-                    ),
-                ),
+                runtime: createMcpRuntime(authorizedBackofficeObjectHttp(object.http, execution)),
               }
             : null;
         })()

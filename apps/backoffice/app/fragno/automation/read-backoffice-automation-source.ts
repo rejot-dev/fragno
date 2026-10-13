@@ -26,7 +26,7 @@ export async function readBackofficeAutomationSource({
   path: string;
 }): Promise<string> {
   const staticFileCollection = createBackofficeStaticFileCollection(
-    createCodemodeStaticArtifactsResolver({ objects, config, execution }),
+    createCodemodeStaticArtifactsResolver({ objects, execution }),
   );
 
   if (execution.scope.kind === "system") {

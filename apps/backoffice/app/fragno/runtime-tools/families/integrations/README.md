@@ -5,10 +5,12 @@ existing service-owned configuration. They do not own credentials, binding recor
 history.
 
 API, MCP, GitHub, Reson8, Telegram, Resend, and Connector are implemented sources. Codemode and
-terminal commands use the same contracts, runtime, and permissions. Reson8, GitHub, Telegram, and
-Resend execution is exposed only through `integrations.*`; their former standalone tool families
-have been removed. Connector's, API's, and MCP's native tools remain available. All retain their
-underlying Fragments, Durable Objects, native permissions, ownership, and configuration controls.
+terminal commands use the same contracts, runtime, and permissions. Every source's connections are
+exposed only through `integrations.*`; the former standalone tool families have been removed. Two
+native surfaces remain because the facade does not cover them: `api.*` manages inbound webhook
+endpoints, and codemode generates a typed `mcp_<server>` provider per MCP server from its cached
+tools. All sources retain their underlying Fragments, Durable Objects, native permissions,
+ownership, and configuration controls.
 
 ## Public surface
 
@@ -95,35 +97,33 @@ and the read-only live checks require `connections.read`.
 Connector is registered only in user scope. Its namespace contains compact, reversible base64url
 encodings of source selectors, not encoded setup state:
 
-- `connector#a_<token>` selects one saved native account by its account ID. Listing publishes these
-  addresses so duplicate names and historical null names never collapse or disappear.
-- `connector#n_<token>` selects the exact project ID, provider configuration ID, and connection
-  name. This address works before OAuth assigns an account ID and resumes through the Fragment's
-  named lookups. A name matching multiple accounts fails explicitly.
+`connector#n_<token>` selects the exact project ID, provider configuration ID, and connection name.
+The address works before OAuth assigns an account ID and resumes through the Fragment's named
+lookups. A name matching multiple accounts or requests fails explicitly and asks for a fresh name;
+integration setup never starts a second request for a name, so only concurrent setups create such
+duplicates.
 
 Copy opaque addresses from discovery and listing; do not base64-encode the old JSON array. The
 canonical encoder in `connector-connection-id.ts` packs lowercase canonical UUIDs into 16 bytes and
 preserves every other component as a UTF-8 JSON string. A flags byte identifies packed UUIDs; JSON
 strings are NUL-terminated, since JSON escapes embedded NUL and lone UTF-16 surrogates. The entire
-payload uses unpadded base64url. An account UUID produces a 35-character address; two UUID selectors
-and the name `backoffice` produce a 74-character named address.
+payload uses unpadded base64url. Two UUID selectors and the name `backoffice` produce a 74-character
+address.
 
 Whitespace, case, quotes, Unicode, and additional `#` characters inside source components remain
 unchanged; uppercase UUID spellings use the lossless string representation, not normalization.
 Malformed and noncanonical encodings, including padding, fail closed. Old JSON-array addresses are
-not aliases. Tokens are reversible, not encrypted, and introduce no lookup or alias store. Neither
-form contains a user selector: the established execution scope owns every read. The same address in
-another user's scope selects that user's source, not the original user's data.
+not aliases. Tokens are reversible, not encrypted, and introduce no lookup or alias store. No
+address contains a user selector: the established execution scope owns every read. The same address
+in another user's scope selects that user's source, not the original user's data.
 
 Discovery groups provider configurations by their authoritative service IDs, such as `gmail`, rather
 than publishing `connector` as a service. It offers a preassigned `backoffice` name for each
 provider as a concrete setup target. This is a source alias, not a reservation, generated account
-ID, or facade-owned binding. Advanced callers can select another exact name. Configured listing uses
-account-ID addresses; a named address remains an independently usable selector when unambiguous.
+ID, or facade-owned binding. Advanced callers can select another exact name. Configured listing
+publishes each account under its named address.
 
-The native source currently exposes account metadata through cursor pages, not a by-ID metadata
-endpoint. Account-ID resolution reads those pages sequentially until the account is found, retaining
-only one page at a time. Listing always forwards exactly one native page and its cursor.
+Listing always forwards exactly one native page and its cursor.
 
 ## Service-owned setup
 
@@ -184,18 +184,18 @@ Non-OAuth submissions become `ready` without contacting the provider. Submitting
 configuration also starts consent, since the submission is already explicit; if starting fails, the
 connection remains and the next check asks for `{ start: true }`. A pending, unexpired link is
 persisted by the Fragment, so checks resume it across requests and object restarts and never start
-another flow. Native `api.startOAuth` can leave several pending links; any of them completes the
-same connection, so this is not treated as ambiguity. An expired link, or an expired access token
-without a refresh token, returns `needs-input` for `{ start: true }`, never a terminal state. The
-new link then takes precedence over the unusable tokens, so it resumes like any pending link. The
-Fragment reads only the newest live state through `idx_oauth_state_pending`, never the retained
-history of used and expired states. Ready connections ignore setup submissions and never replace
-credentials.
+another flow. Several pending links can exist, such as after concurrent starts; any of them
+completes the same connection, so this is not treated as ambiguity. An expired link, or an expired
+access token without a refresh token, returns `needs-input` for `{ start: true }`, never a terminal
+state. The new link then takes precedence over the unusable tokens, so it resumes like any pending
+link. The Fragment reads only the newest live state through `idx_oauth_state_pending`, never the
+retained history of used and expired states. Ready connections ignore setup submissions and never
+replace credentials.
 
-Native `api.deleteAuth` keeps the auth mode. A bearer connection then asks for a new token. Basic,
-client-credentials, and OAuth connections whose configuration was cleared are `blocked`, naming
-`integrations.reconfigure`. Concurrent OAuth starts are harmless extra pending links; setup promises
-no exactly-once consent.
+Clearing a connection's auth through the Fragment keeps the auth mode. A bearer connection then asks
+for a new token. Basic, client-credentials, and OAuth connections whose configuration was cleared
+are `blocked`, naming `integrations.reconfigure`. Concurrent OAuth starts are harmless extra pending
+links; setup promises no exactly-once consent.
 
 API reconfigure accepts the same flat variants as setup and replaces the connection in place through
 the Fragment's `PUT /connections/:slug/configuration`: base URL, name, auth mode, and credentials
@@ -253,7 +253,7 @@ in a public token, or add an integrations-owned attempt store to fit it into nam
 - `reson8-integration.ts`: existing organization configuration, authorized Fragno routes, and action
   validation, with injected provider fetch for scenarios.
 - `telegram-integration.ts`, `resend-integration.ts`: existing scope configuration, webhook checks,
-  and actions over the native tool runtimes.
+  and actions over internal clients.
 - `connector-connection-id.ts`: canonical, lossless base64url encoding of native Connector
   selectors.
 - `connector-integration.ts`: user-owned native requests/accounts, source-qualified addresses,
@@ -302,8 +302,8 @@ own input schema. Every tool shares the Fragment's result envelope as the output
 failure; auth, transport, and protocol failures throw. Successful `structuredContent` is validated
 against the tool's output schema when it declares one. A tool whose input or output schema cannot be
 validated is withheld from actions rather than published with a weaker contract, and inspection
-names it; it stays callable through native `mcp.callTool`. Connector instead fails the whole
-catalog, since its catalogs are curated.
+names it; it stays callable through the generated `mcp_<server>` codemode provider. Connector
+instead fails the whole catalog, since its catalogs are curated.
 
 Source schemas without an explicit dialect use JSON Schema 2020-12; draft-07, which MCP SDK servers
 publish, is also accepted and validated as draft-07. Other explicit dialects, unresolved references,

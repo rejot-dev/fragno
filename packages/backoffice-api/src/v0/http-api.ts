@@ -6,14 +6,6 @@ import { BACKOFFICE_PERMISSION } from "./shared/permissions";
 
 export const webhookSecretRefSchema = z.string().trim().min(1);
 
-export const apiResponseBodySchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("json"), value: z.unknown() }),
-  z.object({ type: z.literal("text"), value: z.string() }),
-  z.object({ type: z.literal("empty"), value: z.null() }),
-]);
-
-export type ApiResponseBody = z.infer<typeof apiResponseBodySchema>;
-
 const webhookRequestValueNameSchema = z.string().trim().min(1);
 
 export const webhookEndpointAuthInputSchema = z.discriminatedUnion("type", [
@@ -54,23 +46,6 @@ export const webhookEndpointAuthInputSchema = z.discriminatedUnion("type", [
 ]);
 
 export type WebhookEndpointAuthInput = z.infer<typeof webhookEndpointAuthInputSchema>;
-
-export const apiRequestBodySchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("empty") }),
-  z.object({ type: z.literal("json"), value: z.unknown() }),
-  z.object({ type: z.literal("text"), value: z.string() }),
-]);
-
-export type ApiRequestBody = z.infer<typeof apiRequestBodySchema>;
-
-export const apiHttpResponseSchema = z.object({
-  status: z.number().int(),
-  statusText: z.string(),
-  headers: z.record(z.string(), z.string()),
-  body: apiResponseBodySchema,
-});
-
-export type ApiHttpResponse = z.infer<typeof apiHttpResponseSchema>;
 
 export const webhookRequestValueSourceSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("header"), name: webhookRequestValueNameSchema }),
@@ -137,43 +112,6 @@ export const createWebhookEndpointInputSchema = z.object({
 
 export type WebhookEndpointInput = z.infer<typeof createWebhookEndpointInputSchema>;
 
-export const apiRequestOutputSchema = z.discriminatedUnion("ok", [
-  z.object({
-    ok: z.literal(true),
-    response: apiHttpResponseSchema,
-    error: z.null(),
-  }),
-  z.object({
-    ok: z.literal(false),
-    response: apiHttpResponseSchema.nullable(),
-    error: z.object({
-      code: z.enum([
-        "HTTP_ERROR",
-        "REQUEST_ERROR",
-        "RESPONSE_DECODING_ERROR",
-        "CONNECTION_NOT_FOUND",
-        "CONNECTION_DISABLED",
-      ]),
-      message: z.string(),
-    }),
-  }),
-]);
-
-export const requestOutputSchema = apiRequestOutputSchema;
-
-export type ApiRequestOutput = z.infer<typeof requestOutputSchema>;
-
-export const apiRequestInputSchema = z.object({
-  method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]),
-  path: z.string().min(1),
-  query: z.record(z.string(), z.string()).optional(),
-  headers: z.record(z.string(), z.string()).optional(),
-  body: apiRequestBodySchema,
-  timeoutMs: z.number().int().positive().max(120_000).optional(),
-});
-
-export type ApiRequestInput = z.infer<typeof apiRequestInputSchema>;
-
 export type WebhookRequestValueSource = z.infer<typeof webhookRequestValueSourceSchema>;
 
 export const secretRefSchema = z.string().trim().min(1);
@@ -237,121 +175,11 @@ export const webhookEndpointOutputSchema = z.object({
 
 export type WebhookEndpoint = z.infer<typeof webhookEndpointOutputSchema>;
 
-export const authSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("none") }),
-  z.object({ type: z.literal("bearer"), token: z.string().trim().min(1) }),
-  z.object({
-    type: z.literal("basic"),
-    username: z.string().trim().min(1),
-    password: z.string().min(1),
-  }),
-  z.object({
-    type: z.literal("oauth"),
-    authorizationEndpoint: z.url(),
-    tokenEndpoint: z.url(),
-    clientId: z.string().trim().min(1),
-    clientSecret: z.string().trim().min(1).optional(),
-    scopes: z.array(z.string().trim().min(1)).optional(),
-    tokenEndpointAuthMethod: z.enum(["client_secret_basic", "client_secret_post", "none"]),
-  }),
-  z.object({
-    type: z.literal("client_credentials"),
-    tokenEndpoint: z.url(),
-    clientId: z.string().trim().min(1),
-    clientSecret: z.string().trim().min(1),
-    scopes: z.array(z.string().trim().min(1)).optional(),
-    audience: z.string().trim().min(1).optional(),
-    tokenEndpointAuthMethod: z.enum(["client_secret_basic", "client_secret_post"]),
-  }),
-]);
-
-const apiCredentialsPresenceSchema = z
-  .enum(["present", "missing"])
-  .describe("Whether credentials are stored, not whether the provider accepts them.");
-
 /** Sanitized auth state derived from stored configuration; it never proves live provider access. */
-export const apiAuthStatusSchema = z.discriminatedUnion("mode", [
-  z.object({ mode: z.literal("none") }),
-  z.object({ mode: z.literal("bearer"), credentials: apiCredentialsPresenceSchema }),
-  z.object({ mode: z.literal("basic"), credentials: apiCredentialsPresenceSchema }),
-  z.object({ mode: z.literal("client_credentials"), credentials: apiCredentialsPresenceSchema }),
-  z.object({
-    mode: z.literal("oauth"),
-    state: z
-      .enum(["client-missing", "consent-required", "consent-pending", "authorized", "expired"])
-      .describe(
-        "Expired means the access token expired and no refresh token is stored; pending means an unexpired authorization link exists.",
-      ),
-  }),
-]);
-
-export type ApiAuthStatus = z.infer<typeof apiAuthStatusSchema>;
-
-export const connectionSchema = z.object({
-  slug: z.string().trim().min(1),
-  name: z.string().nullable().optional(),
-  baseUrl: z.url(),
-  authMode: z.string().trim().min(1),
-  status: z.string().trim().min(1),
-  createdAt: dateTimeStringOutputSchema.optional(),
-  updatedAt: dateTimeStringOutputSchema.optional(),
-});
-
-export type ApiConnection = z.infer<typeof connectionSchema>;
-
-export const connectionsInputSchema = z
-  .strictObject({ cursor: z.string().nullable().default(null) })
-  .optional()
-  .default({ cursor: null });
-
-export type ApiListConnectionsInput = z.output<typeof connectionsInputSchema>;
-
-export const connectionsOutputSchema = z.object({
-  connections: z.array(connectionSchema),
-  cursor: z.string().nullable(),
-});
-
-export type ApiListConnectionsOutput = z.infer<typeof connectionsOutputSchema>;
-
 /** Slugs are URL path segments; whitespace and dot segments would make a connection unaddressable. */
-export const apiConnectionSlugSchema = z
-  .string()
-  .regex(
-    /^[A-Za-z0-9][A-Za-z0-9._-]*$/,
-    "API connection slugs start with a letter or digit and contain only letters, digits, '.', '_', or '-'.",
-  );
-
-export const createConnectionInputSchema = z.object({
-  slug: apiConnectionSlugSchema,
-  name: z.string().trim().optional(),
-  baseUrl: z.url(),
-  auth: authSchema.default({ type: "none" }),
-});
-
 export const deleteOutputSchema = z.object({ ok: z.literal(true) });
 
 export const endpointInputSchema = z.object({ endpointId: z.string().trim().min(1) });
-
-export const apiOAuthStartInputSchema = z.object({
-  slug: z.string().trim().min(1),
-  scopes: z.array(z.string().trim().min(1)).optional(),
-  extraAuthorizationParams: z.record(z.string(), z.string()).optional(),
-});
-
-export const apiOAuthStartOutputSchema = z.object({ authorizationUrl: z.url(), state: z.string() });
-
-export type ApiOAuthStartOutput = z.infer<typeof apiOAuthStartOutputSchema>;
-
-export const requestInputSchema = apiRequestInputSchema.extend({
-  slug: z.string().trim().min(1),
-});
-
-export const apiSetTokenInputSchema = z.object({
-  slug: z.string().trim().min(1),
-  token: z.string().trim().min(1),
-});
-
-export const slugInputSchema = z.object({ slug: z.string().trim().min(1) });
 
 export const webhookEndpointCreateInputSchema = createWebhookEndpointInputSchema.extend({
   endpointId: z.string().trim().min(1),
@@ -372,50 +200,6 @@ export const webhookEndpointsOutputSchema = z.object({ endpoints: z.array(webhoo
 export type ApiWebhookEndpointsOutput = z.infer<typeof webhookEndpointsOutputSchema>;
 
 export const httpApiOperations = {
-  "api.connections.list": {
-    description:
-      "List API connections configured for the current scope, one cursor page at a time.",
-    permissions: [BACKOFFICE_PERMISSION.api.connectionsRead],
-    input: connectionsInputSchema,
-    output: connectionsOutputSchema,
-  },
-  "api.connections.create": {
-    description: "Create an outbound HTTP API connection.",
-    permissions: [BACKOFFICE_PERMISSION.api.connectionsCreate],
-    input: createConnectionInputSchema,
-    output: connectionSchema,
-  },
-  "api.connections.delete": {
-    description: "Delete an API connection and its stored auth state.",
-    permissions: [BACKOFFICE_PERMISSION.api.connectionsDelete],
-    input: slugInputSchema,
-    output: deleteOutputSchema,
-  },
-  "api.auth.status": {
-    description: "Read auth status for an API connection.",
-    permissions: [BACKOFFICE_PERMISSION.api.connectionsRead],
-    input: slugInputSchema,
-    output: apiAuthStatusSchema,
-  },
-  "api.auth.token": {
-    description: "Store a bearer token for a configured API connection.",
-    permissions: [BACKOFFICE_PERMISSION.api.connectionsCreate],
-    input: apiSetTokenInputSchema,
-    output: apiAuthStatusSchema,
-  },
-  "api.oauth.start": {
-    description:
-      "Start OAuth login for a configured API connection and return the authorization URL.",
-    permissions: [BACKOFFICE_PERMISSION.api.connectionsCreate],
-    input: apiOAuthStartInputSchema,
-    output: apiOAuthStartOutputSchema,
-  },
-  "api.auth.delete": {
-    description: "Delete stored auth for an API connection.",
-    permissions: [BACKOFFICE_PERMISSION.api.connectionsDelete],
-    input: slugInputSchema,
-    output: deleteOutputSchema,
-  },
   "api.webhooks.list": {
     description: "List API webhook endpoints configured for the current scope.",
     permissions: [BACKOFFICE_PERMISSION.api.webhooksRead],
@@ -445,11 +229,5 @@ export const httpApiOperations = {
     permissions: [BACKOFFICE_PERMISSION.api.webhooksManage],
     input: endpointInputSchema,
     output: deleteOutputSchema,
-  },
-  "api.request": {
-    description: "Execute an HTTP request through a configured API connection.",
-    permissions: [BACKOFFICE_PERMISSION.api.requestsExecute],
-    input: requestInputSchema,
-    output: requestOutputSchema,
   },
 } satisfies Record<string, BackofficeApiOperation>;

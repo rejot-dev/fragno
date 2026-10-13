@@ -17,8 +17,6 @@
 /// <reference path="/static/codemode/providers/cloudflare.d.ts" />
 /// <reference path="/static/codemode/providers/web.d.ts" />
 /// <reference path="/static/codemode/providers/api.d.ts" />
-/// <reference path="/static/codemode/providers/mcp.d.ts" />
-/// <reference path="/static/codemode/providers/connector.d.ts" />
 /// <reference path="/static/codemode/providers/otp.d.ts" />
 /// <reference path="/static/codemode/providers/pi.d.ts" />
 /// <reference path="/static/codemode/providers/sandbox.d.ts" />
@@ -53,8 +51,6 @@ interface BackofficeCodemodeScopedProviders {
   cloudflare: CloudflareCodemodeProvider;
   web: WebCodemodeProvider;
   api: ApiCodemodeProvider;
-  mcp: McpCodemodeProvider;
-  connector: ConnectorCodemodeProvider;
   otp: OtpCodemodeProvider;
   pi: PiCodemodeProvider;
   sandbox: SandboxCodemodeProvider;

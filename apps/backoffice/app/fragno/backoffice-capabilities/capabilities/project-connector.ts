@@ -8,9 +8,9 @@ export const connectorCapability: BackofficeCapability = {
   contributions: {
     connection: null,
     eventSources: [],
-    actionProviders: ["connector", "integrations"],
+    actionProviders: ["integrations"],
     hookScopes: [],
-    skillPaths: ["skills/open-connector-connection/SKILL.md"],
+    skillPaths: ["skills/configuring-integrations/SKILL.md"],
     externalEntities: [],
     automationEvents: [],
   },

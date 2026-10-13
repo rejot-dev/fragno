@@ -50,14 +50,12 @@ import {
 import type { JavaScriptRuntime } from "./families/javascript-runtime";
 import { marketplaceToolFamily } from "./families/marketplace";
 import type { MarketplaceRuntime } from "./families/marketplace-runtime";
-import { mcpToolFamily, type McpRuntime } from "./families/mcp";
+import type { McpRuntime } from "./families/mcp-runtime";
 import { organizationToolFamily, type OrganizationRuntime } from "./families/organization";
 import { otpToolFamily, type OtpRuntime } from "./families/otp";
 import { packagesToolFamily } from "./families/packages";
 import type { PackagesRuntime } from "./families/packages-runtime";
 import { piToolFamily } from "./families/pi";
-import { projectConnectorToolFamily } from "./families/project-connector";
-import type { ProjectConnectorRuntime } from "./families/project-connector-runtime";
 import { sandboxToolFamily, type SandboxRuntime } from "./families/sandbox";
 import { uploadToolFamily } from "./families/upload";
 import type { UploadRuntime } from "./families/upload-runtime";
@@ -89,7 +87,6 @@ export type CoreBackofficeRuntimeMap = {
   mcp?: McpRuntime;
   marketplace: MarketplaceRuntime | undefined;
   packages: PackagesRuntime | undefined;
-  projectConnector: ProjectConnectorRuntime | undefined;
   otp?: OtpRuntime;
   pi?: PiManagerRuntime;
   sandbox?: SandboxRuntime;
@@ -120,8 +117,6 @@ export const runtimeToolFamilies = [
   cloudflareToolFamily,
   webToolFamily,
   apiToolFamily,
-  mcpToolFamily,
-  projectConnectorToolFamily,
   otpToolFamily,
   piToolFamily,
   sandboxToolFamily,
@@ -148,8 +143,6 @@ const namespaceCapabilityIds = {
   events: "automations",
   forms: "forms",
   api: "api",
-  mcp: "mcp",
-  connector: "connector",
   otp: "otp",
   pi: "pi",
   sandbox: "sandbox",

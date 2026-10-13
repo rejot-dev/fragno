@@ -165,33 +165,12 @@ export function createConnectorIntegration({
       }
       return fail(response);
     }
-    async function accountById(accountId: string): Promise<ConnectorAccount | null> {
-      // The source exposes paged account metadata, not an account-by-ID metadata endpoint.
-      // Consume one native page at a time; never infer a provider from an opaque account ID.
-      let cursor: string | null = null;
-      do {
-        const response = await invoke(
-          BACKOFFICE_PERMISSION.connector.accountsRead,
-          { accountId },
-          () => callRoute("GET", "/accounts", { query: cursor === null ? {} : { cursor } }),
-        );
-        if (response.type !== "json" || !isSuccessStatus(response.status)) {
-          return fail(response);
-        }
-        const account = response.data.accounts.find((account) => account.id === accountId);
-        if (account) {
-          return account;
-        }
-        cursor = response.data.cursor;
-      } while (cursor !== null);
-      return null;
-    }
     function namedAccount(selector: z.output<typeof projectConnectorNamedConnectionSchema>) {
       return invoke(BACKOFFICE_PERMISSION.connector.accountsRead, selector, () =>
         callRoute("GET", "/accounts/by-name", { query: selector }),
       );
     }
-    return { callRoute, invoke, fail, isNotConfigured, providers, accountById, namedAccount };
+    return { callRoute, invoke, fail, isNotConfigured, providers, namedAccount };
   }
 
   return {
@@ -209,21 +188,8 @@ export function createConnectorIntegration({
           };
         }
         const access = createConnectorAccess(context);
-        if (address[0] === "account") {
-          return (await access.accountById(address[1]))
-            ? { connectionId, status: "ready" }
-            : {
-                connectionId,
-                status: "blocked",
-                reason:
-                  "Connector integration account not found. Select a named OAuth setup target instead.",
-              };
-        }
-        const selector = {
-          projectId: address[1],
-          providerConfigId: address[2],
-          connectionName: address[3],
-        };
+        const [, projectId, providerConfigId, connectionName] = address;
+        const selector = { projectId, providerConfigId, connectionName };
         const account = await access.namedAccount(selector);
         if (access.isNotConfigured(account)) {
           return {
@@ -246,7 +212,7 @@ export function createConnectorIntegration({
             connectionId,
             status: "blocked",
             reason:
-              "Connector named connection matches multiple accounts. Select an account-ID address instead.",
+              "Connector named connection matches multiple accounts. Start setup with a fresh connection name.",
           };
         } else {
           return access.fail(account);
@@ -266,7 +232,7 @@ export function createConnectorIntegration({
               connectionId,
               status: "blocked",
               reason:
-                "Connector named connection matches multiple OAuth requests. Use the native request ID or a fresh connection name; no current attempt is inferred.",
+                "Connector named connection matches multiple OAuth requests, and no current attempt is inferred. Start setup with a fresh connection name.",
             };
           }
           return access.fail(saved);
@@ -279,7 +245,7 @@ export function createConnectorIntegration({
               connectionId,
               status: "blocked",
               reason:
-                "Connector OAuth completed, but no current account matches this name. Select the account-ID address or a fresh connection name.",
+                "Connector OAuth completed, but no current account has this name. Start setup with a fresh connection name.",
             };
           }
           if (request.state.status !== "initiated") {
@@ -438,46 +404,28 @@ export function createConnectorIntegration({
     async resolve(context, localId) {
       const address = decodeConnectorConnectionLocalId(localId);
       const access = createConnectorAccess(context);
-      let account: ConnectorAccount | null;
+      const [, projectId, providerConfigId, name] = address;
+      const response = await access.namedAccount({
+        projectId,
+        providerConfigId,
+        connectionName: name,
+      });
+      if (response.type !== "json" || !isSuccessStatus(response.status)) {
+        return access.fail(response);
+      }
+      const account = response.data.account;
       let service: string;
-      let name: string;
-      let projectId: string;
-      let providerConfigId: string;
-      if (address[0] === "account") {
-        account = await access.accountById(address[1]);
-        if (!account) {
-          throw new Error("Connector integration account not found.");
-        }
+      if (account) {
         service = account.service;
-        name = account.connectionName;
-        projectId = account.projectId;
-        providerConfigId = account.providerConfigId;
       } else {
-        const selector = {
-          projectId: address[1],
-          providerConfigId: address[2],
-          connectionName: address[3],
-        };
-        const response = await access.namedAccount(selector);
-        if (response.type !== "json" || !isSuccessStatus(response.status)) {
-          return access.fail(response);
+        const discovery = await access.providers();
+        const provider = discovery.providerConfigs.find(
+          (provider) => provider.id === providerConfigId,
+        );
+        if (discovery.projectId !== projectId || !provider) {
+          throw new Error("Connector integration named connection not found.");
         }
-        account = response.data.account;
-        projectId = selector.projectId;
-        providerConfigId = selector.providerConfigId;
-        name = selector.connectionName;
-        if (account) {
-          service = account.service;
-        } else {
-          const discovery = await access.providers();
-          const provider = discovery.providerConfigs.find(
-            (provider) => provider.id === providerConfigId,
-          );
-          if (discovery.projectId !== projectId || !provider) {
-            throw new Error("Connector integration named connection not found.");
-          }
-          service = provider.service;
-        }
+        service = provider.service;
       }
       return {
         identity: {

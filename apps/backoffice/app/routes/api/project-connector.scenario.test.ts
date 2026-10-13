@@ -1,5 +1,6 @@
 import { assert, expect, test, vi } from "vitest";
 
+import { integrationSetupProgressSchema } from "@fragno-dev/backoffice-api/v0/integrations";
 import { z } from "zod";
 
 const workers = vi.hoisted(() => ({
@@ -14,6 +15,7 @@ import { projectConnectorConnectionSchema } from "@fragno-dev/project-connector-
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import type { BackofficeScenarioContext } from "@/fragno/automation/scenario";
+import { encodeConnectorConnectionId } from "@/fragno/runtime-tools/families/integrations/connector-connection-id";
 import { runProjectConnectorScenario } from "@/fragno/runtime-tools/families/project-connector-scenario.test-utils";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
@@ -81,6 +83,56 @@ async function callPublicProjectConnector(
   return method === "GET" ? await loader(args) : await action(args);
 }
 
+const workConnectionId = encodeConnectorConnectionId([
+  "named",
+  "project-1",
+  "gmail-provider",
+  "work",
+]);
+
+/** Runs one integrations call for a user from an organization's codemode, as an agent would. */
+async function runUserIntegrations(ctx: BackofficeScenarioContext, userId: string, call: string) {
+  const run = await ctx.runCodemode({
+    scope: { kind: "org", orgId: "org-1" },
+    label: `integrations for ${userId}`,
+    code: `async () => await context.user(${JSON.stringify(userId)}).integrations.${call}`,
+  });
+  return run.result;
+}
+
+/** Starts consent through setup; the test gateway's authorization link ends in the request ID. */
+async function startConnectorConsent(ctx: BackofficeScenarioContext, userId: string) {
+  const progress = integrationSetupProgressSchema.parse(
+    await runUserIntegrations(
+      ctx,
+      userId,
+      `setup({ kind: "input", connectionId: ${JSON.stringify(workConnectionId)}, input: { start: true } })`,
+    ),
+  );
+  assert(progress.status === "needs-authorization");
+  const requestId = new URL(progress.authorizationUrl).pathname.split("/").at(-1);
+  assert(requestId);
+  return requestId;
+}
+
+/** A setup check refreshes the saved request, confirming consent with the gateway. */
+async function checkConnectorSetup(ctx: BackofficeScenarioContext, userId: string) {
+  return integrationSetupProgressSchema.parse(
+    await runUserIntegrations(
+      ctx,
+      userId,
+      `setup({ kind: "check", connectionId: ${JSON.stringify(workConnectionId)} })`,
+    ),
+  );
+}
+
+async function listConnectionIds(ctx: BackofficeScenarioContext, userId: string) {
+  const page = (await runUserIntegrations(ctx, userId, "list({ cursor: null })")) as {
+    connections: { connectionId: string }[];
+  };
+  return page.connections.map((connection) => connection.connectionId);
+}
+
 async function issueBackofficeAccessCookie(
   ctx: BackofficeScenarioContext,
   sessionCookie: string,
@@ -113,12 +165,7 @@ test("an anonymous OAuth browser return cannot create or forge a Connector accou
     setup: ({ given }) => [
       given.organization.exists({ id: "org-1", slug: "ada-labs", name: "Ada Labs" }),
     ],
-    steps: ({ when, then }) => [
-      when.codemode.run({
-        scope: { kind: "org", orgId: "org-1" },
-        label: "start provider OAuth",
-        code: 'async () => await context.user("user-1").connector.connect({ service: "gmail", connectionName: "work" })',
-      }),
+    steps: ({ then }) => [
       then.assert(
         "forged success returns navigate without gateway verification or account writes",
         async (ctx) => {
@@ -141,13 +188,11 @@ test("an anonymous OAuth browser return cannot create or forge a Connector accou
           );
           assert(!ctx.runtime.hasObjectInstance(callbackOnlyUser));
 
-          const connection = projectConnectorConnectionSchema.parse(
-            ctx.codemodeRuns.at(-1)?.result.result,
-          );
+          const requestId = await startConnectorConsent(ctx, "user-1");
           const callback = await callPublicProjectConnector(
             ctx,
             "user:user-1",
-            `/oauth/callback?status=success&connection_request_id=${connection.id}&connected_account_id=forged-account&user_id=forged-user`,
+            `/oauth/callback?status=success&connection_request_id=${requestId}&connected_account_id=forged-account&user_id=forged-user`,
             "GET",
             null,
           );
@@ -165,12 +210,7 @@ test("an anonymous OAuth browser return cannot create or forge a Connector accou
             null,
           );
           assert(organizationCallback.status === 404);
-          const before = await ctx.runCodemode({
-            scope: { kind: "org", orgId: "org-1" },
-            label: "list before gateway confirmation",
-            code: 'async () => await context.user("user-1").connector.listAccounts()',
-          });
-          expect(before.result).toMatchObject({ accounts: [] });
+          expect(await listConnectionIds(ctx, "user-1")).toEqual([]);
           const post = await callPublicProjectConnector(
             ctx,
             "user:user-1",
@@ -183,12 +223,12 @@ test("an anonymous OAuth browser return cannot create or forge a Connector accou
           const anonymousRefresh = await callPublicProjectConnector(
             ctx,
             "user:user-1",
-            `/connection-requests/${connection.id}/refresh`,
+            `/connection-requests/${requestId}/refresh`,
             "POST",
             null,
           );
           assert(anonymousRefresh.status === 401);
-          gateway.authorize(connection.id, "verified-account");
+          gateway.authorize(requestId, "verified-account");
           await callPublicProjectConnector(
             ctx,
             "user:user-1",
@@ -196,21 +236,10 @@ test("an anonymous OAuth browser return cannot create or forge a Connector accou
             "GET",
             null,
           );
-          const afterReturn = await ctx.runCodemode({
-            scope: { kind: "org", orgId: "org-1" },
-            label: "callback still did not persist",
-            code: 'async () => await context.user("user-1").connector.listAccounts()',
-          });
-          expect(afterReturn.result).toMatchObject({ accounts: [] });
-          const verified = await ctx.runCodemode({
-            scope: { kind: "org", orgId: "org-1" },
-            label: "perform authorized gateway refresh",
-            code: `async () => { const connector = context.user("user-1").connector; return { connection: await connector.refreshConnection({ requestId: ${JSON.stringify(connection.id)} }), accounts: await connector.listAccounts() }; }`,
-          });
-          expect(verified.result).toMatchObject({
-            connection: { state: { status: "connected", connectedAccountId: "verified-account" } },
-            accounts: { accounts: [{ id: "verified-account" }] },
-          });
+          // The browser return still did not persist anything.
+          expect(await listConnectionIds(ctx, "user-1")).toEqual([]);
+          expect(await checkConnectorSetup(ctx, "user-1")).toMatchObject({ status: "ready" });
+          expect(await listConnectionIds(ctx, "user-1")).toEqual([workConnectionId]);
         },
       ),
     ],
@@ -256,18 +285,8 @@ test("public action requests enforce verified execution permissions before conta
         );
         const publicScope = `user:${userId}`;
         const accountId = "private-account";
-        const started = await ctx.runCodemode({
-          scope: { kind: "org", orgId: "org-1" },
-          label: `start consent for ${accountId}`,
-          code: `async () => await context.user(${JSON.stringify(userId)}).connector.connect({ service: "gmail", connectionName: "work" })`,
-        });
-        const connection = projectConnectorConnectionSchema.parse(started.result);
-        gateway.authorize(connection.id, accountId);
-        await ctx.runCodemode({
-          scope: { kind: "org", orgId: "org-1" },
-          label: `verify ${accountId}`,
-          code: `async () => await context.user(${JSON.stringify(userId)}).connector.refreshConnection({ requestId: ${JSON.stringify(connection.id)} })`,
-        });
+        gateway.authorize(await startConnectorConsent(ctx, userId), accountId);
+        expect(await checkConnectorSetup(ctx, userId)).toMatchObject({ status: "ready" });
         const profile = await callPublicProjectConnector(
           ctx,
           publicScope,

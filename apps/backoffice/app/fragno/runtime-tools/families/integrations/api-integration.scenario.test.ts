@@ -19,6 +19,8 @@ const workers = vi.hoisted(() => ({
 }));
 vi.mock("cloudflare:workers", () => workers);
 
+import { API_OAUTH_REDIRECT_URI_QUERY_PARAMETER } from "@fragno-dev/api-fragment/types";
+
 import { withBackofficeActorCapabilityGrants } from "@/backoffice-runtime/authority-resolver";
 import {
   createBackofficeSystemExecution,
@@ -225,6 +227,26 @@ async function connectionEventTypes(
     .sort();
 }
 
+/** Calls the API Fragment directly, as the Backoffice API page does outside the facade. */
+async function callApiFragment(
+  ctx: BackofficeScenarioContext,
+  scope: BackofficeContextScope,
+  method: "PUT" | "POST" | "DELETE",
+  path: string,
+  body: unknown,
+) {
+  const response = await ctx.runtime.objects.api.for(scope).http.fetchAuthorized(
+    new Request(`https://api.do/api/api${path}`, {
+      method,
+      headers: { "content-type": "application/json" },
+      body: body === null ? null : JSON.stringify(body),
+    }),
+    { execution: createBackofficeSystemExecution(scope) },
+  );
+  assert(response.ok, await response.clone().text());
+  return response;
+}
+
 /** Consent happens in the provider's browser flow; the callback is the only signal setup sees. */
 async function completeConsent(
   ctx: BackofficeScenarioContext,
@@ -420,11 +442,11 @@ test("Codemode creates a custom API through setup and keeps one address across r
       then.assert(
         "a native credential reset asks for a new token instead of becoming unauthenticated",
         async (ctx) => {
+          await callApiFragment(ctx, orgScope, "DELETE", "/connections/billing/auth", null);
           const run = await ctx.runCodemode({
             scope: orgScope,
             code: `async () => {
               const target = { connectionId: "api#billing" };
-              await api.deleteAuth({ slug: "billing" });
               const inspected = await integrations.get(target);
               const check = await integrations.setup({ ...target, kind: "check" });
               const ready = await integrations.setup({ ...target, kind: "input", input: { token: "second-token" } });
@@ -650,18 +672,21 @@ test("OAuth setup resumes source-owned consent across restarts, native restarts,
       then.assert(
         "a native restart leaves several pending links and any of them completes setup",
         async (ctx) => {
+          const callbackUrl = `https://example.com/api/http/${encodeURIComponent(`user:${scope.userId}`)}/oauth/callback`;
+          const native = (await (
+            await callApiFragment(
+              ctx,
+              scope,
+              "POST",
+              `/connections/invoices/auth/oauth/start?${API_OAUTH_REDIRECT_URI_QUERY_PARAMETER}=${encodeURIComponent(callbackUrl)}`,
+              { discardTokens: false },
+            )
+          ).json()) as { authorizationUrl: string };
           const run = await ctx.runCodemode({
             scope,
-            code: `async () => {
-              const native = await api.startOAuth({ slug: "invoices" });
-              const checked = await integrations.setup({ kind: "check", connectionId: "api#invoices" });
-              return { native, checked };
-            }`,
+            code: `async () => await integrations.setup({ kind: "check", connectionId: "api#invoices" })`,
           });
-          const { native, checked } = run.result as {
-            native: { authorizationUrl: string };
-            checked: { status: string; authorizationUrl: string };
-          };
+          const checked = run.result as { status: string; authorizationUrl: string };
           assert(checked.status === "needs-authorization");
           expect([ctx.vars.authorizationUrl, native.authorizationUrl]).toContain(
             checked.authorizationUrl,
@@ -974,12 +999,18 @@ test("api addresses resolve only in their own scope, page natively, and require 
       then.assert(
         "listing forwards native cursor pages without loading every connection",
         async (ctx) => {
+          for (let index = 0; index < 51; index++) {
+            await callApiFragment(
+              ctx,
+              projectScope,
+              "PUT",
+              `/connections/conn-${String(index).padStart(2, "0")}`,
+              { baseUrl: providerOrigin, auth: { type: "none" } },
+            );
+          }
           const run = await ctx.runCodemode({
             scope: projectScope,
             code: `async () => {
-              for (let index = 0; index < 51; index++) {
-                await api.createConnection({ slug: "conn-" + String(index).padStart(2, "0"), baseUrl: ${JSON.stringify(providerOrigin)} });
-              }
               const pages = [];
               let cursor = null;
               do {

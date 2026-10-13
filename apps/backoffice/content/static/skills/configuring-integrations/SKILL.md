@@ -13,12 +13,12 @@ description: >
 `namespace#local-id`; copy addresses from discovery and listing verbatim. Read
 `/static/codemode/providers/integrations.d.ts` before calling it.
 
-| Rung | Source          | Address                                   | Owning scope       |
-| ---- | --------------- | ----------------------------------------- | ------------------ |
-| 1    | Backoffice      | see the native list below                 | see below          |
-| 2    | Open Connector  | `connector#n_…`, `connector#a_…` (opaque) | user               |
-| 3    | MCP server      | `mcp#<slug>`, slug chosen by you          | org, user, project |
-| 4    | Direct HTTP API | `api#<slug>`, slug chosen by you          | org, user, project |
+| Rung | Source          | Address                          | Owning scope       |
+| ---- | --------------- | -------------------------------- | ------------------ |
+| 1    | Backoffice      | see the native list below        | see below          |
+| 2    | Open Connector  | `connector#n_…` (opaque)         | user               |
+| 3    | MCP server      | `mcp#<slug>`, slug chosen by you | org, user, project |
+| 4    | Direct HTTP API | `api#<slug>`, slug chosen by you | org, user, project |
 
 These are all the native Backoffice integrations:
 
@@ -57,7 +57,9 @@ Take the highest rung that offers the requested service:
    `{ link: true }` returns the GitHub link that grants access.
 2. **Open Connector**: a service whose `id` names the provider, such as `gmail`, with
    `connector#n_…` targets. Use the target unchanged; it preassigns the connection name. Several
-   targets mean several provider configurations: use the user's choice.
+   targets mean several provider configurations: use the user's choice. Its gateway credentials are
+   server configuration: when setup reports Connector as unconfigured, report that rather than
+   asking the user for keys.
 3. **MCP server**: the `mcp` service, chosen when the provider publishes a streamable HTTP MCP
    endpoint or the user supplies one. Choose a slug of lowercase letters, digits, and `-`, such as
    `mcp#cloudflare`. Take the endpoint URL from provider documentation.
@@ -159,7 +161,8 @@ Every source reports connection state as automation events with `source: "integr
 They fire for changes made anywhere, including native pages, OAuth callbacks, and provider webhooks,
 and can repeat. Route one connection with
 `{ path: "$.subject.connectionId", op: "eq", value: connectionId }`, or one source with
-`$.subject.service`. A token expiring fires nothing; `integrations.get` reads the current state.
+`$.subject.service`. An OAuth access token without a refresh token fires `connection.unavailable`
+when it expires.
 
 Open Connector learns about consent only when setup is checked, so its `connection.ready` follows
 the next check rather than the browser consent, and revocation is never reported.
@@ -204,6 +207,11 @@ Each server tool is an action with the tool's own input schema. Results are
 `content`, so report it rather than retrying. Tools appear once the server's tools are discovered,
 shortly after setup is ready; if `actions` is empty, run `integrations.verify`. Tools whose schemas
 cannot be validated are not offered as actions, and `integrations.get` names them in `nextSteps`.
+
+In organization and project codemode, each server with discovered tools is also a typed provider,
+such as `mcp_cloudflare.search_docs({ query })` for `mcp#cloudflare`. Its declarations are in
+`/static/codemode/sources/mcp.d.ts`. Provider calls return the same results and still require
+`mcp.tools.call`; they are the way to call a tool whose schema could not be validated.
 
 Inbound webhooks are endpoints, not connections: configure them with `api.webhooks.*` following
 `/static/skills/api-webhooks/SKILL.md`.
