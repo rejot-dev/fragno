@@ -55,6 +55,26 @@ const javaScriptRunOutputSchema = z.discriminatedUnion("status", [
   }),
 ]);
 
+export const javaScriptLogsInputSchema = z.strictObject({
+  runId: z.string().trim().min(1),
+});
+
+// A running run has no logs yet: they are stored with its outcome.
+const javaScriptLogsOutputSchema = z.discriminatedUnion("status", [
+  z.object({ runId: z.string(), status: z.literal("running") }),
+  z.object({
+    runId: z.string(),
+    status: z.literal("completed"),
+    logs: z.array(z.string()),
+  }),
+  z.object({
+    runId: z.string(),
+    status: z.literal("failed"),
+    logs: z.array(z.string()),
+    error: z.string(),
+  }),
+]);
+
 export const javascriptOperations = {
   "js.build": {
     description:
@@ -69,6 +89,14 @@ export const javascriptOperations = {
     permissions: [BACKOFFICE_PERMISSION.upload.read],
     input: javaScriptFileInputSchema,
     output: javaScriptCheckOutputSchema,
+  },
+  "js.logs": {
+    description:
+      "Show the console logs and outcome of a codemode run in the current scope, by run ID. Readable only with at least the authority the run had: same principal, no extra delegation, no narrower scope restriction. Codemode run events carry run IDs; runs are kept for 7 days.",
+    // The runtime also requires the reader to hold at least the run's authority.
+    permissions: [BACKOFFICE_PERMISSION.upload.read],
+    input: javaScriptLogsInputSchema,
+    output: javaScriptLogsOutputSchema,
   },
   "js.run": {
     description:

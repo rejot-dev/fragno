@@ -46,6 +46,11 @@ export type JavaScriptRunFileOutput =
       logs: string[];
     };
 
+export type JavaScriptRunLogsOutput =
+  | { runId: string; status: "running" }
+  | { runId: string; status: "completed"; logs: string[] }
+  | { runId: string; status: "failed"; logs: string[]; error: string };
+
 export type JavaScriptBuildFileInput = { path: string; out: string };
 
 export type JavaScriptBuildFileOutput =
@@ -71,6 +76,7 @@ export type JavaScriptRuntime = {
         toolContext: CoreBackofficeToolContext,
       ) => Promise<JavaScriptRunFileOutput>)
     | null;
+  readRunLogs: ((input: { runId: string }) => Promise<JavaScriptRunLogsOutput>) | null;
 };
 
 function parseJavaScriptFilePath(path: string, kind: "source" | "run") {
@@ -224,6 +230,7 @@ export function createJavaScriptRuntime({
 }): JavaScriptRuntime {
   return {
     buildFile: null,
+    readRunLogs: null,
     checkFile: typeCheckFiles
       ? async function checkJavaScriptFile({ path }) {
           const sourcePath = parseJavaScriptFilePath(path, "source");

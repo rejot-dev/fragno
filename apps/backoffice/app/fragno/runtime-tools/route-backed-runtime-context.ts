@@ -1,11 +1,18 @@
-import type { AutomationActors } from "@fragno-dev/backoffice-api/v0/automation";
+import {
+  automationEntityRefsEqual,
+  type AutomationActors,
+} from "@fragno-dev/backoffice-api/v0/automation";
 import {
   backofficeContextScopesEqual,
+  backofficeScopeContains,
   isBackofficeRoutableScope,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import { authorizedBackofficeObjectHttp } from "@/backoffice-runtime/authorized-object-http";
-import { type BackofficeExecutionContext } from "@/backoffice-runtime/context";
+import {
+  backofficeExecutionScopeRestriction,
+  type BackofficeExecutionContext,
+} from "@/backoffice-runtime/context";
 import { isBackofficeUnavailableError, type BackofficeKernel } from "@/backoffice-runtime/kernel";
 import { isBackofficeObjectAvailableInContext } from "@/backoffice-runtime/object-registry";
 import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
@@ -31,6 +38,7 @@ import { createRouteBackedAutomationIdentityRuntime } from "@/fragno/automation/
 import { readBackofficeAutomationSource } from "@/fragno/automation/read-backoffice-automation-source";
 import { createRouteBackedAutomationRouterRuntime } from "@/fragno/automation/routing-route-runtime";
 import { createRouteBackedAutomationWorkflowRuntime } from "@/fragno/automation/workflow-route-runtime";
+import type { CodemodeRunContext } from "@/fragno/codemode/codemode-fragment";
 import { codemodeRunnerFor } from "@/fragno/codemode/codemode-object-execute";
 import { createRuntimeStateBackend } from "@/fragno/codemode/runtime-state-backend";
 import {
@@ -123,6 +131,32 @@ const selectedOrgScope = (
   execution: BackofficeExecutionContext,
 ): Extract<BackofficeExecutionContext["scope"], { kind: "org" }> | null =>
   execution.scope.kind === "org" ? execution.scope : null;
+
+/**
+ * Retained output reveals what its run could read, so a reader needs at least the run's authority:
+ * the same principal, a delegation chain the run's chain extends (each delegate only narrows), and a
+ * scope ceiling that contains the run's. Grants changed since the run are not re-checked.
+ */
+function coversCodemodeRun(reader: BackofficeExecutionContext, run: CodemodeRunContext): boolean {
+  const readerPrincipal = reader.actors.principal;
+  const runPrincipal = run.actors.principal;
+  const samePrincipal =
+    readerPrincipal === null || runPrincipal === null
+      ? readerPrincipal === runPrincipal
+      : automationEntityRefsEqual(readerPrincipal, runPrincipal);
+  const readerDelegation = reader.actors.delegation;
+  const runDelegation = run.actors.delegation;
+  const delegationPrefix =
+    readerDelegation.length <= runDelegation.length &&
+    readerDelegation.every((actor, index) =>
+      automationEntityRefsEqual(actor, runDelegation[index]),
+    );
+  const readerCeiling = backofficeExecutionScopeRestriction(reader);
+  const ceilingCovers =
+    readerCeiling === null ||
+    (run.scopeRestriction !== null && backofficeScopeContains(readerCeiling, run.scopeRestriction));
+  return samePrincipal && delegationPrefix && ceilingCovers;
+}
 
 function userPrincipalId(execution: BackofficeExecutionContext): string | null {
   const principal = execution.actors.principal;
@@ -606,6 +640,28 @@ export const createRouteBackedRuntimeContext = ({
                     }
                   : null,
               }),
+              // Without an executor there are no runs to read.
+              readRunLogs: codemodeEnv
+                ? async ({ runId }) => {
+                    const run = await codemodeObject().getRun(runId);
+                    if (!run) {
+                      throw new Error(
+                        `CODEMODE_RUN_NOT_FOUND: ${runId} does not exist in this scope or expired after 7 days.`,
+                      );
+                    }
+                    if (!coversCodemodeRun(execution, run)) {
+                      throw new Error(
+                        `CODEMODE_RUN_FORBIDDEN: ${runId} ran with authority this caller does not hold.`,
+                      );
+                    }
+                    if (run.status === "running") {
+                      return { runId, status: "running" };
+                    }
+                    return run.status === "completed"
+                      ? { runId, status: "completed", logs: run.logs }
+                      : { runId, status: "failed", logs: run.logs, error: run.error.message };
+                  }
+                : null,
               buildFile:
                 canCompileJavaScript && codemodeEnv && execution.scope.kind !== "system"
                   ? async (input) => {

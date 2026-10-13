@@ -5090,6 +5090,31 @@
     ]
   },
   {
+    "command": "js.logs",
+    "summary": "js.logs prints the console logs of a codemode run in the current scope.",
+    "options": [
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
     "command": "js.build",
     "summary": "js.build bundles a JavaScript ES module without executing it.",
     "options": [

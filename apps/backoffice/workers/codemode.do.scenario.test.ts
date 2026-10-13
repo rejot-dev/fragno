@@ -21,6 +21,7 @@ import type { InMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-r
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
+import type { CodemodeRun } from "@/fragno/codemode/codemode-fragment";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
 import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 
@@ -62,7 +63,21 @@ const execution = createBackofficeServiceExecution({
   service: { type: "automation", id: "codemode-history" },
 });
 
-// A scope ceiling bounds where an execution may act.
+const otherExecution = createBackofficeServiceExecution({
+  scope: { kind: "org", orgId: "org-1" },
+  service: { type: "automation", id: "another-automation" },
+});
+
+// A delegate narrows its principal's authority; a scope ceiling bounds where it may act.
+const delegatedExecution = {
+  ...execution,
+  actors: {
+    ...execution.actors,
+    delegation: [
+      { scope: "internal", type: "automation", id: "helper", role: "delegate" } as const,
+    ],
+  },
+};
 const restrictedExecution = {
   ...execution,
   scopeRestriction: { kind: "org", orgId: "org-1" } as const,
@@ -231,36 +246,87 @@ test("codemode runs are retained with their outcome until a later run expires th
             }
           },
         ),
-        then.assert("run events keep the scope restriction of the run's caller", async (ctx) => {
-          const ran = await bash(ctx.runtime, restrictedExecution).exec(
-            "js.run .build/report.module.json",
-            { cwd: "/workspace" },
-          );
-          assert.equal(ran.exitCode, 0, ran.stderr);
-          const { runs } = await ctx.runtime.objects.codemode
-            .forOrg("org-1")
-            .commands.listRuns({ page: "first", pageSize: 20 });
-          const restrictedRun = runs.find((run) => run.scopeRestriction !== null);
-          assert(restrictedRun);
-          expect(restrictedRun.scopeRestriction).toEqual(restrictedExecution.scopeRestriction);
+        then.assert("a run's ID leads its principal to the run's logs", async (ctx) => {
+          const report = await bash(ctx.runtime).exec(`js.logs ${runIds.report}`);
+          assert.equal(report.exitCode, 0, report.stderr);
+          assert.equal(report.stdout, "report ready\n");
 
-          await ctx.drain();
-          const listed = await bash(ctx.runtime).exec("events.list --limit 100 --format json");
-          const ceilings = automationEventListResultSchema
-            .parse(JSON.parse(listed.stdout))
-            .events.filter(
-              (event) =>
-                event.subject?.runId === restrictedRun.id || event.subject?.runId === runIds.report,
-            )
-            .map((event) => [event.subject?.runId, event.eventType, event.scopeRestriction]);
-          expect(ceilings).toEqual(
-            expect.arrayContaining([
-              [restrictedRun.id, "run.started", restrictedExecution.scopeRestriction],
-              [restrictedRun.id, "run.completed", restrictedExecution.scopeRestriction],
-              [runIds.report, "run.completed", null],
-            ]),
-          );
+          const failing = await bash(ctx.runtime).exec(`js.logs ${runIds.failing}`);
+          assert.equal(failing.exitCode, 1);
+          expect(failing.stderr).toContain("Startup exploded");
+
+          const foreign = await bash(ctx.runtime, otherExecution).exec(`js.logs ${runIds.report}`);
+          assert.notEqual(foreign.exitCode, 0);
+          expect(foreign.stderr).toContain("CODEMODE_RUN_FORBIDDEN");
         }),
+        then.assert(
+          "runs keep their caller's ceiling and only callers holding that authority read their logs",
+          async (ctx) => {
+            const runAs = async (
+              as: BackofficeExecutionContext,
+              isRun: (run: CodemodeRun) => boolean,
+            ) => {
+              const ran = await bash(ctx.runtime, as).exec("js.run .build/report.module.json", {
+                cwd: "/workspace",
+              });
+              assert.equal(ran.exitCode, 0, ran.stderr);
+              const { runs } = await ctx.runtime.objects.codemode
+                .forOrg("org-1")
+                .commands.listRuns({ page: "first", pageSize: 20 });
+              const run = runs.find(isRun);
+              assert(run);
+              return run.id;
+            };
+            const readAs = async (as: BackofficeExecutionContext, runId: string) => {
+              const read = await bash(ctx.runtime, as).exec(`js.logs ${runId}`);
+              if (read.exitCode === 0) {
+                return "allowed";
+              }
+              return read.stderr.includes("CODEMODE_RUN_FORBIDDEN") ? "forbidden" : read.stderr;
+            };
+            const delegatedRun = await runAs(
+              delegatedExecution,
+              (run) => run.actors.delegation.length > 0,
+            );
+            const restrictedRun = await runAs(
+              restrictedExecution,
+              (run) => run.scopeRestriction !== null,
+            );
+
+            expect({
+              delegateOwnRun: await readAs(delegatedExecution, delegatedRun),
+              delegatePrincipalRun: await readAs(delegatedExecution, runIds.report),
+              principalDelegateRun: await readAs(execution, delegatedRun),
+              restrictedOwnRun: await readAs(restrictedExecution, restrictedRun),
+              restrictedUnrestrictedRun: await readAs(restrictedExecution, runIds.report),
+              unrestrictedRestrictedRun: await readAs(execution, restrictedRun),
+            }).toEqual({
+              delegateOwnRun: "allowed",
+              delegatePrincipalRun: "forbidden",
+              principalDelegateRun: "allowed",
+              restrictedOwnRun: "allowed",
+              restrictedUnrestrictedRun: "forbidden",
+              unrestrictedRestrictedRun: "allowed",
+            });
+
+            await ctx.drain();
+            const listed = await bash(ctx.runtime).exec("events.list --limit 100 --format json");
+            const ceilings = automationEventListResultSchema
+              .parse(JSON.parse(listed.stdout))
+              .events.filter(
+                (event) =>
+                  event.subject?.runId === restrictedRun || event.subject?.runId === runIds.report,
+              )
+              .map((event) => [event.subject?.runId, event.eventType, event.scopeRestriction]);
+            expect(ceilings).toEqual(
+              expect.arrayContaining([
+                [restrictedRun, "run.started", restrictedExecution.scopeRestriction],
+                [restrictedRun, "run.completed", restrictedExecution.scopeRestriction],
+                [runIds.report, "run.completed", null],
+              ]),
+            );
+          },
+        ),
         when.time.advance("6.5 days"),
         then.assert("a new run removes only runs past retention", async ({ runtime }) => {
           const report = await bash(runtime).exec("js.run .build/report.module.json", {
@@ -271,9 +337,12 @@ test("codemode runs are retained with their outcome until a later run expires th
           const codemode = runtime.objects.codemode.forOrg("org-1").commands;
           const runs = await codemode.listRuns({ page: "first", pageSize: 20 });
           // Builds and setup writes expired; the runs from day one and the new run remain.
-          expect(runs.runs.map((run) => run.activationKind)).toEqual(Array(4).fill("compiled"));
+          expect(runs.runs.map((run) => run.activationKind)).toEqual(Array(5).fill("compiled"));
           assert(buildRunId !== null);
           assert.equal(await codemode.getRun(buildRunId), null);
+          const expired = await bash(runtime).exec(`js.logs ${buildRunId}`);
+          assert.notEqual(expired.exitCode, 0);
+          expect(expired.stderr).toContain("CODEMODE_RUN_NOT_FOUND");
         }),
       ],
     }),
