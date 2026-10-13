@@ -462,10 +462,39 @@ test("ordinary Worker executes source and calls Node without a Durable Object", 
   expect(completion).toEqual({
     status: "completed",
     value: { saved: true },
-    logs: ["guest log"],
+    logs: [{ at: expect.any(Number), channel: "log", text: "guest log" }],
     workflowDefinition: null,
   });
   expect(host.writes).toEqual([{ saved: true }]);
+});
+
+test("guest console calls are stored per channel with the guest's clock", async () => {
+  const completion = await execute(
+    {
+      ...base,
+      kind: "immediate",
+      code: `async () => {
+        console.log("plain", 1);
+        console.info("info");
+        console.debug("debug");
+        console.warn("warn");
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        console.error("error");
+      }`,
+    },
+    providerHost(),
+  );
+  assert(completion.status === "completed");
+  expect(completion.logs.map(({ channel, text }) => [channel, text])).toEqual([
+    ["log", "plain 1"],
+    ["info", "info"],
+    ["debug", "debug"],
+    ["warn", "warn"],
+    ["error", "error"],
+  ]);
+  // Workers advance the clock only across I/O, so only the awaited timer separates timestamps.
+  const [first, , , beforeTimer, afterTimer] = completion.logs.map((line) => line.at);
+  assert(first === beforeTimer && afterTimer > beforeTimer);
 });
 
 test("tool values survive native RPC and Cap'n Web without nested JSON codecs", async () => {
@@ -738,7 +767,7 @@ test("sleepUntil carries a Date to Node and propagates typed suspension", async 
   ).toMatchObject({
     status: "suspended",
     reason: { type: "sleep", stepKey: "sleep:wait", runAt: workflowBase.event.timestamp },
-    logs: ["before sleep"],
+    logs: [{ channel: "log", text: "before sleep" }],
   });
 });
 test("transaction emissions flush before callback completion and retained transactions lose authority", async () => {
@@ -955,9 +984,12 @@ test.each(["immediate", "module", "workflow"] as const)(
       );
       assert(completion.status === "completed");
       expect(completion.logs).toHaveLength(CODEMODE_LIMITS.maxLogs);
-      assert(completion.logs[0] === "compiler warning");
-      assert(completion.logs.at(-2) === "guest log");
-      assert(completion.logs.at(-1) === "[codemode] Logs truncated.");
+      expect(completion.logs[0]).toMatchObject({ channel: "codemode", text: "compiler warning" });
+      expect(completion.logs.at(-2)).toMatchObject({ channel: "log", text: "guest log" });
+      expect(completion.logs.at(-1)).toMatchObject({
+        channel: "codemode",
+        text: "Logs truncated.",
+      });
     } finally {
       await warningServer.close();
     }
@@ -1003,8 +1035,12 @@ test.each(["completed", "failed", "suspended"] as const)(
               providerHost(),
             );
       expect(completion.status).toBe(status);
-      expect(completion.logs).toEqual([warning, "[codemode] Logs truncated."]);
-      expect(new TextEncoder().encode(completion.logs.join("")).byteLength).toBeLessThanOrEqual(
+      expect(completion.logs.map(({ channel, text }) => [channel, text])).toEqual([
+        ["codemode", warning],
+        ["codemode", "Logs truncated."],
+      ]);
+      const text = completion.logs.map((line) => line.text).join("");
+      expect(new TextEncoder().encode(text).byteLength).toBeLessThanOrEqual(
         CODEMODE_LIMITS.maxLogBytes,
       );
     } finally {
@@ -1026,7 +1062,9 @@ test.each([0, 1])(
         providerHost(),
       );
       expect(completion).toMatchObject({ status: "completed", value: 42 });
-      expect(completion.logs).toEqual(overflow ? ["[codemode] Logs truncated."] : [warning]);
+      expect(completion.logs.map((line) => line.text)).toEqual(
+        overflow ? ["Logs truncated."] : [warning],
+      );
     } finally {
       await warningServer.close();
     }

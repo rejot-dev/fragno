@@ -112,7 +112,7 @@ test("codemode runs are retained with their outcome until a later run expires th
         given.codemode.writeFile({
           orgId: "org-1",
           path: "/workspace/scripts/failing.js",
-          content: 'throw new Error("Startup exploded");',
+          content: 'console.error("about to explode");\nthrow new Error("Startup exploded");',
         }),
       ],
       steps: ({ when, then }) => [
@@ -157,7 +157,7 @@ test("codemode runs are retained with their outcome until a later run expires th
                 origin: { kind: "file", path: "/workspace/.build/report.module.json" },
                 actors: execution.actors,
                 status: "completed",
-                logs: ["report ready"],
+                logs: [{ at: expect.any(Number), channel: "log", text: "report ready" }],
               }),
               expect.objectContaining({
                 id: runIds.failing,
@@ -263,9 +263,17 @@ test("codemode runs are retained with their outcome until a later run expires th
           assert.equal(report.exitCode, 0, report.stderr);
           assert.equal(report.stdout, "report ready\n");
 
+          // Lines are stored with their channel and labelled only when read as text.
           const failing = await bash(ctx.runtime).exec(`js.logs ${runIds.failing}`);
           assert.equal(failing.exitCode, 1);
+          assert.equal(failing.stdout, "[error] about to explode\n");
           expect(failing.stderr).toContain("Startup exploded");
+          const failingJson = await bash(ctx.runtime).exec(
+            `js.logs ${runIds.failing} --format json`,
+          );
+          expect(JSON.parse(failingJson.stdout).logs).toEqual([
+            { at: expect.any(Number), channel: "error", text: "about to explode" },
+          ]);
 
           const foreign = await bash(ctx.runtime, otherExecution).exec(`js.logs ${runIds.report}`);
           assert.notEqual(foreign.exitCode, 0);

@@ -143,6 +143,12 @@ Inspect `status`:
 returns a nonzero exit code for anything but `success`; `--format json` preserves the structured
 result, including `runId`. Tool permission and configuration failures may throw instead.
 
+In structured results, each `logs` entry is `{ at, channel, text }`. `channel` is the console method
+(`log`, `info`, `debug`, `warn`, `error`), or `codemode` for runtime notes such as compiler warnings
+and log truncation. `at` is epoch milliseconds from the run's clock, which only advances across
+awaited I/O: rely on array order, not timestamps, to sequence lines. Bash text output prints `text`,
+prefixed with `[channel]` for every channel except `log`.
+
 Artifact execution validates the bundle, imports its `mainModule` and bundled dependencies in a
 fresh isolated Worker, and ignores exports. It uses captured code, so source deletion or editing
 does not change an existing artifact. Rebuild after source edits. Each run starts with fresh module

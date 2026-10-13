@@ -1,4 +1,5 @@
 import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+import { formatCodemodeLogLine } from "@fragno-dev/codemode/runtime-api";
 import { Type } from "typebox";
 
 import { visualizeWorkflowSource } from "@fragno-dev/workflow-visualizer-tokens";
@@ -400,7 +401,7 @@ const hashToolCallId = (toolCallId: string) => {
 const formatExecCodeModeText = (result: BackofficeCodemodeExecuteResult) => {
   const lines: string[] = [];
   const logs = result.logs ?? [];
-  lines.push(...logs);
+  lines.push(...logs.map(formatCodemodeLogLine));
 
   if (result.error) {
     lines.push(result.error);
@@ -552,6 +553,8 @@ function createExecCodeModeTool(options: ExecCodeModeToolOptions) {
         details: copyJson(
           {
             ...result,
+            // Session history keeps display text; structured lines stay on the codemode run.
+            logs: result.logs?.map(formatCodemodeLogLine),
             code,
             outputText: text,
             // The live run handle so the client can

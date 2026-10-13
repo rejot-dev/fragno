@@ -11,6 +11,7 @@ import type {
 import { z } from "zod";
 
 import { CODEMODE_LIMITS } from "../codemode-limits";
+import { codemodeLogLineSchema } from "../runtime-api";
 import { codemodeWorkerBundleSchema } from "./codemode-worker-bundle";
 
 /** Execution API v2 uses Cap'n Web; compiler HTTP archives retain their independent v1 format. */
@@ -137,18 +138,18 @@ export const codemodeCompletionSchema = z.discriminatedUnion("status", [
   z.strictObject({
     status: z.literal("completed"),
     value: z.unknown(),
-    logs: z.array(z.string()).max(CODEMODE_LIMITS.maxLogs),
+    logs: z.array(codemodeLogLineSchema).max(CODEMODE_LIMITS.maxLogs),
     workflowDefinition: z.strictObject({ name, options: z.unknown() }).nullable(),
   }),
   z.strictObject({
     status: z.literal("failed"),
     error: errorSchema,
-    logs: z.array(z.string()).max(CODEMODE_LIMITS.maxLogs),
+    logs: z.array(codemodeLogLineSchema).max(CODEMODE_LIMITS.maxLogs),
   }),
   z.strictObject({
     status: z.literal("suspended"),
     reason: codemodeSuspensionReasonSchema,
-    logs: z.array(z.string()).max(CODEMODE_LIMITS.maxLogs),
+    logs: z.array(codemodeLogLineSchema).max(CODEMODE_LIMITS.maxLogs),
   }),
 ]);
 export type CodemodeCompletion = z.infer<typeof codemodeCompletionSchema>;

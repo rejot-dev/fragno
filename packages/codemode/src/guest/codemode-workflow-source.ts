@@ -16,15 +16,15 @@ let __dispatchers = {};
 ${input.providerProxySource}
 const logs = [];
 let logBytes = 0;
-const captureLog = (prefix, args) => {
-  const text = prefix + args.map(String).join(" ");
+const captureLog = (channel, args) => {
+  const text = args.map(String).join(" ");
   logBytes += new TextEncoder().encode(text).byteLength;
   if (logs.length >= ${CODEMODE_LIMITS.maxLogs} || logBytes > ${CODEMODE_LIMITS.maxLogBytes}) throw new Error("CODEMODE_LOG_LIMIT_EXCEEDED");
-  logs.push(text);
+  logs.push({ at: Date.now(), channel, text });
 };
-console.log = (...args) => captureLog("", args);
-console.warn = (...args) => captureLog("[warn] ", args);
-console.error = (...args) => captureLog("[error] ", args);
+for (const channel of ["log", "info", "debug", "warn", "error"]) {
+  console[channel] = (...args) => captureLog(channel, args);
+}
 const workflowProgram = (${code});
 const suspensionKey = "__fragnoRemoteWorkflowSuspended";
 const isSuspension = (value) => Boolean(value) && typeof value === "object" && value[suspensionKey] === true && "reason" in value;

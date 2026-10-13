@@ -5,6 +5,7 @@ import type {
   CodemodeCompletion,
   CodemodeWireError,
 } from "@fragno-dev/codemode/execution/codemode-activation-contract";
+import type { CodemodeLogLine } from "@fragno-dev/codemode/runtime-api";
 import { column, idColumn, schema, type Column, type FragnoId } from "@fragno-dev/db/schema";
 
 import { defineFragment, instantiate } from "@fragno-dev/core";
@@ -32,8 +33,8 @@ export type CodemodeExecution = {
 };
 
 type CodemodeRunOutcome =
-  | { status: "completed"; logs: string[] }
-  | { status: "failed"; error: CodemodeWireError; logs: string[] };
+  | { status: "completed"; logs: CodemodeLogLine[] }
+  | { status: "failed"; error: CodemodeWireError; logs: CodemodeLogLine[] };
 
 type CodemodeActivationKind = CodemodeRunActivation["kind"];
 

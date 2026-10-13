@@ -19,17 +19,17 @@ export function createCodemodeFunctionSource(
     "    const { __dispatchers = {}, __input } = __rpcTargets;",
     "    const __logs = [];",
     `    let __logBytes = 0;
-    const __captureLog = (prefix, args) => {
-      const text = prefix + args.map(String).join(" ");
+    const __captureLog = (channel, args) => {
+      const text = args.map(String).join(" ");
       __logBytes += new TextEncoder().encode(text).byteLength;
       if (__logs.length >= ${CODEMODE_LIMITS.maxLogs} || __logBytes > ${CODEMODE_LIMITS.maxLogBytes}) {
         throw new Error("CODEMODE_LOG_LIMIT_EXCEEDED");
       }
-      __logs.push(text);
+      __logs.push({ at: Date.now(), channel, text });
     };
-    console.log = (...args) => __captureLog("", args);
-    console.warn = (...args) => __captureLog("[warn] ", args);
-    console.error = (...args) => __captureLog("[error] ", args);`,
+    for (const channel of ["log", "info", "debug", "warn", "error"]) {
+      console[channel] = (...args) => __captureLog(channel, args);
+    }`,
     CODEMODE_GUEST_API_SOURCE,
     createCodemodeProviderProxySource(providers),
     "",

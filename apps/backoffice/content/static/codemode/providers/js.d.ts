@@ -33,14 +33,22 @@ type JsRunOutput =
       status: "success";
       path: string;
       runId: string;
-      logs: string[];
+      logs: {
+        at: number;
+        channel: "log" | "info" | "debug" | "warn" | "error" | "codemode";
+        text: string;
+      }[];
     }
   | {
       status: "error";
       path: string;
       runId: string;
       error: string;
-      logs: string[];
+      logs: {
+        at: number;
+        channel: "log" | "info" | "debug" | "warn" | "error" | "codemode";
+        text: string;
+      }[];
     }
   | {
       status: "rejected";
@@ -58,12 +66,20 @@ type JsLogsOutput =
   | {
       runId: string;
       status: "completed";
-      logs: string[];
+      logs: {
+        at: number;
+        channel: "log" | "info" | "debug" | "warn" | "error" | "codemode";
+        text: string;
+      }[];
     }
   | {
       runId: string;
       status: "failed";
-      logs: string[];
+      logs: {
+        at: number;
+        channel: "log" | "info" | "debug" | "warn" | "error" | "codemode";
+        text: string;
+      }[];
       error: string;
     };
 type JsBuildInput = {

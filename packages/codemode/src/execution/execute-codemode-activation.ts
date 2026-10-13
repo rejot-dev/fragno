@@ -13,6 +13,7 @@ import { createCodemodeWorkflowSource } from "../guest/codemode-workflow-source"
 import { createCodemodeDispatchers } from "../host/codemode-tool-dispatcher";
 import {
   codemodeWorkerEvaluationSchema,
+  type CodemodeLogLine,
   type CodemodeWorkerEvaluation,
   type ResolvedProvider,
 } from "../runtime-api";
@@ -29,28 +30,36 @@ import { CODEMODE_WORKER_RUNTIME } from "./codemode-worker-bundle";
 export type CodemodeActivationServices = { loader: WorkerLoader; compile: WorkerCompiler | null };
 
 type WorkflowResult =
-  | { ok: true; result: unknown; logs: string[] }
-  | { ok: false; suspension: { reason: unknown }; logs: string[] };
+  | { ok: true; result: unknown; logs: CodemodeLogLine[] }
+  | { ok: false; suspension: { reason: unknown }; logs: CodemodeLogLine[] };
 
-function collectCodemodeCompletionLogs(warnings: string[], guestLogs: string[]): string[] {
-  const logs: string[] = [];
+/** Compiler warnings precede guest output; the byte limit counts line text only. */
+function collectCodemodeCompletionLogs(
+  warnings: CodemodeLogLine[],
+  guestLogs: CodemodeLogLine[],
+): CodemodeLogLine[] {
+  const logs: CodemodeLogLine[] = [];
   const encoder = new TextEncoder();
   let bytes = 0;
   for (const group of [warnings, guestLogs]) {
     for (const line of group) {
-      const lineBytes = encoder.encode(line).byteLength;
+      const lineBytes = encoder.encode(line.text).byteLength;
       if (
         logs.length >= CODEMODE_LIMITS.maxLogs ||
         bytes + lineBytes > CODEMODE_LIMITS.maxLogBytes
       ) {
         // Preserve the execution outcome: diagnostics overflow must not turn success into a retry.
-        const marker = "[codemode] Logs truncated.";
-        const markerBytes = encoder.encode(marker).byteLength;
+        const marker: CodemodeLogLine = {
+          at: Date.now(),
+          channel: "codemode",
+          text: "Logs truncated.",
+        };
+        const markerBytes = encoder.encode(marker.text).byteLength;
         while (
           logs.length >= CODEMODE_LIMITS.maxLogs ||
           bytes + markerBytes > CODEMODE_LIMITS.maxLogBytes
         ) {
-          bytes -= encoder.encode(logs.pop()).byteLength;
+          bytes -= encoder.encode(logs.pop()?.text).byteLength;
         }
         logs.push(marker);
         return logs;
@@ -165,6 +174,10 @@ export async function executeCodemodeActivation(
     }
   }
   signal.throwIfAborted();
+  const compiledAt = Date.now();
+  const warnings = compiled.warnings.map(
+    (text): CodemodeLogLine => ({ at: compiledAt, channel: "codemode", text }),
+  );
   const bundleBytes = Object.values(compiled.bundle.modules).reduce(
     (size, source) => size + new TextEncoder().encode(source).byteLength,
     0,
@@ -198,7 +211,7 @@ export async function executeCodemodeActivation(
       },
       execution,
     );
-    const logs = collectCodemodeCompletionLogs(compiled.warnings, output.logs);
+    const logs = collectCodemodeCompletionLogs(warnings, output.logs);
     return output.ok
       ? {
           status: "completed",
@@ -227,7 +240,7 @@ export async function executeCodemodeActivation(
     execution,
   );
   const output = codemodeWorkerEvaluationSchema.parse(evaluation);
-  const logs = collectCodemodeCompletionLogs(compiled.warnings, output.logs);
+  const logs = collectCodemodeCompletionLogs(warnings, output.logs);
   return !output.ok
     ? { status: "failed", error: encodeCodemodeError(new Error(output.error)), logs }
     : {

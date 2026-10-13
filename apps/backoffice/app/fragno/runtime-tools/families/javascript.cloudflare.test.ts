@@ -70,7 +70,7 @@ describe("JavaScript file execution in workerd", () => {
       status: "success",
       path: "/workspace/scripts/example.js",
       runId: expect.any(String),
-      logs: ["running saved file 42 function"],
+      logs: [{ at: expect.any(Number), channel: "log", text: "running saved file 42 function" }],
     });
   });
 });

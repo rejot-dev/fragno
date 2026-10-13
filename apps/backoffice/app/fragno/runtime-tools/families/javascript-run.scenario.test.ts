@@ -136,7 +136,10 @@ test("js.run executes bundled top-level statements and dependencies with the com
             expect(parsed).toMatchObject({
               status: "success",
               path: artifactPath,
-              logs: ["dependency startup", "main startup 0"],
+              logs: [
+                { at: expect.any(Number), channel: "log", text: "dependency startup" },
+                { at: expect.any(Number), channel: "log", text: "main startup 0" },
+              ],
             });
             const repeated = await executeBackofficeRuntimeTool(
               javaScriptRunToolFamily.tools[0],

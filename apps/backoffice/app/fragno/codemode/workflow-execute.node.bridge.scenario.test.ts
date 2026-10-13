@@ -402,7 +402,9 @@ test("Node explains denied MCP discovery for immediate, module, and scheduled ex
               },
             });
             assert(moduleSuccessful.status === "success");
-            expect(moduleSuccessful.logs).toContain("non-MCP module completed");
+            expect(moduleSuccessful.logs).toContainEqual(
+              expect.objectContaining({ text: "non-MCP module completed" }),
+            );
           },
         ),
         when.time.advance("2 minutes"),

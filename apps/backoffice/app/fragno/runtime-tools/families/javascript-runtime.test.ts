@@ -243,7 +243,7 @@ describe("createJavaScriptRuntime", () => {
     const executeModule = vi.fn(async () => ({
       status: "success" as const,
       runId: "run-1",
-      logs: ["running"],
+      logs: [{ at: 0, channel: "log" as const, text: "running" }],
     }));
     const runtime = createJavaScriptRuntime({
       getStateBackend: async () => createTestJavaScriptStateBackend(fileSystem),
@@ -259,7 +259,7 @@ describe("createJavaScriptRuntime", () => {
       status: "success",
       runId: "run-1",
       path: "/workspace/scripts/example.js",
-      logs: ["running"],
+      logs: [{ at: 0, channel: "log", text: "running" }],
     });
     expect(executeModule).toHaveBeenCalledWith(
       { kind: "source", path: "/workspace/scripts/example.js", code: "console.log('done');" },

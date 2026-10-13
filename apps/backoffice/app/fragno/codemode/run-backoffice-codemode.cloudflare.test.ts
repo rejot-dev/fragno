@@ -105,7 +105,7 @@ describe("runBackofficeCodemode", () => {
 
     expect(result.error).toBeUndefined();
     assert(result.result === "hello codemode");
-    expect(result.logs).toContain("wrote output");
+    expect(result.logs).toContainEqual(expect.objectContaining({ text: "wrote output" }));
     await expect(stateBackend.readFile("/workspace/output.txt")).resolves.toBe("hello codemode");
   });
 
