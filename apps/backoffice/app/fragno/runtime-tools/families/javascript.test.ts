@@ -25,6 +25,7 @@ function createJavaScriptTestRuntime(): JavaScriptRuntime {
     runFile: vi.fn(async ({ path }) => ({
       status: "success" as const,
       path,
+      runId: "run-1",
       logs: ["running"],
     })),
   };

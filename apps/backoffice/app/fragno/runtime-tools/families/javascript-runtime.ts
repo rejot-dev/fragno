@@ -8,7 +8,6 @@ import jsTokens, { type Token } from "js-tokens";
 
 import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
 import { isPathWithin, normalizeAbsolutePath } from "@/files/normalize-path";
-import type { BackofficeCodemodeExecuteResult } from "@/fragno/codemode/execute";
 import { javaScriptModuleArtifactSchema } from "@/fragno/codemode/javascript-module-artifact";
 import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
 import type { CoreBackofficeToolContext } from "@/fragno/runtime-tools/tool-families";
@@ -33,18 +32,15 @@ export type JavaScriptCheckFileOutput = {
   diagnostics: TypeCheckDiagnostic[];
 };
 
+/** A recorded run's outcome; its run ID leads to the run's retained logs and `codemode` events. */
+export type JavaScriptModuleExecution =
+  | { status: "success"; runId: string; logs: string[] }
+  | { status: "error"; runId: string; error: string; logs: string[] };
+
+/** `rejected` means no run result: the file was refused or execution could not start or report. */
 export type JavaScriptRunFileOutput =
-  | {
-      status: "success";
-      path: string;
-      logs: string[];
-    }
-  | {
-      status: "error";
-      path: string;
-      error: string;
-      logs: string[];
-    };
+  | (JavaScriptModuleExecution & { path: string })
+  | { status: "rejected"; path: string; error: string };
 
 export type JavaScriptRunLogsOutput =
   | { runId: string; status: "running" }
@@ -54,8 +50,9 @@ export type JavaScriptRunLogsOutput =
 export type JavaScriptBuildFileInput = { path: string; out: string };
 
 export type JavaScriptBuildFileOutput =
-  | { status: "success"; path: string; artifactPath: string; warnings: string[] }
-  | { status: "error"; path: string; artifactPath: string; error: string };
+  | { status: "success"; path: string; artifactPath: string; runId: string; warnings: string[] }
+  | { status: "error"; path: string; artifactPath: string; runId: string; error: string }
+  | { status: "rejected"; path: string; artifactPath: string; error: string };
 
 /** A saved file to run: source requires compilation; a validated bundle runs without a compiler. */
 export type JavaScriptModuleProgram =
@@ -65,7 +62,7 @@ export type JavaScriptModuleProgram =
 export type JavaScriptModuleExecutor = (
   program: JavaScriptModuleProgram,
   toolContext: CoreBackofficeToolContext,
-) => Promise<BackofficeCodemodeExecuteResult>;
+) => Promise<JavaScriptModuleExecution>;
 
 export type JavaScriptRuntime = {
   buildFile: ((input: JavaScriptBuildFileInput) => Promise<JavaScriptBuildFileOutput>) | null;
@@ -317,17 +314,12 @@ export function createJavaScriptRuntime({
               }
               program = { kind: "source", path: sourcePath, code };
             }
-            const execution = await executeModule(program, toolContext);
-            const logs = execution.logs ?? [];
-            return execution.error
-              ? { status: "error", path: sourcePath, error: execution.error, logs }
-              : { status: "success", path: sourcePath, logs };
+            return { ...(await executeModule(program, toolContext)), path: sourcePath };
           } catch (error) {
             return {
-              status: "error",
+              status: "rejected",
               path: sourcePath,
               error: error instanceof Error ? error.message : String(error),
-              logs: [],
             };
           }
         }

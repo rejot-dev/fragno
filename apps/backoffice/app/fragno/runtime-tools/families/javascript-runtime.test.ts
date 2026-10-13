@@ -241,9 +241,9 @@ describe("createJavaScriptRuntime", () => {
     await fileSystem.mkdir("/workspace/scripts", { recursive: true });
     await fileSystem.writeFile("/workspace/scripts/example.js", "console.log('done');");
     const executeModule = vi.fn(async () => ({
-      result: "done",
+      status: "success" as const,
+      runId: "run-1",
       logs: ["running"],
-      toolCalls: [],
     }));
     const runtime = createJavaScriptRuntime({
       getStateBackend: async () => createTestJavaScriptStateBackend(fileSystem),
@@ -257,6 +257,7 @@ describe("createJavaScriptRuntime", () => {
       runtime.runFile({ path: "/workspace/scripts/example.js" }, toolContext),
     ).resolves.toEqual({
       status: "success",
+      runId: "run-1",
       path: "/workspace/scripts/example.js",
       logs: ["running"],
     });
@@ -287,11 +288,10 @@ describe("createJavaScriptRuntime", () => {
         createTrustedSystemBackofficeToolContext({ runtimes: {} }),
       ),
     ).resolves.toEqual({
-      status: "error",
+      status: "rejected",
       path: "/workspace/scripts/example.js",
       error:
         "Standalone JavaScript import is not supported in '/workspace/scripts/example.js' at line 1, column 1. Saved JavaScript files must not import other modules.",
-      logs: [],
     });
     expect(executeModule).not.toHaveBeenCalled();
   });
@@ -311,11 +311,10 @@ describe("createJavaScriptRuntime", () => {
         createTrustedSystemBackofficeToolContext({ runtimes: {} }),
       ),
     ).resolves.toEqual({
-      status: "error",
+      status: "rejected",
       path: "/workspace/automations/example.workflow.js",
       error:
         "JavaScript run cannot execute a workflow file. Use workflow.instances.create instead.",
-      logs: [],
     });
     expect(executeModule).not.toHaveBeenCalled();
   });

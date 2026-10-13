@@ -621,13 +621,9 @@ export const createRouteBackedRuntimeContext = ({
                 executeModule: codemodeEnv
                   ? async (program, toolContext) => {
                       if (program.kind === "source" && !canCompileJavaScript) {
-                        return {
-                          result: undefined,
-                          error:
-                            "JavaScript source execution requires a compiler; run a built JSON module artifact instead.",
-                          logs: [],
-                          toolCalls: [],
-                        };
+                        throw new Error(
+                          "JavaScript source execution requires a compiler; run a built JSON module artifact instead.",
+                        );
                       }
                       const { runBackofficeJavaScriptModule } =
                         await import("@/fragno/codemode/javascript-module-execute");
@@ -666,16 +662,15 @@ export const createRouteBackedRuntimeContext = ({
                 canCompileJavaScript && codemodeEnv && execution.scope.kind !== "system"
                   ? async (input) => {
                       try {
-                        const output = await buildJavaScriptModuleFile({
+                        return await buildJavaScriptModuleFile({
                           path: input.path,
                           out: input.out,
                           state: javaScriptStateBackend,
                           codemode: codemodeRunner(),
                         });
-                        return { status: "success", ...output };
                       } catch (error) {
                         return {
-                          status: "error",
+                          status: "rejected",
                           path: input.path,
                           artifactPath: input.out,
                           error: error instanceof Error ? error.message : String(error),

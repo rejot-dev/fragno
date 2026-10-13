@@ -16,15 +16,24 @@ export const javaScriptBuildInputSchema = z.strictObject({
   out: z.string().trim().min(1),
 });
 
+// `rejected` means no build run was recorded; the other outcomes name their run for js.logs.
 const javaScriptBuildOutputSchema = z.discriminatedUnion("status", [
   z.strictObject({
     status: z.literal("success"),
     path: z.string(),
     artifactPath: z.string(),
+    runId: z.string(),
     warnings: z.array(z.string()),
   }),
   z.strictObject({
     status: z.literal("error"),
+    path: z.string(),
+    artifactPath: z.string(),
+    runId: z.string(),
+    error: z.string(),
+  }),
+  z.strictObject({
+    status: z.literal("rejected"),
     path: z.string(),
     artifactPath: z.string(),
     error: z.string(),
@@ -41,17 +50,25 @@ const javaScriptFileInputSchema = z.object({
   path: z.string().trim().min(1),
 });
 
+// `rejected` means no run result: the file was refused or execution could not start or report.
 const javaScriptRunOutputSchema = z.discriminatedUnion("status", [
   z.object({
     status: z.literal("success"),
     path: z.string(),
+    runId: z.string(),
     logs: z.array(z.string()),
   }),
   z.object({
     status: z.literal("error"),
     path: z.string(),
+    runId: z.string(),
     error: z.string(),
     logs: z.array(z.string()),
+  }),
+  z.object({
+    status: z.literal("rejected"),
+    path: z.string(),
+    error: z.string(),
   }),
 ]);
 

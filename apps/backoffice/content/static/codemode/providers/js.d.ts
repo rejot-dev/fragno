@@ -32,13 +32,20 @@ type JsRunOutput =
   | {
       status: "success";
       path: string;
+      runId: string;
       logs: string[];
     }
   | {
       status: "error";
       path: string;
+      runId: string;
       error: string;
       logs: string[];
+    }
+  | {
+      status: "rejected";
+      path: string;
+      error: string;
     };
 type JsLogsInput = {
   runId: string;
@@ -68,10 +75,18 @@ type JsBuildOutput =
       status: "success";
       path: string;
       artifactPath: string;
+      runId: string;
       warnings: string[];
     }
   | {
       status: "error";
+      path: string;
+      artifactPath: string;
+      runId: string;
+      error: string;
+    }
+  | {
+      status: "rejected";
       path: string;
       artifactPath: string;
       error: string;

@@ -61,6 +61,8 @@ export type BackofficeCodemodeWorkflowDefinition = {
 };
 
 export type BackofficeCodemodeExecuteResult = ExecuteResult & {
+  /** Leads to the run's retained record and its `codemode` events. */
+  runId: string;
   toolCalls: BackofficeRuntimeToolCall[];
   workflowDefinition?: BackofficeCodemodeWorkflowDefinition;
 };
@@ -235,7 +237,7 @@ export const runBackofficeCodemode = async ({
     toolContext,
     toolCalls,
   });
-  const completion = await executeCodemodeInObject(
+  const { runId, completion } = await executeCodemodeInObject(
     codemode,
     {
       kind: "immediate",
@@ -250,6 +252,7 @@ export const runBackofficeCodemode = async ({
   );
   if (completion.status === "failed") {
     return {
+      runId,
       result: undefined,
       error: explainMcpCodemodeError(mcpDiscoveryError, completion.error.message),
       logs: completion.logs,
@@ -257,6 +260,7 @@ export const runBackofficeCodemode = async ({
     };
   }
   return {
+    runId,
     result: completion.value,
     logs: completion.logs,
     ...(completion.workflowDefinition ? { workflowDefinition: completion.workflowDefinition } : {}),

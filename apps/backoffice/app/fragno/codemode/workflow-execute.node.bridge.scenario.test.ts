@@ -379,6 +379,7 @@ test("Node explains denied MCP discovery for immediate, module, and scheduled ex
                 code: "await mcp_agensi.search({});",
               },
             });
+            assert(moduleDenied.status === "error");
             expect(moduleDenied.error).toContain("Required permission: mcp.servers.read.");
             const moduleUnrelated = await runBackofficeJavaScriptModule({
               ...options,
@@ -388,7 +389,10 @@ test("Node explains denied MCP discovery for immediate, module, and scheduled ex
                 code: 'throw new Error("unrelated module failure");',
               },
             });
-            assert(moduleUnrelated.error === "unrelated module failure");
+            assert(
+              moduleUnrelated.status === "error" &&
+                moduleUnrelated.error === "unrelated module failure",
+            );
             const moduleSuccessful = await runBackofficeJavaScriptModule({
               ...options,
               program: {
@@ -397,7 +401,7 @@ test("Node explains denied MCP discovery for immediate, module, and scheduled ex
                 code: 'console.log("non-MCP module completed");',
               },
             });
-            expect(moduleSuccessful.error).toBeUndefined();
+            assert(moduleSuccessful.status === "success");
             expect(moduleSuccessful.logs).toContain("non-MCP module completed");
           },
         ),

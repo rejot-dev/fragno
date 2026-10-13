@@ -4,7 +4,7 @@ import { codemodeWorkerBundleSchema } from "@fragno-dev/codemode/execution/codem
 import type { ResolvedProvider } from "@fragno-dev/codemode/runtime-api";
 import { z } from "zod";
 
-import type { CodemodeRunCompletion, CodemodeRunOrigin } from "./codemode-fragment";
+import type { CodemodeExecution, CodemodeRunOrigin } from "./codemode-fragment";
 import {
   codemodeProviderManifest,
   executeCodemodeInObject,
@@ -17,17 +17,24 @@ export async function buildBackofficeJavaScriptModule(input: {
   dependencies: Record<string, string>;
   codemode: CodemodeRunner;
   origin: CodemodeRunOrigin;
-}): Promise<CompiledWorker> {
-  const completion = await executeCodemodeInObject(
+}): Promise<
+  | ({ status: "success"; runId: string } & CompiledWorker)
+  | { status: "error"; runId: string; error: string }
+> {
+  const { runId, completion } = await executeCodemodeInObject(
     input.codemode,
     { kind: "module-build", code: input.code, dependencies: input.dependencies },
     input.origin,
     [],
     null,
   );
-  return z
+  if (completion.status === "failed") {
+    return { status: "error", runId, error: completion.error.message };
+  }
+  const compiled = z
     .strictObject({ bundle: codemodeWorkerBundleSchema, warnings: z.array(z.string()) })
-    .parse(requireCompletedModuleValue(completion));
+    .parse(completion.value);
+  return { status: "success", runId, ...compiled };
 }
 
 type CompiledModuleExecutionInput = {
@@ -44,13 +51,17 @@ type CompiledModuleExecutionInput = {
 export async function runBackofficeCompiledModule(
   input: CompiledModuleExecutionInput,
 ): Promise<unknown> {
-  return requireCompletedModuleValue(await executeBackofficeCompiledModule(input));
+  const { completion } = await executeBackofficeCompiledModule(input);
+  if (completion.status === "failed") {
+    throw new Error(completion.error.message);
+  }
+  return completion.value;
 }
 
 /** Executes a precompiled module with fresh capabilities and logs; null invocation runs top-level code only. */
 export async function executeBackofficeCompiledModule(
   input: CompiledModuleExecutionInput,
-): Promise<CodemodeRunCompletion> {
+): Promise<CodemodeExecution> {
   return await executeCodemodeInObject(
     input.codemode,
     {
@@ -65,11 +76,4 @@ export async function executeBackofficeCompiledModule(
     input.providers,
     input.signal,
   );
-}
-
-function requireCompletedModuleValue(completion: CodemodeRunCompletion): unknown {
-  if (completion.status === "failed") {
-    throw new Error(completion.error.message);
-  }
-  return completion.value;
 }

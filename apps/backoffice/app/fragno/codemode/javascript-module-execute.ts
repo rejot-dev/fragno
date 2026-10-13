@@ -1,9 +1,12 @@
-import {
-  createBackofficeCodemodeResolvedProviders,
-  type BackofficeCodemodeExecuteResult,
-} from "@/fragno/codemode/execute";
-import type { JavaScriptModuleProgram } from "@/fragno/runtime-tools/families/javascript-runtime";
-import type { BackofficeRuntimeToolFamily } from "@/fragno/runtime-tools/runtime-tools";
+import { createBackofficeCodemodeResolvedProviders } from "@/fragno/codemode/execute";
+import type {
+  JavaScriptModuleExecution,
+  JavaScriptModuleProgram,
+} from "@/fragno/runtime-tools/families/javascript-runtime";
+import type {
+  BackofficeRuntimeToolCall,
+  BackofficeRuntimeToolFamily,
+} from "@/fragno/runtime-tools/runtime-tools";
 import type { CoreBackofficeToolContext } from "@/fragno/runtime-tools/tool-families";
 
 import {
@@ -27,15 +30,15 @@ export async function runBackofficeJavaScriptModule({
   codemode,
   families,
   toolContext,
-}: RunBackofficeJavaScriptModuleInput): Promise<BackofficeCodemodeExecuteResult> {
-  const toolCalls: BackofficeCodemodeExecuteResult["toolCalls"] = [];
+}: RunBackofficeJavaScriptModuleInput): Promise<JavaScriptModuleExecution> {
+  const toolCalls: BackofficeRuntimeToolCall[] = [];
   const { providers, mcpDiscoveryError } = await createBackofficeCodemodeResolvedProviders({
     families,
     toolContext,
     toolCalls,
   });
   const origin = { kind: "file", path: program.path } as const;
-  const completion =
+  const { runId, completion } =
     program.kind === "bundle"
       ? await executeBackofficeCompiledModule({
           bundle: program.bundle,
@@ -61,10 +64,10 @@ export async function runBackofficeJavaScriptModule({
         );
   return completion.status === "failed"
     ? {
-        result: undefined,
+        status: "error",
+        runId,
         error: explainMcpCodemodeError(mcpDiscoveryError, completion.error.message),
         logs: completion.logs,
-        toolCalls,
       }
-    : { result: undefined, logs: completion.logs, toolCalls };
+    : { status: "success", runId, logs: completion.logs };
 }

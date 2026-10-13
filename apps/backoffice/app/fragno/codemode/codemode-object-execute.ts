@@ -11,7 +11,6 @@ import type { CodemodeObject } from "@/backoffice-runtime/object-registry";
 import type {
   CodemodeExecution,
   CodemodeRunActivation,
-  CodemodeRunCompletion,
   CodemodeRunOrigin,
 } from "./codemode-fragment";
 
@@ -53,12 +52,12 @@ export async function executeCodemodeInObject(
   origin: CodemodeRunOrigin,
   providers: ResolvedProvider[],
   signal: AbortSignal | null,
-): Promise<CodemodeRunCompletion> {
+): Promise<CodemodeExecution> {
   signal?.throwIfAborted();
   const host = createCodemodeHost(providers, null);
   const execution = codemode.run(activation, origin, host);
   if (signal === null) {
-    return (await execution).completion;
+    return await execution;
   }
   let rejectCancelled: (reason: unknown) => void;
   const cancelled = new Promise<never>((_resolve, reject) => {
@@ -71,7 +70,7 @@ export async function executeCodemodeInObject(
   signal.addEventListener("abort", cancel, { once: true });
   try {
     // The abandoned run keeps executing with revoked capabilities until the object records its outcome.
-    return (await Promise.race([execution, cancelled])).completion;
+    return await Promise.race([execution, cancelled]);
   } finally {
     signal.removeEventListener("abort", cancel);
   }

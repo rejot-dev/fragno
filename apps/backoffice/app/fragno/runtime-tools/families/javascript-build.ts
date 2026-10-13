@@ -8,16 +8,20 @@ import {
   resolveJavaScriptModuleArtifactPath,
 } from "@/fragno/codemode/javascript-module-artifact";
 import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
+import type { JavaScriptBuildFileOutput } from "@/fragno/runtime-tools/families/javascript-runtime";
 
 import { dependencies } from "../../../../package.json";
 
-/** Builds one saved ES module without running it; a failed compilation preserves the previous artifact. */
+/**
+ * Builds one saved ES module without running it; a failed compilation preserves the previous
+ * artifact. Throws when the input is refused before a build run is recorded.
+ */
 export async function buildJavaScriptModuleFile(input: {
   path: string;
   out: string;
   state: BackofficeStateBackend;
   codemode: CodemodeRunner;
-}): Promise<{ path: string; artifactPath: string; warnings: string[] }> {
+}): Promise<JavaScriptBuildFileOutput> {
   if (
     !input.path.startsWith("/") ||
     input.path.split("/").includes("..") ||
@@ -47,20 +51,35 @@ export async function buildJavaScriptModuleFile(input: {
   if (source.size > CODEMODE_LIMITS.maxSourceBytes) {
     throw new Error("CODEMODE_SOURCE_LIMIT_EXCEEDED");
   }
-  const compiled = await buildBackofficeJavaScriptModule({
+  const built = await buildBackofficeJavaScriptModule({
     code: await input.state.readFile(path),
     dependencies: { "@earendil-works/pi-durable": dependencies["@earendil-works/pi-durable"] },
     codemode: input.codemode,
     origin: { kind: "file", path },
   });
+  const { runId } = built;
+  if (built.status === "error") {
+    return { status: "error", path, artifactPath, runId, error: built.error };
+  }
   const artifact = JSON.stringify({
     format: javaScriptModuleArtifactSchema.shape.format.value,
-    bundle: compiled.bundle,
+    bundle: built.bundle,
   });
   if (new TextEncoder().encode(artifact).byteLength > CODEMODE_LIMITS.maxBundleBytes) {
-    throw new Error("JAVASCRIPT_BUILD_ARTIFACT_TOO_LARGE");
+    return {
+      status: "error",
+      path,
+      artifactPath,
+      runId,
+      error: "JAVASCRIPT_BUILD_ARTIFACT_TOO_LARGE",
+    };
   }
-  // Upload publishes a complete file revision atomically; consumers never see partial build output.
-  await input.state.writeFile(artifactPath, artifact);
-  return { path, artifactPath, warnings: compiled.warnings };
+  try {
+    // Upload publishes a complete file revision atomically; consumers never see partial build output.
+    await input.state.writeFile(artifactPath, artifact);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { status: "error", path, artifactPath, runId, error: message };
+  }
+  return { status: "success", path, artifactPath, runId, warnings: built.warnings };
 }
