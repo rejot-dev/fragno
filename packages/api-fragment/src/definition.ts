@@ -1,5 +1,5 @@
 import { defineFragment } from "@fragno-dev/core";
-import { withDatabase, type HookContext, type HookFn } from "@fragno-dev/db";
+import { withDatabase, type HookContext, type HookFn, type TypedUnitOfWork } from "@fragno-dev/db";
 
 import type {
   ApiFragmentConfig as BaseApiFragmentConfig,
@@ -8,6 +8,7 @@ import type {
 } from "./api-types";
 import { apiSchema } from "./schema";
 import {
+  apiAuthReadyUntil,
   createOAuthCallbackSnapshot,
   createOAuthStartSnapshot,
   isApiAuthReady,
@@ -38,6 +39,12 @@ export interface ApiConnectionReadinessChangedPayload {
   connectionId: string;
   /** Whether stored auth can authorize requests; providers can still reject it. */
   ready: boolean;
+}
+
+/** The token stored when expiry was scheduled; a later write replaces it and reports itself. */
+interface InternalAuthExpiredPayload {
+  connectionId: string;
+  expiresAt: string;
 }
 
 interface InternalWebhookReceivedPayload {
@@ -88,8 +95,8 @@ export interface ApiFragmentHooksConfig {
     context: HookContext,
   ) => Promise<void> | void;
   /**
-   * Fires when a write changes whether the connection can authorize requests, including creation.
-   * Expiry without a write does not fire: an expired token is only noticed when it is used.
+   * Fires when a write changes whether the connection can authorize requests, including creation,
+   * and when an access token without a refresh token expires.
    */
   onConnectionReadinessChanged?: (
     payload: ApiConnectionReadinessChangedPayload,
@@ -111,9 +118,29 @@ export type ApiHooksMap = {
   onConnectionChanged: HookFn<ApiConnectionChangedPayload>;
   onConnectionDeleted: HookFn<ApiConnectionDeletedPayload>;
   onConnectionReadinessChanged: HookFn<ApiConnectionReadinessChangedPayload>;
+  onAuthExpired: HookFn<InternalAuthExpiredPayload>;
   onWebhookEndpointChanged: HookFn<WebhookEndpointChangedPayload>;
   onWebhookReceived: HookFn<InternalWebhookReceivedPayload>;
 };
+
+type ApiUow = TypedUnitOfWork<typeof apiSchema, unknown[], unknown, ApiHooksMap>;
+
+/** Expiry changes readiness without a write, so a write that starts the countdown schedules it. */
+function scheduleAuthExpiry(
+  uow: ApiUow,
+  connectionId: string,
+  authMode: string,
+  after: { payload: string; expiresAt: Date | null },
+) {
+  const readyUntil = apiAuthReadyUntil(authMode, after);
+  if (readyUntil && after.expiresAt && isApiAuthReady(authMode, after)) {
+    uow.triggerHook(
+      "onAuthExpired",
+      { connectionId, expiresAt: after.expiresAt.toISOString() },
+      { processAt: readyUntil },
+    );
+  }
+}
 
 function connectionHookSnapshot(connection: {
   id: { toString(): string } | string;
@@ -142,6 +169,32 @@ export const apiFragmentDefinition = defineFragment<ApiFragmentConfig>("api-frag
     }),
     onConnectionReadinessChanged: defineHook(async function (payload) {
       await config.onConnectionReadinessChanged?.(payload, this);
+    }),
+    onAuthExpired: defineHook(async function ({ connectionId, expiresAt }) {
+      const expired = await this.handlerTx()
+        .retrieve(({ forSchema }) =>
+          forSchema(apiSchema)
+            .findFirst("api_connection", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", connectionId)),
+            )
+            .findFirst("secret", (b) =>
+              b.whereIndex("idx_secret_connection_kind", (eb) =>
+                eb.and(eb("connectionId", "=", connectionId), eb("kind", "=", "auth")),
+              ),
+            ),
+        )
+        .transformRetrieve(
+          ([connection, secret]) =>
+            // The hook's due time already passed, so an untouched token is the expired one.
+            connection !== null &&
+            secret !== null &&
+            secret.expiresAt?.getTime() === Date.parse(expiresAt) &&
+            apiAuthReadyUntil(connection.authMode, secret) !== null,
+        )
+        .execute();
+      if (expired) {
+        await config.onConnectionReadinessChanged?.({ connectionId, ready: false }, this);
+      }
     }),
     onWebhookEndpointChanged: defineHook(async function (payload) {
       await config.onWebhookEndpointChanged?.(payload, this);
@@ -328,13 +381,15 @@ export const apiFragmentDefinition = defineFragment<ApiFragmentConfig>("api-frag
                 authMode: "oauth",
               });
               uow.triggerHook("onConnectionChanged", { connectionId, connection });
-              const ready = isApiAuthReady("oauth", {
+              const after = {
                 payload: retrieveResult.changes.authPayload,
                 expiresAt: retrieveResult.changes.authExpiresAt ?? null,
-              });
+              };
+              const ready = isApiAuthReady("oauth", after);
               if (ready !== retrieveResult.wasReady) {
                 uow.triggerHook("onConnectionReadinessChanged", { connectionId, ready });
               }
+              scheduleAuthExpiry(uow, connectionId, "oauth", after);
             }
             uow.update("oauthState", input.stateId, (b) => b.set({ consumedAt: b.now() }));
             return { found: true as const };
@@ -410,13 +465,15 @@ export const apiFragmentDefinition = defineFragment<ApiFragmentConfig>("api-frag
                 connection: connectionHookSnapshot(retrieveResult.connection),
               });
               const { authMode } = retrieveResult.connection;
-              const ready = isApiAuthReady(authMode, {
+              const after = {
                 payload: authChanges.authPayload,
                 expiresAt: authChanges.authExpiresAt ?? null,
-              });
+              };
+              const ready = isApiAuthReady(authMode, after);
               if (ready !== isApiAuthReady(authMode, existing)) {
                 uow.triggerHook("onConnectionReadinessChanged", { connectionId, ready });
               }
+              scheduleAuthExpiry(uow, connectionId, authMode, after);
             }
             return { found: true as const, response: retrieveResult.response };
           })
@@ -472,13 +529,15 @@ export const apiFragmentDefinition = defineFragment<ApiFragmentConfig>("api-frag
               const connection = connectionHookSnapshot(retrieveResult.connection);
               uow.triggerHook("onConnectionChanged", { connectionId, connection });
               const { authMode } = retrieveResult.connection;
-              const ready = isApiAuthReady(authMode, {
+              const after = {
                 payload: authChanges.authPayload,
                 expiresAt: authChanges.authExpiresAt ?? null,
-              });
+              };
+              const ready = isApiAuthReady(authMode, after);
               if (ready !== isApiAuthReady(authMode, existing)) {
                 uow.triggerHook("onConnectionReadinessChanged", { connectionId, ready });
               }
+              scheduleAuthExpiry(uow, connectionId, authMode, after);
             }
             return { found: true as const, tokenPresent: retrieveResult.tokenPresent };
           })

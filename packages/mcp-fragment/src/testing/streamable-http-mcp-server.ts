@@ -10,6 +10,7 @@ export interface TestMcpServerHandle {
   getMcpRequestCount: () => number;
   getTokenRequestCount: () => number;
   forgetRegisteredClients: () => void;
+  setTokenLifetimeSeconds: (seconds: number) => void;
   close: () => Promise<void>;
 }
 
@@ -70,6 +71,7 @@ export async function startStreamableHttpTestMcpServer(
     getMcpRequestCount: mcpServer.getMcpRequestCount,
     getTokenRequestCount: mcpServer.getTokenRequestCount,
     forgetRegisteredClients: mcpServer.forgetRegisteredClients,
+    setTokenLifetimeSeconds: mcpServer.setTokenLifetimeSeconds,
     close: async () => {
       await mcpServer.close();
       httpServer.closeAllConnections();

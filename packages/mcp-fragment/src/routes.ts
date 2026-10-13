@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { defineRoutes } from "@fragno-dev/core";
 
-import { mcpFragmentDefinition } from "./definition";
+import { mcpFragmentDefinition, scheduleMcpAuthExpiry } from "./definition";
 import { buildAuthDiagnostics, errorMessage, refreshOutputSchema } from "./diagnostics";
 import {
   assertAllowedEndpoint,
@@ -822,6 +822,7 @@ export const mcpRoutesFactory = defineRoutes(mcpFragmentDefinition).create(
                 if (ready !== isMcpAuthReady(server.authMode, before)) {
                   uow.triggerHook("onServerReadinessChanged", { serverId, ready });
                 }
+                scheduleMcpAuthExpiry(uow, serverId, server.authMode, after);
               }
 
               const auth = buildAuthDiagnostics({
@@ -1016,6 +1017,7 @@ export const mcpRoutesFactory = defineRoutes(mcpFragmentDefinition).create(
                       ready,
                     });
                   }
+                  scheduleMcpAuthExpiry(uow, preparedOperation.serverId, server.authMode, after);
                 }
 
                 const toolOperation = preparedOperation.toolOperation;

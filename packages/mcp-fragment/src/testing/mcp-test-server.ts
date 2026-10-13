@@ -26,6 +26,8 @@ export interface TestMcpServerOptions {
   requiredClientSecret?: string;
   refreshedRefreshToken?: string;
   omitRefreshTokenOnRefresh?: boolean;
+  /** Consent grants only an access token, which stops working when it expires. */
+  omitRefreshTokenOnConsent?: boolean;
   failAuthorizedMcpRequests?: boolean;
 }
 
@@ -36,6 +38,8 @@ export interface TestMcpServer {
   getTokenRequestCount: () => number;
   /** Rejects every client registered so far, as a server that lost its registrations would. */
   forgetRegisteredClients: () => void;
+  /** Sets how long access tokens issued from now on last; one hour until changed. */
+  setTokenLifetimeSeconds: (seconds: number) => void;
   close: () => Promise<void>;
 }
 
@@ -131,6 +135,7 @@ async function handleToken(
   request: Request,
   options: TestMcpServerOptions,
   registeredClients: ReadonlySet<string>,
+  tokenLifetimeSeconds: number,
 ) {
   const form = new URLSearchParams(await request.text());
   if (!hasExpectedClientAuth(request, form, options, registeredClients)) {
@@ -141,7 +146,7 @@ async function handleToken(
     return json({
       access_token: options.requiredBearerToken ?? "client-credentials-access-token",
       token_type: "Bearer",
-      expires_in: 3600,
+      expires_in: tokenLifetimeSeconds,
       scope: form.get("scope") ?? "tools",
     });
   }
@@ -155,7 +160,7 @@ async function handleToken(
         ? {}
         : { refresh_token: options.refreshedRefreshToken ?? "oauth-refresh-token" }),
       token_type: "Bearer",
-      expires_in: 3600,
+      expires_in: tokenLifetimeSeconds,
       scope: "tools",
     });
   }
@@ -167,9 +172,9 @@ async function handleToken(
   }
   return json({
     access_token: options.requiredBearerToken ?? "oauth-access-token",
-    refresh_token: "oauth-refresh-token",
+    ...(options.omitRefreshTokenOnConsent ? {} : { refresh_token: "oauth-refresh-token" }),
     token_type: "Bearer",
-    expires_in: 3600,
+    expires_in: tokenLifetimeSeconds,
     scope: "tools",
   });
 }
@@ -188,6 +193,7 @@ export function createTestMcpServer(options: TestMcpServerOptions = {}): TestMcp
   let mcpRequestCount = 0;
   let tokenRequestCount = 0;
   let registrationCount = 0;
+  let tokenLifetimeSeconds = 3600;
   const registeredClients = new Set<string>();
 
   async function createSession() {
@@ -264,7 +270,7 @@ export function createTestMcpServer(options: TestMcpServerOptions = {}): TestMcp
     }
     if (options.oauth && url.pathname === "/token" && request.method === "POST") {
       tokenRequestCount += 1;
-      return await handleToken(request, options, registeredClients);
+      return await handleToken(request, options, registeredClients, tokenLifetimeSeconds);
     }
     if (url.pathname !== "/mcp") {
       return new Response("Not found", { status: 404 });
@@ -306,6 +312,9 @@ export function createTestMcpServer(options: TestMcpServerOptions = {}): TestMcp
     getTokenRequestCount: () => tokenRequestCount,
     forgetRegisteredClients: () => {
       registeredClients.clear();
+    },
+    setTokenLifetimeSeconds: (seconds) => {
+      tokenLifetimeSeconds = seconds;
     },
     close: async () => {
       for (const session of sessions.values()) {

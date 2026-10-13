@@ -9,6 +9,7 @@ import {
   createMcpOperationAuth,
   createOAuthStartSnapshot,
   isMcpAuthReady,
+  mcpAuthReadyUntil,
   resolveMcpOperationAuth,
   resolveOAuthStartClient,
   withoutOAuthConsent,
@@ -44,8 +45,8 @@ export interface McpFragmentHooksConfig {
   ) => Promise<void> | void;
   /**
    * Fires when a write changes whether the server can authorize operations, including creation
-   * and credentials the server invalidates during an operation. Expiry without a write does not
-   * fire: an expired token is only noticed when it is used.
+   * and credentials the server invalidates during an operation, and when an access token without a
+   * refresh token expires.
    */
   onServerReadinessChanged?: (
     payload: McpServerReadinessChangedPayload,
@@ -59,12 +60,43 @@ export interface McpInternalRefreshServerConfigurationPayload {
   serverId: string;
 }
 
+/** The token stored when expiry was scheduled; a later write replaces it and reports itself. */
+interface McpInternalAuthExpiredPayload {
+  serverId: string;
+  expiresAt: string;
+}
+
 export type McpHooksMap = {
   internalRefreshServerConfiguration: HookFn<McpInternalRefreshServerConfigurationPayload>;
+  internalAuthExpired: HookFn<McpInternalAuthExpiredPayload>;
   onServerConfigurationChanged: HookFn<McpServerConfigurationChangedPayload>;
   onServerConfigurationDeleted: HookFn<McpServerConfigurationDeletedPayload>;
   onServerReadinessChanged: HookFn<McpServerReadinessChangedPayload>;
 };
+
+/** Expiry changes readiness without a write, so a write that starts the countdown schedules it. */
+export function scheduleMcpAuthExpiry(
+  // Hook transactions type their hooks loosely, so only the one trigger is required.
+  uow: {
+    triggerHook(
+      name: "internalAuthExpired",
+      payload: McpInternalAuthExpiredPayload,
+      options: { processAt: Date },
+    ): void;
+  },
+  serverId: string,
+  authMode: string,
+  after: { payload: string; expiresAt: Date | null },
+) {
+  const readyUntil = mcpAuthReadyUntil(authMode, after);
+  if (readyUntil && after.expiresAt && isMcpAuthReady(authMode, after)) {
+    uow.triggerHook(
+      "internalAuthExpired",
+      { serverId, expiresAt: after.expiresAt.toISOString() },
+      { processAt: readyUntil },
+    );
+  }
+}
 
 export const mcpFragmentDefinition = defineFragment<McpFragmentConfig>("mcp-fragment")
   .extend(withDatabase(mcpSchema))
@@ -157,6 +189,7 @@ export const mcpFragmentDefinition = defineFragment<McpFragmentConfig>("mcp-frag
             if (ready !== isMcpAuthReady(server.authMode, before)) {
               uow.triggerHook("onServerReadinessChanged", { serverId, ready });
             }
+            scheduleMcpAuthExpiry(uow, serverId, server.authMode, after);
           }
 
           if (!preparedOperation.toolsOperation.ok) {
@@ -206,6 +239,32 @@ export const mcpFragmentDefinition = defineFragment<McpFragmentConfig>("mcp-frag
     }),
     onServerReadinessChanged: defineHook(async function (payload) {
       await config.onServerReadinessChanged?.(payload, this);
+    }),
+    internalAuthExpired: defineHook(async function ({ serverId, expiresAt }) {
+      const expired = await this.handlerTx()
+        .retrieve(({ forSchema }) =>
+          forSchema(mcpSchema)
+            .findFirst("server_configuration", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", serverId)),
+            )
+            .findFirst("secret", (b) =>
+              b.whereIndex("idx_secret_server_kind", (eb) =>
+                eb.and(eb("serverId", "=", serverId), eb("kind", "=", "auth")),
+              ),
+            ),
+        )
+        .transformRetrieve(
+          ([server, secret]) =>
+            // The hook's due time already passed, so an untouched token is the expired one.
+            server !== null &&
+            secret !== null &&
+            secret.expiresAt?.getTime() === Date.parse(expiresAt) &&
+            mcpAuthReadyUntil(server.authMode, secret) !== null,
+        )
+        .execute();
+      if (expired) {
+        await config.onServerReadinessChanged?.({ serverId, ready: false }, this);
+      }
     }),
   }))
   .providesBaseService(({ defineService, config }) =>
@@ -409,6 +468,7 @@ export const mcpFragmentDefinition = defineFragment<McpFragmentConfig>("mcp-frag
               if (ready !== isMcpAuthReady(retrieveResult.server.authMode, before)) {
                 uow.triggerHook("onServerReadinessChanged", { serverId, ready });
               }
+              scheduleMcpAuthExpiry(uow, serverId, "oauth", after);
               if (retrieveResult.cache) {
                 uow.delete("server_connection_cache", retrieveResult.cache.id);
               }
