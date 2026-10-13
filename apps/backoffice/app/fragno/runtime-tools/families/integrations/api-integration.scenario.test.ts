@@ -4,6 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import { automationEventListResultSchema } from "@fragno-dev/backoffice-api/v0/events";
 import { integrationSetupProgressSchema } from "@fragno-dev/backoffice-api/v0/integrations";
 import {
   BACKOFFICE_PERMISSION,
@@ -96,7 +97,9 @@ type ApiProvider = {
   delegatedGrants: BackofficePermissionRequirement[];
 };
 
+/** In-memory storage follows the scenario clock; SQLite's `now` is the real one. */
 async function runApiIntegrationScenario<TVars extends Record<string, unknown>>(
+  storage: "sqlite" | "memory",
   defineScenario: (
     provider: ApiProvider,
   ) => Omit<BackofficeScenarioDefinitionInput<TVars>, "objects">,
@@ -139,7 +142,10 @@ async function runApiIntegrationScenario<TVars extends Record<string, unknown>>(
     await runBackofficeScenario(
       defineBackofficeScenario({
         ...scenario,
-        options: { ...scenario.options, sqliteDataDirectory: directory },
+        options: {
+          ...scenario.options,
+          sqliteDataDirectory: storage === "sqlite" ? directory : undefined,
+        },
         objects: {
           ...scenarioObjects,
           API: (options) =>
@@ -200,6 +206,25 @@ function createDelegatedExecution(
   };
 }
 
+/** Every connection event recorded for one address, sorted so repeated states can be counted. */
+async function connectionEventTypes(
+  ctx: BackofficeScenarioContext,
+  scope: BackofficeContextScope,
+  connectionId: string,
+) {
+  const response = await ctx.runtime.objects.automations
+    .for(scope)
+    .http.fetch(new Request("https://automations.test/api/automations/events?limit=500"));
+  assert(response.ok, await response.clone().text());
+  return automationEventListResultSchema
+    .parse(await response.json())
+    .events.filter(
+      (event) => event.source === "integrations" && event.subject?.connectionId === connectionId,
+    )
+    .map((event) => event.eventType)
+    .sort();
+}
+
 /** Consent happens in the provider's browser flow; the callback is the only signal setup sees. */
 async function completeConsent(
   ctx: BackofficeScenarioContext,
@@ -220,7 +245,7 @@ async function completeConsent(
 }
 
 test("Codemode creates a custom API through setup and keeps one address across restart, credential reset, and deletion", async () => {
-  await runApiIntegrationScenario((provider) => ({
+  await runApiIntegrationScenario("sqlite", (provider) => ({
     name: "API bearer setup and execution through the registered facade",
     setup: ({ given }) => [
       given.organization.exists({ id: orgScope.orgId, slug: "api-org", name: "API Org" }),
@@ -548,7 +573,7 @@ test("Codemode creates a custom API through setup and keeps one address across r
 
 test("OAuth setup resumes source-owned consent across restarts, native restarts, and expiry", async () => {
   const scope = { kind: "user", userId: "api-user" } as const;
-  await runApiIntegrationScenario<{ authorizationUrl: string }>((provider) => ({
+  await runApiIntegrationScenario<{ authorizationUrl: string }>("sqlite", (provider) => ({
     name: "API OAuth setup through the registered facade",
     setup: ({ given }) => [given.auth.user({ id: scope.userId, email: "api@example.test" })],
     vars: () => ({ authorizationUrl: "" }),
@@ -821,6 +846,69 @@ test("OAuth setup resumes source-owned consent across restarts, native restarts,
   }));
 });
 
+test("an access token without a refresh token reports unavailable when it expires", async () => {
+  const scope = { kind: "user", userId: "api-user" } as const;
+  const connectionId = "api#expiring";
+  await runApiIntegrationScenario("memory", (provider) => ({
+    name: "API OAuth expiry without a refresh token",
+    setup: ({ given }) => [given.auth.user({ id: scope.userId, email: "api@example.test" })],
+    steps: ({ then, when, runner }) => [
+      then.assert("consent grants an hour-long token without a refresh token", async (ctx) => {
+        provider.control.refreshToken = false;
+        const started = await ctx.runCodemode({
+          scope,
+          code: `async () => await integrations.setup({ kind: "input", connectionId: ${JSON.stringify(connectionId)}, input: {
+            baseUrl: ${JSON.stringify(providerOrigin)}, ...${JSON.stringify(oauthAuth)},
+          } })`,
+        });
+        const progress = integrationSetupProgressSchema.parse(started.result);
+        assert(progress.status === "needs-authorization");
+        await completeConsent(ctx, scope, progress.authorizationUrl, "first-hour");
+      }),
+      runner.drain(),
+      then.assert("setup reports the pending consent, then the token", async (ctx) => {
+        expect(await connectionEventTypes(ctx, scope, connectionId)).toEqual([
+          "connection.ready",
+          "connection.unavailable",
+        ]);
+      }),
+      when.time.advance("30 minutes"),
+      then.assert("reauthorizing replaces the token with another hour-long one", async (ctx) => {
+        // Token expiry is stamped from the real clock, which the scenario's advance does not move.
+        provider.control.expiresIn = 90 * 60;
+        const run = await ctx.runCodemode({
+          scope,
+          code: `async () => await integrations.reconfigure({ kind: "input", connectionId: ${JSON.stringify(connectionId)}, input: { reauthorize: true } })`,
+        });
+        const progress = integrationSetupProgressSchema.parse(run.result);
+        assert(progress.status === "needs-authorization");
+        await completeConsent(ctx, scope, progress.authorizationUrl, "second-hour");
+      }),
+      when.time.advance("40 minutes"),
+      runner.drain(),
+      then.assert("the replaced token's expiry reports nothing", async (ctx) => {
+        expect(await connectionEventTypes(ctx, scope, connectionId)).toEqual([
+          "connection.ready",
+          "connection.ready",
+          "connection.unavailable",
+          "connection.unavailable",
+        ]);
+      }),
+      when.time.advance("30 minutes"),
+      runner.drain(),
+      then.assert("the current token's expiry reports the connection unavailable", async (ctx) => {
+        expect(await connectionEventTypes(ctx, scope, connectionId)).toEqual([
+          "connection.ready",
+          "connection.ready",
+          "connection.unavailable",
+          "connection.unavailable",
+          "connection.unavailable",
+        ]);
+      }),
+    ],
+  }));
+});
+
 test("api addresses resolve only in their own scope, page natively, and require both authority layers", async () => {
   const projectScope = {
     kind: "project",
@@ -828,7 +916,7 @@ test("api addresses resolve only in their own scope, page natively, and require 
     projectId: "api-project",
   } as const;
   const userScope = { kind: "user", userId: "api-member" } as const;
-  await runApiIntegrationScenario((provider) => ({
+  await runApiIntegrationScenario("sqlite", (provider) => ({
     name: "API integration scope isolation, pagination, and authorization",
     setup: ({ given }) => [
       given.organization.exists({ id: orgScope.orgId, slug: "api-org", name: "API Org" }),

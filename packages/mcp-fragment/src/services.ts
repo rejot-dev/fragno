@@ -94,11 +94,13 @@ function secretByKind<TSecret extends { kind: string }>(secrets: TSecret[], kind
   return secrets.find((secret) => secret.kind === kind);
 }
 
+const TOKEN_EXPIRY_SKEW_MS = 30_000;
+
 function secretExpiresInFuture(secret: Pick<SecretRecord, "expiresAt"> | undefined) {
   if (!secret?.expiresAt) {
     return false;
   }
-  return new Date(secret.expiresAt).getTime() > Date.now() + 30_000;
+  return new Date(secret.expiresAt).getTime() > Date.now() + TOKEN_EXPIRY_SKEW_MS;
 }
 
 function secretIsUnexpired(secret: Pick<SecretRecord, "expiresAt"> | undefined) {
@@ -152,6 +154,24 @@ export function isMcpAuthReady(
     default:
       throw new Error("Unknown MCP auth mode.", { cause: status satisfies never });
   }
+}
+
+/**
+ * When stored auth stops authorizing operations because its access token expires without renewal,
+ * whether or not that moment has passed. Null when a refresh token renews it or nothing expires.
+ */
+export function mcpAuthReadyUntil(
+  authMode: string,
+  authSecret: Pick<SecretRecord, "payload" | "expiresAt">,
+): Date | null {
+  if (authMode !== "oauth" || !authSecret.expiresAt) {
+    return null;
+  }
+  const auth = parseSecretPayload<StoredAuthPayload>(authSecret.payload);
+  if (auth.type !== "oauth" || !auth.tokens?.access_token || auth.tokens.refresh_token) {
+    return null;
+  }
+  return new Date(new Date(authSecret.expiresAt).getTime() - TOKEN_EXPIRY_SKEW_MS);
 }
 
 /**

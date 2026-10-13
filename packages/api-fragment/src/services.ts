@@ -128,6 +128,24 @@ export function isApiAuthReady(
 }
 
 /**
+ * When stored auth stops authorizing requests because its access token expires without renewal,
+ * whether or not that moment has passed. Null when a refresh token renews it or nothing expires.
+ */
+export function apiAuthReadyUntil(
+  authMode: string,
+  authSecret: Pick<SecretRecord, "payload" | "expiresAt">,
+): Date | null {
+  if (authMode !== "oauth" || !authSecret.expiresAt) {
+    return null;
+  }
+  const auth = storedAuthPayloadSchema.parse(JSON.parse(authSecret.payload));
+  if (auth.type !== "oauth" || !auth.tokens?.accessToken || auth.tokens.refreshToken) {
+    return null;
+  }
+  return new Date(new Date(authSecret.expiresAt).getTime() - TOKEN_EXPIRY_SKEW_MS);
+}
+
+/**
  * Projects the newest unexpired, unconsumed state; any such state completes the same connection.
  * States started before links were retained have no URL and cannot be resumed.
  */

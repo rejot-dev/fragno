@@ -4,6 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import { automationEventListResultSchema } from "@fragno-dev/backoffice-api/v0/events";
 import { integrationSetupProgressSchema } from "@fragno-dev/backoffice-api/v0/integrations";
 import {
   BACKOFFICE_PERMISSION,
@@ -77,6 +78,7 @@ const orgScope = { kind: "org", orgId: "mcp-org" } as const;
 const toolsOrigin = "https://tools.provider.test";
 const oauthOrigin = "https://oauth.provider.test";
 const staticOrigin = "https://static.provider.test";
+const expiringOrigin = "https://expiring.provider.test";
 const toolsToken = "tools-token";
 const draft07 = "http://json-schema.org/draft-07/schema#";
 
@@ -92,6 +94,8 @@ type McpProviders = {
   calls: string[];
   oauth: TestMcpServer;
   static: TestMcpServer;
+  /** Consent grants an hour-long access token without a refresh token. */
+  expiring: TestMcpServer;
   /** Grants the delegated actor holds at both the caller and the receiving MCP object. */
   delegatedGrants: BackofficePermissionRequirement[];
 };
@@ -162,7 +166,9 @@ function createToolsServer(calls: string[]) {
   });
 }
 
+/** In-memory storage follows the scenario clock; SQLite's `now` is the real one. */
 async function runMcpIntegrationScenario<TVars extends Record<string, unknown>>(
+  storage: "sqlite" | "memory",
   defineScenario: (
     providers: McpProviders,
   ) => Omit<BackofficeScenarioDefinitionInput<TVars>, "objects">,
@@ -183,12 +189,19 @@ async function runMcpIntegrationScenario<TVars extends Record<string, unknown>>(
       requiredClientId: "static-client",
       requiredClientSecret: "static-secret",
     }),
+    expiring: createTestMcpServer({
+      oauth: true,
+      enableJsonResponse: true,
+      requiredBearerToken: "expiring-access-token",
+      omitRefreshTokenOnConsent: true,
+    }),
     delegatedGrants: [],
   };
   const servers = new Map([
     [toolsOrigin, createToolsServer(calls)],
     [oauthOrigin, providers.oauth],
     [staticOrigin, providers.static],
+    [expiringOrigin, providers.expiring],
   ]);
   const serverFetch: typeof fetch = async (input, init) => {
     const request = new Request(input, init);
@@ -202,7 +215,10 @@ async function runMcpIntegrationScenario<TVars extends Record<string, unknown>>(
     await runBackofficeScenario(
       defineBackofficeScenario({
         ...scenario,
-        options: { ...scenario.options, sqliteDataDirectory: directory },
+        options: {
+          ...scenario.options,
+          sqliteDataDirectory: storage === "sqlite" ? directory : undefined,
+        },
         objects: {
           ...scenarioObjects,
           MCP: (options) =>
@@ -264,6 +280,25 @@ function createDelegatedExecution(
   };
 }
 
+/** Every connection event recorded for one address, sorted so repeated states can be counted. */
+async function connectionEventTypes(
+  ctx: BackofficeScenarioContext,
+  scope: BackofficeContextScope,
+  connectionId: string,
+) {
+  const response = await ctx.runtime.objects.automations
+    .for(scope)
+    .http.fetch(new Request("https://automations.test/api/automations/events?limit=500"));
+  assert(response.ok, await response.clone().text());
+  return automationEventListResultSchema
+    .parse(await response.json())
+    .events.filter(
+      (event) => event.source === "integrations" && event.subject?.connectionId === connectionId,
+    )
+    .map((event) => event.eventType)
+    .sort();
+}
+
 /** Consent happens at the provider; its redirect to the scope's callback is all setup sees. */
 async function completeConsent(
   ctx: BackofficeScenarioContext,
@@ -281,7 +316,7 @@ async function completeConsent(
 }
 
 test("Codemode registers an MCP server through setup, publishes its tools as actions, and keeps one address through reset, replacement, and disconnect", async () => {
-  await runMcpIntegrationScenario((providers) => ({
+  await runMcpIntegrationScenario("sqlite", (providers) => ({
     name: "MCP bearer setup, tool actions, and lifecycle through the registered facade",
     setup: ({ given }) => [
       given.organization.exists({ id: orgScope.orgId, slug: "mcp-org", name: "MCP Org" }),
@@ -577,7 +612,7 @@ test("Codemode registers an MCP server through setup, publishes its tools as act
 
 test("OAuth setup resumes source-owned consent, reauthorizes, and recovers from failed client registration", async () => {
   const scope = { kind: "user", userId: "mcp-user" } as const;
-  await runMcpIntegrationScenario<{ authorizationUrl: string }>((providers) => ({
+  await runMcpIntegrationScenario<{ authorizationUrl: string }>("sqlite", (providers) => ({
     name: "MCP OAuth setup through the registered facade",
     setup: ({ given }) => [given.auth.user({ id: scope.userId, email: "mcp@example.test" })],
     vars: () => ({ authorizationUrl: "" }),
@@ -732,6 +767,68 @@ test("OAuth setup resumes source-owned consent, reauthorizes, and recovers from 
   }));
 });
 
+test("an access token without a refresh token reports unavailable when it expires", async () => {
+  const scope = { kind: "user", userId: "mcp-user" } as const;
+  const connectionId = "mcp#expiring";
+  await runMcpIntegrationScenario("memory", (providers) => ({
+    name: "MCP OAuth expiry without a refresh token",
+    setup: ({ given }) => [given.auth.user({ id: scope.userId, email: "mcp@example.test" })],
+    steps: ({ then, when, runner }) => [
+      then.assert("consent grants an hour-long token without a refresh token", async (ctx) => {
+        const started = await ctx.runCodemode({
+          scope,
+          code: `async () => await integrations.setup({ kind: "input", connectionId: ${JSON.stringify(connectionId)}, input: {
+            type: "oauth", name: "Expiring", endpointUrl: ${JSON.stringify(`${expiringOrigin}/mcp`)},
+          } })`,
+        });
+        const progress = integrationSetupProgressSchema.parse(started.result);
+        assert(progress.status === "needs-authorization");
+        await completeConsent(ctx, scope, providers.expiring, progress.authorizationUrl);
+      }),
+      runner.drain(),
+      then.assert("setup reports the pending consent, then the token", async (ctx) => {
+        expect(await connectionEventTypes(ctx, scope, connectionId)).toEqual([
+          "connection.ready",
+          "connection.unavailable",
+        ]);
+      }),
+      when.time.advance("30 minutes"),
+      then.assert("reauthorizing replaces the token with another hour-long one", async (ctx) => {
+        // Token expiry is stamped from the real clock, which the scenario's advance does not move.
+        providers.expiring.setTokenLifetimeSeconds(90 * 60);
+        const run = await ctx.runCodemode({
+          scope,
+          code: `async () => await integrations.reconfigure({ kind: "input", connectionId: ${JSON.stringify(connectionId)}, input: { reauthorize: true } })`,
+        });
+        const progress = integrationSetupProgressSchema.parse(run.result);
+        assert(progress.status === "needs-authorization");
+        await completeConsent(ctx, scope, providers.expiring, progress.authorizationUrl);
+      }),
+      when.time.advance("40 minutes"),
+      runner.drain(),
+      then.assert("the replaced token's expiry reports nothing", async (ctx) => {
+        expect(await connectionEventTypes(ctx, scope, connectionId)).toEqual([
+          "connection.ready",
+          "connection.ready",
+          "connection.unavailable",
+          "connection.unavailable",
+        ]);
+      }),
+      when.time.advance("30 minutes"),
+      runner.drain(),
+      then.assert("the current token's expiry reports the connection unavailable", async (ctx) => {
+        expect(await connectionEventTypes(ctx, scope, connectionId)).toEqual([
+          "connection.ready",
+          "connection.ready",
+          "connection.unavailable",
+          "connection.unavailable",
+          "connection.unavailable",
+        ]);
+      }),
+    ],
+  }));
+});
+
 test("mcp addresses resolve only in their own scope and require both authority layers", async () => {
   const projectScope = {
     kind: "project",
@@ -739,7 +836,7 @@ test("mcp addresses resolve only in their own scope and require both authority l
     projectId: "mcp-project",
   } as const;
   const userScope = { kind: "user", userId: "mcp-member" } as const;
-  await runMcpIntegrationScenario((providers) => ({
+  await runMcpIntegrationScenario("sqlite", (providers) => ({
     name: "MCP integration scope isolation and authorization",
     setup: ({ given }) => [
       given.organization.exists({ id: orgScope.orgId, slug: "mcp-org", name: "MCP Org" }),
