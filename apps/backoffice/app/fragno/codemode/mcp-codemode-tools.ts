@@ -224,7 +224,7 @@ const createMcpCodemodeRuntimeTools = ({
         namespace: server.providerName,
         name: tool.codemodeName,
         description: tool.description,
-        requiredPermissions: [BACKOFFICE_PERMISSION.mcp.toolsCall],
+        requiredPermissions: [BACKOFFICE_PERMISSION.integrations.execute],
         getResource: () => ({ slug: server.slug, toolName: tool.originalName }),
         inputSchema: z.record(z.string(), z.unknown()).optional().default({}),
         outputSchema: z.record(z.string(), z.unknown()),
@@ -260,8 +260,8 @@ export async function createMcpCodemodeProviders({
         discoveryError: new BackofficeForbiddenError(
           [
             "Cannot discover generated MCP providers.",
-            "Required permission: mcp.servers.read.",
-            "Calling MCP tools also requires mcp.tools.call.",
+            "Required permission: connections.read.",
+            "Calling MCP tools also requires integrations.execute.",
             `Reason: ${error.message}`,
           ].join("\n"),
           error.reason,

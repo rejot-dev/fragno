@@ -927,73 +927,74 @@ test("mcp addresses resolve only in their own scope and require both authority l
           });
         },
       ),
-      then.assert("umbrella permissions never replace native MCP permissions", async (ctx) => {
-        const setupOnly = createDelegatedExecution(ctx, orgScope, providers, [
-          BACKOFFICE_PERMISSION.integrations.manage,
-          BACKOFFICE_PERMISSION.mcp.serversRead,
-          BACKOFFICE_PERMISSION.upload.read,
-        ]);
-        const denied = await createIntegrationScenarioTerminal(
-          ctx.runtime.services,
-          setupOnly.execution,
-          setupOnly.kernel,
-        ).exec(
-          `integrations.setup --connection-id 'mcp#denied' --input-json '${JSON.stringify({ type: "none", endpointUrl: `${toolsOrigin}/mcp` })}'`,
-        );
-        expect(denied).toMatchObject({
-          exitCode: 1,
-          stderr: expect.stringContaining("required capability grant"),
-        });
-
-        const command = `integrations.execute --connection-id 'mcp#shared' --action-id echo --input-json '${JSON.stringify({ text: "delegated" })}'`;
-        const callOnly = createDelegatedExecution(ctx, orgScope, providers, [
-          BACKOFFICE_PERMISSION.integrations.execute,
-          BACKOFFICE_PERMISSION.mcp.toolsCall,
-          BACKOFFICE_PERMISSION.upload.read,
-        ]);
-        // Resolution reads the server and its tools, so calls also need server-read authority.
-        expect(
-          await createIntegrationScenarioTerminal(
+      then.assert(
+        "integration grants also need connection grants at the receiving object",
+        async (ctx) => {
+          const setupOnly = createDelegatedExecution(ctx, orgScope, providers, [
+            BACKOFFICE_PERMISSION.integrations.manage,
+            BACKOFFICE_PERMISSION.connections.read,
+            BACKOFFICE_PERMISSION.upload.read,
+          ]);
+          const denied = await createIntegrationScenarioTerminal(
             ctx.runtime.services,
-            callOnly.execution,
-            callOnly.kernel,
-          ).exec(command),
-        ).toMatchObject({
-          exitCode: 1,
-          stderr: expect.stringContaining("required capability grant"),
-        });
+            setupOnly.execution,
+            setupOnly.kernel,
+          ).exec(
+            `integrations.setup --connection-id 'mcp#denied' --input-json '${JSON.stringify({ type: "none", endpointUrl: `${toolsOrigin}/mcp` })}'`,
+          );
+          expect(denied).toMatchObject({
+            exitCode: 1,
+            stderr: expect.stringContaining("required capability grant"),
+          });
 
-        const delegated = createDelegatedExecution(ctx, orgScope, providers, [
-          BACKOFFICE_PERMISSION.integrations.execute,
-          BACKOFFICE_PERMISSION.mcp.serversRead,
-          BACKOFFICE_PERMISSION.mcp.toolsCall,
-          BACKOFFICE_PERMISSION.upload.read,
-        ]);
-        const executed = await createIntegrationScenarioTerminal(
-          ctx.runtime.services,
-          delegated.execution,
-          delegated.kernel,
-        ).exec(`${command} --print structuredContent.echoed`);
-        expect(executed.exitCode, executed.stderr).toBe(0);
-        assert(executed.stdout === "delegated\n");
-        expect(providers.calls).toEqual(["echo"]);
+          const command = `integrations.execute --connection-id 'mcp#shared' --action-id echo --input-json '${JSON.stringify({ text: "delegated" })}'`;
+          const callOnly = createDelegatedExecution(ctx, orgScope, providers, [
+            BACKOFFICE_PERMISSION.integrations.execute,
+            BACKOFFICE_PERMISSION.upload.read,
+          ]);
+          // Resolution reads the server and its tools, so calls also need connection-read authority.
+          expect(
+            await createIntegrationScenarioTerminal(
+              ctx.runtime.services,
+              callOnly.execution,
+              callOnly.kernel,
+            ).exec(command),
+          ).toMatchObject({
+            exitCode: 1,
+            stderr: expect.stringContaining("required capability grant"),
+          });
 
-        // A resolved server does not retain authority revoked before its tool runs.
-        const resolved = await createMcpIntegration({
-          runtime: ctx.runtime.services,
-          nowEpochMs: ctx.runtime.now,
-        }).resolve({ kernel: delegated.kernel, execution: delegated.execution }, "shared");
-        const echo = (await resolved.actions()).find((action) => action.definition.id === "echo");
-        assert(echo);
-        providers.delegatedGrants.splice(
-          providers.delegatedGrants.indexOf(BACKOFFICE_PERMISSION.mcp.toolsCall),
-          1,
-        );
-        await expect(echo.invoke({ text: "revoked" })).rejects.toMatchObject({
-          name: "BackofficeForbiddenError",
-        });
-        expect(providers.calls).toEqual(["echo"]);
-      }),
+          const delegated = createDelegatedExecution(ctx, orgScope, providers, [
+            BACKOFFICE_PERMISSION.integrations.execute,
+            BACKOFFICE_PERMISSION.connections.read,
+            BACKOFFICE_PERMISSION.upload.read,
+          ]);
+          const executed = await createIntegrationScenarioTerminal(
+            ctx.runtime.services,
+            delegated.execution,
+            delegated.kernel,
+          ).exec(`${command} --print structuredContent.echoed`);
+          expect(executed.exitCode, executed.stderr).toBe(0);
+          assert(executed.stdout === "delegated\n");
+          expect(providers.calls).toEqual(["echo"]);
+
+          // A resolved server does not retain authority revoked before its tool runs.
+          const resolved = await createMcpIntegration({
+            runtime: ctx.runtime.services,
+            nowEpochMs: ctx.runtime.now,
+          }).resolve({ kernel: delegated.kernel, execution: delegated.execution }, "shared");
+          const echo = (await resolved.actions()).find((action) => action.definition.id === "echo");
+          assert(echo);
+          providers.delegatedGrants.splice(
+            providers.delegatedGrants.indexOf(BACKOFFICE_PERMISSION.integrations.execute),
+            1,
+          );
+          await expect(echo.invoke({ text: "revoked" })).rejects.toMatchObject({
+            name: "BackofficeForbiddenError",
+          });
+          expect(providers.calls).toEqual(["echo"]);
+        },
+      ),
     ],
   }));
 });

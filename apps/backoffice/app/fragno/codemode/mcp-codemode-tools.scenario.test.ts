@@ -55,7 +55,7 @@ const cases = [
     body: 'return await step.do("call MCP", { retries: { limit: 0, delay: 0 } }, async () => await mcp_agensi.search({}));',
     grants: [],
     expectedName: "BackofficeForbiddenError",
-    expectedMessage: "Required permission: mcp.servers.read.",
+    expectedMessage: "Required permission: connections.read.",
     stepError: true,
   },
   {
@@ -63,7 +63,7 @@ const cases = [
     body: "return await mcp_agensi.search({});",
     grants: [],
     expectedName: "BackofficeForbiddenError",
-    expectedMessage: "Required permission: mcp.servers.read.",
+    expectedMessage: "Required permission: connections.read.",
     stepError: false,
   },
   {
@@ -77,7 +77,7 @@ const cases = [
   {
     name: "unknown provider after successful discovery",
     body: "return await mcp_agensi.search({});",
-    grants: [BACKOFFICE_PERMISSION.mcp.serversRead],
+    grants: [BACKOFFICE_PERMISSION.connections.read],
     expectedName: "ReferenceError",
     expectedMessage: "mcp_agensi is not defined",
     stepError: false,
@@ -146,8 +146,8 @@ describe("MCP permission diagnostic scenarios", () => {
               ...options,
               code: "async () => await mcp_agensi.search({})",
             });
-            expect(denied.error).toContain("Required permission: mcp.servers.read.");
-            expect(denied.error).toContain("Calling MCP tools also requires mcp.tools.call.");
+            expect(denied.error).toContain("Required permission: connections.read.");
+            expect(denied.error).toContain("Calling MCP tools also requires integrations.execute.");
             const unrelated = await runBackofficeCodemode({
               ...options,
               code: "async () => await missingHelper()",
@@ -216,7 +216,7 @@ describe("MCP permission diagnostic scenarios", () => {
                 expect(instance.data.details.error?.message).toContain(expectedMessage);
                 if (expectedMessage.includes("servers.read")) {
                   expect(instance.data.details.error?.message).toContain(
-                    "Calling MCP tools also requires mcp.tools.call.",
+                    "Calling MCP tools also requires integrations.execute.",
                   );
                   expect(instance.data.details.error?.message).not.toContain(
                     "mcp_agensi is not defined",

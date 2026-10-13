@@ -157,7 +157,7 @@ export function createConnectorIntegration({
       });
     }
     async function providers() {
-      const response = await invoke(BACKOFFICE_PERMISSION.connector.providersRead, {}, () =>
+      const response = await invoke(BACKOFFICE_PERMISSION.connections.read, {}, () =>
         callRoute("GET", "/provider-configs"),
       );
       if (response.type === "json" && isSuccessStatus(response.status)) {
@@ -166,7 +166,7 @@ export function createConnectorIntegration({
       return fail(response);
     }
     function namedAccount(selector: z.output<typeof projectConnectorNamedConnectionSchema>) {
-      return invoke(BACKOFFICE_PERMISSION.connector.accountsRead, selector, () =>
+      return invoke(BACKOFFICE_PERMISSION.connections.read, selector, () =>
         callRoute("GET", "/accounts/by-name", { query: selector }),
       );
     }
@@ -217,10 +217,8 @@ export function createConnectorIntegration({
         } else {
           return access.fail(account);
         }
-        const saved = await access.invoke(
-          BACKOFFICE_PERMISSION.connector.connectionsCreate,
-          selector,
-          () => access.callRoute("GET", "/connection-requests/by-name", { query: selector }),
+        const saved = await access.invoke(BACKOFFICE_PERMISSION.connections.manage, selector, () =>
+          access.callRoute("GET", "/connection-requests/by-name", { query: selector }),
         );
         if (saved.type !== "json" || !isSuccessStatus(saved.status)) {
           if (
@@ -253,7 +251,7 @@ export function createConnectorIntegration({
           }
           // Checking never creates consent; the native refresh confirms and persists only gateway evidence.
           const refreshed = await access.invoke(
-            BACKOFFICE_PERMISSION.connector.connectionsCreate,
+            BACKOFFICE_PERMISSION.connections.manage,
             { requestId: request.id },
             () =>
               access.callRoute("POST", "/connection-requests/:requestId/refresh", {
@@ -298,7 +296,7 @@ export function createConnectorIntegration({
           backofficeRouteScopeSinglePathSegment(context.execution.scope),
         ).oauthRedirectUri;
         const started = await access.invoke(
-          BACKOFFICE_PERMISSION.connector.connectionsCreate,
+          BACKOFFICE_PERMISSION.connections.manage,
           selector,
           () =>
             access.callRoute("POST", "/connection-requests", {
@@ -375,7 +373,7 @@ export function createConnectorIntegration({
         return { connections: [], cursor: null };
       }
       const access = createConnectorAccess(context);
-      const response = await access.invoke(BACKOFFICE_PERMISSION.connector.accountsRead, {}, () =>
+      const response = await access.invoke(BACKOFFICE_PERMISSION.connections.read, {}, () =>
         access.callRoute("GET", "/accounts", { query: cursor === null ? {} : { cursor } }),
       );
       if (cursor === null && access.isNotConfigured(response)) {
@@ -438,7 +436,7 @@ export function createConnectorIntegration({
         },
         async actions() {
           const response = await access.invoke(
-            BACKOFFICE_PERMISSION.connector.providersRead,
+            BACKOFFICE_PERMISSION.connections.read,
             { providerConfigId },
             () =>
               access.callRoute("GET", "/provider-configs/:providerConfigId/actions", {
@@ -489,7 +487,7 @@ export function createConnectorIntegration({
                   );
                 }
                 const result = await access.invoke(
-                  BACKOFFICE_PERMISSION.connector.actionsExecute,
+                  BACKOFFICE_PERMISSION.integrations.execute,
                   { accountId: account.id, actionId: action.id },
                   () =>
                     access.callRoute("POST", "/accounts/:accountId/actions/:actionId", {
@@ -522,7 +520,7 @@ export function createConnectorIntegration({
             return inspection;
           }
           const response = await access.invoke(
-            BACKOFFICE_PERMISSION.connector.accountsRead,
+            BACKOFFICE_PERMISSION.connections.read,
             { accountId: account.id },
             () =>
               access.callRoute("GET", "/accounts/:accountId/profile", {

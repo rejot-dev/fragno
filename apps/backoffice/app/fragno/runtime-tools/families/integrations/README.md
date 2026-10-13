@@ -439,27 +439,18 @@ integrations.execute --connection-id 'connector#n_ACJwcm9qZWN0LTEiACJnbWFpbC1wcm
 ## Authority and evidence
 
 Umbrella `integrations.read`, `.manage`, and `.execute` apply at the tool boundary. Setup,
-reconfigure, disconnect, and verification require manage. They neither replace native permissions
-nor broaden role grants. For Reson8, Telegram, and Resend, configuration inspection, setup reads,
-and live checks require `connections.read`; submitted or replaced configuration and disconnect
-require `connections.manage`; actions require `integrations.execute`.
+reconfigure, disconnect, and verification require manage. No source has permissions of its own:
+every receiving object authorizes the same three operations. Configuration reads, listing,
+resolution, inspection, setup checks, and live checks require `connections.read`; submitted or
+replaced configuration, OAuth starts, reauthorization, and disconnect require `connections.manage`;
+actions require `integrations.execute`. Both caller and receiving-object checks use the original
+execution authority; no roles gain grants.
 
-Connector discovery and action contracts require `connector.providers.read`. Listing, source-account
-selection, and profile checks require `connector.accounts.read`. Named request lookup, OAuth start,
-and refresh require `connector.connections.create`; invocation additionally requires
-`connector.actions.execute`. Source-account metadata is necessary to bind the provider contract, so
-Connector execution needs account-read and provider-read authority as well as action execution. It
-does not call `inspect`, verify a profile, or acquire `connections.read` before invoking an action.
-Both caller and receiving-object checks use the original execution authority; no roles gain grants.
-
-API listing, resolution, inspection, verification, and setup checks require `api.connections.read`.
-Connection creation, replacement, token submission, OAuth start, reauthorization, and reading a
-pending authorization link require `api.connections.create`: a pending link carries the callback
-state, so a reader could otherwise complete consent with their own provider account. Disconnect
-requires `api.connections.delete`. Requests require `api.requests.execute`; `connection.describe`
-requires `api.connections.read`. Resolution reads the connection name, so execution also needs
-`api.connections.read`. Request resources carry the slug and path for caller-side policy and audit;
-the receiving object authorizes the native permission.
+Reading a pending authorization link requires `connections.manage`, not read: a pending link carries
+the callback state, so a reader could otherwise complete consent with their own provider account.
+Resolution reads the connection, so execution also needs `connections.read`; Connector reads the
+account and provider contract before invoking an action. Request and tool resources carry the slug
+and path or tool name for caller-side policy and audit.
 
 Reson8 verify performs a read-only custom-model listing. It neither transcribes, mints tokens,
 persists health, nor publishes provider credential echoes. A subsequent get remains `not-checked`.
@@ -472,12 +463,6 @@ message access, action scopes, or provider-wide health. Evidence is timestamped 
 profile data and server credentials are not included, and subsequent inspection remains not-checked.
 Receiving-object denials remain execution errors, including when authority is revoked after
 resolution.
-
-MCP listing, resolution, inspection, verification, and setup checks require `mcp.servers.read`.
-Registration, replacement, token submission, OAuth start, reauthorization, and reading a pending
-link require `mcp.servers.create`; disconnect requires `mcp.servers.delete`. Tool actions require
-`mcp.tools.call`, with resources carrying the slug and tool name; resolution reads the server and
-its cached tools, so execution also needs `mcp.servers.read`.
 
 MCP verify lists the server's tools through the Fragment's refresh route, which also updates the
 tool cache and may store refreshed tokens; both stay in the source. A passed check reports the tool
