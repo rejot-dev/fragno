@@ -10,6 +10,7 @@ import {
   encodeCodemodeError,
 } from "@fragno-dev/codemode/execution/codemode-errors";
 import { executeCodemodeActivation } from "@fragno-dev/codemode/execution/execute-codemode-activation";
+import type { CodemodeLogLine } from "@fragno-dev/codemode/runtime-api";
 import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { DurableObject, RpcTarget } from "cloudflare:workers";
 import { z } from "zod";
@@ -69,7 +70,7 @@ const codemodeRunPageInputSchema = z.discriminatedUnion("page", [
 /** Workers RPC delivers the caller's host methods as stubs whose calls return promises. */
 type CodemodeExecutionHost = Omit<CodemodeHost, "close"> & { close(): void | Promise<void> };
 
-function failedCodemodeCompletion(error: unknown, logs: string[]): CodemodeRunCompletion {
+function failedCodemodeCompletion(error: unknown, logs: CodemodeLogLine[]): CodemodeRunCompletion {
   return { status: "failed", error: encodeCodemodeError(error), logs };
 }
 

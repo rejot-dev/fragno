@@ -2,6 +2,7 @@ import {
   javaScriptBuildInputSchema,
   javaScriptLogsInputSchema,
 } from "@fragno-dev/backoffice-api/v0/javascript";
+import { formatCodemodeLogLine, type CodemodeLogLine } from "@fragno-dev/codemode/runtime-api";
 
 import {
   parseCliTokens,
@@ -82,6 +83,10 @@ function parseJavaScriptFileCommand(command: string, args: string[]) {
   return { path: parsed.positionals[0] };
 }
 
+function formatLogs(logs: CodemodeLogLine[]) {
+  return logs.map((line) => `${formatCodemodeLogLine(line)}\n`).join("");
+}
+
 function formatJavaScriptCheckOutput(
   output: JavaScriptCheckFileOutput,
   options: ReturnType<typeof readOutputOptions>,
@@ -117,7 +122,7 @@ function formatJavaScriptRunOutput(
     return { stderr: `${output.error}\n`, exitCode: 1 };
   }
 
-  const stdout = output.logs.length > 0 ? `${output.logs.join("\n")}\n` : "";
+  const stdout = formatLogs(output.logs);
   if (output.status === "error") {
     return { stdout, stderr: `${output.error}\n`, exitCode: 1 };
   }
@@ -134,7 +139,7 @@ function formatJavaScriptRunLogsOutput(
   if (output.status === "running") {
     return { stderr: `${output.runId} is still running; its logs are stored when it finishes.\n` };
   }
-  const stdout = output.logs.length > 0 ? `${output.logs.join("\n")}\n` : "";
+  const stdout = formatLogs(output.logs);
   if (output.status === "failed") {
     return { stdout, stderr: `${output.error}\n`, exitCode: 1 };
   }

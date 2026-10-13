@@ -4,6 +4,7 @@ import type {
   WorkerTypeChecker,
 } from "@fragno-dev/codemode/compiler/compile-worker";
 import type { WorkerBundle } from "@fragno-dev/codemode/compiler/worker-bundle";
+import type { CodemodeLogLine } from "@fragno-dev/codemode/runtime-api";
 import jsTokens, { type Token } from "js-tokens";
 
 import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
@@ -34,8 +35,8 @@ export type JavaScriptCheckFileOutput = {
 
 /** A recorded run's outcome; its run ID leads to the run's retained logs and `codemode` events. */
 export type JavaScriptModuleExecution =
-  | { status: "success"; runId: string; logs: string[] }
-  | { status: "error"; runId: string; error: string; logs: string[] };
+  | { status: "success"; runId: string; logs: CodemodeLogLine[] }
+  | { status: "error"; runId: string; error: string; logs: CodemodeLogLine[] };
 
 /** `rejected` means no run result: the file was refused or execution could not start or report. */
 export type JavaScriptRunFileOutput =
@@ -44,8 +45,8 @@ export type JavaScriptRunFileOutput =
 
 export type JavaScriptRunLogsOutput =
   | { runId: string; status: "running" }
-  | { runId: string; status: "completed"; logs: string[] }
-  | { runId: string; status: "failed"; logs: string[]; error: string };
+  | { runId: string; status: "completed"; logs: CodemodeLogLine[] }
+  | { runId: string; status: "failed"; logs: CodemodeLogLine[]; error: string };
 
 export type JavaScriptBuildFileInput = { path: string; out: string };
 

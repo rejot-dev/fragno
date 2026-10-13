@@ -3,6 +3,13 @@ import { z } from "zod";
 import type { BackofficeApiOperation } from "../api";
 import { BACKOFFICE_PERMISSION } from "./shared/permissions";
 
+/** One console call, unprefixed; `codemode` lines come from the runtime rather than the guest. */
+const javaScriptLogLineSchema = z.object({
+  at: z.number().int(),
+  channel: z.enum(["log", "info", "debug", "warn", "error", "codemode"]),
+  text: z.string(),
+});
+
 const javaScriptCheckDiagnosticSchema = z.object({
   code: z.number().int(),
   path: z.string().nullable(),
@@ -56,14 +63,14 @@ const javaScriptRunOutputSchema = z.discriminatedUnion("status", [
     status: z.literal("success"),
     path: z.string(),
     runId: z.string(),
-    logs: z.array(z.string()),
+    logs: z.array(javaScriptLogLineSchema),
   }),
   z.object({
     status: z.literal("error"),
     path: z.string(),
     runId: z.string(),
     error: z.string(),
-    logs: z.array(z.string()),
+    logs: z.array(javaScriptLogLineSchema),
   }),
   z.object({
     status: z.literal("rejected"),
@@ -82,12 +89,12 @@ const javaScriptLogsOutputSchema = z.discriminatedUnion("status", [
   z.object({
     runId: z.string(),
     status: z.literal("completed"),
-    logs: z.array(z.string()),
+    logs: z.array(javaScriptLogLineSchema),
   }),
   z.object({
     runId: z.string(),
     status: z.literal("failed"),
-    logs: z.array(z.string()),
+    logs: z.array(javaScriptLogLineSchema),
     error: z.string(),
   }),
 ]);

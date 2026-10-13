@@ -21,16 +21,31 @@ export type ResolvedProvider = {
   fns: Record<string, (...args: unknown[]) => Promise<unknown>>;
 };
 
+/**
+ * One console call. `codemode` lines come from the runtime (compiler warnings, truncation), not guest
+ * code. `at` is the guest's epoch-ms clock, which Workers only advance across I/O, so array order is
+ * authoritative and consecutive lines often share a timestamp.
+ */
+export const codemodeLogLineSchema = z.strictObject({
+  at: z.number().int().nonnegative(),
+  channel: z.enum(["log", "info", "debug", "warn", "error", "codemode"]),
+  text: z.string().max(CODEMODE_LIMITS.maxLogBytes),
+});
+export type CodemodeLogLine = z.infer<typeof codemodeLogLineSchema>;
+
+/** Lines are stored unprefixed; readers that need text label every channel except `log`. */
+export function formatCodemodeLogLine(line: CodemodeLogLine): string {
+  return line.channel === "log" ? line.text : `[${line.channel}] ${line.text}`;
+}
+
 export type ExecuteResult = {
   result?: unknown;
   error?: string;
-  logs?: string[];
+  logs?: CodemodeLogLine[];
   workflowDefinition?: { name: string; options?: unknown };
 };
 
-const guestLogsSchema = z
-  .array(z.string().max(CODEMODE_LIMITS.maxLogBytes))
-  .max(CODEMODE_LIMITS.maxLogs);
+const guestLogsSchema = z.array(codemodeLogLineSchema).max(CODEMODE_LIMITS.maxLogs);
 
 /** Even a hand-edited compiled Worker must earn trust at its RPC result boundary. */
 export const codemodeWorkerEvaluationSchema = z.discriminatedUnion("ok", [

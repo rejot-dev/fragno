@@ -109,7 +109,7 @@ test("precompiled workspace extensions open concurrently and after restart witho
       status: "success",
       path: "/workspace/pi/.build/gate.extension.json",
       runId: expect.any(String),
-      logs: ["Native module startup"],
+      logs: [{ at: expect.any(Number), channel: "log", text: "Native module startup" }],
     });
 
     const sourceWithoutCompiler = await executeBackofficeRuntimeTool(

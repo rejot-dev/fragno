@@ -26,7 +26,10 @@ function createJavaScriptTestRuntime(): JavaScriptRuntime {
       status: "success" as const,
       path,
       runId: "run-1",
-      logs: ["running"],
+      logs: [
+        { at: 0, channel: "log" as const, text: "running" },
+        { at: 0, channel: "error" as const, text: "careful" },
+      ],
     })),
   };
 }
@@ -73,7 +76,7 @@ describe("JavaScript runtime tool families", () => {
           },
         },
       }),
-    ).resolves.toEqual({ stdout: "running\n" });
+    ).resolves.toEqual({ stdout: "running\n[error] careful\n" });
     expect(runtime.runFile).toHaveBeenCalledWith(
       { path: "/workspace/scripts/example.js" },
       context,
