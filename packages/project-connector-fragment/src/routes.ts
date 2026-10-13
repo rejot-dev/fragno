@@ -271,7 +271,7 @@ export const projectConnectorRoutes = defineRoutes(projectConnectorFragmentDefin
                     .whereIndex("idx_account_external_user_id", (eb) =>
                       eb("externalUserId", "=", externalUserId),
                     )
-                    .select(["id", "projectId", "providerConfigId", "connectionName"]),
+                    .select(["id", "projectId", "providerConfigId", "service", "connectionName"]),
                 ),
             )
             .afterRetrieve(async (_uow, [saved]) => {
@@ -315,12 +315,30 @@ export const projectConnectorRoutes = defineRoutes(projectConnectorFragmentDefin
                     service: saved.service,
                     connectionName: saved.connectionName,
                   });
-                  const wasReady = accounts.some(
-                    (account) =>
-                      account.projectId === saved.projectId &&
-                      account.providerConfigId === saved.providerConfigId &&
-                      account.connectionName === saved.connectionName,
-                  );
+                  const sameName =
+                    (named: (typeof accounts)[number] | typeof saved) =>
+                    (account: (typeof accounts)[number]) =>
+                      account.projectId === named.projectId &&
+                      account.providerConfigId === named.providerConfigId &&
+                      account.connectionName === named.connectionName;
+                  // Reauthorization can move the account to this name, leaving its old name without one.
+                  if (
+                    existing &&
+                    !sameName(saved)(existing) &&
+                    !accounts.some((account) => account !== existing && sameName(existing)(account))
+                  ) {
+                    uow.triggerHook("onConnectionReadinessChanged", {
+                      externalUserId,
+                      service: existing.service,
+                      connection: {
+                        projectId: existing.projectId,
+                        providerConfigId: existing.providerConfigId,
+                        connectionName: existing.connectionName,
+                      },
+                      ready: false,
+                    });
+                  }
+                  const wasReady = accounts.some(sameName(saved));
                   if (!wasReady) {
                     uow.triggerHook("onConnectionReadinessChanged", {
                       externalUserId,

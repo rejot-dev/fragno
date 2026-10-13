@@ -25,8 +25,9 @@ export type ProjectConnectorFragmentConfig = ProjectConnectorClientConfig & {
   allowedReturnUrls: (url: URL) => boolean;
   /**
    * Fires when a write changes whether a named connection has a confirmed account: not ready when
-   * the first request for the name starts, ready when a refresh confirms its first account. The
-   * gateway does not report consent or revocation, so both are noticed only through refresh.
+   * the first request for the name starts, ready when a refresh confirms its first account, and not
+   * ready for a name left without an account when a refresh moves its account ID to another name.
+   * The gateway does not report consent or revocation, so both are noticed only through refresh.
    */
   onConnectionReadinessChanged?: (
     payload: ProjectConnectorConnectionReadinessChangedPayload,

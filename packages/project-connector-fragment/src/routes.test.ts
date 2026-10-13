@@ -1185,6 +1185,37 @@ describe("Project Connector connection scenarios", () => {
     ]);
   });
 
+  test("reauthorization that moves an account to another name reports the old name not ready", async () => {
+    const scenario = await connectorScenario();
+    await scenario.bind("alice", "gmail-account", "work");
+    await scenario.bind("alice", "gmail-account", "personal");
+    const named = (connectionName: string) => ({
+      projectId: "project-1",
+      providerConfigId: "gmail-provider",
+      connectionName,
+    });
+    expect(
+      await scenario.call(
+        "alice",
+        "GET",
+        `/accounts/by-name?${new URLSearchParams(named("work"))}`,
+      ),
+    ).toEqual({ status: 200, data: { account: null } });
+    const change = (connectionName: string, ready: boolean) => ({
+      externalUserId: "alice",
+      service: "gmail",
+      connection: named(connectionName),
+      ready,
+    });
+    expect(await scenario.readinessChanges()).toEqual([
+      change("work", false),
+      change("work", true),
+      change("personal", false),
+      change("work", false),
+      change("personal", true),
+    ]);
+  });
+
   test("authenticated project-key status check does not create a connection request", async () => {
     const scenario = await connectorScenario();
     expect(await scenario.call("alice", "GET", "/status")).toEqual({
