@@ -1,4 +1,3 @@
-import type { CodemodeObject } from "@/backoffice-runtime/object-registry";
 import {
   createBackofficeCodemodeResolvedProviders,
   type BackofficeCodemodeExecuteResult,
@@ -7,13 +6,17 @@ import type { JavaScriptModuleProgram } from "@/fragno/runtime-tools/families/ja
 import type { BackofficeRuntimeToolFamily } from "@/fragno/runtime-tools/runtime-tools";
 import type { CoreBackofficeToolContext } from "@/fragno/runtime-tools/tool-families";
 
-import { codemodeProviderManifest, executeCodemodeInObject } from "./codemode-object-execute";
+import {
+  codemodeProviderManifest,
+  executeCodemodeInObject,
+  type CodemodeRunner,
+} from "./codemode-object-execute";
 import { executeBackofficeCompiledModule } from "./compiled-module-execute";
 import { explainMcpCodemodeError } from "./mcp-codemode-tools";
 
 export type RunBackofficeJavaScriptModuleInput = {
   program: JavaScriptModuleProgram;
-  codemode: CodemodeObject;
+  codemode: CodemodeRunner;
   families: readonly BackofficeRuntimeToolFamily[];
   toolContext: CoreBackofficeToolContext;
 };
@@ -31,6 +34,7 @@ export async function runBackofficeJavaScriptModule({
     toolContext,
     toolCalls,
   });
+  const origin = { kind: "file", path: program.path } as const;
   const completion =
     program.kind === "bundle"
       ? await executeBackofficeCompiledModule({
@@ -39,6 +43,7 @@ export async function runBackofficeJavaScriptModule({
           input: null,
           providers,
           codemode,
+          origin,
           signal: null,
         })
       : await executeCodemodeInObject(
@@ -50,6 +55,7 @@ export async function runBackofficeJavaScriptModule({
             providers: codemodeProviderManifest(providers),
             timeoutMs: 30_000,
           },
+          origin,
           providers,
           null,
         );

@@ -9,10 +9,14 @@ vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoin
 
 import { fileURLToPath } from "node:url";
 
+import { automationEventListResultSchema } from "@fragno-dev/backoffice-api/v0/events";
 import { createCodemodeNodeExecutor } from "@fragno-dev/codemode/remote/codemode-node-executor";
 import { createCodemodeTestServer } from "@fragno-dev/codemode/testing/codemode-test-server";
 
-import { createBackofficeServiceExecution } from "@/backoffice-runtime/context";
+import {
+  createBackofficeServiceExecution,
+  type BackofficeExecutionContext,
+} from "@/backoffice-runtime/context";
 import type { InMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
@@ -53,15 +57,23 @@ afterAll(async () => {
   await server?.close();
 });
 
-function bash(runtime: InMemoryBackofficeRuntime) {
+const execution = createBackofficeServiceExecution({
+  scope: { kind: "org", orgId: "org-1" },
+  service: { type: "automation", id: "codemode-history" },
+});
+
+// A scope ceiling bounds where an execution may act.
+const restrictedExecution = {
+  ...execution,
+  scopeRestriction: { kind: "org", orgId: "org-1" } as const,
+};
+
+function bash(runtime: InMemoryBackofficeRuntime, as: BackofficeExecutionContext = execution) {
   return createInteractiveBashHost({
     context: createCodemodeRouteBackedRuntimeContext({
       runtime: runtime.services,
       kernel: new BackofficeKernel(runtime.services),
-      execution: createBackofficeServiceExecution({
-        scope: { kind: "org", orgId: "org-1" },
-        service: { type: "automation", id: "codemode-history" },
-      }),
+      execution: as,
       billingOrganizationId: null,
     }),
   }).bash;
@@ -69,6 +81,7 @@ function bash(runtime: InMemoryBackofficeRuntime) {
 
 test("codemode runs are retained with their outcome until a later run expires them", async () => {
   let buildRunId: string | null = null;
+  const runIds = { report: "", failing: "" };
   await runBackofficeScenario(
     defineBackofficeScenario({
       name: "codemode run history",
@@ -116,6 +129,8 @@ test("codemode runs are retained with their outcome until a later run expires th
             expect.arrayContaining([
               expect.objectContaining({
                 activationKind: "compiled",
+                origin: { kind: "file", path: "/workspace/.build/report.module.json" },
+                actors: execution.actors,
                 status: "completed",
                 logs: ["report ready"],
               }),
@@ -129,6 +144,9 @@ test("codemode runs are retained with their outcome until a later run expires th
             ]),
           );
           assert(runs.hasNextPage && runs.cursor !== null);
+          for (const run of runs.runs) {
+            runIds[run.status === "completed" ? "report" : "failing"] = run.id;
+          }
 
           const builds = await codemode.listRuns({ page: "next", cursor: runs.cursor });
           expect(builds.runs).toEqual([
@@ -147,6 +165,102 @@ test("codemode runs are retained with their outcome until a later run expires th
           ]);
           assert.equal(writes.hasNextPage, false);
         }),
+        then.assert(
+          "each run's start and outcome become codemode events attributed to its caller",
+          async (ctx) => {
+            await ctx.drain();
+            const listed = await bash(ctx.runtime).exec("events.list --limit 100 --format json");
+            assert.equal(listed.exitCode, 0, listed.stderr);
+            const events = automationEventListResultSchema
+              .parse(JSON.parse(listed.stdout))
+              .events.filter((event) => event.source === "codemode");
+            const runs = await ctx.runtime.objects.codemode
+              .forOrg("org-1")
+              .commands.listRuns({ page: "first", pageSize: 20 });
+            expect(runs.runs).toHaveLength(6);
+            for (const run of runs.runs) {
+              const forRun = events.filter((event) => event.subject?.runId === run.id);
+              expect(forRun.map((event) => event.eventType).sort()).toEqual([
+                run.status === "failed" ? "run.failed" : "run.completed",
+                "run.started",
+              ]);
+            }
+
+            const fileEvents = events.filter(
+              (event) => event.eventType !== "run.started" && event.actors.principal !== null,
+            );
+            expect(fileEvents).toEqual(
+              expect.arrayContaining([
+                expect.objectContaining({
+                  eventType: "run.completed",
+                  scope: { kind: "org", orgId: "org-1" },
+                  actors: execution.actors,
+                  payload: expect.objectContaining({
+                    activationKind: "module-build",
+                    origin: { kind: "file", path: "/workspace/scripts/report.js" },
+                  }),
+                }),
+                expect.objectContaining({
+                  eventType: "run.completed",
+                  actors: execution.actors,
+                  subject: { orgId: "org-1", runId: runIds.report },
+                  payload: expect.objectContaining({
+                    activationKind: "compiled",
+                    origin: { kind: "file", path: "/workspace/.build/report.module.json" },
+                  }),
+                }),
+                expect.objectContaining({
+                  eventType: "run.failed",
+                  actors: execution.actors,
+                  subject: { orgId: "org-1", runId: runIds.failing },
+                  payload: expect.objectContaining({
+                    activationKind: "compiled",
+                    origin: { kind: "file", path: "/workspace/.build/failing.module.json" },
+                    error: expect.objectContaining({
+                      message: expect.stringContaining("Startup exploded"),
+                    }),
+                  }),
+                }),
+              ]),
+            );
+            for (const event of events.filter((event) => event.eventType !== "run.started")) {
+              expect(event.payload).not.toHaveProperty("logs");
+              expect(Date.parse(String(event.payload.finishedAt))).toBeGreaterThanOrEqual(
+                Date.parse(String(event.payload.startedAt)),
+              );
+            }
+          },
+        ),
+        then.assert("run events keep the scope restriction of the run's caller", async (ctx) => {
+          const ran = await bash(ctx.runtime, restrictedExecution).exec(
+            "js.run .build/report.module.json",
+            { cwd: "/workspace" },
+          );
+          assert.equal(ran.exitCode, 0, ran.stderr);
+          const { runs } = await ctx.runtime.objects.codemode
+            .forOrg("org-1")
+            .commands.listRuns({ page: "first", pageSize: 20 });
+          const restrictedRun = runs.find((run) => run.scopeRestriction !== null);
+          assert(restrictedRun);
+          expect(restrictedRun.scopeRestriction).toEqual(restrictedExecution.scopeRestriction);
+
+          await ctx.drain();
+          const listed = await bash(ctx.runtime).exec("events.list --limit 100 --format json");
+          const ceilings = automationEventListResultSchema
+            .parse(JSON.parse(listed.stdout))
+            .events.filter(
+              (event) =>
+                event.subject?.runId === restrictedRun.id || event.subject?.runId === runIds.report,
+            )
+            .map((event) => [event.subject?.runId, event.eventType, event.scopeRestriction]);
+          expect(ceilings).toEqual(
+            expect.arrayContaining([
+              [restrictedRun.id, "run.started", restrictedExecution.scopeRestriction],
+              [restrictedRun.id, "run.completed", restrictedExecution.scopeRestriction],
+              [runIds.report, "run.completed", null],
+            ]),
+          );
+        }),
         when.time.advance("6.5 days"),
         then.assert("a new run removes only runs past retention", async ({ runtime }) => {
           const report = await bash(runtime).exec("js.run .build/report.module.json", {
@@ -156,11 +270,8 @@ test("codemode runs are retained with their outcome until a later run expires th
 
           const codemode = runtime.objects.codemode.forOrg("org-1").commands;
           const runs = await codemode.listRuns({ page: "first", pageSize: 20 });
-          expect(runs.runs.map((run) => run.activationKind)).toEqual([
-            "compiled",
-            "compiled",
-            "compiled",
-          ]);
+          // Builds and setup writes expired; the runs from day one and the new run remain.
+          expect(runs.runs.map((run) => run.activationKind)).toEqual(Array(4).fill("compiled"));
           assert(buildRunId !== null);
           assert.equal(await codemode.getRun(buildRunId), null);
         }),

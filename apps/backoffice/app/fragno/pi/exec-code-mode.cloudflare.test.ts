@@ -13,11 +13,13 @@ import { env } from "cloudflare:workers";
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 
 import { createCloudflareBackofficeObjectRegistry } from "@/backoffice-runtime/cloudflare-durable-object-factory";
+import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import { createBackofficeUserExecution } from "@/backoffice-runtime/context";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
 import { codemodeWorkflowParamsSchema } from "@/fragno/automation/engine/codemode-invocation";
 import { AutomationWorkflowRuntimeRequestError } from "@/fragno/automation/workflow-route-runtime";
+import { codemodeRunnerFor } from "@/fragno/codemode/codemode-object-execute";
 
 import { MemoryUploadObject, createTestStateBackend } from "../codemode/state-backend.test-utils";
 import { runBackofficeCodemodeWorkflow } from "../codemode/workflow-execute";
@@ -605,8 +607,11 @@ const createExecCodeModeTool = async ({
     billingOrganizationId: "org-1",
     codemode: {
       ...createPiCodemodeRuntime(
-        createCloudflareBackofficeObjectRegistry(env as CloudflareEnv).codemode.singleton()
-          .commands,
+        codemodeRunnerFor(
+          createCloudflareBackofficeObjectRegistry(env as CloudflareEnv).codemode.singleton()
+            .commands,
+          createBackofficeSystemExecution({ kind: "system" }),
+        ),
       ),
       workflow: workflowRuntime,
     },

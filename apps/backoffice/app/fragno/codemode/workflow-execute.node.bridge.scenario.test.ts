@@ -21,6 +21,7 @@ import {
   defineBackofficeScenario,
   runBackofficeScenario,
 } from "@/fragno/automation/scenario";
+import { codemodeRunnerFor } from "@/fragno/codemode/codemode-object-execute";
 import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
@@ -348,7 +349,10 @@ test("Node explains denied MCP discovery for immediate, module, and scheduled ex
               }),
             );
             const options = {
-              codemode: ctx.runtime.objects.codemode.for(scope).commands,
+              codemode: codemodeRunnerFor(
+                ctx.runtime.objects.codemode.for(scope).commands,
+                execution,
+              ),
               toolContext,
               families: runtimeToolFamilies,
             };
@@ -369,17 +373,29 @@ test("Node explains denied MCP discovery for immediate, module, and scheduled ex
 
             const moduleDenied = await runBackofficeJavaScriptModule({
               ...options,
-              program: { kind: "source", code: "await mcp_agensi.search({});" },
+              program: {
+                kind: "source",
+                path: "/workspace/scripts/module.js",
+                code: "await mcp_agensi.search({});",
+              },
             });
             expect(moduleDenied.error).toContain("Required permission: mcp.servers.read.");
             const moduleUnrelated = await runBackofficeJavaScriptModule({
               ...options,
-              program: { kind: "source", code: 'throw new Error("unrelated module failure");' },
+              program: {
+                kind: "source",
+                path: "/workspace/scripts/module.js",
+                code: 'throw new Error("unrelated module failure");',
+              },
             });
             assert(moduleUnrelated.error === "unrelated module failure");
             const moduleSuccessful = await runBackofficeJavaScriptModule({
               ...options,
-              program: { kind: "source", code: 'console.log("non-MCP module completed");' },
+              program: {
+                kind: "source",
+                path: "/workspace/scripts/module.js",
+                code: 'console.log("non-MCP module completed");',
+              },
             });
             expect(moduleSuccessful.error).toBeUndefined();
             expect(moduleSuccessful.logs).toContain("non-MCP module completed");

@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { requireBackofficeContextScopeFromRouteParams } from "@/backoffice-runtime/scope-codec";
 import { authorizeBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
+import { codemodeRunnerFor } from "@/fragno/codemode/codemode-object-execute";
 import { runBackofficeCodemode } from "@/fragno/codemode/execute";
 import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
@@ -44,7 +45,10 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   const result = await runBackofficeCodemode({
     code: body.code,
     dependencies: body.dependencies,
-    codemode: kernel.scoped("CODEMODE", execution.scope, runtime.objects.codemode).commands,
+    codemode: codemodeRunnerFor(
+      kernel.scoped("CODEMODE", execution.scope, runtime.objects.codemode).commands,
+      execution,
+    ),
     timeout: body.timeout,
     toolContext: toolContext,
     families: runtimeToolFamilies,

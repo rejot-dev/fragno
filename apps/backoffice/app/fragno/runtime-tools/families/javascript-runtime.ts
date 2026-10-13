@@ -52,10 +52,10 @@ export type JavaScriptBuildFileOutput =
   | { status: "success"; path: string; artifactPath: string; warnings: string[] }
   | { status: "error"; path: string; artifactPath: string; error: string };
 
-/** Source requires compilation; a validated bundle must run without consulting a compiler. */
+/** A saved file to run: source requires compilation; a validated bundle runs without a compiler. */
 export type JavaScriptModuleProgram =
-  | { kind: "source"; code: string }
-  | { kind: "bundle"; bundle: WorkerBundle };
+  | { kind: "source"; path: string; code: string }
+  | { kind: "bundle"; path: string; bundle: WorkerBundle };
 
 export type JavaScriptModuleExecutor = (
   program: JavaScriptModuleProgram,
@@ -296,7 +296,7 @@ export function createJavaScriptRuntime({
               const { bundle } = javaScriptModuleArtifactSchema.parse(
                 await stateBackend.readJson(sourcePath),
               );
-              program = { kind: "bundle", bundle };
+              program = { kind: "bundle", path: sourcePath, bundle };
             } else {
               if (sourcePath.endsWith(".workflow.js")) {
                 throw new Error(
@@ -308,7 +308,7 @@ export function createJavaScriptRuntime({
               if (importViolation) {
                 throw new Error(standaloneJavaScriptImportError(sourcePath, importViolation));
               }
-              program = { kind: "source", code };
+              program = { kind: "source", path: sourcePath, code };
             }
             const execution = await executeModule(program, toolContext);
             const logs = execution.logs ?? [];

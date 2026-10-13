@@ -19,6 +19,7 @@ import {
   defineBackofficeScenario,
   runBackofficeScenario,
 } from "@/fragno/automation/scenario";
+import { codemodeRunnerFor } from "@/fragno/codemode/codemode-object-execute";
 import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
@@ -142,7 +143,10 @@ describe("MCP permission diagnostic scenarios", () => {
               }),
             );
             const options = {
-              codemode: ctx.runtime.objects.codemode.for(toolContext.execution.scope).commands,
+              codemode: codemodeRunnerFor(
+                ctx.runtime.objects.codemode.for(toolContext.execution.scope).commands,
+                toolContext.execution,
+              ),
               toolContext,
               families: runtimeToolFamilies,
             };

@@ -15,9 +15,13 @@ import { createCodemodeNodeExecutor } from "@fragno-dev/codemode/remote/codemode
 import { createCodemodeTestServer } from "@fragno-dev/codemode/testing/codemode-test-server";
 
 import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
-import { createBackofficeServiceExecution } from "@/backoffice-runtime/context";
+import {
+  createBackofficeServiceExecution,
+  createBackofficeSystemExecution,
+} from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
+import { codemodeRunnerFor } from "@/fragno/codemode/codemode-object-execute";
 import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 
 import { runBackofficeCompiledModule } from "./compiled-module-execute";
@@ -102,7 +106,11 @@ for (const interruption of ["parent cancellation", "activation deadline"] as con
                     },
                   },
                 ],
-                codemode: runtime.objects.codemode.forOrg("org-1").commands,
+                codemode: codemodeRunnerFor(
+                  runtime.objects.codemode.forOrg("org-1").commands,
+                  createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+                ),
+                origin: { kind: "file", path: "/workspace/.build/test.module.json" },
                 signal: cancellation.signal,
               });
               const outcome = execution.then(
@@ -247,7 +255,11 @@ test("remote compiled execution keeps its full guest timeout after a delayed Web
                     },
                   },
                 ],
-                codemode: runtime.objects.codemode.forOrg("org-1").commands,
+                codemode: codemodeRunnerFor(
+                  runtime.objects.codemode.forOrg("org-1").commands,
+                  createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+                ),
+                origin: { kind: "file", path: "/workspace/.build/test.module.json" },
                 signal: null,
               });
               expect(result).toBe("Guidance after valid guest work");
