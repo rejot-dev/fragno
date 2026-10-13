@@ -172,7 +172,7 @@ describe("webhook endpoint management", () => {
     await setup.test.cleanup();
   });
 
-  test("reconciles webhook endpoint changes after PUT replacements and PATCH updates", async () => {
+  test("reports every endpoint change with the status it replaced, including deletion", async () => {
     const setup = await buildApiTest();
     const fragment = setup.fragments.api.fragment;
 
@@ -213,6 +213,7 @@ describe("webhook endpoint management", () => {
           deliveryIdentity: { type: "jsonBodyPath", path: ["id"] },
           secretRefs: ["username", "password"],
         },
+        previousStatus: "active",
       },
       expect.any(Object),
     );
@@ -233,6 +234,7 @@ describe("webhook endpoint management", () => {
           status: "active",
           secretRefs: ["username", "password"],
         }),
+        previousStatus: "active",
       },
       expect.any(Object),
     );
@@ -248,7 +250,23 @@ describe("webhook endpoint management", () => {
         change: "updated",
         endpointId: "reconciled-webhook",
         endpoint: expect.objectContaining({ name: "Renamed", status: "disabled" }),
+        previousStatus: "active",
       },
+      expect.any(Object),
+    );
+    vi.clearAllMocks();
+
+    await fragment.callRoute("DELETE", "/webhooks/endpoints/:endpointId", {
+      pathParams: { endpointId: "reconciled-webhook" },
+    });
+    // Deleting a missing endpoint stays idempotent and reports nothing.
+    await fragment.callRoute("DELETE", "/webhooks/endpoints/:endpointId", {
+      pathParams: { endpointId: "reconciled-webhook" },
+    });
+    await drainDurableHooks(fragment);
+    expect(onWebhookEndpointChanged).toHaveBeenCalledOnce();
+    expect(onWebhookEndpointChanged).toHaveBeenCalledWith(
+      { change: "deleted", endpointId: "reconciled-webhook" },
       expect.any(Object),
     );
 

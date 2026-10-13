@@ -68,11 +68,16 @@ export interface WebhookEndpointHookSnapshot {
   secretRefs: WebhookEndpoint["secretRefs"];
 }
 
-export interface WebhookEndpointChangedPayload {
-  change: "created" | "updated";
-  endpointId: string;
-  endpoint: WebhookEndpointHookSnapshot;
-}
+export type WebhookEndpointChangedPayload =
+  | { change: "created"; endpointId: string; endpoint: WebhookEndpointHookSnapshot }
+  | {
+      change: "updated";
+      endpointId: string;
+      endpoint: WebhookEndpointHookSnapshot;
+      /** Lets consumers tell whether the write changed if the endpoint accepts deliveries. */
+      previousStatus: WebhookEndpoint["status"];
+    }
+  | { change: "deleted"; endpointId: string };
 
 export interface WebhookReceivedPayload {
   endpointId: string;

@@ -90,5 +90,13 @@ export const apiSchema = schema("api-fragment", (s) => {
     .alterTable("oauthState", (t) =>
       // States are retained after use, so pending reads seek the newest live one instead of scanning.
       t.createIndex("idx_oauth_state_pending", ["connectionId", "consumedAt", "expiresAt"]),
+    )
+    .alterTable("webhookEndpoint", (t) =>
+      // Evidence about requests since the configuration last changed; writes reset all three, and a
+      // rejection always sets both rejection columns.
+      t
+        .addColumn("lastAcceptedAt", column("timestamp").nullable())
+        .addColumn("lastRejectedAt", column("timestamp").nullable())
+        .addColumn("lastRejectionCode", column("string").nullable()),
     );
 });

@@ -77,6 +77,11 @@ Webhook endpoints:
 - `POST /webhooks/endpoints/:endpointId/events` - answer configured POST verification challenges or
   accept a delivery.
 
+Each endpoint's `deliveries` reports the last accepted request (a delivery or an answered challenge)
+and the last rejected one with its error code. Any configuration write clears both, so they describe
+only the current configuration. Rejections need no credentials, so anyone with the URL can record
+one; treat them as diagnostics.
+
 The request route only accepts relative paths. Caller-provided `Authorization` headers are ignored
 and replaced with stored connection auth.
 
@@ -221,8 +226,11 @@ selected value as `text/plain`.
 - `onConnectionDeleted` receives `{ connectionId, previous }`.
 - `onConnectionReadinessChanged` receives `{ connectionId, ready }` when a write changes whether
   stored auth can authorize requests: on creation, and afterwards whenever credentials, consent, or
-  token changes flip readiness. Expiry without a write does not trigger it; an expired token without
-  a refresh token is only noticed when the connection is used or its status is read.
+  token changes flip readiness. It also fires when an access token without a refresh token expires.
+- `onWebhookEndpointChanged` receives `{ change: "created", endpointId, endpoint }`,
+  `{ change: "updated", endpointId, endpoint, previousStatus }`, or
+  `{ change: "deleted", endpointId }`. Compare `previousStatus` with `endpoint.status` to tell
+  whether a write changed if the endpoint accepts deliveries.
 - `onWebhookReceived` receives the authenticated webhook payload and its derived delivery ID.
 
 Durable hook callbacks, including `onWebhookReceived`, may execute concurrently and may complete out
