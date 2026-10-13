@@ -261,7 +261,7 @@ describe("createJavaScriptRuntime", () => {
       logs: ["running"],
     });
     expect(executeModule).toHaveBeenCalledWith(
-      { kind: "source", code: "console.log('done');" },
+      { kind: "source", path: "/workspace/scripts/example.js", code: "console.log('done');" },
       toolContext,
     );
   });

@@ -18,6 +18,7 @@ import {
   authCapability,
 } from "./capabilities/auth";
 import { automationsCapability } from "./capabilities/automations";
+import { codemodeCapability } from "./capabilities/codemode";
 import {
   FORMS_AUTOMATION_EVENT_FORM_CREATED,
   FORMS_AUTOMATION_EVENT_FORM_DELETED,
@@ -43,6 +44,7 @@ export type BackofficeCapabilityId =
   | "api"
   | "automations"
   | "auth"
+  | "codemode"
   | "forms"
   | "github"
   | "mcp"
@@ -205,6 +207,7 @@ export const backofficeCapabilities: readonly BackofficeCapability[] = [
   githubCapability,
   authCapability,
   formsCapability,
+  codemodeCapability,
 ];
 
 export type BackofficeConnectionCatalogEntry = {

@@ -4,20 +4,24 @@ import { codemodeWorkerBundleSchema } from "@fragno-dev/codemode/execution/codem
 import type { ResolvedProvider } from "@fragno-dev/codemode/runtime-api";
 import { z } from "zod";
 
-import type { CodemodeObject } from "@/backoffice-runtime/object-registry";
-
-import type { CodemodeRunCompletion } from "./codemode-fragment";
-import { codemodeProviderManifest, executeCodemodeInObject } from "./codemode-object-execute";
+import type { CodemodeRunCompletion, CodemodeRunOrigin } from "./codemode-fragment";
+import {
+  codemodeProviderManifest,
+  executeCodemodeInObject,
+  type CodemodeRunner,
+} from "./codemode-object-execute";
 
 /** Bundles an ES module without executing it or choosing a consumer-specific entrypoint. */
 export async function buildBackofficeJavaScriptModule(input: {
   code: string;
   dependencies: Record<string, string>;
-  codemode: CodemodeObject;
+  codemode: CodemodeRunner;
+  origin: CodemodeRunOrigin;
 }): Promise<CompiledWorker> {
   const completion = await executeCodemodeInObject(
     input.codemode,
     { kind: "module-build", code: input.code, dependencies: input.dependencies },
+    input.origin,
     [],
     null,
   );
@@ -31,7 +35,8 @@ type CompiledModuleExecutionInput = {
   invocation: string | null;
   input: unknown;
   providers: ResolvedProvider[];
-  codemode: CodemodeObject;
+  codemode: CodemodeRunner;
+  origin: CodemodeRunOrigin;
   signal: AbortSignal | null;
 };
 
@@ -56,6 +61,7 @@ export async function executeBackofficeCompiledModule(
       providers: codemodeProviderManifest(input.providers),
       timeoutMs: 10_000,
     },
+    input.origin,
     input.providers,
     input.signal,
   );

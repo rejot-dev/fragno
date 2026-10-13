@@ -6,7 +6,7 @@ import type { Context } from "@earendil-works/chord";
 import { createRegistry, type Extension, type RegistrySnapshot } from "@earendil-works/pi-durable";
 
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
-import type { CodemodeObject } from "@/backoffice-runtime/object-registry";
+import type { CodemodeRunner } from "@/fragno/codemode/codemode-object-execute";
 import { runBackofficeCompiledModule } from "@/fragno/codemode/compiled-module-execute";
 import {
   javaScriptModuleArtifactSchema,
@@ -28,7 +28,7 @@ const extensionFilePathSchema = z
 type WorkspaceExtensionLoaderInput = {
   execution: BackofficeExecutionContext;
   createRuntimeToolContext: (context: Context, invocationId: string) => PiRuntimeToolContext;
-  codemode: CodemodeObject | null;
+  codemode: CodemodeRunner | null;
   registry: RegistrySnapshot;
   authorizeExecution: () => Promise<void>;
   report: (error: unknown) => void;
@@ -57,7 +57,7 @@ export async function loadPiWorkspaceExtensions(
   ]);
   const tools = new Set(input.registry.tools().map(({ tool }) => tool.name));
   const validationRegistry = createRegistry();
-  let prepared: { paths: string[]; codemode: CodemodeObject };
+  let prepared: { paths: string[]; codemode: CodemodeRunner };
   try {
     await input.authorizeExecution();
     if (!(await state.exists(PI_WORKSPACE_EXTENSION_MANIFEST))) {
@@ -117,6 +117,7 @@ export async function loadPiWorkspaceExtensions(
           input: { operation: "inspect" },
           providers: [],
           codemode,
+          origin: { kind: "file", path },
           signal: null,
         }),
       );

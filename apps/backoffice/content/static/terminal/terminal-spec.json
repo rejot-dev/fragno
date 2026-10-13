@@ -2352,7 +2352,7 @@
         "required": true,
         "valueRequired": true,
         "valueName": "fragment",
-        "description": "Fragment scope. Run hooks.scopes.list to discover values. Current values: api, telegram, mcp, resend, upload, otp, automations, workflows, github, auth, forms."
+        "description": "Fragment scope. Run hooks.scopes.list to discover values. Current values: api, telegram, mcp, resend, upload, otp, automations, workflows, github, auth, forms, codemode."
       },
       {
         "name": "cursor",

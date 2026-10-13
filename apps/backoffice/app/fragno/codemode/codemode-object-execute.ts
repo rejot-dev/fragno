@@ -1,9 +1,42 @@
+import type { CodemodeHost } from "@fragno-dev/codemode/execution/codemode-activation-contract";
 import { createCodemodeHost } from "@fragno-dev/codemode/host/codemode-host-capabilities";
 import { sanitizeToolName, type ResolvedProvider } from "@fragno-dev/codemode/runtime-api";
 
+import {
+  backofficeExecutionScopeRestriction,
+  type BackofficeExecutionContext,
+} from "@/backoffice-runtime/context";
 import type { CodemodeObject } from "@/backoffice-runtime/object-registry";
 
-import type { CodemodeRunActivation, CodemodeRunCompletion } from "./codemode-fragment";
+import type {
+  CodemodeExecution,
+  CodemodeRunActivation,
+  CodemodeRunCompletion,
+  CodemodeRunOrigin,
+} from "./codemode-fragment";
+
+/** Runs code on behalf of one execution; callers name only what they run. */
+export type CodemodeRunner = {
+  run(
+    activation: CodemodeRunActivation,
+    origin: CodemodeRunOrigin,
+    host: CodemodeHost,
+  ): Promise<CodemodeExecution>;
+};
+
+/** Binds a scope's Codemode object to the provenance of the execution that obtained it. */
+export function codemodeRunnerFor(
+  codemode: CodemodeObject,
+  execution: BackofficeExecutionContext,
+): CodemodeRunner {
+  const context = {
+    actors: execution.actors,
+    scopeRestriction: backofficeExecutionScopeRestriction(execution),
+  };
+  return {
+    run: (activation, origin, host) => codemode.execute(activation, { ...context, origin }, host),
+  };
+}
 
 /** Advertises the caller's tool names to the guest; the tools themselves stay in the caller's host. */
 export function codemodeProviderManifest(providers: readonly ResolvedProvider[]) {
@@ -15,14 +48,15 @@ export function codemodeProviderManifest(providers: readonly ResolvedProvider[])
 
 /** The Codemode object owns the guest and host lifecycle; a cancelled caller only revokes its host. */
 export async function executeCodemodeInObject(
-  codemode: CodemodeObject,
+  codemode: CodemodeRunner,
   activation: CodemodeRunActivation,
+  origin: CodemodeRunOrigin,
   providers: ResolvedProvider[],
   signal: AbortSignal | null,
 ): Promise<CodemodeRunCompletion> {
   signal?.throwIfAborted();
   const host = createCodemodeHost(providers, null);
-  const execution = codemode.execute(activation, host);
+  const execution = codemode.run(activation, origin, host);
   if (signal === null) {
     return (await execution).completion;
   }

@@ -7,6 +7,8 @@ import { env } from "cloudflare:workers";
 import { InMemoryFs } from "just-bash";
 
 import { createCloudflareBackofficeObjectRegistry } from "@/backoffice-runtime/cloudflare-durable-object-factory";
+import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
+import { codemodeRunnerFor } from "@/fragno/codemode/codemode-object-execute";
 import { runBackofficeJavaScriptModule } from "@/fragno/codemode/javascript-module-execute";
 import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
 import { createTrustedSystemBackofficeToolContext } from "@/fragno/runtime-tools/runtime-tools";
@@ -48,9 +50,11 @@ describe("JavaScript file execution in workerd", () => {
       executeModule: async (program, toolContext) =>
         await runBackofficeJavaScriptModule({
           program,
-          codemode: createCloudflareBackofficeObjectRegistry(
-            env as CloudflareEnv,
-          ).codemode.singleton().commands,
+          codemode: codemodeRunnerFor(
+            createCloudflareBackofficeObjectRegistry(env as CloudflareEnv).codemode.singleton()
+              .commands,
+            createBackofficeSystemExecution({ kind: "system" }),
+          ),
           families: runtimeToolFamilies,
           toolContext,
         }),

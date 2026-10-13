@@ -14,6 +14,7 @@ import {
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
+import { codemodeRunnerFor } from "@/fragno/codemode/codemode-object-execute";
 import { createPiManagerRuntime } from "@/fragno/pi-manager/pi-manager-runtime";
 import { buildBackofficePiSystemPrompt } from "@/fragno/pi/pi-agent-environment";
 import {
@@ -45,7 +46,10 @@ export async function createBackofficePiDurableHarnessOptions(input: {
     actors: config.actors,
   };
   const codemodeObject = runtime.codemodeEnv
-    ? kernel.scoped("CODEMODE", config.scope, runtime.objects.codemode).commands
+    ? codemodeRunnerFor(
+        kernel.scoped("CODEMODE", config.scope, runtime.objects.codemode).commands,
+        execution,
+      )
     : null;
   const codemode = codemodeObject
     ? createPiCodemodeRuntime(codemodeObject)

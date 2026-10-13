@@ -8,7 +8,6 @@ import {
 } from "@fragno-dev/codemode/runtime-api";
 
 import type { NpmDependencyMap } from "@/backoffice-runtime/dynamic-workers/npm-dependencies";
-import type { CodemodeObject } from "@/backoffice-runtime/object-registry";
 import {
   createMcpCodemodeProviders,
   explainMcpCodemodeError,
@@ -24,7 +23,11 @@ import type {
 } from "@/fragno/runtime-tools/runtime-tools";
 import type { CoreBackofficeToolContext } from "@/fragno/runtime-tools/tool-families";
 
-import { codemodeProviderManifest, executeCodemodeInObject } from "./codemode-object-execute";
+import {
+  codemodeProviderManifest,
+  executeCodemodeInObject,
+  type CodemodeRunner,
+} from "./codemode-object-execute";
 
 export type BackofficeCodemodeEnv =
   | LocalBackofficeCodemodeEnv
@@ -40,7 +43,7 @@ export type LocalBackofficeCodemodeEnv = {
 export type RunBackofficeCodemodeInput = {
   code: string;
   dependencies?: NpmDependencyMap;
-  codemode: CodemodeObject;
+  codemode: CodemodeRunner;
   timeout?: number;
   families: readonly BackofficeRuntimeToolFamily[];
   toolContext: CoreBackofficeToolContext;
@@ -241,6 +244,7 @@ export const runBackofficeCodemode = async ({
       providers: codemodeProviderManifest(providers),
       timeoutMs: timeout ?? 30_000,
     },
+    { kind: "inline" },
     providers,
     null,
   );

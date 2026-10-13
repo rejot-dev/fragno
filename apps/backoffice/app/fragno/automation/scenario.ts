@@ -62,6 +62,7 @@ import {
   createAutomationCollections,
   type AutomationCollections,
 } from "@/fragno/automation/tanstack/collections";
+import { codemodeRunnerFor } from "@/fragno/codemode/codemode-object-execute";
 import {
   runBackofficeCodemode,
   type BackofficeCodemodeExecuteResult,
@@ -1699,6 +1700,7 @@ const hookFragmentBindings: Record<string, BackofficeObjectBindingName> = {
   api: "API",
   auth: "AUTH",
   automations: "AUTOMATIONS",
+  codemode: "CODEMODE",
   github: "GITHUB",
   mcp: "MCP",
   otp: "OTP",
@@ -1872,7 +1874,7 @@ const runScenarioCodemode = async (
   const toolContext = createBackofficeToolContext(runtimeContext);
   const result = await runBackofficeCodemode({
     code: input.code,
-    codemode: ctx.runtime.objects.codemode.for(input.scope).commands,
+    codemode: codemodeRunnerFor(ctx.runtime.objects.codemode.for(input.scope).commands, execution),
     timeout: input.timeout,
     families: runtimeToolFamilies,
     toolContext: toolContext,

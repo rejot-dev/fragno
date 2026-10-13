@@ -1,3 +1,5 @@
+import type { AutomationActors } from "@fragno-dev/backoffice-api/v0/automation";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type {
   CodemodeActivation,
   CodemodeCompletion,
@@ -6,7 +8,13 @@ import type {
 import { column, idColumn, schema, type Column, type FragnoId } from "@fragno-dev/db/schema";
 
 import { defineFragment, instantiate } from "@fragno-dev/core";
-import { withDatabase, type Cursor, type FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
+import {
+  withDatabase,
+  type Cursor,
+  type FragnoPublicConfigWithDatabase,
+  type HookContext,
+  type HookFn,
+} from "@fragno-dev/db";
 
 /** Activations whose complete host lifecycle the Codemode object owns; workflows suspend through their runner. */
 export type CodemodeRunActivation = Extract<
@@ -29,8 +37,43 @@ type CodemodeRunOutcome =
 
 type CodemodeActivationKind = CodemodeRunActivation["kind"];
 
+/** What a run executes, as named by its caller; the object never inspects guest code. */
+export type CodemodeRunOrigin = { kind: "inline" } | { kind: "file"; path: string };
+
+/**
+ * Who started a run, under which scope ceiling, and what it executes; fixed when the run starts.
+ * Together, actors and ceiling bound the authority the run's output was obtained with.
+ */
+export type CodemodeRunContext = {
+  origin: CodemodeRunOrigin;
+  actors: AutomationActors;
+  scopeRestriction: BackofficeContextScope | null;
+};
+
+export type CodemodeRunStartedHookPayload = CodemodeRunContext & {
+  runId: string;
+  activationKind: CodemodeActivationKind;
+  startedAt: string;
+};
+
+/** Logs stay with the run record; hook payloads are copied into the hook queue and run events. */
+export type CodemodeRunFinishedHookPayload = CodemodeRunStartedHookPayload & {
+  finishedAt: string;
+} & ({ status: "completed" } | { status: "failed"; error: CodemodeWireError });
+
+/** Hooks fire after their run transition commits and retry until the handler succeeds. */
+export type CodemodeFragmentConfig = {
+  onRunStarted: (payload: CodemodeRunStartedHookPayload, context: HookContext) => Promise<void>;
+  onRunFinished: (payload: CodemodeRunFinishedHookPayload, context: HookContext) => Promise<void>;
+};
+
+type CodemodeHooksMap = {
+  onRunStarted: HookFn<CodemodeRunStartedHookPayload>;
+  onRunFinished: HookFn<CodemodeRunFinishedHookPayload>;
+};
+
 /** A run is persisted before its guest starts; a run without an outcome never reported finishing. */
-export type CodemodeRun = {
+export type CodemodeRun = CodemodeRunContext & {
   id: string;
   activationKind: CodemodeActivationKind;
   createdAt: string;
@@ -60,6 +103,14 @@ const codemodeSchema = schema("codemode", (s) =>
         "activationKind",
         column("string") as Column<"string", CodemodeActivationKind, CodemodeActivationKind>,
       )
+      .addColumn("origin", column("json") as Column<"json", CodemodeRunOrigin, CodemodeRunOrigin>)
+      .addColumn("actors", column("json") as Column<"json", AutomationActors, AutomationActors>)
+      .addColumn(
+        "scopeRestriction",
+        (
+          column("json") as Column<"json", BackofficeContextScope, BackofficeContextScope>
+        ).nullable(),
+      )
       // Logs are already bounded by the executor, so the outcome is stored with its run.
       .addColumn(
         "outcome",
@@ -76,22 +127,40 @@ const codemodeSchema = schema("codemode", (s) =>
 function codemodeRunFromRecord(record: {
   id: FragnoId;
   activationKind: CodemodeActivationKind;
+  origin: CodemodeRunOrigin;
+  actors: AutomationActors;
+  scopeRestriction: BackofficeContextScope | null;
   outcome: CodemodeRunOutcome | null;
   createdAt: Date;
 }): CodemodeRun {
   const run = {
     id: record.id.valueOf(),
     activationKind: record.activationKind,
+    origin: record.origin,
+    actors: record.actors,
+    scopeRestriction: record.scopeRestriction,
     createdAt: record.createdAt.toISOString(),
   };
   return record.outcome === null ? { ...run, status: "running" } : { ...run, ...record.outcome };
 }
 
-const codemodeFragmentDefinition = defineFragment("codemode")
+const codemodeFragmentDefinition = defineFragment<CodemodeFragmentConfig>("codemode")
   .extend(withDatabase(codemodeSchema))
+  .provideHooks<CodemodeHooksMap>(({ defineHook, config }) => ({
+    onRunStarted: defineHook(async function (payload) {
+      await config.onRunStarted(payload, this);
+    }),
+    onRunFinished: defineHook(async function (payload) {
+      await config.onRunFinished(payload, this);
+    }),
+  }))
   .providesBaseService(({ defineService }) =>
     defineService({
-      startRun: function (activationKind: CodemodeActivationKind) {
+      startRun: function (
+        activationKind: CodemodeActivationKind,
+        context: CodemodeRunContext,
+        startedAt: Date,
+      ) {
         return this.serviceTx(codemodeSchema)
           .retrieve((uow) =>
             uow.find("run", (b) =>
@@ -110,19 +179,49 @@ const codemodeFragmentDefinition = defineFragment("codemode")
                 expiredRuns.map((run) => run.id),
               );
             }
-            return uow.create("run", { activationKind, outcome: null }).valueOf();
+            const runId = uow
+              .create("run", { activationKind, ...context, outcome: null, createdAt: startedAt })
+              .valueOf();
+            uow.triggerHook("onRunStarted", {
+              ...context,
+              runId,
+              activationKind,
+              startedAt: startedAt.toISOString(),
+            });
+            return runId;
           })
           .build();
       },
 
-      finishRun: function (runId: string, completion: CodemodeRunCompletion) {
+      finishRun: function (runId: string, completion: CodemodeRunCompletion, finishedAt: Date) {
         const outcome: CodemodeRunOutcome =
           completion.status === "completed"
             ? { status: "completed", logs: completion.logs }
             : { status: "failed", error: completion.error, logs: completion.logs };
         return this.serviceTx(codemodeSchema)
-          .mutate(({ uow }) => {
-            uow.update("run", runId, (b) => b.set({ outcome }));
+          .retrieve((uow) =>
+            uow.findFirst("run", (b) => b.whereIndex("primary", (eb) => eb("id", "=", runId))),
+          )
+          .mutate(({ uow, retrieveResult: [run] }) => {
+            if (!run) {
+              throw new Error(`CODEMODE_RUN_NOT_FOUND: ${runId}`);
+            }
+            uow.update("run", run.id, (b) => b.set({ outcome }));
+            const finished = {
+              origin: run.origin,
+              actors: run.actors,
+              scopeRestriction: run.scopeRestriction,
+              runId,
+              activationKind: run.activationKind,
+              startedAt: run.createdAt.toISOString(),
+              finishedAt: finishedAt.toISOString(),
+            };
+            uow.triggerHook(
+              "onRunFinished",
+              completion.status === "completed"
+                ? { ...finished, status: "completed" }
+                : { ...finished, status: "failed", error: completion.error },
+            );
           })
           .build();
       },
@@ -164,9 +263,12 @@ const codemodeFragmentDefinition = defineFragment("codemode")
   .build();
 
 /** Run history for one Backoffice scope; execution itself is owned by the hosting Codemode object. */
-export function createCodemodeFragment(options: FragnoPublicConfigWithDatabase) {
+export function createCodemodeFragment(
+  config: CodemodeFragmentConfig,
+  options: FragnoPublicConfigWithDatabase,
+) {
   return instantiate(codemodeFragmentDefinition)
-    .withConfig({})
+    .withConfig(config)
     .withRoutes([])
     .withOptions(options)
     .build();

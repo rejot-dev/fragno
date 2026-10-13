@@ -34,6 +34,7 @@ import type { InMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-r
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
+import { codemodeRunnerFor } from "@/fragno/codemode/codemode-object-execute";
 import { runBackofficeCompiledModule } from "@/fragno/codemode/compiled-module-execute";
 import { javaScriptModuleArtifactSchema } from "@/fragno/codemode/javascript-module-artifact";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
@@ -244,7 +245,10 @@ test("js.build publishes ordinary ES modules without executing or inspecting the
             await context.stateBackend.rm("/workspace/scripts/math.js");
             const before = compiler.compilations;
             compiler.available = false;
-            const codemode = runtime.objects.codemode.for(scope).commands;
+            const codemode = codemodeRunnerFor(
+              runtime.objects.codemode.for(scope).commands,
+              createBackofficeSystemExecution(scope),
+            );
             assert.equal(
               await runBackofficeCompiledModule({
                 bundle,
@@ -252,6 +256,7 @@ test("js.build publishes ordinary ES modules without executing or inspecting the
                 input: [20, 22],
                 providers: [],
                 codemode,
+                origin: { kind: "file", path: "/workspace/.build/test.module.json" },
                 signal: null,
               }),
               42,
@@ -263,6 +268,7 @@ test("js.build publishes ordinary ES modules without executing or inspecting the
                 input: null,
                 providers: [],
                 codemode,
+                origin: { kind: "file", path: "/workspace/.build/test.module.json" },
                 signal: null,
               }),
               "hello",
@@ -277,6 +283,7 @@ test("js.build publishes ordinary ES modules without executing or inspecting the
                 input: null,
                 providers: [],
                 codemode,
+                origin: { kind: "file", path: "/workspace/.build/test.module.json" },
                 signal: null,
               }),
             ).rejects.toThrow("Only execution may run this");

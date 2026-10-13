@@ -31,6 +31,7 @@ import { createRouteBackedAutomationIdentityRuntime } from "@/fragno/automation/
 import { readBackofficeAutomationSource } from "@/fragno/automation/read-backoffice-automation-source";
 import { createRouteBackedAutomationRouterRuntime } from "@/fragno/automation/routing-route-runtime";
 import { createRouteBackedAutomationWorkflowRuntime } from "@/fragno/automation/workflow-route-runtime";
+import { codemodeRunnerFor } from "@/fragno/codemode/codemode-object-execute";
 import { createRuntimeStateBackend } from "@/fragno/codemode/runtime-state-backend";
 import {
   createBackofficeSystemStateBackend,
@@ -210,6 +211,7 @@ export const createRouteBackedRuntimeContext = ({
   // Resolved per use: a local runtime instantiates an object as soon as its handle is created.
   const codemodeObject = () =>
     kernel.scoped("CODEMODE", execution.scope, runtime.objects.codemode).commands;
+  const codemodeRunner = () => codemodeRunnerFor(codemodeObject(), execution);
 
   const formsObjects = runtime.objects.forms;
 
@@ -597,7 +599,7 @@ export const createRouteBackedRuntimeContext = ({
                         await import("@/fragno/codemode/javascript-module-execute");
                       return await runBackofficeJavaScriptModule({
                         program,
-                        codemode: codemodeObject(),
+                        codemode: codemodeRunner(),
                         families: runtimeToolFamilies,
                         toolContext,
                       });
@@ -612,7 +614,7 @@ export const createRouteBackedRuntimeContext = ({
                           path: input.path,
                           out: input.out,
                           state: javaScriptStateBackend,
-                          codemode: codemodeObject(),
+                          codemode: codemodeRunner(),
                         });
                         return { status: "success", ...output };
                       } catch (error) {

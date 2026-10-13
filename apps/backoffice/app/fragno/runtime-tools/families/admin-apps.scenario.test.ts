@@ -28,6 +28,7 @@ import {
   type BackofficeScenarioContext,
   type BackofficeScenarioDefinition,
 } from "@/fragno/automation/scenario";
+import { codemodeRunnerFor } from "@/fragno/codemode/codemode-object-execute";
 import { runBackofficeCodemode } from "@/fragno/codemode/execute";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
@@ -176,7 +177,10 @@ describe("admin app runtime tool SQLite scenarios", () => {
             const page = await admin.appsList({});
             return { created, page };
           }`,
-              codemode: ctx.runtime.objects.codemode.for(toolContext.execution.scope).commands,
+              codemode: codemodeRunnerFor(
+                ctx.runtime.objects.codemode.for(toolContext.execution.scope).commands,
+                toolContext.execution,
+              ),
               families: runtimeToolFamilies,
               toolContext,
             });
@@ -280,7 +284,10 @@ describe("admin app runtime tool SQLite scenarios", () => {
             }
             const denied = await runBackofficeCodemode({
               code: "async () => await admin.appsList({})",
-              codemode: ctx.runtime.objects.codemode.for(userTools.execution.scope).commands,
+              codemode: codemodeRunnerFor(
+                ctx.runtime.objects.codemode.for(userTools.execution.scope).commands,
+                userTools.execution,
+              ),
               families: runtimeToolFamilies,
               toolContext: userTools,
             });

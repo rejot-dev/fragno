@@ -32,6 +32,7 @@ import {
   runBackofficeScenario,
   type BackofficeScenarioContext,
 } from "@/fragno/automation/scenario";
+import { codemodeRunnerFor } from "@/fragno/codemode/codemode-object-execute";
 import { runBackofficeCodemode } from "@/fragno/codemode/execute";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
@@ -185,7 +186,10 @@ async function createNativeTestClient(
   } else {
     const created = await runBackofficeCodemode({
       code: `async () => await admin.oauthClientsCreate(${JSON.stringify({ name: "Local OAuth PKCE Test", applicationType: "native", clientType: "confidential", redirectUris: [redirectUri], scopes: ["openid", "profile", "email"] })})`,
-      codemode: ctx.runtime.objects.codemode.for(context.execution.scope).commands,
+      codemode: codemodeRunnerFor(
+        ctx.runtime.objects.codemode.for(context.execution.scope).commands,
+        context.execution,
+      ),
       families: runtimeToolFamilies,
       toolContext: createBackofficeToolContext(context),
     });

@@ -1,3 +1,5 @@
+import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { CODEMODE_LIMITS } from "@fragno-dev/codemode/codemode-limits";
 import type {
   CodemodeCompletion,
@@ -12,10 +14,19 @@ import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloud
 import { DurableObject, RpcTarget } from "cloudflare:workers";
 import { z } from "zod";
 
-import { decodeCursor } from "@fragno-dev/db";
+import { decodeCursor, type HookContext } from "@fragno-dev/db";
 
-import type { CodemodeObject } from "@/backoffice-runtime/object-registry";
+import {
+  requireBackofficeContextScopeFromDurableObjectId,
+  type CodemodeObject,
+} from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
+import {
+  CODEMODE_AUTOMATION_EVENT_RUN_COMPLETED,
+  CODEMODE_AUTOMATION_EVENT_RUN_FAILED,
+  CODEMODE_AUTOMATION_EVENT_RUN_STARTED,
+  CODEMODE_AUTOMATION_SOURCE,
+} from "@/fragno/backoffice-capabilities/capabilities/codemode";
 import {
   CODEMODE_RUN_ORDER_INDEX,
   createCodemodeFragment,
@@ -23,15 +34,23 @@ import {
   type CodemodeFragment,
   type CodemodeRunActivation,
   type CodemodeRunCompletion,
+  type CodemodeRunContext,
+  type CodemodeRunFinishedHookPayload,
   type CodemodeRun,
   type CodemodeRunPage,
   type CodemodeRunPageInput,
+  type CodemodeRunStartedHookPayload,
 } from "@/fragno/codemode/codemode-fragment";
 import {
   resolveBackofficeWorkerCompiler,
   type BackofficeCodemodeEnv,
   type LocalBackofficeCodemodeEnv,
 } from "@/fragno/codemode/execute";
+import {
+  loadDurableHook,
+  loadDurableHookQueue,
+  type DurableHookQueueOptions,
+} from "@/fragno/durable-hooks";
 
 import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-object";
 import type { BackofficeObjectImplementation } from "./lib/backoffice-object-implementation";
@@ -152,32 +171,91 @@ async function executeCodemodeRunActivation(
     : completion;
 }
 
+/**
+ * A run's actors become the event's actors, so automations attribute it to whoever started the run.
+ * The hook id is the event id: a retried delivery ingests the same event again.
+ */
+function codemodeRunEvent(
+  scope: BackofficeContextScope,
+  hook: HookContext,
+  run: CodemodeRunStartedHookPayload | CodemodeRunFinishedHookPayload,
+): AutomationEvent {
+  const { actors, scopeRestriction, ...payload } = run;
+  const finished = "finishedAt" in run ? run : null;
+  return {
+    id: hook.hookId.toString(),
+    // Automations started by this event inherit the run's ceiling, never a wider one.
+    scopeRestriction,
+    scope,
+    source: CODEMODE_AUTOMATION_SOURCE,
+    eventType:
+      finished === null
+        ? CODEMODE_AUTOMATION_EVENT_RUN_STARTED
+        : finished.status === "completed"
+          ? CODEMODE_AUTOMATION_EVENT_RUN_COMPLETED
+          : CODEMODE_AUTOMATION_EVENT_RUN_FAILED,
+    occurredAt: finished?.finishedAt ?? run.startedAt,
+    payload,
+    actors,
+    subject: {
+      ...(scope.kind === "org" || scope.kind === "project" ? { orgId: scope.orgId } : {}),
+      ...(scope.kind === "project" ? { projectId: scope.projectId } : {}),
+      runId: run.runId,
+    },
+  };
+}
+
 /** Scope-owned codemode boundary shared by Cloudflare and the SQLite runtime. */
 export class InMemoryCodemodeObject extends RpcTarget implements CodemodeObject {
   readonly #host: FragmentDurableObjectHost<void, CodemodeFragment>;
   readonly #env: BackofficeCodemodeEnv | null;
+  readonly #nowEpochMs: () => number;
   #fragment: CodemodeFragment | null = null;
 
   constructor({
     state,
+    nowEpochMs,
     runtime,
     implementation,
   }: {
     state: BackofficeObjectState;
+    nowEpochMs: () => number;
     runtime: BackofficeRuntimeServices;
     implementation: BackofficeObjectImplementation;
   }) {
     super();
     this.#env = runtime.codemodeEnv;
+    this.#nowEpochMs = nowEpochMs;
+    const scope = requireBackofficeContextScopeFromDurableObjectId(state.id, "CODEMODE");
+    async function ingestRunEvent(
+      run: CodemodeRunStartedHookPayload | CodemodeRunFinishedHookPayload,
+      hook: HookContext,
+    ) {
+      // Without Automations there is nowhere to record run history.
+      if (!runtime.config.bindings.automations) {
+        return;
+      }
+      await runtime.objects.automations
+        .for(scope)
+        .commands.triggerIngestEvent(codemodeRunEvent(scope, hook, run), {
+          propagationContext: hook.capturePropagationContext(),
+        });
+    }
     this.#host = implementation.createFragmentHost({
       name: "Codemode",
       createRuntime: () =>
-        createCodemodeFragment({
-          databaseAdapter: implementation.fragmentDatabase.adapters.createAdapter({
-            kind: "codemode",
-          }),
-          transactionInstrumentation: implementation.fragmentDatabase.transactionInstrumentation,
-        }),
+        createCodemodeFragment(
+          { onRunStarted: ingestRunEvent, onRunFinished: ingestRunEvent },
+          {
+            databaseAdapter: implementation.fragmentDatabase.adapters.createAdapter({
+              kind: "codemode",
+            }),
+            transactionInstrumentation: implementation.fragmentDatabase.transactionInstrumentation,
+          },
+        ),
+      onProcessError: (error) => {
+        console.error("Codemode hook processor error", error);
+      },
     });
     void state.blockConcurrencyWhile(async () => {
       this.#fragment = await this.#host.initialize(undefined);
@@ -193,6 +271,7 @@ export class InMemoryCodemodeObject extends RpcTarget implements CodemodeObject 
 
   async execute(
     activation: CodemodeRunActivation,
+    context: CodemodeRunContext,
     host: CodemodeExecutionHost,
   ): Promise<CodemodeExecution> {
     const env = this.#env;
@@ -200,9 +279,13 @@ export class InMemoryCodemodeObject extends RpcTarget implements CodemodeObject 
       throw new Error("CODEMODE_UNAVAILABLE: this runtime has no codemode executor.");
     }
     const fragment = this.#getFragment();
-    const runId = await fragment.callServices(() => fragment.services.startRun(activation.kind));
+    const runId = await fragment.callServices(() =>
+      fragment.services.startRun(activation.kind, context, new Date(this.#nowEpochMs())),
+    );
     const completion = await executeCodemodeRunActivation(env, activation, host);
-    await fragment.callServices(() => fragment.services.finishRun(runId, completion));
+    await fragment.callServices(() =>
+      fragment.services.finishRun(runId, completion, new Date(this.#nowEpochMs())),
+    );
     return { runId, completion };
   }
 
@@ -233,6 +316,18 @@ export class InMemoryCodemodeObject extends RpcTarget implements CodemodeObject 
     }
     return await fragment.callServices(() => fragment.services.listRuns({ page: "next", cursor }));
   }
+
+  async getDurableHookQueue(options?: DurableHookQueueOptions) {
+    return await loadDurableHookQueue(this.#getFragment(), options);
+  }
+
+  async getDurableHook(hookId: string) {
+    return await loadDurableHook(this.#getFragment(), hookId);
+  }
+
+  async alarm(): Promise<void> {
+    await this.#host.alarm();
+  }
 }
 
 export class Codemode extends DurableObject<CloudflareEnv> implements CodemodeObject {
@@ -243,8 +338,12 @@ export class Codemode extends DurableObject<CloudflareEnv> implements CodemodeOb
     this.#object = new InMemoryCodemodeObject(createCloudflareBackofficeObjectContext(state, env));
   }
 
-  execute(activation: CodemodeRunActivation, host: CodemodeHost): Promise<CodemodeExecution> {
-    return this.#object.execute(activation, host);
+  execute(
+    activation: CodemodeRunActivation,
+    context: CodemodeRunContext,
+    host: CodemodeHost,
+  ): Promise<CodemodeExecution> {
+    return this.#object.execute(activation, context, host);
   }
 
   getRun(runId: string): Promise<CodemodeRun | null> {
@@ -253,5 +352,17 @@ export class Codemode extends DurableObject<CloudflareEnv> implements CodemodeOb
 
   listRuns(input: CodemodeRunPageInput): Promise<CodemodeRunPage> {
     return this.#object.listRuns(input);
+  }
+
+  getDurableHookQueue(options?: DurableHookQueueOptions) {
+    return this.#object.getDurableHookQueue(options);
+  }
+
+  getDurableHook(hookId: string) {
+    return this.#object.getDurableHook(hookId);
+  }
+
+  async alarm(): Promise<void> {
+    await this.#object.alarm();
   }
 }

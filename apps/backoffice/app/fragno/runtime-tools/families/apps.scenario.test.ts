@@ -36,6 +36,7 @@ import {
   type BackofficeScenarioContext,
   type BackofficeScenarioDefinition,
 } from "@/fragno/automation/scenario";
+import { codemodeRunnerFor } from "@/fragno/codemode/codemode-object-execute";
 import { runBackofficeCodemode } from "@/fragno/codemode/execute";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
@@ -176,7 +177,10 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
                 const installation = await apps.getInstallation({ appId: app.id });
                 return { app, installed, installation, page: await apps.listInstallations({}) };
               }`,
-                codemode: ctx.runtime.objects.codemode.for(ownerContext.execution.scope).commands,
+                codemode: codemodeRunnerFor(
+                  ctx.runtime.objects.codemode.for(ownerContext.execution.scope).commands,
+                  ownerContext.execution,
+                ),
                 families: runtimeToolFamilies,
                 toolContext: createBackofficeToolContext(ownerContext),
               });
@@ -254,7 +258,10 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
               });
               const uninstalled = await runBackofficeCodemode({
                 code: `async () => await apps.uninstall({ appId: ${JSON.stringify(appId)} })`,
-                codemode: ctx.runtime.objects.codemode.for(adminTools.execution.scope).commands,
+                codemode: codemodeRunnerFor(
+                  ctx.runtime.objects.codemode.for(adminTools.execution.scope).commands,
+                  adminTools.execution,
+                ),
                 families: runtimeToolFamilies,
                 toolContext: adminTools,
               });
@@ -389,7 +396,10 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
             expect(denied.stderr).toContain("Required permission: apps.manage.");
             const deniedCode = await runBackofficeCodemode({
               code: `async () => await apps.install({ appId: ${JSON.stringify(appId)}, grantedPermissions: [] })`,
-              codemode: ctx.runtime.objects.codemode.for(memberTools.execution.scope).commands,
+              codemode: codemodeRunnerFor(
+                ctx.runtime.objects.codemode.for(memberTools.execution.scope).commands,
+                memberTools.execution,
+              ),
               families: runtimeToolFamilies,
               toolContext: memberTools,
             });

@@ -22,6 +22,7 @@ import type {
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 import { createRouteBackedAutomationStoreRuntime } from "@/fragno/automation/bindings-route-runtime";
+import { codemodeRunnerFor } from "@/fragno/codemode/codemode-object-execute";
 import { runBackofficeCodemode } from "@/fragno/codemode/execute";
 import {
   MemoryUploadObject,
@@ -50,8 +51,10 @@ const localObjects = {
   MCP: (input) => new InMemoryMcpObject(input),
 } satisfies LocalBackofficeObjects;
 
-const codemode = createCloudflareBackofficeObjectRegistry(env as CloudflareEnv).codemode.singleton()
-  .commands;
+const codemode = codemodeRunnerFor(
+  createCloudflareBackofficeObjectRegistry(env as CloudflareEnv).codemode.singleton().commands,
+  createBackofficeSystemExecution({ kind: "system" }),
+);
 
 describe("runBackofficeCodemode", () => {
   test("returns a compile error when the Codemode object has no compiler", async () => {
@@ -61,7 +64,10 @@ describe("runBackofficeCodemode", () => {
     });
     try {
       const result = await runBackofficeCodemode({
-        codemode: runtime.objects.codemode.singleton().commands,
+        codemode: codemodeRunnerFor(
+          runtime.objects.codemode.singleton().commands,
+          createBackofficeSystemExecution({ kind: "system" }),
+        ),
         families: runtimeToolFamilies,
         toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
         code: "42",
@@ -789,7 +795,10 @@ describe("runBackofficeCodemode", () => {
       });
 
       const result = await runBackofficeCodemode({
-        codemode: runtime.objects.codemode.for(routeContext.execution.scope).commands,
+        codemode: codemodeRunnerFor(
+          runtime.objects.codemode.for(routeContext.execution.scope).commands,
+          routeContext.execution,
+        ),
         families: runtimeToolFamilies,
         toolContext: createBackofficeToolContext(routeContext),
         code: `async () => {
@@ -836,7 +845,10 @@ describe("runBackofficeCodemode", () => {
       });
 
       const result = await runBackofficeCodemode({
-        codemode: runtime.objects.codemode.for(routeContext.execution.scope).commands,
+        codemode: codemodeRunnerFor(
+          runtime.objects.codemode.for(routeContext.execution.scope).commands,
+          routeContext.execution,
+        ),
         families: runtimeToolFamilies,
         toolContext: createBackofficeToolContext(routeContext),
         code: `async () => {

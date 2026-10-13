@@ -17,6 +17,7 @@ describe("Capability contributions", () => {
     ).toEqual([
       "auth",
       "automations",
+      "codemode",
       "forms",
       "github",
       "otp",

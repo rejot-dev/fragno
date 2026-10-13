@@ -99,6 +99,7 @@ import type {
 import type {
   CodemodeExecution,
   CodemodeRunActivation,
+  CodemodeRunContext,
   CodemodeRun,
   CodemodeRunPage,
   CodemodeRunPageInput,
@@ -383,9 +384,16 @@ export type BillingObject = {
   getTrackers(input: BillingTrackerPageInput): Promise<BillingTrackerPage>;
 };
 
-/** Executes non-workflow activations through the codemode bridge and records each one as a run. */
-export type CodemodeObject = {
-  execute(activation: CodemodeRunActivation, host: CodemodeHost): Promise<CodemodeExecution>;
+/**
+ * Executes non-workflow activations through the codemode bridge and records each one as a run.
+ * Run starts and outcomes become `codemode` events in the same scope's Automations object.
+ */
+export type CodemodeObject = DurableHookCommands & {
+  execute(
+    activation: CodemodeRunActivation,
+    context: CodemodeRunContext,
+    host: CodemodeHost,
+  ): Promise<CodemodeExecution>;
   getRun(runId: string): Promise<CodemodeRun | null>;
   listRuns(input: CodemodeRunPageInput): Promise<CodemodeRunPage>;
 };
