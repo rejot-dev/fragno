@@ -49,6 +49,18 @@ const total = [2, 3, 5].reduce((sum, value) => sum + value, 0);
 console.log("Total:", total);
 ```
 
+A run finishes as soon as its top-level statements settle; the runtime does not wait for timers or
+other pending work. Callbacks from `setTimeout` or `setInterval` and unawaited promises are dropped
+with their logs and effects. Await all work at the top level, and start the file with `export {};`
+so it is a module: `js.check` accepts top-level `await` only in modules.
+
+```js
+export {};
+
+await new Promise((resolve) => setTimeout(resolve, 5_000));
+console.log("Five seconds have passed");
+```
+
 An exported function is a definition, not an entrypoint: `export default async () => { ... }` does
 not execute its body under `js.run`. The run output contains logs, not the module's exports or a
 returned export value.
