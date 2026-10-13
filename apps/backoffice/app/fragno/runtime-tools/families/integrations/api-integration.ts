@@ -28,7 +28,6 @@ import { BackofficeUnavailableError } from "@/backoffice-runtime/kernel";
 import { isBackofficeObjectAvailableInContext } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import type { ApiFragment } from "@/fragno/api";
-import { apiCapability } from "@/fragno/backoffice-capabilities/capabilities/api";
 import { apiPublicAddress } from "@/fragno/scoped-public-fragment-routes";
 
 import { isSuccessStatus, throwOnRouteRuntimeError } from "../../runtime-errors";
@@ -569,9 +568,8 @@ export function createApiIntegration({
                 },
           // Slugs are caller-chosen, so there is no fixed slot to advertise.
           setupTargets: [],
-          automationEvents: apiCapability.contributions.automationEvents.map(
-            ({ source, eventType }) => ({ source, eventType }),
-          ),
+          // The API capability's events are inbound webhooks, which the webhook source reports.
+          automationEvents: [],
         },
       ];
     },

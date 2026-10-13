@@ -4,13 +4,12 @@ The registered `integrations` tools provide scope-bound discovery, setup, and ex
 existing service-owned configuration. They do not own credentials, binding records, or setup-attempt
 history.
 
-API, MCP, GitHub, Reson8, Telegram, Resend, and Connector are implemented sources. Codemode and
-terminal commands use the same contracts, runtime, and permissions. Every source's connections are
-exposed only through `integrations.*`; the former standalone tool families have been removed. Two
-native surfaces remain because the facade does not cover them: `api.*` manages inbound webhook
-endpoints, and codemode generates a typed `mcp_<server>` provider per MCP server from its cached
-tools. All sources retain their underlying Fragments, Durable Objects, native permissions,
-ownership, and configuration controls.
+API, inbound webhooks, MCP, GitHub, Reson8, Telegram, Resend, and Connector are implemented sources.
+Codemode and terminal commands use the same contracts, runtime, and permissions. Every source's
+connections are exposed only through `integrations.*`; the former standalone tool families have been
+removed. One native surface remains because the facade does not cover it: codemode generates a typed
+`mcp_<server>` provider per MCP server from its cached tools. All sources retain their underlying
+Fragments, Durable Objects, ownership, and configuration controls.
 
 ## Public surface
 
@@ -80,6 +79,18 @@ suffix exactly; registration accepts only the Fragment's canonical slugs: a lowe
 digit, then lowercase letters, digits, or `-`. Discovery publishes one `mcp` service with `multiple`
 cardinality and no setup targets, and every listed server uses `integrationId: "mcp"`. The Fragment
 lists every server in one read, so listing returns a single page.
+
+### Webhook addresses
+
+The webhook source owns the `webhook` namespace in the API store's scopes. `webhook#<endpointId>`
+names the API Fragment's inbound webhook endpoint with exactly that ID, which is also the event
+source its reclassified deliveries use. Resolution preserves the suffix exactly; setup accepts only
+the API slug alphabet for new endpoints and refuses IDs that a Backoffice capability already
+declares as an event source, so an endpoint cannot take over `github` or `telegram` events.
+Discovery publishes one `webhook` service with `multiple` cardinality, no setup targets, and the
+`api.webhook.received` event, which the API service therefore no longer lists. The Fragment lists
+every endpoint in one read, so listing returns a single page; drafts created on the native page are
+unconfirmed and resolve only by address.
 
 ### Telegram and Resend addresses
 
@@ -232,6 +243,23 @@ credential resets, and `{ reauthorize: true }` behave as for API. Reconfigure re
 place through `PUT /servers/:slug/configuration`, which also drops the registered OAuth client and
 discovery state, since they belong to the old endpoint. Disconnect deletes the server.
 
+Webhook setup has no URL field, so the URL travels in text: `needs-input` instructions, inspection
+`nextSteps` until a delivery is accepted, and the `endpoint.describe` action. The URL is fixed per
+scope and endpoint ID, so setup states it before anything is stored. A submission is the complete
+contract, with `auth` nested because apiKey's own `name` would collide with the display name;
+`secretFields` therefore names dotted paths. It activates the endpoint, and an existing draft is
+completed in place. Active endpoints are `ready`; disabled ones are `blocked`, naming reconfigure.
+Reconfigure patches the complete contract and activates the endpoint; `auth: { type: "keep" }` keeps
+the stored secrets. Disconnect deletes the endpoint and its secrets, but the event source, catalog
+entries, and routes that name it stay, so setting the address up again restores the flow. Readiness
+follows whether the endpoint accepts deliveries: creation reports `ready` or `unavailable`, writes
+that change it report the new state, and deletion reports `disconnected`.
+
+A passive endpoint cannot be probed, so its only check is `delivery.received`, built from the
+Fragment's record of the latest accepted and rejected request since the configuration last changed.
+Inspection and verify report the same evidence. A rejection needs no credentials, so a failed check
+is a diagnosis, not proof that the provider is misconfigured.
+
 MCP `ready` means auth is usable, not that tools are known. The Fragment discovers tools in a
 background refresh after credentials are stored or consent completes, so actions can be empty
 briefly. Setup does not wait for that refresh: a failed refresh records no outcome, so a pending
@@ -260,7 +288,9 @@ in a public token, or add an integrations-owned attempt store to fit it into nam
   provider allowlists, authoritative catalog validation, and read-only profile evidence.
 - `api-integration.ts`: scoped API Fragment connections, exact slug addresses, sanitized auth
   status, resumable OAuth, and the generic `request` action. Its OAuth callback comes from
-  `../../runtime-public-scope.ts`, which the native API runtime shares.
+  `../../runtime-public-scope.ts`, which the webhook source shares for its URLs.
+- `webhook-integration.ts`: the API Fragment's inbound webhook endpoints, their URL in setup text,
+  and delivery evidence as the only check.
 - `mcp-integration.ts`: scoped MCP Fragment servers, exact slug addresses, sanitized auth status,
   resumable OAuth, one action per cached server tool, and live tool listing as verification.
 - `integration-action-json-schema.ts`: compiles source-published action schemas for Connector and
@@ -476,8 +506,9 @@ provider-specific check would need a separately justified source capability.
 Concrete scenarios use real temporary SQLite, runtime/kernel authority, registered Codemode and Bash
 tools, object restarts, authorized object HTTP, and real route handlers. External transport is an
 injected fetch for Reson8, a stateful local HTTP gateway for Connector, a local HTTP and OAuth
-provider for API, and in-process MCP servers from `@fragno-dev/mcp-fragment/testing` for MCP.
-Scenarios cover claim conflicts, deterministic and exact addressing, both permission layers, owner
-isolation, setup without handles, in-place replacement, reauthorization, confirmed disconnects,
-retained OAuth history, ambiguity, source pagination, binary/query transport, live contracts, output
-failures without retries, and sanitized verification evidence.
+provider for API, in-process MCP servers from `@fragno-dev/mcp-fragment/testing` for MCP, and signed
+requests to the public receive route for webhooks. Scenarios cover claim conflicts, deterministic
+and exact addressing, both permission layers, owner isolation, setup without handles, in-place
+replacement, reauthorization, confirmed disconnects, retained OAuth history, ambiguity, source
+pagination, binary/query transport, live contracts, output failures without retries, and sanitized
+verification evidence.

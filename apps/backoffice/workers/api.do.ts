@@ -1,3 +1,4 @@
+import type { WebhookEndpointChangedPayload } from "@fragno-dev/api-fragment/definition";
 import {
   type BackofficeRoutableScope,
   backofficeRoutableScopeSchema,
@@ -23,6 +24,7 @@ import {
 } from "@/fragno/durable-hooks";
 import { encodeApiConnectionId } from "@/fragno/runtime-tools/families/integrations/api-integration";
 import { recordIntegrationConnectionState } from "@/fragno/runtime-tools/families/integrations/integration-events";
+import { encodeWebhookConnectionId } from "@/fragno/runtime-tools/families/integrations/webhook-integration";
 import {
   API_PUBLIC_PREFIX,
   isScopedPublicOAuthRedirectUriAllowed,
@@ -42,6 +44,27 @@ function scopeSubject(scope: BackofficeRoutableScope, subject?: Record<string, u
     ...(scope.kind === "org" || scope.kind === "project" ? { orgId: scope.orgId } : {}),
     ...subject,
   };
+}
+
+/** An endpoint is ready while it accepts deliveries; writes that keep that unchanged report nothing. */
+function webhookEndpointState(payload: WebhookEndpointChangedPayload) {
+  switch (payload.change) {
+    case "created":
+      return payload.endpoint.status === "active" ? "ready" : "unavailable";
+    case "updated": {
+      const ready = payload.endpoint.status === "active";
+      if (ready === (payload.previousStatus === "active")) {
+        return null;
+      }
+      return ready ? "ready" : "unavailable";
+    }
+    case "deleted":
+      return "disconnected";
+    default:
+      throw new Error("Webhook endpoint change is unsupported.", {
+        cause: payload satisfies never,
+      });
+  }
 }
 
 export class InMemoryApiObject extends RpcTarget implements ApiObject {
@@ -144,30 +167,28 @@ export class InMemoryApiObject extends RpcTarget implements ApiObject {
       },
       onWebhookEndpointChanged: async (payload, context) => {
         const automations = this.#runtimeServices.objects.automations.for(ownerScope);
-        await automations.commands.ensureEventSource({
-          source: payload.endpointId,
-          label: payload.endpoint.name,
-          description: `${payload.endpoint.name} webhook events received through the API.`,
-          category: "custom",
-        });
-        if (payload.change !== "created") {
+        // A deleted endpoint's source stays, with the catalog entries and routes that name it.
+        if (payload.change !== "deleted") {
+          await automations.commands.ensureEventSource({
+            source: payload.endpointId,
+            label: payload.endpoint.name,
+            description: `${payload.endpoint.name} webhook events received through the API.`,
+            category: "custom",
+          });
+        }
+        const state = webhookEndpointState(payload);
+        if (state === null) {
           return;
         }
-        await automations.commands.ingestEvent(
+        await recordIntegrationConnectionState(
+          automations.commands,
           {
             id: context.hookId.toString(),
-            scopeRestriction: null,
             scope: ownerScope,
-            source: "api",
-            eventType: "webhook_endpoint.created",
-            occurredAt: new Date().toISOString(),
-            payload: { endpointId: payload.endpointId, ...payload.endpoint },
-            actors: {
-              initiator: AUTOMATION_SYSTEM_INITIATOR,
-              principal: null,
-              delegation: [],
-            },
-            subject: scopeSubject(ownerScope, { endpointId: payload.endpointId }),
+            service: "webhook",
+            connectionId: encodeWebhookConnectionId(payload.endpointId),
+            state,
+            occurredAt: context.createdAt,
           },
           { propagationContext: context.capturePropagationContext() },
         );

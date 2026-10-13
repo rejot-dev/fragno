@@ -16,7 +16,6 @@ import type { AutomationCommandContext, BashAutomationCommandResult } from "./au
 import { createCurrentScopeBashCommand } from "./current-scope-command";
 import type { AccountRuntime } from "./families/account";
 import type { AdminRuntime } from "./families/admin";
-import type { RegisteredApiCommandContext } from "./families/api-runtime";
 import type { AppsRuntime } from "./families/apps-runtime";
 import type { AutomationStoreRuntime } from "./families/automations-bindings";
 import type { DurableHooksRuntime } from "./families/automations-durable-hooks";
@@ -73,7 +72,6 @@ export type BashHostContext = {
   durableHooks?: { runtime: DurableHooksRuntime } | null;
   integrations: { runtime: IntegrationsRuntime } | null;
   internal?: { runtime: InternalRuntime } | null;
-  api?: RegisteredApiCommandContext | null;
   mcp?: { runtime: McpRuntime } | null;
   marketplace: { runtime: MarketplaceRuntime } | null;
   packages: { runtime: PackagesRuntime } | null;
@@ -91,7 +89,6 @@ export type InteractiveRuntimeToolContext = Omit<BashHostContext, "automation"> 
   workflow?: BashHostContext["workflow"];
   durableHooks?: BashHostContext["durableHooks"];
   forms?: BashHostContext["forms"];
-  api?: BashHostContext["api"];
   mcp?: BashHostContext["mcp"];
   otp: NonNullable<BashHostContext["otp"]>;
   pi: NonNullable<BashHostContext["pi"]>;

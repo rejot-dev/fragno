@@ -136,7 +136,9 @@ export const integrationSetupProgressSchema = z
       inputSchema: integrationJsonSchemaSchema,
       secretFields: z
         .array(z.string())
-        .describe("Secret property names for input controls, never secret values."),
+        .describe(
+          "Secret property names for input controls, as dot-separated paths when nested; never secret values.",
+        ),
     }),
     z.strictObject({
       ...integrationSetupProgressShape,

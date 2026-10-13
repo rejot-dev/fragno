@@ -29,6 +29,11 @@ These are all the native Backoffice integrations:
 | Resend   | `backoffice#resend`   | organization; system is the platform email account | email threads and replies             |
 | GitHub   | `github#owner/repo`   | organization, one connection per repository        | repository API through the GitHub App |
 
+Receiving a provider's webhooks is not a rung but its own source: `webhook#<endpointId>`, owned by
+an organization, user, or project. It needs no outbound connection; when a provider is used in both
+directions, such as Slack, it has an `api#` and a `webhook#` connection. Follow
+`/static/skills/api-webhooks/SKILL.md` for its contract, events, and routes.
+
 ## 1. Discover
 
 ```js
@@ -212,9 +217,6 @@ In organization and project codemode, each server with discovered tools is also 
 such as `mcp_cloudflare.search_docs({ query })` for `mcp#cloudflare`. Its declarations are in
 `/static/codemode/sources/mcp.d.ts`. Provider calls return the same results and require
 `integrations.execute`; they are the way to call a tool whose schema could not be validated.
-
-Inbound webhooks are endpoints, not connections: configure them with `api.webhooks.*` following
-`/static/skills/api-webhooks/SKILL.md`.
 
 ## Authority and terminal
 

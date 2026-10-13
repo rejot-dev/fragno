@@ -4,7 +4,6 @@ import type { PiManagerRuntime } from "@/fragno/pi/manager/pi-manager-runtime";
 import { codemodeStateToolFamily } from "./codemode-state-runtime";
 import { accountToolFamily, type AccountRuntime } from "./families/account";
 import { adminToolFamily, type AdminRuntime } from "./families/admin";
-import { apiToolFamily, type ApiRuntime } from "./families/api";
 import { appsToolFamily } from "./families/apps";
 import type { AppsRuntime } from "./families/apps-runtime";
 import {
@@ -83,7 +82,6 @@ export type CoreBackofficeRuntimeMap = {
   forms?: FormsRuntime;
   cloudflare?: CloudflareRuntime;
   internal?: InternalRuntime;
-  api?: ApiRuntime;
   mcp?: McpRuntime;
   marketplace: MarketplaceRuntime | undefined;
   packages: PackagesRuntime | undefined;
@@ -116,7 +114,6 @@ export const runtimeToolFamilies = [
   formsToolFamily,
   cloudflareToolFamily,
   webToolFamily,
-  apiToolFamily,
   otpToolFamily,
   piToolFamily,
   sandboxToolFamily,
@@ -142,7 +139,6 @@ const namespaceCapabilityIds = {
   hooks: "automations",
   events: "automations",
   forms: "forms",
-  api: "api",
   otp: "otp",
   pi: "pi",
   sandbox: "sandbox",
