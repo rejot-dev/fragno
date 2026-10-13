@@ -8,25 +8,7 @@ import { createMcpCodemodeProviders } from "./mcp-codemode-tools";
 const createRuntime = (overrides: Partial<McpRuntime>): McpRuntime =>
   ({
     listServers: async () => ({ servers: [] }),
-    createServer: async () => {
-      throw new Error("not implemented");
-    },
-    deleteServer: async () => {
-      throw new Error("not implemented");
-    },
-    refreshServer: async () => {
-      throw new Error("not implemented");
-    },
     callTool: async () => {
-      throw new Error("not implemented");
-    },
-    startOAuth: async () => {
-      throw new Error("not implemented");
-    },
-    setToken: async () => {
-      throw new Error("not implemented");
-    },
-    getAuthStatus: async () => {
       throw new Error("not implemented");
     },
     ...overrides,

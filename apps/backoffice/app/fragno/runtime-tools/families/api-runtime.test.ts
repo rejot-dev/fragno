@@ -8,28 +8,6 @@ const publicAddress = {
 };
 
 describe("route-backed API runtime public addresses", () => {
-  test("supplies the canonical redirect URI when OAuth starts", async () => {
-    const requests: Request[] = [];
-    const runtime = createRouteBackedApiRuntime({
-      baseUrl: "https://api.do",
-      resolvePublicAddress: async () => publicAddress,
-      fetch: async (request) => {
-        requests.push(request);
-        return Response.json({
-          authorizationUrl: "https://provider.example/authorize",
-          state: "state-1",
-        });
-      },
-    });
-
-    await runtime.startOAuth({ slug: "github" });
-
-    expect(new URL(requests[0]!.url).searchParams.get("redirectUri")).toBe(
-      publicAddress.oauthRedirectUri,
-    );
-    await expect(requests[0]?.json()).resolves.toEqual({ discardTokens: false });
-  });
-
   test("adds the public URL to webhook endpoint results outside the API object", async () => {
     const runtime = createRouteBackedApiRuntime({
       baseUrl: "https://api.do",

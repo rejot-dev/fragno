@@ -122,9 +122,7 @@ test.each([
             expect(html).toContain("You’re back in Backoffice.");
             expect(html).toContain("This page does not confirm");
             expect(html).toContain("Finish in your original tab");
-            expect(html).toContain(
-              "connector.connections.refresh --request-id REQUEST_ID --format json",
-            );
+            expect(html).toContain("integrations.setup --connection-id CONNECTION_ID");
             expect(html).toContain(`href="${backPath}"`);
             expect(html).toContain(label);
             expect(html).not.toContain("forged-account");

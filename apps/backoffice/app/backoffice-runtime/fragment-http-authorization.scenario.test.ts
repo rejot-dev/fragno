@@ -33,7 +33,6 @@ import {
   type BackofficeScenarioContext,
 } from "@/fragno/automation/scenario";
 import { forwardPublicFragmentRequest } from "@/fragno/public-fragment-route.server";
-import { createApiRuntime } from "@/fragno/runtime-tools/families/api-runtime";
 import { createFormsRuntime } from "@/fragno/runtime-tools/families/forms-runtime";
 import { apiPublicRoute } from "@/routes/api/api-route.server";
 import { mcpPublicRoute } from "@/routes/api/mcp-route.server";
@@ -358,16 +357,21 @@ describe("fragment HTTP authority scenarios", () => {
         obsoleteBypass,
       );
       assert(bypassed.status === 403);
-      const deferred = createApiRuntime(
-        authorizedBackofficeObjectHttp(api.http, outsider),
-        async () => ({
-          baseUrl: `${origin}/api/http/${encodeURIComponent(scopeSegment)}`,
-          oauthRedirectUri: `${origin}/api/http/${encodeURIComponent(scopeSegment)}/oauth/callback`,
-        }),
-      );
-      await expect(
-        deferred.createConnection({ slug: "protected", ...connection }),
-      ).rejects.toMatchObject({ reason: "principal-permission-denied" });
+      const deferred = authorizedBackofficeObjectHttp(api.http, outsider);
+      async function createDeferredConnection(slug: string) {
+        const response = await deferred.fetch(
+          new Request(`${origin}/api/api/connections/${slug}`, {
+            method: "PUT",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(connection),
+          }),
+        );
+        return { status: response.status, body: await response.json() };
+      }
+      expect(await createDeferredConnection("protected")).toMatchObject({
+        status: 403,
+        body: { code: "principal-permission-denied" },
+      });
       assert((await api.http.fetch(new Request(`${origin}/api/api/connections`))).status === 401);
       const callback = await api.http.fetch(new Request(`${origin}/api/api/oauth/callback`));
       assert(callback.status === 400);
@@ -452,13 +456,14 @@ describe("fragment HTTP authority scenarios", () => {
       ).toHaveLength(1);
 
       // Deferred executions resolve membership live, so the same execution now succeeds.
-      await deferred.createConnection({ slug: "before-revocation", ...connection });
+      expect(await createDeferredConnection("before-revocation")).toMatchObject({ status: 201 });
       await auth.commands.applyScenarioFixture({
         removedMembers: [{ organizationId: "api-org", userId: me.user.id }],
       });
-      await expect(
-        deferred.createConnection({ slug: "after-revocation", ...connection }),
-      ).rejects.toMatchObject({ reason: "principal-permission-denied" });
+      expect(await createDeferredConnection("after-revocation")).toMatchObject({
+        status: 403,
+        body: { code: "principal-permission-denied" },
+      });
       // A previously issued browser snapshot is deliberately not a live-membership lookup.
       const originalSnapshotRequest = connectionRequest(member.accessCookie);
       const snapshotRequest = new Request(

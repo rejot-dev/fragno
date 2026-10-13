@@ -49,7 +49,7 @@ export const apiCapability: BackofficeCapability = {
   contributions: {
     connection: null,
     eventSources: [],
-    actionProviders: ["api"],
+    actionProviders: ["api", "integrations"],
     hookScopes: [
       {
         id: "api",

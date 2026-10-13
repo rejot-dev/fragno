@@ -1,18 +1,9 @@
 import {
-  API_OAUTH_REDIRECT_URI_QUERY_PARAMETER,
-  type ApiConnectionInput,
-  type ApiRequestInput,
   type UpdateWebhookEndpointInput,
   type WebhookEndpoint,
   type WebhookEndpointInput,
 } from "@fragno-dev/api-fragment/types";
 import type {
-  ApiAuthStatus,
-  ApiConnection,
-  ApiListConnectionsInput,
-  ApiListConnectionsOutput,
-  ApiOAuthStartOutput,
-  ApiRequestOutput,
   webhookEndpointSchema,
   webhookEndpointsOutputSchema,
 } from "@fragno-dev/backoffice-api/v0/http-api";
@@ -31,26 +22,13 @@ import {
   isSuccessStatus,
   throwOnRouteRuntimeError,
 } from "../runtime-errors";
-import type {
-  ApiOAuthStartInput,
-  ApiSetTokenInput,
-  ApiWebhookEndpointInput,
-  ApiWebhookEndpointUpdateInput,
-} from "./api";
+import type { ApiWebhookEndpointInput, ApiWebhookEndpointUpdateInput } from "./api";
 
 // The runtime returns the fragment's records; tool output parsing turns their dates into ISO strings.
 type ApiWebhookEndpointResult = z.input<typeof webhookEndpointSchema>;
 type ApiWebhookEndpointsResult = z.input<typeof webhookEndpointsOutputSchema>;
 
 export type ApiRuntime = {
-  listConnections: (input: ApiListConnectionsInput) => Promise<ApiListConnectionsOutput>;
-  createConnection: (input: { slug: string } & ApiConnectionInput) => Promise<ApiConnection>;
-  deleteConnection: (input: { slug: string }) => Promise<{ ok: true }>;
-  getAuthStatus: (input: { slug: string }) => Promise<ApiAuthStatus>;
-  setToken: (input: { slug: string } & ApiSetTokenInput) => Promise<ApiAuthStatus>;
-  startOAuth: (input: { slug: string } & ApiOAuthStartInput) => Promise<ApiOAuthStartOutput>;
-  deleteAuth: (input: { slug: string }) => Promise<{ ok: true }>;
-  request: (input: { slug: string } & ApiRequestInput) => Promise<ApiRequestOutput>;
   listWebhookEndpoints: () => Promise<ApiWebhookEndpointsResult>;
   getWebhookEndpoint: (input: { endpointId: string }) => Promise<ApiWebhookEndpointResult>;
   createWebhookEndpoint: (
@@ -121,91 +99,6 @@ export const createRouteBackedApiRuntime = (
   const callRoute = createApiRouteCaller({ ...options, baseUrl });
 
   return {
-    listConnections: async ({ cursor }) => {
-      const response = await callRoute("GET", "/connections", {
-        query: cursor === null ? {} : { cursor },
-      });
-      if (response.type === "json" && isSuccessStatus(response.status)) {
-        return response.data as ApiListConnectionsOutput;
-      }
-      return throwOnApiRuntimeError(response, "api.connections.list");
-    },
-    createConnection: async ({ slug, ...body }) => {
-      const response = await callRoute("PUT", "/connections/:slug", {
-        pathParams: { slug: normalizeSlug(slug) },
-        body,
-      });
-      if (response.type === "json" && isSuccessStatus(response.status)) {
-        return response.data as ApiConnection;
-      }
-      return throwOnApiRuntimeError(response, "api.connections.create");
-    },
-    deleteConnection: async ({ slug }) => {
-      const response = await callRoute("DELETE", "/connections/:slug", {
-        pathParams: { slug: normalizeSlug(slug) },
-      });
-      if (isSuccessStatus(response.status)) {
-        return { ok: true };
-      }
-      return throwOnApiRuntimeError(response, "api.connections.delete");
-    },
-    getAuthStatus: async ({ slug }) => {
-      const response = await callRoute("GET", "/connections/:slug/auth/status", {
-        pathParams: { slug: normalizeSlug(slug) },
-      });
-      if (response.type === "json" && isSuccessStatus(response.status)) {
-        return response.data as ApiAuthStatus;
-      }
-      return throwOnApiRuntimeError(response, "api.auth.status");
-    },
-    setToken: async ({ slug, token }) => {
-      const response = await callRoute("POST", "/connections/:slug/auth/token", {
-        pathParams: { slug: normalizeSlug(slug) },
-        body: { token },
-      });
-      if (response.type === "json" && isSuccessStatus(response.status)) {
-        return response.data as ApiAuthStatus;
-      }
-      return throwOnApiRuntimeError(response, "api.auth.token");
-    },
-    startOAuth: async ({ slug, scopes, extraAuthorizationParams }) => {
-      const publicAddress = await options.resolvePublicAddress();
-      const response = await callRoute("POST", "/connections/:slug/auth/oauth/start", {
-        pathParams: { slug: normalizeSlug(slug) },
-        query: {
-          [API_OAUTH_REDIRECT_URI_QUERY_PARAMETER]: publicAddress.oauthRedirectUri,
-        },
-        body: {
-          ...(scopes?.length ? { scopes } : {}),
-          ...(extraAuthorizationParams ? { extraAuthorizationParams } : {}),
-          // Native restarts keep working tokens until the new consent replaces them.
-          discardTokens: false,
-        },
-      });
-      if (response.type === "json" && isSuccessStatus(response.status)) {
-        return response.data as ApiOAuthStartOutput;
-      }
-      return throwOnApiRuntimeError(response, "api.oauth.start");
-    },
-    deleteAuth: async ({ slug }) => {
-      const response = await callRoute("DELETE", "/connections/:slug/auth", {
-        pathParams: { slug: normalizeSlug(slug) },
-      });
-      if (isSuccessStatus(response.status)) {
-        return { ok: true };
-      }
-      return throwOnApiRuntimeError(response, "api.auth.delete");
-    },
-    request: async ({ slug, ...body }) => {
-      const response = await callRoute("POST", "/connections/:slug/request", {
-        pathParams: { slug: normalizeSlug(slug) },
-        body,
-      });
-      if (response.type === "json" && isSuccessStatus(response.status)) {
-        return response.data as ApiRequestOutput;
-      }
-      return throwOnApiRuntimeError(response, "api.request");
-    },
     listWebhookEndpoints: async () => {
       const response = await callRoute("GET", "/webhooks/endpoints");
       if (response.type === "json" && isSuccessStatus(response.status)) {
@@ -282,30 +175,6 @@ export const createApiRuntime = (
 };
 
 export const createUnavailableApiRuntime = (message = API_NOT_CONFIGURED): ApiRuntime => ({
-  listConnections: async () => {
-    throw new Error(message);
-  },
-  createConnection: async () => {
-    throw new Error(message);
-  },
-  deleteConnection: async () => {
-    throw new Error(message);
-  },
-  getAuthStatus: async () => {
-    throw new Error(message);
-  },
-  setToken: async () => {
-    throw new Error(message);
-  },
-  startOAuth: async () => {
-    throw new Error(message);
-  },
-  deleteAuth: async () => {
-    throw new Error(message);
-  },
-  request: async () => {
-    throw new Error(message);
-  },
   listWebhookEndpoints: async () => {
     throw new Error(message);
   },

@@ -1,88 +1,46 @@
-import type {
-  McpAuthStatus,
-  McpCreateServerOutput,
-  McpListServersOutput,
-  McpOAuthStartOutput,
-  McpServerRefreshOutput,
-  McpToolCallOutput,
-} from "@fragno-dev/backoffice-api/v0/mcp";
 import { createRouteCaller } from "@fragno-dev/core/api";
-import {
-  MCP_OAUTH_REDIRECT_URI_QUERY_PARAMETER,
-  type CreateServerInput,
-  type ToolCallInput,
-} from "@fragno-dev/mcp-fragment/types";
+import type { ToolCallInput } from "@fragno-dev/mcp-fragment/types";
 
 import type { FetchObject } from "@/backoffice-runtime/object-registry";
 import type { McpFragment } from "@/fragno/mcp";
-import type { ScopedPublicFragmentAddress } from "@/fragno/scoped-public-fragment-routes";
 
 import {
   createOrganizationNotConfiguredMessage,
   isSuccessStatus,
   throwOnRouteRuntimeError,
 } from "../runtime-errors";
-import type { McpOAuthStartInput, McpSetTokenInput } from "./mcp";
 
-export type McpRuntime = {
-  listServers: () => Promise<McpListServersOutput>;
-  createServer: (input: CreateServerInput) => Promise<McpCreateServerOutput>;
-  deleteServer: (input: { slug: string }) => Promise<{ ok: true }>;
-  refreshServer: (input: { slug: string }) => Promise<McpServerRefreshOutput>;
-  callTool: (input: { slug: string } & ToolCallInput) => Promise<McpToolCallOutput>;
-  startOAuth: (input: { slug: string } & McpOAuthStartInput) => Promise<McpOAuthStartOutput>;
-  setToken: (input: { slug: string } & McpSetTokenInput) => Promise<McpAuthStatus>;
-  getAuthStatus: (input: { slug: string }) => Promise<McpAuthStatus>;
+export type McpTool = {
+  name: string;
+  title?: string;
+  description?: string;
+  inputSchema?: Record<string, unknown>;
 };
 
-export type RegisteredMcpCommandContext = {
-  runtime: McpRuntime;
+export type McpListServersOutput = {
+  servers: { slug: string; cache?: { tools?: McpTool[] | null } | null }[];
+};
+
+/** Lists servers and calls their tools for the generated codemode providers. */
+export type McpRuntime = {
+  listServers: () => Promise<McpListServersOutput>;
+  callTool: (input: { slug: string } & ToolCallInput) => Promise<Record<string, unknown>>;
 };
 
 const MCP_NOT_CONFIGURED = createOrganizationNotConfiguredMessage("MCP");
 
-type CreateRouteBackedMcpRuntimeOptions = {
-  baseUrl: string;
-  headers?: HeadersInit;
-  fetch: (request: Request) => Promise<Response>;
-  resolvePublicAddress: () => Promise<ScopedPublicFragmentAddress>;
-};
-
-const createMcpRouteCaller = (options: CreateRouteBackedMcpRuntimeOptions) =>
-  createRouteCaller<McpFragment>({
-    baseUrl: options.baseUrl,
+export const createMcpRuntime = (object: FetchObject): McpRuntime => {
+  const callRoute = createRouteCaller<McpFragment>({
+    baseUrl: "https://mcp.do",
     mountRoute: "/api/mcp",
-    ...(options.headers ? { baseHeaders: options.headers } : {}),
-    fetch: options.fetch,
+    fetch: (outboundRequest) => object.fetch(outboundRequest),
   });
-
-const normalizeSlug = (slug: string, label = "MCP server slug") => {
-  const normalized = slug.trim();
-  if (!normalized) {
-    throw new Error(`${label} is required`);
-  }
-  return normalized;
-};
-
-const throwOnMcpRuntimeError = (
-  response: Awaited<ReturnType<ReturnType<typeof createMcpRouteCaller>>>,
-  label: string,
-) =>
-  throwOnRouteRuntimeError(response, {
-    runtimeLabel: "MCP fragment",
-    label,
-    notConfiguredMessage: MCP_NOT_CONFIGURED,
-  });
-
-export const createRouteBackedMcpRuntime = (
-  options: CreateRouteBackedMcpRuntimeOptions,
-): McpRuntime => {
-  const baseUrl = options.baseUrl.trim();
-  if (!baseUrl) {
-    throw new Error("MCP runtime requires a base URL");
-  }
-
-  const callRoute = createMcpRouteCaller({ ...options, baseUrl });
+  const fail = (response: Awaited<ReturnType<typeof callRoute>>, label: string) =>
+    throwOnRouteRuntimeError(response, {
+      runtimeLabel: "MCP fragment",
+      label,
+      notConfiguredMessage: MCP_NOT_CONFIGURED,
+    });
 
   return {
     listServers: async () => {
@@ -90,36 +48,11 @@ export const createRouteBackedMcpRuntime = (
       if (response.type === "json" && isSuccessStatus(response.status)) {
         return response.data as McpListServersOutput;
       }
-      return throwOnMcpRuntimeError(response, "mcp.servers.list");
-    },
-    createServer: async (input) => {
-      const response = await callRoute("POST", "/servers", { body: input });
-      if (response.type === "json" && isSuccessStatus(response.status)) {
-        return response.data as McpCreateServerOutput;
-      }
-      return throwOnMcpRuntimeError(response, "mcp.servers.add");
-    },
-    deleteServer: async ({ slug }) => {
-      const response = await callRoute("DELETE", "/servers/:slug", {
-        pathParams: { slug: normalizeSlug(slug) },
-      });
-      if (isSuccessStatus(response.status)) {
-        return { ok: true };
-      }
-      return throwOnMcpRuntimeError(response, "mcp.servers.delete");
-    },
-    refreshServer: async ({ slug }) => {
-      const response = await callRoute("POST", "/servers/:slug/refresh", {
-        pathParams: { slug: normalizeSlug(slug) },
-      });
-      if (response.type === "json" && isSuccessStatus(response.status)) {
-        return response.data as McpServerRefreshOutput;
-      }
-      return throwOnMcpRuntimeError(response, "mcp.servers.refresh");
+      return fail(response, "mcp.servers.list");
     },
     callTool: async ({ slug, name, arguments: toolArguments, timeoutMs }) => {
       const response = await callRoute("POST", "/servers/:slug/tools/execute", {
-        pathParams: { slug: normalizeSlug(slug) },
+        pathParams: { slug },
         body: {
           name,
           ...(toolArguments ? { arguments: toolArguments } : {}),
@@ -129,84 +62,7 @@ export const createRouteBackedMcpRuntime = (
       if (response.type === "json" && isSuccessStatus(response.status)) {
         return response.data;
       }
-      return throwOnMcpRuntimeError(response, "mcp.tools.call");
-    },
-    startOAuth: async ({ slug, scope, clientId, clientSecret }) => {
-      const publicAddress = await options.resolvePublicAddress();
-      const response = await callRoute("POST", "/servers/:slug/auth/start", {
-        pathParams: { slug: normalizeSlug(slug) },
-        query: {
-          [MCP_OAUTH_REDIRECT_URI_QUERY_PARAMETER]: publicAddress.oauthRedirectUri,
-        },
-        body: {
-          ...(scope ? { scope } : {}),
-          ...(clientId ? { clientId } : {}),
-          ...(clientSecret ? { clientSecret } : {}),
-          discardTokens: false,
-        },
-      });
-      if (response.type === "json" && isSuccessStatus(response.status)) {
-        return response.data as McpOAuthStartOutput;
-      }
-      return throwOnMcpRuntimeError(response, "mcp.oauth.start");
-    },
-    setToken: async ({ slug, token }) => {
-      const response = await callRoute("POST", "/servers/:slug/auth/token", {
-        pathParams: { slug: normalizeSlug(slug) },
-        body: { token },
-      });
-      if (response.type === "json" && isSuccessStatus(response.status)) {
-        return response.data as McpAuthStatus;
-      }
-      return throwOnMcpRuntimeError(response, "mcp.auth.token");
-    },
-    getAuthStatus: async ({ slug }) => {
-      const response = await callRoute("GET", "/servers/:slug/auth/status", {
-        pathParams: { slug: normalizeSlug(slug) },
-      });
-      if (response.type === "json" && isSuccessStatus(response.status)) {
-        return response.data as McpAuthStatus;
-      }
-      return throwOnMcpRuntimeError(response, "mcp.auth.status");
+      return fail(response, "mcp.tools.call");
     },
   };
 };
-
-export const createMcpRuntime = (
-  object: FetchObject,
-  resolvePublicAddress: () => Promise<ScopedPublicFragmentAddress>,
-) => {
-  let publicAddress: Promise<ScopedPublicFragmentAddress> | null = null;
-  return createRouteBackedMcpRuntime({
-    baseUrl: "https://mcp.do",
-    fetch: (outboundRequest) => object.fetch(outboundRequest),
-    resolvePublicAddress: () => (publicAddress ??= resolvePublicAddress()),
-  });
-};
-
-export const createUnavailableMcpRuntime = (message = MCP_NOT_CONFIGURED): McpRuntime => ({
-  listServers: async () => {
-    throw new Error(message);
-  },
-  createServer: async () => {
-    throw new Error(message);
-  },
-  deleteServer: async () => {
-    throw new Error(message);
-  },
-  refreshServer: async () => {
-    throw new Error(message);
-  },
-  callTool: async () => {
-    throw new Error(message);
-  },
-  startOAuth: async () => {
-    throw new Error(message);
-  },
-  setToken: async () => {
-    throw new Error(message);
-  },
-  getAuthStatus: async () => {
-    throw new Error(message);
-  },
-});

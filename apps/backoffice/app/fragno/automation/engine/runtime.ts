@@ -152,7 +152,6 @@ export const createAutomationRuntimeHostContext = ({
       mcp: null,
       marketplace: null,
       packages: null,
-      projectConnector: null,
       pi: null,
       integrations: null,
       sandbox: null,

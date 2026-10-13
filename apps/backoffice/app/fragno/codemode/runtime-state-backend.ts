@@ -23,11 +23,7 @@ export function createRuntimeStateBackend({
   execution: BackofficeExecutionContext;
 }): BackofficeStateBackend {
   const staticFileCollection = createBackofficeStaticFileCollection(
-    createCodemodeStaticArtifactsResolver({
-      objects: runtime.objects,
-      config: runtime.config,
-      execution,
-    }),
+    createCodemodeStaticArtifactsResolver({ objects: runtime.objects, execution }),
   );
   if (execution.scope.kind === "system") {
     return createBackofficeSystemStateBackend({ staticFileCollection });

@@ -3,7 +3,6 @@ import { accountOperations } from "./account";
 import { appsOperations } from "./apps";
 import { automationRouterOperations } from "./automation";
 import { capabilitiesOperations } from "./capabilities";
-import { connectorOperations } from "./connector";
 import { eventsOperations } from "./events";
 import { formsOperations } from "./forms";
 import { hooksOperations } from "./hooks";
@@ -13,7 +12,6 @@ import { integrationsOperations } from "./integrations";
 import { javascriptOperations } from "./javascript";
 import { marketplaceOperations } from "./marketplace";
 import { packagesOperations } from "./marketplace";
-import { mcpOperations } from "./mcp";
 import { organizationOperations } from "./organization";
 import { otpOperations } from "./otp";
 import { piOperations } from "./pi";
@@ -32,7 +30,6 @@ export const backofficeApiV0 = {
     ...appsOperations,
     ...automationRouterOperations,
     ...capabilitiesOperations,
-    ...connectorOperations,
     ...eventsOperations,
     ...formsOperations,
     ...hooksOperations,
@@ -41,7 +38,6 @@ export const backofficeApiV0 = {
     ...integrationsOperations,
     ...javascriptOperations,
     ...marketplaceOperations,
-    ...mcpOperations,
     ...organizationOperations,
     ...otpOperations,
     ...packagesOperations,

@@ -32,12 +32,11 @@ import type { IntegrationsRuntime } from "./families/integrations/integration-to
 import type { InternalRuntime } from "./families/internal";
 import type { JavaScriptRuntime } from "./families/javascript-runtime";
 import type { MarketplaceRuntime } from "./families/marketplace-runtime";
-import type { RegisteredMcpCommandContext } from "./families/mcp-runtime";
+import type { McpRuntime } from "./families/mcp-runtime";
 import type { OrganizationRuntime } from "./families/organization";
 import type { RegisteredOtpCommandContext } from "./families/otp-runtime";
 import type { PackagesRuntime } from "./families/packages-runtime";
 import type { RegisteredPiCommandContext } from "./families/pi";
-import type { ProjectConnectorRuntime } from "./families/project-connector-runtime";
 import type { SandboxRuntime } from "./families/sandbox-runtime";
 import type { UploadRuntime } from "./families/upload-runtime";
 import type { WebRuntime } from "./families/web-runtime";
@@ -75,10 +74,9 @@ export type BashHostContext = {
   integrations: { runtime: IntegrationsRuntime } | null;
   internal?: { runtime: InternalRuntime } | null;
   api?: RegisteredApiCommandContext | null;
-  mcp?: RegisteredMcpCommandContext | null;
+  mcp?: { runtime: McpRuntime } | null;
   marketplace: { runtime: MarketplaceRuntime } | null;
   packages: { runtime: PackagesRuntime } | null;
-  projectConnector: { runtime: ProjectConnectorRuntime } | null;
   otp: RegisteredOtpCommandContext | null;
   pi: RegisteredPiCommandContext | null;
   sandbox?: { runtime: SandboxRuntime } | null;
