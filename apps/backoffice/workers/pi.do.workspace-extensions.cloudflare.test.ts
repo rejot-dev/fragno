@@ -108,6 +108,7 @@ test("precompiled workspace extensions open concurrently and after restart witho
     expect(ran).toEqual({
       status: "success",
       path: "/workspace/pi/.build/gate.extension.json",
+      runId: expect.any(String),
       logs: ["Native module startup"],
     });
 
@@ -116,7 +117,7 @@ test("precompiled workspace extensions open concurrently and after restart witho
       { path: "/workspace/pi/extensions/gate.extension.js" },
       createBackofficeToolContext(runContext),
     );
-    expect(sourceWithoutCompiler).toMatchObject({ status: "error" });
+    expect(sourceWithoutCompiler).toMatchObject({ status: "rejected" });
 
     for (const requestId of ["first-open", "reopened"]) {
       const faux = fauxProvider();

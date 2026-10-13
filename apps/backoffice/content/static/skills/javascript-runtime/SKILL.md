@@ -97,7 +97,7 @@ async () => {
     path: "/workspace/scripts/example.js",
     out: "/workspace/.build/example.module.json",
   });
-  if (built.status === "error") throw new Error(built.error);
+  if (built.status !== "success") throw new Error(built.error);
   return built;
 };
 ```
@@ -131,9 +131,17 @@ async () => {
 };
 ```
 
-Inspect `status` and `logs`; on `status: "error"`, also inspect `error`. Bash prints logs and
-returns a nonzero exit code for a run error; `--format json` preserves the structured result. Tool
-permission, configuration, and transport failures may throw instead of returning a run result.
+Inspect `status`:
+
+| `status`   | Meaning                                                                    | Fields                   |
+| ---------- | -------------------------------------------------------------------------- | ------------------------ |
+| `success`  | The run finished                                                           | `runId`, `logs`          |
+| `error`    | The run failed to compile, threw, or was interrupted                       | `runId`, `logs`, `error` |
+| `rejected` | No run result: the file was refused or execution could not start or report | `error`                  |
+
+`js.build` returns the same three statuses; its `runId` names the build run. Bash prints logs and
+returns a nonzero exit code for anything but `success`; `--format json` preserves the structured
+result, including `runId`. Tool permission and configuration failures may throw instead.
 
 Artifact execution validates the bundle, imports its `mainModule` and bundled dependencies in a
 fresh isolated Worker, and ignores exports. It uses captured code, so source deletion or editing
@@ -165,13 +173,14 @@ Every build and run, like immediate codemode, is recorded as a run in the curren
 | `payload.error`                           | Why a `run.failed` run failed                                                           |
 | `actors`                                  | Whoever started the run                                                                 |
 
-Use `events.list({ limit: 50 })` (newest first; requires `events.read`) and match
-`source === "codemode"` and `payload.origin.path` locally; `events.get({ id })` shows one event.
-Events arrive shortly after the run's state commits, so a run that just finished can appear a moment
-later. A `run.started` with no outcome event for its `runId` never reported finishing: treat its
-effects as unknown.
+To review runs you did not just start, use `events.list({ limit: 50 })` (newest first; requires
+`events.read`) and match `source === "codemode"` and `payload.origin.path` locally;
+`events.get({ id })` shows one event. Events arrive shortly after the run's state commits, so a run
+that just finished can appear a moment later. A `run.started` with no outcome event for its `runId`
+never reported finishing: treat its effects as unknown.
 
-Events omit console output. Read it with the run ID:
+Events omit console output. Read it with the run ID that `js.run` or `js.build` returned, or that an
+event names:
 
 ```bash
 js.logs <run-id>

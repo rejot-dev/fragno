@@ -74,6 +74,7 @@ describe("runBackofficeCodemode", () => {
       });
 
       expect(result).toEqual({
+        runId: expect.any(String),
         result: undefined,
         error: "Backoffice codemode compiler service is not configured.",
         logs: [],

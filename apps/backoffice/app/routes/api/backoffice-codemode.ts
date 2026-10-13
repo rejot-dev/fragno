@@ -62,6 +62,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   return Response.json(
     {
       ok: !result.error,
+      runId: result.runId,
       result: result.result,
       error: result.error,
       logs: result.logs ?? [],

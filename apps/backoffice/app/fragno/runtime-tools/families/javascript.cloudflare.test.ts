@@ -69,6 +69,7 @@ describe("JavaScript file execution in workerd", () => {
     ).resolves.toEqual({
       status: "success",
       path: "/workspace/scripts/example.js",
+      runId: expect.any(String),
       logs: ["running saved file 42 function"],
     });
   });

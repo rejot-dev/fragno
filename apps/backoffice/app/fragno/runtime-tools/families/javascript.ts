@@ -111,7 +111,10 @@ function formatJavaScriptRunOutput(
   options: ReturnType<typeof readOutputOptions>,
 ) {
   if (options.format === "json" || options.print) {
-    return { data: output, ...(output.status === "error" ? { exitCode: 1 } : {}) };
+    return { data: output, ...(output.status === "success" ? {} : { exitCode: 1 }) };
+  }
+  if (output.status === "rejected") {
+    return { stderr: `${output.error}\n`, exitCode: 1 };
   }
 
   const stdout = output.logs.length > 0 ? `${output.logs.join("\n")}\n` : "";
@@ -143,9 +146,9 @@ function formatJavaScriptBuildOutput(
   options: ReturnType<typeof readOutputOptions>,
 ) {
   if (options.format === "json" || options.print) {
-    return { data: output, ...(output.status === "error" ? { exitCode: 1 } : {}) };
+    return { data: output, ...(output.status === "success" ? {} : { exitCode: 1 }) };
   }
-  if (output.status === "error") {
+  if (output.status !== "success") {
     return { stderr: `${output.error}\n`, exitCode: 1 };
   }
   return {

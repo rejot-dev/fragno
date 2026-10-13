@@ -143,7 +143,9 @@ test("js.run executes bundled top-level statements and dependencies with the com
               { path: artifactPath },
               createBackofficeToolContext(context),
             );
-            expect(repeated).toEqual(parsed);
+            // Each run is recorded separately.
+            expect(repeated).toEqual({ ...parsed, runId: expect.any(String) });
+            expect(repeated).not.toHaveProperty("runId", parsed.runId);
             assert.equal(compiler.compilations, before);
             const deniedContext = createCodemodeRouteBackedRuntimeContext({
               runtime: runtime.services,
@@ -279,10 +281,10 @@ test("js.run validates artifact format, entrypoint, runtime, JSON and scope befo
               await context.stateBackend.writeFile(artifactPath, content);
               const failed = await bash.exec(`js.run ${artifactPath} --format json`);
               assert.notEqual(failed.exitCode, 0);
-              expect(JSON.parse(failed.stdout)).toMatchObject({
-                status: "error",
+              expect(JSON.parse(failed.stdout)).toEqual({
+                status: "rejected",
                 path: artifactPath,
-                logs: [],
+                error: expect.any(String),
               });
             }
             const other = createCodemodeRouteBackedRuntimeContext({
