@@ -202,31 +202,31 @@ export type ApiWebhookEndpointsOutput = z.infer<typeof webhookEndpointsOutputSch
 export const httpApiOperations = {
   "api.webhooks.list": {
     description: "List API webhook endpoints configured for the current scope.",
-    permissions: [BACKOFFICE_PERMISSION.api.webhooksRead],
+    permissions: [BACKOFFICE_PERMISSION.connections.read],
     input: z.void(),
     output: webhookEndpointsOutputSchema,
   },
   "api.webhooks.get": {
     description: "Read an API webhook endpoint.",
-    permissions: [BACKOFFICE_PERMISSION.api.webhooksRead],
+    permissions: [BACKOFFICE_PERMISSION.connections.read],
     input: endpointInputSchema,
     output: webhookEndpointSchema,
   },
   "api.webhooks.create": {
     description: "Create or replace an API webhook endpoint.",
-    permissions: [BACKOFFICE_PERMISSION.api.webhooksManage],
+    permissions: [BACKOFFICE_PERMISSION.connections.manage],
     input: webhookEndpointCreateInputSchema,
     output: webhookEndpointSchema,
   },
   "api.webhooks.update": {
     description: "Update an API webhook endpoint.",
-    permissions: [BACKOFFICE_PERMISSION.api.webhooksManage],
+    permissions: [BACKOFFICE_PERMISSION.connections.manage],
     input: webhookEndpointUpdateInputSchema,
     output: webhookEndpointSchema,
   },
   "api.webhooks.delete": {
     description: "Delete an API webhook endpoint.",
-    permissions: [BACKOFFICE_PERMISSION.api.webhooksManage],
+    permissions: [BACKOFFICE_PERMISSION.connections.manage],
     input: endpointInputSchema,
     output: deleteOutputSchema,
   },

@@ -55,55 +55,55 @@ export function createApiServer(
     });
 
     await ifMatchesRoute("GET", "/connections", () => {
-      access = BACKOFFICE_PERMISSION.api.connectionsRead;
+      access = BACKOFFICE_PERMISSION.connections.read;
     });
     await ifMatchesRoute("GET", "/connections/:slug", () => {
-      access = BACKOFFICE_PERMISSION.api.connectionsRead;
+      access = BACKOFFICE_PERMISSION.connections.read;
     });
     await ifMatchesRoute("PUT", "/connections/:slug", () => {
-      access = BACKOFFICE_PERMISSION.api.connectionsCreate;
+      access = BACKOFFICE_PERMISSION.connections.manage;
     });
     // Replacement writes connection and auth state, which creation authority governs.
     await ifMatchesRoute("PUT", "/connections/:slug/configuration", () => {
-      access = BACKOFFICE_PERMISSION.api.connectionsCreate;
+      access = BACKOFFICE_PERMISSION.connections.manage;
     });
     await ifMatchesRoute("DELETE", "/connections/:slug", () => {
-      access = BACKOFFICE_PERMISSION.api.connectionsDelete;
+      access = BACKOFFICE_PERMISSION.connections.manage;
     });
     await ifMatchesRoute("GET", "/connections/:slug/auth/status", () => {
-      access = BACKOFFICE_PERMISSION.api.connectionsRead;
+      access = BACKOFFICE_PERMISSION.connections.read;
     });
     await ifMatchesRoute("POST", "/connections/:slug/auth/token", () => {
-      access = BACKOFFICE_PERMISSION.api.connectionsCreate;
+      access = BACKOFFICE_PERMISSION.connections.manage;
     });
     // A pending link embeds the callback state, so only setup authority may resume it.
     await ifMatchesRoute("GET", "/connections/:slug/auth/oauth/pending", () => {
-      access = BACKOFFICE_PERMISSION.api.connectionsCreate;
+      access = BACKOFFICE_PERMISSION.connections.manage;
     });
     await ifMatchesRoute("POST", "/connections/:slug/auth/oauth/start", () => {
-      access = BACKOFFICE_PERMISSION.api.connectionsCreate;
+      access = BACKOFFICE_PERMISSION.connections.manage;
     });
     await ifMatchesRoute("DELETE", "/connections/:slug/auth", () => {
-      access = BACKOFFICE_PERMISSION.api.connectionsDelete;
+      access = BACKOFFICE_PERMISSION.connections.manage;
     });
     await ifMatchesRoute("POST", "/connections/:slug/request", () => {
-      access = BACKOFFICE_PERMISSION.api.requestsExecute;
+      access = BACKOFFICE_PERMISSION.integrations.execute;
     });
 
     await ifMatchesRoute("GET", "/webhooks/endpoints", () => {
-      access = BACKOFFICE_PERMISSION.api.webhooksRead;
+      access = BACKOFFICE_PERMISSION.connections.read;
     });
     await ifMatchesRoute("GET", "/webhooks/endpoints/:endpointId", () => {
-      access = BACKOFFICE_PERMISSION.api.webhooksRead;
+      access = BACKOFFICE_PERMISSION.connections.read;
     });
     await ifMatchesRoute("PUT", "/webhooks/endpoints/:endpointId", () => {
-      access = BACKOFFICE_PERMISSION.api.webhooksManage;
+      access = BACKOFFICE_PERMISSION.connections.manage;
     });
     await ifMatchesRoute("PATCH", "/webhooks/endpoints/:endpointId", () => {
-      access = BACKOFFICE_PERMISSION.api.webhooksManage;
+      access = BACKOFFICE_PERMISSION.connections.manage;
     });
     await ifMatchesRoute("DELETE", "/webhooks/endpoints/:endpointId", () => {
-      access = BACKOFFICE_PERMISSION.api.webhooksManage;
+      access = BACKOFFICE_PERMISSION.connections.manage;
     });
     return await authorizeBackofficeFragmentRequest(kernel, requestContext, access, null);
   });

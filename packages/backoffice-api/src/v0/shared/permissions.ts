@@ -27,14 +27,6 @@ export const BACKOFFICE_PERMISSION = {
     read: { namespace: "apps", permission: "read" },
     manage: { namespace: "apps", permission: "manage" },
   },
-  api: {
-    connectionsCreate: { namespace: "api", permission: "connections.create" },
-    connectionsDelete: { namespace: "api", permission: "connections.delete" },
-    connectionsRead: { namespace: "api", permission: "connections.read" },
-    requestsExecute: { namespace: "api", permission: "requests.execute" },
-    webhooksManage: { namespace: "api", permission: "webhooks.manage" },
-    webhooksRead: { namespace: "api", permission: "webhooks.read" },
-  },
   capabilities: {
     read: { namespace: "capabilities", permission: "read" },
   },
@@ -85,18 +77,6 @@ export const BACKOFFICE_PERMISSION = {
   packages: {
     read: { namespace: "packages", permission: "read" },
     install: { namespace: "packages", permission: "install" },
-  },
-  mcp: {
-    serversCreate: { namespace: "mcp", permission: "servers.create" },
-    serversDelete: { namespace: "mcp", permission: "servers.delete" },
-    serversRead: { namespace: "mcp", permission: "servers.read" },
-    toolsCall: { namespace: "mcp", permission: "tools.call" },
-  },
-  connector: {
-    providersRead: { namespace: "connector", permission: "providers.read" },
-    accountsRead: { namespace: "connector", permission: "accounts.read" },
-    connectionsCreate: { namespace: "connector", permission: "connections.create" },
-    actionsExecute: { namespace: "connector", permission: "actions.execute" },
   },
   otp: {
     create: { namespace: "otp", permission: "create" },

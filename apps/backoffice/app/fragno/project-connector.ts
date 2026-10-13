@@ -22,34 +22,34 @@ export function createProjectConnectorServer(
   }).withMiddleware(async function authorizeConnectorRoutes({ ifMatchesRoute, requestContext }) {
     let access: BackofficeFragmentHttpAccess = null;
     await ifMatchesRoute("GET", "/provider-configs", () => {
-      access = BACKOFFICE_PERMISSION.connector.providersRead;
+      access = BACKOFFICE_PERMISSION.connections.read;
     });
     await ifMatchesRoute("GET", "/provider-configs/:providerConfigId/actions", () => {
-      access = BACKOFFICE_PERMISSION.connector.providersRead;
+      access = BACKOFFICE_PERMISSION.connections.read;
     });
     await ifMatchesRoute("GET", "/status", () => {
-      access = BACKOFFICE_PERMISSION.connector.accountsRead;
+      access = BACKOFFICE_PERMISSION.connections.read;
     });
     await ifMatchesRoute("GET", "/connection-requests/by-name", () => {
-      access = BACKOFFICE_PERMISSION.connector.connectionsCreate;
+      access = BACKOFFICE_PERMISSION.connections.manage;
     });
     await ifMatchesRoute("POST", "/connection-requests", () => {
-      access = BACKOFFICE_PERMISSION.connector.connectionsCreate;
+      access = BACKOFFICE_PERMISSION.connections.manage;
     });
     await ifMatchesRoute("POST", "/connection-requests/:requestId/refresh", () => {
-      access = BACKOFFICE_PERMISSION.connector.connectionsCreate;
+      access = BACKOFFICE_PERMISSION.connections.manage;
     });
     await ifMatchesRoute("GET", "/accounts", () => {
-      access = BACKOFFICE_PERMISSION.connector.accountsRead;
+      access = BACKOFFICE_PERMISSION.connections.read;
     });
     await ifMatchesRoute("GET", "/accounts/by-name", () => {
-      access = BACKOFFICE_PERMISSION.connector.accountsRead;
+      access = BACKOFFICE_PERMISSION.connections.read;
     });
     await ifMatchesRoute("GET", "/accounts/:accountId/profile", () => {
-      access = BACKOFFICE_PERMISSION.connector.accountsRead;
+      access = BACKOFFICE_PERMISSION.connections.read;
     });
     await ifMatchesRoute("POST", "/accounts/:accountId/actions/:actionId", () => {
-      access = BACKOFFICE_PERMISSION.connector.actionsExecute;
+      access = BACKOFFICE_PERMISSION.integrations.execute;
     });
     return await authorizeBackofficeFragmentRequest(kernel, requestContext, access, null);
   });

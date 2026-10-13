@@ -44,41 +44,41 @@ export function createMcpServer(
       access = "public-ingress";
     });
     await ifMatchesRoute("POST", "/servers", () => {
-      access = BACKOFFICE_PERMISSION.mcp.serversCreate;
+      access = BACKOFFICE_PERMISSION.connections.manage;
     });
     await ifMatchesRoute("GET", "/servers", () => {
-      access = BACKOFFICE_PERMISSION.mcp.serversRead;
+      access = BACKOFFICE_PERMISSION.connections.read;
     });
     await ifMatchesRoute("GET", "/servers/:slug", () => {
-      access = BACKOFFICE_PERMISSION.mcp.serversRead;
+      access = BACKOFFICE_PERMISSION.connections.read;
     });
     await ifMatchesRoute("PUT", "/servers/:slug/configuration", () => {
-      access = BACKOFFICE_PERMISSION.mcp.serversCreate;
+      access = BACKOFFICE_PERMISSION.connections.manage;
     });
     await ifMatchesRoute("DELETE", "/servers/:slug", () => {
-      access = BACKOFFICE_PERMISSION.mcp.serversDelete;
+      access = BACKOFFICE_PERMISSION.connections.manage;
     });
     await ifMatchesRoute("GET", "/servers/:slug/auth/status", () => {
-      access = BACKOFFICE_PERMISSION.mcp.serversRead;
+      access = BACKOFFICE_PERMISSION.connections.read;
     });
     await ifMatchesRoute("POST", "/servers/:slug/auth/token", () => {
-      access = BACKOFFICE_PERMISSION.mcp.serversCreate;
+      access = BACKOFFICE_PERMISSION.connections.manage;
     });
     // A pending link embeds the callback state, so only setup authority may resume it.
     await ifMatchesRoute("GET", "/servers/:slug/auth/pending", () => {
-      access = BACKOFFICE_PERMISSION.mcp.serversCreate;
+      access = BACKOFFICE_PERMISSION.connections.manage;
     });
     await ifMatchesRoute("POST", "/servers/:slug/auth/start", () => {
-      access = BACKOFFICE_PERMISSION.mcp.serversCreate;
+      access = BACKOFFICE_PERMISSION.connections.manage;
     });
     await ifMatchesRoute("DELETE", "/servers/:slug/auth", () => {
-      access = BACKOFFICE_PERMISSION.mcp.serversDelete;
+      access = BACKOFFICE_PERMISSION.connections.manage;
     });
     await ifMatchesRoute("POST", "/servers/:slug/refresh", () => {
-      access = BACKOFFICE_PERMISSION.mcp.serversRead;
+      access = BACKOFFICE_PERMISSION.connections.read;
     });
     await ifMatchesRoute("POST", "/servers/:slug/tools/execute", () => {
-      access = BACKOFFICE_PERMISSION.mcp.toolsCall;
+      access = BACKOFFICE_PERMISSION.integrations.execute;
     });
     return await authorizeBackofficeFragmentRequest(kernel, requestContext, access, null);
   });

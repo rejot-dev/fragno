@@ -1028,91 +1028,92 @@ test("api addresses resolve only in their own scope, page natively, and require 
           );
         },
       ),
-      then.assert("umbrella permissions never replace native API permissions", async (ctx) => {
-        const setupOnly = createDelegatedExecution(ctx, orgScope, provider, [
-          BACKOFFICE_PERMISSION.integrations.manage,
-          BACKOFFICE_PERMISSION.api.connectionsRead,
-          BACKOFFICE_PERMISSION.upload.read,
-        ]);
-        const setupTerminal = createIntegrationScenarioTerminal(
-          ctx.runtime.services,
-          setupOnly.execution,
-          setupOnly.kernel,
-        );
-        const denied = await setupTerminal.exec(
-          `integrations.setup --connection-id 'api#denied' --input-json '${JSON.stringify({ type: "none", baseUrl: providerOrigin })}'`,
-        );
-        expect(denied).toMatchObject({
-          exitCode: 1,
-          stderr: expect.stringContaining("required capability grant"),
-        });
-        // Umbrella management does not carry the native delete permission.
-        expect(
-          await setupTerminal.exec(
-            "integrations.disconnect --connection-id 'api#shared' --confirm 'api#shared'",
-          ),
-        ).toMatchObject({
-          exitCode: 1,
-          stderr: expect.stringContaining("required capability grant"),
-        });
-
-        const command = `integrations.execute --connection-id 'api#shared' --action-id request --input-json '${JSON.stringify({ method: "GET", path: "/invoices", body: { type: "empty" } })}'`;
-        const executeOnly = createDelegatedExecution(ctx, orgScope, provider, [
-          BACKOFFICE_PERMISSION.integrations.execute,
-          BACKOFFICE_PERMISSION.api.requestsExecute,
-          BACKOFFICE_PERMISSION.upload.read,
-        ]);
-        // Resolution reads the connection name, so execution also needs connection-read authority.
-        expect(
-          await createIntegrationScenarioTerminal(
+      then.assert(
+        "integration grants also need connection grants at the receiving object",
+        async (ctx) => {
+          const setupOnly = createDelegatedExecution(ctx, orgScope, provider, [
+            BACKOFFICE_PERMISSION.integrations.manage,
+            BACKOFFICE_PERMISSION.connections.read,
+            BACKOFFICE_PERMISSION.upload.read,
+          ]);
+          const setupTerminal = createIntegrationScenarioTerminal(
             ctx.runtime.services,
-            executeOnly.execution,
-            executeOnly.kernel,
-          ).exec(command),
-        ).toMatchObject({
-          exitCode: 1,
-          stderr: expect.stringContaining("required capability grant"),
-        });
+            setupOnly.execution,
+            setupOnly.kernel,
+          );
+          const denied = await setupTerminal.exec(
+            `integrations.setup --connection-id 'api#denied' --input-json '${JSON.stringify({ type: "none", baseUrl: providerOrigin })}'`,
+          );
+          expect(denied).toMatchObject({
+            exitCode: 1,
+            stderr: expect.stringContaining("required capability grant"),
+          });
+          // Integration management does not carry connection management at the object.
+          expect(
+            await setupTerminal.exec(
+              "integrations.disconnect --connection-id 'api#shared' --confirm 'api#shared'",
+            ),
+          ).toMatchObject({
+            exitCode: 1,
+            stderr: expect.stringContaining("required capability grant"),
+          });
 
-        const delegated = createDelegatedExecution(ctx, orgScope, provider, [
-          BACKOFFICE_PERMISSION.integrations.execute,
-          BACKOFFICE_PERMISSION.api.connectionsRead,
-          BACKOFFICE_PERMISSION.api.requestsExecute,
-          BACKOFFICE_PERMISSION.upload.read,
-        ]);
-        const executed = await createIntegrationScenarioTerminal(
-          ctx.runtime.services,
-          delegated.execution,
-          delegated.kernel,
-        ).exec(`${command} --print ok`);
-        expect(executed.exitCode, executed.stderr).toBe(0);
-        assert(executed.stdout === "true\n");
-        expect(provider.requests).toHaveLength(1);
+          const command = `integrations.execute --connection-id 'api#shared' --action-id request --input-json '${JSON.stringify({ method: "GET", path: "/invoices", body: { type: "empty" } })}'`;
+          const executeOnly = createDelegatedExecution(ctx, orgScope, provider, [
+            BACKOFFICE_PERMISSION.integrations.execute,
+            BACKOFFICE_PERMISSION.upload.read,
+          ]);
+          // Resolution reads the connection name, so execution also needs connection-read authority.
+          expect(
+            await createIntegrationScenarioTerminal(
+              ctx.runtime.services,
+              executeOnly.execution,
+              executeOnly.kernel,
+            ).exec(command),
+          ).toMatchObject({
+            exitCode: 1,
+            stderr: expect.stringContaining("required capability grant"),
+          });
 
-        // A resolved connection does not retain authority revoked before the action runs.
-        const resolved = await createApiIntegration({ runtime: ctx.runtime.services }).resolve(
-          { kernel: delegated.kernel, execution: delegated.execution },
-          "shared",
-        );
-        const [action] = await resolved.actions();
-        assert(action);
-        provider.delegatedGrants.splice(
-          provider.delegatedGrants.indexOf(BACKOFFICE_PERMISSION.api.requestsExecute),
-          1,
-        );
-        await expect(
-          action.invoke({ method: "GET", path: "/invoices", body: { type: "empty" } }),
-        ).rejects.toMatchObject({ name: "BackofficeForbiddenError" });
-        expect(provider.requests).toHaveLength(1);
-        assert(
-          (await ctx.runtime.objects.api
-            .for(orgScope)
-            .http.fetchAuthorized(new Request("https://api.do/api/api/connections/denied"), {
-              execution: createBackofficeSystemExecution(orgScope),
-            })
-            .then((response) => response.status)) === 404,
-        );
-      }),
+          const delegated = createDelegatedExecution(ctx, orgScope, provider, [
+            BACKOFFICE_PERMISSION.integrations.execute,
+            BACKOFFICE_PERMISSION.connections.read,
+            BACKOFFICE_PERMISSION.upload.read,
+          ]);
+          const executed = await createIntegrationScenarioTerminal(
+            ctx.runtime.services,
+            delegated.execution,
+            delegated.kernel,
+          ).exec(`${command} --print ok`);
+          expect(executed.exitCode, executed.stderr).toBe(0);
+          assert(executed.stdout === "true\n");
+          expect(provider.requests).toHaveLength(1);
+
+          // A resolved connection does not retain authority revoked before the action runs.
+          const resolved = await createApiIntegration({ runtime: ctx.runtime.services }).resolve(
+            { kernel: delegated.kernel, execution: delegated.execution },
+            "shared",
+          );
+          const [action] = await resolved.actions();
+          assert(action);
+          provider.delegatedGrants.splice(
+            provider.delegatedGrants.indexOf(BACKOFFICE_PERMISSION.integrations.execute),
+            1,
+          );
+          await expect(
+            action.invoke({ method: "GET", path: "/invoices", body: { type: "empty" } }),
+          ).rejects.toMatchObject({ name: "BackofficeForbiddenError" });
+          expect(provider.requests).toHaveLength(1);
+          assert(
+            (await ctx.runtime.objects.api
+              .for(orgScope)
+              .http.fetchAuthorized(new Request("https://api.do/api/api/connections/denied"), {
+                execution: createBackofficeSystemExecution(orgScope),
+              })
+              .then((response) => response.status)) === 404,
+          );
+        },
+      ),
     ],
   }));
 });

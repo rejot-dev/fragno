@@ -252,7 +252,7 @@ export function createMcpIntegration({
       );
     }
     async function authStatus(slug: string): Promise<McpAuthStatus | null> {
-      const response = await invoke(BACKOFFICE_PERMISSION.mcp.serversRead, { slug }, () =>
+      const response = await invoke(BACKOFFICE_PERMISSION.connections.read, { slug }, () =>
         callRoute("GET", "/servers/:slug/auth/status", { pathParams: { slug } }),
       );
       if (response.type === "json" && isSuccessStatus(response.status)) {
@@ -261,7 +261,7 @@ export function createMcpIntegration({
       return isServerNotFound(response) ? null : fail(response);
     }
     async function server(slug: string) {
-      const response = await invoke(BACKOFFICE_PERMISSION.mcp.serversRead, { slug }, () =>
+      const response = await invoke(BACKOFFICE_PERMISSION.connections.read, { slug }, () =>
         callRoute("GET", "/servers/:slug", { pathParams: { slug } }),
       );
       if (response.type === "json" && isSuccessStatus(response.status)) {
@@ -270,7 +270,7 @@ export function createMcpIntegration({
       return isServerNotFound(response) ? null : fail(response);
     }
     async function pendingAuthorizationUrl(slug: string): Promise<string | null> {
-      const response = await invoke(BACKOFFICE_PERMISSION.mcp.serversCreate, { slug }, () =>
+      const response = await invoke(BACKOFFICE_PERMISSION.connections.manage, { slug }, () =>
         callRoute("GET", "/servers/:slug/auth/pending", { pathParams: { slug } }),
       );
       if (response.type === "json" && isSuccessStatus(response.status)) {
@@ -294,7 +294,7 @@ export function createMcpIntegration({
       if (redirectUri === null) {
         throw new BackofficeUnavailableError(describeCallback(null));
       }
-      const response = await invoke(BACKOFFICE_PERMISSION.mcp.serversCreate, { slug }, () =>
+      const response = await invoke(BACKOFFICE_PERMISSION.connections.manage, { slug }, () =>
         callRoute("POST", "/servers/:slug/auth/start", {
           pathParams: { slug },
           query: { [MCP_OAUTH_REDIRECT_URI_QUERY_PARAMETER]: redirectUri },
@@ -310,13 +310,13 @@ export function createMcpIntegration({
       return fail(response);
     }
     async function createServer(slug: string, values: McpSetupServerInput) {
-      return await invoke(BACKOFFICE_PERMISSION.mcp.serversCreate, { slug }, () =>
+      return await invoke(BACKOFFICE_PERMISSION.connections.manage, { slug }, () =>
         callRoute("POST", "/servers", { body: serverBody(slug, values) }),
       );
     }
     async function replaceConfiguration(slug: string, values: McpSetupServerInput) {
       const { slug: _slug, ...body } = serverBody(slug, values);
-      const response = await invoke(BACKOFFICE_PERMISSION.mcp.serversCreate, { slug }, () =>
+      const response = await invoke(BACKOFFICE_PERMISSION.connections.manage, { slug }, () =>
         callRoute("PUT", "/servers/:slug/configuration", { pathParams: { slug }, body }),
       );
       if (response.type === "json" && isSuccessStatus(response.status)) {
@@ -325,7 +325,7 @@ export function createMcpIntegration({
       return isServerNotFound(response) ? false : fail(response);
     }
     async function deleteServer(slug: string) {
-      const response = await invoke(BACKOFFICE_PERMISSION.mcp.serversDelete, { slug }, () =>
+      const response = await invoke(BACKOFFICE_PERMISSION.connections.manage, { slug }, () =>
         callRoute("DELETE", "/servers/:slug", { pathParams: { slug } }),
       );
       if (isSuccessStatus(response.status)) {
@@ -334,7 +334,7 @@ export function createMcpIntegration({
       return isServerNotFound(response) ? false : fail(response);
     }
     async function setToken(slug: string, token: string) {
-      const response = await invoke(BACKOFFICE_PERMISSION.mcp.serversCreate, { slug }, () =>
+      const response = await invoke(BACKOFFICE_PERMISSION.connections.manage, { slug }, () =>
         callRoute("POST", "/servers/:slug/auth/token", { pathParams: { slug }, body: { token } }),
       );
       if (!(response.type === "json" && isSuccessStatus(response.status))) {
@@ -342,7 +342,7 @@ export function createMcpIntegration({
       }
     }
     async function refresh(slug: string) {
-      const response = await invoke(BACKOFFICE_PERMISSION.mcp.serversRead, { slug }, () =>
+      const response = await invoke(BACKOFFICE_PERMISSION.connections.read, { slug }, () =>
         callRoute("POST", "/servers/:slug/refresh", { pathParams: { slug } }),
       );
       // A receiving-object denial is an execution failure, not evidence about server health.
@@ -357,11 +357,14 @@ export function createMcpIntegration({
       name: string,
       args: Record<string, z.output<typeof jsonValueSchema>>,
     ) {
-      const response = await invoke(BACKOFFICE_PERMISSION.mcp.toolsCall, { slug, tool: name }, () =>
-        callRoute("POST", "/servers/:slug/tools/execute", {
-          pathParams: { slug },
-          body: { name, arguments: args },
-        }),
+      const response = await invoke(
+        BACKOFFICE_PERMISSION.integrations.execute,
+        { slug, tool: name },
+        () =>
+          callRoute("POST", "/servers/:slug/tools/execute", {
+            pathParams: { slug },
+            body: { name, arguments: args },
+          }),
       );
       if (response.type === "json" && isSuccessStatus(response.status)) {
         return response.data;
@@ -635,7 +638,7 @@ export function createMcpIntegration({
         return { connections: [], cursor: null };
       }
       const access = createMcpAccess(context);
-      const response = await access.invoke(BACKOFFICE_PERMISSION.mcp.serversRead, {}, () =>
+      const response = await access.invoke(BACKOFFICE_PERMISSION.connections.read, {}, () =>
         access.callRoute("GET", "/servers"),
       );
       if (response.type !== "json" || !isSuccessStatus(response.status)) {

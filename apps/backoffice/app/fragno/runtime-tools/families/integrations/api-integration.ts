@@ -220,7 +220,7 @@ export function createApiIntegration({
       );
     }
     async function authStatus(slug: string): Promise<ApiAuthStatus | null> {
-      const response = await invoke(BACKOFFICE_PERMISSION.api.connectionsRead, { slug }, () =>
+      const response = await invoke(BACKOFFICE_PERMISSION.connections.read, { slug }, () =>
         callRoute("GET", "/connections/:slug/auth/status", { pathParams: { slug } }),
       );
       if (response.type === "json" && isSuccessStatus(response.status)) {
@@ -229,7 +229,7 @@ export function createApiIntegration({
       return isConnectionNotFound(response) ? null : fail(response);
     }
     async function connection(slug: string) {
-      const response = await invoke(BACKOFFICE_PERMISSION.api.connectionsRead, { slug }, () =>
+      const response = await invoke(BACKOFFICE_PERMISSION.connections.read, { slug }, () =>
         callRoute("GET", "/connections/:slug", { pathParams: { slug } }),
       );
       if (response.type === "json" && isSuccessStatus(response.status)) {
@@ -238,7 +238,7 @@ export function createApiIntegration({
       return isConnectionNotFound(response) ? null : fail(response);
     }
     async function pendingAuthorizationUrl(slug: string): Promise<string | null> {
-      const response = await invoke(BACKOFFICE_PERMISSION.api.connectionsCreate, { slug }, () =>
+      const response = await invoke(BACKOFFICE_PERMISSION.connections.manage, { slug }, () =>
         callRoute("GET", "/connections/:slug/auth/oauth/pending", { pathParams: { slug } }),
       );
       if (response.type === "json" && isSuccessStatus(response.status)) {
@@ -262,7 +262,7 @@ export function createApiIntegration({
       if (redirectUri === null) {
         throw new BackofficeUnavailableError(describeCallback(null));
       }
-      const response = await invoke(BACKOFFICE_PERMISSION.api.connectionsCreate, { slug }, () =>
+      const response = await invoke(BACKOFFICE_PERMISSION.connections.manage, { slug }, () =>
         callRoute("POST", "/connections/:slug/auth/oauth/start", {
           pathParams: { slug },
           query: { [API_OAUTH_REDIRECT_URI_QUERY_PARAMETER]: redirectUri },
@@ -275,7 +275,7 @@ export function createApiIntegration({
       return fail(response);
     }
     async function createConnection(slug: string, values: ApiSetupConnectionInput) {
-      return await invoke(BACKOFFICE_PERMISSION.api.connectionsCreate, { slug }, () =>
+      return await invoke(BACKOFFICE_PERMISSION.connections.manage, { slug }, () =>
         callRoute("PUT", "/connections/:slug", {
           pathParams: { slug },
           body: connectionBody(values),
@@ -283,7 +283,7 @@ export function createApiIntegration({
       );
     }
     async function replaceConfiguration(slug: string, values: ApiSetupConnectionInput) {
-      const response = await invoke(BACKOFFICE_PERMISSION.api.connectionsCreate, { slug }, () =>
+      const response = await invoke(BACKOFFICE_PERMISSION.connections.manage, { slug }, () =>
         callRoute("PUT", "/connections/:slug/configuration", {
           pathParams: { slug },
           body: connectionBody(values),
@@ -295,7 +295,7 @@ export function createApiIntegration({
       return isConnectionNotFound(response) ? false : fail(response);
     }
     async function deleteConnection(slug: string) {
-      const response = await invoke(BACKOFFICE_PERMISSION.api.connectionsDelete, { slug }, () =>
+      const response = await invoke(BACKOFFICE_PERMISSION.connections.manage, { slug }, () =>
         callRoute("DELETE", "/connections/:slug", { pathParams: { slug } }),
       );
       if (isSuccessStatus(response.status)) {
@@ -304,7 +304,7 @@ export function createApiIntegration({
       return isConnectionNotFound(response) ? false : fail(response);
     }
     async function setToken(slug: string, token: string) {
-      const response = await invoke(BACKOFFICE_PERMISSION.api.connectionsCreate, { slug }, () =>
+      const response = await invoke(BACKOFFICE_PERMISSION.connections.manage, { slug }, () =>
         callRoute("POST", "/connections/:slug/auth/token", {
           pathParams: { slug },
           body: { token },
@@ -316,7 +316,7 @@ export function createApiIntegration({
     }
     async function request(slug: string, input: z.output<typeof apiIntegrationRequestInputSchema>) {
       const response = await invoke(
-        BACKOFFICE_PERMISSION.api.requestsExecute,
+        BACKOFFICE_PERMISSION.integrations.execute,
         { slug, path: input.path },
         () =>
           callRoute("POST", "/connections/:slug/request", { pathParams: { slug }, body: input }),
@@ -580,7 +580,7 @@ export function createApiIntegration({
         return { connections: [], cursor: null };
       }
       const access = createApiAccess(context);
-      const response = await access.invoke(BACKOFFICE_PERMISSION.api.connectionsRead, {}, () =>
+      const response = await access.invoke(BACKOFFICE_PERMISSION.connections.read, {}, () =>
         access.callRoute("GET", "/connections", { query: cursor === null ? {} : { cursor } }),
       );
       if (response.type === "error" && response.error.code === "INVALID_CURSOR") {

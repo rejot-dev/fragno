@@ -360,8 +360,8 @@ test("Node explains denied MCP discovery for immediate, module, and scheduled ex
               ...options,
               code: "async () => await mcp_agensi.search({})",
             });
-            expect(denied.error).toContain("Required permission: mcp.servers.read.");
-            expect(denied.error).toContain("Calling MCP tools also requires mcp.tools.call.");
+            expect(denied.error).toContain("Required permission: connections.read.");
+            expect(denied.error).toContain("Calling MCP tools also requires integrations.execute.");
             const unrelated = await runBackofficeCodemode({
               ...options,
               code: "async () => await missingHelper()",
@@ -380,7 +380,7 @@ test("Node explains denied MCP discovery for immediate, module, and scheduled ex
               },
             });
             assert(moduleDenied.status === "error");
-            expect(moduleDenied.error).toContain("Required permission: mcp.servers.read.");
+            expect(moduleDenied.error).toContain("Required permission: connections.read.");
             const moduleUnrelated = await runBackofficeJavaScriptModule({
               ...options,
               program: {
@@ -430,7 +430,7 @@ test("Node explains denied MCP discovery for immediate, module, and scheduled ex
             });
             assert(instance.type === "json");
             expect(instance.data.details.error?.message).toContain(
-              "Required permission: mcp.servers.read.",
+              "Required permission: connections.read.",
             );
             const history = await workflows("GET", "/:workflowName/instances/:instanceId/history", {
               pathParams,
@@ -443,7 +443,7 @@ test("Node explains denied MCP discovery for immediate, module, and scheduled ex
                 attempts: 2,
                 error: expect.objectContaining({
                   name: "BackofficeForbiddenError",
-                  message: expect.stringContaining("Required permission: mcp.servers.read."),
+                  message: expect.stringContaining("Required permission: connections.read."),
                 }),
               }),
             );

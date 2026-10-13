@@ -318,30 +318,6 @@ type BackofficePermissionRequirement =
       permission: "manage";
     }
   | {
-      namespace: "api";
-      permission: "connections.create";
-    }
-  | {
-      namespace: "api";
-      permission: "connections.delete";
-    }
-  | {
-      namespace: "api";
-      permission: "connections.read";
-    }
-  | {
-      namespace: "api";
-      permission: "requests.execute";
-    }
-  | {
-      namespace: "api";
-      permission: "webhooks.manage";
-    }
-  | {
-      namespace: "api";
-      permission: "webhooks.read";
-    }
-  | {
       namespace: "capabilities";
       permission: "read";
     }
@@ -448,38 +424,6 @@ type BackofficePermissionRequirement =
   | {
       namespace: "packages";
       permission: "install";
-    }
-  | {
-      namespace: "mcp";
-      permission: "servers.create";
-    }
-  | {
-      namespace: "mcp";
-      permission: "servers.delete";
-    }
-  | {
-      namespace: "mcp";
-      permission: "servers.read";
-    }
-  | {
-      namespace: "mcp";
-      permission: "tools.call";
-    }
-  | {
-      namespace: "connector";
-      permission: "providers.read";
-    }
-  | {
-      namespace: "connector";
-      permission: "accounts.read";
-    }
-  | {
-      namespace: "connector";
-      permission: "connections.create";
-    }
-  | {
-      namespace: "connector";
-      permission: "actions.execute";
     }
   | {
       namespace: "otp";

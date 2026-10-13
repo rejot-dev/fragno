@@ -210,8 +210,8 @@ cannot be validated are not offered as actions, and `integrations.get` names the
 
 In organization and project codemode, each server with discovered tools is also a typed provider,
 such as `mcp_cloudflare.search_docs({ query })` for `mcp#cloudflare`. Its declarations are in
-`/static/codemode/sources/mcp.d.ts`. Provider calls return the same results and still require
-`mcp.tools.call`; they are the way to call a tool whose schema could not be validated.
+`/static/codemode/sources/mcp.d.ts`. Provider calls return the same results and require
+`integrations.execute`; they are the way to call a tool whose schema could not be validated.
 
 Inbound webhooks are endpoints, not connections: configure them with `api.webhooks.*` following
 `/static/skills/api-webhooks/SKILL.md`.
@@ -220,9 +220,9 @@ Inbound webhooks are endpoints, not connections: configure them with `api.webhoo
 
 Discovery, listing, inspection, and action contracts require `integrations.read`; setup,
 reconfigure, disconnect, and verification require `integrations.manage`; execution requires
-`integrations.execute`. Reson8, Telegram, and Resend actions need nothing more. GitHub also enforces
-`connections.read` and `connections.manage`, and Open Connector, MCP, and direct API enforce their
-native permissions. Report a permission failure as it stands, in the current scope and source.
+`integrations.execute`. Each source's own store also checks `connections.read` for reading its
+configuration and `connections.manage` for changing it. Report a permission failure as it stands, in
+the current scope and source.
 
 Terminal commands share the names, e.g.
 `integrations.setup --connection-id 'api#stripe' --input-json '{...}'` and
