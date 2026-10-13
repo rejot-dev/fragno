@@ -203,10 +203,11 @@ fails on a database that holds a null name.
 `onConnectionReadinessChanged` is an optional durable hook in the fragment config. It receives
 `{ externalUserId, service, connection, ready }`, where `connection` is the named selector, when a
 write changes whether the name has a confirmed account: `ready: false` when the first request for a
-name starts, and `ready: true` when a refresh confirms the name's first account. Further attempts
-for a name that already has an account fire nothing. The gateway does not notify the fragment of
-consent or revocation, so readiness changes only when `POST /connection-requests/:requestId/refresh`
-runs.
+name starts, and `ready: true` when a refresh confirms the name's first account. A refresh that
+moves an existing account ID to another name also reports the old name `ready: false` when it has no
+other account. Further attempts for a name that already has an account fire nothing. The gateway
+does not notify the fragment of consent or revocation, so readiness changes only when
+`POST /connection-requests/:requestId/refresh` runs.
 
 ## Client flow
 
