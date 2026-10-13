@@ -3,20 +3,18 @@ import { z } from "zod";
 import { defineRoutes } from "@fragno-dev/core";
 
 import { githubAppFragmentDefinition } from "../github/definition";
+import { syncInstallationFromGitHub } from "../github/installation-sync";
 import { githubAppSchema } from "../schema";
 import {
   installationOutputSchema,
   normalizeJoinedLinks,
   parseLinkedOnly,
   repoWithLinksSchema,
-  syncInstallationFromGitHub,
   toExternalId,
 } from "./shared";
 
 export const githubAppInstallationRoutesFactory = defineRoutes(githubAppFragmentDefinition).create(
-  ({ defineRoute, deps, services }) => {
-    const api = deps.githubApiClient;
-
+  ({ defineRoute, services }) => {
     return [
       defineRoute({
         method: "GET",
@@ -149,8 +147,8 @@ export const githubAppInstallationRoutesFactory = defineRoutes(githubAppFragment
           const syncResult = await syncInstallationFromGitHub(
             this.handlerTx.bind(this),
             services,
-            api,
             pathParams.installationId,
+            null,
           );
           if (!syncResult.ok) {
             return error(

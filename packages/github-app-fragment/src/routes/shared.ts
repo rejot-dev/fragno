@@ -4,15 +4,7 @@ import { z } from "zod";
 
 import { type DatabaseRequestContext, type TxResult } from "@fragno-dev/db";
 
-import type {
-  GitHubApiClient,
-  GitHubInstallationDetails,
-  GitHubInstallationRepository,
-  GitHubUserInstallation,
-} from "../github/api";
-import type { GitHubAppFragmentServices } from "../github/definition";
-import { hasRepoChanges, toRepoRecord } from "../github/repo-sync";
-import { installationLinkStatusChanges } from "../github/repository-links";
+import type { GitHubUserInstallation } from "../github/api";
 import {
   isRecord,
   normalizeJoinedInstallation,
@@ -42,15 +34,6 @@ export type OAuthStateRecord = {
   expiresAt: Date;
   completedAt?: Date | null;
 };
-
-export type InstallationSyncResult =
-  | { ok: true; result: { added: number; removed: number; updated: number } }
-  | {
-      ok: false;
-      code: "GITHUB_API_ERROR" | "INSTALLATION_NOT_FOUND";
-      message: string;
-      status: number;
-    };
 
 export const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 
@@ -88,19 +71,6 @@ export const normalizeLinkKey = (linkKey: string | null | undefined, defaultLink
 
 export const parseLinkedOnly = (value: string | null) => value === "true" || value === "1";
 
-const getHttpStatusCode = (value: unknown): number | null => {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value;
-  }
-  if (typeof value === "object" && value && "status" in value) {
-    const status = (value as { status?: unknown }).status;
-    if (typeof status === "number" && Number.isFinite(status)) {
-      return status;
-    }
-  }
-  return null;
-};
-
 export const callService = async <T, TRetrieve>(
   handlerTx: DatabaseRequestContext["handlerTx"],
   call: () => TxResult<T, TRetrieve>,
@@ -110,151 +80,6 @@ export const callService = async <T, TRetrieve>(
     .transform(({ serviceResult: [serviceResult] }) => serviceResult)
     .execute();
   return result as T;
-};
-
-export const syncInstallationFromGitHub = async (
-  handlerTx: DatabaseRequestContext["handlerTx"],
-  services: GitHubAppFragmentServices,
-  api: GitHubApiClient,
-  installationId: string,
-): Promise<InstallationSyncResult> => {
-  const { existingInstallation, existingRepos } = await callService(handlerTx, () =>
-    services.getInstallationSyncState(installationId),
-  );
-
-  let installationDetails: GitHubInstallationDetails;
-  try {
-    installationDetails = await api.getInstallation(installationId);
-  } catch (err) {
-    if (getHttpStatusCode(err) === 404) {
-      return {
-        ok: false,
-        code: "INSTALLATION_NOT_FOUND",
-        message: "Installation not found.",
-        status: 404,
-      };
-    }
-    return {
-      ok: false,
-      code: "GITHUB_API_ERROR",
-      message: err instanceof Error ? err.message : "GitHub API request failed.",
-      status: 502,
-    };
-  }
-
-  let response: { repositories: GitHubInstallationRepository[] };
-  try {
-    response = await api.listInstallationRepos(installationId);
-  } catch (err) {
-    return {
-      ok: false,
-      code: "GITHUB_API_ERROR",
-      message: err instanceof Error ? err.message : "GitHub API request failed.",
-      status: 502,
-    };
-  }
-
-  const repos = response.repositories ?? [];
-  const now = new Date();
-  const existingById = new Map<string, InstallationRepoRow>();
-  for (const repo of existingRepos) {
-    const id = toExternalId(repo.id);
-    if (id) {
-      existingById.set(id, repo);
-    }
-  }
-
-  const repoLinksByRepoId = new Map<string, RepoLinkRow[]>();
-  for (const repo of existingRepos) {
-    const repoId = toExternalId(repo.id);
-    if (!repoId) {
-      continue;
-    }
-    const linkEntries = normalizeJoinedLinks(repo.links);
-    if (linkEntries.length === 0) {
-      continue;
-    }
-    repoLinksByRepoId.set(repoId, linkEntries);
-  }
-
-  let added = 0;
-  let updated = 0;
-  let removed = 0;
-
-  type RepoUpdateData = Omit<ReturnType<typeof toRepoRecord>, "id">;
-  const creates: Array<ReturnType<typeof toRepoRecord>> = [];
-  const updates: Array<{ id: RepoId; data: Partial<RepoUpdateData> }> = [];
-  const removals: Array<RepoId> = [];
-  const removedRepoIds = new Set<string>();
-  const linksToDelete: Array<RepoLinkId> = [];
-  const seen = new Set<string>();
-
-  for (const repo of repos) {
-    const record = toRepoRecord(installationId, repo, now);
-    seen.add(record.id);
-    const existing = existingById.get(record.id);
-
-    if (!existing) {
-      added += 1;
-      creates.push(record);
-      continue;
-    }
-
-    if (hasRepoChanges(existing, record)) {
-      updated += 1;
-      updates.push({
-        id: existing.id as RepoId,
-        data: {
-          installationId: record.installationId,
-          ownerLogin: record.ownerLogin,
-          name: record.name,
-          fullName: record.fullName,
-          isPrivate: record.isPrivate,
-          ...(record.isFork !== undefined ? { isFork: record.isFork } : {}),
-          ...(record.defaultBranch !== undefined ? { defaultBranch: record.defaultBranch } : {}),
-          removedAt: null,
-          updatedAt: now,
-        },
-      });
-    }
-  }
-
-  for (const [repoId, repo] of existingById.entries()) {
-    if (seen.has(repoId)) {
-      continue;
-    }
-    if (repo.removedAt === null) {
-      removed += 1;
-      removals.push(repo.id as RepoId);
-      removedRepoIds.add(repoId);
-      const links = repoLinksByRepoId.get(repoId);
-      if (links) {
-        for (const link of links) {
-          linksToDelete.push(link.id as RepoLinkId);
-        }
-      }
-    }
-  }
-
-  await callService(handlerTx, () =>
-    services.applyInstallationSync({
-      existingInstallationId: existingInstallation?.id ?? null,
-      installationDetails,
-      now,
-      creates,
-      updates,
-      removals,
-      linksToDelete,
-      linkStatusChanges: installationLinkStatusChanges({
-        previousInstallationStatus: existingInstallation?.status ?? null,
-        nextInstallationStatus: installationDetails.status,
-        repos: existingRepos,
-        removedRepoIds,
-      }),
-    }),
-  );
-
-  return { ok: true, result: { added, removed, updated } };
 };
 
 export const installationOutputSchema = z.object({

@@ -4,7 +4,13 @@ import { createHmac } from "crypto";
 
 import { drainDurableHooks } from "@fragno-dev/test";
 
-import { buildHarness, runGithubUowCreate } from "./test-utils";
+import {
+  buildHarness,
+  createFakeGitHub,
+  type FakeGitHubInstallation,
+  runGithubUowCreate,
+  testPrivateKeyPem,
+} from "./test-utils";
 
 const webhookSecret = "secret";
 const pathParams = { owner: "octo", repo: "repo" };
@@ -25,15 +31,21 @@ const repository = {
 describe("github-app repository link status", () => {
   it("reports links as they are made, follow their installation, and lose their repository", async () => {
     const onRepositoryLinkStatusChanged = vi.fn();
+    const github: FakeGitHubInstallation = {
+      account: installation.account,
+      suspended: false,
+      repositories: [repository],
+    };
     const { fragments, test } = await buildHarness({
       appId: "42",
       appSlug: "test-app",
       clientId: "test-client-id",
       clientSecret: "test-client-secret",
       callbackUrl: "https://example.com/github/callback",
-      privateKeyPem: "test-key",
+      privateKeyPem: testPrivateKeyPem,
       webhookSecret,
       onRepositoryLinkStatusChanged,
+      fetch: createFakeGitHub(new Map([["1", github]])),
     });
     const { callRoute, db, fragment } = fragments.githubApp;
     const link = () =>
@@ -99,8 +111,11 @@ describe("github-app repository link status", () => {
         status: "active",
       });
 
+      github.suspended = true;
       await deliver("installation", { action: "suspend", installation });
+      github.suspended = false;
       await deliver("installation", { action: "unsuspend", installation });
+      github.repositories = [];
       await deliver("installation_repositories", {
         action: "removed",
         installation,
