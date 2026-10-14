@@ -3,14 +3,22 @@ import { anthropicProvider } from "@earendil-works/pi-ai/providers/anthropic";
 import { googleProvider } from "@earendil-works/pi-ai/providers/google";
 import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 
-import { createRegistry, type HarnessOptions } from "@earendil-works/pi-durable";
-
 import type { BackofficeRuntimeEnv } from "@/backoffice-runtime/backoffice-runtime-env";
-import type { PiAvailableModel } from "@/fragno/pi-manager/pi-agent-contract";
-import { PI_SUPPORTED_MODELS } from "@/fragno/pi/pi-shared";
+
+import type { PiAvailableModel } from "./pi-agent-contract";
+
+/** Models intentionally offered by Backoffice, in default-selection order. */
+const PI_SUPPORTED_MODELS = [
+  { provider: "openai", modelId: "gpt-6-luna", label: "GPT-6 Luna" },
+  { provider: "openai", modelId: "gpt-6.1-sol", label: "GPT-6.1 Sol" },
+  { provider: "anthropic", modelId: "claude-opus-5-5", label: "Claude Opus 5.5" },
+  { provider: "google", modelId: "gemini-3.8-flash", label: "Gemini 3.8 Flash" },
+] as const;
+
+export const PI_THINKING_LEVEL = "low";
 
 /** Builds durable Pi providers from Worker or Node credentials without filesystem auth lookup. */
-export function createPiDurableModels(
+export function createPiModels(
   env: Pick<BackofficeRuntimeEnv, "OPENAI_API_KEY" | "ANTHROPIC_API_KEY" | "GEMINI_API_KEY">,
 ): Models {
   const keys: Record<string, string | undefined> = {
@@ -31,9 +39,7 @@ export function createPiDurableModels(
 }
 
 /** Lists supported chat models whose provider credentials are available to durable Pi. */
-export async function listSupportedPiDurableModels(
-  models: Models,
-): Promise<readonly PiAvailableModel[]> {
+export async function listAvailablePiModels(models: Models): Promise<readonly PiAvailableModel[]> {
   const credentialAvailableModels = await models.getAvailable();
   return PI_SUPPORTED_MODELS.flatMap((supportedModel) => {
     const available = credentialAvailableModels.some(
@@ -41,11 +47,4 @@ export async function listSupportedPiDurableModels(
     );
     return available ? [supportedModel] : [];
   });
-}
-
-/** Builds the durable Pi harness from the same credential-aware catalog exposed by the manager. */
-export function createPiDurableHarnessOptions(
-  env: Pick<BackofficeRuntimeEnv, "OPENAI_API_KEY" | "ANTHROPIC_API_KEY" | "GEMINI_API_KEY">,
-): HarnessOptions {
-  return { models: createPiDurableModels(env), registry: createRegistry() };
 }

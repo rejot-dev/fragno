@@ -1,0 +1,218 @@
+import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+import { formatCodemodeLogLine } from "@fragno-dev/codemode/runtime-api";
+import { Type } from "typebox";
+
+import { visualizeWorkflowSource } from "@fragno-dev/workflow-visualizer-tokens";
+
+import { copyJson } from "@earendil-works/chord";
+import { defineTool } from "@earendil-works/pi-durable";
+
+import {
+  createCodemodeWorkflowInstanceInput,
+  prepareCodemodeWorkflowInstance,
+} from "@/fragno/automation/engine/codemode-invocation";
+import { AutomationWorkflowRuntimeRequestError } from "@/fragno/automation/workflow-route-runtime";
+import {
+  runBackofficeCodemode,
+  type BackofficeCodemodeExecuteResult,
+} from "@/fragno/codemode/execute";
+import type { BackofficeAgentContext } from "@/fragno/pi/agent/backoffice-agent-context";
+import type {
+  InternalAutomationWorkflowRuntime,
+  WorkflowCreateInstanceResult,
+} from "@/fragno/runtime-tools/families/automations-workflow";
+import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
+import {
+  runtimeToolFamilies,
+  type CoreBackofficeToolContext,
+} from "@/fragno/runtime-tools/tool-families";
+
+export const execCodeModeParametersSchema = Type.Object({
+  code: Type.String({
+    minLength: 1,
+    description:
+      "One top-level codemode program: an async arrow function for immediate work or defineWorkflow(...) for durable work.",
+  }),
+  dependencies: Type.Optional(
+    Type.Record(Type.String({ minLength: 1 }), Type.String({ minLength: 1 }), {
+      description:
+        "npm package names mapped to versions or version ranges. Import packages by their normal unversioned names in code.",
+    }),
+  ),
+});
+
+const hashToolCallId = (toolCallId: string) => {
+  let first = 0x811c9dc5;
+  let second = 0x9e3779b9;
+  for (let index = 0; index < toolCallId.length; index += 1) {
+    const char = toolCallId.charCodeAt(index);
+    first = Math.imul(first ^ char, 0x01000193);
+    second = Math.imul(second ^ char, 0x85ebca6b);
+  }
+  return `${(first >>> 0).toString(36)}${(second >>> 0).toString(36)}`;
+};
+
+const formatExecCodeModeText = (result: BackofficeCodemodeExecuteResult) => {
+  const lines: string[] = [];
+  const logs = result.logs ?? [];
+  lines.push(...logs.map(formatCodemodeLogLine));
+
+  if (result.error) {
+    lines.push(result.error);
+    return lines.join("\n");
+  }
+
+  if (result.result === undefined) {
+    return lines.join("\n");
+  }
+
+  lines.push(
+    typeof result.result === "string" ? result.result : (JSON.stringify(result.result) ?? ""),
+  );
+  return lines.join("\n");
+};
+
+type WorkflowScheduleErrorDetails = {
+  status: number | null;
+  code: string;
+  message: string;
+  requiredPermission: BackofficePermissionRequirement | null;
+};
+
+function serializeWorkflowScheduleError(cause: unknown): WorkflowScheduleErrorDetails {
+  if (AutomationWorkflowRuntimeRequestError.is(cause)) {
+    return {
+      status: cause.status,
+      code: cause.code,
+      message: cause.message,
+      requiredPermission: cause.requiredPermission,
+    };
+  }
+
+  return {
+    status: null,
+    code: "WORKFLOW_SCHEDULING_FAILED",
+    message: cause instanceof Error ? cause.message : String(cause),
+    requiredPermission: null,
+  };
+}
+
+export function createExecCodeModeTool(agent: BackofficeAgentContext) {
+  return defineTool({
+    name: "execCodeMode",
+    description: "Execute one top-level codemode program against the current Backoffice context.",
+    parameters: execCodeModeParametersSchema,
+    // Codemode can execute arbitrary mutations. An interrupted call must not silently repeat them.
+    replay: "unsafe",
+    async execute(params, api, durableContext) {
+      await agent.authorize();
+      const { code, dependencies } = params;
+      if (durableContext.abortSignal?.aborted) {
+        throw new Error("Codemode execution aborted.");
+      }
+
+      const taskId = String(api.taskId);
+      const runtimeToolContext = agent.toolContext(`${agent.sessionId}:${taskId}`, durableContext);
+      const workflowRuntime = runtimeToolContext.workflow?.runtime;
+      const workflowScheduler =
+        workflowRuntime && "createInternalInstance" in workflowRuntime
+          ? (workflowRuntime as Pick<InternalAutomationWorkflowRuntime, "createInternalInstance">)
+          : undefined;
+      const toolContext: CoreBackofficeToolContext = createBackofficeToolContext({
+        ...runtimeToolContext,
+        workflow: workflowRuntime ? { runtime: workflowRuntime } : null,
+      });
+
+      if (agent.codemode === null) {
+        throw new Error("Pi codemode is unavailable because the Worker Loader is not configured.");
+      }
+      const result = await runBackofficeCodemode({
+        codemode: agent.codemode,
+        code,
+        dependencies,
+        families: runtimeToolFamilies,
+        toolContext,
+      });
+
+      // Parse before scheduling so workflow-shaped failures retain tool details. The client builds
+      // its graph projection directly from the submitted source even when no run was created.
+      const workflowVisualization = visualizeWorkflowSource("codemode", code, {
+        fallbackName: result.workflowDefinition?.name,
+      });
+      const parsedWorkflow = workflowVisualization.graph.nodes.some(
+        (node) => node.kind === "workflow",
+      );
+
+      // Scheduling failures are failed tool results, but still carry the authored workflow for the viewer.
+      let scheduleError: WorkflowScheduleErrorDetails | undefined;
+      // The scheduled run's handle, surfaced to the client so the workflow viewer
+      // can subscribe to its live progress (history/status + step emissions).
+      let runHandle: WorkflowCreateInstanceResult | undefined;
+      if (result.workflowDefinition) {
+        if (!workflowScheduler) {
+          scheduleError = {
+            status: null,
+            code: "WORKFLOW_SCHEDULER_UNAVAILABLE",
+            message: "execCodeMode workflow definition cannot be scheduled in this runtime.",
+            requiredPermission: null,
+          };
+        } else {
+          try {
+            const instanceId = hashToolCallId(`${agent.sessionId}--${taskId}`);
+            const prepared = prepareCodemodeWorkflowInstance({
+              code,
+              dependencies,
+              filename: `/pi/${agent.sessionId}/${taskId}.workflow.js`,
+              instanceId,
+            });
+            if (prepared.remoteWorkflowName !== result.workflowDefinition.name) {
+              throw new Error(
+                `Codemode program '${prepared.program.filename}' declares workflow '${prepared.remoteWorkflowName}', expected '${result.workflowDefinition.name}'.`,
+              );
+            }
+            const workflowInput = createCodemodeWorkflowInstanceInput({
+              prepared,
+              trigger: { type: "manual", payload: {} },
+              execution: agent.execution,
+              billingOrganizationId: agent.billingOrganizationId,
+            });
+            const created = await workflowScheduler.createInternalInstance(workflowInput);
+            runHandle = { instanceId: created.instanceId };
+            result.result = runHandle;
+          } catch (error) {
+            scheduleError = serializeWorkflowScheduleError(error);
+          }
+        }
+      }
+
+      const text = scheduleError
+        ? `${formatExecCodeModeText(result)}\n\nWorkflow could not be scheduled: ${scheduleError.message}`
+        : formatExecCodeModeText(result);
+
+      // Throw only when there is no workflow graph to preserve. Recognized workflows return an
+      // error result with details so both the viewer and model can inspect the scheduling failure.
+      if ((result.error || scheduleError) && !parsedWorkflow) {
+        throw new Error(text);
+      }
+
+      return {
+        content: [{ type: "text", text }],
+        isError: Boolean(result.error || scheduleError),
+        details: copyJson(
+          {
+            ...result,
+            // Session history keeps display text; structured lines stay on the codemode run.
+            logs: result.logs?.map(formatCodemodeLogLine),
+            code,
+            outputText: text,
+            // The live run handle so the client can
+            // subscribe to realtime progress. Absent when scheduling failed.
+            ...(runHandle ? { run: runHandle } : {}),
+            ...(scheduleError ? { scheduleError } : {}),
+          },
+          { omitUndefinedProperties: true },
+        ),
+      };
+    },
+  });
+}

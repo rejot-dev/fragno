@@ -8,7 +8,7 @@ import {
   type Model,
 } from "@earendil-works/pi-ai";
 
-import { createAuthorizedPiDurableModels } from "./pi-durable-authorized-models";
+import { createAuthorizedPiModels } from "./authorized-models";
 
 const model = {
   id: "test-model",
@@ -45,7 +45,7 @@ describe("authorized durable Pi models", () => {
     const streamSimple = vi.fn(() => source);
     const models = { streamSimple } as unknown as Models;
     const authorize = vi.fn(async () => undefined);
-    const authorized = createAuthorizedPiDurableModels(models, authorize);
+    const authorized = createAuthorizedPiModels(models, authorize);
 
     const result = await authorized.streamSimple(model, [] as never).result();
 

@@ -16,22 +16,24 @@ import {
   type ToolExecutionApi,
 } from "@earendil-works/pi-durable";
 
-import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import { backofficeContextScopeRouteId } from "@/backoffice-runtime/scope-codec";
 import type { CodemodeRunner } from "@/fragno/codemode/codemode-object-execute";
 import { runBackofficeCompiledModule } from "@/fragno/codemode/compiled-module-execute";
 import { createBackofficeCodemodeResolvedProviders } from "@/fragno/codemode/execute";
+import {
+  requirePiStateBackend,
+  type BackofficeAgentContext,
+} from "@/fragno/pi/agent/backoffice-agent-context";
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 
-import { requirePiStateBackend, type PiRuntimeToolContext } from "./pi-runtime-context";
-import { piWorkspaceExtensionMetadataSchema } from "./pi-workspace-extension-metadata";
+import { createPiWorkspaceExtensionInvocation } from "./workspace-extension-guest";
+import { piWorkspaceExtensionMetadataSchema } from "./workspace-extension-metadata";
 import {
   piWorkspaceExtensionDiagnosticSchema,
   piWorkspaceExtensionHookResultSchemas,
   piWorkspaceExtensionToolResultSchema,
-} from "./pi-workspace-extension-results";
-import { createPiWorkspaceExtensionInvocation } from "./pi-workspace-extension-source";
+} from "./workspace-extension-results";
 
 const readPathSchema = z
   .string()
@@ -51,12 +53,10 @@ export function createPiWorkspaceExtensionBridge(input: {
   metadata: z.infer<typeof piWorkspaceExtensionMetadataSchema>;
   bundle: WorkerBundle;
   path: string;
-  execution: BackofficeExecutionContext;
+  agent: BackofficeAgentContext;
   codemode: CodemodeRunner;
-  createRuntimeToolContext: (context: Context, invocationId: string) => PiRuntimeToolContext;
-  authorizeExecution: () => Promise<void>;
 }): Extension {
-  const { metadata } = input;
+  const { metadata, agent } = input;
 
   async function invoke(
     request: { key: string; conversationId: ConversationId } & (
@@ -67,11 +67,11 @@ export function createPiWorkspaceExtensionBridge(input: {
     api: HookApi | ToolExecutionApi | null,
     context: Context,
   ): Promise<unknown> {
-    await input.authorizeExecution();
+    await agent.authorize();
     context.abortSignal?.throwIfAborted();
-    const runtime = input.createRuntimeToolContext(
+    const runtime = agent.toolContext(
+      `${agent.sessionId}:${metadata.name}:${request.operation}:${request.key}:${api?.taskId ?? request.conversationId}`,
       context,
-      `${metadata.name}:${request.operation}:${request.key}:${api?.taskId ?? request.conversationId}`,
     );
     const state = requirePiStateBackend(runtime);
     function readPath(value: unknown) {
@@ -148,7 +148,7 @@ export function createPiWorkspaceExtensionBridge(input: {
         Object.entries(provider.fns).map(([name, fn]) => [
           name,
           async (...args: unknown[]) => {
-            await input.authorizeExecution();
+            await agent.authorize();
             context.abortSignal?.throwIfAborted();
             return await fn(...args);
           },
@@ -166,7 +166,7 @@ export function createPiWorkspaceExtensionBridge(input: {
         input: {
           ...request,
           taskId: api?.taskId ?? null,
-          environmentId: `${input.execution.scope.kind}:${backofficeContextScopeRouteId(input.execution.scope)}`,
+          environmentId: `${agent.execution.scope.kind}:${backofficeContextScopeRouteId(agent.execution.scope)}`,
         },
         providers: authorizedProviders,
         codemode: input.codemode,

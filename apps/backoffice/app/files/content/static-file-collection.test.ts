@@ -1,7 +1,7 @@
 import { describe, expect, test, vi, assert } from "vitest";
 
 import { createBackofficeSystemStateBackend } from "@/fragno/codemode/state-backend";
-import { loadBackofficePiSkills } from "@/fragno/pi/pi-skills";
+import { loadBackofficePiSkills } from "@/fragno/pi/extensions/backoffice/skills";
 
 import { createStaticFileCollection } from "../../file-collection/create-static-file-collection";
 import { STATIC_FILE_CONTENT, createBackofficeStaticFileCollection } from "./static";

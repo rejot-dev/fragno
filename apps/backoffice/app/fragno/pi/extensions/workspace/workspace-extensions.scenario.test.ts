@@ -22,7 +22,7 @@ import { createCodemodeNodeExecutor } from "@fragno-dev/codemode/remote/codemode
 import { createCodemodeTestServer } from "@fragno-dev/codemode/testing/codemode-test-server";
 
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import { createRegistry, type ConversationView } from "@earendil-works/pi-durable";
+import type { ConversationView } from "@earendil-works/pi-durable";
 
 import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import {
@@ -43,7 +43,8 @@ import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/
 import { executeBackofficeRuntimeTool } from "@/fragno/runtime-tools/runtime-tools";
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
 
-import { InMemoryPiObject } from "../../../workers/pi.do";
+import { createScriptedPiAgentDependencies } from "../../../../../workers/pi-durable-scenario.test-support";
+import { InMemoryPiObject } from "../../../../../workers/pi.do";
 
 const scenarioObjects = allLocalObjects;
 
@@ -103,7 +104,10 @@ function scriptedExtensionAgents(
       return new InMemoryPiObject({
         state,
         runtime,
-        options: { models, registry: createRegistry(), onReport: (error) => reports.push(error) },
+        dependencies: {
+          ...createScriptedPiAgentDependencies(models),
+          report: (error) => reports.push(error),
+        },
         openStorage: openPiSessionStore,
         idFromConfig: piAgentIdFromConfig,
         nowEpochMs,

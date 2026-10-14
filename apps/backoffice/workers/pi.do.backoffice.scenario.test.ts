@@ -30,7 +30,6 @@ import {
 import { PostHog } from "posthog-node";
 
 import {
-  createRegistry,
   defineExtension,
   hook,
   ToolTask,
@@ -59,6 +58,7 @@ import {
   runBackofficeScenario,
 } from "@/fragno/automation/scenario";
 import { createRouteBackedAutomationWorkflowRuntime } from "@/fragno/automation/workflow-route-runtime";
+import { createPiPostHogExtension } from "@/fragno/pi/extensions/posthog/posthog-extension";
 import { BackofficePostHogContext, captureBackofficeServerException } from "@/posthog.server";
 import {
   createPiManagerSession,
@@ -68,7 +68,7 @@ import {
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
 import { shutdownCloudflarePostHog } from "./lib/cloudflare-posthog";
-import { createPiPostHogExtension } from "./lib/pi-posthog-extension";
+import { createScriptedPiAgentDependencies } from "./pi-durable-scenario.test-support";
 import { InMemoryPiObject } from "./pi.do";
 
 const scenarioObjects = allLocalObjects;
@@ -90,7 +90,10 @@ function scriptedAgents(
       return new InMemoryPiObject({
         state,
         runtime,
-        options: { models, registry: createRegistry(), ...(settings ? { settings } : {}) },
+        dependencies: {
+          ...createScriptedPiAgentDependencies(models),
+          ...(settings ? { settings } : {}),
+        },
         openStorage: openPiSessionStore,
         idFromConfig: piAgentIdFromConfig,
         nowEpochMs,
@@ -909,26 +912,26 @@ test("durable Pi restores scoped tools and reports interrupted codemode without 
       ]);
       const models = createModels();
       models.setProvider(faux.provider);
-      const registry = createRegistry();
-      registry.install(
-        defineExtension({
-          name: "capture-codemode-crash-point",
-          hooks: [
-            hook(ToolTask, {
-              afterTool: async (call) => {
-                if (call.name === "execCodeMode") {
-                  // Capture real committed intent after the external mutation, before result settlement.
-                  await (await database).run("VACUUM INTO ?", snapshot);
-                }
-              },
-            }),
-          ],
-        }),
-      );
+      const captureCrashPoint = defineExtension({
+        name: "capture-codemode-crash-point",
+        hooks: [
+          hook(ToolTask, {
+            afterTool: async (call) => {
+              if (call.name === "execCodeMode") {
+                // Capture real committed intent after the external mutation, before result settlement.
+                await (await database).run("VACUUM INTO ?", snapshot);
+              }
+            },
+          }),
+        ],
+      });
       const options = {
         state,
         runtime,
-        options: { models, registry },
+        dependencies: {
+          ...createScriptedPiAgentDependencies(models),
+          extensions: () => [captureCrashPoint],
+        },
         openStorage: async () => await SqliteStorage.open(await database),
         idFromConfig: piAgentIdFromConfig,
         nowEpochMs,
@@ -996,7 +999,7 @@ test("durable Pi restores scoped tools and reports interrupted codemode without 
               models.setProvider(faux.provider);
               const restored = new InMemoryPiObject({
                 ...captured.options,
-                options: { ...captured.options.options, models },
+                dependencies: { ...captured.options.dependencies, models },
                 openStorage: async () => await openNodeSqliteStorage(snapshot),
               });
               try {
@@ -1130,22 +1133,20 @@ test("Cloudflare backend analytics delivers verified outcomes and Pi usage witho
       faux.setResponses([fauxAssistantMessage("PRIVATE_ASSISTANT_OUTPUT")]);
       const models = createModels();
       models.setProvider(faux.provider);
-      const registry = createRegistry();
-      registry.install(
-        createPiPostHogExtension({
-          getConfig: async () => {
-            assert(config);
-            return config;
-          },
-          capture: async (event) => {
-            client.capture(event);
-          },
-        }),
-      );
       return new InMemoryPiObject({
         state,
         runtime,
-        options: { models, registry },
+        dependencies: {
+          ...createScriptedPiAgentDependencies(models),
+          extensions: (agentConfig) => [
+            createPiPostHogExtension({
+              config: agentConfig,
+              capture: async (event) => {
+                client.capture(event);
+              },
+            }),
+          ],
+        },
         openStorage: openPiSessionStore,
         idFromConfig: piAgentIdFromConfig,
         nowEpochMs,

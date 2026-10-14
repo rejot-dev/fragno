@@ -49,7 +49,7 @@ import { createCodemodeStaticArtifactsResolver } from "@/fragno/codemode/static-
 import {
   createPiManagerRuntime,
   type PiManagerRuntime,
-} from "@/fragno/pi-manager/pi-manager-runtime";
+} from "@/fragno/pi/manager/pi-manager-runtime";
 import { createAccountRuntime } from "@/fragno/runtime-tools/families/account-runtime";
 import { createAdminRuntime } from "@/fragno/runtime-tools/families/admin-runtime";
 import { createApiRuntime } from "@/fragno/runtime-tools/families/api-runtime";

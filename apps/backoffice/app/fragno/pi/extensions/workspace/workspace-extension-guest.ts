@@ -1,4 +1,4 @@
-import { PI_WORKSPACE_EXTENSION_HOOKS } from "./pi-workspace-extension-metadata";
+import { PI_WORKSPACE_EXTENSION_HOOKS } from "./workspace-extension-metadata";
 
 /** Discovers native registrations and invokes their callbacks without loading workspace code on the host. */
 export function createPiWorkspaceExtensionInvocation(providerNames: readonly string[]): string {

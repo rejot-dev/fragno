@@ -3,21 +3,24 @@ import type { PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
 import type { Context } from "@earendil-works/chord";
 import {
   defineDoc,
+  defineExtension,
   defineTask,
   type ConversationId,
+  type Extension,
   type Harness,
   type Task,
   type TaskId,
 } from "@earendil-works/pi-durable";
 
 import type { BillingEventInput, BillingRecordEventResult } from "@/fragno/billing/contracts";
+
 import {
   createPiDurableBillingEvent,
   hasPiBillingUsage,
   piBillingCountersFromUsage,
   subtractPiBillingCounters,
   type PiBillingCounters,
-} from "@/fragno/billing/pi";
+} from "./usage-counters";
 
 type PiDurableBillingState = {
   delivered: PiBillingCounters;
@@ -75,7 +78,7 @@ async function durableBillingEventId(config: PiAgentConfig, taskId: number) {
 }
 
 /** Creates the durable task whose checkpoint is the exact idempotent Billing RPC outbox event. */
-export function createPiDurableBillingTask(input: {
+function createPiDurableBillingTask(input: {
   config: PiAgentConfig;
   recordEvent: (event: BillingEventInput) => Promise<BillingRecordEventResult>;
   retryDelayMs: (attempt: number) => number;
@@ -204,10 +207,9 @@ export function createPiDurableBillingTask(input: {
   });
 }
 
-export type PiDurableBillingTask = ReturnType<typeof createPiDurableBillingTask>;
+type PiDurableBillingTask = ReturnType<typeof createPiDurableBillingTask>;
 
-/** Atomically repairs the billing watermark and admits at most one delivery task. */
-export async function ensurePiDurableBillingTask(input: {
+async function ensurePiDurableBillingTask(input: {
   harness: Harness;
   task: PiDurableBillingTask;
   nowEpochMs: number;
@@ -252,8 +254,7 @@ export async function ensurePiDurableBillingTask(input: {
   }, context);
 }
 
-/** Runs billing delivery through the current committed usage watermark. */
-export async function flushPiDurableBilling(input: {
+async function flushPiDurableBilling(input: {
   harness: Harness;
   task: PiDurableBillingTask;
   nowEpochMs: () => number;
@@ -282,4 +283,33 @@ export async function flushPiDurableBilling(input: {
       throw new Error(`PI_DURABLE_BILLING_TASK_FAILED:${taskId}:${settled.state.outcome.status}`);
     }
   }
+}
+
+/** Delivers committed model usage to an agent's billing owner through a background durable task. */
+export type PiBilling = {
+  extension: Extension;
+  /** Atomically repairs the billing watermark and admits at most one delivery task. */
+  ensure(
+    harness: Harness,
+    nowEpochMs: number,
+    context: Context,
+  ): Promise<TaskId<PiDurableBillingTaskResult> | null>;
+  /** Runs billing delivery through the current committed usage watermark. */
+  flush(harness: Harness, nowEpochMs: () => number, context: Context): Promise<void>;
+};
+
+export function createPiBilling(input: {
+  config: PiAgentConfig;
+  recordEvent: (event: BillingEventInput) => Promise<BillingRecordEventResult>;
+  retryDelayMs: (attempt: number) => number;
+}): PiBilling {
+  const task = createPiDurableBillingTask(input);
+  return {
+    extension: defineExtension({ name: "backoffice.billing", tasks: [task] }),
+    ensure: async (harness, nowEpochMs, context) =>
+      await ensurePiDurableBillingTask({ harness, task, nowEpochMs, context }),
+    flush: async (harness, nowEpochMs, context) => {
+      await flushPiDurableBilling({ harness, task, nowEpochMs, context });
+    },
+  };
 }

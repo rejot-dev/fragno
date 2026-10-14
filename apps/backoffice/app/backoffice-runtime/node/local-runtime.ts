@@ -6,7 +6,7 @@ import { createControlPlaneAuthorityResolver } from "@/backoffice-runtime/contro
 import { createAppInstallationAuthorityResolver } from "@/fragno/app-installations/authority";
 import { createAutomationRouteAuthorityResolver } from "@/fragno/automation/authority";
 import type { AutomationSourceReader } from "@/fragno/automation/automation-source";
-import type { PiAvailableModel } from "@/fragno/pi-manager/pi-agent-contract";
+import type { PiAvailableModel } from "@/fragno/pi/agent/pi-agent-contract";
 import type { CreateSandboxRuntimeProviders } from "@/sandbox/contracts";
 
 import {

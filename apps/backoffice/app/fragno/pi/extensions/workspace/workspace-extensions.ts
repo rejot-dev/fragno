@@ -2,21 +2,19 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { CODEMODE_LIMITS } from "@fragno-dev/codemode/codemode-limits";
 import { z } from "zod";
 
-import type { Context } from "@earendil-works/chord";
 import { createRegistry, type Extension, type RegistrySnapshot } from "@earendil-works/pi-durable";
 
-import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { CodemodeRunner } from "@/fragno/codemode/codemode-object-execute";
 import { runBackofficeCompiledModule } from "@/fragno/codemode/compiled-module-execute";
 import {
   javaScriptModuleArtifactSchema,
   resolveJavaScriptModuleArtifactPath,
 } from "@/fragno/codemode/javascript-module-artifact";
+import type { BackofficeAgentContext } from "@/fragno/pi/agent/backoffice-agent-context";
 
-import type { PiRuntimeToolContext } from "./pi-runtime-context";
-import { createPiWorkspaceExtensionBridge } from "./pi-workspace-extension-bridge";
-import { piWorkspaceExtensionMetadataSchema } from "./pi-workspace-extension-metadata";
-import { createPiWorkspaceExtensionInvocation } from "./pi-workspace-extension-source";
+import { createPiWorkspaceExtensionBridge } from "./workspace-extension-bridge";
+import { createPiWorkspaceExtensionInvocation } from "./workspace-extension-guest";
+import { piWorkspaceExtensionMetadataSchema } from "./workspace-extension-metadata";
 
 const PI_WORKSPACE_EXTENSION_MANIFEST = "/workspace/pi/extensions.json";
 const extensionFilePathSchema = z
@@ -25,25 +23,18 @@ const extensionFilePathSchema = z
   .max(512)
   .regex(/^[^\p{Cc}]+$/u);
 
-type WorkspaceExtensionLoaderInput = {
-  execution: BackofficeExecutionContext;
-  createRuntimeToolContext: (context: Context, invocationId: string) => PiRuntimeToolContext;
-  codemode: CodemodeRunner | null;
-  registry: RegistrySnapshot;
-  authorizeExecution: () => Promise<void>;
-  report: (error: unknown) => void;
-};
-
 /** Loads activated artifacts and validates native proxies before a session can install them. */
-export async function loadPiWorkspaceExtensions(
-  input: WorkspaceExtensionLoaderInput,
-): Promise<Extension[]> {
-  if (input.execution.scope.kind === "system") {
+export async function loadWorkspaceExtensions(input: {
+  agent: BackofficeAgentContext;
+  registry: RegistrySnapshot;
+  report: (error: unknown) => void;
+}): Promise<Extension[]> {
+  if (input.agent.execution.scope.kind === "system") {
     return [];
   }
-  const runtimeToolContext = input.createRuntimeToolContext(
+  const runtimeToolContext = input.agent.toolContext(
+    `${input.agent.sessionId}:workspace-extension-load`,
     BACKGROUND_CONTEXT,
-    "workspace-extension-load",
   );
   if (!runtimeToolContext.stateBackend) {
     return [];
@@ -59,11 +50,11 @@ export async function loadPiWorkspaceExtensions(
   const validationRegistry = createRegistry();
   let prepared: { paths: string[]; codemode: CodemodeRunner };
   try {
-    await input.authorizeExecution();
+    await input.agent.authorize();
     if (!(await state.exists(PI_WORKSPACE_EXTENSION_MANIFEST))) {
       return [];
     }
-    if (input.codemode === null) {
+    if (input.agent.codemode === null) {
       throw new Error("PI_EXTENSION_CODEMODE_UNAVAILABLE");
     }
     const manifest = z
@@ -84,7 +75,7 @@ export async function loadPiWorkspaceExtensions(
     if (new Set(paths).size !== paths.length) {
       throw new Error("PI_EXTENSION_DUPLICATE_PATH");
     }
-    prepared = { paths, codemode: input.codemode };
+    prepared = { paths, codemode: input.agent.codemode };
   } catch (error) {
     input.report(
       new Error(`PI_EXTENSION_LOAD_FAILED: ${PI_WORKSPACE_EXTENSION_MANIFEST}`, { cause: error }),
@@ -135,7 +126,7 @@ export async function loadPiWorkspaceExtensions(
         }
       }
       const extension = createPiWorkspaceExtensionBridge({
-        ...input,
+        agent: input.agent,
         metadata,
         bundle: artifact.bundle,
         path,

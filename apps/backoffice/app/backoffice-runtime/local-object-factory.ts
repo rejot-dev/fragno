@@ -13,7 +13,7 @@ import {
   piAgentObjectName,
   type PiAgent,
   type PiAvailableModel,
-} from "@/fragno/pi-manager/pi-agent-contract";
+} from "@/fragno/pi/agent/pi-agent-contract";
 import type { CreateSandboxRuntimeProviders } from "@/sandbox/contracts";
 
 import { createInMemoryAuthDatabase } from "../../workers/in-memory-auth-database";

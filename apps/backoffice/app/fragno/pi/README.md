@@ -12,6 +12,21 @@ Backoffice Pi sessions use the scoped `PI_MANAGER` directory and one durable `PI
   `SqliteDatabase` contract. Pi owns transcripts, submissions, documents, and tasks in `pi_*`
   tables.
 
+`workers/` holds only Cloudflare-specific code. Everything that also runs locally lives here,
+organized around Pi Durable:
+
+- `agent/`: one Pi Durable `Harness` per session. `pi-agent-harness.ts` is the only place a
+  `Registry` is built; it installs the runtime's `PiAgentDependencies.extensions`, then the
+  Backoffice extensions, then workspace extensions. A later extension's same-name tool wins.
+  `backoffice-agent-context.ts` rebuilds execution authority and tool runtimes from persisted
+  provenance; extensions receive it as their only Backoffice collaborator.
+- `extensions/`: everything installed into the registry. `backoffice/` (guidance section and the
+  `read`, `search`, and `execCodeMode` tools), `billing/` (usage delivery task and document),
+  `posthog/` (generation analytics, production Cloudflare only), and `workspace/` (author-built
+  extensions from `/workspace/pi/extensions.json`, run inside sealed codemode guests).
+- `manager/`: the scoped session directory fragment and the runtime that runtime tools and codemode
+  use to call it.
+
 Manager HTTP requests must use `http.fetchAuthorized` with a matching execution scope. The manager
 verifies the signed object address and enforces the existing `pi.read` / `pi.modify` permissions. It
 looks up session ownership before handing off to an agent; agent RPCs verify their own object
@@ -71,7 +86,7 @@ permissions are checked before model requests, including compaction and deferred
 tool execution. Authorization does not rely on prompt sections or extension environment hooks: Pi
 reports their errors but continues generation.
 
-`workers/lib/pi-durable-backoffice.ts` installs the shared Backoffice `read`, `search`, and
+`extensions/backoffice/backoffice-extension.ts` installs the shared Backoffice `read`, `search`, and
 `execCodeMode` implementations. They use the scoped filesystem, route-backed service runtimes,
 existing codemode execution environment, and kernel permission checks. Worker codemode still
 requires its Worker Loader configuration; local execution uses the existing local executor. System

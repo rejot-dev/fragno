@@ -1,6 +1,6 @@
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
-import type { BillingEventInput, BillingMeasurementInput } from "./contracts";
+import type { BillingEventInput, BillingMeasurementInput } from "@/fragno/billing/contracts";
 
 export type PiBillingUsageInput = {
   input: number;

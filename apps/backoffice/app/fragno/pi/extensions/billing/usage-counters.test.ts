@@ -6,7 +6,7 @@ import {
   piBillingCountersFromUsage,
   subtractPiBillingCounters,
   type PiBillingUsageInput,
-} from "./pi";
+} from "./usage-counters";
 
 const usage: PiBillingUsageInput = {
   input: 100,

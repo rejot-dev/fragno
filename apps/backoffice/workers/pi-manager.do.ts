@@ -21,16 +21,13 @@ import {
   piAgentObjectName,
   type PiAgent,
   type PiAvailableModel,
-} from "@/fragno/pi-manager/pi-agent-contract";
-import { createPiManagerFragment } from "@/fragno/pi-manager/pi-manager-fragment";
+} from "@/fragno/pi/agent/pi-agent-contract";
+import { createPiModels, listAvailablePiModels } from "@/fragno/pi/agent/pi-models";
+import { createPiManagerFragment } from "@/fragno/pi/manager/pi-manager-fragment";
 
 import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-object";
 import type { BackofficeObjectImplementation } from "./lib/backoffice-object-implementation";
 import { createCloudflareBackofficeObjectContext } from "./lib/cloudflare-backoffice-object-implementation";
-import {
-  createPiDurableModels,
-  listSupportedPiDurableModels,
-} from "./lib/pi-durable-harness-options";
 import {
   createScopedFragmentDurableObjectRuntime,
   type ScopedFragmentDurableObjectRuntime,
@@ -129,12 +126,12 @@ export class PiManager extends DurableObject<CloudflareEnv> {
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
     super(state, env);
-    const models = createPiDurableModels(env);
+    const models = createPiModels(env);
     this.#object = new InMemoryPiManagerObject({
       ...createCloudflareBackofficeObjectContext(state, env),
       agent: (config): PiAgent =>
         env.PI.get(env.PI.idFromName(piAgentObjectName(config))) as unknown as PiAgent,
-      supportedAvailableModels: async () => await listSupportedPiDurableModels(models),
+      supportedAvailableModels: async () => await listAvailablePiModels(models),
       nowEpochMs: Date.now,
     });
   }
