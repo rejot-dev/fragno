@@ -62,6 +62,28 @@ describe("backoffice files download route", () => {
     assert((await response.text()) === "Static guidance");
   });
 
+  test("serves images inline only when requested and keeps other files as attachments", async () => {
+    const inlineImage = toResponse(
+      await loader(
+        createLoaderArgs(
+          `https://example.com${DOWNLOAD_PATH}?path=%2Fstatic%2Fimages%2Flogo.png&disposition=inline`,
+        ),
+      ),
+    );
+    assert(inlineImage.headers.get("content-type") === "image/png");
+    expect(inlineImage.headers.get("content-disposition")).toMatch(/^inline;/);
+    expect(inlineImage.headers.get("content-security-policy")).toContain("sandbox");
+
+    const inlineText = toResponse(
+      await loader(
+        createLoaderArgs(
+          `https://example.com${DOWNLOAD_PATH}?path=%2Fstatic%2FSYSTEM.md&disposition=inline`,
+        ),
+      ),
+    );
+    expect(inlineText.headers.get("content-disposition")).toMatch(/^attachment;/);
+  });
+
   test("returns not found for roots, directories, and unknown files", async () => {
     await expect(
       loader(createLoaderArgs(`https://example.com${DOWNLOAD_PATH}?path=%2Fstatic`)),

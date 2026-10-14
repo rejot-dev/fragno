@@ -242,7 +242,7 @@ function FilesExplorerRouteView({
       contentSearch={{ query: searchQuery, groups: searchGroups }}
       defaultCollapsedRootPaths={["/static", "/system"]}
       buildNodeTo={(path) => ({ pathname: filesExplorerPath(selectedScope, path) })}
-      buildDownloadHref={(path) => filesDownloadPath(selectedScope, path)}
+      buildFileHref={(path, disposition) => filesDownloadPath(selectedScope, path, disposition)}
       workflowRouting={workflowRouting}
     />
   );

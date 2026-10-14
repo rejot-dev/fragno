@@ -279,6 +279,7 @@ function MarketplaceArtifactWorkflows({
                 contentType: "text/javascript",
                 metadata: null,
                 textContent: selectedContent.text,
+                inlineHref: null,
                 workflowRouting: { status: "unavailable" },
               }}
             />

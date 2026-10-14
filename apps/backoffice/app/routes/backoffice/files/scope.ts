@@ -19,7 +19,11 @@ export function filesExplorerPathFromScopePath(
 export const filesExplorerPath = (scope: BackofficeScopeSelection, path?: string | null): string =>
   filesExplorerPathFromScopePath(filesScopeBasePath(scope), path);
 
-export const filesDownloadPath = (scope: BackofficeScopeSelection, path: string): string => {
-  const params = new URLSearchParams({ path });
+export const filesDownloadPath = (
+  scope: BackofficeScopeSelection,
+  path: string,
+  disposition: "attachment" | "inline",
+): string => {
+  const params = new URLSearchParams(disposition === "inline" ? { path, disposition } : { path });
   return `${filesScopeBasePath(scope)}/download?${params.toString()}`;
 };

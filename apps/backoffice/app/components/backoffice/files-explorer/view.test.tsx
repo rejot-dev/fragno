@@ -515,7 +515,7 @@ describe("FilesExplorerView", () => {
           selectedPath={filePath}
           loadError={null}
           buildNodeTo={(path) => ({ pathname: "/files", search: `?path=${path}` })}
-          buildDownloadHref={(path) => `/files/download?path=${encodeURIComponent(path)}`}
+          buildFileHref={(path) => `/files/download?path=${encodeURIComponent(path)}`}
         />
       </MemoryRouter>,
     );

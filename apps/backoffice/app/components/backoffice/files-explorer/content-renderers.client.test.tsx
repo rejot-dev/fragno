@@ -17,6 +17,7 @@ describe("workflow file preview", () => {
       textContent: `defineWorkflow({ name: "daily-digest" }, async (_event, step) => {
   await step.do("Send digest", async () => undefined);
 });`,
+      inlineHref: null,
       workflowRouting: { status: "unavailable" },
     };
     const renderer = resolveFilesContentRenderer(preview);
@@ -43,6 +44,7 @@ describe("workflow file preview", () => {
       textContent: `defineWorkflow({ name: "telegram-user-linking" }, async (event) => {
   if (event.payload.text !== "/start") return { skipped: true };
 });`,
+      inlineHref: null,
       workflowRouting: {
         status: "ready",
         routes: [

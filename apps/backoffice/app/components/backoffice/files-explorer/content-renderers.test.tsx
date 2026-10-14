@@ -13,6 +13,7 @@ describe("files content rendering", () => {
       textContent: `defineWorkflow({ name: "daily-digest" }, async (_event, step) => {
   await step.do("Send digest", async () => undefined);
 });`,
+      inlineHref: null,
       workflowRouting: { status: "unavailable" },
     };
 
@@ -38,6 +39,7 @@ describe("files content rendering", () => {
       contentType: "text/javascript",
       metadata: null,
       textContent: 'defineWorkflow({ name: "daily-digest" }, async () => {});',
+      inlineHref: null,
       workflowRouting: {
         status: "ready",
         routes: [
@@ -86,6 +88,7 @@ describe("files content rendering", () => {
       contentType: "text/markdown",
       metadata: null,
       textContent: "# Explorer heading\n\n- One\n- Two",
+      inlineHref: null,
       workflowRouting: { status: "unavailable" },
     };
 
@@ -106,6 +109,7 @@ describe("files content rendering", () => {
       contentType: "text/markdown",
       metadata: null,
       textContent: "---\nname: explorer\ndescription: Browse files\n---\n\n# Instructions",
+      inlineHref: null,
       workflowRouting: { status: "unavailable" },
     };
 
@@ -128,6 +132,7 @@ describe("files content rendering", () => {
       contentType: "Text/Markdown; charset=utf-8",
       metadata: null,
       textContent: "# Parameterized Markdown",
+      inlineHref: null,
       workflowRouting: { status: "unavailable" },
     };
 
@@ -160,6 +165,25 @@ describe("files content rendering", () => {
     assert(markup.includes("data:image/png;base64,AAAA"));
   });
 
+  test("embeds any image/* type through the host file route", () => {
+    const preview: FilesContentPreview = {
+      ...createImagePreview({}),
+      contentType: "image/avif",
+      inlineHref: "/files/download?path=%2Fworkspace%2Fphoto.avif&disposition=inline",
+    };
+
+    const renderer = resolveFilesContentRenderer(preview);
+    assert(renderer);
+    const markup = renderToStaticMarkup(renderer.render(preview));
+
+    assert.equal(renderer.id, "image");
+    assert(
+      markup.includes(
+        'src="/files/download?path=%2Fworkspace%2Fphoto.avif&amp;disposition=inline"',
+      ),
+    );
+  });
+
   test("falls back to SVG text when metadata sources are unsafe", () => {
     const preview: FilesContentPreview = {
       ...createImagePreview({ previewUrl: "javascript:alert(1)" }),
@@ -182,6 +206,7 @@ function createImagePreview(metadata: Record<string, unknown>): FilesContentPrev
     contentType: "image/png",
     metadata,
     textContent: null,
+    inlineHref: null,
     workflowRouting: { status: "unavailable" },
   };
 }

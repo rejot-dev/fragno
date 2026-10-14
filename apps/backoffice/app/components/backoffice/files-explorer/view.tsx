@@ -98,7 +98,7 @@ export type FilesExplorerViewProps = {
   loadError: string | null;
   buildNodeTo: (path: string) => To;
   onNodeSelect?: (node: FileTreeExplorerNode) => void;
-  buildDownloadHref?: (path: string) => string | null;
+  buildFileHref?: (path: string, disposition: "attachment" | "inline") => string;
   defaultCollapsedRootPaths?: readonly string[];
   collapsedRootPaths?: readonly string[];
   onCollapsedRootPathsChange?: (paths: readonly string[]) => void;
@@ -118,7 +118,7 @@ export function FilesExplorerView({
   loadError,
   buildNodeTo,
   onNodeSelect,
-  buildDownloadHref,
+  buildFileHref,
   defaultCollapsedRootPaths = [],
   collapsedRootPaths,
   onCollapsedRootPathsChange,
@@ -236,7 +236,7 @@ export function FilesExplorerView({
               ) : selectedDetail ? (
                 <ExplorerNodeDetailPanel
                   detail={selectedDetail}
-                  buildDownloadHref={buildDownloadHref}
+                  buildFileHref={buildFileHref}
                   rootIcon={rootIcon}
                   headingLevel={detailHeadingLevel}
                   workflowRouting={workflowRouting}
@@ -358,13 +358,13 @@ function searchMatchPreview(match: FilesExplorerSearchMatch): string {
 
 function ExplorerNodeDetailPanel({
   detail,
-  buildDownloadHref,
+  buildFileHref,
   rootIcon,
   headingLevel,
   workflowRouting,
 }: {
   detail: ExplorerNodeDetail;
-  buildDownloadHref?: (path: string) => string | null;
+  buildFileHref?: (path: string, disposition: "attachment" | "inline") => string;
   rootIcon: IconName;
   headingLevel: 2 | 3 | 4;
   workflowRouting: WorkflowFileRouting;
@@ -380,17 +380,24 @@ function ExplorerNodeDetailPanel({
           ),
         }
       : workflowRouting;
+  const fileHrefs =
+    detail.node.kind === "file" && buildFileHref
+      ? {
+          download: buildFileHref(detail.node.path, "attachment"),
+          inline: buildFileHref(detail.node.path, "inline"),
+        }
+      : null;
   const contentPreview = {
     title: detail.node.title,
     contentType: detail.node.contentType ?? null,
     metadata: detail.metadata,
     textContent: detail.textContent,
+    inlineHref: fileHrefs?.inline ?? null,
     workflowRouting: selectedWorkflowRouting,
   };
   const contentRenderer = resolveFilesContentRenderer(contentPreview);
   const contentPreamble = contentRenderer?.renderBefore?.(contentPreview) ?? null;
-  const downloadHref =
-    detail.node.kind === "file" ? (buildDownloadHref?.(detail.node.path) ?? null) : null;
+  const downloadHref = fileHrefs?.download ?? null;
   const Heading = getHeadingComponent(headingLevel);
   const detailIcon: IconName =
     detail.node.kind === "root" ? rootIcon : detail.node.kind === "directory" ? "folder" : "file";

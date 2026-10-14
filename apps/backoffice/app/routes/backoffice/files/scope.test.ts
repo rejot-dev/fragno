@@ -17,8 +17,12 @@ describe("Files scope paths", () => {
         "/backoffice/files/project/org%252Fone%3Aproject%253Aone/workspace/notes/launch%20plan.md",
     );
     assert(
-      filesDownloadPath(scope, "/static/SYSTEM.md") ===
+      filesDownloadPath(scope, "/static/SYSTEM.md", "attachment") ===
         "/backoffice/files/project/org%252Fone%3Aproject%253Aone/download?path=%2Fstatic%2FSYSTEM.md",
+    );
+    assert(
+      filesDownloadPath(scope, "/static/logo.png", "inline") ===
+        "/backoffice/files/project/org%252Fone%3Aproject%253Aone/download?path=%2Fstatic%2Flogo.png&disposition=inline",
     );
   });
 

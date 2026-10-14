@@ -5,7 +5,7 @@ import type {
 } from "@fragno-dev/backoffice-api/v0/automation";
 import { Icon } from "@fragno-private/design-system/icon";
 import { UnderlineTab, UnderlineTabList } from "@fragno-private/design-system/underline-tabs";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Streamdown } from "streamdown";
 
 import { visualizeWorkflowSource } from "@fragno-dev/workflow-visualizer-tokens";
@@ -26,6 +26,8 @@ export type FilesContentPreview = {
   contentType: string | null;
   metadata: Record<string, unknown> | null;
   textContent: string | null;
+  /** Same-origin URL serving the file bytes for embedding; null when the host has no file route. */
+  inlineHref: string | null;
   workflowRouting: WorkflowFileRouting;
 };
 
@@ -328,21 +330,37 @@ const ImageRenderer: FilesContentRenderer = {
     if (!src) {
       return (
         <p className="text-sm text-[var(--bo-muted)]">
-          No image preview source is available yet for this file. File metadata may provide a
-          preview URL or data URL.
+          No image preview source is available for this file.
         </p>
       );
     }
 
-    return (
-      <img
-        src={src}
-        alt={preview.title}
-        className="h-full max-h-full max-w-full bg-[var(--bo-panel)] object-contain outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10"
-      />
-    );
+    return <ImagePreview key={src} src={src} alt={preview.title} />;
   },
 };
+
+/** The browser decides which image/* formats it can decode; unsupported ones fall back to a message. */
+function ImagePreview({ src, alt }: { src: string; alt: string }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return (
+      <p className="text-sm text-[var(--bo-muted)]">
+        This browser cannot display this image format. Download the file to view it.
+      </p>
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt={alt}
+      onError={() => {
+        setFailed(true);
+      }}
+      className="h-full max-h-full max-w-full bg-[var(--bo-panel)] object-contain outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10"
+    />
+  );
+}
 
 const FILES_CONTENT_RENDERERS_BY_CONTENT_TYPE = new Map<string, FilesContentRenderer>([
   ["text/plain", TextRenderer],
@@ -350,11 +368,6 @@ const FILES_CONTENT_RENDERERS_BY_CONTENT_TYPE = new Map<string, FilesContentRend
   ["text/x-shellscript", TextRenderer],
   ["text/typescript", TextRenderer],
   ["application/json", TextRenderer],
-  ["image/png", ImageRenderer],
-  ["image/jpeg", ImageRenderer],
-  ["image/gif", ImageRenderer],
-  ["image/webp", ImageRenderer],
-  ["image/svg+xml", ImageRenderer],
 ]);
 
 export function resolveFilesContentRenderer(
@@ -395,6 +408,9 @@ function getImageSource(preview: FilesContentPreview): string | null {
       return candidate;
     }
   }
+  if (preview.inlineHref) {
+    return preview.inlineHref;
+  }
   if (normalizeMediaType(preview.contentType) === "image/svg+xml" && preview.textContent) {
     return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(preview.textContent)}`;
   }
@@ -409,7 +425,7 @@ function isAllowedImageSource(candidate: string): boolean {
   if (candidate.startsWith("/") && !candidate.startsWith("//")) {
     return true;
   }
-  if (/^data:image\/(?:png|jpeg|gif|webp|svg\+xml)(?:;[^,]*)?,/iu.test(candidate)) {
+  if (/^data:image\/[\w.+-]+(?:;[^,]*)?,/iu.test(candidate)) {
     return true;
   }
   if (typeof location === "undefined") {

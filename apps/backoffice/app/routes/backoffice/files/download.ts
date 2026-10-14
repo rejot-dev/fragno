@@ -1,3 +1,5 @@
+import { inferFileContentType } from "@/file-collection/file-content-type";
+
 import type { Route } from "./+types/download";
 import { resolveAuthorizedFilesRouteScope } from "./data";
 import { createFilesOverviewCollections } from "./file-collections.server";
@@ -27,10 +29,19 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
   }
 
   const filename = relativePath.split("/").at(-1) ?? "download";
+  const contentType = content.contentType ?? guessContentType(filename);
   const headers = new Headers({
-    "content-type": content.contentType ?? guessContentType(filename),
-    "content-disposition": createAttachmentDisposition(filename),
+    "content-type": contentType,
+    "content-disposition": createDisposition(
+      url.searchParams.get("disposition") === "inline" && isImageContentType(contentType)
+        ? "inline"
+        : "attachment",
+      filename,
+    ),
     "cache-control": "no-store",
+    // Inline SVGs opened directly would otherwise run scripts on the Backoffice origin.
+    "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+    "x-content-type-options": "nosniff",
   });
   if (content.sizeBytes !== null) {
     headers.set("content-length", String(content.sizeBytes));
@@ -39,11 +50,14 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
   return new Response(content.body, { headers });
 }
 
-const createAttachmentDisposition = (filename: string) => {
+const createDisposition = (disposition: "attachment" | "inline", filename: string) => {
   const sanitizedFilename = filename.replace(/[\r\n"]/g, "_") || "download";
   const encodedFilename = encodeURIComponent(filename || "download");
-  return `attachment; filename="${sanitizedFilename}"; filename*=UTF-8''${encodedFilename}`;
+  return `${disposition}; filename="${sanitizedFilename}"; filename*=UTF-8''${encodedFilename}`;
 };
+
+const isImageContentType = (contentType: string) =>
+  contentType.trimStart().toLowerCase().startsWith("image/");
 
 const guessContentType = (filename: string): string => {
   if (/\.(md|mdx)$/i.test(filename)) {
@@ -55,5 +69,5 @@ const guessContentType = (filename: string): string => {
   if (/\.(txt|log|yml|yaml|ts|tsx|js|jsx|mjs|cjs|css|html|xml|sh)$/i.test(filename)) {
     return "text/plain; charset=utf-8";
   }
-  return "application/octet-stream";
+  return inferFileContentType(filename);
 };
