@@ -21,6 +21,7 @@ import {
   getStaticGlobPrefix,
   globToRegExp,
   searchTextContent,
+  selectSearchCandidateTerm,
 } from "../text-index";
 import type { PreparedFileBatchEntry } from "../types";
 import {
@@ -201,13 +202,25 @@ const stateSearchOptionsSchema = z.object({
   maxMatches: z.number().int().min(1).max(100).optional(),
 });
 
+const MAX_SEARCH_KEYWORDS = 8;
+
+// Candidates come from one index pass per keyword; `indexCursor` resumes within `pass`.
+const searchCandidateCursorSchema = z.object({
+  pass: z
+    .number()
+    .int()
+    .nonnegative()
+    .max(MAX_SEARCH_KEYWORDS - 1),
+  indexCursor: z.string().optional(),
+});
+
 const searchFilesSchema = z.object({
   provider: providerNamespaceSchema,
   glob: z.string().min(1).max(512),
-  query: z.string().min(1).max(512),
+  keywords: z.array(z.string().min(1).max(512)).min(1).max(MAX_SEARCH_KEYWORDS),
   options: stateSearchOptionsSchema.optional(),
   maxCandidateFiles: z.number().int().min(1).max(500).optional(),
-  cursor: z.string().optional(),
+  cursor: searchCandidateCursorSchema.optional(),
 });
 
 const searchFileCandidateSchema = z.object({
@@ -221,7 +234,9 @@ const MAX_SEARCH_HYDRATION_BYTES = 30 * 1024 * 1024;
 const hydrateSearchMatchesSchema = z.object({
   provider: providerNamespaceSchema,
   candidateKeys: z.array(z.string().min(1)).min(1).max(500),
-  query: z.string().min(1).max(512),
+  keywords: z.array(z.string().min(1).max(512)).min(1).max(MAX_SEARCH_KEYWORDS),
+  /** Files containing any of these index terms were candidates of an earlier pass. */
+  excludedTerms: z.array(z.string()).max(MAX_SEARCH_KEYWORDS),
   options: stateSearchOptionsSchema.optional(),
   searchOffset: z.number().int().nonnegative().max(MAX_SEARCH_HYDRATION_BYTES).optional(),
   maxBytes: z.number().int().positive().max(MAX_SEARCH_HYDRATION_BYTES),
@@ -1139,7 +1154,9 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
           provider: providerNamespaceSchema,
           candidates: z.array(searchFileCandidateSchema),
           candidateFiles: z.number(),
-          cursor: z.string().optional(),
+          /** Pass these to hydration so files from earlier passes are not matched twice. */
+          excludedTerms: z.array(z.string()),
+          cursor: searchCandidateCursorSchema.optional(),
           hasMoreCandidates: z.boolean(),
         }),
         errorCodes,
@@ -1165,8 +1182,22 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
             );
           }
 
-          const searchTerms = extractTextIndexTerms(payload.query, resolvedConfig.textIndex);
-          const searchTerm = searchTerms[0];
+          const candidateTerms = payload.keywords.map((keyword) =>
+            selectSearchCandidateTerm(keyword, resolvedConfig.textIndex),
+          );
+          // A keyword without an indexable term can occur in any file, so one full-document pass
+          // then covers every keyword.
+          const passTerms = candidateTerms.every((term): term is string => term !== null)
+            ? [...new Set(candidateTerms)]
+            : null;
+          const cursor = payload.cursor ?? { pass: 0 };
+          if (cursor.pass >= (passTerms?.length ?? 1)) {
+            return handleServiceError(
+              new UploadServiceError("INVALID_REQUEST", "The search cursor has no such pass."),
+              error,
+            );
+          }
+          const searchTerm = passTerms?.[cursor.pass];
           const globPrefix = getStaticGlobPrefix(payload.glob);
           const globPattern = globToRegExp(payload.glob);
           const maxCandidateFiles = payload.maxCandidateFiles ?? 200;
@@ -1192,7 +1223,7 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
                           ),
                         );
 
-                      return payload.cursor ? query.after(payload.cursor) : query;
+                      return cursor.indexCursor ? query.after(cursor.indexCursor) : query;
                     }),
                   )
                   .execute();
@@ -1228,7 +1259,7 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
                         )
                         .orderByIndex("idx_file_text_document_provider_key", "asc")
                         .pageSize(maxCandidateFiles);
-                      return payload.cursor ? query.after(payload.cursor) : query;
+                      return cursor.indexCursor ? query.after(cursor.indexCursor) : query;
                     }),
                   )
                   .execute();
@@ -1245,13 +1276,19 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
               })();
 
           const candidates = candidatePage.candidates;
+          const nextCursor = candidatePage.hasMoreCandidates
+            ? { pass: cursor.pass, indexCursor: candidatePage.cursor }
+            : passTerms && cursor.pass + 1 < passTerms.length
+              ? { pass: cursor.pass + 1 }
+              : undefined;
 
           return json({
             provider: payload.provider,
             candidates,
             candidateFiles: candidates.length,
-            cursor: candidatePage.cursor,
-            hasMoreCandidates: candidatePage.hasMoreCandidates,
+            excludedTerms: passTerms?.slice(0, cursor.pass) ?? [],
+            ...(nextCursor ? { cursor: nextCursor } : {}),
+            hasMoreCandidates: nextCursor !== undefined,
           });
         },
       }),
@@ -1323,6 +1360,7 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
             .execute();
 
           const documentsByKey = new Map(documents.map((document) => [document.key, document]));
+          const excludedTerms = new Set(payload.excludedTerms);
           const matches = [];
           const skippedCandidates: Array<{
             key: string;
@@ -1376,11 +1414,21 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
             scannedFiles += 1;
             scannedBytes += document.byteLength;
             const text = await response.text();
+            if (
+              excludedTerms.size > 0 &&
+              extractTextIndexTerms(text, resolvedConfig.textIndex).some((term) =>
+                excludedTerms.has(term),
+              )
+            ) {
+              consumedCandidates += 1;
+              currentCandidateSearchOffset = 0;
+              continue;
+            }
             const remainingMatches: number = maxMatches - matches.length;
             const candidateMatches: ReturnType<typeof searchTextContent> = searchTextContent(
               document.key,
               text,
-              payload.query,
+              payload.keywords,
               {
                 ...options,
                 startOffset: currentCandidateSearchOffset,

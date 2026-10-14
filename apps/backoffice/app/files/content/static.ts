@@ -46,10 +46,10 @@ export function createBackofficeStaticFileCollection(
       }
       return staticCollection.getFile(path);
     },
-    async searchFiles(pattern, query, options, cursor) {
+    async searchFiles(pattern, keywords, options, cursor) {
       return (await getCollectionWithDynamicArtifacts()).searchFiles(
         pattern,
-        query,
+        keywords,
         options,
         cursor,
       );

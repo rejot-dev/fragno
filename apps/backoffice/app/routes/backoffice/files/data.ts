@@ -165,7 +165,7 @@ async function searchCollectionSources(
         rootPath: source.rootPath,
         rootTitle: source.rootTitle,
         matches: (
-          await registration.collection.searchFiles("**", query, {
+          await registration.collection.searchFiles("**", [query], {
             contextBefore: 1,
             contextAfter: 1,
             maxMatches: 50,

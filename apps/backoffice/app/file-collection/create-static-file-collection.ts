@@ -95,13 +95,13 @@ export function createStaticFileCollection(
         sizeBytes: file.sizeBytes,
       };
     },
-    async searchFiles(pattern, query, options = {}, cursor) {
+    async searchFiles(pattern, keywords, options = {}, cursor) {
       const maxMatches = options.maxMatches ?? 50;
-      if (maxMatches <= 0 || query.length === 0) {
+      if (maxMatches <= 0 || keywords.length === 0) {
         return { matches: [], hasMore: false };
       }
 
-      const fingerprint = createFileSearchFingerprint(pattern, query, options);
+      const fingerprint = createFileSearchFingerprint(pattern, keywords, options);
       let offset = 0;
       if (cursor !== undefined) {
         try {
@@ -134,7 +134,7 @@ export function createStaticFileCollection(
             : new TextDecoder("utf-8", { fatal: false }).decode(file.content);
         const lines = text.split(/\r?\n/);
         matches.push(
-          ...searchTextContent(path, text, query, {
+          ...searchTextContent(path, text, keywords, {
             ...options,
             maxMatches: searchLimit - matches.length,
           }).map((match) => ({

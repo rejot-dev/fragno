@@ -109,12 +109,12 @@ export function createUploadFileCollection(input: {
         }),
       );
     },
-    async searchFiles(pattern, query, options = {}, cursor) {
+    async searchFiles(pattern, keywords, options = {}, cursor) {
       const result = await searchUploadFiles({
         routes: input.routes,
         provider: input.provider,
         glob: `${prefix}${pattern.replace(/^\/+/, "")}`,
-        query,
+        keywords,
         options,
         cursor,
       });
@@ -127,7 +127,7 @@ export function createUploadFileCollection(input: {
           return [{ ...match, path: match.path.slice(prefix.length) }];
         }),
         ...(result.cursor ? { cursor: result.cursor } : {}),
-        hasMore: result.hasMoreCandidates,
+        hasMore: result.hasMore,
       };
     },
   };

@@ -44,14 +44,22 @@ export type DownloadFileOptions = {
   method: DownloadMethod;
 };
 
+/** Candidates come from one index pass per keyword; `indexCursor` resumes within `pass`. */
+export type SearchCandidateCursor = {
+  pass: number;
+  indexCursor?: string;
+};
+
 export type SearchFileCandidatesOptions = {
   provider: string;
   maxCandidateFiles?: number;
-  cursor?: string;
+  cursor?: SearchCandidateCursor;
 };
 
 export type HydrateSearchMatchesOptions = StateSearchOptions & {
   provider: string;
+  /** The candidate page's `excludedTerms`, so files from earlier passes are not matched twice. */
+  excludedTerms: readonly string[];
   searchOffset?: number;
   maxBytes: number;
 };
@@ -66,7 +74,8 @@ export type SearchFileCandidatesResult = {
   provider: string;
   candidates: SearchFileCandidate[];
   candidateFiles: number;
-  cursor?: string;
+  excludedTerms: string[];
+  cursor?: SearchCandidateCursor;
   hasMoreCandidates: boolean;
 };
 
@@ -121,14 +130,15 @@ export type UploadHelpers = {
   ) => Promise<UploadTransferResult>;
   applyEdits: (input: ApplyFileEditsInput) => Promise<ApplyFileEditsResult>;
   downloadFile: (fileKey: string, options: DownloadFileOptions) => Promise<Response>;
+  /** Lists files that may contain any of `keywords`, one index pass per keyword. */
   searchFileCandidates: (
     glob: string,
-    query: string,
+    keywords: readonly string[],
     options: SearchFileCandidatesOptions,
   ) => Promise<SearchFileCandidatesResult>;
   hydrateSearchMatches: (
     candidateKeys: readonly string[],
-    query: string,
+    keywords: readonly string[],
     options: HydrateSearchMatchesOptions,
   ) => Promise<HydrateSearchMatchesResult>;
 };
@@ -656,14 +666,14 @@ export const createUploadHelpers = (input: {
 
   const searchFileCandidates: UploadHelpers["searchFileCandidates"] = async (
     glob,
-    query,
+    keywords,
     options,
   ) => {
     if (!hasText(glob)) {
       throw new Error("Glob is required");
     }
-    if (!hasText(query)) {
-      throw new Error("Search query is required");
+    if (keywords.length === 0 || !keywords.every(hasText)) {
+      throw new Error("Search keywords are required");
     }
     if (!options || !hasText(options.provider)) {
       throw new Error("Search provider is required");
@@ -675,7 +685,7 @@ export const createUploadHelpers = (input: {
       body: JSON.stringify({
         provider: options.provider,
         glob,
-        query,
+        keywords,
         maxCandidateFiles: options.maxCandidateFiles,
         cursor: options.cursor,
       }),
@@ -684,14 +694,14 @@ export const createUploadHelpers = (input: {
 
   const hydrateSearchMatches: UploadHelpers["hydrateSearchMatches"] = async (
     candidateKeys,
-    query,
+    keywords,
     options,
   ) => {
     if (candidateKeys.length === 0) {
       throw new Error("At least one search candidate is required");
     }
-    if (!hasText(query)) {
-      throw new Error("Search query is required");
+    if (keywords.length === 0 || !keywords.every(hasText)) {
+      throw new Error("Search keywords are required");
     }
     if (!options || !hasText(options.provider)) {
       throw new Error("Search provider is required");
@@ -700,14 +710,15 @@ export const createUploadHelpers = (input: {
       throw new Error("Search byte budget must be a positive number");
     }
 
-    const { provider, searchOffset, maxBytes, ...searchOptions } = options;
+    const { provider, excludedTerms, searchOffset, maxBytes, ...searchOptions } = options;
     return await fetchJson<HydrateSearchMatchesResult>("/files/search/hydrate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         provider,
         candidateKeys,
-        query,
+        keywords,
+        excludedTerms,
         options: searchOptions,
         searchOffset,
         maxBytes,

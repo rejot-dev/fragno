@@ -11,39 +11,49 @@ import {
 const MAX_CANDIDATE_FILES = 100;
 const MAX_HYDRATION_BYTES = 30 * 1024 * 1024;
 const MAX_HYDRATION_MATCHES = 500;
+// One call keeps scanning candidates until its page is full, so a search whose matches are rare
+// stops here and hands back a cursor instead of scanning the whole workspace.
+const MAX_CANDIDATE_PAGES = 10;
+const MAX_SCANNED_BYTES = 60 * 1024 * 1024;
+
+const candidateCursorSchema = z.object({
+  pass: z.number().int().nonnegative(),
+  indexCursor: z.string().optional(),
+});
 
 const uploadSearchCursorSchema = z.object({
-  version: z.literal(3),
+  version: z.literal(4),
   fingerprint: z.string(),
-  serverCursor: z.string().optional(),
+  candidateCursor: candidateCursorSchema.optional(),
   candidateOffset: z.number().int().nonnegative(),
   searchOffset: z.number().int().nonnegative(),
 });
 
 type UploadSearchCursor = z.infer<typeof uploadSearchCursorSchema>;
+type CandidateCursor = z.infer<typeof candidateCursorSchema>;
 
 export type UploadFileSearchResult = {
   matches: readonly FileSearchMatch[];
   cursor?: string;
-  hasMoreCandidates: boolean;
+  hasMore: boolean;
 };
 
 export async function searchUploadFiles(input: {
   routes: UploadRouteCaller;
   provider: string;
   glob: string;
-  query: string;
+  keywords: readonly string[];
   options?: FileSearchOptions;
   cursor?: string;
 }): Promise<UploadFileSearchResult> {
   const options = input.options ?? {};
-  if (!input.query || (options.maxMatches ?? 50) <= 0) {
-    return { matches: [], hasMoreCandidates: false };
+  if (input.keywords.length === 0 || (options.maxMatches ?? 50) <= 0) {
+    return { matches: [], hasMore: false };
   }
 
-  const fingerprint = createFileSearchFingerprint(input.glob, input.query, options);
+  const fingerprint = createFileSearchFingerprint(input.glob, input.keywords, options);
   let position: UploadSearchCursor = {
-    version: 3,
+    version: 4,
     fingerprint,
     candidateOffset: 0,
     searchOffset: 0,
@@ -61,134 +71,151 @@ export async function searchUploadFiles(input: {
     }
   }
 
-  const candidateResponse = await input.routes("POST", "/files/search", {
-    body: {
-      provider: input.provider,
-      glob: input.glob,
-      query: input.query,
-      maxCandidateFiles: MAX_CANDIDATE_FILES,
-      ...(position.serverCursor ? { cursor: position.serverCursor } : {}),
-    },
-  });
-
-  if (candidateResponse.type === "error") {
-    throw new UploadFileSearchError(candidateResponse.error.message, {
-      code: candidateResponse.error.code,
-      status: candidateResponse.status,
-    });
-  }
-  if (candidateResponse.type !== "json") {
-    throw new Error(
-      `Upload file search route returned an unexpected ${candidateResponse.type} response.`,
-    );
-  }
-
-  const candidatePage = candidateResponse.data;
-  if (candidatePage.hasMoreCandidates && !candidatePage.cursor) {
-    throw new Error("Upload file search response omitted its next cursor.");
-  }
-
   const maxMatches = Math.min(
     MAX_HYDRATION_MATCHES,
     Math.max(1, Math.trunc(options.maxMatches ?? 50)),
   );
-  const remainingCandidates = candidatePage.candidates.slice(position.candidateOffset);
-  const candidates = [];
+  const matches: FileSearchMatch[] = [];
+  let candidatePages = 0;
+  let scannedBytes = 0;
+  const pageEnd = (): UploadFileSearchResult => ({
+    matches,
+    cursor: Buffer.from(JSON.stringify(position)).toString("base64url"),
+    hasMore: true,
+  });
+
+  while (true) {
+    const candidatePage = await findCandidates(input, position.candidateCursor);
+    candidatePages += 1;
+
+    while (position.candidateOffset < candidatePage.candidates.length) {
+      if (matches.length >= maxMatches || scannedBytes >= MAX_SCANNED_BYTES) {
+        return pageEnd();
+      }
+
+      const remainingMatches = maxMatches - matches.length;
+      const hydrated = await hydrateMatches(input, {
+        candidateKeys: selectHydrationBatch(
+          candidatePage.candidates.slice(position.candidateOffset),
+          remainingMatches,
+        ),
+        excludedTerms: candidatePage.excludedTerms,
+        searchOffset: position.searchOffset,
+        maxMatches: remainingMatches,
+      });
+      if (hydrated.consumedCandidates === 0 && hydrated.matches.length === 0) {
+        throw new Error("Upload file search hydration made no progress.");
+      }
+
+      matches.push(...hydrated.matches);
+      scannedBytes += hydrated.scannedBytes;
+      position = {
+        ...position,
+        candidateOffset: position.candidateOffset + hydrated.consumedCandidates,
+        searchOffset: hydrated.nextSearchOffset ?? 0,
+      };
+    }
+
+    if (!candidatePage.cursor) {
+      return { matches, hasMore: false };
+    }
+    position = {
+      version: 4,
+      fingerprint,
+      candidateCursor: candidatePage.cursor,
+      candidateOffset: 0,
+      searchOffset: 0,
+    };
+    if (
+      matches.length >= maxMatches ||
+      candidatePages >= MAX_CANDIDATE_PAGES ||
+      scannedBytes >= MAX_SCANNED_BYTES
+    ) {
+      return pageEnd();
+    }
+  }
+}
+
+function selectHydrationBatch(
+  candidates: readonly { key: string; count: number }[],
+  maxMatches: number,
+): string[] {
+  const batch: string[] = [];
   let estimatedMatches = 0;
-  for (const candidate of remainingCandidates) {
+  for (const candidate of candidates) {
     const candidateEstimate = Math.max(1, candidate.count);
-    if (candidates.length > 0 && estimatedMatches + candidateEstimate > maxMatches) {
+    if (batch.length > 0 && estimatedMatches + candidateEstimate > maxMatches) {
       break;
     }
-    candidates.push(candidate);
+    batch.push(candidate.key);
     estimatedMatches += candidateEstimate;
     if (estimatedMatches >= maxMatches) {
       break;
     }
   }
+  return batch;
+}
 
-  if (candidates.length === 0) {
-    const hasMoreCandidates = candidatePage.hasMoreCandidates;
-    return {
-      matches: [],
-      ...(hasMoreCandidates && candidatePage.cursor
-        ? {
-            cursor: Buffer.from(
-              JSON.stringify({
-                version: 3,
-                fingerprint,
-                serverCursor: candidatePage.cursor,
-                candidateOffset: 0,
-                searchOffset: 0,
-              } satisfies UploadSearchCursor),
-            ).toString("base64url"),
-          }
-        : {}),
-      hasMoreCandidates,
-    };
-  }
-
-  const hydrateResponse = await input.routes("POST", "/files/search/hydrate", {
+async function findCandidates(
+  input: Parameters<typeof searchUploadFiles>[0],
+  cursor: CandidateCursor | undefined,
+) {
+  const response = await input.routes("POST", "/files/search", {
     body: {
       provider: input.provider,
-      candidateKeys: candidates.map((candidate) => candidate.key),
-      query: input.query,
-      options: {
-        ...input.options,
-        maxMatches,
-      },
-      ...(position.searchOffset > 0 ? { searchOffset: position.searchOffset } : {}),
+      glob: input.glob,
+      keywords: [...input.keywords],
+      maxCandidateFiles: MAX_CANDIDATE_FILES,
+      ...(cursor ? { cursor } : {}),
+    },
+  });
+  if (response.type === "error") {
+    throw new UploadFileSearchError(response.error.message, {
+      code: response.error.code,
+      status: response.status,
+    });
+  }
+  if (response.type !== "json") {
+    throw new Error(`Upload file search route returned an unexpected ${response.type} response.`);
+  }
+  return response.data;
+}
+
+async function hydrateMatches(
+  input: Parameters<typeof searchUploadFiles>[0],
+  batch: {
+    candidateKeys: string[];
+    excludedTerms: string[];
+    searchOffset: number;
+    maxMatches: number;
+  },
+) {
+  const response = await input.routes("POST", "/files/search/hydrate", {
+    body: {
+      provider: input.provider,
+      candidateKeys: batch.candidateKeys,
+      keywords: [...input.keywords],
+      excludedTerms: batch.excludedTerms,
+      options: { ...input.options, maxMatches: batch.maxMatches },
+      ...(batch.searchOffset > 0 ? { searchOffset: batch.searchOffset } : {}),
       maxBytes: MAX_HYDRATION_BYTES,
     },
   });
-
-  if (hydrateResponse.type === "error") {
-    throw new UploadFileSearchError(hydrateResponse.error.message, {
-      code: hydrateResponse.error.code,
-      status: hydrateResponse.status,
+  if (response.type === "error") {
+    throw new UploadFileSearchError(response.error.message, {
+      code: response.error.code,
+      status: response.status,
     });
   }
-  if (hydrateResponse.type !== "json") {
+  if (response.type !== "json") {
     throw new Error(
-      `Upload file search hydration route returned an unexpected ${hydrateResponse.type} response.`,
+      `Upload file search hydration route returned an unexpected ${response.type} response.`,
     );
   }
-  if (hydrateResponse.data.truncated && hydrateResponse.data.nextSearchOffset === undefined) {
+  if (response.data.truncated && response.data.nextSearchOffset === undefined) {
     throw new Error("Upload file search hydration omitted its next search offset.");
   }
-
-  const consumedCandidates = hydrateResponse.data.consumedCandidates;
-  const nextCandidateOffset = position.candidateOffset + consumedCandidates;
-  const nextSearchOffset = hydrateResponse.data.nextSearchOffset ?? 0;
-  const hasCandidatesInPage = nextCandidateOffset < candidatePage.candidates.length;
-  const hasMoreCandidates = hasCandidatesInPage || candidatePage.hasMoreCandidates;
-  const nextPosition: UploadSearchCursor | undefined = hasCandidatesInPage
-    ? {
-        version: 3,
-        fingerprint,
-        serverCursor: position.serverCursor,
-        candidateOffset: nextCandidateOffset,
-        searchOffset: nextSearchOffset,
-      }
-    : candidatePage.hasMoreCandidates && candidatePage.cursor
-      ? {
-          version: 3,
-          fingerprint,
-          serverCursor: candidatePage.cursor,
-          candidateOffset: 0,
-          searchOffset: 0,
-        }
-      : undefined;
-
-  return {
-    matches: hydrateResponse.data.matches,
-    ...(nextPosition
-      ? {
-          cursor: Buffer.from(JSON.stringify(nextPosition)).toString("base64url"),
-        }
-      : {}),
-    hasMoreCandidates,
-  };
+  return response.data;
 }
 
 export class UploadFileSearchError extends Error {

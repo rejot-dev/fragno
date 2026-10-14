@@ -47,8 +47,8 @@ function createTestStaticFileCollection(
     async getFile(path) {
       return getCollection().getFile(path);
     },
-    async searchFiles(pattern, query, options, cursor) {
-      return getCollection().searchFiles(pattern, query, options, cursor);
+    async searchFiles(pattern, keywords, options, cursor) {
+      return getCollection().searchFiles(pattern, keywords, options, cursor);
     },
   };
 }
@@ -512,21 +512,24 @@ export class MemoryUploadObject implements FetchObject {
   async #searchCandidates(request: Request): Promise<Response> {
     const body = (await request.json()) as {
       glob: string;
-      query: string;
+      keywords: string[];
       maxCandidateFiles?: number;
-      cursor?: string;
+      cursor?: { pass: number; indexCursor?: string };
     };
     const expression = globToRegExp(body.glob);
-    const query = body.query.toLocaleLowerCase();
+    const keywords = body.keywords.map((keyword) => keyword.toLocaleLowerCase());
+    // Unlike the index, this fake finds every keyword in one pass, so nothing is excluded.
     const matching = [...this.#records.values()]
-      .filter(
-        (record) =>
+      .filter((record) => {
+        const text = new TextDecoder().decode(record.content).toLocaleLowerCase();
+        return (
           record.status === "ready" &&
           expression.test(record.fileKey) &&
-          new TextDecoder().decode(record.content).toLocaleLowerCase().includes(query),
-      )
+          keywords.some((keyword) => text.includes(keyword))
+        );
+      })
       .sort((left, right) => left.fileKey.localeCompare(right.fileKey));
-    const offset = Number(body.cursor ?? 0);
+    const offset = Number(body.cursor?.indexCursor ?? 0);
     const pageSize = body.maxCandidateFiles ?? 20;
     const page = matching.slice(offset, offset + pageSize);
     const nextOffset = offset + page.length;
@@ -539,7 +542,10 @@ export class MemoryUploadObject implements FetchObject {
         count: 1,
       })),
       candidateFiles: page.length,
-      ...(nextOffset < matching.length ? { cursor: String(nextOffset) } : {}),
+      excludedTerms: [],
+      ...(nextOffset < matching.length
+        ? { cursor: { pass: 0, indexCursor: String(nextOffset) } }
+        : {}),
       hasMoreCandidates: nextOffset < matching.length,
     });
   }
@@ -547,7 +553,7 @@ export class MemoryUploadObject implements FetchObject {
   async #hydrateSearch(request: Request): Promise<Response> {
     const body = (await request.json()) as {
       candidateKeys: string[];
-      query: string;
+      keywords: string[];
       options?: Parameters<typeof searchTextContent>[3];
       searchOffset?: number;
     };
@@ -575,7 +581,7 @@ export class MemoryUploadObject implements FetchObject {
       const candidateMatches = searchTextContent(
         key,
         new TextDecoder().decode(record.content),
-        body.query,
+        body.keywords,
         {
           ...body.options,
           startOffset: currentSearchOffset,

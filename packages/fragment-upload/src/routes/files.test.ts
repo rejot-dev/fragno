@@ -1260,7 +1260,8 @@ describe("upload file routes", async () => {
       body: {
         provider,
         candidateKeys: ["workspace/file.txt"],
-        query: "workflow",
+        keywords: ["workflow"],
+        excludedTerms: [],
         searchOffset: 30 * 1024 * 1024 + 1,
         maxBytes: 30 * 1024 * 1024,
       },
@@ -1275,7 +1276,8 @@ describe("upload file routes", async () => {
       body: {
         provider,
         candidateKeys: ["workspace/file.txt"],
-        query: "workflow",
+        keywords: ["workflow"],
+        excludedTerms: [],
         maxBytes: 30 * 1024 * 1024 + 1,
       },
     });

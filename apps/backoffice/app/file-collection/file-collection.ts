@@ -47,12 +47,12 @@ export type FileSearchOptions = {
 
 export const createFileSearchFingerprint = (
   pattern: string,
-  query: string,
+  keywords: readonly string[],
   options: FileSearchOptions,
 ): string =>
   JSON.stringify({
     pattern,
-    query,
+    keywords,
     caseSensitive: options.caseSensitive ?? false,
     wholeWord: options.wholeWord ?? false,
     contextBefore: options.contextBefore ?? 0,
@@ -77,9 +77,10 @@ export type FileSearchPage = {
 
 export interface FileTreeReader {
   getTree(): Promise<FileTree>;
+  /** Finds lines containing any of `keywords`; an empty page with `hasMore` is never returned. */
   searchFiles(
     pattern: string,
-    query: string,
+    keywords: readonly string[],
     options?: FileSearchOptions,
     cursor?: string,
   ): Promise<FileSearchPage>;

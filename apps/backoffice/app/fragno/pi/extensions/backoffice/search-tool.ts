@@ -1,4 +1,5 @@
 import { Type } from "typebox";
+import { z } from "zod";
 
 import { copyJson } from "@earendil-works/chord";
 import { defineTool } from "@earendil-works/pi-durable";
@@ -11,58 +12,53 @@ import {
 } from "@/fragno/pi/agent/backoffice-agent-context";
 
 const searchParametersSchema = Type.Object({
-  query: Type.String({ minLength: 1, description: "Text to search for." }),
+  keywords: Type.Array(Type.String({ minLength: 1, maxLength: 512 }), {
+    minItems: 1,
+    maxItems: 8,
+    description:
+      "Distinctive words or identifiers, not sentences. A line matches when it contains any keyword, case-insensitively.",
+  }),
   glob: Type.Optional(
     Type.String({
       minLength: 1,
-      description: "Workspace Upload key glob to search. Defaults to all files.",
+      description:
+        "Path glob such as `/workspace/**` or `/static/skills/**`. Defaults to all files.",
     }),
   ),
-  caseSensitive: Type.Optional(Type.Boolean()),
-  wholeWord: Type.Optional(Type.Boolean()),
-  contextBefore: Type.Optional(Type.Number({ minimum: 0, maximum: 200 })),
-  contextAfter: Type.Optional(Type.Number({ minimum: 0, maximum: 200 })),
-  maxMatches: Type.Optional(Type.Number({ minimum: 1, maximum: 100 })),
   cursor: Type.Optional(
-    Type.Object({
-      upload: Type.Optional(Type.String()),
-      static: Type.Optional(Type.String()),
-    }),
+    Type.String({ description: "Continuation cursor from a previous search result." }),
   ),
 });
 
+// The agent gets one search behaviour; tuning knobs only invited unhelpful variations.
+const SEARCH_OPTIONS = { contextBefore: 2, contextAfter: 2, maxMatches: 30 };
+
 type SearchMatchWithLineText = FileSearchMatch & { lineText?: string };
 type SearchMountPage = Awaited<ReturnType<BackofficeStateBackend["searchFiles"]>>["upload"];
-type SearchMountCursor = { sourceCursor?: string; skip: number };
 
-const SEARCH_MOUNT_CURSOR_PREFIX = "pi-search:";
+// Both mounts fill a page, so `skip` counts mount matches already shown from the source page.
+const searchMountCursorSchema = z.object({
+  sourceCursor: z.string().optional(),
+  skip: z.number().int().nonnegative(),
+});
+const searchCursorSchema = z.object({
+  upload: searchMountCursorSchema.optional(),
+  static: searchMountCursorSchema.optional(),
+});
+type SearchMountCursor = z.infer<typeof searchMountCursorSchema>;
+type SearchCursor = z.infer<typeof searchCursorSchema>;
 
-const decodeSearchMountCursor = (cursor: string | undefined): SearchMountCursor => {
-  if (!cursor) {
-    return { skip: 0 };
-  }
-  if (!cursor.startsWith(SEARCH_MOUNT_CURSOR_PREFIX)) {
-    return { sourceCursor: cursor, skip: 0 };
-  }
-
-  const parsed = JSON.parse(cursor.slice(SEARCH_MOUNT_CURSOR_PREFIX.length)) as unknown;
-  if (
-    typeof parsed !== "object" ||
-    parsed === null ||
-    !("skip" in parsed) ||
-    !Number.isInteger(parsed.skip) ||
-    (parsed.skip as number) < 0 ||
-    ("sourceCursor" in parsed &&
-      parsed.sourceCursor !== undefined &&
-      typeof parsed.sourceCursor !== "string")
-  ) {
+function decodeSearchCursor(cursor: string): SearchCursor {
+  try {
+    return searchCursorSchema.parse(JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")));
+  } catch {
     throw new Error("Invalid search cursor.");
   }
-  return parsed as SearchMountCursor;
-};
+}
 
-const encodeSearchMountCursor = (cursor: SearchMountCursor): string =>
-  `${SEARCH_MOUNT_CURSOR_PREFIX}${JSON.stringify(cursor)}`;
+function encodeSearchCursor(cursor: SearchCursor): string {
+  return Buffer.from(JSON.stringify(cursor)).toString("base64url");
+}
 
 const flattenSearchMountPage = (page: SearchMountPage): SearchMatchWithLineText[] =>
   page.results.flatMap((file) =>
@@ -82,16 +78,16 @@ const nextSearchMountCursor = (
   page: SearchMountPage,
   pageMatchCount: number,
   consumedCount: number,
-): string | undefined => {
+): SearchMountCursor | undefined => {
   const remainingInPage = Math.max(0, pageMatchCount - current.skip);
   if (consumedCount < remainingInPage) {
-    return encodeSearchMountCursor({
+    return {
       ...(current.sourceCursor ? { sourceCursor: current.sourceCursor } : {}),
       skip: current.skip + consumedCount,
-    });
+    };
   }
   if (page.hasMore && page.cursor) {
-    return encodeSearchMountCursor({ sourceCursor: page.cursor, skip: 0 });
+    return { sourceCursor: page.cursor, skip: 0 };
   }
   return undefined;
 };
@@ -169,10 +165,28 @@ const formatSearchMatches = (matches: readonly SearchMatchWithLineText[]): strin
     .join("\n\n");
 };
 
+function formatSearchResult(
+  keywords: readonly string[],
+  glob: string,
+  matches: readonly SearchMatchWithLineText[],
+  cursor: string | undefined,
+): string {
+  const quotedKeywords = keywords.map((keyword) => JSON.stringify(keyword)).join(", ");
+  const continuation = cursor ? ` Continue with cursor: ${JSON.stringify(cursor)}` : "";
+  if (matches.length > 0) {
+    return `${formatSearchMatches(matches)}${cursor ? `\n\nMore results may remain.${continuation}` : ""}`;
+  }
+  // A cursor without matches means the scan budget ran out before any file matched.
+  return cursor
+    ? `No matches for ${quotedKeywords} in the files scanned so far; more files remain.${continuation}`
+    : `No matches for ${quotedKeywords} in ${glob}.`;
+}
+
 export function createSearchTool(agent: BackofficeAgentContext) {
   return defineTool({
     name: "search",
-    description: "Search file contents in the current scope.",
+    description:
+      "Search file contents in the current scope, including installed skills under /workspace and product guidance under /static.",
     parameters: searchParametersSchema,
     replay: "safe",
     async execute(params, api, context) {
@@ -184,47 +198,33 @@ export function createSearchTool(agent: BackofficeAgentContext) {
       const state = requirePiStateBackend(
         agent.toolContext(`${agent.sessionId}:${api.taskId}`, context),
       );
-      const maxMatches = params.maxMatches ?? 50;
-      const searchOptions = {
-        caseSensitive: params.caseSensitive,
-        wholeWord: params.wholeWord,
-        contextBefore: params.contextBefore,
-        contextAfter: params.contextAfter,
-        maxMatches,
-      };
-      const uploadCursor = decodeSearchMountCursor(params.cursor?.upload);
-      const staticCursor = decodeSearchMountCursor(params.cursor?.static);
-      const requestedMounts = params.cursor
-        ? {
-            ...(params.cursor.upload
-              ? {
-                  upload: {
-                    ...searchOptions,
-                    ...(uploadCursor.sourceCursor ? { cursor: uploadCursor.sourceCursor } : {}),
-                  },
-                }
-              : {}),
-            ...(params.cursor.static
-              ? {
-                  static: {
-                    ...searchOptions,
-                    ...(staticCursor.sourceCursor ? { cursor: staticCursor.sourceCursor } : {}),
-                  },
-                }
-              : {}),
-          }
-        : { upload: searchOptions, static: searchOptions };
-      const result = await state.searchFiles(params.glob ?? "**", params.query, requestedMounts);
+      const glob = params.glob ?? "**";
+      const cursor = params.cursor === undefined ? undefined : decodeSearchCursor(params.cursor);
+      const mountOptions = (mountCursor: SearchMountCursor) => ({
+        ...SEARCH_OPTIONS,
+        ...(mountCursor.sourceCursor ? { cursor: mountCursor.sourceCursor } : {}),
+      });
+      const result = await state.searchFiles(
+        glob,
+        params.keywords,
+        cursor
+          ? {
+              ...(cursor.upload ? { upload: mountOptions(cursor.upload) } : {}),
+              ...(cursor.static ? { static: mountOptions(cursor.static) } : {}),
+            }
+          : { upload: SEARCH_OPTIONS, static: SEARCH_OPTIONS },
+      );
+      const uploadCursor = cursor?.upload ?? { skip: 0 };
+      const staticCursor = cursor?.static ?? { skip: 0 };
       const uploadPageMatches = flattenSearchMountPage(result.upload);
       const staticPageMatches = flattenSearchMountPage(result.static);
       const uploadMatches = uploadPageMatches.slice(uploadCursor.skip);
       const staticMatches = staticPageMatches.slice(staticCursor.skip);
       const matches: SearchMatchWithLineText[] = [...uploadMatches, ...staticMatches].slice(
         0,
-        maxMatches,
+        SEARCH_OPTIONS.maxMatches,
       );
       const consumedUploadMatches = Math.min(matches.length, uploadMatches.length);
-      const consumedStaticMatches = matches.length - consumedUploadMatches;
       const nextUploadCursor = nextSearchMountCursor(
         uploadCursor,
         result.upload,
@@ -235,34 +235,28 @@ export function createSearchTool(agent: BackofficeAgentContext) {
         staticCursor,
         result.static,
         staticPageMatches.length,
-        consumedStaticMatches,
+        matches.length - consumedUploadMatches,
       );
-      const cursor = {
-        ...(nextUploadCursor ? { upload: nextUploadCursor } : {}),
-        ...(nextStaticCursor ? { static: nextStaticCursor } : {}),
-      };
-      const hasMore = {
-        upload: nextUploadCursor !== undefined,
-        static: nextStaticCursor !== undefined,
-      };
-      const continuation =
-        hasMore.upload || hasMore.static
-          ? `\n\nMore files are available. Continue with cursor: ${JSON.stringify(cursor)}`
-          : "";
+      const nextCursor =
+        nextUploadCursor || nextStaticCursor
+          ? encodeSearchCursor({
+              ...(nextUploadCursor ? { upload: nextUploadCursor } : {}),
+              ...(nextStaticCursor ? { static: nextStaticCursor } : {}),
+            })
+          : undefined;
 
       return {
         content: [
           {
             type: "text",
-            text: `${formatSearchMatches(matches)}${continuation}`,
+            text: formatSearchResult(params.keywords, glob, matches, nextCursor),
           },
         ],
         details: copyJson({
-          query: params.query,
-          glob: params.glob ?? "**",
+          keywords: params.keywords,
+          glob,
           matches,
-          cursor,
-          hasMore,
+          cursor: nextCursor ?? null,
         }),
       };
     },

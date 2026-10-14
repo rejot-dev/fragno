@@ -61,6 +61,7 @@ export type {
   DownloadFileOptions,
   DownloadMethod,
   HydrateSearchMatchesResult,
+  SearchCandidateCursor,
   SearchFileCandidate,
   SearchFileCandidatesResult,
   UploadHelpers,

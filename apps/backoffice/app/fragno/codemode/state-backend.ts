@@ -154,9 +154,10 @@ export interface BackofficeStateBackend {
   writeJson(path: string, value: JsonValue, options?: { spaces?: number }): Promise<void>;
   applyEdits(edits: StateFileEditOperation[]): Promise<ApplyStateFileEditsResult>;
   searchText(path: string, query: string, options?: StateSearchOptions): Promise<StateTextMatch[]>;
+  /** Finds lines containing any of `keywords` in the upload and static mounts. */
   searchFiles(
     pattern: string,
-    query: string,
+    keywords: readonly string[],
     options?: StateFileSearchOptions,
   ): Promise<StateFileSearchPage>;
   hashFile(path: string, algorithm: "md5" | "sha1" | "sha256"): Promise<string>;
@@ -428,7 +429,7 @@ class SystemStaticStateBackend implements BackofficeStateBackend {
 
   async searchFiles(
     pattern: string,
-    query: string,
+    keywords: readonly string[],
     options?: StateFileSearchOptions,
   ): Promise<StateFileSearchPage> {
     const searchMount = async (
@@ -442,7 +443,7 @@ class SystemStaticStateBackend implements BackofficeStateBackend {
       const { cursor, ...searchOptions } = mountOptions ?? {};
       const page = await mount.collection.searchFiles(
         stripMountFromPattern(pattern, mount.mountPoint),
-        query,
+        keywords,
         searchOptions,
         cursor,
       );
@@ -907,7 +908,7 @@ class UploadStaticStateBackend implements BackofficeStateBackend {
 
   async searchFiles(
     pattern: string,
-    query: string,
+    keywords: readonly string[],
     options?: StateFileSearchOptions,
   ): Promise<StateFileSearchPage> {
     const searchMount = async (
@@ -922,7 +923,7 @@ class UploadStaticStateBackend implements BackofficeStateBackend {
       const { cursor, ...searchOptions } = mountOptions ?? {};
       const page = await mount.collection.searchFiles(
         stripMountFromPattern(pattern, mount.mountPoint),
-        query,
+        keywords,
         searchOptions,
         cursor,
       );
@@ -1384,7 +1385,7 @@ const searchStateContent = (
 ): FileSearchMatch[] => {
   if (!options.regex) {
     const lines = content.split(/\r?\n/);
-    return searchTextContent(path, content, query, options).map((match) => ({
+    return searchTextContent(path, content, [query], options).map((match) => ({
       ...match,
       lineText: lines[match.line - 1] ?? "",
     }));

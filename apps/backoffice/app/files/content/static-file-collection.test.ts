@@ -38,7 +38,7 @@ describe("Backoffice static file collection", () => {
       "codemode/sources/mcp.d.ts": "declare const configured: true;",
     }));
 
-    const { matches } = await collection.searchFiles("**", "configured");
+    const { matches } = await collection.searchFiles("**", ["configured"]);
 
     expect(matches).toContainEqual(
       expect.objectContaining({

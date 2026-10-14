@@ -211,7 +211,7 @@ export const codemodeStateToolFamily = defineBackofficeRuntimeToolFamily<StateTo
       namespace: "state",
       name: "searchFiles",
       execute: async ({ pattern, query, options }, context: StateToolContext) =>
-        await getStateRuntime(context).searchFiles(pattern, query, options),
+        await getStateRuntime(context).searchFiles(pattern, [query], options),
     }),
     defineBackofficeRuntimeTool({
       ...backofficeApiOperationToolFields("state.hashFile"),

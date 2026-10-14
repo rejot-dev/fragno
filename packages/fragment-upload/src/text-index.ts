@@ -78,6 +78,40 @@ export const extractTextIndexTerms = (
   return terms;
 };
 
+/**
+ * Picks the indexed term whose files are a superset of the files containing `keyword`. Terms
+ * delimited on both sides inside the keyword are whole tokens in every matching file; an edge term
+ * may continue past the keyword, as in `Connection` inside `createConnection`, so it is a fallback.
+ * Null means the keyword has no indexable term and every file is a candidate.
+ */
+export const selectSearchCandidateTerm = (
+  keyword: string,
+  options: Pick<TextIndexOptions, "minTermLength" | "maxTermLength"> = {},
+): string | null => {
+  const minTermLength = options.minTermLength ?? DEFAULT_MIN_TERM_LENGTH;
+  const maxTermLength = options.maxTermLength ?? DEFAULT_MAX_TERM_LENGTH;
+  let interior: string | null = null;
+  let edge: string | null = null;
+
+  for (const match of keyword.matchAll(tokenPattern)) {
+    const rawTerm = match[0];
+    if (rawTerm.length < minTermLength || rawTerm.length > maxTermLength) {
+      continue;
+    }
+    const start = match.index ?? 0;
+    const isInterior = start > 0 && start + rawTerm.length < keyword.length;
+    const term = normalizeTextIndexTerm(rawTerm);
+    if (isInterior && term.length > (interior?.length ?? 0)) {
+      interior = term;
+    }
+    if (!isInterior && term.length > (edge?.length ?? 0)) {
+      edge = term;
+    }
+  }
+
+  return interior ?? edge;
+};
+
 export const shouldIndexContentType = (contentType: string): boolean => {
   const normalized = contentType.split(";", 1)[0]?.trim().toLowerCase() ?? "";
   return normalized.startsWith("text/") || TEXT_CONTENT_TYPES.includes(normalized);
@@ -190,14 +224,21 @@ const truncateSearchLine = (line: string, maxLength: number, focusOffset?: numbe
   return `${start > 0 ? ellipsis : ""}${line.slice(start, end)}${end < line.length ? ellipsis : ""}`;
 };
 
+/**
+ * Finds occurrences of any keyword in text order. Where keywords overlap, the longest keyword at the
+ * earliest offset wins and the overlapped keywords are not reported separately.
+ */
 export const searchTextContent = (
   path: string,
   text: string,
-  query: string,
+  keywords: readonly string[],
   options: SearchTextContentOptions = {},
 ): StateTextMatch[] => {
   const maxMatches = options.maxMatches ?? 50;
-  if (maxMatches <= 0 || query.length === 0) {
+  const needles = keywords
+    .filter((keyword) => keyword.length > 0)
+    .map((keyword) => (options.caseSensitive ? keyword : keyword.toLocaleLowerCase()));
+  if (maxMatches <= 0 || needles.length === 0) {
     return [];
   }
 
@@ -206,19 +247,38 @@ export const searchTextContent = (
   }
 
   const haystack = options.caseSensitive ? text : text.toLocaleLowerCase();
-  const needle = options.caseSensitive ? query : query.toLocaleLowerCase();
   const lineStarts = getTextLineStarts(text);
   const lines = getLines(text);
   const matches: StateTextMatch[] = [];
   let searchOffset = Math.min(text.length, Math.max(0, Math.trunc(options.startOffset ?? 0)));
+  // Each needle remembers its next occurrence so the text is scanned once per needle.
+  const occurrences = needles.map((needle) => ({
+    needle,
+    offset: haystack.indexOf(needle, searchOffset),
+  }));
 
   while (matches.length < maxMatches) {
-    const startOffset = haystack.indexOf(needle, searchOffset);
+    let startOffset = -1;
+    let length = 0;
+    for (const occurrence of occurrences) {
+      if (occurrence.offset !== -1 && occurrence.offset < searchOffset) {
+        occurrence.offset = haystack.indexOf(occurrence.needle, searchOffset);
+      }
+      if (
+        occurrence.offset !== -1 &&
+        (startOffset === -1 ||
+          occurrence.offset < startOffset ||
+          (occurrence.offset === startOffset && occurrence.needle.length > length))
+      ) {
+        startOffset = occurrence.offset;
+        length = occurrence.needle.length;
+      }
+    }
     if (startOffset === -1) {
       break;
     }
 
-    const endOffset = startOffset + needle.length;
+    const endOffset = startOffset + length;
     searchOffset = Math.max(endOffset, startOffset + 1);
 
     if (options.wholeWord && !isWholeWordMatch(text, startOffset, endOffset)) {

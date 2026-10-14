@@ -154,7 +154,7 @@ describe("Upload file collection", () => {
     await drainDurableHooks(uploadTest.fragments.upload.fragment);
     requests.length = 0;
 
-    const { matches } = await createCollection(object, "workspace").searchFiles("**", "revenue");
+    const { matches } = await createCollection(object, "workspace").searchFiles("**", ["revenue"]);
 
     expect(requests.map((request) => request.pathname)).toEqual([
       "/api/upload/files/search",
@@ -179,22 +179,22 @@ describe("Upload file collection", () => {
     await drainDurableHooks(uploadTest.fragments.upload.fragment);
 
     const collection = createCollection(object, "workspace");
-    const firstPage = await collection.searchFiles("**", "needle", { maxMatches: 1 });
+    const firstPage = await collection.searchFiles("**", ["needle"], { maxMatches: 1 });
     assert(firstPage.cursor);
     expect(JSON.parse(Buffer.from(firstPage.cursor, "base64url").toString("utf8"))).toMatchObject({
-      version: 3,
+      version: 4,
       candidateOffset: 0,
       searchOffset: 7,
     });
     const secondPage = await collection.searchFiles(
       "**",
-      "needle",
+      ["needle"],
       { maxMatches: 1 },
       firstPage.cursor,
     );
     const thirdPage = await collection.searchFiles(
       "**",
-      "needle",
+      ["needle"],
       { maxMatches: 1 },
       secondPage.cursor,
     );

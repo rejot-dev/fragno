@@ -797,8 +797,9 @@ describe("upload client helpers", () => {
       });
 
       await expect(
-        helpers.hydrateSearchMatches(["workspace/src/workflows.ts"], "createWorkflow", {
+        helpers.hydrateSearchMatches(["workspace/src/workflows.ts"], ["createWorkflow"], {
           provider: TEST_PROVIDER,
+          excludedTerms: [],
           maxBytes,
         }),
       ).rejects.toThrow("Search byte budget must be a positive number");

@@ -105,7 +105,7 @@ describe("database storage adapter", () => {
       body: {
         provider: storage.name,
         glob: input.glob,
-        query: input.query,
+        keywords: [input.query],
       },
     });
     assert(response.type === "json");
@@ -197,7 +197,7 @@ describe("database storage adapter", () => {
       body: {
         provider: storage.name,
         glob: "/workspace/**/*.ts",
-        query: "createWorkflow",
+        keywords: ["createWorkflow"],
         options: {
           caseSensitive: false,
           contextBefore: 1,
@@ -221,6 +221,7 @@ describe("database storage adapter", () => {
             ],
           },
         ],
+        "excludedTerms": [],
         "hasMoreCandidates": false,
         "provider": "database",
       }
@@ -230,7 +231,8 @@ describe("database storage adapter", () => {
       body: {
         provider: storage.name,
         candidateKeys: searchResponse.data.candidates.map((candidate) => candidate.key),
-        query: "createWorkflow",
+        keywords: ["createWorkflow"],
+        excludedTerms: [],
         maxBytes: 1024 * 1024,
         options: {
           caseSensitive: false,
@@ -298,7 +300,7 @@ describe("database storage adapter", () => {
       body: {
         provider: storage.name,
         glob: "/workspace/**/*.ts",
-        query: "=>",
+        keywords: ["=>"],
       },
     });
 
@@ -315,7 +317,8 @@ describe("database storage adapter", () => {
       body: {
         provider: storage.name,
         candidateKeys: candidateResponse.data.candidates.map((candidate) => candidate.key),
-        query: "=>",
+        keywords: ["=>"],
+        excludedTerms: [],
         maxBytes: 1024 * 1024,
       },
     });
@@ -481,7 +484,7 @@ describe("database storage adapter", () => {
       body: {
         provider: storage.name,
         glob: "workspace/**/*.ts",
-        query: "createWorkflow",
+        keywords: ["createWorkflow"],
         maxCandidateFiles: 2,
       },
     });
@@ -506,20 +509,24 @@ describe("database storage adapter", () => {
             ],
           },
         ],
-        "cursor": "eyJ2IjoxLCJpbmRleE5hbWUiOiJpZHhfZmlsZV90ZXh0X3Rlcm1fcHJvdmlkZXJfdGVybV9rZXkiLCJvcmRlckRpcmVjdGlvbiI6ImFzYyIsInBhZ2VTaXplIjoyLCJpbmRleFZhbHVlcyI6eyJwcm92aWRlciI6ImRhdGFiYXNlIiwidGVybSI6ImNyZWF0ZXdvcmtmbG93Iiwia2V5Ijoid29ya3NwYWNlL3NyYy9iLnRzIn19",
+        "cursor": {
+          "indexCursor": "eyJ2IjoxLCJpbmRleE5hbWUiOiJpZHhfZmlsZV90ZXh0X3Rlcm1fcHJvdmlkZXJfdGVybV9rZXkiLCJvcmRlckRpcmVjdGlvbiI6ImFzYyIsInBhZ2VTaXplIjoyLCJpbmRleFZhbHVlcyI6eyJwcm92aWRlciI6ImRhdGFiYXNlIiwidGVybSI6ImNyZWF0ZXdvcmtmbG93Iiwia2V5Ijoid29ya3NwYWNlL3NyYy9iLnRzIn19",
+          "pass": 0,
+        },
+        "excludedTerms": [],
         "hasMoreCandidates": true,
         "provider": "database",
       }
     `);
 
     const cursor = searchResponse.data.cursor;
-    assert(typeof cursor === "string");
+    assert(cursor);
 
     const nextSearchResponse = await fragment.callRoute("POST", "/files/search", {
       body: {
         provider: storage.name,
         glob: "workspace/**/*.ts",
-        query: "createWorkflow",
+        keywords: ["createWorkflow"],
         maxCandidateFiles: 2,
         cursor,
       },
@@ -538,6 +545,7 @@ describe("database storage adapter", () => {
             ],
           },
         ],
+        "excludedTerms": [],
         "hasMoreCandidates": false,
         "provider": "database",
       }
@@ -547,7 +555,8 @@ describe("database storage adapter", () => {
       body: {
         provider: storage.name,
         candidateKeys: searchResponse.data.candidates.map((candidate) => candidate.key),
-        query: "createWorkflow",
+        keywords: ["createWorkflow"],
+        excludedTerms: [],
         maxBytes: 1024 * 1024,
       },
     });
@@ -591,7 +600,8 @@ describe("database storage adapter", () => {
       body: {
         provider: storage.name,
         candidateKeys: nextSearchResponse.data.candidates.map((candidate) => candidate.key),
-        query: "createWorkflow",
+        keywords: ["createWorkflow"],
+        excludedTerms: [],
         maxBytes: 1024 * 1024,
       },
     });
@@ -621,6 +631,56 @@ describe("database storage adapter", () => {
     `);
   });
 
+  it("matches any keyword through one index pass per keyword without repeating files", async () => {
+    const { fragment } = build.fragments.upload;
+    const files = {
+      "workspace/src/a.ts": "export const alpha = beta;\n",
+      "workspace/src/b.ts": "export const beta = 1;\n",
+      "workspace/src/c.ts": "export const alpha = 2;\n",
+    };
+    for (const [fileKey, content] of Object.entries(files)) {
+      const form = new FormData();
+      form.set("provider", storage.name);
+      form.set("fileKey", fileKey);
+      form.set(
+        "file",
+        new File([content], fileKey.split("/").at(-1)!, { type: "application/typescript" }),
+      );
+      const uploadResponse = await fragment.callRoute("POST", "/files", { body: form });
+      assert(uploadResponse.type === "json");
+    }
+    await drainDurableHooks(fragment);
+
+    const keywords = ["alpha", "beta"];
+    const matches: string[] = [];
+    let cursor: { pass: number; indexCursor?: string } | undefined;
+    do {
+      const candidatePage = await fragment.callRoute("POST", "/files/search", {
+        body: { provider: storage.name, glob: "workspace/**/*.ts", keywords, cursor },
+      });
+      assert(candidatePage.type === "json");
+      const hydrated = await fragment.callRoute("POST", "/files/search/hydrate", {
+        body: {
+          provider: storage.name,
+          candidateKeys: candidatePage.data.candidates.map((candidate) => candidate.key),
+          keywords,
+          excludedTerms: candidatePage.data.excludedTerms,
+          maxBytes: 1024 * 1024,
+        },
+      });
+      assert(hydrated.type === "json");
+      matches.push(...hydrated.data.matches.map((match) => `${match.path}:${match.text}`));
+      cursor = candidatePage.data.cursor;
+    } while (cursor);
+
+    expect(matches).toEqual([
+      "workspace/src/a.ts:alpha",
+      "workspace/src/a.ts:beta",
+      "workspace/src/c.ts:alpha",
+      "workspace/src/b.ts:beta",
+    ]);
+  });
+
   it("resumes hydration from a character offset within one file", async () => {
     const { fragment } = build.fragments.upload;
     const fileKey = "workspace/src/repeated.txt";
@@ -637,7 +697,8 @@ describe("database storage adapter", () => {
       body: {
         provider: storage.name,
         candidateKeys: [fileKey],
-        query: "needle",
+        keywords: ["needle"],
+        excludedTerms: [],
         options: { maxMatches: 2 },
         maxBytes: 1024 * 1024,
       },
@@ -655,7 +716,8 @@ describe("database storage adapter", () => {
       body: {
         provider: storage.name,
         candidateKeys: [fileKey],
-        query: "needle",
+        keywords: ["needle"],
+        excludedTerms: [],
         options: { maxMatches: 2 },
         searchOffset: firstPage.data.nextSearchOffset,
         maxBytes: 1024 * 1024,
@@ -692,7 +754,8 @@ describe("database storage adapter", () => {
       body: {
         provider: storage.name,
         candidateKeys: files.map((file) => file.key),
-        query: "needle",
+        keywords: ["needle"],
+        excludedTerms: [],
         options: { maxMatches: 2 },
         searchOffset: 7,
         maxBytes: 1024 * 1024,
@@ -734,7 +797,8 @@ describe("database storage adapter", () => {
       body: {
         provider: storage.name,
         candidateKeys: [fileKey],
-        query: "needle",
+        keywords: ["needle"],
+        excludedTerms: [],
         options: { maxMatches: 1 },
         maxBytes: 1024 * 1024,
       },
@@ -747,7 +811,8 @@ describe("database storage adapter", () => {
       body: {
         provider: storage.name,
         candidateKeys: [fileKey],
-        query: "needle",
+        keywords: ["needle"],
+        excludedTerms: [],
         options: { maxMatches: 1 },
         searchOffset: firstPage.data.nextSearchOffset,
         maxBytes: 1024 * 1024,
@@ -775,7 +840,8 @@ describe("database storage adapter", () => {
       body: {
         provider: storage.name,
         candidateKeys: [fileKey],
-        query: "needle",
+        keywords: ["needle"],
+        excludedTerms: [],
         options: { maxMatches: 100 },
         maxBytes: 1024 * 1024,
       },
@@ -829,7 +895,8 @@ describe("database storage adapter", () => {
       body: {
         provider: storage.name,
         candidateKeys: [files[0]!.key, files[2]!.key],
-        query: "createWorkflow",
+        keywords: ["createWorkflow"],
+        excludedTerms: [],
         maxBytes: Buffer.byteLength(files[0]!.content),
       },
     });
@@ -848,7 +915,8 @@ describe("database storage adapter", () => {
       body: {
         provider: storage.name,
         candidateKeys: [files[2]!.key],
-        query: "createWorkflow",
+        keywords: ["createWorkflow"],
+        excludedTerms: [],
         maxBytes: Buffer.byteLength(files[2]!.content),
       },
     });
@@ -873,7 +941,8 @@ describe("database storage adapter", () => {
       body: {
         provider: storage.name,
         candidateKeys: [fileKey],
-        query: "createWorkflow",
+        keywords: ["createWorkflow"],
+        excludedTerms: [],
         maxBytes: Buffer.byteLength(content) - 1,
       },
     });
@@ -907,7 +976,8 @@ describe("database storage adapter", () => {
       body: {
         provider: storage.name,
         candidateKeys: ["workspace/src/stale.ts"],
-        query: "createWorkflow",
+        keywords: ["createWorkflow"],
+        excludedTerms: [],
         maxBytes: 1024 * 1024,
       },
     });
@@ -942,7 +1012,8 @@ describe("database storage adapter", () => {
       body: {
         provider: storage.name,
         candidateKeys: ["workspace/src/stale.ts"],
-        query: "createWorkflow",
+        keywords: ["createWorkflow"],
+        excludedTerms: [],
         maxBytes: 1024 * 1024,
       },
     });
@@ -980,7 +1051,8 @@ describe("database storage adapter", () => {
       body: {
         provider: storage.name,
         candidateKeys: ["workspace/src/replaced.ts"],
-        query: "createWorkflow",
+        keywords: ["createWorkflow"],
+        excludedTerms: [],
         maxBytes: 1024 * 1024,
       },
     });
@@ -1034,7 +1106,8 @@ describe("database storage adapter", () => {
       body: {
         provider: storage.name,
         candidateKeys: ["workspace/src/deleted.ts"],
-        query: "createWorkflow",
+        keywords: ["createWorkflow"],
+        excludedTerms: [],
         maxBytes: 1024 * 1024,
       },
     });
@@ -1068,7 +1141,8 @@ describe("database storage adapter", () => {
       body: {
         provider: storage.name,
         candidateKeys: ["workspace/src/deleted.ts"],
-        query: "createWorkflow",
+        keywords: ["createWorkflow"],
+        excludedTerms: [],
         maxBytes: 1024 * 1024,
       },
     });

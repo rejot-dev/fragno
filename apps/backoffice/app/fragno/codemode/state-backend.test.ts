@@ -22,12 +22,12 @@ describe("BackofficeStateBackend", () => {
     await expect(state.readFile("/static/codemode/sources/mcp.d.ts")).resolves.toBe(
       UNIQUE_SEARCH_TEXT,
     );
-    await expect(state.searchFiles("/system/**", "admin-only system-scope")).resolves.toMatchObject(
-      {
-        upload: { results: [{ path: "/system/README.md" }] },
-        static: { results: [] },
-      },
-    );
+    await expect(
+      state.searchFiles("/system/**", ["admin-only system-scope"]),
+    ).resolves.toMatchObject({
+      upload: { results: [{ path: "/system/README.md" }] },
+      static: { results: [] },
+    });
     await expect(state.writeFile("/system/generated.txt", "blocked")).rejects.toThrow("EROFS");
   });
 

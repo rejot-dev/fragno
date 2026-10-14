@@ -7,11 +7,21 @@ import {
 } from "./text-index";
 
 describe("searchTextContent", () => {
+  it("reports every keyword in text order and the longest keyword where they overlap", () => {
+    const text = "setup slack\nslack-setup done";
+
+    expect(
+      searchTextContent("keywords.txt", text, ["setup", "slack", "slack-setup"]).map(
+        (match) => match.text,
+      ),
+    ).toEqual(["setup", "slack", "slack-setup"]);
+  });
+
   it("resumes directly from a character offset", () => {
     const text = "needle needle needle needle";
 
     expect(
-      searchTextContent("repeated.txt", text, "needle", {
+      searchTextContent("repeated.txt", text, ["needle"], {
         startOffset: 14,
         maxMatches: 2,
       }).map((match) => match.startOffset),
@@ -21,15 +31,19 @@ describe("searchTextContent", () => {
   it("returns no matches at or beyond the end of the content", () => {
     const text = "needle";
 
-    expect(searchTextContent("end.txt", text, "needle", { startOffset: text.length })).toEqual([]);
-    expect(searchTextContent("past-end.txt", text, "needle", { startOffset: 10_000 })).toEqual([]);
+    expect(searchTextContent("end.txt", text, ["needle"], { startOffset: text.length })).toEqual(
+      [],
+    );
+    expect(searchTextContent("past-end.txt", text, ["needle"], { startOffset: 10_000 })).toEqual(
+      [],
+    );
   });
 
   it("applies whole-word and case rules after resuming", () => {
     const text = "Needlework NEEDLE needle";
 
     expect(
-      searchTextContent("words.txt", text, "needle", {
+      searchTextContent("words.txt", text, ["needle"], {
         caseSensitive: false,
         wholeWord: true,
         startOffset: 1,
@@ -42,7 +56,7 @@ describe("searchTextContent", () => {
     const text = `${prefix}tail needle`;
 
     expect(
-      searchTextContent("dense.txt", text, "needle", {
+      searchTextContent("dense.txt", text, ["needle"], {
         startOffset: prefix.length,
         maxMatches: 1,
       }).map((match) => match.startOffset),
@@ -56,7 +70,7 @@ describe("searchTextContent", () => {
     const matches = searchTextContent(
       "large.txt",
       `${longContext}\n${longPrefix}needle${longSuffix}\n${longContext}`,
-      "needle",
+      ["needle"],
       { contextBefore: 1, contextAfter: 1 },
     );
 

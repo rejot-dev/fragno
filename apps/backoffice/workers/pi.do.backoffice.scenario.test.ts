@@ -184,7 +184,10 @@ test("durable Pi discovers scoped skills and executes read, search, codemode and
       return fauxAssistantMessage(
         [
           fauxToolCall("read", { path: "/workspace/durable-notes.txt", offset: 2, limit: 1 }),
-          fauxToolCall("search", { query: "Durable marker", glob: "/workspace/durable-notes.txt" }),
+          fauxToolCall("search", {
+            keywords: ["Durable marker"],
+            glob: "/workspace/durable-notes.txt",
+          }),
           fauxToolCall("execCodeMode", {
             code: `async () => {
           await state.writeFile({ path: "/workspace/durable-result.txt", content: "executed through Backoffice" });
