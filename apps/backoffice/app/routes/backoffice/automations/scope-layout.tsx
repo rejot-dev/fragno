@@ -57,9 +57,6 @@ const currentTabFromPath = (pathname: string): AutomationTab => {
   if (segments.includes("dashboard")) {
     return "dashboard";
   }
-  if (segments.includes("sandboxes")) {
-    return "sandboxes";
-  }
   if (segments.includes("events-catalog")) {
     return "events-catalog";
   }

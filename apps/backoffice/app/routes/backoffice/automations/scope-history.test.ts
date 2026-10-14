@@ -5,7 +5,7 @@ import {
   backofficeResolvedScopeId,
 } from "@/backoffice-runtime/resolved-scope";
 
-import { automationScopeTabPath, resolveAutomationScopeTab } from "./scope";
+import { automationScopeTabPath } from "./scope";
 import {
   advanceAutomationScopeHistory,
   parseAutomationScopeHistory,
@@ -69,14 +69,6 @@ describe("automation scope history", () => {
         organization: { id: "org-two", slug: "second-org" },
       }),
     );
-  });
-
-  test("falls back to the dashboard when a system scope cannot open the active tab", () => {
-    assert.equal(
-      resolveAutomationScopeTab({ kind: "system", label: "System" }, "sandboxes"),
-      "dashboard",
-    );
-    assert.equal(resolveAutomationScopeTab(secondOrganization, "sandboxes"), "sandboxes");
   });
 
   test("reverses the history when browser navigation returns to the previous scope", () => {
