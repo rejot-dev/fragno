@@ -543,7 +543,9 @@ export class StepCallMachine implements TokenSubmachine {
       return;
     }
 
-    const template = templateArgumentValue(this.#argumentTokens);
+    const template =
+      templateArgumentValue(this.#argumentTokens) ??
+      concatenatedArgumentValue(this.#argumentTokens);
     if (template) {
       this.#step.label = template.label;
       this.#step.nameTemplate = { staticParts: template.staticParts };
@@ -1866,6 +1868,61 @@ function templateArgumentValue(
     label: source.slice(1, -1),
     staticParts,
   };
+}
+
+/**
+ * Reads `"load region " + region` like the template literal `load region ${region}`, so display
+ * and runtime step matching treat both spellings of a dynamic step name the same way.
+ */
+function concatenatedArgumentValue(
+  tokens: PositionedWorkflowToken[],
+): { label: string; staticParts: string[] } | undefined {
+  const operands: WorkflowToken[][] = [[]];
+  let depth = 0;
+  for (const { token } of tokens) {
+    if (isTriviaToken(token)) {
+      continue;
+    }
+    if (token.type === "Punctuator" && "([{".includes(token.value)) {
+      depth += 1;
+    } else if (token.type === "Punctuator" && ")]}".includes(token.value)) {
+      depth -= 1;
+    }
+    if (depth === 0 && token.type === "Punctuator" && token.value === "+") {
+      operands.push([]);
+      continue;
+    }
+    operands.at(-1)?.push(token);
+  }
+  if (operands.length < 2 || operands.some((operand) => operand.length === 0)) {
+    return undefined;
+  }
+
+  const staticParts = [""];
+  const labelParts: string[] = [];
+  let hasStaticText = false;
+  let previousWasDynamic = false;
+  for (const operand of operands) {
+    const [only] = operand;
+    const text = operand.length === 1 && only ? staticStringValue(only) : undefined;
+    if (text !== undefined) {
+      hasStaticText = true;
+      previousWasDynamic = false;
+      staticParts[staticParts.length - 1] += text;
+      labelParts.push(text);
+      continue;
+    }
+    // Adjacent dynamic operands fill one hole, just like adjacent template substitutions would.
+    if (!previousWasDynamic) {
+      staticParts.push("");
+    }
+    previousWasDynamic = true;
+    labelParts.push(`\${${operand.map((token) => token.value).join("")}}`);
+  }
+
+  return hasStaticText && staticParts.length > 1
+    ? { label: labelParts.join(""), staticParts }
+    : undefined;
 }
 
 function secondArrowParameter(prefix: string): string | undefined {

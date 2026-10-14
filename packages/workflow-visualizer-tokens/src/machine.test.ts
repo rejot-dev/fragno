@@ -1150,19 +1150,41 @@ describe("workflow token state machine", () => {
     expect(snapshot.graph.edges).toEqual([]);
   });
 
-  it("does not treat strings nested in dynamic step labels as static labels", () => {
+  it("reads concatenated step names as templates instead of static labels", () => {
     const snapshot = visualizeWorkflowSource(
       "automations/dynamic-label.workflow.js",
       `defineWorkflow({ name: "dynamic-label" }, async (event, step) => {
         await step.do(prefix + "suffix", async () => {});
+        await step.do("load region " + region.id + "/" + attempt(1, "x"), async () => {});
       });`,
+    );
+    const steps = snapshot.graph.nodes.filter((node): node is StepNode => node.kind === "step");
+
+    expect(steps).toMatchObject([
+      {
+        label: "${prefix}suffix",
+        nameTemplate: { staticParts: ["", "suffix"] },
+        construction: { status: "complete", phase: "complete" },
+      },
+      {
+        // Trivia is dropped, so the substituted source is compact.
+        label: 'load region ${region.id}/${attempt(1,"x")}',
+        nameTemplate: { staticParts: ["load region ", "/", ""] },
+      },
+    ]);
+  });
+
+  it("keeps a step label dynamic until a concatenated name is complete", () => {
+    const snapshot = visualizeWorkflowSource(
+      "automations/partial-dynamic-label.workflow.js",
+      `defineWorkflow({ name: "partial-dynamic-label" }, async (event, step) => {
+        await step.do("load region " +`,
+      { finish: false },
     );
     const step = snapshot.graph.nodes.find((node): node is StepNode => node.kind === "step");
 
-    expect(step).toMatchObject({
-      label: "do step",
-      construction: { status: "complete", phase: "complete" },
-    });
+    expect(step).toMatchObject({ label: "do step" });
+    expect(step?.nameTemplate).toBeUndefined();
   });
 
   it("preserves template step names for display and runtime matching", () => {
