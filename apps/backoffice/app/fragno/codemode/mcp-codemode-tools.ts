@@ -3,6 +3,7 @@ import type { ToolProvider } from "@fragno-dev/codemode/runtime-api";
 import { z } from "zod";
 
 import { BackofficeForbiddenError, isBackofficeForbiddenError } from "@/backoffice-runtime/kernel";
+import { encodeMcpConnectionId } from "@/fragno/runtime-tools/families/integrations/mcp-integration";
 import type {
   McpListServersOutput,
   McpRuntime,
@@ -195,7 +196,7 @@ export const createMcpCodemodeReferences = (
       codemode: {
         providerName: server.providerName,
         toolName: tool.codemodeName,
-        description: `${tool.description} MCP server: ${server.slug}; tool: ${tool.originalName}.`,
+        description: `${tool.description} Connection ${encodeMcpConnectionId(server.slug)}; tool: ${tool.originalName}.`,
         inputTypeName: inputTypeNameFor(server, tool),
         outputTypeName: outputTypeNameFor(server, tool),
         inputType: jsonSchemaToTypeScript(tool.inputSchema),

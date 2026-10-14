@@ -860,6 +860,12 @@ describe("system automation scenarios", () => {
             path: "/static/codemode/sources/mcp.d.ts",
             text: "query: string",
           }),
+          // Searching for the service by name finds the connection to manage.
+          then.files.contains({
+            orgId: "org-1",
+            path: "/static/codemode/sources/mcp.d.ts",
+            text: "Connection mcp#cloudflare-mcp; tool: search-docs.",
+          }),
           then.workflow.noErrored({ orgId: "org-1" }),
         ],
       }),
