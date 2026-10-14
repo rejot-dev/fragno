@@ -1,4 +1,4 @@
-import { IconButton } from "@fragno-private/design-system/button";
+import { ButtonLink, IconButton } from "@fragno-private/design-system/button";
 import { ClientOnly } from "@fragno-private/design-system/client-only";
 import { Icon } from "@fragno-private/design-system/icon";
 import {
@@ -27,6 +27,7 @@ import {
   type AutomationBrowserDatabase,
   type AutomationCollectionSource,
 } from "@/fragno/automation/tanstack/browser-database";
+import { automationWorkflowRunPath } from "@/routes/backoffice/automations/scope";
 import {
   currentWorkflowWaitingEventTypes,
   type WorkflowRunEvent,
@@ -524,6 +525,14 @@ function WorkflowRunDetail({
         <Metric label="Progress" value={`${completedSteps}/${run.steps.length}`} />
         <Metric label="Updated" value={formatRelativeTime(run.updatedAt)} />
       </div>
+      <ButtonLink
+        variant="secondary"
+        to={automationWorkflowRunPath(source.resolvedScope, run)}
+        className="mt-3 w-full"
+      >
+        <Icon name="activity" className="size-3.5" />
+        Open run timeline
+      </ButtonLink>
 
       {runError ? (
         <section

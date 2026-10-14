@@ -223,6 +223,7 @@ export default [
         route("events-catalog", "routes/backoffice/automations/events-catalog.tsx"),
         route("mcp", "routes/backoffice/automations/mcp.tsx"),
         route("sandboxes", "routes/backoffice/automations/sandboxes.tsx"),
+        route("runs/:workflowName/:instanceId", "routes/backoffice/automations/workflow-run.tsx"),
       ]),
 
       route(
