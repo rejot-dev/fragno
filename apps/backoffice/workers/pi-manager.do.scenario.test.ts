@@ -17,7 +17,7 @@ vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoin
 import { createModels } from "@earendil-works/pi-ai/models";
 import { fauxAssistantMessage, fauxProvider, fauxText } from "@earendil-works/pi-ai/providers/faux";
 
-import { createRegistry, type ConversationView, type LiveState } from "@earendil-works/pi-durable";
+import type { ConversationView, LiveState } from "@earendil-works/pi-durable";
 
 import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import {
@@ -29,7 +29,10 @@ import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-f
 import { backofficeObjectScopeFromContextScope } from "@/backoffice-runtime/object-registry";
 import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
 
-import { createPiScenarioHarnessOptions } from "./pi-durable-scenario.test-support";
+import {
+  createPiScenarioDependencies,
+  createScriptedPiAgentDependencies,
+} from "./pi-durable-scenario.test-support";
 import { InMemoryPiObject } from "./pi.do";
 
 const scenarioObjects = allLocalObjects;
@@ -50,7 +53,7 @@ const objectOverrides = {
   PI: ({ state, runtime, openPiSessionStore, piAgentIdFromConfig, nowEpochMs }) =>
     new InMemoryPiObject({
       state,
-      options: createPiScenarioHarnessOptions(),
+      dependencies: createPiScenarioDependencies(),
       runtime,
       openStorage: openPiSessionStore,
       idFromConfig: piAgentIdFromConfig,
@@ -353,7 +356,7 @@ test("the local Pi view stream publishes durable generation partials before comp
           models.setProvider(faux.provider);
           return new InMemoryPiObject({
             state,
-            options: { models, registry: createRegistry() },
+            dependencies: createScriptedPiAgentDependencies(models),
             runtime,
             openStorage: openPiSessionStore,
             idFromConfig: piAgentIdFromConfig,
@@ -436,9 +439,8 @@ test("durable Pi paginates history, streams exports, and compacts without deleti
           models.setProvider(faux.provider);
           return new InMemoryPiObject({
             state,
-            options: {
-              models,
-              registry: createRegistry(),
+            dependencies: {
+              ...createScriptedPiAgentDependencies(models),
               settings: { compaction: { keepRecentTokens: 1 } },
             },
             runtime,
@@ -646,7 +648,7 @@ test("a cold local agent alarm resumes unfinished SQLite work without duplicatin
             models.setProvider(slow.provider);
             return new InMemoryPiObject({
               state,
-              options: { ...createPiScenarioHarnessOptions(), models },
+              dependencies: { ...createPiScenarioDependencies(), models },
               runtime,
               openStorage: openPiSessionStore,
               idFromConfig: piAgentIdFromConfig,

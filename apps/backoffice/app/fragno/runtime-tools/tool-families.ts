@@ -1,5 +1,5 @@
 import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
-import type { PiManagerRuntime } from "@/fragno/pi-manager/pi-manager-runtime";
+import type { PiManagerRuntime } from "@/fragno/pi/manager/pi-manager-runtime";
 
 import { codemodeStateToolFamily } from "./codemode-state-runtime";
 import { accountToolFamily, type AccountRuntime } from "./families/account";

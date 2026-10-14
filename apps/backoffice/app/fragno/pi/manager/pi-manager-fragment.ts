@@ -21,7 +21,6 @@ import {
   type BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
 import { BackofficeForbiddenError, type BackofficeKernel } from "@/backoffice-runtime/kernel";
-
 import {
   PiConversationViewDamagedError,
   piAgentCompactionSchema,
@@ -34,7 +33,7 @@ import {
   piAvailableModelSchema,
   type PiAgent,
   type PiAvailableModel,
-} from "./pi-agent-contract";
+} from "@/fragno/pi/agent/pi-agent-contract";
 
 const SESSION_ORDER_INDEX = "idx_pi_manager_session_created";
 const createSessionRequestSchema = piAgentCreationSchema.extend({

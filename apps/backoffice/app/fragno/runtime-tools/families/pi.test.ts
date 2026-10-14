@@ -1,6 +1,6 @@
 import { describe, expect, test, vi, assert } from "vitest";
 
-import type { PiManagerRuntime } from "@/fragno/pi-manager/pi-manager-runtime";
+import type { PiManagerRuntime } from "@/fragno/pi/manager/pi-manager-runtime";
 
 import {
   createTrustedSystemBackofficeToolContext,

@@ -2,7 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import type { BackofficeMeData } from "@/fragno/auth/contracts";
-import { piAgentObjectName, type PiAgent } from "@/fragno/pi-manager/pi-agent-contract";
+import { piAgentObjectName, type PiAgent } from "@/fragno/pi/agent/pi-agent-contract";
 
 import { Auth, InMemoryAuthObject } from "./auth.do";
 import { Automations } from "./automations.do";

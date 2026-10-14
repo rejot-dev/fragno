@@ -19,7 +19,7 @@ vi.mock("@/fragno/automation/read-backoffice-automation-source", () => ({
   readBackofficeAutomationSource: readBackofficeAutomationSourceMock,
 }));
 
-import type { PiManagerRuntime } from "@/fragno/pi-manager/pi-manager-runtime";
+import type { PiManagerRuntime } from "@/fragno/pi/manager/pi-manager-runtime";
 
 import { createRouteBackedRuntimeContext } from "./route-backed-runtime-context";
 

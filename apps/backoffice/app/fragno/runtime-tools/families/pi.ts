@@ -14,7 +14,7 @@ import type {
   PiManagerRunPromptInput,
   PiManagerRuntime,
   PiManagerSubmitPromptInput,
-} from "@/fragno/pi-manager/pi-manager-runtime";
+} from "@/fragno/pi/manager/pi-manager-runtime";
 import {
   defineCliArgsParser,
   parseCliTokens,

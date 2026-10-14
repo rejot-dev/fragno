@@ -21,9 +21,10 @@ import {
   encodeBackofficeObjectAddress,
 } from "@/backoffice-runtime/object-registry";
 import { createCloudflareDurableObjectRuntimeServices } from "@/backoffice-runtime/runtime-services";
-import { piAgentObjectName } from "@/fragno/pi-manager/pi-agent-contract";
+import { piAgentObjectName } from "@/fragno/pi/agent/pi-agent-contract";
 
 import { openPiSessionStore } from "./lib/pi-session-store";
+import { createScriptedPiAgentDependencies } from "./pi-durable-scenario.test-support";
 import { InMemoryPiObject, type Pi } from "./pi.do";
 
 function manager(organizationId: string) {
@@ -369,7 +370,10 @@ describe("Pi durable agent scenarios", () => {
         const object = new InMemoryPiObject({
           state,
           runtime: createCloudflareDurableObjectRuntimeServices(testEnv, state),
-          options: { models, registry: createRegistry(), onReport: (error) => reports.push(error) },
+          dependencies: {
+            ...createScriptedPiAgentDependencies(models),
+            report: (error) => reports.push(error),
+          },
           openStorage: async () => {
             storageAttempts += 1;
             if (storageAttempts === 1) {

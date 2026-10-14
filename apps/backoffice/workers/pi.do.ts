@@ -2,25 +2,20 @@ import { BACKGROUND_CONTEXT, withAbortSignal } from "@earendil-works/chord/conte
 import { PathError } from "@earendil-works/chord/delta";
 import { piAgentConfigSchema, type PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
 import { DurableObject, RpcTarget } from "cloudflare:workers";
+import type { PostHog } from "posthog-node";
 import type { z } from "zod";
 
-import {
-  createRegistry,
-  Harness,
-  type CompactionResult,
-  type Conversation,
-  type ConversationView,
-  type Cursor,
-  type HarnessOptions,
-  type Storage,
-  type TaskId,
-  type WatchHandle,
-} from "@earendil-works/pi-durable";
+import type { Storage } from "@earendil-works/pi-durable";
 
 import {
   createCloudflareDurableObjectRuntimeServices,
   type BackofficeRuntimeServices,
 } from "@/backoffice-runtime/runtime-services";
+import { readPiCompactionStatus } from "@/fragno/pi/agent/compaction-status";
+import {
+  createPiConversationExportStream,
+  createPiConversationViewNdjsonStream,
+} from "@/fragno/pi/agent/conversation-streams";
 import {
   piAgentCompactionSchema,
   piAgentEntryPageRequestSchema,
@@ -31,140 +26,29 @@ import {
   type PiAgent,
   type PiAgentCompactionStatus,
   type PiAgentSubmissionWait,
-} from "@/fragno/pi-manager/pi-agent-contract";
-import { PI_THINKING_LEVEL } from "@/fragno/pi/pi-shared";
+} from "@/fragno/pi/agent/pi-agent-contract";
+import {
+  createPiAgentDependencies,
+  openPiAgentHarness,
+  type OpenPiAgent,
+  type PiAgentDependencies,
+} from "@/fragno/pi/agent/pi-agent-harness";
+import { createPiPostHogExtension } from "@/fragno/pi/extensions/posthog/posthog-extension";
 
 import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-object";
 import { createCloudflarePostHog, shutdownCloudflarePostHog } from "./lib/cloudflare-posthog";
-import { createBackofficePiDurableHarnessOptions } from "./lib/pi-durable-backoffice";
-import {
-  calculatePiDurableBillingRetryDelayMs,
-  createPiDurableBillingTask,
-  ensurePiDurableBillingTask,
-  flushPiDurableBilling,
-  type PiDurableBillingTask,
-} from "./lib/pi-durable-billing";
-import { createPiDurableHarnessOptions } from "./lib/pi-durable-harness-options";
-import { createPiPostHogExtension } from "./lib/pi-posthog-extension";
 import { openPiSessionStore } from "./lib/pi-session-store";
 
 const AGENT_CONFIG_KEY = "pi-agent-config";
 const WAKE_HEARTBEAT_MS = 30_000;
 const WAKE_BUDGET_MS = 10 * 60_000;
-const ENTRY_SCAN_PAGE_SIZE = 256;
-
-type OpenPiAgent = {
-  harness: Harness;
-  storage: Storage;
-  billingTask: PiDurableBillingTask | null;
-};
-
-function encodePiConversationViewFrame(type: "snapshot" | "update", view: ConversationView) {
-  return new TextEncoder().encode(`${JSON.stringify({ type, view })}\n`);
-}
-
-function createPiConversationViewNdjsonStream(watch: WatchHandle<ConversationView>) {
-  let cancelled = false;
-  let pendingPulls = 0;
-  let releaseBackpressure: (() => void) | null = null;
-
-  return new ReadableStream<Uint8Array>({
-    type: "bytes",
-    start(controller) {
-      controller.enqueue(encodePiConversationViewFrame("snapshot", watch.value));
-      watch.start(async (view) => {
-        if (!cancelled && (controller.desiredSize ?? 0) <= 0) {
-          if (pendingPulls > 0) {
-            pendingPulls -= 1;
-          } else {
-            await new Promise<void>((resolve) => {
-              releaseBackpressure = resolve;
-            });
-            releaseBackpressure = null;
-          }
-        }
-        if (!cancelled) {
-          controller.enqueue(encodePiConversationViewFrame("update", view));
-        }
-      });
-      void watch.closed.then((end) => {
-        if (cancelled) {
-          return;
-        }
-        if (end.reason === "listener_error") {
-          controller.error(end.error);
-          return;
-        }
-        controller.close();
-      });
-    },
-    pull() {
-      if (releaseBackpressure) {
-        releaseBackpressure();
-        return;
-      }
-      pendingPulls += 1;
-    },
-    async cancel() {
-      cancelled = true;
-      releaseBackpressure?.();
-      await watch.stop();
-    },
-  });
-}
-
-function encodePiExportLine(value: unknown) {
-  return new TextEncoder().encode(`${JSON.stringify(value)}\n`);
-}
-
-function createPiConversationExportStream(root: Conversation, config: PiAgentConfig) {
-  async function* exportLines() {
-    yield encodePiExportLine({
-      type: "pi-durable-session",
-      version: 1,
-      order: "newest-first",
-      session: {
-        sessionId: config.sessionId,
-        scope: config.scope,
-        name: config.name,
-        model: config.model,
-        instructions: config.instructions,
-      },
-    });
-
-    let cursor: Cursor | undefined;
-    do {
-      const page = await root.entries({}, ENTRY_SCAN_PAGE_SIZE, cursor, BACKGROUND_CONTEXT);
-      for (const entry of page.items) {
-        yield encodePiExportLine({ type: "entry", entry });
-      }
-      cursor = page.next;
-    } while (cursor !== undefined);
-  }
-
-  const lines = exportLines();
-  return new ReadableStream<Uint8Array>({
-    type: "bytes",
-    async pull(controller) {
-      const line = await lines.next();
-      if (line.done) {
-        controller.close();
-        return;
-      }
-      controller.enqueue(line.value);
-    },
-    async cancel() {
-      await lines.return(undefined);
-    },
-  });
-}
 
 /** Shared durable agent lifecycle; both runtimes persist an alarm before admitting work. */
 export class InMemoryPiObject extends RpcTarget implements PiAgent {
   readonly #state: BackofficeObjectState;
   readonly #ready: Promise<void>;
   readonly #startup: Promise<void>;
-  readonly #options: HarnessOptions;
+  readonly #dependencies: PiAgentDependencies;
   readonly #runtime: BackofficeRuntimeServices;
   readonly #openStorage: () => Promise<Storage>;
   readonly #idFromConfig: (config: PiAgentConfig) => DurableObjectId;
@@ -176,14 +60,14 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
 
   constructor({
     state,
-    options,
+    dependencies,
     runtime,
     openStorage,
     idFromConfig,
     nowEpochMs,
   }: {
     state: BackofficeObjectState;
-    options: HarnessOptions;
+    dependencies: PiAgentDependencies;
     runtime: BackofficeRuntimeServices;
     openStorage: () => Promise<Storage>;
     idFromConfig: (config: PiAgentConfig) => DurableObjectId;
@@ -191,7 +75,7 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
   }) {
     super();
     this.#state = state;
-    this.#options = options;
+    this.#dependencies = dependencies;
     this.#runtime = runtime;
     this.#openStorage = openStorage;
     this.#idFromConfig = idFromConfig;
@@ -221,8 +105,7 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
         }
       })
       .catch((error: unknown) => {
-        const report = this.#options.onReport ?? console.error;
-        report(error);
+        this.#dependencies.report(error);
       });
   }
 
@@ -240,63 +123,25 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
       return await this.#opening;
     }
     // Once external work leaves the input gate, concurrent requests must still share one storage owner.
-    const opening = this.#openHarness(config);
+    const opening = openPiAgentHarness({
+      config,
+      runtime: this.#runtime,
+      dependencies: this.#dependencies,
+      openStorage: this.#openStorage,
+    });
     this.#opening = opening;
     try {
-      return await opening;
+      this.#opened = await opening;
+      return this.#opened;
     } finally {
       this.#opening = null;
     }
   }
 
-  async #openHarness(config: PiAgentConfig): Promise<OpenPiAgent> {
-    const billingOrganizationId = config.billingOrganizationId;
-    // Usage remains in pi.usage and is backfilled when an optional Billing binding is later configured.
-    const billingTask =
-      billingOrganizationId && this.#runtime.config.bindings.billing
-        ? createPiDurableBillingTask({
-            config,
-            recordEvent: async (event) =>
-              await this.#runtime.objects.billing
-                .forOrg(billingOrganizationId)
-                .commands.recordEvent(event),
-            retryDelayMs: calculatePiDurableBillingRetryDelayMs,
-          })
-        : null;
-    const options = await createBackofficePiDurableHarnessOptions({
-      config,
-      runtime: this.#runtime,
-      options: this.#options,
-      tasks: billingTask ? [billingTask] : [],
-    });
-    const storage = await this.#openStorage();
-    const harness = await Harness.open(storage, options, BACKGROUND_CONTEXT);
-    try {
-      await harness.root(BACKGROUND_CONTEXT, {
-        agent: {
-          model: config.model,
-          instructions: config.instructions,
-          thinkingLevel: PI_THINKING_LEVEL,
-        },
-      });
-    } catch (cause) {
-      await harness.close(BACKGROUND_CONTEXT);
-      throw cause;
-    }
-    this.#opened = { storage, harness, billingTask };
-    return this.#opened;
-  }
-
   async #ensureBillingDelivery(opened: OpenPiAgent) {
-    if (!opened.billingTask) {
-      return null;
-    }
-    return await ensurePiDurableBillingTask({
-      harness: opened.harness,
-      task: opened.billingTask,
-      nowEpochMs: this.#nowEpochMs(),
-      context: BACKGROUND_CONTEXT,
-    });
+    return (
+      (await opened.billing?.ensure(opened.harness, this.#nowEpochMs(), BACKGROUND_CONTEXT)) ?? null
+    );
   }
 
   async #requireAgent(rawConfig: PiAgentConfig) {
@@ -429,28 +274,7 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
       return null;
     }
     const { harness } = await this.#requireAgent(config);
-    const task = await harness.getTask(taskId as TaskId<CompactionResult>, BACKGROUND_CONTEXT);
-    if (task?.kind !== "pi.compaction") {
-      return null;
-    }
-    if (task.state.status !== "completing" && task.state.status !== "terminal") {
-      return { taskId, status: "running", message: null };
-    }
-    const outcome = task.state.outcome;
-    if (outcome.status === "completed") {
-      return outcome.result.entryId !== undefined || outcome.result.submissionId !== undefined
-        ? { taskId, status: "completed", message: null }
-        : {
-            taskId,
-            status: "unchanged",
-            message: "Pi context did not need compaction.",
-          };
-    }
-    const message =
-      outcome.status === "failed" || outcome.status === "faulted"
-        ? outcome.error.message
-        : (outcome.reason ?? `Pi compaction ${outcome.status}.`);
-    return { taskId, status: "failed", message };
+    return await readPiCompactionStatus(harness, taskId);
   }
 
   async getView(config: PiAgentConfig): Promise<unknown> {
@@ -507,14 +331,7 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
     try {
       // Keep the alarm invocation alive while Pi runs; a persisted heartbeat covers eviction.
       await harness.waitForIdle(alarmContext);
-      if (opened.billingTask) {
-        await flushPiDurableBilling({
-          harness,
-          task: opened.billingTask,
-          nowEpochMs: this.#nowEpochMs,
-          context: alarmContext,
-        });
-      }
+      await opened.billing?.flush(harness, this.#nowEpochMs, alarmContext);
     } catch (error) {
       if (!controller.signal.aborted) {
         throw error;
@@ -549,49 +366,35 @@ export class Pi extends DurableObject<CloudflareEnv> implements PiAgent {
   constructor(
     state: DurableObjectState,
     env: CloudflareEnv,
-    options: HarnessOptions = createPiDurableHarnessOptions(env),
+    dependencies: PiAgentDependencies = createPiAgentDependencies(env),
   ) {
     super(state, env);
-    let harnessOptions = options;
-    if (
+    const analyticsEnabled =
       import.meta.env.BACKOFFICE_TARGET === "cloudflare" &&
       import.meta.env.PROD &&
-      env.POSTHOG_PROJECT_TOKEN
-    ) {
-      const registry = createRegistry();
-      for (const extension of options.registry.snapshot().installed()) {
-        registry.install(extension);
+      Boolean(env.POSTHOG_PROJECT_TOKEN);
+    async function queuePiGenerationEvent(event: Parameters<PostHog["capture"]>[0]) {
+      const client = await createCloudflarePostHog(env);
+      if (!client) {
+        return;
       }
-      let configPromise: Promise<PiAgentConfig> | null = null;
-      registry.install(
-        createPiPostHogExtension({
-          getConfig: function loadPersistedPiConfig() {
-            configPromise ??= state.storage.get<PiAgentConfig>(AGENT_CONFIG_KEY).then((config) => {
-              if (!config) {
-                throw new Error("Pi analytics requires a provisioned agent.");
-              }
-              return config;
-            });
-            return configPromise;
-          },
-          capture: async function queuePiGenerationEvent(event) {
-            const client = await createCloudflarePostHog(env);
-            if (!client) {
-              return;
-            }
-            try {
-              client.capture(event);
-            } finally {
-              state.waitUntil(shutdownCloudflarePostHog(client));
-            }
-          },
-        }),
-      );
-      harnessOptions = { ...options, registry };
+      try {
+        client.capture(event);
+      } finally {
+        state.waitUntil(shutdownCloudflarePostHog(client));
+      }
     }
     this.#object = new InMemoryPiObject({
       state,
-      options: harnessOptions,
+      dependencies: analyticsEnabled
+        ? {
+            ...dependencies,
+            extensions: (config) => [
+              ...dependencies.extensions(config),
+              createPiPostHogExtension({ config, capture: queuePiGenerationEvent }),
+            ],
+          }
+        : dependencies,
       runtime: createCloudflareDurableObjectRuntimeServices(env, state),
       openStorage: () => openPiSessionStore(state.storage),
       idFromConfig: (config) => env.PI.idFromName(piAgentObjectName(config)),

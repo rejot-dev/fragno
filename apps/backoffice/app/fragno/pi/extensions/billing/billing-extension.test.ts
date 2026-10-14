@@ -15,7 +15,6 @@ import type { PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
 
 import {
   createRegistry,
-  defineExtension,
   Harness,
   MemoryStorage,
   ROOT_CONVERSATION_ID,
@@ -26,11 +25,7 @@ import {
 import { BACKOFFICE_SYSTEM_ACTORS } from "@/backoffice-runtime/context";
 import type { BillingEventInput } from "@/fragno/billing/contracts";
 
-import {
-  createPiDurableBillingTask,
-  flushPiDurableBilling,
-  PiDurableBillingDoc,
-} from "./pi-durable-billing";
+import { createPiBilling, PiDurableBillingDoc } from "./billing-extension";
 
 const config: PiAgentConfig = {
   scopeRestriction: null,
@@ -67,7 +62,7 @@ test("durable Pi billing retries the exact event after delivery succeeds before 
   const acceptedEvents = new Map<string, BillingEventInput>();
   const attempts: BillingEventInput[] = [];
   let failAfterFirstDelivery = true;
-  const task = createPiDurableBillingTask({
+  const billing = createPiBilling({
     config,
     retryDelayMs: () => 0,
     recordEvent: async (event) => {
@@ -86,7 +81,7 @@ test("durable Pi billing retries the exact event after delivery succeeds before 
     },
   });
   const registry = createRegistry();
-  registry.install(defineExtension({ name: "durable-billing-test", tasks: [task] }));
+  registry.install(billing.extension);
   const harness = await Harness.open(
     new MemoryStorage(),
     { models: createModels(), registry, onReport: () => {} },
@@ -100,12 +95,7 @@ test("durable Pi billing retries the exact event after delivery succeeds before 
       usage.models = committedUsage.models;
     }, BACKGROUND_CONTEXT);
 
-    await flushPiDurableBilling({
-      harness,
-      task,
-      nowEpochMs: () => Date.parse("2026-10-03T12:00:00.000Z"),
-      context: BACKGROUND_CONTEXT,
-    });
+    await billing.flush(harness, () => Date.parse("2026-10-03T12:00:00.000Z"), BACKGROUND_CONTEXT);
 
     expect(attempts).toHaveLength(2);
     expect(attempts[1]).toEqual(attempts[0]);
@@ -125,16 +115,11 @@ test("durable Pi billing retries the exact event after delivery succeeds before 
       "ai.cost.total": 696_750,
     });
 
-    const billing = await harness.snapshot(PiDurableBillingDoc, BACKGROUND_CONTEXT);
-    expect(billing).toMatchObject({ activeTaskId: null });
-    expect(billing?.delivered).toMatchObject({ totalTokens: 140, totalNanoUsd: 696_750 });
+    const billingState = await harness.snapshot(PiDurableBillingDoc, BACKGROUND_CONTEXT);
+    expect(billingState).toMatchObject({ activeTaskId: null });
+    expect(billingState?.delivered).toMatchObject({ totalTokens: 140, totalNanoUsd: 696_750 });
 
-    await flushPiDurableBilling({
-      harness,
-      task,
-      nowEpochMs: () => Date.parse("2026-10-03T12:01:00.000Z"),
-      context: BACKGROUND_CONTEXT,
-    });
+    await billing.flush(harness, () => Date.parse("2026-10-03T12:01:00.000Z"), BACKGROUND_CONTEXT);
     expect(attempts).toHaveLength(2);
   } finally {
     await harness.close(BACKGROUND_CONTEXT);
@@ -148,7 +133,7 @@ test("durable Pi billing restores an event delivered before its SQLite acknowled
   const attempts: BillingEventInput[] = [];
   const database = openNodeSqliteDatabase(":memory:");
   const createTask = () =>
-    createPiDurableBillingTask({
+    createPiBilling({
       config,
       retryDelayMs: () => 0,
       recordEvent: async (event) => {
@@ -165,9 +150,9 @@ test("durable Pi billing restores an event delivered before its SQLite acknowled
     });
 
   try {
-    const sourceTask = createTask();
+    const sourceBilling = createTask();
     const sourceRegistry = createRegistry();
-    sourceRegistry.install(defineExtension({ name: "durable-billing-test", tasks: [sourceTask] }));
+    sourceRegistry.install(sourceBilling.extension);
     const sourceHarness = await Harness.open(
       await SqliteStorage.open(await database),
       { models: createModels(), registry: sourceRegistry },
@@ -178,31 +163,27 @@ test("durable Pi billing restores an event delivered before its SQLite acknowled
       const usage = await tx.doc(UsageDoc, ROOT_CONVERSATION_ID);
       usage.models = committedUsage.models;
     }, BACKGROUND_CONTEXT);
-    await flushPiDurableBilling({
-      harness: sourceHarness,
-      task: sourceTask,
-      nowEpochMs: () => Date.parse("2026-10-03T12:00:00.000Z"),
-      context: BACKGROUND_CONTEXT,
-    });
+    await sourceBilling.flush(
+      sourceHarness,
+      () => Date.parse("2026-10-03T12:00:00.000Z"),
+      BACKGROUND_CONTEXT,
+    );
     await sourceHarness.close(BACKGROUND_CONTEXT);
 
-    const restoredTask = createTask();
+    const restoredBilling = createTask();
     const restoredRegistry = createRegistry();
-    restoredRegistry.install(
-      defineExtension({ name: "durable-billing-test", tasks: [restoredTask] }),
-    );
+    restoredRegistry.install(restoredBilling.extension);
     const restoredHarness = await Harness.open(
       await openNodeSqliteStorage(snapshotPath),
       { models: createModels(), registry: restoredRegistry },
       BACKGROUND_CONTEXT,
     );
     try {
-      await flushPiDurableBilling({
-        harness: restoredHarness,
-        task: restoredTask,
-        nowEpochMs: () => Date.parse("2026-10-03T12:01:00.000Z"),
-        context: BACKGROUND_CONTEXT,
-      });
+      await restoredBilling.flush(
+        restoredHarness,
+        () => Date.parse("2026-10-03T12:01:00.000Z"),
+        BACKGROUND_CONTEXT,
+      );
       expect(attempts).toHaveLength(2);
       expect(attempts[1]).toEqual(attempts[0]);
       expect(acceptedEvents).toHaveLength(1);
@@ -230,7 +211,7 @@ test("root conversation cancellation does not abort ownerless billing delivery",
     notifyRecordEventStarted = resolve;
   });
   const events: BillingEventInput[] = [];
-  const task = createPiDurableBillingTask({
+  const billing = createPiBilling({
     config,
     retryDelayMs: () => 0,
     recordEvent: async (event) => {
@@ -241,7 +222,7 @@ test("root conversation cancellation does not abort ownerless billing delivery",
     },
   });
   const registry = createRegistry();
-  registry.install(defineExtension({ name: "durable-billing-test", tasks: [task] }));
+  registry.install(billing.extension);
   const harness = await Harness.open(
     new MemoryStorage(),
     { models: createModels(), registry },
@@ -255,12 +236,11 @@ test("root conversation cancellation does not abort ownerless billing delivery",
       usage.models = committedUsage.models;
     }, BACKGROUND_CONTEXT);
 
-    const flushing = flushPiDurableBilling({
+    const flushing = billing.flush(
       harness,
-      task,
-      nowEpochMs: () => Date.parse("2026-10-03T12:00:00.000Z"),
-      context: BACKGROUND_CONTEXT,
-    });
+      () => Date.parse("2026-10-03T12:00:00.000Z"),
+      BACKGROUND_CONTEXT,
+    );
     await recordEventStarted;
     await root.abort(BACKGROUND_CONTEXT, { background: true });
     releaseRecordEvent();

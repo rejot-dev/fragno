@@ -2,7 +2,7 @@ import type { PiManagerSession } from "@fragno-dev/backoffice-api/v0/pi";
 import type { ReactNode } from "react";
 
 import type { BackofficeResolvedScope } from "@/backoffice-runtime/resolved-scope";
-import type { PiAvailableModel } from "@/fragno/pi-manager/pi-agent-contract";
+import type { PiAvailableModel } from "@/fragno/pi/agent/pi-agent-contract";
 
 import type {
   SessionWorkspaceStateBySession,

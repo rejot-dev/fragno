@@ -15,8 +15,10 @@ import {
   backofficeOperationErrorKindForStatus,
 } from "@/backoffice-runtime/operation-error";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
-
-import { PI_AGENT_SUBMISSION_WAIT_MAX_MS, type PiAgentSubmissionWait } from "./pi-agent-contract";
+import {
+  PI_AGENT_SUBMISSION_WAIT_MAX_MS,
+  type PiAgentSubmissionWait,
+} from "@/fragno/pi/agent/pi-agent-contract";
 
 export type PiManagerCreateSessionInput = {
   requestId?: string;

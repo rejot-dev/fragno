@@ -1,3 +1,6 @@
+import { createPiAgentDependencies } from "@/fragno/pi/agent/pi-agent-harness";
+import { createPiModels, listAvailablePiModels } from "@/fragno/pi/agent/pi-models";
+
 import { InMemoryApiObject } from "../../workers/api.do";
 import { InMemoryAppInstallationsObject } from "../../workers/app-installations.do";
 import { InMemoryAppsObject } from "../../workers/apps.do";
@@ -9,11 +12,6 @@ import { InMemoryCodemodeObject } from "../../workers/codemode.do";
 import { InMemoryFormsObject } from "../../workers/forms.do";
 import { InMemoryGitHubWebhookRouterObject } from "../../workers/github-webhook-router.do";
 import { InMemoryGitHubObject } from "../../workers/github.do";
-import {
-  createPiDurableHarnessOptions,
-  createPiDurableModels,
-  listSupportedPiDurableModels,
-} from "../../workers/lib/pi-durable-harness-options";
 import { InMemoryMarketplaceObject } from "../../workers/marketplace.do";
 import { InMemoryMcpObject } from "../../workers/mcp.do";
 import { InMemoryOtpObject } from "../../workers/otp.do";
@@ -176,7 +174,7 @@ export const allLocalObjects = {
   PI: (input) =>
     new InMemoryPiObject({
       ...input,
-      options: createPiDurableHarnessOptions(input.env),
+      dependencies: createPiAgentDependencies(input.env),
       openStorage: input.openPiSessionStore,
       idFromConfig: input.piAgentIdFromConfig,
     }),
@@ -185,8 +183,8 @@ export const allLocalObjects = {
     const supportedAvailableModels = piAvailableModels
       ? async () => piAvailableModels
       : (() => {
-          const models = createPiDurableModels(input.env);
-          return async () => await listSupportedPiDurableModels(models);
+          const models = createPiModels(input.env);
+          return async () => await listAvailablePiModels(models);
         })();
     return new InMemoryPiManagerObject({
       ...input,

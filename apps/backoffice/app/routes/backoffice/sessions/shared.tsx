@@ -2,7 +2,7 @@ import { BackofficePageHeader } from "@fragno-private/design-system/page-header"
 import { isRouteErrorResponse } from "react-router";
 
 import type { BackofficeResolvedScope } from "@/backoffice-runtime/resolved-scope";
-import type { PiAvailableModel } from "@/fragno/pi-manager/pi-agent-contract";
+import type { PiAvailableModel } from "@/fragno/pi/agent/pi-agent-contract";
 
 import { getRouteErrorDebugDetails, getRouteErrorMessage } from "../route-errors";
 

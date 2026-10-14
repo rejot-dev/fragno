@@ -3,7 +3,7 @@ import { describe, expect, it, assert } from "vitest";
 import { InMemoryFs } from "just-bash";
 
 import { createTestStateBackend } from "@/fragno/codemode/state-backend.test-utils";
-import type { PiManagerRuntime } from "@/fragno/pi-manager/pi-manager-runtime";
+import type { PiManagerRuntime } from "@/fragno/pi/manager/pi-manager-runtime";
 
 import { createInteractiveBashHost } from "./automation-host";
 import type { StoreSetArgs } from "./automation-types";

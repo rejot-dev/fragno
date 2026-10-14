@@ -6,7 +6,7 @@ import { fauxAssistantMessage, fauxProvider } from "@earendil-works/pi-ai/provid
 import type { PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
 import { env } from "cloudflare:workers";
 
-import { createRegistry, type ConversationView } from "@earendil-works/pi-durable";
+import type { ConversationView } from "@earendil-works/pi-durable";
 
 import {
   BACKOFFICE_SYSTEM_ACTORS,
@@ -15,7 +15,7 @@ import {
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import { createCloudflareDurableObjectRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { createRuntimeStateBackend } from "@/fragno/codemode/runtime-state-backend";
-import { piAgentObjectName } from "@/fragno/pi-manager/pi-agent-contract";
+import { piAgentObjectName } from "@/fragno/pi/agent/pi-agent-contract";
 import {
   javaScriptBuildToolFamily,
   javaScriptRunToolFamily,
@@ -25,6 +25,7 @@ import { executeBackofficeRuntimeTool } from "@/fragno/runtime-tools/runtime-too
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
 
 import { openPiSessionStore } from "./lib/pi-session-store";
+import { createScriptedPiAgentDependencies } from "./pi-durable-scenario.test-support";
 import { InMemoryPiObject } from "./pi.do";
 
 /** Builds through the scope's Codemode object, then opens and restarts an agent with only a Worker Loader. */
@@ -143,7 +144,10 @@ test("precompiled workspace extensions open concurrently and after restart witho
       const object = new InMemoryPiObject({
         state,
         runtime: executionRuntime,
-        options: { models, registry: createRegistry(), onReport: (error) => reports.push(error) },
+        dependencies: {
+          ...createScriptedPiAgentDependencies(models),
+          report: (error) => reports.push(error),
+        },
         openStorage: () => openPiSessionStore(state.storage),
         idFromConfig: (input) => testEnv.PI.idFromName(piAgentObjectName(input)),
         nowEpochMs: Date.now,

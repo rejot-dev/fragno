@@ -19,7 +19,7 @@ import {
   getAutomationBrowserDatabase,
   type AutomationBrowserCollections,
 } from "@/fragno/automation/tanstack/browser-database";
-import type { PiAgentCompactionStatus } from "@/fragno/pi-manager/pi-agent-contract";
+import type { PiAgentCompactionStatus } from "@/fragno/pi/agent/pi-agent-contract";
 
 import type { Route } from "./+types/session-detail";
 import {

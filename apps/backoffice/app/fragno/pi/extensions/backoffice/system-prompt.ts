@@ -1,8 +1,13 @@
+import { STATIC_FILE_CONTENT } from "@/files/content/static";
 import { renderCodemodeSystemPrompt } from "@/fragno/codemode/codemode-dts";
+import {
+  requirePiStateBackend,
+  type PiRuntimeToolContext,
+} from "@/fragno/pi/agent/backoffice-agent-context";
 
-import { requirePiStateBackend, type PiRuntimeToolContext } from "./pi-runtime-context";
-import { PI_SYSTEM_PROMPT } from "./pi-shared";
-import { loadBackofficePiSkills } from "./pi-skills";
+import { loadBackofficePiSkills } from "./skills";
+
+const PI_SYSTEM_PROMPT = STATIC_FILE_CONTENT["SYSTEM.md"];
 
 type BackofficePiSkill = {
   name: string;

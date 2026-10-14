@@ -1,5 +1,5 @@
 // The Workers test pool loads the main module on first Durable Object access; load it untimed.
-import "../../../workers/vitest-env";
+import "../../../../../workers/vitest-env";
 
 import { describe, expect, test, assert } from "vitest";
 
@@ -20,20 +20,25 @@ import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-servi
 import { codemodeWorkflowParamsSchema } from "@/fragno/automation/engine/codemode-invocation";
 import { AutomationWorkflowRuntimeRequestError } from "@/fragno/automation/workflow-route-runtime";
 import { codemodeRunnerFor } from "@/fragno/codemode/codemode-object-execute";
-
-import { MemoryUploadObject, createTestStateBackend } from "../codemode/state-backend.test-utils";
-import { runBackofficeCodemodeWorkflow } from "../codemode/workflow-execute";
-import type { RegisteredAutomationsRuntime } from "../runtime-tools/bash-host";
-import { EMPTY_BASH_HOST_CONTEXT } from "../runtime-tools/bash-host.test-utils";
-import { createUnavailableAutomationRouterRuntime } from "../runtime-tools/families/automations-routing";
+import {
+  MemoryUploadObject,
+  createTestStateBackend,
+} from "@/fragno/codemode/state-backend.test-utils";
+import { runBackofficeCodemodeWorkflow } from "@/fragno/codemode/workflow-execute";
+import type { RegisteredAutomationsRuntime } from "@/fragno/runtime-tools/bash-host";
+import { EMPTY_BASH_HOST_CONTEXT } from "@/fragno/runtime-tools/bash-host.test-utils";
+import { createUnavailableAutomationRouterRuntime } from "@/fragno/runtime-tools/families/automations-routing";
 import type {
   AutomationWorkflowRuntime,
   InternalAutomationWorkflowRuntime,
-} from "../runtime-tools/families/automations-workflow";
-import { createTrustedSystemBackofficeToolContext } from "../runtime-tools/runtime-tools";
-import { runtimeToolFamilies } from "../runtime-tools/tool-families";
-import { createPiCodemodeRuntime } from "./pi-codemode";
-import { createBackofficePiTools, execCodeModeParametersSchema } from "./pi-tools";
+} from "@/fragno/runtime-tools/families/automations-workflow";
+import { createTrustedSystemBackofficeToolContext } from "@/fragno/runtime-tools/runtime-tools";
+import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
+
+import {
+  createExecCodeModeTool as createPiExecCodeModeTool,
+  execCodeModeParametersSchema,
+} from "./exec-code-mode-tool";
 
 const unusedObjects = {} as BackofficeObjectRegistry;
 const testRuntimeConfig: BackofficeRuntimeConfig = {
@@ -594,30 +599,23 @@ const createExecCodeModeTool = async ({
   workflowRuntime?: PiWorkflowRuntime;
   stateBackend?: ReturnType<typeof createTestStateBackend>;
 }) => {
-  const runtimeToolContext = automationsRuntime
-    ? ({
-        ...EMPTY_BASH_HOST_CONTEXT,
-        stateBackend,
-        automations: { runtime: automationsRuntime },
-      } as never)
-    : ({ ...EMPTY_BASH_HOST_CONTEXT, stateBackend } as never);
-  const tool = createBackofficePiTools({
+  const runtimeToolContext = {
+    ...EMPTY_BASH_HOST_CONTEXT,
+    stateBackend,
+    workflow: workflowRuntime ? { runtime: workflowRuntime } : null,
+    ...(automationsRuntime ? { automations: { runtime: automationsRuntime } } : {}),
+  } as never;
+  const tool = createPiExecCodeModeTool({
     sessionId: "session-1",
-    execution: createPiSystemFileContext().execution,
     billingOrganizationId: "org-1",
-    codemode: {
-      ...createPiCodemodeRuntime(
-        codemodeRunnerFor(
-          createCloudflareBackofficeObjectRegistry(env as CloudflareEnv).codemode.singleton()
-            .commands,
-          createBackofficeSystemExecution({ kind: "system" }),
-        ),
-      ),
-      workflow: workflowRuntime,
-    },
-    authorizeExecution: async () => undefined,
-    createRuntimeToolContext: () => runtimeToolContext,
-  }).execCodeMode;
+    execution: createPiSystemFileContext().execution,
+    codemode: codemodeRunnerFor(
+      createCloudflareBackofficeObjectRegistry(env as CloudflareEnv).codemode.singleton().commands,
+      createBackofficeSystemExecution({ kind: "system" }),
+    ),
+    authorize: async () => undefined,
+    toolContext: () => runtimeToolContext,
+  });
   return {
     ...tool,
     async execute(

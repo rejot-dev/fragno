@@ -8,10 +8,7 @@ import {
 } from "@earendil-works/pi-ai";
 
 /** Authorization guards actual generation, compaction and deferred fetches, not fail-open extension hooks. */
-export function createAuthorizedPiDurableModels(
-  models: Models,
-  authorize: () => Promise<void>,
-): Models {
+export function createAuthorizedPiModels(models: Models, authorize: () => Promise<void>): Models {
   function requestFailure(
     model: Model<string>,
     signal: AbortSignal | undefined,

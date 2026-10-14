@@ -10,8 +10,8 @@ import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.ser
 import type {
   PiAgentCompactionStatus,
   PiAvailableModel,
-} from "@/fragno/pi-manager/pi-agent-contract";
-import type { createPiManagerFragment } from "@/fragno/pi-manager/pi-manager-fragment";
+} from "@/fragno/pi/agent/pi-agent-contract";
+import type { createPiManagerFragment } from "@/fragno/pi/manager/pi-manager-fragment";
 import { captureBackofficeServerEvent } from "@/posthog.server";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 

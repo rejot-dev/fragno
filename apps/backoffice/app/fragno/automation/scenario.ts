@@ -76,7 +76,7 @@ import type {
   PiAgent,
   PiAgentEntryPage,
   PiAvailableModel,
-} from "@/fragno/pi-manager/pi-agent-contract";
+} from "@/fragno/pi/agent/pi-agent-contract";
 import type { TelegramAutomationFileMetadata } from "@/fragno/runtime-tools/families/telegram-runtime";
 import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 import type { BackofficeRuntimeToolCall } from "@/fragno/runtime-tools/runtime-tools";

@@ -5,7 +5,7 @@ import type { ConversationView } from "@earendil-works/pi-durable";
 import {
   piAgentViewStreamFrameSchema,
   type PiAgentViewStreamFrame,
-} from "@/fragno/pi-manager/pi-agent-contract";
+} from "@/fragno/pi/agent/pi-agent-contract";
 
 const INITIAL_RECONNECT_DELAY_MS = 250;
 const MAX_RECONNECT_DELAY_MS = 5_000;

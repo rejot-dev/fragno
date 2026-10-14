@@ -14,16 +14,16 @@ async function generationEventUuid(key: string): Promise<string> {
 
 /** Provider-neutral usage capture; conversation content never enters the analytics transport. */
 export function createPiPostHogExtension(input: {
-  getConfig(): Promise<PiAgentConfig>;
+  config: PiAgentConfig;
   capture(event: Parameters<PostHog["capture"]>[0]): Promise<void>;
 }) {
+  const { config } = input;
   return defineExtension({
     name: "posthog",
     hooks: [
       hook(GenerationTask, {
         async afterResponse(message, api) {
           try {
-            const config = await input.getConfig();
             // A recovered terminal response must retain its ingestion identity without extra durable writes.
             const uuid = await generationEventUuid(
               `${config.sessionId}:${api.conversationId}:${api.taskId}:${message.timestamp}`,
