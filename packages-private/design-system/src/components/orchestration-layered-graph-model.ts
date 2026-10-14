@@ -43,15 +43,14 @@ export type LayeredSourceBlock = {
 export type LayeredTargetNode = { target: OrchestrationTarget; top: number; height: number };
 
 /**
- * Shows or folds every unrouted event at once, under the last source. `hiddenSources` are the
- * sources that only appear once it is expanded, because nothing listens to them.
+ * Shows or folds every unrouted event at once. It sits below the graph rather than in it, so it
+ * stays in view however far the graph scrolls. `hiddenSources` are the sources that only appear
+ * once it is expanded, because nothing listens to them.
  */
 export type LayeredUnroutedFold = {
   expanded: boolean;
   unroutedEventCount: number;
   hiddenSources: readonly OrchestrationSource[];
-  top: number;
-  height: number;
 };
 
 /**
@@ -294,16 +293,11 @@ export function layoutLayeredOrchestration(
           expanded: unrouted === "expanded",
           unroutedEventCount,
           hiddenSources,
-          top: blocks.length > 0 ? sourcesHeight + SOURCE_GAP : 0,
-          height: FOLD_ROW_HEIGHT,
         };
   return {
     sources: blocks,
     targets,
     unroutedFold,
-    height: Math.max(
-      unroutedFold ? unroutedFold.top + unroutedFold.height : sourcesHeight,
-      targetsHeight,
-    ),
+    height: Math.max(sourcesHeight, targetsHeight),
   };
 }

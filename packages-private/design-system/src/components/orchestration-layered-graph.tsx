@@ -43,30 +43,37 @@ const TARGET_WIDTH = 236;
 const MIN_ROUTE_LANE = 150;
 const MAX_ROUTE_LANE = 300;
 const MIN_CURVE_RUN = 90;
+// On wide screens workflows stay near their routes instead of drifting to the far edge.
+const MAX_CURVE_RUN = 240;
 const MIN_WIDTH =
   SOURCE_WIDTH + SOURCE_EVENT_GAP + EVENT_WIDTH + MIN_ROUTE_LANE + MIN_CURVE_RUN + TARGET_WIDTH;
 const INITIAL_WIDTH = 1040;
 const DIMMED_OPACITY = 0.18;
 const RECLASSIFY_LOOP = 64;
 const HEADER_HEIGHT = 34;
+const FOLD_ROW_HEIGHT = 30;
 const STICKY_HEADER_HEIGHT = HEADER_HEIGHT - 8;
 const FOLD_ROW_CLASS_NAME =
-  "absolute flex items-center gap-1.5 rounded-[4px] border border-dashed border-[var(--bo-border-strong)] px-2.5 text-xs text-[var(--bo-muted-2)] transition-colors hover:bg-[var(--bo-panel)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none";
+  "flex items-center gap-1.5 rounded-[4px] border border-dashed border-[var(--bo-border-strong)] px-2.5 text-xs text-[var(--bo-muted-2)] transition-colors hover:bg-[var(--bo-panel)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none";
 
 function countLabel(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? "" : "s"}`;
 }
 
-/** Horizontal geometry for a given container width. Only the route lane and the curves stretch. */
+/**
+ * Horizontal geometry for a given container width. Only the route lane and the curves stretch,
+ * and both stop growing, so on wide screens the graph keeps its shape and leaves space on the right.
+ */
 function columnsFor(width: number) {
   const eventLeft = SOURCE_WIDTH + SOURCE_EVENT_GAP;
   const eventRight = eventLeft + EVENT_WIDTH;
-  const targetLeft = width - TARGET_WIDTH;
   const routeLane = Math.max(
     MIN_ROUTE_LANE,
-    Math.min(MAX_ROUTE_LANE, width * 0.22, targetLeft - MIN_CURVE_RUN - eventRight),
+    Math.min(MAX_ROUTE_LANE, width * 0.22, width - TARGET_WIDTH - MIN_CURVE_RUN - eventRight),
   );
-  return { eventLeft, eventRight, laneEnd: eventRight + routeLane, targetLeft };
+  const laneEnd = eventRight + routeLane;
+  const targetLeft = Math.min(width - TARGET_WIDTH, laneEnd + MAX_CURVE_RUN);
+  return { eventLeft, eventRight, laneEnd, targetLeft };
 }
 
 function useContainerWidth() {
@@ -333,16 +340,22 @@ export function OrchestrationLayeredGraph({
       <div className="min-h-0 flex-1 overflow-auto bg-[var(--bo-bg)]">
         {layout.sources.length === 0 ? (
           <div className="flex h-full min-h-32 flex-col items-center justify-center gap-2 text-sm text-[var(--bo-muted)]">
-            <p>Nothing matches “{deferredQuery.trim()}”.</p>
-            <button
-              type="button"
-              onClick={() => {
-                setQuery("");
-              }}
-              className="text-xs font-semibold text-[var(--bo-accent-strong)] hover:underline"
-            >
-              Clear search
-            </button>
+            {terms.length > 0 ? (
+              <>
+                <p>Nothing matches “{deferredQuery.trim()}”.</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQuery("");
+                  }}
+                  className="text-xs font-semibold text-[var(--bo-accent-strong)] hover:underline"
+                >
+                  Clear search
+                </button>
+              </>
+            ) : (
+              <p>Nothing is routed yet.</p>
+            )}
           </div>
         ) : null}
         <div
@@ -492,7 +505,7 @@ export function OrchestrationLayeredGraph({
                             event.stopPropagation();
                             toggleExpanded(row.sourceId);
                           }}
-                          className={FOLD_ROW_CLASS_NAME}
+                          className={cn("absolute", FOLD_ROW_CLASS_NAME)}
                           style={{
                             left: eventLeft,
                             top: row.top,
@@ -663,42 +676,40 @@ export function OrchestrationLayeredGraph({
                 </button>
               );
             })}
-            {fold ? (
-              <button
-                type="button"
-                aria-expanded={fold.expanded}
-                title={
-                  !fold.expanded && fold.hiddenSources.length > 0
-                    ? `Without routes: ${fold.hiddenSources.map((source) => source.label).join(", ")}`
-                    : undefined
-                }
-                onClick={(event) => {
-                  event.stopPropagation();
-                  setShowUnrouted((current) => !current);
-                }}
-                className={FOLD_ROW_CLASS_NAME}
-                style={{
-                  left: 0,
-                  top: fold.top,
-                  width: eventRight,
-                  height: fold.height,
-                  opacity: related === null ? 1 : DIMMED_OPACITY,
-                }}
-              >
-                <Icon name={fold.expanded ? "chevron-up" : "chevron-down"} className="h-3 w-3" />
-                {fold.expanded
-                  ? `Hide all ${countLabel(fold.unroutedEventCount, "unrouted event")}`
-                  : `All ${countLabel(fold.unroutedEventCount, "unrouted event")}`}
-                {!fold.expanded && fold.hiddenSources.length > 0 ? (
-                  <span className="truncate opacity-75">
-                    · {countLabel(fold.hiddenSources.length, "source")} without routes
-                  </span>
-                ) : null}
-              </button>
-            ) : null}
           </div>
         </div>
       </div>
+      {/* Outside the scrolling graph, so it stays in view however long the graph gets. */}
+      {fold ? (
+        <button
+          type="button"
+          aria-expanded={fold.expanded}
+          title={
+            !fold.expanded && fold.hiddenSources.length > 0
+              ? `Without routes: ${fold.hiddenSources.map((source) => source.label).join(", ")}`
+              : undefined
+          }
+          onClick={() => {
+            setShowUnrouted((current) => !current);
+          }}
+          className={cn(FOLD_ROW_CLASS_NAME, "max-w-full shrink-0")}
+          style={{
+            width: eventRight,
+            minHeight: FOLD_ROW_HEIGHT,
+            opacity: related === null ? 1 : DIMMED_OPACITY,
+          }}
+        >
+          <Icon name={fold.expanded ? "chevron-up" : "chevron-down"} className="h-3 w-3" />
+          {fold.expanded
+            ? `Hide all ${countLabel(fold.unroutedEventCount, "unrouted event")}`
+            : `All ${countLabel(fold.unroutedEventCount, "unrouted event")}`}
+          {!fold.expanded && fold.hiddenSources.length > 0 ? (
+            <span className="truncate opacity-75">
+              · {countLabel(fold.hiddenSources.length, "source")} without routes
+            </span>
+          ) : null}
+        </button>
+      ) : null}
     </div>
   );
 }
