@@ -394,6 +394,7 @@ export function createConnectorIntegration({
           ]),
           integrationId: account.service,
           name: account.connectionName,
+          authMethod: "oauth",
           ...inspectConnectorAccount(account),
           configuration: { status: "configured" },
         })),
@@ -431,12 +432,22 @@ export function createConnectorIntegration({
           connectionId: encodeConnectorConnectionId(address),
           integrationId: service,
           name,
+          authMethod: "oauth",
         },
         async inspect() {
           return inspectConnectorAccount(account);
         },
         async state() {
           return connectionStateOfInspection(inspectConnectorAccount(account));
+        },
+        async details() {
+          return {
+            kind: "connector",
+            projectId,
+            providerConfigId,
+            connectionName: name,
+            accountId: account?.id ?? null,
+          };
         },
         async actions() {
           const response = await access.invoke(

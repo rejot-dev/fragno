@@ -33,7 +33,11 @@ import { apiPublicAddress } from "@/fragno/scoped-public-fragment-routes";
 import { isSuccessStatus, throwOnRouteRuntimeError } from "../../runtime-errors";
 import { resolveRuntimePublicScopePathSegment } from "../../runtime-public-scope";
 import { connectionStateOfInspection } from "./integration-events";
-import type { IntegrationContext, IntegrationImplementation } from "./integration-implementation";
+import {
+  authMethodOfFragmentAuthMode,
+  type IntegrationContext,
+  type IntegrationImplementation,
+} from "./integration-implementation";
 
 const apiIntegrationId = "api";
 const apiConnectionShape = createApiConnectionInputSchema.omit({ auth: true }).shape;
@@ -593,6 +597,7 @@ export function createApiIntegration({
           connectionId: encodeApiConnectionId(connection.slug),
           integrationId: apiIntegrationId,
           name: connection.name ?? connection.slug,
+          authMethod: authMethodOfFragmentAuthMode(connection.authMode),
           configuration: { status: "configured" },
           // Listing reads no auth state; only auth-free connections are known without checking.
           authorization: {
@@ -612,12 +617,20 @@ export function createApiIntegration({
           connectionId: encodeApiConnectionId(localId),
           integrationId: apiIntegrationId,
           name: resolved?.name ?? localId,
+          authMethod: resolved && authMethodOfFragmentAuthMode(resolved.authMode),
         },
         async inspect() {
           return inspectApiAuth(await access.authStatus(localId));
         },
         async state() {
           return connectionStateOfInspection(inspectApiAuth(await access.authStatus(localId)));
+        },
+        async details() {
+          return {
+            kind: "api",
+            connection: resolved,
+            authStatus: await access.authStatus(localId),
+          };
         },
         async actions() {
           return [

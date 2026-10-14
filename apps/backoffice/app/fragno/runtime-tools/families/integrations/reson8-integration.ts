@@ -30,6 +30,7 @@ const reson8ConnectionIdentity = {
   connectionId: reson8ConnectionId,
   integrationId: "reson8",
   name: "Reson8",
+  authMethod: "api-key" as const,
 };
 const reson8SetupInputSchema = z.strictObject({
   apiKey: z
@@ -291,6 +292,9 @@ export function createReson8Integration({
           return connectionStateOfInspection(
             inspectReson8Configuration((await readConfiguration(context)).configured),
           );
+        },
+        async details() {
+          return { kind: "native" };
         },
         async actions() {
           return [

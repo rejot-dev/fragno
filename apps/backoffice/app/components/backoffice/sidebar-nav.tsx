@@ -22,6 +22,12 @@ const PRIMARY_NAVIGATION: PrimaryNavigationItem[] = [
     isActive: (pathname) => pathname.startsWith("/backoffice/automations"),
   },
   {
+    label: "Integrations",
+    to: "/backoffice/integrations",
+    icon: "link",
+    isActive: (pathname) => pathname.startsWith("/backoffice/integrations"),
+  },
+  {
     label: "Sessions",
     to: "/backoffice/sessions",
     icon: "message-square",

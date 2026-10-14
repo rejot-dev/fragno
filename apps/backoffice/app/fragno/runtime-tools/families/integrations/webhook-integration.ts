@@ -8,7 +8,10 @@ import {
   type WebhookRejectionCode,
 } from "@fragno-dev/api-fragment/types";
 import { webhookVerificationConfigSchema } from "@fragno-dev/api-fragment/webhooks/verification";
-import type { IntegrationInspection } from "@fragno-dev/backoffice-api/v0/integrations";
+import type {
+  IntegrationAuthMethod,
+  IntegrationInspection,
+} from "@fragno-dev/backoffice-api/v0/integrations";
 import {
   BACKOFFICE_PERMISSION,
   type BackofficePermissionRequirement,
@@ -128,6 +131,21 @@ function deliveryCheck({
     status: "not-checked",
     reason: "No request has reached the endpoint since its configuration last changed.",
   };
+}
+
+function authMethodOfWebhookAuth(auth: WebhookEndpoint["authConfig"]): IntegrationAuthMethod {
+  switch (auth.type) {
+    case "none":
+    case "bearer":
+    case "basic":
+      return auth.type;
+    case "apiKey":
+      return "api-key";
+    case "hmac":
+      return "signature";
+    default:
+      throw new Error("Webhook auth type is unsupported.", { cause: auth satisfies never });
+  }
 }
 
 function inspectWebhookEndpoint(
@@ -495,6 +513,7 @@ export function createWebhookIntegration({
                   connectionId: encodeWebhookConnectionId(endpoint.id),
                   integrationId: webhookIntegrationId,
                   name: endpoint.name,
+                  authMethod: authMethodOfWebhookAuth(endpoint.authConfig),
                   ...inspection,
                   configuration: inspection.configuration,
                 },
@@ -519,12 +538,20 @@ export function createWebhookIntegration({
           connectionId: encodeWebhookConnectionId(localId),
           integrationId: webhookIntegrationId,
           name: resolved?.name ?? localId,
+          authMethod: resolved && authMethodOfWebhookAuth(resolved.authConfig),
         },
         inspect,
         // A disabled endpoint keeps its configuration and secret but rejects deliveries, which
         // inspection alone cannot express; the endpoint hook reports it the same way.
         async state(): Promise<IntegrationConnectionState> {
           return (await access.endpoint(localId))?.status === "active" ? "ready" : "unavailable";
+        },
+        async details() {
+          const [endpoint, publicUrl] = await Promise.all([
+            access.endpoint(localId),
+            access.publicUrl(localId),
+          ]);
+          return { kind: "webhook", endpoint, publicUrl };
         },
         async actions() {
           return [

@@ -519,6 +519,7 @@ export function createGitHubIntegration({
             connectionId: encodeGitHubRepositoryConnectionId(repository.fullName),
             integrationId: GITHUB_INTEGRATION_ID,
             name: repository.fullName,
+            authMethod: "app-installation",
             ...inspectGitHubRepository({
               status: "reachable",
               // Linked listing only returns repositories of active installations.
@@ -537,7 +538,8 @@ export function createGitHubIntegration({
         connectionId: encodeGitHubRepositoryConnectionId(fullName),
         integrationId: GITHUB_INTEGRATION_ID,
         name: fullName,
-      };
+        authMethod: "app-installation",
+      } as const;
       const access = createGitHubAccess(context);
       async function inspect() {
         return inspectGitHubRepository(
@@ -548,6 +550,7 @@ export function createGitHubIntegration({
         identity,
         inspect,
         state: async () => connectionStateOfInspection(await inspect()),
+        details: async () => ({ kind: "native" }),
         async actions() {
           return [
             {

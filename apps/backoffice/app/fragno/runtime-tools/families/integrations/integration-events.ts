@@ -5,7 +5,7 @@ import { z } from "zod";
 import type { AutomationsObject, BackofficeRpcContext } from "@/backoffice-runtime/object-registry";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 
-const INTEGRATIONS_EVENT_SOURCE = "integrations";
+export const INTEGRATIONS_EVENT_SOURCE = "integrations";
 
 /** An existing connection is ready or unavailable; only removal reports disconnected. */
 export type IntegrationConnectionState = "ready" | "unavailable";
@@ -42,6 +42,36 @@ const integrationConnectionSubjectSchema = z.object({
     .min(1)
     .describe("Integration address, e.g. api#billing; it resolves in the event's scope."),
 });
+
+const connectionEventStates = {
+  "connection.ready": "ready",
+  "connection.unavailable": "unavailable",
+  "connection.disconnected": "disconnected",
+} as const satisfies Record<string, IntegrationConnectionState | "disconnected">;
+
+/**
+ * Reads a stored event as a connection state change, or null if it is not one. Any principal that
+ * may emit events can use this source, so stored events are validated rather than trusted.
+ */
+export function readIntegrationConnectionEvent(event: {
+  source: string;
+  eventType: string;
+  subject: unknown;
+}) {
+  const subject = integrationConnectionSubjectSchema.safeParse(event.subject);
+  if (
+    event.source !== INTEGRATIONS_EVENT_SOURCE ||
+    !Object.hasOwn(connectionEventStates, event.eventType) ||
+    !subject.success
+  ) {
+    return null;
+  }
+  return {
+    state: connectionEventStates[event.eventType as keyof typeof connectionEventStates],
+    service: subject.data.service,
+    connectionId: subject.data.connectionId,
+  };
+}
 
 // Every change that leaves the state fires, so consumers must tolerate repeats.
 const repeatNote =

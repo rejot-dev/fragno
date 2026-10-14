@@ -25,6 +25,7 @@ const telegramConnectionIdentity = {
   connectionId: telegramConnectionId,
   integrationId: "telegram",
   name: "Telegram",
+  authMethod: "api-key" as const,
 };
 const telegramSetupInputSchema = z.strictObject({
   botToken: z.string().trim().min(1).describe("Secret bot token issued by BotFather."),
@@ -359,6 +360,9 @@ export function createTelegramIntegration({
           return connectionStateOfInspection(
             inspectTelegramConfiguration(await readConfigured(context)),
           );
+        },
+        async details() {
+          return { kind: "native" };
         },
         async actions() {
           const telegram = createTelegramRuntime({

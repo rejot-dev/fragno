@@ -29,6 +29,7 @@ const resendConnectionIdentity = {
   connectionId: resendConnectionId,
   integrationId: "resend",
   name: "Resend",
+  authMethod: "api-key" as const,
 };
 const resendSetupInputSchema = z.strictObject({
   apiKey: z.string().trim().min(1).describe("Secret Resend API key with webhook access."),
@@ -422,6 +423,9 @@ export function createResendIntegration({
           return connectionStateOfInspection(
             inspectResendConfiguration(await readConfigured(context)),
           );
+        },
+        async details() {
+          return { kind: "native" };
         },
         async actions() {
           const resend = createResendRuntime({

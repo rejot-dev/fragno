@@ -41,6 +41,9 @@ export const scopeSwitchPath = (pathname: string, scope: BackofficeRouteScope) =
       return `/backoffice/sessions/${scopePath}/sessions`;
     case "files":
       return `/backoffice/files/${scopePath}`;
+    // Connection addresses resolve only in their own scope, so a selection does not carry over.
+    case "integrations":
+      return `/backoffice/integrations/${scopePath}`;
     case "marketplace": {
       const tab = rest[0] && MARKETPLACE_TABS.has(rest[0]) ? rest[0] : "marketplace";
       return `/backoffice/marketplace/${scopePath}/${tab}`;

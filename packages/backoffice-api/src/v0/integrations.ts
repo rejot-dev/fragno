@@ -110,6 +110,25 @@ export const integrationConnectionSetupTargetSchema = z
   .strictObject({ kind: z.literal("connection"), connectionId: integrationConnectionIdSchema })
   .meta({ id: "IntegrationConnectionSetupTarget" });
 
+export const integrationAuthMethodSchema = z
+  .enum([
+    "none",
+    "api-key",
+    "bearer",
+    "basic",
+    "client-credentials",
+    "oauth",
+    "signature",
+    "app-installation",
+  ])
+  .describe(
+    "How the connection authenticates to its provider; for inbound webhooks, how deliveries authenticate. Signature means an HMAC-signed body.",
+  )
+  .meta({ id: "IntegrationAuthMethod" });
+
+/** One vocabulary for every source's own auth configuration. */
+export type IntegrationAuthMethod = z.output<typeof integrationAuthMethodSchema>;
+
 /** Public connection records describe source-owned configuration, never a facade-owned binding. */
 export type IntegrationConnection = z.output<typeof integrationConnectionSchema>;
 
@@ -119,6 +138,11 @@ export const integrationConnectionSchema = integrationInspectionSchema
     connectionId: integrationConnectionIdSchema,
     integrationId: integrationIdSchema,
     name: z.string(),
+    authMethod: integrationAuthMethodSchema
+      .nullable()
+      .describe(
+        "Null while nothing stored at the address chooses a method, such as before API setup.",
+      ),
   })
   .meta({ id: "IntegrationConnection" });
 
