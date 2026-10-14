@@ -280,6 +280,85 @@ test("durable Pi discovers scoped skills and executes read, search, codemode and
   );
 });
 
+test("durable Pi lists Marketplace-installed skills and finds them by any keyword", async () => {
+  const execution = createBackofficeServiceExecution({
+    scope: { kind: "org", orgId: "org-1" },
+    service: { type: "automation", id: "durable-search-scenario" },
+  });
+  const skillPath = "/workspace/slack-setup/skills/slack-setup/SKILL.md";
+  const objectOverrides = scriptedAgents([
+    (context) => {
+      expect(
+        JSON.stringify(context.messages.filter((message) => message.role === "system")),
+      ).toContain(skillPath);
+      return fauxAssistantMessage(
+        [
+          fauxToolCall("search", {
+            keywords: ["Slack integration", "createConnection"],
+            glob: "/workspace/**",
+          }),
+          fauxToolCall("search", { keywords: ["no-such-keyword"] }),
+        ],
+        { stopReason: "toolUse" },
+      );
+    },
+    (context) => {
+      const [found, missing] = context.messages.flatMap((message) =>
+        message.role === "toolResult" && message.toolName === "search"
+          ? [message.content.map((part) => (part.type === "text" ? part.text : "")).join("")]
+          : [],
+      );
+      expect(found).toContain(`${skillPath}\n`);
+      expect(found).toContain("Connect the Slack integration");
+      expect(found).toContain("await api.createConnection");
+      expect(found).not.toContain("noise.md");
+      expect(found).not.toContain("cursor");
+      expect(missing).toBe('No matches for "no-such-keyword" in **.');
+      return fauxAssistantMessage("Search finished.");
+    },
+  ]);
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "durable Pi skill discovery and keyword search",
+      options: { drain: false },
+      objects: { ...scenarioObjects, ...objectOverrides },
+      piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
+      setup: ({ given }) => [
+        given.organization.exists({ id: "org-1" }),
+        // Sorted before the skill, this file floods the first keyword's index term without ever
+        // matching the keyword, which used to end the first page empty.
+        given.codemode.writeFile({
+          orgId: "org-1",
+          path: "/workspace/a-noise.md",
+          content: "integration\n".repeat(80),
+        }),
+        given.codemode.writeFile({
+          orgId: "org-1",
+          path: skillPath,
+          content: [
+            "---",
+            "name: slack-setup",
+            "description: Set up Slack bot messages and Events API webhooks.",
+            "---",
+            "# Slack setup",
+            "Connect the Slack integration with a bot token.",
+            'await api.createConnection({ slug: "slack" });',
+          ].join("\n"),
+        }),
+      ],
+      steps: ({ then }) => [
+        then.assert("the agent finds the installed skill", async ({ runtime }) => {
+          const config = await createAgent(runtime, execution);
+          await prompt(runtime, execution, config);
+          await runtime.drain();
+          const transcript = await view(runtime, execution, config);
+          expect(JSON.stringify(transcript.entries)).toContain("Search finished.");
+        }),
+      ],
+    }),
+  );
+});
+
 for (const revocation of ["restricted", "disabled", "deleted"] as const) {
   test(`durable Pi resolves linked-user route grants and denies model calls after the route is ${revocation}`, async () => {
     const scope = { kind: "org", orgId: "org-1" } as const;

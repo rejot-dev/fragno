@@ -51,7 +51,7 @@ export const loadBackofficePiSkills = async (
   const staticPaths = await state.glob("/static/skills/**/SKILL.md");
   let workspacePaths: string[];
   try {
-    workspacePaths = await state.glob("/workspace/skills/**/SKILL.md");
+    workspacePaths = await state.glob("/workspace/**/skills/**/SKILL.md");
   } catch (error) {
     if (!isUploadNotConfiguredError(error)) {
       throw error;
