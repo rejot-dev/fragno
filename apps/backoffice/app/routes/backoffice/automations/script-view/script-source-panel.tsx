@@ -1,3 +1,6 @@
+import { ButtonLink } from "@fragno-private/design-system/button";
+import { Icon } from "@fragno-private/design-system/icon";
+import { WorkflowRunTimeline } from "@fragno-private/design-system/workflow-run-timeline";
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
 
@@ -14,6 +17,7 @@ import {
   type RuntimeToolWorkflowDescriptor,
 } from "@/fragno/runtime-tools/workflow-catalog";
 
+import { automationWorkflowRunPath } from "../scope";
 import { useLinkedScrollViewports } from "./linked-scroll";
 import { ScriptCodeView } from "./script-code-view";
 import { ScriptViewToggle, WorkflowGraphDetailToggle } from "./script-presentation-controls";
@@ -26,9 +30,10 @@ import {
   searchParamsWithWorkflowGraphDetailMode,
   workflowGraphDetailModeFromSearchParam,
 } from "./script-view-mode";
-import { useScriptWorkflowRuns } from "./use-script-workflow-runs";
+import { useScriptWorkflowRuns, type WorkflowRunCollections } from "./use-script-workflow-runs";
 import { ScriptWorkflowGraph } from "./workflow-graph";
 import type { ScriptWorkflowRun } from "./workflow-run-presentation";
+import { useWorkflowRunTimeline } from "./workflow-run-timeline-presentation";
 
 export function ScriptSourcePanel({
   absolutePath,
@@ -130,6 +135,23 @@ export function ScriptSourcePanel({
         </div>
       </div>
 
+      {showGraph && workflowRuns.selectedRun ? (
+        <ScriptRunTimeline
+          key={workflowRuns.selectedRun.id}
+          collections={collections}
+          run={workflowRuns.selectedRun}
+          runPath={automationWorkflowRunPath(resolvedScope, {
+            workflowName: workflowRuns.selectedRun.instanceWorkflowName,
+            instanceId: workflowRuns.selectedRun.instanceId,
+          })}
+          onSelectStep={(stepId) => {
+            graphViewport.ref.current
+              ?.querySelector(`[data-workflow-step-card="${CSS.escape(stepId)}"]`)
+              ?.scrollIntoView({ block: "center", behavior: "smooth" });
+          }}
+        />
+      ) : null}
+
       <div className={viewMode === "split" ? "grid min-h-0 lg:grid-cols-2" : "min-h-0"}>
         {showCode ? (
           <ScriptCodeView
@@ -172,6 +194,58 @@ export function ScriptSourcePanel({
           />
         ) : null}
       </div>
+    </div>
+  );
+}
+
+/**
+ * The selected run, drawn from the program it executed. Timeline steps share node ids with the
+ * graph while the file still holds that program, so selecting one reveals its card.
+ */
+function ScriptRunTimeline({
+  collections,
+  run,
+  runPath,
+  onSelectStep,
+}: {
+  collections: WorkflowRunCollections;
+  run: ScriptWorkflowRun;
+  runPath: string;
+  onSelectStep: (stepId: string) => void;
+}) {
+  const { timeline } = useWorkflowRunTimeline({
+    collections,
+    reference: { workflowName: run.instanceWorkflowName, instanceId: run.instanceId },
+  });
+  const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
+  if (!timeline) {
+    return null;
+  }
+
+  return (
+    <div className="border-b border-[color:var(--bo-border)] p-3">
+      <WorkflowRunTimeline
+        title={timeline.title}
+        status={timeline.status}
+        trigger={timeline.trigger}
+        createdAt={timeline.createdAt}
+        startedAt={timeline.startedAt}
+        endedAt={timeline.endedAt}
+        nodes={timeline.nodes}
+        events={timeline.events}
+        selectedStepId={selectedStepId}
+        onSelectStep={(stepId) => {
+          setSelectedStepId(stepId);
+          onSelectStep(stepId);
+        }}
+        meta={<span className="font-mono">{run.instanceId}</span>}
+        actions={
+          <ButtonLink variant="secondary" to={runPath}>
+            <Icon name="external-link" className="size-3.5" />
+            Open run
+          </ButtonLink>
+        }
+      />
     </div>
   );
 }

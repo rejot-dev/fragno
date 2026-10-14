@@ -94,7 +94,7 @@ export function WorkflowStepCard({
 
   return (
     <div
-      data-workflow-step-card
+      data-workflow-step-card={step.id}
       aria-current={runState?.current ? "step" : undefined}
       className={`border p-3 ${runPresentation.surfaceClass}`}
     >
