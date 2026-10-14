@@ -415,19 +415,35 @@ describe("Marketplace browsing scenarios", () => {
                   .singleton()
                   .commands.getArtifactManifest({ listingId });
                 assert(manifest);
-                const form = new FormData();
-                form.set("provider", "database");
-                form.set("fileKey", "1.0.0/README.md");
-                form.set("file", new File([content], "README.md", { type: "text/markdown" }));
-                const uploaded = await ctx.runtime.objects.upload
-                  .forName(manifest.uploadName)
-                  .http.fetch(
-                    new Request("https://backoffice.test/api/upload/files", {
-                      method: "POST",
-                      body: form,
-                    }),
+                const uploadArtifactFile = async (fileKey: string, text: string) => {
+                  const form = new FormData();
+                  form.set("provider", "database");
+                  form.set("fileKey", fileKey);
+                  form.set("file", new File([text], "README.md", { type: "text/markdown" }));
+                  const uploaded = await ctx.runtime.objects.upload
+                    .forName(manifest.uploadName)
+                    .http.fetch(
+                      new Request("https://backoffice.test/api/upload/files", {
+                        method: "POST",
+                        body: form,
+                      }),
+                    );
+                  assert(uploaded.ok, await uploaded.clone().text());
+                };
+                const overviewPath = async () => {
+                  const { artifactFiles } = await viewCatalogListing(
+                    ctx,
+                    ORG_SCOPE,
+                    `${publisher}/invoice-digest`,
+                    ctx.vars.cookie,
                   );
-                assert(uploaded.ok, await uploaded.clone().text());
+                  assert(artifactFiles.state === "ready");
+                  return artifactFiles.overviewPath;
+                };
+                assert((await overviewPath()) === null);
+                await uploadArtifactFile("1.0.0/README.md", content);
+                // Without a listing README, the selected release's README is the overview.
+                assert((await overviewPath()) === "/artifact/1.0.0/README.md");
                 const args = catalogRequest(
                   ctx,
                   ORG_SCOPE,
@@ -446,6 +462,8 @@ describe("Marketplace browsing scenarios", () => {
                     context: routeContext(ctx, anonymous),
                   }),
                 ).rejects.toMatchObject({ status: 401 });
+                await uploadArtifactFile("README.md", `${content} listing`);
+                assert((await overviewPath()) === "/artifact/README.md");
               }
             },
           ),

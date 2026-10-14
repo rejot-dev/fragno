@@ -31,6 +31,7 @@ const artifactData: MarketplaceArtifactExplorerData = {
     },
   ]),
   selectedVersion: "1.0.0",
+  overviewPath: null,
 };
 
 describe("MarketplaceArtifactFiles", () => {

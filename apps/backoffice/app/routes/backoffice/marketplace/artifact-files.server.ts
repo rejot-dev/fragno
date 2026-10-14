@@ -7,7 +7,7 @@ import type {
 } from "@/backoffice-runtime/object-registry";
 import { createFileTree } from "@/file-collection/create-file-tree";
 import { createUploadFileCollection } from "@/file-collection/create-upload-file-collection";
-import type { FileCollection, FileContent } from "@/file-collection/file-collection";
+import type { FileCollection, FileContent, FileTree } from "@/file-collection/file-collection";
 import { isPathWithin, normalizeAbsolutePath } from "@/files/normalize-path";
 import { type MarketplaceArtifactManifest } from "@/fragno/marketplace/contracts";
 import { UPLOAD_PROVIDER_DATABASE } from "@/fragno/upload";
@@ -35,10 +35,13 @@ export async function loadPublishedMarketplaceArtifactExplorer(input: {
       objects: input.objects,
       request: input.request,
     });
+    const fileTree = await collection.getTree();
+    const selectedVersion = resolvePublishedVersion(manifest, input.requestedVersion);
     return {
       state: "ready",
-      fileTree: await collection.getTree(),
-      selectedVersion: resolvePublishedVersion(manifest, input.requestedVersion),
+      fileTree,
+      selectedVersion,
+      overviewPath: resolveOverviewPath(fileTree, selectedVersion),
     };
   } catch (error) {
     return {
@@ -150,6 +153,14 @@ function resolvePublishedVersion(
   requestedVersion?: string,
 ): string {
   return manifest.versions.find((version) => version === requestedVersion) ?? manifest.versions[0];
+}
+
+/** The listing README introduces every release; a release's own README stands in without one. */
+function resolveOverviewPath(fileTree: FileTree, selectedVersion: string): string | null {
+  const path = ["README.md", `${selectedVersion}/README.md`].find((candidate) =>
+    fileTree.entries.some((entry) => entry.kind === "file" && entry.path === candidate),
+  );
+  return path ? `${MARKETPLACE_ARTIFACT_ROOT_PATH}/${path}` : null;
 }
 
 function resolveArtifactFileKey(path: string): string | null {

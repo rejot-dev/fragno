@@ -12,6 +12,8 @@ export type MarketplaceArtifactExplorerData =
       state: "ready";
       fileTree: FileTree;
       selectedVersion: string;
+      /** Artifact path of the README shown as the package overview, or null without one. */
+      overviewPath: string | null;
     }
   | {
       state: "unavailable" | "error";

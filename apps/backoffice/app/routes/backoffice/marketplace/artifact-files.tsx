@@ -56,12 +56,8 @@ function ReadyMarketplaceArtifactFiles({
   const overview = useFetcher<string>();
   const [requestedOverviewPath, setRequestedOverviewPath] = useState<string | null>(null);
   const activeTab = marketplacePackageTabFromSearch(location.search);
-  const overviewPath =
-    findMarketplaceArtifactEntry(data, "README.md")?.kind === "file"
-      ? `${MARKETPLACE_ARTIFACT_ROOT_PATH}/README.md`
-      : null;
-  const overviewResourcePath = overviewPath
-    ? buildArtifactFileResourcePath(location.pathname, overviewPath)
+  const overviewResourcePath = data.overviewPath
+    ? buildArtifactFileResourcePath(location.pathname, data.overviewPath)
     : null;
   const loadOverview = () => {
     if (overviewResourcePath && requestedOverviewPath !== overviewResourcePath) {
@@ -84,7 +80,7 @@ function ReadyMarketplaceArtifactFiles({
     <>
       {activeTab === "overview" ? (
         <MarketplaceArtifactOverview
-          path={overviewPath}
+          path={data.overviewPath}
           requested={requestedOverviewPath === overviewResourcePath}
           loading={overview.state !== "idle"}
           markdown={
@@ -309,7 +305,7 @@ function MarketplaceArtifactOverview({
     return (
       <MarketplaceArtifactMessage
         title="No package overview"
-        description="Add a top-level README.md to provide an overview for this Marketplace listing."
+        description="Add a README.md at the top level or in this release to provide an overview for this Marketplace listing."
       />
     );
   }
