@@ -1,5 +1,8 @@
-import { marketplacePublishInputSchema } from "@fragno-dev/backoffice-api/v0/marketplace";
-import { type MarketplaceOwner } from "@fragno-dev/backoffice-api/v0/marketplace";
+import {
+  marketplacePublishInputSchema,
+  marketplaceScopeSchema,
+  type MarketplaceOwner,
+} from "@fragno-dev/backoffice-api/v0/marketplace";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import { z } from "zod";
 
@@ -8,10 +11,11 @@ import {
   type BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { sha256Hex } from "@/lib/crypto";
 
-import { marketplacePackageSnapshotSchema } from "./package-manifest";
+import { marketplacePackageIdentity, marketplacePackageSnapshotSchema } from "./package-manifest";
 import {
   MARKETPLACE_RELEASE_GUARD_PATH,
   marketplaceReleaseSnapshotSchema,
@@ -34,6 +38,7 @@ export type MarketplacePublishReleaseInput = z.output<typeof marketplacePublishR
 
 /** Original actor provenance survives deferral; short-lived token authority does not. */
 const marketplacePackagePublishIntentSchema = z.strictObject({
+  marketplace: marketplaceScopeSchema,
   release: marketplaceReleaseSnapshotSchema,
   execution: backofficeDeferredExecutionSchema,
   skipAuthorCheck: z.boolean(),
@@ -114,6 +119,24 @@ export class MarketplacePublicationAccessError extends Error {
   }
 }
 
+/** The manifest's organization slug resolves to the organization that owns the package. */
+export async function resolveMarketplacePackageOwner(
+  objects: BackofficeObjectRegistry,
+  packageName: string,
+): Promise<MarketplaceOwner & { scope: { kind: "org"; orgId: string } }> {
+  const { organizationSlug } = marketplacePackageIdentity(packageName);
+  const organization = (await objects.auth.singleton().commands.getAllOrganizations()).find(
+    (candidate) => candidate.slug === organizationSlug,
+  );
+  if (!organization) {
+    throw new Error(`Marketplace publisher organization '${organizationSlug}' was not found.`);
+  }
+  return {
+    scope: { kind: "org", orgId: organization.id },
+    publisherName: organization.name,
+  };
+}
+
 /** Authorization follows ownership; System coordination never grants organization membership. */
 export async function assertMarketplacePublicationAuthority({
   runtime,
@@ -185,7 +208,9 @@ export async function marketplacePackagePublishWorkflowInstanceId(
   input: Omit<MarketplacePackagePublishRequest, "workflowInstanceId">,
 ): Promise<string> {
   const { intent, expectedVersionRevision, expectedFiles } = input;
+  const { marketplace } = intent;
   const identity = [
+    marketplace.kind === "org" ? `org:${marketplace.orgId}` : marketplace.kind,
     intent.release.listingId,
     intent.release.snapshotId,
     // Schema parsing may reorder object keys; hash execution fields in a fixed order.

@@ -4,7 +4,7 @@ type MarketplaceCodemodeProvider = {
   search(input: MarketplaceSearchInput): Promise<MarketplaceSearchOutput>;
   /** Inspect published package metadata and cursor-paginated releases. */
   view(input: MarketplaceViewInput): Promise<MarketplaceViewOutput>;
-  /** Publish a captured package from a root manifest.json containing name @<organization-slug>/<package-slug>. Versions are immutable by default; System may explicitly replace them. Dry runs write nothing. Author and version overrides require System context. */
+  /** Publish a captured package from a root manifest.json containing name @<organization-slug>/<package-slug>. Public visibility publishes to the public Marketplace; organization visibility publishes to the owning organization's members-only Marketplace. Versions are immutable by default; System may explicitly replace them. Dry runs write nothing. Author and version overrides require System context. */
   publish(input: MarketplacePublishInput): Promise<MarketplacePublishOutput>;
 };
 declare const marketplace: MarketplaceCodemodeProvider;
@@ -57,6 +57,7 @@ type MarketplaceViewOutput = {
 };
 type MarketplacePublishInput = {
   packageRoot: string;
+  visibility: "public" | "organization";
   dryRun?: boolean;
   skipAuthorCheck?: boolean;
   skipVersionCheck?: boolean;
@@ -74,6 +75,14 @@ type MarketplacePublishOutput =
         };
         publisherName: string;
       };
+      marketplace:
+        | {
+            kind: "system";
+          }
+        | {
+            kind: "org";
+            orgId: string;
+          };
       files: {
         relativePath: string;
         sizeBytes: number;
@@ -94,6 +103,14 @@ type MarketplacePublishOutput =
         };
         publisherName: string;
       };
+      marketplace:
+        | {
+            kind: "system";
+          }
+        | {
+            kind: "org";
+            orgId: string;
+          };
       files: {
         relativePath: string;
         sizeBytes: number;

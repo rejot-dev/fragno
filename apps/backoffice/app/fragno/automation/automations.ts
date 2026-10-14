@@ -176,11 +176,13 @@ export const createAutomationsRuntime = (
             current.runGeneration === payload.runGeneration &&
             current.status === payload.status
           ) {
-            await config.runtime.objects.marketplace.singleton().commands.failPackagePublish({
-              listingId: params.request.intent.release.listingId,
-              version: params.request.intent.release.version,
-              workflowInstanceId: payload.instanceId,
-            });
+            await config.runtime.objects.marketplace
+              .for(params.request.intent.marketplace)
+              .commands.failPackagePublish({
+                listingId: params.request.intent.release.listingId,
+                version: params.request.intent.release.version,
+                workflowInstanceId: payload.instanceId,
+              });
           }
         }
         const completionTarget = parseWorkflowCompletionTarget(payload.params);

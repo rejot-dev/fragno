@@ -3688,6 +3688,12 @@
         "description": "Absolute package directory in the current filesystem."
       },
       {
+        "name": "visibility",
+        "required": true,
+        "valueRequired": true,
+        "description": "public publishes to the public Marketplace; organization publishes to the owning organization's members-only Marketplace."
+      },
+      {
         "name": "dry-run",
         "description": "Validate owner, version, and selected files without staging or publishing."
       },

@@ -1,12 +1,15 @@
 import { instantiate } from "@fragno-dev/core";
 import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
 
-import { marketplaceFragmentDefinition } from "./definition";
+import { marketplaceFragmentDefinition, type MarketplaceFragmentConfig } from "./definition";
 import { marketplaceRoutes } from "./routes";
 
-export const createMarketplaceFragment = (options: FragnoPublicConfigWithDatabase) =>
+export const createMarketplaceFragment = (
+  config: MarketplaceFragmentConfig,
+  options: FragnoPublicConfigWithDatabase,
+) =>
   instantiate(marketplaceFragmentDefinition)
-    .withConfig({})
+    .withConfig(config)
     .withRoutes([marketplaceRoutes])
     .withOptions(options)
     .build()
@@ -18,12 +21,13 @@ export const createMarketplaceFragment = (options: FragnoPublicConfigWithDatabas
       await ifMatchesRoute("GET", "/listings/:listingId", () => {
         isPublic = true;
       });
-      return isPublic
+      // Organization Marketplaces are members-only, so only System listings are anonymously readable.
+      return isPublic && config.scope.kind === "system"
         ? undefined
         : Response.json(
             {
               code: "FRAGMENT_ROUTE_NOT_EXPOSED",
-              message: "Marketplace HTTP exposes published listings only.",
+              message: "Marketplace HTTP exposes published public listings only.",
             },
             { status: 404 },
           );

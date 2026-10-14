@@ -1,4 +1,7 @@
-import { marketplaceListingIdSchema } from "@fragno-dev/backoffice-api/v0/marketplace";
+import {
+  marketplaceListingIdSchema,
+  type MarketplaceVisibility,
+} from "@fragno-dev/backoffice-api/v0/marketplace";
 import { z } from "zod";
 
 import type { BackofficeRoutableScopeSelection } from "@/backoffice-runtime/resolved-scope";
@@ -71,13 +74,15 @@ export function buildArtifactVersionPath(
 export const marketplaceListingManagePath = ({
   listingId,
   organizationSlug,
+  visibility,
   result,
 }: {
   listingId: string;
   organizationSlug: string;
+  visibility: MarketplaceVisibility;
   result?: Readonly<Record<string, string>>;
 }): string => {
-  const search = new URLSearchParams({ organizationSlug });
+  const search = new URLSearchParams({ organizationSlug, visibility });
   for (const [name, value] of Object.entries(result ?? {})) {
     search.set(name, value);
   }

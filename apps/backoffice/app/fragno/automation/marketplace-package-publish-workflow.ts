@@ -56,6 +56,7 @@ function throwMarketplacePackagePublishError(error: unknown): never {
         "MarketplaceVersionTransitionError",
         "MarketplaceListingArchivedError",
         "MarketplacePublicationAccessError",
+        "MarketplaceOwnerOutsideScopeError",
       ].includes(error.name))
   ) {
     throw new NonRetryableError(error.message);
@@ -121,7 +122,7 @@ export function defineMarketplacePackagePublishWorkflow(
           );
         }
       });
-      const marketplace = runtime.objects.marketplace.singleton().commands;
+      const marketplace = runtime.objects.marketplace.for(request.intent.marketplace).commands;
       const context = {
         execution: createBackofficeSystemExecution({ kind: "system" }),
         propagationContext: null,
@@ -153,7 +154,12 @@ export function defineMarketplacePackagePublishWorkflow(
       await publishMarketplaceArtifactFiles({
         step,
         routes: createUploadRouteCaller(
-          runtime.objects.upload.forName(marketplaceArtifactUploadName(release.listingId)).http,
+          runtime.objects.upload.forName(
+            marketplaceArtifactUploadName({
+              marketplace: request.intent.marketplace,
+              listingId: release.listingId,
+            }),
+          ).http,
         ),
         publication: {
           filePrefix,

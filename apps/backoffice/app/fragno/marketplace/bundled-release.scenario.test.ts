@@ -79,7 +79,9 @@ function bundledEntry(): MarketplaceStaticArtifactEntry & {
 
 function artifactRoutes(ctx: BackofficeScenarioContext) {
   return createUploadRouteCaller(
-    ctx.runtime.objects.upload.forName(marketplaceArtifactUploadName(LISTING_ID)).http,
+    ctx.runtime.objects.upload.forName(
+      marketplaceArtifactUploadName({ marketplace: { kind: "system" }, listingId: LISTING_ID }),
+    ).http,
   );
 }
 
@@ -88,7 +90,9 @@ async function fileContent(ctx: BackofficeScenarioContext, fileKey: string): Pro
   url.searchParams.set("provider", "database");
   url.searchParams.set("key", fileKey);
   return ctx.runtime.objects.upload
-    .forName(marketplaceArtifactUploadName(LISTING_ID))
+    .forName(
+      marketplaceArtifactUploadName({ marketplace: { kind: "system" }, listingId: LISTING_ID }),
+    )
     .http.fetch(new Request(url));
 }
 
@@ -337,6 +341,7 @@ test("generic workflow creation cannot forge the release publisher's provenance"
             const files = await marketplaceReleaseArtifactFiles(release);
             const work: Omit<MarketplacePackagePublishRequest, "workflowInstanceId"> = {
               intent: {
+                marketplace: { kind: "system" },
                 release,
                 execution: caller.execution,
                 skipAuthorCheck: false,

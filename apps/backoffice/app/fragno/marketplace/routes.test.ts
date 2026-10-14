@@ -34,7 +34,9 @@ describe("marketplace public routes", async () => {
     .withTestAdapter({ type: "kysely-sqlite" })
     .withFragment(
       "marketplace",
-      instantiate(marketplaceFragmentDefinition).withConfig({}).withRoutes([marketplaceRoutes]),
+      instantiate(marketplaceFragmentDefinition)
+        .withConfig({ scope: { kind: "system" } })
+        .withRoutes([marketplaceRoutes]),
     )
     .build();
 

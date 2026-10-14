@@ -1,8 +1,9 @@
 import { assert, beforeEach, describe, expect, test, vi } from "vitest";
 
-const { findBackofficeMeMock, createDraftListingMock } = vi.hoisted(() => ({
+const { findBackofficeMeMock, createDraftListingMock, marketplaceForMock } = vi.hoisted(() => ({
   findBackofficeMeMock: vi.fn(),
   createDraftListingMock: vi.fn(),
+  marketplaceForMock: vi.fn(),
 }));
 
 vi.mock("@/fragno/auth/auth-server", () => ({ findBackofficeMe: findBackofficeMeMock }));
@@ -27,7 +28,7 @@ const marketplace = { createDraftListing: createDraftListingMock };
 const context = {
   get: () => ({
     runtime: {
-      objects: { marketplace: { singleton: () => ({ commands: marketplace }) } },
+      objects: { marketplace: { for: marketplaceForMock } },
     },
   }),
 };
@@ -35,6 +36,7 @@ const context = {
 const publishRequest = (organizationSlug = "acme") => {
   const formData = new FormData();
   formData.set("ownerOrgSlug", organizationSlug);
+  formData.set("visibility", "organization");
   formData.set("slug", "daily-operations-brief");
   formData.set("version", "1.0.0");
   formData.set("name", "Daily operations brief");
@@ -54,6 +56,8 @@ const publishRequest = (organizationSlug = "acme") => {
 beforeEach(() => {
   findBackofficeMeMock.mockReset();
   createDraftListingMock.mockReset();
+  marketplaceForMock.mockReset();
+  marketplaceForMock.mockReturnValue({ commands: marketplace });
   findBackofficeMeMock.mockResolvedValue(authenticatedUser);
   createDraftListingMock.mockResolvedValue({
     ok: true,
@@ -114,9 +118,11 @@ describe("marketplace draft creation action", () => {
         marketplaceListingManagePath({
           listingId,
           organizationSlug: "acme",
+          visibility: "organization",
           result: { created: "1.0.0" },
         }),
     );
+    expect(marketplaceForMock).toHaveBeenCalledWith({ kind: "org", orgId: "org-1" });
     expect(createDraftListingMock).toHaveBeenCalledWith({
       owner: {
         scope: { kind: "org", orgId: "org-1" },

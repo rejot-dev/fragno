@@ -3,6 +3,8 @@ import { assert, describe, expect, test, vi } from "vitest";
 import {
   marketplacePublishResultSchema,
   type MarketplacePublishResult,
+  type MarketplaceScope,
+  type MarketplaceVisibility,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 import type { BackofficeRoutableScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
@@ -81,7 +83,7 @@ const METADATA = {
   summary: "A package captured before publication begins.",
   description:
     "A package used to exercise real publishing, artifact reads, and workspace installation.",
-  category: "developer-tools",
+  category: "developer-tools" as const,
   tags: ["testing"],
 };
 
@@ -144,7 +146,7 @@ function systemPublisher(ctx: BackofficeScenarioContext, state: BackofficeStateB
   });
   // The trusted System shell supplies a concrete readable source; flags never select a source scope.
   context.marketplace = {
-    runtime: createMarketplaceRuntime(ctx.runtime.objects.marketplace.singleton().commands, {
+    runtime: createMarketplaceRuntime(ctx.runtime.objects, {
       state,
       execution,
       kernel,
@@ -156,9 +158,10 @@ function systemPublisher(ctx: BackofficeScenarioContext, state: BackofficeStateB
 async function publishFromShell(
   bash: ReturnType<typeof publisherShell>,
   flags: string,
+  visibility: MarketplaceVisibility = "public",
 ): Promise<MarketplacePublishResult> {
   const result = await bash.exec(
-    `marketplace.publish --package-root ${PACKAGE_ROOT} ${flags} --format json`,
+    `marketplace.publish --package-root ${PACKAGE_ROOT} --visibility ${visibility} ${flags} --format json`,
   );
   assert(result.exitCode === 0, result.stderr);
   return marketplacePublishResultSchema.parse(JSON.parse(result.stdout));
@@ -167,9 +170,10 @@ async function publishFromShell(
 async function publishedManifest(
   ctx: BackofficeScenarioContext,
   listingId = LISTING_ID,
+  marketplace: MarketplaceScope = { kind: "system" },
 ): Promise<MarketplaceArtifactManifest> {
   const manifest = await ctx.runtime.objects.marketplace
-    .singleton()
+    .for(marketplace)
     .commands.getArtifactManifest({ listingId });
   assert(manifest?.listingStatus === "published");
   return manifest;
@@ -235,7 +239,7 @@ describe("Marketplace package publication scenarios", () => {
             await state.writeFile("/workspace/unselected.txt", "not part of the package");
             const run = await ctx.runCodemode({
               scope: ORG_SCOPE,
-              code: `async () => await marketplace.publish({ packageRoot: '${PACKAGE_ROOT}/' })`,
+              code: `async () => await marketplace.publish({ packageRoot: '${PACKAGE_ROOT}/', visibility: 'public' })`,
               assertToolCalls: ["marketplace.publish"],
             });
             const publication = marketplacePublishResultSchema.parse(run.result);
@@ -473,7 +477,9 @@ describe("Marketplace package publication scenarios", () => {
               ctx,
               createBackofficeUserExecution({ scope: ORG_SCOPE, userId: "owner-1" }),
             );
-            const denied = await bash.exec(`marketplace.publish --package-root ${PACKAGE_ROOT}`);
+            const denied = await bash.exec(
+              `marketplace.publish --package-root ${PACKAGE_ROOT} --visibility public`,
+            );
             assert(denied.exitCode !== 0);
             expect(denied.stderr).toContain("membership in the owning organization");
             for (const flag of [
@@ -482,7 +488,7 @@ describe("Marketplace package publication scenarios", () => {
               "--skip-author-check --skip-version-check",
             ]) {
               const override = await bash.exec(
-                `marketplace.publish --package-root ${PACKAGE_ROOT} ${flag}`,
+                `marketplace.publish --package-root ${PACKAGE_ROOT} --visibility public ${flag}`,
               );
               assert(override.exitCode !== 0);
               expect(override.stderr).toContain("overrides require System context");
@@ -497,7 +503,7 @@ describe("Marketplace package publication scenarios", () => {
               }),
             );
             const missing = await systemPublisher(ctx, state).exec(
-              `marketplace.publish --package-root ${PACKAGE_ROOT} --skip-author-check`,
+              `marketplace.publish --package-root ${PACKAGE_ROOT} --visibility public --skip-author-check`,
             );
             assert(missing.exitCode !== 0);
             expect(missing.stderr).toContain("was not found");
@@ -507,6 +513,258 @@ describe("Marketplace package publication scenarios", () => {
                 .commands.getArtifactManifest({ listingId: "org:org-2#durable-package" }),
             ).resolves.toBeNull();
           }),
+        ],
+      }),
+    );
+  });
+
+  test("organization visibility publishes into the owning organization's members-only Marketplace", async () => {
+    const ORG_MARKETPLACE = { kind: "org", orgId: "org-1" } as const;
+    await runBackofficeScenario(
+      defineBackofficeScenario<{
+        organizationPublication: MarketplacePublishResult | null;
+        publicPublication: MarketplacePublishResult | null;
+      }>({
+        objects: scenarioObjects,
+        name: "Organization and public Marketplaces hold independent listings",
+        vars: () => ({ organizationPublication: null, publicPublication: null }),
+        setup: ({ given }) => [
+          given.organization.exists({
+            id: "org-1",
+            slug: "ada-labs",
+            name: "Ada Labs",
+            ownerUserId: "owner-1",
+          }),
+          given.organization.exists({
+            id: "org-2",
+            slug: "other-labs",
+            name: "Other Labs",
+            ownerUserId: "other-1",
+          }),
+        ],
+        steps: ({ then, runner }) => [
+          then.assert("a member publishes with organization visibility", async (ctx) => {
+            await seedPackage(sourceState(ctx, ORG_SCOPE), {
+              name: "@ada-labs/durable-package",
+              version: "1.0.0",
+              readme: "Members only",
+              files: ["README.md"],
+            });
+            const publication = await publishFromShell(
+              publisherShell(
+                ctx,
+                createBackofficeUserExecution({ scope: ORG_SCOPE, userId: "owner-1" }),
+              ),
+              "",
+              "organization",
+            );
+            assert(publication.state === "requested");
+            expect(publication).toMatchObject({
+              listingId: LISTING_ID,
+              marketplace: ORG_MARKETPLACE,
+              workflowScope: { kind: "system" },
+            });
+            ctx.vars.organizationPublication = publication;
+          }),
+          runner.drain(),
+          then.assert("the release exists only in the organization's Marketplace", async (ctx) => {
+            assert(ctx.vars.organizationPublication);
+            assert(
+              (await publicationStatus(ctx, ctx.vars.organizationPublication)).details.status ===
+                "complete",
+            );
+            const manifest = await publishedManifest(ctx, LISTING_ID, ORG_MARKETPLACE);
+            expect(manifest).toMatchObject({
+              versions: ["1.0.0"],
+              uploadName: marketplaceArtifactUploadName({
+                marketplace: ORG_MARKETPLACE,
+                listingId: LISTING_ID,
+              }),
+            });
+            await expect((await artifactFile(ctx, manifest, "README.md")).text()).resolves.toBe(
+              "Members only",
+            );
+
+            const publicMarketplace = ctx.runtime.objects.marketplace.singleton();
+            await expect(
+              publicMarketplace.commands.getArtifactManifest({ listingId: LISTING_ID }),
+            ).resolves.toBeNull();
+            await expect(
+              ctx.runtime.objects.marketplace
+                .forOrg("org-2")
+                .commands.getArtifactManifest({ listingId: LISTING_ID }),
+            ).resolves.toBeNull();
+            const publicListings = await publicMarketplace.http.fetch(
+              new Request("https://backoffice.test/api/marketplace/listings"),
+            );
+            expect(await publicListings.json()).toMatchObject({ listings: [] });
+            const organizationListings = await ctx.runtime.objects.marketplace
+              .forOrg("org-1")
+              .http.fetch(new Request("https://backoffice.test/api/marketplace/listings"));
+            assert(organizationListings.status === 404);
+            const discovery = await ctx.runCodemode({
+              scope: ORG_SCOPE,
+              code: "async () => await marketplace.search({ query: 'Durable package' })",
+            });
+            expect(discovery.result).toMatchObject({ listings: [] });
+          }),
+          then.assert(
+            "the same package is published publicly as a separate listing",
+            async (ctx) => {
+              await sourceState(ctx, ORG_SCOPE).writeFile(
+                `${PACKAGE_ROOT}/README.md`,
+                "Shared with everyone",
+              );
+              const publication = await publishFromShell(
+                publisherShell(
+                  ctx,
+                  createBackofficeUserExecution({ scope: ORG_SCOPE, userId: "owner-1" }),
+                ),
+                "",
+                "public",
+              );
+              assert(publication.state === "requested");
+              assert(ctx.vars.organizationPublication?.state === "requested");
+              expect(publication.marketplace).toEqual({ kind: "system" });
+              assert(
+                publication.workflowInstanceId !==
+                  ctx.vars.organizationPublication.workflowInstanceId,
+              );
+              ctx.vars.publicPublication = publication;
+            },
+          ),
+          runner.drain(),
+          then.assert("each Marketplace serves its own release bytes", async (ctx) => {
+            const publicManifest = await publishedManifest(ctx);
+            const organizationManifest = await publishedManifest(ctx, LISTING_ID, ORG_MARKETPLACE);
+            assert(publicManifest.uploadName !== organizationManifest.uploadName);
+            await expect(
+              (await artifactFile(ctx, publicManifest, "README.md")).text(),
+            ).resolves.toBe("Shared with everyone");
+            await expect(
+              (await artifactFile(ctx, organizationManifest, "README.md")).text(),
+            ).resolves.toBe("Members only");
+          }),
+        ],
+      }),
+    );
+  });
+
+  test("organization Marketplaces accept only their own organization's members and listings", async () => {
+    const ORG_MARKETPLACE = { kind: "org", orgId: "org-1" } as const;
+    const systemContext = {
+      execution: createBackofficeSystemExecution({ kind: "system" }),
+      propagationContext: null,
+    };
+    await runBackofficeScenario(
+      defineBackofficeScenario<{ publication: MarketplacePublishResult | null }>({
+        objects: scenarioObjects,
+        name: "Organization Marketplaces are isolated from other organizations",
+        vars: () => ({ publication: null }),
+        setup: ({ given }) => [
+          given.organization.exists({
+            id: "org-1",
+            slug: "ada-labs",
+            name: "Ada Labs",
+            ownerUserId: "owner-1",
+          }),
+          given.organization.exists({
+            id: "org-2",
+            slug: "other-labs",
+            name: "Other Labs",
+            ownerUserId: "other-1",
+          }),
+        ],
+        steps: ({ then }) => [
+          then.assert(
+            "non-members cannot upload into another organization's Marketplace",
+            async (ctx) => {
+              const OTHER_SCOPE = { kind: "org", orgId: "org-2" } as const;
+              await seedPackage(sourceState(ctx, OTHER_SCOPE), {
+                name: "@ada-labs/durable-package",
+                version: "1.0.0",
+                readme: "Not a member",
+                files: ["README.md"],
+              });
+              const denied = await publisherShell(
+                ctx,
+                createBackofficeUserExecution({ scope: OTHER_SCOPE, userId: "other-1" }),
+              ).exec(
+                `marketplace.publish --package-root ${PACKAGE_ROOT} --visibility organization`,
+              );
+              assert(denied.exitCode !== 0);
+              expect(denied.stderr).toContain("membership in the owning organization");
+              const missingVisibility = await publisherShell(
+                ctx,
+                createBackofficeUserExecution({ scope: ORG_SCOPE, userId: "owner-1" }),
+              ).exec(`marketplace.publish --package-root ${PACKAGE_ROOT}`);
+              assert(missingVisibility.exitCode !== 0);
+              await expect(
+                ctx.runtime.objects.marketplace
+                  .forOrg("org-1")
+                  .commands.getArtifactManifest({ listingId: LISTING_ID }),
+              ).resolves.toBeNull();
+            },
+          ),
+          then.assert(
+            "an organization Marketplace rejects listings it does not own",
+            async (ctx) => {
+              const otherMarketplace = ctx.runtime.objects.marketplace.forOrg("org-2").commands;
+              const foreignDraft = await otherMarketplace.createDraftListing({
+                owner: { scope: ORG_MARKETPLACE, publisherName: "Ada Labs" },
+                slug: "durable-package",
+                version: "1.0.0",
+                metadata: METADATA,
+              });
+              expect(foreignDraft).toMatchObject({
+                ok: false,
+                error: { code: "MARKETPLACE_OWNER_OUTSIDE_SCOPE" },
+              });
+              const systemEntry = await otherMarketplace.insertStaticEntries({
+                entries: [
+                  {
+                    owner: { scope: { kind: "system" }, publisherName: "Fragno" },
+                    slug: "durable-package",
+                    version: "1.0.0",
+                    metadata: METADATA,
+                  },
+                ],
+              });
+              expect(systemEntry).toMatchObject({
+                ok: false,
+                error: { code: "MARKETPLACE_OWNER_OUTSIDE_SCOPE" },
+              });
+            },
+          ),
+          then.assert(
+            "accepted organization work cannot be committed into another Marketplace",
+            async (ctx) => {
+              await seedPackage(sourceState(ctx, ORG_SCOPE), {
+                name: "@ada-labs/durable-package",
+                version: "1.0.0",
+                readme: "Members only",
+                files: ["README.md"],
+              });
+              const publication = await publishFromShell(
+                publisherShell(
+                  ctx,
+                  createBackofficeUserExecution({ scope: ORG_SCOPE, userId: "owner-1" }),
+                ),
+                "",
+                "organization",
+              );
+              const request = await publicationRequest(ctx, publication);
+              expect(request.intent.marketplace).toEqual(ORG_MARKETPLACE);
+              for (const marketplace of [
+                ctx.runtime.objects.marketplace.singleton(),
+                ctx.runtime.objects.marketplace.forOrg("org-2"),
+              ]) {
+                await expect(
+                  marketplace.commands.beginPackagePublish(request, systemContext),
+                ).rejects.toThrow("targets a different Marketplace");
+              }
+            },
+          ),
         ],
       }),
     );
@@ -532,7 +790,7 @@ describe("Marketplace package publication scenarios", () => {
             });
             const bash = systemPublisher(ctx, state);
             const denied = await bash.exec(
-              `marketplace.publish --package-root ${PACKAGE_ROOT} --skip-version-check`,
+              `marketplace.publish --package-root ${PACKAGE_ROOT} --visibility public --skip-version-check`,
             );
             assert(denied.exitCode !== 0);
             expect(denied.stderr).toContain("membership in the owning organization");
@@ -556,7 +814,7 @@ describe("Marketplace package publication scenarios", () => {
               });
               const bash = systemPublisher(ctx, state);
               const denied = await bash.exec(
-                `marketplace.publish --package-root ${PACKAGE_ROOT} --skip-author-check`,
+                `marketplace.publish --package-root ${PACKAGE_ROOT} --visibility public --skip-author-check`,
               );
               assert(denied.exitCode !== 0);
               expect(denied.stderr).toContain("cannot become the latest published version");
@@ -579,7 +837,7 @@ describe("Marketplace package publication scenarios", () => {
             });
             const bash = systemPublisher(ctx, state);
             const denied = await bash.exec(
-              `marketplace.publish --package-root ${PACKAGE_ROOT} --skip-author-check`,
+              `marketplace.publish --package-root ${PACKAGE_ROOT} --visibility public --skip-author-check`,
             );
             assert(denied.exitCode !== 0);
             await publishFromShell(bash, "--skip-author-check --skip-version-check");
@@ -712,7 +970,12 @@ describe("Marketplace package publication scenarios", () => {
                 "Second snapshot",
               );
               assert(ctx.vars.second.state !== "preview");
-              expect(manifest.uploadName).toBe(marketplaceArtifactUploadName(LISTING_ID));
+              expect(manifest.uploadName).toBe(
+                marketplaceArtifactUploadName({
+                  marketplace: { kind: "system" },
+                  listingId: LISTING_ID,
+                }),
+              );
             },
           ),
         ],
@@ -763,7 +1026,12 @@ describe("Marketplace package publication scenarios", () => {
                 assert(result.state !== "preview");
                 assert((await publicationStatus(ctx, result)).details.status === "complete");
                 expect(result.workflowInstanceId).toBe(first.workflowInstanceId);
-                expect(manifest.uploadName).toBe(marketplaceArtifactUploadName(LISTING_ID));
+                expect(manifest.uploadName).toBe(
+                  marketplaceArtifactUploadName({
+                    marketplace: { kind: "system" },
+                    listingId: LISTING_ID,
+                  }),
+                );
                 await marketplace.completePackagePublish(await publicationRequest(ctx, result), {
                   execution,
                   propagationContext: null,
@@ -878,7 +1146,7 @@ describe("Marketplace package publication scenarios", () => {
                 const result = await publisherShell(
                   ctx,
                   createBackofficeSystemExecution(ORG_SCOPE),
-                ).exec(`marketplace.publish --package-root ${PACKAGE_ROOT}`);
+                ).exec(`marketplace.publish --package-root ${PACKAGE_ROOT} --visibility public`);
                 assert(result.exitCode !== 0);
                 expect(result.stderr).toMatch(/changed during capture|file selection changed/u);
                 assert(!mutate);
@@ -1120,7 +1388,10 @@ describe("Marketplace package publication scenarios", () => {
               );
               const artifactState = createBackofficeStateBackend({
                 uploadObject: ctx.runtime.objects.upload.forName(
-                  marketplaceArtifactUploadName(LISTING_ID),
+                  marketplaceArtifactUploadName({
+                    marketplace: { kind: "system" },
+                    listingId: LISTING_ID,
+                  }),
                 ).http,
                 staticFileCollection: createStaticFileCollection({}),
               });
@@ -1547,18 +1818,20 @@ describe("Marketplace package publication scenarios", () => {
             ]) {
               await state.writeFile(`${PACKAGE_ROOT}/manifest.json`, JSON.stringify(manifest));
               const rejected = await bash.exec(
-                `marketplace.publish --package-root ${PACKAGE_ROOT}`,
+                `marketplace.publish --package-root ${PACKAGE_ROOT} --visibility public`,
               );
               assert(rejected.exitCode !== 0, JSON.stringify(manifest));
             }
             await state.writeFile(`${PACKAGE_ROOT}/manifest.json`, JSON.stringify(base));
             await state.writeFile(`${PACKAGE_ROOT}/README.md`, "x".repeat(1_048_576));
-            const oversized = await bash.exec(`marketplace.publish --package-root ${PACKAGE_ROOT}`);
+            const oversized = await bash.exec(
+              `marketplace.publish --package-root ${PACKAGE_ROOT} --visibility public`,
+            );
             assert(oversized.exitCode !== 0);
             expect(oversized.stderr).toContain("exceeds 1048576 bytes");
             await state.writeFile(`${PACKAGE_ROOT}/.git/manifest.json`, JSON.stringify(base));
             const privateRoot = await bash.exec(
-              `marketplace.publish --package-root ${PACKAGE_ROOT}/.git`,
+              `marketplace.publish --package-root ${PACKAGE_ROOT}/.git --visibility public`,
             );
             assert(privateRoot.exitCode !== 0);
             expect(privateRoot.stderr).toContain("cannot be published");

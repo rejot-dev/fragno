@@ -535,7 +535,10 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
               await initializeMarketplaceListingRootFiles(
                 createUploadRouteCaller(
                   this.#runtimeServices.objects.upload.forName(
-                    marketplaceArtifactUploadName(release.listingId),
+                    marketplaceArtifactUploadName({
+                      marketplace: { kind: "system" },
+                      listingId: release.listingId,
+                    }),
                   ).http,
                 ),
                 staticEntries[index].rootFiles ?? {},

@@ -64,10 +64,11 @@ describe("marketplace listing navigation", () => {
       marketplaceListingManagePath({
         listingId,
         organizationSlug: "acme",
+        visibility: "organization",
         result: { created: "1.0.0" },
       }),
     ).toBe(
-      `/backoffice/marketplace/${marketplaceListingRef(listingId)}/manage?organizationSlug=acme&created=1.0.0`,
+      `/backoffice/marketplace/${marketplaceListingRef(listingId)}/manage?organizationSlug=acme&visibility=organization&created=1.0.0`,
     );
   });
 });

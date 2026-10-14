@@ -704,7 +704,7 @@ export const backofficeObjectScopePolicy = {
   PI_MANAGER: ["singleton", "org", "user", "project"],
   BILLING: ["org"],
   CODEMODE: ["singleton", "org", "user", "project"],
-  MARKETPLACE: ["singleton"],
+  MARKETPLACE: ["singleton", "org"],
 
   TELEGRAM: ["singleton", "org", "user", "project"],
   OTP: ["singleton", "org"],

@@ -1,6 +1,7 @@
 import {
   marketplaceListingIdSchema,
   marketplaceVersionSchema,
+  type MarketplaceScope,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 
 import type { UploadFileTreeRecord } from "@/file-collection/create-upload-file-tree";
@@ -56,10 +57,19 @@ export type MarketplaceArtifactFile = {
   content: string;
 };
 
-export const marketplaceArtifactUploadName = (listingId: string) =>
-  `marketplace/listings/${bytesToHex(
-    TEXT_ENCODER.encode(marketplaceListingIdSchema.parse(listingId)),
-  )}`;
+/** Listing ids repeat across Marketplaces, so organization artifacts are namespaced by their Marketplace. */
+export function marketplaceArtifactUploadName({
+  marketplace,
+  listingId,
+}: {
+  marketplace: MarketplaceScope;
+  listingId: string;
+}): string {
+  const listing = `listings/${bytesToHex(TEXT_ENCODER.encode(marketplaceListingIdSchema.parse(listingId)))}`;
+  return marketplace.kind === "system"
+    ? `marketplace/${listing}`
+    : `marketplace/org/${bytesToHex(TEXT_ENCODER.encode(marketplace.orgId))}/${listing}`;
+}
 
 export const normalizeMarketplaceArtifactPath = (path: string): string => {
   const trimmed = path.trim();
