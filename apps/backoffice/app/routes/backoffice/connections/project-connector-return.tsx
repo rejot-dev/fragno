@@ -17,7 +17,7 @@ export function loader({ params }: Route.LoaderArgs) {
       throw new Error("Connector returns require a user scope.");
     }
     return {
-      backUrl: `/backoffice/automations/${backofficeRouteScopePath(scope)}`,
+      backUrl: `/backoffice/integrations/${backofficeRouteScopePath(scope)}`,
       scopeLabel: "Personal account",
     };
   } catch {

@@ -97,7 +97,7 @@ export function GitHubErrorBoundary({
       <BackofficePageHeader
         breadcrumbs={[
           { label: "Backoffice", to: "/backoffice" },
-          { label: "Automations", to: "/backoffice/automations" },
+          { label: "Integrations", to: "/backoffice/integrations" },
           { label: "GitHub" },
         ]}
         eyebrow="Integrations"

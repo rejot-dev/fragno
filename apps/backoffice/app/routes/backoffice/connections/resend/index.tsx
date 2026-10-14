@@ -18,7 +18,7 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
   const activeOrganization = me.activeOrganization?.organization ?? null;
   if (activeOrganization) {
     return redirect(
-      `/backoffice/automations/org/${encodeURIComponent(activeOrganization.slug)}/integrations/resend`,
+      `/backoffice/integrations/org/${encodeURIComponent(activeOrganization.slug)}/resend`,
     );
   }
 
@@ -42,15 +42,15 @@ export default function BackofficeConnectionsResend() {
       <BackofficePageHeader
         breadcrumbs={[
           { label: "Backoffice", to: "/backoffice" },
-          { label: "Automations", to: "/backoffice/automations" },
+          { label: "Integrations", to: "/backoffice/integrations" },
           { label: "Resend" },
         ]}
         eyebrow="Integrations"
         title="Resend connection workspace."
         description="Pick an organization to configure Resend webhooks and monitor email delivery."
         actions={
-          <ButtonLink variant="secondary" to="/backoffice/automations">
-            Back to automations
+          <ButtonLink variant="secondary" to="/backoffice/integrations">
+            Back to integrations
           </ButtonLink>
         }
       />
@@ -100,7 +100,7 @@ export default function BackofficeConnectionsResend() {
               <div className="mt-4">
                 <ButtonLink
                   variant="accent"
-                  to={`/backoffice/automations/org/${encodeURIComponent(organization.slug)}/integrations/resend`}
+                  to={`/backoffice/integrations/org/${encodeURIComponent(organization.slug)}/resend`}
                 >
                   Manage Resend
                 </ButtonLink>

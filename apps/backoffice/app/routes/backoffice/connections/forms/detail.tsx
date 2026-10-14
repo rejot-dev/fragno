@@ -2,7 +2,6 @@ import { Button, ButtonLink } from "@fragno-private/design-system/button";
 import { BackofficeJsonForm } from "@fragno-private/design-system/forms/backoffice-json-form";
 import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
 import { useEffect, useState } from "react";
-import { useOutletContext } from "react-router";
 
 import type { FormResponse } from "@fragno-dev/forms";
 
@@ -11,11 +10,11 @@ import type { UISchemaElement } from "@jsonforms/core";
 import { backofficeRouteScopePath } from "@/backoffice-runtime/route-scope";
 import { formsClient } from "@/fragno/forms-client";
 
-import type { AutomationLayoutContext } from "../../automations/layout-context";
-import { automationScopeBasePath } from "../../automations/scope";
 import type { Route } from "./+types/detail";
 
 const SUBMISSIONS_PAGE_SIZE = 25;
+// Forms exist only in the system scope.
+const FORMS_PATH = `/backoffice/integrations/${backofficeRouteScopePath({ kind: "system" })}/forms`;
 
 const submittedAtFormatter = new Intl.DateTimeFormat("en-US", {
   dateStyle: "medium",
@@ -55,8 +54,6 @@ export default function BackofficeFormDetail(props: Route.ComponentProps) {
 }
 
 function BackofficeFormDetailPage({ params }: Route.ComponentProps) {
-  const { selectedScope } = useOutletContext<AutomationLayoutContext>();
-  const formsPath = `${automationScopeBasePath(selectedScope)}/integrations/forms`;
   const [submissionCursor, setSubmissionCursor] = useState<string | null>(null);
   const [submissions, setSubmissions] = useState<FormResponse[]>([]);
   const formState = formsClient.useFormById({ path: { id: params.formId } });
@@ -122,7 +119,7 @@ function BackofficeFormDetailPage({ params }: Route.ComponentProps) {
                 Open public form
               </ButtonLink>
             )}
-            <ButtonLink variant="secondary" to={formsPath}>
+            <ButtonLink variant="secondary" to={FORMS_PATH}>
               All forms
             </ButtonLink>
           </div>

@@ -34,7 +34,7 @@ describe("scopeSwitchPath", () => {
 
   test("falls back from a system-unavailable automation tab", () => {
     assert(
-      scopeSwitchPath("/backoffice/automations/org/org-a/api", { kind: "system" }) ===
+      scopeSwitchPath("/backoffice/automations/org/org-a/sandboxes", { kind: "system" }) ===
         "/backoffice/automations/system/system/dashboard",
     );
   });

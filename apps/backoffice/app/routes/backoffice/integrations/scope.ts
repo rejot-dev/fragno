@@ -12,20 +12,13 @@ import { requireBackofficeRouteScopeFromParams } from "@/backoffice-runtime/rout
 import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import type { BackofficeMeData } from "@/fragno/auth/contracts";
 
-import type { AutomationProjectRecord } from "../automations/data";
-import {
-  automationScopeBasePath,
-  createAutomationScopeOptions,
-  type AutomationScopeOption,
-} from "../automations/scope";
 import { throwBackofficeOrganizationNotFound } from "../route-errors";
+import { integrationsScopeBasePath } from "./connection-paths";
 
 export type IntegrationRouteParams = {
   scopeKind?: string;
   scopeId?: string;
 };
-
-export type IntegrationScopeSwitchOption = AutomationScopeOption;
 
 export type ScopedIntegrationContext = {
   scope: BackofficeContextScope;
@@ -72,7 +65,7 @@ export function integrationScopeSelectionFromRuntimeScope(
 }
 
 export const integrationBasePath = (scope: BackofficeScopeSelection, integration: string) =>
-  `${automationScopeBasePath(scope)}/integrations/${integration}`;
+  `${integrationsScopeBasePath(scope)}/${integration}`;
 
 export const organizationIdFromScope = (scope: BackofficeContextScope): string | null =>
   scope.kind === "org" || scope.kind === "project" ? scope.orgId : null;
@@ -82,35 +75,6 @@ export const createOrganizationScopeOptions = (organizations: BackofficeMeData["
     id: organization.id,
     label: organization.name ?? organization.id,
   }));
-
-export const createIntegrationScopeSwitchOptions = ({
-  me,
-  projects,
-  projectOrgId,
-  integration,
-  allowedScopes,
-}: {
-  me: BackofficeMeData;
-  projects: AutomationProjectRecord[];
-  projectOrgId: string;
-  integration: string;
-  allowedScopes?: readonly BackofficeContextScope["kind"][];
-}): IntegrationScopeSwitchOption[] => {
-  const scopeOptions = createAutomationScopeOptions({
-    organizations: me.organizations.map((entry) => entry.organization),
-    projects,
-    user: me.user,
-    currentTab: "integrations",
-    projectOrgId,
-  });
-
-  const allowedScopeKinds = allowedScopes ? new Set(allowedScopes) : null;
-  return scopeOptions.flatMap((option) =>
-    !allowedScopeKinds || allowedScopeKinds.has(option.kind)
-      ? [{ ...option, to: `${option.to}/${integration}` }]
-      : [],
-  );
-};
 
 export const resolveIntegrationContext = ({
   params,
@@ -155,7 +119,7 @@ export const resolveIntegrationContext = ({
     uiScope,
     label: scopeLabel(scope, me),
     basePath: scopedBasePath,
-    integrationsPath: `${automationScopeBasePath(uiScope)}/integrations`,
+    integrationsPath: integrationsScopeBasePath(uiScope),
     scopeSegment: backofficeScopePathSegment(scope),
     isScopedRoute,
   };

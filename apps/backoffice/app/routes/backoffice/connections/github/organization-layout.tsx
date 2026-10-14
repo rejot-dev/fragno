@@ -4,8 +4,8 @@ import { Outlet } from "react-router";
 import { findBackofficeMe } from "@/fragno/auth/auth-server";
 
 import { buildBackofficeLoginPath } from "../../auth-navigation";
-import { AutomationWorkspaceHeader } from "../../automations/shared";
 import { organizationIdFromScope, resolveIntegrationContext } from "../../integrations/scope";
+import { IntegrationServiceHeader } from "../../integrations/service-header";
 import type { Route } from "./+types/organization-layout";
 import {
   fetchGitHubAdminConfig,
@@ -111,10 +111,10 @@ export default function BackofficeOrganizationGitHubLayout({
 
   return (
     <div>
-      <AutomationWorkspaceHeader
-        selectedScope={uiScope}
-        activeTab="integrations"
-        heading={`GitHub setup for ${uiScope.label}`}
+      <IntegrationServiceHeader
+        integrationsPath={integrationsPath}
+        service="GitHub"
+        scopeLabel={uiScope.label}
         subnav={
           <GitHubTabs
             basePath={basePath}

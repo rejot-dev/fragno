@@ -14,10 +14,7 @@ import {
   backofficeRuntimeScopeFromResolvedScope,
   type BackofficeResolvedScope,
 } from "@/backoffice-runtime/resolved-scope";
-import {
-  backofficeRouteScopePath,
-  type BackofficeRouteScope,
-} from "@/backoffice-runtime/route-scope";
+import type { BackofficeRouteScope } from "@/backoffice-runtime/route-scope";
 import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
 import type { BackofficeMeData } from "@/fragno/auth/contracts";
 
@@ -331,32 +328,31 @@ export const DURABLE_HOOKS_OBJECT_CONFIGURE_META: Partial<
   >
 > = {
   api: {
-    path: (orgSlug) => `/backoffice/automations/org/${orgSlug}/api`,
-    label: "Configure API",
+    path: (orgSlug) => `/backoffice/integrations/org/${orgSlug}`,
+    label: "Open integrations",
   },
   telegram: {
-    path: (orgSlug) => `/backoffice/automations/org/${orgSlug}/integrations/telegram/configuration`,
+    path: (orgSlug) => `/backoffice/integrations/org/${orgSlug}/telegram/configuration`,
     label: "Configure Telegram",
   },
   otp: {
-    path: (orgSlug) => `/backoffice/automations/org/${orgSlug}/integrations/telegram/configuration`,
+    path: (orgSlug) => `/backoffice/integrations/org/${orgSlug}/telegram/configuration`,
     label: "Open Telegram linking",
   },
   resend: {
-    path: (orgSlug) => `/backoffice/automations/org/${orgSlug}/integrations/resend/configuration`,
+    path: (orgSlug) => `/backoffice/integrations/org/${orgSlug}/resend/configuration`,
     label: "Configure Resend",
   },
   mcp: {
-    path: (orgSlug) =>
-      `/backoffice/automations/${backofficeRouteScopePath({ kind: "org", orgSlug })}/mcp`,
-    label: "Configure MCP",
+    path: (orgSlug) => `/backoffice/integrations/org/${orgSlug}`,
+    label: "Open integrations",
   },
   upload: {
     path: (orgSlug) => `/backoffice/connections/upload/${orgSlug}/configuration`,
     label: "Configure Upload",
   },
   github: {
-    path: (orgSlug) => `/backoffice/automations/org/${orgSlug}/integrations/github/configuration`,
+    path: (orgSlug) => `/backoffice/integrations/org/${orgSlug}/github/configuration`,
     label: "Configure GitHub",
   },
   workflows: {

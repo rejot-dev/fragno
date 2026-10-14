@@ -20,11 +20,11 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
 
   const activeOrganization = me.activeOrganization?.organization;
   if (!activeOrganization) {
-    return redirect("/backoffice/automations");
+    return redirect("/backoffice/integrations");
   }
 
   return redirect(
-    `/backoffice/automations/org/${encodeURIComponent(activeOrganization.slug)}/integrations/github`,
+    `/backoffice/integrations/org/${encodeURIComponent(activeOrganization.slug)}/github`,
   );
 }
 

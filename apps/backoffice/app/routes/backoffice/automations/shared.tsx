@@ -32,11 +32,6 @@ const AUTOMATION_TAB_GROUPS = [
     { id: "events-catalog", label: "Events" },
   ],
   [{ id: "store", label: "Store" }],
-  [
-    { id: "api", label: "API" },
-    { id: "integrations", label: "Integrations" },
-    { id: "mcp", label: "MCP" },
-  ],
   [{ id: "sandboxes", label: "Sandboxes" }],
 ] as const satisfies readonly (readonly {
   id: AutomationTab;

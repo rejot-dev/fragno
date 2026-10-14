@@ -47,7 +47,7 @@ test.each(["org:ada-labs", "project:ada-labs:project-1"])(
 test.each([
   {
     scopeSegment: "user:user-1",
-    backPath: "/backoffice/automations/user/user-1",
+    backPath: "/backoffice/integrations/user/user-1",
     label: "Personal account",
   },
 ])(

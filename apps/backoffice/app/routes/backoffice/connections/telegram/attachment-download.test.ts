@@ -43,7 +43,7 @@ const scenarioObjects = {
 } satisfies LocalBackofficeObjects;
 
 const orgId = "org_123";
-const downloadPath = "/backoffice/automations/org/fragno/integrations/telegram/attachment-download";
+const downloadPath = "/backoffice/integrations/org/fragno/telegram/attachment-download";
 
 async function runAttachmentScenario(scenario: BackofficeScenarioDefinitionInput) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "backoffice-telegram-attachment-"));
@@ -109,8 +109,7 @@ async function downloadAttachment(ctx: BackofficeScenarioContext, query: string,
   return await loader({
     request,
     url,
-    pattern:
-      "/backoffice/automations/:scopeKind/:scopeId/integrations/telegram/attachment-download",
+    pattern: "/backoffice/integrations/:scopeKind/:scopeId/telegram/attachment-download",
     context: createBackofficeRouterContextProvider(request, {
       runtime: ctx.runtime.services,
       kernel: new BackofficeKernel(ctx.runtime.services),

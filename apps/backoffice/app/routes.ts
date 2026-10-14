@@ -29,7 +29,6 @@ export default [
         route("billing", "routes/backoffice/organization-billing.tsx"),
       ]),
       route("connections/resend", "routes/backoffice/connections/resend/index.tsx"),
-      route("connections/mcp", "routes/backoffice/connections/mcp/index.tsx"),
       route(
         "connections/api/oauth-complete",
         "routes/backoffice/connections/api-oauth-complete.tsx",
@@ -65,13 +64,63 @@ export default [
         "automations/:orgSlug/claims/complete",
         "routes/backoffice/automations/claims-complete.tsx",
       ),
+      route("automations/:scopeKind/:scopeId", "routes/backoffice/automations/scope-layout.tsx", [
+        index("routes/backoffice/automations/scope-index.tsx"),
+        route("dashboard", "routes/backoffice/automations/dashboard.tsx"),
+        route("terminal-command", "routes/backoffice/automations/terminal-command.ts"),
+        route("store", "routes/backoffice/automations/store-layout.tsx", [
+          index("routes/backoffice/automations/store.tsx"),
+          route("identity-bindings", "routes/backoffice/automations/identity-bindings.tsx"),
+        ]),
+        route("events-catalog", "routes/backoffice/automations/events-catalog.tsx"),
+        route("sandboxes", "routes/backoffice/automations/sandboxes.tsx"),
+        route("runs/:workflowName/:instanceId", "routes/backoffice/automations/workflow-run.tsx"),
+      ]),
+
       route(
-        "automations/:scopeKind/:scopeId/integrations/telegram/attachment-download",
+        "connections/upload/:orgSlug",
+        "routes/backoffice/connections/upload/organization-layout.tsx",
+        [
+          route("configuration", "routes/backoffice/connections/upload/configuration.tsx"),
+          route("uploads", "routes/backoffice/connections/upload/uploads.tsx"),
+          route("files", "routes/backoffice/connections/upload/files.tsx", [
+            index("routes/backoffice/connections/upload/files-index.tsx"),
+          ]),
+        ],
+      ),
+      route("sessions", "routes/backoffice/sessions/index.tsx"),
+      route("sessions/:scopeKind/:scopeId", "routes/backoffice/sessions/organization-layout.tsx", [
+        index("routes/backoffice/sessions/organization-index.tsx"),
+        route("sessions", "routes/backoffice/sessions/sessions.tsx", [
+          index("routes/backoffice/sessions/sessions-index.tsx"),
+          route(":sessionId", "routes/backoffice/sessions/session-detail.tsx"),
+          route(":sessionId/view-stream", "routes/backoffice/sessions/session-view-stream.ts"),
+          route(":sessionId/entries", "routes/backoffice/sessions/session-entries.ts"),
+          route(":sessionId/export", "routes/backoffice/sessions/session-export.ts"),
+          route(":sessionId.jsonl", "routes/backoffice/sessions/session-export.ts", {
+            id: "sessions/session-jsonl",
+          }),
+          route(
+            ":sessionId/compactions/:taskId",
+            "routes/backoffice/sessions/session-compaction.ts",
+          ),
+          route(":sessionId/debug", "routes/backoffice/sessions/debug-session-detail.tsx"),
+        ]),
+      ]),
+      route("files", "routes/backoffice/files/index.tsx"),
+      route("files/:scopeKind/:scopeId/download", "routes/backoffice/files/download.ts"),
+      route("files/:scopeKind/:scopeId", "routes/backoffice/files/scope-layout.tsx", [
+        index("routes/backoffice/files/explorer.tsx"),
+        route("*", "routes/backoffice/files/explorer-path.tsx"),
+      ]),
+      route("integrations", "routes/backoffice/integrations/index.tsx"),
+      route(
+        "integrations/:scopeKind/:scopeId/telegram/attachment-download",
         "routes/backoffice/connections/telegram/attachment-download.ts",
         { id: "scoped-integrations/telegram/attachment-download" },
       ),
       route(
-        "automations/:scopeKind/:scopeId/integrations/telegram",
+        "integrations/:scopeKind/:scopeId/telegram",
         "routes/backoffice/connections/telegram/organization-layout.tsx",
         { id: "scoped-integrations/telegram/layout" },
         [
@@ -97,7 +146,7 @@ export default [
         ],
       ),
       route(
-        "automations/:scopeKind/:scopeId/integrations/resend",
+        "integrations/:scopeKind/:scopeId/resend",
         "routes/backoffice/connections/resend/organization-layout.tsx",
         { id: "scoped-integrations/resend/layout" },
         [
@@ -165,7 +214,7 @@ export default [
         ],
       ),
       route(
-        "automations/:scopeKind/:scopeId/integrations/reson8",
+        "integrations/:scopeKind/:scopeId/reson8",
         "routes/backoffice/connections/reson8/organization-layout.tsx",
         { id: "scoped-integrations/reson8/layout" },
         [
@@ -181,7 +230,7 @@ export default [
         ],
       ),
       route(
-        "automations/:scopeKind/:scopeId/integrations/github",
+        "integrations/:scopeKind/:scopeId/github",
         "routes/backoffice/connections/github/organization-layout.tsx",
         { id: "scoped-integrations/github/layout" },
         [
@@ -206,63 +255,17 @@ export default [
           ),
         ],
       ),
-      route("automations/:scopeKind/:scopeId", "routes/backoffice/automations/scope-layout.tsx", [
-        index("routes/backoffice/automations/scope-index.tsx"),
-        route("dashboard", "routes/backoffice/automations/dashboard.tsx"),
-        route("terminal-command", "routes/backoffice/automations/terminal-command.ts"),
-        route("store", "routes/backoffice/automations/store-layout.tsx", [
-          index("routes/backoffice/automations/store.tsx"),
-          route("identity-bindings", "routes/backoffice/automations/identity-bindings.tsx"),
-        ]),
-        route("api", "routes/backoffice/automations/api.tsx"),
-        route("integrations", "routes/backoffice/automations/integrations.tsx"),
-        route("integrations/forms", "routes/backoffice/connections/forms/index.tsx", {
-          id: "scoped-integrations/forms",
-        }),
-        route("integrations/forms/:formId", "routes/backoffice/connections/forms/detail.tsx"),
-        route("events-catalog", "routes/backoffice/automations/events-catalog.tsx"),
-        route("mcp", "routes/backoffice/automations/mcp.tsx"),
-        route("sandboxes", "routes/backoffice/automations/sandboxes.tsx"),
-        route("runs/:workflowName/:instanceId", "routes/backoffice/automations/workflow-run.tsx"),
-      ]),
-
       route(
-        "connections/upload/:orgSlug",
-        "routes/backoffice/connections/upload/organization-layout.tsx",
-        [
-          route("configuration", "routes/backoffice/connections/upload/configuration.tsx"),
-          route("uploads", "routes/backoffice/connections/upload/uploads.tsx"),
-          route("files", "routes/backoffice/connections/upload/files.tsx", [
-            index("routes/backoffice/connections/upload/files-index.tsx"),
-          ]),
-        ],
+        "integrations/:scopeKind/:scopeId/forms",
+        "routes/backoffice/connections/forms/index.tsx",
+        {
+          id: "scoped-integrations/forms",
+        },
       ),
-      route("sessions", "routes/backoffice/sessions/index.tsx"),
-      route("sessions/:scopeKind/:scopeId", "routes/backoffice/sessions/organization-layout.tsx", [
-        index("routes/backoffice/sessions/organization-index.tsx"),
-        route("sessions", "routes/backoffice/sessions/sessions.tsx", [
-          index("routes/backoffice/sessions/sessions-index.tsx"),
-          route(":sessionId", "routes/backoffice/sessions/session-detail.tsx"),
-          route(":sessionId/view-stream", "routes/backoffice/sessions/session-view-stream.ts"),
-          route(":sessionId/entries", "routes/backoffice/sessions/session-entries.ts"),
-          route(":sessionId/export", "routes/backoffice/sessions/session-export.ts"),
-          route(":sessionId.jsonl", "routes/backoffice/sessions/session-export.ts", {
-            id: "sessions/session-jsonl",
-          }),
-          route(
-            ":sessionId/compactions/:taskId",
-            "routes/backoffice/sessions/session-compaction.ts",
-          ),
-          route(":sessionId/debug", "routes/backoffice/sessions/debug-session-detail.tsx"),
-        ]),
-      ]),
-      route("files", "routes/backoffice/files/index.tsx"),
-      route("files/:scopeKind/:scopeId/download", "routes/backoffice/files/download.ts"),
-      route("files/:scopeKind/:scopeId", "routes/backoffice/files/scope-layout.tsx", [
-        index("routes/backoffice/files/explorer.tsx"),
-        route("*", "routes/backoffice/files/explorer-path.tsx"),
-      ]),
-      route("integrations", "routes/backoffice/integrations/index.tsx"),
+      route(
+        "integrations/:scopeKind/:scopeId/forms/:formId",
+        "routes/backoffice/connections/forms/detail.tsx",
+      ),
       route("integrations/:scopeKind/:scopeId", "routes/backoffice/integrations/scope-layout.tsx", [
         index("routes/backoffice/integrations/connection-index.tsx"),
         route(":connectionId", "routes/backoffice/integrations/connection-detail.tsx"),

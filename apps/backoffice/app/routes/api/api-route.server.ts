@@ -1,12 +1,14 @@
 import type { ApiObject } from "@/backoffice-runtime/object-registry";
-import { backofficeRouteScopePath } from "@/backoffice-runtime/route-scope";
 import type { PublicFragmentRoute } from "@/fragno/public-fragment-route.server";
+import { encodeApiConnectionId } from "@/fragno/runtime-tools/families/integrations/api-integration";
 import {
   API_INTERNAL_OAUTH_CALLBACK_PATH,
   API_INTERNAL_PREFIX,
   API_PUBLIC_PREFIX,
 } from "@/fragno/scoped-public-fragment-routes";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
+
+import { integrationOAuthReturn } from "../backoffice/integrations/connection-paths";
 
 function isPublicWebhookReceiveRequest(request: Request, _scope: unknown, suffix: string) {
   if (request.method !== "GET" && request.method !== "POST") {
@@ -29,25 +31,19 @@ export const apiPublicRoute = {
     internalCallbackPath: API_INTERNAL_OAUTH_CALLBACK_PATH,
     invalidResponse: (message) => new Response(message, { status: 502 }),
     redirect: ({ request, routeScope, status, code, message }) => {
-      const redirectUrl = new URL(
-        `/backoffice/automations/${backofficeRouteScopePath(routeScope)}/api`,
-        request.url,
-      );
-      redirectUrl.searchParams.set("tab", "connections");
-      redirectUrl.searchParams.set("oauth", status);
-
-      const connectionSlug = new URL(request.url).searchParams.get("state")?.split(":")[0]?.trim();
-      if (connectionSlug) {
-        redirectUrl.searchParams.set("connection", connectionSlug);
-      }
-      if (code) {
-        redirectUrl.searchParams.set("code", code);
-      }
-      if (message) {
-        redirectUrl.searchParams.set("message", message);
-      }
-
-      return Response.redirect(redirectUrl, 302);
+      const slug = new URL(request.url).searchParams.get("state")?.split(":")[0]?.trim();
+      return integrationOAuthReturn({
+        request,
+        routeScope,
+        connectionId: slug ? encodeApiConnectionId(slug) : null,
+        outcome:
+          status === "success"
+            ? { status }
+            : {
+                status,
+                message: message ? (code ? `${message} (${code})` : message) : (code ?? null),
+              },
+      });
     },
   },
 } satisfies PublicFragmentRoute<ApiObject>;

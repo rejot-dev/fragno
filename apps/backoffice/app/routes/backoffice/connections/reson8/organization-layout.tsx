@@ -4,8 +4,8 @@ import { Outlet, redirect } from "react-router";
 import { findBackofficeMe } from "@/fragno/auth/auth-server";
 
 import { buildBackofficeLoginPath } from "../../auth-navigation";
-import { AutomationWorkspaceHeader } from "../../automations/shared";
 import { resolveIntegrationContext } from "../../integrations/scope";
+import { IntegrationServiceHeader } from "../../integrations/service-header";
 import type { Route } from "./+types/organization-layout";
 import { fetchReson8Config } from "./data";
 import { Reson8ErrorBoundary, Reson8Tabs, type Reson8ConfigState, type Reson8Tab } from "./shared";
@@ -103,9 +103,10 @@ function Reson8LayoutContent({
 
   return (
     <div>
-      <AutomationWorkspaceHeader
-        selectedScope={uiScope}
-        activeTab="integrations"
+      <IntegrationServiceHeader
+        integrationsPath={integrationsPath}
+        service="Reson8"
+        scopeLabel={uiScope.label}
         subnav={
           <Reson8Tabs
             basePath={basePath}

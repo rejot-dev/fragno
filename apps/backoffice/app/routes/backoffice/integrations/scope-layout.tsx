@@ -7,6 +7,7 @@ import {
   redirect,
   useParams,
   useRevalidator,
+  useSearchParams,
   type ShouldRevalidateFunctionArgs,
 } from "react-router";
 
@@ -46,6 +47,7 @@ import {
   type ListedIntegrationConnections,
 } from "./connections.server";
 import type { IntegrationsLayoutContext } from "./layout-context";
+import { NativeServices } from "./native-services";
 
 export async function loader({ request, params, context, url }: Route.LoaderArgs) {
   const me = await findBackofficeMe(request, context);
@@ -107,6 +109,7 @@ export default function BackofficeIntegrationsScopeLayout({ loaderData }: Route.
   return (
     <div data-integrations-workspace className="flex flex-col gap-4">
       <h1 className="sr-only">Integrations in {selectedScope.label}</h1>
+      <ProviderReturnNotice />
       <ClientOnly fallback={loading}>
         <Suspense fallback={loading}>
           <IntegrationsClient selectedScope={selectedScope} listed={listed} />
@@ -184,55 +187,62 @@ function IntegrationsWorkspace({
     <div
       className={`grid items-start gap-4 ${showPanel ? "xl:grid-cols-[minmax(0,1fr)_30rem]" : ""}`}
     >
-      <section className="bo-panel-surface bg-[var(--bo-panel)]">
-        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-          <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
-            {connections.length} {connections.length === 1 ? "connection" : "connections"}
-          </p>
-          {connections.length > 0 ? (
-            <label className="flex items-center gap-2 text-xs text-[var(--bo-muted)]">
-              <input
-                type="checkbox"
-                checked={showDisconnected}
-                onChange={(event) => {
-                  setShowDisconnected(event.target.checked);
-                }}
-              />
-              Show disconnected
-              {disconnectedCount > 0 ? ` (${disconnectedCount})` : null}
-            </label>
+      <div className="flex min-w-0 flex-col gap-4">
+        <section className="bo-panel-surface bg-[var(--bo-panel)]">
+          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+            <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
+              {connections.length} {connections.length === 1 ? "connection" : "connections"}
+            </p>
+            {connections.length > 0 ? (
+              <label className="flex items-center gap-2 text-xs text-[var(--bo-muted)]">
+                <input
+                  type="checkbox"
+                  checked={showDisconnected}
+                  onChange={(event) => {
+                    setShowDisconnected(event.target.checked);
+                  }}
+                />
+                Show disconnected
+                {disconnectedCount > 0 ? ` (${disconnectedCount})` : null}
+              </label>
+            ) : null}
+          </div>
+          {listed.status === "unavailable" ? (
+            <p className="border-t border-[color:var(--bo-border)] px-4 py-2 text-xs text-[var(--bo-muted)]">
+              Names and auth methods are unavailable: {listed.message}
+            </p>
           ) : null}
-        </div>
-        {listed.status === "unavailable" ? (
-          <p className="border-t border-[color:var(--bo-border)] px-4 py-2 text-xs text-[var(--bo-muted)]">
-            Names and auth methods are unavailable: {listed.message}
-          </p>
-        ) : null}
-        {eventsQuery.isError ? (
-          <BackofficeSystemState tone="error" title="Connection events could not be read." flush />
-        ) : connections.length === 0 ? (
-          <BackofficeSystemState
-            tone="empty"
-            title="No connections yet."
-            description="Ask your agent to add a connection."
-            flush
-          />
-        ) : visibleConnections.length === 0 ? (
-          <BackofficeSystemState
-            tone="empty"
-            title="No active connections."
-            description="Every connection in this scope was disconnected. Ask your agent to add a connection."
-            flush
-          />
-        ) : (
-          <ConnectionsTable
-            selectedScope={selectedScope}
-            listed={listed.status === "listed" ? listed.connections : {}}
-            connections={visibleConnections}
-            selectedConnectionId={selectedConnectionId ?? null}
-          />
-        )}
-      </section>
+          {eventsQuery.isError ? (
+            <BackofficeSystemState
+              tone="error"
+              title="Connection events could not be read."
+              flush
+            />
+          ) : connections.length === 0 ? (
+            <BackofficeSystemState
+              tone="empty"
+              title="No connections yet."
+              description="Ask your agent to add a connection."
+              flush
+            />
+          ) : visibleConnections.length === 0 ? (
+            <BackofficeSystemState
+              tone="empty"
+              title="No active connections."
+              description="Every connection in this scope was disconnected. Ask your agent to add a connection."
+              flush
+            />
+          ) : (
+            <ConnectionsTable
+              selectedScope={selectedScope}
+              listed={listed.status === "listed" ? listed.connections : {}}
+              connections={visibleConnections}
+              selectedConnectionId={selectedConnectionId ?? null}
+            />
+          )}
+        </section>
+        <NativeServices selectedScope={selectedScope} />
+      </div>
       {showPanel ? (
         <Outlet
           context={{ selectedScope, collections, changes } satisfies IntegrationsLayoutContext}
@@ -240,6 +250,28 @@ function IntegrationsWorkspace({
       ) : null}
     </div>
   );
+}
+
+/** Provider callbacks land here; the query explains the return, the connection state shows the result. */
+function ProviderReturnNotice() {
+  const [searchParams] = useSearchParams();
+  const outcome = searchParams.get("oauth");
+  const message = searchParams.get("message");
+  if (outcome === "success") {
+    return (
+      <p className="border border-[color:var(--bo-live)]/40 bg-[var(--bo-live-bg)] p-3 text-sm text-[var(--bo-live)]">
+        Authorization completed.
+      </p>
+    );
+  }
+  if (outcome === "error") {
+    return (
+      <p className="border border-[color:var(--bo-failed)]/40 bg-[var(--bo-failed-bg)] p-3 text-sm text-[var(--bo-failed)]">
+        Authorization failed{message ? `: ${message}` : "."}
+      </p>
+    );
+  }
+  return null;
 }
 
 /** Names and auth methods come from the source, so a new state change refreshes the listing. */

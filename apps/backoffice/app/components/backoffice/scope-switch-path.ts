@@ -5,16 +5,8 @@ import {
 
 const SCOPE_ROUTE_KINDS = new Set(["system", "org", "project", "user"]);
 
-const AUTOMATION_TABS = new Set([
-  "dashboard",
-  "store",
-  "api",
-  "events-catalog",
-  "integrations",
-  "mcp",
-  "sandboxes",
-]);
-const SYSTEM_UNAVAILABLE_AUTOMATION_TABS = new Set(["api", "mcp", "sandboxes"]);
+const AUTOMATION_TABS = new Set(["dashboard", "store", "events-catalog", "sandboxes"]);
+const SYSTEM_UNAVAILABLE_AUTOMATION_TABS = new Set(["sandboxes"]);
 const MARKETPLACE_TABS = new Set(["marketplace", "installed", "my-listings"]);
 
 // Rebuilds the current URL for another scope: keeps the active section, keeps
