@@ -155,7 +155,8 @@ const createSignUpInvitationTool = defineBackofficeRuntimeTool({
   id: "admin.signup-invitations.create",
   namespace: "admin",
   name: "signupInvitationsCreate",
-  description: "Create an email-bound link that authorizes one Backoffice account sign-up.",
+  description:
+    "Create an email-bound link that authorizes one Backoffice account sign-up and email it to the invitee.",
   requiredPermissions: [BACKOFFICE_PERMISSION.admin.signUpInvitationsManage],
   inputSchema: createSignUpInvitationInputSchema,
   outputSchema: signUpInvitationRecordSchema,
@@ -165,7 +166,8 @@ const createSignUpInvitationTool = defineBackofficeRuntimeTool({
     bash: {
       command: "admin.signup-invitations.create",
       help: {
-        summary: "admin.signup-invitations.create creates an email-bound sign-up link.",
+        summary:
+          "admin.signup-invitations.create creates an email-bound sign-up link and emails it to the invitee.",
         options: [
           {
             name: "email",

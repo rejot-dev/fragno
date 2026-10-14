@@ -1,6 +1,7 @@
-import type { AuthObject, OtpObject } from "@/backoffice-runtime/object-registry";
+import type { AuthObject, OtpObject, ResendObject } from "@/backoffice-runtime/object-registry";
 import type { BackofficeAppsCommands } from "@/fragno/apps/contracts";
 import { requireBackofficeAppOperationValue } from "@/fragno/apps/errors";
+import { buildSignUpInvitationEmail } from "@/transactional-emails/sign-up-invitation";
 
 import type { AdminRuntime } from "./admin";
 
@@ -22,10 +23,13 @@ type AdminAuthCommands = Pick<
 
 type AdminOtpCommands = Pick<OtpObject, "issueSignUpInvitation">;
 
+type AdminResendCommands = Pick<ResendObject, "queueEmail">;
+
 type AdminRuntimeDependencies = {
   auth: AdminAuthCommands;
   apps: BackofficeAppsCommands | null;
   otp: AdminOtpCommands | null;
+  resend: AdminResendCommands | null;
   publicBaseUrl: string | null;
 };
 
@@ -44,6 +48,7 @@ export function createAdminRuntime({
   auth,
   apps,
   otp,
+  resend,
   publicBaseUrl,
 }: AdminRuntimeDependencies): AdminRuntime {
   return {
@@ -90,6 +95,9 @@ export function createAdminRuntime({
       if (!otp) {
         throw new Error("Admin sign-up invitation creation requires the OTP binding.");
       }
+      if (!resend) {
+        throw new Error("Admin sign-up invitation creation requires the RESEND binding.");
+      }
       if (!publicBaseUrl) {
         throw new Error(
           "Admin sign-up invitation creation requires DOCS_PUBLIC_BASE_URL to be configured.",
@@ -100,6 +108,14 @@ export function createAdminRuntime({
         ...input,
         publicBaseUrl,
       });
+      await resend.queueEmail(
+        buildSignUpInvitationEmail({
+          email: invitation.email,
+          invitationUrl: invitation.url,
+          ttlDays: invitation.ttlDays,
+        }),
+        { idempotencyKey: `admin:sign-up-invitation:${invitation.issuanceId}` },
+      );
       return {
         invitationId: invitation.invitationId,
         email: invitation.email,

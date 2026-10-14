@@ -288,7 +288,7 @@
   },
   {
     "command": "admin.signup-invitations.create",
-    "summary": "admin.signup-invitations.create creates an email-bound sign-up link.",
+    "summary": "admin.signup-invitations.create creates an email-bound sign-up link and emails it to the invitee.",
     "options": [
       {
         "name": "email",

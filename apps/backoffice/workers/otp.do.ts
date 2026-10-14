@@ -99,6 +99,8 @@ export type IssueSignUpInvitationInput = {
 
 export type IssueSignUpInvitationResult = {
   invitationId: string;
+  /** Identifies this issuance; reissuing for the same email rotates the code under a new id. */
+  issuanceId: string;
   email: string;
   url: string;
   ttlDays: number;
@@ -509,6 +511,7 @@ export class InMemoryOtpObject implements OtpObject {
 
     return {
       invitationId,
+      issuanceId: issued.id,
       email: payload.email,
       url: buildSignUpInvitationUrl(payload.publicBaseUrl, invitationId, issued.code),
       ttlDays,

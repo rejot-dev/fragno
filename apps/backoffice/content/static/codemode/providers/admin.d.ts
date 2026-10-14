@@ -1,6 +1,6 @@
 // admin tools
 type AdminCodemodeProvider = {
-  /** Create an email-bound link that authorizes one Backoffice account sign-up. */
+  /** Create an email-bound link that authorizes one Backoffice account sign-up and email it to the invitee. */
   signupInvitationsCreate(
     input: AdminSignupInvitationsCreateInput,
   ): Promise<AdminSignupInvitationsCreateOutput>;

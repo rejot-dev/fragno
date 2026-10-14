@@ -235,6 +235,9 @@ export const createRouteBackedRuntimeContext = ({
               auth: runtime.objects.auth.singleton().commands,
               apps: unavailableObject(() => runtime.objects.apps.singleton())?.commands ?? null,
               otp: runtime.config.bindings.otp ? runtime.objects.otp.singleton().commands : null,
+              resend: runtime.config.bindings.resend
+                ? runtime.objects.resend.singleton().commands
+                : null,
               publicBaseUrl: runtime.config.docsPublicBaseUrl ?? null,
             }),
           }

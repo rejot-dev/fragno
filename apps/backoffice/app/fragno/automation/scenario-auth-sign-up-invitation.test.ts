@@ -104,6 +104,19 @@ function requestPasswordSignIn(ctx: BackofficeScenarioContext, email: string) {
   );
 }
 
+function readLatestInvitationEmailUrl(ctx: BackofficeScenarioContext, email: string): string {
+  const invitationEmail = (ctx.fakes.resend?.queueEmailCalls ?? [])
+    .filter((call) => call.input.to === email)
+    .at(-1);
+  assert(invitationEmail, `Expected a queued sign-up invitation email for ${email}.`);
+  assert.equal(invitationEmail.input.subject, "You're invited to Backoffice");
+  const invitationUrl = invitationEmail.input.text
+    ?.split("\n")
+    .find((line) => line.startsWith("https://"));
+  assert(invitationUrl, "Expected the invitation email to contain the sign-up link.");
+  return invitationUrl;
+}
+
 function createSignUpInvitation(input: CreateSignUpInvitationStepInput): BackofficeScenarioStep {
   return {
     kind: "when",
@@ -125,7 +138,8 @@ function createSignUpInvitation(input: CreateSignUpInvitationStepInput): Backoff
       );
 
       assert.equal(result.exitCode, 0, result.stderr);
-      const invitationUrl = result.stdout.trim();
+      const invitationUrl = readLatestInvitationEmailUrl(ctx, input.email);
+      assert.equal(invitationUrl, result.stdout.trim());
       const parsedInvitationUrl = new URL(invitationUrl);
       assert(parsedInvitationUrl.searchParams.get("invitationId"));
       assert(parsedInvitationUrl.searchParams.get("code"));
@@ -141,6 +155,7 @@ describe("Auth sign-up invitation scenarios", () => {
         objects: scenarioObjects,
         name: "Backoffice account creation requires an email-bound admin invitation",
         env: { SIGN_UP_INVITATIONS_ENABLED: "true" },
+        fakes: ({ fake }) => ({ resend: fake.resend() }),
         vars: (): SignUpInvitationScenarioVars => ({
           invitationUrl: "",
           firstInvitationUrl: "",
@@ -186,6 +201,7 @@ describe("Auth sign-up invitation scenarios", () => {
         objects: scenarioObjects,
         name: "Reissuing a sign-up invitation supersedes the previous email-bound link",
         env: { SIGN_UP_INVITATIONS_ENABLED: "true" },
+        fakes: ({ fake }) => ({ resend: fake.resend() }),
         vars: (): SignUpInvitationScenarioVars => ({
           invitationUrl: "",
           firstInvitationUrl: "",
@@ -213,6 +229,12 @@ describe("Auth sign-up invitation scenarios", () => {
               firstInvitation.searchParams.get("code"),
               secondInvitation.searchParams.get("code"),
             );
+          }),
+          then.assert("each issuance queues its own invitation email", async (ctx) => {
+            const idempotencyKeys = (ctx.fakes.resend?.queueEmailCalls ?? []).map(
+              (call) => call.options.idempotencyKey,
+            );
+            assert.equal(new Set(idempotencyKeys).size, 2);
           }),
           then.assert("the previous invitation no longer authorizes sign-up", async (ctx) => {
             const response = await requestPasswordSignUp(ctx, {

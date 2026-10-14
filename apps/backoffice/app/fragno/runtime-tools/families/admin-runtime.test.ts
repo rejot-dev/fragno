@@ -47,11 +47,15 @@ function createAdminRuntimeDependencies() {
     otp: {
       issueSignUpInvitation: vi.fn(async (input) => ({
         invitationId: "invitation-1",
+        issuanceId: "otp-1",
         email: input.email,
         url: `${input.publicBaseUrl}backoffice/sign-up?invitationId=invitation-1&code=ABC12345`,
         ttlDays: input.ttlDays ?? 7,
         type: "sign_up_invitation" as const,
       })),
+    },
+    resend: {
+      queueEmail: vi.fn(async () => {}),
     },
     publicBaseUrl: "https://backoffice.example/",
   } satisfies Parameters<typeof createAdminRuntime>[0];
@@ -80,11 +84,15 @@ describe("createAdminRuntime", () => {
   test("reports unavailable sign-up invitation dependencies", async () => {
     const dependencies = createAdminRuntimeDependencies();
     const withoutOtp = createAdminRuntime({ ...dependencies, otp: null });
+    const withoutResend = createAdminRuntime({ ...dependencies, resend: null });
     const withoutPublicBaseUrl = createAdminRuntime({ ...dependencies, publicBaseUrl: null });
 
     await expect(
       withoutOtp.createSignUpInvitation({ email: "person@example.com" }),
     ).rejects.toThrow("requires the OTP binding");
+    await expect(
+      withoutResend.createSignUpInvitation({ email: "person@example.com" }),
+    ).rejects.toThrow("requires the RESEND binding");
     await expect(
       withoutPublicBaseUrl.createSignUpInvitation({ email: "person@example.com" }),
     ).rejects.toThrow("requires DOCS_PUBLIC_BASE_URL");
