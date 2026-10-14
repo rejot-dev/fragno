@@ -2,8 +2,7 @@
 name: marketplace-publishing
 description: >
   Publish workspace packages to Marketplace. Use when creating package manifests, validating a
-  release with a dry run, requesting publication, or performing System-only backfills and version
-  replacements.
+  release with a dry run, or requesting publication.
 ---
 
 # Marketplace Publishing
@@ -93,33 +92,17 @@ the same command with `--dry-run`.
 
 A `requested` result is acceptance, not completion. Retain its workflow instance ID and System
 workflow scope. Use `marketplace.view` with the same `visibility` to confirm the release is
-available; organization visibility reads the current workspace's organization Marketplace. System
-operators can inspect the coordinating workflow for execution failures. A `published` result means
-the identical snapshot was already published. Repeating an identical pending request reuses the
-current publishing workflow. Editing source files after acceptance does not alter the pending
-release.
+available; organization visibility reads the current workspace's organization Marketplace. A
+`published` result means the identical snapshot was already published. Repeating an identical
+pending request reuses the current publishing workflow. Editing source files after acceptance does
+not alter the pending release.
 
 **Report completion** when the tool returns `published`, or `marketplace.view` confirms a newly
 requested version is available. When the current workspace belongs to another organization than the
-package owner, report an accepted organization release with its workflow reference. For a System
-replacement, confirm the coordinating workflow completed: the preexisting version in
-`marketplace.view` is not proof that its snapshot was replaced. Otherwise report acceptance and the
-workflow reference rather than completed publication.
+package owner, report an accepted organization release with its workflow reference. Otherwise report
+acceptance and the workflow reference rather than completed publication.
 
-## Shared publishing lifecycle
+## Version rules
 
-Workspace manifests and bundled System entries are capture adapters for the same release publisher.
-Both freeze ownership, metadata, and file bytes before enqueueing `marketplace-package-publish`.
-Replacements atomically write the complete file set and remove omitted files, then update the
-catalog in a separate commit. The fingerprint covers metadata as well as files, and superseded
-workflow restarts conflict instead of restoring older contents.
-
-Bundled seeding skips published versions unless forced, submits backfills through the System version
-override, and never regresses the latest version. Its shared listing-root documents are initialized
-separately; they are not part of release replacement.
-
-## Version rules and System overrides
-
-`skipAuthorCheck` / `--skip-author-check` and `skipVersionCheck` / `--skip-version-check` are
-available only to admin users. Regular users who need a package replaced should contact ReJot
-Backoffice support.
+Published versions are immutable. Users who need a package replaced should contact ReJot Backoffice
+support.
