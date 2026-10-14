@@ -104,6 +104,8 @@ test("Telegram connects, acts, checks its webhook, and disconnects through integ
                 webhookUrl: expect.stringContaining(
                   "/api/telegram/org:telegram-org/telegram/webhook",
                 ),
+                // Setup generates the secret Telegram echoes on each delivery.
+                secretToken: expect.stringMatching(/^tg_[a-f0-9]{32}$/),
               }),
             ]);
           },

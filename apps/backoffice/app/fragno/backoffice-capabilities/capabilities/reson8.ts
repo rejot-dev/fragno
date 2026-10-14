@@ -50,24 +50,8 @@ export const reson8Capability: BackofficeCapability = {
   objectBinding: null,
   contributions: {
     connection: {
-      configurable: true,
-      configureInputSchema: reson8ConfigureInputSchema,
-      configureFields: [
-        { name: "apiKey", secret: true, description: "Reson8 API key. Required on first setup." },
-      ],
       getStatus: async ({ objects, orgId }) =>
         toReson8Status(await getReson8Do(objects, orgId).commands.getAdminConfig()),
-      verify: async ({ objects, orgId }) =>
-        toReson8Status(await getReson8Do(objects, orgId).commands.getAdminConfig()),
-      reset: async ({ objects, orgId }) =>
-        toReson8Status(await getReson8Do(objects, orgId).commands.resetAdminConfig()),
-      configure: async ({ objects, orgId, payload }) =>
-        toReson8Status(
-          await getReson8Do(objects, orgId).commands.setAdminConfig(
-            reson8ConfigureInputSchema.parse(payload),
-            orgId,
-          ),
-        ),
     },
     eventSources: [],
     actionProviders: ["integrations"],

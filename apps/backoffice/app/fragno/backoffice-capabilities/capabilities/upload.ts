@@ -63,28 +63,8 @@ export const uploadCapability: BackofficeCapability = {
   objectBinding: null,
   contributions: {
     connection: {
-      configurable: true,
-      configureInputSchema: uploadConfigureInputSchema,
-      configureFields: [
-        { name: "provider", description: "Provider to configure: database, r2-binding, or r2." },
-        { name: "defaultProvider", description: "Default provider to use after configuration." },
-        { name: "r2", secret: true, description: "R2 provider credentials/configuration payload." },
-        { name: "r2Binding", description: "R2 binding provider configuration payload." },
-      ],
       getStatus: async ({ objects, orgId }) =>
         toUploadStatus(await getUploadDo(objects, orgId).commands.getAdminConfig()),
-      verify: async ({ objects, orgId }) =>
-        toUploadStatus(await getUploadDo(objects, orgId).commands.getAdminConfig()),
-      reset: async ({ objects, orgId }) =>
-        toUploadStatus(await getUploadDo(objects, orgId).commands.resetAdminConfig()),
-      configure: async ({ objects, orgId, origin, payload }) =>
-        toUploadStatus(
-          await getUploadDo(objects, orgId).commands.setAdminConfig(
-            uploadConfigureInputSchema.parse(payload),
-            orgId,
-            origin,
-          ),
-        ),
     },
     eventSources: [],
     actionProviders: ["upload"],

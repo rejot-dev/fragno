@@ -75,25 +75,11 @@ export type ConnectionStatus = {
   verification?: ConnectionVerificationResult;
 };
 
-export type ConnectionVerification = ConnectionStatus & {
-  verification: ConnectionVerificationResult;
-};
-
-export const toConnectionVerification = (status: ConnectionStatus): ConnectionVerification => ({
-  ...status,
-  verification:
-    status.verification ??
-    (status.configured
-      ? { ok: true, message: `${status.label} configuration is present.` }
-      : { ok: false, message: `${status.label} is not configured.` }),
-});
-
 export type BackofficeCapabilityContext = {
   objects: BackofficeObjectRegistry;
   config: BackofficeRuntimeConfig;
   scope: BackofficeContextScope;
   orgId: string;
-  origin: string;
 };
 
 type BackofficeHookScope = {
@@ -122,39 +108,10 @@ type CapabilityEventSourceContribution = {
   description: string;
 };
 
-export type BackofficeConnectionConfigureField = {
-  name: string;
-  required?: boolean;
-  secret?: boolean;
-  description?: string;
+/** Reports a connection capability's configuration for capabilities.list and hooks.scopes.list. */
+type BackofficeConnectionDescriptor = {
+  getStatus(input: BackofficeCapabilityContext): Promise<ConnectionStatus>;
 };
-
-type BackofficeConnectionInput = BackofficeCapabilityContext;
-
-type BackofficeConnectionDescriptorBase = {
-  getStatus(input: BackofficeConnectionInput): Promise<ConnectionStatus>;
-  verify?(input: BackofficeConnectionInput): Promise<ConnectionStatus>;
-};
-
-export type BackofficeConfigurableConnectionDescriptor = BackofficeConnectionDescriptorBase & {
-  configurable: true;
-  configureInputSchema?: z.ZodType;
-  configureFields?: readonly BackofficeConnectionConfigureField[];
-  reset?(input: BackofficeConnectionInput): Promise<ConnectionStatus>;
-  configure(input: BackofficeConnectionInput & { payload: unknown }): Promise<ConnectionStatus>;
-};
-
-export type BackofficeManagedConnectionDescriptor = BackofficeConnectionDescriptorBase & {
-  configurable: false;
-  configureInputSchema?: never;
-  configureFields?: never;
-  reset?: never;
-  configure?: never;
-};
-
-type BackofficeConnectionDescriptor =
-  | BackofficeConfigurableConnectionDescriptor
-  | BackofficeManagedConnectionDescriptor;
 
 /** Collects the independent product roles contributed by one Backoffice capability. */
 type CapabilityContributions = {
@@ -173,22 +130,6 @@ export type BackofficeCapability = {
   objectBinding: BackofficeObjectBindingName | null;
   contributions: CapabilityContributions;
 };
-
-export type BackofficeConfigurableConnectionCapability = BackofficeCapability & {
-  contributions: CapabilityContributions & {
-    connection: BackofficeConfigurableConnectionDescriptor;
-  };
-};
-
-export type BackofficeManagedConnectionCapability = BackofficeCapability & {
-  contributions: CapabilityContributions & {
-    connection: BackofficeManagedConnectionDescriptor;
-  };
-};
-
-export type BackofficeConnectionCapability =
-  | BackofficeConfigurableConnectionCapability
-  | BackofficeManagedConnectionCapability;
 
 export type BackofficeSystemCapability = BackofficeCapability & {
   contributions: CapabilityContributions & { connection: null };
@@ -297,20 +238,6 @@ export function listAutomationEventDescriptors() {
       subjectSchema: zodSchemaToJsonSchema(event.subjectSchema),
     })),
   );
-}
-
-function isConnectionCapability(
-  capability: BackofficeCapability,
-): capability is BackofficeConnectionCapability {
-  return capability.contributions.connection !== null;
-}
-
-export function listConnectionCapabilities() {
-  return backofficeCapabilities.filter(isConnectionCapability);
-}
-
-export function getConnectionCapability(id: string) {
-  return listConnectionCapabilities().find((capability) => capability.id === id);
 }
 
 export function listHookScopes() {

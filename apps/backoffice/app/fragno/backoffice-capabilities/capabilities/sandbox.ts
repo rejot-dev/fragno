@@ -31,7 +31,6 @@ export const sandboxCapability: BackofficeCapability = {
   objectBinding: null,
   contributions: {
     connection: {
-      configurable: false,
       getStatus: async ({ config }) => ({
         id: "sandbox",
         label: "Sandbox",

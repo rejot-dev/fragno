@@ -59,14 +59,13 @@ defineWorkflow({ name: "configure-reson8" }, async (_event, step) => {
     throw new Error("A Reson8 API key is required.");
   }
 
+  const connectionId = "backoffice#reson8";
   const configured = await step.do("configure Reson8", async () => {
-    return await connections.configure({ id: "reson8", payload: { apiKey } });
+    return await integrations.setup({ kind: "input", connectionId, input: { apiKey } });
   });
-  const verification = await step.do("verify Reson8", async () => {
-    const result = await connections.verify({ id: "reson8" });
-    const finalStatus = await connections.get({ id: "reson8" });
-    return { result, finalStatus };
+  const verified = await step.do("verify Reson8", async () => {
+    return await integrations.verify({ connectionId });
   });
 
-  return { configured, ...verification };
+  return { configured, verified };
 });

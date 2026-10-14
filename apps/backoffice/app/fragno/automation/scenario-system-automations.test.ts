@@ -757,12 +757,6 @@ describe("system automation scenarios", () => {
 
         setup: ({ given, runner }) => [
           given.organization.exists({ id: "org-1", name: "Ada Labs" }),
-          given.connection.configured({
-            orgId: "org-1",
-            id: "upload",
-            payload: { provider: "database" },
-          }),
-          runner.drain(),
           given.telegram.configured({
             orgId: "org-1",
             botUsername: "fragno_bot",
@@ -778,13 +772,8 @@ describe("system automation scenarios", () => {
           }),
           then.files.contains({
             orgId: "org-1",
-            path: "/static/codemode/providers/connections.d.ts",
-            text: "declare const connections",
-          }),
-          then.files.contains({
-            orgId: "org-1",
-            path: "/static/codemode/providers/connections.d.ts",
-            text: "configure(input: ConnectionsConfigureInput)",
+            path: "/static/codemode/providers/upload.d.ts",
+            text: "configureStorage(input: UploadConfigureStorageInput)",
           }),
           then.files.contains({
             orgId: "org-1",
@@ -829,15 +818,7 @@ describe("system automation scenarios", () => {
           }),
         }),
 
-        setup: ({ given, runner }) => [
-          given.organization.exists({ id: "org-1", name: "Ada Labs" }),
-          given.connection.configured({
-            orgId: "org-1",
-            id: "upload",
-            payload: { provider: "database" },
-          }),
-          runner.drain(),
-        ],
+        setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
 
         steps: ({ then }) => [
           then.files.contains({

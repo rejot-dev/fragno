@@ -57,10 +57,11 @@ reclassifies the event, or forwards it to another scope.
    name from the file and keeps workflow-host routing internal. **Complete when** every trigger,
    action, file path, and instance-id template has one unambiguous value.
 
-3. Check prerequisites. When an external capability is involved, inspect it with
-   `connections.get({ id })`. If configuration is incomplete, use the Configuring Connections skill
-   and collect the missing values from the user. **Complete when** every provider the automation
-   will call is configured or the user has been told exactly what remains missing.
+3. Check prerequisites. For each external service the automation will call, find its connection with
+   `integrations.list` and inspect it with `integrations.get({ connectionId })`. Set up what is
+   missing with `/static/skills/configuring-integrations/SKILL.md`, collecting the values from the
+   user. **Complete when** every service the automation will call has a configured connection or the
+   user has been told exactly what remains missing.
 
 4. Create the required artifacts in dependency order: destination event definitions or saved
    workflows, then routes.
@@ -163,8 +164,8 @@ reclassifies the event, or forwards it to another scope.
    labels. Use `verification` for JSON text that must satisfy a schema.
 
 6. Re-read the completed route with `router.get({ id })` and
-   `state.readFile({ path: workflowScriptPath })` when saved. Run `connections.verify({ id })` for
-   external providers.
+   `state.readFile({ path: workflowScriptPath })` when saved. Run
+   `integrations.verify({ connectionId })` for each connection it calls.
 
    For delivery verification, read `/static/skills/building-automations/references/event-routing.md`
    and use `events.list` / `events.get` to correlate the triggering event with the route's

@@ -3,12 +3,15 @@ import {
   backofficeContextScopesEqual,
   isBackofficeRoutableScope,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
-import { uploadPreparedInputSchema } from "@fragno-dev/backoffice-api/v0/upload";
+import {
+  uploadPreparedInputSchema,
+  uploadStorageConfigureInputSchema,
+} from "@fragno-dev/backoffice-api/v0/upload";
 import { preparedUploadedFileReferenceSchema } from "@fragno-dev/backoffice-api/v0/upload";
 import { z } from "zod";
 
 import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
-import { defineCliArgsParser } from "@/fragno/runtime-tools/bash-cli";
+import { defineCliArgsParser, defineNoInputArgsParser } from "@/fragno/runtime-tools/bash-cli";
 import type { UploadRuntime } from "@/fragno/runtime-tools/families/upload-runtime";
 
 import {
@@ -98,6 +101,12 @@ const parsePreparedFile = (command: string) =>
   defineCliArgsParser<z.input<typeof uploadPreparedInputSchema>>(command, {
     file: { kind: "json", option: "file-json", required: true },
   });
+
+const parseConfigureStorage = defineCliArgsParser<{
+  input: z.input<typeof uploadStorageConfigureInputSchema>;
+}>("upload.storage.configure", {
+  input: { kind: "json", option: "input-json", required: true },
+});
 
 const bytesToBinaryString = (bytes: Uint8Array) => {
   const chunkSize = 0x8000;
@@ -233,10 +242,70 @@ const discardPreparedTool = defineUploadTool({
   },
 });
 
+const getStorageTool = defineUploadTool({
+  ...backofficeApiOperationToolFields("upload.storage.get"),
+  namespace: "upload",
+  name: "getStorage",
+  capabilityId: "upload",
+  execute: async (_input, context) => await getUploadRuntime(context).getStorage(),
+  adapters: {
+    bash: {
+      command: "upload.storage.get",
+      help: {
+        summary: "Show the configured upload storage providers and the default.",
+        options: [],
+      },
+      parse: defineNoInputArgsParser("upload.storage.get"),
+      format: (result, options) =>
+        options.format === "json"
+          ? { data: result }
+          : {
+              stdout: `default=${result.defaultProvider ?? "-"}\tproviders=${result.providers.join(",") || "-"}\n`,
+            },
+    },
+  },
+});
+
+const configureStorageTool = defineUploadTool({
+  ...backofficeApiOperationToolFields("upload.storage.configure"),
+  namespace: "upload",
+  name: "configureStorage",
+  capabilityId: "upload",
+  getResource: ({ provider }) => ({ provider }),
+  execute: async (input, context) => await getUploadRuntime(context).configureStorage(input),
+  adapters: {
+    bash: {
+      command: "upload.storage.configure",
+      help: {
+        summary: "Store one upload storage provider's configuration.",
+        options: [
+          {
+            name: "input-json",
+            required: true,
+            valueRequired: true,
+            valueName: "json",
+            description: "Provider configuration as JSON.",
+          },
+        ],
+        examples: [
+          `upload.storage.configure --input-json '{"provider":"database","default":true}'`,
+        ],
+      },
+      parse: (args) => parseConfigureStorage(args).input,
+      format: (result, options) =>
+        options.format === "json"
+          ? { data: result }
+          : { stdout: `default=${result.defaultProvider ?? "-"}\n` },
+    },
+  },
+});
+
 export const uploadRuntimeTools = [
   readPreparedTool,
   commitPreparedTool,
   discardPreparedTool,
+  getStorageTool,
+  configureStorageTool,
 ] as const;
 
 export const uploadToolFamily = defineBackofficeRuntimeToolFamily({

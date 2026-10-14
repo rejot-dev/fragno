@@ -6,7 +6,6 @@
 /// <reference path="/static/codemode/providers/apps.d.ts" />
 /// <reference path="/static/codemode/providers/capabilities.d.ts" />
 /// <reference path="/static/codemode/providers/hooks.d.ts" />
-/// <reference path="/static/codemode/providers/connections.d.ts" />
 /// <reference path="/static/codemode/providers/integrations.d.ts" />
 /// <reference path="/static/codemode/providers/store.d.ts" />
 /// <reference path="/static/codemode/providers/identity.d.ts" />
@@ -39,7 +38,6 @@ interface BackofficeCodemodeScopedProviders {
   apps: AppsCodemodeProvider;
   capabilities: CapabilitiesCodemodeProvider;
   hooks: HooksCodemodeProvider;
-  connections: ConnectionsCodemodeProvider;
   integrations: IntegrationsCodemodeProvider;
   store: StoreCodemodeProvider;
   identity: IdentityCodemodeProvider;

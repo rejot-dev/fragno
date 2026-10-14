@@ -70,32 +70,8 @@ export const resendCapability: BackofficeCapability = {
   objectBinding: null,
   contributions: {
     connection: {
-      configurable: true,
-      configureInputSchema: resendConfigureInputSchema,
-      configureFields: [
-        { name: "apiKey", secret: true, description: "Resend API key. Required on first setup." },
-        { name: "defaultFrom", description: "Default sender address. Required on first setup." },
-        { name: "defaultReplyTo", description: "Optional default reply-to address or addresses." },
-        {
-          name: "webhookBaseUrl",
-          required: true,
-          description: "Public http(s) base URL used when registering Resend webhooks.",
-        },
-      ],
       getStatus: async ({ objects, orgId }) =>
         toResendStatus(await getResendDo(objects, orgId).commands.getAdminConfig()),
-      verify: async ({ objects, orgId }) =>
-        toResendStatus(await getResendDo(objects, orgId).commands.getAdminConfig()),
-      reset: async ({ objects, orgId }) =>
-        toResendStatus(await getResendDo(objects, orgId).commands.resetAdminConfig()),
-      configure: async ({ objects, orgId, origin, payload }) =>
-        toResendStatus(
-          await getResendDo(objects, orgId).commands.setAdminConfig(
-            resendConfigureInputSchema.parse(payload),
-            { kind: "org", orgId },
-            origin,
-          ),
-        ),
     },
     eventSources: [],
     actionProviders: ["integrations"],

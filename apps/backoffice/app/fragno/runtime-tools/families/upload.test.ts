@@ -71,7 +71,16 @@ const createRuntime = (): UploadRuntime => {
     discarded: true as const,
     uploadId: inputFile.uploadId,
   }));
-  return { readPrepared, commitPrepared, discardPrepared };
+  const unused = async () => {
+    throw new Error("Upload storage is not used in this test.");
+  };
+  return {
+    readPrepared,
+    commitPrepared,
+    discardPrepared,
+    getStorage: unused,
+    configureStorage: unused,
+  };
 };
 
 describe("Upload runtime tools", () => {
@@ -80,6 +89,8 @@ describe("Upload runtime tools", () => {
       "readPrepared",
       "commitPrepared",
       "discardPrepared",
+      "getStorage",
+      "configureStorage",
     ]);
   });
 

@@ -60,23 +60,18 @@ describe("Backoffice codemode scenarios", () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         objects: scenarioObjects,
-        name: "codemode updates upload and writes automation state",
+        name: "codemode configures upload storage and writes automation state",
 
         files: backofficeFiles.workspaceStarter(),
 
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
 
         steps: ({ when, then }) => [
-          then.connection.configured({ orgId: "org-1", id: "upload" }),
-
           when.codemode.run({
             scope: { kind: "org", orgId: "org-1" },
-            label: "update upload and write store from codemode",
+            label: "configure upload storage and write store from codemode",
             code: `async () => {
-  await connections.configure({
-    id: "upload",
-    payload: { provider: "database" },
-  });
+  const storage = await upload.configureStorage({ provider: "database", default: true });
 
   await store.set({
     key: "foo",
@@ -87,15 +82,20 @@ describe("Backoffice codemode scenarios", () => {
     path: "/workspace/codemode-output.txt",
     content: "codemode wrote this",
   });
-  return { ok: true };
+  return storage;
 }`,
-            assertToolCalls: ["connections.configure", "store.set"],
+            assertToolCalls: ["upload.configureStorage", "store.set"],
+          }),
+          then.assert("codemode reads back the storage it configured", (ctx) => {
+            expect(ctx.codemodeRuns.at(-1)?.result.result).toEqual({
+              defaultProvider: "database",
+              providers: ["database"],
+            });
           }),
 
           then.codemode.toolCalls({
-            include: ["connections.configure", "store.set"],
+            include: ["upload.configureStorage", "store.set"],
           }),
-          then.connection.configured({ orgId: "org-1", id: "upload" }),
           then.store.entry({ orgId: "org-1", key: "foo", value: "bar" }),
           then.files.contains({
             orgId: "org-1",
@@ -126,21 +126,28 @@ describe("Backoffice codemode scenarios", () => {
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
 
         steps: ({ then }) => [
-          then.assert("Telegram configuration fails through the runtime tool", async (ctx) => {
+          then.assert("Telegram setup fails through the integration", async (ctx) => {
             await expect(
               ctx.runCodemode({
                 scope: { kind: "org", orgId: "org-1" },
                 label: "configure Telegram without a public origin",
                 code: `async () => {
-  return await connections.configure({
-    id: "telegram",
-    payload: { botToken: "123456:telegram-bot-token" },
+  return await integrations.setup({
+    kind: "input",
+    connectionId: "backoffice#telegram",
+    input: { botToken: "123456:telegram-bot-token", botUsername: null },
   });
 }`,
               }),
             ).rejects.toThrow("Telegram public origin is not configured.");
           }),
-          then.connection.unconfigured({ orgId: "org-1", id: "telegram" }),
+          then.assert("Telegram stays unconfigured", async (ctx) => {
+            const run = await ctx.runCodemode({
+              scope: { kind: "org", orgId: "org-1" },
+              code: `async () => await integrations.get({ connectionId: "backoffice#telegram" })`,
+            });
+            expect(run.result).toMatchObject({ configuration: { status: "missing" } });
+          }),
         ],
       }),
     );
@@ -169,56 +176,27 @@ describe("Backoffice codemode scenarios", () => {
                   scope: { kind: "org", orgId: "org-1" },
                   label: `configure Telegram with public origin ${publicOrigin}`,
                   code: `async () => {
-  return await connections.configure({
-    id: "telegram",
-    payload: { botToken: "123456:telegram-bot-token" },
+  return await integrations.setup({
+    kind: "input",
+    connectionId: "backoffice#telegram",
+    input: { botToken: "123456:telegram-bot-token", botUsername: null },
   });
 }`,
                 }),
               ).rejects.toThrow("Telegram public origin must be an absolute HTTP or HTTPS URL.");
             }),
-            then.connection.unconfigured({ orgId: "org-1", id: "telegram" }),
+            then.assert("Telegram stays unconfigured", async (ctx) => {
+              const run = await ctx.runCodemode({
+                scope: { kind: "org", orgId: "org-1" },
+                code: `async () => await integrations.get({ connectionId: "backoffice#telegram" })`,
+              });
+              expect(run.result).toMatchObject({ configuration: { status: "missing" } });
+            }),
           ],
         }),
       );
     },
   );
-
-  test("generates the Telegram webhook secret during runtime-tool configuration", async () => {
-    await runBackofficeScenario(
-      defineBackofficeScenario({
-        objects: scenarioObjects,
-        name: "telegram runtime configuration generates its webhook secret",
-
-        files: backofficeFiles.workspaceStarter(),
-        fakes: ({ fake }) => ({ telegram: fake.telegram() }),
-
-        setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
-
-        steps: ({ when, then }) => [
-          when.codemode.run({
-            scope: { kind: "org", orgId: "org-1" },
-            label: "configure Telegram with only user-supplied fields",
-            code: `async () => {
-  return await connections.configure({
-    id: "telegram",
-    payload: { botToken: "123456:telegram-bot-token" },
-  });
-}`,
-            assertToolCalls: ["connections.configure"],
-          }),
-          then.connection.configured({ orgId: "org-1", id: "telegram" }),
-          then.assert("Telegram receives a generated webhook secret", (ctx) => {
-            expect(ctx.fakes.telegram?.setWebhookCalls).toEqual([
-              expect.objectContaining({
-                secretToken: expect.stringMatching(/^tg_[a-f0-9]{32}$/),
-              }),
-            ]);
-          }),
-        ],
-      }),
-    );
-  });
 
   test("runs codemode through scoped context handles", async () => {
     await runBackofficeScenario(
