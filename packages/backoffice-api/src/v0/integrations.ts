@@ -146,6 +146,22 @@ export const integrationConnectionSchema = integrationInspectionSchema
   })
   .meta({ id: "IntegrationConnection" });
 
+export const integrationConnectionSettingsSchema = z
+  .record(z.string(), jsonValueSchema)
+  .nullable()
+  .meta({ id: "IntegrationConnectionSettings" });
+
+/** Source-owned settings a replacement can start from; they never contain secrets. */
+export type IntegrationConnectionSettings = z.output<typeof integrationConnectionSettingsSchema>;
+
+export const inspectedIntegrationConnectionSchema = integrationConnectionSchema
+  .extend({
+    settings: integrationConnectionSettingsSchema.describe(
+      "Stored values that are not secret, shaped like this connection's reconfigure input. Start a replacement from them, change what was asked, and supply secrets and omitted fields again. Null when the source takes no replacement or nothing is stored.",
+    ),
+  })
+  .meta({ id: "InspectedIntegrationConnection" });
+
 export const configuredIntegrationSchema = integrationConnectionSchema
   .extend({ configuration: z.strictObject({ status: z.literal("configured") }) })
   .meta({ id: "ConfiguredIntegrationConnection" });
@@ -345,10 +361,10 @@ export const integrationsOperations = {
   },
   "integrations.get": {
     description:
-      "Inspect source-owned connection configuration and available evidence without performing a live health check. The connection ID resolves only within the selected scope.",
+      "Inspect source-owned connection configuration, its stored non-secret settings, and available evidence without performing a live health check. The connection ID resolves only within the selected scope.",
     permissions: [BACKOFFICE_PERMISSION.integrations.read],
     input: integrationConnectionInputSchema,
-    output: integrationConnectionSchema,
+    output: inspectedIntegrationConnectionSchema,
   },
   "integrations.setup": {
     description:
@@ -359,7 +375,7 @@ export const integrationsOperations = {
   },
   "integrations.reconfigure": {
     description:
-      "Read replacement requirements or submit replacement configuration or credentials for an existing connection. Submission replaces source-owned state; continue with setup checks until ready. A missing connection needs setup.",
+      "Read replacement requirements or submit replacement configuration or credentials for an existing connection. Build the replacement from integrations.get settings so unchanged values carry over. Submission replaces source-owned state; continue with setup checks until ready. A missing connection needs setup.",
     permissions: [BACKOFFICE_PERMISSION.integrations.manage],
     input: integrationSetupInputSchema,
     output: integrationSetupProgressSchema,

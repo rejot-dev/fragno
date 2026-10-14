@@ -210,15 +210,18 @@ export function createTelegramIntegration({
     return context.kernel.scoped("TELEGRAM", context.execution.scope, runtime.objects.telegram);
   }
 
-  async function readConfigured(context: IntegrationContext) {
+  async function readConfiguration(context: IntegrationContext) {
     const object = getTelegramObject(context);
-    const configuration = await context.kernel.invoke({
+    return await context.kernel.invoke({
       execution: context.execution,
       operation: BACKOFFICE_PERMISSION.connections.read,
       resource: { capabilityId: "telegram" },
       execute: () => object.commands.getAdminConfig(),
     });
-    return configuration.configured;
+  }
+
+  async function readConfigured(context: IntegrationContext) {
+    return (await readConfiguration(context)).configured;
   }
 
   /** The native command replaces any stored bot, so callers decide whether replacing is allowed. */
@@ -363,6 +366,10 @@ export function createTelegramIntegration({
         },
         async details() {
           return { kind: "native" };
+        },
+        async settings() {
+          const { configured, config } = await readConfiguration(context);
+          return configured ? { botUsername: config?.botUsername ?? null } : null;
         },
         async actions() {
           const telegram = createTelegramRuntime({

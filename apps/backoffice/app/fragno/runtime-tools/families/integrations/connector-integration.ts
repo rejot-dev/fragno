@@ -449,6 +449,10 @@ export function createConnectorIntegration({
             accountId: account?.id ?? null,
           };
         },
+        // Consent is never replaced; a fresh connection name consents again.
+        async settings() {
+          return null;
+        },
         async actions() {
           const response = await access.invoke(
             BACKOFFICE_PERMISSION.connections.read,

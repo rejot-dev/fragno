@@ -4,11 +4,11 @@ type IntegrationsCodemodeProvider = {
   discover(): Promise<IntegrationsDiscoverOutput>;
   /** List existing configured connections in the selected scope, one cursor page at a time. Deterministic IDs reuse source-owned identities; configuration does not imply live access. */
   list(input: IntegrationsListInput): Promise<IntegrationsListOutput>;
-  /** Inspect source-owned connection configuration and available evidence without performing a live health check. The connection ID resolves only within the selected scope. */
+  /** Inspect source-owned connection configuration, its stored non-secret settings, and available evidence without performing a live health check. The connection ID resolves only within the selected scope. */
   get(input: IntegrationsGetInput): Promise<IntegrationsGetOutput>;
   /** Read current requirements or submit input for a deterministic connection address. Setup is source-owned; this operation retains no attempt state or independent binding. Ready connections keep their configuration and credentials; reconfigure replaces them. */
   setup(input: IntegrationsSetupInput): Promise<IntegrationsSetupOutput>;
-  /** Read replacement requirements or submit replacement configuration or credentials for an existing connection. Submission replaces source-owned state; continue with setup checks until ready. A missing connection needs setup. */
+  /** Read replacement requirements or submit replacement configuration or credentials for an existing connection. Build the replacement from integrations.get settings so unchanged values carry over. Submission replaces source-owned state; continue with setup checks until ready. A missing connection needs setup. */
   reconfigure(input: IntegrationsReconfigureInput): Promise<IntegrationsReconfigureOutput>;
   /** Remove a connection's source-owned configuration and credentials in the selected scope. The address stays valid for a later setup. Requires confirm to repeat the connection ID. */
   disconnect(input: IntegrationsDisconnectInput): Promise<IntegrationsDisconnectOutput>;
@@ -107,7 +107,7 @@ type IntegrationAuthMethod =
   | "oauth"
   | "signature"
   | "app-installation";
-type IntegrationConnection = {
+type InspectedIntegrationConnection = {
   configuration: IntegrationConfigurationStatus;
   authorization: IntegrationAuthorizationStatus;
   /** Supported checks distinguish missing evidence from actual timestamped results; saved configuration alone proves no live health. */
@@ -118,6 +118,8 @@ type IntegrationConnection = {
   name: string;
   /** Null while nothing stored at the address chooses a method, such as before API setup. */
   authMethod: IntegrationAuthMethod | null;
+  /** Stored values that are not secret, shaped like this connection's reconfigure input. Start a replacement from them, change what was asked, and supply secrets and omitted fields again. Null when the source takes no replacement or nothing is stored. */
+  settings: IntegrationConnectionSettings;
 };
 type IntegrationConfigurationStatus =
   | {
@@ -126,6 +128,18 @@ type IntegrationConfigurationStatus =
     }
   | {
       status: "configured";
+    };
+type IntegrationConnectionSettings = {
+  [key: string]: JsonValue;
+} | null;
+type JsonValue =
+  | null
+  | boolean
+  | number
+  | string
+  | JsonValue[]
+  | {
+      [key: string]: JsonValue;
     };
 type IntegrationSetupProgress =
   | {
@@ -187,6 +201,18 @@ type IntegrationAction = {
   /** Describes the action's own result, including any asynchronous job handle. */
   outputSchema: IntegrationJsonSchema;
 };
+type IntegrationConnection = {
+  configuration: IntegrationConfigurationStatus;
+  authorization: IntegrationAuthorizationStatus;
+  /** Supported checks distinguish missing evidence from actual timestamped results; saved configuration alone proves no live health. */
+  checks: IntegrationVerificationCheck[];
+  nextSteps: string[];
+  connectionId: IntegrationConnectionId;
+  integrationId: IntegrationId;
+  name: string;
+  /** Null while nothing stored at the address chooses a method, such as before API setup. */
+  authMethod: IntegrationAuthMethod | null;
+};
 type IntegrationsDiscoverOutput = IntegrationOverview[];
 type IntegrationsListInput = {
   /** Null starts the scoped listing; use the returned next cursor. */
@@ -200,7 +226,7 @@ type IntegrationsListOutput = {
 type IntegrationsGetInput = {
   connectionId: IntegrationConnectionId;
 };
-type IntegrationsGetOutput = IntegrationConnection;
+type IntegrationsGetOutput = InspectedIntegrationConnection;
 type IntegrationsSetupInput =
   | {
       /** Read authoritative setup state; user confirmation is not proof of consent. */

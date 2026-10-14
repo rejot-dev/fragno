@@ -246,15 +246,18 @@ export function createResendIntegration({
     return context.kernel.scoped("RESEND", context.execution.scope, runtime.objects.resend);
   }
 
-  async function readConfigured(context: IntegrationContext) {
+  async function readConfiguration(context: IntegrationContext) {
     const object = getResendObject(context);
-    const configuration = await context.kernel.invoke({
+    return await context.kernel.invoke({
       execution: context.execution,
       operation: BACKOFFICE_PERMISSION.connections.read,
       resource: { capabilityId: "resend" },
       execute: () => object.commands.getAdminConfig(),
     });
-    return configuration.configured;
+  }
+
+  async function readConfigured(context: IntegrationContext) {
+    return (await readConfiguration(context)).configured;
   }
 
   /** Saving registers a webhook, so it also needs a public origin for Resend to deliver to. */
@@ -426,6 +429,15 @@ export function createResendIntegration({
         },
         async details() {
           return { kind: "native" };
+        },
+        async settings() {
+          const { configured, config } = await readConfiguration(context);
+          return configured
+            ? {
+                ...(config?.defaultFrom ? { defaultFrom: config.defaultFrom } : {}),
+                defaultReplyTo: config?.defaultReplyTo ?? [],
+              }
+            : null;
         },
         async actions() {
           const resend = createResendRuntime({

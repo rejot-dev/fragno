@@ -78,7 +78,11 @@ export function createIntegrationsRuntime({
     },
     async get({ connectionId }) {
       const connection = await registry.resolve(context, connectionId);
-      return { ...connection.identity, ...(await connection.inspect()) };
+      const [inspection, settings] = await Promise.all([
+        connection.inspect(),
+        connection.settings(),
+      ]);
+      return { ...connection.identity, ...inspection, settings };
     },
     async actions({ connectionId }) {
       const connection = await registry.resolve(context, connectionId);

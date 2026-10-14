@@ -689,6 +689,16 @@ export function createMcpIntegration({
             authStatus: await access.authStatus(localId),
           };
         },
+        async settings() {
+          // Stored auth modes are the input's type names; client details are never read back.
+          return (
+            resolved && {
+              ...(resolved.name ? { name: resolved.name } : {}),
+              endpointUrl: resolved.endpointUrl,
+              type: resolved.authMode,
+            }
+          );
+        },
         async actions() {
           return partitionTools(cachedTools ?? []).publishable.map(
             ({ tool, input, output }): IntegrationActionImplementation => ({
