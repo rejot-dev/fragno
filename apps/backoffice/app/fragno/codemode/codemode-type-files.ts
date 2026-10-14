@@ -141,7 +141,13 @@ export function createMcpCodemodeSourceTypeFile(
   const references = createMcpCodemodeReferences(mcpServers);
   return {
     path: CODEMODE_MCP_SOURCE_DTS_PATH,
-    content: renderDtsContent(renderCodemodeProviderExtensionTypes(references)),
+    content: renderDtsContent(
+      // Agents search here by service name, so the header leads them to the connection itself.
+      "// Each mcp_<slug> provider calls the tools of the MCP server connection mcp#<slug>. Set up,",
+      "// reconfigure, verify, or disconnect that connection with integrations.*; see",
+      "// /static/skills/configuring-integrations/SKILL.md.",
+      renderCodemodeProviderExtensionTypes(references),
+    ),
   };
 }
 

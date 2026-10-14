@@ -1,10 +1,10 @@
 ---
 name: configuring-integrations
 description: >
-  Connect, set up, verify, reconfigure, or disconnect a service. Walks a source ladder: native
-  Backoffice integrations (Reson8, Telegram, Resend, and GitHub) first, then Open Connector OAuth
-  providers, then remote MCP servers, then direct HTTP API connections. Load with the service's
-  provider-specific skill when one exists.
+  Integrations: any service the user names, whether an MCP server (each `mcp_<slug>` codemode
+  provider is the connection `mcp#<slug>`), an HTTP API, an inbound webhook, an Open Connector
+  account, or Telegram, Resend, Reson8, or GitHub. Use to connect one, change its auth, credentials,
+  or endpoint, verify, disconnect, call it, or react to its connection changes.
 ---
 
 # Configuring Integrations

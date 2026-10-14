@@ -8,8 +8,9 @@ API, inbound webhooks, MCP, GitHub, Reson8, Telegram, Resend, and Connector are 
 Codemode and terminal commands use the same contracts, runtime, and permissions. Every source's
 connections are exposed only through `integrations.*`; the former standalone tool families have been
 removed. One native surface remains because the facade does not cover it: codemode generates a typed
-`mcp_<server>` provider per MCP server from its cached tools. All sources retain their underlying
-Fragments, Durable Objects, ownership, and configuration controls.
+`mcp_<server>` provider per MCP server from its cached tools, whose declarations name the
+`mcp#<server>` connection so a search by service name leads to it. All sources retain their
+underlying Fragments, Durable Objects, ownership, and configuration controls.
 
 ## Public surface
 
