@@ -83,11 +83,6 @@ test("uses codemode setup helpers while keeping setup intent explicit", async ()
       files: backofficeFiles.workspaceStarter(),
       setup: ({ given }) => [
         given.organization.exists({ id: "org-1", name: "Ada Labs" }),
-        given.codemode.connectionConfigure({
-          orgId: "org-1",
-          id: "upload",
-          payload: { provider: "database" },
-        }),
         given.codemode.storeSet({
           orgId: "org-1",
           key: "setup/foo",
@@ -105,7 +100,6 @@ test("uses codemode setup helpers while keeping setup intent explicit", async ()
         }),
       ],
       steps: ({ then }) => [
-        then.connection.configured({ orgId: "org-1", id: "upload" }),
         then.store.entry({
           orgId: "org-1",
           key: "setup/foo",
@@ -122,7 +116,7 @@ test("uses codemode setup helpers while keeping setup intent explicit", async ()
           text: "binary",
         }),
         then.codemode.toolCalls({
-          include: ["connections.configure", "store.set"],
+          include: ["store.set"],
         }),
       ],
     }),

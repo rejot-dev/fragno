@@ -1,35 +1,23 @@
-import {
-  type CapabilitiesListOutput,
-  type ConnectionSchemaOutput,
-  type ConnectionSetupOutput,
-  type ConnectionsListOutput,
-  type HookScopesListOutput,
-  connectionStatusSchema,
+import type {
+  CapabilitiesListOutput,
+  HookScopesListOutput,
 } from "@fragno-dev/backoffice-api/v0/capabilities";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
-import { z } from "zod";
 
 import {
   backofficeObjectScopePolicy,
   type BackofficeObjectRegistry,
   type BackofficeObjectScopeKind,
 } from "@/backoffice-runtime/object-registry";
-import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
 import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
 import {
   backofficeCapabilities,
   getBackofficeCapabilityKind,
-  getConnectionCapability,
-  listConnectionCapabilities,
   listHookScopes,
-  toConnectionVerification,
   type BackofficeCapability,
   type BackofficeCapabilityContext,
-  type ConnectionStatus,
-  type ConnectionVerification,
 } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 import {
-  defineCliArgsParser,
   defineNoInputArgsParser,
   parseCliTokens,
   readOutputOptions,
@@ -45,17 +33,6 @@ import {
 export type BackofficeCapabilitiesRuntime = {
   listCapabilities(): Promise<CapabilitiesListOutput>;
   listHookScopes(): Promise<HookScopesListOutput>;
-  listConnections(): Promise<ConnectionsListOutput>;
-  getConnection(input: { id: string }): Promise<ConnectionStatus>;
-  setupConnection(input: { id: string }): Promise<ConnectionSetupOutput>;
-  getConnectionSchema(input: { id: string }): Promise<ConnectionSchemaOutput>;
-  verifyConnection(input: { id: string }): Promise<ConnectionVerification>;
-  resetConnection(input: { id: string; confirm: string }): Promise<ConnectionStatus>;
-  configureConnection(input: {
-    id: string;
-    payload: unknown;
-    origin?: string;
-  }): Promise<ConnectionStatus>;
 };
 
 type BackofficeCapabilitiesToolContext = BackofficeToolContext<{
@@ -69,31 +46,9 @@ const getRuntime = (context: BackofficeCapabilitiesToolContext) => {
   return context.runtimes.backoffice;
 };
 
-const parseIdOnly = (command: string) =>
-  defineCliArgsParser<{ id: string }>(command, { id: { required: true } });
-
-const parseReset = defineCliArgsParser<{ id: string; confirm: string }>("connections.reset", {
-  id: { required: true },
-  confirm: { required: true },
-});
-
-const parseConfigure = defineCliArgsParser<{ id: string; payload: unknown; origin?: string }>(
-  "connections.configure",
-  {
-    id: { required: true },
-    payload: { kind: "json", option: "json", required: true },
-    origin: {},
-  },
-);
-
 type OutputOptions = ReturnType<typeof readOutputOptions>;
 
 const readOutput = (args: string[]) => readOutputOptions(parseCliTokens(args));
-const readOutputWithoutJsonFlag = (args: string[]) => {
-  const parsed = parseCliTokens(args);
-  parsed.options.delete("json");
-  return readOutputOptions(parsed);
-};
 const shouldReturnData = (options: OutputOptions) =>
   options.format === "json" || Boolean(options.print);
 const dataFormat = <T>(data: T) => ({ data });
@@ -164,96 +119,6 @@ const formatHookScopesList = (data: HookScopesListOutput, options: OutputOptions
         ),
       };
 
-const formatConnectionsList = (data: ConnectionsListOutput, options: OutputOptions) =>
-  shouldReturnData(options)
-    ? dataFormat(data)
-    : {
-        stdout: renderTable(
-          ["connection", "configured", "hooks", "tools", "events", "missing"],
-          data.map((item) => [
-            item.id,
-            item.configured,
-            item.hookScopes,
-            item.runtimeToolNamespaces,
-            item.automationEvents,
-            item.missing ?? [],
-          ]),
-        ),
-      };
-
-const formatConnectionStatus = (
-  data: z.infer<typeof connectionStatusSchema>,
-  options: OutputOptions,
-) => {
-  if (shouldReturnData(options)) {
-    return dataFormat(data);
-  }
-  const lines = [
-    `${data.id}\tconfigured=${cell(data.configured)}`,
-    ...(data.missing?.length ? [`missing=${data.missing.join(", ")}`] : []),
-    ...(data.verification
-      ? [`verification=${data.verification.ok ? "ok" : "failed"}: ${data.verification.message}`]
-      : []),
-  ];
-  if (data.config) {
-    lines.push("", renderTable(["config", "value"], Object.entries(data.config)));
-  }
-  return { stdout: `${lines.join("\n").trimEnd()}\n` };
-};
-
-const formatConnectionSchema = (data: ConnectionSchemaOutput, options: OutputOptions) =>
-  shouldReturnData(options)
-    ? dataFormat(data)
-    : {
-        stdout: renderTable(
-          ["field", "required", "secret", "description"],
-          data.fields.map((field) => [
-            field.name,
-            field.required ?? false,
-            field.secret ?? false,
-            field.description ?? "",
-          ]),
-        ),
-      };
-
-const formatConnectionSetup = (data: ConnectionSetupOutput, options: OutputOptions) =>
-  shouldReturnData(options)
-    ? dataFormat(data)
-    : {
-        stdout:
-          [
-            `${data.id} (${data.label}) setup`,
-            data.overview,
-            "",
-            ...data.manualSteps.map(
-              (step, index) =>
-                `${index + 1}. ${step.title}: ${step.instructions}${
-                  step.expectedUserInput?.length
-                    ? ` (collect: ${step.expectedUserInput.join(", ")})`
-                    : ""
-                }`,
-            ),
-            ...(data.fields.length
-              ? [
-                  "",
-                  renderTable(
-                    ["field", "required", "secret", "description"],
-                    data.fields.map((field) => [
-                      field.name,
-                      field.required ?? false,
-                      field.secret ?? false,
-                      field.description ?? "",
-                    ]),
-                  ).trimEnd(),
-                ]
-              : []),
-            ...(data.verify
-              ? ["", `Verify: ${data.verify.tool} — ${data.verify.description}`]
-              : []),
-            `Configure: ${data.configureExample}`,
-          ].join("\n") + "\n",
-      };
-
 const capabilitiesListTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("capabilities.list"),
   namespace: "capabilities",
@@ -296,249 +161,20 @@ const hookScopesListTool = defineBackofficeRuntimeTool({
   },
 });
 
-const connectionsListTool = defineBackofficeRuntimeTool({
-  ...backofficeApiOperationToolFields("connections.list"),
-  namespace: "connections",
-  name: "list",
-  execute: async (_input, context: BackofficeCapabilitiesToolContext) =>
-    await getRuntime(context).listConnections(),
-  adapters: {
-    bash: {
-      command: "connections.list",
-      help: {
-        summary: "connections.list lists configurable Backoffice connections.",
-        options: [],
-        examples: ["connections.list", "connections.list --format json"],
-      },
-      parse: defineNoInputArgsParser("connections.list"),
-      outputOptions: readOutput,
-      format: formatConnectionsList,
-    },
-  },
-});
-
-const connectionsGetTool = defineBackofficeRuntimeTool({
-  ...backofficeApiOperationToolFields("connections.get"),
-  namespace: "connections",
-  name: "get",
-  execute: async (input, context: BackofficeCapabilitiesToolContext) =>
-    await getRuntime(context).getConnection(input),
-  adapters: {
-    bash: {
-      command: "connections.get",
-      help: {
-        summary: "connections.get shows one connection status.",
-        options: [
-          {
-            name: "id",
-            required: true,
-            valueRequired: true,
-            valueName: "id",
-            description: "Connection id",
-          },
-        ],
-        examples: ["connections.get --id telegram --format json"],
-      },
-      parse: parseIdOnly("connections.get"),
-      outputOptions: readOutput,
-      format: formatConnectionStatus,
-    },
-  },
-});
-
-const connectionsSetupTool = defineBackofficeRuntimeTool({
-  ...backofficeApiOperationToolFields("connections.setup"),
-  namespace: "connections",
-  name: "setup",
-  execute: async (input, context: BackofficeCapabilitiesToolContext) =>
-    await getRuntime(context).setupConnection(input),
-  adapters: {
-    bash: {
-      command: "connections.setup",
-      help: {
-        summary: "connections.setup prints manual setup steps for a connection.",
-        options: [
-          {
-            name: "id",
-            required: true,
-            valueRequired: true,
-            valueName: "id",
-            description: "Connection id",
-          },
-        ],
-        examples: ["connections.setup --id telegram"],
-      },
-      parse: parseIdOnly("connections.setup"),
-      outputOptions: readOutput,
-      format: formatConnectionSetup,
-    },
-  },
-});
-
-const connectionsSchemaTool = defineBackofficeRuntimeTool({
-  ...backofficeApiOperationToolFields("connections.schema"),
-  namespace: "connections",
-  name: "schema",
-  execute: async (input, context: BackofficeCapabilitiesToolContext) =>
-    await getRuntime(context).getConnectionSchema(input),
-  adapters: {
-    bash: {
-      command: "connections.schema",
-      help: {
-        summary: "connections.schema prints configuration fields for a connection.",
-        options: [
-          {
-            name: "id",
-            required: true,
-            valueRequired: true,
-            valueName: "id",
-            description: "Connection id",
-          },
-        ],
-        examples: [
-          "connections.schema --id telegram",
-          "connections.schema --id telegram --format json",
-        ],
-      },
-      parse: parseIdOnly("connections.schema"),
-      outputOptions: readOutput,
-      format: formatConnectionSchema,
-    },
-  },
-});
-
-const connectionsVerifyTool = defineBackofficeRuntimeTool({
-  ...backofficeApiOperationToolFields("connections.verify"),
-  namespace: "connections",
-  name: "verify",
-  execute: async (input, context: BackofficeCapabilitiesToolContext) =>
-    await getRuntime(context).verifyConnection(input),
-  adapters: {
-    bash: {
-      command: "connections.verify",
-      help: {
-        summary: "connections.verify checks one connection status/health.",
-        options: [
-          {
-            name: "id",
-            required: true,
-            valueRequired: true,
-            valueName: "id",
-            description: "Connection id",
-          },
-        ],
-        examples: [
-          "connections.verify --id telegram",
-          "connections.verify --id telegram --format json",
-        ],
-      },
-      parse: parseIdOnly("connections.verify"),
-      outputOptions: readOutput,
-      format: formatConnectionStatus,
-    },
-  },
-});
-
-const connectionsResetTool = defineBackofficeRuntimeTool({
-  ...backofficeApiOperationToolFields("connections.reset"),
-  namespace: "connections",
-  name: "reset",
-  execute: async (input, context: BackofficeCapabilitiesToolContext) =>
-    await getRuntime(context).resetConnection(input),
-  adapters: {
-    bash: {
-      command: "connections.reset",
-      help: {
-        summary: "connections.reset clears one connection configuration.",
-        options: [
-          {
-            name: "id",
-            required: true,
-            valueRequired: true,
-            valueName: "id",
-            description: "Connection id",
-          },
-          {
-            name: "confirm",
-            required: true,
-            valueRequired: true,
-            valueName: "id",
-            description: "Must exactly match --id",
-          },
-        ],
-        examples: ["connections.reset --id reson8 --confirm reson8"],
-      },
-      parse: parseReset,
-      outputOptions: readOutput,
-      format: formatConnectionStatus,
-    },
-  },
-});
-
-const connectionsConfigureTool = defineBackofficeRuntimeTool({
-  ...backofficeApiOperationToolFields("connections.configure"),
-  namespace: "connections",
-  name: "configure",
-  execute: async (input, context: BackofficeCapabilitiesToolContext) =>
-    await getRuntime(context).configureConnection(input),
-  adapters: {
-    bash: {
-      command: "connections.configure",
-      help: {
-        summary: "connections.configure configures a connection from a JSON payload.",
-        options: [
-          {
-            name: "id",
-            required: true,
-            valueRequired: true,
-            valueName: "id",
-            description: "Connection id",
-          },
-          {
-            name: "json",
-            required: true,
-            valueRequired: true,
-            valueName: "json",
-            description: "Connection configuration JSON payload",
-          },
-          {
-            name: "origin",
-            valueRequired: true,
-            valueName: "url",
-            description: "Provider-specific public origin; currently used by Resend",
-          },
-        ],
-        examples: [
-          'connections.configure --id reson8 --json \'{"apiKey":"..."}\' --format json',
-          'connections.configure --id telegram --json \'{"botToken":"..."}\' --format json',
-        ],
-      },
-      parse: parseConfigure,
-      outputOptions: readOutputWithoutJsonFlag,
-      format: formatConnectionStatus,
-    },
-  },
-});
-
 export const createBackofficeCapabilitiesRuntime = ({
   objects,
   config,
   scope,
-  origin = "https://backoffice.local",
-  runtimeToolNamespacesByCapability,
 }: {
   objects: BackofficeObjectRegistry;
   config: BackofficeRuntimeConfig;
   scope: BackofficeContextScope;
-  origin?: string;
-  runtimeToolNamespacesByCapability?: ReadonlyMap<string, readonly string[]>;
 }): BackofficeCapabilitiesRuntime => {
   const ownerOrgId = scope.kind === "org" || scope.kind === "project" ? scope.orgId : null;
   const capabilityContext = {
     objects,
     config,
     scope,
-    origin,
     ...(ownerOrgId ? { orgId: ownerOrgId } : {}),
   } as BackofficeCapabilityContext;
   const contextScopeKind = scope.kind === "system" ? "singleton" : scope.kind;
@@ -551,15 +187,6 @@ export const createBackofficeCapabilitiesRuntime = ({
     const allowedScopes: readonly BackofficeObjectScopeKind[] =
       backofficeObjectScopePolicy[objectBinding];
     return allowedScopes.includes(contextScopeKind);
-  };
-
-  const assertConnectionAvailable = (id: string, capability: BackofficeCapability) => {
-    if (!scopeSupported(capability)) {
-      throw new BackofficeOperationError(
-        "not_found",
-        `Connection ${id} is not available in ${scope.kind} context.`,
-      );
-    }
   };
 
   return {
@@ -650,140 +277,12 @@ export const createBackofficeCapabilitiesRuntime = ({
           ...statuses.get(hookScope.capabilityId),
         }));
     },
-    listConnections: async () =>
-      await Promise.all(
-        listConnectionCapabilities()
-          .filter((capability) => scopeSupported(capability))
-          .map(async (capability) => {
-            const status = await capability.contributions.connection.getStatus(capabilityContext);
-            return {
-              id: capability.id,
-              label: capability.label,
-              kind: getBackofficeCapabilityKind(capability),
-              configured: status.configured,
-              hookScopes: capability.contributions.hookScopes.map((hook) => hook.id),
-              runtimeToolNamespaces: [
-                ...(runtimeToolNamespacesByCapability?.get(capability.id) ??
-                  capability.contributions.actionProviders),
-              ],
-              automationEvents: capability.contributions.automationEvents.map(
-                (event) => `${event.source}:${event.eventType}`,
-              ),
-              ...(status.missing ? { missing: status.missing } : {}),
-            };
-          }),
-      ),
-    getConnection: async ({ id }) => {
-      const capability = getConnectionCapability(id);
-      if (!capability) {
-        throw new BackofficeOperationError("not_found", `Unknown configurable connection: ${id}`);
-      }
-      assertConnectionAvailable(id, capability);
-      return await capability.contributions.connection.getStatus(capabilityContext);
-    },
-    setupConnection: async ({ id }) => {
-      const capability = getConnectionCapability(id);
-      if (!capability) {
-        throw new BackofficeOperationError("not_found", `Unknown configurable connection: ${id}`);
-      }
-      assertConnectionAvailable(id, capability);
-      const connection = capability.contributions.connection;
-      const skillPath = capability.contributions.skillPaths[0];
-      const hasSkill = skillPath !== undefined;
-      return {
-        id: capability.id,
-        label: capability.label,
-        overview: hasSkill
-          ? `Use /static/${skillPath} for setup, event, and tool guidance.`
-          : `${capability.label} does not provide a setup guide yet.`,
-        manualSteps: hasSkill
-          ? [
-              {
-                id: "read-agent-skill",
-                title: "Read agent skill",
-                instructions: `Open /static/${skillPath} and follow its guidance.`,
-              },
-            ]
-          : [],
-        fields: [...(connection.configureFields ?? [])],
-        verify: {
-          tool: `connections.verify --id ${capability.id}`,
-          description: `Check verification.ok=true for ${capability.label}.`,
-        },
-        configureExample: `connections.configure --id ${capability.id} --json '{...}' --format json`,
-      };
-    },
-    getConnectionSchema: async ({ id }) => {
-      const capability = getConnectionCapability(id);
-      if (!capability) {
-        throw new BackofficeOperationError("not_found", `Unknown configurable connection: ${id}`);
-      }
-      assertConnectionAvailable(id, capability);
-      return {
-        id: capability.id,
-        label: capability.label,
-        fields: [...(capability.contributions.connection.configureFields ?? [])],
-      };
-    },
-    verifyConnection: async ({ id }) => {
-      const capability = getConnectionCapability(id);
-      if (!capability) {
-        throw new BackofficeOperationError("not_found", `Unknown configurable connection: ${id}`);
-      }
-      assertConnectionAvailable(id, capability);
-      const connection = capability.contributions.connection;
-      const status = await (connection.verify?.(capabilityContext) ??
-        connection.getStatus(capabilityContext));
-      return toConnectionVerification(status);
-    },
-    resetConnection: async ({ id, confirm }) => {
-      if (confirm !== id) {
-        throw new Error(`Refusing to reset '${id}' without --confirm ${id}.`);
-      }
-      const capability = getConnectionCapability(id);
-      const connection = capability?.contributions.connection;
-      if (!capability || !connection?.reset) {
-        throw new BackofficeOperationError(
-          "invalid_request",
-          `Connection cannot be reset through runtime tools: ${id}`,
-        );
-      }
-      assertConnectionAvailable(id, capability);
-      return await connection.reset(capabilityContext);
-    },
-    configureConnection: async ({ id, payload, origin: inputOrigin }) => {
-      const capability = getConnectionCapability(id);
-      const connection = capability?.contributions.connection;
-      if (!capability || !connection?.configure) {
-        throw new BackofficeOperationError(
-          "invalid_request",
-          `Connection is not configurable through runtime tools: ${id}`,
-        );
-      }
-      assertConnectionAvailable(id, capability);
-      const parsedPayload = connection.configureInputSchema?.parse(payload) ?? payload;
-      return await connection.configure({
-        objects,
-        config,
-        scope,
-        ...(ownerOrgId ? { orgId: ownerOrgId } : {}),
-        origin: inputOrigin ?? origin,
-        payload: parsedPayload,
-      } as BackofficeCapabilityContext & { payload: unknown });
-    },
   };
 };
 
 export const backofficeCapabilitiesRuntimeTools = [
   capabilitiesListTool,
   hookScopesListTool,
-  connectionsListTool,
-  connectionsGetTool,
-  connectionsSetupTool,
-  connectionsSchemaTool,
-  connectionsVerifyTool,
-  connectionsResetTool,
-  connectionsConfigureTool,
 ] as const;
 
 export const backofficeCapabilitiesToolFamily = defineBackofficeRuntimeToolFamily({

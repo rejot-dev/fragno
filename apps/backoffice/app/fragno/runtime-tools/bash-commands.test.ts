@@ -6,10 +6,7 @@ import { z } from "zod";
 import type { RegisteredAutomationsRuntime } from "./bash-host";
 import { automationStoreRuntimeTools } from "./families/automations-bindings";
 import { createUnavailableAutomationRouterRuntime } from "./families/automations-routing";
-import {
-  backofficeCapabilitiesRuntimeTools,
-  type BackofficeCapabilitiesRuntime,
-} from "./families/backoffice-capabilities";
+import type { BackofficeCapabilitiesRuntime } from "./families/backoffice-capabilities";
 import { eventRuntimeTools, type EventRuntime } from "./families/event";
 import { eventCatalogRuntimeTools, type EventCatalogRuntime } from "./families/event-catalog";
 import { createUnavailableEventRuntime } from "./families/event-runtime";
@@ -237,69 +234,6 @@ describe("createBackofficeBashCommands", () => {
     expect(calls).toEqual([]);
   });
 
-  test("passes connections.configure --json as the payload option", async () => {
-    const calls: unknown[] = [];
-    const backofficeRuntime = createBackofficeRuntime({
-      configureConnection: async (input) => {
-        calls.push(["configureConnection", input]);
-        return {
-          id: "mcp",
-          label: "MCP",
-          kind: "connection",
-          configured: true,
-          config: input.payload as Record<string, unknown>,
-        };
-      },
-    });
-
-    const bash = new Bash({
-      fs: new InMemoryFs(),
-      customCommands: createBackofficeBashCommands({
-        tools: backofficeCapabilitiesRuntimeTools,
-        context: createTrustedSystemBackofficeToolContext({
-          runtimes: { backoffice: backofficeRuntime },
-        }),
-        commandCallsResult: [],
-      }),
-    });
-
-    await expect(bash.exec("connections.configure --id mcp --json {}")).resolves.toMatchObject({
-      exitCode: 0,
-    });
-
-    expect(calls).toEqual([["configureConnection", { id: "mcp", payload: {} }]]);
-  });
-
-  test("prints connections.configure JSON output with --format json", async () => {
-    const backofficeRuntime = createBackofficeRuntime({
-      configureConnection: async (input) => ({
-        id: "mcp",
-        label: "MCP",
-        kind: "connection",
-        configured: true,
-        config: input.payload as Record<string, unknown>,
-      }),
-    });
-
-    const bash = new Bash({
-      fs: new InMemoryFs(),
-      customCommands: createBackofficeBashCommands({
-        tools: backofficeCapabilitiesRuntimeTools,
-        context: createTrustedSystemBackofficeToolContext({
-          runtimes: { backoffice: backofficeRuntime },
-        }),
-        commandCallsResult: [],
-      }),
-    });
-
-    await expect(
-      bash.exec(`connections.configure --id mcp --json '{"enabled":true}' --format json`),
-    ).resolves.toMatchObject({
-      exitCode: 0,
-      stdout: expect.stringContaining('"configured":true'),
-    });
-  });
-
   test("passes events.catalog.create --json as the event definition", async () => {
     const calls: unknown[] = [];
     const backofficeRuntime = createBackofficeRuntime({
@@ -344,25 +278,6 @@ describe("createBackofficeBashCommands", () => {
         { source: "custom", eventType: "thing.created", label: "Thing created", enabled: true },
       ],
     ]);
-  });
-
-  test("requires a connections.configure --json payload", async () => {
-    const backofficeRuntime = createBackofficeRuntime();
-    const bash = new Bash({
-      fs: new InMemoryFs(),
-      customCommands: createBackofficeBashCommands({
-        tools: backofficeCapabilitiesRuntimeTools,
-        context: createTrustedSystemBackofficeToolContext({
-          runtimes: { backoffice: backofficeRuntime },
-        }),
-        commandCallsResult: [],
-      }),
-    });
-
-    await expect(bash.exec("connections.configure --id mcp --json")).resolves.toMatchObject({
-      exitCode: 1,
-      stderr: expect.stringContaining("--json requires a value"),
-    });
   });
 
   test("rejects invalid output options before executing a runtime tool", async () => {
@@ -461,31 +376,6 @@ const createBackofficeRuntime = (
 ): BackofficeCapabilitiesRuntime & EventCatalogRuntime => ({
   listCapabilities: async () => [],
   listHookScopes: async () => [],
-  listConnections: async () => [],
-  getConnection: async () => ({ id: "mcp", label: "MCP", kind: "connection", configured: false }),
-  setupConnection: async () => ({
-    id: "mcp",
-    label: "MCP",
-    overview: "MCP setup",
-    manualSteps: [],
-    fields: [],
-    configureExample: "connections.configure --id mcp --json '{}'",
-  }),
-  getConnectionSchema: async () => ({ id: "mcp", label: "MCP", fields: [] }),
-  verifyConnection: async () => ({
-    id: "mcp",
-    label: "MCP",
-    kind: "connection",
-    configured: true,
-    verification: { ok: true, message: "MCP configuration is present." },
-  }),
-  resetConnection: async () => ({ id: "mcp", label: "MCP", kind: "connection", configured: false }),
-  configureConnection: async () => ({
-    id: "mcp",
-    label: "MCP",
-    kind: "connection",
-    configured: true,
-  }),
   listAutomationEvents: async () => [],
   getAutomationEvent: async () => null,
   createAutomationEvent: async (input) => ({

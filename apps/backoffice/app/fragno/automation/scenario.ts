@@ -517,12 +517,6 @@ type PiDefaultAgentInput = {
   value: string;
 };
 
-type ConnectionConfiguredInput = {
-  orgId: string;
-  id: string;
-  payload?: unknown;
-};
-
 type ProjectCreateInput = {
   orgId: string;
   slug?: string;
@@ -793,14 +787,10 @@ export type BackofficeScenarioStepBuilders<TVars extends ScenarioVars = Scenario
     router: {
       route(input: RouterCreateRouteInput): BackofficeScenarioStep;
     };
-    connection: {
-      configured(input: ConnectionConfiguredInput): BackofficeScenarioStep;
-    };
     files(input: FilesSetupInput): BackofficeScenarioStep;
     codemode: {
       run(input: BackofficeScenarioCodemodeInput): BackofficeScenarioStep;
       storeSet(input: CodemodeStoreSetInput): BackofficeScenarioStep;
-      connectionConfigure(input: ConnectionConfiguredInput): BackofficeScenarioStep;
       writeFile(input: CodemodeWriteFileInput): BackofficeScenarioStep;
     };
     direct: {
@@ -921,10 +911,6 @@ export type BackofficeScenarioStepBuilders<TVars extends ScenarioVars = Scenario
     hooks: {
       noPending(input?: HooksNoPendingInput): BackofficeScenarioStep;
       noFailed(input?: HooksNoPendingInput): BackofficeScenarioStep;
-    };
-    connection: {
-      configured(input: Omit<ConnectionConfiguredInput, "payload">): BackofficeScenarioStep;
-      unconfigured(input: Omit<ConnectionConfiguredInput, "payload">): BackofficeScenarioStep;
     };
     codemode: {
       toolCalls(input: CodemodeToolCallsInput): BackofficeScenarioStep;
@@ -1786,16 +1772,6 @@ const getReadableScenarioFileSystem = async (
   return null;
 };
 
-const getConnectionRuntime = (ctx: BackofficeScenarioContext, orgId: string) =>
-  createBackofficeToolContext(
-    createCodemodeRouteBackedRuntimeContext({
-      runtime: ctx.runtime.services,
-      kernel: new BackofficeKernel(ctx.runtime.services),
-      execution: createBackofficeSystemExecution({ kind: "org", orgId }),
-      billingOrganizationId: null,
-    }),
-  ).runtimes.backoffice;
-
 const formatToolCallName = (call: BackofficeRuntimeToolCall) =>
   `${call.providerName}.${call.toolName}`;
 
@@ -2439,25 +2415,6 @@ const buildStepBuilders = <
           },
         ),
     },
-    connection: {
-      configured: (input) =>
-        createStep(
-          "given",
-          "connection.configured",
-          `setup connection ${input.orgId}:${input.id}`,
-          async (ctx) => {
-            ctx.rememberOrg(input.orgId);
-            const runtime = getConnectionRuntime(ctx, input.orgId);
-            if (!runtime) {
-              throw new Error("Backoffice connection runtime is not available.");
-            }
-            await runtime.configureConnection({
-              id: input.id,
-              payload: input.payload ?? {},
-            });
-          },
-        ),
-    },
     files: (input) =>
       createStep(
         "given",
@@ -2498,25 +2455,6 @@ const buildStepBuilders = <
   })});
 }`,
               assertToolCalls: ["store.set"],
-            });
-          },
-        ),
-      connectionConfigure: (input) =>
-        createStep(
-          "given",
-          "codemode.connectionConfigure",
-          `setup connection ${input.orgId}:${input.id} through codemode`,
-          async (ctx) => {
-            await ctx.runCodemode({
-              scope: { kind: "org", orgId: input.orgId },
-              label: `configure connection ${input.id}`,
-              code: `async () => {
-  await connections.configure(${JSON.stringify({
-    id: input.id,
-    payload: input.payload ?? {},
-  })});
-}`,
-              assertToolCalls: ["connections.configure"],
             });
           },
         ),
@@ -4017,46 +3955,6 @@ const buildStepBuilders = <
             );
           }
         }),
-    },
-    connection: {
-      configured: (input) =>
-        createStep(
-          "then",
-          "connection.configured",
-          `assert connection ${input.orgId}:${input.id} is configured`,
-          async (ctx) => {
-            ctx.rememberOrg(input.orgId);
-            const runtime = getConnectionRuntime(ctx, input.orgId);
-            if (!runtime) {
-              throw new Error("Backoffice connection runtime is not available.");
-            }
-            const status = await runtime.getConnection({ id: input.id });
-            if (!status.configured) {
-              throw new Error(
-                `Expected connection ${input.id} to be configured: ${JSON.stringify(status)}`,
-              );
-            }
-          },
-        ),
-      unconfigured: (input) =>
-        createStep(
-          "then",
-          "connection.unconfigured",
-          `assert connection ${input.orgId}:${input.id} is unconfigured`,
-          async (ctx) => {
-            ctx.rememberOrg(input.orgId);
-            const runtime = getConnectionRuntime(ctx, input.orgId);
-            if (!runtime) {
-              throw new Error("Backoffice connection runtime is not available.");
-            }
-            const status = await runtime.getConnection({ id: input.id });
-            if (status.configured) {
-              throw new Error(
-                `Expected connection ${input.id} to be unconfigured: ${JSON.stringify(status)}`,
-              );
-            }
-          },
-        ),
     },
     codemode: {
       toolCalls: (input) =>

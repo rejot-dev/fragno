@@ -130,38 +130,3 @@ export const runtimeToolFamilies = [
 
 export const getAvailableBackofficeRuntimeTools = (context: BackofficeToolContext) =>
   getAvailableRuntimeTools({ families: runtimeToolFamilies, context });
-
-const namespaceCapabilityIds = {
-  store: "automations",
-  identity: "automations",
-  router: "automations",
-  workflow: "automations",
-  hooks: "automations",
-  events: "automations",
-  forms: "forms",
-  otp: "otp",
-  pi: "pi",
-  sandbox: "sandbox",
-  upload: "upload",
-} as const;
-
-export const getRuntimeToolNamespacesByCapability = () => {
-  const namespacesByCapability = new Map<string, Set<string>>();
-  for (const family of runtimeToolFamilies) {
-    for (const tool of family.tools) {
-      const capabilityId = tool.capabilityId ?? namespaceCapabilityIds[tool.namespace as never];
-      if (!capabilityId) {
-        continue;
-      }
-      const namespaces = namespacesByCapability.get(capabilityId) ?? new Set<string>();
-      namespaces.add(tool.namespace);
-      namespacesByCapability.set(capabilityId, namespaces);
-    }
-  }
-  return new Map(
-    [...namespacesByCapability].map(([capabilityId, namespaces]) => [
-      capabilityId,
-      [...namespaces].sort(),
-    ]),
-  );
-};

@@ -4,11 +4,10 @@ import { z } from "zod";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import type { AutomationExternalEntityDefinition } from "@/fragno/automation/contracts";
 import type {
-  BackofficeConfigurableConnectionCapability,
+  BackofficeCapability,
   ConnectionStatus,
 } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 import { createDurableHookRepositoryFromCommands } from "@/fragno/durable-hook-command-repository";
-import { generateTelegramWebhookSecretToken } from "@/fragno/telegram-webhook-secret";
 
 import type { TelegramAdminConfigResponse } from "../../../../workers/telegram.do";
 
@@ -30,10 +29,6 @@ export const telegramConfigureInputSchema = z.object({
   webhookSecretToken: z.string().trim().min(1, "Webhook secret token is required."),
   botUsername: optionalTrimmedString,
   apiBaseUrl: absoluteUrl,
-});
-
-const telegramRuntimeConfigureInputSchema = telegramConfigureInputSchema.omit({
-  webhookSecretToken: true,
 });
 
 const telegramAutomationExternalEntities = {
@@ -102,37 +97,14 @@ const toTelegramStatus = (response: TelegramAdminConfigResponse): ConnectionStat
   };
 };
 
-export const telegramCapability: BackofficeConfigurableConnectionCapability = {
+export const telegramCapability: BackofficeCapability = {
   id: connectionStatusIdentity.id,
   label: connectionStatusIdentity.label,
   objectBinding: null,
   contributions: {
     connection: {
-      configurable: true,
-      configureInputSchema: telegramRuntimeConfigureInputSchema,
-      configureFields: [
-        {
-          name: "botToken",
-          required: true,
-          secret: true,
-          description: "Telegram BotFather bot token.",
-        },
-        { name: "botUsername", description: "Optional bot username, with or without @." },
-        { name: "apiBaseUrl", description: "Optional Telegram API base URL override." },
-      ],
       getStatus: async ({ objects, orgId }) =>
         toTelegramStatus(await getTelegramDo(objects, orgId).commands.getAdminConfig()),
-      verify: async ({ objects, orgId }) =>
-        toTelegramStatus(await getTelegramDo(objects, orgId).commands.getAdminConfig()),
-      reset: async ({ objects, orgId }) =>
-        toTelegramStatus(await getTelegramDo(objects, orgId).commands.resetAdminConfig()),
-      configure: async ({ objects, orgId, payload }) =>
-        toTelegramStatus(
-          await getTelegramDo(objects, orgId).commands.setAdminConfig({
-            ...telegramRuntimeConfigureInputSchema.parse(payload),
-            webhookSecretToken: generateTelegramWebhookSecretToken(),
-          }),
-        ),
     },
     eventSources: [
       {

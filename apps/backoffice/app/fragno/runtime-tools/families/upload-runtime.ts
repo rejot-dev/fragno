@@ -1,11 +1,15 @@
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type {
   PreparedUploadedFileReference,
   UploadedFileReference,
+  uploadStorageConfigureInputSchema,
+  uploadStorageSchema,
 } from "@fragno-dev/backoffice-api/v0/upload";
 import { z } from "zod";
 
-import type { FetchObject } from "@/backoffice-runtime/object-registry";
+import type { FetchObject, UploadObject } from "@/backoffice-runtime/object-registry";
 import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
+import type { UploadAdminConfigResponse } from "@/fragno/upload";
 import { bytesToBase64 } from "@/lib/base64";
 
 export type UploadReadPreparedInput = {
@@ -34,13 +38,24 @@ export type UploadReadPreparedOutput =
       byteLength: number;
     };
 
-export type UploadRuntime = {
+type UploadPreparedRuntime = {
   readPrepared(input: UploadReadPreparedInput): Promise<UploadReadPreparedOutput>;
   commitPrepared(input: { file: PreparedUploadedFileReference }): Promise<UploadedFileReference>;
   discardPrepared(input: {
     file: PreparedUploadedFileReference;
   }): Promise<{ discarded: true; uploadId: string }>;
 };
+
+type UploadStorage = z.output<typeof uploadStorageSchema>;
+
+type UploadStorageRuntime = {
+  getStorage(): Promise<UploadStorage>;
+  configureStorage(
+    input: z.output<typeof uploadStorageConfigureInputSchema>,
+  ): Promise<UploadStorage>;
+};
+
+export type UploadRuntime = UploadPreparedRuntime & UploadStorageRuntime;
 
 const DEFAULT_MAX_READ_BYTES = 10 * 1_024 * 1_024;
 const MAX_READ_BYTES = 50 * 1_024 * 1_024;
@@ -183,7 +198,42 @@ const discardPreparedUpload = async (
   });
 };
 
-export const createUploadRuntime = (object: FetchObject): UploadRuntime => {
+const uploadProviders = ["database", "r2-binding", "r2"] as const;
+
+function uploadStorageOf(response: UploadAdminConfigResponse): UploadStorage {
+  return {
+    defaultProvider: response.defaultProvider,
+    providers: uploadProviders.filter((provider) => response.providers[provider]?.configured),
+  };
+}
+
+/** Storage is configured per organization; other scopes keep the database default. */
+export function createUploadStorageRuntime(
+  object: UploadObject,
+  scope: BackofficeContextScope,
+): UploadStorageRuntime {
+  return {
+    async getStorage() {
+      return uploadStorageOf(await object.getAdminConfig());
+    },
+    async configureStorage({ default: isDefault, ...provider }) {
+      if (scope.kind !== "org") {
+        throw new BackofficeOperationError(
+          "invalid_request",
+          "Upload storage is configured per organization.",
+        );
+      }
+      return uploadStorageOf(
+        await object.setAdminConfig(
+          { ...provider, ...(isDefault ? { defaultProvider: provider.provider } : {}) },
+          scope.orgId,
+        ),
+      );
+    },
+  };
+}
+
+export const createUploadRuntime = (object: FetchObject): UploadPreparedRuntime => {
   const fetchUpload = (request: Request) => object.fetch(request);
 
   return {

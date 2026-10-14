@@ -31,7 +31,6 @@ const resolveDurableHookRepository = async ({
     config,
     scope: { kind: "org", orgId },
     orgId,
-    origin: "https://backoffice.local",
   });
 };
 

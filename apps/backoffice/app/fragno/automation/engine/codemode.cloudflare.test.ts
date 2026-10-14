@@ -23,10 +23,10 @@ import { executeWorkflowCodemodeAutomation } from "./codemode";
 import { defineCodemodeWorkflow } from "./codemode-workflow";
 
 describe("executeWorkflowCodemodeAutomation", () => {
-  test("exposes connection configuration tools to workflow codemode automations", async () => {
+  test("exposes Backoffice capability tools to workflow codemode automations", async () => {
     const calls: unknown[] = [];
     const event: AutomationEvent = {
-      id: "event-workflow-configure-upload",
+      id: "event-workflow-list-capabilities",
       scopeRestriction: null,
       scope: { kind: "org", orgId: "org-1" },
       source: "auth",
@@ -40,7 +40,7 @@ describe("executeWorkflowCodemodeAutomation", () => {
       },
     };
     const Workflow = defineRemoteWorkflow(
-      { name: "codemode-workflow-connections-test" },
+      { name: "codemode-workflow-capabilities-test" },
       async (workflowEvent, remote) =>
         await executeWorkflowCodemodeAutomation({
           env,
@@ -50,13 +50,10 @@ describe("executeWorkflowCodemodeAutomation", () => {
             backofficeRuntime: createRecordingBackofficeRuntime(calls),
           }),
           script: `defineWorkflow(
-            { name: "configure-upload-connection" },
+            { name: "list-capabilities" },
             async (event, step) => {
-              return await step.do("configure upload database connection", async () => ({
-                ...(await connections.configure({
-                  id: "upload",
-                  payload: { provider: "database" },
-                })),
+              return await step.do("list capabilities", async () => ({
+                capabilities: await capabilities.list(),
                 eventId: event.id,
               }));
             },
@@ -71,12 +68,12 @@ describe("executeWorkflowCodemodeAutomation", () => {
     });
 
     const instanceId = await harness.createInstance("WORKFLOW", {
-      id: "codemode-workflow-connections-test-1",
-      remoteWorkflowName: "configure-upload-connection",
+      id: "codemode-workflow-capabilities-test-1",
+      remoteWorkflowName: "list-capabilities",
       params: { automationEvent: event },
     });
     await harness.runUntilIdle({
-      workflowName: "codemode-workflow-connections-test",
+      workflowName: "codemode-workflow-capabilities-test",
       instanceId,
       reason: "create",
     });
@@ -85,17 +82,13 @@ describe("executeWorkflowCodemodeAutomation", () => {
       status: "complete",
       output: expect.objectContaining({
         exitCode: 0,
-        result: expect.objectContaining({
-          id: "upload",
-          configured: true,
-          config: { provider: "database" },
-          eventId: "event-workflow-configure-upload",
-        }),
+        result: {
+          capabilities: [uploadCapabilitySummary],
+          eventId: "event-workflow-list-capabilities",
+        },
       }),
     });
-    expect(calls).toEqual([
-      ["configureConnection", { id: "upload", payload: { provider: "database" } }],
-    ]);
+    expect(calls).toEqual(["listCapabilities"]);
   });
 
   test("rejects persisted capability grants outside the execution actor chain", async () => {
@@ -275,18 +268,20 @@ const createUnusedAutomationRuntime = (): AutomationRuntime => ({
   },
 });
 
+const uploadCapabilitySummary = {
+  id: "upload",
+  label: "Upload",
+  kind: "connection" as const,
+  available: true,
+  configured: true,
+};
+
 const createRecordingBackofficeRuntime = (calls: unknown[]): BackofficeCapabilitiesRuntime =>
   new Proxy(
     {
-      configureConnection: async (input: { id: string; payload: unknown; origin?: string }) => {
-        calls.push(["configureConnection", input]);
-        return {
-          id: input.id,
-          label: input.id,
-          kind: "connection" as const,
-          configured: true,
-          config: input.payload as Record<string, unknown>,
-        };
+      listCapabilities: async () => {
+        calls.push("listCapabilities");
+        return [uploadCapabilitySummary];
       },
     },
     {

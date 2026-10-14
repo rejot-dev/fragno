@@ -396,6 +396,12 @@ describe("runBackofficeCodemode", () => {
         contentType: file.contentType,
       }),
       discardPrepared: async ({ file }) => ({ discarded: true, uploadId: file.uploadId }),
+      getStorage: async () => {
+        throw new Error("Upload storage is not used in this test.");
+      },
+      configureStorage: async () => {
+        throw new Error("Upload storage is not used in this test.");
+      },
     };
     const systemContext = createTrustedSystemBackofficeToolContext({
       runtimes: { upload: uploadRuntime },

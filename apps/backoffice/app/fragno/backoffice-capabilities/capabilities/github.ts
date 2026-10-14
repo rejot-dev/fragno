@@ -99,7 +99,6 @@ export const githubCapability: BackofficeCapability = {
   objectBinding: null,
   contributions: {
     connection: {
-      configurable: false,
       getStatus: async ({ config }) => ({
         id: "github",
         label: "GitHub",

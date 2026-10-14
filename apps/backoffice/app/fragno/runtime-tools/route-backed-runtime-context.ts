@@ -65,13 +65,16 @@ import {
 } from "@/fragno/runtime-tools/families/otp-runtime";
 import { createPackagesRuntime } from "@/fragno/runtime-tools/families/packages-runtime";
 import { createSandboxRouteRuntime } from "@/fragno/runtime-tools/families/sandbox-route-runtime";
-import { createUploadRuntime } from "@/fragno/runtime-tools/families/upload-runtime";
+import {
+  createUploadRuntime,
+  createUploadStorageRuntime,
+} from "@/fragno/runtime-tools/families/upload-runtime";
 import { createWebRuntime } from "@/fragno/runtime-tools/families/web-runtime";
 
 import type { InteractiveRuntimeToolContext } from "./bash-host";
 import { buildJavaScriptModuleFile } from "./families/javascript-build";
 import { resolveRuntimeOrganization } from "./runtime-public-scope";
-import { getRuntimeToolNamespacesByCapability, runtimeToolFamilies } from "./tool-families";
+import { runtimeToolFamilies } from "./tool-families";
 
 export type RouteBackedRuntimeContextOptions = {
   runtime: BackofficeRuntimeServices;
@@ -208,6 +211,7 @@ export const createRouteBackedRuntimeContext = ({
   const codemodeRunner = () => codemodeRunnerFor(codemodeObject(), execution);
 
   const formsObjects = runtime.objects.forms;
+  const uploadObject = () => kernel.scoped("UPLOAD", execution.scope, runtime.objects.upload);
 
   return {
     execution,
@@ -282,7 +286,6 @@ export const createRouteBackedRuntimeContext = ({
             objects: runtime.objects,
             config: runtime.config,
             scope: execution.scope,
-            runtimeToolNamespacesByCapability: getRuntimeToolNamespacesByCapability(),
           }),
         }
       : null,
@@ -547,9 +550,10 @@ export const createRouteBackedRuntimeContext = ({
     upload:
       runtime.config.bindings.upload && isBackofficeRoutableScope(execution.scope)
         ? {
-            runtime: createUploadRuntime(
-              kernel.scoped("UPLOAD", execution.scope, runtime.objects.upload).http,
-            ),
+            runtime: {
+              ...createUploadRuntime(uploadObject().http),
+              ...createUploadStorageRuntime(uploadObject().commands, execution.scope),
+            },
           }
         : null,
   };

@@ -1251,243 +1251,6 @@
     ]
   },
   {
-    "command": "connections.list",
-    "summary": "connections.list lists configurable Backoffice connections.",
-    "options": [
-      {
-        "name": "help",
-        "description": "Show this help text",
-        "valueRequired": false,
-        "valueName": ""
-      },
-      {
-        "name": "print",
-        "description": "Extract a nested JSON field (kebab-case path) from command result",
-        "valueRequired": true,
-        "valueName": "selector",
-        "required": false
-      },
-      {
-        "name": "format",
-        "description": "Output format: text (default) or json",
-        "valueRequired": true,
-        "valueName": "format"
-      }
-    ]
-  },
-  {
-    "command": "connections.get",
-    "summary": "connections.get shows one connection status.",
-    "options": [
-      {
-        "name": "id",
-        "required": true,
-        "valueRequired": true,
-        "valueName": "id",
-        "description": "Connection id"
-      },
-      {
-        "name": "help",
-        "description": "Show this help text",
-        "valueRequired": false,
-        "valueName": ""
-      },
-      {
-        "name": "print",
-        "description": "Extract a nested JSON field (kebab-case path) from command result",
-        "valueRequired": true,
-        "valueName": "selector",
-        "required": false
-      },
-      {
-        "name": "format",
-        "description": "Output format: text (default) or json",
-        "valueRequired": true,
-        "valueName": "format"
-      }
-    ]
-  },
-  {
-    "command": "connections.setup",
-    "summary": "connections.setup prints manual setup steps for a connection.",
-    "options": [
-      {
-        "name": "id",
-        "required": true,
-        "valueRequired": true,
-        "valueName": "id",
-        "description": "Connection id"
-      },
-      {
-        "name": "help",
-        "description": "Show this help text",
-        "valueRequired": false,
-        "valueName": ""
-      },
-      {
-        "name": "print",
-        "description": "Extract a nested JSON field (kebab-case path) from command result",
-        "valueRequired": true,
-        "valueName": "selector",
-        "required": false
-      },
-      {
-        "name": "format",
-        "description": "Output format: text (default) or json",
-        "valueRequired": true,
-        "valueName": "format"
-      }
-    ]
-  },
-  {
-    "command": "connections.schema",
-    "summary": "connections.schema prints configuration fields for a connection.",
-    "options": [
-      {
-        "name": "id",
-        "required": true,
-        "valueRequired": true,
-        "valueName": "id",
-        "description": "Connection id"
-      },
-      {
-        "name": "help",
-        "description": "Show this help text",
-        "valueRequired": false,
-        "valueName": ""
-      },
-      {
-        "name": "print",
-        "description": "Extract a nested JSON field (kebab-case path) from command result",
-        "valueRequired": true,
-        "valueName": "selector",
-        "required": false
-      },
-      {
-        "name": "format",
-        "description": "Output format: text (default) or json",
-        "valueRequired": true,
-        "valueName": "format"
-      }
-    ]
-  },
-  {
-    "command": "connections.verify",
-    "summary": "connections.verify checks one connection status/health.",
-    "options": [
-      {
-        "name": "id",
-        "required": true,
-        "valueRequired": true,
-        "valueName": "id",
-        "description": "Connection id"
-      },
-      {
-        "name": "help",
-        "description": "Show this help text",
-        "valueRequired": false,
-        "valueName": ""
-      },
-      {
-        "name": "print",
-        "description": "Extract a nested JSON field (kebab-case path) from command result",
-        "valueRequired": true,
-        "valueName": "selector",
-        "required": false
-      },
-      {
-        "name": "format",
-        "description": "Output format: text (default) or json",
-        "valueRequired": true,
-        "valueName": "format"
-      }
-    ]
-  },
-  {
-    "command": "connections.reset",
-    "summary": "connections.reset clears one connection configuration.",
-    "options": [
-      {
-        "name": "id",
-        "required": true,
-        "valueRequired": true,
-        "valueName": "id",
-        "description": "Connection id"
-      },
-      {
-        "name": "confirm",
-        "required": true,
-        "valueRequired": true,
-        "valueName": "id",
-        "description": "Must exactly match --id"
-      },
-      {
-        "name": "help",
-        "description": "Show this help text",
-        "valueRequired": false,
-        "valueName": ""
-      },
-      {
-        "name": "print",
-        "description": "Extract a nested JSON field (kebab-case path) from command result",
-        "valueRequired": true,
-        "valueName": "selector",
-        "required": false
-      },
-      {
-        "name": "format",
-        "description": "Output format: text (default) or json",
-        "valueRequired": true,
-        "valueName": "format"
-      }
-    ]
-  },
-  {
-    "command": "connections.configure",
-    "summary": "connections.configure configures a connection from a JSON payload.",
-    "options": [
-      {
-        "name": "id",
-        "required": true,
-        "valueRequired": true,
-        "valueName": "id",
-        "description": "Connection id"
-      },
-      {
-        "name": "json",
-        "required": true,
-        "valueRequired": true,
-        "valueName": "json",
-        "description": "Connection configuration JSON payload"
-      },
-      {
-        "name": "origin",
-        "valueRequired": true,
-        "valueName": "url",
-        "description": "Provider-specific public origin; currently used by Resend"
-      },
-      {
-        "name": "help",
-        "description": "Show this help text",
-        "valueRequired": false,
-        "valueName": ""
-      },
-      {
-        "name": "print",
-        "description": "Extract a nested JSON field (kebab-case path) from command result",
-        "valueRequired": true,
-        "valueName": "selector",
-        "required": false
-      },
-      {
-        "name": "format",
-        "description": "Output format: text (default) or json",
-        "valueRequired": true,
-        "valueName": "format"
-      }
-    ]
-  },
-  {
     "command": "integrations.discover",
     "summary": "Discover services in the selected scope without configuring or checking them.",
     "options": [
@@ -3748,6 +3511,63 @@
         "valueRequired": true,
         "valueName": "json",
         "description": "Prepared-upload reference as JSON."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "upload.storage.get",
+    "summary": "Show the configured upload storage providers and the default.",
+    "options": [
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "upload.storage.configure",
+    "summary": "Store one upload storage provider's configuration.",
+    "options": [
+      {
+        "name": "input-json",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "json",
+        "description": "Provider configuration as JSON."
       },
       {
         "name": "help",

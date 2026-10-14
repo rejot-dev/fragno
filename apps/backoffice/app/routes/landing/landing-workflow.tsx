@@ -87,7 +87,7 @@ const RESON8_SETUP_RESULT = {
 const ACTIVITY_ITEMS = [
   { action: "Skill loaded", detail: "configuring-integrations" },
   { action: "Skill loaded", detail: "reson8-integration" },
-  { action: "read", detail: "/static/codemode/providers/connections.d.ts" },
+  { action: "read", detail: "/static/codemode/providers/integrations.d.ts" },
   { action: "write", detail: "automations/configure-reson8.workflow.js" },
 ] as const;
 
