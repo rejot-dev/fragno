@@ -38,6 +38,7 @@ import {
 } from "../../runtime-errors";
 import { resolveRuntimePublicScopePathSegment } from "../../runtime-public-scope";
 import { compileIntegrationActionSchema } from "./integration-action-json-schema";
+import { connectionStateOfInspection } from "./integration-events";
 import type {
   IntegrationActionImplementation,
   IntegrationContext,
@@ -672,6 +673,11 @@ export function createMcpIntegration({
         },
         async inspect() {
           return inspectMcpServer(await access.authStatus(localId), cachedTools);
+        },
+        async state() {
+          return connectionStateOfInspection(
+            inspectMcpServer(await access.authStatus(localId), cachedTools),
+          );
         },
         async actions() {
           return partitionTools(cachedTools ?? []).publishable.map(

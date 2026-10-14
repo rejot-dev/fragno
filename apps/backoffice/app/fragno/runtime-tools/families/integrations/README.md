@@ -29,6 +29,11 @@ Fragments, Durable Objects, ownership, and configuration controls.
 - `disconnect({ connectionId, confirm })`: remove source-owned configuration and credentials.
   `confirm` repeats the address. The result is `disconnected` or `not-configured`; the address stays
   valid for a later setup.
+- `backfillConnectionEvents()`: record every listed connection's current state as an
+  `integrations.connection.*` event, for connections created before sources reported their state.
+  Each source answers through `state()`, the same state its own events report; a disabled webhook
+  endpoint, for example, is unavailable although its configuration is complete. Event IDs are stable
+  per connection and state, so a rerun records nothing for unchanged connections.
 
 Each source declares setup, reconfigure, and disconnect as `supported` or `unsupported`; an
 unsupported operation fails with its reason. `connect` and `continueSetup` are not registered. There

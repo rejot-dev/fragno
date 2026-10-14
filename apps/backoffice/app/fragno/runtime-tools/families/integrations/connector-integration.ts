@@ -33,6 +33,7 @@ import {
   encodeConnectorConnectionId,
 } from "./connector-connection-id";
 import { compileIntegrationActionSchema } from "./integration-action-json-schema";
+import { connectionStateOfInspection } from "./integration-events";
 import type { IntegrationContext, IntegrationImplementation } from "./integration-implementation";
 
 type ConnectorAccount = z.output<typeof projectConnectorAccountSchema>;
@@ -433,6 +434,9 @@ export function createConnectorIntegration({
         },
         async inspect() {
           return inspectConnectorAccount(account);
+        },
+        async state() {
+          return connectionStateOfInspection(inspectConnectorAccount(account));
         },
         async actions() {
           const response = await access.invoke(

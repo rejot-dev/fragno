@@ -32,6 +32,7 @@ import { apiPublicAddress } from "@/fragno/scoped-public-fragment-routes";
 
 import { isSuccessStatus, throwOnRouteRuntimeError } from "../../runtime-errors";
 import { resolveRuntimePublicScopePathSegment } from "../../runtime-public-scope";
+import { connectionStateOfInspection } from "./integration-events";
 import type { IntegrationContext, IntegrationImplementation } from "./integration-implementation";
 
 const apiIntegrationId = "api";
@@ -614,6 +615,9 @@ export function createApiIntegration({
         },
         async inspect() {
           return inspectApiAuth(await access.authStatus(localId));
+        },
+        async state() {
+          return connectionStateOfInspection(inspectApiAuth(await access.authStatus(localId)));
         },
         async actions() {
           return [

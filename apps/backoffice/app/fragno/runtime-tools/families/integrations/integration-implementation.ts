@@ -13,6 +13,7 @@ import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
 
 import type { IntegrationSetupOperation } from "./integration-contracts";
+import type { IntegrationConnectionState } from "./integration-events";
 
 /** Implementations receive established execution authority, never caller-selected ownership. */
 export type IntegrationContext = {
@@ -42,6 +43,8 @@ export interface IntegrationActionImplementation {
 export interface ResolvedIntegrationConnection {
   readonly identity: Pick<IntegrationConnection, "connectionId" | "integrationId" | "name">;
   inspect(): Promise<IntegrationInspection>;
+  /** The state this source's integrations.connection.* events report for the connection now. */
+  state(): Promise<IntegrationConnectionState>;
   actions(): Promise<readonly IntegrationActionImplementation[]>;
   verify(): Promise<IntegrationInspection>;
 }

@@ -6,6 +6,7 @@ import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-ser
 import { createApiIntegration } from "./api-integration";
 import { createConnectorIntegration } from "./connector-integration";
 import { createGitHubIntegration } from "./github-integration";
+import { recordIntegrationConnectionState } from "./integration-events";
 import { createIntegrationRegistry } from "./integration-registry";
 import type { IntegrationsRuntime } from "./integration-tools";
 import { createMcpIntegration } from "./mcp-integration";
@@ -46,6 +47,33 @@ export function createIntegrationsRuntime({
     setup: (input) => registry.setup(context, input),
     reconfigure: (input) => registry.reconfigure(context, input),
     disconnect: ({ connectionId }) => registry.disconnect(context, connectionId),
+    async backfillConnectionEvents() {
+      const automations = runtime.objects.automations.for(execution.scope).commands;
+      const connections = [];
+      let cursor: string | null = null;
+      do {
+        const page = await registry.list(context, cursor);
+        for (const { connectionId, integrationId } of page.connections) {
+          const state = await (await registry.resolve(context, connectionId)).state();
+          await recordIntegrationConnectionState(
+            automations,
+            {
+              // Stable per connection, so a rerun repeats no state an earlier backfill recorded.
+              id: `integrations-backfill:${connectionId}`,
+              scope: execution.scope,
+              service: integrationId,
+              connectionId,
+              state,
+              occurredAt: new Date(nowEpochMs()),
+            },
+            { propagationContext: null },
+          );
+          connections.push({ connectionId, service: integrationId, state });
+        }
+        cursor = page.cursor;
+      } while (cursor !== null);
+      return { connections };
+    },
     async get({ connectionId }) {
       const connection = await registry.resolve(context, connectionId);
       return { ...connection.identity, ...(await connection.inspect()) };

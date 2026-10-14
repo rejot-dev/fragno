@@ -12,6 +12,8 @@ type IntegrationsCodemodeProvider = {
   reconfigure(input: IntegrationsReconfigureInput): Promise<IntegrationsReconfigureOutput>;
   /** Remove a connection's source-owned configuration and credentials in the selected scope. The address stays valid for a later setup. Requires confirm to repeat the connection ID. */
   disconnect(input: IntegrationsDisconnectInput): Promise<IntegrationsDisconnectOutput>;
+  /** Record every configured connection's current state in the selected scope as an integrations.connection.ready or connection.unavailable event, for connections that existed before those events were recorded. Routes on those events run for each new event. A rerun records a connection again only when its state differs from every earlier backfill of it. */
+  backfillConnectionEvents(): Promise<IntegrationsBackfillConnectionEventsOutput>;
   /** Discover the selected connection's supported actions and authoritative input/output contracts without executing them. Never infer schemas from action IDs. */
   actions(input: IntegrationsActionsInput): Promise<IntegrationsActionsOutput>;
   /** Execute an explicit connection action with JSON input/output, validated against its live contracts and service permissions. Binary inputs are schema-declared byte arrays; results retain the action's domain and asynchronous semantics. */
@@ -156,6 +158,13 @@ type IntegrationDisconnectResult = {
   /** Not-configured means nothing was stored at this address in the selected scope. */
   status: "disconnected" | "not-configured";
 };
+type IntegrationConnectionEventsBackfillResult = {
+  connections: {
+    connectionId: IntegrationConnectionId;
+    service: IntegrationId;
+    state: "ready" | "unavailable";
+  }[];
+};
 type IntegrationAction = {
   /** Action identity returned by actions for this connection. */
   id: string;
@@ -211,6 +220,7 @@ type IntegrationsDisconnectInput = {
   confirm: IntegrationConnectionId;
 };
 type IntegrationsDisconnectOutput = IntegrationDisconnectResult;
+type IntegrationsBackfillConnectionEventsOutput = IntegrationConnectionEventsBackfillResult;
 type IntegrationsActionsInput = {
   connectionId: IntegrationConnectionId;
 };

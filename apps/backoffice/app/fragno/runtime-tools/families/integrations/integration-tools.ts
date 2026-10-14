@@ -1,5 +1,6 @@
 import {
   integrationActionSchema,
+  integrationConnectionEventsBackfillResultSchema,
   integrationConnectionInputSchema,
   integrationConnectionSchema,
   integrationDisconnectInputSchema,
@@ -49,6 +50,9 @@ export type IntegrationsRuntime = {
   disconnect(
     input: z.output<typeof integrationDisconnectInputSchema>,
   ): Promise<z.output<typeof integrationDisconnectResultSchema>>;
+  backfillConnectionEvents(): Promise<
+    z.output<typeof integrationConnectionEventsBackfillResultSchema>
+  >;
   actions(
     input: z.output<typeof integrationConnectionInputSchema>,
   ): Promise<z.output<typeof integrationActionSchema>[]>;
@@ -310,6 +314,26 @@ export const integrationsToolFamily = defineBackofficeRuntimeToolFamily({
               confirm: { required: true, read: readOpaqueStringOption },
             },
           ),
+          format: formatIntegrationCommandOutput,
+        },
+      },
+    }),
+    defineBackofficeRuntimeTool({
+      ...backofficeApiOperationToolFields("integrations.backfillConnectionEvents"),
+      namespace: "integrations",
+      name: "backfillConnectionEvents",
+      execute: async (_input, context: IntegrationsToolContext) =>
+        await requireIntegrationsRuntime(context).backfillConnectionEvents(),
+      adapters: {
+        bash: {
+          command: "integrations.backfillConnectionEvents",
+          help: {
+            summary:
+              "Record each configured connection's current state as an integrations.connection.* event.",
+            options: [],
+            examples: ["integrations.backfillConnectionEvents --format json"],
+          },
+          parse: defineNoInputArgsParser("integrations.backfillConnectionEvents"),
           format: formatIntegrationCommandOutput,
         },
       },
