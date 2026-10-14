@@ -1,74 +1,193 @@
-import { assert, describe, expect, test } from "vitest";
+import { assert, describe, expect, test, vi } from "vitest";
 
-import { matchRoutes } from "react-router";
+const workers = vi.hoisted(() => ({
+  DurableObject: class {},
+  RpcTarget: class {},
+  WorkerEntrypoint: class {},
+}));
+vi.mock("cloudflare:workers", () => workers);
 
+import { matchRoutes, type RouteObject } from "react-router";
+
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
+import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
+import routes from "@/routes";
 
-import {
-  marketplaceListingManagePath,
-  marketplaceListingPath,
-  marketplaceListingRef,
-  marketplaceListingRefSchema,
-} from "./navigation";
+import { InMemoryApiObject } from "../../../../workers/api.do";
+import { InMemoryAuthObject } from "../../../../workers/auth.do";
+import { InMemoryAutomationsObject } from "../../../../workers/automations.do";
+import { InMemoryFormsObject } from "../../../../workers/forms.do";
+import { InMemoryMarketplaceObject } from "../../../../workers/marketplace.do";
+import { InMemoryOtpObject } from "../../../../workers/otp.do";
+import { InMemoryTelegramObject } from "../../../../workers/telegram.do";
+import { InMemoryUploadObject } from "../../../../workers/upload.do";
+import { loadMarketplaceListingRefs, resolveMarketplaceListingRoute } from "./listing-route.server";
+import { marketplaceListingManagePath, marketplaceListingPath } from "./navigation";
 
-describe("marketplace listing navigation", () => {
-  test("preserves listing ids whose owner ids contain path separators", () => {
+const objects = {
+  API: (input) => new InMemoryApiObject(input),
+  AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  UPLOAD: (input) => new InMemoryUploadObject(input),
+  AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
+  MARKETPLACE: (input) => new InMemoryMarketplaceObject(input),
+  FORMS: (input) => new InMemoryFormsObject(input),
+  TELEGRAM: (input) => new InMemoryTelegramObject(input),
+  OTP: (input) => new InMemoryOtpObject(input),
+} satisfies LocalBackofficeObjects;
+
+function routeParams(path: string) {
+  const matches = matchRoutes(routes as RouteObject[], path);
+  const match = matches?.at(-1);
+  assert(match);
+  return match.params;
+}
+
+describe("Marketplace listing navigation scenarios", () => {
+  test("scoped slugs resolve the publisher independently of the browsing workspace", async () => {
+    const publisherId = "engineering/platform";
+    const slug = "daily-operations-brief";
     const listingId = marketplaceListingId({
-      ownerScope: { kind: "org", orgId: "engineering/platform" },
-      slug: "daily-operations-brief",
+      ownerScope: { kind: "org", orgId: publisherId },
+      slug,
     });
-    const path = marketplaceListingPath(
-      listingId,
-      { kind: "org", organization: { id: "org-1", slug: "acme" }, label: "Ada Labs" },
-      "organization",
-    );
-    const matches = matchRoutes(
-      [{ path: "/backoffice/marketplace/:scopeKind/:scopeId/:catalog/:listingRef" }],
-      path,
-    );
-    const routeParam = matches?.[0]?.params.listingRef;
-
-    assert(routeParam);
-    expect(marketplaceListingRefSchema.parse(routeParam)).toBe(listingId);
-  });
-
-  test("builds listing paths inside the selected Marketplace scope", () => {
-    const listingId = marketplaceListingId({
-      ownerScope: { kind: "system" },
-      slug: "daily-operations-brief",
+    const systemListingId = marketplaceListingId({ ownerScope: { kind: "system" }, slug });
+    const systemOrganizationListingId = marketplaceListingId({
+      ownerScope: { kind: "org", orgId: "org-system" },
+      slug,
     });
+    const scope = {
+      kind: "org",
+      organization: { id: "reader-org", slug: "reader" },
+      label: "Reader",
+    } as const;
 
-    expect(
-      marketplaceListingPath(
-        listingId,
-        { kind: "org", organization: { id: "org-1", slug: "acme" }, label: "Ada Labs" },
-        "marketplace",
-      ),
-    ).toBe(`/backoffice/marketplace/org/acme/marketplace/${marketplaceListingRef(listingId)}`);
-  });
-
-  test("rejects malformed and non-listing references at the route boundary", () => {
-    assert(!marketplaceListingRefSchema.safeParse("not%base64").success);
-    assert(
-      !marketplaceListingRefSchema.safeParse(marketplaceListingRef("not-a-listing-id")).success,
-    );
-  });
-
-  test("builds manage paths with their required organization context", () => {
-    const listingId = marketplaceListingId({
-      ownerScope: { kind: "org", orgId: "org-1" },
-      slug: "daily-operations-brief",
-    });
-
-    expect(
-      marketplaceListingManagePath({
-        listingId,
-        organizationSlug: "acme",
-        visibility: "organization",
-        result: { created: "1.0.0" },
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        objects,
+        name: "Readable package routes retain owner-qualified identity",
+        setup: ({ given }) => [
+          given.organization.exists({ id: publisherId, slug: "acme", name: "Acme" }),
+          given.organization.exists({
+            id: "org-system",
+            slug: "system",
+            name: "System Organization",
+          }),
+          given.organization.exists({ id: "reader-org", slug: "reader", name: "Reader" }),
+          given.marketplace.entries([
+            {
+              owner: { scope: { kind: "org", orgId: publisherId }, publisherName: "Acme" },
+              slug,
+              version: "1.0.0",
+              metadata: {
+                name: "Daily operations brief",
+                summary: "A daily operations briefing for the team.",
+                description:
+                  "A published package that prepares the team's daily operations briefing.",
+                category: "reporting",
+                tags: [],
+              },
+            },
+            {
+              owner: { scope: { kind: "system" }, publisherName: "Fragno" },
+              slug,
+              version: "1.0.0",
+              metadata: {
+                name: "Bundled operations brief",
+                summary: "A bundled daily operations briefing.",
+                description:
+                  "A bundled package that prepares the team's daily operations briefing.",
+                category: "reporting",
+                tags: [],
+              },
+            },
+            {
+              owner: {
+                scope: { kind: "org", orgId: "org-system" },
+                publisherName: "System Organization",
+              },
+              slug,
+              version: "1.0.0",
+              metadata: {
+                name: "Organization operations brief",
+                summary: "An organization daily operations briefing.",
+                description:
+                  "An organization package that prepares the team's daily operations briefing.",
+                category: "reporting",
+                tags: [],
+              },
+            },
+          ]),
+        ],
+        steps: ({ then }) => [
+          then.assert(
+            "catalog links use publisher slugs, including publishers with slash-containing IDs",
+            async (ctx) => {
+              const { listings } = await ctx.runtime.objects.marketplace
+                .singleton()
+                .commands.listPublishedListings({});
+              const refs = await loadMarketplaceListingRefs(
+                ctx.runtime.objects,
+                listings.map((listing) => listing.listingId),
+              );
+              expect(refs).toEqual({
+                [listingId]: "@acme/daily-operations-brief",
+                [systemListingId]: "system/daily-operations-brief",
+                [systemOrganizationListingId]: "@system/daily-operations-brief",
+              });
+              for (const listing of listings) {
+                const ref = refs[listing.listingId];
+                const publicPath = `/marketplace/${ref}`;
+                const catalogPath = marketplaceListingPath(ref, scope, "marketplace");
+                expect(catalogPath).toBe(`/backoffice/marketplace/org/reader/marketplace/${ref}`);
+                for (const path of [publicPath, catalogPath, `${catalogPath}/artifact-file`]) {
+                  const resolved = await resolveMarketplaceListingRoute(
+                    ctx.runtime.objects,
+                    routeParams(path),
+                  );
+                  expect(resolved).toEqual({ listingId: listing.listingId, listingRef: ref });
+                  const detail = await ctx.runtime.objects.marketplace
+                    .singleton()
+                    .commands.getPublishedListing({ listingId: resolved.listingId });
+                  expect(detail?.listing.name).toBe(listing.name);
+                }
+              }
+            },
+          ),
+          then.assert(
+            "management links use the same scoped name and retain visibility and result parameters",
+            async (ctx) => {
+              const path = marketplaceListingManagePath({
+                listingId,
+                organizationSlug: "acme",
+                visibility: "organization",
+                result: { created: "1.0.0" },
+              });
+              expect(path).toBe(
+                "/backoffice/marketplace/@acme/daily-operations-brief/manage?visibility=organization&created=1.0.0",
+              );
+              expect(
+                await resolveMarketplaceListingRoute(ctx.runtime.objects, routeParams(path)),
+              ).toEqual({ listingId, listingRef: "@acme/daily-operations-brief" });
+            },
+          ),
+          then.assert(
+            "unknown publishers and malformed routes are not interpreted as internal IDs",
+            async (ctx) => {
+              for (const params of [
+                { publisher: "@missing", packageSlug: slug },
+                { publisher: "org:engineering%2Fplatform", packageSlug: slug },
+                { publisher: "@acme", packageSlug: "../daily-operations-brief" },
+                { publisher: "@acme/other", packageSlug: slug },
+              ]) {
+                await expect(
+                  resolveMarketplaceListingRoute(ctx.runtime.objects, params),
+                ).rejects.toMatchObject({ status: 404 });
+              }
+            },
+          ),
+        ],
       }),
-    ).toBe(
-      `/backoffice/marketplace/${marketplaceListingRef(listingId)}/manage?organizationSlug=acme&visibility=organization&created=1.0.0`,
     );
   });
 });

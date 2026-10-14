@@ -2,7 +2,10 @@ import {
   MARKETPLACE_LOCK_PATH,
   marketplaceInstallationRootSchema,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
-import type { BackofficeRoutableScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import type {
+  BackofficeContextScope,
+  BackofficeRoutableScope,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { Button, ButtonLink } from "@fragno-private/design-system/button";
 import { ClientOnly } from "@fragno-private/design-system/client-only";
 import { Icon } from "@fragno-private/design-system/icon";
@@ -47,11 +50,11 @@ import {
 } from "./installation-reference";
 import { MarketplaceInstallationWorkflow } from "./installation-workflow.client";
 import type { MarketplaceLayoutContext } from "./layout-context";
+import { resolveMarketplaceListingRoute } from "./listing-route.server";
 import {
   buildArtifactVersionPath,
   marketplaceListingManagePath,
   marketplaceListingPath,
-  marketplaceListingRefSchema,
 } from "./navigation";
 import {
   buildMarketplacePackageTabPath,
@@ -113,9 +116,19 @@ type MarketplaceInstallationTarget =
 
 const resolveMarketplaceInstallationTarget = (
   me: BackofficeMeData,
-  targetScope: BackofficeRoutableScope,
+  targetScope: BackofficeContextScope,
   installationOrganizationId: string | null,
 ): MarketplaceInstallationTarget => {
+  // System administrators browse the public Marketplace in System scope, which has no workspace.
+  if (targetScope.kind === "system") {
+    return installationOrganizationId === null
+      ? {
+          state: "unavailable",
+          message:
+            "System has no workspace to install into. Switch to an organization, project, or personal workspace.",
+        }
+      : { state: "forbidden", message: "System has no workspace to install into." };
+  }
   if (targetScope.kind === "user") {
     if (targetScope.userId !== me.user.id) {
       return {
@@ -190,10 +203,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     scope: selectedScope,
     catalog,
     marketplace: marketplaceScope,
-  } = marketplaceFromRouteParams(
-    params,
-    me.organizations.map(({ organization }) => organization),
-  );
+  } = marketplaceFromRouteParams(params, me);
   let persistedInstallation: MarketplaceInstallationReference | null;
   try {
     persistedInstallation = readMarketplaceInstallationReference(url.search);
@@ -211,16 +221,16 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     throw new Response("Not Found", { status: 404 });
   }
 
-  const listingIdResult = marketplaceListingRefSchema.safeParse(params.listingRef);
-  if (!listingIdResult.success) {
-    throw new Response("Not Found", { status: 404 });
-  }
+  const { listingId, listingRef } = await resolveMarketplaceListingRoute(
+    context.get(BackofficeWorkerContext).runtime.objects,
+    params,
+  );
 
   const versionCursor = url.searchParams.get("versionCursor")?.trim() || undefined;
   try {
     decodeMarketplacePublishedVersionCursor({
       encodedCursor: versionCursor,
-      listingId: listingIdResult.data,
+      listingId,
     });
   } catch (error) {
     if (error instanceof MarketplaceListingCursorError) {
@@ -232,11 +242,8 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
   const runtime = context.get(BackofficeWorkerContext).runtime;
   const marketplace = runtime.objects.marketplace.for(marketplaceScope).commands;
   const [detail, artifactManifest] = await Promise.all([
-    marketplace.getPublishedListing({
-      listingId: listingIdResult.data,
-      versionCursor,
-    }),
-    marketplace.getArtifactManifest({ listingId: listingIdResult.data }),
+    marketplace.getPublishedListing({ listingId, versionCursor }),
+    marketplace.getArtifactManifest({ listingId }),
   ]);
   if (!detail) {
     throw new Response("Not Found", { status: 404 });
@@ -272,21 +279,25 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
 
   return {
     ...detail,
+    listingRef,
     catalog,
     manageOrganizationSlug: manageableOrganization?.organization.slug ?? null,
     installationCollectionSource,
-    installationReference: persistedInstallation
-      ? {
-          ...persistedInstallation,
-          workflowInstanceId: await buildMarketplacePackageInstallWorkflowInstanceId({
-            marketplace: marketplaceScope,
-            targetScope: selectedScope,
-            listingId: listingIdResult.data,
-            installationRoot: persistedInstallation.installationRoot,
-            version: persistedInstallation.version,
-          }),
-        }
-      : null,
+    installationUnavailableMessage:
+      installationTarget.state === "unavailable" ? installationTarget.message : null,
+    installationReference:
+      persistedInstallation && installationTarget.state === "ready"
+        ? {
+            ...persistedInstallation,
+            workflowInstanceId: await buildMarketplacePackageInstallWorkflowInstanceId({
+              marketplace: marketplaceScope,
+              targetScope: installationTarget.targetScope,
+              listingId,
+              installationRoot: persistedInstallation.installationRoot,
+              version: persistedInstallation.version,
+            }),
+          }
+        : null,
     artifactFiles,
   };
 }
@@ -297,14 +308,14 @@ export async function action({ request, params, context, url }: Route.ActionArgs
     throw redirect(buildBackofficeLoginPath(`${url.pathname}${url.search}`));
   }
 
-  const listingIdResult = marketplaceListingRefSchema.safeParse(params.listingRef);
-  if (!listingIdResult.success) {
-    throw new Response("Not Found", { status: 404 });
-  }
+  const { listingId } = await resolveMarketplaceListingRoute(
+    context.get(BackofficeWorkerContext).runtime.objects,
+    params,
+  );
 
   const { scope: targetScope, marketplace: marketplaceScope } = marketplaceFromRouteParams(
     params,
-    me.organizations.map(({ organization }) => organization),
+    me,
   );
   const installationTarget = resolveMarketplaceInstallationTarget(me, targetScope, null);
   if (installationTarget.state !== "ready") {
@@ -341,7 +352,7 @@ export async function action({ request, params, context, url }: Route.ActionArgs
     const result = await automations.restartMarketplaceIngestion(
       {
         marketplace: marketplaceScope,
-        listingId: listingIdResult.data,
+        listingId,
         targetScope: installationTarget.targetScope,
         installationRoot: installationRootResult.data,
         version,
@@ -352,7 +363,7 @@ export async function action({ request, params, context, url }: Route.ActionArgs
       event: "marketplace_ingestion_admitted",
       userId: execution.userAuthority.userId,
       properties: {
-        listing_id: listingIdResult.data,
+        listing_id: listingId,
         version: result.version,
         scope_kind: installationTarget.targetScope.kind,
         marketplace_kind: marketplaceScope.kind,
@@ -395,6 +406,7 @@ function MarketplaceListingDetail({ loaderData }: Route.ComponentProps) {
     nextVersionCursor,
     hasNextVersionPage,
     installationCollectionSource,
+    installationUnavailableMessage,
     installationReference,
     artifactFiles,
   } = loaderData;
@@ -502,7 +514,7 @@ function MarketplaceListingDetail({ loaderData }: Route.ComponentProps) {
             latestVersion={listing.latestVersion}
             selectedScope={selectedScope}
             catalog={catalog}
-            listingId={listing.listingId}
+            listingRef={loaderData.listingRef}
             pathname={location.pathname}
             search={location.search}
             nextVersionCursor={nextVersionCursor}
@@ -531,7 +543,9 @@ function MarketplaceListingDetail({ loaderData }: Route.ComponentProps) {
           <div className="mt-6">
             {installation.state !== "idle" ? (
               <InstallationStartingSurface scopeLabel={selectedScope.label} />
-            ) : installationCollectionSource && installationReference ? (
+            ) : installationCollectionSource &&
+              installationReference &&
+              selectedScope.kind !== "system" ? (
               <ClientOnly
                 fallback={<InstallationStartingSurface scopeLabel={selectedScope.label} />}
               >
@@ -655,7 +669,8 @@ function MarketplaceListingDetail({ loaderData }: Route.ComponentProps) {
                   </installation.Form>
                 ) : (
                   <p className="mt-5 text-sm text-[var(--bo-muted)]">
-                    Join an organization to install into {selectedScope.label}.
+                    {installationUnavailableMessage ??
+                      `Join an organization to install into ${selectedScope.label}.`}
                   </p>
                 )}
               </div>
@@ -673,7 +688,7 @@ function VersionHistoryDropdown({
   latestVersion,
   selectedScope,
   catalog,
-  listingId,
+  listingRef,
   pathname,
   search,
   nextVersionCursor,
@@ -684,7 +699,7 @@ function VersionHistoryDropdown({
   latestVersion: string;
   selectedScope: MarketplaceLayoutContext["selectedScope"];
   catalog: MarketplaceCatalog;
-  listingId: string;
+  listingRef: string;
   pathname: string;
   search: string;
   nextVersionCursor?: string;
@@ -737,7 +752,7 @@ function VersionHistoryDropdown({
         </div>
         {hasNextVersionPage && nextVersionCursor ? (
           <Link
-            to={`${marketplaceListingPath(listingId, selectedScope, catalog)}?versionCursor=${encodeURIComponent(nextVersionCursor)}`}
+            to={`${marketplaceListingPath(listingRef, selectedScope, catalog)}?versionCursor=${encodeURIComponent(nextVersionCursor)}`}
             className="mt-2 flex min-h-10 items-center justify-center border-t border-[color:var(--bo-border)] px-3 pt-2 text-center text-[9px] font-semibold tracking-[0.16em] text-[var(--bo-muted)] uppercase transition-colors duration-150 ease-out hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none"
           >
             Browse older versions →

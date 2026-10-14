@@ -5,6 +5,8 @@ import { BACKOFFICE_LAYOUT_ROUTE_ID } from "./routes/backoffice/route-ids";
 export default [
   index("routes/landing/index.tsx"),
   route("forms/:scopeKind/:scopeId/:slug", "routes/forms/form.tsx"),
+  route("marketplace", "routes/marketplace/index.tsx"),
+  route("marketplace/:publisher/:packageSlug", "routes/marketplace/listing.tsx"),
 
   route("backoffice/login", "routes/backoffice/login.tsx"),
   route("backoffice/device", "routes/backoffice/device.tsx"),
@@ -40,14 +42,21 @@ export default [
         index("routes/backoffice/marketplace/scope-index.tsx"),
         route(":catalog", "routes/backoffice/marketplace/marketplace-view.tsx", [
           index("routes/backoffice/marketplace/browse.tsx"),
-          route(":listingRef/artifact-file", "routes/backoffice/marketplace/artifact-file.ts"),
-          route(":listingRef", "routes/backoffice/marketplace/detail.tsx", [
+          route("all", "routes/backoffice/marketplace/browse-all.tsx"),
+          route(
+            ":publisher/:packageSlug/artifact-file",
+            "routes/backoffice/marketplace/artifact-file.ts",
+          ),
+          route(":publisher/:packageSlug", "routes/backoffice/marketplace/detail.tsx", [
             index("routes/backoffice/marketplace/artifact-selection.tsx"),
           ]),
         ]),
         route("my-listings", "routes/backoffice/marketplace/my-listings.tsx"),
       ]),
-      route("marketplace/:listingRef/manage", "routes/backoffice/marketplace/manage.tsx"),
+      route(
+        "marketplace/:publisher/:packageSlug/manage",
+        "routes/backoffice/marketplace/manage.tsx",
+      ),
       route("automations", "routes/backoffice/automations/index.tsx"),
       route(
         "automations/:orgSlug/claims/complete",

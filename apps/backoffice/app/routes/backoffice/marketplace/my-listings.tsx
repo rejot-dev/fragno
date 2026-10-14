@@ -19,6 +19,7 @@ import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 import { buildBackofficeLoginPath } from "../auth-navigation";
 import { lookupAutomationProject } from "../automations/data.server";
 import type { Route } from "./+types/my-listings";
+import { loadMarketplaceListingRefs } from "./listing-route.server";
 import { marketplaceListingManagePath, marketplaceListingPath } from "./navigation";
 import {
   marketplaceCatalogForVisibility,
@@ -134,6 +135,10 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     visibility,
     status: status ?? null,
     ...page,
+    listingRefs: await loadMarketplaceListingRefs(
+      context.get(BackofficeWorkerContext).runtime.objects,
+      page.listings.map((listing) => listing.listingId),
+    ),
   };
 }
 
@@ -225,7 +230,7 @@ export default function BackofficeMarketplaceMyListings({ loaderData }: Route.Co
                 })
               : listing.latestPublishedVersion
                 ? marketplaceListingPath(
-                    listing.listingId,
+                    loaderData.listingRefs[listing.listingId],
                     selectedScope,
                     marketplaceCatalogForVisibility(visibility),
                   )
