@@ -4274,7 +4274,12 @@ const createFakeObjectOverrides = async (fakes: ScenarioFakes): Promise<LocalBac
         implementation,
         agent: () => fakePi.agent,
         supportedAvailableModels: async () => [
-          { provider: "openai", modelId: "gpt-5.6-luna", label: "GPT-5.6 Luna" },
+          {
+            provider: "openai",
+            modelId: "gpt-5.6-luna",
+            label: "GPT-5.6 Luna",
+            contextWindow: 400_000,
+          },
         ],
         nowEpochMs,
       });

@@ -308,7 +308,9 @@ test("js.build bundles native imports once; Pi inspects and renders fresh files 
       name: "precompiled native workspace extension through Node, Cap'n Web and workerd",
       env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
       options: { drain: false },
-      piAvailableModels: [{ provider: "faux", modelId: "faux-1", label: "Faux 1" }],
+      piAvailableModels: [
+        { provider: "faux", modelId: "faux-1", label: "Faux 1", contextWindow: 128_000 },
+      ],
       objects: {
         ...scenarioObjects,
         ...scriptedExtensionAgents(
@@ -459,7 +461,9 @@ test("native workspace tools and built-in hooks run through sealed codemode with
       name: "simple native extension bridge",
       env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
       options: { drain: false },
-      piAvailableModels: [{ provider: "faux", modelId: "faux-1", label: "Faux 1" }],
+      piAvailableModels: [
+        { provider: "faux", modelId: "faux-1", label: "Faux 1", contextWindow: 128_000 },
+      ],
       objects: {
         ...scenarioObjects,
         ...scriptedExtensionAgents(
@@ -569,7 +573,9 @@ test("user, project and system sessions do not inherit organization build artifa
       name: "built extension scope isolation",
       env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
       options: { drain: false },
-      piAvailableModels: [{ provider: "faux", modelId: "faux-1", label: "Faux 1" }],
+      piAvailableModels: [
+        { provider: "faux", modelId: "faux-1", label: "Faux 1", contextWindow: 128_000 },
+      ],
       objects: {
         ...scenarioObjects,
         ...scriptedExtensionAgents(
@@ -616,7 +622,9 @@ test("source edits require an explicit rebuild and existing sessions retain thei
       name: "explicit build lifecycle",
       env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
       options: { drain: false },
-      piAvailableModels: [{ provider: "faux", modelId: "faux-1", label: "Faux 1" }],
+      piAvailableModels: [
+        { provider: "faux", modelId: "faux-1", label: "Faux 1", contextWindow: 128_000 },
+      ],
       objects: {
         ...scenarioObjects,
         ...scriptedExtensionAgents(
@@ -791,7 +799,9 @@ for (const invalid of [
         name: `Pi inspection ${invalid.name}`,
         env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
         options: { drain: false },
-        piAvailableModels: [{ provider: "faux", modelId: "faux-1", label: "Faux 1" }],
+        piAvailableModels: [
+          { provider: "faux", modelId: "faux-1", label: "Faux 1", contextWindow: 128_000 },
+        ],
         objects: {
           ...scenarioObjects,
           ...scriptedExtensionAgents(
@@ -879,7 +889,9 @@ for (const invalid of artifactFailureCases) {
         name: invalid.name,
         env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
         options: { drain: false },
-        piAvailableModels: [{ provider: "faux", modelId: "faux-1", label: "Faux 1" }],
+        piAvailableModels: [
+          { provider: "faux", modelId: "faux-1", label: "Faux 1", contextWindow: 128_000 },
+        ],
         objects: {
           ...scenarioObjects,
           ...scriptedExtensionAgents(
@@ -952,7 +964,9 @@ for (const invalid of [
         name: invalid.name,
         env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
         options: { drain: false },
-        piAvailableModels: [{ provider: "faux", modelId: "faux-1", label: "Faux 1" }],
+        piAvailableModels: [
+          { provider: "faux", modelId: "faux-1", label: "Faux 1", contextWindow: 128_000 },
+        ],
         objects: {
           ...scenarioObjects,
           ...scriptedExtensionAgents(
@@ -1016,7 +1030,9 @@ for (const invalid of [
         name: invalid.name,
         env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
         options: { drain: false },
-        piAvailableModels: [{ provider: "faux", modelId: "faux-1", label: "Faux 1" }],
+        piAvailableModels: [
+          { provider: "faux", modelId: "faux-1", label: "Faux 1", contextWindow: 128_000 },
+        ],
         objects: {
           ...scenarioObjects,
           ...scriptedExtensionAgents(
@@ -1099,7 +1115,9 @@ for (const invalid of [
         name: invalid.name,
         env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
         options: { drain: false },
-        piAvailableModels: [{ provider: "faux", modelId: "faux-1", label: "Faux 1" }],
+        piAvailableModels: [
+          { provider: "faux", modelId: "faux-1", label: "Faux 1", contextWindow: 128_000 },
+        ],
         objects: {
           ...scenarioObjects,
           ...scriptedExtensionAgents(
@@ -1154,7 +1172,9 @@ test("hook-only extensions preserve native failure isolation and reject malforme
       name: "malformed hook decision",
       env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
       options: { drain: false },
-      piAvailableModels: [{ provider: "faux", modelId: "faux-1", label: "Faux 1" }],
+      piAvailableModels: [
+        { provider: "faux", modelId: "faux-1", label: "Faux 1", contextWindow: 128_000 },
+      ],
       objects: {
         ...scenarioObjects,
         ...scriptedExtensionAgents(

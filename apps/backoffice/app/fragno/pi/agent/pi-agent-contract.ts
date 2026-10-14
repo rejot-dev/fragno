@@ -16,6 +16,7 @@ export const piAvailableModelSchema = z.object({
   provider: z.string().min(1),
   modelId: z.string().min(1),
   label: z.string().min(1),
+  contextWindow: z.number().int().positive(),
 });
 export type PiAvailableModel = z.infer<typeof piAvailableModelSchema>;
 

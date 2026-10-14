@@ -155,7 +155,7 @@ describe("Pi durable agent scenarios", () => {
     expect(JSON.stringify(view.entries)).toContain("durable tool result");
     expect(JSON.stringify(view.entries)).toContain("durable answer");
     expect(await (await managerRequest(organizationId, "/models")).json()).toEqual([
-      { provider: "faux", modelId: "faux-1", label: "Faux 1" },
+      { provider: "faux", modelId: "faux-1", label: "Faux 1", contextWindow: 128_000 },
     ]);
     const history = await (
       await managerRequest(organizationId, `/sessions/${session.sessionId}/entries?pageSize=2`)

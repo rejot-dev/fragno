@@ -38,7 +38,7 @@ import { InMemoryPiObject } from "./pi.do";
 const scenarioObjects = allLocalObjects;
 
 const PI_SCENARIO_AVAILABLE_MODELS = [
-  { provider: "faux", modelId: "faux-1", label: "Faux 1" },
+  { provider: "faux", modelId: "faux-1", label: "Faux 1", contextWindow: 128_000 },
 ] as const;
 
 const scopes = [

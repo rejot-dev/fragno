@@ -42,9 +42,9 @@ export function createPiModels(
 export async function listAvailablePiModels(models: Models): Promise<readonly PiAvailableModel[]> {
   const credentialAvailableModels = await models.getAvailable();
   return PI_SUPPORTED_MODELS.flatMap((supportedModel) => {
-    const available = credentialAvailableModels.some(
+    const available = credentialAvailableModels.find(
       (model) => model.provider === supportedModel.provider && model.id === supportedModel.modelId,
     );
-    return available ? [supportedModel] : [];
+    return available ? [{ ...supportedModel, contextWindow: available.contextWindow }] : [];
   });
 }

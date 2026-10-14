@@ -22,7 +22,7 @@ import { isPiSessionsPath } from "./path";
 beforeEach(() => {
   fetchPiManagerAvailableModelsMock.mockReset();
   fetchPiManagerAvailableModelsMock.mockResolvedValue([
-    { provider: "faux", modelId: "faux-1", label: "Faux 1" },
+    { provider: "faux", modelId: "faux-1", label: "Faux 1", contextWindow: 128_000 },
   ]);
   requireBackofficeContextMock.mockReset();
   requireBackofficeMeMock.mockReset();
