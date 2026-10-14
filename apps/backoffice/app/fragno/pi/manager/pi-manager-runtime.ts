@@ -34,7 +34,7 @@ export type PiManagerSubmitPromptInput = {
   sessionId: string;
   content: string;
   requestId?: string;
-  whenBusy?: "followUp" | "steer" | "reject";
+  whenBusy?: "steer" | "reject";
 };
 export type PiManagerGetSubmissionInput = { sessionId: string; requestId: string };
 export type PiManagerRunPromptInput = PiManagerSubmitPromptInput & { timeoutMs?: number };

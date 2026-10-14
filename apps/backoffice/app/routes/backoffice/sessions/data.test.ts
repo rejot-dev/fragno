@@ -143,7 +143,7 @@ describe("Pi manager session route caller", () => {
         context as never,
         scope,
         "session-1",
-        { requestId: "request-1", content: "Hello", whenBusy: "followUp" },
+        { requestId: "request-1", content: "Hello", whenBusy: "steer" },
       ),
     ).resolves.toEqual({ requestId: "request-1", error: null });
 

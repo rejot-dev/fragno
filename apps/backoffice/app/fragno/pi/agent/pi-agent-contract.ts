@@ -43,7 +43,7 @@ export class PiConversationViewDamagedError extends Error {
 export const piAgentPromptSchema = z.object({
   requestId: z.string().min(1),
   content: z.string().min(1),
-  whenBusy: z.enum(["followUp", "steer", "reject"]).default("followUp"),
+  whenBusy: z.enum(["steer", "reject"]).default("steer"),
 });
 
 /** Manual compaction accepts no instructions or one explicit summary requirement. */

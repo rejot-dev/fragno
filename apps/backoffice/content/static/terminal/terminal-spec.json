@@ -4373,7 +4373,7 @@
         "name": "when-busy",
         "valueRequired": true,
         "valueName": "mode",
-        "description": "followUp, steer, or reject"
+        "description": "steer (default) or reject"
       },
       {
         "name": "help",
@@ -4463,7 +4463,7 @@
         "name": "when-busy",
         "valueRequired": true,
         "valueName": "mode",
-        "description": "followUp, steer, or reject"
+        "description": "steer (default) or reject"
       },
       {
         "name": "timeout-ms",

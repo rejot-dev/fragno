@@ -3,7 +3,7 @@ import { Button } from "@fragno-private/design-system/button";
 import { Icon } from "@fragno-private/design-system/icon";
 import { useRef, useState, type UIEvent } from "react";
 
-import { ComposerPrimitive, ThreadPrimitive } from "@assistant-ui/react";
+import { ComposerPrimitive, QueueItemPrimitive, ThreadPrimitive } from "@assistant-ui/react";
 
 import { AssistantMessage, UserMessage } from "./messages";
 import { tapScale } from "./ui";
@@ -27,7 +27,6 @@ export function SessionThread({
   showToolCalls,
   showUsage,
   statusText,
-  commandKind,
   composerAction,
   compacting,
   compactionError,
@@ -38,7 +37,6 @@ export function SessionThread({
   hasMoreHistory,
   historyLoading,
   historyError,
-  onCommandKindChange,
   onComposerActionChange,
   onLoadMoreHistory,
 }: {
@@ -55,7 +53,6 @@ export function SessionThread({
   showToolCalls: boolean;
   showUsage: boolean;
   statusText: string | null;
-  commandKind: "followUp" | "steer";
   composerAction: "message" | "compact";
   compacting: boolean;
   compactionError: string | null;
@@ -66,7 +63,6 @@ export function SessionThread({
   hasMoreHistory: boolean;
   historyLoading: boolean;
   historyError: string | null;
-  onCommandKindChange: (value: "followUp" | "steer") => void;
   onComposerActionChange: (value: "message" | "compact") => void;
   onLoadMoreHistory: () => unknown;
 }) {
@@ -178,6 +174,16 @@ export function SessionThread({
             }}
             className={`border bg-[var(--bo-panel-2)] p-2 transition-[border-color,opacity] duration-150 ${disabled ? "cursor-not-allowed border-[color:var(--bo-border)] opacity-50" : "border-[color:var(--bo-border-strong)]"}`}
           >
+            <ComposerPrimitive.Queue>
+              {() => (
+                <div className="mx-1 mb-1 flex items-baseline gap-2 border-l-2 border-[color:var(--bo-accent)] bg-[var(--bo-panel)] px-3 py-2 text-xs">
+                  <span className="shrink-0 text-[9px] font-semibold tracking-[0.12em] text-[var(--bo-accent-fg)] uppercase">
+                    Steering
+                  </span>
+                  <QueueItemPrimitive.Text className="line-clamp-2 min-w-0 text-pretty whitespace-pre-wrap text-[var(--bo-fg)]" />
+                </div>
+              )}
+            </ComposerPrimitive.Queue>
             <ComposerPrimitive.Input
               disabled={disabled}
               submitMode="enter"
@@ -186,7 +192,9 @@ export function SessionThread({
                   ? disabledReason
                   : composerAction === "compact"
                     ? "Tell Pi what the compaction summary must preserve"
-                    : "Message Pi"
+                    : running
+                      ? "Steer Pi; it reads this after the current step"
+                      : "Message Pi"
               }
               rows={1}
               className="max-h-48 min-h-14 w-full resize-none bg-transparent px-3 py-3 text-[15px] leading-6 text-[var(--bo-fg)] outline-none placeholder:text-[var(--bo-muted-2)] disabled:cursor-not-allowed"
@@ -203,24 +211,6 @@ export function SessionThread({
                   >
                     {contextTokenFormatter.format(contextTokens)} context
                   </span>
-                ) : null}
-                {readyForInput ? (
-                  <span className="px-2 text-xs font-medium text-[var(--bo-muted)]">New turn</span>
-                ) : !compacting ? (
-                  <label>
-                    <span className="sr-only">Message mode</span>
-                    <select
-                      disabled={disabled}
-                      value={commandKind}
-                      onChange={(event) => {
-                        onCommandKindChange(event.target.value as "followUp" | "steer");
-                      }}
-                      className="min-h-10 border border-transparent bg-transparent px-2 text-xs font-medium text-[var(--bo-muted)] transition-[background-color,border-color,color] duration-150 outline-none hover:border-[color:var(--bo-border)] hover:bg-[var(--bo-panel)] hover:text-[var(--bo-fg)] focus:border-[color:var(--bo-accent)] disabled:cursor-not-allowed disabled:hover:border-transparent disabled:hover:bg-transparent disabled:hover:text-[var(--bo-muted)]"
-                    >
-                      <option value="followUp">Follow up</option>
-                      <option value="steer">Steer</option>
-                    </select>
-                  </label>
                 ) : null}
                 {disabled ? (
                   <span className="hidden text-xs text-[var(--bo-muted-2)] sm:inline">
@@ -240,13 +230,23 @@ export function SessionThread({
                   </Button>
                 ) : null}
                 {running ? (
-                  <button
-                    type="button"
-                    onClick={() => void onStop()}
-                    className={`inline-flex min-h-10 items-center border border-[color:var(--bo-border-strong)] bg-[var(--bo-panel)] px-3 text-xs font-semibold text-[var(--bo-fg)] transition-[border-color,scale] duration-150 ease-out hover:border-[color:var(--bo-failed)] ${tapScale}`}
-                  >
-                    Stop
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => void onStop()}
+                      className={`inline-flex min-h-10 items-center border border-[color:var(--bo-border-strong)] bg-[var(--bo-panel)] px-3 text-xs font-semibold text-[var(--bo-fg)] transition-[border-color,scale] duration-150 ease-out hover:border-[color:var(--bo-failed)] ${tapScale}`}
+                    >
+                      Stop
+                    </button>
+                    {compacting ? null : (
+                      <ComposerPrimitive.Send
+                        disabled={disabled}
+                        className={`inline-flex min-h-10 items-center border border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 text-xs font-semibold text-[var(--bo-accent-fg)] transition-[border-color,scale] duration-150 ease-out hover:border-[color:var(--bo-accent-strong)] disabled:cursor-not-allowed disabled:opacity-35 ${tapScale}`}
+                      >
+                        Steer
+                      </ComposerPrimitive.Send>
+                    )}
+                  </>
                 ) : (
                   <div className="flex items-stretch">
                     {composerAction === "compact" ? (

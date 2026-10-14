@@ -77,7 +77,7 @@ const promptSubmitInputSchema = z.strictObject({
   sessionId: z.string().trim().min(1),
   content: z.string().trim().min(1),
   requestId: z.string().trim().min(1).optional(),
-  whenBusy: z.enum(["followUp", "steer", "reject"]).optional(),
+  whenBusy: z.enum(["steer", "reject"]).optional(),
 });
 
 const promptRunInputSchema = promptSubmitInputSchema.extend({

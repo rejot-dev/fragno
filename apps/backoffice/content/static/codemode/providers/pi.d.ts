@@ -75,7 +75,7 @@ type PiSubmitPromptInput = {
   sessionId: string;
   content: string;
   requestId?: string;
-  whenBusy?: "followUp" | "steer" | "reject";
+  whenBusy?: "steer" | "reject";
 };
 type PiSubmitPromptOutput = {
   submissionId: number;
@@ -89,7 +89,7 @@ type PiRunPromptInput = {
   sessionId: string;
   content: string;
   requestId?: string;
-  whenBusy?: "followUp" | "steer" | "reject";
+  whenBusy?: "steer" | "reject";
   timeoutMs?: number;
 };
 type PiRunPromptOutput = {
