@@ -96,7 +96,7 @@ export const uploadCapability: BackofficeCapability = {
           createDurableHookRepositoryFromCommands(getUploadDo(objects, orgId).commands),
       },
     ],
-    skillPaths: ["skills/upload-integration/SKILL.md", "skills/using-prepared-uploads/SKILL.md"],
+    skillPaths: ["skills/using-prepared-uploads/SKILL.md"],
     externalEntities: [],
     automationEvents: [
       {
