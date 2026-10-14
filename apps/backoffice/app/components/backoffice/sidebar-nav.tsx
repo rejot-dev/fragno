@@ -16,6 +16,12 @@ type PrimaryNavigationItem = {
 
 const PRIMARY_NAVIGATION: PrimaryNavigationItem[] = [
   {
+    label: "Dashboard",
+    to: "/backoffice/dashboard",
+    icon: "grid",
+    isActive: (pathname) => pathname.startsWith("/backoffice/dashboard"),
+  },
+  {
     label: "Automations",
     to: "/backoffice/automations",
     icon: "share-2",

@@ -1,39 +1,39 @@
 import { WorkflowRunTimeline } from "@fragno-private/design-system/workflow-run-timeline";
 import { useState, type ReactNode } from "react";
-import { useOutletContext } from "react-router";
 
-import type { Route } from "./+types/workflow-run";
-import { formatTimestamp } from "./formatting";
-import type { AutomationLayoutContext } from "./layout-context";
+import { formatTimestamp } from "../automations/formatting";
+import type { WorkflowRunCollections } from "../automations/script-view/use-script-workflow-runs";
 import type {
   AutomationWorkflowRun,
+  WorkflowRunReference,
   WorkflowRunStep,
-} from "./script-view/workflow-run-presentation";
-import { useWorkflowRunTimeline } from "./script-view/workflow-run-timeline-presentation";
-import { AutomationNotice } from "./shared";
+} from "../automations/script-view/workflow-run-presentation";
+import { useWorkflowRunTimeline } from "../automations/script-view/workflow-run-timeline-presentation";
 
-export function meta({ params }: Route.MetaArgs) {
-  return [{ title: `Workflow run · ${params.instanceId}` }];
-}
-
-export default function BackofficeAutomationWorkflowRun({ params }: Route.ComponentProps) {
-  const { collections } = useOutletContext<AutomationLayoutContext>();
-  const run = useWorkflowRunTimeline({
-    collections,
-    reference: { workflowName: params.workflowName, instanceId: params.instanceId },
-  });
+/**
+ * One workflow run as a step timeline, with the selected step's record or the run's outcome. It
+ * draws no frame of its own because it fills a dashboard section.
+ */
+export function WorkflowRunDetail({
+  collections,
+  reference,
+}: {
+  collections: WorkflowRunCollections;
+  reference: WorkflowRunReference;
+}) {
+  const run = useWorkflowRunTimeline({ collections, reference });
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
 
   if (run.error) {
-    return <AutomationNotice tone="error">{run.error}</AutomationNotice>;
+    return <p className="py-5 text-sm text-[var(--bo-failed)]">{run.error}</p>;
   }
   if (!run.instance || !run.timeline) {
     return (
-      <AutomationNotice>
+      <p className="py-5 text-sm text-[var(--bo-muted)]">
         {run.isLoading
           ? "Synchronizing the workflow run…"
-          : `There is no run ${params.instanceId} of ${params.workflowName} in this scope.`}
-      </AutomationNotice>
+          : `There is no run ${reference.instanceId} of ${reference.workflowName} in this scope.`}
+      </p>
     );
   }
 
@@ -42,7 +42,7 @@ export default function BackofficeAutomationWorkflowRun({ params }: Route.Compon
     selectedStepId === null ? null : (timeline.stepRecordsByStepId.get(selectedStepId) ?? null);
 
   return (
-    <div className="flex w-full max-w-7xl flex-1 flex-col gap-4">
+    <div className="flex flex-col">
       <WorkflowRunTimeline
         title={timeline.title}
         status={timeline.status}
@@ -71,7 +71,7 @@ export default function BackofficeAutomationWorkflowRun({ params }: Route.Compon
           </>
         }
         actions={null}
-        surface="card"
+        surface="flush"
       />
       {selectedRecord ? (
         <StepRecordPanel step={selectedRecord} />
@@ -121,7 +121,7 @@ function DetailPanel({
   children: ReactNode;
 }) {
   return (
-    <section className="space-y-3 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
+    <section className="space-y-3 border-t border-[color:var(--bo-border)] py-4">
       <div>
         <p className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
           {eyebrow}
@@ -144,7 +144,7 @@ function Fact({ label, value }: { label: string; value: string }) {
 
 function ErrorText({ children }: { children: ReactNode }) {
   return (
-    <p className="border border-[color:var(--bo-failed)]/40 bg-[var(--bo-failed-bg)] p-3 font-mono text-xs whitespace-pre-wrap text-[var(--bo-failed)]">
+    <p className="bg-[var(--bo-failed-bg)] p-3 font-mono text-xs whitespace-pre-wrap text-[var(--bo-failed)]">
       {children}
     </p>
   );

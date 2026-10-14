@@ -6,7 +6,6 @@ import {
   type BackofficeOrganizationIdentity,
   backofficeRuntimeScopeFromResolvedScope,
   resolveBackofficeRouteScope,
-  type BackofficeResolvedScope,
   type BackofficeScopeSelection,
 } from "@/backoffice-runtime/resolved-scope";
 import {
@@ -53,16 +52,6 @@ export const automationScopeTabPath = (
 
 export const automationScopeTerminalCommandPath = (scope: BackofficeScopeSelection) =>
   `${automationScopeBasePath(scope)}/terminal-command`;
-
-/** The page that follows one workflow run. */
-export function automationWorkflowRunPath(
-  scope: BackofficeResolvedScope,
-  run: { workflowName: string; instanceId: string },
-): string {
-  return `/backoffice/automations/${backofficeRouteScopePath(
-    backofficeRouteScopeFromResolvedScope(scope),
-  )}/runs/${encodeURIComponent(run.workflowName)}/${encodeURIComponent(run.instanceId)}`;
-}
 
 export const createAutomationScopeOptions = ({
   organizations,
