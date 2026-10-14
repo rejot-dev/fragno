@@ -47,7 +47,10 @@ function loginScenarioRouterContext(ctx: BackofficeScenarioContext, request: Req
   });
 }
 
-test.each(["orchestration?tab=runs", "mcp?oauth=success&server=agensi"])(
+test.each([
+  "dashboard/org/{slug}?selection=route&selected=route-1",
+  "integrations/org/{slug}/mcp?oauth=success&server=agensi",
+])(
   "password login after clearing browser data returns to the slug-backed %s page",
   async (destination) => {
     await runBackofficeScenario(
@@ -77,7 +80,7 @@ test.each(["orchestration?tab=runs", "mcp?oauth=success&server=agensi"])(
               );
               assert(organization);
               assert.notEqual(organization.id, organization.slug);
-              const returnTo = `/backoffice/automations/org/${organization.slug}/${destination}`;
+              const returnTo = `/backoffice/${destination.replace("{slug}", organization.slug)}`;
               const loginUrl = new URL(buildBackofficeLoginPath(returnTo), origin);
 
               // Browser data has been cleared: neither the session nor the access JWT is sent.

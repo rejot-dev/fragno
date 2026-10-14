@@ -154,7 +154,7 @@ describe("Backoffice request state", () => {
     const { dependencies, loadAutomationCollectionSourceCall } =
       createAuthenticatedDependencies(getBackofficeMe);
     const state = createBackofficeRequestState(
-      new Request("https://backoffice.example/backoffice/automations"),
+      new Request("https://backoffice.example/backoffice/dashboard"),
       dependencies,
     );
     const firstScope = {
@@ -181,7 +181,7 @@ describe("Backoffice request state", () => {
     const { dependencies, loadAutomationCollectionSourceCall } =
       createAuthenticatedDependencies(getBackofficeMe);
     const state = createBackofficeRequestState(
-      new Request("https://backoffice.example/backoffice/automations"),
+      new Request("https://backoffice.example/backoffice/dashboard"),
       dependencies,
     );
     const organization = { id: "org-1", slug: "acme" };
@@ -206,7 +206,7 @@ describe("Backoffice request state", () => {
       failure,
     );
     const state = createBackofficeRequestState(
-      new Request("https://backoffice.example/backoffice/automations"),
+      new Request("https://backoffice.example/backoffice/dashboard"),
       dependencies,
     );
     const resolvedScope = {

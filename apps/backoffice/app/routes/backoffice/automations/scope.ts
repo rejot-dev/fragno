@@ -19,17 +19,8 @@ import { toExternalId } from "./data";
 
 export type AutomationScopeKind = "system" | "org" | "project" | "user";
 
-export type AutomationScopeOption = {
-  id: string;
-  kind: AutomationScopeKind;
-  label: string;
-  description: string;
-  to: string;
-};
-
 type Organization = BackofficeMeData["organizations"][number]["organization"];
 
-const SYSTEM_AUTOMATION_SCOPE_ID = "system";
 const SYSTEM_AUTOMATION_SCOPE_LABEL = "System";
 
 const userName = (user: BackofficeMeData["user"]) => user.email ?? user.id;
@@ -38,102 +29,8 @@ const isAutomationAdmin = (user: BackofficeMeData["user"]) => user.role === "adm
 const projectLabel = (project: AutomationProjectRecord) =>
   project.name?.trim() || project.slug?.trim() || toExternalId(project.id) || "Untitled project";
 
-export const automationScopeBasePath = (scope: BackofficeScopeSelection) =>
-  `/backoffice/automations/${backofficeRouteScopePath(
-    backofficeRouteScopeFromResolvedScope(scope),
-  )}`;
-
-type AutomationScopeTab = "orchestration" | "store" | "events-catalog";
-
-export const automationScopeTabPath = (
-  scope: BackofficeScopeSelection,
-  tab: AutomationScopeTab = "orchestration",
-) => `${automationScopeBasePath(scope)}/${tab}`;
-
-export const automationScopeTerminalCommandPath = (scope: BackofficeScopeSelection) =>
-  `${automationScopeBasePath(scope)}/terminal-command`;
-
-export const createAutomationScopeOptions = ({
-  organizations,
-  projects,
-  user,
-  currentTab,
-  projectOrgId,
-  pathForScope,
-}: {
-  organizations: Organization[];
-  projects: AutomationProjectRecord[];
-  user: BackofficeMeData["user"];
-  currentTab: AutomationScopeTab;
-  projectOrgId: string | null;
-  pathForScope?: (scope: BackofficeScopeSelection) => string;
-}): AutomationScopeOption[] => {
-  const destinationFor = (scope: BackofficeScopeSelection) =>
-    pathForScope?.(scope) ?? automationScopeTabPath(scope, currentTab);
-  const orgOptions = organizations.map((organization) => ({
-    id: `org:${organization.id}`,
-    kind: "org" as const,
-    label: organization.name ?? organization.id,
-    description: "Organization scope",
-    to: destinationFor({
-      kind: "org",
-      organization: backofficeOrganizationIdentity(organization),
-      label: organization.name ?? organization.id,
-    }),
-  }));
-
-  const projectOrganization = projectOrgId
-    ? (organizations.find((organization) => organization.id === projectOrgId) ?? null)
-    : null;
-  const projectOptions = projects.flatMap((project) => {
-    if (!projectOrganization || project.archivedAt) {
-      return [];
-    }
-
-    const projectId = toExternalId(project.id);
-    const option = {
-      id: `project:${projectOrgId}:${projectId}`,
-      kind: "project" as const,
-      label: projectLabel(project),
-      description: project.slug?.trim() ? `Project · ${project.slug}` : "Project scope",
-      to: destinationFor({
-        kind: "project",
-        organization: backofficeOrganizationIdentity(projectOrganization),
-        projectId,
-        label: projectLabel(project),
-      }),
-    };
-
-    return option.to.includes("/project/") ? [option] : [];
-  });
-
-  const userScope = { kind: "user" as const, userId: user.id, label: userName(user) };
-  const systemScope = { kind: "system" as const, label: SYSTEM_AUTOMATION_SCOPE_LABEL };
-  const systemOptions: AutomationScopeOption[] = isAutomationAdmin(user)
-    ? [
-        {
-          id: `system:${SYSTEM_AUTOMATION_SCOPE_ID}`,
-          kind: "system",
-          label: SYSTEM_AUTOMATION_SCOPE_LABEL,
-          description: "Global system automation scope",
-          to: destinationFor(systemScope),
-        },
-      ]
-    : [];
-
-  return [
-    ...systemOptions,
-    ...orgOptions,
-    ...projectOptions,
-    {
-      id: `user:${user.id}`,
-      kind: "user",
-      label: userName(user),
-      description: "Personal user scope",
-      to: destinationFor(userScope),
-    },
-  ];
-};
+export const terminalCommandPath = (scope: BackofficeScopeSelection) =>
+  `/backoffice/terminal/${backofficeRouteScopePath(backofficeRouteScopeFromResolvedScope(scope))}`;
 
 export function automationRuntimeScopeFromRouteParams(
   params: { scopeKind?: string; scopeId?: string },

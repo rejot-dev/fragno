@@ -12,7 +12,7 @@ vi.mock("@/fragno/auth/request-auth.server", () => ({
 
 import { resolveAuthenticatedIntegrationRuntimeScope } from "./scope.server";
 
-const request = new Request("https://backoffice.example/backoffice/automations/org/acme");
+const request = new Request("https://backoffice.example/backoffice/integrations/org/acme");
 const context = {} as never;
 
 function authenticatedPrincipal(

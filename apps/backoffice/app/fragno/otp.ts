@@ -78,7 +78,7 @@ export const buildIdentityClaimCompletionUrl = (
   code: string,
 ) => {
   const url = new URL(publicBaseUrl);
-  url.pathname = `/backoffice/automations/${encodeURIComponent(orgSlug)}/claims/complete`;
+  url.pathname = `/backoffice/claims/${encodeURIComponent(orgSlug)}/complete`;
   url.searchParams.set("externalId", externalId);
   url.searchParams.set("code", code);
   return url.toString();

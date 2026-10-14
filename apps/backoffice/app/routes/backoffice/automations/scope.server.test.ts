@@ -10,7 +10,7 @@ vi.mock("@/fragno/auth/request-auth.server", () => ({
 
 import { requireAutomationRouteExecution } from "./scope.server";
 
-const request = new Request("https://backoffice.example/backoffice/automations/org/acme/scripts");
+const request = new Request("https://backoffice.example/backoffice/dashboard/org/acme");
 const context = {} as never;
 
 beforeEach(() => {

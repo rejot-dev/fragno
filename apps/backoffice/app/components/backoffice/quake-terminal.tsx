@@ -3,10 +3,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 
 import type { BackofficeScopeSelection } from "@/backoffice-runtime/resolved-scope";
-import {
-  automationScopeBasePath,
-  automationScopeTerminalCommandPath,
-} from "@/routes/backoffice/automations/scope";
+import { terminalCommandPath } from "@/routes/backoffice/automations/scope";
 import type { DashboardCommandSpec } from "@/routes/backoffice/dashboard-terminal";
 import { DashboardTerminalPanel } from "@/routes/backoffice/dashboard-terminal-panel";
 import { loadBackofficeTerminalCommandSpecs } from "@/routes/backoffice/terminal-command-spec-loader.client";
@@ -31,7 +28,7 @@ export function QuakeTerminal({ selectedScope }: QuakeTerminalProps) {
   const [mounted, setMounted] = useState(false);
   const [open, setOpen] = useState(false);
   const [commandSpecs, setCommandSpecs] = useState<readonly DashboardCommandSpec[] | null>(null);
-  const scopePath = automationScopeBasePath(selectedScope);
+  const actionPath = terminalCommandPath(selectedScope);
 
   useEffect(() => {
     setMounted(true);
@@ -170,10 +167,10 @@ export function QuakeTerminal({ selectedScope }: QuakeTerminalProps) {
         </header>
 
         <DashboardTerminalPanel
-          key={scopePath}
-          scopeId={scopePath}
+          key={actionPath}
+          scopeId={actionPath}
           scopeName={selectedScope.label}
-          actionPath={automationScopeTerminalCommandPath(selectedScope)}
+          actionPath={actionPath}
           commandSpecs={commandSpecs ?? EMPTY_TERMINAL_COMMAND_SPECS}
           description={`Commands run directly in the ${selectedScope.label} ${selectedScope.kind} scope.`}
           presentation="quake"

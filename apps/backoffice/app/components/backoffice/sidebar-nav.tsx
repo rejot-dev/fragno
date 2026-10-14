@@ -22,12 +22,6 @@ const PRIMARY_NAVIGATION: PrimaryNavigationItem[] = [
     isActive: (pathname) => pathname.startsWith("/backoffice/dashboard"),
   },
   {
-    label: "Automations",
-    to: "/backoffice/automations",
-    icon: "share-2",
-    isActive: (pathname) => pathname.startsWith("/backoffice/automations"),
-  },
-  {
     label: "Integrations",
     to: "/backoffice/integrations",
     icon: "link",

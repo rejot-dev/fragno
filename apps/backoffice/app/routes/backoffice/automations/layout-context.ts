@@ -4,5 +4,3 @@ export type AutomationLayoutContext = {
   selectedScope: BackofficeScopeSelection;
   collections: AutomationCollections;
 };
-
-export type AutomationTab = "orchestration" | "store" | "events-catalog";

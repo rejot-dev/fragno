@@ -59,21 +59,8 @@ export default [
         "marketplace/:publisher/:packageSlug/manage",
         "routes/backoffice/marketplace/manage.tsx",
       ),
-      route("automations", "routes/backoffice/automations/index.tsx"),
-      route(
-        "automations/:orgSlug/claims/complete",
-        "routes/backoffice/automations/claims-complete.tsx",
-      ),
-      route("automations/:scopeKind/:scopeId", "routes/backoffice/automations/scope-layout.tsx", [
-        index("routes/backoffice/automations/scope-index.tsx"),
-        route("orchestration", "routes/backoffice/automations/orchestration.tsx"),
-        route("terminal-command", "routes/backoffice/automations/terminal-command.ts"),
-        route("store", "routes/backoffice/automations/store-layout.tsx", [
-          index("routes/backoffice/automations/store.tsx"),
-          route("identity-bindings", "routes/backoffice/automations/identity-bindings.tsx"),
-        ]),
-        route("events-catalog", "routes/backoffice/automations/events-catalog.tsx"),
-      ]),
+      route("claims/:orgSlug/complete", "routes/backoffice/claims-complete.tsx"),
+      route("terminal/:scopeKind/:scopeId", "routes/backoffice/terminal-command.ts"),
 
       route(
         "connections/upload/:orgSlug",

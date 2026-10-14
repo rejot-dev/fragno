@@ -7,7 +7,6 @@ const projectScope = { kind: "project" as const, orgSlug: "org-a", projectId: "p
 describe("scopeSwitchPath", () => {
   test.each([
     ["/backoffice/dashboard", "/backoffice/dashboard/project/org-a%3Aproj-1"],
-    ["/backoffice/automations", "/backoffice/automations/project/org-a%3Aproj-1/orchestration"],
     ["/backoffice/sessions", "/backoffice/sessions/project/org-a%3Aproj-1/sessions"],
     ["/backoffice/computers", "/backoffice/computers/project/org-a%3Aproj-1/sandboxes"],
     ["/backoffice/files", "/backoffice/files/project/org-a%3Aproj-1"],
@@ -16,23 +15,6 @@ describe("scopeSwitchPath", () => {
   ])("carries the scope into the section root %s", (pathname, expectedPath) => {
     assert(scopeSwitchPath(pathname, projectScope) === expectedPath);
   });
-
-  test("keeps a scope-independent automation tab", () => {
-    assert(
-      scopeSwitchPath("/backoffice/automations/org/org-a/store", projectScope) ===
-        "/backoffice/automations/project/org-a%3Aproj-1/store",
-    );
-  });
-
-  test.each(["scripts", "router", "events"])(
-    "falls back from removed automation tab %s",
-    (removedTab) => {
-      assert(
-        scopeSwitchPath(`/backoffice/automations/org/org-a/${removedTab}`, projectScope) ===
-          "/backoffice/automations/project/org-a%3Aproj-1/orchestration",
-      );
-    },
-  );
 
   test("lands the system scope on the computers index instead of a computer kind", () => {
     assert(

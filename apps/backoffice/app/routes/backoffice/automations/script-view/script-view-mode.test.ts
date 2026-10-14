@@ -1,7 +1,6 @@
 import { assert, expect, test } from "vitest";
 
 import {
-  pathWithScriptPresentation,
   searchParamsWithScriptViewMode,
   searchParamsWithWorkflowGraphDetailMode,
   shouldRevalidateScriptSource,
@@ -107,20 +106,5 @@ test("preserves the router's default decision for non-presentation navigations",
       nextUrl: new URL("https://example.test/scripts?script=other"),
       defaultShouldRevalidate: false,
     }),
-  );
-});
-
-test("carries script presentation across scope and tab paths", () => {
-  assert(
-    pathWithScriptPresentation("/backoffice/automations/org/acme/scripts", {
-      viewMode: "split",
-      graphDetailMode: "verbose",
-    }) === "/backoffice/automations/org/acme/scripts?scriptView=split&graphDetail=verbose",
-  );
-  assert(
-    pathWithScriptPresentation("/backoffice/automations/user/me/scripts?kept=yes", {
-      viewMode: "graph",
-      graphDetailMode: "simple",
-    }) === "/backoffice/automations/user/me/scripts?kept=yes&scriptView=graph&graphDetail=simple",
   );
 });

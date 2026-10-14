@@ -5,7 +5,6 @@ import {
 
 const SCOPE_ROUTE_KINDS = new Set(["system", "org", "project", "user"]);
 
-const AUTOMATION_TABS = new Set(["orchestration", "store", "events-catalog"]);
 const MARKETPLACE_TABS = new Set(["marketplace", "installed", "my-listings"]);
 
 // Rebuilds the current URL for another scope: keeps the active section, keeps
@@ -22,10 +21,6 @@ export const scopeSwitchPath = (pathname: string, scope: BackofficeRouteScope) =
   switch (section) {
     case "dashboard":
       return `/backoffice/dashboard/${scopePath}`;
-    case "automations": {
-      const tab = rest[0] && AUTOMATION_TABS.has(rest[0]) ? rest[0] : "orchestration";
-      return `/backoffice/automations/${scopePath}/${tab}`;
-    }
     // A selected computer belongs to its scope, so switching lands on the scope's list. The
     // system scope has no computers; its index explains that instead of opening a kind.
     case "computers":

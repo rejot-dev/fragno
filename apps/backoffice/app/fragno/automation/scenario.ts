@@ -2997,9 +2997,7 @@ const buildStepBuilders = <
             }
 
             const url = new URL(captured);
-            const orgId = /\/backoffice\/automations\/([^/]+)\/claims\/complete/u.exec(
-              url.pathname,
-            )?.[1];
+            const orgId = /\/backoffice\/claims\/([^/]+)\/complete/u.exec(url.pathname)?.[1];
             const externalId = url.searchParams.get("externalId");
             const code = url.searchParams.get("code");
             if (!orgId || !externalId || !code) {

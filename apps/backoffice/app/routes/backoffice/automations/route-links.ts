@@ -12,16 +12,3 @@ export const automationRouteScriptLink = (
 
   return filesExplorerPathFromScopePath(filesScopePath, route.action.workflowScriptPath);
 };
-
-export const automationEventCatalogLink = (
-  eventsCatalogPath: string,
-  source: string,
-  eventType: string,
-) =>
-  `${eventsCatalogPath}?${new URLSearchParams({
-    selection: "event",
-    selected: `${source}:${eventType}`,
-  }).toString()}`;
-
-export const automationRouteSelectionLink = (orchestrationPath: string, routeId: string) =>
-  `${orchestrationPath}?${new URLSearchParams({ selection: "trigger", selected: routeId }).toString()}`;

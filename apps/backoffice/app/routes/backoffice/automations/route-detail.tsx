@@ -4,17 +4,17 @@ import { AutomationDetailRows } from "./detail-rows";
 import { formatTimestamp, formatTimestampInTimeZone } from "./formatting";
 import { automationRouteActionDetailRows, automationRouteActionLabel } from "./route-action";
 import { AutomationEventMatcherDetail, AutomationRouteTargetDetail } from "./route-configuration";
-import { automationEventCatalogLink, automationRouteScriptLink } from "./route-links";
+import { automationRouteScriptLink } from "./route-links";
 
 export function AutomationRouteDetail({
   route,
   filesScopePath,
-  eventsCatalogPath,
+  eventPath,
   compact = false,
 }: {
   route: AutomationRouteDefinition;
   filesScopePath: string;
-  eventsCatalogPath: string;
+  eventPath: (source: string, eventType: string) => string;
   compact?: boolean;
 }) {
   const scriptLink = automationRouteScriptLink(route, filesScopePath);
@@ -62,11 +62,7 @@ export function AutomationRouteDetail({
                   {
                     label: "event",
                     value: route.trigger.eventType,
-                    to: automationEventCatalogLink(
-                      eventsCatalogPath,
-                      route.trigger.source,
-                      route.trigger.eventType,
-                    ),
+                    to: eventPath(route.trigger.source, route.trigger.eventType),
                   },
                   { label: "priority", value: String(route.priority) },
                 ]

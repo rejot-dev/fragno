@@ -8,29 +8,10 @@ const { fetchAuthorizedMock, fetchMock } = vi.hoisted(() => ({
   fetchMock: vi.fn(),
 }));
 
-import { deleteAutomationStoreEntry, lookupAutomationProject } from "./data.server";
+import { lookupAutomationProject } from "./data.server";
 
 const scope = { kind: "org" as const, orgId: "org-1" };
-const execution = {
-  kind: "deferred" as const,
-  scopeRestriction: null,
-  scope,
-  actors: {
-    initiator: {
-      scope: "internal" as const,
-      type: "backoffice",
-      id: "interactive",
-      role: "initiator" as const,
-    },
-    principal: {
-      scope: "internal" as const,
-      type: "user",
-      id: "user-1",
-      role: "principal" as const,
-    },
-    delegation: [],
-  },
-};
+
 const automationsObject = {
   commands: {},
   http: {
@@ -53,18 +34,6 @@ const runtime = {
 const context = {
   get: () => ({ runtime, kernel: new BackofficeKernel(runtime) }),
 } as never;
-const propagationContext = {
-  traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-1111111111111111-01",
-  tracestate: "vendor=value",
-};
-const request = new Request("https://backoffice.example/backoffice/automations/org/org-1/store", {
-  method: "POST",
-  headers: {
-    ...propagationContext,
-    baggage: "private=value",
-  },
-});
-
 beforeEach(() => {
   fetchAuthorizedMock.mockReset();
   fetchMock.mockReset();
@@ -93,111 +62,5 @@ describe("lookupAutomationProject", () => {
     await expect(lookupAutomationProject(context, scope.orgId, "missing")).resolves.toEqual({
       status: "not-found",
     });
-  });
-});
-
-describe("deleteAutomationStoreEntry", () => {
-  test("uses authorized HTTP for the store route", async () => {
-    fetchAuthorizedMock.mockResolvedValue(Response.json({ ok: true, key: "ordinary/key" }));
-
-    await expect(
-      deleteAutomationStoreEntry(request, context, execution, "ordinary/key"),
-    ).resolves.toEqual({ ok: true, error: null });
-
-    expect(fetchAuthorizedMock).toHaveBeenCalledOnce();
-    const [routeRequest, actionContext] = fetchAuthorizedMock.mock.calls[0];
-    assert(new URL(routeRequest.url).pathname === "/api/automations/store/delete");
-    await expect(routeRequest.json()).resolves.toEqual({ key: "ordinary/key" });
-    expect(actionContext).toEqual({ execution, propagationContext });
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  test("suppresses propagation when the request has no W3C carrier", async () => {
-    fetchAuthorizedMock.mockResolvedValue(Response.json({ ok: true, key: "ordinary/key" }));
-    const requestWithoutPropagation = new Request(request.url, { method: "POST" });
-
-    await expect(
-      deleteAutomationStoreEntry(requestWithoutPropagation, context, execution, "ordinary/key"),
-    ).resolves.toEqual({ ok: true, error: null });
-
-    expect(fetchAuthorizedMock).toHaveBeenCalledOnce();
-    expect(fetchAuthorizedMock.mock.calls[0]?.[1]).toEqual({
-      execution,
-      propagationContext: null,
-    });
-  });
-
-  test("preserves authorization failures returned by the Automations fragment", async () => {
-    fetchAuthorizedMock.mockResolvedValue(
-      Response.json(
-        {
-          message: "Forbidden",
-          code: "principal-permission-denied",
-        },
-        { status: 403 },
-      ),
-    );
-
-    const response = await deleteAutomationStoreEntry(
-      request,
-      context,
-      execution,
-      "ordinary/key",
-    ).catch((error: unknown) => error);
-
-    assert(response instanceof Response);
-    assert(response.status === 403);
-    await expect(response.json()).resolves.toEqual({
-      message: "Forbidden",
-      code: "principal-permission-denied",
-    });
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  test("preserves authority resolution outages as HTTP 503", async () => {
-    fetchAuthorizedMock.mockResolvedValue(
-      Response.json(
-        {
-          message: "Backoffice authority resolution is unavailable.",
-          code: "authority-unavailable",
-        },
-        { status: 503 },
-      ),
-    );
-
-    const response = await deleteAutomationStoreEntry(
-      request,
-      context,
-      execution,
-      "ordinary/key",
-    ).catch((error: unknown) => error);
-
-    assert(response instanceof Response);
-    assert(response.status === 503);
-    await expect(response.json()).resolves.toEqual({
-      message: "Backoffice authority resolution is unavailable.",
-      code: "authority-unavailable",
-    });
-  });
-
-  test("maps a missing entry without falling back to raw fetch", async () => {
-    fetchAuthorizedMock.mockResolvedValue(
-      Response.json(
-        {
-          message: "Store entry not found for missing/key.",
-          code: "STORE_ENTRY_NOT_FOUND",
-        },
-        { status: 404 },
-      ),
-    );
-
-    await expect(
-      deleteAutomationStoreEntry(request, context, execution, "missing/key"),
-    ).resolves.toEqual({
-      ok: false,
-      error: "Store entry not found for missing/key.",
-    });
-
-    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

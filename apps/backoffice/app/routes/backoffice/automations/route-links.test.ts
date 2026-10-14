@@ -2,7 +2,7 @@ import { assert, describe, it } from "vitest";
 
 import type { AutomationRouteDefinition } from "@fragno-dev/backoffice-api/v0/automation";
 
-import { automationEventCatalogLink, automationRouteScriptLink } from "./route-links";
+import { automationRouteScriptLink } from "./route-links";
 
 const routeWithAction = (
   action: AutomationRouteDefinition["action"],
@@ -44,16 +44,5 @@ describe("automation route links", () => {
     });
 
     assert.equal(automationRouteScriptLink(route, "/backoffice/files/org/acme"), null);
-  });
-
-  it("opens a filtered event catalog", () => {
-    assert.equal(
-      automationEventCatalogLink(
-        "/backoffice/automations/org/acme/events-catalog",
-        "telegram",
-        "message.received",
-      ),
-      "/backoffice/automations/org/acme/events-catalog?selection=event&selected=telegram%3Amessage.received",
-    );
   });
 });

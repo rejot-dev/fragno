@@ -38,7 +38,7 @@ import {
 import {
   loader as previewIdentityClaim,
   action as completeIdentityClaim,
-} from "@/routes/backoffice/automations/claims-complete";
+} from "@/routes/backoffice/claims-complete";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
 import { InMemoryApiObject } from "../../../workers/api.do";
@@ -305,7 +305,7 @@ describe("OTP public boundary security scenarios", () => {
           const preview = await previewIdentityClaim({
             request,
             url,
-            pattern: "/backoffice/automations/:orgSlug/claims/complete",
+            pattern: "/backoffice/claims/:orgSlug/complete",
             context: createOtpRouterContext(ctx, request),
             params: { orgSlug: member.organization.slug },
           });
@@ -327,7 +327,7 @@ describe("OTP public boundary security scenarios", () => {
             completeIdentityClaim({
               request: crossSiteRequest,
               url,
-              pattern: "/backoffice/automations/:orgSlug/claims/complete",
+              pattern: "/backoffice/claims/:orgSlug/complete",
               context: createOtpRouterContext(ctx, crossSiteRequest),
               params: { orgSlug: member.organization.slug },
             }),
@@ -340,7 +340,7 @@ describe("OTP public boundary security scenarios", () => {
           const result = await completeIdentityClaim({
             request: post,
             url,
-            pattern: "/backoffice/automations/:orgSlug/claims/complete",
+            pattern: "/backoffice/claims/:orgSlug/complete",
             context: createOtpRouterContext(ctx, post),
             params: { orgSlug: member.organization.slug },
           });

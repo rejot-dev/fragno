@@ -68,7 +68,7 @@ describe("createOtpRuntime", () => {
     });
 
     await expect(runtime.createClaim({ ttlMinutes: 15 })).resolves.toMatchObject({
-      url: "https://backoffice.example/backoffice/automations/acme/claims/complete?externalId=chat-123&code=123456",
+      url: "https://backoffice.example/backoffice/claims/acme/complete?externalId=chat-123&code=123456",
       otpId: "otp-1",
       actor: { scope: "external", source: "telegram", type: "chat", id: "chat-123" },
     });

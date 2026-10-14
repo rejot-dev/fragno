@@ -89,15 +89,3 @@ function isOnlyScriptPresentationChange(currentUrl: URL, nextUrl: URL): boolean 
   nextDataSearch.sort();
   return currentDataSearch.toString() === nextDataSearch.toString();
 }
-
-export function pathWithScriptPresentation(
-  path: string,
-  { viewMode, graphDetailMode }: ScriptPresentation,
-): string {
-  const [pathname, search = ""] = path.split("?", 2);
-  const searchParams = searchParamsWithScriptPresentation(new URLSearchParams(search), {
-    viewMode,
-    graphDetailMode,
-  });
-  return `${pathname}?${searchParams.toString()}`;
-}

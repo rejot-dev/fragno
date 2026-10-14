@@ -117,7 +117,7 @@ function createShellContext({
 describe("Backoffice shell request middleware", () => {
   test("establishes resolved scope and execution before descendant handlers run", async () => {
     const request = new Request(
-      "https://backoffice.example/backoffice/automations/project/acme%3Aproject-1/orchestration",
+      "https://backoffice.example/backoffice/dashboard/project/acme%3Aproject-1",
     );
     const { context, getPrincipal } = createShellContext({ request });
     const response = new Response("descendant response");
@@ -162,7 +162,7 @@ describe("Backoffice shell request middleware", () => {
 
   test("redirects organization changes before resolving execution authority", async () => {
     const request = new Request(
-      "https://backoffice.example/backoffice/automations/org/beta/orchestration?tab=runs",
+      "https://backoffice.example/backoffice/dashboard/org/beta?selection=route&selected=route-1",
     );
     const { context, getPrincipal } = createShellContext({ request });
     const next = vi.fn(async () => new Response("descendant response"));
@@ -176,7 +176,7 @@ describe("Backoffice shell request middleware", () => {
     assert.equal(result.status, 302);
     assert.equal(
       result.headers.get("location"),
-      "/backoffice/auth/bootstrap?organizationId=org-2&returnTo=%2Fbackoffice%2Fautomations%2Forg%2Fbeta%2Forchestration%3Ftab%3Druns",
+      "/backoffice/auth/bootstrap?organizationId=org-2&returnTo=%2Fbackoffice%2Fdashboard%2Forg%2Fbeta%3Fselection%3Droute%26selected%3Droute-1",
     );
     expect(next).not.toHaveBeenCalled();
     expect(getPrincipal).not.toHaveBeenCalled();
@@ -206,7 +206,7 @@ describe("Backoffice shell request middleware", () => {
   });
 
   test("rejects forbidden scopes before descendant handlers run", async () => {
-    const request = new Request("https://backoffice.example/backoffice/automations/system/system");
+    const request = new Request("https://backoffice.example/backoffice/dashboard/system/system");
     const { context, getPrincipal } = createShellContext({ request });
     const next = vi.fn(async () => new Response("descendant response"));
 

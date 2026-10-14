@@ -38,6 +38,10 @@ import {
   workflowRunRecordsQuery,
 } from "../automations/script-view/use-script-workflow-runs";
 import {
+  orchestrationActiveWorkflowsQuery,
+  projectOrchestrationGraph,
+} from "./orchestration-graph";
+import {
   dashboardBucketStarts,
   dashboardConnectionEventsQuery,
   dashboardEventsQuery,
@@ -155,20 +159,32 @@ async function readDashboard(ctx: BackofficeScenarioContext) {
   const { collections } = database;
   const now = ctx.runtime.now();
   const since = new Date(dashboardBucketStarts(now)[0] ?? now);
-  const [runs, waitingRuns, events, connectionEvents, routes] = await Promise.all([
-    queryOnce((query) => dashboardRunsQuery(query, collections)),
-    queryOnce((query) => workflowRunRecordsQuery(query, collections, { type: "waiting" })),
-    queryOnce((query) => dashboardEventsQuery(query, collections, since)),
-    queryOnce((query) => dashboardConnectionEventsQuery(query, collections)),
-    queryOnce((query) => automationRoutesQuery(query, collections)),
-  ]);
+  const [runs, waitingRuns, events, connectionEvents, routeRecords, activeWorkflows] =
+    await Promise.all([
+      queryOnce((query) => dashboardRunsQuery(query, collections)),
+      queryOnce((query) => workflowRunRecordsQuery(query, collections, { type: "waiting" })),
+      queryOnce((query) => dashboardEventsQuery(query, collections, since)),
+      queryOnce((query) => dashboardConnectionEventsQuery(query, collections)),
+      queryOnce((query) => automationRoutesQuery(query, collections)),
+      queryOnce((query) => orchestrationActiveWorkflowsQuery(query, collections)),
+    ]);
+  const routes = automationRoutesFromRecords(routeRecords);
   const dashboard = projectBackofficeDashboard({
     now,
     runs,
     waitingRuns: automationWorkflowRunsFromRecords(waitingRuns),
     events,
     connectionEvents,
-    routes: automationRoutesFromRecords(routes),
+    routes,
+  });
+  // Catalogs are left out so the graph holds only what this scope's data puts there.
+  const graph = projectOrchestrationGraph({
+    scopeLabel: "Ada Labs",
+    sources: [],
+    eventDefinitions: [],
+    routes,
+    activeWorkflows,
+    recentEvents: events,
   });
 
   return {
@@ -191,9 +207,17 @@ async function readDashboard(ctx: BackofficeScenarioContext) {
       )
       .sort(),
     sources: dashboard.eventVolume.sources.map(({ source, count }) => `${source} ×${count}`),
-    unrouted: dashboard.unroutedEvents.map(
-      ({ source, eventType, count }) => `${source}.${eventType} ×${count}`,
-    ),
+    orchestration: {
+      routes: graph.routes.map(
+        ({ eventId, priority, label, action }) =>
+          `${eventId} → P${priority} ${label} → ${action.kind === "reclassify_event" ? action.eventId : action.targetId}`,
+      ),
+      targets: graph.targets.map(({ label, activeCount }) => `${label}: ${activeCount} running`),
+      recent: graph.events
+        .filter(({ recentCount }) => recentCount > 0)
+        .map(({ id, recentCount }) => `${id} ×${recentCount}`)
+        .sort(),
+    },
     connections: dashboard.connections.map(
       ({ connectionId, state }) => `${connectionId}: ${state}`,
     ),
@@ -290,11 +314,20 @@ describe("dashboard", () => {
                   "ship-order: 1 started, 1 complete, 0 errored, last complete",
                 ],
                 sources: ["acme ×2", "integrations ×2", "shop ×1"],
-                unrouted: [
-                  "acme.webhook.received ×2",
-                  "integrations.connection.ready ×1",
-                  "integrations.connection.unavailable ×1",
-                ],
+                // Both routes start the same workflow, so they meet at one target.
+                orchestration: {
+                  routes: [
+                    "shop:order.placed → P100 Ship placed orders → workflow:/workspace/automations/ship-order.workflow.js",
+                    "scheduler:schedule:new-year-digest → P200 New year digest → workflow:/workspace/automations/ship-order.workflow.js",
+                  ],
+                  targets: ["ship-order: 0 running"],
+                  recent: [
+                    "acme:webhook.received ×2",
+                    "integrations:connection.ready ×1",
+                    "integrations:connection.unavailable ×1",
+                    "shop:order.placed ×1",
+                  ],
+                },
                 connections: ["api#billing: ready", "mcp#agensi: unavailable"],
                 upcoming: [
                   "waiting: await-shipment for shipped",

@@ -1,10 +1,13 @@
 import { backofficeRuntimeScopeFromResolvedScope } from "@/backoffice-runtime/resolved-scope";
 import { findBackofficeMe } from "@/fragno/auth/auth-server";
 
-import { runBackofficeTerminalAction } from "../terminal.server";
 import type { Route } from "./+types/terminal-command";
-import { lookupAutomationProject } from "./data.server";
-import { automationRuntimeScopeFromRouteParams, resolveAutomationScopeSelection } from "./scope";
+import { lookupAutomationProject } from "./automations/data.server";
+import {
+  automationRuntimeScopeFromRouteParams,
+  resolveAutomationScopeSelection,
+} from "./automations/scope";
+import { runBackofficeTerminalAction } from "./terminal.server";
 
 export async function action({ request, context, params }: Route.ActionArgs) {
   const me = await findBackofficeMe(request, context);

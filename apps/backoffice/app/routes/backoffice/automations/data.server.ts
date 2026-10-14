@@ -1,16 +1,12 @@
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { RouterContextProvider } from "react-router";
 
-import { extractW3CRequestPropagationContext } from "@fragno-dev/core";
-
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
-import { isBackofficeForbiddenError } from "@/backoffice-runtime/kernel";
 import { getAutomationLayerForPath, readAutomationScript } from "@/fragno/automation";
 import { readBackofficeAutomationSource } from "@/fragno/automation/read-backoffice-automation-source";
 import { createAutomationsRouteCaller } from "@/fragno/automation/route-callers";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
-import { booleanActionResultFromCaughtError } from "../action-result";
 import type { AutomationProjectRecord, AutomationScriptSourceRecord } from "./data";
 import { fromAutomationScriptId, isAutomationScriptLayerVisibleInScope } from "./script-records";
 
@@ -18,15 +14,6 @@ const formatErrorMessage = (error: unknown, fallback: string) =>
   error instanceof Error ? error.message : fallback;
 
 const isSuccessStatus = (status: number) => status >= 200 && status < 300;
-
-const rethrowHttpResponseOrForbiddenError = (error: unknown) => {
-  if (error instanceof Response) {
-    throw error;
-  }
-  if (isBackofficeForbiddenError(error)) {
-    throw new Response(error.message, { status: 403 });
-  }
-};
 
 const getScopedAutomationsObject = (
   context: Readonly<RouterContextProvider>,
@@ -152,42 +139,5 @@ export async function createAutomationProject(
       project: null,
       error: formatErrorMessage(error, "Failed to create automation project."),
     };
-  }
-}
-
-export async function deleteAutomationStoreEntry(
-  request: Request,
-  context: Readonly<RouterContextProvider>,
-  execution: BackofficeExecutionContext,
-  key: string,
-): Promise<{
-  ok: boolean;
-  error: string | null;
-}> {
-  try {
-    const { runtime, kernel } = context.get(BackofficeWorkerContext);
-    const automations = kernel.scoped("AUTOMATIONS", execution.scope, runtime.objects.automations);
-    const callRoute = createAutomationsRouteCaller({
-      object: automations,
-      context: {
-        execution,
-        propagationContext: extractW3CRequestPropagationContext(request.headers),
-      },
-    });
-    const response = await callRoute("POST", "/store/delete", { body: { key } });
-
-    if (response.type === "json" && isSuccessStatus(response.status)) {
-      return { ok: true, error: null };
-    }
-    if (response.type === "error") {
-      if (response.status === 401 || response.status === 403 || response.status === 503) {
-        throw Response.json(response.error, { status: response.status });
-      }
-      return { ok: false, error: response.error.message };
-    }
-    return { ok: false, error: `Failed to delete automation store entry (${response.status}).` };
-  } catch (error) {
-    rethrowHttpResponseOrForbiddenError(error);
-    return booleanActionResultFromCaughtError(error, "Failed to delete automation store entry.");
   }
 }

@@ -7,8 +7,8 @@ import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { getOtpDurableObject } from "@/worker-runtime/durable-objects";
 
-import { buildBackofficeLoginPath } from "../auth-navigation";
 import type { Route } from "./+types/claims-complete";
+import { buildBackofficeLoginPath } from "./auth-navigation";
 
 /** GET displays the persisted identity without consuming its claim or granting authority. */
 export async function loader({ request, context, params, url }: Route.LoaderArgs) {
@@ -103,8 +103,8 @@ export default function BackofficeAutomationClaimComplete({
   return (
     <div className="space-y-4">
       <BackofficePageHeader
-        breadcrumbs={[{ label: "Backoffice", to: "/backoffice" }, { label: "Automations" }]}
-        eyebrow="Automations"
+        breadcrumbs={[{ label: "Backoffice", to: "/backoffice" }, { label: "Identity" }]}
+        eyebrow="Identity"
         title={actionData?.ok ? "Identity link confirmed" : "Confirm identity link"}
         description={`Organization: ${loaderData.organization.name}`}
       />

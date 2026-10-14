@@ -154,7 +154,6 @@ export type BackofficeDashboard = {
     sources: { source: string; count: number }[];
     countsByBucket: Record<string, number>[];
   };
-  unroutedEvents: { source: string; eventType: string; count: number }[];
   connections: IntegrationConnectionStateChange[];
   upcoming: DashboardUpcoming[];
 };
@@ -175,18 +174,6 @@ function runReference(run: DashboardRunRecord): DashboardRunReference {
 
 function runErrorText({ errorName, errorMessage }: DashboardRunRecord): string | null {
   return errorName && errorMessage ? `${errorName}: ${errorMessage}` : (errorName ?? errorMessage);
-}
-
-/** Event routes match their source case-insensitively, like the router itself. */
-function routedEventMatcher(routes: readonly AutomationRouteDefinition[]) {
-  const routed = new Set<string>();
-  for (const route of routes) {
-    if (route.enabled && route.trigger.kind === "event") {
-      routed.add(`${route.trigger.source.toLowerCase()}:${route.trigger.eventType}`);
-    }
-  }
-  return (event: { source: string; eventType: string }) =>
-    routed.has(`${event.source.toLowerCase()}:${event.eventType}`);
 }
 
 function latestByUpdate(runs: readonly DashboardRunRecord[]): DashboardRunRecord {
@@ -321,24 +308,6 @@ export function projectBackofficeDashboard({
     const counts = countsByBucket[bucketIndex(event.occurredAt)];
     counts[event.source] = (counts[event.source] ?? 0) + 1;
   }
-  const isRouted = routedEventMatcher(routes);
-  const unroutedEvents = [
-    ...groupBy(
-      windowEvents.filter((event) => !isRouted(event)),
-      (event) => JSON.stringify([event.source, event.eventType]),
-    ).values(),
-  ]
-    .map((group) => ({
-      source: group[0].source,
-      eventType: group[0].eventType,
-      count: group.length,
-    }))
-    .sort(
-      (left, right) =>
-        right.count - left.count ||
-        left.source.localeCompare(right.source) ||
-        left.eventType.localeCompare(right.eventType),
-    );
   const sourceCounts = [...groupBy(windowEvents, (event) => event.source)]
     .map(([source, sourceEvents]) => ({ source, count: sourceEvents.length }))
     .sort((left, right) => right.count - left.count || left.source.localeCompare(right.source));
@@ -357,7 +326,6 @@ export function projectBackofficeDashboard({
       sources: sourceCounts,
       countsByBucket,
     },
-    unroutedEvents,
     connections,
     upcoming,
   };

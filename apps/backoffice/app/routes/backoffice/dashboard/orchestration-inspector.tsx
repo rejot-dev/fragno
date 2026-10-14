@@ -1,7 +1,7 @@
 import type { AutomationRouteDefinition } from "@fragno-dev/backoffice-api/v0/automation";
 import { IconButton } from "@fragno-private/design-system/button";
 import { Icon } from "@fragno-private/design-system/icon";
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 
 import { visualizeWorkflowSource } from "@fragno-dev/workflow-visualizer-tokens";
 
@@ -17,51 +17,43 @@ import type { RuntimeToolWorkflowDescriptor } from "@/fragno/runtime-tools/workf
 import { resolveWorkflowRuntimeToolCalls } from "@/fragno/runtime-tools/workflow-catalog";
 import { jsonSchemaToTypeScript } from "@/lib/zod/zod-formatter";
 
-import type { AutomationScriptSourceRecord } from "./data";
-import { AutomationDetailRows } from "./detail-rows";
-import { formatTimestamp } from "./formatting";
-import { automationRouteActionDetailRows, automationRouteActionLabel } from "./route-action";
-import { AutomationEventMatcherDetail, AutomationRouteTargetDetail } from "./route-configuration";
-import { AutomationRouteDetail } from "./route-detail";
-import { automationRouteScriptLink } from "./route-links";
-import { useLinkedScrollViewports } from "./script-view/linked-scroll";
-import { useScriptWorkflowRuns } from "./script-view/use-script-workflow-runs";
-import { ScriptWorkflowGraph } from "./script-view/workflow-graph";
-
-export type OrchestrationSource = {
-  id: string;
-  label: string;
-  description: string;
-};
-
-export type OrchestrationEventDefinition = {
-  source: string;
-  eventType: string;
-  label: string;
-  payloadSchema: unknown;
-};
+import type { AutomationScriptSourceRecord } from "../automations/data";
+import { formatTimestamp } from "../automations/formatting";
+import { AutomationRouteDetail } from "../automations/route-detail";
+import { useLinkedScrollViewports } from "../automations/script-view/linked-scroll";
+import { useScriptWorkflowRuns } from "../automations/script-view/use-script-workflow-runs";
+import { ScriptWorkflowGraph } from "../automations/script-view/workflow-graph";
+import type { OrchestrationCatalogEvent, OrchestrationCatalogSource } from "./orchestration-graph";
 
 export type OrchestrationInspectorSelection =
   | {
       kind: "source";
-      source: OrchestrationSource;
-      eventDefinitions: readonly OrchestrationEventDefinition[];
+      source: OrchestrationCatalogSource;
+      eventDefinitions: readonly OrchestrationCatalogEvent[];
     }
-  | { kind: "event"; eventDefinition: OrchestrationEventDefinition }
-  | { kind: "trigger"; route: AutomationRouteDefinition }
-  | { kind: "action"; route: AutomationRouteDefinition };
+  | { kind: "event"; eventDefinition: OrchestrationCatalogEvent }
+  | { kind: "route"; route: AutomationRouteDefinition }
+  | {
+      kind: "target";
+      label: string;
+      targetKind: "workflow" | "scope";
+      routes: readonly AutomationRouteDefinition[];
+      workflowScriptPath: string | null;
+    };
 
+/** Fills its parent's height and scrolls inside it, so the graph beside it stays in view. */
 export function OrchestrationInspector({
   selection,
   workflowSource,
   runtimeToolCatalog,
   collections,
   filesScopePath,
-  eventsCatalogPath,
+  eventPath,
   scope,
+  onSelectRoute,
   onClear,
 }: {
-  selection: OrchestrationInspectorSelection | null;
+  selection: OrchestrationInspectorSelection;
   workflowSource: AutomationScriptSourceRecord;
   runtimeToolCatalog: readonly RuntimeToolWorkflowDescriptor[];
   collections: Pick<
@@ -69,53 +61,127 @@ export function OrchestrationInspector({
     "events" | "workflowInstances" | "workflowSteps" | "workflowEvents" | "workflowStepEmissions"
   >;
   filesScopePath: string;
-  eventsCatalogPath: string;
+  eventPath: (source: string, eventType: string) => string;
   scope: BackofficeResolvedScope;
+  onSelectRoute: (routeId: string) => void;
   onClear: () => void;
 }) {
+  const workflowGraph = (absolutePath: string) => (
+    <WorkflowGraph
+      absolutePath={absolutePath}
+      source={workflowSource}
+      runtimeToolCatalog={runtimeToolCatalog}
+      collections={collections}
+      scope={scope}
+    />
+  );
+
   return (
-    <aside className="bo-orchestration-inspector min-w-0 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] xl:sticky xl:top-3 xl:max-h-[calc(100vh-7.5rem)] xl:overflow-hidden xl:border-l-0">
-      <div className="flex min-h-11 items-center justify-between gap-3 border-b border-[color:var(--bo-border)] px-3">
+    <aside className="flex min-h-0 min-w-0 flex-1 flex-col border border-[color:var(--bo-border)] bg-[var(--bo-panel)]">
+      <div className="flex min-h-11 shrink-0 items-center justify-between gap-3 border-b border-[color:var(--bo-border)] px-3">
         <p className="text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
           Inspector
         </p>
-        {selection ? (
-          <IconButton label="Clear orchestration selection" onClick={onClear}>
-            <Icon name="x" className="h-3.5 w-3.5" />
-          </IconButton>
-        ) : null}
+        <IconButton label="Clear orchestration selection" onClick={onClear}>
+          <Icon name="x" className="h-3.5 w-3.5" />
+        </IconButton>
       </div>
 
-      <div className="backoffice-scroll xl:max-h-[calc(100vh-10.25rem)] xl:overflow-y-auto">
-        {selection?.kind === "source" ? <SourceInspector selection={selection} /> : null}
-        {selection?.kind === "event" ? (
+      <div className="backoffice-scroll min-h-0 flex-1 overflow-y-auto">
+        {selection.kind === "source" ? <SourceInspector selection={selection} /> : null}
+        {selection.kind === "event" ? (
           <RecentEventInspector
             eventDefinition={selection.eventDefinition}
             collections={collections}
           />
         ) : null}
-        {selection?.kind === "trigger" ? (
-          <div className="p-3">
+        {selection.kind === "route" ? (
+          <div className="space-y-3 p-3">
             <AutomationRouteDetail
               route={selection.route}
               filesScopePath={filesScopePath}
-              eventsCatalogPath={eventsCatalogPath}
+              eventPath={eventPath}
               compact
             />
+            {selection.route.action.kind === "send_workflow_event" ? (
+              <ActionPayloadDetail payload={selection.route.action.payload} />
+            ) : null}
+            {selection.route.action.kind === "start_workflow"
+              ? workflowGraph(selection.route.action.workflowScriptPath)
+              : null}
           </div>
         ) : null}
-        {selection?.kind === "action" ? (
-          <ActionInspector
-            route={selection.route}
-            source={workflowSource}
-            runtimeToolCatalog={runtimeToolCatalog}
-            collections={collections}
-            filesScopePath={filesScopePath}
-            scope={scope}
+        {selection.kind === "target" ? (
+          <TargetInspector
+            selection={selection}
+            onSelectRoute={onSelectRoute}
+            workflowGraph={
+              selection.workflowScriptPath ? workflowGraph(selection.workflowScriptPath) : null
+            }
           />
         ) : null}
       </div>
     </aside>
+  );
+}
+
+function TargetInspector({
+  selection,
+  onSelectRoute,
+  workflowGraph,
+}: {
+  selection: Extract<OrchestrationInspectorSelection, { kind: "target" }>;
+  onSelectRoute: (routeId: string) => void;
+  workflowGraph: ReactNode;
+}) {
+  return (
+    <div className="space-y-3 p-3">
+      <div className="min-w-0">
+        <p className="text-[10px] font-semibold tracking-[0.22em] text-violet-700 uppercase dark:text-violet-300">
+          {selection.targetKind === "workflow" ? "Workflow" : "Forward target"}
+        </p>
+        <h2 className="mt-1 text-sm font-semibold break-all text-[var(--bo-fg)]">
+          {selection.label}
+        </h2>
+      </div>
+
+      <section>
+        <div className="flex items-center justify-between border-b border-[color:var(--bo-border)] pb-2">
+          <p className="text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
+            Reached by
+          </p>
+          <span className="text-xs text-[var(--bo-muted-2)] tabular-nums">
+            {selection.routes.length}
+          </span>
+        </div>
+        <ul className="divide-y divide-[color:var(--bo-border)]">
+          {selection.routes.map((route) => (
+            <li key={route.id}>
+              <button
+                type="button"
+                onClick={() => {
+                  onSelectRoute(route.id);
+                }}
+                className="group flex w-full min-w-0 flex-col py-2 text-left"
+              >
+                <span className="truncate text-sm font-semibold text-[var(--bo-fg)] group-hover:underline">
+                  {route.name}
+                </span>
+                <span className="truncate font-mono text-[11px] text-[var(--bo-muted)]">
+                  P{route.priority} ·{" "}
+                  {route.trigger.kind === "event"
+                    ? `${route.trigger.source}.${route.trigger.eventType}`
+                    : "schedule"}
+                  {route.enabled ? "" : " · disabled"}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      {workflowGraph}
+    </div>
   );
 }
 
@@ -157,7 +223,7 @@ function RecentEventInspector({
   eventDefinition,
   collections,
 }: {
-  eventDefinition: OrchestrationEventDefinition;
+  eventDefinition: OrchestrationCatalogEvent;
   collections: Pick<AutomationCollections, "events">;
 }) {
   const recentEventsQuery = useLiveQuery(
@@ -236,7 +302,7 @@ function EventJson({ label, value }: { label: string; value: unknown }) {
 function EventDefinitionDisclosure({
   eventDefinition,
 }: {
-  eventDefinition: OrchestrationEventDefinition;
+  eventDefinition: OrchestrationCatalogEvent;
 }) {
   const payloadType = jsonSchemaToTypeScript(
     eventDefinition.payloadSchema as Parameters<typeof jsonSchemaToTypeScript>[0],
@@ -296,80 +362,6 @@ function ActionPayloadDetail({ payload }: { payload: unknown }) {
         </pre>
       )}
     </section>
-  );
-}
-
-function ActionInspector({
-  route,
-  source,
-  runtimeToolCatalog,
-  collections,
-  filesScopePath,
-  scope,
-}: {
-  route: AutomationRouteDefinition;
-  source: AutomationScriptSourceRecord;
-  runtimeToolCatalog: readonly RuntimeToolWorkflowDescriptor[];
-  collections: Pick<
-    AutomationCollections,
-    "workflowInstances" | "workflowSteps" | "workflowEvents" | "workflowStepEmissions"
-  >;
-  filesScopePath: string;
-  scope: BackofficeResolvedScope;
-}) {
-  const scriptLink = automationRouteScriptLink(route, filesScopePath);
-  const scriptPath =
-    route.action.kind === "start_workflow" ? route.action.workflowScriptPath : null;
-  const detailRows = automationRouteActionDetailRows(route, {
-    scriptLink,
-    labelSet: "inspector",
-    missingForwardEventId: "Preserve the incoming event ID",
-  });
-
-  return (
-    <div className="space-y-3 p-3">
-      <div className="min-w-0">
-        <p className="text-[10px] font-semibold tracking-[0.22em] text-violet-700 uppercase dark:text-violet-300">
-          Action · {route.action.kind}
-        </p>
-        <h2 className="mt-1 truncate text-sm font-semibold text-[var(--bo-fg)]">
-          {automationRouteActionLabel(route)}
-        </h2>
-        <p className="mt-1 font-mono text-[11px] break-all text-[var(--bo-muted-2)]">
-          {route.name}
-        </p>
-      </div>
-
-      <section className="overflow-hidden border border-[color:var(--bo-border)] bg-[var(--bo-panel)]">
-        <AutomationDetailRows layout="inspector" rows={detailRows} />
-      </section>
-
-      {route.action.kind === "send_workflow_event" ? (
-        <>
-          <AutomationRouteTargetDetail target={route.action.target} />
-          <ActionPayloadDetail payload={route.action.payload} />
-        </>
-      ) : null}
-
-      {route.action.kind === "forward_event" ? (
-        <>
-          <AutomationRouteTargetDetail target={route.action.targetScope} />
-          {route.trigger.kind === "event" ? (
-            <AutomationEventMatcherDetail matcher={route.trigger.matcher} />
-          ) : null}
-        </>
-      ) : null}
-
-      {scriptPath ? (
-        <WorkflowGraph
-          absolutePath={scriptPath}
-          source={source}
-          runtimeToolCatalog={runtimeToolCatalog}
-          collections={collections}
-          scope={scope}
-        />
-      ) : null}
-    </div>
   );
 }
 

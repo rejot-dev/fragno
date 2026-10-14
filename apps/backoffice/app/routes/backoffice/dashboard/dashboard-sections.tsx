@@ -1,3 +1,4 @@
+import type { AutomationRouteDefinition } from "@fragno-dev/backoffice-api/v0/automation";
 import type { WorkflowInstanceStatus } from "@fragno-dev/workflows/workflow";
 import { Icon, type IconName } from "@fragno-private/design-system/icon";
 import { SparkBars } from "@fragno-private/design-system/spark-bars";
@@ -15,14 +16,11 @@ import {
 } from "@/backoffice-runtime/resolved-scope";
 import { backofficeRouteScopePath } from "@/backoffice-runtime/route-scope";
 import { WorkflowRunGeneratedInterface } from "@/components/backoffice/workflow-run-generated-interface";
+import type { AutomationBrowserCollections } from "@/fragno/automation/tanstack/browser-database";
+import type { RuntimeToolWorkflowDescriptor } from "@/fragno/runtime-tools/workflow-catalog";
 
+import type { AutomationScriptSourceRecord } from "../automations/data";
 import { formatRelativeTime } from "../automations/formatting";
-import {
-  automationEventCatalogLink,
-  automationRouteSelectionLink,
-} from "../automations/route-links";
-import { automationScopeTabPath } from "../automations/scope";
-import type { WorkflowRunCollections } from "../automations/script-view/use-script-workflow-runs";
 import {
   IntegrationConnectionStateLight,
   describeIntegrationConnectionKind,
@@ -34,14 +32,19 @@ import {
 } from "../integrations/connection-paths";
 import type { ListedIntegrationConnections } from "../integrations/connections.server";
 import type { PiManagerSessionsResult } from "../sessions/data";
+import { OrchestrationPanel } from "./orchestration-panel";
 import type { BackofficeDashboard, DashboardAttention } from "./overview";
-import { dashboardOpenedRun, dashboardPath, dashboardRunPath } from "./path";
+import {
+  dashboardOpenedRun,
+  dashboardPath,
+  dashboardRunPath,
+  dashboardSelectionPath,
+} from "./path";
 import { WorkflowRunDetail } from "./workflow-run-detail";
 
 /** Sources beyond this many share one "other" series so the chart stays legible. */
 const CHART_SOURCE_LIMIT = 5;
 const OTHER_SOURCES = "other";
-const UNROUTED_EVENT_LIMIT = 5;
 const COLLAPSED_WORKFLOW_COUNT = 8;
 const WINDOW_LABEL = "24 hours";
 // Clears the sticky top bar when an opened run scrolls the Automations panel into view.
@@ -51,6 +54,8 @@ export type DashboardLoaderData = {
   selectedScope: BackofficeScopeSelection;
   connectionNames: ListedIntegrationConnections;
   sessions: PiManagerSessionsResult;
+  workflowSource: AutomationScriptSourceRecord;
+  runtimeToolCatalog: readonly RuntimeToolWorkflowDescriptor[];
 };
 
 export function DashboardSections({
@@ -58,11 +63,15 @@ export function DashboardSections({
   now,
   loaderData,
   collections,
+  routes,
+  recentEvents,
 }: {
   dashboard: BackofficeDashboard;
   now: number;
   loaderData: DashboardLoaderData;
-  collections: WorkflowRunCollections;
+  collections: AutomationBrowserCollections;
+  routes: readonly AutomationRouteDefinition[];
+  recentEvents: readonly { source: string; eventType: string }[];
 }) {
   const { selectedScope } = loaderData;
   const sessionsPath = `/backoffice/sessions/${backofficeRouteScopePath(
@@ -78,6 +87,17 @@ export function DashboardSections({
         connectionNames={loaderData.connectionNames}
       />
 
+      <Panel title="Orchestration" back={null} footer={null}>
+        <OrchestrationPanel
+          collections={collections}
+          routes={routes}
+          recentEvents={recentEvents}
+          selectedScope={selectedScope}
+          workflowSource={loaderData.workflowSource}
+          runtimeToolCatalog={loaderData.runtimeToolCatalog}
+        />
+      </Panel>
+
       <div className="grid items-start gap-x-12 gap-y-10 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="flex min-w-0 flex-col gap-10">
           <WorkflowHealthPanel
@@ -86,11 +106,7 @@ export function DashboardSections({
             selectedScope={selectedScope}
             collections={collections}
           />
-          <EventVolumePanel
-            eventVolume={dashboard.eventVolume}
-            unroutedEvents={dashboard.unroutedEvents}
-            selectedScope={selectedScope}
-          />
+          <EventVolumePanel eventVolume={dashboard.eventVolume} />
         </div>
         <div className="flex min-w-0 flex-col gap-10">
           <ConnectionsPanel
@@ -365,7 +381,7 @@ function WorkflowHealthPanel({
   workflows: BackofficeDashboard["workflows"];
   now: number;
   selectedScope: BackofficeScopeSelection;
-  collections: WorkflowRunCollections;
+  collections: AutomationBrowserCollections;
 }) {
   const [showAll, setShowAll] = useState(false);
   const [searchParams] = useSearchParams();
@@ -512,15 +528,7 @@ const bucketLabelFormat = new Intl.DateTimeFormat("en-US", {
   timeZone: "UTC",
 });
 
-function EventVolumePanel({
-  eventVolume,
-  unroutedEvents,
-  selectedScope,
-}: {
-  eventVolume: BackofficeDashboard["eventVolume"];
-  unroutedEvents: BackofficeDashboard["unroutedEvents"];
-  selectedScope: BackofficeScopeSelection;
-}) {
+function EventVolumePanel({ eventVolume }: { eventVolume: BackofficeDashboard["eventVolume"] }) {
   const charted = eventVolume.sources.slice(0, CHART_SOURCE_LIMIT).map(({ source }) => source);
   const hasOther = eventVolume.sources.length > CHART_SOURCE_LIMIT;
   const series = [...charted, ...(hasOther ? [OTHER_SOURCES] : [])].map((id) => ({
@@ -540,10 +548,9 @@ function EventVolumePanel({
       values,
     };
   });
-  const eventsCatalogPath = automationScopeTabPath(selectedScope, "events-catalog");
 
   return (
-    <Panel title="Events" back={null} footer={<PanelFooter to={eventsCatalogPath} page="Events" />}>
+    <Panel title="Events" back={null} footer={null}>
       <div className="py-4">
         {eventVolume.sources.length === 0 ? (
           <p className="text-sm text-[var(--bo-muted)]">
@@ -557,34 +564,6 @@ function EventVolumePanel({
           />
         )}
       </div>
-      {unroutedEvents.length > 0 ? (
-        <div className="border-t border-[color:var(--bo-border)]">
-          <div className="pt-3">
-            <h3 className="text-xs font-semibold text-[var(--bo-fg)]">Unrouted</h3>
-            <p className="mt-1 text-xs text-[var(--bo-muted)]">
-              These events arrived but no enabled route handles them.
-            </p>
-          </div>
-          <ul className="mt-2 divide-y divide-[color:var(--bo-border)]">
-            {unroutedEvents.slice(0, UNROUTED_EVENT_LIMIT).map((event) => (
-              <li
-                key={`${event.source}:${event.eventType}`}
-                className="flex items-center gap-4 py-2"
-              >
-                <Link
-                  to={automationEventCatalogLink(eventsCatalogPath, event.source, event.eventType)}
-                  className="min-w-0 flex-1 truncate font-mono text-xs font-semibold text-[var(--bo-fg)] hover:underline"
-                >
-                  {event.source}.{event.eventType}
-                </Link>
-                <span className="text-xs text-[var(--bo-muted-2)] tabular-nums">
-                  ×{event.count}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
     </Panel>
   );
 }
@@ -644,19 +623,14 @@ function UpcomingPanel({
   now: number;
   selectedScope: BackofficeScopeSelection;
 }) {
-  const orchestrationPath = automationScopeTabPath(selectedScope, "orchestration");
   return (
-    <Panel
-      title="Scheduled & waiting"
-      back={null}
-      footer={<PanelFooter to={orchestrationPath} page="Automations" />}
-    >
+    <Panel title="Scheduled & waiting" back={null} footer={null}>
       <ul className="divide-y divide-[color:var(--bo-border)]">
         {upcoming.map((entry) =>
           entry.kind === "schedule" ? (
             <UpcomingRow
               key={`schedule:${entry.routeId}`}
-              to={automationRouteSelectionLink(orchestrationPath, entry.routeId)}
+              to={dashboardSelectionPath(selectedScope, { kind: "route", id: entry.routeId })}
               icon="clock"
               title={entry.name}
               detail="Scheduled route"
