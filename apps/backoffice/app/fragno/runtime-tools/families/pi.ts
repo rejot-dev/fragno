@@ -262,7 +262,7 @@ const promptSubmitTool = defineBackofficeRuntimeTool({
             name: "when-busy",
             valueRequired: true,
             valueName: "mode",
-            description: "followUp, steer, or reject",
+            description: "steer (default) or reject",
           },
         ],
         examples: ['pi.prompt.submit --session-id session-123 --content "Investigate the failure"'],
@@ -354,7 +354,7 @@ const promptRunTool = defineBackofficeRuntimeTool({
             name: "when-busy",
             valueRequired: true,
             valueName: "mode",
-            description: "followUp, steer, or reject",
+            description: "steer (default) or reject",
           },
           {
             name: "timeout-ms",

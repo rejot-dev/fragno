@@ -7,6 +7,7 @@ import {
   useExternalStoreRuntime,
   type AppendMessage,
   type AssistantRuntime,
+  type ExternalThreadQueueAdapter,
 } from "@assistant-ui/react";
 import type { ConversationView, EntryRecord } from "@earendil-works/pi-durable";
 import { eq, inArray, useLiveQuery } from "@tanstack/react-db";
@@ -35,6 +36,7 @@ import {
   getAppendMessageText,
   piConversationDraftAgentMessage,
   piConversationMessages,
+  piConversationSteeringQueue,
 } from "./session-detail/assistant-runtime";
 import { SessionDisplayOptions } from "./session-detail/display-options";
 import { usePiSessionViewStream } from "./session-detail/pi-session-view-stream";
@@ -119,18 +121,15 @@ export async function action(args: Route.ActionArgs): Promise<PiSessionActionDat
   }
 
   const content = formData.get("content");
-  const whenBusy = formData.get("whenBusy");
   if (typeof content !== "string" || !content.trim()) {
     return { ok: false, intent, error: "Write a message before sending." };
   }
-  if (whenBusy !== "followUp" && whenBusy !== "steer" && whenBusy !== "reject") {
-    return { ok: false, intent, error: "Message mode is invalid." };
-  }
 
+  // An idle session starts a run; an active one takes the message at its next tool boundary.
   const result = await submitPiManagerPrompt(request, context, scope, sessionId, {
     requestId: crypto.randomUUID(),
     content: content.trim(),
-    whenBusy,
+    whenBusy: "steer",
   });
   return result.error || !result.requestId
     ? { ok: false, intent, error: result.error ?? "Failed to send message." }
@@ -347,7 +346,6 @@ function BackofficeOrganizationPiSession({ loaderData }: Route.ComponentProps) {
   } = useOutletContext<PiSessionsOutletContext>();
   const fetcher = useFetcher<PiSessionActionData>();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [commandKind, setCommandKind] = useState<"followUp" | "steer">("followUp");
   const [composerAction, setComposerAction] = useState<"message" | "compact">("message");
   const [pendingCompactionTaskId, setPendingCompactionTaskId] = useState<number | null>(null);
   const [compactionError, setCompactionError] = useState<string | null>(null);
@@ -382,6 +380,7 @@ function BackofficeOrganizationPiSession({ loaderData }: Route.ComponentProps) {
     () => piConversationDraftAgentMessage(streamedView),
     [streamedView],
   );
+  const steeringQueue = useMemo(() => piConversationSteeringQueue(streamedView), [streamedView]);
   const statusText = compacting ? "Compacting…" : running ? "Working…" : null;
   const assistantMessages = useMemo(
     () =>
@@ -461,14 +460,13 @@ function BackofficeOrganizationPiSession({ loaderData }: Route.ComponentProps) {
       if (!text) {
         return;
       }
-      const whenBusy = running ? commandKind : "reject";
       if (posthog) {
         posthog.capture("session_message_sent", {
           session_id: session.sessionId,
-          when_busy: whenBusy,
+          agent_running: running,
         });
       }
-      void fetcher.submit({ intent: "send", content: text, whenBusy }, { method: "post" });
+      void fetcher.submit({ intent: "send", content: text }, { method: "post" });
       if (initialPromptError) {
         setSearchParams(
           (current) => {
@@ -480,15 +478,24 @@ function BackofficeOrganizationPiSession({ loaderData }: Route.ComponentProps) {
         );
       }
     },
-    [
-      posthog,
-      commandKind,
-      fetcher,
-      initialPromptError,
-      running,
-      session.sessionId,
-      setSearchParams,
-    ],
+    [posthog, fetcher, initialPromptError, running, session.sessionId, setSearchParams],
+  );
+
+  // Pi owns the queue in `pi.inbox`; this adapter keeps the composer usable during a run.
+  const queue = useMemo<ExternalThreadQueueAdapter>(
+    () => ({
+      items: steeringQueue,
+      enqueue: (message) => {
+        void handleSend(message);
+      },
+      // Every queued Pi input already steers the active run.
+      steer: () => undefined,
+      // The thread renders no remove control; Pi exposes no withdrawal route yet.
+      remove: () => undefined,
+      // Aborting the session withdraws queued input on the server.
+      clear: () => undefined,
+    }),
+    [handleSend, steeringQueue],
   );
 
   const runtime = useExternalStoreRuntime({
@@ -497,6 +504,7 @@ function BackofficeOrganizationPiSession({ loaderData }: Route.ComponentProps) {
     isRunning: running,
     isSendDisabled: submitting,
     onNew: handleSend,
+    queue,
   });
 
   useEffect(() => {
@@ -622,7 +630,6 @@ function BackofficeOrganizationPiSession({ loaderData }: Route.ComponentProps) {
                 showToolCalls={displayOptions.showToolCalls}
                 showUsage={displayOptions.showUsage}
                 statusText={statusText}
-                commandKind={commandKind}
                 composerAction={composerAction}
                 compacting={compacting}
                 compactionError={
@@ -637,7 +644,6 @@ function BackofficeOrganizationPiSession({ loaderData }: Route.ComponentProps) {
                 hasMoreHistory={history.hasMore}
                 historyLoading={history.loading}
                 historyError={history.error}
-                onCommandKindChange={setCommandKind}
                 onComposerActionChange={setComposerAction}
                 onLoadMoreHistory={history.loadMore}
               />

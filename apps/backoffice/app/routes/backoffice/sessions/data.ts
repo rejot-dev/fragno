@@ -236,7 +236,7 @@ export async function submitPiManagerPrompt(
   context: Readonly<RouterContextProvider>,
   scope: BackofficeContextScope,
   sessionId: string,
-  input: { requestId: string; content: string; whenBusy: "followUp" | "steer" | "reject" },
+  input: { requestId: string; content: string; whenBusy: "steer" | "reject" },
 ): Promise<{ requestId: string | null; error: string | null }> {
   const { callRoute, execution } = await createPiManagerRouteCaller(request, context, scope);
   const response = await callRoute("POST", "/sessions/:sessionId/prompts", {

@@ -49,8 +49,10 @@ All paths below are mounted at `/api/pi-manager` inside the manager object:
   its first operation.
 - `GET /sessions?cursor=...&pageSize=...`: cursor-paginated directory (maximum 100 entries).
 - `GET /sessions/:sessionId`: directory entry.
-- `POST /sessions/:sessionId/prompts`: `{ requestId, content, whenBusy }`, where `whenBusy` defaults
-  to `followUp`. Reusing a request ID reuses the submission rather than generating another answer.
+- `POST /sessions/:sessionId/prompts`: `{ requestId, content, whenBusy }`, where `whenBusy` is
+  `steer` (default) or `reject`. Busy sessions place steering input at their next tool boundary;
+  there is no follow-up queue. Reusing a request ID reuses the submission rather than generating
+  another answer.
 - `GET /sessions/:sessionId/submissions/:requestId`: Pi's submission record.
 - `GET /sessions/:sessionId/submissions/:requestId/wait?waitMs=...`: bounded, commit-driven wait for
   submission settlement.
@@ -117,14 +119,15 @@ retract already admitted work. Manager failures throw `PiManagerRuntimeRequestEr
 
 The session route loaders and actions call the scoped manager through `http.fetchAuthorized` and the
 Fragno route contract. The UI lists directory records, creates sessions from the configured model
-catalog, admits follow-up or steering prompts, runs and monitors manual compaction, paginates
-inactive transcript history, downloads streaming JSONL exports, and aborts active work. A scoped
-resource route proxies the agent's `application/x-ndjson` conversation-view stream to the browser.
-The initial snapshot and each committed update replace the local active view, including throttled
-`pi.live.generation.message` partials while the model writes. Historical entries remain separate
-from active model context and also feed durable codemode workspace projection. Workflow graph and
-generated-interface navigation reuse the existing Automations browser collections and workspace
-panel. Session URLs use the durable `sessionId` directly.
+catalog, admits prompts that steer an active run, shows pending steering input from `pi.inbox` in
+the composer, runs and monitors manual compaction, paginates inactive transcript history, downloads
+streaming JSONL exports, and aborts active work. A scoped resource route proxies the agent's
+`application/x-ndjson` conversation-view stream to the browser. The initial snapshot and each
+committed update replace the local active view, including throttled `pi.live.generation.message`
+partials while the model writes. Historical entries remain separate from active model context and
+also feed durable codemode workspace projection. Workflow graph and generated-interface navigation
+reuse the existing Automations browser collections and workspace panel. Session URLs use the durable
+`sessionId` directly.
 
 ## Recovery
 

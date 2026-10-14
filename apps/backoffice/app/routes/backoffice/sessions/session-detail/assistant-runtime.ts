@@ -1,6 +1,6 @@
-import type { AppendMessage, ThreadMessageLike } from "@assistant-ui/react";
+import type { AppendMessage, QueueItemState, ThreadMessageLike } from "@assistant-ui/react";
 import type { Message as PiDurableMessage } from "@earendil-works/pi-ai";
-import type { ConversationView, LiveState } from "@earendil-works/pi-durable";
+import type { ConversationView, InboxState, LiveState } from "@earendil-works/pi-durable";
 
 export type PiConversationMessage = PiDurableMessage;
 export type ToolResultMessage = Extract<PiConversationMessage, { role: "toolResult" }>;
@@ -426,4 +426,19 @@ export function getAppendMessageText(message: AppendMessage) {
     .flatMap((part) => (part.type === "text" ? [part.text] : []))
     .join("\n")
     .trim();
+}
+
+/** Projects Pi's queued inputs into Assistant UI's composer queue; placement removes them. */
+export function piConversationSteeringQueue(view: ConversationView): QueueItemState[] {
+  const inbox = view.docs["pi.inbox"] as Readonly<InboxState> | undefined;
+  return (inbox?.items ?? []).flatMap((item) => {
+    if (item.mode === "write") {
+      return [];
+    }
+    const prompt =
+      typeof item.content === "string"
+        ? item.content
+        : item.content.map((part) => (part.type === "text" ? part.text : "[image]")).join("\n");
+    return [{ id: String(item.id), prompt }];
+  });
 }

@@ -396,7 +396,7 @@ describe("Pi durable agent scenarios", () => {
           await object.submit(config, {
             requestId: "startup-recovered",
             content: "Finish the recovered session.",
-            whenBusy: "followUp",
+            whenBusy: "steer",
           });
           // The real object's alarm may already have consumed the one this submission scheduled;
           // running this object's alarm performs the turn either way.

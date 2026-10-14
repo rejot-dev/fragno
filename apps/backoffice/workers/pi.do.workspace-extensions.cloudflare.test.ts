@@ -159,7 +159,7 @@ test("precompiled workspace extensions open concurrently and after restart witho
         await object.submit(config, {
           requestId,
           content: "Read the extension.",
-          whenBusy: "followUp",
+          whenBusy: "steer",
         });
         await object.alarm();
         const view = (await object.getView(config)) as ConversationView;
