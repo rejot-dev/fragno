@@ -23,6 +23,7 @@ import {
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { createStaticFileCollection } from "@/file-collection/create-static-file-collection";
+import { MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME } from "@/fragno/automation/marketplace-package-install-identity";
 import { MARKETPLACE_PACKAGE_PUBLISH_WORKFLOW_NAME } from "@/fragno/automation/marketplace-package-publish-workflow";
 import { createWorkflowsRouteCaller } from "@/fragno/automation/route-callers";
 import {
@@ -146,10 +147,10 @@ function systemPublisher(ctx: BackofficeScenarioContext, state: BackofficeStateB
   });
   // The trusted System shell supplies a concrete readable source; flags never select a source scope.
   context.marketplace = {
-    runtime: createMarketplaceRuntime(ctx.runtime.objects, {
-      state,
+    runtime: createMarketplaceRuntime({
+      objects: ctx.runtime.objects,
       execution,
-      kernel,
+      publication: { state, kernel },
     }),
   };
   return createInteractiveBashHost({ context: { ...context, stateBackend: state } }).bash;
@@ -334,6 +335,7 @@ describe("Marketplace package publication scenarios", () => {
             expect(await state.readJson("/workspace/marketplace-lock.json")).toEqual({
               entries: [
                 {
+                  marketplace: { kind: "system" },
                   listingId: LISTING_ID,
                   version: "1.0.0",
                   installationRoot: "/workspace/installed-report",
@@ -770,6 +772,149 @@ describe("Marketplace package publication scenarios", () => {
     );
   });
 
+  test("members browse and install from their organization's Marketplace; other organizations cannot", async () => {
+    const ORG_MARKETPLACE = { kind: "org", orgId: "org-1" } as const;
+    const OTHER_SCOPE = { kind: "org", orgId: "org-2" } as const;
+    const INSTALLATION_ROOT = "/workspace/members-only";
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        objects: scenarioObjects,
+        name: "Organization Marketplace packages install only into their organization",
+        options: { allowErroredWorkflows: true },
+        setup: ({ given }) => [
+          given.organization.exists({
+            id: "org-1",
+            slug: "ada-labs",
+            name: "Ada Labs",
+            ownerUserId: "owner-1",
+          }),
+          given.organization.exists({
+            id: "org-2",
+            slug: "other-labs",
+            name: "Other Labs",
+            ownerUserId: "other-1",
+          }),
+        ],
+        steps: ({ then, runner }) => [
+          then.assert("a member publishes with organization visibility", async (ctx) => {
+            await seedPackage(sourceState(ctx, ORG_SCOPE), {
+              name: "@ada-labs/durable-package",
+              version: "1.0.0",
+              readme: "Members only",
+              files: ["README.md"],
+            });
+            await publishFromShell(
+              publisherShell(
+                ctx,
+                createBackofficeUserExecution({ scope: ORG_SCOPE, userId: "owner-1" }),
+              ),
+              "",
+              "organization",
+            );
+          }),
+          runner.drain(),
+          then.assert("members discover and install the package", async (ctx) => {
+            const discovery = await ctx.runCodemode({
+              scope: ORG_SCOPE,
+              code: "async () => await marketplace.search({ query: 'Durable package', visibility: 'organization' })",
+            });
+            expect(discovery.result).toMatchObject({
+              listings: [{ listingId: LISTING_ID, latestVersion: "1.0.0" }],
+            });
+            const view = await ctx.runCodemode({
+              scope: ORG_SCOPE,
+              code: `async () => await marketplace.view({ listingId: '${LISTING_ID}', visibility: 'organization' })`,
+            });
+            expect(view.result).toMatchObject({ listing: { listingId: LISTING_ID } });
+            await ctx.runCodemode({
+              scope: ORG_SCOPE,
+              code: `async () => await packages.install({ listingId: '${LISTING_ID}', installationRoot: '${INSTALLATION_ROOT}', visibility: 'organization' })`,
+              assertToolCalls: ["packages.install"],
+            });
+          }),
+          then.assert("another organization cannot discover, view, or install it", async (ctx) => {
+            const discovery = await ctx.runCodemode({
+              scope: OTHER_SCOPE,
+              code: "async () => await marketplace.search({ query: 'Durable package', visibility: 'organization' })",
+            });
+            expect(discovery.result).toMatchObject({ listings: [] });
+            await expect(
+              ctx.runCodemode({
+                scope: OTHER_SCOPE,
+                code: `async () => await marketplace.view({ listingId: '${LISTING_ID}', visibility: 'organization' })`,
+              }),
+            ).rejects.toThrow("was not found");
+            await expect(
+              ctx.runCodemode({
+                scope: OTHER_SCOPE,
+                code: `async () => await packages.install({ listingId: '${LISTING_ID}', installationRoot: '${INSTALLATION_ROOT}', visibility: 'organization' })`,
+              }),
+            ).rejects.toThrow("not published");
+            const forged = {
+              marketplace: ORG_MARKETPLACE,
+              targetScope: OTHER_SCOPE,
+              listingId: LISTING_ID,
+              installationRoot: INSTALLATION_ROOT,
+              version: "1.0.0",
+            };
+            const otherAutomations = ctx.runtime.objects.automations.for(OTHER_SCOPE);
+            await expect(
+              otherAutomations.commands.restartMarketplaceIngestion(forged, {
+                execution: createBackofficeSystemExecution(OTHER_SCOPE),
+                propagationContext: null,
+              }),
+            ).rejects.toThrow("source belongs to another organization");
+            await createRouteBackedAutomationWorkflowRuntime({
+              object: otherAutomations,
+              execution: createBackofficeSystemExecution(OTHER_SCOPE),
+            }).createInternalInstance({
+              workflowName: MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
+              instanceId: "forged-organization-install",
+              params: forged,
+            });
+          }),
+          runner.drain(),
+          then.assert(
+            "only the member organization's workspace receives the package",
+            async (ctx) => {
+              const state = sourceState(ctx, ORG_SCOPE);
+              await expect(state.readFile(`${INSTALLATION_ROOT}/README.md`)).resolves.toBe(
+                "Members only",
+              );
+              expect(await state.readJson("/workspace/marketplace-lock.json")).toEqual({
+                entries: [
+                  {
+                    marketplace: ORG_MARKETPLACE,
+                    listingId: LISTING_ID,
+                    version: "1.0.0",
+                    installationRoot: INSTALLATION_ROOT,
+                  },
+                ],
+              });
+              const forged = await createRouteBackedAutomationWorkflowRuntime({
+                object: ctx.runtime.objects.automations.for(OTHER_SCOPE),
+                execution: createBackofficeSystemExecution(OTHER_SCOPE),
+              }).getInternalInstance({
+                workflowName: MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
+                instanceId: "forged-organization-install",
+              });
+              expect(forged.details).toMatchObject({
+                status: "errored",
+                error: {
+                  name: "NonRetryableError",
+                  message: "Marketplace ingestion source belongs to another organization.",
+                },
+              });
+              await expect(
+                sourceState(ctx, OTHER_SCOPE).readFile(`${INSTALLATION_ROOT}/README.md`),
+              ).rejects.toThrow();
+            },
+          ),
+        ],
+      }),
+    );
+  });
+
   test("System overrides replace complete version directories without changing installed copies", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario<{ pinned: MarketplaceArtifactManifest | null }>({
@@ -883,6 +1028,7 @@ describe("Marketplace package publication scenarios", () => {
               expect(await state.readJson("/workspace/marketplace-lock.json")).toEqual({
                 entries: [
                   {
+                    marketplace: { kind: "system" },
                     listingId: LISTING_ID,
                     version: "2.0.0",
                     installationRoot: "/workspace/existing",

@@ -89,7 +89,7 @@ async function installMarketplaceArtifact(
   return await ctx.runtime.objects.automations
     .forOrg("org-1")
     .commands.restartMarketplaceIngestion(
-      { ...input, targetScope: TARGET_SCOPE },
+      { marketplace: { kind: "system" }, ...input, targetScope: TARGET_SCOPE },
       { execution: createBackofficeSystemExecution(TARGET_SCOPE), propagationContext: null },
     );
 }
@@ -100,6 +100,7 @@ async function submitTestCommandInstaller(
   installationRoot: string,
 ) {
   const ingestionInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
+    marketplace: { kind: "system" },
     targetScope: TARGET_SCOPE,
     installationRoot,
     listingId: LISTING_ID,
@@ -169,6 +170,7 @@ describe("marketplace lock scenarios", () => {
   test("installs files and the installer into the requested nested directory", async () => {
     const installationRoot = "/workspace/packages/telegram";
     const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
+      marketplace: { kind: "system" },
       targetScope: TARGET_SCOPE,
       installationRoot,
       listingId: LISTING_ID,
@@ -208,7 +210,14 @@ describe("marketplace lock scenarios", () => {
               assert(file.ok);
               await expect(file.text()).resolves.toBe(publishedWorkflowSource("1.4.0"));
               expect(await readMarketplaceLock(ctx)).toEqual({
-                entries: [{ listingId: LISTING_ID, version: "1.4.0", installationRoot }],
+                entries: [
+                  {
+                    marketplace: { kind: "system" },
+                    listingId: LISTING_ID,
+                    version: "1.4.0",
+                    installationRoot,
+                  },
+                ],
               });
               assert((await readWorkspaceFile(ctx, `/workspace/${WORKFLOW_FILE}`)).status === 404);
               assert(
@@ -272,8 +281,18 @@ describe("marketplace lock scenarios", () => {
           then.assert("the root records both successful items exactly once", async (ctx) => {
             expect(await readMarketplaceLock(ctx)).toEqual({
               entries: [
-                { listingId: TELEGRAM_CHANNEL_ID, version: "1.1.0", installationRoot },
-                { listingId: GITHUB_CHANNEL_ID, version: "1.0.0", installationRoot },
+                {
+                  marketplace: { kind: "system" },
+                  listingId: TELEGRAM_CHANNEL_ID,
+                  version: "1.1.0",
+                  installationRoot,
+                },
+                {
+                  marketplace: { kind: "system" },
+                  listingId: GITHUB_CHANNEL_ID,
+                  version: "1.0.0",
+                  installationRoot,
+                },
               ],
             });
             for (const routeId of [
@@ -296,6 +315,7 @@ describe("marketplace lock scenarios", () => {
   test("does not upgrade an existing installation, but allows another version at a different root", async () => {
     const installationRoot = "/workspace/first";
     const newerWorkflowId = await buildMarketplacePackageInstallWorkflowInstanceId({
+      marketplace: { kind: "system" },
       targetScope: TARGET_SCOPE,
       installationRoot,
       listingId: LISTING_ID,
@@ -332,7 +352,14 @@ describe("marketplace lock scenarios", () => {
           }),
           then.assert("the first installation is untouched", async (ctx) => {
             expect(await readMarketplaceLock(ctx)).toEqual({
-              entries: [{ listingId: LISTING_ID, version: "1.0.0", installationRoot }],
+              entries: [
+                {
+                  marketplace: { kind: "system" },
+                  listingId: LISTING_ID,
+                  version: "1.0.0",
+                  installationRoot,
+                },
+              ],
             });
             const file = await readWorkspaceFile(ctx, `${installationRoot}/${WORKFLOW_FILE}`);
             assert(file.ok);
@@ -354,8 +381,14 @@ describe("marketplace lock scenarios", () => {
             async (ctx) => {
               expect(await readMarketplaceLock(ctx)).toEqual({
                 entries: [
-                  { listingId: LISTING_ID, version: "1.0.0", installationRoot },
                   {
+                    marketplace: { kind: "system" },
+                    listingId: LISTING_ID,
+                    version: "1.0.0",
+                    installationRoot,
+                  },
+                  {
+                    marketplace: { kind: "system" },
                     listingId: LISTING_ID,
                     version: "1.4.0",
                     installationRoot: "/workspace/second",
@@ -396,6 +429,7 @@ describe("marketplace lock scenarios", () => {
     async (content) => {
       const installationRoot = "/workspace/locked";
       const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
+        marketplace: { kind: "system" },
         targetScope: TARGET_SCOPE,
         installationRoot,
         listingId: LISTING_ID,
@@ -452,6 +486,7 @@ describe("marketplace lock scenarios", () => {
     const matchingFile = "automations/telegram-user-linking.workflow.js";
     const missingFile = "automations/telegram-user-pi-linking.workflow.js";
     const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
+      marketplace: { kind: "system" },
       targetScope: TARGET_SCOPE,
       installationRoot,
       listingId: TELEGRAM_CHANNEL_ID,
@@ -536,6 +571,7 @@ describe("marketplace lock scenarios", () => {
     async (relativePath) => {
       const installationRoot = "/workspace";
       const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
+        marketplace: { kind: "system" },
         targetScope: TARGET_SCOPE,
         installationRoot,
         listingId: LISTING_ID,
@@ -593,6 +629,7 @@ describe("marketplace lock scenarios", () => {
   test("replays a successful lock write after losing its commit response", async () => {
     const installationRoot = "/workspace/replay";
     const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
+      marketplace: { kind: "system" },
       targetScope: TARGET_SCOPE,
       installationRoot,
       listingId: LISTING_ID,
@@ -643,7 +680,14 @@ describe("marketplace lock scenarios", () => {
           }),
           then.assert("the committed lock is already visible", async (ctx) => {
             expect(await readMarketplaceLock(ctx)).toEqual({
-              entries: [{ listingId: LISTING_ID, version: "1.0.0", installationRoot }],
+              entries: [
+                {
+                  marketplace: { kind: "system" },
+                  listingId: LISTING_ID,
+                  version: "1.0.0",
+                  installationRoot,
+                },
+              ],
             });
           }),
           runner.restartObject({ binding: "AUTOMATIONS", scope: TARGET_SCOPE }),
@@ -656,7 +700,14 @@ describe("marketplace lock scenarios", () => {
           then.assert("replay neither rewrites the lock nor duplicates the entry", async (ctx) => {
             expect(lockWriteAttempts).toBe(1);
             expect(await readMarketplaceLock(ctx)).toEqual({
-              entries: [{ listingId: LISTING_ID, version: "1.0.0", installationRoot }],
+              entries: [
+                {
+                  marketplace: { kind: "system" },
+                  listingId: LISTING_ID,
+                  version: "1.0.0",
+                  installationRoot,
+                },
+              ],
             });
           }),
         ],
@@ -667,6 +718,7 @@ describe("marketplace lock scenarios", () => {
   test("merges a concurrently written lock entry after a revision conflict", async () => {
     const installationRoot = "/workspace/concurrent";
     const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
+      marketplace: { kind: "system" },
       targetScope: TARGET_SCOPE,
       installationRoot,
       listingId: LISTING_ID,
@@ -737,8 +789,18 @@ describe("marketplace lock scenarios", () => {
           then.assert("the retried write preserves both entries", async (ctx) => {
             expect(await readMarketplaceLock(ctx)).toEqual({
               entries: [
-                { listingId: LISTING_ID, version: "1.0.0", installationRoot: "/workspace/other" },
-                { listingId: LISTING_ID, version: "1.0.0", installationRoot },
+                {
+                  marketplace: { kind: "system" },
+                  listingId: LISTING_ID,
+                  version: "1.0.0",
+                  installationRoot: "/workspace/other",
+                },
+                {
+                  marketplace: { kind: "system" },
+                  listingId: LISTING_ID,
+                  version: "1.0.0",
+                  installationRoot,
+                },
               ],
             });
             const file = await readWorkspaceFile(ctx, `${installationRoot}/${WORKFLOW_FILE}`);

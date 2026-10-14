@@ -12,6 +12,7 @@ import { z } from "zod";
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
+import { marketplaceScopeForVisibility } from "@/fragno/marketplace/owner";
 import { UPLOAD_PROVIDER_DATABASE } from "@/fragno/upload";
 
 /** Package listing is the current workspace's successful-installation lock, not a registry query. */
@@ -40,7 +41,7 @@ export function createPackagesRuntime({
   }
 
   return {
-    async install(input) {
+    async install({ visibility, ...input }) {
       let organizationId: string;
       if (targetScope.kind === "user") {
         const me = await objects.auth.singleton().commands.getBackofficeMe({
@@ -59,10 +60,12 @@ export function createPackagesRuntime({
         organizationId = targetScope.orgId;
       }
       const workflowScope = { kind: "org" as const, orgId: organizationId };
+      // Organization visibility installs from the coordinating organization's own Marketplace.
+      const marketplace = marketplaceScopeForVisibility(visibility, workflowScope);
       const result = await kernel
         .scoped("AUTOMATIONS", workflowScope, objects.automations)
         .commands.restartMarketplaceIngestion(
-          { ...input, targetScope },
+          { ...input, marketplace, targetScope },
           { execution: { ...execution, scope: workflowScope }, propagationContext: null },
         );
       return { ...result, installationRoot: input.installationRoot, workflowScope };

@@ -146,6 +146,7 @@ async function submitTelegramTestCommandInstaller(
 ) {
   const coordinator = { kind: "org" as const, orgId: targetScope.orgId };
   const ingestionInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
+    marketplace: { kind: "system" },
     installationRoot: "/workspace",
     targetScope,
     listingId: MARKETPLACE_LISTING_ID,
@@ -510,6 +511,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             await expect(
               automations.commands.requestMarketplaceIngestion(
                 {
+                  marketplace: { kind: "system" },
                   installationRoot: "/workspace",
                   listingId: telegramChannelListingId,
                   version: "1.1.0",
@@ -521,6 +523,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             await expect(
               automations.commands.requestMarketplaceIngestion(
                 {
+                  marketplace: { kind: "system" },
                   installationRoot: "/workspace",
                   listingId: githubChannelListingId,
                   version: "1.0.0",
@@ -682,6 +685,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               await expect(
                 automations.commands.requestMarketplaceIngestion(
                   {
+                    marketplace: { kind: "system" },
                     installationRoot: "/workspace",
                     listingId: telegramChannelListingId,
                     version: "1.1.0",
@@ -776,6 +780,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             await expect(
               automations.commands.requestMarketplaceIngestion(
                 {
+                  marketplace: { kind: "system" },
                   installationRoot: "/workspace",
                   listingId,
                   version: "1.4.0",
@@ -790,6 +795,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             await expect(
               automations.commands.requestMarketplaceIngestion(
                 {
+                  marketplace: { kind: "system" },
                   installationRoot: "/workspace",
                   listingId,
                   version: "1.4.0",
@@ -885,6 +891,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
 
   test("configures the Telegram test message through generated installer UI", async () => {
     const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
+      marketplace: { kind: "system" },
       installationRoot: "/workspace",
       targetScope: { kind: "org", orgId: "org-1" },
       listingId: MARKETPLACE_LISTING_ID,
@@ -909,6 +916,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             await expect(
               ctx.runtime.objects.automations.forOrg("org-1").commands.requestMarketplaceIngestion(
                 {
+                  marketplace: { kind: "system" },
                   installationRoot: "/workspace",
                   listingId: MARKETPLACE_LISTING_ID,
                   version: "1.4.0",
@@ -1010,6 +1018,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
 
   test("denies installer operations outside the untrusted codemode permission ceiling", async () => {
     const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
+      marketplace: { kind: "system" },
       installationRoot: "/workspace",
       targetScope: { kind: "org", orgId: "org-1" },
       listingId: MARKETPLACE_LISTING_ID,
@@ -1036,6 +1045,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                   .forOrg("org-1")
                   .commands.requestMarketplaceIngestion(
                     {
+                      marketplace: { kind: "system" },
                       installationRoot: "/workspace",
                       listingId: MARKETPLACE_LISTING_ID,
                       version: "1.2.1",
@@ -1091,6 +1101,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
 
   test("reconciles a Marketplace-owned route while preserving its operational state", async () => {
     const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
+      marketplace: { kind: "system" },
       installationRoot: "/workspace",
       targetScope: { kind: "org", orgId: "org-1" },
       listingId: MARKETPLACE_LISTING_ID,
@@ -1157,6 +1168,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             const automations = ctx.runtime.objects.automations.forOrg("org-1");
             const firstRequest = await automations.commands.requestMarketplaceIngestion(
               {
+                marketplace: { kind: "system" },
                 installationRoot: "/workspace",
                 listingId: MARKETPLACE_LISTING_ID,
                 version: "1.4.0",
@@ -1166,6 +1178,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             );
             const replayedRequest = await automations.commands.requestMarketplaceIngestion(
               {
+                marketplace: { kind: "system" },
                 installationRoot: "/workspace",
                 listingId: MARKETPLACE_LISTING_ID,
                 version: "1.4.0",
@@ -1341,6 +1354,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
 
   test("rejects the unmanaged legacy Telegram route", async () => {
     const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
+      marketplace: { kind: "system" },
       installationRoot: "/workspace",
       targetScope: { kind: "org", orgId: "org-1" },
       listingId: MARKETPLACE_LISTING_ID,
@@ -1384,6 +1398,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               .forOrg("org-1")
               .commands.requestMarketplaceIngestion(
                 {
+                  marketplace: { kind: "system" },
                   installationRoot: "/workspace",
                   listingId: MARKETPLACE_LISTING_ID,
                   version: "1.2.1",
@@ -1438,6 +1453,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
 
   test("rejects an unrelated route collision without advancing ingestion", async () => {
     const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
+      marketplace: { kind: "system" },
       installationRoot: "/workspace",
       targetScope: { kind: "org", orgId: "org-1" },
       listingId: MARKETPLACE_LISTING_ID,
@@ -1481,6 +1497,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               .forOrg("org-1")
               .commands.requestMarketplaceIngestion(
                 {
+                  marketplace: { kind: "system" },
                   installationRoot: "/workspace",
                   listingId: MARKETPLACE_LISTING_ID,
                   version: "1.2.1",
@@ -1528,6 +1545,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
 
   test("retries a lost ingestion transfer response without creating another upload session", async () => {
     const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
+      marketplace: { kind: "system" },
       installationRoot: "/workspace",
       targetScope: { kind: "org", orgId: "org-1" },
       listingId: MARKETPLACE_LISTING_ID,
@@ -1583,6 +1601,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               .forOrg("org-1")
               .commands.requestMarketplaceIngestion(
                 {
+                  marketplace: { kind: "system" },
                   installationRoot: "/workspace",
                   listingId: MARKETPLACE_LISTING_ID,
                   targetScope: { kind: "org", orgId: "org-1" },
@@ -1634,6 +1653,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
   test("rebuilds a multi-write ingestion batch after a runner restart", async () => {
     await withTwoFileMarketplaceVersions(async () => {
       const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
+        marketplace: { kind: "system" },
         installationRoot: "/workspace",
         targetScope: { kind: "org", orgId: "org-1" },
         listingId: MARKETPLACE_LISTING_ID,
@@ -1708,6 +1728,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                 .forOrg("org-1")
                 .commands.requestMarketplaceIngestion(
                   {
+                    marketplace: { kind: "system" },
                     installationRoot: "/workspace",
                     listingId: MARKETPLACE_LISTING_ID,
                     targetScope: { kind: "org", orgId: "org-1" },
@@ -1786,6 +1807,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
 
   test("does not retry permanent typed Upload errors during ingestion", async () => {
     const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
+      marketplace: { kind: "system" },
       installationRoot: "/workspace",
       targetScope: { kind: "org", orgId: "org-1" },
       listingId: MARKETPLACE_LISTING_ID,
@@ -1833,6 +1855,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               .forOrg("org-1")
               .commands.requestMarketplaceIngestion(
                 {
+                  marketplace: { kind: "system" },
                   installationRoot: "/workspace",
                   listingId: MARKETPLACE_LISTING_ID,
                   targetScope: { kind: "org", orgId: "org-1" },
@@ -1860,6 +1883,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
 
   test("preserves an existing target file and rejects Marketplace ingestion", async () => {
     const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
+      marketplace: { kind: "system" },
       installationRoot: "/workspace",
       targetScope: { kind: "org", orgId: "org-1" },
       listingId: MARKETPLACE_LISTING_ID,
@@ -1890,6 +1914,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             await expect(
               ctx.runtime.objects.automations.forOrg("org-1").commands.requestMarketplaceIngestion(
                 {
+                  marketplace: { kind: "system" },
                   installationRoot: "/workspace",
                   listingId: MARKETPLACE_LISTING_ID,
                   version: "1.2.1",
@@ -1961,6 +1986,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
 
   test("rejects a latest-version ingestion when the legacy starter file matches version 1.0.0", async () => {
     const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
+      marketplace: { kind: "system" },
       installationRoot: "/workspace",
       targetScope: { kind: "org", orgId: "org-1" },
       listingId: MARKETPLACE_LISTING_ID,
@@ -2000,6 +2026,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               await expect(
                 automations.commands.requestMarketplaceIngestion(
                   {
+                    marketplace: { kind: "system" },
                     installationRoot: "/workspace",
                     listingId: MARKETPLACE_LISTING_ID,
                     version: "1.2.1",
@@ -2584,6 +2611,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
 
   test("replays ingestion after the prepared batch commits but its response is lost", async () => {
     const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
+      marketplace: { kind: "system" },
       installationRoot: "/workspace",
       targetScope: { kind: "org", orgId: "org-1" },
       listingId: MARKETPLACE_LISTING_ID,
@@ -2632,6 +2660,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             await expect(
               ctx.runtime.objects.automations.forOrg("org-1").commands.requestMarketplaceIngestion(
                 {
+                  marketplace: { kind: "system" },
                   installationRoot: "/workspace",
                   listingId: MARKETPLACE_LISTING_ID,
                   version: "1.0.0",
@@ -2689,6 +2718,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
 
   test("rejects source bytes changed between upload creation and transfer", async () => {
     const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
+      marketplace: { kind: "system" },
       installationRoot: "/workspace",
       targetScope: { kind: "org", orgId: "org-1" },
       listingId: MARKETPLACE_LISTING_ID,
@@ -2751,6 +2781,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               .forOrg("org-1")
               .commands.requestMarketplaceIngestion(
                 {
+                  marketplace: { kind: "system" },
                   installationRoot: "/workspace",
                   listingId: MARKETPLACE_LISTING_ID,
                   targetScope: { kind: "org", orgId: "org-1" },
@@ -2791,6 +2822,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
 
   test("rejects source bytes changed after listing without poisoning the destination", async () => {
     const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
+      marketplace: { kind: "system" },
       installationRoot: "/workspace",
       targetScope: { kind: "org", orgId: "org-1" },
       listingId: MARKETPLACE_LISTING_ID,
@@ -2845,6 +2877,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               .forOrg("org-1")
               .commands.requestMarketplaceIngestion(
                 {
+                  marketplace: { kind: "system" },
                   installationRoot: "/workspace",
                   listingId: MARKETPLACE_LISTING_ID,
                   version: "1.0.0",

@@ -4,9 +4,10 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 
-const { findBackofficeMeMock, listPublishedListingsMock } = vi.hoisted(() => ({
+const { findBackofficeMeMock, listPublishedListingsMock, marketplaceForMock } = vi.hoisted(() => ({
   findBackofficeMeMock: vi.fn(),
   listPublishedListingsMock: vi.fn(),
+  marketplaceForMock: vi.fn(),
 }));
 
 vi.mock("@/fragno/auth/auth-server", () => ({ findBackofficeMe: findBackofficeMeMock }));
@@ -24,7 +25,7 @@ const marketplace = { listPublishedListings: listPublishedListingsMock };
 const context = {
   get: () => ({
     runtime: {
-      objects: { marketplace: { singleton: () => ({ commands: marketplace }) } },
+      objects: { marketplace: { for: marketplaceForMock } },
     },
   }),
 };
@@ -48,6 +49,8 @@ const listings = [
 beforeEach(() => {
   findBackofficeMeMock.mockReset();
   listPublishedListingsMock.mockReset();
+  marketplaceForMock.mockReset();
+  marketplaceForMock.mockReturnValue({ commands: marketplace });
   findBackofficeMeMock.mockResolvedValue(authenticatedUser);
   listPublishedListingsMock.mockResolvedValue({
     listings,
@@ -61,11 +64,47 @@ describe("Marketplace featured browse", () => {
       "https://example.test/backoffice/marketplace/org/ada-labs/marketplace?category=communication",
     );
 
-    const result = await loader({ request: new Request(url), context, url } as never);
+    const result = await loader({
+      request: new Request(url),
+      params: { scopeKind: "org", scopeId: "ada-labs", catalog: "marketplace" },
+      context,
+      url,
+    } as never);
 
     assert(!(result instanceof Response));
     expect(listPublishedListingsMock).toHaveBeenCalledWith({});
     assert(!("category" in result));
+  });
+
+  test("the organization catalog reads the route organization's Marketplace", async () => {
+    const runCatalog = (scopeKind: string, scopeId: string) => {
+      const url = new URL(
+        `https://example.test/backoffice/marketplace/${scopeKind}/${scopeId}/organization`,
+      );
+      return loader({
+        request: new Request(url),
+        params: { scopeKind, scopeId, catalog: "organization" },
+        context,
+        url,
+      } as never);
+    };
+
+    const result = await runCatalog("org", "ada-labs");
+    assert(!(result instanceof Response));
+    assert(result.catalog === "organization");
+    expect(marketplaceForMock).toHaveBeenCalledWith({ kind: "org", orgId: "org-1" });
+
+    // Personal workspaces have no organization Marketplace, and non-members cannot resolve one.
+    for (const [scopeKind, scopeId] of [
+      ["user", "user-1"],
+      ["org", "other-labs"],
+    ]) {
+      marketplaceForMock.mockClear();
+      const rejected = await runCatalog(scopeKind, scopeId).catch((error: unknown) => error);
+      assert(rejected instanceof Response);
+      assert(rejected.status === 404);
+      expect(marketplaceForMock).not.toHaveBeenCalled();
+    }
   });
 
   test("presents published packages as featured items without filter controls", () => {
@@ -87,6 +126,7 @@ describe("Marketplace featured browse", () => {
               element: createElement(BackofficeMarketplaceBrowse, {
                 loaderData: {
                   basePath: "/backoffice/marketplace/org/ada-labs/marketplace",
+                  catalog: "marketplace",
                   listings,
                   hasNextPage: false,
                 },

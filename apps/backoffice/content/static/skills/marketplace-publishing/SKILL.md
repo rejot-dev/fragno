@@ -92,18 +92,19 @@ The shell equivalents are
 the same command with `--dry-run`.
 
 A `requested` result is acceptance, not completion. Retain its workflow instance ID and System
-workflow scope. For public releases, use `marketplace.view` to confirm the release is available;
-System operators can inspect the coordinating workflow for execution failures. A `published` result
-means the identical snapshot was already published. Repeating an identical pending request reuses
-the current publishing workflow. Editing source files after acceptance does not alter the pending
+workflow scope. Use `marketplace.view` with the same `visibility` to confirm the release is
+available; organization visibility reads the current workspace's organization Marketplace. System
+operators can inspect the coordinating workflow for execution failures. A `published` result means
+the identical snapshot was already published. Repeating an identical pending request reuses the
+current publishing workflow. Editing source files after acceptance does not alter the pending
 release.
 
 **Report completion** when the tool returns `published`, or `marketplace.view` confirms a newly
-requested public version is available. `marketplace.view` reads the public Marketplace only, so
-report an accepted organization release with its workflow reference. For a System replacement,
-confirm the coordinating workflow completed: the preexisting version in `marketplace.view` is not
-proof that its snapshot was replaced. Otherwise report acceptance and the workflow reference rather
-than completed publication.
+requested version is available. When the current workspace belongs to another organization than the
+package owner, report an accepted organization release with its workflow reference. For a System
+replacement, confirm the coordinating workflow completed: the preexisting version in
+`marketplace.view` is not proof that its snapshot was replaced. Otherwise report acceptance and the
+workflow reference rather than completed publication.
 
 ## Shared publishing lifecycle
 

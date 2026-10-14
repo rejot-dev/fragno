@@ -7,8 +7,10 @@ import {
   type MarketplacePublishResult,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 import {
+  marketplaceViewInputSchema,
   type MarketplaceListingDetail,
-  type MarketplacePublishedListingInput,
+  type MarketplaceScope,
+  type MarketplaceVisibility,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import { z } from "zod";
@@ -27,32 +29,48 @@ export type MarketplaceRuntime = {
   search(
     input: z.output<typeof marketplaceSearchInputSchema>,
   ): Promise<z.output<typeof marketplaceSearchResultSchema>>;
-  view(input: MarketplacePublishedListingInput): Promise<MarketplaceListingDetail>;
+  view(input: z.output<typeof marketplaceViewInputSchema>): Promise<MarketplaceListingDetail>;
   publish(input: z.output<typeof marketplacePublishInputSchema>): Promise<MarketplacePublishResult>;
 };
 
-/** Discovery reads the public Marketplace; publishing targets the Marketplace its visibility names. */
-export function createMarketplaceRuntime(
-  objects: BackofficeObjectRegistry,
+/** Discovery reads the public or current organization's Marketplace; publishing targets the package owner's. */
+export function createMarketplaceRuntime({
+  objects,
+  execution,
+  publication,
+}: {
+  objects: BackofficeObjectRegistry;
+  execution: BackofficeExecutionContext;
   publication: {
     state: BackofficeStateBackend;
-    execution: BackofficeExecutionContext;
     kernel: BackofficeKernel;
-  } | null,
-): MarketplaceRuntime {
+  } | null;
+}): MarketplaceRuntime {
+  // The organization comes from the execution scope, so callers cannot read another organization's Marketplace.
+  function readableMarketplace(visibility: MarketplaceVisibility) {
+    if (visibility === "public") {
+      return objects.marketplace.singleton().commands;
+    }
+    if (execution.scope.kind !== "org" && execution.scope.kind !== "project") {
+      throw new BackofficeOperationError(
+        "forbidden",
+        "Organization Marketplace reads require an organization or project workspace.",
+      );
+    }
+    const marketplace: MarketplaceScope = { kind: "org", orgId: execution.scope.orgId };
+    return objects.marketplace.for(marketplace).commands;
+  }
+
   return {
     async publish(input) {
       if (!publication) {
         throw new Error("Marketplace publishing is not available in this execution context.");
       }
-      if (
-        (input.skipAuthorCheck || input.skipVersionCheck) &&
-        publication.execution.scope.kind !== "system"
-      ) {
+      if ((input.skipAuthorCheck || input.skipVersionCheck) && execution.scope.kind !== "system") {
         throw new Error("Marketplace publishing overrides require System context.");
       }
       await publication.kernel.assertAuthorizedAll({
-        execution: publication.execution,
+        execution,
         requirements: [
           { operation: BACKOFFICE_PERMISSION.marketplace.publish },
           { operation: BACKOFFICE_PERMISSION.upload.read },
@@ -72,11 +90,11 @@ export function createMarketplaceRuntime(
           skipAuthorCheck: input.skipAuthorCheck,
           skipVersionCheck: input.skipVersionCheck,
         },
-        { execution: publication.execution, propagationContext: null },
+        { execution, propagationContext: null },
       );
     },
-    async search({ query, ...input }) {
-      const page = await objects.marketplace.singleton().commands.listPublishedListings(input);
+    async search({ query, visibility, ...input }) {
+      const page = await readableMarketplace(visibility).listPublishedListings(input);
       const terms = query.toLowerCase().split(/\s+/u);
       const listings = page.listings.filter((listing) => {
         const text = [
@@ -106,8 +124,8 @@ export function createMarketplaceRuntime(
         hasNextPage: page.hasNextPage,
       };
     },
-    async view(input) {
-      const detail = await objects.marketplace.singleton().commands.getPublishedListing(input);
+    async view({ visibility, ...input }) {
+      const detail = await readableMarketplace(visibility).getPublishedListing(input);
       if (!detail) {
         throw new BackofficeOperationError(
           "not_found",

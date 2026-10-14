@@ -6,7 +6,7 @@ import { z } from "zod";
 
 import type { BackofficeRoutableScopeSelection } from "@/backoffice-runtime/resolved-scope";
 
-import { marketplaceScopeTabPath } from "./scope";
+import { marketplaceScopeTabPath, type MarketplaceCatalog } from "./scope";
 
 const decodeMarketplaceListingRef = (listingRef: string): string => {
   if (!/^[0-9A-Za-z_-]+$/u.test(listingRef) || listingRef.length % 4 === 1) {
@@ -48,7 +48,8 @@ export const marketplaceListingRef = (listingId: string): string => {
 export const marketplaceListingPath = (
   listingId: string,
   scope: BackofficeRoutableScopeSelection,
-): string => `${marketplaceScopeTabPath(scope, "marketplace")}/${marketplaceListingRef(listingId)}`;
+  catalog: MarketplaceCatalog,
+): string => `${marketplaceScopeTabPath(scope, catalog)}/${marketplaceListingRef(listingId)}`;
 
 export function buildArtifactVersionPath(
   pathname: string,

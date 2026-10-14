@@ -73,6 +73,7 @@ import {
 } from "@/fragno/automation/external-identities";
 import {
   assertMarketplaceIngestionTargetAccessible,
+  assertMarketplaceIngestionSourceAccessible,
   assertMarketplaceIngestionTargetBelongsToOrganization,
   resolveMarketplaceIngestionArtifactVersion,
 } from "@/fragno/automation/marketplace-ingestions";
@@ -637,6 +638,10 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
       organizationId: scope.orgId,
       targetScope: input.targetScope,
     });
+    assertMarketplaceIngestionSourceAccessible({
+      organizationId: scope.orgId,
+      marketplace: input.marketplace,
+    });
 
     await this.#ensureConfigured({ scope });
     const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
@@ -658,12 +663,13 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
 
     const resolvedArtifact = resolveMarketplaceIngestionArtifactVersion(
       await this.#runtimeServices.objects.marketplace
-        .singleton()
+        .for(input.marketplace)
         .commands.getArtifactManifest({ listingId: input.listingId }),
       input.version,
     );
     const version = resolvedArtifact.version;
     const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
+      marketplace: input.marketplace,
       targetScope: input.targetScope,
       installationRoot: input.installationRoot,
       listingId: input.listingId,

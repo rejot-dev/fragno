@@ -58,7 +58,11 @@ import {
   marketplacePackageTabFromSearch,
   MarketplacePackageTabs,
 } from "./package-tabs";
-import { marketplaceRuntimeScopeFromRouteParams } from "./scope";
+import {
+  marketplaceCatalogVisibility,
+  marketplaceFromRouteParams,
+  type MarketplaceCatalog,
+} from "./scope";
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
   month: "short",
@@ -182,7 +186,11 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     );
   }
 
-  const selectedScope = marketplaceRuntimeScopeFromRouteParams(
+  const {
+    scope: selectedScope,
+    catalog,
+    marketplace: marketplaceScope,
+  } = marketplaceFromRouteParams(
     params,
     me.organizations.map(({ organization }) => organization),
   );
@@ -222,7 +230,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
   }
 
   const runtime = context.get(BackofficeWorkerContext).runtime;
-  const marketplace = runtime.objects.marketplace.singleton().commands;
+  const marketplace = runtime.objects.marketplace.for(marketplaceScope).commands;
   const [detail, artifactManifest] = await Promise.all([
     marketplace.getPublishedListing({
       listingId: listingIdResult.data,
@@ -264,12 +272,14 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
 
   return {
     ...detail,
+    catalog,
     manageOrganizationSlug: manageableOrganization?.organization.slug ?? null,
     installationCollectionSource,
     installationReference: persistedInstallation
       ? {
           ...persistedInstallation,
           workflowInstanceId: await buildMarketplacePackageInstallWorkflowInstanceId({
+            marketplace: marketplaceScope,
             targetScope: selectedScope,
             listingId: listingIdResult.data,
             installationRoot: persistedInstallation.installationRoot,
@@ -292,7 +302,7 @@ export async function action({ request, params, context, url }: Route.ActionArgs
     throw new Response("Not Found", { status: 404 });
   }
 
-  const targetScope = marketplaceRuntimeScopeFromRouteParams(
+  const { scope: targetScope, marketplace: marketplaceScope } = marketplaceFromRouteParams(
     params,
     me.organizations.map(({ organization }) => organization),
   );
@@ -330,6 +340,7 @@ export async function action({ request, params, context, url }: Route.ActionArgs
     }
     const result = await automations.restartMarketplaceIngestion(
       {
+        marketplace: marketplaceScope,
         listingId: listingIdResult.data,
         targetScope: installationTarget.targetScope,
         installationRoot: installationRootResult.data,
@@ -344,6 +355,7 @@ export async function action({ request, params, context, url }: Route.ActionArgs
         listing_id: listingIdResult.data,
         version: result.version,
         scope_kind: installationTarget.targetScope.kind,
+        marketplace_kind: marketplaceScope.kind,
         organization_id: installationTarget.organizationId,
       },
     });
@@ -378,6 +390,7 @@ function MarketplaceListingDetail({ loaderData }: Route.ComponentProps) {
   const {
     listing,
     versions,
+    catalog,
     manageOrganizationSlug,
     nextVersionCursor,
     hasNextVersionPage,
@@ -488,6 +501,7 @@ function MarketplaceListingDetail({ loaderData }: Route.ComponentProps) {
             selectedVersion={selectedArtifactVersion}
             latestVersion={listing.latestVersion}
             selectedScope={selectedScope}
+            catalog={catalog}
             listingId={listing.listingId}
             pathname={location.pathname}
             search={location.search}
@@ -499,7 +513,7 @@ function MarketplaceListingDetail({ loaderData }: Route.ComponentProps) {
               to={marketplaceListingManagePath({
                 listingId: listing.listingId,
                 organizationSlug: manageOrganizationSlug,
-                visibility: "public",
+                visibility: marketplaceCatalogVisibility(catalog),
               })}
               className="font-medium underline-offset-4 hover:text-[var(--bo-fg)] hover:underline"
             >
@@ -658,6 +672,7 @@ function VersionHistoryDropdown({
   selectedVersion,
   latestVersion,
   selectedScope,
+  catalog,
   listingId,
   pathname,
   search,
@@ -668,6 +683,7 @@ function VersionHistoryDropdown({
   selectedVersion: string;
   latestVersion: string;
   selectedScope: MarketplaceLayoutContext["selectedScope"];
+  catalog: MarketplaceCatalog;
   listingId: string;
   pathname: string;
   search: string;
@@ -721,7 +737,7 @@ function VersionHistoryDropdown({
         </div>
         {hasNextVersionPage && nextVersionCursor ? (
           <Link
-            to={`${marketplaceListingPath(listingId, selectedScope)}?versionCursor=${encodeURIComponent(nextVersionCursor)}`}
+            to={`${marketplaceListingPath(listingId, selectedScope, catalog)}?versionCursor=${encodeURIComponent(nextVersionCursor)}`}
             className="mt-2 flex min-h-10 items-center justify-center border-t border-[color:var(--bo-border)] px-3 pt-2 text-center text-[9px] font-semibold tracking-[0.16em] text-[var(--bo-muted)] uppercase transition-colors duration-150 ease-out hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none"
           >
             Browse older versions →

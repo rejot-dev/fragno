@@ -3606,6 +3606,11 @@
         "description": "Filter by Marketplace category."
       },
       {
+        "name": "visibility",
+        "valueRequired": true,
+        "description": "public (default) reads the public Marketplace; organization reads the current organization's Marketplace."
+      },
+      {
         "name": "page-size",
         "valueRequired": true,
         "description": "Number of registry candidates to examine (maximum 60)."
@@ -3645,6 +3650,11 @@
         "required": true,
         "valueRequired": true,
         "description": "Owner-qualified Marketplace listing ID."
+      },
+      {
+        "name": "visibility",
+        "valueRequired": true,
+        "description": "public (default) reads the public Marketplace; organization reads the current organization's Marketplace."
       },
       {
         "name": "version-page-size",
@@ -3746,6 +3756,11 @@
         "required": true,
         "valueRequired": true,
         "description": "Destination folder under /workspace. Differing files are not overwritten."
+      },
+      {
+        "name": "visibility",
+        "valueRequired": true,
+        "description": "public (default) installs from the public Marketplace; organization installs from the installing organization's Marketplace."
       },
       {
         "name": "help",

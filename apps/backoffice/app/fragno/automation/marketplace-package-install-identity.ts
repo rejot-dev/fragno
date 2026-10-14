@@ -1,6 +1,7 @@
 import {
   marketplaceListingIdSchema,
   marketplaceVersionSchema,
+  type MarketplaceScope,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 import {
   type BackofficeRoutableScope,
@@ -19,8 +20,9 @@ export function marketplaceInstallationWorkflowInstanceId(
   return `${packageInstallWorkflowInstanceId}:installation`;
 }
 
-/** Installation identity includes the destination folder, not only the listing and version. */
+/** Installation identity includes the source Marketplace and destination folder, not only the listing and version. */
 export async function buildMarketplacePackageInstallWorkflowInstanceId(input: {
+  marketplace: MarketplaceScope;
   targetScope: BackofficeRoutableScope;
   installationRoot: string;
   listingId: string;
@@ -28,7 +30,7 @@ export async function buildMarketplacePackageInstallWorkflowInstanceId(input: {
 }) {
   return `marketplace-package-install-${await sha256Hex(
     new TextEncoder().encode(
-      `${backofficeScopePathSegment(input.targetScope)}\0${input.installationRoot}\0${marketplaceListingIdSchema.parse(input.listingId)}\0${marketplaceVersionSchema.parse(input.version)}`,
+      `${backofficeScopePathSegment(input.marketplace)}\0${backofficeScopePathSegment(input.targetScope)}\0${input.installationRoot}\0${marketplaceListingIdSchema.parse(input.listingId)}\0${marketplaceVersionSchema.parse(input.version)}`,
     ),
   )}`;
 }

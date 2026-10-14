@@ -1,8 +1,8 @@
 // marketplace tools
 type MarketplaceCodemodeProvider = {
-  /** Search published package metadata. Follow nextCursor while hasNextPage is true, even when a candidate page has no matches. */
+  /** Search published package metadata in the public Marketplace, or in the current organization's Marketplace with organization visibility. Follow nextCursor while hasNextPage is true, even when a candidate page has no matches. */
   search(input: MarketplaceSearchInput): Promise<MarketplaceSearchOutput>;
-  /** Inspect published package metadata and cursor-paginated releases. */
+  /** Inspect published package metadata and cursor-paginated releases in the public Marketplace, or in the current organization's Marketplace with organization visibility. */
   view(input: MarketplaceViewInput): Promise<MarketplaceViewOutput>;
   /** Publish a captured package from a root manifest.json containing name @<organization-slug>/<package-slug>. Public visibility publishes to the public Marketplace; organization visibility publishes to the owning organization's members-only Marketplace. Versions are immutable by default; System may explicitly replace them. Dry runs write nothing. Author and version overrides require System context. */
   publish(input: MarketplacePublishInput): Promise<MarketplacePublishOutput>;
@@ -14,6 +14,7 @@ type MarketplaceSearchInput = {
   pageSize?: number;
   cursor?: string;
   query: string;
+  visibility?: "public" | "organization";
 };
 type MarketplaceSearchOutput = {
   listings: {
@@ -32,6 +33,7 @@ type MarketplaceViewInput = {
   listingId: string;
   versionPageSize?: number;
   versionCursor?: string;
+  visibility?: "public" | "organization";
 };
 type MarketplaceViewOutput = {
   listing: {

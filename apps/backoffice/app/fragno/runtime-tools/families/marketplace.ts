@@ -1,6 +1,6 @@
 import { marketplaceSearchInputSchema } from "@fragno-dev/backoffice-api/v0/marketplace";
 import { marketplacePublishInputSchema } from "@fragno-dev/backoffice-api/v0/marketplace";
-import { marketplacePublishedListingInputSchema } from "@fragno-dev/backoffice-api/v0/marketplace";
+import { marketplaceViewInputSchema } from "@fragno-dev/backoffice-api/v0/marketplace";
 import type { z } from "zod";
 
 import { defineCliArgsParser } from "@/fragno/runtime-tools/bash-cli";
@@ -45,6 +45,12 @@ const marketplaceSearchTool = defineBackofficeRuntimeTool({
           },
           { name: "category", valueRequired: true, description: "Filter by Marketplace category." },
           {
+            name: "visibility",
+            valueRequired: true,
+            description:
+              "public (default) reads the public Marketplace; organization reads the current organization's Marketplace.",
+          },
+          {
             name: "page-size",
             valueRequired: true,
             description: "Number of registry candidates to examine (maximum 60).",
@@ -62,6 +68,7 @@ const marketplaceSearchTool = defineBackofficeRuntimeTool({
         {
           query: { required: true },
           category: {},
+          visibility: {},
           pageSize: { kind: "positiveInteger" },
           cursor: {},
         },
@@ -101,6 +108,12 @@ const marketplaceViewTool = defineBackofficeRuntimeTool({
             description: "Owner-qualified Marketplace listing ID.",
           },
           {
+            name: "visibility",
+            valueRequired: true,
+            description:
+              "public (default) reads the public Marketplace; organization reads the current organization's Marketplace.",
+          },
+          {
             name: "version-page-size",
             valueRequired: true,
             description: "Release page size (maximum 60).",
@@ -113,14 +126,12 @@ const marketplaceViewTool = defineBackofficeRuntimeTool({
         ],
         examples: ["marketplace.view --listing-id 'system#telegram-test-command' --format json"],
       },
-      parse: defineCliArgsParser<z.input<typeof marketplacePublishedListingInputSchema>>(
-        "marketplace.view",
-        {
-          listingId: { required: true },
-          versionPageSize: { kind: "positiveInteger" },
-          versionCursor: {},
-        },
-      ),
+      parse: defineCliArgsParser<z.input<typeof marketplaceViewInputSchema>>("marketplace.view", {
+        listingId: { required: true },
+        visibility: {},
+        versionPageSize: { kind: "positiveInteger" },
+        versionCursor: {},
+      }),
       format: (result, options) =>
         options.format === "json" || options.print
           ? { data: result }

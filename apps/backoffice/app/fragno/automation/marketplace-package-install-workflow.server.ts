@@ -6,11 +6,13 @@ import {
 import {
   marketplaceListingIdSchema,
   marketplaceVersionSchema,
+  type MarketplaceScope,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
-import type {
-  BackofficeContextScope,
-  BackofficeRoutableScope,
+import {
+  backofficeContextScopesEqual,
+  type BackofficeContextScope,
+  type BackofficeRoutableScope,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { createRouteCaller } from "@fragno-dev/core/api";
 import type { PreparedFileWrite, UploadFileWritePrecondition } from "@fragno-dev/upload/types";
@@ -55,6 +57,7 @@ import {
 } from "./marketplace-ingestion-files";
 import {
   assertMarketplaceIngestionTargetAccessible,
+  assertMarketplaceIngestionSourceAccessible,
   assertMarketplaceIngestionTargetBelongsToOrganization,
   MarketplaceIngestionArtifactUnavailableError,
   MarketplaceIngestionTargetAccessError,
@@ -196,6 +199,7 @@ type MarketplaceInstallationWorkflowInput = {
 async function readMarketplaceLockFile(input: {
   routes: UploadRouteCaller;
   http: UploadHttpTransport;
+  marketplace: MarketplaceScope;
   listingId: string;
   version: string;
   installationRoot: string;
@@ -215,6 +219,11 @@ async function readMarketplaceLockFile(input: {
     (entry) =>
       entry.listingId === input.listingId && entry.installationRoot === input.installationRoot,
   );
+  if (existing && !backofficeContextScopesEqual(existing.marketplace, input.marketplace)) {
+    throw new NonRetryableError(
+      `Marketplace item '${input.listingId}' from another Marketplace is already installed at '${input.installationRoot}'. Choose another install path.`,
+    );
+  }
   if (existing && existing.version !== input.version) {
     throw new NonRetryableError(
       `Marketplace item '${input.listingId}' is already installed at '${input.installationRoot}' at version '${existing.version}'. Choose another install path for version '${input.version}'.`,
@@ -247,6 +256,10 @@ export function defineMarketplacePackageInstallWorkflow(
         assertMarketplaceIngestionTargetBelongsToOrganization({
           organizationId,
           targetScope: input.targetScope,
+        });
+        assertMarketplaceIngestionSourceAccessible({
+          organizationId,
+          marketplace: input.marketplace,
         });
       } catch (error) {
         if (error instanceof MarketplaceIngestionTargetAccessError) {
@@ -314,7 +327,7 @@ export function defineMarketplacePackageInstallWorkflow(
         MARKETPLACE_EXTERNAL_STEP_RETRIES,
         async function resolvePublishedMarketplaceArtifact() {
           const manifest = await runtime.objects.marketplace
-            .singleton()
+            .for(input.marketplace)
             .commands.getArtifactManifest({
               listingId: input.listingId,
             });
@@ -438,6 +451,7 @@ export function defineMarketplacePackageInstallWorkflow(
       const lockReadInput = {
         routes: destinationUploadRoutes,
         http: destinationObject.http,
+        marketplace: input.marketplace,
         listingId: artifact.listingId,
         version: artifact.version,
         installationRoot: input.installationRoot,
@@ -792,7 +806,7 @@ export function defineMarketplacePackageInstallWorkflow(
         if (existing) {
           return;
         }
-        const content = `${JSON.stringify({ entries: [...lock.entries, { listingId: artifact.listingId, version: artifact.version, installationRoot: input.installationRoot }] }, null, 2)}\n`;
+        const content = `${JSON.stringify({ entries: [...lock.entries, { marketplace: input.marketplace, listingId: artifact.listingId, version: artifact.version, installationRoot: input.installationRoot }] }, null, 2)}\n`;
         const form = new FormData();
         form.set("provider", UPLOAD_PROVIDER_DATABASE);
         form.set("fileKey", MARKETPLACE_LOCK_PATH.slice("/workspace/".length));

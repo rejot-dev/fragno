@@ -234,7 +234,9 @@ export type MarketplaceIngestionRestartResult = z.infer<
   typeof marketplaceIngestionRestartResultSchema
 >;
 
+/** Installation names the Marketplace holding the listing; listing ids repeat across Marketplaces. */
 export const marketplaceIngestionRequestInputSchema = z.object({
+  marketplace: marketplaceScopeSchema,
   targetScope: marketplaceIngestionTargetScopeSchema,
   installationRoot: marketplaceInstallationRootSchema,
   listingId: marketplaceListingIdSchema,
@@ -251,9 +253,15 @@ export const packagesInstallResultSchema = marketplaceIngestionRestartResultSche
   workflowScope: z.object({ kind: z.literal("org"), orgId: z.string().min(1) }),
 });
 
-/** Package installation takes its destination scope from the runtime, not caller input. */
+/** Read and install tools address the public Marketplace unless organization visibility is requested. */
+const marketplaceReadVisibilityField = {
+  visibility: marketplaceVisibilitySchema.default("public"),
+};
+
+/** Package installation takes its destination scope and organization Marketplace from the runtime, not caller input. */
 export const packagesInstallInputSchema = marketplaceIngestionRequestInputSchema
-  .omit({ targetScope: true })
+  .omit({ marketplace: true, targetScope: true })
+  .extend(marketplaceReadVisibilityField)
   .strict();
 
 /** Registry search returns compact metadata and a cursor for the next candidate page. */
@@ -276,6 +284,7 @@ export const marketplaceSearchResultSchema = z.object({
 /** Search cursors advance through registry candidates, including pages without matches. */
 export const marketplaceSearchInputSchema = marketplaceListingPageInputSchema.extend({
   query: z.string().trim().min(1).max(240),
+  ...marketplaceReadVisibilityField,
 });
 
 export const marketplacePublishedListingInputSchema = z.object({
@@ -286,6 +295,10 @@ export const marketplacePublishedListingInputSchema = z.object({
 export type MarketplacePublishedListingInput = z.input<
   typeof marketplacePublishedListingInputSchema
 >;
+
+export const marketplaceViewInputSchema = marketplacePublishedListingInputSchema.extend(
+  marketplaceReadVisibilityField,
+);
 
 /** A dry run writes nothing; accepted packages return their durable System workflow identity. */
 export const marketplacePublishResultSchema = z.discriminatedUnion("state", [
@@ -331,6 +344,8 @@ export const marketplaceLockSchema = z
   .strictObject({
     entries: z.array(
       z.strictObject({
+        // Locks written before organization Marketplaces existed only installed public listings.
+        marketplace: marketplaceScopeSchema.default({ kind: "system" }),
         listingId: marketplaceListingIdSchema,
         version: marketplaceVersionSchema,
         installationRoot: marketplaceInstallationRootSchema,
@@ -357,15 +372,16 @@ export type MarketplaceListingDetail = z.infer<typeof marketplaceListingDetailSc
 export const marketplaceOperations = {
   "marketplace.search": {
     description:
-      "Search published package metadata. Follow nextCursor while hasNextPage is true, even when a candidate page has no matches.",
+      "Search published package metadata in the public Marketplace, or in the current organization's Marketplace with organization visibility. Follow nextCursor while hasNextPage is true, even when a candidate page has no matches.",
     permissions: [BACKOFFICE_PERMISSION.marketplace.read],
     input: marketplaceSearchInputSchema,
     output: marketplaceSearchResultSchema,
   },
   "marketplace.view": {
-    description: "Inspect published package metadata and cursor-paginated releases.",
+    description:
+      "Inspect published package metadata and cursor-paginated releases in the public Marketplace, or in the current organization's Marketplace with organization visibility.",
     permissions: [BACKOFFICE_PERMISSION.marketplace.read],
-    input: marketplacePublishedListingInputSchema,
+    input: marketplaceViewInputSchema,
     output: marketplaceListingDetailSchema,
   },
   "marketplace.publish": {
@@ -380,7 +396,7 @@ export const marketplaceOperations = {
 export const packagesOperations = {
   "packages.install": {
     description:
-      "Start the existing Marketplace installation workflow in the current workspace at a required folder under /workspace. Installation is asynchronous and never overwrites differing files. Omit version to use the existing latest-release resolution.",
+      "Start the existing Marketplace installation workflow in the current workspace at a required folder under /workspace. Installs from the public Marketplace, or from the installing organization's Marketplace with organization visibility. Installation is asynchronous and never overwrites differing files. Omit version to use the existing latest-release resolution.",
     permissions: [BACKOFFICE_PERMISSION.packages.install],
     input: packagesInstallInputSchema,
     output: packagesInstallResultSchema,

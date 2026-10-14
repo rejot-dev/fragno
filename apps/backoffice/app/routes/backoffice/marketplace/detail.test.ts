@@ -94,7 +94,7 @@ context.set(BackofficeWorkerContext, {
   runtime: {
     objects: {
       automations: { forOrg: forOrgMock },
-      marketplace: { singleton: () => ({ commands: marketplace }) },
+      marketplace: { for: () => ({ commands: marketplace }) },
     },
   },
 } as never);
@@ -130,6 +130,7 @@ const runLoader = (
     request: new Request(url),
     params: {
       listingRef,
+      catalog: "marketplace",
       scopeKind: routeScope.kind,
       scopeId: decodeURIComponent(routePath.split("/")[1]!),
     },
@@ -164,6 +165,7 @@ const runAction = (input: {
     }),
     params: {
       listingRef,
+      catalog: "marketplace",
       scopeKind: routeScope.kind,
       scopeId: decodeURIComponent(routePath.split("/")[1]!),
     },
@@ -298,6 +300,7 @@ describe("marketplace detail loader", () => {
     expect(result.installationReference).toEqual({
       ...installationReference,
       workflowInstanceId: await buildMarketplacePackageInstallWorkflowInstanceId({
+        marketplace: { kind: "system" },
         targetScope: scope,
         listingId,
         installationRoot: installationReference.installationRoot,
@@ -649,6 +652,7 @@ describe("marketplace ingestion action", () => {
     expect(forOrgMock).toHaveBeenCalledWith("org-1");
     expect(restartMarketplaceIngestionMock).toHaveBeenCalledWith(
       {
+        marketplace: { kind: "system" },
         listingId,
         targetScope: { kind: "org", orgId: "org-1" },
         installationRoot: "/workspace/telegram-test-command",

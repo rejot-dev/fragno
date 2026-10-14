@@ -55,6 +55,12 @@ const packagesInstallTool = defineBackofficeRuntimeTool({
             description:
               "Destination folder under /workspace. Differing files are not overwritten.",
           },
+          {
+            name: "visibility",
+            valueRequired: true,
+            description:
+              "public (default) installs from the public Marketplace; organization installs from the installing organization's Marketplace.",
+          },
         ],
         examples: [
           "packages.install --listing-id 'system#telegram-test-command' --version 1.4.0 --installation-root /workspace/telegram --format json",
@@ -64,6 +70,7 @@ const packagesInstallTool = defineBackofficeRuntimeTool({
         listingId: { required: true },
         version: {},
         installationRoot: { required: true },
+        visibility: {},
       }),
       format: (result, options) =>
         options.format === "json" || options.print
@@ -94,7 +101,10 @@ const packagesListTool = defineBackofficeRuntimeTool({
           ? { data: result }
           : {
               stdout: result.entries
-                .map((entry) => `${entry.listingId}@${entry.version}\t${entry.installationRoot}\n`)
+                .map(
+                  (entry) =>
+                    `${entry.listingId}@${entry.version}\t${entry.installationRoot}\t${entry.marketplace.kind === "org" ? "organization" : "public"}\n`,
+                )
                 .join(""),
             },
     },

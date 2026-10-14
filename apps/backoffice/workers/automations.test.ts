@@ -1137,6 +1137,7 @@ describe("Automations object scope binding", () => {
       await expect(
         automations.commands.requestMarketplaceIngestion(
           {
+            marketplace: { kind: "system" },
             installationRoot: "/workspace",
             listingId,
             targetScope: { kind: "user", userId: "user-1" },
@@ -1163,6 +1164,7 @@ describe("Automations object scope binding", () => {
       await expect(lock.json()).resolves.toEqual({
         entries: [
           {
+            marketplace: { kind: "system" },
             listingId,
             version: USER_WORKSPACE_INGESTION_TEST_VERSION,
             installationRoot: "/workspace",
@@ -1215,6 +1217,7 @@ describe("Automations object scope binding", () => {
         slug: "telegram-test-command",
       });
       const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
+        marketplace: { kind: "system" },
         installationRoot: "/workspace",
         targetScope: { kind: "user", userId: "user-1" },
         listingId,
@@ -1223,6 +1226,7 @@ describe("Automations object scope binding", () => {
       await expect(
         automations.commands.requestMarketplaceIngestion(
           {
+            marketplace: { kind: "system" },
             installationRoot: "/workspace",
             listingId,
             targetScope: { kind: "user", userId: "user-1" },
@@ -1280,6 +1284,7 @@ describe("Automations object scope binding", () => {
       await expect(
         runtime.objects.automations.forOrg("org-1").commands.requestMarketplaceIngestion(
           {
+            marketplace: { kind: "system" },
             installationRoot: "/workspace",
             listingId: marketplaceListingId({
               ownerScope: { kind: "system" },
