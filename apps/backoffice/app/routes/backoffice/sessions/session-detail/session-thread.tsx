@@ -13,6 +13,9 @@ const contextTokenFormatter = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 1,
 });
 
+// Warns ahead of Pi's automatic compaction, which starts near the window minus its reserve.
+const CONTEXT_USAGE_WARNING_RATIO = 0.8;
+
 export function SessionThread({
   disabledReason,
   error,
@@ -31,8 +34,7 @@ export function SessionThread({
   compacting,
   compactionError,
   compactionNotice,
-  contextTokens,
-  showContextUsage = true,
+  contextUsage,
   inactiveHistoryCount,
   hasMoreHistory,
   historyLoading,
@@ -57,8 +59,8 @@ export function SessionThread({
   compacting: boolean;
   compactionError: string | null;
   compactionNotice: string | null;
-  contextTokens: number;
-  showContextUsage?: boolean;
+  /** `window` is null when the session's model is missing from the available catalog. */
+  contextUsage: { tokens: number; window: number | null };
   inactiveHistoryCount: number;
   hasMoreHistory: boolean;
   historyLoading: boolean;
@@ -204,14 +206,7 @@ export function SessionThread({
                 <span className="hidden max-w-44 truncate px-2 text-[10px] text-[var(--bo-muted-2)] sm:block">
                   {modelLabel}
                 </span>
-                {showContextUsage ? (
-                  <span
-                    title={`${contextTokens.toLocaleString()} estimated context tokens`}
-                    className="border-l border-[color:var(--bo-border)] px-2 text-[10px] text-[var(--bo-muted-2)] tabular-nums"
-                  >
-                    {contextTokenFormatter.format(contextTokens)} context
-                  </span>
-                ) : null}
+                <ContextUsageIndicator usage={contextUsage} />
                 {disabled ? (
                   <span className="hidden text-xs text-[var(--bo-muted-2)] sm:inline">
                     {disabledReason}
@@ -328,6 +323,29 @@ export function SessionThread({
         </Button>
       ) : null}
     </ThreadPrimitive.Root>
+  );
+}
+
+function ContextUsageIndicator({ usage }: { usage: { tokens: number; window: number | null } }) {
+  const tokens = contextTokenFormatter.format(usage.tokens);
+  if (usage.window === null) {
+    return (
+      <span
+        title={`${usage.tokens.toLocaleString()} estimated context tokens`}
+        className="border-l border-[color:var(--bo-border)] px-2 text-[10px] text-[var(--bo-muted-2)] tabular-nums"
+      >
+        {tokens} context
+      </span>
+    );
+  }
+  const ratio = usage.tokens / usage.window;
+  return (
+    <span
+      title={`${usage.tokens.toLocaleString()} of ${usage.window.toLocaleString()} estimated context tokens`}
+      className={`border-l border-[color:var(--bo-border)] px-2 text-[10px] tabular-nums ${ratio >= CONTEXT_USAGE_WARNING_RATIO ? "text-[var(--bo-waiting)]" : "text-[var(--bo-muted-2)]"}`}
+    >
+      {Math.min(100, Math.round(ratio * 100))}% context
+    </span>
   );
 }
 

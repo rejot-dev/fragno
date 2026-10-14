@@ -38,6 +38,7 @@ import {
   piConversationMessages,
   piConversationSteeringQueue,
 } from "./session-detail/assistant-runtime";
+import { estimatePiContextTokens } from "./session-detail/context-usage";
 import { SessionDisplayOptions } from "./session-detail/display-options";
 import { usePiSessionViewStream } from "./session-detail/pi-session-view-stream";
 import { SessionHeader } from "./session-detail/session-header";
@@ -381,6 +382,7 @@ function BackofficeOrganizationPiSession({ loaderData }: Route.ComponentProps) {
     [streamedView],
   );
   const steeringQueue = useMemo(() => piConversationSteeringQueue(streamedView), [streamedView]);
+  const contextTokens = useMemo(() => estimatePiContextTokens(streamedView), [streamedView]);
   const statusText = compacting ? "Compacting…" : running ? "Working…" : null;
   const assistantMessages = useMemo(
     () =>
@@ -585,11 +587,10 @@ function BackofficeOrganizationPiSession({ loaderData }: Route.ComponentProps) {
     void fetcher.submit({ intent: "abort" }, { method: "post" });
   }, [fetcher]);
 
-  const modelLabel =
-    availableModelOptions.find(
-      (model) =>
-        model.provider === session.model.provider && model.modelId === session.model.modelId,
-    )?.label ?? session.model.modelId;
+  const sessionModel = availableModelOptions.find(
+    (model) => model.provider === session.model.provider && model.modelId === session.model.modelId,
+  );
+  const modelLabel = sessionModel?.label ?? session.model.modelId;
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
@@ -638,8 +639,10 @@ function BackofficeOrganizationPiSession({ loaderData }: Route.ComponentProps) {
                     : compactionError
                 }
                 compactionNotice={compactionNotice}
-                contextTokens={0}
-                showContextUsage={false}
+                contextUsage={{
+                  tokens: contextTokens,
+                  window: sessionModel?.contextWindow ?? null,
+                }}
                 inactiveHistoryCount={transcript.inactiveEntryCount}
                 hasMoreHistory={history.hasMore}
                 historyLoading={history.loading}

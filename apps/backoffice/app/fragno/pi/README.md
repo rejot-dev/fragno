@@ -37,7 +37,7 @@ identity as well.
 All paths below are mounted at `/api/pi-manager` inside the manager object:
 
 - `GET /models`: the `PI_SUPPORTED_MODELS` entries whose provider credentials are available from the
-  same registry used by agents.
+  same registry used by agents, with each model's context window from that registry.
 - `POST /sessions`:
   `{ requestId?: string, name: string | null, model?: { provider, modelId }, instructions: string, billingOrganizationId: string | null }`.
   Reusing a request ID returns the originally created session; omission generates a fresh ID. An
@@ -120,14 +120,15 @@ retract already admitted work. Manager failures throw `PiManagerRuntimeRequestEr
 The session route loaders and actions call the scoped manager through `http.fetchAuthorized` and the
 Fragno route contract. The UI lists directory records, creates sessions from the configured model
 catalog, admits prompts that steer an active run, shows pending steering input from `pi.inbox` in
-the composer, runs and monitors manual compaction, paginates inactive transcript history, downloads
-streaming JSONL exports, and aborts active work. A scoped resource route proxies the agent's
-`application/x-ndjson` conversation-view stream to the browser. The initial snapshot and each
-committed update replace the local active view, including throttled `pi.live.generation.message`
-partials while the model writes. Historical entries remain separate from active model context and
-also feed durable codemode workspace projection. Workflow graph and generated-interface navigation
-reuse the existing Automations browser collections and workspace panel. Session URLs use the durable
-`sessionId` directly.
+the composer, estimates the active context against the model's context window, runs and monitors
+manual compaction, paginates inactive transcript history, downloads streaming JSONL exports, and
+aborts active work. A scoped resource route proxies the agent's `application/x-ndjson`
+conversation-view stream to the browser. The initial snapshot and each committed update replace the
+local active view, including throttled `pi.live.generation.message` partials while the model writes.
+Historical entries remain separate from active model context and also feed durable codemode
+workspace projection. Workflow graph and generated-interface navigation reuse the existing
+Automations browser collections and workspace panel. Session URLs use the durable `sessionId`
+directly.
 
 ## Recovery
 
