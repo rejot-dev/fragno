@@ -28,30 +28,30 @@ import { useLinkedScrollViewports } from "./script-view/linked-scroll";
 import { useScriptWorkflowRuns } from "./script-view/use-script-workflow-runs";
 import { ScriptWorkflowGraph } from "./script-view/workflow-graph";
 
-export type DashboardSource = {
+export type OrchestrationSource = {
   id: string;
   label: string;
   description: string;
 };
 
-export type DashboardEventDefinition = {
+export type OrchestrationEventDefinition = {
   source: string;
   eventType: string;
   label: string;
   payloadSchema: unknown;
 };
 
-export type DashboardInspectorSelection =
+export type OrchestrationInspectorSelection =
   | {
       kind: "source";
-      source: DashboardSource;
-      eventDefinitions: readonly DashboardEventDefinition[];
+      source: OrchestrationSource;
+      eventDefinitions: readonly OrchestrationEventDefinition[];
     }
-  | { kind: "event"; eventDefinition: DashboardEventDefinition }
+  | { kind: "event"; eventDefinition: OrchestrationEventDefinition }
   | { kind: "trigger"; route: AutomationRouteDefinition }
   | { kind: "action"; route: AutomationRouteDefinition };
 
-export function DashboardInspector({
+export function OrchestrationInspector({
   selection,
   workflowSource,
   runtimeToolCatalog,
@@ -61,7 +61,7 @@ export function DashboardInspector({
   scope,
   onClear,
 }: {
-  selection: DashboardInspectorSelection | null;
+  selection: OrchestrationInspectorSelection | null;
   workflowSource: AutomationScriptSourceRecord;
   runtimeToolCatalog: readonly RuntimeToolWorkflowDescriptor[];
   collections: Pick<
@@ -74,13 +74,13 @@ export function DashboardInspector({
   onClear: () => void;
 }) {
   return (
-    <aside className="bo-dashboard-inspector min-w-0 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] xl:sticky xl:top-3 xl:max-h-[calc(100vh-7.5rem)] xl:overflow-hidden xl:border-l-0">
+    <aside className="bo-orchestration-inspector min-w-0 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] xl:sticky xl:top-3 xl:max-h-[calc(100vh-7.5rem)] xl:overflow-hidden xl:border-l-0">
       <div className="flex min-h-11 items-center justify-between gap-3 border-b border-[color:var(--bo-border)] px-3">
         <p className="text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
           Inspector
         </p>
         {selection ? (
-          <IconButton label="Clear dashboard selection" onClick={onClear}>
+          <IconButton label="Clear orchestration selection" onClick={onClear}>
             <Icon name="x" className="h-3.5 w-3.5" />
           </IconButton>
         ) : null}
@@ -122,7 +122,7 @@ export function DashboardInspector({
 function SourceInspector({
   selection,
 }: {
-  selection: Extract<DashboardInspectorSelection, { kind: "source" }>;
+  selection: Extract<OrchestrationInspectorSelection, { kind: "source" }>;
 }) {
   const { source, eventDefinitions } = selection;
 
@@ -157,7 +157,7 @@ function RecentEventInspector({
   eventDefinition,
   collections,
 }: {
-  eventDefinition: DashboardEventDefinition;
+  eventDefinition: OrchestrationEventDefinition;
   collections: Pick<AutomationCollections, "events">;
 }) {
   const recentEventsQuery = useLiveQuery(
@@ -236,7 +236,7 @@ function EventJson({ label, value }: { label: string; value: unknown }) {
 function EventDefinitionDisclosure({
   eventDefinition,
 }: {
-  eventDefinition: DashboardEventDefinition;
+  eventDefinition: OrchestrationEventDefinition;
 }) {
   const payloadType = jsonSchemaToTypeScript(
     eventDefinition.payloadSchema as Parameters<typeof jsonSchemaToTypeScript>[0],

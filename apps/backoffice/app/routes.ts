@@ -64,7 +64,7 @@ export default [
       ),
       route("automations/:scopeKind/:scopeId", "routes/backoffice/automations/scope-layout.tsx", [
         index("routes/backoffice/automations/scope-index.tsx"),
-        route("dashboard", "routes/backoffice/automations/dashboard.tsx"),
+        route("orchestration", "routes/backoffice/automations/orchestration.tsx"),
         route("terminal-command", "routes/backoffice/automations/terminal-command.ts"),
         route("store", "routes/backoffice/automations/store-layout.tsx", [
           index("routes/backoffice/automations/store.tsx"),

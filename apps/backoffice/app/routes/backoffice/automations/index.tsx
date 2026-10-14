@@ -20,7 +20,7 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
   }
 
   return redirect(
-    `/backoffice/automations/org/${encodeURIComponent(activeOrganization.slug)}/dashboard`,
+    `/backoffice/automations/org/${encodeURIComponent(activeOrganization.slug)}/orchestration`,
   );
 }
 

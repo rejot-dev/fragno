@@ -5,7 +5,7 @@ import {
 
 const SCOPE_ROUTE_KINDS = new Set(["system", "org", "project", "user"]);
 
-const AUTOMATION_TABS = new Set(["dashboard", "store", "events-catalog"]);
+const AUTOMATION_TABS = new Set(["orchestration", "store", "events-catalog"]);
 const MARKETPLACE_TABS = new Set(["marketplace", "installed", "my-listings"]);
 
 // Rebuilds the current URL for another scope: keeps the active section, keeps
@@ -21,7 +21,7 @@ export const scopeSwitchPath = (pathname: string, scope: BackofficeRouteScope) =
 
   switch (section) {
     case "automations": {
-      const tab = rest[0] && AUTOMATION_TABS.has(rest[0]) ? rest[0] : "dashboard";
+      const tab = rest[0] && AUTOMATION_TABS.has(rest[0]) ? rest[0] : "orchestration";
       return `/backoffice/automations/${scopePath}/${tab}`;
     }
     // A selected computer belongs to its scope, so switching lands on the scope's list. The
@@ -55,6 +55,6 @@ export const scopeSwitchPath = (pathname: string, scope: BackofficeRouteScope) =
       return `/backoffice/internals/${scopePath}${toolPath}`;
     }
     default:
-      return `/backoffice/automations/${scopePath}/dashboard`;
+      return `/backoffice/automations/${scopePath}/orchestration`;
   }
 };

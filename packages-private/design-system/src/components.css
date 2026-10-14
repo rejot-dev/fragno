@@ -281,7 +281,7 @@
   }
 }
 
-@keyframes bo-dashboard-inspector-enter {
+@keyframes bo-orchestration-inspector-enter {
   from {
     opacity: 0;
     transform: translateX(0.5rem);
@@ -293,8 +293,8 @@
   }
 }
 
-.bo-dashboard-inspector {
-  animation-name: bo-dashboard-inspector-enter;
+.bo-orchestration-inspector {
+  animation-name: bo-orchestration-inspector-enter;
   animation-duration: 180ms;
   animation-timing-function: cubic-bezier(0.2, 0, 0, 1);
   animation-fill-mode: both;

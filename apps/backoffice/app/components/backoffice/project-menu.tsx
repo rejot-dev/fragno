@@ -41,7 +41,7 @@ export function BackofficeProjectMenu({
       })
     : null;
   const organizationRouteScope = { kind: "org", orgSlug: routeScope.orgSlug } as const;
-  const createProjectPath = `/backoffice/automations/${backofficeRouteScopePath(organizationRouteScope)}/dashboard?createProject=1`;
+  const createProjectPath = `/backoffice/automations/${backofficeRouteScopePath(organizationRouteScope)}/orchestration?createProject=1`;
 
   return (
     <SelectorMenu>

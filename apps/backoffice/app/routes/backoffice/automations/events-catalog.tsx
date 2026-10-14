@@ -1,7 +1,7 @@
-import { AutomationSwimlaneDashboard } from "./dashboard";
+import { AutomationSwimlanes } from "./orchestration";
 
-export { loader, shouldRevalidate } from "./dashboard";
+export { loader, shouldRevalidate } from "./orchestration";
 
 export default function BackofficeAutomationEventsMap() {
-  return <AutomationSwimlaneDashboard view="events" />;
+  return <AutomationSwimlanes view="events" />;
 }

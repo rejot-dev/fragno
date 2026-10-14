@@ -28,7 +28,7 @@ export function useScriptPresentation() {
 
 const AUTOMATION_TAB_GROUPS = [
   [
-    { id: "dashboard", label: "Orchestration" },
+    { id: "orchestration", label: "Orchestration" },
     { id: "events-catalog", label: "Events" },
   ],
   [{ id: "store", label: "Store" }],
