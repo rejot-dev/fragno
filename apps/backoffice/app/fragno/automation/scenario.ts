@@ -2685,6 +2685,7 @@ const buildStepBuilders = <
 
             const requested = await automations.commands.requestMarketplaceIngestion(
               {
+                marketplace: { kind: "system" },
                 listingId,
                 version: entry.version,
                 targetScope: input.targetScope,

@@ -12,6 +12,7 @@ import { buildBackofficeLoginPath } from "../auth-navigation";
 import type { Route } from "./+types/browse";
 import type { MarketplaceLayoutContext } from "./layout-context";
 import { marketplaceListingPath } from "./navigation";
+import { marketplaceFromRouteParams } from "./scope";
 
 const publishedAtFormatter = new Intl.DateTimeFormat("en-US", {
   month: "short",
@@ -28,7 +29,7 @@ function formatPublishedAt(value: string): string {
   return publishedAtFormatter.format(new Date(value));
 }
 
-export async function loader({ request, context, url }: Route.LoaderArgs) {
+export async function loader({ request, params, context, url }: Route.LoaderArgs) {
   const me = await findBackofficeMe(request, context);
   if (!me?.user) {
     return Response.redirect(
@@ -37,6 +38,10 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
     );
   }
 
+  const { catalog, marketplace: marketplaceScope } = marketplaceFromRouteParams(
+    params,
+    me.organizations.map(({ organization }) => organization),
+  );
   const cursor = url.searchParams.get("cursor")?.trim() || undefined;
   try {
     decodeMarketplaceListingCursor({ encodedCursor: cursor });
@@ -49,9 +54,9 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
 
   const marketplace = context
     .get(BackofficeWorkerContext)
-    .runtime.objects.marketplace.singleton().commands;
+    .runtime.objects.marketplace.for(marketplaceScope).commands;
   const page = await marketplace.listPublishedListings(cursor ? { cursor } : {});
-  return { basePath: url.pathname, ...page };
+  return { basePath: url.pathname, catalog, ...page };
 }
 
 export function meta() {
@@ -66,7 +71,8 @@ export function meta() {
 
 export default function BackofficeMarketplaceBrowse({ loaderData }: Route.ComponentProps) {
   const { selectedScope } = useOutletContext<MarketplaceLayoutContext>();
-  const { basePath, listings, nextCursor, hasNextPage } = loaderData;
+  const { basePath, catalog, listings, nextCursor, hasNextPage } = loaderData;
+  const isOrganizationCatalog = catalog === "organization";
 
   return (
     <div className="space-y-5">
@@ -76,10 +82,14 @@ export default function BackofficeMarketplaceBrowse({ loaderData }: Route.Compon
             Featured automations
           </p>
           <h2 className="mt-3 text-2xl font-semibold tracking-tight text-balance text-[var(--bo-fg)]">
-            No published automations yet.
+            {isOrganizationCatalog
+              ? "No automations published for your organization yet."
+              : "No published automations yet."}
           </h2>
           <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-pretty text-[var(--bo-muted)]">
-            Published packages will appear here when they are ready to install.
+            {isOrganizationCatalog
+              ? "Packages published with organization visibility appear here for members only."
+              : "Published packages will appear here when they are ready to install."}
           </p>
         </section>
       ) : (
@@ -90,10 +100,12 @@ export default function BackofficeMarketplaceBrowse({ loaderData }: Route.Compon
                 id="featured-marketplace-heading"
                 className="text-lg font-semibold tracking-tight text-[var(--bo-fg)]"
               >
-                Featured packages
+                {isOrganizationCatalog ? "Organization packages" : "Featured packages"}
               </h2>
               <p className="mt-1 text-xs text-[var(--bo-muted)]">
-                Published automations ready to install.
+                {isOrganizationCatalog
+                  ? "Automations shared with members of your organization."
+                  : "Published automations ready to install."}
               </p>
             </div>
             <p className="text-[9px] tracking-[0.14em] text-[var(--bo-muted-2)] uppercase">
@@ -108,7 +120,7 @@ export default function BackofficeMarketplaceBrowse({ loaderData }: Route.Compon
               return (
                 <Link
                   key={listing.listingId}
-                  to={marketplaceListingPath(listing.listingId, selectedScope)}
+                  to={marketplaceListingPath(listing.listingId, selectedScope, catalog)}
                   className={
                     isLeadFeature
                       ? "group relative flex min-h-72 flex-col overflow-hidden bg-[var(--bo-panel)] p-6 shadow-[inset_0_0_0_1px_var(--bo-border)] transition-[scale,background-color,box-shadow] duration-150 ease-out hover:bg-[var(--bo-panel-2)] hover:shadow-[inset_0_0_0_1px_var(--bo-accent),0_16px_36px_rgba(var(--bo-accent-rgb),0.1)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none active:scale-[0.96] md:p-7 lg:col-span-2"

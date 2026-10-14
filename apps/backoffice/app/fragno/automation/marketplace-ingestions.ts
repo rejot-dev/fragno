@@ -1,5 +1,8 @@
-import { marketplaceIngestionRequestInputSchema } from "@fragno-dev/backoffice-api/v0/marketplace";
-import { marketplaceVersionSchema } from "@fragno-dev/backoffice-api/v0/marketplace";
+import {
+  marketplaceIngestionRequestInputSchema,
+  marketplaceVersionSchema,
+  type MarketplaceScope,
+} from "@fragno-dev/backoffice-api/v0/marketplace";
 import type { BackofficeRoutableScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import { type MarketplaceArtifactManifest } from "@/fragno/marketplace/contracts";
@@ -36,6 +39,18 @@ export const assertMarketplaceIngestionTargetBelongsToOrganization = (input: {
   ) {
     throw new MarketplaceIngestionTargetAccessError(
       "Marketplace ingestion target belongs to another organization.",
+    );
+  }
+};
+
+/** Organizations install from the public Marketplace or their own, never another organization's. */
+export const assertMarketplaceIngestionSourceAccessible = (input: {
+  organizationId: string;
+  marketplace: MarketplaceScope;
+}): void => {
+  if (input.marketplace.kind === "org" && input.marketplace.orgId !== input.organizationId) {
+    throw new MarketplaceIngestionTargetAccessError(
+      "Marketplace ingestion source belongs to another organization.",
     );
   }
 };

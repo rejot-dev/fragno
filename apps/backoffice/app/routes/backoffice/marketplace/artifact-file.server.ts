@@ -5,12 +5,12 @@ import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import { fetchPublishedMarketplaceArtifactFile } from "./artifact-files.server";
 import { marketplaceListingRefSchema } from "./navigation";
-import { marketplaceRuntimeScopeFromRouteParams } from "./scope";
+import { marketplaceFromRouteParams } from "./scope";
 
 type MarketplaceArtifactFileLoaderArgs = {
   request: Request;
   url: URL;
-  params: { scopeKind?: string; scopeId?: string; listingRef?: string };
+  params: { scopeKind?: string; scopeId?: string; catalog?: string; listingRef?: string };
   context: Readonly<RouterContextProvider>;
 };
 
@@ -25,7 +25,7 @@ export async function loadMarketplaceArtifactFile({
     throw new Response("Unauthorized", { status: 401 });
   }
 
-  const scope = marketplaceRuntimeScopeFromRouteParams(
+  const { scope, marketplace } = marketplaceFromRouteParams(
     params,
     me.organizations.map(({ organization }) => organization),
   );
@@ -44,7 +44,7 @@ export async function loadMarketplaceArtifactFile({
   }
 
   const runtime = context.get(BackofficeWorkerContext).runtime;
-  const manifest = await runtime.objects.marketplace.singleton().commands.getArtifactManifest({
+  const manifest = await runtime.objects.marketplace.for(marketplace).commands.getArtifactManifest({
     listingId: listingId.data,
   });
   return fetchPublishedMarketplaceArtifactFile({

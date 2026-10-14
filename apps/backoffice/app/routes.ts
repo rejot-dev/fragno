@@ -38,7 +38,7 @@ export default [
       route("marketplace/mine", "routes/backoffice/marketplace/mine.tsx"),
       route("marketplace/:scopeKind/:scopeId", "routes/backoffice/marketplace/scope-layout.tsx", [
         index("routes/backoffice/marketplace/scope-index.tsx"),
-        route("marketplace", "routes/backoffice/marketplace/marketplace-view.tsx", [
+        route(":catalog", "routes/backoffice/marketplace/marketplace-view.tsx", [
           index("routes/backoffice/marketplace/browse.tsx"),
           route(":listingRef/artifact-file", "routes/backoffice/marketplace/artifact-file.ts"),
           route(":listingRef", "routes/backoffice/marketplace/detail.tsx", [

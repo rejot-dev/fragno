@@ -1,3 +1,8 @@
+import type {
+  MarketplaceScope,
+  MarketplaceVisibility,
+} from "@fragno-dev/backoffice-api/v0/marketplace";
+
 import {
   backofficeOrganizationIdentity,
   backofficeRouteScopeFromResolvedScope,
@@ -14,7 +19,17 @@ import type { BackofficeMeData } from "@/fragno/auth/contracts";
 import type { AutomationProjectRecord } from "../automations/data";
 import { toExternalId } from "../automations/data";
 
-export type MarketplaceTab = "marketplace" | "my-listings";
+/** Catalog route segments; "marketplace" keeps the public catalog's established URL. */
+export type MarketplaceCatalog = "marketplace" | "organization";
+
+export type MarketplaceTab = MarketplaceCatalog | "my-listings";
+
+export const marketplaceCatalogVisibility = (catalog: MarketplaceCatalog): MarketplaceVisibility =>
+  catalog === "organization" ? "organization" : "public";
+
+export const marketplaceCatalogForVisibility = (
+  visibility: MarketplaceVisibility,
+): MarketplaceCatalog => (visibility === "organization" ? "organization" : "marketplace");
 
 export type MarketplaceScopeOption = {
   id: string;
@@ -75,6 +90,32 @@ export function marketplaceRuntimeScopeFromRouteParams(
   }
   return backofficeRuntimeScopeFromResolvedScope(resolvedScope);
 }
+
+/** Resolves a catalog route to the Marketplace it reads; membership was established by scope resolution. */
+export function marketplaceFromRouteParams(
+  params: { scopeKind?: string; scopeId?: string; catalog?: string },
+  organizations: Organization[],
+): {
+  scope: ReturnType<typeof marketplaceRuntimeScopeFromRouteParams>;
+  catalog: MarketplaceCatalog;
+  marketplace: MarketplaceScope;
+} {
+  const scope = marketplaceRuntimeScopeFromRouteParams(params, organizations);
+  if (params.catalog === "marketplace") {
+    return { scope, catalog: params.catalog, marketplace: { kind: "system" } };
+  }
+  // Personal workspaces have no organization Marketplace.
+  if (params.catalog === "organization" && scope.kind !== "user") {
+    return { scope, catalog: params.catalog, marketplace: { kind: "org", orgId: scope.orgId } };
+  }
+  throw new Response("Not Found", { status: 404 });
+}
+
+/** Organization and project workspaces browse their organization's Marketplace beside the public one. */
+export const marketplaceCatalogsForScope = (
+  scope: BackofficeRoutableScopeSelection,
+): MarketplaceCatalog[] =>
+  scope.kind === "user" ? ["marketplace"] : ["marketplace", "organization"];
 
 export const resolveMarketplaceScopeSelection = ({
   params,

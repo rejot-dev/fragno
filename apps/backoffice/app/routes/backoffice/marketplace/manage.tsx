@@ -28,7 +28,7 @@ import {
   marketplaceListingRefSchema,
 } from "./navigation";
 import { marketplaceForPublisher, marketplaceOwnerForOrganization } from "./publisher.server";
-import { marketplaceScopeTabPath } from "./scope";
+import { marketplaceCatalogForVisibility, marketplaceScopeTabPath } from "./scope";
 
 type ManageActionData = { ok: false; message: string };
 
@@ -321,17 +321,16 @@ export default function BackofficeMarketplaceManage({ loaderData }: Route.Compon
         title={listing.name}
         description={listing.summary}
         actions={
-          // Organization Marketplaces have no browse page yet; only public listings can be viewed.
-          listing.status === "published" && visibility === "public" ? (
+          listing.status === "published" ? (
             <ButtonLink
-              to={marketplaceListingPath(listing.listingId, {
-                kind: "org",
-                organization,
-                label: organization.id,
-              })}
+              to={marketplaceListingPath(
+                listing.listingId,
+                { kind: "org", organization, label: organization.id },
+                marketplaceCatalogForVisibility(visibility),
+              )}
               variant="secondary"
             >
-              View public page
+              {visibility === "public" ? "View public page" : "View listing"}
             </ButtonLink>
           ) : null
         }

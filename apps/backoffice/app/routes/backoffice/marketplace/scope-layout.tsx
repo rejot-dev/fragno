@@ -12,17 +12,20 @@ import {
   marketplaceRuntimeScopeFromRouteParams,
   marketplaceScopeTabPath,
   resolveMarketplaceScopeSelection,
+  marketplaceCatalogsForScope,
+  type MarketplaceCatalog,
   type MarketplaceTab,
 } from "./scope";
 
-const MARKETPLACE_TABS = [{ id: "marketplace" as const, label: "Marketplace" }];
+const MARKETPLACE_CATALOG_LABELS = {
+  marketplace: "Public",
+  organization: "Organization",
+} satisfies Record<MarketplaceCatalog, string>;
 
+// Paths are /backoffice/marketplace/:scopeKind/:scopeId/:tab/...
 const currentTabFromPath = (pathname: string): MarketplaceTab => {
-  const segment = pathname.replace(/\/+$/u, "").split("/").at(-1);
-  if (segment === "my-listings") {
-    return segment;
-  }
-  return "marketplace";
+  const segment = pathname.split("/")[5];
+  return segment === "organization" || segment === "my-listings" ? segment : "marketplace";
 };
 
 export async function loader({ request, params, context, url }: Route.LoaderArgs) {
@@ -88,10 +91,11 @@ function MarketplaceWorkspaceHeader({
   selectedScope: BackofficeRoutableScopeSelection;
   activeTab: MarketplaceTab;
 }) {
-  const tabs = MARKETPLACE_TABS.map((tab) => ({
-    ...tab,
-    to: marketplaceScopeTabPath(selectedScope, tab.id),
-    active: activeTab === tab.id,
+  const tabs = marketplaceCatalogsForScope(selectedScope).map((catalog) => ({
+    id: catalog,
+    label: MARKETPLACE_CATALOG_LABELS[catalog],
+    to: marketplaceScopeTabPath(selectedScope, catalog),
+    active: activeTab === catalog,
   }));
 
   return (

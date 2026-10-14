@@ -17,13 +17,13 @@ describe("marketplace listing navigation", () => {
       ownerScope: { kind: "org", orgId: "engineering/platform" },
       slug: "daily-operations-brief",
     });
-    const path = marketplaceListingPath(listingId, {
-      kind: "org",
-      organization: { id: "org-1", slug: "acme" },
-      label: "Ada Labs",
-    });
+    const path = marketplaceListingPath(
+      listingId,
+      { kind: "org", organization: { id: "org-1", slug: "acme" }, label: "Ada Labs" },
+      "organization",
+    );
     const matches = matchRoutes(
-      [{ path: "/backoffice/marketplace/:scopeKind/:scopeId/marketplace/:listingRef" }],
+      [{ path: "/backoffice/marketplace/:scopeKind/:scopeId/:catalog/:listingRef" }],
       path,
     );
     const routeParam = matches?.[0]?.params.listingRef;
@@ -39,11 +39,11 @@ describe("marketplace listing navigation", () => {
     });
 
     expect(
-      marketplaceListingPath(listingId, {
-        kind: "org",
-        organization: { id: "org-1", slug: "acme" },
-        label: "Ada Labs",
-      }),
+      marketplaceListingPath(
+        listingId,
+        { kind: "org", organization: { id: "org-1", slug: "acme" }, label: "Ada Labs" },
+        "marketplace",
+      ),
     ).toBe(`/backoffice/marketplace/org/acme/marketplace/${marketplaceListingRef(listingId)}`);
   });
 

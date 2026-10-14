@@ -20,7 +20,11 @@ import { buildBackofficeLoginPath } from "../auth-navigation";
 import { lookupAutomationProject } from "../automations/data.server";
 import type { Route } from "./+types/my-listings";
 import { marketplaceListingManagePath, marketplaceListingPath } from "./navigation";
-import { marketplaceRuntimeScopeFromRouteParams, resolveMarketplaceScopeSelection } from "./scope";
+import {
+  marketplaceCatalogForVisibility,
+  marketplaceRuntimeScopeFromRouteParams,
+  resolveMarketplaceScopeSelection,
+} from "./scope";
 
 const updatedAtFormatter = new Intl.DateTimeFormat("en-US", {
   month: "short",
@@ -220,7 +224,11 @@ export default function BackofficeMarketplaceMyListings({ loaderData }: Route.Co
                   visibility,
                 })
               : listing.latestPublishedVersion
-                ? marketplaceListingPath(listing.listingId, selectedScope)
+                ? marketplaceListingPath(
+                    listing.listingId,
+                    selectedScope,
+                    marketplaceCatalogForVisibility(visibility),
+                  )
                 : null;
             const content = (
               <>

@@ -150,6 +150,7 @@ describe("Workspace package runtime scenarios", () => {
               expect(JSON.parse(list.stdout)).toEqual({
                 entries: [
                   {
+                    marketplace: { kind: "system" },
                     listingId: LISTING_ID,
                     version: ctx.vars.version,
                     installationRoot: INSTALLATION_ROOT,
@@ -158,7 +159,7 @@ describe("Workspace package runtime scenarios", () => {
               });
               const text = await bash.exec("packages.ls");
               assert(
-                text.stdout === `${LISTING_ID}@${ctx.vars.version}\t${INSTALLATION_ROOT}\n`,
+                text.stdout === `${LISTING_ID}@${ctx.vars.version}\t${INSTALLATION_ROOT}\tpublic\n`,
                 text.stdout,
               );
               const read = await ctx.runCodemode({
@@ -205,6 +206,7 @@ describe("Workspace package runtime scenarios", () => {
             expect(run.result).toEqual({
               entries: [
                 {
+                  marketplace: { kind: "system" },
                   listingId: LISTING_ID,
                   version: ctx.vars.version,
                   installationRoot: INSTALLATION_ROOT,
@@ -275,7 +277,12 @@ describe("Workspace package runtime scenarios", () => {
               } as const;
               const expected = {
                 entries: [
-                  { listingId: LISTING_ID, version: "1.0.0", installationRoot: INSTALLATION_ROOT },
+                  {
+                    marketplace: { kind: "system" },
+                    listingId: LISTING_ID,
+                    version: "1.0.0",
+                    installationRoot: INSTALLATION_ROOT,
+                  },
                 ],
               };
               for (const target of [{ kind: "user", userId: "owner-1" } as const, scope]) {
@@ -342,7 +349,12 @@ describe("Workspace package runtime scenarios", () => {
             });
             expect(result.result).toEqual({
               entries: [
-                { listingId: LISTING_ID, version: "1.0.0", installationRoot: INSTALLATION_ROOT },
+                {
+                  marketplace: { kind: "system" },
+                  listingId: LISTING_ID,
+                  version: "1.0.0",
+                  installationRoot: INSTALLATION_ROOT,
+                },
               ],
             });
           }),

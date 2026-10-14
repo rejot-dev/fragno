@@ -1,6 +1,6 @@
 // packages tools
 type PackagesCodemodeProvider = {
-  /** Start the existing Marketplace installation workflow in the current workspace at a required folder under /workspace. Installation is asynchronous and never overwrites differing files. Omit version to use the existing latest-release resolution. */
+  /** Start the existing Marketplace installation workflow in the current workspace at a required folder under /workspace. Installs from the public Marketplace, or from the installing organization's Marketplace with organization visibility. Installation is asynchronous and never overwrites differing files. Omit version to use the existing latest-release resolution. */
   install(input: PackagesInstallInput): Promise<PackagesInstallOutput>;
   /** List successful package installations recorded in /workspace/marketplace-lock.json for the current workspace. A missing lock is empty; malformed locks fail without being modified. */
   ls(input: PackagesLsInput): Promise<PackagesLsOutput>;
@@ -11,6 +11,7 @@ type PackagesInstallInput = {
   installationRoot: string;
   listingId: string;
   version?: string;
+  visibility?: "public" | "organization";
 };
 type PackagesInstallOutput = {
   listingId: string;
@@ -27,6 +28,14 @@ type PackagesInstallOutput = {
 type PackagesLsInput = Record<string, unknown>;
 type PackagesLsOutput = {
   entries: {
+    marketplace:
+      | {
+          kind: "system";
+        }
+      | {
+          kind: "org";
+          orgId: string;
+        };
     listingId: string;
     version: string;
     installationRoot: string;
