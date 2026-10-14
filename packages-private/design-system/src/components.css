@@ -49,12 +49,10 @@
 
 .bo-grid-backdrop {
   background-image:
-    radial-gradient(circle at 16% -8%, rgba(var(--bo-accent-rgb), 0.14), transparent 30rem),
     linear-gradient(0deg, rgba(var(--bo-overlay), 0.94), rgba(var(--bo-overlay), 0.94)),
     linear-gradient(90deg, rgba(var(--bo-grid), 0.45) 1px, transparent 1px),
     linear-gradient(0deg, rgba(var(--bo-grid), 0.45) 1px, transparent 1px);
   background-size:
-    100% 100%,
     100% 100%,
     28px 28px,
     28px 28px;
