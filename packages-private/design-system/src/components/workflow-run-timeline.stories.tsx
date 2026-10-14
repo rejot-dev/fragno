@@ -87,6 +87,7 @@ function Frame({
           </>
         }
         actions={null}
+        surface="card"
       />
     </div>
   );

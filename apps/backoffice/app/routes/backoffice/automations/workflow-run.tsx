@@ -71,6 +71,7 @@ export default function BackofficeAutomationWorkflowRun({ params }: Route.Compon
           </>
         }
         actions={null}
+        surface="card"
       />
       {selectedRecord ? (
         <StepRecordPanel step={selectedRecord} />
