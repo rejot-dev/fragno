@@ -13,3 +13,16 @@ export function Tones() {
     </div>
   );
 }
+
+export function WithoutDot() {
+  return (
+    <div className="flex flex-wrap gap-4">
+      <BackofficeStatusLight tone="live" dot={false}>
+        Ready
+      </BackofficeStatusLight>
+      <BackofficeStatusLight tone="waiting" dot={false}>
+        Unavailable
+      </BackofficeStatusLight>
+    </div>
+  );
+}
