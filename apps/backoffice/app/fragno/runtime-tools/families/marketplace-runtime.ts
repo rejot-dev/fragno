@@ -12,17 +12,32 @@ import {
   type MarketplaceScope,
   type MarketplaceVisibility,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
+import {
+  marketplaceFeaturedResultSchema,
+  type MarketplaceFeatureEntry,
+} from "@fragno-dev/backoffice-api/v0/marketplace";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import { z } from "zod";
 
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
-import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
+import type {
+  BackofficeObjectRegistry,
+  MarketplaceObject,
+} from "@/backoffice-runtime/object-registry";
 import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
 import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
+import type {
+  MarketplaceOperationResult,
+  MarketplaceStaticPublicationResult,
+  marketplaceFeatureInputSchema,
+  marketplaceUnfeatureInputSchema,
+  marketplaceUnfeatureResultSchema,
+} from "@/fragno/marketplace/contracts";
 import { marketplaceScopeForVisibility } from "@/fragno/marketplace/owner";
 import { captureMarketplacePackageSnapshot } from "@/fragno/marketplace/package-manifest";
 import { resolveMarketplacePackageOwner } from "@/fragno/marketplace/package-publishing";
+import { searchPublishedListings } from "@/fragno/marketplace/search";
 
 /** Marketplace discovery reads only published registry metadata, never workspace files. */
 export type MarketplaceRuntime = {
@@ -31,20 +46,38 @@ export type MarketplaceRuntime = {
   ): Promise<z.output<typeof marketplaceSearchResultSchema>>;
   view(input: z.output<typeof marketplaceViewInputSchema>): Promise<MarketplaceListingDetail>;
   publish(input: z.output<typeof marketplacePublishInputSchema>): Promise<MarketplacePublishResult>;
+  feature(input: z.output<typeof marketplaceFeatureInputSchema>): Promise<MarketplaceFeatureEntry>;
+  unfeature(
+    input: z.output<typeof marketplaceUnfeatureInputSchema>,
+  ): Promise<z.output<typeof marketplaceUnfeatureResultSchema>>;
+  featured(): Promise<z.output<typeof marketplaceFeaturedResultSchema>>;
+  pushStaticEntries(input: { force?: boolean }): Promise<MarketplaceStaticPublicationResult>;
 };
 
-/** Discovery reads the public or current organization's Marketplace; publishing targets the package owner's. */
+function marketplaceOperationValue<TResult>(result: MarketplaceOperationResult<TResult>): TResult {
+  if (result.ok) {
+    return result.value;
+  }
+  throw new BackofficeOperationError(
+    result.error.code === "MARKETPLACE_LISTING_NOT_FOUND" ? "not_found" : "conflict",
+    result.error.message,
+  );
+}
+
+/**
+ * Discovery reads the public or current organization's Marketplace; publishing targets the package
+ * owner's; curation targets the Marketplace the execution scope administers.
+ */
 export function createMarketplaceRuntime({
   objects,
   execution,
+  kernel,
   publication,
 }: {
   objects: BackofficeObjectRegistry;
   execution: BackofficeExecutionContext;
-  publication: {
-    state: BackofficeStateBackend;
-    kernel: BackofficeKernel;
-  } | null;
+  kernel: BackofficeKernel;
+  publication: { state: BackofficeStateBackend } | null;
 }): MarketplaceRuntime {
   // The organization comes from the execution scope, so callers cannot read another organization's Marketplace.
   function readableMarketplace(visibility: MarketplaceVisibility) {
@@ -61,6 +94,37 @@ export function createMarketplaceRuntime({
     return objects.marketplace.for(marketplace).commands;
   }
 
+  /**
+   * System administrators curate the public Marketplace from System scope; organization owners and
+   * admins curate their organization's Marketplace from its scope.
+   */
+  async function curate<T>(execute: (marketplace: MarketplaceObject) => Promise<T>): Promise<T> {
+    if (execution.scope.kind === "system") {
+      return await kernel.invoke({
+        execution,
+        operation: BACKOFFICE_PERMISSION.marketplace.feature,
+        execute: async () => await execute(objects.marketplace.singleton().commands),
+      });
+    }
+    if (execution.scope.kind === "org") {
+      const marketplace: MarketplaceScope = { kind: "org", orgId: execution.scope.orgId };
+      return await kernel.invoke({
+        execution,
+        operation: BACKOFFICE_PERMISSION.org.manage,
+        execute: async () => await execute(objects.marketplace.for(marketplace).commands),
+      });
+    }
+    throw new BackofficeOperationError(
+      "forbidden",
+      "Marketplace curation requires System or organization scope.",
+    );
+  }
+
+  // Curation records who acted; System executions have no principal.
+  const curator = execution.actors.principal
+    ? `${execution.actors.principal.type}:${execution.actors.principal.id}`
+    : "system";
+
   return {
     async publish(input) {
       if (!publication) {
@@ -69,7 +133,7 @@ export function createMarketplaceRuntime({
       if ((input.skipAuthorCheck || input.skipVersionCheck) && execution.scope.kind !== "system") {
         throw new Error("Marketplace publishing overrides require System context.");
       }
-      await publication.kernel.assertAuthorizedAll({
+      await kernel.assertAuthorizedAll({
         execution,
         requirements: [
           { operation: BACKOFFICE_PERMISSION.marketplace.publish },
@@ -93,25 +157,15 @@ export function createMarketplaceRuntime({
         { execution, propagationContext: null },
       );
     },
-    async search({ query, visibility, ...input }) {
-      const page = await readableMarketplace(visibility).listPublishedListings(input);
-      const terms = query.toLowerCase().split(/\s+/u);
-      const listings = page.listings.filter((listing) => {
-        const text = [
-          listing.listingId,
-          listing.name,
-          listing.summary,
-          listing.description,
-          listing.publisherName,
-          listing.category,
-          ...listing.tags,
-        ]
-          .join("\n")
-          .toLowerCase();
-        return terms.every((term) => text.includes(term));
+    async search({ visibility, query, category, pageSize, cursor }) {
+      const page = await searchPublishedListings(readableMarketplace(visibility), {
+        query,
+        category,
+        pageSize,
+        cursor,
       });
       return {
-        listings: listings.map((listing) => ({
+        listings: page.listings.map((listing) => ({
           listingId: listing.listingId,
           name: listing.name,
           summary: listing.summary,
@@ -119,6 +173,7 @@ export function createMarketplaceRuntime({
           category: listing.category,
           tags: listing.tags,
           latestVersion: listing.latestVersion,
+          featured: listing.featured,
         })),
         nextCursor: page.nextCursor ?? null,
         hasNextPage: page.hasNextPage,
@@ -133,6 +188,33 @@ export function createMarketplaceRuntime({
         );
       }
       return detail;
+    },
+    async feature(input) {
+      return await curate(async (marketplace) =>
+        marketplaceOperationValue(
+          await marketplace.featureListing({
+            listingId: input.listingId,
+            startsAt: input.startsAt === null ? null : new Date(input.startsAt),
+            until: input.until === null ? null : new Date(input.until),
+            priority: input.priority,
+            note: input.note,
+            featuredBy: curator,
+          }),
+        ),
+      );
+    },
+    async unfeature(input) {
+      return await curate(async (marketplace) =>
+        marketplaceOperationValue(await marketplace.unfeatureListing(input)),
+      );
+    },
+    async featured() {
+      return await curate(async (marketplace) => await marketplace.listFeatureEntries());
+    },
+    async pushStaticEntries(input) {
+      return await objects.automations
+        .singleton()
+        .commands.requestStaticMarketplacePublications(input);
     },
   };
 }

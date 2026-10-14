@@ -1,6 +1,7 @@
 import { marketplaceSearchInputSchema } from "@fragno-dev/backoffice-api/v0/marketplace";
 import { marketplacePublishInputSchema } from "@fragno-dev/backoffice-api/v0/marketplace";
 import { marketplaceViewInputSchema } from "@fragno-dev/backoffice-api/v0/marketplace";
+import { type MarketplaceFeatureEntry } from "@fragno-dev/backoffice-api/v0/marketplace";
 import type { z } from "zod";
 
 import { defineCliArgsParser } from "@/fragno/runtime-tools/bash-cli";
@@ -228,9 +229,49 @@ const marketplacePublishTool = defineBackofficeRuntimeTool({
   },
 });
 
+export function formatMarketplaceFeatureEntry(entry: MarketplaceFeatureEntry): string {
+  const window = `${entry.startsAt} → ${entry.until ?? "no end"}`;
+  return `${entry.state}\t${entry.listingId}\t${entry.name}\tpriority ${entry.priority}\t${window}${entry.note ? `\t${entry.note}` : ""}\n`;
+}
+
+export const MARKETPLACE_CURATION_SCOPE_HELP =
+  "System scope curates the public Marketplace (System administrators); organization scope curates that organization's Marketplace (owners and admins).";
+
+const marketplaceFeaturedTool = defineBackofficeRuntimeTool({
+  ...backofficeApiOperationToolFields("marketplace.featured"),
+  namespace: "marketplace",
+  name: "featured",
+  execute: async (_input, context: MarketplaceToolContext) =>
+    await getMarketplaceRuntime(context).featured(),
+  adapters: {
+    bash: {
+      command: "marketplace.featured",
+      help: {
+        summary: `List every feature entry with its state. ${MARKETPLACE_CURATION_SCOPE_HELP}`,
+        options: [],
+        examples: ["marketplace.featured", "marketplace.featured --format json"],
+      },
+      parse: defineCliArgsParser<Record<string, never>>("marketplace.featured", {}),
+      format: (result, options) =>
+        options.format === "json" || options.print
+          ? { data: result }
+          : {
+              stdout:
+                result.entries.map(formatMarketplaceFeatureEntry).join("") +
+                `${result.entries.length}/${result.limit} feature slots used\n`,
+            },
+    },
+  },
+});
+
 /** Registry publishing uses the source filesystem; installation remains a workspace operation. */
 export const marketplaceToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "marketplace",
-  tools: [marketplaceSearchTool, marketplaceViewTool, marketplacePublishTool],
+  tools: [
+    marketplaceSearchTool,
+    marketplaceViewTool,
+    marketplacePublishTool,
+    marketplaceFeaturedTool,
+  ],
   isAvailable: (context: MarketplaceToolContext) => !!context.runtimes.marketplace,
 });

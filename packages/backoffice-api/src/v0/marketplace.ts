@@ -122,6 +122,9 @@ export const MARKETPLACE_MAX_PAGE_SIZE = 60;
 
 export const MARKETPLACE_DEFAULT_PAGE_SIZE = 18;
 
+/** Each Marketplace curates a small featured set, so one bounded read loads every entry. */
+export const MARKETPLACE_FEATURED_LIMIT = 24;
+
 export const MARKETPLACE_DATABASE_ID_MAX_LENGTH = 128;
 
 export const marketplaceVersionSchema = z
@@ -182,6 +185,8 @@ export const marketplacePublicListingSchema = marketplaceListingMetadataSchema.e
   latestVersion: marketplaceVersionSchema,
   publishedAt: z.string(),
   updatedAt: z.string(),
+  /** The listing has a feature entry whose window is open now. */
+  featured: z.boolean(),
 });
 
 export type MarketplaceListing = z.infer<typeof marketplacePublicListingSchema>;
@@ -275,6 +280,7 @@ export const marketplaceSearchResultSchema = z.object({
       category: true,
       tags: true,
       latestVersion: true,
+      featured: true,
     }),
   ),
   nextCursor: z.string().nullable(),
@@ -369,6 +375,38 @@ export const marketplaceListingDetailSchema = z.object({
 
 export type MarketplaceListingDetail = z.infer<typeof marketplaceListingDetailSchema>;
 
+/** Hidden entries belong to listings that are no longer published. */
+export const marketplaceFeatureStateSchema = z.enum(["active", "scheduled", "expired", "hidden"]);
+
+export type MarketplaceFeatureState = z.infer<typeof marketplaceFeatureStateSchema>;
+
+/** Curators see every entry with its state; browsers only see active entries. */
+export const marketplaceFeatureEntrySchema = z.object({
+  listingId: marketplaceListingIdSchema,
+  name: z.string(),
+  state: marketplaceFeatureStateSchema,
+  priority: z.number().int(),
+  note: z.string().nullable(),
+  startsAt: z.string(),
+  until: z.string().nullable(),
+  featuredBy: z.string(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export type MarketplaceFeatureEntry = z.infer<typeof marketplaceFeatureEntrySchema>;
+
+/** Featuring an already featured listing replaces its window, priority, and note. */
+export const marketplaceFeaturedResultSchema = z.object({
+  entries: z.array(marketplaceFeatureEntrySchema),
+  limit: z.number().int(),
+});
+
+export type MarketplaceFeaturedResult = z.infer<typeof marketplaceFeaturedResultSchema>;
+
+const MARKETPLACE_CURATION_AUTHORITY =
+  "In System scope this curates the public Marketplace and requires a System administrator; in organization scope it curates that organization's Marketplace and requires an organization owner or admin.";
+
 export const marketplaceOperations = {
   "marketplace.search": {
     description:
@@ -390,6 +428,13 @@ export const marketplaceOperations = {
     permissions: [BACKOFFICE_PERMISSION.marketplace.publish],
     input: marketplacePublishInputSchema,
     output: marketplacePublishResultSchema,
+  },
+  // Curation authority depends on the scope, so the runtime checks it beyond the read permission.
+  "marketplace.featured": {
+    description: `List every feature entry with its state: active, scheduled, expired, or hidden (the listing is no longer published). ${MARKETPLACE_CURATION_AUTHORITY}`,
+    permissions: [BACKOFFICE_PERMISSION.marketplace.read],
+    input: z.strictObject({}),
+    output: marketplaceFeaturedResultSchema,
   },
 } satisfies Record<string, BackofficeApiOperation>;
 

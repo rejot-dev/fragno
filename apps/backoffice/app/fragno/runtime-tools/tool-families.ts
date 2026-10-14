@@ -4,6 +4,10 @@ import type { PiManagerRuntime } from "@/fragno/pi/manager/pi-manager-runtime";
 import { codemodeStateToolFamily } from "./codemode-state-runtime";
 import { accountToolFamily, type AccountRuntime } from "./families/account";
 import { adminToolFamily, type AdminRuntime } from "./families/admin";
+import {
+  adminMarketplaceCurationToolFamily,
+  adminMarketplacePublicationToolFamily,
+} from "./families/admin-marketplace";
 import { appsToolFamily } from "./families/apps";
 import type { AppsRuntime } from "./families/apps-runtime";
 import {
@@ -35,11 +39,7 @@ import {
   integrationsToolFamily,
   type IntegrationsRuntime,
 } from "./families/integrations/integration-tools";
-import {
-  internalMarketplaceToolFamily,
-  internalWorkspaceToolFamily,
-  type InternalRuntime,
-} from "./families/internal";
+import { internalWorkspaceToolFamily, type InternalRuntime } from "./families/internal";
 import {
   javaScriptBuildToolFamily,
   javaScriptCheckToolFamily,
@@ -99,6 +99,8 @@ export const runtimeToolFamilies = [
   codemodeStateToolFamily,
   accountToolFamily,
   adminToolFamily,
+  adminMarketplaceCurationToolFamily,
+  adminMarketplacePublicationToolFamily,
   organizationToolFamily,
   appsToolFamily,
   backofficeCapabilitiesToolFamily,
@@ -125,7 +127,6 @@ export const runtimeToolFamilies = [
   marketplaceToolFamily,
   packagesToolFamily,
   internalWorkspaceToolFamily,
-  internalMarketplaceToolFamily,
 ] as const satisfies readonly BackofficeRuntimeToolFamily[];
 
 export const getAvailableBackofficeRuntimeTools = (context: BackofficeToolContext) =>

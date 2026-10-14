@@ -1,6 +1,11 @@
 import {
+  MARKETPLACE_FEATURED_LIMIT,
   marketplaceListingPageInputSchema,
   marketplacePublishedListingInputSchema,
+  type MarketplaceCategory,
+  type MarketplaceFeatureEntry,
+  type MarketplaceListing,
+  type MarketplaceListingContent,
   type MarketplaceListingDetail,
   type MarketplaceListingPageInput,
   type MarketplaceOwner,
@@ -17,18 +22,22 @@ import {
   marketplaceArchiveListingInputSchema,
   marketplaceArtifactManifestInputSchema,
   marketplaceCreateDraftListingInputSchema,
+  marketplaceFeatureListingInputSchema,
   marketplaceInsertStaticEntriesInputSchema,
   marketplaceLatestPublishedVersionsInputSchema,
   marketplaceOwnedListingInputSchema,
   marketplaceOwnedListingPageInputSchema,
   marketplacePublishVersionInputSchema,
+  marketplaceUnfeatureInputSchema,
   marketplaceUpdateListingInputSchema,
   type MarketplaceArchiveResult,
   type MarketplaceArtifactManifest,
   type MarketplaceDraftResult,
+  type MarketplaceFeaturedListing,
   type MarketplaceInsertStaticEntriesResult,
   type MarketplaceLatestPublishedVersions,
   type MarketplaceListingPage,
+  type MarketplaceListingStatus,
   type MarketplaceListingUpdateResult,
   type MarketplaceOwnedListingDetail,
   type MarketplaceOwnedListingPage,
@@ -36,6 +45,7 @@ import {
   type MarketplaceOperationErrorCode,
   type MarketplacePublishVersionResult,
 } from "./contracts";
+import { compareMarketplaceFeatureEntries, marketplaceFeatureState } from "./featured";
 import {
   marketplaceAcceptsOwner,
   marketplaceListingId,
@@ -137,6 +147,65 @@ export class MarketplacePublicationConflictError extends MarketplaceDomainError 
   }
 }
 
+export class MarketplaceListingNotPublishedError extends MarketplaceDomainError {
+  constructor(slug: string) {
+    super("MARKETPLACE_LISTING_NOT_PUBLISHED", `Marketplace listing ${slug} is not published.`);
+    this.name = "MarketplaceListingNotPublishedError";
+  }
+}
+
+export class MarketplaceFeatureWindowInvalidError extends MarketplaceDomainError {
+  constructor() {
+    super(
+      "MARKETPLACE_FEATURE_WINDOW_INVALID",
+      "A feature must end after it starts and after the current time.",
+    );
+    this.name = "MarketplaceFeatureWindowInvalidError";
+  }
+}
+
+export class MarketplaceFeaturedLimitError extends MarketplaceDomainError {
+  constructor() {
+    super(
+      "MARKETPLACE_FEATURED_LIMIT_REACHED",
+      `This Marketplace already has ${MARKETPLACE_FEATURED_LIMIT} active or scheduled features. Unfeature a listing first.`,
+    );
+    this.name = "MarketplaceFeaturedLimitError";
+  }
+}
+
+type MarketplaceListingRow = {
+  id: { externalId: string };
+  publisherName: string;
+  metadata: MarketplaceListingContent;
+  category: MarketplaceCategory;
+  status: MarketplaceListingStatus;
+  latestPublishedVersion: string | null;
+  publishedAt: Date | null;
+  updatedAt: Date;
+};
+
+function publishedMarketplaceListing(
+  listing: MarketplaceListingRow,
+  featured: boolean,
+): MarketplaceListing {
+  if (!listing.latestPublishedVersion || !listing.publishedAt) {
+    throw new Error(`Published marketplace listing ${listing.id.externalId} is incomplete.`);
+  }
+  return {
+    listingId: listing.id.externalId,
+    slug: marketplaceListingSlug(listing.id.externalId),
+    publisherName: listing.publisherName,
+    ...listing.metadata,
+    category: listing.category,
+    status: "published",
+    latestVersion: listing.latestPublishedVersion,
+    publishedAt: listing.publishedAt.toISOString(),
+    updatedAt: listing.updatedAt.toISOString(),
+    featured,
+  };
+}
+
 function planMarketplacePackagePublication(
   intent: MarketplacePackagePublishIntent,
   listing: { status: string; latestPublishedVersion: string | null } | null,
@@ -197,8 +266,38 @@ function assertMarketplaceAcceptsOwner(
   }
 }
 
+function marketplaceFeatureEntry(
+  entry: {
+    id: { externalId: string };
+    priority: number;
+    note: string | null;
+    startsAt: Date;
+    until: Date | null;
+    featuredBy: string;
+    createdAt: Date;
+    updatedAt: Date;
+  },
+  listing: { status: MarketplaceListingStatus; metadata: MarketplaceListingContent } | null,
+  now: Date,
+): MarketplaceFeatureEntry {
+  return {
+    listingId: entry.id.externalId,
+    name: listing?.metadata.name ?? marketplaceListingSlug(entry.id.externalId),
+    state: marketplaceFeatureState(entry, listing?.status ?? null, now),
+    priority: entry.priority,
+    note: entry.note,
+    startsAt: entry.startsAt.toISOString(),
+    until: entry.until?.toISOString() ?? null,
+    featuredBy: entry.featuredBy,
+    createdAt: entry.createdAt.toISOString(),
+    updatedAt: entry.updatedAt.toISOString(),
+  };
+}
+
 export type MarketplaceFragmentConfig = {
   scope: MarketplaceScope;
+  /** Feature windows are evaluated against the hosting object's clock. */
+  now: () => Date;
 };
 
 export const marketplaceFragmentDefinition = defineFragment<MarketplaceFragmentConfig>(
@@ -218,50 +317,43 @@ export const marketplaceFragmentDefinition = defineFragment<MarketplaceFragmentC
 
         return this.serviceTx(marketplaceFragmentSchema)
           .retrieve((uow) =>
-            uow.findWithCursor("marketplace_listing", (b) => {
-              if (category) {
-                const categoryQuery = b
-                  .whereIndex(MARKETPLACE_CATEGORY_LISTING_INDEX, (eb) =>
-                    eb.and(eb("status", "=", "published"), eb("category", "=", category)),
-                  )
-                  .orderByIndex(MARKETPLACE_CATEGORY_LISTING_INDEX, "desc")
+            uow
+              .findWithCursor("marketplace_listing", (b) => {
+                if (category) {
+                  const categoryQuery = b
+                    .whereIndex(MARKETPLACE_CATEGORY_LISTING_INDEX, (eb) =>
+                      eb.and(eb("status", "=", "published"), eb("category", "=", category)),
+                    )
+                    .orderByIndex(MARKETPLACE_CATEGORY_LISTING_INDEX, "desc")
+                    .pageSize(effectivePageSize);
+                  return cursor ? categoryQuery.after(cursor) : categoryQuery;
+                }
+
+                const listingQuery = b
+                  .whereIndex(MARKETPLACE_LISTING_INDEX, (eb) => eb("status", "=", "published"))
+                  .orderByIndex(MARKETPLACE_LISTING_INDEX, "desc")
                   .pageSize(effectivePageSize);
-                return cursor ? categoryQuery.after(cursor) : categoryQuery;
-              }
-
-              const listingQuery = b
-                .whereIndex(MARKETPLACE_LISTING_INDEX, (eb) => eb("status", "=", "published"))
-                .orderByIndex(MARKETPLACE_LISTING_INDEX, "desc")
-                .pageSize(effectivePageSize);
-              return cursor ? listingQuery.after(cursor) : listingQuery;
-            }),
+                return cursor ? listingQuery.after(cursor) : listingQuery;
+              })
+              .find("marketplace_featured_listing", (b) =>
+                b.whereIndex("primary").pageSize(MARKETPLACE_FEATURED_LIMIT),
+              ),
           )
-          .transformRetrieve(
-            ([page]) =>
-              ({
-                listings: page.items.map((listing) => {
-                  if (!listing.latestPublishedVersion || !listing.publishedAt) {
-                    throw new Error(
-                      `Published marketplace listing ${listing.id.externalId} is incomplete.`,
-                    );
-                  }
-
-                  return {
-                    listingId: listing.id.externalId,
-                    slug: marketplaceListingSlug(listing.id.externalId),
-                    publisherName: listing.publisherName,
-                    ...listing.metadata,
-                    category: listing.category,
-                    status: "published" as const,
-                    latestVersion: listing.latestPublishedVersion,
-                    publishedAt: listing.publishedAt.toISOString(),
-                    updatedAt: listing.updatedAt.toISOString(),
-                  };
-                }),
-                ...(page.cursor ? { nextCursor: page.cursor.encode() } : {}),
-                hasNextPage: page.hasNextPage,
-              }) satisfies MarketplaceListingPage,
-          )
+          .transformRetrieve(([page, features]) => {
+            const now = config.now();
+            const featuredListingIds = new Set(
+              features
+                .filter((entry) => marketplaceFeatureState(entry, "published", now) === "active")
+                .map((entry) => entry.id.externalId),
+            );
+            return {
+              listings: page.items.map((listing) =>
+                publishedMarketplaceListing(listing, featuredListingIds.has(listing.id.externalId)),
+              ),
+              ...(page.cursor ? { nextCursor: page.cursor.encode() } : {}),
+              hasNextPage: page.hasNextPage,
+            } satisfies MarketplaceListingPage;
+          })
           .build();
       },
 
@@ -287,30 +379,22 @@ export const marketplaceFragmentDefinition = defineFragment<MarketplaceFragmentC
                   .orderByIndex(MARKETPLACE_PUBLISHED_VERSION_INDEX, "desc")
                   .pageSize(effectiveVersionPageSize);
                 return versionCursor ? versionQuery.after(versionCursor) : versionQuery;
-              }),
+              })
+              .findFirst("marketplace_featured_listing", (b) =>
+                b.whereIndex("primary", (eb) => eb("id", "=", input.listingId)),
+              ),
           )
-          .transformRetrieve(([listing, versionPage]): MarketplaceListingDetail | null => {
+          .transformRetrieve(([listing, versionPage, feature]): MarketplaceListingDetail | null => {
             if (listing?.status !== "published") {
               return null;
             }
-            if (!listing.latestPublishedVersion || !listing.publishedAt) {
-              throw new Error(
-                `Published marketplace listing ${listing.id.externalId} is incomplete.`,
-              );
-            }
 
             return {
-              listing: {
-                listingId: listing.id.externalId,
-                slug: marketplaceListingSlug(listing.id.externalId),
-                publisherName: listing.publisherName,
-                ...listing.metadata,
-                category: listing.category,
-                status: "published",
-                latestVersion: listing.latestPublishedVersion,
-                publishedAt: listing.publishedAt.toISOString(),
-                updatedAt: listing.updatedAt.toISOString(),
-              },
+              listing: publishedMarketplaceListing(
+                listing,
+                feature !== null &&
+                  marketplaceFeatureState(feature, "published", config.now()) === "active",
+              ),
               versions: versionPage.items.map((version) => {
                 if (!version.publishedAt) {
                   throw new Error(
@@ -407,6 +491,169 @@ export const marketplaceFragmentDefinition = defineFragment<MarketplaceFragmentC
               versions[listing.id.externalId] = listing.latestPublishedVersion;
             }
             return versions;
+          })
+          .build();
+      },
+
+      /** Browsing shows only active entries, in curator order. */
+      listFeaturedListings: function () {
+        return this.serviceTx(marketplaceFragmentSchema)
+          .retrieve((uow) =>
+            uow.find("marketplace_featured_listing", (b) =>
+              // The featured set is capped, so one bounded read loads every entry with its listing.
+              b
+                .whereIndex("primary")
+                .pageSize(MARKETPLACE_FEATURED_LIMIT)
+                .joinOne("listing", "marketplace_listing", (listing) =>
+                  listing.onIndex("primary", (eb) => eb("id", "=", eb.parent("listingId"))),
+                ),
+            ),
+          )
+          .transformRetrieve(([entries]): { listings: MarketplaceFeaturedListing[] } => {
+            const now = config.now();
+            return {
+              listings: entries
+                .filter(
+                  (entry) =>
+                    marketplaceFeatureState(entry, entry.listing?.status ?? null, now) === "active",
+                )
+                .sort(compareMarketplaceFeatureEntries)
+                .flatMap((entry) =>
+                  entry.listing
+                    ? [
+                        {
+                          listing: publishedMarketplaceListing(entry.listing, true),
+                          note: entry.note,
+                        },
+                      ]
+                    : [],
+                ),
+            };
+          })
+          .build();
+      },
+
+      listFeatureEntries: function () {
+        return this.serviceTx(marketplaceFragmentSchema)
+          .retrieve((uow) =>
+            uow.find("marketplace_featured_listing", (b) =>
+              // The featured set is capped, so one bounded read loads every entry with its listing.
+              b
+                .whereIndex("primary")
+                .pageSize(MARKETPLACE_FEATURED_LIMIT)
+                .joinOne("listing", "marketplace_listing", (listing) =>
+                  listing.onIndex("primary", (eb) => eb("id", "=", eb.parent("listingId"))),
+                ),
+            ),
+          )
+          .transformRetrieve(([entries]) => {
+            const now = config.now();
+            return {
+              entries: entries
+                .sort(compareMarketplaceFeatureEntries)
+                .map((entry) => marketplaceFeatureEntry(entry, entry.listing, now)),
+              limit: MARKETPLACE_FEATURED_LIMIT,
+            };
+          })
+          .build();
+      },
+
+      featureListing: function (rawInput: unknown) {
+        const input = marketplaceFeatureListingInputSchema.parse(rawInput);
+        const slug = marketplaceListingSlug(input.listingId);
+
+        return this.serviceTx(marketplaceFragmentSchema)
+          .retrieve((uow) =>
+            uow
+              .findFirst("marketplace_listing", (b) =>
+                b.whereIndex("primary", (eb) => eb("id", "=", input.listingId)),
+              )
+              .find("marketplace_featured_listing", (b) =>
+                b
+                  .whereIndex("primary")
+                  .pageSize(MARKETPLACE_FEATURED_LIMIT)
+                  .joinOne("listing", "marketplace_listing", (listing) =>
+                    listing.onIndex("primary", (eb) => eb("id", "=", eb.parent("listingId"))),
+                  ),
+              ),
+          )
+          .mutate(({ uow, retrieveResult: [listing, entries] }): MarketplaceFeatureEntry => {
+            if (!listing) {
+              throw new MarketplaceListingNotFoundError(slug);
+            }
+            if (listing.status !== "published") {
+              throw new MarketplaceListingNotPublishedError(slug);
+            }
+            const now = config.now();
+            const startsAt = input.startsAt ?? now;
+            if (input.until && (input.until <= startsAt || input.until <= now)) {
+              throw new MarketplaceFeatureWindowInvalidError();
+            }
+
+            const existing = entries.find((entry) => entry.id.externalId === input.listingId);
+            // Expired and unpublished entries no longer show anywhere, so they give up their slots.
+            const stale = entries.filter(
+              (entry) =>
+                entry !== existing &&
+                ["expired", "hidden"].includes(
+                  marketplaceFeatureState(entry, entry.listing?.status ?? null, now),
+                ),
+            );
+            if (!existing && entries.length - stale.length >= MARKETPLACE_FEATURED_LIMIT) {
+              throw new MarketplaceFeaturedLimitError();
+            }
+            if (stale.length > 0) {
+              uow.deleteMany(
+                "marketplace_featured_listing",
+                stale.map((entry) => entry.id),
+              );
+            }
+
+            const values = {
+              priority: input.priority,
+              note: input.note,
+              startsAt,
+              until: input.until,
+              featuredBy: input.featuredBy,
+              updatedAt: now,
+            };
+            if (existing) {
+              uow.update("marketplace_featured_listing", existing.id, (b) => b.set(values).check());
+            } else {
+              uow.create("marketplace_featured_listing", {
+                id: input.listingId,
+                listingId: input.listingId,
+                ...values,
+                createdAt: now,
+              });
+            }
+            return marketplaceFeatureEntry(
+              {
+                ...values,
+                id: { externalId: input.listingId },
+                createdAt: existing?.createdAt ?? now,
+              },
+              listing,
+              now,
+            );
+          })
+          .build();
+      },
+
+      unfeatureListing: function (rawInput: unknown) {
+        const input = marketplaceUnfeatureInputSchema.parse(rawInput);
+
+        return this.serviceTx(marketplaceFragmentSchema)
+          .retrieve((uow) =>
+            uow.findFirst("marketplace_featured_listing", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", input.listingId)),
+            ),
+          )
+          .mutate(({ uow, retrieveResult: [entry] }) => {
+            if (entry) {
+              uow.delete("marketplace_featured_listing", entry.id, (b) => b.check());
+            }
+            return { listingId: input.listingId, removed: entry !== null };
           })
           .build();
       },

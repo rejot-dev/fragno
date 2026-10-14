@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import type { MarketplaceStaticPublicationResult } from "@/fragno/marketplace/contracts";
 
-import { formatMarketplacePushOutput } from "./internal";
+import { formatMarketplacePushOutput } from "./admin-marketplace";
 
 const failedPublication: MarketplaceStaticPublicationResult = {
   publications: [

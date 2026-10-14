@@ -150,7 +150,8 @@ function systemPublisher(ctx: BackofficeScenarioContext, state: BackofficeStateB
     runtime: createMarketplaceRuntime({
       objects: ctx.runtime.objects,
       execution,
-      publication: { state, kernel },
+      kernel,
+      publication: { state },
     }),
   };
   return createInteractiveBashHost({ context: { ...context, stateBackend: state } }).bash;

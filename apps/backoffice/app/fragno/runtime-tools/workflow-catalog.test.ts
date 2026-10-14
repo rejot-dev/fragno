@@ -7,8 +7,9 @@ import {
   SYSTEM_AUTOMATION_SCRIPT_PATHS,
 } from "@/files/content/system-automations";
 
+import { adminMarketplacePublicationToolFamily } from "./families/admin-marketplace";
 import { automationStoreToolFamily } from "./families/automations-bindings";
-import { internalMarketplaceToolFamily, internalWorkspaceToolFamily } from "./families/internal";
+import { internalWorkspaceToolFamily } from "./families/internal";
 import {
   createRuntimeToolWorkflowCatalog,
   resolveWorkflowRuntimeToolCalls,
@@ -16,7 +17,7 @@ import {
 
 const runtimeToolCatalog = createRuntimeToolWorkflowCatalog([
   internalWorkspaceToolFamily,
-  internalMarketplaceToolFamily,
+  adminMarketplacePublicationToolFamily,
   automationStoreToolFamily,
 ]);
 
@@ -33,7 +34,7 @@ describe("runtime-tool workflow catalog", () => {
           await org.internal.filesSeedExecute({});
           await project.internal.filesSeedExecute({});
           await user.store.get({ key: "settings" });
-          await context.current.internal.marketplacePush({});
+          await context.current.admin.marketplacePushStatic({});
           await something.internal.filesSeedExecute({});
         });
       });`,
@@ -55,7 +56,7 @@ describe("runtime-tool workflow catalog", () => {
       { qualifiedName: "internal.filesSeedExecute", scope: "org" },
       { qualifiedName: "internal.filesSeedExecute", scope: "project" },
       { qualifiedName: "store.get", scope: "user" },
-      { qualifiedName: "internal.marketplacePush", scope: "current" },
+      { qualifiedName: "admin.marketplacePushStatic", scope: "current" },
     ]);
   });
 

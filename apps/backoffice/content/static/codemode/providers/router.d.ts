@@ -418,6 +418,10 @@ type BackofficePermissionRequirement =
       permission: "publish";
     }
   | {
+      namespace: "marketplace";
+      permission: "feature";
+    }
+  | {
       namespace: "packages";
       permission: "read";
     }

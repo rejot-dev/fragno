@@ -753,8 +753,8 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           when.codemode.run({
             scope: { kind: "system" },
             label: "publish the bundled marketplace artifact",
-            code: "async () => await internal.marketplacePush({})",
-            assertToolCalls: ["internal.marketplace.push"],
+            code: "async () => await admin.marketplacePushStatic({})",
+            assertToolCalls: ["admin.marketplace.push-static"],
           }),
 
           then.assert("organization and project ingestions are requested", async (ctx) => {
@@ -1370,8 +1370,8 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           when.codemode.run({
             scope: { kind: "system" },
             label: "publish the bundled marketplace artifact",
-            code: "async () => await internal.marketplacePush({})",
-            assertToolCalls: ["internal.marketplace.push"],
+            code: "async () => await admin.marketplacePushStatic({})",
+            assertToolCalls: ["admin.marketplace.push-static"],
           }),
           runner.drain(),
           when.router.createRoute({
@@ -1469,8 +1469,8 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           when.codemode.run({
             scope: { kind: "system" },
             label: "publish the bundled marketplace artifact",
-            code: "async () => await internal.marketplacePush({})",
-            assertToolCalls: ["internal.marketplace.push"],
+            code: "async () => await admin.marketplacePushStatic({})",
+            assertToolCalls: ["admin.marketplace.push-static"],
           }),
           runner.drain(),
           when.router.createRoute({
@@ -1899,8 +1899,8 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           when.codemode.run({
             scope: { kind: "system" },
             label: "publish the bundled marketplace artifact",
-            code: "async () => await internal.marketplacePush({})",
-            assertToolCalls: ["internal.marketplace.push"],
+            code: "async () => await admin.marketplacePushStatic({})",
+            assertToolCalls: ["admin.marketplace.push-static"],
           }),
           then.assert("a file already exists at the Marketplace target path", async (ctx) => {
             const upload = ctx.runtime.objects.upload.forOrg("org-1");
@@ -2002,8 +2002,8 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           when.codemode.run({
             scope: { kind: "system" },
             label: "publish both bundled Marketplace versions",
-            code: "async () => await internal.marketplacePush({})",
-            assertToolCalls: ["internal.marketplace.push"],
+            code: "async () => await admin.marketplacePushStatic({})",
+            assertToolCalls: ["admin.marketplace.push-static"],
           }),
           then.assert(
             "the legacy starter seeded the version 1.0.0 file without a lock entry",
@@ -2653,8 +2653,8 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           when.codemode.run({
             scope: { kind: "system" },
             label: "publish the bundled marketplace artifact",
-            code: "async () => await internal.marketplacePush({})",
-            assertToolCalls: ["internal.marketplace.push"],
+            code: "async () => await admin.marketplacePushStatic({})",
+            assertToolCalls: ["admin.marketplace.push-static"],
           }),
           then.assert("ingestion is requested without draining", async (ctx) => {
             await expect(
@@ -2869,8 +2869,8 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           when.codemode.run({
             scope: { kind: "system" },
             label: "publish the bundled marketplace artifact",
-            code: "async () => await internal.marketplacePush({})",
-            assertToolCalls: ["internal.marketplace.push"],
+            code: "async () => await admin.marketplacePushStatic({})",
+            assertToolCalls: ["admin.marketplace.push-static"],
           }),
           then.assert("ingestion is requested", async (ctx) => {
             await ctx.runtime.objects.automations
@@ -2980,8 +2980,8 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           when.codemode.run({
             scope: { kind: "system" },
             label: "publish the bundled marketplace artifact",
-            code: "async () => await internal.marketplacePush({})",
-            assertToolCalls: ["internal.marketplace.push"],
+            code: "async () => await admin.marketplacePushStatic({})",
+            assertToolCalls: ["admin.marketplace.push-static"],
           }),
 
           then.assert("an archived listing is not republished by a later request", async (ctx) => {

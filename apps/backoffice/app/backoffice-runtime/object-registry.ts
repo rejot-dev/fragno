@@ -15,6 +15,8 @@ import type {
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 import type { MarketplacePublishResult } from "@fragno-dev/backoffice-api/v0/marketplace";
 import type {
+  MarketplaceFeatureEntry,
+  MarketplaceFeaturedResult,
   MarketplaceListingDetail,
   MarketplaceListingPageInput,
   MarketplacePublishedListingInput,
@@ -118,6 +120,8 @@ import type {
   MarketplaceArchiveResult,
   MarketplaceCreateDraftListingInput,
   MarketplaceDraftResult,
+  MarketplaceFeaturedListing,
+  MarketplaceFeatureListingInput,
   MarketplaceInsertStaticEntriesInput,
   MarketplaceInsertStaticEntriesResult,
   MarketplaceLatestPublishedVersions,
@@ -132,6 +136,8 @@ import type {
   MarketplaceStaticPublicationResult,
   MarketplacePublishVersionInput,
   MarketplacePublishVersionResult,
+  MarketplaceUnfeatureInput,
+  MarketplaceUnfeatureResult,
   MarketplaceUpdateListingInput,
 } from "@/fragno/marketplace/contracts";
 import type {
@@ -433,6 +439,14 @@ export type MarketplaceObject = {
   getLatestPublishedVersions(
     input: MarketplaceLatestPublishedVersionsInput,
   ): Promise<MarketplaceLatestPublishedVersions>;
+  listFeaturedListings(): Promise<{ listings: MarketplaceFeaturedListing[] }>;
+  listFeatureEntries(): Promise<MarketplaceFeaturedResult>;
+  featureListing(
+    input: MarketplaceFeatureListingInput,
+  ): Promise<MarketplaceOperationResult<MarketplaceFeatureEntry>>;
+  unfeatureListing(
+    input: MarketplaceUnfeatureInput,
+  ): Promise<MarketplaceOperationResult<MarketplaceUnfeatureResult>>;
   listOwnedListings(input: MarketplaceOwnedListingPageInput): Promise<MarketplaceOwnedListingPage>;
   getOwnedListing(
     input: MarketplaceOwnedListingInput,

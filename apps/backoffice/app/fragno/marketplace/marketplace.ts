@@ -7,9 +7,10 @@ import { createMarketplaceFragment } from "./index";
 export const createMarketplaceServer = (
   runtime: BackofficeFragmentRuntimeOptions,
   scope: MarketplaceScope,
+  now: () => Date,
 ) =>
   createMarketplaceFragment(
-    { scope },
+    { scope, now },
     {
       databaseAdapter: runtime.adapters.createAdapter({ kind: "marketplace" }),
       mountRoute: "/api/marketplace",

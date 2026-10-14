@@ -4,6 +4,8 @@ import {
   type MarketplaceScope,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 import type {
+  MarketplaceFeatureEntry,
+  MarketplaceFeaturedResult,
   MarketplaceListingDetail,
   MarketplaceListingPageInput,
   MarketplacePublishedListingInput,
@@ -12,6 +14,8 @@ import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/perm
 import { backofficeContextScopesEqual } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { DurableObject, RpcTarget } from "cloudflare:workers";
+
+import { defaultFragnoRuntime } from "@fragno-dev/core";
 
 import {
   backofficeExecutionContextSchema,
@@ -38,6 +42,8 @@ import type {
   MarketplaceArchiveResult,
   MarketplaceCreateDraftListingInput,
   MarketplaceDraftResult,
+  MarketplaceFeaturedListing,
+  MarketplaceFeatureListingInput,
   MarketplaceInsertStaticEntriesInput,
   MarketplaceInsertStaticEntriesResult,
   MarketplaceLatestPublishedVersions,
@@ -51,6 +57,8 @@ import type {
   MarketplaceOperationResult,
   MarketplacePublishVersionInput,
   MarketplacePublishVersionResult,
+  MarketplaceUnfeatureInput,
+  MarketplaceUnfeatureResult,
   MarketplaceUpdateListingInput,
 } from "@/fragno/marketplace/contracts";
 import { MarketplacePublicationConflictError } from "@/fragno/marketplace/definition";
@@ -111,7 +119,13 @@ export class InMemoryMarketplaceObject extends RpcTarget implements MarketplaceO
     this.#scope = scope;
     this.#host = implementation.createFragmentHost({
       name: "Marketplace",
-      createRuntime: () => createMarketplaceServer(implementation.fragmentDatabase, scope),
+      createRuntime: () =>
+        createMarketplaceServer(
+          implementation.fragmentDatabase,
+          scope,
+          // Local runtimes share a controllable clock; deployed objects use real time.
+          () => (runtime.fragnoRuntime ?? defaultFragnoRuntime).time.now(),
+        ),
       onProcessError: (error) => {
         console.error("Marketplace hook processor error", error);
       },
@@ -437,6 +451,16 @@ export class InMemoryMarketplaceObject extends RpcTarget implements MarketplaceO
     return await fragment.callServices(() => fragment.services.getOwnedListing(input));
   }
 
+  async listFeaturedListings(): Promise<{ listings: MarketplaceFeaturedListing[] }> {
+    const fragment = this.#getFragment();
+    return await fragment.callServices(() => fragment.services.listFeaturedListings());
+  }
+
+  async listFeatureEntries(): Promise<MarketplaceFeaturedResult> {
+    const fragment = this.#getFragment();
+    return await fragment.callServices(() => fragment.services.listFeatureEntries());
+  }
+
   async #runOperation<TResult>(
     operation: (fragment: MarketplaceFragment) => Promise<TResult>,
   ): Promise<MarketplaceOperationResult<TResult>> {
@@ -506,6 +530,24 @@ export class InMemoryMarketplaceObject extends RpcTarget implements MarketplaceO
     return await this.#runOperation(
       async (fragment) =>
         await fragment.callServices(() => fragment.services.archiveListing(input)),
+    );
+  }
+
+  async featureListing(
+    input: MarketplaceFeatureListingInput,
+  ): Promise<MarketplaceOperationResult<MarketplaceFeatureEntry>> {
+    return await this.#runOperation(
+      async (fragment) =>
+        await fragment.callServices(() => fragment.services.featureListing(input)),
+    );
+  }
+
+  async unfeatureListing(
+    input: MarketplaceUnfeatureInput,
+  ): Promise<MarketplaceOperationResult<MarketplaceUnfeatureResult>> {
+    return await this.#runOperation(
+      async (fragment) =>
+        await fragment.callServices(() => fragment.services.unfeatureListing(input)),
     );
   }
 
@@ -594,6 +636,26 @@ export class Marketplace extends DurableObject<CloudflareEnv> implements Marketp
     input: MarketplaceOwnedListingInput,
   ): Promise<MarketplaceOwnedListingDetail | null> {
     return this.#object.getOwnedListing(input);
+  }
+
+  listFeaturedListings(): Promise<{ listings: MarketplaceFeaturedListing[] }> {
+    return this.#object.listFeaturedListings();
+  }
+
+  listFeatureEntries(): Promise<MarketplaceFeaturedResult> {
+    return this.#object.listFeatureEntries();
+  }
+
+  featureListing(
+    input: MarketplaceFeatureListingInput,
+  ): Promise<MarketplaceOperationResult<MarketplaceFeatureEntry>> {
+    return this.#object.featureListing(input);
+  }
+
+  unfeatureListing(
+    input: MarketplaceUnfeatureInput,
+  ): Promise<MarketplaceOperationResult<MarketplaceUnfeatureResult>> {
+    return this.#object.unfeatureListing(input);
   }
 
   insertStaticEntries(
