@@ -7,6 +7,14 @@ export function inferFileContentType(path: string): string {
       return "image/jpeg";
     case ".png":
       return "image/png";
+    case ".apng":
+      return "image/apng";
+    case ".avif":
+      return "image/avif";
+    case ".bmp":
+      return "image/bmp";
+    case ".ico":
+      return "image/x-icon";
     case ".gif":
       return "image/gif";
     case ".webp":
