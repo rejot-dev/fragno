@@ -6,6 +6,7 @@ import { Outlet, isRouteErrorResponse, useRouteError, useRouteLoaderData } from 
 
 import { BackofficeShell } from "@/components/backoffice/shell";
 import { writePreferredOrganization } from "@/fragno/auth/preferred-organization.client";
+import { dashboardPath } from "@/routes/backoffice/dashboard/path";
 import {
   getBackofficeOrganizationNotFound,
   getRouteErrorDebugDetails,
@@ -93,7 +94,7 @@ export function ErrorBoundary() {
       ? layoutData.resolvedScope.organization
       : null;
   const currentOrganizationPath = currentOrganization
-    ? `/backoffice/automations/org/${encodeURIComponent(currentOrganization.slug)}/orchestration`
+    ? dashboardPath({ kind: "org", orgSlug: currentOrganization.slug })
     : null;
 
   return (

@@ -4,6 +4,7 @@ import { getBackofficeMe } from "@/fragno/auth/auth-server";
 
 import type { Route } from "./+types/index";
 import { buildBackofficeAuthBootstrapPath } from "./auth-navigation";
+import { dashboardPath } from "./dashboard/path";
 
 export async function loader({ request, context, url }: Route.LoaderArgs) {
   const jwtMe = await getBackofficeMe(request, context);
@@ -16,9 +17,7 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
     return redirect("/backoffice/organizations");
   }
 
-  return redirect(
-    `/backoffice/automations/org/${encodeURIComponent(activeOrganization.slug)}/orchestration`,
-  );
+  return redirect(dashboardPath({ kind: "org", orgSlug: activeOrganization.slug }));
 }
 
 export default function BackofficeIndex() {

@@ -33,6 +33,7 @@ export type WorkflowRunCollections = Pick<
 
 export type WorkflowRunRecordSelector =
   | { type: "active-codemode" }
+  | { type: "waiting" }
   | { type: "instance"; workflowName: string; instanceId: string };
 
 /** The live query behind every run view; `queryOnce` accepts it as well. */
@@ -53,12 +54,14 @@ export function workflowRunRecordsQuery(
               eq(instance.status, "paused"),
             ),
           )
-      : instances.where(({ instance }) =>
-          and(
-            eq(instance.workflowName, selector.workflowName),
-            eq(instance.instanceId, selector.instanceId),
-          ),
-        );
+      : selector.type === "waiting"
+        ? instances.where(({ instance }) => eq(instance.status, "waiting"))
+        : instances.where(({ instance }) =>
+            and(
+              eq(instance.workflowName, selector.workflowName),
+              eq(instance.instanceId, selector.instanceId),
+            ),
+          );
 
   return selectedInstances
     .orderBy(({ instance }) => instance.updatedAt, "desc")

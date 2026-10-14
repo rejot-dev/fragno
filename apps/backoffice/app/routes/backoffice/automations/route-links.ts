@@ -22,3 +22,6 @@ export const automationEventCatalogLink = (
     selection: "event",
     selected: `${source}:${eventType}`,
   }).toString()}`;
+
+export const automationRouteSelectionLink = (orchestrationPath: string, routeId: string) =>
+  `${orchestrationPath}?${new URLSearchParams({ selection: "trigger", selected: routeId }).toString()}`;

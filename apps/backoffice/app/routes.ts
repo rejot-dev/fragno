@@ -19,6 +19,8 @@ export default [
     ...prefix("backoffice", [
       index("routes/backoffice/index.tsx"),
       route("organizations", "routes/backoffice/organizations.tsx"),
+      route("dashboard", "routes/backoffice/dashboard/index.tsx"),
+      route("dashboard/:scopeKind/:scopeId", "routes/backoffice/dashboard/dashboard.tsx"),
       route("invitations/:invitationId", "routes/backoffice/invitation-accept.tsx"),
       route("organizations/:orgSlug", "routes/backoffice/organization-layout.tsx", [
         index("routes/backoffice/organization-overview.tsx"),
@@ -71,7 +73,6 @@ export default [
           route("identity-bindings", "routes/backoffice/automations/identity-bindings.tsx"),
         ]),
         route("events-catalog", "routes/backoffice/automations/events-catalog.tsx"),
-        route("runs/:workflowName/:instanceId", "routes/backoffice/automations/workflow-run.tsx"),
       ]),
 
       route(

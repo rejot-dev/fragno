@@ -20,6 +20,8 @@ export const scopeSwitchPath = (pathname: string, scope: BackofficeRouteScope) =
   const rest = scoped ? segments.slice(4) : segments.slice(2);
 
   switch (section) {
+    case "dashboard":
+      return `/backoffice/dashboard/${scopePath}`;
     case "automations": {
       const tab = rest[0] && AUTOMATION_TABS.has(rest[0]) ? rest[0] : "orchestration";
       return `/backoffice/automations/${scopePath}/${tab}`;
@@ -55,6 +57,6 @@ export const scopeSwitchPath = (pathname: string, scope: BackofficeRouteScope) =
       return `/backoffice/internals/${scopePath}${toolPath}`;
     }
     default:
-      return `/backoffice/automations/${scopePath}/orchestration`;
+      return `/backoffice/dashboard/${scopePath}`;
   }
 };

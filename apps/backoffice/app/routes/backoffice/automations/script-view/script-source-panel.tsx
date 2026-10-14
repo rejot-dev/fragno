@@ -16,8 +16,8 @@ import {
   resolveWorkflowRuntimeToolCalls,
   type RuntimeToolWorkflowDescriptor,
 } from "@/fragno/runtime-tools/workflow-catalog";
+import { dashboardRunPath } from "@/routes/backoffice/dashboard/path";
 
-import { automationWorkflowRunPath } from "../scope";
 import { useLinkedScrollViewports } from "./linked-scroll";
 import { ScriptCodeView } from "./script-code-view";
 import { ScriptViewToggle, WorkflowGraphDetailToggle } from "./script-presentation-controls";
@@ -140,7 +140,7 @@ export function ScriptSourcePanel({
           key={workflowRuns.selectedRun.id}
           collections={collections}
           run={workflowRuns.selectedRun}
-          runPath={automationWorkflowRunPath(resolvedScope, {
+          runPath={dashboardRunPath(resolvedScope, {
             workflowName: workflowRuns.selectedRun.instanceWorkflowName,
             instanceId: workflowRuns.selectedRun.instanceId,
           })}

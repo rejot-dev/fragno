@@ -24,11 +24,11 @@ import {
   type AutomationCollectionSource,
 } from "@/fragno/automation/tanstack/browser-database";
 import { formatRelativeTime } from "@/routes/backoffice/automations/formatting";
-import { automationWorkflowRunPath } from "@/routes/backoffice/automations/scope";
 import {
   latestWorkflowRunGeneratedUi,
   type WorkflowRunEvent,
 } from "@/routes/backoffice/automations/script-view/workflow-run-presentation";
+import { dashboardRunPath } from "@/routes/backoffice/dashboard/path";
 
 import type { AutomationCollectionSourceState } from "./current-context-state";
 import { workflowRunErrorText } from "./global-workflow-drawer-utils";
@@ -536,7 +536,7 @@ function WorkflowRunDetail({
       </div>
       <ButtonLink
         variant="secondary"
-        to={automationWorkflowRunPath(source.resolvedScope, run)}
+        to={dashboardRunPath(source.resolvedScope, run)}
         className="mt-3 w-full"
       >
         <Icon name="activity" className="size-3.5" />
