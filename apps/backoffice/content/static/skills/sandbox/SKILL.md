@@ -7,8 +7,10 @@ description:
 
 # Sandbox
 
-Treat a sandbox as a leased environment: **acquire → execute → release**. The `sandbox` provider is
-available only when the deployment exposes the Sandbox capability.
+Treat a sandbox as a leased environment: **acquire → execute → release**. Stopping a sandbox saves
+its workspace, and starting the same id again resumes it with files, installed packages, and
+repositories intact. The `sandbox` provider is available only when the deployment exposes the
+Sandbox capability.
 
 ## Required process
 
@@ -19,11 +21,15 @@ available only when the deployment exposes the Sandbox capability.
    async () => await sandbox.listSandboxes();
    ```
 
-   Reuse a suitable running sandbox or choose a stable id for a new one. **Complete when** the
-   target sandbox id and lifecycle disposition are known.
+   Reuse a suitable running sandbox, resume a stopped one whose `workspaceSaved` is true, or choose
+   a new id for a fresh workspace. **Complete when** the target sandbox id and lifecycle disposition
+   are known.
 
-2. Start a sandbox with an idle lease. Set `keepAlive` only when the user asks to preserve it beyond
-   the task:
+2. Start the sandbox with a lease. `sleepAfter` saves and stops it after that long, and defaults to
+   `10m`. Set `keepAlive` only when the user asks to preserve it beyond the task. For a new
+   workspace, `image: "workspace"` (the default) has Node.js, Python, git, ripgrep, and jq;
+   `image: "debian"` has only Node.js and starts fastest. A saved workspace keeps its image. Raise
+   `instanceType` from `"lite"` to `"standard-1"` or larger for builds:
 
    ```js
    async () => {
@@ -36,7 +42,8 @@ available only when the deployment exposes the Sandbox capability.
    };
    ```
 
-   **Complete when** the requested sandbox exists and its returned status has been checked.
+   Starting returns `requested`; list sandboxes until the status is `running` or `error`. **Complete
+   when** the requested sandbox is running.
 
 3. Execute bounded commands and inspect the discriminated result:
 
@@ -59,7 +66,8 @@ available only when the deployment exposes the Sandbox capability.
    failure. **Complete when** every command succeeded and its expected output was checked, or a
    non-retryable failure was identified precisely.
 
-4. Release the lease when the task no longer needs the environment:
+4. Release the lease when the task no longer needs the environment. Killing saves the workspace for
+   a later start of the same id:
 
    ```js
    async () => await sandbox.killSandbox({ sandboxId: "dev" });

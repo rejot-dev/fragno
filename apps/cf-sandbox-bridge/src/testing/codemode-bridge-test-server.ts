@@ -45,14 +45,12 @@ export async function createCodemodeBridgeTestServer() {
         },
       },
       exports: {
-        Sandbox: { type: "durable-object", storage: "legacy-kv" },
-        WarmPool: { type: "durable-object", storage: "legacy-kv" },
+        Sandbox: { type: "durable-object", storage: "sqlite" },
         CodemodeCompiler: { type: "worker" },
       },
       env: {
         SANDBOX_API_KEY: { type: "text", value: apiKey },
         Sandbox: { type: "durable-object", worker: "cf-sandbox-bridge", exportName: "Sandbox" },
-        WarmPool: { type: "durable-object", worker: "cf-sandbox-bridge", exportName: "WarmPool" },
         LOADER: { type: "worker-loader" },
       },
     },

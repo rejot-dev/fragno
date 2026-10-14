@@ -9,9 +9,17 @@ import {
 } from "../runtime-tools";
 import { sandboxRuntimeTools, type SandboxRuntime } from "./sandbox";
 
+const summary = (id: string) => ({
+  id,
+  status: "running" as const,
+  image: "workspace" as const,
+  instanceType: "lite" as const,
+  workspaceSaved: false,
+});
+
 const createRuntime = (): SandboxRuntime => ({
-  listSandboxes: vi.fn(async () => [{ id: "dev", status: "running" as const }]),
-  startSandbox: vi.fn(async ({ id }) => ({ id, status: "running" as const })),
+  listSandboxes: vi.fn(async () => [summary("dev")]),
+  startSandbox: vi.fn(async ({ id }) => summary(id)),
   killSandbox: vi.fn(async ({ sandboxId }) => ({ sandboxId, killed: true as const })),
   executeCommand: vi.fn(async ({ command }) => ({
     ok: true as const,
@@ -48,6 +56,10 @@ describe("sandbox runtime tools", () => {
           "true",
           "--startup-timeout-ms",
           "1000",
+          "--image",
+          "debian",
+          "--instance-type",
+          "standard-2",
         ]),
       ),
     ).toEqual({
@@ -56,6 +68,8 @@ describe("sandbox runtime tools", () => {
       sleepAfter: "15m",
       startupCommand: "true",
       startupTimeoutMs: 1000,
+      image: "debian",
+      instanceType: "standard-2",
     });
   });
 

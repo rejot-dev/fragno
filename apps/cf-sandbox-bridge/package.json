@@ -11,7 +11,9 @@
   "type": "module",
   "exports": {
     "./compiler/build-worker-project": "./src/compiler/build-worker-project.ts",
-    "./compiler/type-check-project": "./src/compiler/type-check-project.ts"
+    "./compiler/type-check-project": "./src/compiler/type-check-project.ts",
+    "./sandbox/sandbox.do": "./src/sandbox/sandbox.do.ts",
+    "./sandbox/sandbox-container-contract": "./src/sandbox/sandbox-container-contract.ts"
   },
   "scripts": {
     "build": "tsx scripts/generate-typescript-standard-libraries.ts --check && wrangler deploy --dry-run --outdir dist --containers-rollout=none --env-file .dev.vars.example",
@@ -30,10 +32,10 @@
     "lint:fix:package": "node ../../scripts/run-package-quality.mjs lint:fix"
   },
   "dependencies": {
-    "@cloudflare/sandbox": "0.12.4",
     "@cloudflare/worker-bundler": "0.2.2",
     "@fragno-dev/codemode": "workspace:*",
-    "hono": "^4.13.0"
+    "hono": "^4.13.0",
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "catalog:",

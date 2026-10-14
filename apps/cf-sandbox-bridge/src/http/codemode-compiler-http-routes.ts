@@ -57,7 +57,7 @@ async function handleCompilerHttpRoute(context: Context<SandboxBridgeHonoEnv>): 
   );
 }
 
-/** Registers compiler HTTP endpoints before the Sandbox SDK fallback router. */
+/** Registers authenticated compiler HTTP endpoints. */
 export function registerCodemodeCompilerHttpRoutes(app: Hono<SandboxBridgeHonoEnv>): void {
   app.all(CODEMODE_COMPILER_HTTP_PATHS.compileWorker, handleCompilerHttpRoute);
   app.all(CODEMODE_COMPILER_HTTP_PATHS.typeCheckFiles, handleCompilerHttpRoute);

@@ -24,6 +24,9 @@ const makeRecord = (
   expectedStopAt: null,
   stoppedAt: status === "stopped" ? new Date("2024-01-01T00:00:00.000Z") : null,
   lastError: null,
+  image: "workspace",
+  instanceType: "lite",
+  workspaceSnapshot: null,
   createdAt: new Date("2024-01-01T00:00:00.000Z"),
   updatedAt: new Date("2024-01-01T00:00:00.000Z"),
 });
@@ -48,10 +51,21 @@ describe("createSandboxRuntime", () => {
     const lifecycle = createLifecycle();
     const runtime = createSandboxRuntime({ lifecycle });
 
-    await expect(runtime.listSandboxes()).resolves.toEqual([{ id: "dev", status: "running" }]);
+    await expect(runtime.listSandboxes()).resolves.toEqual([
+      {
+        id: "dev",
+        status: "running",
+        image: "workspace",
+        instanceType: "lite",
+        workspaceSaved: false,
+      },
+    ]);
     await expect(runtime.startSandbox({ id: "Dev" })).resolves.toEqual({
       id: "dev",
       status: "requested",
+      image: "workspace",
+      instanceType: "lite",
+      workspaceSaved: false,
     });
     await expect(runtime.killSandbox({ sandboxId: "Dev" })).resolves.toEqual({
       sandboxId: "dev",
@@ -74,6 +88,8 @@ describe("createSandboxRuntime", () => {
       sleepAfter: undefined,
       startupCommand: "true",
       startupTimeoutMs: undefined,
+      image: undefined,
+      instanceType: undefined,
     });
     expect(lifecycle.requestSandboxInstanceStop).toHaveBeenCalledWith({
       id: "dev",

@@ -1,8 +1,8 @@
-import type { SandboxInstanceRequestInput, SandboxLifecycleEvent } from "./contracts";
+import type { SandboxLifecycleEvent, SandboxLifecycleWorkflowParams } from "./contracts";
 
 export type EnqueueSandboxLifecycleWorkflowPayload = {
   workflowInstanceId: string;
-  params: SandboxInstanceRequestInput;
+  params: SandboxLifecycleWorkflowParams;
 };
 
 export type SandboxManagerInternalHooks = {

@@ -5,7 +5,7 @@ import type { Hono } from "hono";
 
 import type { SandboxBridgeHonoEnv } from "./sandbox-bridge-http-env";
 
-/** Authenticates and upgrades execution requests before the Sandbox SDK fallback router. */
+/** Authenticates and upgrades codemode execution requests. */
 export function registerCodemodeExecutionHttpRoute(app: Hono<SandboxBridgeHonoEnv>): void {
   app.all(CODEMODE_EXECUTION_HTTP_PATH, async function handleCodemodeExecutionHttpRoute(context) {
     const request = context.req.raw;

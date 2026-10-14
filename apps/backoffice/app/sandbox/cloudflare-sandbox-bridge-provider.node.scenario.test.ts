@@ -18,8 +18,7 @@ const scenarioObjects = allLocalObjects;
 
 const apiKey = "sandbox-bridge-scenario-key";
 const observedSandboxIds = new Set<string>();
-const destroyedSandboxIds: string[] = [];
-const lifecycleConfigurations: unknown[] = [];
+const bridgeOperations: Array<{ operation: string; body: unknown }> = [];
 let bridgeUrl: string;
 
 const bridgeServer = createServer((request, response) => {
@@ -77,10 +76,15 @@ test("Node Backoffice manages Cloudflare sandboxes through the authenticated bri
             }),
           ).resolves.toMatchObject({ id: "node-dev", status: "requested" });
           await ctx.drain();
-          await expect(sandbox.listSandboxes()).resolves.toContainEqual({
-            id: "node-dev",
-            status: "running",
-          });
+          await expect(sandbox.listSandboxes()).resolves.toEqual([
+            {
+              id: "node-dev",
+              status: "running",
+              image: "workspace",
+              instanceType: "lite",
+              workspaceSaved: false,
+            },
+          ]);
 
           await expect(
             sandbox.executeCommand({
@@ -100,17 +104,37 @@ test("Node Backoffice manages Cloudflare sandboxes through the authenticated bri
             killed: true,
           });
           await ctx.drain();
-          await expect(sandbox.listSandboxes()).resolves.toContainEqual({
-            id: "node-dev",
-            status: "stopped",
-          });
+          await expect(sandbox.listSandboxes()).resolves.toEqual([
+            {
+              id: "node-dev",
+              status: "stopped",
+              image: "workspace",
+              instanceType: "lite",
+              workspaceSaved: true,
+            },
+          ]);
         }),
         then.assert("the bridge receives one stable base32 physical sandbox ID", () => {
           expect([...observedSandboxIds]).toHaveLength(1);
           const [physicalSandboxId] = observedSandboxIds;
           expect(physicalSandboxId).toMatch(/^[a-z2-7]{52}$/);
-          expect(destroyedSandboxIds).toEqual([physicalSandboxId]);
-          expect(lifecycleConfigurations).toEqual([{ keepAlive: true }]);
+          expect(bridgeOperations).toEqual([
+            {
+              operation: "start",
+              body: {
+                source: { kind: "image", image: "workspace" },
+                instanceType: "lite",
+                leaseExpiresAt: null,
+              },
+            },
+            { operation: "exec", body: { argv: ["sh", "-lc", "true"], timeoutMs: 5_000 } },
+            {
+              operation: "exec",
+              body: { argv: ["sh", "-lc", "printf node-sandbox"], timeoutMs: 5_000 },
+            },
+            { operation: "snapshot", body: null },
+            { operation: "stop", body: null },
+          ]);
         }),
       ],
     }),
@@ -127,40 +151,42 @@ async function handleSandboxBridgeScenarioRequest(
   }
 
   const url = new URL(request.url ?? "/", bridgeUrl);
-  const match = /^\/v1\/sandbox\/([a-z2-7]{1,128})(?:\/(exec|configuration))?$/.exec(url.pathname);
+  const match = /^\/v1\/sandbox\/([a-z2-7]{1,128})(?:\/(start|exec|snapshot))?$/.exec(url.pathname);
   if (!match) {
     sendJson(response, 404, { error: "Not found", code: "not_found" });
     return;
   }
-  const sandboxId = match[1];
-  observedSandboxIds.add(sandboxId);
-
-  if (request.method === "DELETE" && match[2] === undefined) {
-    destroyedSandboxIds.push(sandboxId);
-    response.writeHead(204).end();
-    return;
-  }
-  if (request.method === "PUT" && match[2] === "configuration") {
-    lifecycleConfigurations.push(JSON.parse(await readRequestBody(request)));
-    sendJson(response, 200, { ok: true });
-    return;
-  }
-  if (request.method !== "POST" || match[2] !== "exec") {
-    sendJson(response, 405, { error: "Method not allowed", code: "method_not_allowed" });
-    return;
-  }
-
-  const body = JSON.parse(await readRequestBody(request)) as { argv: string[] };
-  const command = body.argv[0] === "sh" && body.argv[1] === "-lc" ? body.argv[2] : "";
-  response.writeHead(200, {
-    "content-type": "text/event-stream",
-    "cache-control": "no-cache",
+  observedSandboxIds.add(match[1]);
+  const operation = request.method === "DELETE" && !match[2] ? "stop" : match[2];
+  const rawBody = await readRequestBody(request);
+  bridgeOperations.push({
+    operation: operation ?? "unknown",
+    body: rawBody ? JSON.parse(rawBody) : null,
   });
-  if (command === "printf node-sandbox") {
-    response.write("event: stdout\r\n");
-    response.write(`data: ${Buffer.from("node-sandbox").toString("base64")}\r\n\r\n`);
+
+  switch (operation) {
+    case "start":
+      sendJson(response, 200, { restoredSnapshot: null });
+      return;
+    case "stop":
+      response.writeHead(204).end();
+      return;
+    case "exec": {
+      const { argv } = JSON.parse(rawBody) as { argv: string[] };
+      sendJson(response, 200, {
+        status: "exited",
+        exitCode: 0,
+        stdout: argv[2] === "printf node-sandbox" ? "node-sandbox" : "",
+        stderr: "",
+      });
+      return;
+    }
+    case "snapshot":
+      sendJson(response, 200, { status: "saved", snapshot: { id: "snapshot-1", size: 1024 } });
+      return;
+    default:
+      sendJson(response, 405, { error: "Method not allowed", code: "method_not_allowed" });
   }
-  response.end('event: exit\r\ndata: {"exit_code":0}\r\n\r\n');
 }
 
 async function readRequestBody(request: IncomingMessage): Promise<string> {

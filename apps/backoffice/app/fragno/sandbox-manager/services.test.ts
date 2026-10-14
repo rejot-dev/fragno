@@ -57,6 +57,9 @@ describe("sandbox manager instance services", () => {
         expectedStopAt: null,
         stoppedAt: null,
         lastError: null,
+        image: "workspace",
+        instanceType: "lite",
+        workspaceSnapshot: null,
         createdAt: new Date("2024-01-01T00:00:00.000Z"),
         updatedAt: new Date("2024-01-01T00:00:00.000Z"),
       }),
@@ -87,12 +90,20 @@ describe("sandbox manager instance services", () => {
     expect(created.createdAt).toBeInstanceOf(Date);
     expect(created.updatedAt).toBeInstanceOf(Date);
 
-    await fragment.callServices(() =>
+    const other = await fragment.callServices(() =>
       fragment.services.requestSandboxInstance({
         id: "org_123::other",
         provider: CLOUDFLARE_SANDBOX_PROVIDER,
       }),
     );
+    // Containers only stop when told to, so a sandbox without keepAlive always gets a lifetime.
+    expect(other).toMatchObject({
+      keepAlive: false,
+      sleepAfter: "10m",
+      image: "workspace",
+      instanceType: "lite",
+      workspaceSnapshot: null,
+    });
 
     const listed = await fragment.callServices(() =>
       fragment.services.listSandboxInstances({ provider: CLOUDFLARE_SANDBOX_PROVIDER }),

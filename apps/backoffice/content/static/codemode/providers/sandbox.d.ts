@@ -4,7 +4,7 @@ type SandboxCodemodeProvider = {
   startSandbox(input: SandboxStartSandboxInput): Promise<SandboxStartSandboxOutput>;
   /** List Cloudflare sandboxes for the current organization. */
   listSandboxes(): Promise<SandboxListSandboxesOutput>;
-  /** Kill a Cloudflare sandbox for the current organization. */
+  /** Save a Cloudflare sandbox's workspace and stop it. Starting the same sandbox ID resumes the workspace. */
   killSandbox(input: SandboxKillSandboxInput): Promise<SandboxKillSandboxOutput>;
   /** Execute a command in a Cloudflare sandbox. */
   executeCommand(input: SandboxExecuteCommandInput): Promise<SandboxExecuteCommandOutput>;
@@ -14,17 +14,31 @@ declare const sandbox: SandboxCodemodeProvider;
 type SandboxStartSandboxInput = {
   id: string;
   keepAlive?: boolean;
+  /** Saves the workspace and stops the sandbox after this long, for example 15m. Defaults to 10m unless keepAlive is set. */
   sleepAfter?: string | number;
   startupTimeoutMs?: number;
   startupCommand?: string;
+  /** Image for a new workspace; defaults to workspace. A saved workspace resumes on its own image. */
+  image?: "workspace" | "debian";
+  instanceType?: "lite" | "standard-1" | "standard-2" | "standard-3" | "standard-4";
 };
 type SandboxStartSandboxOutput = {
   id: string;
   status: "requested" | "starting" | "running" | "stopping" | "stopped" | "error";
+  /** workspace: Debian with Node.js, Python, git, ripgrep, and jq. debian: Cloudflare-managed Debian with Node.js; starts fastest. */
+  image: "workspace" | "debian";
+  instanceType: "lite" | "standard-1" | "standard-2" | "standard-3" | "standard-4";
+  /** Whether the next start resumes the workspace saved when the sandbox last stopped. */
+  workspaceSaved: boolean;
 };
 type SandboxListSandboxesOutput = {
   id: string;
   status: "requested" | "starting" | "running" | "stopping" | "stopped" | "error";
+  /** workspace: Debian with Node.js, Python, git, ripgrep, and jq. debian: Cloudflare-managed Debian with Node.js; starts fastest. */
+  image: "workspace" | "debian";
+  instanceType: "lite" | "standard-1" | "standard-2" | "standard-3" | "standard-4";
+  /** Whether the next start resumes the workspace saved when the sandbox last stopped. */
+  workspaceSaved: boolean;
 }[];
 type SandboxKillSandboxInput = {
   sandboxId: string;

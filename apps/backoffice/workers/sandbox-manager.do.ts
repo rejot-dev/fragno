@@ -17,9 +17,9 @@ import type {
 } from "@/fragno/sandbox-manager/contracts";
 import { createSandboxManagerRuntime } from "@/fragno/sandbox-manager/sandbox-manager";
 import { createCloudflareSandboxPhysicalId } from "@/sandbox/cloudflare-sandbox-id";
-import { createCloudflareSandboxProvider } from "@/sandbox/cloudflare-sandbox-provider";
 import { CLOUDFLARE_SANDBOX_PROVIDER } from "@/sandbox/contracts";
 import type { SandboxCommandResult, SandboxRuntimeProviders } from "@/sandbox/contracts";
+import { executeSandboxCommand } from "@/sandbox/sandbox-command-result";
 
 import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-object";
 import type { BackofficeObjectImplementation } from "./lib/backoffice-object-implementation";
@@ -175,8 +175,9 @@ export class InMemorySandboxManagerObject extends RpcTarget implements SandboxMa
       };
     }
 
-    const handle = await provider.getHandle(input.sandboxId);
-    return await handle.executeCommand(input.command, { timeoutMs: input.timeoutMs });
+    return await executeSandboxCommand(await provider.getHandle(input.sandboxId), input.command, {
+      timeoutMs: input.timeoutMs,
+    });
   }
 
   async alarm() {
@@ -198,19 +199,11 @@ export class SandboxManager extends DurableObject<CloudflareEnv> implements Sand
     this.#object = new InMemorySandboxManagerObject({
       ...createCloudflareBackofficeObjectContext(state, env),
       sandboxProviders: {
-        [CLOUDFLARE_SANDBOX_PROVIDER]: createCloudflareSandboxProvider({
-          sandboxNamespace: env.SANDBOX,
-          sdk: {
-            async getSandbox(namespace, id, options) {
-              const { getSandbox } = await import("@cloudflare/sandbox");
-              return getSandbox(
-                namespace,
-                await createCloudflareSandboxPhysicalId(managerId, id),
-                options,
-              );
-            },
-          },
-        }),
+        [CLOUDFLARE_SANDBOX_PROVIDER]: {
+          provider: CLOUDFLARE_SANDBOX_PROVIDER,
+          getHandle: async (id) =>
+            env.SANDBOX.getByName(await createCloudflareSandboxPhysicalId(managerId, id)),
+        },
       },
     });
   }
