@@ -11,6 +11,8 @@ import type {
   WorkflowVisualizationSnapshot,
 } from "@fragno-dev/workflow-visualizer-tokens";
 
+import { parseBackofficeUiResult, type BackofficeUiParseResult } from "@/backoffice-ui/result";
+
 const ACTIVE_WORKFLOW_STATUSES = new Set(["active", "waiting", "paused"]);
 
 type WorkflowRunTimestamp = Date | string;
@@ -225,6 +227,34 @@ export function selectScriptWorkflowRun(
   selectedInstanceId: string | null | undefined,
 ): ScriptWorkflowRun | null {
   return runs.find((run) => run.instanceId === selectedInstanceId) ?? runs.at(0) ?? null;
+}
+
+/** The interface a run presents: its own output, or else the latest completed step that returned one. */
+export type WorkflowRunGeneratedUi<TStep> =
+  | { type: "output"; parsed: Exclude<BackofficeUiParseResult, { kind: "ordinary" }> }
+  | { type: "step"; step: TStep };
+
+export function latestWorkflowRunGeneratedUi<
+  TStep extends Pick<WorkflowRunStep, "status" | "result">,
+>({
+  output,
+  steps,
+}: {
+  output: unknown;
+  steps: readonly TStep[];
+}): WorkflowRunGeneratedUi<TStep> | null {
+  const parsedOutput = parseBackofficeUiResult(output);
+  if (parsedOutput.kind !== "ordinary") {
+    return { type: "output", parsed: parsedOutput };
+  }
+  const step = [...steps]
+    .reverse()
+    .find(
+      (candidate) =>
+        candidate.status === "completed" &&
+        parseBackofficeUiResult(candidate.result).kind !== "ordinary",
+    );
+  return step ? { type: "step", step } : null;
 }
 
 export function currentWorkflowWaitingEventTypes(

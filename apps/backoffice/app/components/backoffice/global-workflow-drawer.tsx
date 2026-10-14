@@ -17,27 +17,22 @@ import {
 
 import { eq, toArray, useLiveQuery } from "@tanstack/react-db";
 
-import { backofficeRuntimeScopeFromResolvedScope } from "@/backoffice-runtime/resolved-scope";
-import { BackofficeUiErrorBoundary, BackofficeUiRenderer } from "@/backoffice-ui/renderer";
-import { parseBackofficeUiResult } from "@/backoffice-ui/result";
-import { sendBackofficeWorkflowEvent } from "@/backoffice-ui/workflow-events.client";
-import { FileImageScopeProvider } from "@/components/backoffice/file-image";
 import {
   describeAutomationCollectionSource,
   getAutomationBrowserDatabase,
   type AutomationBrowserDatabase,
   type AutomationCollectionSource,
 } from "@/fragno/automation/tanstack/browser-database";
+import { formatRelativeTime } from "@/routes/backoffice/automations/formatting";
 import { automationWorkflowRunPath } from "@/routes/backoffice/automations/scope";
 import {
-  currentWorkflowWaitingEventTypes,
+  latestWorkflowRunGeneratedUi,
   type WorkflowRunEvent,
-  type WorkflowStepRunState,
 } from "@/routes/backoffice/automations/script-view/workflow-run-presentation";
-import { WorkflowStepGeneratedUi } from "@/routes/backoffice/automations/script-view/workflow-step-generated-ui";
 
 import type { AutomationCollectionSourceState } from "./current-context-state";
 import { workflowRunErrorText } from "./global-workflow-drawer-utils";
+import { WorkflowRunGeneratedInterface } from "./workflow-run-generated-interface";
 
 export const GLOBAL_WORKFLOW_DRAWER_ID = "global-workflow-drawer";
 
@@ -338,7 +333,7 @@ function RecentAutomationEvents({ database }: { database: AutomationBrowserDatab
                 </p>
               </div>
               <span className="shrink-0 text-[9px] text-[var(--bo-muted-2)] tabular-nums">
-                {formatRelativeTime(event.occurredAt)}
+                {formatRelativeTime(event.occurredAt, Date.now())}
               </span>
             </div>
           </summary>
@@ -492,7 +487,7 @@ function RecentWorkflowRuns({
               {run.status}
             </p>
             <p className="mt-1 text-[9px] text-[var(--bo-muted-2)] tabular-nums">
-              {formatRelativeTime(run.updatedAt)}
+              {formatRelativeTime(run.updatedAt, Date.now())}
             </p>
           </div>
           <Icon name="chevron-right" className="size-3.5 shrink-0 text-[var(--bo-muted-2)]" />
@@ -511,8 +506,7 @@ function WorkflowRunDetail({
   source: AutomationCollectionSource;
   onBack: () => void;
 }) {
-  const runtimeScope = backofficeRuntimeScopeFromResolvedScope(source.resolvedScope);
-  const generatedUi = latestWorkflowGeneratedUi(run);
+  const generatedUi = latestWorkflowRunGeneratedUi({ output: run.output, steps: run.steps });
   const completedSteps = run.steps.filter((step) => step.status === "completed").length;
   const runError = workflowRunErrorText(run);
   return (
@@ -538,7 +532,7 @@ function WorkflowRunDetail({
 
       <div className="mt-4 grid grid-cols-2 gap-px bg-[var(--bo-border)] shadow-[0_0_0_1px_var(--bo-border)]">
         <Metric label="Progress" value={`${completedSteps}/${run.steps.length}`} />
-        <Metric label="Updated" value={formatRelativeTime(run.updatedAt)} />
+        <Metric label="Updated" value={formatRelativeTime(run.updatedAt, Date.now())} />
       </div>
       <ButtonLink
         variant="secondary"
@@ -618,93 +612,17 @@ function WorkflowRunDetail({
               Generated interface
             </h4>
           </div>
-          <FileImageScopeProvider scope={source.resolvedScope}>
-            <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3">
-              {generatedUi.type === "step" ? (
-                <WorkflowStepGeneratedUi
-                  state={workflowStepGeneratedUiState(generatedUi.step)}
-                  workflowEvents={run.workflowEvents}
-                  workflowRunRecordId={run.id}
-                  currentScope={
-                    source.resolvedScope.kind !== "system" ? source.resolvedScope : undefined
-                  }
-                  workflowName={run.remoteWorkflowName ?? run.workflowName}
-                  workflowInstanceId={run.instanceId}
-                  waitingEventTypes={currentWorkflowWaitingEventTypes(run.steps)}
-                  workflowEventSender={async ({
-                    eventId,
-                    workflowName,
-                    instanceId,
-                    eventType,
-                    payload,
-                  }) => {
-                    await sendBackofficeWorkflowEvent({
-                      eventId,
-                      reference: {
-                        scope: runtimeScope,
-                        workflowName,
-                        instanceId,
-                      },
-                      eventType,
-                      payload,
-                    });
-                  }}
-                />
-              ) : generatedUi.parsed.kind === "valid" ? (
-                <BackofficeUiErrorBoundary
-                  fallback={
-                    <DrawerState
-                      message="A generated component failed while rendering."
-                      tone="error"
-                    />
-                  }
-                >
-                  <BackofficeUiRenderer ui={generatedUi.parsed.value.$ui} />
-                </BackofficeUiErrorBoundary>
-              ) : (
-                <DrawerState message={generatedUi.parsed.message} tone="error" />
-              )}
-            </div>
-          </FileImageScopeProvider>
+          <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3">
+            <WorkflowRunGeneratedInterface
+              run={run}
+              generatedUi={generatedUi}
+              resolvedScope={source.resolvedScope}
+            />
+          </div>
         </section>
       ) : null}
     </div>
   );
-}
-
-function latestWorkflowGeneratedUi(run: RecentWorkflowRun) {
-  const parsedOutput = parseBackofficeUiResult(run.output);
-  if (parsedOutput.kind !== "ordinary") {
-    return { type: "output" as const, parsed: parsedOutput };
-  }
-
-  for (let index = run.steps.length - 1; index >= 0; index -= 1) {
-    const step = run.steps[index];
-    if (step?.status !== "completed") {
-      continue;
-    }
-    const parsed = parseBackofficeUiResult(step.result);
-    if (parsed.kind !== "ordinary") {
-      return { type: "step" as const, step };
-    }
-  }
-  return null;
-}
-
-function workflowStepGeneratedUiState(
-  step: RecentWorkflowRun["steps"][number],
-): WorkflowStepRunState {
-  return {
-    stepRecordId: step.id,
-    status: step.status,
-    attempts: step.attempts,
-    completedAt: step.status === "completed" ? step.updatedAt : undefined,
-    result: step.result,
-    error: step.errorMessage ?? undefined,
-    waitEventType: step.waitEventType ?? undefined,
-    emissionCount: 0,
-    current: false,
-  };
 }
 
 function Metric({ label, value }: { label: string; value: string }) {
@@ -739,25 +657,6 @@ function DrawerState({ message, tone = "muted" }: { message: string; tone?: "mut
       {message}
     </div>
   );
-}
-
-function formatRelativeTime(value: Date | string): string {
-  const elapsed = Date.now() - new Date(value).getTime();
-  if (!Number.isFinite(elapsed) || elapsed < 0) {
-    return "now";
-  }
-  const minutes = Math.floor(elapsed / 60_000);
-  if (minutes < 1) {
-    return "now";
-  }
-  if (minutes < 60) {
-    return `${minutes}m ago`;
-  }
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) {
-    return `${hours}h ago`;
-  }
-  return `${Math.floor(hours / 24)}d ago`;
 }
 
 function subscribeToDrawerWidth(listener: () => void) {

@@ -1,0 +1,111 @@
+import { backofficeRuntimeScopeFromResolvedScope } from "@/backoffice-runtime/resolved-scope";
+import type { BackofficeResolvedScope } from "@/backoffice-runtime/resolved-scope";
+import { BackofficeUiErrorBoundary, BackofficeUiRenderer } from "@/backoffice-ui/renderer";
+import { sendBackofficeWorkflowEvent } from "@/backoffice-ui/workflow-events.client";
+import { FileImageScopeProvider } from "@/components/backoffice/file-image";
+import {
+  currentWorkflowWaitingEventTypes,
+  type WorkflowRunEvent,
+  type WorkflowRunGeneratedUi,
+  type WorkflowRunStep,
+  type WorkflowStepRunState,
+} from "@/routes/backoffice/automations/script-view/workflow-run-presentation";
+import { WorkflowStepGeneratedUi } from "@/routes/backoffice/automations/script-view/workflow-step-generated-ui";
+
+export type GeneratedInterfaceStep = Pick<
+  WorkflowRunStep,
+  | "id"
+  | "stepKey"
+  | "parentStepKey"
+  | "type"
+  | "status"
+  | "attempts"
+  | "result"
+  | "errorMessage"
+  | "waitEventType"
+  | "updatedAt"
+>;
+
+export type GeneratedInterfaceRun = {
+  id: string;
+  instanceId: string;
+  workflowName: string;
+  remoteWorkflowName: string | null;
+  steps: readonly GeneratedInterfaceStep[];
+  workflowEvents: readonly WorkflowRunEvent[];
+};
+
+type WorkflowRunGeneratedInterfaceProps = {
+  run: GeneratedInterfaceRun;
+  generatedUi: WorkflowRunGeneratedUi<GeneratedInterfaceStep>;
+  resolvedScope: BackofficeResolvedScope;
+};
+
+/** Renders the interface a run presents; step interfaces answer the run's waits with events. */
+export function WorkflowRunGeneratedInterface(props: WorkflowRunGeneratedInterfaceProps) {
+  // Images resolve against the run's scope, which differs from the page's in the global drawer.
+  return (
+    <FileImageScopeProvider scope={props.resolvedScope}>
+      <GeneratedInterfaceContent {...props} />
+    </FileImageScopeProvider>
+  );
+}
+
+function GeneratedInterfaceContent({
+  run,
+  generatedUi,
+  resolvedScope,
+}: WorkflowRunGeneratedInterfaceProps) {
+  if (generatedUi.type === "output") {
+    return generatedUi.parsed.kind === "valid" ? (
+      <BackofficeUiErrorBoundary
+        fallback={
+          <GeneratedInterfaceError message="A generated component failed while rendering." />
+        }
+      >
+        <BackofficeUiRenderer ui={generatedUi.parsed.value.$ui} />
+      </BackofficeUiErrorBoundary>
+    ) : (
+      <GeneratedInterfaceError message={generatedUi.parsed.message} />
+    );
+  }
+
+  const runtimeScope = backofficeRuntimeScopeFromResolvedScope(resolvedScope);
+  return (
+    <WorkflowStepGeneratedUi
+      state={workflowStepGeneratedUiState(generatedUi.step)}
+      workflowEvents={run.workflowEvents}
+      workflowRunRecordId={run.id}
+      currentScope={resolvedScope.kind !== "system" ? resolvedScope : undefined}
+      workflowName={run.remoteWorkflowName ?? run.workflowName}
+      workflowInstanceId={run.instanceId}
+      waitingEventTypes={currentWorkflowWaitingEventTypes(run.steps)}
+      workflowEventSender={async ({ eventId, workflowName, instanceId, eventType, payload }) => {
+        await sendBackofficeWorkflowEvent({
+          eventId,
+          reference: { scope: runtimeScope, workflowName, instanceId },
+          eventType,
+          payload,
+        });
+      }}
+    />
+  );
+}
+
+function workflowStepGeneratedUiState(step: GeneratedInterfaceStep): WorkflowStepRunState {
+  return {
+    stepRecordId: step.id,
+    status: step.status,
+    attempts: step.attempts,
+    completedAt: step.status === "completed" ? step.updatedAt : undefined,
+    result: step.result,
+    error: step.errorMessage ?? undefined,
+    waitEventType: step.waitEventType ?? undefined,
+    emissionCount: 0,
+    current: false,
+  };
+}
+
+function GeneratedInterfaceError({ message }: { message: string }) {
+  return <p className="text-xs leading-relaxed text-[var(--bo-failed)]">{message}</p>;
+}
