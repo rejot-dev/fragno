@@ -15,10 +15,12 @@ import { z } from "zod";
 
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
-import type { MarketplaceObject } from "@/backoffice-runtime/object-registry";
+import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
 import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
+import { marketplaceScopeForVisibility } from "@/fragno/marketplace/owner";
 import { captureMarketplacePackageSnapshot } from "@/fragno/marketplace/package-manifest";
+import { resolveMarketplacePackageOwner } from "@/fragno/marketplace/package-publishing";
 
 /** Marketplace discovery reads only published registry metadata, never workspace files. */
 export type MarketplaceRuntime = {
@@ -29,9 +31,9 @@ export type MarketplaceRuntime = {
   publish(input: z.output<typeof marketplacePublishInputSchema>): Promise<MarketplacePublishResult>;
 };
 
-/** Each search examines one bounded registry page; callers follow its candidate cursor. */
+/** Discovery reads the public Marketplace; publishing targets the Marketplace its visibility names. */
 export function createMarketplaceRuntime(
-  object: MarketplaceObject,
+  objects: BackofficeObjectRegistry,
   publication: {
     state: BackofficeStateBackend;
     execution: BackofficeExecutionContext;
@@ -60,9 +62,12 @@ export function createMarketplaceRuntime(
         publication.state,
         input.packageRoot,
       );
-      return await object.publishPackage(
+      const owner = await resolveMarketplacePackageOwner(objects, snapshot.manifest.name);
+      const marketplace = marketplaceScopeForVisibility(input.visibility, owner.scope);
+      return await objects.marketplace.for(marketplace).commands.publishPackage(
         {
           snapshot,
+          visibility: input.visibility,
           dryRun: input.dryRun,
           skipAuthorCheck: input.skipAuthorCheck,
           skipVersionCheck: input.skipVersionCheck,
@@ -71,7 +76,7 @@ export function createMarketplaceRuntime(
       );
     },
     async search({ query, ...input }) {
-      const page = await object.listPublishedListings(input);
+      const page = await objects.marketplace.singleton().commands.listPublishedListings(input);
       const terms = query.toLowerCase().split(/\s+/u);
       const listings = page.listings.filter((listing) => {
         const text = [
@@ -102,7 +107,7 @@ export function createMarketplaceRuntime(
       };
     },
     async view(input) {
-      const detail = await object.getPublishedListing(input);
+      const detail = await objects.marketplace.singleton().commands.getPublishedListing(input);
       if (!detail) {
         throw new BackofficeOperationError(
           "not_found",

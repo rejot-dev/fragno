@@ -1,4 +1,7 @@
-import { MARKETPLACE_CATEGORIES } from "@fragno-dev/backoffice-api/v0/marketplace";
+import {
+  MARKETPLACE_CATEGORIES,
+  marketplaceVisibilitySchema,
+} from "@fragno-dev/backoffice-api/v0/marketplace";
 import { Button, ButtonLink } from "@fragno-private/design-system/button";
 import { FormContainer } from "@fragno-private/design-system/form-container";
 import { Input } from "@fragno-private/design-system/input";
@@ -12,7 +15,7 @@ import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 import { buildBackofficeLoginPath } from "../auth-navigation";
 import type { Route } from "./+types/publish";
 import { marketplaceListingManagePath } from "./navigation";
-import { marketplaceOwnerForOrganization } from "./publisher.server";
+import { marketplaceForPublisher, marketplaceOwnerForOrganization } from "./publisher.server";
 import { marketplaceScopeTabPath } from "./scope";
 
 type PublishActionData = { ok: false; message: string };
@@ -65,6 +68,14 @@ export async function action({ request, context, url }: Route.ActionArgs) {
     } satisfies PublishActionData;
   }
 
+  const visibility = marketplaceVisibilitySchema.safeParse(formData.get("visibility"));
+  if (!visibility.success) {
+    return {
+      ok: false,
+      message: "Choose who can see this listing.",
+    } satisfies PublishActionData;
+  }
+
   const input = marketplaceCreateDraftListingInputSchema.safeParse({
     owner,
     slug: formData.get("slug"),
@@ -87,9 +98,11 @@ export async function action({ request, context, url }: Route.ActionArgs) {
     } satisfies PublishActionData;
   }
 
-  const marketplace = context
-    .get(BackofficeWorkerContext)
-    .runtime.objects.marketplace.singleton().commands;
+  const marketplace = marketplaceForPublisher(
+    context.get(BackofficeWorkerContext).runtime.objects,
+    owner,
+    visibility.data,
+  );
   const operation = await marketplace.createDraftListing(input.data);
   if (!operation.ok) {
     return { ok: false, message: operation.error.message } satisfies PublishActionData;
@@ -100,6 +113,7 @@ export async function action({ request, context, url }: Route.ActionArgs) {
     marketplaceListingManagePath({
       listingId: result.listingId,
       organizationSlug,
+      visibility: visibility.data,
       result: {
         created: result.version,
         ...(result.created ? {} : { reused: "1" }),
@@ -199,6 +213,23 @@ export default function BackofficeMarketplacePublish({ loaderData }: Route.Compo
                   {organization.name}
                 </option>
               ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 md:col-span-2">
+            <span className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
+              Visibility
+            </span>
+            <select
+              name="visibility"
+              required
+              defaultValue=""
+              className="bo-input px-3 py-2 text-sm"
+            >
+              <option value="" disabled>
+                Choose who can see this listing
+              </option>
+              <option value="organization">Organization members only</option>
+              <option value="public">Public</option>
             </select>
           </label>
           <Field

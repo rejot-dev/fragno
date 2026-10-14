@@ -50,6 +50,7 @@ describe("runtime tool reference generation", () => {
     assert(publish);
     expect(publish.bash?.options.map((option) => option.name)).toEqual([
       "package-root",
+      "visibility",
       "dry-run",
       "skip-author-check",
       "skip-version-check",

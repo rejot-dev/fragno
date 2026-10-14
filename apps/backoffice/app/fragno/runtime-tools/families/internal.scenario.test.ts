@@ -219,6 +219,7 @@ describe("internal maintenance scope scenarios", () => {
                   request: {
                     workflowInstanceId: `invalid-publication-${scope.kind}`,
                     intent: {
+                      marketplace: { kind: "system" },
                       release,
                       execution: publisherExecution,
                       skipAuthorCheck: false,

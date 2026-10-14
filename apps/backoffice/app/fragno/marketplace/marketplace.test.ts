@@ -57,7 +57,9 @@ describe("marketplace fragment", async () => {
     .withTestAdapter({ type: "kysely-sqlite" })
     .withFragment(
       "marketplace",
-      instantiate(marketplaceFragmentDefinition).withConfig({}).withRoutes([]),
+      instantiate(marketplaceFragmentDefinition)
+        .withConfig({ scope: { kind: "system" } })
+        .withRoutes([]),
     )
     .build();
 
@@ -249,7 +251,7 @@ describe("marketplace fragment", async () => {
       listingId,
       slug: input.slug,
       listingStatus: "published",
-      uploadName: marketplaceArtifactUploadName(listingId),
+      uploadName: marketplaceArtifactUploadName({ marketplace: { kind: "system" }, listingId }),
       versions: ["1.0.0"],
     });
     await expect(
@@ -409,7 +411,9 @@ describe("marketplace fragment", async () => {
       ),
     );
     expect(manifests.map((manifest) => manifest?.uploadName)).toEqual(
-      listings.map(({ listingId }) => marketplaceArtifactUploadName(listingId)),
+      listings.map(({ listingId }) =>
+        marketplaceArtifactUploadName({ marketplace: { kind: "system" }, listingId }),
+      ),
     );
     expect(manifests[0]?.uploadName).not.toBe(manifests[1]?.uploadName);
   });

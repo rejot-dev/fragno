@@ -43,6 +43,19 @@ export const marketplaceOwnerSchema = z.object({
 
 export type MarketplaceOwner = z.infer<typeof marketplaceOwnerSchema>;
 
+/** System hosts the public Marketplace; each organization has its own members-only Marketplace. */
+export const marketplaceScopeSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("system") }),
+  backofficeOrganizationScopeSchema,
+]);
+
+export type MarketplaceScope = z.infer<typeof marketplaceScopeSchema>;
+
+/** Organization visibility publishes into the owning organization's Marketplace. */
+export const marketplaceVisibilitySchema = z.enum(["public", "organization"]);
+
+export type MarketplaceVisibility = z.infer<typeof marketplaceVisibilitySchema>;
+
 export const marketplaceListingContentSchema = z.object({
   name: z.string().trim().min(3).max(120),
   summary: z.string().trim().min(10).max(240),
@@ -137,6 +150,7 @@ export const packageIdentitySchema = z.strictObject({
   version: marketplaceVersionSchema,
   snapshotId: z.string(),
   owner: marketplacePackageOwnerSchema,
+  marketplace: marketplaceScopeSchema,
   files: z.array(
     z.strictObject({ relativePath: z.string(), sizeBytes: z.number(), checksum: z.string() }),
   ),
@@ -306,6 +320,7 @@ export const marketplacePublishInputSchema = z.strictObject({
     )
     .transform((path) => path.replace(/\/$/u, ""))
     .pipe(z.string()),
+  visibility: marketplaceVisibilitySchema,
   dryRun: z.boolean().default(false),
   skipAuthorCheck: z.boolean().default(false),
   skipVersionCheck: z.boolean().default(false),
@@ -355,7 +370,7 @@ export const marketplaceOperations = {
   },
   "marketplace.publish": {
     description:
-      "Publish a captured package from a root manifest.json containing name @<organization-slug>/<package-slug>. Versions are immutable by default; System may explicitly replace them. Dry runs write nothing. Author and version overrides require System context.",
+      "Publish a captured package from a root manifest.json containing name @<organization-slug>/<package-slug>. Public visibility publishes to the public Marketplace; organization visibility publishes to the owning organization's members-only Marketplace. Versions are immutable by default; System may explicitly replace them. Dry runs write nothing. Author and version overrides require System context.",
     permissions: [BACKOFFICE_PERMISSION.marketplace.publish],
     input: marketplacePublishInputSchema,
     output: marketplacePublishResultSchema,

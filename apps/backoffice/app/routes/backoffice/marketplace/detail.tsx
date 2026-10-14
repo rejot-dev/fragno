@@ -499,6 +499,7 @@ function MarketplaceListingDetail({ loaderData }: Route.ComponentProps) {
               to={marketplaceListingManagePath({
                 listingId: listing.listingId,
                 organizationSlug: manageOrganizationSlug,
+                visibility: "public",
               })}
               className="font-medium underline-offset-4 hover:text-[var(--bo-fg)] hover:underline"
             >

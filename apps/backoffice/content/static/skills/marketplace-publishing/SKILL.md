@@ -46,42 +46,64 @@ Binary files are supported. Remove concurrent source edits if capture reports th
 changed. The publisher reserves `.marketplace/publish.json` for its atomic version guard; keep that
 path out of authored packages. Publisher guard files are not installed into workspaces.
 
-## 2. Validate the release
+## 2. Choose visibility
+
+Every publication states its `visibility`:
+
+- `public` publishes to the public Marketplace, which every Backoffice user can browse and install
+  from.
+- `organization` publishes to the owning organization's Marketplace, which only that organization's
+  members can browse and install from.
+
+The two Marketplaces are separate catalogs. The same package name can be published to both; each
+listing has its own versions. Ask which visibility is intended when the request does not say.
+
+## 3. Validate the release
 
 A dry run resolves the organization and checks authority, version rules, paths, checksums, and sizes
 without staging bytes or starting a workflow:
 
 ```js
-await marketplace.publish({ packageRoot: "/workspace/packages/daily-report", dryRun: true });
+await marketplace.publish({
+  packageRoot: "/workspace/packages/daily-report",
+  visibility: "organization",
+  dryRun: true,
+});
 ```
 
 Inspect the preview's resolved owner, listing, version, and complete file inventory before
 requesting publication. Resolve validation errors and rerun the dry run until that inventory matches
 the intended release.
 
-## 3. Request publication
+## 4. Request publication
 
 A real request freezes the exact selected bytes and original publisher provenance in the input of a
 durable System-coordinated publishing workflow:
 
 ```js
-await marketplace.publish({ packageRoot: "/workspace/packages/daily-report" });
+await marketplace.publish({
+  packageRoot: "/workspace/packages/daily-report",
+  visibility: "organization",
+});
 ```
 
-The shell equivalents are `marketplace.publish --package-root /workspace/packages/daily-report` and
+The shell equivalents are
+`marketplace.publish --package-root /workspace/packages/daily-report --visibility organization` and
 the same command with `--dry-run`.
 
 A `requested` result is acceptance, not completion. Retain its workflow instance ID and System
-workflow scope. Use `marketplace.view` to confirm the release is publicly available; System
-operators can inspect the coordinating workflow for execution failures. A `published` result means
-the identical snapshot was already published. Repeating an identical pending request reuses the
-current publishing workflow. Editing source files after acceptance does not alter the pending
+workflow scope. For public releases, use `marketplace.view` to confirm the release is available;
+System operators can inspect the coordinating workflow for execution failures. A `published` result
+means the identical snapshot was already published. Repeating an identical pending request reuses
+the current publishing workflow. Editing source files after acceptance does not alter the pending
 release.
 
 **Report completion** when the tool returns `published`, or `marketplace.view` confirms a newly
-requested version is publicly available. For a System replacement, confirm the coordinating workflow
-completed: the preexisting version in `marketplace.view` is not proof that its snapshot was
-replaced. Otherwise report acceptance and the workflow reference rather than completed publication.
+requested public version is available. `marketplace.view` reads the public Marketplace only, so
+report an accepted organization release with its workflow reference. For a System replacement,
+confirm the coordinating workflow completed: the preexisting version in `marketplace.view` is not
+proof that its snapshot was replaced. Otherwise report acceptance and the workflow reference rather
+than completed publication.
 
 ## Shared publishing lifecycle
 

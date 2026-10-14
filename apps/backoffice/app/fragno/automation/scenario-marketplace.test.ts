@@ -93,7 +93,10 @@ const MARKETPLACE_LISTING_ID = marketplaceListingId({
   slug: "telegram-test-command",
 });
 const MARKETPLACE_ARTIFACT_UPLOAD_OBJECT_NAME = `v1:named:${encodeURIComponent(
-  marketplaceArtifactUploadName(MARKETPLACE_LISTING_ID),
+  marketplaceArtifactUploadName({
+    marketplace: { kind: "system" },
+    listingId: MARKETPLACE_LISTING_ID,
+  }),
 )}`;
 const MARKETPLACE_ARTIFACT_FILE_KEY = "automations/telegram-test-command.workflow.js";
 const MARKETPLACE_ARTIFACT_CONFLICT_MESSAGE =
@@ -399,7 +402,12 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                 url.searchParams.set("provider", "database");
                 url.searchParams.set("key", `1.0.0/${MARKETPLACE_ARTIFACT_FILE_KEY}`);
                 const response = await ctx.runtime.objects.upload
-                  .forName(marketplaceArtifactUploadName(MARKETPLACE_LISTING_ID))
+                  .forName(
+                    marketplaceArtifactUploadName({
+                      marketplace: { kind: "system" },
+                      listingId: MARKETPLACE_LISTING_ID,
+                    }),
+                  )
                   .http.fetch(new Request(url));
                 await expect(response.text()).resolves.toBe(original);
               },
@@ -436,7 +444,10 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                 content: "Changed outside the publisher",
                 fileKey: `1.0.0/${MARKETPLACE_ARTIFACT_FILE_KEY}`,
                 upload: ctx.runtime.objects.upload.forName(
-                  marketplaceArtifactUploadName(MARKETPLACE_LISTING_ID),
+                  marketplaceArtifactUploadName({
+                    marketplace: { kind: "system" },
+                    listingId: MARKETPLACE_LISTING_ID,
+                  }),
                 ),
               });
               const forced = await ctx.runtime.objects.automations
@@ -2111,7 +2122,10 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             }),
             then.assert("publication uses the source captured before restart", async (ctx) => {
               const upload = ctx.runtime.objects.upload.forName(
-                marketplaceArtifactUploadName(MARKETPLACE_LISTING_ID),
+                marketplaceArtifactUploadName({
+                  marketplace: { kind: "system" },
+                  listingId: MARKETPLACE_LISTING_ID,
+                }),
               );
               const url = new URL("https://upload.test/api/upload/files/by-key/content");
               url.searchParams.set("provider", "database");
@@ -2280,7 +2294,10 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             expect(transferUploadAttempts).toBe(3);
 
             const upload = ctx.runtime.objects.upload.forName(
-              marketplaceArtifactUploadName(MARKETPLACE_LISTING_ID),
+              marketplaceArtifactUploadName({
+                marketplace: { kind: "system" },
+                listingId: MARKETPLACE_LISTING_ID,
+              }),
             );
             const url = new URL("https://upload.test/api/upload/files/by-key/content");
             url.searchParams.set("provider", "database");
@@ -2454,7 +2471,10 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             "the committed artifact is ready before Marketplace publication",
             async (ctx) => {
               const upload = ctx.runtime.objects.upload.forName(
-                marketplaceArtifactUploadName(MARKETPLACE_LISTING_ID),
+                marketplaceArtifactUploadName({
+                  marketplace: { kind: "system" },
+                  listingId: MARKETPLACE_LISTING_ID,
+                }),
               );
               const url = new URL("https://upload.test/api/upload/files/by-key/content");
               url.searchParams.set("provider", "database");
@@ -2545,7 +2565,10 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             ).resolves.toBeNull();
 
             const upload = ctx.runtime.objects.upload.forName(
-              marketplaceArtifactUploadName(MARKETPLACE_LISTING_ID),
+              marketplaceArtifactUploadName({
+                marketplace: { kind: "system" },
+                listingId: MARKETPLACE_LISTING_ID,
+              }),
             );
             const url = new URL("https://upload.test/api/upload/files/by-key/content");
             url.searchParams.set("provider", "database");
@@ -2694,7 +2717,10 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                     mutateSourceAfterUploadCreation = false;
                     await writeUploadFile({
                       upload: runtime.objects.upload.forName(
-                        marketplaceArtifactUploadName(MARKETPLACE_LISTING_ID),
+                        marketplaceArtifactUploadName({
+                          marketplace: { kind: "system" },
+                          listingId: MARKETPLACE_LISTING_ID,
+                        }),
                       ),
                       fileKey: `1.0.0/${MARKETPLACE_ARTIFACT_FILE_KEY}`,
                       content: "source changed after destination upload creation",
@@ -2792,7 +2818,10 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                   mutateSourceAfterListing = false;
                   await writeUploadFile({
                     upload: runtime.objects.upload.forName(
-                      marketplaceArtifactUploadName(MARKETPLACE_LISTING_ID),
+                      marketplaceArtifactUploadName({
+                        marketplace: { kind: "system" },
+                        listingId: MARKETPLACE_LISTING_ID,
+                      }),
                     ),
                     fileKey: `1.0.0/${MARKETPLACE_ARTIFACT_FILE_KEY}`,
                     content: "source changed after durable listing",

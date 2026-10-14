@@ -47,16 +47,17 @@ const marketplace = {
 const context = {
   get: () => ({
     runtime: {
-      objects: { marketplace: { singleton: () => ({ commands: marketplace }) } },
+      objects: { marketplace: { for: () => ({ commands: marketplace }) } },
     },
   }),
 };
 
-const runAction = (formData: FormData) =>
-  action({
+const runAction = (formData: FormData) => {
+  formData.set("visibility", "public");
+  return action({
     request: new Request(
       new URL(
-        marketplaceListingManagePath({ listingId, organizationSlug: "acme" }),
+        marketplaceListingManagePath({ listingId, organizationSlug: "acme", visibility: "public" }),
         "https://example.test",
       ),
       { method: "POST", body: formData },
@@ -64,10 +65,11 @@ const runAction = (formData: FormData) =>
     params: { listingRef },
     context,
     url: new URL(
-      marketplaceListingManagePath({ listingId, organizationSlug: "acme" }),
+      marketplaceListingManagePath({ listingId, organizationSlug: "acme", visibility: "public" }),
       "https://example.test",
     ),
   } as never);
+};
 
 beforeEach(() => {
   findBackofficeMeMock.mockReset();

@@ -1,4 +1,8 @@
-import type { MarketplaceOwnerScope } from "@fragno-dev/backoffice-api/v0/marketplace";
+import type {
+  MarketplaceOwnerScope,
+  MarketplaceScope,
+  MarketplaceVisibility,
+} from "@fragno-dev/backoffice-api/v0/marketplace";
 
 const encodeOwnerId = (value: string) => encodeURIComponent(value.trim());
 
@@ -40,3 +44,21 @@ export const marketplaceVersionId = ({
   listingId: string;
   version: string;
 }): string => `${listingId}@${version}`;
+
+/** Packages are owned by an organization, so organization visibility names that organization's Marketplace. */
+export function marketplaceScopeForVisibility(
+  visibility: MarketplaceVisibility,
+  owner: { kind: "org"; orgId: string },
+): MarketplaceScope {
+  return visibility === "public" ? { kind: "system" } : { kind: "org", orgId: owner.orgId };
+}
+
+/** An organization Marketplace holds only its own organization's listings; System accepts every owner. */
+export function marketplaceAcceptsOwner(
+  marketplace: MarketplaceScope,
+  owner: MarketplaceOwnerScope,
+): boolean {
+  return (
+    marketplace.kind === "system" || (owner.kind === "org" && owner.orgId === marketplace.orgId)
+  );
+}

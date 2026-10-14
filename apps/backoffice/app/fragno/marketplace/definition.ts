@@ -5,6 +5,7 @@ import {
   type MarketplaceListingPageInput,
   type MarketplaceOwner,
   type MarketplacePublishedListingInput,
+  type MarketplaceScope,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 
 import { defineFragment } from "@fragno-dev/core";
@@ -36,6 +37,7 @@ import {
   type MarketplacePublishVersionResult,
 } from "./contracts";
 import {
+  marketplaceAcceptsOwner,
   marketplaceListingId,
   marketplaceListingSlug,
   marketplaceOwnerKey,
@@ -118,6 +120,16 @@ export class MarketplaceVersionTransitionError extends MarketplaceDomainError {
   }
 }
 
+export class MarketplaceOwnerOutsideScopeError extends MarketplaceDomainError {
+  constructor(slug: string) {
+    super(
+      "MARKETPLACE_OWNER_OUTSIDE_SCOPE",
+      `Marketplace listing ${slug} must be owned by this organization Marketplace's organization.`,
+    );
+    this.name = "MarketplaceOwnerOutsideScopeError";
+  }
+}
+
 export class MarketplacePublicationConflictError extends MarketplaceDomainError {
   constructor(message: string) {
     super("MARKETPLACE_PUBLICATION_CONFLICT", message);
@@ -174,9 +186,26 @@ const assertOwnerOwnsListing = (
   }
 };
 
-export const marketplaceFragmentDefinition = defineFragment("marketplace")
+/** Listings are created only through owners the Marketplace accepts; later mutations require that owner. */
+function assertMarketplaceAcceptsOwner(
+  marketplace: MarketplaceScope,
+  owner: MarketplaceOwner,
+  slug: string,
+): void {
+  if (!marketplaceAcceptsOwner(marketplace, owner.scope)) {
+    throw new MarketplaceOwnerOutsideScopeError(slug);
+  }
+}
+
+export type MarketplaceFragmentConfig = {
+  scope: MarketplaceScope;
+};
+
+export const marketplaceFragmentDefinition = defineFragment<MarketplaceFragmentConfig>(
+  "marketplace",
+)
   .extend(withDatabase(marketplaceFragmentSchema))
-  .providesBaseService(({ defineService }) =>
+  .providesBaseService(({ defineService, config }) =>
     defineService({
       listPublishedListings: function (rawInput: MarketplaceListingPageInput = {}) {
         const input = marketplaceListingPageInputSchema.parse(rawInput);
@@ -341,7 +370,10 @@ export const marketplaceFragmentDefinition = defineFragment("marketplace")
               listingId: listing.id.externalId,
               slug: marketplaceListingSlug(listing.id.externalId),
               listingStatus: listing.status,
-              uploadName: marketplaceArtifactUploadName(listing.id.externalId),
+              uploadName: marketplaceArtifactUploadName({
+                marketplace: config.scope,
+                listingId: listing.id.externalId,
+              }),
               versions: versions
                 .map((version) => version.version)
                 .sort((left, right) => compareMarketplaceVersions(right, left)),
@@ -513,6 +545,9 @@ export const marketplaceFragmentDefinition = defineFragment("marketplace")
 
       insertStaticEntries: function (rawInput: unknown) {
         const input = marketplaceInsertStaticEntriesInputSchema.parse(rawInput);
+        for (const entry of input.entries) {
+          assertMarketplaceAcceptsOwner(config.scope, entry.owner, entry.slug);
+        }
         const entries = input.entries.map((entry) => {
           const listingId = marketplaceListingId({
             ownerScope: entry.owner.scope,
@@ -647,6 +682,7 @@ export const marketplaceFragmentDefinition = defineFragment("marketplace")
 
       createDraftListing: function (rawInput: unknown) {
         const input = marketplaceCreateDraftListingInputSchema.parse(rawInput);
+        assertMarketplaceAcceptsOwner(config.scope, input.owner, input.slug);
         const ownerKey = marketplaceOwnerKey(input.owner.scope);
         const listingId = marketplaceListingId({
           ownerScope: input.owner.scope,
@@ -945,6 +981,7 @@ export const marketplaceFragmentDefinition = defineFragment("marketplace")
 
       planPackagePublish: function (rawIntent: MarketplacePackagePublishIntent) {
         const { release: intent } = rawIntent;
+        assertMarketplaceAcceptsOwner(config.scope, intent.owner, intent.slug);
         const versionId = marketplaceVersionId({
           listingId: intent.listingId,
           version: intent.version,
@@ -969,6 +1006,7 @@ export const marketplaceFragmentDefinition = defineFragment("marketplace")
         const { workflowInstanceId } = request;
         const { release: intent } = request.intent;
         const { slug } = intent;
+        assertMarketplaceAcceptsOwner(config.scope, intent.owner, slug);
         const versionId = marketplaceVersionId({
           listingId: intent.listingId,
           version: intent.version,

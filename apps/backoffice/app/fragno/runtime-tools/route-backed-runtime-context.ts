@@ -296,7 +296,7 @@ export const createRouteBackedRuntimeContext = ({
     marketplace: runtime.config.bindings.marketplace
       ? {
           runtime: createMarketplaceRuntime(
-            runtime.objects.marketplace.singleton().commands,
+            runtime.objects,
             stateBackend &&
               runtime.config.bindings.upload &&
               runtime.config.bindings.automations &&

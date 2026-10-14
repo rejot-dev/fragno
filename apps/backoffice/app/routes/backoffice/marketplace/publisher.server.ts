@@ -1,6 +1,11 @@
-import type { MarketplaceOwner } from "@fragno-dev/backoffice-api/v0/marketplace";
+import type {
+  MarketplaceOwner,
+  MarketplaceVisibility,
+} from "@fragno-dev/backoffice-api/v0/marketplace";
 
+import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import type { BackofficeMeData } from "@/fragno/auth/contracts";
+import { marketplaceScopeForVisibility } from "@/fragno/marketplace/owner";
 
 type MarketplaceOrganizationOwner = MarketplaceOwner & {
   scope: { kind: "org"; orgId: string };
@@ -22,3 +27,10 @@ export const marketplaceOwnerForOrganization = (
     publisherName: organization.name,
   };
 };
+
+/** Publisher pages manage listings in the Marketplace their visibility names. */
+export const marketplaceForPublisher = (
+  objects: BackofficeObjectRegistry,
+  owner: MarketplaceOrganizationOwner,
+  visibility: MarketplaceVisibility,
+) => objects.marketplace.for(marketplaceScopeForVisibility(visibility, owner.scope)).commands;

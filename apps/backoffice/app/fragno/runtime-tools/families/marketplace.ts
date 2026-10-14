@@ -163,6 +163,13 @@ const marketplacePublishTool = defineBackofficeRuntimeTool({
             description: "Absolute package directory in the current filesystem.",
           },
           {
+            name: "visibility",
+            required: true,
+            valueRequired: true,
+            description:
+              "public publishes to the public Marketplace; organization publishes to the owning organization's members-only Marketplace.",
+          },
+          {
             name: "dry-run",
             description:
               "Validate owner, version, and selected files without staging or publishing.",
@@ -177,14 +184,15 @@ const marketplacePublishTool = defineBackofficeRuntimeTool({
           },
         ],
         examples: [
-          "marketplace.publish --package-root /workspace/packages/telegram --dry-run",
-          "marketplace.publish --package-root /workspace/packages/telegram --format json",
+          "marketplace.publish --package-root /workspace/packages/telegram --visibility organization --dry-run",
+          "marketplace.publish --package-root /workspace/packages/telegram --visibility public --format json",
         ],
       },
       parse: defineCliArgsParser<z.input<typeof marketplacePublishInputSchema>>(
         "marketplace.publish",
         {
           packageRoot: { required: true },
+          visibility: { required: true },
           dryRun: { kind: "boolean" },
           skipAuthorCheck: { kind: "boolean" },
           skipVersionCheck: { kind: "boolean" },

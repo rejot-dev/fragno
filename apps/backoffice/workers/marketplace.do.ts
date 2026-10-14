@@ -1,10 +1,15 @@
-import type { MarketplacePublishResult } from "@fragno-dev/backoffice-api/v0/marketplace";
+import {
+  marketplaceScopeSchema,
+  type MarketplacePublishResult,
+  type MarketplaceScope,
+} from "@fragno-dev/backoffice-api/v0/marketplace";
 import type {
   MarketplaceListingDetail,
   MarketplaceListingPageInput,
   MarketplacePublishedListingInput,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+import { backofficeContextScopesEqual } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { DurableObject, RpcTarget } from "cloudflare:workers";
 
@@ -13,9 +18,10 @@ import {
   deferBackofficeExecution,
 } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
-import type {
-  BackofficeActionRpcContext,
-  MarketplaceObject,
+import {
+  requireBackofficeContextScopeFromDurableObjectId,
+  type BackofficeActionRpcContext,
+  type MarketplaceObject,
 } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { listUploadFiles } from "@/file-collection/create-upload-file-collection";
@@ -51,16 +57,19 @@ import { MarketplacePublicationConflictError } from "@/fragno/marketplace/defini
 import { MarketplaceDomainError } from "@/fragno/marketplace/definition";
 import type { MarketplaceFragment } from "@/fragno/marketplace/index";
 import { createMarketplaceServer } from "@/fragno/marketplace/marketplace";
+import { marketplaceScopeForVisibility } from "@/fragno/marketplace/owner";
 import {
   marketplacePackageIdentity,
   verifyMarketplacePackageSnapshot,
 } from "@/fragno/marketplace/package-manifest";
 import {
   assertMarketplacePublicationAuthority,
+  MarketplacePublicationAccessError,
   marketplacePackagePublishWorkflowInstanceId,
   marketplacePublishPackageInputSchema,
   marketplacePackagePublishRequestSchema,
   marketplacePublishReleaseInputSchema,
+  resolveMarketplacePackageOwner,
   type MarketplacePublishReleaseInput,
   type MarketplacePublishReleaseResult,
   type MarketplacePublishPackageInput,
@@ -82,6 +91,7 @@ export class InMemoryMarketplaceObject extends RpcTarget implements MarketplaceO
   readonly #host: FragmentDurableObjectHost<void, MarketplaceFragment>;
   #fragment: MarketplaceFragment | null = null;
   readonly #runtime: BackofficeRuntimeServices;
+  readonly #scope: MarketplaceScope;
 
   constructor({
     state,
@@ -95,9 +105,13 @@ export class InMemoryMarketplaceObject extends RpcTarget implements MarketplaceO
   }) {
     super();
     this.#runtime = runtime;
+    const scope = marketplaceScopeSchema.parse(
+      requireBackofficeContextScopeFromDurableObjectId(state.id, "MARKETPLACE"),
+    );
+    this.#scope = scope;
     this.#host = implementation.createFragmentHost({
       name: "Marketplace",
-      createRuntime: () => createMarketplaceServer(implementation.fragmentDatabase),
+      createRuntime: () => createMarketplaceServer(implementation.fragmentDatabase, scope),
       onProcessError: (error) => {
         console.error("Marketplace hook processor error", error);
       },
@@ -118,6 +132,15 @@ export class InMemoryMarketplaceObject extends RpcTarget implements MarketplaceO
     return this.#fragment;
   }
 
+  /** Publication work names its Marketplace, so it cannot be committed into another one. */
+  #assertMarketplace(marketplace: MarketplaceScope): void {
+    if (!backofficeContextScopesEqual(marketplace, this.#scope)) {
+      throw new MarketplacePublicationAccessError(
+        "Marketplace publication targets a different Marketplace.",
+      );
+    }
+  }
+
   async publishPackage(
     rawInput: MarketplacePublishPackageInput,
     context: BackofficeActionRpcContext,
@@ -134,17 +157,12 @@ export class InMemoryMarketplaceObject extends RpcTarget implements MarketplaceO
         { operation: BACKOFFICE_PERMISSION.upload.read },
       ],
     });
-    const { organizationSlug, slug } = marketplacePackageIdentity(input.snapshot.manifest.name);
-    const organization = (
-      await this.#runtime.objects.auth.singleton().commands.getAllOrganizations()
-    ).find((candidate) => candidate.slug === organizationSlug);
-    if (!organization) {
-      throw new Error(`Marketplace publisher organization '${organizationSlug}' was not found.`);
-    }
-    const owner = {
-      scope: { kind: "org" as const, orgId: organization.id },
-      publisherName: organization.name,
-    };
+    const { slug } = marketplacePackageIdentity(input.snapshot.manifest.name);
+    const owner = await resolveMarketplacePackageOwner(
+      this.#runtime.objects,
+      input.snapshot.manifest.name,
+    );
+    this.#assertMarketplace(marketplaceScopeForVisibility(input.visibility, owner.scope));
     await verifyMarketplacePackageSnapshot(input.snapshot);
     const release = await captureMarketplaceReleaseSnapshot({
       owner,
@@ -168,6 +186,7 @@ export class InMemoryMarketplaceObject extends RpcTarget implements MarketplaceO
       version: release.version,
       snapshotId: release.snapshotId,
       owner,
+      marketplace: this.#scope,
       files: input.snapshot.files.map(({ relativePath, sizeBytes, checksum }) => ({
         relativePath,
         sizeBytes,
@@ -213,6 +232,7 @@ export class InMemoryMarketplaceObject extends RpcTarget implements MarketplaceO
       skipVersionCheck: input.skipVersionCheck,
     });
     const intent: MarketplacePackagePublishIntent = {
+      marketplace: this.#scope,
       release,
       execution: deferBackofficeExecution(execution),
       skipAuthorCheck: input.skipAuthorCheck,
@@ -233,7 +253,9 @@ export class InMemoryMarketplaceObject extends RpcTarget implements MarketplaceO
     }
     const filePrefix = `${release.version}/`;
     const routes = createUploadRouteCaller(
-      this.#runtime.objects.upload.forName(marketplaceArtifactUploadName(release.listingId)).http,
+      this.#runtime.objects.upload.forName(
+        marketplaceArtifactUploadName({ marketplace: this.#scope, listingId: release.listingId }),
+      ).http,
     );
     const files = await marketplaceReleaseArtifactFiles(release);
     const existing = await listUploadFiles({ routes, provider: "database", prefix: filePrefix });
@@ -320,6 +342,7 @@ export class InMemoryMarketplaceObject extends RpcTarget implements MarketplaceO
     request: MarketplacePackagePublishRequest,
     context: BackofficeActionRpcContext,
   ): Promise<void> {
+    this.#assertMarketplace(request.intent.marketplace);
     const coordinator = backofficeExecutionContextSchema.parse(context.execution);
     if (coordinator.scope.kind !== "system") {
       throw new Error("Marketplace publication commit requires System context.");
@@ -342,7 +365,10 @@ export class InMemoryMarketplaceObject extends RpcTarget implements MarketplaceO
   ): Promise<void> {
     const request = marketplacePackagePublishRequestSchema.parse(rawRequest);
     await this.#authorizePackagePublish(request, context);
-    const uploadName = marketplaceArtifactUploadName(request.intent.release.listingId);
+    const uploadName = marketplaceArtifactUploadName({
+      marketplace: this.#scope,
+      listingId: request.intent.release.listingId,
+    });
     const filePrefix = `${request.intent.release.version}/`;
     const artifactFiles = await marketplaceReleaseArtifactFiles(request.intent.release);
     const files = await listUploadFiles({

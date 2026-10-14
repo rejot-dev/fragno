@@ -1,3 +1,7 @@
+import {
+  marketplaceVisibilitySchema,
+  type MarketplaceVisibility,
+} from "@fragno-dev/backoffice-api/v0/marketplace";
 import { Button, ButtonLink } from "@fragno-private/design-system/button";
 import { Form, Link } from "react-router";
 
@@ -27,10 +31,11 @@ const updatedAtFormatter = new Intl.DateTimeFormat("en-US", {
 
 const minePath = (input: {
   basePath: string;
+  visibility: MarketplaceVisibility;
   status?: MarketplaceListingStatus;
   cursor?: string;
 }) => {
-  const search = new URLSearchParams();
+  const search = new URLSearchParams({ visibility: input.visibility });
   if (input.status) {
     search.set("status", input.status);
   }
@@ -79,6 +84,23 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     throw new Response("Invalid marketplace listing status.", { status: 400 });
   }
   const status = statusResult.data;
+  const visibilityResult = marketplaceVisibilitySchema
+    .default("public")
+    .safeParse(url.searchParams.get("visibility")?.trim() || undefined);
+  if (!visibilityResult.success) {
+    throw new Response("Invalid marketplace visibility.", { status: 400 });
+  }
+  const visibility = visibilityResult.data;
+  // Only organizations have their own Marketplace; user and project listings are public.
+  const marketplaceScope =
+    visibility === "public"
+      ? { kind: "system" as const }
+      : routeScope.kind === "org"
+        ? routeScope
+        : null;
+  if (!marketplaceScope) {
+    throw new Response("Invalid marketplace visibility.", { status: 400 });
+  }
   const cursor = url.searchParams.get("cursor")?.trim() || undefined;
   try {
     decodeMarketplaceOwnedListingCursor({
@@ -95,7 +117,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
 
   const marketplace = context
     .get(BackofficeWorkerContext)
-    .runtime.objects.marketplace.singleton().commands;
+    .runtime.objects.marketplace.for(marketplaceScope).commands;
   const page = await marketplace.listOwnedListings({
     ownerScope: routeScope,
     status,
@@ -105,6 +127,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
   return {
     basePath: url.pathname,
     selectedScope,
+    visibility,
     status: status ?? null,
     ...page,
   };
@@ -115,7 +138,8 @@ export function meta() {
 }
 
 export default function BackofficeMarketplaceMyListings({ loaderData }: Route.ComponentProps) {
-  const { basePath, selectedScope, status, listings, hasNextPage, nextCursor } = loaderData;
+  const { basePath, selectedScope, visibility, status, listings, hasNextPage, nextCursor } =
+    loaderData;
   const organizationSlug = selectedScope.kind === "org" ? selectedScope.organization.slug : null;
 
   return (
@@ -141,6 +165,21 @@ export default function BackofficeMarketplaceMyListings({ loaderData }: Route.Co
           ) : null}
         </div>
         <Form method="get" className="mt-4 flex flex-col gap-3 md:flex-row md:items-end">
+          {organizationSlug ? (
+            <label className="flex flex-col gap-1">
+              <span className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
+                Marketplace
+              </span>
+              <select
+                name="visibility"
+                defaultValue={visibility}
+                className="bo-input px-3 py-2 text-sm"
+              >
+                <option value="public">Public</option>
+                <option value="organization">Organization</option>
+              </select>
+            </label>
+          ) : null}
           <label className="flex flex-col gap-1">
             <span className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
               Status
@@ -178,6 +217,7 @@ export default function BackofficeMarketplaceMyListings({ loaderData }: Route.Co
               ? marketplaceListingManagePath({
                   listingId: listing.listingId,
                   organizationSlug,
+                  visibility,
                 })
               : listing.latestPublishedVersion
                 ? marketplaceListingPath(listing.listingId, selectedScope)
@@ -231,6 +271,7 @@ export default function BackofficeMarketplaceMyListings({ loaderData }: Route.Co
           <ButtonLink
             to={minePath({
               basePath,
+              visibility,
               status: status ?? undefined,
               cursor: nextCursor,
             })}

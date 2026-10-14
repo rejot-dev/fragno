@@ -551,7 +551,10 @@ describe("marketplace lock scenarios", () => {
             runner.drain(),
             then.assert("add a reserved artifact file and request installation", async (ctx) => {
               const upload = ctx.runtime.objects.upload.forName(
-                marketplaceArtifactUploadName(LISTING_ID),
+                marketplaceArtifactUploadName({
+                  marketplace: { kind: "system" },
+                  listingId: LISTING_ID,
+                }),
               );
               await writeUploadFile({
                 fileKey: `1.0.0/${relativePath}`,

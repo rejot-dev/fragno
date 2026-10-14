@@ -1,6 +1,7 @@
 import {
   MARKETPLACE_CATEGORIES,
   marketplaceListingMetadataSchema,
+  marketplaceVisibilitySchema,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 import { Button, ButtonLink } from "@fragno-private/design-system/button";
 import { FormContainer } from "@fragno-private/design-system/form-container";
@@ -26,7 +27,7 @@ import {
   marketplaceListingPath,
   marketplaceListingRefSchema,
 } from "./navigation";
-import { marketplaceOwnerForOrganization } from "./publisher.server";
+import { marketplaceForPublisher, marketplaceOwnerForOrganization } from "./publisher.server";
 import { marketplaceScopeTabPath } from "./scope";
 
 type ManageActionData = { ok: false; message: string };
@@ -61,8 +62,13 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
         ({ organization: candidate }) => candidate.slug === requestedOrganizationSlug,
       )?.organization
     : me.activeOrganization?.organization;
-  if (!organization || !marketplaceOwnerForOrganization(me, organization.id)) {
+  const owner = organization ? marketplaceOwnerForOrganization(me, organization.id) : null;
+  if (!organization || !owner) {
     throw new Response("Publisher organization was not found.", { status: 404 });
+  }
+  const visibility = marketplaceVisibilitySchema.safeParse(url.searchParams.get("visibility"));
+  if (!visibility.success) {
+    throw new Response("Marketplace visibility is required.", { status: 400 });
   }
   const versionCursor = url.searchParams.get("versionCursor")?.trim() || undefined;
   try {
@@ -77,9 +83,11 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     throw error;
   }
 
-  const marketplace = context
-    .get(BackofficeWorkerContext)
-    .runtime.objects.marketplace.singleton().commands;
+  const marketplace = marketplaceForPublisher(
+    context.get(BackofficeWorkerContext).runtime.objects,
+    owner,
+    visibility.data,
+  );
   const detail = await marketplace.getOwnedListing({
     listingId: listingIdResult.data,
     ownerScope: { kind: "org", orgId: organization.id },
@@ -89,7 +97,11 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     throw new Response("Not Found", { status: 404 });
   }
 
-  return { organization: { id: organization.id, slug: organization.slug }, ...detail };
+  return {
+    organization: { id: organization.id, slug: organization.slug },
+    visibility: visibility.data,
+    ...detail,
+  };
 }
 
 export async function action({ request, params, context, url }: Route.ActionArgs) {
@@ -115,10 +127,17 @@ export async function action({ request, params, context, url }: Route.ActionArgs
       message: "Select an organization you can publish for.",
     } satisfies ManageActionData;
   }
+  const visibilityResult = marketplaceVisibilitySchema.safeParse(formData.get("visibility"));
+  if (!visibilityResult.success) {
+    return { ok: false, message: "Marketplace visibility is required." } satisfies ManageActionData;
+  }
+  const visibility = visibilityResult.data;
 
-  const marketplace = context
-    .get(BackofficeWorkerContext)
-    .runtime.objects.marketplace.singleton().commands;
+  const marketplace = marketplaceForPublisher(
+    context.get(BackofficeWorkerContext).runtime.objects,
+    owner,
+    visibility,
+  );
   const intent = String(formData.get("intent") ?? "");
 
   if (intent === "update") {
@@ -151,6 +170,7 @@ export async function action({ request, params, context, url }: Route.ActionArgs
       marketplaceListingManagePath({
         listingId: listingIdResult.data,
         organizationSlug,
+        visibility,
         result: { updated: "1" },
       }),
     );
@@ -177,6 +197,7 @@ export async function action({ request, params, context, url }: Route.ActionArgs
       marketplaceListingManagePath({
         listingId: listingIdResult.data,
         organizationSlug,
+        visibility,
         result: {
           created: result.version,
           ...(result.created ? {} : { reused: "1" }),
@@ -206,6 +227,7 @@ export async function action({ request, params, context, url }: Route.ActionArgs
       marketplaceListingManagePath({
         listingId: listingIdResult.data,
         organizationSlug,
+        visibility,
         result: {
           published: result.version,
           ...(result.published ? {} : { reused: "1" }),
@@ -227,6 +249,7 @@ export async function action({ request, params, context, url }: Route.ActionArgs
       marketplaceListingManagePath({
         listingId: listingIdResult.data,
         organizationSlug,
+        visibility,
         result: {
           archived: "1",
           ...(result.archived ? {} : { reused: "1" }),
@@ -249,7 +272,8 @@ export function meta({ loaderData }: Route.MetaArgs) {
 }
 
 export default function BackofficeMarketplaceManage({ loaderData }: Route.ComponentProps) {
-  const { organization, listing, versions, nextVersionCursor, hasNextVersionPage } = loaderData;
+  const { organization, visibility, listing, versions, nextVersionCursor, hasNextVersionPage } =
+    loaderData;
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const location = useLocation();
@@ -265,11 +289,13 @@ export default function BackofficeMarketplaceManage({ loaderData }: Route.Compon
       : search.get("published")
         ? search.get("reused")
           ? `Version ${search.get("published")} was already the latest published version.`
-          : `Version ${search.get("published")} is now public.`
+          : visibility === "public"
+            ? `Version ${search.get("published")} is now public.`
+            : `Version ${search.get("published")} is now available to organization members.`
         : search.get("archived")
           ? search.get("reused")
             ? "The listing was already archived."
-            : "The listing was removed from the public marketplace."
+            : "The listing was removed from the marketplace."
           : null;
 
   return (
@@ -295,7 +321,8 @@ export default function BackofficeMarketplaceManage({ loaderData }: Route.Compon
         title={listing.name}
         description={listing.summary}
         actions={
-          listing.status === "published" ? (
+          // Organization Marketplaces have no browse page yet; only public listings can be viewed.
+          listing.status === "published" && visibility === "public" ? (
             <ButtonLink
               to={marketplaceListingPath(listing.listingId, {
                 kind: "org",
@@ -330,6 +357,7 @@ export default function BackofficeMarketplaceManage({ loaderData }: Route.Compon
             <Form method="post" className="space-y-4">
               <input type="hidden" name="intent" value="update" />
               <input type="hidden" name="organizationSlug" value={organization.slug} />
+              <input type="hidden" name="visibility" value={visibility} />
               <MetadataField label="Name" name="name" defaultValue={listing.name} />
               <MetadataField label="Summary" name="summary" defaultValue={listing.summary} />
               <label className="flex flex-col gap-1">
@@ -380,6 +408,7 @@ export default function BackofficeMarketplaceManage({ loaderData }: Route.Compon
             <Form method="post" className="space-y-4">
               <input type="hidden" name="intent" value="add-version" />
               <input type="hidden" name="organizationSlug" value={organization.slug} />
+              <input type="hidden" name="visibility" value={visibility} />
               <MetadataField label="Version" name="version" defaultValue="" />
               <Button type="submit" disabled={isSubmitting} variant="secondary">
                 Add draft version
@@ -397,6 +426,10 @@ export default function BackofficeMarketplaceManage({ loaderData }: Route.Compon
               <StateRow label="Status" value={listing.status} />
               <StateRow label="Publisher" value={listing.publisherName} />
               <StateRow
+                label="Visibility"
+                value={visibility === "public" ? "Public" : "Organization members"}
+              />
+              <StateRow
                 label="Latest public"
                 value={
                   listing.latestPublishedVersion ? `v${listing.latestPublishedVersion}` : "None"
@@ -407,6 +440,7 @@ export default function BackofficeMarketplaceManage({ loaderData }: Route.Compon
               <Form method="post" className="mt-5 border-t border-[color:var(--bo-border)] pt-4">
                 <input type="hidden" name="intent" value="archive" />
                 <input type="hidden" name="organizationSlug" value={organization.slug} />
+                <input type="hidden" name="visibility" value={visibility} />
                 <button
                   type="submit"
                   disabled={isSubmitting}
@@ -446,6 +480,7 @@ export default function BackofficeMarketplaceManage({ loaderData }: Route.Compon
                       <Form method="post" className="mt-3">
                         <input type="hidden" name="intent" value="publish" />
                         <input type="hidden" name="organizationSlug" value={organization.slug} />
+                        <input type="hidden" name="visibility" value={visibility} />
                         <input type="hidden" name="version" value={version.version} />
                         <Button
                           type="submit"
@@ -466,6 +501,7 @@ export default function BackofficeMarketplaceManage({ loaderData }: Route.Compon
                 to={marketplaceListingManagePath({
                   listingId: listing.listingId,
                   organizationSlug: organization.slug,
+                  visibility,
                   result: { versionCursor: nextVersionCursor },
                 })}
                 variant="secondary"
