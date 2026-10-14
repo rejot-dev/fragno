@@ -1,55 +1,41 @@
 import {
-  marketplaceListingIdSchema,
+  marketplaceSlugSchema,
   type MarketplaceVisibility,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 import { z } from "zod";
 
-import type { BackofficeRoutableScopeSelection } from "@/backoffice-runtime/resolved-scope";
+import type { BackofficeScopeSelection } from "@/backoffice-runtime/resolved-scope";
+import { marketplaceListingSlug } from "@/fragno/marketplace/owner";
 
 import { marketplaceScopeTabPath, type MarketplaceCatalog } from "./scope";
 
-const decodeMarketplaceListingRef = (listingRef: string): string => {
-  if (!/^[0-9A-Za-z_-]+$/u.test(listingRef) || listingRef.length % 4 === 1) {
-    throw new Error("Marketplace listing reference is invalid.");
-  }
+export const marketplaceListingRouteSchema = z.object({
+  publisher: z
+    .string()
+    .regex(/^(?:@[a-z0-9]+(?:-[a-z0-9]+)*|system|user:[^/#]+|project:[^/#:]+:[^/#]+)$/u),
+  packageSlug: marketplaceSlugSchema,
+});
 
-  const base64 = listingRef.replaceAll("-", "+").replaceAll("_", "/");
-  const paddedBase64 = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), "=");
-  return typeof Buffer !== "undefined"
-    ? Buffer.from(paddedBase64, "base64").toString("utf-8")
-    : atob(paddedBase64);
-};
+/** Public listing pages hand installation to the signed-in user's active workspace. */
+export function marketplaceInstallEntryPath(listingRef: string): string {
+  return `/backoffice/marketplace?${new URLSearchParams({ listing: listingRef })}`;
+}
 
-export const marketplaceListingRefSchema = z
-  .string()
-  .trim()
-  .min(1)
-  .transform((listingRef, context) => {
-    try {
-      return decodeMarketplaceListingRef(listingRef);
-    } catch {
-      context.addIssue({
-        code: "custom",
-        message: "Use a valid marketplace listing reference.",
-      });
-      return z.NEVER;
-    }
-  })
-  .pipe(marketplaceListingIdSchema);
-
-export const marketplaceListingRef = (listingId: string): string => {
-  const base64 =
-    typeof Buffer !== "undefined"
-      ? Buffer.from(listingId, "utf-8").toString("base64")
-      : btoa(listingId);
-  return base64.replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/u, "");
-};
-
-export const marketplaceListingPath = (
-  listingId: string,
-  scope: BackofficeRoutableScopeSelection,
+/** Catalogs open on their featured listings; this view lists every published listing. */
+export function marketplaceCatalogAllPath(
+  scope: BackofficeScopeSelection,
   catalog: MarketplaceCatalog,
-): string => `${marketplaceScopeTabPath(scope, catalog)}/${marketplaceListingRef(listingId)}`;
+): string {
+  return `${marketplaceScopeTabPath(scope, catalog)}/all`;
+}
+
+export function marketplaceListingPath(
+  listingRef: string,
+  scope: BackofficeScopeSelection,
+  catalog: MarketplaceCatalog,
+): string {
+  return `${marketplaceScopeTabPath(scope, catalog)}/${listingRef}`;
+}
 
 export function buildArtifactVersionPath(
   pathname: string,
@@ -72,7 +58,7 @@ export function buildArtifactVersionPath(
   return `${pathname}?${search}`;
 }
 
-export const marketplaceListingManagePath = ({
+export function marketplaceListingManagePath({
   listingId,
   organizationSlug,
   visibility,
@@ -82,10 +68,10 @@ export const marketplaceListingManagePath = ({
   organizationSlug: string;
   visibility: MarketplaceVisibility;
   result?: Readonly<Record<string, string>>;
-}): string => {
-  const search = new URLSearchParams({ organizationSlug, visibility });
+}): string {
+  const search = new URLSearchParams({ visibility });
   for (const [name, value] of Object.entries(result ?? {})) {
     search.set(name, value);
   }
-  return `/backoffice/marketplace/${marketplaceListingRef(listingId)}/manage?${search.toString()}`;
-};
+  return `/backoffice/marketplace/@${organizationSlug}/${marketplaceListingSlug(listingId)}/manage?${search.toString()}`;
+}

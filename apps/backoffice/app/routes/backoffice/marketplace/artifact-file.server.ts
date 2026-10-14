@@ -4,13 +4,13 @@ import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import { fetchPublishedMarketplaceArtifactFile } from "./artifact-files.server";
-import { marketplaceListingRefSchema } from "./navigation";
+import { resolveMarketplaceListingRoute } from "./listing-route.server";
 import { marketplaceFromRouteParams } from "./scope";
 
 type MarketplaceArtifactFileLoaderArgs = {
   request: Request;
   url: URL;
-  params: { scopeKind?: string; scopeId?: string; catalog?: string; listingRef?: string };
+  params: Record<string, string | undefined>;
   context: Readonly<RouterContextProvider>;
 };
 
@@ -25,16 +25,14 @@ export async function loadMarketplaceArtifactFile({
     throw new Response("Unauthorized", { status: 401 });
   }
 
-  const { scope, marketplace } = marketplaceFromRouteParams(
-    params,
-    me.organizations.map(({ organization }) => organization),
-  );
+  const { scope, marketplace } = marketplaceFromRouteParams(params, me);
+  // System scope was restricted to System administrators when the route was resolved.
   const canAccessScope =
-    scope.kind === "user"
+    scope.kind === "system" ||
+    (scope.kind === "user"
       ? scope.userId === me.user.id
-      : me.organizations.some(({ organization }) => organization.id === scope.orgId);
-  const listingId = marketplaceListingRefSchema.safeParse(params.listingRef);
-  if (!canAccessScope || !listingId.success) {
+      : me.organizations.some(({ organization }) => organization.id === scope.orgId));
+  if (!canAccessScope) {
     throw new Response("Not Found", { status: 404 });
   }
 
@@ -44,8 +42,9 @@ export async function loadMarketplaceArtifactFile({
   }
 
   const runtime = context.get(BackofficeWorkerContext).runtime;
+  const { listingId } = await resolveMarketplaceListingRoute(runtime.objects, params);
   const manifest = await runtime.objects.marketplace.for(marketplace).commands.getArtifactManifest({
-    listingId: listingId.data,
+    listingId,
   });
   return fetchPublishedMarketplaceArtifactFile({
     manifest,

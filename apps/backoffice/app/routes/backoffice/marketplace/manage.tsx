@@ -14,6 +14,7 @@ import {
   marketplaceAddDraftVersionInputSchema,
   marketplacePublishVersionInputSchema,
 } from "@/fragno/marketplace/contracts";
+import { marketplaceListingId } from "@/fragno/marketplace/owner";
 import {
   decodeMarketplaceOwnedVersionCursor,
   MarketplaceListingCursorError,
@@ -25,7 +26,7 @@ import type { Route } from "./+types/manage";
 import {
   marketplaceListingManagePath,
   marketplaceListingPath,
-  marketplaceListingRefSchema,
+  marketplaceListingRouteSchema,
 } from "./navigation";
 import { marketplaceForPublisher, marketplaceOwnerForOrganization } from "./publisher.server";
 import { marketplaceCatalogForVisibility, marketplaceScopeTabPath } from "./scope";
@@ -51,21 +52,18 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     );
   }
 
-  const listingIdResult = marketplaceListingRefSchema.safeParse(params.listingRef);
-  if (!listingIdResult.success) {
+  const route = marketplaceListingRouteSchema.safeParse(params);
+  if (!route.success || !route.data.publisher.startsWith("@")) {
     throw new Response("Not Found", { status: 404 });
   }
-
-  const requestedOrganizationSlug = url.searchParams.get("organizationSlug")?.trim();
-  const organization = requestedOrganizationSlug
-    ? me.organizations.find(
-        ({ organization: candidate }) => candidate.slug === requestedOrganizationSlug,
-      )?.organization
-    : me.activeOrganization?.organization;
+  const organization = me.organizations.find(
+    ({ organization: candidate }) => `@${candidate.slug}` === route.data.publisher,
+  )?.organization;
   const owner = organization ? marketplaceOwnerForOrganization(me, organization.id) : null;
   if (!organization || !owner) {
     throw new Response("Publisher organization was not found.", { status: 404 });
   }
+  const listingId = marketplaceListingId({ ownerScope: owner.scope, slug: route.data.packageSlug });
   const visibility = marketplaceVisibilitySchema.safeParse(url.searchParams.get("visibility"));
   if (!visibility.success) {
     throw new Response("Marketplace visibility is required.", { status: 400 });
@@ -74,7 +72,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
   try {
     decodeMarketplaceOwnedVersionCursor({
       encodedCursor: versionCursor,
-      listingId: listingIdResult.data,
+      listingId,
     });
   } catch (error) {
     if (error instanceof MarketplaceListingCursorError) {
@@ -89,7 +87,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     visibility.data,
   );
   const detail = await marketplace.getOwnedListing({
-    listingId: listingIdResult.data,
+    listingId,
     ownerScope: { kind: "org", orgId: organization.id },
     versionCursor,
   });
@@ -105,8 +103,8 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
 }
 
 export async function action({ request, params, context, url }: Route.ActionArgs) {
-  const listingIdResult = marketplaceListingRefSchema.safeParse(params.listingRef);
-  if (!listingIdResult.success) {
+  const route = marketplaceListingRouteSchema.safeParse(params);
+  if (!route.success || !route.data.publisher.startsWith("@")) {
     throw new Response("Not Found", { status: 404 });
   }
 
@@ -116,7 +114,7 @@ export async function action({ request, params, context, url }: Route.ActionArgs
   }
 
   const formData = await request.formData();
-  const organizationSlug = String(formData.get("organizationSlug") ?? "").trim();
+  const organizationSlug = route.data.publisher.slice(1);
   const organization = me.organizations.find(
     ({ organization: candidate }) => candidate.slug === organizationSlug,
   )?.organization;
@@ -127,6 +125,7 @@ export async function action({ request, params, context, url }: Route.ActionArgs
       message: "Select an organization you can publish for.",
     } satisfies ManageActionData;
   }
+  const listingId = marketplaceListingId({ ownerScope: owner.scope, slug: route.data.packageSlug });
   const visibilityResult = marketplaceVisibilitySchema.safeParse(formData.get("visibility"));
   if (!visibilityResult.success) {
     return { ok: false, message: "Marketplace visibility is required." } satisfies ManageActionData;
@@ -159,7 +158,7 @@ export async function action({ request, params, context, url }: Route.ActionArgs
     }
 
     const operation = await marketplace.updateListing({
-      listingId: listingIdResult.data,
+      listingId,
       owner,
       metadata: metadataResult.data,
     });
@@ -168,7 +167,7 @@ export async function action({ request, params, context, url }: Route.ActionArgs
     }
     return redirect(
       marketplaceListingManagePath({
-        listingId: listingIdResult.data,
+        listingId,
         organizationSlug,
         visibility,
         result: { updated: "1" },
@@ -178,7 +177,7 @@ export async function action({ request, params, context, url }: Route.ActionArgs
 
   if (intent === "add-version") {
     const input = marketplaceAddDraftVersionInputSchema.safeParse({
-      listingId: listingIdResult.data,
+      listingId,
       version: formData.get("version"),
       owner,
     });
@@ -195,7 +194,7 @@ export async function action({ request, params, context, url }: Route.ActionArgs
     const result = operation.value;
     return redirect(
       marketplaceListingManagePath({
-        listingId: listingIdResult.data,
+        listingId,
         organizationSlug,
         visibility,
         result: {
@@ -208,7 +207,7 @@ export async function action({ request, params, context, url }: Route.ActionArgs
 
   if (intent === "publish") {
     const input = marketplacePublishVersionInputSchema.safeParse({
-      listingId: listingIdResult.data,
+      listingId,
       version: formData.get("version"),
       owner,
     });
@@ -225,7 +224,7 @@ export async function action({ request, params, context, url }: Route.ActionArgs
     const result = operation.value;
     return redirect(
       marketplaceListingManagePath({
-        listingId: listingIdResult.data,
+        listingId,
         organizationSlug,
         visibility,
         result: {
@@ -238,7 +237,7 @@ export async function action({ request, params, context, url }: Route.ActionArgs
 
   if (intent === "archive") {
     const operation = await marketplace.archiveListing({
-      listingId: listingIdResult.data,
+      listingId,
       owner,
     });
     if (!operation.ok) {
@@ -247,7 +246,7 @@ export async function action({ request, params, context, url }: Route.ActionArgs
     const result = operation.value;
     return redirect(
       marketplaceListingManagePath({
-        listingId: listingIdResult.data,
+        listingId,
         organizationSlug,
         visibility,
         result: {
@@ -324,7 +323,7 @@ export default function BackofficeMarketplaceManage({ loaderData }: Route.Compon
           listing.status === "published" ? (
             <ButtonLink
               to={marketplaceListingPath(
-                listing.listingId,
+                `@${organization.slug}/${listing.slug}`,
                 { kind: "org", organization, label: organization.id },
                 marketplaceCatalogForVisibility(visibility),
               )}
@@ -355,7 +354,6 @@ export default function BackofficeMarketplaceManage({ loaderData }: Route.Compon
           >
             <Form method="post" className="space-y-4">
               <input type="hidden" name="intent" value="update" />
-              <input type="hidden" name="organizationSlug" value={organization.slug} />
               <input type="hidden" name="visibility" value={visibility} />
               <MetadataField label="Name" name="name" defaultValue={listing.name} />
               <MetadataField label="Summary" name="summary" defaultValue={listing.summary} />
@@ -406,7 +404,6 @@ export default function BackofficeMarketplaceManage({ loaderData }: Route.Compon
           >
             <Form method="post" className="space-y-4">
               <input type="hidden" name="intent" value="add-version" />
-              <input type="hidden" name="organizationSlug" value={organization.slug} />
               <input type="hidden" name="visibility" value={visibility} />
               <MetadataField label="Version" name="version" defaultValue="" />
               <Button type="submit" disabled={isSubmitting} variant="secondary">
@@ -438,7 +435,6 @@ export default function BackofficeMarketplaceManage({ loaderData }: Route.Compon
             {listing.status !== "archived" ? (
               <Form method="post" className="mt-5 border-t border-[color:var(--bo-border)] pt-4">
                 <input type="hidden" name="intent" value="archive" />
-                <input type="hidden" name="organizationSlug" value={organization.slug} />
                 <input type="hidden" name="visibility" value={visibility} />
                 <button
                   type="submit"
@@ -478,7 +474,6 @@ export default function BackofficeMarketplaceManage({ loaderData }: Route.Compon
                     {version.status === "draft" || canRestore ? (
                       <Form method="post" className="mt-3">
                         <input type="hidden" name="intent" value="publish" />
-                        <input type="hidden" name="organizationSlug" value={organization.slug} />
                         <input type="hidden" name="visibility" value={visibility} />
                         <input type="hidden" name="version" value={version.version} />
                         <Button

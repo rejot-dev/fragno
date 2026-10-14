@@ -1,9 +1,5 @@
 import { assert, beforeEach, describe, expect, test, vi } from "vitest";
 
-import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
-import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
-
 const { findBackofficeMeMock, listPublishedListingsMock, marketplaceForMock } = vi.hoisted(() => ({
   findBackofficeMeMock: vi.fn(),
   listPublishedListingsMock: vi.fn(),
@@ -12,7 +8,7 @@ const { findBackofficeMeMock, listPublishedListingsMock, marketplaceForMock } = 
 
 vi.mock("@/fragno/auth/auth-server", () => ({ findBackofficeMe: findBackofficeMeMock }));
 
-import BackofficeMarketplaceBrowse, { loader } from "./browse";
+import { loader } from "./browse-all";
 
 const authenticatedUser = {
   user: { id: "user-1", email: "ada@example.com" },
@@ -58,10 +54,10 @@ beforeEach(() => {
   });
 });
 
-describe("Marketplace featured browse", () => {
+describe("Marketplace catalog listing", () => {
   test("ignores legacy category filters and always requests the unfiltered Marketplace", async () => {
     const url = new URL(
-      "https://example.test/backoffice/marketplace/org/ada-labs/marketplace?category=communication",
+      "https://example.test/backoffice/marketplace/org/ada-labs/marketplace/all?category=communication",
     );
 
     const result = await loader({
@@ -79,7 +75,7 @@ describe("Marketplace featured browse", () => {
   test("the organization catalog reads the route organization's Marketplace", async () => {
     const runCatalog = (scopeKind: string, scopeId: string) => {
       const url = new URL(
-        `https://example.test/backoffice/marketplace/${scopeKind}/${scopeId}/organization`,
+        `https://example.test/backoffice/marketplace/${scopeKind}/${scopeId}/organization/all`,
       );
       return loader({
         request: new Request(url),
@@ -105,45 +101,5 @@ describe("Marketplace featured browse", () => {
       assert(rejected.status === 404);
       expect(marketplaceForMock).not.toHaveBeenCalled();
     }
-  });
-
-  test("presents published packages as featured items without filter controls", () => {
-    const router = createMemoryRouter(
-      [
-        {
-          element: createElement(Outlet, {
-            context: {
-              selectedScope: {
-                kind: "org",
-                organization: { id: "org-1", slug: "ada-labs" },
-                label: "Ada Labs",
-              },
-            },
-          }),
-          children: [
-            {
-              path: "*",
-              element: createElement(BackofficeMarketplaceBrowse, {
-                loaderData: {
-                  basePath: "/backoffice/marketplace/org/ada-labs/marketplace",
-                  catalog: "marketplace",
-                  listings,
-                  hasNextPage: false,
-                },
-              } as never),
-            },
-          ],
-        },
-      ],
-      { initialEntries: ["/backoffice/marketplace/org/ada-labs/marketplace"] },
-    );
-
-    const markup = renderToStaticMarkup(createElement(RouterProvider, { router }));
-
-    assert(markup.includes("Featured packages"));
-    assert(markup.includes("Featured"));
-    assert(!markup.includes("Ready to add to Ada Labs."));
-    assert(!markup.includes("Apply filter"));
-    assert(!markup.includes("<select"));
   });
 });

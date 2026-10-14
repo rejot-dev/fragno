@@ -2,6 +2,7 @@ import type {
   MarketplaceScope,
   MarketplaceVisibility,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import {
   backofficeOrganizationIdentity,
@@ -9,6 +10,7 @@ import {
   backofficeRuntimeScopeFromResolvedScope,
   resolveBackofficeRouteScope,
   type BackofficeRoutableScopeSelection,
+  type BackofficeScopeSelection,
 } from "@/backoffice-runtime/resolved-scope";
 import {
   backofficeRouteScopePath,
@@ -43,16 +45,18 @@ type Organization = BackofficeMeData["organizations"][number]["organization"];
 
 const userName = (user: BackofficeMeData["user"]) => user.email ?? user.id;
 
+const isSystemAdministrator = (user: BackofficeMeData["user"]) => user.role === "admin";
+
 const projectLabel = (project: AutomationProjectRecord) =>
   project.name?.trim() || project.slug?.trim() || toExternalId(project.id) || "Untitled project";
 
-const marketplaceScopeBasePath = (scope: BackofficeRoutableScopeSelection) =>
+const marketplaceScopeBasePath = (scope: BackofficeScopeSelection) =>
   `/backoffice/marketplace/${backofficeRouteScopePath(
     backofficeRouteScopeFromResolvedScope(scope),
   )}`;
 
 export const marketplaceScopeTabPath = (
-  scope: BackofficeRoutableScopeSelection,
+  scope: BackofficeScopeSelection,
   tab: MarketplaceTab = "marketplace",
 ) => `${marketplaceScopeBasePath(scope)}/${tab}`;
 
@@ -91,21 +95,38 @@ export function marketplaceRuntimeScopeFromRouteParams(
   return backofficeRuntimeScopeFromResolvedScope(resolvedScope);
 }
 
+/** System administrators browse the public Marketplace they curate from System scope. */
+function marketplaceBrowsingScopeFromRouteParams(
+  params: { scopeKind?: string; scopeId?: string },
+  me: BackofficeMeData,
+): BackofficeContextScope {
+  if (requireBackofficeRouteScopeFromParams(params).kind !== "system") {
+    return marketplaceRuntimeScopeFromRouteParams(
+      params,
+      me.organizations.map(({ organization }) => organization),
+    );
+  }
+  if (!isSystemAdministrator(me.user)) {
+    throw new Response("Not Found", { status: 404 });
+  }
+  return { kind: "system" };
+}
+
 /** Resolves a catalog route to the Marketplace it reads; membership was established by scope resolution. */
 export function marketplaceFromRouteParams(
   params: { scopeKind?: string; scopeId?: string; catalog?: string },
-  organizations: Organization[],
+  me: BackofficeMeData,
 ): {
-  scope: ReturnType<typeof marketplaceRuntimeScopeFromRouteParams>;
+  scope: BackofficeContextScope;
   catalog: MarketplaceCatalog;
   marketplace: MarketplaceScope;
 } {
-  const scope = marketplaceRuntimeScopeFromRouteParams(params, organizations);
+  const scope = marketplaceBrowsingScopeFromRouteParams(params, me);
   if (params.catalog === "marketplace") {
     return { scope, catalog: params.catalog, marketplace: { kind: "system" } };
   }
-  // Personal workspaces have no organization Marketplace.
-  if (params.catalog === "organization" && scope.kind !== "user") {
+  // Only organization and project workspaces have an organization Marketplace.
+  if (params.catalog === "organization" && (scope.kind === "org" || scope.kind === "project")) {
     return { scope, catalog: params.catalog, marketplace: { kind: "org", orgId: scope.orgId } };
   }
   throw new Response("Not Found", { status: 404 });
@@ -113,9 +134,33 @@ export function marketplaceFromRouteParams(
 
 /** Organization and project workspaces browse their organization's Marketplace beside the public one. */
 export const marketplaceCatalogsForScope = (
-  scope: BackofficeRoutableScopeSelection,
+  scope: BackofficeScopeSelection,
 ): MarketplaceCatalog[] =>
-  scope.kind === "user" ? ["marketplace"] : ["marketplace", "organization"];
+  scope.kind === "org" || scope.kind === "project"
+    ? ["marketplace", "organization"]
+    : ["marketplace"];
+
+/** The scope selection a Marketplace browsing route renders, including System for its administrators. */
+export async function resolveMarketplaceBrowsingSelection({
+  params,
+  me,
+  lookupProject,
+}: {
+  params: { scopeKind?: string; scopeId?: string };
+  me: BackofficeMeData;
+  lookupProject: (orgId: string, projectId: string) => Promise<AutomationProjectRecord | null>;
+}): Promise<BackofficeScopeSelection> {
+  const scope = marketplaceBrowsingScopeFromRouteParams(params, me);
+  if (scope.kind === "system") {
+    return { kind: "system", label: "System" };
+  }
+  return resolveMarketplaceScopeSelection({
+    params,
+    organizations: me.organizations.map(({ organization }) => organization),
+    project: scope.kind === "project" ? await lookupProject(scope.orgId, scope.projectId) : null,
+    user: me.user,
+  });
+}
 
 export const resolveMarketplaceScopeSelection = ({
   params,

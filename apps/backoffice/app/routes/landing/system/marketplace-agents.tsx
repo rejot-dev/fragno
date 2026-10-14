@@ -1,3 +1,6 @@
+import { ButtonLink } from "@fragno-private/design-system/button";
+import { Icon } from "@fragno-private/design-system/icon";
+
 const MARKETPLACE_CONTENT = [
   { label: "Skill", value: "slack/SKILL.md" },
   { label: "Workflows", value: "triage-message.workflow.js" },
@@ -19,6 +22,10 @@ export function MarketplaceAgents() {
             Use the marketplace to share workflows, skills, and supporting files with colleagues and
             the community. Get up and running quickly with prebuilt automations.
           </p>
+          <ButtonLink to="/marketplace" variant="secondary" className="mt-8 no-underline">
+            Browse the marketplace
+            <Icon name="arrow-right" className="size-3.5" />
+          </ButtonLink>
         </div>
 
         <div className="bg-[var(--bo-panel-2)] p-4 sm:p-7 lg:p-9">

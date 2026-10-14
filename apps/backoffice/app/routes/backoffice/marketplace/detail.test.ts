@@ -63,13 +63,13 @@ import {
   readMarketplaceInstallationReference,
   type MarketplaceInstallationReference,
 } from "./installation-reference";
-import { buildArtifactVersionPath, marketplaceListingRef } from "./navigation";
+import { buildArtifactVersionPath } from "./navigation";
 
 const listingId = marketplaceListingId({
   ownerScope: { kind: "system" },
   slug: "telegram-test-command",
 });
-const listingRef = marketplaceListingRef(listingId);
+const listingRef = "system/telegram-test-command";
 type IngestionActionDataFixture = { ok: false; message: string };
 const installationReference = {
   organizationId: "org-1",
@@ -129,7 +129,8 @@ const runLoader = (
   return loader({
     request: new Request(url),
     params: {
-      listingRef,
+      publisher: "system",
+      packageSlug: "telegram-test-command",
       catalog: "marketplace",
       scopeKind: routeScope.kind,
       scopeId: decodeURIComponent(routePath.split("/")[1]!),
@@ -164,7 +165,8 @@ const runAction = (input: {
       body: formData,
     }),
     params: {
-      listingRef,
+      publisher: "system",
+      packageSlug: "telegram-test-command",
       catalog: "marketplace",
       scopeKind: routeScope.kind,
       scopeId: decodeURIComponent(routePath.split("/")[1]!),

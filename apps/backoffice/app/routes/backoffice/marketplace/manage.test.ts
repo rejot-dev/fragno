@@ -19,7 +19,7 @@ vi.mock("@/fragno/auth/auth-server", () => ({ findBackofficeMe: findBackofficeMe
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
 
 import { action } from "./manage";
-import { marketplaceListingManagePath, marketplaceListingRef } from "./navigation";
+import { marketplaceListingManagePath } from "./navigation";
 
 const authenticatedUser = {
   user: { id: "user-1" },
@@ -31,8 +31,6 @@ const listingId = marketplaceListingId({
   ownerScope: { kind: "org", orgId: "org-1" },
   slug: "daily-operations-brief",
 });
-
-const listingRef = marketplaceListingRef(listingId);
 
 const owner = {
   scope: { kind: "org" as const, orgId: "org-1" },
@@ -62,7 +60,7 @@ const runAction = (formData: FormData) => {
       ),
       { method: "POST", body: formData },
     ),
-    params: { listingRef },
+    params: { publisher: "@acme", packageSlug: "daily-operations-brief" },
     context,
     url: new URL(
       marketplaceListingManagePath({ listingId, organizationSlug: "acme", visibility: "public" }),
