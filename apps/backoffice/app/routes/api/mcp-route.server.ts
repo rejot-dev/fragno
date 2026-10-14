@@ -1,12 +1,14 @@
 import type { McpObject } from "@/backoffice-runtime/object-registry";
-import { backofficeRouteScopePath } from "@/backoffice-runtime/route-scope";
 import type { PublicFragmentRoute } from "@/fragno/public-fragment-route.server";
+import { encodeMcpConnectionId } from "@/fragno/runtime-tools/families/integrations/mcp-integration";
 import {
   MCP_INTERNAL_OAUTH_CALLBACK_PATH,
   MCP_INTERNAL_PREFIX,
   MCP_PUBLIC_PREFIX,
 } from "@/fragno/scoped-public-fragment-routes";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
+
+import { integrationOAuthReturn } from "../backoffice/integrations/connection-paths";
 
 export const mcpPublicRoute = {
   publicPrefix: MCP_PUBLIC_PREFIX,
@@ -17,19 +19,14 @@ export const mcpPublicRoute = {
   oauth: {
     internalCallbackPath: MCP_INTERNAL_OAUTH_CALLBACK_PATH,
     invalidResponse: (message) => new Response(message, { status: 502 }),
-    redirect: ({ request, routeScope, status }) => {
-      const redirectUrl = new URL(
-        `/backoffice/automations/${backofficeRouteScopePath(routeScope)}/mcp`,
-        request.url,
-      );
-      redirectUrl.searchParams.set("oauth", status);
-
-      const serverSlug = new URL(request.url).searchParams.get("state")?.split(":")[0]?.trim();
-      if (serverSlug) {
-        redirectUrl.searchParams.set("server", serverSlug);
-      }
-
-      return Response.redirect(redirectUrl, 302);
+    redirect: ({ request, routeScope, status, message }) => {
+      const slug = new URL(request.url).searchParams.get("state")?.split(":")[0]?.trim();
+      return integrationOAuthReturn({
+        request,
+        routeScope,
+        connectionId: slug ? encodeMcpConnectionId(slug) : null,
+        outcome: status === "success" ? { status } : { status, message: message ?? null },
+      });
     },
   },
 } satisfies PublicFragmentRoute<McpObject>;

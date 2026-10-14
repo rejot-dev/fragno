@@ -102,7 +102,7 @@ export function Reson8ErrorBoundary({
       <BackofficePageHeader
         breadcrumbs={[
           { label: "Backoffice", to: "/backoffice" },
-          { label: "Automations", to: "/backoffice/automations" },
+          { label: "Integrations", to: "/backoffice/integrations" },
           { label: "Reson8" },
         ]}
         eyebrow="Integrations"

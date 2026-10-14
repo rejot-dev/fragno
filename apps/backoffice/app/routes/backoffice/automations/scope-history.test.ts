@@ -73,10 +73,10 @@ describe("automation scope history", () => {
 
   test("falls back to the dashboard when a system scope cannot open the active tab", () => {
     assert.equal(
-      resolveAutomationScopeTab({ kind: "system", label: "System" }, "api"),
+      resolveAutomationScopeTab({ kind: "system", label: "System" }, "sandboxes"),
       "dashboard",
     );
-    assert.equal(resolveAutomationScopeTab(secondOrganization, "api"), "api");
+    assert.equal(resolveAutomationScopeTab(secondOrganization, "sandboxes"), "sandboxes");
   });
 
   test("reverses the history when browser navigation returns to the previous scope", () => {

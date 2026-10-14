@@ -44,16 +44,9 @@ export const automationScopeBasePath = (scope: BackofficeScopeSelection) =>
     backofficeRouteScopeFromResolvedScope(scope),
   )}`;
 
-type AutomationScopeTab =
-  | "dashboard"
-  | "store"
-  | "api"
-  | "events-catalog"
-  | "integrations"
-  | "mcp"
-  | "sandboxes";
+type AutomationScopeTab = "dashboard" | "store" | "events-catalog" | "sandboxes";
 
-const SYSTEM_UNAVAILABLE_AUTOMATION_TABS = new Set<AutomationScopeTab>(["api", "mcp", "sandboxes"]);
+const SYSTEM_UNAVAILABLE_AUTOMATION_TABS = new Set<AutomationScopeTab>(["sandboxes"]);
 
 export const resolveAutomationScopeTab = (
   scope: BackofficeScopeSelection,

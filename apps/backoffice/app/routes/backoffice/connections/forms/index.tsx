@@ -2,13 +2,15 @@ import { Button, ButtonLink } from "@fragno-private/design-system/button";
 import { Input } from "@fragno-private/design-system/input";
 import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
 import { useState, type SubmitEvent } from "react";
-import { useOutletContext } from "react-router";
 
+import { backofficeRouteScopePath } from "@/backoffice-runtime/route-scope";
 import { formsClient } from "@/fragno/forms-client";
 
-import type { AutomationLayoutContext } from "../../automations/layout-context";
-import { automationScopeBasePath } from "../../automations/scope";
 import type { Route } from "./+types/index";
+
+// Forms exist only in the system scope.
+const INTEGRATIONS_PATH = `/backoffice/integrations/${backofficeRouteScopePath({ kind: "system" })}`;
+const FORMS_PATH = `${INTEGRATIONS_PATH}/forms`;
 
 export function loader({ params }: Route.LoaderArgs) {
   if (params.scopeKind !== "system" || params.scopeId !== "system") {
@@ -23,9 +25,6 @@ export function meta() {
 }
 
 export default function BackofficeFormsIntegration() {
-  const { selectedScope } = useOutletContext<AutomationLayoutContext>();
-  const integrationsPath = `${automationScopeBasePath(selectedScope)}/integrations`;
-  const formsPath = `${integrationsPath}/forms`;
   const forms = formsClient.useForms();
   const createForm = formsClient.useCreateForm();
   const [title, setTitle] = useState("");
@@ -73,7 +72,7 @@ export default function BackofficeFormsIntegration() {
               Create and inspect schema-backed forms in the global system scope.
             </p>
           </div>
-          <ButtonLink variant="secondary" to={integrationsPath}>
+          <ButtonLink variant="secondary" to={INTEGRATIONS_PATH}>
             All integrations
           </ButtonLink>
         </div>
@@ -129,7 +128,7 @@ export default function BackofficeFormsIntegration() {
                     <BackofficeStatusLight tone={form.status === "open" ? "live" : "muted"}>
                       {form.status}
                     </BackofficeStatusLight>
-                    <ButtonLink variant="secondary" to={`${formsPath}/${form.id}`}>
+                    <ButtonLink variant="secondary" to={`${FORMS_PATH}/${form.id}`}>
                       View
                     </ButtonLink>
                   </div>

@@ -58,7 +58,7 @@ describe("public MCP OAuth routes", () => {
     assert.equal(response.status, 302);
     assert.equal(
       response.headers.get("location"),
-      "https://backoffice.example/backoffice/automations/org/acme/mcp?oauth=success&server=github",
+      "https://backoffice.example/backoffice/integrations/org/acme/mcp%23github?oauth=success",
     );
     assert.deepEqual(mcpForScopeMock.mock.calls[0], [{ kind: "org", orgId: "org-123" }]);
     assert.equal(authorizeBackofficeContextMock.mock.calls.length, 0);

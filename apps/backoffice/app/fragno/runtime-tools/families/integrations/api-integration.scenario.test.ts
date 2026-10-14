@@ -35,8 +35,11 @@ import {
   type BackofficeScenarioContext,
   type BackofficeScenarioDefinitionInput,
 } from "@/fragno/automation/scenario";
+import { forwardPublicFragmentRequest } from "@/fragno/public-fragment-route.server";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
+import { apiPublicRoute } from "@/routes/api/api-route.server";
+import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
 import { InMemoryApiObject } from "../../../../../workers/api.do";
 import { InMemoryAppInstallationsObject } from "../../../../../workers/app-installations.do";
@@ -247,23 +250,50 @@ async function callApiFragment(
   return response;
 }
 
+/** The provider sends the browser to the public callback; returns where Backoffice sends it next. */
+async function returnFromProvider(
+  ctx: BackofficeScenarioContext,
+  scope: { kind: "user"; userId: string },
+  query: string,
+) {
+  const request = new Request(
+    `https://example.com/api/http/${encodeURIComponent(`user:${scope.userId}`)}/oauth/callback?${query}`,
+  );
+  const response = await forwardPublicFragmentRequest({
+    request,
+    context: createBackofficeRouterContextProvider(request, {
+      runtime: ctx.runtime.services,
+      kernel: new BackofficeKernel(ctx.runtime.services),
+      env: ctx.runtime.env as unknown as CloudflareEnv,
+      ctx: {} as ExecutionContext,
+    }),
+    scopePathSegment: `user:${scope.userId}`,
+    route: apiPublicRoute,
+  });
+  assert(response.status === 302, await response.clone().text());
+  const location = response.headers.get("location");
+  assert(location);
+  return new URL(location);
+}
+
 /** Consent happens in the provider's browser flow; the callback is the only signal setup sees. */
 async function completeConsent(
   ctx: BackofficeScenarioContext,
-  scope: BackofficeContextScope & { kind: "user" | "org" | "project" },
+  scope: { kind: "user"; userId: string },
   authorizationUrl: string,
   code: string,
 ) {
   const state = new URL(authorizationUrl).searchParams.get("state");
   assert(state, "Authorization link must carry OAuth state");
-  const callback = await ctx.runtime.objects.api
-    .for(scope)
-    .http.fetch(
-      new Request(
-        `https://api.do/api/api/oauth/callback?code=${code}&state=${encodeURIComponent(state)}`,
-      ),
-    );
-  assert(callback.ok, await callback.clone().text());
+  const landing = await returnFromProvider(
+    ctx,
+    scope,
+    `code=${code}&state=${encodeURIComponent(state)}`,
+  );
+  const slug = state.slice(0, state.indexOf(":"));
+  expect(`${landing.pathname}${landing.search}`).toBe(
+    `/backoffice/integrations/user/${scope.userId}/${encodeURIComponent(`api#${slug}`)}?oauth=success`,
+  );
 }
 
 test("Codemode creates a custom API through setup and keeps one address across restart, credential reset, and deletion", async () => {
@@ -690,6 +720,18 @@ test("OAuth setup resumes source-owned consent across restarts, native restarts,
           expect([ctx.vars.authorizationUrl, native.authorizationUrl]).toContain(
             checked.authorizationUrl,
           );
+          // A forged return for the connection lands on its detail with the rejection, and the
+          // pending consent survives it.
+          const forged = await returnFromProvider(
+            ctx,
+            scope,
+            "code=forged&state=invoices%3Aforged",
+          );
+          expect(forged.pathname).toBe(
+            `/backoffice/integrations/user/${scope.userId}/${encodeURIComponent("api#invoices")}`,
+          );
+          assert(forged.searchParams.get("oauth") === "error");
+          expect(forged.searchParams.get("message")).toEqual(expect.any(String));
           // The integration's original link remains valid after the native restart.
           await completeConsent(ctx, scope, ctx.vars.authorizationUrl, "first-consent");
           const ready = await ctx.runCodemode({

@@ -57,8 +57,8 @@ export default function BackofficeApiOAuthComplete() {
   const { organization, connectionSlug, status, code, message } = useLoaderData<typeof loader>();
   const isSuccess = status === "success";
   const backUrl = organization
-    ? `/backoffice/automations/org/${encodeURIComponent(organization.slug)}/api`
-    : "/backoffice/automations";
+    ? `/backoffice/integrations/org/${encodeURIComponent(organization.slug)}`
+    : "/backoffice/integrations";
 
   return (
     <section className="mx-auto max-w-4xl overflow-hidden border border-[color:var(--bo-border)] bg-[var(--bo-panel)]">
@@ -124,7 +124,7 @@ export default function BackofficeApiOAuthComplete() {
           </div>
         ) : null}
         <ButtonLink variant="accent" to={backUrl}>
-          Back to API
+          Back to integrations
         </ButtonLink>
       </div>
     </section>

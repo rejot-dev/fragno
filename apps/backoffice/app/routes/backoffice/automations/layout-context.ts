@@ -5,11 +5,4 @@ export type AutomationLayoutContext = {
   collections: AutomationCollections;
 };
 
-export type AutomationTab =
-  | "dashboard"
-  | "store"
-  | "api"
-  | "events-catalog"
-  | "integrations"
-  | "mcp"
-  | "sandboxes";
+export type AutomationTab = "dashboard" | "store" | "events-catalog" | "sandboxes";

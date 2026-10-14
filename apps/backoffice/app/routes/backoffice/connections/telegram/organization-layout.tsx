@@ -4,8 +4,8 @@ import { Outlet } from "react-router";
 import { findBackofficeMe } from "@/fragno/auth/auth-server";
 
 import { buildBackofficeLoginPath } from "../../auth-navigation";
-import { AutomationWorkspaceHeader } from "../../automations/shared";
 import { organizationIdFromScope, resolveIntegrationContext } from "../../integrations/scope";
+import { IntegrationServiceHeader } from "../../integrations/service-header";
 import type { Route } from "./+types/organization-layout";
 import { fetchTelegramConfig } from "./data";
 import {
@@ -85,9 +85,10 @@ export default function BackofficeOrganizationTelegramLayout({
 
   return (
     <div>
-      <AutomationWorkspaceHeader
-        selectedScope={uiScope}
-        activeTab="integrations"
+      <IntegrationServiceHeader
+        integrationsPath={integrationsPath}
+        service="Telegram"
+        scopeLabel={uiScope.label}
         subnav={
           <TelegramTabs
             basePath={basePath}

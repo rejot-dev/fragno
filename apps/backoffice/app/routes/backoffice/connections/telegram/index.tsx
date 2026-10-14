@@ -24,15 +24,15 @@ export default function BackofficeConnectionsTelegram() {
       <BackofficePageHeader
         breadcrumbs={[
           { label: "Backoffice", to: "/backoffice" },
-          { label: "Automations", to: "/backoffice/automations" },
+          { label: "Integrations", to: "/backoffice/integrations" },
           { label: "Telegram" },
         ]}
         eyebrow="Integrations"
         title="Telegram connection workspace."
         description="Pick an organization to configure bots, webhooks, and message capture."
         actions={
-          <ButtonLink variant="secondary" to="/backoffice/automations">
-            Back to automations
+          <ButtonLink variant="secondary" to="/backoffice/integrations">
+            Back to integrations
           </ButtonLink>
         }
       />
@@ -82,10 +82,10 @@ export default function BackofficeConnectionsTelegram() {
               <div className="mt-4">
                 <ButtonLink
                   variant="accent"
-                  to={`/backoffice/automations/${backofficeRouteScopePath({
+                  to={`/backoffice/integrations/${backofficeRouteScopePath({
                     kind: "org",
                     orgSlug: organization.slug,
-                  })}/integrations/telegram`}
+                  })}/telegram`}
                 >
                   Manage Telegram
                 </ButtonLink>

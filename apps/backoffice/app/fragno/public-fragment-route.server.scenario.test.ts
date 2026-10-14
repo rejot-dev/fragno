@@ -89,10 +89,7 @@ test.each([
                 const location = response.headers.get("location");
                 assert(location);
                 const redirect = new URL(location);
-                assert.equal(
-                  redirect.pathname,
-                  `/backoffice/automations/org/${orgSlug}/${name.toLowerCase()}`,
-                );
+                assert.equal(redirect.pathname, `/backoffice/integrations/org/${orgSlug}`);
                 assert.equal(redirect.searchParams.get("oauth"), "error");
 
                 for (const { method, suffix } of [
