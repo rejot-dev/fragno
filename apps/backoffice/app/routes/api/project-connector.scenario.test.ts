@@ -184,7 +184,7 @@ test("an anonymous OAuth browser return cannot create or forge a Connector accou
           assert(callbackOnlyRedirect.status === 302);
           assert(
             callbackOnlyRedirect.headers.get("location") ===
-              "https://backoffice.example/backoffice/connections/connector/return/user%3Acallback-only-user",
+              "https://backoffice.example/backoffice/integrations/user/callback-only-user?oauth=returned",
           );
           assert(!ctx.runtime.hasObjectInstance(callbackOnlyUser));
 
@@ -199,7 +199,7 @@ test("an anonymous OAuth browser return cannot create or forge a Connector accou
           assert(callback.status === 302);
           assert(
             callback.headers.get("location") ===
-              "https://backoffice.example/backoffice/connections/connector/return/user%3Auser-1",
+              "https://backoffice.example/backoffice/integrations/user/user-1?oauth=returned",
           );
           assert(gateway.control.requestReads === 0);
           const organizationCallback = await callPublicProjectConnector(

@@ -13,10 +13,11 @@ export const integrationsScopeBasePath = (scope: BackofficeScopeSelection): stri
 export const integrationConnectionPath = (scope: BackofficeScopeSelection, connectionId: string) =>
   `${integrationsScopeBasePath(scope)}/${encodeURIComponent(connectionId)}`;
 
-/** What a provider's return reports. */
+/** What a provider's return reports. A `returned` provider keeps the outcome to itself. */
 export type IntegrationOAuthOutcome =
   | { status: "success" }
-  | { status: "error"; message: string | null };
+  | { status: "error"; message: string | null }
+  | { status: "returned" };
 
 /**
  * Provider returns land in Integrations: on the connection's detail view when the callback knows

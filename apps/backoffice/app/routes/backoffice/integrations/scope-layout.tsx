@@ -271,6 +271,14 @@ function ProviderReturnNotice() {
       </p>
     );
   }
+  if (outcome === "returned") {
+    return (
+      <p className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3 text-sm text-[var(--bo-muted)]">
+        You’re back from the provider. This doesn’t confirm the connection; ask your agent to finish
+        setting it up.
+      </p>
+    );
+  }
   return null;
 }
 

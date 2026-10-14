@@ -13,10 +13,6 @@ export default [
   route("backoffice/auth/bootstrap", "routes/backoffice/auth-bootstrap.tsx"),
   route("backoffice/sign-up", "routes/backoffice/sign-up.tsx"),
   route("backoffice/verify-email", "routes/backoffice/verify-email.tsx"),
-  route(
-    "backoffice/connections/connector/return/:scopeSegment",
-    "routes/backoffice/connections/project-connector-return.tsx",
-  ),
   layout("layouts/backoffice-layout.tsx", { id: BACKOFFICE_LAYOUT_ROUTE_ID }, [
     ...prefix("backoffice", [
       index("routes/backoffice/index.tsx"),
@@ -28,13 +24,6 @@ export default [
         route("invites", "routes/backoffice/organization-invites.tsx"),
         route("billing", "routes/backoffice/organization-billing.tsx"),
       ]),
-      route("connections/resend", "routes/backoffice/connections/resend/index.tsx"),
-      route(
-        "connections/api/oauth-complete",
-        "routes/backoffice/connections/api-oauth-complete.tsx",
-      ),
-      route("connections/telegram", "routes/backoffice/connections/telegram/index.tsx"),
-      route("connections/github", "routes/backoffice/connections/github/index.tsx"),
       route(
         "connections/github/setup-callback",
         "routes/backoffice/connections/github/setup-callback.tsx",
