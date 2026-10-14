@@ -1,5 +1,6 @@
 const NUMERIC_SECONDS_PATTERN = /^\d+$/;
 const DURATION_PATTERN = /^(\d+)([smh])$/i;
+const DURATION_UNIT_MS = { s: 1000, m: 60_000, h: 3_600_000 } as const;
 
 type SleepAfterInput = string | number | undefined;
 
@@ -57,4 +58,17 @@ export function parseSleepAfterInput(value: SleepAfterInput): SleepAfterParseRes
   }
 
   return { ok: false, message: INVALID_SLEEP_AFTER_MESSAGE };
+}
+
+/** Converts a validated sleepAfter value: plain numbers are seconds. */
+export function sleepAfterToMilliseconds(sleepAfter: string | number): number {
+  if (typeof sleepAfter === "number") {
+    return sleepAfter * 1000;
+  }
+  const durationMatch = DURATION_PATTERN.exec(sleepAfter);
+  if (!durationMatch) {
+    throw new Error("Invalid sandbox sleepAfter value.");
+  }
+  const [, amount, unit] = durationMatch;
+  return Number(amount) * DURATION_UNIT_MS[unit.toLowerCase() as "s" | "m" | "h"];
 }

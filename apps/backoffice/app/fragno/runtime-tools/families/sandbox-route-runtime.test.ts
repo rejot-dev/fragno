@@ -23,6 +23,9 @@ describe("createSandboxRouteRuntime", () => {
         expectedStopAt: null,
         stoppedAt: null,
         lastError: null,
+        image: "debian" as const,
+        instanceType: "standard-1" as const,
+        workspaceSnapshot: null,
         createdAt: new Date(),
         updatedAt: new Date(),
       })),
@@ -42,8 +45,20 @@ describe("createSandboxRouteRuntime", () => {
     });
 
     await expect(
-      runtime.startSandbox({ id: "Dev", keepAlive: true, sleepAfter: "15m" }),
-    ).resolves.toEqual({ id: "dev", status: "requested" });
+      runtime.startSandbox({
+        id: "Dev",
+        keepAlive: true,
+        sleepAfter: "15m",
+        image: "debian",
+        instanceType: "standard-1",
+      }),
+    ).resolves.toEqual({
+      id: "dev",
+      status: "requested",
+      image: "debian",
+      instanceType: "standard-1",
+      workspaceSaved: false,
+    });
     expect(sandboxManager.requestSandboxInstance).toHaveBeenCalledWith({
       id: "dev",
       provider: CLOUDFLARE_SANDBOX_PROVIDER,
@@ -51,6 +66,8 @@ describe("createSandboxRouteRuntime", () => {
       sleepAfter: "15m",
       startupCommand: "true",
       startupTimeoutMs: undefined,
+      image: "debian",
+      instanceType: "standard-1",
     });
 
     await expect(

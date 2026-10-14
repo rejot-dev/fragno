@@ -1,38 +1,29 @@
 import type {
+  SandboxContainerControl,
+  SandboxExecOutcome,
+} from "@fragno-apps/cf-sandbox-bridge/sandbox/sandbox-container-contract";
+
+import type {
   ExecuteSandboxCommandOptions,
   SandboxCommandFailure,
   SandboxCommandResult,
-  SandboxRuntimeExecOptions,
-  SandboxRuntimeExecResult,
 } from "./contracts";
 import { SandboxRuntimeError } from "./sandbox-runtime-error";
 
-type ExecuteSandboxRuntimeCommand = (
-  command: string,
-  options?: SandboxRuntimeExecOptions,
-) => Promise<SandboxRuntimeExecResult>;
+const DEFAULT_COMMAND_TIMEOUT_MS = 120_000;
 
-/** Executes a sandbox command and maps runtime failures into the stable Backoffice result contract. */
-export async function executeSandboxRuntimeCommand(
-  execute: ExecuteSandboxRuntimeCommand,
+/** Runs a shell command in a sandbox and maps its outcome into the stable Backoffice result. */
+export async function executeSandboxCommand(
+  sandbox: Pick<SandboxContainerControl, "exec">,
   command: string,
-  options?: ExecuteSandboxCommandOptions,
+  options: ExecuteSandboxCommandOptions = {},
 ): Promise<SandboxCommandResult> {
+  const timeoutMs = options.timeoutMs ?? DEFAULT_COMMAND_TIMEOUT_MS;
   try {
-    const result = await execute(
-      command,
-      options?.timeoutMs === undefined ? {} : { timeout: options.timeoutMs },
+    return toSandboxCommandResult(
+      await sandbox.exec({ argv: ["sh", "-lc", command], timeoutMs }),
+      timeoutMs,
     );
-    if (result.success) {
-      return {
-        ok: true,
-        stdout: result.stdout,
-        stderr: result.stderr,
-        exitCode: result.exitCode ?? 0,
-      };
-    }
-
-    return classifySandboxRuntimeResultFailure(result);
   } catch (error) {
     if (error instanceof SandboxRuntimeError) {
       return {
@@ -47,38 +38,50 @@ export async function executeSandboxRuntimeCommand(
   }
 }
 
-function classifySandboxRuntimeResultFailure(
-  result: SandboxRuntimeExecResult,
-): SandboxCommandFailure {
-  const stderr = result.stderr.trim() || undefined;
-  const stdout = result.stdout.trim() || undefined;
-  const message =
-    stderr ??
-    stdout ??
-    (result.exitCode === null
-      ? "Command did not return an exit code."
-      : `Command failed with exit code ${result.exitCode}.`);
-
-  const normalized = message.toLowerCase();
-  const sandboxLikelyTerminated =
-    result.exitCode === 137 ||
-    result.exitCode === 143 ||
-    normalized.includes("killed") ||
-    normalized.includes("terminated");
-
-  if (sandboxLikelyTerminated) {
+function toSandboxCommandResult(
+  outcome: SandboxExecOutcome,
+  timeoutMs: number,
+): SandboxCommandResult {
+  if (outcome.status === "exited") {
+    return outcome.exitCode === 0
+      ? { ok: true, stdout: outcome.stdout, stderr: outcome.stderr, exitCode: 0 }
+      : classifyCommandExit(outcome);
+  }
+  if (outcome.status === "timed_out") {
     return {
       ok: false,
-      code: "sandbox_terminated",
-      reason: "sandbox_terminated",
-      message,
-      stdout,
-      stderr,
-      exitCode: result.exitCode ?? undefined,
+      code: "timeout",
+      reason: "timeout",
+      message: `Command timed out after ${timeoutMs}ms.`,
+      stdout: outcome.stdout || undefined,
+      stderr: outcome.stderr || undefined,
       retryable: true,
     };
   }
+  if (outcome.status === "output_limit_exceeded") {
+    return {
+      ok: false,
+      code: "output_limit_exceeded",
+      reason: "output_limit_exceeded",
+      message: `Command output exceeded ${outcome.limitBytes} bytes.`,
+      retryable: false,
+    };
+  }
+  return {
+    ok: false,
+    code: "sandbox_terminated",
+    reason: "sandbox_terminated",
+    message: "The sandbox container is not running. Start the sandbox again to resume it.",
+    retryable: false,
+  };
+}
 
+function classifyCommandExit(
+  outcome: Extract<SandboxExecOutcome, { status: "exited" }>,
+): SandboxCommandFailure {
+  const stderr = outcome.stderr.trim() || undefined;
+  const stdout = outcome.stdout.trim() || undefined;
+  const message = stderr ?? stdout ?? `Command failed with exit code ${outcome.exitCode}.`;
   return {
     ok: false,
     code: "command_failed",
@@ -86,51 +89,20 @@ function classifySandboxRuntimeResultFailure(
     message,
     stdout,
     stderr,
-    exitCode: result.exitCode ?? undefined,
+    exitCode: outcome.exitCode,
     retryable: false,
   };
 }
 
+// Typed outcomes cover every command result, so a thrown error means the Durable Object or its
+// container failed underneath the command. RPC preserves only the message.
 function classifySandboxRuntimeThrownError(error: unknown): SandboxCommandFailure {
-  const message = toSandboxRuntimeErrorMessage(error);
-  const normalized = message.toLowerCase();
-
-  if (normalized.includes("timed out") || normalized.includes("timeout")) {
-    return {
-      ok: false,
-      code: "timeout",
-      reason: "timeout",
-      message,
-      retryable: true,
-    };
-  }
-
-  if (TERMINATED_MESSAGE_PATTERNS.some((pattern) => normalized.includes(pattern))) {
-    return {
-      ok: false,
-      code: "sandbox_terminated",
-      reason: "sandbox_terminated",
-      message,
-      retryable: true,
-    };
-  }
-
-  if (UNAVAILABLE_MESSAGE_PATTERNS.some((pattern) => normalized.includes(pattern))) {
-    return {
-      ok: false,
-      code: "sandbox_unavailable",
-      reason: "sandbox_unavailable",
-      message,
-      retryable: true,
-    };
-  }
-
   return {
     ok: false,
-    code: "internal_error",
-    reason: "internal_error",
-    message,
-    retryable: false,
+    code: "sandbox_unavailable",
+    reason: "sandbox_unavailable",
+    message: toSandboxRuntimeErrorMessage(error),
+    retryable: true,
   };
 }
 
@@ -147,21 +119,3 @@ function toSandboxRuntimeErrorMessage(error: unknown): string {
     return "Unknown sandbox execution error.";
   }
 }
-
-const TERMINATED_MESSAGE_PATTERNS = [
-  "sandbox has been destroyed",
-  "sandbox destroyed",
-  "container exited",
-  "instance not found",
-  "no such container",
-  "broken pipe",
-  "connection reset",
-];
-
-const UNAVAILABLE_MESSAGE_PATTERNS = [
-  "temporarily unavailable",
-  "unable to connect",
-  "network error",
-  "fetch failed",
-  "bridge unavailable",
-];

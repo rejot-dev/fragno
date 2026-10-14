@@ -41,12 +41,47 @@ export const sandboxStatusSchema = z.enum([
   "error",
 ]);
 
+const sandboxImageSchema = z
+  .enum(["workspace", "debian"])
+  .describe(
+    "workspace: Debian with Node.js, Python, git, ripgrep, and jq. debian: Cloudflare-managed Debian with Node.js; starts fastest.",
+  );
+
+const sandboxInstanceTypeSchema = z.enum([
+  "lite",
+  "standard-1",
+  "standard-2",
+  "standard-3",
+  "standard-4",
+]);
+
+const sandboxSummarySchema = z.object({
+  id: z.string().trim().min(1),
+  status: sandboxStatusSchema,
+  image: sandboxImageSchema,
+  instanceType: sandboxInstanceTypeSchema,
+  workspaceSaved: z
+    .boolean()
+    .describe("Whether the next start resumes the workspace saved when the sandbox last stopped."),
+});
+
 const startInputSchema = z.object({
   id: z.string().trim().min(1),
   keepAlive: z.boolean().optional(),
-  sleepAfter: z.union([z.string(), z.number()]).optional(),
+  sleepAfter: z
+    .union([z.string(), z.number()])
+    .optional()
+    .describe(
+      "Saves the workspace and stops the sandbox after this long, for example 15m. Defaults to 10m unless keepAlive is set.",
+    ),
   startupTimeoutMs: z.number().int().positive().optional(),
   startupCommand: z.string().trim().min(1).optional(),
+  image: sandboxImageSchema
+    .optional()
+    .describe(
+      "Image for a new workspace; defaults to workspace. A saved workspace resumes on its own image.",
+    ),
+  instanceType: sandboxInstanceTypeSchema.optional(),
 });
 
 export const sandboxOperations = {
@@ -54,19 +89,17 @@ export const sandboxOperations = {
     description: "Start a Cloudflare sandbox for the current organization.",
     permissions: [BACKOFFICE_PERMISSION.sandbox.modify],
     input: startInputSchema,
-    output: z.object({
-      id: z.string().trim().min(1),
-      status: sandboxStatusSchema,
-    }),
+    output: sandboxSummarySchema,
   },
   "sandbox.list": {
     description: "List Cloudflare sandboxes for the current organization.",
     permissions: [BACKOFFICE_PERMISSION.sandbox.read],
     input: z.void(),
-    output: z.array(z.object({ id: z.string().trim().min(1), status: sandboxStatusSchema })),
+    output: z.array(sandboxSummarySchema),
   },
   "sandbox.kill": {
-    description: "Kill a Cloudflare sandbox for the current organization.",
+    description:
+      "Save a Cloudflare sandbox's workspace and stop it. Starting the same sandbox ID resumes the workspace.",
     permissions: [BACKOFFICE_PERMISSION.sandbox.modify],
     input: z.object({ sandboxId: z.string().trim().min(1) }),
     output: z.object({ sandboxId: z.string().trim().min(1), killed: z.literal(true) }),

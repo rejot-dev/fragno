@@ -1,3 +1,9 @@
+import type {
+  SandboxContainerControl,
+  SandboxImage,
+  SandboxInstanceType,
+} from "@fragno-apps/cf-sandbox-bridge/sandbox/sandbox-container-contract";
+
 export type SandboxInstanceStatus =
   | "requested"
   | "starting"
@@ -12,6 +18,10 @@ export const CLOUDFLARE_SANDBOX_PROVIDER = "cloudflare" satisfies SandboxProvide
 export type SandboxInstanceSummary = {
   id: string;
   status: SandboxInstanceStatus;
+  image: SandboxImage;
+  instanceType: SandboxInstanceType;
+  /** Whether the next start resumes the workspace saved when the sandbox last stopped. */
+  workspaceSaved: boolean;
 };
 
 export type StartSandboxOptions = {
@@ -20,48 +30,13 @@ export type StartSandboxOptions = {
   sleepAfter?: string | number;
   startupTimeoutMs?: number;
   startupCommand?: string;
-};
-
-export type SandboxRuntimeHandleOptions = Pick<StartSandboxOptions, "keepAlive" | "sleepAfter">;
-
-export type SandboxRuntimeExecOptions = {
-  timeout?: number;
-};
-
-export type SandboxRuntimeExecResult = {
-  success: boolean;
-  stdout: string;
-  stderr: string;
-  exitCode: number | null;
+  /** Applies to a new workspace; a saved workspace resumes on the image it was created from. */
+  image?: SandboxImage;
+  instanceType?: SandboxInstanceType;
 };
 
 export type ExecuteSandboxCommandOptions = {
   timeoutMs?: number;
-};
-
-export type MountBucketOptions = {
-  endpoint: string;
-  credentials?: {
-    accessKeyId: string;
-    secretAccessKey: string;
-    sessionToken?: string;
-  };
-  region?: string;
-  provider?: "r2" | "s3" | "gcs";
-  pathStyle?: boolean;
-  prefix?: string;
-};
-
-export type MkdirOptions = {
-  recursive?: boolean;
-};
-
-export type WriteFileOptions = {
-  encoding?: "utf-8" | "base64";
-};
-
-export type FileExistsResult = {
-  exists: boolean;
 };
 
 export type SandboxCommandSuccess = {
@@ -94,29 +69,9 @@ export type SandboxCommandFailure = {
 
 export type SandboxCommandResult = SandboxCommandSuccess | SandboxCommandFailure;
 
-export interface SandboxHandle {
-  readonly id: string;
-  executeCommand(
-    command: string,
-    options?: ExecuteSandboxCommandOptions,
-  ): Promise<SandboxCommandResult>;
-  mountBucket(bucket: string, mountPoint: string, options: MountBucketOptions): Promise<void>;
-  mkdir(path: string, options?: MkdirOptions): Promise<void>;
-  writeFile(path: string, content: string, options?: WriteFileOptions): Promise<void>;
-  exists(path: string): Promise<FileExistsResult>;
-}
-
-export interface SandboxRuntimeHandle extends SandboxHandle {
-  exec(command: string, options?: SandboxRuntimeExecOptions): Promise<SandboxRuntimeExecResult>;
-  destroy(): Promise<void>;
-}
-
 export interface SandboxRuntimeProvider {
   readonly provider: SandboxProviderId;
-  getHandle(
-    id: string,
-    options?: SandboxRuntimeHandleOptions,
-  ): SandboxRuntimeHandle | Promise<SandboxRuntimeHandle>;
+  getHandle(id: string): Promise<SandboxContainerControl>;
 }
 
 /** Sandbox runtime providers scoped to one Backoffice sandbox manager identity. */

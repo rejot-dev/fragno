@@ -1,3 +1,9 @@
+import {
+  SANDBOX_IMAGES,
+  SANDBOX_INSTANCE_TYPES,
+  type SandboxInstanceType,
+  type SandboxStartSource,
+} from "@fragno-apps/cf-sandbox-bridge/sandbox/sandbox-container-contract";
 import { z } from "zod";
 
 import { CLOUDFLARE_SANDBOX_PROVIDER, type SandboxProviderId } from "@/sandbox/contracts";
@@ -38,6 +44,13 @@ export const sandboxInstanceStatusSchema = z.enum([
   "error",
 ]);
 export const sandboxSleepAfterSchema = z.union([z.string().trim().min(1), z.number().int().min(0)]);
+export const sandboxImageSchema = z.enum(SANDBOX_IMAGES);
+export const sandboxInstanceTypeSchema = z.enum(SANDBOX_INSTANCE_TYPES);
+const sandboxWorkspaceSnapshotSchema = z.object({
+  id: z.string().min(1),
+  size: z.number().int().min(0),
+  expiresAt: z.iso.datetime(),
+});
 
 export const sandboxInstanceSchema = z.object({
   id: idSchema,
@@ -52,6 +65,9 @@ export const sandboxInstanceSchema = z.object({
   expectedStopAt: nullableDateSchema,
   stoppedAt: nullableDateSchema,
   lastError: z.string().nullable(),
+  image: sandboxImageSchema,
+  instanceType: sandboxInstanceTypeSchema,
+  workspaceSnapshot: sandboxWorkspaceSnapshotSchema.nullable(),
   createdAt: dateSchema,
   updatedAt: dateSchema,
 });
@@ -78,6 +94,8 @@ export const sandboxInstanceRequestInputSchema = z.object({
   sleepAfter: sandboxSleepAfterSchema.optional(),
   startupCommand: z.string().optional(),
   startupTimeoutMs: z.number().int().positive().optional(),
+  image: sandboxImageSchema.optional(),
+  instanceType: sandboxInstanceTypeSchema.optional(),
 });
 
 export const sandboxInstanceMarkStartingInputSchema = z.object({
@@ -112,12 +130,37 @@ export const sandboxInstanceMarkErrorInputSchema =
     lastError: z.string().trim().min(1),
   });
 
+export const sandboxInstanceRecordWorkspaceSnapshotInputSchema = z.object({
+  id: sandboxInstanceIdSchema,
+  workspaceSnapshot: sandboxWorkspaceSnapshotSchema,
+});
+
+export const sandboxInstanceRenewWorkspaceSnapshotInputSchema = z.object({
+  id: sandboxInstanceIdSchema,
+  workflowInstanceId: z.string().trim().min(1),
+  snapshotId: z.string().min(1),
+  restoredAt: z.iso.datetime(),
+});
+
 export const sandboxInstanceStopRequestInputSchema = z.object({
   id: sandboxInstanceIdSchema,
   workflowInstanceId: z.string().trim().min(1),
 });
 
 export type SandboxProvider = SandboxProviderId;
+
+/** Immutable input of one sandbox lifecycle, resolved when the sandbox is requested. */
+export type SandboxLifecycleWorkflowParams = {
+  id: string;
+  provider: SandboxProvider;
+  keepAlive: boolean;
+  /** Null only with keepAlive: every other sandbox stops itself. */
+  sleepAfter: string | number | null;
+  startupCommand: string;
+  startupTimeoutMs: number;
+  instanceType: SandboxInstanceType;
+  source: SandboxStartSource;
+};
 
 export type SandboxLifecycleEvent =
   | {
@@ -161,4 +204,10 @@ export type SandboxInstanceMarkStoppingInput = z.infer<
 >;
 export type SandboxInstanceMarkStoppedInput = z.infer<typeof sandboxInstanceMarkStoppedInputSchema>;
 export type SandboxInstanceMarkErrorInput = z.infer<typeof sandboxInstanceMarkErrorInputSchema>;
+export type SandboxInstanceRecordWorkspaceSnapshotInput = z.infer<
+  typeof sandboxInstanceRecordWorkspaceSnapshotInputSchema
+>;
+export type SandboxInstanceRenewWorkspaceSnapshotInput = z.infer<
+  typeof sandboxInstanceRenewWorkspaceSnapshotInputSchema
+>;
 export type SandboxInstanceStopRequestInput = z.infer<typeof sandboxInstanceStopRequestInputSchema>;

@@ -33,6 +33,8 @@ const parseStart = defineCliArgsParser<StartSandboxOptions>("sandbox.start", {
   sleepAfter: {},
   startupCommand: {},
   startupTimeoutMs: { kind: "integer" },
+  image: {},
+  instanceType: {},
 });
 
 const parseList = defineNoInputArgsParser("sandbox.list");
@@ -63,7 +65,8 @@ const startSandboxTool = defineBackofficeRuntimeTool({
     bash: {
       command: "sandbox.start",
       help: {
-        summary: "sandbox.start starts a Cloudflare sandbox.",
+        summary:
+          "sandbox.start starts a Cloudflare sandbox, resuming its saved workspace if it has one.",
         options: [
           {
             name: "id",
@@ -82,7 +85,8 @@ const startSandboxTool = defineBackofficeRuntimeTool({
             name: "sleep-after",
             valueRequired: true,
             valueName: "duration",
-            description: "Idle timeout, for example 15m.",
+            description:
+              "Save the workspace and stop after this long, for example 15m. Defaults to 10m without --keep-alive.",
           },
           {
             name: "startup-command",
@@ -96,8 +100,24 @@ const startSandboxTool = defineBackofficeRuntimeTool({
             valueName: "ms",
             description: "Startup timeout in milliseconds.",
           },
+          {
+            name: "image",
+            valueRequired: true,
+            valueName: "workspace|debian",
+            description:
+              "Image for a new workspace. workspace has Node.js, Python, git, ripgrep, and jq; debian starts fastest. A saved workspace resumes on its own image.",
+          },
+          {
+            name: "instance-type",
+            valueRequired: true,
+            valueName: "lite|standard-1|standard-2|standard-3|standard-4",
+            description: "Container size. Defaults to lite.",
+          },
         ],
-        examples: ['sandbox.start --id dev --sleep-after 15m --startup-command "true"'],
+        examples: [
+          'sandbox.start --id dev --sleep-after 15m --startup-command "true"',
+          "sandbox.start --id build --image workspace --instance-type standard-2 --keep-alive true",
+        ],
       },
       parse: parseStart,
       outputOptions: jsonDefault,
@@ -137,7 +157,7 @@ const killSandboxTool = defineBackofficeRuntimeTool({
     bash: {
       command: "sandbox.kill",
       help: {
-        summary: "sandbox.kill destroys a Cloudflare sandbox.",
+        summary: "sandbox.kill saves a sandbox's workspace and stops it.",
         options: [
           {
             name: "sandbox-id",

@@ -5,17 +5,17 @@ import {
 } from "@fragno-dev/workflows/workflow";
 
 import type { InstantiatedFragmentFromDefinition } from "@fragno-dev/core";
+import type { HandlerTxContext, HooksMap } from "@fragno-dev/db";
 
-import type {
-  SandboxRuntimeExecResult,
-  SandboxRuntimeHandle,
-  SandboxRuntimeProvider,
-} from "@/sandbox/contracts";
+import type { SandboxRuntimeProvider } from "@/sandbox/contracts";
+import { executeSandboxCommand } from "@/sandbox/sandbox-command-result";
 import { SandboxRuntimeError } from "@/sandbox/sandbox-runtime-error";
+import { sleepAfterToMilliseconds } from "@/sandbox/sleep-after";
 
+import type { SandboxLifecycleWorkflowParams } from "./contracts";
 import type { SandboxManagerFragmentConfig, sandboxManagerFragmentDefinition } from "./definition";
 import { sandboxManagerFragmentSchema } from "./schema";
-import type { SandboxLifecycleWorkflowParams } from "./services";
+import { sandboxWorkspaceSnapshotExpiresAt } from "./workspace-snapshot";
 
 type SandboxManagerFragment = Pick<
   InstantiatedFragmentFromDefinition<typeof sandboxManagerFragmentDefinition>,
@@ -26,7 +26,8 @@ type SandboxLifecycleWorkflowConfig = Pick<SandboxManagerFragmentConfig, "sandbo
   getSandboxManagerFragment: () => SandboxManagerFragment | undefined;
 };
 
-const DEFAULT_STARTUP_TIMEOUT_MS = 15_000;
+// The sandbox stops itself this long after the manager should have stopped it.
+const SANDBOX_LEASE_GRACE_MS = 60 * 60 * 1000;
 
 export const defineSandboxLifecycleWorkflow = (config: SandboxLifecycleWorkflowConfig) =>
   defineWorkflow(
@@ -35,18 +36,23 @@ export const defineSandboxLifecycleWorkflow = (config: SandboxLifecycleWorkflowC
       const params = event.payload;
       const sandboxId = params.id;
       const provider = requireSandboxProvider(config, params.provider);
-      const startupCommand = params.startupCommand || "true";
-      const startupTimeoutMs = params.startupTimeoutMs ?? DEFAULT_STARTUP_TIMEOUT_MS;
+      const runsUntilStopped = params.keepAlive || params.sleepAfter === null;
+
+      function recordStartupFailure(ctx: HandlerTxContext<HooksMap>) {
+        recordSandboxLifecycleFailure(ctx, {
+          sandboxId,
+          params,
+          eventId: `${event.instanceId}:failed:start`,
+          message:
+            params.source.kind === "snapshot"
+              ? "Sandbox startup failed after retries. Its saved workspace is kept for the next start."
+              : "Sandbox startup failed after retries.",
+        });
+      }
 
       const ownsSandboxBeforeStart = await step.do(
         "check sandbox lifecycle ownership before start",
-        async () => {
-          const fragment = requireSandboxManagerFragment(config);
-          const instance = await fragment.callServices(() =>
-            fragment.services.getSandboxInstance({ id: sandboxId }),
-          );
-          return instance?.workflowInstanceId === event.instanceId;
-        },
+        async () => await ownsSandbox(config, sandboxId, event.instanceId),
       );
       if (!ownsSandboxBeforeStart) {
         return { sandboxId, stopReason: "superseded" };
@@ -61,42 +67,56 @@ export const defineSandboxLifecycleWorkflow = (config: SandboxLifecycleWorkflowC
 
       await step.do(
         "start sandbox runtime",
-        { retries: { limit: 10, delay: "30 seconds", backoff: "exponential" } },
+        { retries: { limit: 3, delay: "5 seconds", backoff: "exponential" } },
         async (tx) => {
-          tx.onTerminalError.mutate((ctx) => {
-            const errorMessage = "Sandbox startup failed after retries.";
-            const uow = ctx.forSchema(sandboxManagerFragmentSchema);
-            const now = uow.now();
-            uow.update("sandbox_instance", sandboxId, (b) =>
-              b.set({
-                status: "error",
-                lastError: errorMessage,
-                updatedAt: now,
-              }),
-            );
-            uow.triggerHook(
-              "deliverLifecycleEvent",
-              {
-                id: `${event.instanceId}:failed:start`,
-                type: "failed",
-                sandboxId,
-                provider: params.provider,
-                status: "error",
-                reason: "terminal_error",
-                error: { message: errorMessage },
-              },
-              { id: `${event.instanceId}:failed:start` },
-            );
-          });
+          tx.onTerminalError.mutate(recordStartupFailure);
 
           try {
-            const handle = await provider.getHandle(sandboxId, {
-              keepAlive: params.keepAlive,
-              sleepAfter: params.sleepAfter,
+            const sandbox = await provider.getHandle(sandboxId);
+            const outcome = await sandbox.start({
+              source: params.source,
+              instanceType: params.instanceType,
+              leaseExpiresAt: runsUntilStopped
+                ? null
+                : Date.now() +
+                  sleepAfterToMilliseconds(params.sleepAfter ?? 0) +
+                  SANDBOX_LEASE_GRACE_MS,
             });
-            const result = await handle.exec(startupCommand, { timeout: startupTimeoutMs });
-            if (!result.success) {
-              throw createSandboxStartupCommandError(result);
+            const restoration = outcome.restoredSnapshot;
+            if (restoration !== null) {
+              const fragment = requireSandboxManagerFragment(config);
+              // This transaction reads the current snapshot, so it cannot use the mutate-only
+              // step buffer. Repeated attempts renew from the same confirmed restoration time.
+              await fragment.callServices(() =>
+                fragment.services.renewSandboxWorkspaceSnapshot({
+                  id: sandboxId,
+                  workflowInstanceId: event.instanceId,
+                  snapshotId: restoration.id,
+                  restoredAt: restoration.restoredAt,
+                }),
+              );
+            }
+          } catch (error) {
+            throwSandboxLifecycleOperationError(error);
+          }
+        },
+      );
+
+      // Commit restored snapshot retention before a startup command can fail or suspend for retry.
+      await step.do(
+        "run sandbox startup command",
+        { retries: { limit: 3, delay: "5 seconds", backoff: "exponential" } },
+        async (tx) => {
+          tx.onTerminalError.mutate(recordStartupFailure);
+          try {
+            const sandbox = await provider.getHandle(sandboxId);
+            const result = await executeSandboxCommand(sandbox, params.startupCommand, {
+              timeoutMs: params.startupTimeoutMs,
+            });
+            if (!result.ok) {
+              throw result.retryable
+                ? new Error(result.message)
+                : new NonRetryableError(result.message);
             }
           } catch (error) {
             throwSandboxLifecycleOperationError(error);
@@ -106,13 +126,7 @@ export const defineSandboxLifecycleWorkflow = (config: SandboxLifecycleWorkflowC
 
       const ownsSandboxAfterStart = await step.do(
         "check sandbox lifecycle ownership after start",
-        async () => {
-          const fragment = requireSandboxManagerFragment(config);
-          const instance = await fragment.callServices(() =>
-            fragment.services.getSandboxInstance({ id: sandboxId }),
-          );
-          return instance?.workflowInstanceId === event.instanceId;
-        },
+        async () => await ownsSandbox(config, sandboxId, event.instanceId),
       );
       if (!ownsSandboxAfterStart) {
         return { sandboxId, stopReason: "superseded" };
@@ -135,14 +149,14 @@ export const defineSandboxLifecycleWorkflow = (config: SandboxLifecycleWorkflowC
       });
 
       let stopReason: "stop request" | "timeout";
-      if (params.keepAlive || params.sleepAfter === undefined) {
+      if (runsUntilStopped) {
         await step.waitForEvent("sandbox stop requested", { type: "sandbox.stopRequested" });
         stopReason = "stop request";
       } else {
         try {
           await step.waitForEvent("sandbox stop requested", {
             type: "sandbox.stopRequested",
-            timeout: toWorkflowDuration(params.sleepAfter),
+            timeout: toWorkflowDuration(params.sleepAfter ?? 0),
           });
           stopReason = "stop request";
         } catch (error) {
@@ -155,13 +169,7 @@ export const defineSandboxLifecycleWorkflow = (config: SandboxLifecycleWorkflowC
 
       const ownsSandboxBeforeStop = await step.do(
         "check sandbox lifecycle ownership before stop",
-        async () => {
-          const fragment = requireSandboxManagerFragment(config);
-          const instance = await fragment.callServices(() =>
-            fragment.services.getSandboxInstance({ id: sandboxId }),
-          );
-          return instance?.workflowInstanceId === event.instanceId;
-        },
+        async () => await ownsSandbox(config, sandboxId, event.instanceId),
       );
       if (!ownsSandboxBeforeStop) {
         return { sandboxId, stopReason: "superseded" };
@@ -183,38 +191,55 @@ export const defineSandboxLifecycleWorkflow = (config: SandboxLifecycleWorkflowC
         );
       });
 
+      // A container that already stopped has nothing newer than the workspace saved before it.
+      await step.do(
+        "save sandbox workspace",
+        { retries: { limit: 3, delay: "10 seconds", backoff: "exponential" } },
+        async (tx) => {
+          tx.onTerminalError.mutate((ctx) => {
+            recordSandboxLifecycleFailure(ctx, {
+              sandboxId,
+              params,
+              eventId: `${event.instanceId}:failed:save`,
+              message: "Sandbox workspace could not be saved after retries.",
+            });
+          });
+
+          const outcome = await provider
+            .getHandle(sandboxId)
+            .then(async (sandbox) => await sandbox.snapshot())
+            .catch(throwSandboxLifecycleOperationError);
+          if (outcome.status === "saved") {
+            const fragment = requireSandboxManagerFragment(config);
+            const expiresAt = sandboxWorkspaceSnapshotExpiresAt(new Date().toISOString());
+            tx.serviceCalls(
+              () =>
+                [
+                  fragment.services.recordSandboxWorkspaceSnapshot({
+                    id: sandboxId,
+                    workspaceSnapshot: { ...outcome.snapshot, expiresAt },
+                  }),
+                ] as const,
+            );
+          }
+        },
+      );
+
       await step.do(
         `stop sandbox runtime after ${stopReason}`,
         { retries: { limit: 10, delay: "30 seconds", backoff: "exponential" } },
         async (tx) => {
           tx.onTerminalError.mutate((ctx) => {
-            const errorMessage = "Sandbox stop reconciliation failed after retries.";
-            const uow = ctx.forSchema(sandboxManagerFragmentSchema);
-            const now = uow.now();
-            uow.update("sandbox_instance", sandboxId, (b) =>
-              b.set({
-                status: "error",
-                lastError: errorMessage,
-                updatedAt: now,
-              }),
-            );
-            uow.triggerHook(
-              "deliverLifecycleEvent",
-              {
-                id: `${event.instanceId}:failed:stop`,
-                type: "failed",
-                sandboxId,
-                provider: params.provider,
-                status: "error",
-                reason: "terminal_error",
-                error: { message: errorMessage },
-              },
-              { id: `${event.instanceId}:failed:stop` },
-            );
+            recordSandboxLifecycleFailure(ctx, {
+              sandboxId,
+              params,
+              eventId: `${event.instanceId}:failed:stop`,
+              message: "Sandbox stop reconciliation failed after retries.",
+            });
           });
 
           try {
-            await reconcileSandboxStopped(provider, sandboxId);
+            await (await provider.getHandle(sandboxId)).stop();
           } catch (error) {
             throwSandboxLifecycleOperationError(error);
           }
@@ -249,49 +274,56 @@ function requireSandboxManagerFragment(config: SandboxLifecycleWorkflowConfig) {
   return fragment;
 }
 
-const requireSandboxProvider = (
+async function ownsSandbox(
+  config: SandboxLifecycleWorkflowConfig,
+  sandboxId: string,
+  workflowInstanceId: string,
+): Promise<boolean> {
+  const fragment = requireSandboxManagerFragment(config);
+  const instance = await fragment.callServices(() =>
+    fragment.services.getSandboxInstance({ id: sandboxId }),
+  );
+  return instance?.workflowInstanceId === workflowInstanceId;
+}
+
+function requireSandboxProvider(
   config: SandboxLifecycleWorkflowConfig,
   provider: string,
-): SandboxRuntimeProvider => {
+): SandboxRuntimeProvider {
   const runtimeProvider = config.sandboxProviders?.[provider];
   if (!runtimeProvider) {
     throw new Error(`No sandbox provider configured for '${provider}'.`);
   }
   return runtimeProvider;
-};
+}
 
-export const reconcileSandboxStopped = async (
-  provider: SandboxRuntimeProvider,
-  sandboxId: string,
-) => {
-  let handle: SandboxRuntimeHandle;
-  try {
-    // The bridge liveness route allocates missing containers, so reconciliation destroys without probing.
-    handle = await provider.getHandle(sandboxId);
-  } catch (error) {
-    if (isTerminatedError(error)) {
-      return;
-    }
-    throw error;
-  }
-
-  try {
-    await handle.destroy();
-  } catch (error) {
-    if (!isTerminatedError(error)) {
-      throw error;
-    }
-  }
-};
-
-function createSandboxStartupCommandError(result: SandboxRuntimeExecResult): Error {
-  const message =
-    result.stderr.trim() ||
-    result.stdout.trim() ||
-    `Sandbox startup command failed with exit code ${result.exitCode ?? "unknown"}.`;
-  return result.exitCode === 137 || result.exitCode === 143
-    ? new Error(message)
-    : new NonRetryableError(message);
+/** Marks the sandbox failed and tells Automations, committed only when a lifecycle step gives up. */
+function recordSandboxLifecycleFailure(
+  ctx: HandlerTxContext<HooksMap>,
+  input: {
+    sandboxId: string;
+    params: SandboxLifecycleWorkflowParams;
+    eventId: string;
+    message: string;
+  },
+) {
+  const uow = ctx.forSchema(sandboxManagerFragmentSchema);
+  uow.update("sandbox_instance", input.sandboxId, (b) =>
+    b.set({ status: "error", lastError: input.message, updatedAt: uow.now() }),
+  );
+  uow.triggerHook(
+    "deliverLifecycleEvent",
+    {
+      id: input.eventId,
+      type: "failed",
+      sandboxId: input.sandboxId,
+      provider: input.params.provider,
+      status: "error",
+      reason: "terminal_error",
+      error: { message: input.message },
+    },
+    { id: input.eventId },
+  );
 }
 
 function throwSandboxLifecycleOperationError(error: unknown): never {
@@ -301,20 +333,6 @@ function throwSandboxLifecycleOperationError(error: unknown): never {
   throw error;
 }
 
-const isTerminatedError = (error: unknown) => {
-  if (error instanceof SandboxRuntimeError && error.reason === "sandbox_terminated") {
-    return true;
-  }
-  const message = error instanceof Error ? error.message : String(error);
-  const normalized = message.toLowerCase();
-  return (
-    normalized.includes("sandbox has been destroyed") ||
-    normalized.includes("sandbox destroyed") ||
-    normalized.includes("container exited") ||
-    normalized.includes("instance not found") ||
-    normalized.includes("no such container")
-  );
-};
-
-const toWorkflowDuration = (sleepAfter: string | number) =>
-  typeof sleepAfter === "number" ? `${sleepAfter}s` : sleepAfter;
+function toWorkflowDuration(sleepAfter: string | number) {
+  return typeof sleepAfter === "number" ? `${sleepAfter}s` : sleepAfter;
+}

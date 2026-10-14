@@ -1,7 +1,14 @@
+import {
+  SANDBOX_IMAGES,
+  SANDBOX_INSTANCE_TYPES,
+  type SandboxImage,
+  type SandboxInstanceType,
+} from "@fragno-apps/cf-sandbox-bridge/sandbox/sandbox-container-contract";
 import type { BackofficeRoutableScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { Button, ButtonLink } from "@fragno-private/design-system/button";
 import { Input } from "@fragno-private/design-system/input";
-import { useEffect } from "react";
+import { Select } from "@fragno-private/design-system/select";
+import { useEffect, useState } from "react";
 import {
   Form,
   Link,
@@ -37,6 +44,9 @@ type NewSandboxFormValues = {
   sleepAfter: string;
   startupCommand: string;
   startupTimeoutMs: string;
+  /** Empty resumes the sandbox's saved image and instance type, or uses the defaults. */
+  image: string;
+  instanceType: string;
 };
 
 type StartActionError = {
@@ -71,6 +81,29 @@ const DEFAULT_NEW_SANDBOX_VALUES: NewSandboxFormValues = {
   sleepAfter: "15m",
   startupCommand: "true",
   startupTimeoutMs: "15000",
+  image: "workspace",
+  instanceType: "lite",
+};
+
+const IMAGE_OPTIONS: Array<{ value: SandboxImage; label: string; description: string }> = [
+  {
+    value: "workspace",
+    label: "Workspace",
+    description: "Node.js, Python, git, ripgrep, and jq",
+  },
+  {
+    value: "debian",
+    label: "Debian",
+    description: "Cloudflare-managed Debian with Node.js; starts fastest",
+  },
+];
+
+const INSTANCE_TYPE_DESCRIPTIONS: Record<SandboxInstanceType, string> = {
+  lite: "1/16 vCPU, 256 MiB",
+  "standard-1": "1/2 vCPU, 4 GiB",
+  "standard-2": "1 vCPU, 6 GiB",
+  "standard-3": "2 vCPU, 8 GiB",
+  "standard-4": "4 vCPU, 12 GiB",
 };
 
 const STATUS_LABELS: Record<SandboxInstanceStatus, string> = {
@@ -133,6 +166,17 @@ export async function action({ request, params, context, url }: Route.ActionArgs
     const values = readNewSandboxFormValues(formData);
     const sandboxId = values.id || createSandboxId();
     const parsedSleepAfter = parseSleepAfterInput(values.sleepAfter);
+    const image = readOptionalChoice(values.image, SANDBOX_IMAGES);
+    const instanceType = readOptionalChoice(values.instanceType, SANDBOX_INSTANCE_TYPES);
+
+    if (image === null || instanceType === null) {
+      return {
+        intent: "start",
+        ok: false,
+        message: "Choose an image and instance type from the list.",
+        values,
+      } satisfies StartActionError;
+    }
 
     if (!parsedSleepAfter.ok) {
       return {
@@ -149,6 +193,8 @@ export async function action({ request, params, context, url }: Route.ActionArgs
       sleepAfter: parsedSleepAfter.value,
       startupCommand: values.startupCommand || "true",
       startupTimeoutMs: toPositiveIntegerOrUndefined(values.startupTimeoutMs),
+      image,
+      instanceType,
     };
 
     let instance: SandboxInstanceSummary | null = null;
@@ -313,7 +359,12 @@ export default function BackofficeAutomationSandboxes() {
     : null;
   const loadError = sandboxLoad.status === "error" ? sandboxLoad.message : null;
 
-  const startError = actionData?.intent === "start" && !actionData.ok ? actionData.message : null;
+  const startError =
+    actionData?.intent === "start" &&
+    !actionData.ok &&
+    (view === "new" || actionData.values.id.trim().toLowerCase() === selectedSandboxId)
+      ? actionData.message
+      : null;
   const startValues =
     actionData?.intent === "start" && !actionData.ok
       ? actionData.values
@@ -443,7 +494,10 @@ function SandboxNavigationLink({
           {STATUS_LABELS[instance.status]}
         </span>
       </div>
-      <p className="mt-2 text-xs text-[var(--bo-muted-2)]">Automation-scoped sandbox runtime</p>
+      <p className="mt-2 text-xs text-[var(--bo-muted-2)]">
+        {instance.image} · {instance.instanceType}
+        {instance.workspaceSaved ? " · workspace saved" : ""}
+      </p>
     </Link>
   );
 }
@@ -486,9 +540,11 @@ function SandboxContent({
         sandbox={selectedSandbox}
         commandRun={commandRun}
         commandDisabled={selectedSandbox.status !== "running"}
+        startError={startError}
         killError={killError}
         isExecuting={isExecuting}
         isKilling={isKilling}
+        isResuming={isStarting}
       />
     );
   } else {
@@ -537,6 +593,11 @@ function NewSandboxView({
   error: string | null;
   isStarting: boolean;
 }) {
+  const [image, setImage] = useState(values.image || DEFAULT_NEW_SANDBOX_VALUES.image);
+  const [instanceType, setInstanceType] = useState(
+    values.instanceType || DEFAULT_NEW_SANDBOX_VALUES.instanceType,
+  );
+
   return (
     <div className="space-y-5">
       <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4">
@@ -559,6 +620,38 @@ function NewSandboxView({
         ) : null}
 
         <div className="grid gap-3 md:grid-cols-2">
+          <div className="space-y-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3">
+            <Select
+              label="Image"
+              name="image"
+              options={IMAGE_OPTIONS}
+              placeholder="Choose an image"
+              value={image}
+              onValueChange={setImage}
+            />
+            <p className="text-[11px] text-[var(--bo-muted)]">
+              Applies to a new workspace. A sandbox with a saved workspace resumes on its own image.
+            </p>
+          </div>
+
+          <div className="space-y-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3">
+            <Select
+              label="Instance type"
+              name="instanceType"
+              options={SANDBOX_INSTANCE_TYPES.map((value) => ({
+                value,
+                label: value,
+                description: INSTANCE_TYPE_DESCRIPTIONS[value],
+              }))}
+              placeholder="Choose an instance type"
+              value={instanceType}
+              onValueChange={setInstanceType}
+            />
+            <p className="text-[11px] text-[var(--bo-muted)]">
+              CPU and memory for the container. Use a standard size for builds.
+            </p>
+          </div>
+
           <label className="block space-y-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3">
             <span className="text-[10px] tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
               Sandbox id (optional)
@@ -570,7 +663,7 @@ function NewSandboxView({
               className="w-full font-mono tracking-normal"
             />
             <span className="block text-[11px] tracking-normal text-[var(--bo-muted)] normal-case">
-              Leave blank to auto-generate. This id is used to reference and reopen the sandbox. IDs
+              Leave blank to auto-generate. Starting an existing id resumes its saved workspace. IDs
               are always normalized automatically.
             </span>
           </label>
@@ -589,8 +682,8 @@ function NewSandboxView({
               className="w-full tracking-normal"
             />
             <span className="block text-[11px] tracking-normal text-[var(--bo-muted)] normal-case">
-              Idle timeout before the sandbox can sleep. Accepts duration text like `15m` or a
-              seconds value like `900`.
+              Saves the workspace and stops the sandbox after this long. Accepts duration text like
+              `15m` or a seconds value like `900`. Defaults to 10 minutes.
             </span>
           </label>
 
@@ -645,8 +738,7 @@ function NewSandboxView({
               </span>
             </label>
             <p className="mt-2 text-[11px] text-[var(--bo-muted)]">
-              Requests a warm instance policy so the sandbox stays active between requests and
-              avoids cold starts.
+              Keeps the sandbox running until it is stopped, ignoring the sleep-after duration.
             </p>
           </div>
         </div>
@@ -668,16 +760,20 @@ function SandboxDetailView({
   sandbox,
   commandRun,
   commandDisabled,
+  startError,
   killError,
   isExecuting,
   isKilling,
+  isResuming,
 }: {
   sandbox: SandboxInstanceSummary;
   commandRun: ExecuteActionResult | null;
   commandDisabled: boolean;
+  startError: string | null;
   killError: string | null;
   isExecuting: boolean;
   isKilling: boolean;
+  isResuming: boolean;
 }) {
   return (
     <div className="space-y-5">
@@ -690,10 +786,22 @@ function SandboxDetailView({
             {sandbox.id}
           </h2>
           <p className="mt-2 text-xs text-[var(--bo-muted)]">
-            Inspect runtime status and run commands against this instance.
+            {sandbox.image} image · {sandbox.instanceType} ·{" "}
+            {sandbox.workspaceSaved
+              ? "stopping saves the workspace; starting resumes it"
+              : "stopping saves the workspace for the next start"}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {sandbox.status === "stopped" || sandbox.status === "error" ? (
+            <Form method="post" className="contents">
+              <input type="hidden" name="intent" value="start" />
+              <input type="hidden" name="id" value={sandbox.id} />
+              <Button variant="accent" type="submit" disabled={isResuming}>
+                {isResuming ? "Starting..." : sandbox.workspaceSaved ? "Resume" : "Start"}
+              </Button>
+            </Form>
+          ) : null}
           <Form method="post" className="contents">
             <input type="hidden" name="intent" value="kill" />
             <input type="hidden" name="sandboxId" value={sandbox.id} />
@@ -710,6 +818,11 @@ function SandboxDetailView({
           >
             {STATUS_LABELS[sandbox.status]}
           </span>
+          {startError ? (
+            <p role="alert" className="basis-full text-xs text-red-700">
+              {startError}
+            </p>
+          ) : null}
           {killError ? <p className="basis-full text-xs text-red-700">{killError}</p> : null}
         </div>
       </div>
@@ -902,7 +1015,20 @@ function readNewSandboxFormValues(formData: FormData): NewSandboxFormValues {
       readText(formData.get("startupCommand")) || DEFAULT_NEW_SANDBOX_VALUES.startupCommand,
     startupTimeoutMs:
       readText(formData.get("startupTimeoutMs")) || DEFAULT_NEW_SANDBOX_VALUES.startupTimeoutMs,
+    image: readText(formData.get("image")),
+    instanceType: readText(formData.get("instanceType")),
   };
+}
+
+/** Returns undefined for an omitted choice and null for one outside the allowed values. */
+function readOptionalChoice<T extends string>(
+  value: string,
+  choices: readonly T[],
+): T | undefined | null {
+  if (!value) {
+    return undefined;
+  }
+  return choices.find((choice) => choice === value) ?? null;
 }
 
 function toPositiveIntegerOrUndefined(value: string): number | undefined {

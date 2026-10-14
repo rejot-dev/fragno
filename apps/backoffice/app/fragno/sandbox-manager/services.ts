@@ -1,7 +1,14 @@
+import type {
+  SandboxImage,
+  SandboxInstanceType,
+  SandboxStartSource,
+} from "@fragno-apps/cf-sandbox-bridge/sandbox/sandbox-container-contract";
+
 import type { DatabaseServiceContext } from "@fragno-dev/db";
 import type { WorkflowsFragmentServices } from "@fragno-dev/workflows";
 
 import type { SandboxRuntimeProvider } from "@/sandbox/contracts";
+import { sleepAfterToMilliseconds } from "@/sandbox/sleep-after";
 
 import {
   CLOUDFLARE_SANDBOX_PROVIDER,
@@ -12,6 +19,8 @@ import {
   sandboxInstanceMarkStartingInputSchema,
   sandboxInstanceMarkStoppedInputSchema,
   sandboxInstanceMarkStoppingInputSchema,
+  sandboxInstanceRecordWorkspaceSnapshotInputSchema,
+  sandboxInstanceRenewWorkspaceSnapshotInputSchema,
   sandboxInstanceRequestInputSchema,
   sandboxInstanceSchema,
   sandboxInstanceStopRequestInputSchema,
@@ -24,16 +33,25 @@ import {
   type SandboxInstanceMarkStartingInput,
   type SandboxInstanceMarkStoppedInput,
   type SandboxInstanceMarkStoppingInput,
+  type SandboxInstanceRecordWorkspaceSnapshotInput,
+  type SandboxInstanceRenewWorkspaceSnapshotInput,
   type SandboxInstanceRequestInput,
   type SandboxInstanceStopRequestInput,
 } from "./contracts";
 import type { SandboxManagerInternalHooks } from "./internal-hooks";
-import { reconcileSandboxStopped } from "./lifecycle-workflow";
-import { sandboxManagerFragmentSchema } from "./schema";
+import { sandboxManagerFragmentSchema, type SandboxWorkspaceSnapshot } from "./schema";
+import {
+  isSandboxWorkspaceSnapshotResumable,
+  sandboxWorkspaceSnapshotExpiresAt,
+} from "./workspace-snapshot";
 
 export const SANDBOX_LIFECYCLE_WORKFLOW_NAME = "sandbox-lifecycle" as const;
 
-export type SandboxLifecycleWorkflowParams = SandboxInstanceRequestInput;
+const DEFAULT_SANDBOX_IMAGE: SandboxImage = "workspace";
+const DEFAULT_SANDBOX_INSTANCE_TYPE: SandboxInstanceType = "lite";
+// Containers run until their manager stops them, so a sandbox needs keepAlive to run indefinitely.
+const DEFAULT_SANDBOX_SLEEP_AFTER = "10m";
+const DEFAULT_SANDBOX_STARTUP_TIMEOUT_MS = 15_000;
 
 type SandboxManagerServicesOptions = {
   workflows: Pick<WorkflowsFragmentServices, "createInstance" | "getInstanceStatus" | "sendEvent">;
@@ -42,29 +60,6 @@ type SandboxManagerServicesOptions = {
 
 const ACTIVE_SANDBOX_INSTANCE_STATUSES = new Set(["requested", "starting", "running", "stopping"]);
 const TERMINAL_WORKFLOW_STATUSES = new Set(["complete", "errored", "terminated"]);
-
-const sleepAfterMs = (sleepAfter: string | number) => {
-  if (typeof sleepAfter === "number") {
-    return sleepAfter * 1000;
-  }
-
-  const match = /^(\d+)([smh])$/iu.exec(sleepAfter);
-  if (!match) {
-    throw new Error("Invalid sandbox sleepAfter value.");
-  }
-
-  const amount = Number(match[1]);
-  switch (match[2]?.toLowerCase()) {
-    case "s":
-      return amount * 1000;
-    case "m":
-      return amount * 60 * 1000;
-    case "h":
-      return amount * 60 * 60 * 1000;
-    default:
-      throw new Error("Invalid sandbox sleepAfter value.");
-  }
-};
 
 export function createSandboxManagerServices(
   defineService: <TService>(
@@ -126,7 +121,7 @@ export function createSandboxManagerServices(
             throw new Error(`No sandbox provider configured for '${instance.provider}'.`);
           }
 
-          await reconcileSandboxStopped(provider, String(instance.id));
+          await (await provider.getHandle(String(instance.id))).stop();
           return { instance, shouldRecordReconciliation: true };
         })
         .mutate(({ uow, retrieveResult: { instance, shouldRecordReconciliation } }) => {
@@ -172,12 +167,10 @@ export function createSandboxManagerServices(
     requestSandboxInstance(args: SandboxInstanceRequestInput) {
       const input = sandboxInstanceRequestInputSchema.parse(args);
       const workflowInstanceId = `inst_${crypto.randomUUID()}`;
-      const workflowParams = {
-        ...input,
-        keepAlive: input.keepAlive ?? false,
-        startupCommand: input.startupCommand || "true",
-        startupTimeoutMs: input.startupTimeoutMs ?? 15_000,
-      } satisfies SandboxLifecycleWorkflowParams;
+      const keepAlive = input.keepAlive ?? false;
+      const sleepAfter = input.sleepAfter ?? (keepAlive ? null : DEFAULT_SANDBOX_SLEEP_AFTER);
+      const startupCommand = input.startupCommand || "true";
+      const startupTimeoutMs = input.startupTimeoutMs ?? DEFAULT_SANDBOX_STARTUP_TIMEOUT_MS;
 
       return this.serviceTx(sandboxManagerFragmentSchema)
         .retrieve((uow) =>
@@ -190,16 +183,27 @@ export function createSandboxManagerServices(
             return existing;
           }
 
+          const workspace = resolveSandboxWorkspace(
+            input.id,
+            existing ?? null,
+            input.image,
+            Date.now(),
+          );
+          const instanceType =
+            input.instanceType ?? existing?.instanceType ?? DEFAULT_SANDBOX_INSTANCE_TYPE;
           const now = uow.now();
           const next = {
             id: input.id,
             provider: input.provider,
             status: "requested" as const,
             workflowInstanceId,
-            keepAlive: input.keepAlive ?? false,
-            sleepAfter: input.sleepAfter ?? null,
-            startupCommand: input.startupCommand || "true",
-            startupTimeoutMs: input.startupTimeoutMs ?? 15_000,
+            keepAlive,
+            sleepAfter,
+            startupCommand,
+            startupTimeoutMs,
+            image: workspace.image,
+            instanceType,
+            workspaceSnapshot: workspace.snapshot,
             startedAt: null,
             expectedStopAt: null,
             stoppedAt: null,
@@ -210,7 +214,19 @@ export function createSandboxManagerServices(
 
           uow.triggerHook(
             "enqueueSandboxLifecycleWorkflow",
-            { workflowInstanceId, params: workflowParams },
+            {
+              workflowInstanceId,
+              params: {
+                id: input.id,
+                provider: input.provider,
+                keepAlive,
+                sleepAfter,
+                startupCommand,
+                startupTimeoutMs,
+                instanceType,
+                source: workspace.source,
+              },
+            },
             { id: workflowInstanceId },
           );
 
@@ -225,6 +241,9 @@ export function createSandboxManagerServices(
                   sleepAfter: next.sleepAfter,
                   startupCommand: next.startupCommand,
                   startupTimeoutMs: next.startupTimeoutMs,
+                  image: next.image,
+                  instanceType: next.instanceType,
+                  workspaceSnapshot: next.workspaceSnapshot,
                   startedAt: null,
                   expectedStopAt: null,
                   stoppedAt: null,
@@ -329,7 +348,9 @@ export function createSandboxManagerServices(
           const now = uow.now();
           const sleepAfter = input.sleepAfter ?? null;
           const expectedStopAt =
-            input.keepAlive || sleepAfter === null ? null : now.plus(sleepAfterMs(sleepAfter));
+            input.keepAlive || sleepAfter === null
+              ? null
+              : now.plus(sleepAfterToMilliseconds(sleepAfter));
           uow.update("sandbox_instance", input.id, (b) =>
             b.set({
               status: "running",
@@ -393,6 +414,47 @@ export function createSandboxManagerServices(
         .build();
     },
 
+    recordSandboxWorkspaceSnapshot(args: SandboxInstanceRecordWorkspaceSnapshotInput) {
+      const input = sandboxInstanceRecordWorkspaceSnapshotInputSchema.parse(args);
+      return this.serviceTx(sandboxManagerFragmentSchema)
+        .mutate(({ uow }) => {
+          uow.update("sandbox_instance", input.id, (b) =>
+            b.set({ workspaceSnapshot: input.workspaceSnapshot, updatedAt: uow.now() }),
+          );
+        })
+        .build();
+    },
+
+    renewSandboxWorkspaceSnapshot(args: SandboxInstanceRenewWorkspaceSnapshotInput) {
+      const input = sandboxInstanceRenewWorkspaceSnapshotInputSchema.parse(args);
+      const expiresAt = sandboxWorkspaceSnapshotExpiresAt(input.restoredAt);
+      return this.serviceTx(sandboxManagerFragmentSchema)
+        .retrieve((uow) =>
+          uow.findFirst("sandbox_instance", (b) =>
+            b
+              .whereIndex("primary", (eb) => eb("id", "=", input.id))
+              .select(["id", "workflowInstanceId", "workspaceSnapshot"]),
+          ),
+        )
+        .mutate(({ uow, retrieveResult: [existing] }) => {
+          const snapshot = existing?.workspaceSnapshot ?? null;
+          // A newer lifecycle or snapshot may have superseded this restoration attempt.
+          if (
+            !existing ||
+            existing.workflowInstanceId !== input.workflowInstanceId ||
+            snapshot === null ||
+            snapshot.id !== input.snapshotId ||
+            Date.parse(snapshot.expiresAt) >= Date.parse(expiresAt)
+          ) {
+            return;
+          }
+          uow.update("sandbox_instance", existing.id, (b) =>
+            b.set({ workspaceSnapshot: { ...snapshot, expiresAt }, updatedAt: uow.now() }).check(),
+          );
+        })
+        .build();
+    },
+
     markSandboxInstanceError(args: SandboxInstanceMarkErrorInput) {
       const input = sandboxInstanceMarkErrorInputSchema.parse(args);
       return this.serviceTx(sandboxManagerFragmentSchema)
@@ -409,4 +471,31 @@ export function createSandboxManagerServices(
         .build();
     },
   });
+}
+
+/**
+ * Resumes the saved workspace while its snapshot lasts. A snapshot only restores onto the image it
+ * was taken from, so a saved workspace cannot change images.
+ */
+function resolveSandboxWorkspace(
+  sandboxId: string,
+  existing: { image: SandboxImage; workspaceSnapshot: SandboxWorkspaceSnapshot | null } | null,
+  requestedImage: SandboxImage | undefined,
+  now: number,
+): { image: SandboxImage; source: SandboxStartSource; snapshot: SandboxWorkspaceSnapshot | null } {
+  const snapshot = existing?.workspaceSnapshot ?? null;
+  if (existing && isSandboxWorkspaceSnapshotResumable(snapshot, now)) {
+    if (requestedImage !== undefined && requestedImage !== existing.image) {
+      throw new Error(
+        `Sandbox "${sandboxId}" has a saved workspace on the "${existing.image}" image. Start it without an image, or start a new sandbox for the "${requestedImage}" image.`,
+      );
+    }
+    return {
+      image: existing.image,
+      source: { kind: "snapshot", snapshotId: snapshot.id },
+      snapshot,
+    };
+  }
+  const image = requestedImage ?? DEFAULT_SANDBOX_IMAGE;
+  return { image, source: { kind: "image", image }, snapshot: null };
 }

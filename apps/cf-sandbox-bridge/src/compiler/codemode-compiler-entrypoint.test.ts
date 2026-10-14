@@ -252,5 +252,5 @@ test("named compiler RPC preserves invalid-project errors and unrelated HTTP pat
   const publicResponse = await server.requestBridge(
     new Request(new URL("/compile", server.url), { method: "POST" }),
   );
-  assert((await publicResponse.text()) === "OK");
+  assert(publicResponse.status === 404);
 });

@@ -51,7 +51,6 @@
     "@better-auth/core": "1.7.1",
     "@better-auth/oauth-provider": "^1.7.1",
     "@cfworker/json-schema": "^4.1.1",
-    "@cloudflare/sandbox": "^0.12.4",
     "@earendil-works/chord": "1.0.0",
     "@earendil-works/pi-ai": "1.0.0",
     "@earendil-works/pi-durable": "1.0.0",

@@ -25,12 +25,17 @@
   "dev": {
     "enable_containers": false,
   },
+  // Each Sandbox Durable Object starts its own container and chooses the image and instance type
+  // at start time. The durable_object scheduling policy is immutable and cannot be rolled back to
+  // the Sandbox SDK 0.x application this replaced, so the application has a new name.
   "containers": [
     {
       "class_name": "Sandbox",
-      "image": "./sandbox.Dockerfile",
-      "instance_type": "lite",
-      "max_instances": 4,
+      "name": "rejot-backoffice-sandbox-v2",
+      "scheduling_policy": "durable_object",
+      "images": {
+        "workspace": { "dockerfile": "../cf-sandbox-bridge/Dockerfile" },
+      },
     },
   ],
   /**

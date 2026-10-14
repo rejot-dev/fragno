@@ -1,4 +1,5 @@
 import type { SandboxInstanceRecord } from "@/fragno/sandbox-manager/contracts";
+import { isSandboxWorkspaceSnapshotResumable } from "@/fragno/sandbox-manager/workspace-snapshot";
 import {
   CLOUDFLARE_SANDBOX_PROVIDER,
   type SandboxCommandResult,
@@ -50,8 +51,9 @@ export const createSandboxRuntime = ({
       const instances = await lifecycle.listSandboxInstances({
         provider: CLOUDFLARE_SANDBOX_PROVIDER,
       });
+      const now = Date.now();
       return instances
-        .map((instance) => ({ id: instance.id, status: instance.status }))
+        .map((instance) => toSandboxInstanceSummary(instance, now))
         .sort((a, b) => a.id.localeCompare(b.id));
     },
     startSandbox: async (input) => {
@@ -67,8 +69,10 @@ export const createSandboxRuntime = ({
         sleepAfter: parsedSleepAfter.value,
         startupCommand: input.startupCommand || "true",
         startupTimeoutMs: input.startupTimeoutMs,
+        image: input.image,
+        instanceType: input.instanceType,
       });
-      return { id: instance.id, status: instance.status };
+      return toSandboxInstanceSummary(instance, Date.now());
     },
     killSandbox: async ({ sandboxId }) => {
       await lifecycle.requestSandboxInstanceStop({ id: normalizeSandboxId(sandboxId) });
@@ -82,6 +86,19 @@ export const createSandboxRuntime = ({
       }),
   };
 };
+
+function toSandboxInstanceSummary(
+  instance: SandboxInstanceRecord,
+  now: number,
+): SandboxInstanceSummary {
+  return {
+    id: instance.id,
+    status: instance.status,
+    image: instance.image,
+    instanceType: instance.instanceType,
+    workspaceSaved: isSandboxWorkspaceSnapshotResumable(instance.workspaceSnapshot, now),
+  };
+}
 
 function normalizeSandboxId(sandboxId: string): string {
   return sandboxId.trim().toLowerCase();
