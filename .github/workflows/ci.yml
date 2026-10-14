@@ -55,10 +55,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Pull requests run affected packages' tests, selecting within Backoffice; main runs every test
+      # to catch what selection misses.
       - name: Run tests
         run:
-          pnpm exec turbo run test --concurrency=80% ${{ github.event_name == 'pull_request' &&
-          '--affected' || '' }}
+          pnpm exec turbo run ${{ github.event_name == 'pull_request' && 'test:changed --affected'
+          || 'test' }} --concurrency=80%
 
       - name: Run Backoffice bridge scenarios
         run: pnpm exec turbo run test:bridge --filter=@fragno-apps/backoffice-rr --concurrency=80%

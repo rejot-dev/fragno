@@ -64,7 +64,9 @@ reduce noise and only show errors.
 - `pnpm exec turbo build --output-logs=errors-only` - Build all packages
 - `pnpm exec turbo types:check --output-logs=errors-only` - TypeScript type checking across all
   packages
-- `pnpm exec turbo test --output-logs=errors-only` - Run tests across all packages
+- `pnpm test:changed` - Run the tests of affected packages, selecting within Backoffice. Use this to
+  verify your work (see [Changed tests](#changed-tests))
+- `pnpm exec turbo test --output-logs=errors-only` - Run every test across all packages
 - `pnpm run lint` - Run oxlint for the repo
 
 Use `--filter` to target specific packages or directories:
@@ -78,6 +80,7 @@ Examples:
 
 - `pnpm exec turbo build --filter=@fragno-dev/db --output-logs=errors-only`
 - `pnpm exec turbo test --filter=./packages/fragment-workflows --output-logs=errors-only`
+- `pnpm exec turbo test:changed --filter=@fragno-apps/backoffice-rr --output-logs=errors-only`
 - `pnpm run lint`
 
 ## Tools
@@ -106,3 +109,24 @@ Examples:
   - Use toExtend to check if your type extends the expected type
 - Tests are colocated, e.g. `route.ts` -> `route.test.ts`
 - DO NOT use mocks. Instead write the implementation such that real objects can be mocked in tests.
+
+### Changed tests
+
+`pnpm test:changed` runs `test:changed` in the packages Turbo marks affected since `TURBO_SCM_BASE`
+(default `main`; CI uses `origin/main`). Pull requests run `test:changed`; main runs every test with
+`test`.
+
+The root `test:changed` task depends on `test`, so most packages simply run their full, cached
+`test`. Only Backoffice, whose suite is slow, defines a `test:changed` script and overrides the
+task's `dependsOn` to drop `test`. Its script, `scripts/run-changed-tests.mjs`, runs the tests whose
+imports reach a changed Backoffice file, including uncommitted and untracked files. It runs the full
+suite instead when a dependency package, a repository file outside the workspaces, a deleted file,
+or a non-code file changed. Markdown is ignored unless a trigger matches.
+
+Selection follows imports, so a Backoffice test that reaches a file another way needs that file in
+`forceRerunTriggers` in `apps/backoffice/vitest.config.ts`. This covers `?raw` and
+`import.meta.glob` imports, files read with `fs`, and tests that run code in a subprocess. The
+script also receives `--full-project=cloudflare`, because Backoffice's Workers load Durable Objects
+from the Wrangler entry point, not from test imports.
+
+Backoffice's `test:changed` is never cached: a cache hit would replay a partial run as a pass.

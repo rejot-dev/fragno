@@ -90,12 +90,24 @@ In Backoffice, we test exclusively through scenario tests, unless specifically d
 
 ## Development
 
-We use Turborepo + PNPM. `pnpm exec turbo build types:check test --output-logs=errors-only`
+We use Turborepo + PNPM. Verify your work with:
+
+- `pnpm exec turbo build types:check --output-logs=errors-only`
+- `pnpm test:changed`
+
+`pnpm test:changed` runs the tests of affected packages, and within Backoffice only the tests your
+changes reach. Run every test with `pnpm exec turbo test --output-logs=errors-only` when you need
+the full suite, such as after changing repository-root files, which make no package affected.
 
 E.g.
 
 - `pnpm exec turbo build --filter=@fragno-dev/db --output-logs=errors-only`
 - `pnpm exec turbo test --filter=./packages/fragment-workflows --output-logs=errors-only`
+- `pnpm exec turbo test:changed --filter=@fragno-apps/backoffice-rr --output-logs=errors-only`
+
+When a Backoffice test reads a file without importing it (`fs`, `?raw`, `import.meta.glob`,
+subprocesses), add the file to Backoffice's `forceRerunTriggers`; see
+[Changed tests](CONTRIBUTING.md#changed-tests).
 
 Oxlint: `pnpm run lint:fix`
 Oxfmt: `pnpm run format:changed`

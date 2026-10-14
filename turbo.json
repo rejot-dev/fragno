@@ -32,6 +32,11 @@
       "dependsOn": ["build"],
       "outputs": []
     },
+    "test:changed": {
+      "dependsOn": ["test"],
+      "cache": false,
+      "passThroughEnv": ["TURBO_SCM_BASE"]
+    },
     "test:bridge": {
       "dependsOn": ["^build"],
       "outputs": []
