@@ -22,6 +22,9 @@
     "test": {
       "dependsOn": ["^build", "static:generate"]
     },
+    "test:changed": {
+      "dependsOn": ["^build", "static:generate"]
+    },
     "test:bridge": {
       "dependsOn": ["^build", "static:generate"]
     },

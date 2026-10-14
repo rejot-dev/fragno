@@ -18,7 +18,15 @@ seven days of run history: outcome, error, and bounded logs. Guests have no netw
 
 ## Tests
 
-Run Backoffice's Node and Cloudflare suites from the repository root:
+While working, run only the tests your changes reach from the repository root:
+
+```bash
+pnpm exec turbo run test:changed --filter=@fragno-apps/backoffice-rr
+```
+
+This runs every Cloudflare test plus the Node tests whose imports reach a changed file, or the full
+suite when a change is outside the import graph; see
+[Changed tests](../../CONTRIBUTING.md#changed-tests). Run the full Node and Cloudflare suites with:
 
 ```bash
 pnpm exec turbo run test --filter=@fragno-apps/backoffice-rr

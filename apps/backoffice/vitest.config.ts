@@ -1,6 +1,6 @@
 import { fileURLToPath } from "node:url";
 
-import { defineConfig, mergeConfig } from "vitest/config";
+import { configDefaults, defineConfig, mergeConfig } from "vitest/config";
 
 import { baseConfig } from "@fragno-private/vitest-config";
 
@@ -12,6 +12,19 @@ export default mergeConfig(
     test: {
       // Turbo runs other package suites concurrently; leave CPU capacity for them.
       maxWorkers: "50%",
+      // `test:changed` and watch mode select tests through imports. Tests reach these files through
+      // `?raw`, `import.meta.glob`, or `fs` instead, so a change to them runs every test.
+      forceRerunTriggers: [
+        ...configDefaults.forceRerunTriggers,
+        resolveConfig("./vitest.*.ts"),
+        resolveConfig("./content/**"),
+        // Read by `app/fragno/runtime-tools/async-execute.test.ts`.
+        resolveConfig("./app/fragno/runtime-tools/families/!(*.test|*-runtime).ts"),
+        // Read by `app/routes/backoffice/sessions/session-detail/workspace-boundary.test.ts`.
+        resolveConfig("./app/routes/backoffice/sessions/session-detail/!(*.test).{ts,tsx}"),
+        resolveConfig("./app/routes/backoffice/sessions/organization-layout.tsx"),
+        resolveConfig("./app/routes/backoffice/automations/script-view/workflow-graph.tsx"),
+      ],
       coverage: {
         enabled: false,
         reportsDirectory: "./coverage",
