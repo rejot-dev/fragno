@@ -80,6 +80,7 @@ export function WorkflowRunTimeline({
   onSelectStep,
   meta,
   actions,
+  surface,
 }: {
   title: string;
   status: WorkflowRunStatus;
@@ -99,6 +100,8 @@ export function WorkflowRunTimeline({
   /** Secondary run facts shown beside the status, such as the run id or parser notes. */
   meta: ReactNode;
   actions: ReactNode;
+  /** A standalone padded card, or flush against the edges of a surface that already frames it. */
+  surface: "card" | "flush";
 }) {
   const [expandedStepIds, setExpandedStepIds] = useState<ReadonlySet<string>>(new Set());
   const layout = useMemo(
@@ -141,9 +144,18 @@ export function WorkflowRunTimeline({
   return (
     <section
       aria-label={`Workflow run ${title}`}
-      className="overflow-hidden rounded-[6px] border border-[color:var(--bo-border)] bg-[var(--bo-panel)] text-[var(--bo-fg)] shadow-[var(--bo-panel-shadow)]"
+      className={
+        surface === "card"
+          ? "overflow-hidden rounded-[6px] border border-[color:var(--bo-border)] bg-[var(--bo-panel)] text-[var(--bo-fg)] shadow-[var(--bo-panel-shadow)]"
+          : "overflow-hidden text-[var(--bo-fg)]"
+      }
     >
-      <header className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 pt-3 pb-1 text-xs">
+      <header
+        className={cn(
+          "flex flex-wrap items-center gap-x-3 gap-y-2 pt-3 pb-1 text-xs",
+          surface === "card" && "px-4",
+        )}
+      >
         <h3 className="truncate text-base font-semibold tracking-tight">{title}</h3>
         <RunStatusLabel status={runStatus} />
         <div className="flex min-w-0 items-center gap-3 text-[var(--bo-muted)]">{meta}</div>
@@ -156,7 +168,7 @@ export function WorkflowRunTimeline({
       <div
         role="table"
         aria-label="Workflow steps"
-        className="overflow-x-auto px-2 pb-2"
+        className={cn("overflow-x-auto pb-2", surface === "card" && "px-2")}
         style={{ "--wf-rail": `${railWidth}px` } as CSSProperties}
       >
         <div className="min-w-[44rem]">

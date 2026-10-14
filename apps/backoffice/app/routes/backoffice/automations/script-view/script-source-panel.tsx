@@ -245,6 +245,7 @@ function ScriptRunTimeline({
             Open run
           </ButtonLink>
         }
+        surface="card"
       />
     </div>
   );
