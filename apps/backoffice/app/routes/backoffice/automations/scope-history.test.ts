@@ -59,8 +59,8 @@ describe("automation scope history", () => {
 
   test("reconstructs a previous project destination without current organization options", () => {
     assert.equal(
-      automationScopeTabPath(projectInFirstOrganization, "dashboard"),
-      "/backoffice/automations/project/first-org%3Aproject-one/dashboard",
+      automationScopeTabPath(projectInFirstOrganization, "orchestration"),
+      "/backoffice/automations/project/first-org%3Aproject-one/orchestration",
     );
     assert.notEqual(
       backofficeResolvedScopeId(projectInFirstOrganization),

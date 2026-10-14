@@ -356,11 +356,11 @@ export const DURABLE_HOOKS_OBJECT_CONFIGURE_META: Partial<
     label: "Configure GitHub",
   },
   workflows: {
-    path: (orgSlug) => `/backoffice/automations/org/${orgSlug}/dashboard`,
+    path: (orgSlug) => `/backoffice/automations/org/${orgSlug}/orchestration`,
     label: "Open Automations runtime",
   },
   automations: {
-    path: (orgSlug) => `/backoffice/automations/org/${orgSlug}/dashboard`,
+    path: (orgSlug) => `/backoffice/automations/org/${orgSlug}/orchestration`,
     label: "Open Automations runtime",
   },
 };

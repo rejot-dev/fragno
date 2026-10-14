@@ -54,16 +54,13 @@ const nullableText = (value: FormDataEntryValue | null) => {
 
 const currentTabFromPath = (pathname: string): AutomationTab => {
   const segments = pathname.replace(/\/+$/, "").split("/");
-  if (segments.includes("dashboard")) {
-    return "dashboard";
-  }
   if (segments.includes("events-catalog")) {
     return "events-catalog";
   }
   if (segments.includes("store")) {
     return "store";
   }
-  return "dashboard";
+  return "orchestration";
 };
 
 export async function loader({ request, params, context, url }: Route.LoaderArgs) {

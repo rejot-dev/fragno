@@ -47,7 +47,7 @@ function loginScenarioRouterContext(ctx: BackofficeScenarioContext, request: Req
   });
 }
 
-test.each(["dashboard?tab=runs", "mcp?oauth=success&server=agensi"])(
+test.each(["orchestration?tab=runs", "mcp?oauth=success&server=agensi"])(
   "password login after clearing browser data returns to the slug-backed %s page",
   async (destination) => {
     await runBackofficeScenario(

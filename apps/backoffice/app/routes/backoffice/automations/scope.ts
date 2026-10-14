@@ -44,11 +44,11 @@ export const automationScopeBasePath = (scope: BackofficeScopeSelection) =>
     backofficeRouteScopeFromResolvedScope(scope),
   )}`;
 
-type AutomationScopeTab = "dashboard" | "store" | "events-catalog";
+type AutomationScopeTab = "orchestration" | "store" | "events-catalog";
 
 export const automationScopeTabPath = (
   scope: BackofficeScopeSelection,
-  tab: AutomationScopeTab = "dashboard",
+  tab: AutomationScopeTab = "orchestration",
 ) => `${automationScopeBasePath(scope)}/${tab}`;
 
 export const automationScopeTerminalCommandPath = (scope: BackofficeScopeSelection) =>

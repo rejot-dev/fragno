@@ -34,16 +34,16 @@ import {
 import { runtimeToolWorkflowCatalog } from "@/fragno/runtime-tools/workflow-catalog.server";
 
 import { filesScopeBasePath } from "../files/scope";
-import type { Route } from "./+types/dashboard";
-import {
-  DashboardInspector,
-  type DashboardEventDefinition,
-  type DashboardInspectorSelection,
-  type DashboardSource,
-} from "./dashboard-inspector";
+import type { Route } from "./+types/orchestration";
 import { loadAutomationScriptSource } from "./data.server";
 import { formatTimestamp } from "./formatting";
 import type { AutomationLayoutContext } from "./layout-context";
+import {
+  OrchestrationInspector,
+  type OrchestrationEventDefinition,
+  type OrchestrationInspectorSelection,
+  type OrchestrationSource,
+} from "./orchestration-inspector";
 import {
   automationRouteMatchesWorkflowInstance,
   automationRouteWorkflowName,
@@ -65,7 +65,7 @@ const MIN_SWIMLANE_WIDTH = 704;
 const SWIMLANE_GRID_COLUMNS_CLASS_NAME =
   "grid-cols-[minmax(10rem,18rem)_minmax(14rem,1fr)_minmax(16rem,1.1fr)]";
 const INSPECTOR_RESIZE_STEP = 24;
-const INSPECTOR_WIDTH_STORAGE_KEY = "backoffice:automation-dashboard-inspector-width";
+const INSPECTOR_WIDTH_STORAGE_KEY = "backoffice:automation-orchestration-inspector-width";
 const DASHBOARD_SPLIT_MEDIA_QUERY = "(min-width: 80rem)";
 const DASHBOARD_SEARCH_NAVIGATION_OPTIONS = {
   defaultShouldRevalidate: false,
@@ -78,7 +78,7 @@ const codemodeWorkflowScriptReferenceSchema = z.object({
   program: z.object({ filename: z.string() }),
 });
 
-type DashboardWorkflowInstance = {
+type OrchestrationWorkflowInstance = {
   id: string;
   workflowName: string;
   remoteWorkflowName: string | null;
@@ -90,8 +90,8 @@ type DashboardWorkflowInstance = {
   workflowScriptPath: string | null;
 };
 
-type DashboardRoute = AutomationRouteDefinition;
-type DashboardSelectionKind = "source" | "event" | "trigger" | "action";
+type OrchestrationRoute = AutomationRouteDefinition;
+type OrchestrationSelectionKind = "source" | "event" | "trigger" | "action";
 type AutomationSwimlaneView = "workflows" | "events";
 
 export async function loader({ request, params, context, url }: Route.LoaderArgs) {
@@ -126,7 +126,7 @@ export function shouldRevalidate({
 
 const normalizedSourceId = (source: string) => source.trim().toLowerCase();
 
-const routeSourceId = (route: DashboardRoute) =>
+const routeSourceId = (route: OrchestrationRoute) =>
   route.trigger.kind === "schedule" ? "scheduler" : normalizedSourceId(route.trigger.source);
 
 const fallbackSourceLabel = (source: string) =>
@@ -136,18 +136,18 @@ const fallbackSourceLabel = (source: string) =>
     .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
     .join(" ");
 
-function dashboardSources({
+function orchestrationSources({
   routes,
   eventSources,
   eventDefinitions,
   includeUnroutedSources,
 }: {
-  routes: readonly DashboardRoute[];
-  eventSources: readonly DashboardSource[];
-  eventDefinitions: readonly DashboardEventDefinitionWithSource[];
+  routes: readonly OrchestrationRoute[];
+  eventSources: readonly OrchestrationSource[];
+  eventDefinitions: readonly OrchestrationEventDefinitionWithSource[];
   includeUnroutedSources: boolean;
-}): DashboardSource[] {
-  const sourceCatalog = new Map<string, DashboardSource>();
+}): OrchestrationSource[] {
+  const sourceCatalog = new Map<string, OrchestrationSource>();
 
   for (const eventSource of listCapabilityEventSources()) {
     const id = normalizedSourceId(eventSource.source);
@@ -176,8 +176,8 @@ function dashboardSources({
   }
 
   const sources = includeUnroutedSources
-    ? new Map<string, DashboardSource>(sourceCatalog)
-    : new Map<string, DashboardSource>();
+    ? new Map<string, OrchestrationSource>(sourceCatalog)
+    : new Map<string, OrchestrationSource>();
   const triggerCountBySource = new Map<string, number>();
   for (const route of routes) {
     const id = routeSourceId(route);
@@ -204,28 +204,28 @@ function dashboardSources({
   });
 }
 
-type DashboardEventDefinitionWithSource = DashboardEventDefinition & {
+type OrchestrationEventDefinitionWithSource = OrchestrationEventDefinition & {
   source: string;
 };
 
-type DashboardGridRow = {
+type OrchestrationGridRow = {
   sourceId: string;
-  source: DashboardSource | null;
-  route: DashboardRoute | null;
+  source: OrchestrationSource | null;
+  route: OrchestrationRoute | null;
   dividerAfterSource: boolean;
 };
 
 type EventSwimlaneRow = {
   sourceId: string;
   eventId: string | null;
-  source: DashboardSource | null;
-  eventDefinition: DashboardEventDefinitionWithSource | null;
-  route: DashboardRoute | null;
+  source: OrchestrationSource | null;
+  eventDefinition: OrchestrationEventDefinitionWithSource | null;
+  route: OrchestrationRoute | null;
   dividerAfterSource: boolean;
 };
 
-const dashboardRoutesBySourceId = (routes: readonly DashboardRoute[]) => {
-  const routesBySourceId = new Map<string, DashboardRoute[]>();
+const orchestrationRoutesBySourceId = (routes: readonly OrchestrationRoute[]) => {
+  const routesBySourceId = new Map<string, OrchestrationRoute[]>();
   for (const route of routes) {
     const sourceId = routeSourceId(route);
     const sourceRoutes = routesBySourceId.get(sourceId) ?? [];
@@ -235,13 +235,13 @@ const dashboardRoutesBySourceId = (routes: readonly DashboardRoute[]) => {
   return routesBySourceId;
 };
 
-const dashboardGridRows = (
-  sources: readonly DashboardSource[],
-  routes: readonly DashboardRoute[],
-): DashboardGridRow[] => {
-  const routesBySourceId = dashboardRoutesBySourceId(routes);
+const orchestrationGridRows = (
+  sources: readonly OrchestrationSource[],
+  routes: readonly OrchestrationRoute[],
+): OrchestrationGridRow[] => {
+  const routesBySourceId = orchestrationRoutesBySourceId(routes);
 
-  return sources.flatMap<DashboardGridRow>((source, sourceIndex) => {
+  return sources.flatMap<OrchestrationGridRow>((source, sourceIndex) => {
     const sourceRoutes = routesBySourceId.get(source.id) ?? [];
     const hasFollowingSource = sourceIndex < sources.length - 1;
     if (sourceRoutes.length === 0) {
@@ -258,12 +258,12 @@ const dashboardGridRows = (
 };
 
 const eventSwimlaneRows = (
-  sources: readonly DashboardSource[],
-  eventDefinitions: readonly DashboardEventDefinitionWithSource[],
-  routes: readonly DashboardRoute[],
+  sources: readonly OrchestrationSource[],
+  eventDefinitions: readonly OrchestrationEventDefinitionWithSource[],
+  routes: readonly OrchestrationRoute[],
 ): EventSwimlaneRow[] => {
   return sources.flatMap<EventSwimlaneRow>((source, sourceIndex) => {
-    const events = new Map<string, DashboardEventDefinitionWithSource>();
+    const events = new Map<string, OrchestrationEventDefinitionWithSource>();
     for (const eventDefinition of eventDefinitions) {
       if (normalizedSourceId(eventDefinition.source) === source.id) {
         events.set(eventDefinition.eventType, eventDefinition);
@@ -356,15 +356,15 @@ const eventSwimlaneRows = (
 };
 
 const latestWorkflowRunForRoute = (
-  route: DashboardRoute,
-  instances: DashboardWorkflowInstance[],
+  route: OrchestrationRoute,
+  instances: OrchestrationWorkflowInstance[],
 ) => {
   return (
     instances.find((instance) => automationRouteMatchesWorkflowInstance(route, instance)) ?? null
   );
 };
 
-const routeDestinationLabel = (route: DashboardRoute) => {
+const routeDestinationLabel = (route: OrchestrationRoute) => {
   if (route.action.kind === "start_workflow") {
     return automationRouteWorkflowName(route) ?? "Unknown saved workflow";
   }
@@ -391,7 +391,7 @@ const routeDestinationLabel = (route: DashboardRoute) => {
   throw new Error("Unsupported automation route destination.");
 };
 
-const routeActionLabel = (route: DashboardRoute) => {
+const routeActionLabel = (route: OrchestrationRoute) => {
   switch (route.action.kind) {
     case "start_workflow":
       return "Start workflow";
@@ -406,7 +406,7 @@ const routeActionLabel = (route: DashboardRoute) => {
   throw new Error("Unsupported automation route action kind.");
 };
 
-const scheduleLabel = (route: DashboardRoute) => {
+const scheduleLabel = (route: OrchestrationRoute) => {
   if (route.trigger.kind !== "schedule") {
     return null;
   }
@@ -493,7 +493,7 @@ function SourceCard({
   muted,
   onSelect,
 }: {
-  source: DashboardSource;
+  source: OrchestrationSource;
   selected: boolean;
   muted: boolean;
   onSelect: () => void;
@@ -527,7 +527,7 @@ function TriggerCard({
   selected,
   onSelect,
 }: {
-  route: DashboardRoute;
+  route: OrchestrationRoute;
   selected: boolean;
   onSelect: () => void;
 }) {
@@ -584,7 +584,7 @@ function EventCard({
   selected,
   onSelect,
 }: {
-  eventDefinition: DashboardEventDefinitionWithSource;
+  eventDefinition: OrchestrationEventDefinitionWithSource;
   selected: boolean;
   onSelect: () => void;
 }) {
@@ -616,7 +616,7 @@ function EventCard({
   );
 }
 
-const routeActionAppearance = (kind: DashboardRoute["action"]["kind"]) => {
+const routeActionAppearance = (kind: OrchestrationRoute["action"]["kind"]) => {
   switch (kind) {
     case "start_workflow":
       return {
@@ -657,8 +657,8 @@ function ActionCard({
   selected,
   onSelect,
 }: {
-  route: DashboardRoute;
-  instance: DashboardWorkflowInstance | null;
+  route: OrchestrationRoute;
+  instance: OrchestrationWorkflowInstance | null;
   selected: boolean;
   onSelect: () => void;
 }) {
@@ -713,7 +713,7 @@ function ActionCard({
   );
 }
 
-function DashboardRouteGrid({
+function OrchestrationRouteGrid({
   sources,
   routes,
   workflowInstances,
@@ -725,18 +725,18 @@ function DashboardRouteGrid({
   onSelectTrigger,
   onSelectAction,
 }: {
-  sources: readonly DashboardSource[];
-  routes: readonly DashboardRoute[];
-  workflowInstances: DashboardWorkflowInstance[];
-  activeSource: DashboardSource | null;
-  selectionKind: DashboardSelectionKind | null;
+  sources: readonly OrchestrationSource[];
+  routes: readonly OrchestrationRoute[];
+  workflowInstances: OrchestrationWorkflowInstance[];
+  activeSource: OrchestrationSource | null;
+  selectionKind: OrchestrationSelectionKind | null;
   selectionId: string;
   routesLoading: boolean;
-  onSelectSource: (source: DashboardSource) => void;
-  onSelectTrigger: (route: DashboardRoute) => void;
-  onSelectAction: (route: DashboardRoute) => void;
+  onSelectSource: (source: OrchestrationSource) => void;
+  onSelectTrigger: (route: OrchestrationRoute) => void;
+  onSelectAction: (route: OrchestrationRoute) => void;
 }) {
-  const gridRows = dashboardGridRows(sources, routes);
+  const gridRows = orchestrationGridRows(sources, routes);
   const loadingRowSourceId = gridRows[0]?.sourceId ?? null;
   const selectedRoute =
     selectionKind === "trigger" || selectionKind === "action"
@@ -848,15 +848,15 @@ function EventRouteGrid({
   onSelectAction,
 }: {
   rows: readonly EventSwimlaneRow[];
-  routes: readonly DashboardRoute[];
-  workflowInstances: DashboardWorkflowInstance[];
-  activeSource: DashboardSource | null;
-  selectionKind: DashboardSelectionKind | null;
+  routes: readonly OrchestrationRoute[];
+  workflowInstances: OrchestrationWorkflowInstance[];
+  activeSource: OrchestrationSource | null;
+  selectionKind: OrchestrationSelectionKind | null;
   selectionId: string;
-  onSelectSource: (source: DashboardSource) => void;
-  onSelectEvent: (eventDefinition: DashboardEventDefinitionWithSource) => void;
-  onSelectTrigger: (route: DashboardRoute) => void;
-  onSelectAction: (route: DashboardRoute) => void;
+  onSelectSource: (source: OrchestrationSource) => void;
+  onSelectEvent: (eventDefinition: OrchestrationEventDefinitionWithSource) => void;
+  onSelectTrigger: (route: OrchestrationRoute) => void;
+  onSelectAction: (route: OrchestrationRoute) => void;
 }) {
   const selectedRoute =
     selectionKind === "trigger" || selectionKind === "action"
@@ -963,7 +963,7 @@ function EventRouteGrid({
   );
 }
 
-const parseSelectionKind = (value: string | null): DashboardSelectionKind | null => {
+const parseSelectionKind = (value: string | null): OrchestrationSelectionKind | null => {
   if (value === "workflow") {
     return "action";
   }
@@ -994,8 +994,8 @@ function inspectorMaxWidth(containerWidth: number): number {
   );
 }
 
-function useDashboardInspectorResize() {
-  const dashboardSplitRef = useRef<HTMLDivElement>(null);
+function useOrchestrationInspectorResize() {
+  const orchestrationSplitRef = useRef<HTMLDivElement>(null);
   const draggingInspectorRef = useRef(false);
   const [inspectorDragging, setInspectorDragging] = useState(false);
   const [inspectorWidth, setInspectorWidth] = useState(DEFAULT_INSPECTOR_WIDTH);
@@ -1007,7 +1007,7 @@ function useDashboardInspectorResize() {
   );
 
   useEffect(() => {
-    const container = dashboardSplitRef.current;
+    const container = orchestrationSplitRef.current;
     if (!container) {
       return undefined;
     }
@@ -1055,7 +1055,7 @@ function useDashboardInspectorResize() {
 
   const resizeInspectorFromPointer = useCallback(
     (event: PointerEvent) => {
-      const container = dashboardSplitRef.current;
+      const container = orchestrationSplitRef.current;
       if (!draggingInspectorRef.current || !container) {
         return;
       }
@@ -1107,7 +1107,7 @@ function useDashboardInspectorResize() {
   }
 
   return {
-    dashboardSplitRef,
+    orchestrationSplitRef,
     inspectorDragging,
     inspectorWidth,
     inspectorMaximumWidth,
@@ -1126,12 +1126,12 @@ function resolveInspectorSelection({
   selectedRoute,
   eventDefinitions,
 }: {
-  selectionKind: DashboardSelectionKind | null;
-  selectedSource: DashboardSource | null;
-  selectedEvent: DashboardEventDefinitionWithSource | null | undefined;
-  selectedRoute: DashboardRoute | null;
-  eventDefinitions: DashboardEventDefinitionWithSource[];
-}): DashboardInspectorSelection | null {
+  selectionKind: OrchestrationSelectionKind | null;
+  selectedSource: OrchestrationSource | null;
+  selectedEvent: OrchestrationEventDefinitionWithSource | null | undefined;
+  selectedRoute: OrchestrationRoute | null;
+  eventDefinitions: OrchestrationEventDefinitionWithSource[];
+}): OrchestrationInspectorSelection | null {
   if (selectionKind === "source" && selectedSource) {
     return {
       kind: "source",
@@ -1153,13 +1153,13 @@ function resolveInspectorSelection({
   return null;
 }
 
-function workflowScriptIdForRoute(route: DashboardRoute): string | null {
+function workflowScriptIdForRoute(route: OrchestrationRoute): string | null {
   return route.action.kind === "start_workflow"
     ? toAutomationScriptIdFromAbsolutePath(route.action.workflowScriptPath)
     : null;
 }
 
-function useAutomationDashboardData(
+function useAutomationOrchestrationData(
   collections: AutomationLayoutContext["collections"],
   view: AutomationSwimlaneView,
 ) {
@@ -1218,14 +1218,14 @@ function useAutomationDashboardData(
     [collections.workflowInstances],
   );
 
-  const routes: DashboardRoute[] = routesState.routes;
-  const dynamicEventDefinitions: DashboardEventDefinitionWithSource[] = (
+  const routes: OrchestrationRoute[] = routesState.routes;
+  const dynamicEventDefinitions: OrchestrationEventDefinitionWithSource[] = (
     eventDefinitionsQuery.data ?? []
   ).map((eventDefinition) => ({
     ...eventDefinition,
     payloadSchema: eventDefinition.payloadSchema ?? null,
   }));
-  const eventDefinitions: DashboardEventDefinitionWithSource[] = [
+  const eventDefinitions: OrchestrationEventDefinitionWithSource[] = [
     ...listAutomationEventDescriptors().map((eventDefinition) => ({
       source: eventDefinition.source,
       eventType: eventDefinition.eventType,
@@ -1237,7 +1237,7 @@ function useAutomationDashboardData(
     (left, right) =>
       left.source.localeCompare(right.source) || left.eventType.localeCompare(right.eventType),
   );
-  const workflowInstances: DashboardWorkflowInstance[] = (workflowsQuery.data ?? []).map(
+  const workflowInstances: OrchestrationWorkflowInstance[] = (workflowsQuery.data ?? []).map(
     ({ params, ...instance }) => {
       const scriptReference = codemodeWorkflowScriptReferenceSchema.safeParse(params);
       return {
@@ -1251,7 +1251,7 @@ function useAutomationDashboardData(
       route.action.kind === "start_workflow" || route.action.kind === "send_workflow_event",
   );
   const eventRoutes = routes.filter((route) => route.action.kind !== "start_workflow");
-  const sources = dashboardSources({
+  const sources = orchestrationSources({
     routes: view === "workflows" ? workflowRoutes : eventRoutes,
     eventSources: eventSourcesQuery.data ?? [],
     eventDefinitions,
@@ -1279,22 +1279,22 @@ function useAutomationDashboardData(
   };
 }
 
-type DashboardSelectionUpdate = {
-  kind: DashboardSelectionKind;
+type OrchestrationSelectionUpdate = {
+  kind: OrchestrationSelectionKind;
   id: string;
   workflowScriptId: string | null;
   clearSourceFilter: boolean;
 };
 
-function useDashboardSearchSelection({
+function useOrchestrationSearchSelection({
   routes,
   sources,
   eventDefinitions,
   eventRows,
 }: {
-  routes: DashboardRoute[];
-  sources: DashboardSource[];
-  eventDefinitions: DashboardEventDefinitionWithSource[];
+  routes: OrchestrationRoute[];
+  sources: OrchestrationSource[];
+  eventDefinitions: OrchestrationEventDefinitionWithSource[];
   eventRows: EventSwimlaneRow[];
 }) {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -1321,7 +1321,7 @@ function useDashboardSearchSelection({
     id,
     workflowScriptId,
     clearSourceFilter,
-  }: DashboardSelectionUpdate) {
+  }: OrchestrationSelectionUpdate) {
     setSearchParams((currentSearchParams) => {
       const nextSearchParams = new URLSearchParams(currentSearchParams);
       const currentSelectionKind = parseSelectionKind(
@@ -1351,7 +1351,7 @@ function useDashboardSearchSelection({
     }, DASHBOARD_SEARCH_NAVIGATION_OPTIONS);
   }
 
-  function selectWorkflowSource(source: DashboardSource) {
+  function selectWorkflowSource(source: OrchestrationSource) {
     const isClearing = activeSource?.id === source.id;
     setSearchParams((currentSearchParams) => {
       const nextSearchParams = new URLSearchParams(currentSearchParams);
@@ -1369,7 +1369,7 @@ function useDashboardSearchSelection({
     }, DASHBOARD_SEARCH_NAVIGATION_OPTIONS);
   }
 
-  function selectEventSource(source: DashboardSource) {
+  function selectEventSource(source: OrchestrationSource) {
     updateSelection({
       kind: "source",
       id: source.id,
@@ -1378,7 +1378,7 @@ function useDashboardSearchSelection({
     });
   }
 
-  function selectEvent(eventDefinition: DashboardEventDefinitionWithSource) {
+  function selectEvent(eventDefinition: OrchestrationEventDefinitionWithSource) {
     updateSelection({
       kind: "event",
       id: `${eventDefinition.source}:${eventDefinition.eventType}`,
@@ -1387,7 +1387,7 @@ function useDashboardSearchSelection({
     });
   }
 
-  function selectTrigger(route: DashboardRoute) {
+  function selectTrigger(route: OrchestrationRoute) {
     updateSelection({
       kind: "trigger",
       id: route.id,
@@ -1396,7 +1396,7 @@ function useDashboardSearchSelection({
     });
   }
 
-  function selectWorkflowAction(route: DashboardRoute) {
+  function selectWorkflowAction(route: OrchestrationRoute) {
     updateSelection({
       kind: "action",
       id: route.id,
@@ -1405,7 +1405,7 @@ function useDashboardSearchSelection({
     });
   }
 
-  function selectEventAction(route: DashboardRoute) {
+  function selectEventAction(route: OrchestrationRoute) {
     updateSelection({
       kind: "action",
       id: route.id,
@@ -1440,12 +1440,12 @@ function useDashboardSearchSelection({
   };
 }
 
-function DashboardLaneHeaders({
+function OrchestrationLaneHeaders({
   view,
   activeSource,
 }: {
   view: AutomationSwimlaneView;
-  activeSource: DashboardSource | null;
+  activeSource: OrchestrationSource | null;
 }) {
   const sourceDescription = activeSource
     ? `Highlighting routes from ${activeSource.label}`
@@ -1487,7 +1487,7 @@ function DashboardLaneHeaders({
   );
 }
 
-function DashboardSwimlaneGrid({
+function OrchestrationSwimlaneGrid({
   view,
   sources,
   workflowRoutes,
@@ -1506,25 +1506,25 @@ function DashboardSwimlaneGrid({
   onSelectEventAction,
 }: {
   view: AutomationSwimlaneView;
-  sources: DashboardSource[];
-  workflowRoutes: DashboardRoute[];
-  eventRoutes: DashboardRoute[];
+  sources: OrchestrationSource[];
+  workflowRoutes: OrchestrationRoute[];
+  eventRoutes: OrchestrationRoute[];
   eventRows: EventSwimlaneRow[];
-  workflowInstances: DashboardWorkflowInstance[];
-  activeSource: DashboardSource | null;
-  selectionKind: DashboardSelectionKind | null;
+  workflowInstances: OrchestrationWorkflowInstance[];
+  activeSource: OrchestrationSource | null;
+  selectionKind: OrchestrationSelectionKind | null;
   selectionId: string;
   routesLoading: boolean;
-  onSelectWorkflowSource: (source: DashboardSource) => void;
-  onSelectEventSource: (source: DashboardSource) => void;
-  onSelectEvent: (eventDefinition: DashboardEventDefinitionWithSource) => void;
-  onSelectTrigger: (route: DashboardRoute) => void;
-  onSelectWorkflowAction: (route: DashboardRoute) => void;
-  onSelectEventAction: (route: DashboardRoute) => void;
+  onSelectWorkflowSource: (source: OrchestrationSource) => void;
+  onSelectEventSource: (source: OrchestrationSource) => void;
+  onSelectEvent: (eventDefinition: OrchestrationEventDefinitionWithSource) => void;
+  onSelectTrigger: (route: OrchestrationRoute) => void;
+  onSelectWorkflowAction: (route: OrchestrationRoute) => void;
+  onSelectEventAction: (route: OrchestrationRoute) => void;
 }) {
   if (view === "workflows") {
     return (
-      <DashboardRouteGrid
+      <OrchestrationRouteGrid
         sources={sources}
         routes={workflowRoutes}
         workflowInstances={workflowInstances}
@@ -1555,11 +1555,7 @@ function DashboardSwimlaneGrid({
   );
 }
 
-export function AutomationSwimlaneDashboard({
-  view = "workflows",
-}: {
-  view?: AutomationSwimlaneView;
-}) {
+export function AutomationSwimlanes({ view = "workflows" }: { view?: AutomationSwimlaneView }) {
   const { collections, selectedScope } = useOutletContext<AutomationLayoutContext>();
   const loaderData = useLoaderData<typeof loader>();
   const {
@@ -1572,7 +1568,7 @@ export function AutomationSwimlaneDashboard({
     sources,
     eventRows,
     errors,
-  } = useAutomationDashboardData(collections, view);
+  } = useAutomationOrchestrationData(collections, view);
   const {
     activeSource,
     selectionKind,
@@ -1585,21 +1581,21 @@ export function AutomationSwimlaneDashboard({
     selectWorkflowAction,
     selectEventAction,
     clearSelection,
-  } = useDashboardSearchSelection({ routes, sources, eventDefinitions, eventRows });
+  } = useOrchestrationSearchSelection({ routes, sources, eventDefinitions, eventRows });
   const {
-    dashboardSplitRef,
+    orchestrationSplitRef,
     inspectorDragging,
     inspectorWidth,
     inspectorMaximumWidth,
     resetInspectorWidth,
     resizeInspectorFromKeyboard,
     startInspectorDragging,
-  } = useDashboardInspectorResize();
+  } = useOrchestrationInspectorResize();
   const showInspector = inspectorSelection !== null;
 
-  const dashboardSplitStyle = {
-    "--dashboard-inspector-divider-width": showInspector ? "1px" : "0px",
-    "--dashboard-inspector-width": showInspector ? `${inspectorWidth}px` : "0px",
+  const orchestrationSplitStyle = {
+    "--orchestration-inspector-divider-width": showInspector ? "1px" : "0px",
+    "--orchestration-inspector-width": showInspector ? `${inspectorWidth}px` : "0px",
   } as CSSProperties;
 
   return (
@@ -1607,17 +1603,17 @@ export function AutomationSwimlaneDashboard({
       {errors.length > 0 ? (
         <AutomationNotice tone="error">
           <p className="text-[10px] font-semibold tracking-[0.22em] uppercase">
-            Some dashboard data could not be synchronized
+            Some orchestration data could not be synchronized
           </p>
           <p className="mt-2 text-sm">{errors.join(" ")}</p>
         </AutomationNotice>
       ) : null}
 
       <div
-        ref={dashboardSplitRef}
-        data-dashboard-inspector-split
-        style={dashboardSplitStyle}
-        className={`grid min-w-0 flex-1 gap-3 xl:grid-cols-[minmax(0,1fr)_var(--dashboard-inspector-divider-width)_var(--dashboard-inspector-width)] xl:gap-0 ${inspectorDragging ? "xl:transition-none" : "xl:transition-[grid-template-columns] xl:duration-200 xl:ease-out"}`}
+        ref={orchestrationSplitRef}
+        data-orchestration-inspector-split
+        style={orchestrationSplitStyle}
+        className={`grid min-w-0 flex-1 gap-3 xl:grid-cols-[minmax(0,1fr)_var(--orchestration-inspector-divider-width)_var(--orchestration-inspector-width)] xl:gap-0 ${inspectorDragging ? "xl:transition-none" : "xl:transition-[grid-template-columns] xl:duration-200 xl:ease-out"}`}
       >
         <div
           className={`flex min-w-0 flex-col border-b border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] ${
@@ -1626,8 +1622,8 @@ export function AutomationSwimlaneDashboard({
         >
           <div className="backoffice-scroll grow overflow-x-auto">
             <div className="w-full min-w-[43rem]">
-              <DashboardLaneHeaders view={view} activeSource={activeSource} />
-              <DashboardSwimlaneGrid
+              <OrchestrationLaneHeaders view={view} activeSource={activeSource} />
+              <OrchestrationSwimlaneGrid
                 view={view}
                 sources={sources}
                 workflowRoutes={workflowRoutes}
@@ -1651,7 +1647,7 @@ export function AutomationSwimlaneDashboard({
 
         {showInspector ? (
           <VerticalResizeHandle
-            label="Resize dashboard inspector"
+            label="Resize orchestration inspector"
             min={MIN_INSPECTOR_WIDTH}
             max={inspectorMaximumWidth}
             value={inspectorWidth}
@@ -1664,7 +1660,7 @@ export function AutomationSwimlaneDashboard({
         ) : null}
 
         {showInspector ? (
-          <DashboardInspector
+          <OrchestrationInspector
             selection={inspectorSelection}
             workflowSource={loaderData.workflowSource}
             runtimeToolCatalog={loaderData.runtimeToolCatalog}
@@ -1680,6 +1676,6 @@ export function AutomationSwimlaneDashboard({
   );
 }
 
-export default function BackofficeAutomationDashboard() {
-  return <AutomationSwimlaneDashboard />;
+export default function BackofficeAutomationOrchestration() {
+  return <AutomationSwimlanes />;
 }

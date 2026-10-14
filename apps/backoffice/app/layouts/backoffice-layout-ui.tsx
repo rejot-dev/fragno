@@ -93,7 +93,7 @@ export function ErrorBoundary() {
       ? layoutData.resolvedScope.organization
       : null;
   const currentOrganizationPath = currentOrganization
-    ? `/backoffice/automations/org/${encodeURIComponent(currentOrganization.slug)}/dashboard`
+    ? `/backoffice/automations/org/${encodeURIComponent(currentOrganization.slug)}/orchestration`
     : null;
 
   return (

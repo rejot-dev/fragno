@@ -6,7 +6,7 @@ const projectScope = { kind: "project" as const, orgSlug: "org-a", projectId: "p
 
 describe("scopeSwitchPath", () => {
   test.each([
-    ["/backoffice/automations", "/backoffice/automations/project/org-a%3Aproj-1/dashboard"],
+    ["/backoffice/automations", "/backoffice/automations/project/org-a%3Aproj-1/orchestration"],
     ["/backoffice/sessions", "/backoffice/sessions/project/org-a%3Aproj-1/sessions"],
     ["/backoffice/computers", "/backoffice/computers/project/org-a%3Aproj-1/sandboxes"],
     ["/backoffice/files", "/backoffice/files/project/org-a%3Aproj-1"],
@@ -28,7 +28,7 @@ describe("scopeSwitchPath", () => {
     (removedTab) => {
       assert(
         scopeSwitchPath(`/backoffice/automations/org/org-a/${removedTab}`, projectScope) ===
-          "/backoffice/automations/project/org-a%3Aproj-1/dashboard",
+          "/backoffice/automations/project/org-a%3Aproj-1/orchestration",
       );
     },
   );
@@ -63,10 +63,10 @@ describe("scopeSwitchPath", () => {
     );
   });
 
-  test("lands unknown sections on the automations dashboard", () => {
+  test("lands unknown sections on automations orchestration", () => {
     assert(
       scopeSwitchPath("/backoffice/organizations", projectScope) ===
-        "/backoffice/automations/project/org-a%3Aproj-1/dashboard",
+        "/backoffice/automations/project/org-a%3Aproj-1/orchestration",
     );
   });
 });

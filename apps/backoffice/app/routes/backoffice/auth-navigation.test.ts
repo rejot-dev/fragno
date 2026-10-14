@@ -68,10 +68,10 @@ describe("backoffice auth navigation helpers", () => {
   test("builds organization switch paths with an explicit destination", () => {
     const switchPath = buildBackofficeOrganizationSwitchPath(
       "org-2",
-      "/backoffice/automations/org/org-2/dashboard",
+      "/backoffice/automations/org/org-2/orchestration",
     );
     expect(switchPath).toBe(
-      "/backoffice/auth/bootstrap?organizationId=org-2&returnTo=%2Fbackoffice%2Fautomations%2Forg%2Forg-2%2Fdashboard",
+      "/backoffice/auth/bootstrap?organizationId=org-2&returnTo=%2Fbackoffice%2Fautomations%2Forg%2Forg-2%2Forchestration",
     );
     assert(readBackofficeOrganizationSwitchId(switchPath) === "org-2");
   });
@@ -79,9 +79,9 @@ describe("backoffice auth navigation helpers", () => {
   test("retargets an organization-scoped destination after changing identity", () => {
     assert(
       retargetBackofficeOrganizationReturnTo(
-        "/backoffice/automations/org/org-stale/dashboard?scriptView=code",
+        "/backoffice/automations/org/org-stale/orchestration?scriptView=code",
         "org-current",
-      ) === "/backoffice/automations/org/org-current/dashboard?scriptView=code",
+      ) === "/backoffice/automations/org/org-current/orchestration?scriptView=code",
     );
   });
 
