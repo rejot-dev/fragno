@@ -101,7 +101,7 @@ independent cache lifecycle.
 
 ### 3. Make the sandbox page consume the live collection
 
-Replace the loader-owned sandbox snapshot in `routes/backoffice/automations/sandboxes.tsx` with a
+Replace the loader-owned sandbox snapshot in `routes/backoffice/computers/sandboxes.tsx` with a
 `useLiveQuery` over the `sandboxInstances` collection.
 
 Required behavior:

@@ -44,17 +44,7 @@ export const automationScopeBasePath = (scope: BackofficeScopeSelection) =>
     backofficeRouteScopeFromResolvedScope(scope),
   )}`;
 
-type AutomationScopeTab = "dashboard" | "store" | "events-catalog" | "sandboxes";
-
-const SYSTEM_UNAVAILABLE_AUTOMATION_TABS = new Set<AutomationScopeTab>(["sandboxes"]);
-
-export const resolveAutomationScopeTab = (
-  scope: BackofficeScopeSelection,
-  requestedTab: AutomationScopeTab,
-) =>
-  scope.kind === "system" && SYSTEM_UNAVAILABLE_AUTOMATION_TABS.has(requestedTab)
-    ? "dashboard"
-    : requestedTab;
+type AutomationScopeTab = "dashboard" | "store" | "events-catalog";
 
 export const automationScopeTabPath = (
   scope: BackofficeScopeSelection,
@@ -90,8 +80,7 @@ export const createAutomationScopeOptions = ({
   pathForScope?: (scope: BackofficeScopeSelection) => string;
 }): AutomationScopeOption[] => {
   const destinationFor = (scope: BackofficeScopeSelection) =>
-    pathForScope?.(scope) ??
-    automationScopeTabPath(scope, resolveAutomationScopeTab(scope, currentTab));
+    pathForScope?.(scope) ?? automationScopeTabPath(scope, currentTab);
   const orgOptions = organizations.map((organization) => ({
     id: `org:${organization.id}`,
     kind: "org" as const,

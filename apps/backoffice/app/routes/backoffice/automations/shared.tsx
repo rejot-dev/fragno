@@ -7,7 +7,7 @@ import { type BackofficeScopeSelection } from "@/backoffice-runtime/resolved-sco
 
 import { getRouteErrorMessage, getBackofficeOrganizationNotFound } from "../route-errors";
 import type { AutomationTab } from "./layout-context";
-import { automationScopeTabPath, resolveAutomationScopeTab } from "./scope";
+import { automationScopeTabPath } from "./scope";
 import {
   SCRIPT_VIEW_MODE_SEARCH_PARAM,
   WORKFLOW_GRAPH_DETAIL_MODE_SEARCH_PARAM,
@@ -32,7 +32,6 @@ const AUTOMATION_TAB_GROUPS = [
     { id: "events-catalog", label: "Events" },
   ],
   [{ id: "store", label: "Store" }],
-  [{ id: "sandboxes", label: "Sandboxes" }],
 ] as const satisfies readonly (readonly {
   id: AutomationTab;
   label: string;
@@ -61,7 +60,7 @@ function AutomationTabRail({
       automationScopeTabPath(selectedScope, tab.id),
       scriptPresentation,
     ),
-    disabled: disabled || resolveAutomationScopeTab(selectedScope, tab.id) !== tab.id,
+    disabled,
     active: activeTab === tab.id,
   }));
 

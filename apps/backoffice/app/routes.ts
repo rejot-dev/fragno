@@ -71,7 +71,6 @@ export default [
           route("identity-bindings", "routes/backoffice/automations/identity-bindings.tsx"),
         ]),
         route("events-catalog", "routes/backoffice/automations/events-catalog.tsx"),
-        route("sandboxes", "routes/backoffice/automations/sandboxes.tsx"),
         route("runs/:workflowName/:instanceId", "routes/backoffice/automations/workflow-run.tsx"),
       ]),
 
@@ -86,6 +85,15 @@ export default [
           ]),
         ],
       ),
+      route("computers", "routes/backoffice/computers/index.tsx"),
+      route("computers/:scopeKind/:scopeId", "routes/backoffice/computers/scope-layout.tsx", [
+        index("routes/backoffice/computers/scope-index.tsx"),
+        route("sandboxes", "routes/backoffice/computers/sandboxes.tsx", [
+          index("routes/backoffice/computers/sandboxes-index.tsx"),
+          route("new", "routes/backoffice/computers/sandbox-new.tsx"),
+          route(":sandboxId", "routes/backoffice/computers/sandbox-detail.tsx"),
+        ]),
+      ]),
       route("sessions", "routes/backoffice/sessions/index.tsx"),
       route("sessions/:scopeKind/:scopeId", "routes/backoffice/sessions/organization-layout.tsx", [
         index("routes/backoffice/sessions/organization-index.tsx"),
