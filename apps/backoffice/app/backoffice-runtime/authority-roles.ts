@@ -79,7 +79,7 @@ export const USER_AUTHORITY_ROLE_PERMISSION_DECISIONS = {
     integrations: { read: "grant", manage: "grant", execute: "grant" },
     internal: { manage: "grant" },
     org: { read: "grant", manage: "grant" },
-    marketplace: { read: "grant", publish: "grant" },
+    marketplace: { read: "grant", publish: "grant", feature: "grant" },
     packages: { read: "grant", install: "grant" },
     otp: { create: "grant" },
     pi: { modify: "grant", read: "grant" },
@@ -110,7 +110,8 @@ export const USER_AUTHORITY_ROLE_PERMISSION_DECISIONS = {
     integrations: { read: "grant", manage: "grant", execute: "grant" },
     internal: { manage: "deny" },
     org: { read: "deny", manage: "deny" },
-    marketplace: { read: "grant", publish: "grant" },
+    // Curating the public Marketplace stays with system administrators.
+    marketplace: { read: "grant", publish: "grant", feature: "deny" },
     packages: { read: "grant", install: "grant" },
     otp: { create: "grant" },
     pi: { modify: "grant", read: "grant" },
@@ -146,7 +147,8 @@ export const USER_AUTHORITY_ROLE_PERMISSION_DECISIONS = {
     internal: { manage: "deny" },
     // Resolved from live organization roles, never from the Backoffice user role.
     org: { read: "deny", manage: "deny" },
-    marketplace: { read: "grant", publish: "grant" },
+    // Organization Marketplaces are curated through org.manage from live membership.
+    marketplace: { read: "grant", publish: "grant", feature: "deny" },
     packages: { read: "grant", install: "grant" },
     otp: { create: "grant" },
     pi: { modify: "grant", read: "grant" },

@@ -30,6 +30,16 @@ type AdminCodemodeProvider = {
   oauthClientsRotateSecret(
     input: AdminOauthClientsRotateSecretInput,
   ): Promise<AdminOauthClientsRotateSecretOutput>;
+  /** Feature a published Marketplace listing, optionally scheduled with startsAt and ending at until, ordered by priority (higher first) with an optional curator note. Featuring an already featured listing replaces its settings. Expired and unpublished entries are removed to make room. System scope curates the public Marketplace (System administrators); organization scope curates that organization's Marketplace (owners and admins). */
+  marketplaceFeature(input: AdminMarketplaceFeatureInput): Promise<AdminMarketplaceFeatureOutput>;
+  /** Remove a Marketplace listing's feature entry. Removing an entry that does not exist succeeds with removed false. System scope curates the public Marketplace (System administrators); organization scope curates that organization's Marketplace (owners and admins). */
+  marketplaceUnfeature(
+    input: AdminMarketplaceUnfeatureInput,
+  ): Promise<AdminMarketplaceUnfeatureOutput>;
+  /** Publish the bundled static marketplace entries from System context. */
+  marketplacePushStatic(
+    input: AdminMarketplacePushStaticInput,
+  ): Promise<AdminMarketplacePushStaticOutput>;
 };
 declare const admin: AdminCodemodeProvider;
 
@@ -202,6 +212,10 @@ type BackofficePermissionRequirement =
   | {
       namespace: "marketplace";
       permission: "publish";
+    }
+  | {
+      namespace: "marketplace";
+      permission: "feature";
     }
   | {
       namespace: "packages";
@@ -408,3 +422,70 @@ type AdminOauthClientsUpdateInput = BackofficeOAuthClientUpdateInput;
 type AdminOauthClientsUpdateOutput = BackofficeOAuthClientUpdateResult;
 type AdminOauthClientsRotateSecretInput = BackofficeOAuthClientRotateSecretInput;
 type AdminOauthClientsRotateSecretOutput = BackofficeOAuthClientRotateSecretResult;
+type AdminMarketplaceFeatureInput = {
+  listingId: string;
+  startsAt?: string | null;
+  until?: string | null;
+  priority?: number;
+  note?: string | null;
+};
+type AdminMarketplaceFeatureOutput = {
+  listingId: string;
+  name: string;
+  state: "active" | "scheduled" | "expired" | "hidden";
+  priority: number;
+  note: string | null;
+  startsAt: string;
+  until: string | null;
+  featuredBy: string;
+  createdAt: string;
+  updatedAt: string;
+};
+type AdminMarketplaceUnfeatureInput = {
+  listingId: string;
+};
+type AdminMarketplaceUnfeatureOutput = {
+  listingId: string;
+  removed: boolean;
+};
+type AdminMarketplacePushStaticInput = {
+  force?: boolean;
+};
+type AdminMarketplacePushStaticOutput = {
+  publications: (
+    | {
+        listingId: string;
+        slug: string;
+        version: string;
+        state: "published";
+      }
+    | {
+        listingId: string;
+        slug: string;
+        version: string;
+        workflowInstanceId: string;
+        state: "requested";
+        workflowStatus: "active";
+      }
+    | {
+        listingId: string;
+        slug: string;
+        version: string;
+        workflowInstanceId: string;
+        state: "pending";
+        workflowStatus: "active" | "waiting" | "paused";
+      }
+    | {
+        listingId: string;
+        slug: string;
+        version: string;
+        workflowInstanceId: string;
+        state: "failed";
+        workflowStatus: "errored" | "terminated" | "complete";
+        error: {
+          name: string;
+          message: string;
+        };
+      }
+  )[];
+};

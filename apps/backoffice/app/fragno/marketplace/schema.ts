@@ -99,5 +99,18 @@ export const marketplaceFragmentSchema = schema("marketplace", (s) =>
     )
     .alterTable("marketplace_version", (t) =>
       t.addColumn("publish", jsonColumn<MarketplaceVersionPublishState>().nullable()),
+    )
+    // One entry per listing, keyed by its listing id. The set is capped, so reads load it whole.
+    .addTable("marketplace_featured_listing", (t) =>
+      t
+        .addColumn("id", idColumn())
+        .addColumn("listingId", referenceColumn({ table: "marketplace_listing" }))
+        .addColumn("priority", column("integer"))
+        .addColumn("note", column("string").nullable())
+        .addColumn("startsAt", column("timestamp"))
+        .addColumn("until", column("timestamp").nullable())
+        .addColumn("featuredBy", column("string"))
+        .addColumn("createdAt", column("timestamp"))
+        .addColumn("updatedAt", column("timestamp")),
     ),
 );

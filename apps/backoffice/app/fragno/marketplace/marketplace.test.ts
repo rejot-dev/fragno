@@ -58,7 +58,7 @@ describe("marketplace fragment", async () => {
     .withFragment(
       "marketplace",
       instantiate(marketplaceFragmentDefinition)
-        .withConfig({ scope: { kind: "system" } })
+        .withConfig({ scope: { kind: "system" }, now: () => new Date() })
         .withRoutes([]),
     )
     .build();

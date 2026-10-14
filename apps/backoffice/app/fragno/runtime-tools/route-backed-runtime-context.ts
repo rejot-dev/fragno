@@ -179,12 +179,6 @@ export const createRouteBackedRuntimeContext = ({
   const org = ownerOrgScope(execution);
   const selectedOrg = selectedOrgScope(execution);
   const userId = userPrincipalId(execution);
-  const internalScope =
-    execution.scope.kind === "system"
-      ? execution.scope
-      : org
-        ? { kind: "org" as const, orgId: org.orgId }
-        : null;
   const stateBackend =
     execution.scope.kind === "system" || runtime.config.bindings.upload
       ? createRuntimeStateBackend({ runtime, kernel, execution })
@@ -298,12 +292,13 @@ export const createRouteBackedRuntimeContext = ({
           runtime: createMarketplaceRuntime({
             objects: runtime.objects,
             execution,
+            kernel,
             publication:
               stateBackend &&
               runtime.config.bindings.upload &&
               runtime.config.bindings.automations &&
               runtime.config.bindings.auth
-                ? { state: stateBackend, kernel }
+                ? { state: stateBackend }
                 : null,
           }),
         }
@@ -414,11 +409,11 @@ export const createRouteBackedRuntimeContext = ({
               : null;
           })()
         : null,
-    internal: internalScope
+    internal: org
       ? {
           runtime: createInternalRuntime({
             objects: runtime.objects,
-            scope: internalScope,
+            scope: { kind: "org", orgId: org.orgId },
           }),
         }
       : null,

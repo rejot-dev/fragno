@@ -6,6 +6,8 @@ type MarketplaceCodemodeProvider = {
   view(input: MarketplaceViewInput): Promise<MarketplaceViewOutput>;
   /** Publish a captured package from a root manifest.json containing name @<organization-slug>/<package-slug>. Public visibility publishes to the public Marketplace; organization visibility publishes to the owning organization's members-only Marketplace. Versions are immutable by default; System may explicitly replace them. Dry runs write nothing. Author and version overrides require System context. */
   publish(input: MarketplacePublishInput): Promise<MarketplacePublishOutput>;
+  /** List every feature entry with its state: active, scheduled, expired, or hidden (the listing is no longer published). In System scope this curates the public Marketplace and requires a System administrator; in organization scope it curates that organization's Marketplace and requires an organization owner or admin. */
+  featured(input: MarketplaceFeaturedInput): Promise<MarketplaceFeaturedOutput>;
 };
 declare const marketplace: MarketplaceCodemodeProvider;
 
@@ -25,6 +27,7 @@ type MarketplaceSearchOutput = {
     category: "communication" | "developer-tools" | "operations" | "productivity" | "reporting";
     tags: string[];
     latestVersion: string;
+    featured: boolean;
   }[];
   nextCursor: string | null;
   hasNextPage: boolean;
@@ -49,6 +52,7 @@ type MarketplaceViewOutput = {
     latestVersion: string;
     publishedAt: string;
     updatedAt: string;
+    featured: boolean;
   };
   versions: {
     version: string;
@@ -125,3 +129,19 @@ type MarketplacePublishOutput =
         kind: "system";
       };
     };
+type MarketplaceFeaturedInput = Record<string, unknown>;
+type MarketplaceFeaturedOutput = {
+  entries: {
+    listingId: string;
+    name: string;
+    state: "active" | "scheduled" | "expired" | "hidden";
+    priority: number;
+    note: string | null;
+    startsAt: string;
+    until: string | null;
+    featuredBy: string;
+    createdAt: string;
+    updatedAt: string;
+  }[];
+  limit: number;
+};

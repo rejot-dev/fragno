@@ -810,6 +810,117 @@
     ]
   },
   {
+    "command": "admin.marketplace.feature",
+    "summary": "Feature a published listing, or update its feature settings. System scope curates the public Marketplace (System administrators); organization scope curates that organization's Marketplace (owners and admins).",
+    "options": [
+      {
+        "name": "listing-id",
+        "required": true,
+        "valueRequired": true,
+        "description": "Owner-qualified Marketplace listing ID."
+      },
+      {
+        "name": "starts-at",
+        "valueRequired": true,
+        "description": "ISO 8601 time the feature begins (default: now)."
+      },
+      {
+        "name": "until",
+        "valueRequired": true,
+        "description": "ISO 8601 time the feature ends (default: no end)."
+      },
+      {
+        "name": "priority",
+        "valueRequired": true,
+        "description": "Integer from -1000 to 1000; higher shows first (default 0)."
+      },
+      {
+        "name": "note",
+        "valueRequired": true,
+        "description": "Curator note shown with the listing (maximum 140 characters)."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "admin.marketplace.unfeature",
+    "summary": "Remove a listing from the featured set. System scope curates the public Marketplace (System administrators); organization scope curates that organization's Marketplace (owners and admins).",
+    "options": [
+      {
+        "name": "listing-id",
+        "required": true,
+        "valueRequired": true,
+        "description": "Owner-qualified Marketplace listing ID."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "admin.marketplace.push-static",
+    "summary": "admin.marketplace.push-static publishes the bundled static marketplace entries from System context.",
+    "options": [
+      {
+        "name": "force",
+        "description": "Publish with fresh workflow IDs and overwrite existing artifact files."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
     "command": "org.get",
     "summary": "org.get prints the current organization and your roles in it.",
     "options": [
@@ -3737,6 +3848,31 @@
     ]
   },
   {
+    "command": "marketplace.featured",
+    "summary": "List every feature entry with its state. System scope curates the public Marketplace (System administrators); organization scope curates that organization's Marketplace (owners and admins).",
+    "options": [
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
     "command": "packages.install",
     "summary": "Start the existing installation flow in the selected workspace. A created or restarted workflow is not a completed installation.",
     "options": [
@@ -3815,35 +3951,6 @@
       {
         "name": "force",
         "description": "Replace starter files and repair starter file/folder permissions."
-      },
-      {
-        "name": "help",
-        "description": "Show this help text",
-        "valueRequired": false,
-        "valueName": ""
-      },
-      {
-        "name": "print",
-        "description": "Extract a nested JSON field (kebab-case path) from command result",
-        "valueRequired": true,
-        "valueName": "selector",
-        "required": false
-      },
-      {
-        "name": "format",
-        "description": "Output format: text (default) or json",
-        "valueRequired": true,
-        "valueName": "format"
-      }
-    ]
-  },
-  {
-    "command": "internal.marketplace.push",
-    "summary": "internal.marketplace.push publishes the bundled static marketplace entries from System context.",
-    "options": [
-      {
-        "name": "force",
-        "description": "Publish with fresh workflow IDs and overwrite existing artifact files."
       },
       {
         "name": "help",

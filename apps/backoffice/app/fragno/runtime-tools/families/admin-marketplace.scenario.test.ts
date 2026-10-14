@@ -51,7 +51,7 @@ import { InMemoryMarketplaceObject } from "../../../../workers/marketplace.do";
 import { InMemoryMcpObject } from "../../../../workers/mcp.do";
 import { InMemoryTelegramObject } from "../../../../workers/telegram.do";
 import { InMemoryUploadObject } from "../../../../workers/upload.do";
-import { internalMarketplaceToolFamily } from "./internal";
+import { adminMarketplacePublicationToolFamily } from "./admin-marketplace";
 
 const scenarioObjects = {
   API: (input) => new InMemoryApiObject(input),
@@ -67,7 +67,7 @@ const scenarioObjects = {
   UPLOAD: (input) => new InMemoryUploadObject(input),
 } satisfies LocalBackofficeObjects;
 
-describe("internal maintenance scope scenarios", () => {
+describe("static Marketplace publication scenarios", () => {
   test("publishes bundled marketplace entries in System without an organization", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
@@ -80,8 +80,8 @@ describe("internal maintenance scope scenarios", () => {
         steps: ({ when, then }) => [
           when.codemode.run({
             scope: { kind: "system" },
-            code: "async () => await internal.marketplacePush({})",
-            assertToolCalls: ["internal.marketplace.push"],
+            code: "async () => await admin.marketplacePushStatic({})",
+            assertToolCalls: ["admin.marketplace.push-static"],
           }),
           then.assert("publication completes in singleton Automations storage", async (ctx) => {
             const entries = listStaticMarketplaceEntries();
@@ -113,7 +113,7 @@ describe("internal maintenance scope scenarios", () => {
             const { bash } = createInteractiveBashHost({
               context: { ...context, stateBackend: context.stateBackend },
             });
-            const result = await bash.exec("internal.marketplace.push --format json");
+            const result = await bash.exec("admin.marketplace.push-static --format json");
             assert(result.exitCode === 0, result.stderr);
             const repeated = marketplaceStaticPublicationResultSchema.parse(
               JSON.parse(result.stdout),
@@ -175,9 +175,9 @@ describe("internal maintenance scope scenarios", () => {
               await expect(
                 ctx.runCodemode({
                   scope,
-                  code: "async () => await context.current.internal.marketplacePush({})",
+                  code: "async () => await context.current.admin.marketplacePushStatic({})",
                 }),
-              ).rejects.toThrow("Unknown scoped tool: internal.marketplacePush");
+              ).rejects.toThrow("Unknown scoped tool: admin.marketplacePushStatic");
               const execution = createBackofficeSystemExecution(scope);
               const context = createRouteBackedRuntimeContext({
                 runtime: ctx.runtime.services,
@@ -189,12 +189,12 @@ describe("internal maintenance scope scenarios", () => {
               const { bash } = createInteractiveBashHost({
                 context: { ...context, stateBackend: context.stateBackend },
               });
-              const result = await bash.exec("internal.marketplace.push --format json");
+              const result = await bash.exec("admin.marketplace.push-static --format json");
               expect(result.exitCode).not.toBe(0);
               expect(result.stderr).toContain("Backoffice command unavailable");
               await expect(
                 executeBackofficeRuntimeTool(
-                  internalMarketplaceToolFamily.tools[0],
+                  adminMarketplacePublicationToolFamily.tools[0],
                   {},
                   createBackofficeToolContext(context),
                 ),
@@ -295,12 +295,12 @@ describe("internal maintenance scope scenarios", () => {
             const { bash } = createInteractiveBashHost({
               context: { ...context, stateBackend: context.stateBackend },
             });
-            const result = await bash.exec("internal.marketplace.push --format json");
+            const result = await bash.exec("admin.marketplace.push-static --format json");
             expect(result.exitCode).not.toBe(0);
             expect(result.stderr).toContain("Required permission: internal.manage.");
             await expect(
               executeBackofficeRuntimeTool(
-                internalMarketplaceToolFamily.tools[0],
+                adminMarketplacePublicationToolFamily.tools[0],
                 {},
                 createBackofficeToolContext(context),
               ),

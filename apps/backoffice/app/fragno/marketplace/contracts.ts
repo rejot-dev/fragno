@@ -4,6 +4,7 @@ import {
   MARKETPLACE_MAX_PAGE_SIZE,
   marketplaceListingIdSchema,
   marketplaceListingMetadataSchema,
+  type MarketplaceListing,
   marketplaceOwnerSchema,
   marketplaceOwnerScopeSchema,
   marketplacePublicListingSchema,
@@ -307,6 +308,47 @@ export const marketplaceArchiveResultSchema = z.object({
 
 export type MarketplaceArchiveResult = z.infer<typeof marketplaceArchiveResultSchema>;
 
+/** Featured listings carry the curator's note for the browsing surfaces. */
+export type MarketplaceFeaturedListing = {
+  listing: MarketplaceListing;
+  note: string | null;
+};
+
+/** Curators' feature request, with ISO times as Bash and Codemode accept them. */
+export const marketplaceFeatureInputSchema = z.strictObject({
+  listingId: marketplaceListingIdSchema,
+  startsAt: z.iso.datetime({ offset: true }).nullable().default(null),
+  until: z.iso.datetime({ offset: true }).nullable().default(null),
+  priority: z.number().int().min(-1000).max(1000).default(0),
+  note: z.string().trim().min(1).max(140).nullable().default(null),
+});
+
+export const marketplaceUnfeatureInputSchema = z.strictObject({
+  listingId: marketplaceListingIdSchema,
+});
+
+export type MarketplaceUnfeatureInput = z.infer<typeof marketplaceUnfeatureInputSchema>;
+
+export const marketplaceUnfeatureResultSchema = z.object({
+  listingId: marketplaceListingIdSchema,
+  removed: z.boolean(),
+});
+
+export type MarketplaceUnfeatureResult = z.infer<typeof marketplaceUnfeatureResultSchema>;
+
+/** The runtime resolves curation authority and the curator before the Marketplace stores an entry. */
+export const marketplaceFeatureListingInputSchema = z.object({
+  listingId: marketplaceListingIdSchema,
+  /** Null starts the feature at the Marketplace's current time. */
+  startsAt: z.date().nullable(),
+  until: z.date().nullable(),
+  priority: z.number().int(),
+  note: z.string().nullable(),
+  featuredBy: z.string().min(1),
+});
+
+export type MarketplaceFeatureListingInput = z.infer<typeof marketplaceFeatureListingInputSchema>;
+
 export const MARKETPLACE_OPERATION_ERROR_CODES = [
   "MARKETPLACE_OWNER_CONFLICT",
   "MARKETPLACE_OWNER_OUTSIDE_SCOPE",
@@ -316,6 +358,9 @@ export const MARKETPLACE_OPERATION_ERROR_CODES = [
   "MARKETPLACE_VERSION_NOT_FOUND",
   "MARKETPLACE_VERSION_TRANSITION_INVALID",
   "MARKETPLACE_PUBLICATION_CONFLICT",
+  "MARKETPLACE_LISTING_NOT_PUBLISHED",
+  "MARKETPLACE_FEATURE_WINDOW_INVALID",
+  "MARKETPLACE_FEATURED_LIMIT_REACHED",
 ] as const;
 
 export type MarketplaceOperationErrorCode = (typeof MARKETPLACE_OPERATION_ERROR_CODES)[number];

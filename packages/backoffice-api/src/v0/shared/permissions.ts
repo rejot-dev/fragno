@@ -73,6 +73,7 @@ export const BACKOFFICE_PERMISSION = {
   marketplace: {
     read: { namespace: "marketplace", permission: "read" },
     publish: { namespace: "marketplace", permission: "publish" },
+    feature: { namespace: "marketplace", permission: "feature" },
   },
   packages: {
     read: { namespace: "packages", permission: "read" },
