@@ -34,6 +34,14 @@ export const revokeExternalIdentityInputSchema = z.strictObject({
   expectedVersion: z.number().int().nonnegative(),
 });
 
+export const listExternalIdentityBindingsInputSchema = z.strictObject({
+  pageSize: z.number().int().positive().max(500),
+  cursor: z.string().min(1).nullable(),
+});
+
+export type ListExternalIdentityBindingsInput = z.infer<
+  typeof listExternalIdentityBindingsInputSchema
+>;
 export type GetExternalIdentityBindingInput = z.infer<typeof getExternalIdentityBindingInputSchema>;
 export type BindExternalIdentityInput = z.infer<typeof bindExternalIdentityInputSchema>;
 export type RevokeExternalIdentityInput = z.infer<typeof revokeExternalIdentityInputSchema>;
@@ -78,6 +86,12 @@ export type BindExternalIdentityResult =
       userId: string;
       version: number;
     };
+
+export type ExternalIdentityBindingPage = {
+  bindings: ExternalIdentityBinding[];
+  /** Continues the listing; null on the last page. */
+  cursor: string | null;
+};
 
 export type ResolveExternalIdentityResult = { userId: string } | null;
 

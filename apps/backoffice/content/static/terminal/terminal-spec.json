@@ -1891,6 +1891,43 @@
     ]
   },
   {
+    "command": "identity.external.list",
+    "summary": "identity.external.list lists external identities bound to users in the current scope.",
+    "options": [
+      {
+        "name": "limit",
+        "valueRequired": true,
+        "valueName": "number",
+        "description": "Page size (1–500; defaults to 100)."
+      },
+      {
+        "name": "cursor",
+        "valueRequired": true,
+        "valueName": "cursor",
+        "description": "Cursor returned by the previous page."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
     "command": "router.list",
     "summary": "router.list lists database-backed automation routes.",
     "options": [

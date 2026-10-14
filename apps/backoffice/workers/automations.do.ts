@@ -20,6 +20,8 @@ import {
 import type { InstanceStatus } from "@fragno-dev/workflows/workflow";
 import { DurableObject, RpcTarget } from "cloudflare:workers";
 
+import { decodeCursor, type Cursor } from "@fragno-dev/db";
+
 import {
   createBackofficeServiceExecution,
   createBackofficeSystemExecution,
@@ -63,10 +65,13 @@ import type {
 import {
   bindExternalIdentityInputSchema,
   getExternalIdentityBindingInputSchema,
+  listExternalIdentityBindingsInputSchema,
   revokeExternalIdentityInputSchema,
   type BindExternalIdentityInput,
   type BindExternalIdentityResult,
+  type ExternalIdentityBindingPage,
   type GetExternalIdentityBindingInput,
+  type ListExternalIdentityBindingsInput,
   type ResolveExternalIdentityResult,
   type RevokeExternalIdentityInput,
   type RevokeExternalIdentityResult,
@@ -157,6 +162,20 @@ const assertAutomationObjectScope = (
     throw new Error("Backoffice object method scope does not match object address scope.");
   }
 };
+
+const MAX_EXTERNAL_IDENTITY_BINDING_PAGE_SIZE = 500;
+
+/**
+ * Cursors come back from callers and carry their own page size. The query rejects cursors from
+ * another index or direction itself; only the size needs bounding here.
+ */
+function decodeExternalIdentityBindingCursor(encoded: string): Cursor {
+  const cursor = decodeCursor(encoded);
+  if (cursor.pageSize > MAX_EXTERNAL_IDENTITY_BINDING_PAGE_SIZE) {
+    throw new Error("Cursor is not valid for external identity bindings.");
+  }
+  return cursor;
+}
 
 type MarketplaceWorkflowOperation = {
   label: "publication" | "ingestion";
@@ -843,6 +862,29 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
     });
   }
 
+  async listExternalIdentityBindings(
+    input: ListExternalIdentityBindingsInput,
+    context: BackofficeActionRpcContext,
+  ): Promise<ExternalIdentityBindingPage> {
+    const parsed = listExternalIdentityBindingsInputSchema.parse(input);
+    const page = parsed.cursor
+      ? { after: decodeExternalIdentityBindingCursor(parsed.cursor) }
+      : { pageSize: parsed.pageSize };
+
+    return await this.#invokeAutomationAction({
+      context,
+      operation: BACKOFFICE_PERMISSION.identity.read,
+      resource: { kind: "external-identity-bindings" },
+      execute: async (runtime) => {
+        const result = await runtime.automationFragment.callServices(
+          () => runtime.automationFragment.services.listExternalIdentityBindings(page),
+          { propagationContext: context.propagationContext },
+        );
+        return { bindings: result.bindings, cursor: result.cursor?.encode() ?? null };
+      },
+    });
+  }
+
   async triggerIngestEvent(
     event: AutomationEvent,
     context?: BackofficeRpcContext,
@@ -1124,6 +1166,13 @@ export class Automations extends DurableObject<CloudflareEnv> implements Automat
     context: BackofficeActionRpcContext,
   ) {
     return await this.#object.resolveExternalIdentity(input, context);
+  }
+
+  async listExternalIdentityBindings(
+    input: ListExternalIdentityBindingsInput,
+    context: BackofficeActionRpcContext,
+  ) {
+    return await this.#object.listExternalIdentityBindings(input, context);
   }
 
   async listEventSources() {

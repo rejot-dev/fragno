@@ -86,7 +86,9 @@ import type {
 import type {
   BindExternalIdentityInput,
   BindExternalIdentityResult,
+  ExternalIdentityBindingPage,
   GetExternalIdentityBindingInput,
+  ListExternalIdentityBindingsInput,
   ResolveExternalIdentityResult,
   RevokeExternalIdentityInput,
   RevokeExternalIdentityResult,
@@ -512,6 +514,10 @@ export type AutomationsObject = {
     input: GetExternalIdentityBindingInput,
     context: BackofficeActionRpcContext,
   ): Promise<ResolveExternalIdentityResult>;
+  listExternalIdentityBindings(
+    input: ListExternalIdentityBindingsInput,
+    context: BackofficeActionRpcContext,
+  ): Promise<ExternalIdentityBindingPage>;
   listEventSources(): Promise<AutomationEventSource[]>;
   getEventSource(input: { source: string }): Promise<AutomationEventSource | null>;
   ensureEventSource(input: AutomationEventSourceInput): Promise<AutomationEventSource>;

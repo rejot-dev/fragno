@@ -1,6 +1,6 @@
 import type { TableToColumnValues } from "@fragno-dev/db/query";
 
-import type { DatabaseServiceContext } from "@fragno-dev/db";
+import type { Cursor, DatabaseServiceContext } from "@fragno-dev/db";
 
 import {
   bindExternalIdentityInputSchema,
@@ -59,6 +59,22 @@ export const createExternalIdentityBindingServices = (
           ),
         )
         .transformRetrieve(([binding]) => (binding ? toExternalIdentityBinding(binding) : null))
+        .build();
+    },
+
+    /** A cursor carries its page size, so later pages keep the size of the first. */
+    listExternalIdentityBindings(page: { pageSize: number } | { after: Cursor }) {
+      return this.serviceTx(automationFragmentSchema)
+        .retrieve((uow) =>
+          uow.findWithCursor("external_identity_binding", (b) => {
+            const query = b.whereIndex("primary").orderByIndex("primary", "asc");
+            return "after" in page ? query.after(page.after) : query.pageSize(page.pageSize);
+          }),
+        )
+        .transformRetrieve(([page]) => ({
+          bindings: page.items.map(toExternalIdentityBinding),
+          cursor: page.hasNextPage ? (page.cursor ?? null) : null,
+        }))
         .build();
     },
 
