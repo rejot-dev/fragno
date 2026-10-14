@@ -28,6 +28,7 @@ import { apiPublicAddress, apiWebhookPublicUrl } from "@/fragno/scoped-public-fr
 
 import { isSuccessStatus, throwOnRouteRuntimeError } from "../../runtime-errors";
 import { resolveRuntimePublicScopePathSegment } from "../../runtime-public-scope";
+import type { IntegrationConnectionState } from "./integration-events";
 import type { IntegrationContext, IntegrationImplementation } from "./integration-implementation";
 
 const webhookIntegrationId = "webhook";
@@ -520,6 +521,11 @@ export function createWebhookIntegration({
           name: resolved?.name ?? localId,
         },
         inspect,
+        // A disabled endpoint keeps its configuration and secret but rejects deliveries, which
+        // inspection alone cannot express; the endpoint hook reports it the same way.
+        async state(): Promise<IntegrationConnectionState> {
+          return (await access.endpoint(localId))?.status === "active" ? "ready" : "unavailable";
+        },
         async actions() {
           return [
             {

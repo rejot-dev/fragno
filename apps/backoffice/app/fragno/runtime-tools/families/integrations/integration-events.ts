@@ -1,3 +1,4 @@
+import type { IntegrationInspection } from "@fragno-dev/backoffice-api/v0/integrations";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
 
@@ -6,7 +7,31 @@ import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 
 const INTEGRATIONS_EVENT_SOURCE = "integrations";
 
-type IntegrationConnectionState = "ready" | "unavailable" | "disconnected";
+/** An existing connection is ready or unavailable; only removal reports disconnected. */
+export type IntegrationConnectionState = "ready" | "unavailable";
+
+/** For sources whose readiness is exactly stored configuration plus authorization. */
+export function connectionStateOfInspection(
+  inspection: IntegrationInspection,
+): IntegrationConnectionState {
+  if (inspection.configuration.status === "missing") {
+    return "unavailable";
+  }
+  // Not-checked comes from sources that keep no authorization state beyond the saved configuration.
+  switch (inspection.authorization.status) {
+    case "available":
+    case "not-required":
+    case "not-checked":
+      return "ready";
+    case "missing":
+    case "expired":
+      return "unavailable";
+    default:
+      throw new Error("Integration authorization status is unsupported.", {
+        cause: inspection.authorization satisfies never,
+      });
+  }
+}
 
 const integrationConnectionSubjectSchema = z.object({
   scope: z.looseObject({ kind: z.string().min(1) }),
@@ -66,7 +91,7 @@ export async function recordIntegrationConnectionState(
     scope: BackofficeContextScope;
     service: string;
     connectionId: string;
-    state: IntegrationConnectionState;
+    state: IntegrationConnectionState | "disconnected";
     occurredAt: Date;
   },
   context: BackofficeRpcContext,

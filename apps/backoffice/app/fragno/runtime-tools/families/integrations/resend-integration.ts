@@ -17,6 +17,7 @@ import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-ser
 
 import { createResendRuntime } from "../resend-runtime";
 import type { IntegrationSetupOperation } from "./integration-contracts";
+import { connectionStateOfInspection } from "./integration-events";
 import type {
   IntegrationActionImplementation,
   IntegrationContext,
@@ -416,6 +417,11 @@ export function createResendIntegration({
         identity: resendConnectionIdentity,
         async inspect() {
           return inspectResendConfiguration(await readConfigured(context));
+        },
+        async state() {
+          return connectionStateOfInspection(
+            inspectResendConfiguration(await readConfigured(context)),
+          );
         },
         async actions() {
           const resend = createResendRuntime({

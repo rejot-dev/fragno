@@ -22,6 +22,7 @@ import {
   throwOnBackofficeRouteAuthorizationError,
   throwOnRouteRuntimeError,
 } from "../../runtime-errors";
+import { connectionStateOfInspection } from "./integration-events";
 import type { IntegrationContext, IntegrationImplementation } from "./integration-implementation";
 
 export const reson8ConnectionId = "backoffice#reson8";
@@ -285,6 +286,11 @@ export function createReson8Integration({
         identity: reson8ConnectionIdentity,
         async inspect() {
           return inspectReson8Configuration((await readConfiguration(context)).configured);
+        },
+        async state() {
+          return connectionStateOfInspection(
+            inspectReson8Configuration((await readConfiguration(context)).configured),
+          );
         },
         async actions() {
           return [

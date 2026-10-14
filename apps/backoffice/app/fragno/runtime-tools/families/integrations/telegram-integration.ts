@@ -13,6 +13,7 @@ import { generateTelegramWebhookSecretToken } from "@/fragno/telegram-webhook-se
 
 import { createTelegramRuntime } from "../telegram-runtime";
 import type { IntegrationSetupOperation } from "./integration-contracts";
+import { connectionStateOfInspection } from "./integration-events";
 import type {
   IntegrationActionImplementation,
   IntegrationContext,
@@ -353,6 +354,11 @@ export function createTelegramIntegration({
         identity: telegramConnectionIdentity,
         async inspect() {
           return inspectTelegramConfiguration(await readConfigured(context));
+        },
+        async state() {
+          return connectionStateOfInspection(
+            inspectTelegramConfiguration(await readConfigured(context)),
+          );
         },
         async actions() {
           const telegram = createTelegramRuntime({

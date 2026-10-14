@@ -19,6 +19,7 @@ import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-ser
 import type { GitHubFragment } from "@/fragno/github";
 
 import { isSuccessStatus, throwOnRouteRuntimeError } from "../../runtime-errors";
+import { connectionStateOfInspection } from "./integration-events";
 import type { IntegrationContext, IntegrationImplementation } from "./integration-implementation";
 
 const GITHUB_CONNECTION_NAMESPACE = "github";
@@ -546,6 +547,7 @@ export function createGitHubIntegration({
       return {
         identity,
         inspect,
+        state: async () => connectionStateOfInspection(await inspect()),
         async actions() {
           return [
             {

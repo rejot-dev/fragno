@@ -210,6 +210,18 @@ export const integrationDisconnectResultSchema = z
 /** Disconnect results never retain a removed connection's configuration. */
 export type IntegrationDisconnectResult = z.output<typeof integrationDisconnectResultSchema>;
 
+export const integrationConnectionEventsBackfillResultSchema = z
+  .strictObject({
+    connections: z.array(
+      z.strictObject({
+        connectionId: integrationConnectionIdSchema,
+        service: integrationIdSchema,
+        state: z.enum(["ready", "unavailable"]),
+      }),
+    ),
+  })
+  .meta({ id: "IntegrationConnectionEventsBackfillResult" });
+
 /** Integration discovery reports service availability in the selected scope, not live health. */
 export const integrationOverviewSchema = z
   .strictObject({
@@ -334,6 +346,13 @@ export const integrationsOperations = {
     permissions: [BACKOFFICE_PERMISSION.integrations.manage],
     input: integrationDisconnectInputSchema,
     output: integrationDisconnectResultSchema,
+  },
+  "integrations.backfillConnectionEvents": {
+    description:
+      "Record every configured connection's current state in the selected scope as an integrations.connection.ready or connection.unavailable event, for connections that existed before those events were recorded. Routes on those events run for each new event. A rerun records a connection again only when its state differs from every earlier backfill of it.",
+    permissions: [BACKOFFICE_PERMISSION.integrations.manage],
+    input: z.void(),
+    output: integrationConnectionEventsBackfillResultSchema,
   },
   "integrations.actions": {
     description:
