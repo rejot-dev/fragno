@@ -1,14 +1,11 @@
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import type { ToolProvider } from "@fragno-dev/codemode/runtime-api";
+import type { McpTool } from "@fragno-dev/mcp-fragment/types";
 import { z } from "zod";
 
 import { BackofficeForbiddenError, isBackofficeForbiddenError } from "@/backoffice-runtime/kernel";
 import { encodeMcpConnectionId } from "@/fragno/runtime-tools/families/integrations/mcp-integration";
-import type {
-  McpListServersOutput,
-  McpRuntime,
-  McpTool,
-} from "@/fragno/runtime-tools/families/mcp-runtime";
+import type { McpListServersOutput, McpRuntime } from "@/fragno/runtime-tools/families/mcp-runtime";
 import { pascalCase, type RuntimeToolReference } from "@/fragno/runtime-tools/reference";
 import { NotConfiguredError } from "@/fragno/runtime-tools/runtime-errors";
 import {
@@ -18,13 +15,18 @@ import {
   type BackofficeRuntimeToolCall,
   type BackofficeToolContext,
 } from "@/fragno/runtime-tools/runtime-tools";
-import { jsonSchemaToTypeScript, type JsonSchemaObject } from "@/lib/zod/zod-formatter";
+import {
+  jsonSchemaToTypeScriptRender,
+  type JsonSchemaObject,
+  type JsonSchemaTypeScriptRender,
+} from "@/lib/zod/zod-formatter";
 
 export type McpCodemodeTool = {
   originalName: string;
   codemodeName: string;
   description: string;
-  inputSchema?: JsonSchemaObject;
+  inputSchema: JsonSchemaObject;
+  outputSchema: JsonSchemaObject | undefined;
 };
 
 export type McpCodemodeServer = {
@@ -118,20 +120,17 @@ const sanitizeMcpCodemodeName = (name: string) => {
 
 const mcpCodemodeProviderNameForSlug = (slug: string) => `mcp_${sanitizeMcpCodemodeName(slug)}`;
 
-const isJsonSchemaObject = (value: unknown): value is JsonSchemaObject =>
-  !!value && typeof value === "object" && !Array.isArray(value);
-
-const readToolDescription = (tool: McpTool, originalName: string) => {
-  const description = typeof tool.description === "string" ? tool.description.trim() : "";
+function readToolDescription(tool: McpTool, originalName: string) {
+  const description = tool.description?.trim() ?? "";
   if (description) {
     return description;
   }
 
-  const title = typeof tool.title === "string" ? tool.title.trim() : "";
+  const title = tool.title?.trim() ?? "";
   return title || `Call MCP tool ${JSON.stringify(originalName)}.`;
-};
+}
 
-export const createMcpCodemodeServers = (servers: readonly McpServerWithCache[]) => {
+export function createMcpCodemodeServers(servers: readonly McpServerWithCache[]) {
   const result: McpCodemodeServer[] = [];
   const usedProviders = new Set<string>();
 
@@ -167,7 +166,8 @@ export const createMcpCodemodeServers = (servers: readonly McpServerWithCache[])
         originalName,
         codemodeName,
         description: readToolDescription(tool, originalName),
-        inputSchema: isJsonSchemaObject(tool.inputSchema) ? tool.inputSchema : undefined,
+        inputSchema: tool.inputSchema as JsonSchemaObject,
+        outputSchema: tool.outputSchema as JsonSchemaObject | undefined,
       });
     }
 
@@ -177,7 +177,7 @@ export const createMcpCodemodeServers = (servers: readonly McpServerWithCache[])
   }
 
   return result;
-};
+}
 
 const inputTypeNameFor = (server: McpCodemodeServer, tool: McpCodemodeTool) =>
   `Mcp${pascalCase(server.slug) || "Server"}${pascalCase(tool.codemodeName)}Input`;
@@ -185,31 +185,63 @@ const inputTypeNameFor = (server: McpCodemodeServer, tool: McpCodemodeTool) =>
 const outputTypeNameFor = (server: McpCodemodeServer, tool: McpCodemodeTool) =>
   `Mcp${pascalCase(server.slug) || "Server"}${pascalCase(tool.codemodeName)}Output`;
 
-export const createMcpCodemodeReferences = (
+function renderMcpSchemaType(
+  schema: JsonSchemaObject,
+  namespace: string,
+): JsonSchemaTypeScriptRender {
+  const rendered = jsonSchemaToTypeScriptRender(schema, { rootTypeName: "Value" });
+  // Remote tools can reuse $defs names; each schema needs its own declaration scope.
+  const body = [...rendered.declarations, `export type Value = ${rendered.type};`]
+    .join("\n")
+    .split("\n")
+    .map((line) => `  ${line}`)
+    .join("\n");
+  return {
+    type: `${namespace}.Value`,
+    declarations: [`declare namespace ${namespace} {\n${body}\n}`],
+  };
+}
+
+export function createMcpCodemodeReferences(
   servers: readonly McpCodemodeServer[],
-): RuntimeToolReference[] =>
-  servers.flatMap((server) =>
-    server.tools.map((tool) => ({
-      id: `mcp.${server.slug}.${tool.originalName}`,
-      namespace: server.providerName,
-      description: tool.description,
-      codemode: {
-        providerName: server.providerName,
-        toolName: tool.codemodeName,
-        description: `${tool.description} Connection ${encodeMcpConnectionId(server.slug)}; tool: ${tool.originalName}.`,
-        inputTypeName: inputTypeNameFor(server, tool),
-        outputTypeName: outputTypeNameFor(server, tool),
-        inputType: jsonSchemaToTypeScript(tool.inputSchema),
-        outputType: "Record<string, unknown>",
-      },
-      bash: {
-        command: "",
-        summary: "",
-        options: [],
-        examples: [],
-      },
-    })),
+): RuntimeToolReference[] {
+  return servers.flatMap((server) =>
+    server.tools.map((tool) => {
+      const inputTypeName = inputTypeNameFor(server, tool);
+      const outputTypeName = outputTypeNameFor(server, tool);
+      const input = renderMcpSchemaType(tool.inputSchema, `${inputTypeName}Schema`);
+      const output =
+        tool.outputSchema === undefined
+          ? null
+          : renderMcpSchemaType(tool.outputSchema, `${outputTypeName}Schema`);
+      return {
+        id: `mcp.${server.slug}.${tool.originalName}`,
+        namespace: server.providerName,
+        description: tool.description,
+        codemode: {
+          providerName: server.providerName,
+          toolName: tool.codemodeName,
+          description: `${tool.description} Connection ${encodeMcpConnectionId(server.slug)}; tool: ${tool.originalName}.`,
+          inputTypeName,
+          outputTypeName,
+          inputType: input.type,
+          inputTypeDeclarations: input.declarations,
+          // MCP outputSchema describes structuredContent, not the entire tool-call result.
+          outputType: output
+            ? `Record<string, unknown> & { structuredContent: ${output.type} }`
+            : "Record<string, unknown>",
+          outputTypeDeclarations: output?.declarations ?? [],
+        },
+        bash: {
+          command: "",
+          summary: "",
+          options: [],
+          examples: [],
+        },
+      };
+    }),
   );
+}
 
 const createMcpCodemodeRuntimeTools = ({
   runtime,

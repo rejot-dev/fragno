@@ -1,11 +1,17 @@
 import { assert, describe, expect, test, vi } from "vitest";
 
 import { mkdtemp, rm } from "node:fs/promises";
+import { createServer } from "node:http";
 import os from "node:os";
 import path from "node:path";
 
+import { createBackofficeApiClient } from "@fragno-dev/backoffice-api/v0/client";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+import * as ts from "typescript";
 import { z } from "zod";
+
+import { toNodeHandler } from "@modelcontextprotocol/node";
+import { createMcpHandler, fromJsonSchema, McpServer } from "@modelcontextprotocol/server";
 
 const workers = vi.hoisted(() => ({
   DurableObject: class {},
@@ -14,6 +20,7 @@ const workers = vi.hoisted(() => ({
 }));
 vi.mock("cloudflare:workers", () => workers);
 
+import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { backofficeExecutionTokenResultSchema } from "@/fragno/auth/execution-token";
@@ -23,6 +30,13 @@ import {
   type BackofficeScenarioContext,
   type BackofficeScenarioStep,
 } from "@/fragno/automation/scenario";
+import { codemodeRunnerFor } from "@/fragno/codemode/codemode-object-execute";
+import { runBackofficeCodemode } from "@/fragno/codemode/execute";
+import { createCodemodeStaticArtifacts } from "@/fragno/codemode/static-codemode-artifacts";
+import type { McpListServersOutput } from "@/fragno/runtime-tools/families/mcp-runtime";
+import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
+import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
+import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 import { action as exchangeAction } from "@/routes/api/backoffice-execution-token";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
@@ -31,7 +45,9 @@ import { InMemoryAppInstallationsObject } from "../../workers/app-installations.
 import { InMemoryAppsObject } from "../../workers/apps.do";
 import { InMemoryAuthObject } from "../../workers/auth.do";
 import { InMemoryAutomationsObject } from "../../workers/automations.do";
+import { InMemoryCodemodeObject } from "../../workers/codemode.do";
 import { InMemoryFormsObject } from "../../workers/forms.do";
+import { InMemoryMcpObject } from "../../workers/mcp.do";
 import { InMemoryOtpObject } from "../../workers/otp.do";
 import { InMemoryUploadObject } from "../../workers/upload.do";
 import { backofficeApiRouter } from "./backoffice-api-router";
@@ -42,7 +58,9 @@ const scenarioObjects = {
   APP_INSTALLATIONS: (input) => new InMemoryAppInstallationsObject(input),
   AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
   AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  CODEMODE: (input) => new InMemoryCodemodeObject(input),
   FORMS: (input) => new InMemoryFormsObject(input),
+  MCP: (input) => new InMemoryMcpObject(input),
   OTP: (input) => new InMemoryOtpObject(input),
   UPLOAD: (input) => new InMemoryUploadObject(input),
 } satisfies LocalBackofficeObjects;
@@ -289,6 +307,253 @@ async function runApiScenario(
 }
 
 describe("Backoffice API v0 SQLite scenarios", () => {
+  test("MCP metadata survives refresh and listing, and Codemode types match tool results", async () => {
+    const tools: {
+      name: string;
+      outputSchema: Record<string, unknown> | undefined;
+      value: unknown;
+    }[] = [
+      {
+        name: "object",
+        outputSchema: {
+          $ref: "#/$defs/Entry",
+          $defs: {
+            Entry: {
+              type: "object",
+              properties: { value: { type: "string" } },
+              required: ["value"],
+            },
+          },
+        },
+        value: { value: "hello" },
+      },
+      {
+        name: "array",
+        outputSchema: {
+          type: "array",
+          items: { $ref: "#/$defs/Entry" },
+          $defs: { Entry: { type: "number" } },
+        },
+        value: [1, 2],
+      },
+      { name: "flag", outputSchema: { type: "boolean" }, value: false },
+      { name: "nil", outputSchema: { type: "null" }, value: null },
+      {
+        name: "tree",
+        outputSchema: {
+          type: "object",
+          properties: {
+            value: { type: "string" },
+            next: { anyOf: [{ $ref: "#" }, { type: "null" }] },
+          },
+          required: ["value", "next"],
+        },
+        value: { value: "root", next: null },
+      },
+      { name: "untyped", outputSchema: undefined, value: "text-only" },
+    ];
+    const icons = [
+      {
+        src: "https://example.test/tool.svg",
+        mimeType: "image/svg+xml",
+        sizes: ["48x48"],
+        theme: "dark" as const,
+      },
+    ];
+    const handler = createMcpHandler(
+      () => {
+        const server = new McpServer({ name: "metadata-tools", version: "1.0.0" });
+        for (const tool of tools) {
+          server.registerTool(
+            tool.name,
+            {
+              inputSchema: z.object({}),
+              ...(tool.outputSchema === undefined
+                ? {}
+                : { outputSchema: fromJsonSchema(tool.outputSchema) }),
+              icons,
+              annotations: { readOnlyHint: true },
+              _meta: { "example.test/category": "metadata" },
+            },
+            async () => ({
+              content: [{ type: "text", text: JSON.stringify(tool.value) }],
+              ...(tool.outputSchema === undefined ? {} : { structuredContent: tool.value }),
+            }),
+          );
+        }
+        return server;
+      },
+      { legacy: "reject" },
+    );
+    const handleRequest = toNodeHandler(handler);
+    const http = createServer((request, response) => {
+      void handleRequest(request, response);
+    });
+    await new Promise<void>((resolve) => http.listen(0, "127.0.0.1", resolve));
+    const address = http.address();
+    assert(address && typeof address !== "string");
+    const endpointUrl = `http://127.0.0.1:${address.port}/mcp`;
+
+    function clientFor(ctx: Ctx) {
+      return createBackofficeApiClient({
+        origin,
+        accessToken: ctx.vars.ownerCredential,
+        fetch: async (url, init) =>
+          await backofficeApiRouter.fetch(new Request(url, init), {
+            runtime: ctx.runtime.services,
+            kernel: new BackofficeKernel(ctx.runtime.services),
+          }),
+      });
+    }
+
+    try {
+      await runApiScenario("MCP metadata through the public API and generated Codemode", (then) => [
+        then("connect and verify a real MCP server through the public client", async (ctx) => {
+          const client = clientFor(ctx);
+          const scope = { kind: "org" as const, orgId: ctx.vars.orgId };
+          const target = { connectionId: "mcp#metadata" };
+          const setup = await client.call(scope, "integrations.setup", {
+            ...target,
+            kind: "input",
+            input: { type: "none", name: "Metadata", endpointUrl },
+          });
+          expect(setup).toMatchObject({ status: "ready" });
+          const verified = await client.call(scope, "integrations.verify", target);
+          expect(verified).toMatchObject({ checks: [{ id: "tools.list", status: "passed" }] });
+          const actions = await client.call(scope, "integrations.actions", target);
+          expect(actions.map(({ id }) => id)).toEqual(tools.map(({ name }) => name));
+        }),
+        then("cached metadata survives, and calls return every structured content", async (ctx) => {
+          const execution = createBackofficeSystemExecution({ kind: "org", orgId: ctx.vars.orgId });
+          const listed = await ctx.runtime.objects.mcp
+            .for(execution.scope)
+            .http.fetchAuthorized(new Request("https://mcp.do/api/mcp/servers"), { execution });
+          assert(listed.ok, await listed.clone().text());
+          const { servers } = (await listed.json()) as McpListServersOutput;
+          const cached = servers.find(({ slug }) => slug === "metadata")?.cache?.tools;
+          assert(cached);
+          expect(cached).toHaveLength(tools.length);
+          const client = clientFor(ctx);
+          const scope = { kind: "org" as const, orgId: ctx.vars.orgId };
+          for (const tool of tools) {
+            const advertised = cached.find(({ name }) => name === tool.name);
+            expect(advertised).toMatchObject({
+              icons,
+              annotations: { readOnlyHint: true },
+              _meta: { "example.test/category": "metadata" },
+            });
+            expect(advertised?.outputSchema).toEqual(tool.outputSchema);
+            const called = await client.call(scope, "integrations.execute", {
+              connectionId: "mcp#metadata",
+              actionId: tool.name,
+              input: {},
+            });
+            expect(called).toEqual({
+              isError: false,
+              content: [{ type: "text", text: JSON.stringify(tool.value) }],
+              structuredContent: tool.outputSchema === undefined ? null : tool.value,
+            });
+          }
+        }),
+        then(
+          "generated declarations type the structured content and isolate schema references",
+          async (ctx) => {
+            const generated = await createCodemodeStaticArtifacts({
+              objects: ctx.runtime.objects,
+              execution: createBackofficeSystemExecution({ kind: "org", orgId: ctx.vars.orgId }),
+            });
+            const declarations = generated.artifacts["codemode/sources/mcp.d.ts"];
+            assert(declarations);
+            const files = new Map([
+              ["/mcp.d.ts", declarations],
+              [
+                "/check.ts",
+                `async function check() {
+              const object = await mcp_metadata.object({});
+              const value: string = object.structuredContent.value;
+              const array: number[] = (await mcp_metadata.array({})).structuredContent;
+              const flag: boolean = (await mcp_metadata.flag({})).structuredContent;
+              const nil: null = (await mcp_metadata.nil({})).structuredContent;
+              const tree = (await mcp_metadata.tree({})).structuredContent;
+              const nested: string = tree.next?.value ?? tree.value;
+              // @ts-expect-error The object schema's Entry must not collide with the array's Entry.
+              const wrong: number = object.structuredContent.value;
+              // @ts-expect-error outputSchema describes structuredContent, not the whole result.
+              const unwrapped: string = object.value;
+              const untyped = await mcp_metadata.untyped({});
+              // @ts-expect-error Tools without outputSchema retain unknown result fields.
+              const invented: string = untyped.structuredContent;
+            }`,
+              ],
+            ]);
+            const options: ts.CompilerOptions = {
+              noEmit: true,
+              strict: true,
+              target: ts.ScriptTarget.ESNext,
+              types: [],
+            };
+            const host = ts.createCompilerHost(options);
+            const program = ts.createProgram([...files.keys()], options, {
+              ...host,
+              getSourceFile: (name, languageVersion, onError) => {
+                const source = files.get(name);
+                return source === undefined
+                  ? host.getSourceFile(name, languageVersion, onError)
+                  : ts.createSourceFile(name, source, languageVersion);
+              },
+            });
+            expect(
+              ts
+                .getPreEmitDiagnostics(program)
+                .map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n")),
+            ).toEqual([]);
+          },
+        ),
+        then("generated providers return the same result envelopes at runtime", async (ctx) => {
+          const execution = createBackofficeSystemExecution({ kind: "org", orgId: ctx.vars.orgId });
+          const toolContext = createBackofficeToolContext(
+            createCodemodeRouteBackedRuntimeContext({
+              runtime: ctx.runtime.services,
+              kernel: new BackofficeKernel(ctx.runtime.services),
+              execution,
+              billingOrganizationId: null,
+            }),
+          );
+          const result = await runBackofficeCodemode({
+            codemode: codemodeRunnerFor(
+              ctx.runtime.objects.codemode.for(execution.scope).commands,
+              execution,
+            ),
+            toolContext,
+            families: runtimeToolFamilies,
+            code: `async () => ({
+              object: (await mcp_metadata.object({})).structuredContent,
+              array: (await mcp_metadata.array({})).structuredContent,
+              flag: (await mcp_metadata.flag({})).structuredContent,
+              nil: (await mcp_metadata.nil({})).structuredContent,
+              tree: (await mcp_metadata.tree({})).structuredContent,
+              untyped: (await mcp_metadata.untyped({})).content,
+            })`,
+          });
+          expect(result.error).toBeUndefined();
+          expect(result.result).toEqual({
+            object: { value: "hello" },
+            array: [1, 2],
+            flag: false,
+            nil: null,
+            tree: { value: "root", next: null },
+            untyped: [{ type: "text", text: JSON.stringify("text-only") }],
+          });
+        }),
+      ]);
+    } finally {
+      await handler.close();
+      await new Promise<void>((resolve, reject) =>
+        http.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
+  }, 30_000);
+
   test("owners manage and members read their organization with user credentials", async () => {
     await runApiScenario("organization operations through the v0 API", (then) => [
       then("the served OpenAPI document describes the organization operations", async (ctx) => {

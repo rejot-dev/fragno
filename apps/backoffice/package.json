@@ -121,6 +121,8 @@
     "@fragno-apps/cf-sandbox-bridge": "workspace:*",
     "@fragno-dev/test": "workspace:*",
     "@fragno-private/vitest-config": "workspace:*",
+    "@modelcontextprotocol/node": "2.1.1",
+    "@modelcontextprotocol/server": "2.3.1",
     "@react-router/dev": "^8.2.0",
     "@tailwindcss/vite": "^4.2.1",
     "@testing-library/react": "^16.3.2",

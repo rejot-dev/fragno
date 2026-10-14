@@ -444,6 +444,12 @@ importers:
       '@fragno-private/vitest-config':
         specifier: workspace:*
         version: link:../../packages-private/vitest-config
+      '@modelcontextprotocol/node':
+        specifier: 2.1.1
+        version: 2.1.1(@modelcontextprotocol/server@2.3.1)
+      '@modelcontextprotocol/server':
+        specifier: 2.3.1
+        version: 2.3.1
       '@react-router/dev':
         specifier: ^8.2.0
         version: 8.2.0(@typescript/typescript6@6.0.2)(react-router@8.2.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0))(wrangler@4.147.0(@cloudflare/workers-types@5.20261001.1)(@types/node@24.13.1))
@@ -6432,6 +6438,12 @@ packages:
   '@modelcontextprotocol/core@2.3.1':
     resolution: {integrity: sha512-laVmIhPGpWi7rG9q+0UigblRN0Hws/Yjlb6qLFtVqryXVLkc4h+yN8z731POD2LnAGQlFe7/tXhUm7Bi0YB91g==}
     engines: {node: '>=20'}
+
+  '@modelcontextprotocol/node@2.1.1':
+    resolution: {integrity: sha512-EY92OAXN2xYL7tNS/MVsWJW1v8VHAPwl9B4Ca3pCrjmvqyC+S1C/6UHsMxF2GoFPraS5Yyg56vFz9brVpFojMA==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      '@modelcontextprotocol/server': ^2.3.0
 
   '@modelcontextprotocol/server@2.3.1':
     resolution: {integrity: sha512-e59MfWuSssj6DoQ96JCTqdW1AXT5/XtnTl0WWd6MU1Ka434fFUGGosCLJbGNySDhHGvxQWoRWK137FXYFkYNWw==}
@@ -23245,6 +23257,12 @@ snapshots:
   '@modelcontextprotocol/core@2.3.1':
     dependencies:
       zod: 4.5.4
+
+  '@modelcontextprotocol/node@2.1.1(@modelcontextprotocol/server@2.3.1)':
+    dependencies:
+      '@hono/node-server': 1.19.14(hono@4.13.0)
+      '@modelcontextprotocol/server': 2.3.1
+      hono: 4.13.0
 
   '@modelcontextprotocol/server@2.3.1':
     dependencies:

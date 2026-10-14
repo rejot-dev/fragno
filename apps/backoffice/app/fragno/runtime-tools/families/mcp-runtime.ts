@@ -1,5 +1,5 @@
 import { createRouteCaller } from "@fragno-dev/core/api";
-import type { ToolCallInput } from "@fragno-dev/mcp-fragment/types";
+import type { McpTool, ToolCallInput } from "@fragno-dev/mcp-fragment/types";
 
 import type { FetchObject } from "@/backoffice-runtime/object-registry";
 import type { McpFragment } from "@/fragno/mcp";
@@ -9,13 +9,6 @@ import {
   isSuccessStatus,
   throwOnRouteRuntimeError,
 } from "../runtime-errors";
-
-export type McpTool = {
-  name: string;
-  title?: string;
-  description?: string;
-  inputSchema?: Record<string, unknown>;
-};
 
 export type McpListServersOutput = {
   servers: { slug: string; cache?: { tools?: McpTool[] | null } | null }[];
