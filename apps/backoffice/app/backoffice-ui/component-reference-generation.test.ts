@@ -22,6 +22,7 @@ describe("Backoffice UI component reference generation", () => {
       "Heading",
       "Text",
       "Code",
+      "Image",
       "Callout",
       "Metric",
       "Badge",

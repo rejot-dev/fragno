@@ -120,6 +120,12 @@ __BACKOFFICE_CODEMODE_DTS__;
   must return JSON-serializable values.
 - Use `state.glob` and `state.readFile` inside codemode for filesystem discovery.
 
+## Showing images
+
+To show an image, use Markdown image with its absolute path:
+`![Dashboard preview](/workspace/screenshots/dashboard.png)`. Persist the image in the workspace
+before referencing it. Percent-encode spaces, `%`, `#`, and `?` in Markdown paths.
+
 ## Events
 
 Backoffice is event-driven. Use the `events` provider to inspect the event catalog.

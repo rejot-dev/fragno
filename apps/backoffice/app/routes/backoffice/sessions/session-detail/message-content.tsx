@@ -1,4 +1,24 @@
+import { ImagePreview } from "@fragno-private/design-system/image-preview";
+import type { ComponentProps } from "react";
 import { Streamdown } from "streamdown";
+
+import { FileImage } from "@/components/backoffice/file-image";
+
+const markdownComponents = { img: MarkdownImage };
+
+function MarkdownImage({ src, alt = "" }: ComponentProps<"img">) {
+  // Markdown destinations are URI-encoded; collection keys are literal file paths.
+  if (typeof src === "string" && /^\/(?:workspace|static|system)\//.test(src)) {
+    let path: string;
+    try {
+      path = decodeURIComponent(src);
+    } catch {
+      return <ImagePreview src={null} alt={alt} />;
+    }
+    return <FileImage path={path} alt={alt} />;
+  }
+  return <ImagePreview src={typeof src === "string" && src ? src : null} alt={alt} />;
+}
 
 export function MarkdownText({ text, className = "" }: { text: string; className?: string }) {
   return (
@@ -6,6 +26,7 @@ export function MarkdownText({ text, className = "" }: { text: string; className
       mode="streaming"
       className={`bo-session-markdown text-pretty ${className}`}
       controls={{ code: true, table: true }}
+      components={markdownComponents}
       skipHtml
     >
       {text}
@@ -14,13 +35,7 @@ export function MarkdownText({ text, className = "" }: { text: string; className
 }
 
 export function MessageImage({ image }: { image: string }) {
-  return (
-    <img
-      src={image}
-      alt="Message attachment"
-      className="max-h-96 max-w-full object-contain outline -outline-offset-1 outline-black/10 dark:outline-white/10"
-    />
-  );
+  return <ImagePreview src={image} alt="Message attachment" />;
 }
 
 export function ScrollablePre({

@@ -107,6 +107,7 @@ export default [
       ]),
       route("files", "routes/backoffice/files/index.tsx"),
       route("files/:scopeKind/:scopeId/download", "routes/backoffice/files/download.ts"),
+      route("files/:scopeKind/:scopeId/preview", "routes/backoffice/files/preview.ts"),
       route("files/:scopeKind/:scopeId", "routes/backoffice/files/scope-layout.tsx", [
         index("routes/backoffice/files/explorer.tsx"),
         route("*", "routes/backoffice/files/explorer-path.tsx"),

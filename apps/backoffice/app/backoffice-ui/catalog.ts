@@ -10,6 +10,7 @@ import { dividerDefinition } from "./components/divider";
 import { fileUploadDefinition } from "./components/file-upload";
 import { gridDefinition } from "./components/grid";
 import { headingDefinition } from "./components/heading";
+import { imageDefinition } from "./components/image";
 import { keyValueDefinition } from "./components/key-value";
 import { listDefinition } from "./components/list";
 import { metricDefinition } from "./components/metric";
@@ -31,6 +32,7 @@ export const backofficeUiComponentDefinitions = {
   Heading: headingDefinition,
   Text: textDefinition,
   Code: codeDefinition,
+  Image: imageDefinition,
   Callout: calloutDefinition,
   Metric: metricDefinition,
   Badge: badgeDefinition,
