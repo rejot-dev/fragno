@@ -229,6 +229,7 @@ function createConfigureReson8Run(
     waitingEventTypes: phase === "waiting" || phase === "submitted" ? ["reson8-credentials"] : [],
     workflowEvents: [],
     stepStatesByNodeId,
+    stepExecutionsByNodeId: new Map(),
     unmappedRuntimeSteps: [],
     hasUnmappedCurrentStep: false,
   };

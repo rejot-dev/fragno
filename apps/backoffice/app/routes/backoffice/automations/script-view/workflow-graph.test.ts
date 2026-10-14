@@ -39,6 +39,7 @@ const run: ScriptWorkflowRun = {
   workflowEvents: [],
   unmappedRuntimeSteps: [],
   hasUnmappedCurrentStep: false,
+  stepExecutionsByNodeId: new Map(),
   stepStatesByNodeId: new Map([
     [
       ordinaryStep.id,
@@ -148,6 +149,7 @@ describe("ScriptWorkflowGraph generated UI presentation", () => {
           ...run,
           workflowName: "direct-ui-return",
           output,
+          stepExecutionsByNodeId: new Map(),
           stepStatesByNodeId: new Map<string, WorkflowStepRunState>([
             [
               outputStep.id,
@@ -190,6 +192,7 @@ describe("ScriptWorkflowGraph generated UI presentation", () => {
           ...run,
           workflowName: "transformed-ui-return",
           output: generatedUiResult("Final result", "Transformed"),
+          stepExecutionsByNodeId: new Map(),
           stepStatesByNodeId: new Map<string, WorkflowStepRunState>([
             [
               sourceStep.id,
@@ -310,6 +313,7 @@ describe("ScriptWorkflowGraph generated UI presentation", () => {
         },
       ],
       hasUnmappedCurrentStep: true,
+      stepExecutionsByNodeId: new Map(),
       stepStatesByNodeId: new Map(),
     };
     const markup = renderToStaticMarkup(
@@ -354,6 +358,7 @@ describe("ScriptWorkflowGraph generated UI presentation", () => {
       status: "waiting",
       output: null,
       waitingEventTypes: ["question-answer"],
+      stepExecutionsByNodeId: new Map(),
       stepStatesByNodeId: new Map([
         [
           askStep.id,

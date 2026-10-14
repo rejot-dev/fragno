@@ -187,7 +187,11 @@ describe("automation script workflow run presentation", () => {
     const matching = workflowRun({ instanceId: "matching", status: "waiting" });
     const wrongPath = workflowRun({
       instanceId: "wrong-path",
-      workflowScriptPath: "/workspace/automations/other.workflow.js",
+      codemode: {
+        filename: "/workspace/automations/other.workflow.js",
+        code: "",
+        trigger: { type: "manual" },
+      },
     });
     const wrongWorkflow = workflowRun({
       instanceId: "wrong-workflow",
@@ -1370,12 +1374,14 @@ function workflowRun(overrides: Partial<AutomationWorkflowRun> = {}): Automation
     workflowName: "codemode-script",
     remoteWorkflowName: "demo",
     status: "active",
-    workflowScriptPath: absolutePath,
+    codemode: { filename: absolutePath, code: "", trigger: { type: "manual" } },
     output: null,
     errorName: null,
     errorMessage: null,
     createdAt: "2026-07-24T09:00:00.000Z",
     updatedAt: "2026-07-24T10:00:00.000Z",
+    startedAt: "2026-07-24T09:00:00.000Z",
+    completedAt: null,
     workflowSteps: [],
     workflowEvents: [],
     workflowStepEmissions: [],
@@ -1395,6 +1401,7 @@ function workflowStep(
     status: "completed",
     committedByExecutionId: "execution-1",
     attempts: 1,
+    maxAttempts: 1,
     waitEventType: null,
     result: null,
     errorName: null,

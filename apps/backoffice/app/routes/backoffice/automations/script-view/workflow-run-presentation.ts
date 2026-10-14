@@ -1,8 +1,10 @@
 import {
+  isWorkflowStepStartedControlPayload,
   projectWorkflowStepExecutionActivity,
   selectCanonicalWorkflowStepEmissions,
 } from "@fragno-dev/workflows/step-emission-control";
 import { parseStepKey, ROOT_STEP_SCOPE } from "@fragno-dev/workflows/step-identity";
+import type { WorkflowInstanceStatus } from "@fragno-dev/workflows/workflow";
 
 import type {
   StepNode,
@@ -25,6 +27,7 @@ export type WorkflowRunStep = {
   status: PersistedWorkflowStepStatus;
   committedByExecutionId: string;
   attempts: number;
+  maxAttempts: number;
   waitEventType: string | null;
   result: unknown;
   errorName: string | null;
@@ -54,18 +57,35 @@ export type WorkflowRunEmission = {
   createdAt: WorkflowRunTimestamp;
 };
 
+/** What started a Codemode run: an automation event, or a manual start with a payload. */
+export type CodemodeWorkflowRunTrigger =
+  | { type: "event"; source: string; eventType: string }
+  | { type: "manual" };
+
+/** The exact program a Codemode run executes, which may differ from the file's current source. */
+export type CodemodeWorkflowRunProgram = {
+  filename: string;
+  code: string;
+  trigger: CodemodeWorkflowRunTrigger;
+};
+
 export type AutomationWorkflowRun = {
   id: string;
   instanceId: string;
   workflowName: string;
   remoteWorkflowName: string | null;
-  status: string;
-  workflowScriptPath: string | null;
+  status: WorkflowInstanceStatus;
+  /** `null` for workflows that are not Codemode scripts, such as Backoffice's own workflows. */
+  codemode: CodemodeWorkflowRunProgram | null;
   output: unknown;
   errorName: string | null;
   errorMessage: string | null;
   createdAt: WorkflowRunTimestamp;
   updatedAt: WorkflowRunTimestamp;
+  /** Stamped when the first tick commits, not when execution begins. */
+  startedAt: WorkflowRunTimestamp | null;
+  /** Set by every terminal transition. */
+  completedAt: WorkflowRunTimestamp | null;
   workflowSteps: readonly WorkflowRunStep[];
   workflowEvents: readonly WorkflowRunEvent[];
   workflowStepEmissions: readonly WorkflowRunEmission[];
@@ -81,6 +101,16 @@ export type WorkflowStepRunState = {
   waitEventType?: string;
   emissionCount: number;
   current: boolean;
+};
+
+/**
+ * When a step's executions ran, in epoch milliseconds. Steps that repeat (loop bodies) span from
+ * their first execution to their latest one; `endedAt` is `null` while any execution is open.
+ */
+export type WorkflowStepRunExecution = {
+  startedAt: number;
+  endedAt: number | null;
+  maxAttempts: number;
 };
 
 export type WorkflowRunReference = {
@@ -109,6 +139,7 @@ export type ScriptWorkflowRun = {
   waitingEventTypes: readonly string[];
   workflowEvents: readonly WorkflowRunEvent[];
   stepStatesByNodeId: Map<string, WorkflowStepRunState>;
+  stepExecutionsByNodeId: ReadonlyMap<string, WorkflowStepRunExecution>;
   unmappedRuntimeSteps: readonly UnmappedWorkflowRuntimeStep[];
   hasUnmappedCurrentStep: boolean;
 };
@@ -133,7 +164,7 @@ export function projectScriptWorkflowRuns({
         !workflowName ||
         !ACTIVE_WORKFLOW_STATUSES.has(instance.status) ||
         !workflowNames.has(workflowName) ||
-        instance.workflowScriptPath !== absolutePath
+        instance.codemode?.filename !== absolutePath
       ) {
         return [];
       }
@@ -143,7 +174,7 @@ export function projectScriptWorkflowRuns({
     })
     .sort(
       (left, right) =>
-        timestamp(right.updatedAt) - timestamp(left.updatedAt) ||
+        workflowRunTime(right.updatedAt) - workflowRunTime(left.updatedAt) ||
         right.instanceId.localeCompare(left.instanceId),
     );
 }
@@ -168,6 +199,7 @@ export function projectWorkflowRun({
     workflowName,
     steps: instance.workflowSteps,
     emissions: instance.workflowStepEmissions,
+    createdAt: workflowRunTime(instance.createdAt),
   });
 
   return {
@@ -182,6 +214,7 @@ export function projectWorkflowRun({
     workflowEvents: instance.workflowEvents,
     waitingEventTypes: currentWorkflowWaitingEventTypes(instance.workflowSteps),
     stepStatesByNodeId: stepProjection.stepStatesByNodeId,
+    stepExecutionsByNodeId: stepProjection.stepExecutionsByNodeId,
     unmappedRuntimeSteps: stepProjection.unmappedRuntimeSteps,
     hasUnmappedCurrentStep: stepProjection.unmappedRuntimeSteps.some((step) => step.current),
   };
@@ -220,13 +253,16 @@ function projectWorkflowStepStates({
   workflowName,
   steps,
   emissions,
+  createdAt,
 }: {
   visualization: WorkflowVisualizationSnapshot;
   workflowName: string;
   steps: readonly WorkflowRunStep[];
   emissions: readonly WorkflowRunEmission[];
+  createdAt: number;
 }): {
   stepStatesByNodeId: Map<string, WorkflowStepRunState>;
+  stepExecutionsByNodeId: Map<string, WorkflowStepRunExecution>;
   unmappedRuntimeSteps: UnmappedWorkflowRuntimeStep[];
 } {
   const resolveStepNodeId = createWorkflowStepNodeResolver(
@@ -236,8 +272,11 @@ function projectWorkflowStepStates({
   const stepStatesByNodeId = new Map<string, WorkflowStepRunState>();
   const unmappedRuntimeStepsByKey = new Map<string, UnmappedWorkflowRuntimeStep>();
 
+  const stepExecutionsByNodeId = new Map<string, WorkflowStepRunExecution>();
+
   const orderedSteps = [...steps].sort(compareWorkflowEvents);
   const stepsByKey = new Map(orderedSteps.map((step) => [step.stepKey, step]));
+  const stepStarts = inferWorkflowStepStarts(orderedSteps, createdAt);
   for (const step of orderedSteps) {
     const nodeId = resolveStepNodeId(step.stepKey);
     if (!nodeId) {
@@ -254,6 +293,13 @@ function projectWorkflowStepStates({
     }
 
     nodeIdByStepKey.set(step.stepKey, nodeId);
+    recordStepExecution(stepExecutionsByNodeId, nodeId, {
+      startedAt: stepStarts.get(step.id) ?? createdAt,
+      endedAt: TERMINAL_WORKFLOW_STEP_STATUSES.has(step.status)
+        ? workflowRunTime(step.updatedAt)
+        : null,
+      maxAttempts: step.maxAttempts,
+    });
     const error = workflowStepError(step);
     stepStatesByNodeId.set(nodeId, {
       stepRecordId: step.id,
@@ -272,6 +318,16 @@ function projectWorkflowStepStates({
   }
 
   const canonicalEmissions = selectCanonicalWorkflowStepEmissions({ steps, emissions });
+  const startedAtByStepKey = new Map<string, number>();
+  for (const emission of canonicalEmissions) {
+    if (emission.actor === "system" && isWorkflowStepStartedControlPayload(emission.payload)) {
+      const startedAt = workflowRunTime(emission.createdAt);
+      startedAtByStepKey.set(
+        emission.stepKey,
+        Math.min(startedAt, startedAtByStepKey.get(emission.stepKey) ?? startedAt),
+      );
+    }
+  }
   const activityByNodeId = new Map<string, { active: boolean; userEmissionCount: number }>();
   for (const activity of projectWorkflowStepExecutionActivity(canonicalEmissions)) {
     const nodeId = nodeIdByStepKey.get(activity.stepKey) ?? resolveStepNodeId(activity.stepKey);
@@ -294,8 +350,16 @@ function projectWorkflowStepStates({
       active: false,
       userEmissionCount: 0,
     };
-    nodeActivity.active ||=
+    const running =
       activity.active && !hasTerminalWorkflowStepAncestor(activity.stepKey, stepsByKey);
+    nodeActivity.active ||= running;
+    if (running) {
+      recordStepExecution(stepExecutionsByNodeId, nodeId, {
+        startedAt: startedAtByStepKey.get(activity.stepKey) ?? createdAt,
+        endedAt: null,
+        maxAttempts: stepsByKey.get(activity.stepKey)?.maxAttempts ?? 1,
+      });
+    }
     nodeActivity.userEmissionCount += activity.userEmissionCount;
     activityByNodeId.set(nodeId, nodeActivity);
   }
@@ -324,8 +388,89 @@ function projectWorkflowStepStates({
 
   return {
     stepStatesByNodeId,
+    stepExecutionsByNodeId,
     unmappedRuntimeSteps: [...unmappedRuntimeStepsByKey.values()],
   };
+}
+
+function recordStepExecution(
+  executionsByNodeId: Map<string, WorkflowStepRunExecution>,
+  nodeId: string,
+  execution: WorkflowStepRunExecution,
+) {
+  const existing = executionsByNodeId.get(nodeId);
+  executionsByNodeId.set(
+    nodeId,
+    existing
+      ? {
+          startedAt: Math.min(existing.startedAt, execution.startedAt),
+          endedAt:
+            existing.endedAt === null || execution.endedAt === null
+              ? null
+              : Math.max(existing.endedAt, execution.endedAt),
+          maxAttempts: execution.maxAttempts,
+        }
+      : execution,
+  );
+}
+
+/**
+ * Infers when each recorded step started, keyed by step record id. Waits are written when they
+ * begin. A `do` step is only written when it commits, so it is assumed to have started at the
+ * latest commit before it, or when the run was created. Steps that run concurrently therefore
+ * appear shorter than they were.
+ */
+export function inferWorkflowStepStarts(
+  steps: readonly Pick<
+    WorkflowRunStep,
+    "id" | "stepKey" | "parentStepKey" | "type" | "status" | "createdAt" | "updatedAt"
+  >[],
+  createdAt: number,
+): Map<string, number> {
+  const stepsByKey = new Map(steps.map((step) => [step.stepKey, step]));
+  const commits = steps.flatMap((step) =>
+    TERMINAL_WORKFLOW_STEP_STATUSES.has(step.status)
+      ? [{ stepKey: step.stepKey, at: workflowRunTime(step.updatedAt) }]
+      : [],
+  );
+  const starts = new Map<string, number>();
+  for (const step of steps) {
+    const writtenAt = workflowRunTime(step.createdAt);
+    if (step.type !== "do") {
+      starts.set(step.id, writtenAt);
+      continue;
+    }
+    // Nested steps commit before their parent, so they cannot mark when the parent started.
+    const previousCommit = commits.reduce(
+      (latest, commit) =>
+        commit.stepKey !== step.stepKey &&
+        commit.at <= writtenAt &&
+        commit.at > latest &&
+        !isWorkflowStepDescendant(commit.stepKey, step.stepKey, stepsByKey)
+          ? commit.at
+          : latest,
+      createdAt,
+    );
+    starts.set(step.id, Math.min(previousCommit, writtenAt));
+  }
+  return starts;
+}
+
+function isWorkflowStepDescendant(
+  stepKey: string,
+  ancestorKey: string,
+  stepsByKey: ReadonlyMap<string, Pick<WorkflowRunStep, "parentStepKey">>,
+): boolean {
+  let parentStepKey = stepsByKey.get(stepKey)?.parentStepKey ?? null;
+  const visitedStepKeys = new Set<string>();
+  while (parentStepKey && !visitedStepKeys.has(parentStepKey)) {
+    if (parentStepKey === ancestorKey) {
+      return true;
+    }
+    visitedStepKeys.add(parentStepKey);
+    parentStepKey = stepsByKey.get(parentStepKey)?.parentStepKey ?? null;
+  }
+  return false;
 }
 
 const TERMINAL_WORKFLOW_STEP_STATUSES = new Set<PersistedWorkflowStepStatus>([
@@ -652,10 +797,14 @@ function compareWorkflowEvents(
   left: { id: string; createdAt: WorkflowRunTimestamp },
   right: { id: string; createdAt: WorkflowRunTimestamp },
 ): number {
-  return timestamp(left.createdAt) - timestamp(right.createdAt) || left.id.localeCompare(right.id);
+  return (
+    workflowRunTime(left.createdAt) - workflowRunTime(right.createdAt) ||
+    left.id.localeCompare(right.id)
+  );
 }
 
-function timestamp(value: WorkflowRunTimestamp): number {
+/** Epoch milliseconds of a synchronized workflow timestamp. */
+export function workflowRunTime(value: WorkflowRunTimestamp): number {
   const date = value instanceof Date ? value : new Date(value);
   const valueOf = date.valueOf();
   if (!Number.isFinite(valueOf)) {
