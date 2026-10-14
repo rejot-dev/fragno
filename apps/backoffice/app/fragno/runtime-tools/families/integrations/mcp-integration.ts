@@ -711,7 +711,10 @@ export function createMcpIntegration({
                     : ""
                 } Tool errors return isError: true with an explanation in content.`.trim(),
                 inputSchema: tool.inputSchema,
-                outputSchema: z.toJSONSchema(mcpToolCallResultSchema, { io: "output" }),
+                // The fragment pins its own zod version, so convert through Standard JSON Schema.
+                outputSchema: mcpToolCallResultSchema["~standard"].jsonSchema.output({
+                  target: "draft-2020-12",
+                }),
               },
               async invoke(value) {
                 const args = z.record(z.string(), jsonValueSchema).parse(value);

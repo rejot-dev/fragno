@@ -7,6 +7,21 @@ auth state in the fragment database, then connects to MCP servers per operation 
 call a tool. It supports MCP **tools** only; prompts, resources, roots, sampling, and elicitation
 are out of scope for this package.
 
+## Protocol support
+
+The fragment supports MCP **2026-07-28** using the official TypeScript SDK v2 client. Each operation
+discovers the server's protocol automatically; older servers fall back to the initialization-based
+protocol (including **2025-11-25**). Both JSON and SSE responses over Streamable HTTP are supported.
+It does not implement the separate legacy HTTP+SSE transport.
+
+Tool listing follows all cursor pages before replacing the cached tool list. Tool metadata,
+including output schemas and icons, is preserved. `McpTool` mirrors the protocol's tool definition,
+including the required `inputSchema`. Structured tool results may be objects, arrays, primitives, or
+`null`; protocol-only result envelopes are handled by the SDK.
+
+Protocol support does not enable optional MCP features outside this package's tools-only scope, such
+as elicitation, sampling, subscriptions, or the tasks extension.
+
 ## Usage
 
 ```ts
@@ -229,7 +244,7 @@ fragment callback URL with `code` and `state` query parameters.
 The mounted fragment handles:
 
 ```http
-GET /oauth/callback?code=...&state=...
+GET /oauth/callback?code=...&state=...&iss=...
 ```
 
 The callback route:
@@ -238,7 +253,10 @@ The callback route:
 2. Loads the pending one-time OAuth state from the DB.
 3. Rejects missing, expired, or already consumed states.
 4. Recreates the DB-backed SDK `OAuthClientProvider` for the matching server.
-5. Calls SDK `auth(...)` with the authorization code.
+5. Calls SDK `auth(...)` with the authorization code and callback `iss` parameter. The SDK rejects
+   an issuer mismatch before token exchange, and requires `iss` when the authorization server
+   advertises support for it. Custom callback forwarding must preserve `iss` alongside `code` and
+   `state`.
 6. Lets the SDK exchange the code + PKCE verifier for tokens.
 7. Stores access token, refresh token, token type, scope, and expiry in stored secret payloads.
 8. Marks the OAuth state as consumed only after successful token exchange.
@@ -250,8 +268,10 @@ After callback completion, `POST /servers/:slug/refresh` and `POST /servers/:slu
 read the stored OAuth token payload from the DB and send the access token as a bearer token when
 connecting to the MCP server.
 
-The fragment still connects per operation. MCP session IDs are used only inside a single operation
-by the SDK transport and are not stored or reused across requests.
+The fragment still connects per operation. MCP 2026-07-28 is sessionless. When connecting to an
+older server, MCP session IDs are used only inside a single operation by the SDK transport and are
+not stored or reused across requests. OAuth credentials retain the SDK's issuer binding, and OAuth
+discovery state persists across requests.
 
 ## Calling tools
 
@@ -272,8 +292,9 @@ const result = await mcp.callTool.mutate(
 ## Security notes
 
 - Always provide `allowedEndpointUrls` in production to prevent SSRF.
-- Auth payloads and OAuth state are stored as JSON/plaintext in the fragment database; use
-  database-level controls if those values need protection.
+- Auth payloads and OAuth state are serialized as JSON in the fragment database, not encrypted by
+  this package. Integrators must provide encrypted-at-rest storage and appropriate access controls
+  to keep refresh tokens and other credentials confidential.
 - OAuth state is one-time use and expires after 10 minutes.
 - Deleting a server deletes stored auth, pending OAuth state, and cached tools.
 - `DELETE /servers/:slug/auth` deletes auth state and switches that server back to `none` auth.

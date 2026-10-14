@@ -44,7 +44,7 @@ async function writeResponse(response: Response, target: ServerResponse) {
 
 /** Serves the in-process test server over loopback HTTP for clients that need a real socket. */
 export async function startStreamableHttpTestMcpServer(
-  options: TestMcpServerOptions = {},
+  options: TestMcpServerOptions = { protocolVersion: "2026-07-28" },
 ): Promise<TestMcpServerHandle> {
   const mcpServer = createTestMcpServer(options);
   const httpServer: Server = createServer((request, response) => {

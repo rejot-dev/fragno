@@ -581,7 +581,16 @@ export const mcpRoutesFactory = defineRoutes(mcpFragmentDefinition).create(
           }
           try {
             const [result] = await this.handlerTx()
-              .withServiceCalls(() => [services.completeOAuthCallback({ stateId, code })] as const)
+              .withServiceCalls(
+                () =>
+                  [
+                    services.completeOAuthCallback({
+                      stateId,
+                      code,
+                      iss: query.get("iss") ?? undefined,
+                    }),
+                  ] as const,
+              )
               .execute();
             if (!result.found) {
               if (result.reason === "server_not_found") {

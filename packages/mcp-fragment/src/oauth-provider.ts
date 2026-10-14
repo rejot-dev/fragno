@@ -1,12 +1,10 @@
 import type {
   OAuthClientProvider,
   OAuthDiscoveryState,
-} from "@modelcontextprotocol/sdk/client/auth.js";
-import type {
   OAuthClientInformationMixed,
   OAuthClientMetadata,
   OAuthTokens,
-} from "@modelcontextprotocol/sdk/shared/auth.js";
+} from "@modelcontextprotocol/client";
 
 export interface OAuthProviderSnapshot {
   serverId: string;
@@ -89,18 +87,19 @@ export class BufferedOAuthClientProvider implements OAuthClientProvider {
   }
 
   clientInformation() {
+    // Preserve the SDK's issuer stamp instead of rebuilding static credentials after discovery.
+    if (this.changes.clientInformation) {
+      return this.changes.clientInformation;
+    }
     if (this.snapshot.clientId) {
       const clientInformation = {
         client_id: this.snapshot.clientId,
         client_secret: this.snapshot.clientSecret,
       };
-      this.changes.clientInformation ??= clientInformation;
+      this.changes.clientInformation = clientInformation;
       return clientInformation;
     }
-    return (
-      this.changes.clientInformation ??
-      (this.changes.clientInvalidated ? undefined : this.snapshot.clientInformation)
-    );
+    return this.changes.clientInvalidated ? undefined : this.snapshot.clientInformation;
   }
 
   saveClientInformation(clientInformation: OAuthClientInformationMixed) {

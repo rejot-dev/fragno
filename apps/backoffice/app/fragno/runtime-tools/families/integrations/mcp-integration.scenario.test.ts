@@ -102,6 +102,7 @@ type McpProviders = {
 
 function createToolsServer(calls: string[]) {
   return createTestMcpServer({
+    protocolVersion: "2026-07-28",
     requiredBearerToken: toolsToken,
     enableJsonResponse: true,
     tools: [
@@ -177,11 +178,13 @@ async function runMcpIntegrationScenario<TVars extends Record<string, unknown>>(
   const providers: McpProviders = {
     calls,
     oauth: createTestMcpServer({
+      protocolVersion: "2026-07-28",
       oauth: true,
       enableJsonResponse: true,
       requiredBearerToken: "oauth-access-token",
     }),
     static: createTestMcpServer({
+      protocolVersion: "2026-07-28",
       oauth: true,
       enableJsonResponse: true,
       requiredBearerToken: "static-access-token",
@@ -190,6 +193,7 @@ async function runMcpIntegrationScenario<TVars extends Record<string, unknown>>(
       requiredClientSecret: "static-secret",
     }),
     expiring: createTestMcpServer({
+      protocolVersion: "2026-07-28",
       oauth: true,
       enableJsonResponse: true,
       requiredBearerToken: "expiring-access-token",

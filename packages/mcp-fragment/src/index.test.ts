@@ -172,13 +172,21 @@ describe("mcp-fragment", () => {
   let failingClientCredentialsMcpServer: TestMcpServerHandle;
 
   beforeAll(async () => {
-    sseMcpServer = await startStreamableHttpTestMcpServer({ requiredBearerToken: bearerToken });
-    jsonMcpServer = await startStreamableHttpTestMcpServer({ enableJsonResponse: true });
+    sseMcpServer = await startStreamableHttpTestMcpServer({
+      protocolVersion: "2025-11-25",
+      requiredBearerToken: bearerToken,
+    });
+    jsonMcpServer = await startStreamableHttpTestMcpServer({
+      protocolVersion: "2025-11-25",
+      enableJsonResponse: true,
+    });
     noToolsMcpServer = await startStreamableHttpTestMcpServer({
+      protocolVersion: "2026-07-28",
       enableJsonResponse: true,
       tools: [],
     });
     staticOAuthMcpServer = await startStreamableHttpTestMcpServer({
+      protocolVersion: "2026-07-28",
       oauth: true,
       enableJsonResponse: true,
       requiredBearerToken: "static-oauth-access-token",
@@ -187,6 +195,7 @@ describe("mcp-fragment", () => {
       requiredClientSecret: "static-secret",
     });
     rotatingOAuthMcpServer = await startStreamableHttpTestMcpServer({
+      protocolVersion: "2026-07-28",
       oauth: true,
       enableJsonResponse: true,
       requiredBearerToken: "rotating-oauth-access-token",
@@ -196,6 +205,7 @@ describe("mcp-fragment", () => {
       refreshedRefreshToken: "rotated-refresh-token",
     });
     failingRotatingOAuthMcpServer = await startStreamableHttpTestMcpServer({
+      protocolVersion: "2026-07-28",
       oauth: true,
       enableJsonResponse: true,
       requiredBearerToken: "failing-rotating-oauth-access-token",
@@ -206,6 +216,7 @@ describe("mcp-fragment", () => {
       failAuthorizedMcpRequests: true,
     });
     clientCredentialsMcpServer = await startStreamableHttpTestMcpServer({
+      protocolVersion: "2026-07-28",
       oauth: true,
       enableJsonResponse: true,
       requiredBearerToken: "client-credentials-access-token",
@@ -213,6 +224,7 @@ describe("mcp-fragment", () => {
       requiredClientSecret: "machine-secret",
     });
     failingClientCredentialsMcpServer = await startStreamableHttpTestMcpServer({
+      protocolVersion: "2026-07-28",
       oauth: true,
       enableJsonResponse: true,
       requiredBearerToken: "failing-client-credentials-access-token",
@@ -404,6 +416,60 @@ describe("mcp-fragment", () => {
     });
   });
 
+  test.each([false, true])(
+    "negotiates MCP 2026-07-28, caches tools, and executes them (JSON response: %s)",
+    async (enableJsonResponse) => {
+      const server = await startStreamableHttpTestMcpServer({
+        protocolVersion: "2026-07-28",
+        enableJsonResponse,
+        requiredBearerToken: bearerToken,
+      });
+      try {
+        await createServer(fragment, {
+          slug: "modern-tools",
+          endpointUrl: server.endpointUrl,
+          auth: { type: "bearer", token: bearerToken },
+        });
+        const refreshed = await fragment.callRoute("POST", "/servers/:slug/refresh", {
+          pathParams: { slug: "modern-tools" },
+        });
+        assert(refreshed.type === "json");
+        expect(refreshed.data).toMatchObject({
+          ok: true,
+          live: { protocolVersion: "2026-07-28" },
+          tools: [expect.objectContaining({ name: "echo", outputSchema: expect.any(Object) })],
+        });
+        const result = await fragment.callRoute("POST", "/servers/:slug/tools/execute", {
+          pathParams: { slug: "modern-tools" },
+          body: { name: "echo", arguments: { text: "modern" } },
+        });
+        assert(result.type === "json");
+        expect(result.data).toMatchObject({
+          content: [{ type: "text", text: "modern" }],
+          structuredContent: { echoed: "modern" },
+        });
+        expect(result.data).not.toHaveProperty("resultType");
+        const cache = await readConnectionCache(setup.fragments.mcp, "modern-tools");
+        expect(cache).toMatchObject({
+          protocolVersion: "2026-07-28",
+          serverInfo: { name: "fragno-test-mcp-server" },
+          capabilities: { tools: {} },
+          tools: refreshed.data.tools,
+        });
+        const read = await fragment.callRoute("GET", "/servers/:slug", {
+          pathParams: { slug: "modern-tools" },
+        });
+        assert(read.type === "json");
+        expect(read.data.cache).toMatchObject({
+          protocolVersion: "2026-07-28",
+          tools: refreshed.data.tools,
+        });
+      } finally {
+        await server.close();
+      }
+    },
+  );
+
   test("caches listed tools and connection metadata", async () => {
     await createServer(fragment, { slug: "cache-tools", endpointUrl: jsonMcpServer.endpointUrl });
 
@@ -418,7 +484,7 @@ describe("mcp-fragment", () => {
     const cache = await readConnectionCache(setup.fragments.mcp, "cache-tools");
     expect(cache).toEqual(
       expect.objectContaining({
-        protocolVersion: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+        protocolVersion: "2025-11-25",
         tools: [expect.objectContaining({ name: "echo" })],
       }),
     );
@@ -878,6 +944,70 @@ describe("mcp-fragment", () => {
     });
   });
 
+  test.each([undefined, "https://wrong-issuer.test"])(
+    "rejects OAuth callback issuer %s before exchanging the code, then accepts the authentic callback",
+    async (iss) => {
+      await createServer(fragment, {
+        slug: "issuer-validation",
+        endpointUrl: staticOAuthMcpServer.endpointUrl,
+        auth: { type: "oauth" },
+      });
+      const start = await fragment.callRoute("POST", "/servers/:slug/auth/start", {
+        pathParams: { slug: "issuer-validation" },
+        query: { redirectUri: oauthRedirectUri },
+        body: {
+          clientId: "static-client",
+          clientSecret: "static-secret",
+          scope: "tools",
+          discardTokens: false,
+        },
+      });
+      assert(start.type === "json");
+      const authorized = await fetch(start.data.authorizationUrl, { redirect: "manual" });
+      const location = authorized.headers.get("location");
+      assert(location);
+      const callbackParams = Object.fromEntries(new URL(location).searchParams);
+      const invalidParams = { ...callbackParams };
+      if (iss === undefined) {
+        delete invalidParams["iss"];
+      } else {
+        invalidParams["iss"] = iss;
+      }
+      const tokenRequestsBefore = staticOAuthMcpServer.getTokenRequestCount();
+      const rejected = await fragment.callRoute("GET", "/oauth/callback", {
+        query: invalidParams,
+      });
+      assert(rejected.type === "error");
+      assert(rejected.error.code === "OAUTH_ERROR");
+      expect(staticOAuthMcpServer.getTokenRequestCount()).toBe(tokenRequestsBefore);
+      const unchanged = await readAuthSecret(setup.fragments.mcp, "issuer-validation");
+      assert(unchanged);
+      expect(parseSecretPayload(unchanged.payload)).toEqual({ type: "oauth" });
+
+      const accepted = await fragment.callRoute("GET", "/oauth/callback", {
+        query: callbackParams,
+      });
+      assert(accepted.type === "json");
+      expect(accepted.data).toEqual({ authenticated: true, mode: "oauth" });
+      expect(staticOAuthMcpServer.getTokenRequestCount()).toBe(tokenRequestsBefore + 1);
+      const secret = await readAuthSecret(setup.fragments.mcp, "issuer-validation");
+      assert(secret);
+      expect(parseSecretPayload(secret.payload)).toMatchObject({
+        tokens: { issuer: new URL(staticOAuthMcpServer.endpointUrl).origin },
+      });
+      const replayed = await fragment.callRoute("GET", "/oauth/callback", {
+        query: callbackParams,
+      });
+      assert(replayed.type === "error");
+      assert(replayed.error.code === "INVALID_OAUTH_STATE");
+      const refreshed = await fragment.callRoute("POST", "/servers/:slug/refresh", {
+        pathParams: { slug: "issuer-validation" },
+      });
+      assert(refreshed.type === "json");
+      expect(refreshed.data).toMatchObject({ ok: true, live: { protocolVersion: "2026-07-28" } });
+    },
+  );
+
   test("persists explicit OAuth client credentials across the auth callback", async () => {
     const tokenRequestsBefore = staticOAuthMcpServer.getTokenRequestCount();
 
@@ -1195,6 +1325,7 @@ describe("mcp-fragment", () => {
 
   test("a registered client the server forgets is replaced on the next consent", async () => {
     const oauthServer = await startStreamableHttpTestMcpServer({
+      protocolVersion: "2026-07-28",
       oauth: true,
       enableJsonResponse: true,
       requiredBearerToken: "registered-client-access-token",
@@ -1261,6 +1392,7 @@ describe("mcp-fragment", () => {
 
   test("retains existing OAuth refresh token when the refresh response omits one", async () => {
     const oauthServer = await startStreamableHttpTestMcpServer({
+      protocolVersion: "2026-07-28",
       oauth: true,
       enableJsonResponse: true,
       requiredBearerToken: "refresh-without-new-refresh-token",
@@ -1499,7 +1631,7 @@ describe("mcp-fragment", () => {
 
     assert(result.type === "json");
     expect(result.data).toMatchObject({ ok: false, error: { code: "MCP_ERROR" }, tools: [] });
-    expect(result.data.error?.message).toContain("Unauthorized");
+    expect(result.data.error?.message).toContain("HTTP 401");
   });
 
   test("returns and caches an empty tool list for MCP servers that do not advertise tools", async () => {

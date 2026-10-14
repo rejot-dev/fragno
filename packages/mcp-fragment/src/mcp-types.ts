@@ -78,8 +78,11 @@ export const mcpOAuthPendingSchema = z.object({
     ),
 });
 
-/** Mirrors the MCP protocol's tool definition, whose optional members are defined by the spec. */
-export const mcpToolSchema = z.object({
+/**
+ * Mirrors the MCP protocol's tool definition, whose optional members are defined by the spec.
+ * Loose so newer spec members, such as icons, survive the cache and the API.
+ */
+export const mcpToolSchema = z.looseObject({
   name: z.string(),
   title: z.string().optional(),
   description: z.string().optional(),
@@ -93,7 +96,8 @@ export const mcpToolSchema = z.object({
 export const mcpToolCallResultSchema = z.object({
   isError: z.boolean(),
   content: z.array(z.record(z.string(), z.unknown())),
-  structuredContent: z.record(z.string(), z.unknown()).nullable(),
+  /** Since MCP 2026-07-28 any JSON value; null when the tool returned none. */
+  structuredContent: z.unknown(),
 });
 
 /** Query parameter carrying the OAuth callback URI for an MCP OAuth start request. */

@@ -32,6 +32,14 @@ overrides:
   esbuild@<=0.24.2: ">=0.25.0"
   unicorn-magic: 0.4.0
   zod@^4.0.0: 4.5.4
+  "@fragno-dev/mcp-fragment>zod": 4.6.7
+
+packageExtensions:
+  # Its published declarations need Babel 7 types, not the hoisted Babel 8 used by Vitest 5.
+  babel-dead-code-elimination@1:
+    dependencies:
+      "@types/babel__core": ^7.20.5
+      "@types/babel__traverse": ^7.28.0
 
 allowBuilds:
   "@journeyapps/wa-sqlite": true

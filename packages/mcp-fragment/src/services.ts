@@ -1,5 +1,4 @@
-import { auth } from "@modelcontextprotocol/sdk/client/auth.js";
-import type { OAuthTokens } from "@modelcontextprotocol/sdk/shared/auth.js";
+import { auth, type OAuthTokens } from "@modelcontextprotocol/client";
 
 import { parseSecretPayload, stringifySecretPayload, type McpClientAuth } from "./mcp-api";
 import type { AuthConfig, McpAuthStatus, McpFragmentConfig } from "./mcp-types";
@@ -262,6 +261,7 @@ export async function createOAuthCallbackSnapshot(args: {
   config: McpFragmentConfig;
   stateId: string;
   code: string;
+  iss: string | undefined;
   state: {
     id: { toString(): string } | string;
     codeVerifier: string;
@@ -299,6 +299,7 @@ export async function createOAuthCallbackSnapshot(args: {
   await auth(provider, {
     serverUrl: snapshot.endpointUrl,
     authorizationCode: args.code,
+    iss: args.iss,
     scope: snapshot.scope,
     fetchFn: args.config.fetch,
   });

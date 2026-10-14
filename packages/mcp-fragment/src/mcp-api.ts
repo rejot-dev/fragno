@@ -1,6 +1,8 @@
-import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import {
+  Client,
+  StreamableHTTPClientTransport,
+  type OAuthClientProvider,
+} from "@modelcontextprotocol/client";
 
 import type { McpFragmentConfig, McpToolCallResult } from "./mcp-types";
 
@@ -78,7 +80,7 @@ async function withMcpClient<T, TAuthChanges = unknown>(args: {
 }): Promise<McpOperationResult<T, TAuthChanges>> {
   const client = new Client(
     { name: "fragno-mcp-fragment", version: "0.1.0" },
-    { capabilities: {} },
+    { capabilities: {}, versionNegotiation: { mode: "auto" } },
   );
   const transport = new StreamableHTTPClientTransport(new URL(args.endpointUrl), {
     fetch: args.fetchImplementation,
@@ -91,7 +93,7 @@ async function withMcpClient<T, TAuthChanges = unknown>(args: {
     const capabilities = client.getServerCapabilities();
 
     const metadata: McpConnectionMetadata = {
-      protocolVersion: transport.protocolVersion,
+      protocolVersion: client.getNegotiatedProtocolVersion(),
       serverInfo: client.getServerVersion(),
       capabilities,
     };
@@ -113,10 +115,7 @@ export async function listMcpTools<TAuthChanges = unknown>(args: {
 }) {
   return await withMcpClient({
     ...args,
-    operation: async (client) =>
-      client.getServerCapabilities()?.tools
-        ? await client.listTools(undefined, { timeout: args.timeoutMs })
-        : { tools: [] },
+    operation: (client) => client.listTools(undefined, { timeout: args.timeoutMs }),
   });
 }
 
@@ -133,19 +132,13 @@ export async function callMcpTool<TAuthChanges = unknown>(args: {
     operation: async (client) => {
       const result = await client.callTool(
         { name: args.name, arguments: args.toolArguments ?? {} },
-        undefined,
-        {
-          timeout: args.timeoutMs,
-        },
+        { timeout: args.timeoutMs },
       );
       // Tool errors are results for the caller, not protocol failures (MCP spec, tools/call).
       return {
         isError: result.isError === true,
         content: Array.isArray(result.content) ? result.content : [],
-        structuredContent:
-          result.structuredContent && typeof result.structuredContent === "object"
-            ? (result.structuredContent as Record<string, unknown>)
-            : null,
+        structuredContent: result.structuredContent ?? null,
       } satisfies McpToolCallResult;
     },
   });

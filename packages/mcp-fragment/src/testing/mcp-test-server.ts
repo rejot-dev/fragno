@@ -1,22 +1,24 @@
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import {
-  CallToolRequestSchema,
-  ListToolsRequestSchema,
+  createMcpHandler,
+  Server,
+  WebStandardStreamableHTTPServerTransport,
   type CallToolResult,
-} from "@modelcontextprotocol/sdk/types.js";
+  type Tool,
+} from "@modelcontextprotocol/server";
 
 /** Tools declare raw JSON Schemas so tests can publish any dialect a real server might. */
 export interface TestMcpTool {
   name: string;
   title?: string;
   description?: string;
-  inputSchema: Record<string, unknown>;
-  outputSchema?: Record<string, unknown>;
+  inputSchema: Tool["inputSchema"];
+  outputSchema?: Tool["outputSchema"];
   call: (args: Record<string, unknown>) => CallToolResult | Promise<CallToolResult>;
 }
 
 export interface TestMcpServerOptions {
+  /** 2026-07-28 serves stateless requests only; 2025-11-25 serves sessions only. */
+  protocolVersion: "2025-11-25" | "2026-07-28";
   requiredBearerToken?: string;
   enableJsonResponse?: boolean;
   tools?: readonly TestMcpTool[];
@@ -43,7 +45,7 @@ export interface TestMcpServer {
   close: () => Promise<void>;
 }
 
-// The SDK's McpServer emits draft-07 schemas; this echo tool publishes the same dialect.
+// Servers built on the v1 SDK emit draft-07 schemas; this echo tool publishes the same dialect.
 const echoTool: TestMcpTool = {
   name: "echo",
   title: "Echo",
@@ -113,10 +115,10 @@ function createMcpProtocolServer(tools: readonly TestMcpTool[]) {
     { capabilities: tools.length > 0 ? { tools: {} } : {} },
   );
   if (tools.length > 0) {
-    server.setRequestHandler(ListToolsRequestSchema, () => ({
+    server.setRequestHandler("tools/list", () => ({
       tools: tools.map(({ call: _call, ...tool }) => tool),
     }));
-    server.setRequestHandler(CallToolRequestSchema, async ({ params }) => {
+    server.setRequestHandler("tools/call", async ({ params }) => {
       const tool = tools.find((candidate) => candidate.name === params.name);
       if (!tool) {
         // Mirrors McpServer: an unknown tool is a tool error, not a protocol failure.
@@ -125,7 +127,11 @@ function createMcpProtocolServer(tools: readonly TestMcpTool[]) {
           content: [{ type: "text", text: `Tool ${params.name} not found` }],
         };
       }
-      return await tool.call(params.arguments ?? {});
+      // Low-level handlers project results themselves to match the negotiated protocol's wire shape.
+      return server.projectCallToolResult(
+        await tool.call(params.arguments ?? {}),
+        tool.outputSchema,
+      );
     });
   }
   return server;
@@ -180,8 +186,14 @@ async function handleToken(
 }
 
 /** Serves MCP at `<origin>/mcp`; metadata URLs derive from each request's origin. */
-export function createTestMcpServer(options: TestMcpServerOptions = {}): TestMcpServer {
+export function createTestMcpServer(
+  options: TestMcpServerOptions = { protocolVersion: "2026-07-28" },
+): TestMcpServer {
   const tools = options.tools ?? [echoTool];
+  const modernHandler = createMcpHandler(() => createMcpProtocolServer(tools), {
+    legacy: "reject",
+    responseMode: options.enableJsonResponse ? "auto" : "sse",
+  });
   const sessions = new Map<
     string,
     {
@@ -223,6 +235,7 @@ export function createTestMcpServer(options: TestMcpServerOptions = {}): TestMcp
     if (options.oauth && url.pathname === "/.well-known/oauth-authorization-server") {
       return json({
         issuer: baseUrl,
+        authorization_response_iss_parameter_supported: true,
         authorization_endpoint: `${baseUrl}/authorize`,
         token_endpoint: `${baseUrl}/token`,
         ...(options.disableDynamicRegistration
@@ -262,6 +275,7 @@ export function createTestMcpServer(options: TestMcpServerOptions = {}): TestMcp
       }
       const redirect = new URL(redirectUri);
       redirect.searchParams.set("code", "valid-code");
+      redirect.searchParams.set("iss", baseUrl);
       const state = url.searchParams.get("state");
       if (state) {
         redirect.searchParams.set("state", state);
@@ -293,6 +307,9 @@ export function createTestMcpServer(options: TestMcpServerOptions = {}): TestMcp
     if (options.failAuthorizedMcpRequests) {
       return new Response("MCP operation failed", { status: 500 });
     }
+    if (options.protocolVersion === "2026-07-28") {
+      return await modernHandler.fetch(request);
+    }
     const sessionId = request.headers.get("mcp-session-id");
     const session = (sessionId ? sessions.get(sessionId) : undefined) ?? (await createSession());
     return await session.transport.handleRequest(request);
@@ -317,6 +334,7 @@ export function createTestMcpServer(options: TestMcpServerOptions = {}): TestMcp
       tokenLifetimeSeconds = seconds;
     },
     close: async () => {
+      await modernHandler.close();
       for (const session of sessions.values()) {
         await session.server.close();
         await session.transport.close();

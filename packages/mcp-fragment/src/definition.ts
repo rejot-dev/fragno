@@ -385,7 +385,11 @@ export const mcpFragmentDefinition = defineFragment<McpFragmentConfig>("mcp-frag
           .build();
       },
 
-      completeOAuthCallback: function (input: { stateId: string; code: string }) {
+      completeOAuthCallback: function (input: {
+        stateId: string;
+        code: string;
+        iss: string | undefined;
+      }) {
         const serverId = input.stateId.split(":")[0] ?? "";
         return this.serviceTx(mcpSchema)
           .retrieve((uow) =>
@@ -414,6 +418,7 @@ export const mcpFragmentDefinition = defineFragment<McpFragmentConfig>("mcp-frag
               config,
               stateId: input.stateId,
               code: input.code,
+              iss: input.iss,
               state,
               server,
               secrets,
