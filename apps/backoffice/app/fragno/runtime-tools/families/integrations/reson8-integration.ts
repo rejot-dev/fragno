@@ -296,6 +296,10 @@ export function createReson8Integration({
         async details() {
           return { kind: "native" };
         },
+        async settings() {
+          // The API key is the only setting, and it is secret.
+          return (await readConfiguration(context)).configured ? {} : null;
+        },
         async actions() {
           return [
             {

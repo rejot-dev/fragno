@@ -4,6 +4,7 @@ import type {
   IntegrationAction,
   IntegrationConnection,
   IntegrationConnectionPage,
+  IntegrationConnectionSettings,
   IntegrationDisconnectResult,
   IntegrationInspection,
   IntegrationOverview,
@@ -75,6 +76,7 @@ export interface ResolvedIntegrationConnection {
   /** The state this source's integrations.connection.* events report for the connection now. */
   state(): Promise<IntegrationConnectionState>;
   details(): Promise<IntegrationConnectionDetails>;
+  settings(): Promise<IntegrationConnectionSettings>;
   actions(): Promise<readonly IntegrationActionImplementation[]>;
   verify(): Promise<IntegrationInspection>;
 }

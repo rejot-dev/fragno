@@ -553,6 +553,18 @@ export function createWebhookIntegration({
           ]);
           return { kind: "webhook", endpoint, publicUrl };
         },
+        async settings() {
+          const endpoint = await access.endpoint(localId);
+          // "keep" stands for the stored secrets, so these settings are a complete replacement.
+          return (
+            endpoint && {
+              name: endpoint.name,
+              verification: endpoint.verification,
+              deliveryIdentity: endpoint.deliveryIdentity,
+              auth: { type: "keep" },
+            }
+          );
+        },
         async actions() {
           return [
             {

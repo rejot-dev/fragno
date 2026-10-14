@@ -632,6 +632,17 @@ export function createApiIntegration({
             authStatus: await access.authStatus(localId),
           };
         },
+        async settings() {
+          // Stored auth modes are the input's type names; credentials and OAuth client details are
+          // never read back.
+          return (
+            resolved && {
+              ...(resolved.name ? { name: resolved.name } : {}),
+              baseUrl: resolved.baseUrl,
+              type: resolved.authMode,
+            }
+          );
+        },
         async actions() {
           return [
             {

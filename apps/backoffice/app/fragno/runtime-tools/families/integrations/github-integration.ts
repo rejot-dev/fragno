@@ -551,6 +551,8 @@ export function createGitHubIntegration({
         inspect,
         state: async () => connectionStateOfInspection(await inspect()),
         details: async () => ({ kind: "native" }),
+        // Repository access changes in the GitHub App installation, not through a replacement.
+        settings: async () => null,
         async actions() {
           return [
             {

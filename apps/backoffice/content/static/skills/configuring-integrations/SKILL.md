@@ -138,11 +138,13 @@ report the check message or error and the connection's `nextSteps`.
 Both operations replace or delete live credentials, so run them on the user's instruction.
 
 - **Reconfigure**: `integrations.reconfigure({ kind: "check", connectionId })` returns the
-  replacement `inputSchema`; submit with `kind: "input"`, collecting values as in step 3. A
-  submission replaces the stored configuration and credentials, then returns setup progress: rerun
-  the setup loop and step 4. For an `api#` or `mcp#` OAuth connection whose provider revoked access,
-  submit `{ reauthorize: true }` to consent again with the stored client; changing scopes,
-  endpoints, or the client is a full replacement.
+  replacement `inputSchema`. Start the input from the `settings` that `integrations.get` returns,
+  the stored values that are not secret, and change only what the user asked; collect secrets and
+  any field `settings` omits as in step 3, then submit with `kind: "input"`. A submission replaces
+  the stored configuration and credentials, then returns setup progress: rerun the setup loop and
+  step 4. For an `api#` or `mcp#` OAuth connection whose provider revoked access, submit
+  `{ reauthorize: true }` to consent again with the stored client; changing scopes, endpoints, or
+  the client is a full replacement.
 - **Disconnect**: `integrations.disconnect({ connectionId, confirm: connectionId })` removes the
   configuration and credentials. `not-configured` means nothing was stored. The address stays valid
   for a later setup.

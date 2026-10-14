@@ -552,22 +552,24 @@ test("Codemode registers an MCP server through setup, publishes its tools as act
         expected: { subject: { service: "mcp", connectionId: "mcp#tools" } },
       }),
       then.assert(
-        "reconfiguration replaces the server in place and disconnect requires confirmation",
+        "reconfiguration from the stored settings replaces the server in place and disconnect requires confirmation",
         async (ctx) => {
           const run = await ctx.runCodemode({
             scope: orgScope,
+            // Like an agent asked to drop the auth, it knows neither the endpoint nor the name.
             code: `async () => {
               const target = { connectionId: "mcp#tools" };
               const check = await integrations.reconfigure({ ...target, kind: "check" });
+              const { settings } = await integrations.get(target);
               const replaced = await integrations.reconfigure({ ...target, kind: "input", input: {
-                type: "bearer", name: "Tools v2", endpointUrl: ${JSON.stringify(`${toolsOrigin}/mcp`)}, token: ${JSON.stringify(toolsToken)},
+                ...settings, type: "none",
               } });
               const renamed = await integrations.get(target);
               let unconfirmed = "accepted";
               try { await integrations.disconnect({ ...target, confirm: "mcp#other" }); }
               catch { unconfirmed = "rejected"; }
               return {
-                check, replaced, renamed, unconfirmed,
+                check, settings, replaced, renamed, unconfirmed,
                 disconnected: await integrations.disconnect({ ...target, confirm: "mcp#tools" }),
                 repeated: await integrations.disconnect({ ...target, confirm: "mcp#tools" }),
                 after: await integrations.get(target),
@@ -587,14 +589,21 @@ test("Codemode registers an MCP server through setup, publishes its tools as act
               status: "needs-input",
               instructions: expect.not.stringContaining("reauthorize"),
             },
+            settings: { name: "Tools", endpointUrl: `${toolsOrigin}/mcp`, type: "bearer" },
             replaced: { status: "ready", connectionId: "mcp#tools" },
-            renamed: { name: "Tools v2", authorization: { status: "available" } },
+            renamed: {
+              name: "Tools",
+              authMethod: "none",
+              authorization: { status: "not-required" },
+              settings: { name: "Tools", endpointUrl: `${toolsOrigin}/mcp`, type: "none" },
+            },
             unconfirmed: "rejected",
             disconnected: { connectionId: "mcp#tools", status: "disconnected" },
             repeated: { connectionId: "mcp#tools", status: "not-configured" },
             after: {
               name: "tools",
               configuration: { status: "missing", missingFields: ["endpointUrl", "type"] },
+              settings: null,
             },
             setup: { status: "needs-input" },
           });

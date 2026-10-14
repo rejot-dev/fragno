@@ -3,6 +3,7 @@ import {
   integrationConnectionEventsBackfillResultSchema,
   integrationConnectionInputSchema,
   integrationConnectionSchema,
+  inspectedIntegrationConnectionSchema,
   integrationDisconnectInputSchema,
   integrationDisconnectResultSchema,
   integrationExecuteInputSchema,
@@ -41,7 +42,7 @@ export type IntegrationsRuntime = {
   ): Promise<z.output<typeof integrationListOutputSchema>>;
   get(
     input: z.output<typeof integrationConnectionInputSchema>,
-  ): Promise<z.output<typeof integrationConnectionSchema>>;
+  ): Promise<z.output<typeof inspectedIntegrationConnectionSchema>>;
   setup(
     input: z.output<typeof integrationSetupInputSchema>,
   ): Promise<z.output<typeof integrationSetupProgressSchema>>;

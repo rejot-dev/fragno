@@ -261,21 +261,29 @@ test("a webhook endpoint is set up, proves deliveries, and disconnects through i
             subject: { endpointId: "slack", deliveryId: "Ev-1" },
           },
         }),
-        then.assert("reconfiguring can keep the stored signing secret", async (ctx) => {
+        then.assert("a rename from the stored settings keeps the signing secret", async (ctx) => {
           const run = await ctx.runCodemode({
             scope,
             code: `async () => {
               const target = { connectionId: "webhook#slack" };
               const before = await integrations.reconfigure({ ...target, kind: "check" });
-              const ready = await integrations.reconfigure({ ...target, kind: "input", input: ${JSON.stringify(
-                { ...slackContract, name: "Slack Events", auth: { type: "keep" } },
-              )} });
-              return { before, ready, verified: await integrations.verify(target) };
+              const { settings } = await integrations.get(target);
+              const ready = await integrations.reconfigure({ ...target, kind: "input", input: {
+                ...settings, name: "Slack Events",
+              } });
+              return { before, settings, ready, verified: await integrations.verify(target) };
             }`,
-            assertToolCalls: ["integrations.reconfigure", "integrations.verify"],
+            assertToolCalls: [
+              "integrations.reconfigure",
+              "integrations.get",
+              "integrations.verify",
+            ],
           });
+          expect(JSON.stringify(run.result)).not.toContain(signingSecret);
+          const { auth: _auth, ...contract } = slackContract;
           expect(run.result).toMatchObject({
             before: { status: "needs-input", instructions: expect.stringContaining('"keep"') },
+            settings: { ...contract, auth: { type: "keep" } },
             ready: { status: "ready" },
             // Outcomes describe the configuration they were collected under.
             verified: { checks: [{ status: "not-checked" }] },

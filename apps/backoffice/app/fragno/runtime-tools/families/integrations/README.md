@@ -17,7 +17,10 @@ underlying Fragments, Durable Objects, ownership, and configuration controls.
 - `discover()`: services and known named setup targets, including unconfigured services.
 - `list({ cursor })`: one page of configured `connections` with deterministic IDs.
 - `get({ connectionId })`: saved configuration, authorization, and available evidence; no live
-  check.
+  check. Its `settings` are the stored values that are not secret, shaped like the source's
+  reconfigure input, so a replacement can change one value without the caller knowing the rest; null
+  when the source takes no replacement or nothing is stored. Each source projects them through
+  `settings()` and never reads secrets back.
 - `actions({ connectionId })`: supported actions with authoritative input/output JSON Schemas.
 - `execute({ connectionId, actionId, input })`: invoke the exact live action with JSON input/output.
 - `verify({ connectionId })`: explicit supported live checks, returning timestamped evidence.
