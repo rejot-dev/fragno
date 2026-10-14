@@ -109,10 +109,11 @@ export function createAdminRuntime({
         publicBaseUrl,
       });
       await resend.queueEmail(
-        buildSignUpInvitationEmail({
+        await buildSignUpInvitationEmail({
           email: invitation.email,
           invitationUrl: invitation.url,
           ttlDays: invitation.ttlDays,
+          publicBaseUrl,
         }),
         { idempotencyKey: `admin:sign-up-invitation:${invitation.issuanceId}` },
       );

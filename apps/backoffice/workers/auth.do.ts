@@ -1226,10 +1226,11 @@ export class InMemoryAuthObject implements AuthObject {
         return;
       }
       await this.#runtime.objects.resend.singleton().commands.queueEmail(
-        buildUserEmailVerificationEmail({
+        await buildUserEmailVerificationEmail({
           email: payload.user.email,
           verificationUrl: verification.url,
           expiresInHours: verification.expiresInHours,
+          publicBaseUrl: emailVerification.publicBaseUrl,
         }),
         { idempotencyKey: `auth:email-verification:${record.id}` },
       );

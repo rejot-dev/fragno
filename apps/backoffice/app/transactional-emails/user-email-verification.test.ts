@@ -3,13 +3,14 @@ import { assert, describe, expect, test } from "vitest";
 import { buildUserEmailVerificationEmail } from "./user-email-verification";
 
 describe("user email verification transactional email", () => {
-  test("includes the email verification link in text and HTML", () => {
+  test("includes the email verification link in text and HTML", async () => {
     const verificationUrl =
       "https://backoffice.example/backoffice/verify-email?userId=user_123&code=ABC12345";
-    const email = buildUserEmailVerificationEmail({
+    const email = await buildUserEmailVerificationEmail({
       email: "new-user@example.com",
       verificationUrl,
       expiresInHours: 48,
+      publicBaseUrl: "https://backoffice.example",
     });
 
     expect(email).toMatchObject({
