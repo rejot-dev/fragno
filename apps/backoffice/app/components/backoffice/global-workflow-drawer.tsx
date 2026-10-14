@@ -21,6 +21,7 @@ import { backofficeRuntimeScopeFromResolvedScope } from "@/backoffice-runtime/re
 import { BackofficeUiErrorBoundary, BackofficeUiRenderer } from "@/backoffice-ui/renderer";
 import { parseBackofficeUiResult } from "@/backoffice-ui/result";
 import { sendBackofficeWorkflowEvent } from "@/backoffice-ui/workflow-events.client";
+import { FileImageScopeProvider } from "@/components/backoffice/file-image";
 import {
   describeAutomationCollectionSource,
   getAutomationBrowserDatabase,
@@ -617,52 +618,54 @@ function WorkflowRunDetail({
               Generated interface
             </h4>
           </div>
-          <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3">
-            {generatedUi.type === "step" ? (
-              <WorkflowStepGeneratedUi
-                state={workflowStepGeneratedUiState(generatedUi.step)}
-                workflowEvents={run.workflowEvents}
-                workflowRunRecordId={run.id}
-                currentScope={
-                  source.resolvedScope.kind !== "system" ? source.resolvedScope : undefined
-                }
-                workflowName={run.remoteWorkflowName ?? run.workflowName}
-                workflowInstanceId={run.instanceId}
-                waitingEventTypes={currentWorkflowWaitingEventTypes(run.steps)}
-                workflowEventSender={async ({
-                  eventId,
-                  workflowName,
-                  instanceId,
-                  eventType,
-                  payload,
-                }) => {
-                  await sendBackofficeWorkflowEvent({
+          <FileImageScopeProvider scope={source.resolvedScope}>
+            <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3">
+              {generatedUi.type === "step" ? (
+                <WorkflowStepGeneratedUi
+                  state={workflowStepGeneratedUiState(generatedUi.step)}
+                  workflowEvents={run.workflowEvents}
+                  workflowRunRecordId={run.id}
+                  currentScope={
+                    source.resolvedScope.kind !== "system" ? source.resolvedScope : undefined
+                  }
+                  workflowName={run.remoteWorkflowName ?? run.workflowName}
+                  workflowInstanceId={run.instanceId}
+                  waitingEventTypes={currentWorkflowWaitingEventTypes(run.steps)}
+                  workflowEventSender={async ({
                     eventId,
-                    reference: {
-                      scope: runtimeScope,
-                      workflowName,
-                      instanceId,
-                    },
+                    workflowName,
+                    instanceId,
                     eventType,
                     payload,
-                  });
-                }}
-              />
-            ) : generatedUi.parsed.kind === "valid" ? (
-              <BackofficeUiErrorBoundary
-                fallback={
-                  <DrawerState
-                    message="A generated component failed while rendering."
-                    tone="error"
-                  />
-                }
-              >
-                <BackofficeUiRenderer ui={generatedUi.parsed.value.$ui} />
-              </BackofficeUiErrorBoundary>
-            ) : (
-              <DrawerState message={generatedUi.parsed.message} tone="error" />
-            )}
-          </div>
+                  }) => {
+                    await sendBackofficeWorkflowEvent({
+                      eventId,
+                      reference: {
+                        scope: runtimeScope,
+                        workflowName,
+                        instanceId,
+                      },
+                      eventType,
+                      payload,
+                    });
+                  }}
+                />
+              ) : generatedUi.parsed.kind === "valid" ? (
+                <BackofficeUiErrorBoundary
+                  fallback={
+                    <DrawerState
+                      message="A generated component failed while rendering."
+                      tone="error"
+                    />
+                  }
+                >
+                  <BackofficeUiRenderer ui={generatedUi.parsed.value.$ui} />
+                </BackofficeUiErrorBoundary>
+              ) : (
+                <DrawerState message={generatedUi.parsed.message} tone="error" />
+              )}
+            </div>
+          </FileImageScopeProvider>
         </section>
       ) : null}
     </div>

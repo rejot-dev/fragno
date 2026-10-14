@@ -1,11 +1,13 @@
 import {
   backofficeRouteScopeFromResolvedScope,
+  type BackofficeResolvedScope,
   type BackofficeScopeSelection,
 } from "@/backoffice-runtime/resolved-scope";
 import { backofficeRouteScopePath } from "@/backoffice-runtime/route-scope";
 
-export const filesScopeBasePath = (scope: BackofficeScopeSelection): string =>
-  `/backoffice/files/${backofficeRouteScopePath(backofficeRouteScopeFromResolvedScope(scope))}`;
+export function filesScopeBasePath(scope: BackofficeResolvedScope): string {
+  return `/backoffice/files/${backofficeRouteScopePath(backofficeRouteScopeFromResolvedScope(scope))}`;
+}
 
 /** Appends a filesystem path to an already encoded scoped Files route. */
 export function filesExplorerPathFromScopePath(
@@ -18,6 +20,10 @@ export function filesExplorerPathFromScopePath(
 
 export const filesExplorerPath = (scope: BackofficeScopeSelection, path?: string | null): string =>
   filesExplorerPathFromScopePath(filesScopeBasePath(scope), path);
+
+export function filesPreviewPath(scope: BackofficeResolvedScope, path: string): string {
+  return `${filesScopeBasePath(scope)}/preview?${new URLSearchParams({ path })}`;
+}
 
 export const filesDownloadPath = (
   scope: BackofficeScopeSelection,

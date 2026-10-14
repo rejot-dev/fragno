@@ -103,6 +103,11 @@ const componentDemoInputs: ComponentDemoInput[] = [
     },
   },
   {
+    component: "Image",
+    category: "Content",
+    props: backofficeUiComponentDefinitions.Image.example,
+  },
+  {
     component: "Callout",
     category: "Content",
     props: {

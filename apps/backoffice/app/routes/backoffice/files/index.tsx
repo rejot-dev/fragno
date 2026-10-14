@@ -23,7 +23,6 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
     filesScopeBasePath({
       kind: "org",
       organization: { id: activeOrganization.id, slug: activeOrganization.slug },
-      label: activeOrganization.name,
     }),
   );
 }

@@ -9,6 +9,7 @@ import { Divider } from "./components/divider.component";
 import { FileUpload } from "./components/file-upload.component";
 import { Grid } from "./components/grid.component";
 import { Heading } from "./components/heading.component";
+import { Image } from "./components/image.component";
 import { KeyValue } from "./components/key-value.component";
 import { List } from "./components/list.component";
 import { Metric } from "./components/metric.component";
@@ -31,6 +32,7 @@ export const { registry: backofficeUiRegistry } = defineRegistry(backofficeUiCat
     Heading,
     Text,
     Code,
+    Image,
     Callout,
     Metric,
     Badge,

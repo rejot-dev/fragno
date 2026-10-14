@@ -31,17 +31,14 @@ describe("Files scope paths", () => {
       filesScopeBasePath({
         kind: "org",
         organization: { id: "org-id", slug: "org%one" },
-        label: "Percent org",
       }) === "/backoffice/files/org/org%2525one",
     );
   });
 
   test("supports system and personal scopes", () => {
+    assert(filesScopeBasePath({ kind: "system" }) === "/backoffice/files/system/system");
     assert(
-      filesScopeBasePath({ kind: "system", label: "System" }) === "/backoffice/files/system/system",
-    );
-    assert(
-      filesScopeBasePath({ kind: "user", userId: "user/one", label: "user@example.com" }) ===
+      filesScopeBasePath({ kind: "user", userId: "user/one" }) ===
         "/backoffice/files/user/user%252Fone",
     );
   });

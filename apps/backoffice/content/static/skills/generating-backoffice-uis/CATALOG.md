@@ -191,6 +191,37 @@ Example props:
 }
 ```
 
+### `Image`
+
+Displays a PNG, JPEG, GIF, or WebP file from the current Backoffice scope. Use an absolute virtual
+file path (for example /workspace/screenshots/dashboard.png), not a URL or base64. Files remain
+private and are fetched with the viewer's authorization.
+
+Props type:
+
+```ts
+{
+  path: string;
+  alt: string;
+}
+```
+
+Limits:
+
+- path: at most 2048 characters
+- alt: 1-500 characters
+
+Children: Must use an empty children array.
+
+Example props:
+
+```json
+{
+  "path": "/workspace/screenshots/dashboard.png",
+  "alt": "Dashboard preview"
+}
+```
+
 ### `Callout`
 
 Highlights a concise operational note with a semantic status variant.
