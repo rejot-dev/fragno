@@ -22,8 +22,8 @@ const getStringValue = (formData: FormData, key: string) => {
   return typeof value === "string" ? value.trim() : "";
 };
 
-const isSafeBackofficeReturnTo = (value: string | null | undefined) =>
-  Boolean(value?.startsWith("/backoffice/connections/github/"));
+// Without resolved claim state the page that started the flow is unknown.
+const UNKNOWN_RETURN_TO = "/backoffice/integrations";
 
 const restoreStatusRedirect = (returnTo: string, code: string, detail?: string) => {
   const url = new URL(returnTo, "https://backoffice.local");
@@ -42,7 +42,7 @@ type LoaderData =
       returnTo: string;
       claim: GitHubOAuthComplete;
     }
-  | { ok: false; message: string; returnTo: string | null };
+  | { ok: false; message: string; returnTo: string };
 
 type ActionData = { ok: false; message: string };
 
@@ -79,14 +79,14 @@ export async function loader({
     return {
       ok: false,
       message: githubErrorDescription || `GitHub authorization failed: ${githubError}`,
-      returnTo: null,
+      returnTo: UNKNOWN_RETURN_TO,
     };
   }
   if (!state || (!code && !completed)) {
     return {
       ok: false,
       message: "GitHub OAuth callback is missing state or code.",
-      returnTo: null,
+      returnTo: UNKNOWN_RETURN_TO,
     };
   }
 
@@ -96,7 +96,7 @@ export async function loader({
     userId: me.user.id,
   });
   if (!resolved.ok) {
-    return { ok: false, message: resolved.message, returnTo: null };
+    return { ok: false, message: resolved.message, returnTo: UNKNOWN_RETURN_TO };
   }
 
   const memberEntry = me.organizations.find((entry) => entry.organization.id === resolved.orgId);
@@ -113,15 +113,11 @@ export async function loader({
       };
     }
 
-    const returnTo = isSafeBackofficeReturnTo(resolved.completion.returnTo)
-      ? resolved.completion.returnTo!
-      : resolved.returnTo;
-
     return {
       ok: true,
       state,
       orgId: resolved.orgId,
-      returnTo,
+      returnTo: resolved.returnTo,
       claim: resolved.completion,
     };
   }
@@ -158,7 +154,6 @@ export async function action({
   const formData = await request.formData();
   const state = getStringValue(formData, "state");
   const installationId = getStringValue(formData, "installationId");
-  const returnTo = getStringValue(formData, "returnTo");
 
   const me = await findBackofficeMe(request, context);
   if (!me?.user) {
@@ -218,11 +213,10 @@ export async function action({
   await githubDo.commands.redeliverFailedInstallationWebhooks(installationId);
   await githubWebhookRouterDo.commands.consumeInstallationClaimState({ state, userId: me.user.id });
 
-  const safeReturnTo = isSafeBackofficeReturnTo(returnTo) ? returnTo : resolved.returnTo;
   const syncResult = sync.result;
   return redirect(
     restoreStatusRedirect(
-      safeReturnTo,
+      resolved.returnTo,
       "installed_synced",
       `Restored installation ${installationId}. Synced ${syncResult.added} added, ${syncResult.updated} updated, ${syncResult.removed} removed repositories.`,
     ),
@@ -253,11 +247,9 @@ export default function BackofficeGitHubOAuthCallback() {
         description="We could not verify access to an existing GitHub installation."
       >
         <p className="text-sm text-red-500">{loaderData.message}</p>
-        {loaderData.returnTo ? (
-          <ButtonLink variant="secondary" to={loaderData.returnTo} className="mt-3">
-            Back to GitHub configuration
-          </ButtonLink>
-        ) : null}
+        <ButtonLink variant="secondary" to={loaderData.returnTo} className="mt-3">
+          Back
+        </ButtonLink>
       </FormContainer>
     );
   }
@@ -308,7 +300,6 @@ export default function BackofficeGitHubOAuthCallback() {
                 <Form method="post">
                   <input type="hidden" name="state" value={loaderData.state} />
                   <input type="hidden" name="installationId" value={installation.id} />
-                  <input type="hidden" name="returnTo" value={loaderData.returnTo} />
                   <Button variant="accent" type="submit" disabled={saving}>
                     Restore this installation
                   </Button>
