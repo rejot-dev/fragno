@@ -2,3 +2,8 @@
 @import "@fragno-private/design-system/theme.css";
 
 @source "../node_modules/streamdown/dist/*.js";
+
+/* A page scrollbar appearing for a long connection detail would otherwise narrow the table. */
+html:has([data-integrations-workspace]) {
+  scrollbar-gutter: stable;
+}

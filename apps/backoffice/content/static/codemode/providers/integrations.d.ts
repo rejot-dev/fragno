@@ -63,6 +63,8 @@ type ConfiguredIntegrationConnection = {
   connectionId: IntegrationConnectionId;
   integrationId: IntegrationId;
   name: string;
+  /** Null while nothing stored at the address chooses a method, such as before API setup. */
+  authMethod: IntegrationAuthMethod | null;
 };
 type IntegrationAuthorizationStatus =
   | {
@@ -96,6 +98,15 @@ type IntegrationVerificationCheck =
       checkedAt: string;
       message: string;
     };
+type IntegrationAuthMethod =
+  | "none"
+  | "api-key"
+  | "bearer"
+  | "basic"
+  | "client-credentials"
+  | "oauth"
+  | "signature"
+  | "app-installation";
 type IntegrationConnection = {
   configuration: IntegrationConfigurationStatus;
   authorization: IntegrationAuthorizationStatus;
@@ -105,6 +116,8 @@ type IntegrationConnection = {
   connectionId: IntegrationConnectionId;
   integrationId: IntegrationId;
   name: string;
+  /** Null while nothing stored at the address chooses a method, such as before API setup. */
+  authMethod: IntegrationAuthMethod | null;
 };
 type IntegrationConfigurationStatus =
   | {

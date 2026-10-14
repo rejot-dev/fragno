@@ -262,6 +262,11 @@ export default [
         index("routes/backoffice/files/explorer.tsx"),
         route("*", "routes/backoffice/files/explorer-path.tsx"),
       ]),
+      route("integrations", "routes/backoffice/integrations/index.tsx"),
+      route("integrations/:scopeKind/:scopeId", "routes/backoffice/integrations/scope-layout.tsx", [
+        index("routes/backoffice/integrations/connection-index.tsx"),
+        route(":connectionId", "routes/backoffice/integrations/connection-detail.tsx"),
+      ]),
       route("internals", "routes/backoffice/internals/redirect.tsx"),
       route("internals/:scopeKind/:scopeId", "routes/backoffice/internals/layout.tsx", [
         index("routes/backoffice/internals/index.tsx"),

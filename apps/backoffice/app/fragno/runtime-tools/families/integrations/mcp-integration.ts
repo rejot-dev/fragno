@@ -39,10 +39,11 @@ import {
 import { resolveRuntimePublicScopePathSegment } from "../../runtime-public-scope";
 import { compileIntegrationActionSchema } from "./integration-action-json-schema";
 import { connectionStateOfInspection } from "./integration-events";
-import type {
-  IntegrationActionImplementation,
-  IntegrationContext,
-  IntegrationImplementation,
+import {
+  authMethodOfFragmentAuthMode,
+  type IntegrationActionImplementation,
+  type IntegrationContext,
+  type IntegrationImplementation,
 } from "./integration-implementation";
 
 const mcpIntegrationId = "mcp";
@@ -650,6 +651,7 @@ export function createMcpIntegration({
           connectionId: encodeMcpConnectionId(server.slug),
           integrationId: mcpIntegrationId,
           name: server.name ?? server.slug,
+          authMethod: authMethodOfFragmentAuthMode(server.authMode),
           configuration: { status: "configured" },
           // Listing reads no auth state; only auth-free servers are known without checking.
           authorization: {
@@ -670,6 +672,7 @@ export function createMcpIntegration({
           connectionId: encodeMcpConnectionId(localId),
           integrationId: mcpIntegrationId,
           name: resolved?.name ?? localId,
+          authMethod: resolved && authMethodOfFragmentAuthMode(resolved.authMode),
         },
         async inspect() {
           return inspectMcpServer(await access.authStatus(localId), cachedTools);
@@ -678,6 +681,13 @@ export function createMcpIntegration({
           return connectionStateOfInspection(
             inspectMcpServer(await access.authStatus(localId), cachedTools),
           );
+        },
+        async details() {
+          return {
+            kind: "mcp",
+            server: resolved && { endpointUrl: resolved.endpointUrl, tools: cachedTools },
+            authStatus: await access.authStatus(localId),
+          };
         },
         async actions() {
           return partitionTools(cachedTools ?? []).publishable.map(

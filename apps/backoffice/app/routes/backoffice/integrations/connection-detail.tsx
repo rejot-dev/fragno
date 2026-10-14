@@ -1,0 +1,175 @@
+import { integrationConnectionIdSchema } from "@fragno-dev/backoffice-api/v0/integrations";
+import { isRouteErrorResponse, useOutletContext } from "react-router";
+
+import {
+  isBackofficeForbiddenError,
+  isBackofficeUnavailableError,
+} from "@/backoffice-runtime/kernel";
+import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
+import { createIntegrationsRuntime } from "@/fragno/runtime-tools/families/integrations/integrations-runtime";
+import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
+
+import { AutomationDetailRows } from "../automations/detail-rows";
+import { formatTimestamp } from "../automations/formatting";
+import { requireAutomationRouteExecution } from "../automations/scope.server";
+import type { Route } from "./+types/connection-detail";
+import { ApiConnectionDetails } from "./api-connection-details";
+import {
+  DetailSection,
+  IntegrationConnectionStateLight,
+  describeIntegrationConnectionKind,
+  integrationAuthMethodLabels,
+} from "./connection-display";
+import { ConnectorConnectionDetails } from "./connector-connection-details";
+import type { IntegrationsLayoutContext } from "./layout-context";
+import { McpConnectionDetails } from "./mcp-connection-details";
+import { NativeConnectionDetails } from "./native-connection-details";
+import { WebhookConnectionDetails } from "./webhook-connection-details";
+
+export async function loader({ request, context, params }: Route.LoaderArgs) {
+  const connectionId = integrationConnectionIdSchema.safeParse(params.connectionId);
+  if (!connectionId.success) {
+    throw new Response("Not Found", { status: 404 });
+  }
+  const execution = await requireAutomationRouteExecution(request, context, params);
+  const { runtime, kernel } = context.get(BackofficeWorkerContext);
+  try {
+    return await createIntegrationsRuntime({
+      runtime,
+      kernel,
+      execution,
+      nowEpochMs: Date.now,
+    }).describe({ connectionId: connectionId.data });
+  } catch (error) {
+    if (isBackofficeForbiddenError(error)) {
+      throw new Response(error.message, { status: 403 });
+    }
+    if (
+      isBackofficeUnavailableError(error) ||
+      (error instanceof BackofficeOperationError && error.kind === "not_found")
+    ) {
+      throw new Response(error.message, { status: 404 });
+    }
+    throw error;
+  }
+}
+
+export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+  const message = isRouteErrorResponse(error)
+    ? `${error.status} · ${typeof error.data === "string" ? error.data : error.statusText}`
+    : error instanceof Error
+      ? error.message
+      : "The connection could not be read.";
+  return (
+    <aside className="bo-panel-surface bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-failed)]">
+      {message}
+    </aside>
+  );
+}
+
+export default function BackofficeIntegrationConnectionDetail({
+  loaderData: { connection, details },
+}: Route.ComponentProps) {
+  const { selectedScope, collections, changes } = useOutletContext<IntegrationsLayoutContext>();
+  const history = changes.filter((change) => change.connectionId === connection.connectionId);
+  const current = history[0];
+
+  return (
+    <aside className="bo-panel-surface flex min-w-0 flex-col gap-4 bg-[var(--bo-panel)] p-4">
+      <header className="space-y-2">
+        <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
+          {current ? describeIntegrationConnectionKind(current) : connection.integrationId}
+        </p>
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="truncate text-xl font-semibold text-[var(--bo-fg)]">{connection.name}</h2>
+          {current ? <IntegrationConnectionStateLight state={current.state} /> : null}
+        </div>
+        <p className="font-mono text-[11px] break-all text-[var(--bo-muted)]">
+          {connection.connectionId}
+        </p>
+      </header>
+
+      {(() => {
+        switch (details.kind) {
+          case "api":
+            return <ApiConnectionDetails details={details} />;
+          case "webhook":
+            return <WebhookConnectionDetails details={details} collections={collections} />;
+          case "mcp":
+            return <McpConnectionDetails details={details} />;
+          case "connector":
+            return <ConnectorConnectionDetails details={details} />;
+          case "native":
+            return (
+              <NativeConnectionDetails
+                selectedScope={selectedScope}
+                service={connection.integrationId}
+              />
+            );
+          default:
+            throw new Error("Integration connection details are unsupported.", {
+              cause: details satisfies never,
+            });
+        }
+      })()}
+
+      <DetailSection title="Inspection">
+        <AutomationDetailRows
+          layout="inspector"
+          rows={[
+            {
+              label: "Configuration",
+              value:
+                connection.configuration.status === "missing"
+                  ? `missing: ${connection.configuration.missingFields.join(", ")}`
+                  : "configured",
+            },
+            {
+              label: "Auth method",
+              value: connection.authMethod
+                ? integrationAuthMethodLabels[connection.authMethod]
+                : "—",
+            },
+            { label: "Authorization", value: connection.authorization.status },
+            ...connection.checks.map((check) => ({
+              label: check.label,
+              value:
+                check.status === "not-checked"
+                  ? `not checked: ${check.reason}`
+                  : `${check.status} at ${formatTimestamp(check.checkedAt)}: ${check.message}`,
+            })),
+          ]}
+        />
+        {connection.nextSteps.length > 0 ? (
+          <ul className="list-disc space-y-1 px-8 py-3 text-xs text-[var(--bo-muted)]">
+            {connection.nextSteps.map((step) => (
+              <li key={step}>{step}</li>
+            ))}
+          </ul>
+        ) : null}
+      </DetailSection>
+
+      <DetailSection title="State history">
+        {history.length === 0 ? (
+          <p className="px-3 py-2.5 text-xs text-[var(--bo-muted)]">
+            No state change has been reported for this address.
+          </p>
+        ) : (
+          <ol className="divide-y divide-[color:var(--bo-border)]">
+            {history.map((change) => (
+              <li
+                key={change.eventId}
+                className="flex items-center justify-between gap-3 px-3 py-2"
+              >
+                <IntegrationConnectionStateLight state={change.state} />
+                <span className="text-xs text-[var(--bo-muted)]">
+                  {formatTimestamp(change.occurredAt)}
+                </span>
+              </li>
+            ))}
+          </ol>
+        )}
+      </DetailSection>
+    </aside>
+  );
+}

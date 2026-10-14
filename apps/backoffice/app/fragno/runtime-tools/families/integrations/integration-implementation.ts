@@ -1,4 +1,6 @@
+import type { ApiAuthStatus, ApiConnection, WebhookEndpoint } from "@fragno-dev/api-fragment/types";
 import type {
+  IntegrationAuthMethod,
   IntegrationAction,
   IntegrationConnection,
   IntegrationConnectionPage,
@@ -8,6 +10,7 @@ import type {
   IntegrationSetupProgress,
 } from "@fragno-dev/backoffice-api/v0/integrations";
 import type { JsonValue } from "@fragno-dev/backoffice-api/v0/shared/json";
+import type { McpAuthStatus, McpTool } from "@fragno-dev/mcp-fragment/types";
 
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
@@ -39,14 +42,56 @@ export interface IntegrationActionImplementation {
   invoke(input: JsonValue): Promise<JsonValue>;
 }
 
+/**
+ * Source-owned facts Backoffice's read-only connection views show beside the inspection. Values
+ * come from the sources' sanitized reads, so they never contain secrets. Null means the source has
+ * nothing stored at the address.
+ */
+export type IntegrationConnectionDetails =
+  | { kind: "api"; connection: ApiConnection | null; authStatus: ApiAuthStatus | null }
+  | { kind: "webhook"; endpoint: WebhookEndpoint | null; publicUrl: string | null }
+  | {
+      kind: "mcp";
+      server: { endpointUrl: string; tools: McpTool[] | null } | null;
+      authStatus: McpAuthStatus | null;
+    }
+  | {
+      kind: "connector";
+      projectId: string;
+      providerConfigId: string;
+      connectionName: string;
+      accountId: string | null;
+    }
+  // Native services are managed on their own Backoffice pages.
+  | { kind: "native" };
+
 /** Resolution binds authority without forcing configuration inspection or a live check before every action. */
 export interface ResolvedIntegrationConnection {
-  readonly identity: Pick<IntegrationConnection, "connectionId" | "integrationId" | "name">;
+  readonly identity: Pick<
+    IntegrationConnection,
+    "connectionId" | "integrationId" | "name" | "authMethod"
+  >;
   inspect(): Promise<IntegrationInspection>;
   /** The state this source's integrations.connection.* events report for the connection now. */
   state(): Promise<IntegrationConnectionState>;
+  details(): Promise<IntegrationConnectionDetails>;
   actions(): Promise<readonly IntegrationActionImplementation[]>;
   verify(): Promise<IntegrationInspection>;
+}
+
+/** The API and MCP Fragments store the same auth mode names. */
+export function authMethodOfFragmentAuthMode(authMode: string): IntegrationAuthMethod {
+  switch (authMode) {
+    case "none":
+    case "bearer":
+    case "basic":
+    case "oauth":
+      return authMode;
+    case "client_credentials":
+      return "client-credentials";
+    default:
+      throw new Error(`Fragment auth mode '${authMode}' is unsupported.`);
+  }
 }
 
 /** Lifecycle support is explicit; private state and validation schemas stay with the owning source. */

@@ -31,6 +31,7 @@ import {
   type BackofficeToolContext,
 } from "../../runtime-tools";
 import { type IntegrationSetupOperation } from "./integration-contracts";
+import type { IntegrationConnectionDetails } from "./integration-implementation";
 
 /** Connection IDs address existing sources within the execution scope; they never confer authority. */
 export type IntegrationsRuntime = {
@@ -50,6 +51,11 @@ export type IntegrationsRuntime = {
   disconnect(
     input: z.output<typeof integrationDisconnectInputSchema>,
   ): Promise<z.output<typeof integrationDisconnectResultSchema>>;
+  /** For Backoffice's read-only connection views; authorizes as integrations.get does. */
+  describe(input: z.output<typeof integrationConnectionInputSchema>): Promise<{
+    connection: z.output<typeof integrationConnectionSchema>;
+    details: IntegrationConnectionDetails;
+  }>;
   backfillConnectionEvents(): Promise<
     z.output<typeof integrationConnectionEventsBackfillResultSchema>
   >;

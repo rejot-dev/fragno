@@ -1,3 +1,5 @@
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
@@ -91,6 +93,17 @@ export function createIntegrationsRuntime({
         throw new BackofficeOperationError("not_found", "Integrations action not found.");
       }
       return await action.invoke(input);
+    },
+    async describe({ connectionId }) {
+      // No tool wraps this read, so it checks the permission integrations.get requires itself.
+      await kernel.assertAuthorized({
+        execution,
+        operation: BACKOFFICE_PERMISSION.integrations.read,
+        resource: { connectionId },
+      });
+      const connection = await registry.resolve(context, connectionId);
+      const [inspection, details] = await Promise.all([connection.inspect(), connection.details()]);
+      return { connection: { ...connection.identity, ...inspection }, details };
     },
     async verify({ connectionId }) {
       const connection = await registry.resolve(context, connectionId);
