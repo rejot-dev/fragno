@@ -16,6 +16,7 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
 
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
+import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY } from "@/fragno/automation/actors";
@@ -312,9 +313,100 @@ describe("marketplace lock scenarios", () => {
     );
   });
 
-  test("does not upgrade an existing installation, but allows another version at a different root", async () => {
+  test("upgrades an installation in place, keeping edits to files the new version dropped", async () => {
     const installationRoot = "/workspace/first";
-    const newerWorkflowId = await buildMarketplacePackageInstallWorkflowInstanceId({
+    const upgradeWorkflowId = await buildMarketplacePackageInstallWorkflowInstanceId({
+      marketplace: { kind: "system" },
+      targetScope: TARGET_SCOPE,
+      installationRoot,
+      listingId: LISTING_ID,
+      version: "1.4.0",
+    });
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        // Writing to the system-scope artifact upload runs system automations, which load more objects.
+        objects: allLocalObjects,
+        name: "upgrade a Marketplace installation in place",
+        setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
+        steps: ({ then, runner }) => [
+          then.assert("publish artifacts", publishMarketplaceArtifacts),
+          runner.drain(),
+          then.assert("version 1.0.0 also ships two notes that 1.4.0 drops", async (ctx) => {
+            const artifact = ctx.runtime.objects.upload.forName(
+              marketplaceArtifactUploadName({
+                marketplace: { kind: "system" },
+                listingId: LISTING_ID,
+              }),
+            );
+            for (const note of ["unchanged", "edited"]) {
+              await writeUploadFile({
+                fileKey: `1.0.0/notes/${note}.md`,
+                content: `shipped ${note} note`,
+                fetch: (request) => artifact.http.fetch(request),
+              });
+            }
+            await installMarketplaceArtifact(ctx, {
+              listingId: LISTING_ID,
+              version: "1.0.0",
+              installationRoot,
+            });
+          }),
+          runner.drain(),
+          then.assert("edit a note, then install version 1.4.0 at the same root", async (ctx) => {
+            const upload = ctx.runtime.objects.upload.for(TARGET_SCOPE);
+            await writeUploadFile({
+              fileKey: "first/notes/edited.md",
+              content: "my own notes",
+              fetch: (request) => upload.http.fetch(request),
+            });
+            await expect(
+              installMarketplaceArtifact(ctx, {
+                listingId: LISTING_ID,
+                version: "1.4.0",
+                installationRoot,
+              }),
+            ).resolves.toMatchObject({ workflowInstanceId: upgradeWorkflowId });
+          }),
+          runner.drain(),
+          then.assert("the upgraded installer receives its reply message", (ctx) =>
+            submitTestCommandInstaller(ctx, installationRoot),
+          ),
+          runner.drain(),
+          then.workflow.instance({
+            workflowName: MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
+            instanceId: upgradeWorkflowId,
+            status: "complete",
+          }),
+          then.assert("the root holds version 1.4.0 and one lock entry", async (ctx) => {
+            expect(await readMarketplaceLock(ctx)).toEqual({
+              entries: [
+                {
+                  marketplace: { kind: "system" },
+                  listingId: LISTING_ID,
+                  version: "1.4.0",
+                  installationRoot,
+                },
+              ],
+            });
+            const file = await readWorkspaceFile(ctx, `${installationRoot}/${WORKFLOW_FILE}`);
+            assert(file.ok);
+            await expect(file.text()).resolves.toBe(publishedWorkflowSource("1.4.0"));
+            assert(
+              (await readWorkspaceFile(ctx, `${installationRoot}/notes/unchanged.md`)).status ===
+                410,
+            );
+            const edited = await readWorkspaceFile(ctx, `${installationRoot}/notes/edited.md`);
+            assert(edited.ok);
+            await expect(edited.text()).resolves.toBe("my own notes");
+          }),
+        ],
+      }),
+    );
+  });
+
+  test("refuses to upgrade over an edited file, but allows another version at a different root", async () => {
+    const installationRoot = "/workspace/first";
+    const upgradeWorkflowId = await buildMarketplacePackageInstallWorkflowInstanceId({
       marketplace: { kind: "system" },
       targetScope: TARGET_SCOPE,
       installationRoot,
@@ -324,7 +416,7 @@ describe("marketplace lock scenarios", () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         objects: scenarioObjects,
-        name: "install another Marketplace version at a separate root",
+        name: "preserve edited files when upgrading a Marketplace installation",
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ then, runner }) => [
           then.assert("publish artifacts", publishMarketplaceArtifacts),
@@ -337,7 +429,13 @@ describe("marketplace lock scenarios", () => {
             });
           }),
           runner.drain(),
-          then.assert("request another version at the occupied root", async (ctx) => {
+          then.assert("edit the workflow, then request version 1.4.0 at its root", async (ctx) => {
+            const upload = ctx.runtime.objects.upload.for(TARGET_SCOPE);
+            await writeUploadFile({
+              fileKey: `first/${WORKFLOW_FILE}`,
+              content: "// edited in the workspace",
+              fetch: (request) => upload.http.fetch(request),
+            });
             await installMarketplaceArtifact(ctx, {
               listingId: LISTING_ID,
               version: "1.4.0",
@@ -347,10 +445,10 @@ describe("marketplace lock scenarios", () => {
           runner.drain(),
           then.workflow.instance({
             workflowName: MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
-            instanceId: newerWorkflowId,
+            instanceId: upgradeWorkflowId,
             status: "errored",
           }),
-          then.assert("the first installation is untouched", async (ctx) => {
+          then.assert("the edited installation is untouched", async (ctx) => {
             expect(await readMarketplaceLock(ctx)).toEqual({
               entries: [
                 {
@@ -363,48 +461,39 @@ describe("marketplace lock scenarios", () => {
             });
             const file = await readWorkspaceFile(ctx, `${installationRoot}/${WORKFLOW_FILE}`);
             assert(file.ok);
-            await expect(file.text()).resolves.toBe(publishedWorkflowSource("1.0.0"));
-            const result = await installMarketplaceArtifact(ctx, {
+            await expect(file.text()).resolves.toBe("// edited in the workspace");
+            await installMarketplaceArtifact(ctx, {
               listingId: LISTING_ID,
               version: "1.4.0",
               installationRoot: "/workspace/second",
             });
-            expect(result.workflowInstanceId).not.toBe(newerWorkflowId);
           }),
           runner.drain(),
           then.assert("the second installer receives its reply message", (ctx) =>
             submitTestCommandInstaller(ctx, "/workspace/second"),
           ),
           runner.drain(),
-          then.assert(
-            "both versions have separate files and entries in the workspace lock",
-            async (ctx) => {
-              expect(await readMarketplaceLock(ctx)).toEqual({
-                entries: [
-                  {
-                    marketplace: { kind: "system" },
-                    listingId: LISTING_ID,
-                    version: "1.0.0",
-                    installationRoot,
-                  },
-                  {
-                    marketplace: { kind: "system" },
-                    listingId: LISTING_ID,
-                    version: "1.4.0",
-                    installationRoot: "/workspace/second",
-                  },
-                ],
-              });
-              for (const root of [installationRoot, "/workspace/second"]) {
-                assert(
-                  (await readWorkspaceFile(ctx, `${root}/marketplace-lock.json`)).status === 404,
-                );
-              }
-              const file = await readWorkspaceFile(ctx, `/workspace/second/${WORKFLOW_FILE}`);
-              assert(file.ok);
-              await expect(file.text()).resolves.toBe(publishedWorkflowSource("1.4.0"));
-            },
-          ),
+          then.assert("both versions have separate entries in the workspace lock", async (ctx) => {
+            expect(await readMarketplaceLock(ctx)).toEqual({
+              entries: [
+                {
+                  marketplace: { kind: "system" },
+                  listingId: LISTING_ID,
+                  version: "1.0.0",
+                  installationRoot,
+                },
+                {
+                  marketplace: { kind: "system" },
+                  listingId: LISTING_ID,
+                  version: "1.4.0",
+                  installationRoot: "/workspace/second",
+                },
+              ],
+            });
+            const file = await readWorkspaceFile(ctx, `/workspace/second/${WORKFLOW_FILE}`);
+            assert(file.ok);
+            await expect(file.text()).resolves.toBe(publishedWorkflowSource("1.4.0"));
+          }),
         ],
         options: { allowErroredWorkflows: true },
       }),

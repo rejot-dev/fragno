@@ -441,7 +441,7 @@ export const marketplaceOperations = {
 export const packagesOperations = {
   "packages.install": {
     description:
-      "Start the existing Marketplace installation workflow in the current workspace at a required folder under /workspace. Installs from the public Marketplace, or from the installing organization's Marketplace with organization visibility. Installation is asynchronous and never overwrites differing files. Omit version to use the existing latest-release resolution.",
+      "Start the existing Marketplace installation workflow in the current workspace at a required folder under /workspace. Installs from the public Marketplace, or from the installing organization's Marketplace with organization visibility. Installation is asynchronous. Installing another version at a folder that already holds the item upgrades it in place, replacing and removing files that still match the installed version; it fails without changes if a file it would replace was edited. Omit version to use the existing latest-release resolution.",
     permissions: [BACKOFFICE_PERMISSION.packages.install],
     input: packagesInstallInputSchema,
     output: packagesInstallResultSchema,

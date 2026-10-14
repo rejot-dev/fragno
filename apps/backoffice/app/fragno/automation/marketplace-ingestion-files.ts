@@ -20,6 +20,14 @@ export type MarketplaceWorkspaceTargetFile = {
 
 export type MarketplaceWorkspaceFileObservation = {
   source: MarketplaceIngestionSourceFile;
+  /** The installed version's file at the same path; null on a first install or for a new path. */
+  previous: MarketplaceIngestionSourceFile | null;
+  target: MarketplaceWorkspaceTargetFile | null;
+};
+
+/** A file the installed version shipped but the requested version no longer does. */
+export type MarketplaceWorkspaceRetiredFileObservation = {
+  previous: MarketplaceIngestionSourceFile;
   target: MarketplaceWorkspaceTargetFile | null;
 };
 
@@ -30,6 +38,7 @@ export type MarketplaceWorkspaceWrite = {
 
 export type MarketplaceWorkspaceInstallationPlan = {
   writes: MarketplaceWorkspaceWrite[];
+  deletes: { path: string; revision: number }[];
   assertions: WorkspaceFileAssertion[];
 };
 
@@ -52,24 +61,41 @@ export function marketplaceFileContentsMatch(
   );
 }
 
-/** Installations only create missing files; differing existing files are never upgraded. */
+/**
+ * Installations create missing files and replace or delete files still exactly as the installed
+ * version shipped them. A file that differs from both versions was edited in the workspace and
+ * conflicts, unless the requested version no longer ships it; then the edit is left in place.
+ */
 export function planMarketplaceWorkspaceInstallation(input: {
   installationRoot: string;
   observations: MarketplaceWorkspaceFileObservation[];
+  retired: MarketplaceWorkspaceRetiredFileObservation[];
 }): MarketplaceWorkspaceInstallationPlan {
   const writes: MarketplaceWorkspaceWrite[] = [];
+  const deletes: MarketplaceWorkspaceInstallationPlan["deletes"] = [];
   const assertions: WorkspaceFileAssertion[] = [];
 
-  for (const { source, target } of input.observations) {
+  for (const { source, previous, target } of input.observations) {
     const path = `${input.installationRoot}/${source.relativePath}`;
     if (!target) {
       writes.push({ source, precondition: { kind: "absent" } });
     } else if (marketplaceFileContentsMatch(source, target)) {
       assertions.push({ path, precondition: { kind: "revision", revision: target.revision } });
+    } else if (previous && marketplaceFileContentsMatch(previous, target)) {
+      writes.push({ source, precondition: { kind: "revision", revision: target.revision } });
     } else {
       throw new MarketplaceWorkspaceFileConflictError(path);
     }
   }
 
-  return { writes, assertions };
+  for (const { previous, target } of input.retired) {
+    if (target && marketplaceFileContentsMatch(previous, target)) {
+      deletes.push({
+        path: `${input.installationRoot}/${previous.relativePath}`,
+        revision: target.revision,
+      });
+    }
+  }
+
+  return { writes, deletes, assertions };
 }

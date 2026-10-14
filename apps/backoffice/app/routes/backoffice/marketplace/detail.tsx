@@ -637,8 +637,9 @@ function MarketplaceListingDetail({ loaderData }: Route.ComponentProps) {
                       className="mt-2 text-xs leading-5 text-pretty text-[var(--bo-muted)]"
                     >
                       Use a folder under <code>/workspace</code>. Successful installs record this
-                      release and folder in <code>{MARKETPLACE_LOCK_PATH}</code>. Conflicting files
-                      stop installation.
+                      release and folder in <code>{MARKETPLACE_LOCK_PATH}</code>. Installing into a
+                      folder that holds another release upgrades it; files edited since stop the
+                      upgrade.
                     </p>
                     <p
                       id="marketplace-installation-path-error"
