@@ -1,5 +1,3 @@
-import type { IFileSystem } from "just-bash";
-
 import type { AutomationSourceReader } from "./automation-source";
 
 /** Creates an automation source reader from absolute test file paths. */
@@ -19,27 +17,4 @@ export function createTestAutomationSourceReader(
     }
     return content;
   };
-}
-
-/** Snapshots automation source files without depending on synchronous remote path enumeration. */
-export async function snapshotTestAutomationSourceReader(
-  fileSystem: IFileSystem,
-): Promise<AutomationSourceReader> {
-  const files: Record<string, Uint8Array> = {};
-  async function visit(path: string): Promise<void> {
-    if (!(await fileSystem.exists(path))) {
-      return;
-    }
-    if ((await fileSystem.stat(path)).isFile) {
-      files[path] = await fileSystem.readFileBuffer(path);
-      return;
-    }
-    for (const name of await fileSystem.readdir(path)) {
-      await visit(`${path}/${name}`);
-    }
-  }
-  for (const path of ["/static/automations", "/system/automations", "/workspace/automations"]) {
-    await visit(path);
-  }
-  return createTestAutomationSourceReader(files);
 }

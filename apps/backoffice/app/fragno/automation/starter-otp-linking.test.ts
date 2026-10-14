@@ -52,10 +52,12 @@ const scenarioObjects = {
   UPLOAD: (input) => new InMemoryUploadObject(input),
 } satisfies LocalBackofficeObjects;
 
+// A chosen folder outside `/workspace/automations`, as the Marketplace install form allows.
 const TELEGRAM_CHANNEL_MARKETPLACE_INSTALLATION = {
   targetScope: { kind: "org", orgId: "org-1" },
   slug: "telegram-channel",
   version: "1.0.1",
+  installationRoot: "/workspace/telegram-channel",
 } as const;
 
 const telegramMessageEvent = ({
@@ -148,7 +150,7 @@ const telegramLinkingExecution = (event: AutomationEvent) =>
   });
 
 const telegramLinkingWorkflowRequest = (event: AutomationEvent) => ({
-  path: "/workspace/automations/telegram-user-linking.workflow.js",
+  path: "/workspace/telegram-channel/automations/telegram-user-linking.workflow.js",
   event,
   execution: telegramLinkingExecution(event),
 });

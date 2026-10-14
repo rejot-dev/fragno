@@ -118,7 +118,6 @@ import {
   type ScenarioAuthUserRoleInput as AuthUserRoleInput,
   type ScenarioAuthUserStatusInput as AuthUserStatusInput,
 } from "./scenario-auth";
-import { snapshotTestAutomationSourceReader } from "./test-automation-source-reader.test-utils";
 import { createRouteBackedAutomationWorkflowRuntime } from "./workflow-route-runtime";
 
 type ScenarioVars = Record<string, unknown>;
@@ -740,6 +739,8 @@ type MarketplaceInstallInput = {
   targetScope: MarketplaceInstallTargetScope;
   slug: string;
   version: string;
+  /** The workspace folder the package installs into, such as `/workspace`. */
+  installationRoot: string;
 };
 
 type DeepPartial<T> = T extends readonly (infer TItem)[]
@@ -2705,7 +2706,7 @@ const buildStepBuilders = <
         createStep(
           "when",
           "marketplace.install",
-          `install Marketplace entry ${input.slug}@${input.version} into ${backofficeContextScopeRoutePath(input.targetScope)}`,
+          `install Marketplace entry ${input.slug}@${input.version} into ${backofficeContextScopeRoutePath(input.targetScope)}:${input.installationRoot}`,
           async (ctx) => {
             ctx.rememberOrg(input.targetScope.orgId);
             const entry = getStaticMarketplaceEntry({
@@ -2734,7 +2735,7 @@ const buildStepBuilders = <
                 listingId,
                 version: entry.version,
                 targetScope: input.targetScope,
-                installationRoot: "/workspace",
+                installationRoot: input.installationRoot,
               },
               {
                 execution: createBackofficeSystemExecution({
@@ -2768,7 +2769,7 @@ const buildStepBuilders = <
                 (installed) =>
                   installed.listingId === listingId &&
                   installed.version === entry.version &&
-                  installed.installationRoot === "/workspace",
+                  installed.installationRoot === input.installationRoot,
               )
             ) {
               throw new Error(
@@ -2786,7 +2787,7 @@ const buildStepBuilders = <
               if (isMarketplaceInternalArtifactPath(relativePath)) {
                 continue;
               }
-              const workspacePath = `/workspace/${relativePath}`;
+              const workspacePath = `${input.installationRoot}/${relativePath}`;
               await scenarioFileSystem.writeFile(
                 workspacePath,
                 await installedFileSystem.readFileBuffer(workspacePath),
@@ -4496,14 +4497,12 @@ export const runBackofficeScenario = async <TVars extends ScenarioVars = Scenari
     sqliteDataDirectory: scenario.options?.sqliteDataDirectory,
     createSandboxProviders: scenario.createSandboxProviders,
     kernelObserver,
-    readAutomationSource: async ({ execution, path }) => {
-      const readSource = await snapshotTestAutomationSourceReader(
+    readAutomationSource: async ({ execution, path }) =>
+      await (
         execution.scope.kind === "project"
           ? files.forProject(execution.scope.projectId)
-          : files.forOrg(execution.scope.kind === "org" ? execution.scope.orgId : undefined),
-      );
-      return await readSource({ execution, path });
-    },
+          : files.forOrg(execution.scope.kind === "org" ? execution.scope.orgId : undefined)
+      ).readFile(path, "utf-8"),
     objects: { ...scenario.objects, ...(await createFakeObjectOverrides(fakes)) },
     piAvailableModels: scenario.piAvailableModels,
     ...(scenario.durableHooks ? { durableHooks: scenario.durableHooks } : {}),

@@ -46,7 +46,7 @@ describe("automation backoffice workspace data", () => {
     const result = await loadAutomationScriptSource({
       context: mockContext,
       execution: orgExecution,
-      scriptId: "automation-script:static:example.workflow.js",
+      scriptId: "automation-script:/static/automations/example.workflow.js",
     });
 
     expect(result).toEqual({
@@ -67,7 +67,7 @@ describe("automation backoffice workspace data", () => {
     const result = await loadAutomationScriptSource({
       context: mockContext,
       execution: projectExecution,
-      scriptId: "automation-script:static:example.workflow.js",
+      scriptId: "automation-script:/static/automations/example.workflow.js",
     });
 
     expect(result).toEqual({
@@ -89,7 +89,7 @@ describe("automation backoffice workspace data", () => {
     const result = await loadAutomationScriptSource({
       context: mockContext,
       execution: orgExecution,
-      scriptId: "automation-script:system:workspace-file-initialization.workflow.js",
+      scriptId: "automation-script:/system/automations/workspace-file-initialization.workflow.js",
     });
 
     expect(result).toEqual({
@@ -111,7 +111,7 @@ describe("automation backoffice workspace data", () => {
     const result = await loadAutomationScriptSource({
       context: mockContext,
       execution: orgExecution,
-      scriptId: "automation-script:workspace:lazy.sh",
+      scriptId: "automation-script:/workspace/automations/lazy.sh",
     });
 
     expect(result).toEqual({

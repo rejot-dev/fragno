@@ -1,16 +1,13 @@
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
-import { normalizeRelativePath } from "@/files/normalize-path";
+import { isPathWithin, normalizeRelativePath } from "@/files/normalize-path";
 
 export const AUTOMATION_STATIC_ROOT = "/static/automations";
 export const AUTOMATION_SYSTEM_ROOT = "/system/automations";
 export const AUTOMATION_WORKSPACE_ROOT = "/workspace/automations";
 
-const AUTOMATION_ROOTS = [
-  AUTOMATION_STATIC_ROOT,
-  AUTOMATION_SYSTEM_ROOT,
-  AUTOMATION_WORKSPACE_ROOT,
-] as const;
-const AUTOMATION_ROOT_RELATIVE_PATHS = AUTOMATION_ROOTS.map((root) => root.slice(1));
+// Marketplace packages install into a chosen workspace folder, so workspace scripts may live
+// anywhere in the workspace. Static and system scripts stay in their automation folders.
+const AUTOMATION_SCRIPT_ROOTS = [AUTOMATION_STATIC_ROOT, AUTOMATION_SYSTEM_ROOT, "/workspace"];
 
 export type AutomationSourceReader = (input: {
   execution: BackofficeExecutionContext;
@@ -19,38 +16,34 @@ export type AutomationSourceReader = (input: {
 
 export type AutomationScriptLayer = "static" | "system" | "workspace";
 
-export function normalizeScriptRelativePath(value: string, label = "Automation script"): string {
+/** Resolves a script path to an absolute one; relative paths are in the workspace automations folder. */
+export function resolveAutomationScriptPath(value: string): string {
   const trimmed = value.trim();
   if (!trimmed) {
-    throw new Error(`${label} path is empty.`);
+    throw new Error("Automation script path is empty.");
   }
 
-  if (trimmed.startsWith("/")) {
-    let normalizedAbsolutePath: string;
-    try {
-      normalizedAbsolutePath = normalizeRelativePath(trimmed.slice(1));
-    } catch (error) {
-      throw new Error(
-        `${label} path '${value}' is invalid: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-
-    const matchedRoot = AUTOMATION_ROOT_RELATIVE_PATHS.find(
-      (root) => normalizedAbsolutePath === root || normalizedAbsolutePath.startsWith(`${root}/`),
-    );
-    if (!matchedRoot) {
-      throw new Error(`${label} path '${value}' must stay under an automation root.`);
-    }
-    return normalizedAbsolutePath.slice(`${matchedRoot}/`.length);
-  }
-
+  let absolutePath: string;
   try {
-    return normalizeRelativePath(trimmed);
+    absolutePath = trimmed.startsWith("/")
+      ? `/${normalizeRelativePath(trimmed.slice(1))}`
+      : toAbsoluteAutomationPath(trimmed);
   } catch (error) {
     throw new Error(
-      `${label} path '${value}' is invalid: ${error instanceof Error ? error.message : String(error)}`,
+      `Automation script path '${value}' is invalid: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
+
+  if (
+    !AUTOMATION_SCRIPT_ROOTS.some(
+      (root) => absolutePath !== root && isPathWithin(absolutePath, root),
+    )
+  ) {
+    throw new Error(
+      `Automation script path '${value}' must be in the workspace or an automation folder.`,
+    );
+  }
+  return absolutePath;
 }
 
 export function toAbsoluteAutomationPath(relativePath: string): string {
@@ -71,11 +64,7 @@ export async function readAutomationScript(
   readAutomationSource: AutomationSourceReader,
   input: { execution: BackofficeExecutionContext; scriptPath: string },
 ): Promise<{ absolutePath: string; body: string }> {
-  const trimmedPath = input.scriptPath.trim();
-  const normalizedPath = normalizeScriptRelativePath(trimmedPath, trimmedPath || "script");
-  const absolutePath = trimmedPath.startsWith("/")
-    ? `/${normalizeRelativePath(trimmedPath.slice(1))}`
-    : toAbsoluteAutomationPath(normalizedPath);
+  const absolutePath = resolveAutomationScriptPath(input.scriptPath);
   return {
     absolutePath,
     body: await readAutomationSource({ execution: input.execution, path: absolutePath }),
