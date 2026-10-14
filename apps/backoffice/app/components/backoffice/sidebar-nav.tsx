@@ -34,16 +34,16 @@ const PRIMARY_NAVIGATION: PrimaryNavigationItem[] = [
     isActive: (pathname) => pathname.startsWith("/backoffice/sessions"),
   },
   {
-    label: "Computers",
-    to: "/backoffice/computers",
-    icon: "monitor",
-    isActive: (pathname) => pathname.startsWith("/backoffice/computers"),
-  },
-  {
     label: "Files",
     to: "/backoffice/files",
     icon: "folder",
     isActive: (pathname) => pathname.startsWith("/backoffice/files"),
+  },
+  {
+    label: "Computers",
+    to: "/backoffice/computers",
+    icon: "monitor",
+    isActive: (pathname) => pathname.startsWith("/backoffice/computers"),
   },
   {
     label: "Marketplace",
