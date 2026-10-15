@@ -5,8 +5,6 @@ import jsTokens from "js-tokens";
 
 import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
 
-import type { BackofficeStateBackend } from "./state-backend";
-
 /** Saved JavaScript lives in these mounts, so a program imports only from them. */
 const SOURCE_MODULE_ROOTS = ["/static/", "/workspace/"] as const;
 
@@ -83,11 +81,12 @@ function findImportSpecifiers(code: string): ImportSpecifier[] {
 }
 
 /**
- * Reads the saved modules a program imports, following path specifiers from module to module. Inline
- * code has no location, so it imports saved modules by absolute path only.
+ * Reads the saved modules a program imports, following path specifiers from module to module.
+ * Inline code, including workflow programs, is not a module with a location, so it imports saved
+ * modules by absolute path only.
  */
 export async function readSavedModuleImports(input: {
-  state: Pick<BackofficeStateBackend, "readFile" | "stat">;
+  readFile: (path: string) => Promise<string>;
   program: { kind: "inline"; code: string } | { kind: "file"; path: string };
 }): Promise<SavedModuleImports> {
   const modules: Record<string, string> = {};
@@ -117,14 +116,14 @@ export async function readSavedModuleImports(input: {
         `Import '${imported.specifier}' must name a .js file under /workspace or /static.`,
       );
     }
-    const file = await input.state.stat(path);
-    if (file?.type !== "file") {
-      throw fail(`Import '${imported.specifier}' names a missing file: ${path}.`);
+    let code: string;
+    try {
+      code = await input.readFile(path);
+    } catch (error) {
+      throw fail(
+        `Import '${imported.specifier}' cannot be read: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
-    if (file.size > CODEMODE_LIMITS.maxSourceBytes) {
-      throw fail("CODEMODE_SOURCE_LIMIT_EXCEEDED");
-    }
-    const code = await input.state.readFile(path);
     addModule(path, code, fail);
     await followImports(code, path);
   }
@@ -144,7 +143,7 @@ export async function readSavedModuleImports(input: {
           null,
           imported.line,
           imported.column,
-          `Inline code imports saved modules by absolute path, not '${specifier}'.`,
+          `Inline code and workflow programs import saved modules by absolute path, not '${specifier}'.`,
         );
       } else {
         path = posix.join(posix.dirname(importer), specifier);
@@ -159,7 +158,7 @@ export async function readSavedModuleImports(input: {
     await followImports(input.program.code, null);
   } else {
     const { path } = input.program;
-    const code = await input.state.readFile(path);
+    const code = await input.readFile(path);
     addModule(path, code, (message) => new SavedModuleImportError(path, 1, 1, message));
     await followImports(code, path);
   }

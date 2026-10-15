@@ -35,6 +35,7 @@ import { createRouteBackedAutomationWorkflowRuntime } from "@/fragno/automation/
 import type { CodemodeRunContext } from "@/fragno/codemode/codemode-fragment";
 import { codemodeRunnerFor } from "@/fragno/codemode/codemode-object-execute";
 import { createRuntimeStateBackend } from "@/fragno/codemode/runtime-state-backend";
+import { readSavedModuleImports } from "@/fragno/codemode/saved-module-imports";
 import {
   createBackofficeSystemStateBackend,
   type BackofficeStateBackend,
@@ -364,8 +365,13 @@ export const createRouteBackedRuntimeContext = ({
               `Saved workflow path '${script.absolutePath}' must end with '.workflow.js'.`,
             );
           }
+          const { modules } = await readSavedModuleImports({
+            readFile: async (modulePath) => await sourceReader({ execution, path: modulePath }),
+            program: { kind: "inline", code: script.body },
+          });
           const prepared = prepareCodemodeWorkflowInstance({
             code: script.body,
+            modules,
             filename: script.absolutePath,
             instanceId,
           });

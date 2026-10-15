@@ -935,6 +935,7 @@ describe("Automations authorized HTTP context", () => {
         context: { execution },
       });
       const prepared = prepareCodemodeWorkflowInstance({
+        modules: {},
         code: `defineWorkflow({ name: "pi-user-workflow" }, async () => undefined);`,
         filename: "/pi/session-1/tool-call-1.workflow.js",
         instanceId: "unused",

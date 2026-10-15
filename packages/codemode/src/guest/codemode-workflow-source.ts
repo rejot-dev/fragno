@@ -1,11 +1,15 @@
 import { CODEMODE_LIMITS } from "../codemode-limits";
-import { normalizeCode } from "../runtime-api";
-import { CODEMODE_GUEST_API_SOURCE } from "./codemode-guest-api-source";
+import { normalizeCode, type ResolvedProvider } from "../runtime-api";
+import {
+  CODEMODE_GUEST_API_SOURCE,
+  createCodemodeProviderGlobalsSource,
+  createCodemodeProviderProxySource,
+} from "./codemode-guest-api-source";
 
 /** Generates the same guest workflow API for local and WebSocket-backed host targets. */
 export function createCodemodeWorkflowSource(input: {
   code: string;
-  providerProxySource: string;
+  providers: readonly ResolvedProvider[];
 }): string {
   const code = normalizeCode(input.code.trim().replace(/;*$/, "")).trim().replace(/;*$/, "");
   return `
@@ -13,7 +17,8 @@ import { WorkerEntrypoint } from "cloudflare:workers";
 import { AsyncLocalStorage } from "node:async_hooks";
 ${CODEMODE_GUEST_API_SOURCE}
 let __dispatchers = {};
-${input.providerProxySource}
+${createCodemodeProviderProxySource(input.providers)}
+${createCodemodeProviderGlobalsSource(input.providers)}
 const logs = [];
 let logBytes = 0;
 const captureLog = (channel, args) => {

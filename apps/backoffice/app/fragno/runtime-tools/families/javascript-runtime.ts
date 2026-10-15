@@ -140,7 +140,7 @@ export function createJavaScriptRuntime({
           let modules: Record<string, string>;
           try {
             ({ modules } = await readSavedModuleImports({
-              state: stateBackend,
+              readFile: (modulePath) => stateBackend.readFile(modulePath),
               program: { kind: "file", path: sourcePath },
             }));
           } catch (error) {
@@ -224,7 +224,7 @@ export function createJavaScriptRuntime({
                 );
               }
               const { modules, packages } = await readSavedModuleImports({
-                state: stateBackend,
+                readFile: (modulePath) => stateBackend.readFile(modulePath),
                 program: { kind: "file", path: sourcePath },
               });
               if (packages.length > 0) {

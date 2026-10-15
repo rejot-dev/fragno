@@ -178,6 +178,7 @@ export const defineCodemodeWorkflow = (config: CodemodeWorkflowConfig) =>
       ]);
       const result = await executeWorkflowCodemodeAutomation({
         script: params.program.code,
+        modules: params.program.modules,
         dependencies: params.program.dependencies,
         context,
         env: config.env,

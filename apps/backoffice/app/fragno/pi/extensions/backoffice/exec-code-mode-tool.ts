@@ -163,6 +163,7 @@ export function createExecCodeModeTool(agent: BackofficeAgentContext) {
             const instanceId = hashToolCallId(`${agent.agentName}--${taskId}`);
             const prepared = prepareCodemodeWorkflowInstance({
               code,
+              modules: result.modules,
               dependencies,
               filename: `/pi/${agent.agentName}/${taskId}.workflow.js`,
               instanceId,

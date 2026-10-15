@@ -1,7 +1,9 @@
 import { CODEMODE_LIMITS } from "@fragno-dev/codemode/codemode-limits";
-import type { CodemodeStepCapability } from "@fragno-dev/codemode/execution/codemode-activation-contract";
+import {
+  sourceModuleFiles,
+  type CodemodeStepCapability,
+} from "@fragno-dev/codemode/execution/codemode-activation-contract";
 import { decodeCodemodeError } from "@fragno-dev/codemode/execution/codemode-errors";
-import { createCodemodeProviderProxySource } from "@fragno-dev/codemode/guest/codemode-guest-api-source";
 import {
   DynamicWorkerExecutor,
   type DynamicWorkerRpcCall,
@@ -53,6 +55,8 @@ export type BackofficeCodemodeWorkflowOptions = {
   /** Hook identities the trusted host permits this sandbox to trigger. */
   allowedHooks: readonly RemoteWorkflowAllowedHook[];
   dependencies?: NpmDependencyMap;
+  /** Saved modules the program imports, pinned when its instance was created. */
+  modules: Record<string, string>;
 };
 
 type WorkflowExecutionInput<TParams> = {
@@ -73,7 +77,7 @@ type WorkflowExecutionInput<TParams> = {
 async function executeBackofficeCodemodeWorkflow<TParams, TOutput>(
   input: WorkflowExecutionInput<TParams>,
 ): Promise<TOutput> {
-  const { event, remote, env, families, toolContext, dependencies, allowedHooks } = input;
+  const { modules, event, remote, env, families, toolContext, dependencies, allowedHooks } = input;
   const code = withBackofficeUiBuilder(input.code);
   const providers = createBackofficeCodemodeResolvedProviders({ families, toolContext });
   const stepTarget = new BackofficeWorkflowStepHost(remote, allowedHooks);
@@ -86,6 +90,7 @@ async function executeBackofficeCodemodeWorkflow<TParams, TOutput>(
         {
           kind: "workflow",
           code,
+          modules,
           dependencies: dependencies ?? {},
           providers: manifest,
           timeoutMs: CODEMODE_LIMITS.activationTimeoutMs,
@@ -109,10 +114,8 @@ async function executeBackofficeCodemodeWorkflow<TParams, TOutput>(
   const executor = new DynamicWorkerExecutor({ loader: env.LOADER });
   const compiled = await resolveBackofficeWorkerCompiler(env)({
     files: {
-      "remote-workflow.js": createCodemodeWorkflowSource({
-        code,
-        providerProxySource: createCodemodeProviderProxySource(providers),
-      }),
+      ...sourceModuleFiles(modules),
+      "remote-workflow.js": createCodemodeWorkflowSource({ code, providers }),
     },
     entryPoint: "remote-workflow.js",
     dependencies: dependencies ?? {},

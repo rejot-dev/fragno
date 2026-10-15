@@ -23,6 +23,7 @@ import type { WorkflowsFragmentServices } from "@fragno-dev/workflows";
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import { BackofficeKernel, BackofficeForbiddenError } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
+import { readSavedModuleImports } from "@/fragno/codemode/saved-module-imports";
 
 import {
   automationRouteAuthority,
@@ -229,12 +230,18 @@ const handleStartWorkflowRouteAction = async ({
   if (!config.readAutomationSource) {
     throw new Error("Automation workflow source reading is not configured.");
   }
-  const script = await readAutomationScript(config.readAutomationSource, {
+  const readAutomationSource = config.readAutomationSource;
+  const script = await readAutomationScript(readAutomationSource, {
     execution,
     scriptPath: action.workflowScriptPath,
   });
+  const { modules } = await readSavedModuleImports({
+    readFile: async (path) => await readAutomationSource({ execution, path }),
+    program: { kind: "inline", code: script.body },
+  });
   const prepared = prepareCodemodeWorkflowInstance({
     code: script.body,
+    modules,
     filename: script.absolutePath,
     instanceId,
   });

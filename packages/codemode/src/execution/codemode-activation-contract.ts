@@ -82,6 +82,14 @@ const sourceModulePath = z
 const sourceModules = z
   .record(sourceModulePath, z.string().max(CODEMODE_LIMITS.maxSourceBytes))
   .refine((value) => Object.keys(value).length <= CODEMODE_LIMITS.maxSourceModules);
+/** Compilers resolve an absolute specifier against the project root, which has no leading slash. */
+export function sourceModuleFiles(
+  modules: Readonly<Record<string, string>>,
+): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(modules).map(([path, source]) => [path.slice(1), source]),
+  );
+}
 /** A saved program compiles at its own path, so its relative imports resolve like the files'. */
 const moduleProgram = {
   dependencies: activationBase.dependencies,
@@ -109,6 +117,7 @@ export const codemodeActivationSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("workflow"),
     ...activationBase,
+    modules: sourceModules,
     event: z
       .object({ payload: z.unknown(), timestamp: z.date(), instanceId: name, id: name })
       .catchall(z.unknown()),

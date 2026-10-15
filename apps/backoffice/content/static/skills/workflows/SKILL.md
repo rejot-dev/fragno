@@ -39,9 +39,9 @@ Use `defineWorkflow` for work that must survive retries, time, or an external co
     ```
 
     Put side effects, provider calls, and expensive work inside `step.do`. Keep pure deterministic
-    calculations outside steps. Use stable, descriptive step names because history and retries
-    address those names. Use `step.sleep` or `step.sleepUntil` for time and `step.waitForEvent` for
-    external continuation.
+    calculations outside steps. An instance pins the saved modules it imports when it is created.
+    Use stable, descriptive step names because history and retries address those names. Use
+    `step.sleep` or `step.sleepUntil` for time and `step.waitForEvent` for external continuation.
 
     **Complete when** every non-deterministic operation has a durable step and every continuation
     has an exact event type.

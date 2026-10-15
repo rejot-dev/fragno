@@ -193,10 +193,10 @@ For code that calls a connection repeatedly, generate a client module:
 `integrations.generateClient({ connectionId, out: "/workspace/integrations/<slug>.js" })` writes one
 async function per action, typed with JSDoc from the action contracts, and returns each function's
 `name` and `actionId`. Every function calls `integrations.execute`, with the same validation and
-permissions. Inline codemode imports it by absolute path with
+permissions. Inline codemode and workflow programs import it by absolute path with
 `await import("/workspace/integrations/<slug>.js")`; saved modules import it by path, including
-relative paths, and `js.check` checks callers against its types. Scheduled workflow programs cannot
-import modules, so call `integrations.execute` there.
+relative paths, and `js.check` checks callers against its types. A workflow instance pins its
+imports when it is created, so regenerating changes later instances only.
 
 Put your own helpers in a separate module that imports the client: regenerating, needed after the
 connection's actions change, replaces the client, and generation refuses to replace any file it did

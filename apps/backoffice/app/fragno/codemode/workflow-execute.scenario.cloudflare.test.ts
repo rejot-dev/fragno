@@ -28,6 +28,7 @@ for (const caller of ["runner", "wrapper"] as const) {
     }`;
     const options = {
       allowedHooks: [],
+      modules: {},
       families: [],
       toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
     };
@@ -136,6 +137,7 @@ test.each(["throw", "return"] as const)(
         env,
         {
           allowedHooks: [],
+          modules: {},
           families: [],
           toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
         },
@@ -204,6 +206,7 @@ test("native RPC errors without host suspension still reach the runner", async (
       env,
       {
         allowedHooks: [],
+        modules: {},
         families: [],
         toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
       },
@@ -272,6 +275,7 @@ test("a ui.form step collects workflow input that the paired waitForEvent consum
       {
         allowedHooks: [],
         families: [],
+        modules: {},
         toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
       },
     ),
@@ -390,6 +394,7 @@ test("a step returning an invalid generated UI fails without spending its retrie
       {
         allowedHooks: [],
         families: [],
+        modules: {},
         toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
       },
     ),

@@ -55,6 +55,8 @@ export type CodemodeWorkflowTrigger<T extends AutomationEventPayload> =
 export type CodemodeWorkflowParams = {
   program: {
     code: string;
+    /** Saved modules the code imports, pinned at creation so every tick runs the same code. */
+    modules: Record<string, string>;
     dependencies: NpmDependencyMap;
     workflowName: string;
     filename: string;
@@ -72,6 +74,8 @@ export type CodemodeWorkflowParams = {
 export const codemodeWorkflowParamsSchema: z.ZodType<CodemodeWorkflowParams> = z.looseObject({
   program: z.strictObject({
     code: z.string().min(1),
+    // Existing workflow snapshots predate pinned imports and import nothing.
+    modules: z.record(z.string(), z.string()).default({}),
     dependencies: dependencyMapSchema,
     workflowName: z.string().trim().min(1),
     filename: z.string().trim().min(1),
@@ -138,11 +142,13 @@ export type PreparedCodemodeWorkflowInstance = {
 
 export function prepareCodemodeWorkflowInstance({
   code,
+  modules,
   dependencies,
   filename,
   instanceId,
 }: {
   code: string;
+  modules: Record<string, string>;
   dependencies?: NpmDependencyMap;
   filename: string;
   instanceId: string;
@@ -155,6 +161,7 @@ export function prepareCodemodeWorkflowInstance({
     instanceId,
     program: {
       code,
+      modules,
       dependencies: dependencies ?? {},
       workflowName,
       filename,

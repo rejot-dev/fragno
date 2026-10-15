@@ -41,6 +41,7 @@ const createCodemodeAutomationRunResult = ({
 
 export const executeWorkflowCodemodeAutomation = async ({
   script,
+  modules,
   dependencies,
   context,
   env,
@@ -48,6 +49,7 @@ export const executeWorkflowCodemodeAutomation = async ({
   remote,
 }: {
   script: string;
+  modules: Record<string, string>;
   dependencies?: NpmDependencyMap;
   context: AutomationScriptHostContext;
   env: BackofficeCodemodeEnv;
@@ -57,6 +59,7 @@ export const executeWorkflowCodemodeAutomation = async ({
   const toolContext = createBackofficeToolContext(context);
   const result = await runBackofficeCodemodeWorkflow({
     code: script,
+    modules,
     dependencies,
     event: { ...workflowEvent, id: context.automation.event.id },
     remote,

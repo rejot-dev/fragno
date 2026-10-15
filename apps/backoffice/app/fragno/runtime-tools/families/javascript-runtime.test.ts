@@ -117,7 +117,7 @@ describe("createJavaScriptRuntime", () => {
           path: "/workspace/example.js",
           line: 1,
           column: 21,
-          message: "Import './helper.js' names a missing file: /workspace/helper.js.",
+          message: expect.stringContaining("Import './helper.js' cannot be read:"),
         },
       ],
     });
