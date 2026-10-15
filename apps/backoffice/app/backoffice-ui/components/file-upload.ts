@@ -28,7 +28,7 @@ export const fileUploadDefinition = {
   }),
   slots: [],
   description:
-    "Uploads one private file as a prepared Upload draft. Use the current workflow context or a declared org, project, or personal scope. Bind value with {$bindState: '/path'}; state receives one serializable prepared-upload reference.",
+    "Uploads one private file as a prepared Upload draft. Use the current workflow context or a declared org, project, or personal scope. Bind value with form.bind(field); the field receives one serializable prepared-upload reference.",
   example: {
     label: "Supporting document",
     scope: { kind: "current" },

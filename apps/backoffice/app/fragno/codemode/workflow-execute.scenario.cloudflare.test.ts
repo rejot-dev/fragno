@@ -1,4 +1,4 @@
-import { expect, test } from "vitest";
+import { assert, expect, test } from "vitest";
 
 import { defineScenario, runScenario } from "@fragno-dev/workflows/scenario";
 import { defineRemoteWorkflow } from "@fragno-dev/workflows/workflow";
@@ -6,6 +6,7 @@ import { env } from "cloudflare:workers";
 
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 
+import { parseBackofficeUiResult } from "@/backoffice-ui/result";
 import { createTrustedSystemBackofficeToolContext } from "@/fragno/runtime-tools/runtime-tools";
 
 import { defineCodemodeWorkflowRun, runBackofficeCodemodeWorkflow } from "./workflow-execute";
@@ -229,6 +230,134 @@ test("native RPC errors without host suspension still reach the runner", async (
             expect(status).toMatchObject({
               status: "errored",
               error: { message: "NATIVE_WORKFLOW_RPC_FAILURE_WITHOUT_SUSPENSION" },
+            });
+          },
+        }),
+      ],
+    }),
+  );
+});
+
+test("a ui.form step collects workflow input that the paired waitForEvent consumes", async () => {
+  const workflowName = "codemode-ui-form";
+  const instanceId = `${workflowName}-1`;
+  const Workflow = defineRemoteWorkflow(
+    { name: workflowName },
+    defineCodemodeWorkflowRun(
+      `async (_event, step) => {
+        const approval = ui.form("approval", { decision: "approve", reason: "" });
+        await step.do("request approval", async () => ({
+          $ui: ui.render(
+            ui.stack({ gap: "md" }, [
+              ui.select({
+                label: "Decision",
+                value: approval.bind("decision"),
+                options: [
+                  { label: "Approve", value: "approve" },
+                  { label: "Reject", value: "reject" },
+                ],
+              }),
+              ui.when(
+                approval.is("decision", { eq: "reject" }),
+                ui.textArea({ label: "Reason", value: approval.bind("reason") }),
+              ),
+              approval.submit({ label: "Submit decision" }),
+            ]),
+          ),
+        }));
+        const { payload } = await step.waitForEvent("approval", { type: approval.eventType });
+        return payload;
+      }`,
+      env,
+      {
+        allowedHooks: [],
+        families: [],
+        toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
+      },
+    ),
+  );
+  await runScenario(
+    defineScenario({
+      name: "ui.form interface pairs with its waitForEvent",
+      workflows: { WORKFLOW: Workflow },
+      harness: {
+        adapter: { type: "in-memory" },
+        testBuilder: buildDatabaseFragmentsTest(),
+        autoTickHooks: false,
+      },
+      steps: ({ workflow, runner }) => [
+        runner.initializeAndRunUntilIdle({
+          workflow: "WORKFLOW",
+          id: instanceId,
+          remoteWorkflowName: workflowName,
+        }),
+        workflow.read({
+          read: (ctx) => ctx.state.getSteps("WORKFLOW", instanceId),
+          assert: (steps) => {
+            const uiStep = steps.find((step) => step.stepKey === "do:request approval");
+            const generatedUi = parseBackofficeUiResult(uiStep?.result);
+            assert(generatedUi.kind === "valid");
+            expect(generatedUi.value.$ui).toEqual({
+              version: 1,
+              state: { response: { decision: "approve", reason: "" } },
+              spec: {
+                root: "root",
+                elements: {
+                  root: {
+                    type: "Stack",
+                    props: { gap: "md" },
+                    children: ["root.0", "root.1", "root.2"],
+                  },
+                  "root.0": {
+                    type: "Select",
+                    props: {
+                      label: "Decision",
+                      value: { $bindState: "/response/decision" },
+                      options: [
+                        { label: "Approve", value: "approve" },
+                        { label: "Reject", value: "reject" },
+                      ],
+                    },
+                    children: [],
+                  },
+                  "root.1": {
+                    type: "TextArea",
+                    props: { label: "Reason", value: { $bindState: "/response/reason" } },
+                    children: [],
+                    visible: { $state: "/response/decision", eq: "reject" },
+                  },
+                  "root.2": {
+                    type: "WorkflowEventButton",
+                    props: {
+                      label: "Submit decision",
+                      eventType: "approval",
+                      payload: { $state: "/response" },
+                    },
+                    children: [],
+                  },
+                },
+              },
+            });
+            expect(steps).toContainEqual(
+              expect.objectContaining({
+                stepKey: "waitForEvent:approval",
+                status: "waiting",
+                waitEventType: "approval",
+              }),
+            );
+          },
+        }),
+        runner.eventAndRunUntilIdle({
+          workflow: "WORKFLOW",
+          instanceId,
+          event: { type: "approval", payload: { decision: "reject", reason: "Over budget" } },
+        }),
+        workflow.read({
+          read: (ctx) => ctx.state.getStatus("WORKFLOW", instanceId),
+          assert: (status) => {
+            expect(status).toMatchObject({
+              status: "complete",
+              output: { decision: "reject", reason: "Over budget" },
             });
           },
         }),

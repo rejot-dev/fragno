@@ -20,10 +20,6 @@ const TERMINAL_COMMAND_SPECS_PATH = resolve(
   STATIC_CONTENT_DIRECTORY,
   "terminal/terminal-spec.json",
 );
-const BACKOFFICE_UI_CATALOG_PATH = resolve(
-  STATIC_CONTENT_DIRECTORY,
-  "skills/generating-backoffice-uis/CATALOG.md",
-);
 
 function backofficeStaticOutputPath(path: string) {
   const staticPrefix = "/static/";
@@ -76,9 +72,9 @@ async function createExpectedBackofficeStaticFiles() {
 async function findManagedBackofficeStaticFiles() {
   const managedFiles = new Set<string>([
     resolve(CODEMODE_STATIC_DIRECTORY, "system.d.ts"),
+    resolve(CODEMODE_STATIC_DIRECTORY, "ui.d.ts"),
     resolve(CODEMODE_STATIC_DIRECTORY, "sources/mcp.d.ts"),
     TERMINAL_COMMAND_SPECS_PATH,
-    BACKOFFICE_UI_CATALOG_PATH,
   ]);
   const providerDirectory = resolve(CODEMODE_STATIC_DIRECTORY, "providers");
 

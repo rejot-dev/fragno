@@ -12,7 +12,7 @@ export const textAreaDefinition = {
   }),
   slots: [],
   description:
-    "Collects a longer text value. Bind value with {$bindState: '/path'} so edits update UI state.",
+    "Collects a longer text value. Bind value with form.bind(field) so edits update the form response.",
   example: {
     label: "Reason",
     value: { $bindState: "/response/reason" },

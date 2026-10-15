@@ -14,14 +14,14 @@ then commit or discard it.
 
 When composing generated Backoffice UI:
 
-- Read `/static/skills/generating-backoffice-uis/SKILL.md` and its component catalog.
-- Set `FileUpload.scope` to `{ kind: "current" }` when the upload belongs to the workflow's current
-  Backoffice context. The renderer resolves it to the authenticated org, project, or user scope.
-- Initialize the bound value to `null` and bind `FileUpload.value` with
-  `{ "$bindState": "/response/attachment" }`.
-- Submit the response through one `WorkflowEventButton`.
+- Read `/static/skills/generating-backoffice-uis/SKILL.md` and `/static/codemode/ui.d.ts`.
+- Set `ui.fileUpload` `scope` to `{ kind: "current" }` when the upload belongs to the workflow's
+  current Backoffice context. The renderer resolves it to the authenticated org, project, or user
+  scope.
+- Initialize the form field to `null` in `ui.form` and bind `value` with `form.bind("attachment")`.
+- Submit the response through `form.submit`.
 
-State receives one serializable prepared-upload reference. It contains no browser `File`, bytes,
+The field receives one serializable prepared-upload reference. It contains no browser `File`, bytes,
 base64, URL, or generated storage policy.
 
 # Consume

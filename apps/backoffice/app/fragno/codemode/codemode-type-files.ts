@@ -1,3 +1,4 @@
+import { generateBackofficeUiBuilderDeclarations } from "@/backoffice-ui/component-reference-generation";
 import {
   createMcpCodemodeReferences,
   type McpCodemodeServer,
@@ -14,6 +15,7 @@ import type { BackofficeRuntimeToolFamily } from "@/fragno/runtime-tools/runtime
 const CODEMODE_TYPES_DIR_PATH = "/static/codemode";
 export const CODEMODE_SYSTEM_DTS_PATH = `${CODEMODE_TYPES_DIR_PATH}/system.d.ts`;
 export const CODEMODE_WORKFLOW_AUTHORING_DTS_PATH = `${CODEMODE_TYPES_DIR_PATH}/workflow-authoring.d.ts`;
+const CODEMODE_UI_DTS_PATH = `${CODEMODE_TYPES_DIR_PATH}/ui.d.ts`;
 export const CODEMODE_MCP_SOURCE_DTS_PATH = `${CODEMODE_TYPES_DIR_PATH}/sources/mcp.d.ts`;
 const CODEMODE_PROVIDER_TYPES_DIR_PATH = `${CODEMODE_TYPES_DIR_PATH}/providers`;
 
@@ -115,6 +117,7 @@ export function createCodemodeStaticTypeFiles({
   );
   const referencePaths = [
     CODEMODE_WORKFLOW_AUTHORING_DTS_PATH,
+    CODEMODE_UI_DTS_PATH,
     ...providerFiles.map((file) => file.path),
     CODEMODE_MCP_SOURCE_DTS_PATH,
   ];
@@ -129,6 +132,7 @@ export function createCodemodeStaticTypeFiles({
         }),
       ),
     },
+    { path: CODEMODE_UI_DTS_PATH, content: generateBackofficeUiBuilderDeclarations() },
     ...providerFiles,
     createMcpCodemodeSourceTypeFile([]),
   ];

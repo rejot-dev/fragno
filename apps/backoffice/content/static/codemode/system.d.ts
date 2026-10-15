@@ -1,4 +1,5 @@
 /// <reference path="/static/codemode/workflow-authoring.d.ts" />
+/// <reference path="/static/codemode/ui.d.ts" />
 /// <reference path="/static/codemode/providers/state.d.ts" />
 /// <reference path="/static/codemode/providers/account.d.ts" />
 /// <reference path="/static/codemode/providers/admin.d.ts" />

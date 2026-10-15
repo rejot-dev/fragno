@@ -16,7 +16,7 @@ export const selectDefinition = {
   }),
   slots: [],
   description:
-    "Collects one value from a bounded list. Bind value with {$bindState: '/path'} so edits update UI state.",
+    "Collects one value from a bounded list. Bind value with form.bind(field) so edits update the form response.",
   example: {
     label: "Decision",
     value: { $bindState: "/response/decision" },
