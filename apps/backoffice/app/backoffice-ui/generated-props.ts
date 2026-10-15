@@ -118,3 +118,56 @@ function generatedPropsSchema(literalPropsSchema: z.ZodObject) {
 export function validateGeneratedProps(literalPropsSchema: z.ZodObject, value: unknown) {
   return generatedPropsSchema(literalPropsSchema).safeParse(value).success;
 }
+
+/**
+ * Explains rejected props for the author. Generated-schema issues are unions of every expression
+ * form, so the literal schema names the actual mismatch; issues at expression values are skipped
+ * because the literal schema cannot judge them.
+ */
+export function describeInvalidGeneratedProps(literalPropsSchema: z.ZodObject, value: unknown) {
+  const literalResult = literalPropsSchema.safeParse(value);
+  const problems = (literalResult.error?.issues ?? [])
+    .filter((issue) => !isExpressionPath(value, issue.path))
+    .map((issue) => {
+      const path = issue.path.map(String).join(".");
+      return path ? `${path}: ${describeIssue(issue)}` : describeIssue(issue);
+    });
+  return problems.length > 0
+    ? problems.join("; ")
+    : "a dynamic expression ($state, $bindState, $cond, ...) is malformed or misplaced";
+}
+
+function describeIssue(issue: z.core.$ZodIssue) {
+  if (issue.code === "invalid_union") {
+    const expectedValues = issue.errors.flatMap((branch) =>
+      branch.length === 1 && branch[0]?.code === "invalid_value" ? branch[0].values : [],
+    );
+    if (expectedValues.length === issue.errors.length) {
+      return `expected one of ${expectedValues.map((expected) => JSON.stringify(expected)).join("|")}`;
+    }
+  }
+  return issue.message;
+}
+
+function isExpressionPath(value: unknown, path: readonly PropertyKey[]) {
+  let current = value;
+  for (const segment of path) {
+    if (isExpression(current)) {
+      return true;
+    }
+    if (current === null || typeof current !== "object") {
+      return false;
+    }
+    current = (current as Record<PropertyKey, unknown>)[segment];
+  }
+  return isExpression(current);
+}
+
+function isExpression(value: unknown) {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    Object.keys(value).some((key) => key.startsWith("$"))
+  );
+}

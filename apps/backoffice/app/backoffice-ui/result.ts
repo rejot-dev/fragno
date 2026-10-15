@@ -7,7 +7,7 @@ import {
   backofficeUiComponentDefinitions,
   type BackofficeUiSpec,
 } from "./catalog";
-import { validateGeneratedProps } from "./generated-props";
+import { describeInvalidGeneratedProps, validateGeneratedProps } from "./generated-props";
 
 export const BACKOFFICE_UI_LIMITS = {
   elements: 128,
@@ -122,6 +122,8 @@ export function parseBackofficeUiResult(value: unknown): BackofficeUiParseResult
     return invalidResult("missing-root", `Generated UI root "${rawSpec.root}" does not exist.`);
   }
 
+  // Prop problems are independent per element, so report all of them in one pass.
+  const invalidPropsMessages: string[] = [];
   for (const [elementKey, element] of elementEntries) {
     for (const childKey of element.children) {
       if (!Object.hasOwn(rawSpec.elements, childKey)) {
@@ -142,9 +144,8 @@ export function parseBackofficeUiResult(value: unknown): BackofficeUiParseResult
     const componentName = element.type as keyof typeof backofficeUiComponentDefinitions;
     const componentDefinition = backofficeUiComponentDefinitions[componentName];
     if (!validateGeneratedProps(componentDefinition.props, element.props)) {
-      return invalidResult(
-        "invalid-props",
-        `Element "${elementKey}" has invalid props for ${componentName}.`,
+      invalidPropsMessages.push(
+        `Element "${elementKey}" has invalid props for ${componentName}: ${describeInvalidGeneratedProps(componentDefinition.props, element.props)}.`,
       );
     }
     if (
@@ -156,6 +157,10 @@ export function parseBackofficeUiResult(value: unknown): BackofficeUiParseResult
         `Element "${elementKey}" has an invalid visibility condition.`,
       );
     }
+  }
+
+  if (invalidPropsMessages.length > 0) {
+    return invalidResult("invalid-props", invalidPropsMessages.join(" "));
   }
 
   const childGraph = analyzeChildGraph(rawSpec as Spec);
