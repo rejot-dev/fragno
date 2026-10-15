@@ -3,7 +3,7 @@ import { useState, type ReactNode } from "react";
 
 import { MessagePrimitive, groupPartByType, useAuiState } from "@assistant-ui/react";
 
-import type { PiAssistantMessageMetadata } from "./assistant-runtime";
+import type { PiAssistantMessageMetadata, PiCompactionMessageMetadata } from "./assistant-runtime";
 import { MarkdownText, MessageImage } from "./message-content";
 import { ToolCallBlock } from "./tool-call";
 import { formatEventTimestamp, formatMessageTimestamp } from "./ui";
@@ -132,6 +132,52 @@ export function AssistantMessage({
           </Button>
         </div>
       ) : null}
+    </MessagePrimitive.Root>
+  );
+}
+
+const compactionReasonLabels: Record<PiCompactionMessageMetadata["reason"], string> = {
+  manual: "Requested",
+  threshold: "Automatic",
+  overflow: "Context overflow",
+};
+
+/** Marks where Pi replaced earlier history with a summary; expanding it shows the summary. */
+export function CompactionMessage() {
+  const createdAt = useAuiState((state) => state.message.createdAt);
+  const metadata = useAuiState(
+    (state) => state.message.metadata.custom as PiCompactionMessageMetadata,
+  );
+  const summary = useAuiState((state) =>
+    state.message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n"),
+  );
+
+  return (
+    <MessagePrimitive.Root className="mb-7 min-w-0">
+      <details className="group/compaction overflow-hidden border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)]">
+        <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-3 text-xs font-medium text-[var(--bo-muted)] transition-colors marker:hidden hover:text-[var(--bo-fg)]">
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="size-1.5 shrink-0 bg-[var(--bo-accent)]" />
+            <span>Context compacted</span>
+            <span className="truncate text-[10px] font-normal text-[var(--bo-muted-2)]">
+              {compactionReasonLabels[metadata.reason]}
+            </span>
+          </span>
+          <span className="grid w-[10.5rem] shrink-0 grid-cols-[7rem_3.5rem] items-center text-right text-[10px] text-[var(--bo-muted-2)]">
+            <time className="tabular-nums">{formatEventTimestamp(createdAt)}</time>
+            <span className="font-medium tracking-[0.1em] uppercase">
+              <span className="group-open/compaction:hidden">View</span>
+              <span className="hidden group-open/compaction:inline">Close</span>
+            </span>
+          </span>
+        </summary>
+        <div className="border-t border-[color:var(--bo-border)] px-4 py-3 text-sm leading-7 text-[var(--bo-muted)]">
+          <p className="mb-2 text-[10px] text-[var(--bo-muted-2)]">
+            Pi continues from this summary instead of the history before it.
+          </p>
+          <MarkdownText text={summary} className="[&_h2]:text-sm [&_h3]:text-xs" />
+        </div>
+      </details>
     </MessagePrimitive.Root>
   );
 }

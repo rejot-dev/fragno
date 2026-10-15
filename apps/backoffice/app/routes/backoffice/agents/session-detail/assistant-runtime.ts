@@ -1,8 +1,21 @@
 import type { AppendMessage, QueueItemState, ThreadMessageLike } from "@assistant-ui/react";
 import type { Message as PiDurableMessage } from "@earendil-works/pi-ai";
-import type { ConversationView, InboxState, LiveState } from "@earendil-works/pi-durable";
+import type {
+  CompactionReason,
+  ConversationView,
+  EntryRecord,
+  InboxState,
+  LiveState,
+} from "@earendil-works/pi-durable";
 
-export type PiConversationMessage = PiDurableMessage;
+/** A compaction summary, shown in the transcript where Pi compacted the context. */
+export type PiCompactionMessage = {
+  role: "compaction";
+  reason: CompactionReason;
+  summary: string;
+  timestamp: number;
+};
+export type PiConversationMessage = PiDurableMessage | PiCompactionMessage;
 export type ToolResultMessage = Extract<PiConversationMessage, { role: "toolResult" }>;
 export type PiDraftTool = {
   id: string;
@@ -38,6 +51,11 @@ export type PiContentBlock =
 export type PiToolCallArtifact = {
   completedToolResult: ToolResultMessage | null;
   draftTool: PiDraftTool | null;
+};
+
+export type PiCompactionMessageMetadata = {
+  kind: "compaction";
+  reason: CompactionReason;
 };
 
 export type PiAssistantMessageMetadata = {
@@ -124,6 +142,24 @@ function assistantRecoveryFingerprint(
   );
 }
 
+// Matches pi-durable's `CompactionEntry.kind`; its runtime export would pull the harness into the client.
+const COMPACTION_ENTRY_KIND = "pi.compaction";
+
+/** Pi wraps the summary in model-facing framing; only the summary itself is worth reading. */
+function compactionMessage(entry: EntryRecord): PiCompactionMessage {
+  // Compaction entries always carry one user message with the wrapped summary and a reason.
+  const [message] = entry.model as [Extract<PiDurableMessage, { role: "user" }>];
+  const text = normalizePiContent(message.content)
+    .flatMap((block) => (block.type === "text" ? [block.text] : []))
+    .join("\n");
+  return {
+    role: "compaction",
+    reason: (entry.data as { reason: CompactionReason }).reason,
+    summary: /<summary>\n([\s\S]*)\n<\/summary>$/.exec(text)?.[1] ?? text,
+    timestamp: message.timestamp,
+  };
+}
+
 /** Hides superseded recovery partials while preserving distinct attempts and completed tool rounds. */
 export function piConversationMessages(view: ConversationView): PiConversationMessage[] {
   const completedAssistantAttempts = new Set<string>();
@@ -137,7 +173,10 @@ export function piConversationMessages(view: ConversationView): PiConversationMe
   }
 
   const visibleAbortedAttempts = new Set<string>();
-  return view.entries.flatMap((entry) => {
+  return view.entries.flatMap((entry): PiConversationMessage[] => {
+    if (entry.kind === COMPACTION_ENTRY_KIND) {
+      return [compactionMessage(entry)];
+    }
     const taskKey = entry.byTaskId === undefined ? `entry:${entry.id}` : `task:${entry.byTaskId}`;
     return (entry.model ?? []).filter((message) => {
       if (message.role !== "assistant" || message.stopReason !== "aborted") {
@@ -314,6 +353,21 @@ export function createAssistantUiMessages({
 
   messages.forEach((message, index) => {
     if (message.role === "toolResult") {
+      return;
+    }
+    if (message.role === "compaction") {
+      converted.push({
+        id: `pi-compaction-${message.timestamp}-${index}`,
+        role: "system",
+        content: [{ type: "text", text: message.summary }],
+        createdAt: messageDate(message.timestamp, index),
+        metadata: {
+          custom: {
+            kind: "compaction",
+            reason: message.reason,
+          } satisfies PiCompactionMessageMetadata,
+        },
+      });
       return;
     }
 

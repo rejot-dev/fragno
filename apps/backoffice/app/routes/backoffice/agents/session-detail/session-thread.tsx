@@ -5,7 +5,7 @@ import { useRef, useState, type UIEvent } from "react";
 
 import { ComposerPrimitive, QueueItemPrimitive, ThreadPrimitive } from "@assistant-ui/react";
 
-import { AssistantMessage, UserMessage } from "./messages";
+import { AssistantMessage, CompactionMessage, UserMessage } from "./messages";
 import { tapScale } from "./ui";
 
 const contextTokenFormatter = new Intl.NumberFormat("en-US", {
@@ -149,7 +149,7 @@ export function SessionThread({
                   />
                 );
               }
-              return null;
+              return <CompactionMessage />;
             }}
           </ThreadPrimitive.Messages>
 

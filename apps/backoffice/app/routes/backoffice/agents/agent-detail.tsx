@@ -220,7 +220,8 @@ function conversationViewWithInactiveHistory(
   const activeEntryIds = new Set(view.entries.map((entry) => entry.id));
   const inactiveEntries = newestFirstHistory.filter((entry) => !activeEntryIds.has(entry.id));
   return {
-    view: { ...view, entries: [...inactiveEntries].reverse().concat(view.entries) },
+    // The active view leads with its compaction marker; the transcript shows it where it happened.
+    view: { ...view, entries: [...inactiveEntries, ...view.entries].sort((a, b) => a.id - b.id) },
     inactiveEntryCount: inactiveEntries.length,
   };
 }
