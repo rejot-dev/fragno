@@ -34,6 +34,8 @@ export const piAgentConfigSchema = z.object({
 
 export type PiAgentConfig = z.infer<typeof piAgentConfigSchema>;
 
+const PI_AGENT_INSTRUCTIONS_MAX_LENGTH = 32_768;
+
 /** The permissions a grant names: `*`, `namespace.*`, or one `namespace.permission`. */
 export function piAgentPermissionGrantRequirements(
   grant: string,
@@ -67,14 +69,8 @@ const piAgentDefinitionFieldsSchema = z.object({
     .nullable(),
   /** Narrow every turn: an agent can never do more than the person prompting it. */
   permissions: z.array(piAgentPermissionGrantSchema),
-  /** A Markdown file with the agent's extra system guidance; null adds none. */
-  instructionsPath: z
-    .string()
-    .regex(
-      /^\/(workspace|static)(\/(?!\.\.?(\/|$))[^/]+)+$/,
-      "Expected an absolute file path in /workspace or /static.",
-    )
-    .nullable(),
+  /** Markdown guidance added to the agent's system prompt; empty adds none. */
+  instructions: z.string().max(PI_AGENT_INSTRUCTIONS_MAX_LENGTH),
 });
 
 /** Built-in agents are defined by Backoffice; others are created in a scope, by hand or a package. */
@@ -90,8 +86,15 @@ export const piAgentDefinitionSchema = piAgentDefinitionFieldsSchema.extend({
 
 export type PiAgentDefinition = z.infer<typeof piAgentDefinitionSchema>;
 
-/** The definition fields an update replaces; packages set `managedBy` to claim their agents. */
+/**
+ * The definition fields an update replaces; packages set `managedBy` to claim their agents. An
+ * agent granted nothing could only chat, so a definition grants at least one permission.
+ */
 export const piAgentDefinitionUpdateSchema = piAgentDefinitionFieldsSchema.extend({
+  permissions: piAgentDefinitionFieldsSchema.shape.permissions.min(
+    1,
+    'Grant at least one permission; use ["*"] to let the agent do whatever its prompter may.',
+  ),
   managedBy: automationRouteManagedBySchema.nullable(),
 });
 
@@ -175,14 +178,14 @@ export const piOperations = {
   },
   "pi.agent.create": {
     description:
-      "Define an agent in the current scope. Its instructions file must exist; edits to the file apply from the agent's next turn.",
+      'Define an agent in the current scope. Use permissions ["*"] unless the agent should be limited: each turn already runs with the prompter\'s permissions, and the grants only narrow them.',
     permissions: [BACKOFFICE_PERMISSION.pi.manage],
     input: piAgentDefinitionCreateSchema.strict(),
     output: piAgentDefinitionSchema,
   },
   "pi.agent.update": {
     description:
-      "Replace an agent's definition. The agent keeps its conversation; the new definition applies from its next turn.",
+      'Replace an agent\'s whole definition, including its permissions (["*"] narrows nothing). The agent keeps its conversation; the new definition applies from its next turn.',
     permissions: [BACKOFFICE_PERMISSION.pi.manage],
     input: piAgentDefinitionCreateSchema.strict(),
     output: piAgentDefinitionSchema,

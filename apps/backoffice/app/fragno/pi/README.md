@@ -36,18 +36,17 @@ organized around Pi Durable:
 A scope's agents are rows in the manager's `agent_definition` table, keyed by agent name, plus the
 built-in `assistant` defined in `agent/agent-definitions.ts`, whose name a scope cannot take. A
 definition holds a `description`, a `provider/modelId` `model` or null for the first available
-model, permission grants (`*`, `namespace.*`, or catalog entries), an `instructionsPath` or null,
-and the `managedBy` marker packages use to claim their agents, as they do routes. `pi.agent.create`,
-`pi.agent.update`, and `pi.agent.delete` change definitions and require `pi.manage`; input is
-validated on write, including that the instructions file exists, so the directory holds no unusable
-definitions. Deleting a definition keeps the `agent` provisioning row and its conversation.
+model, at least one permission grant (`*`, which narrows nothing, `namespace.*`, or catalog
+entries), Markdown `instructions`, and the `managedBy` marker packages use to claim their agents, as
+they do routes. `pi.agent.create`, `pi.agent.update`, and `pi.agent.delete` change definitions and
+require `pi.manage`, so only they can change what an agent is told; input is validated on write, so
+the directory holds no unusable definitions. Deleting a definition keeps the `agent` provisioning
+row and its conversation.
 
-The instructions file is read at each admission and rendered as the `agent` prompt section after
-Backoffice guidance, so edits apply from the next turn; a file deleted after definition fails the
-prompt with `AGENT_INSTRUCTIONS_NOT_FOUND`. The manager reads it as its own `object` service
-identity, because it is scope configuration rather than one member's data; system scope and runtimes
-without Upload can only read static files. Grants are expanded at admission, so a grant whose
-permissions were removed from the catalog grants nothing.
+Each admission reads the definition and renders its instructions as the `agent` prompt section after
+Backoffice guidance and a one-line `identity` section naming the agent, so changes apply from the
+next turn. Grants are expanded at admission, so a grant whose permissions were removed from the
+catalog grants nothing.
 
 ## Turn authority
 

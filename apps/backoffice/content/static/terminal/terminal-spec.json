@@ -3083,14 +3083,14 @@
       {
         "name": "instructions",
         "valueRequired": true,
-        "valueName": "path",
-        "description": "Markdown file in /workspace or /static with the agent's extra system guidance"
+        "valueName": "markdown",
+        "description": "Guidance added to the agent's system prompt; omitted adds none"
       },
       {
         "name": "permission",
         "valueRequired": true,
         "valueName": "grant",
-        "description": "Repeatable: *, namespace.*, or namespace.permission; omitted grants none"
+        "description": "Repeatable: *, namespace.*, or namespace.permission to limit the agent; omitted grants *"
       },
       {
         "name": "model",
@@ -3146,14 +3146,14 @@
       {
         "name": "instructions",
         "valueRequired": true,
-        "valueName": "path",
-        "description": "Markdown file in /workspace or /static with the agent's extra system guidance"
+        "valueName": "markdown",
+        "description": "Guidance added to the agent's system prompt; omitted adds none"
       },
       {
         "name": "permission",
         "valueRequired": true,
         "valueName": "grant",
-        "description": "Repeatable: *, namespace.*, or namespace.permission; omitted grants none"
+        "description": "Repeatable: *, namespace.*, or namespace.permission to limit the agent; omitted grants *"
       },
       {
         "name": "model",

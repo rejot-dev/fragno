@@ -7,9 +7,8 @@ defineWorkflow(
       event.payload.installedFiles["automations/telegram-user-linking.workflow.js"];
     const piLinkingWorkflowScriptPath =
       event.payload.installedFiles["automations/telegram-user-pi-linking.workflow.js"];
-    const agentInstructionsPath = event.payload.installedFiles["agents/telegram.md"];
-    if (!userLinkingWorkflowScriptPath || !piLinkingWorkflowScriptPath || !agentInstructionsPath) {
-      throw new Error("Telegram Channel files were not installed.");
+    if (!userLinkingWorkflowScriptPath || !piLinkingWorkflowScriptPath) {
+      throw new Error("Telegram Channel workflows were not installed.");
     }
 
     const agent = {
@@ -17,7 +16,14 @@ defineWorkflow(
       description: "Answers messages from Telegram chats linked to Backoffice users.",
       model: null,
       permissions: ["*"],
-      instructionsPath: agentInstructionsPath,
+      instructions: [
+        "Messages arrive from Telegram chats linked to Backoffice users. Each one starts with the chat",
+        "it came from, such as `[Telegram chat 1001]`, and runs with the permissions of that chat's",
+        "linked user.",
+        "",
+        "IMPORTANT: your final answer to each message is AUTOMATICALLY sent back to its chat in Telegram",
+        "Markdown parse mode. Keep it short, and do not repeat the chat prefix.",
+      ].join("\n"),
       managedBy: {
         kind: "marketplace",
         listingId: event.payload.listingId,

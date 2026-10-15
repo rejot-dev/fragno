@@ -277,11 +277,6 @@ test("durable Pi runs a workspace agent with its instructions, scoped skills, Ba
           content:
             "---\nname: scoped-durable\ndescription: Scoped durable skill\n---\nRead the scoped notes before acting.",
         }),
-        given.codemode.writeFile({
-          orgId: "org-1",
-          path: "/workspace/agents/researcher.md",
-          content: "Keep the researcher instruction.",
-        }),
       ],
       steps: ({ then }) => [
         then.assert("run and settle a real Backoffice agent turn", async ({ runtime }) => {
@@ -290,7 +285,7 @@ test("durable Pi runs a workspace agent with its instructions, scoped skills, Ba
             description: "Researches the workspace.",
             model: null,
             permissions: ["*"],
-            instructionsPath: "/workspace/agents/researcher.md",
+            instructions: "Keep the researcher instruction.",
             managedBy: null,
           });
           assert.equal(defined.status, 201, await defined.clone().text());
@@ -405,7 +400,7 @@ test("an agent's definition narrows every turn and an edited definition applies 
     description: "Reads the workspace.",
     model: null,
     permissions: ["upload.read"],
-    instructionsPath: null,
+    instructions: "",
     managedBy: null,
   };
   const storeWrite = fauxAssistantMessage(
