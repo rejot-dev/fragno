@@ -1087,7 +1087,7 @@ test("api addresses resolve only in their own scope, page natively, and require 
           );
           expect(denied).toMatchObject({
             exitCode: 1,
-            stderr: expect.stringContaining("required capability grant"),
+            stderr: expect.stringContaining("is not granted"),
           });
           // Integration management does not carry connection management at the object.
           expect(
@@ -1096,7 +1096,7 @@ test("api addresses resolve only in their own scope, page natively, and require 
             ),
           ).toMatchObject({
             exitCode: 1,
-            stderr: expect.stringContaining("required capability grant"),
+            stderr: expect.stringContaining("is not granted"),
           });
 
           const command = `integrations.execute --connection-id 'api#shared' --action-id request --input-json '${JSON.stringify({ method: "GET", path: "/invoices", body: { type: "empty" } })}'`;
@@ -1113,7 +1113,7 @@ test("api addresses resolve only in their own scope, page natively, and require 
             ).exec(command),
           ).toMatchObject({
             exitCode: 1,
-            stderr: expect.stringContaining("required capability grant"),
+            stderr: expect.stringContaining("is not granted"),
           });
 
           const delegated = createDelegatedExecution(ctx, orgScope, provider, [

@@ -720,7 +720,7 @@ test("connection IDs cannot select an owner or replace umbrella and service auth
             ),
           ).toMatchObject({
             exitCode: 1,
-            stderr: expect.stringContaining("required capability grant"),
+            stderr: expect.stringContaining("is not granted"),
           });
           expect(
             await ctx.runtime.objects.reson8.forOrg(scope.orgId).commands.getAdminConfig(),
@@ -843,7 +843,7 @@ test("connection IDs cannot select an owner or replace umbrella and service auth
           const command = `integrations.execute --connection-id 'backoffice#reson8' --action-id prerecorded.transcribe --input-json '{"audio":{"bytes":[1]},"query":null}'`;
           expect(await limited.exec(command)).toMatchObject({
             exitCode: 1,
-            stderr: expect.stringContaining("required capability grant"),
+            stderr: expect.stringContaining("is not granted"),
           });
           const agent = createIntegrationScenarioTerminal(
             ctx.runtime.services,
@@ -899,7 +899,7 @@ test("connection IDs cannot select an owner or replace umbrella and service auth
             await bash.exec("integrations.get --connection-id 'backoffice#reson8'"),
           ).toMatchObject({
             exitCode: 1,
-            stderr: expect.stringContaining("required capability grant"),
+            stderr: expect.stringContaining("is not granted"),
           });
           expect(provider.transcriptions).toEqual([{ bytes: [2], query: {} }]);
         },
@@ -996,7 +996,7 @@ test.each([
                 stderr: expect.stringContaining(
                   reason === "authority-unavailable"
                     ? "authority resolution is unavailable"
-                    : "required capability grant",
+                    : "is not granted",
                 ),
               });
               expect(provider.reads).toEqual([]);

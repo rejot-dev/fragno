@@ -957,7 +957,7 @@ test("mcp addresses resolve only in their own scope and require both authority l
           );
           expect(denied).toMatchObject({
             exitCode: 1,
-            stderr: expect.stringContaining("required capability grant"),
+            stderr: expect.stringContaining("is not granted"),
           });
 
           const command = `integrations.execute --connection-id 'mcp#shared' --action-id echo --input-json '${JSON.stringify({ text: "delegated" })}'`;
@@ -974,7 +974,7 @@ test("mcp addresses resolve only in their own scope and require both authority l
             ).exec(command),
           ).toMatchObject({
             exitCode: 1,
-            stderr: expect.stringContaining("required capability grant"),
+            stderr: expect.stringContaining("is not granted"),
           });
 
           const delegated = createDelegatedExecution(ctx, orgScope, providers, [
