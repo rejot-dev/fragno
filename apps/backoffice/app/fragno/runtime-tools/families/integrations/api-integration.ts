@@ -77,6 +77,7 @@ const apiDescribeActionDefinition = {
   label: "Describe connection",
   description:
     "Read the stored base URL, auth mode, connection status, and sanitized auth state without contacting the provider. Request paths are relative to this base URL.",
+  validation: { kind: "checked" as const },
   inputSchema: z.toJSONSchema(z.strictObject({}), { io: "input" }),
   outputSchema: z.toJSONSchema(apiConnectionDescriptionSchema, { io: "output" }),
 };
@@ -87,6 +88,7 @@ const apiRequestActionDefinition = {
   label: "Send HTTP request",
   description:
     "Send one HTTP request relative to the connection's base URL, which connection.describe returns, with its stored authentication. Upstream errors are returned in the result envelope.",
+  validation: { kind: "checked" as const },
   inputSchema: z.toJSONSchema(apiIntegrationRequestInputSchema, { io: "input" }),
   outputSchema: z.toJSONSchema(apiRequestOutputSchema, { io: "output" }),
 };

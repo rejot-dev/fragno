@@ -38,7 +38,8 @@ export interface IntegrationActionImplementation {
    * Validate against the live input/output contracts and enforce action-specific authorization.
    * The tool establishes JSON representability, not action shape. Binary inputs are schema-declared
    * byte arrays converted privately; native objects never cross the public API. No-payload results
-   * are null. Publishing an action definition never authorizes its invocation.
+   * are null. Publishing an action definition never authorizes its invocation. Unchecked actions
+   * skip validation; the facade runs them only when the caller opts in.
    */
   invoke(input: JsonValue): Promise<JsonValue>;
 }

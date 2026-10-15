@@ -81,6 +81,12 @@ test("a generated MCP client is imported by codemode and saved modules, and call
         inputSchema: { type: "object", properties: {} },
         call: () => ({ isError: true, content: [{ type: "text", text: "Quota exhausted." }] }),
       },
+      {
+        name: "legacy",
+        description: "Publishes a draft-04 schema that cannot be validated.",
+        inputSchema: { $schema: "http://json-schema.org/draft-04/schema#", type: "object" },
+        call: () => ({ content: [{ type: "text", text: "legacy" }] }),
+      },
     ],
   });
   try {
@@ -133,7 +139,9 @@ console.log(Object.keys(tools).join(","));`,
               `integrations.generateClient --connection-id 'mcp#tools' --out ${clientPath}`,
             );
             assert.equal(generated.exitCode, 0, generated.stderr);
-            expect(generated.stdout).toBe(`${clientPath}\necho\techo\nrefuse\trefuse\n`);
+            expect(generated.stdout).toBe(
+              `${clientPath}\necho\techo\nrefuse\trefuse\nlegacy\tlegacy\n`,
+            );
           }),
           then.assert(
             "inline codemode imports the client and calls the connection",
@@ -141,10 +149,19 @@ console.log(Object.keys(tools).join(","));`,
               const run = await ctx.runCodemode({
                 scope,
                 code: `async () => {
-                const { echo, refuse } = await import(${JSON.stringify(clientPath)});
-                return { echoed: await echo({ text: "inline" }), refused: await refuse({}) };
+                const { echo, refuse, legacy } = await import(${JSON.stringify(clientPath)});
+                return {
+                  echoed: await echo({ text: "inline" }),
+                  refused: await refuse({}),
+                  // The generated function opts in to the unchecked action for its caller.
+                  legacy: await legacy({}),
+                };
               }`,
-                assertToolCalls: ["integrations.execute", "integrations.execute"],
+                assertToolCalls: [
+                  "integrations.execute",
+                  "integrations.execute",
+                  "integrations.execute",
+                ],
               });
               expect(run.result).toEqual({
                 echoed: {
@@ -155,6 +172,11 @@ console.log(Object.keys(tools).join(","));`,
                 refused: {
                   isError: true,
                   content: [{ type: "text", text: "Quota exhausted." }],
+                  structuredContent: null,
+                },
+                legacy: {
+                  isError: false,
+                  content: [{ type: "text", text: "legacy" }],
                   structuredContent: null,
                 },
               });
@@ -181,7 +203,7 @@ console.log(Object.keys(tools).join(","));`,
               assert.equal(artifact.exitCode, 0, artifact.stdout);
               expect(JSON.parse(artifact.stdout)).toMatchObject({
                 status: "success",
-                logs: [{ channel: "log", text: "echo,refuse" }],
+                logs: [{ channel: "log", text: "echo,legacy,refuse" }],
               });
             },
           ),

@@ -404,6 +404,7 @@ test("Codemode registers an MCP server through setup, publishes its tools as act
               const actions = await integrations.actions(target);
               const echoed = await integrations.execute({ ...target, actionId: "echo", input: { text: "hello" } });
               const refused = await integrations.execute({ ...target, actionId: "refuse", input: {} });
+              const legacy = await integrations.execute({ ...target, actionId: "legacy", input: {}, unchecked: true });
               const failures = {};
               for (const [name, attempt] of [
                 ["invalidInput", () => integrations.execute({ ...target, actionId: "echo", input: { text: 1 } })],
@@ -413,7 +414,7 @@ test("Codemode registers an MCP server through setup, publishes its tools as act
                 try { await attempt(); failures[name] = "accepted"; } catch (error) { failures[name] = error.message; }
               }
               return {
-                actions, echoed, refused, failures,
+                actions, echoed, refused, legacy, failures,
                 inspected: await integrations.get(target),
                 page: await integrations.list({ cursor: null }),
               };
@@ -450,7 +451,16 @@ test("Codemode registers an MCP server through setup, publishes its tools as act
                   required: ["isError", "content", "structuredContent"],
                 },
               },
-              { id: "drift" },
+              { id: "drift", validation: { kind: "checked" } },
+              {
+                id: "legacy",
+                // Published as declared, but only callers that opt in run it.
+                validation: {
+                  kind: "unchecked",
+                  reason: expect.stringContaining("input schema uses a dialect"),
+                },
+                inputSchema: { $schema: "http://json-schema.org/draft-04/schema#" },
+              },
             ],
             echoed: {
               isError: false,
@@ -463,10 +473,11 @@ test("Codemode registers an MCP server through setup, publishes its tools as act
               content: [{ type: "text", text: "Quota exhausted for today." }],
               structuredContent: null,
             },
+            legacy: { isError: false, content: [], structuredContent: null },
             failures: {
               invalidInput: expect.stringContaining("failed its published JSON Schema"),
               drift: expect.stringContaining("must not be automatically retried"),
-              legacy: expect.stringContaining("action not found"),
+              legacy: expect.stringContaining("Pass unchecked: true"),
             },
             inspected: {
               connectionId: "mcp#tools",
@@ -487,10 +498,10 @@ test("Codemode registers an MCP server through setup, publishes its tools as act
               ],
             },
           });
-          expect((run.result as { actions: unknown[] }).actions).toHaveLength(3);
+          expect((run.result as { actions: unknown[] }).actions).toHaveLength(4);
           expect(JSON.stringify(run.result)).not.toContain(toolsToken);
-          // Invalid input and unpublished tools never reach the server; drift already ran.
-          expect(providers.calls).toEqual(["echo", "refuse", "drift"]);
+          // Invalid input and unchecked calls without opt-in never reach the server; drift already ran.
+          expect(providers.calls).toEqual(["echo", "refuse", "legacy", "drift"]);
         },
       ),
       runner.drain(),
@@ -527,7 +538,7 @@ test("Codemode registers an MCP server through setup, publishes its tools as act
           },
           inspected: { checks: [{ status: "not-checked" }] },
         });
-        expect(providers.calls).toHaveLength(3);
+        expect(providers.calls).toHaveLength(4);
       }),
       then.assert(
         "a native credential reset asks for a new token instead of becoming unauthenticated",

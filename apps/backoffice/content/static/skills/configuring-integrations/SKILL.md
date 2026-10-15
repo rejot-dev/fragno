@@ -227,8 +227,10 @@ headers, and body.
 Each server tool is an action with the tool's own input schema. Results are
 `{ isError, content, structuredContent }`: `isError: true` is the tool's own answer, explained in
 `content`, so report it rather than retrying. Tools appear once the server's tools are discovered,
-shortly after setup is ready; if `actions` is empty, run `integrations.verify`. Tools whose schemas
-cannot be validated are not offered as actions, and `integrations.get` names them in `nextSteps`.
+shortly after setup is ready; if `actions` is empty, run `integrations.verify`. A tool whose schemas
+cannot be validated is an action with `validation.kind: "unchecked"` and a `reason`;
+`integrations.execute` runs it only with `unchecked: true`, skipping validation so the server alone
+rejects bad input. Its generated client function passes the flag itself.
 
 An action's output schema types a successful result's `structuredContent` with the tool's own output
 schema, so a generated client narrows it after checking `isError`.

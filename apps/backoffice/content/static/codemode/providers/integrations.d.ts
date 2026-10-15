@@ -16,7 +16,7 @@ type IntegrationsCodemodeProvider = {
   backfillConnectionEvents(): Promise<IntegrationsBackfillConnectionEventsOutput>;
   /** Discover the selected connection's supported actions and authoritative input/output contracts without executing them. Never infer schemas from action IDs. */
   actions(input: IntegrationsActionsInput): Promise<IntegrationsActionsOutput>;
-  /** Execute an explicit connection action with JSON input/output, validated against its live contracts and service permissions. Binary inputs are schema-declared byte arrays; results retain the action's domain and asynchronous semantics. */
+  /** Execute an explicit connection action with JSON input/output, validated against its live contracts and service permissions. Unchecked actions run only with unchecked: true. Binary inputs are schema-declared byte arrays; results retain the action's domain and asynchronous semantics. */
   execute(input: IntegrationsExecuteInput): Promise<IntegrationsExecuteOutput>;
   /** Write a JavaScript module with one typed async function per action of the selected connection, for codemode and saved modules to import. Each function calls integrations.execute; its JSDoc types snapshot the action contracts, so regenerate after the connection's actions change. */
   generateClient(input: IntegrationsGenerateClientInput): Promise<IntegrationsGenerateClientOutput>;
@@ -199,10 +199,20 @@ type IntegrationAction = {
   id: string;
   label: string;
   description: string;
+  validation: IntegrationActionValidation;
   inputSchema: IntegrationJsonSchema;
   /** Describes the action's own result, including any asynchronous job handle. */
   outputSchema: IntegrationJsonSchema;
 };
+type IntegrationActionValidation =
+  | {
+      kind: "checked";
+    }
+  | {
+      kind: "unchecked";
+      /** Why the published schemas cannot be validated. */
+      reason: string;
+    };
 type IntegrationClient = {
   path: string;
   exports: {
@@ -286,6 +296,8 @@ type IntegrationsExecuteInput = {
   actionId: string;
   /** JSON action input, validated against the live action schema before dispatch. Binary inputs use schema-declared byte arrays of integers 0–255, never ArrayBuffer or typed arrays; implementations convert them privately. */
   input: JsonValue;
+  /** Required to run an action whose validation is unchecked: its input and output skip validation and the service alone rejects bad input. Checked actions validate regardless. */
+  unchecked?: boolean;
 };
 type IntegrationsExecuteOutput = JsonValue;
 type IntegrationsGenerateClientInput = {

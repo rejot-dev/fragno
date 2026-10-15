@@ -1635,6 +1635,10 @@
         "description": "JSON input, including null; binary fields use schema-declared byte arrays"
       },
       {
+        "name": "unchecked",
+        "description": "Run an action whose validation is unchecked, without validating input or output"
+      },
+      {
         "name": "help",
         "description": "Show this help text",
         "valueRequired": false,

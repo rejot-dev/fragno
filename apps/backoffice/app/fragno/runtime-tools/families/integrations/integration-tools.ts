@@ -401,6 +401,11 @@ export const integrationsToolFamily = defineBackofficeRuntimeToolFamily({
                 description:
                   "JSON input, including null; binary fields use schema-declared byte arrays",
               },
+              {
+                name: "unchecked",
+                description:
+                  "Run an action whose validation is unchecked, without validating input or output",
+              },
             ],
             examples: [
               'integrations.execute --connection-id \'backoffice#reson8\' --action-id prerecorded.transcribe --input-json \'{"audio":{"bytes":[0,127,255]},"query":null}\' --format json',
@@ -417,6 +422,7 @@ export const integrationsToolFamily = defineBackofficeRuntimeToolFamily({
                 read: readIntegrationJsonInput,
                 defaultValue: null,
               },
+              unchecked: { kind: "boolean" },
             },
           ),
           format: formatIntegrationCommandOutput,

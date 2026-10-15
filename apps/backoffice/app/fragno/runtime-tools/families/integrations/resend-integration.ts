@@ -125,6 +125,7 @@ function defineResendAction<
     id: action.id,
     label: action.label,
     description: action.description,
+    validation: { kind: "checked" },
     inputSchema: z.toJSONSchema(action.input, { io: "input" }),
     outputSchema: z.toJSONSchema(action.output, { io: "output" }),
   };

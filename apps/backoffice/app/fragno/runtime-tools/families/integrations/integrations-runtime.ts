@@ -99,13 +99,20 @@ export function createIntegrationsRuntime({
       const connection = await registry.resolve(context, connectionId);
       return (await connection.actions()).map((action) => action.definition);
     },
-    async execute({ connectionId, actionId, input }) {
+    async execute({ connectionId, actionId, input, unchecked }) {
       const connection = await registry.resolve(context, connectionId);
       const action = (await connection.actions()).find(
         (action) => action.definition.id === actionId,
       );
       if (!action) {
         throw new BackofficeOperationError("not_found", "Integrations action not found.");
+      }
+      const { validation } = action.definition;
+      if (validation.kind === "unchecked" && !unchecked) {
+        throw new BackofficeOperationError(
+          "invalid_request",
+          `Action '${actionId}' is unchecked: ${validation.reason} Pass unchecked: true to run it without validation.`,
+        );
       }
       return await action.invoke(input);
     },

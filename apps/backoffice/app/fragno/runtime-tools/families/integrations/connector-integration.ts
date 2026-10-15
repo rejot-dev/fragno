@@ -490,6 +490,7 @@ export function createConnectorIntegration({
                 id: action.id,
                 label: action.name,
                 description: action.description ?? "",
+                validation: { kind: "checked" },
                 inputSchema: action.inputSchema,
                 outputSchema: action.outputSchema,
               },
