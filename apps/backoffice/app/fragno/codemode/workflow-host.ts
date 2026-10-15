@@ -9,14 +9,17 @@ import {
   type RemoteWorkflowStepScope,
   type WorkflowStepIdentity,
 } from "@fragno-dev/workflows/remote-workflow";
-import type {
-  WorkflowDuration,
-  WorkflowStepConfig,
-  WorkflowStepConsumeTx,
-  WorkflowStepEvent,
-  WorkflowStepTx,
-  WorkflowStepWorkflowOperation,
+import {
+  NonRetryableError,
+  type WorkflowDuration,
+  type WorkflowStepConfig,
+  type WorkflowStepConsumeTx,
+  type WorkflowStepEvent,
+  type WorkflowStepTx,
+  type WorkflowStepWorkflowOperation,
 } from "@fragno-dev/workflows/workflow";
+
+import { parseBackofficeUiResult } from "@/backoffice-ui/result";
 
 const unsupportedRemoteTxFeature = (feature: string): never => {
   throw new Error(`REMOTE_WORKFLOW_TX_${feature}_UNSUPPORTED`);
@@ -145,6 +148,14 @@ export class BackofficeWorkflowStepHost {
           );
           if (isRemoteWorkflowSuspension(result)) {
             throw new RemoteWorkflowSuspendedError(result.reason);
+          }
+          // An invalid interface can never collect the input a later waitForEvent awaits, and the
+          // same deterministic callback would rebuild it on retry.
+          const generatedUi = parseBackofficeUiResult(result);
+          if (generatedUi.kind === "invalid") {
+            throw new NonRetryableError(
+              `Step "${name}" returned an invalid generated UI: ${generatedUi.message}`,
+            );
           }
           return result;
         } catch (error) {

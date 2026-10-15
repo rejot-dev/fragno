@@ -215,6 +215,38 @@ describe("Pi execCodeMode tool", () => {
     });
   });
 
+  test("fails the tool call with the element and prop that make a generated UI invalid", async () => {
+    const tool = await createExecCodeModeTool({});
+
+    const result = await tool.execute(
+      {
+        code: `async () => ({
+          $ui: {
+            version: 1,
+            state: {},
+            spec: {
+              root: "report",
+              elements: {
+                report: { type: "Stack", props: { gap: "md" }, children: ["grid"] },
+                grid: { type: "Grid", props: { columns: 6, gap: "md" }, children: ["metric"] },
+                metric: { type: "Metric", props: { label: "Orders", value: 2 }, children: [] },
+              },
+            },
+          },
+        })`,
+      },
+      { taskId: "tool-call-invalid-ui" } as never,
+      BACKGROUND_CONTEXT,
+    );
+
+    assert(result.isError);
+    const content = result.content[0];
+    assert(content?.type === "text");
+    expect(content.text).toContain(
+      'Generated UI is invalid: Element "grid" has invalid props for Grid: columns: expected one of 1|2|3|4. Element "metric" has invalid props for Metric: value: Invalid input: expected string, received number.',
+    );
+  });
+
   test("surfaces workflow definitions from execCodeMode", async () => {
     const tool = await createExecCodeModeTool({
       workflowRuntime: createPiWorkflowRuntime(),

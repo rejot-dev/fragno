@@ -236,3 +236,73 @@ test("native RPC errors without host suspension still reach the runner", async (
     }),
   );
 });
+
+test("a step returning an invalid generated UI fails without spending its retries", async () => {
+  const workflowName = "codemode-invalid-ui";
+  const instanceId = `${workflowName}-1`;
+  const Workflow = defineRemoteWorkflow(
+    { name: workflowName },
+    defineCodemodeWorkflowRun(
+      `async (_event, step) => {
+        await step.do("show report", { retries: { limit: 3, delay: "1 second" } }, async () => ({
+          $ui: {
+            version: 1,
+            state: {},
+            spec: {
+              root: "metric",
+              elements: {
+                metric: { type: "Metric", props: { label: "Orders", value: 24 }, children: [] },
+              },
+            },
+          },
+        }));
+      }`,
+      env,
+      {
+        allowedHooks: [],
+        families: [],
+        toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
+      },
+    ),
+  );
+  const message =
+    'Step "show report" returned an invalid generated UI: Element "metric" has invalid props for Metric: value: Invalid input: expected string, received number.';
+  await runScenario(
+    defineScenario({
+      name: "invalid step UI is a terminal step error",
+      workflows: { WORKFLOW: Workflow },
+      harness: {
+        adapter: { type: "in-memory" },
+        testBuilder: buildDatabaseFragmentsTest(),
+        autoTickHooks: false,
+      },
+      steps: ({ workflow, runner }) => [
+        runner.initializeAndRunUntilIdle({
+          workflow: "WORKFLOW",
+          id: instanceId,
+          remoteWorkflowName: workflowName,
+        }),
+        workflow.read({
+          read: (ctx) => ctx.state.getStatus("WORKFLOW", instanceId),
+          assert: (status) => {
+            expect(status).toMatchObject({ status: "errored", error: { message } });
+          },
+        }),
+        workflow.read({
+          read: (ctx) => ctx.state.getSteps("WORKFLOW", instanceId),
+          assert: (steps) => {
+            expect(steps).toMatchObject([
+              {
+                stepKey: "do:show report",
+                status: "errored",
+                attempts: 1,
+                errorName: "NonRetryableError",
+                errorMessage: message,
+              },
+            ]);
+          },
+        }),
+      ],
+    }),
+  );
+});

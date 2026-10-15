@@ -7,6 +7,7 @@ import { visualizeWorkflowSource } from "@fragno-dev/workflow-visualizer-tokens"
 import { copyJson } from "@earendil-works/chord";
 import { defineTool } from "@earendil-works/pi-durable";
 
+import { parseBackofficeUiResult } from "@/backoffice-ui/result";
 import {
   createCodemodeWorkflowInstanceInput,
   prepareCodemodeWorkflowInstance,
@@ -186,9 +187,16 @@ export function createExecCodeModeTool(agent: BackofficeAgentContext) {
         }
       }
 
-      const text = scheduleError
-        ? `${formatExecCodeModeText(result)}\n\nWorkflow could not be scheduled: ${scheduleError.message}`
-        : formatExecCodeModeText(result);
+      // The renderer would only show the user an invalid interface; the agent must see why.
+      const generatedUi = parseBackofficeUiResult(result.result);
+      const generatedUiError =
+        generatedUi.kind === "invalid" ? `Generated UI is invalid: ${generatedUi.message}` : null;
+
+      const text = [
+        formatExecCodeModeText(result),
+        ...(scheduleError ? [`Workflow could not be scheduled: ${scheduleError.message}`] : []),
+        ...(generatedUiError ? [generatedUiError] : []),
+      ].join("\n\n");
 
       // Throw only when there is no workflow graph to preserve. Recognized workflows return an
       // error result with details so both the viewer and model can inspect the scheduling failure.
@@ -198,7 +206,7 @@ export function createExecCodeModeTool(agent: BackofficeAgentContext) {
 
       return {
         content: [{ type: "text", text }],
-        isError: Boolean(result.error || scheduleError),
+        isError: Boolean(result.error || scheduleError || generatedUiError),
         details: copyJson(
           {
             ...result,
