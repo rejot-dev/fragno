@@ -128,6 +128,30 @@ const backofficePermissionsEqual = (
   requirement: BackofficePermissionRequirement,
 ) => grant.namespace === requirement.namespace && grant.permission === requirement.permission;
 
+const DENIAL_LISTED_GRANTS = 8;
+
+/** Names the delegate and what it holds, so a denial points at the grant to change. */
+function delegatedActorDenialMessage(
+  actor: BackofficeExecutionContext["actors"]["delegation"][number],
+  requirement: BackofficePermissionRequirement,
+  grants: readonly BackofficePermissionRequirement[],
+): string {
+  const listed = grants
+    .slice(0, DENIAL_LISTED_GRANTS)
+    .map((grant) => `${grant.namespace}.${grant.permission}`);
+  const held =
+    grants.length === 0
+      ? "(none)"
+      : grants.length > DENIAL_LISTED_GRANTS
+        ? `${listed.join(", ")}, and ${grants.length - DENIAL_LISTED_GRANTS} more`
+        : listed.join(", ");
+  const required = `${requirement.namespace}.${requirement.permission}`;
+  // A Pi agent's grants are its definition's permissions, which is where they are changed.
+  return actor.type === "pi-agent"
+    ? `Agent '${actor.id}' is not granted ${required}; its definition grants: ${held}.`
+    : `Delegated ${actor.type} '${actor.id}' is not granted ${required}; it is granted: ${held}.`;
+}
+
 /**
  * Authorizes sensitive Backoffice actions against trusted execution provenance.
  *
@@ -334,7 +358,7 @@ export class BackofficeKernel {
         );
       }
 
-      for (const actorResult of delegatedActorResults) {
+      for (const [index, actorResult] of delegatedActorResults.entries()) {
         if (actorResult.status === "rejected") {
           throw new BackofficeForbiddenError(
             "Backoffice authority resolution is unavailable.",
@@ -347,7 +371,11 @@ export class BackofficeKernel {
           )
         ) {
           throw new BackofficeForbiddenError(
-            "A delegated actor does not have the required capability grant.",
+            delegatedActorDenialMessage(
+              trustedExecution.actors.delegation[index],
+              requirement.operation,
+              actorResult.value,
+            ),
             "actor-capability-denied",
           );
         }

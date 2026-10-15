@@ -1086,7 +1086,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                   });
                   assert(response.type === "json");
                   expect(response.data.details.error?.message).toContain(
-                    "delegated actor does not have the required capability grant",
+                    `Delegated capability '${CODEMODE_WORKFLOW}' is not granted`,
                   );
                 },
               ),

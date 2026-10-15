@@ -425,7 +425,7 @@ test("an agent's definition narrows every turn and an edited definition applies 
             const result = toolResults(context).at(-1);
             assert.equal(result?.isError, true, JSON.stringify(result));
             expect(JSON.stringify(result)).toContain(
-              "A delegated actor does not have the required capability grant.",
+              "Agent 'reader' is not granted store.modify; its definition grants: upload.read.",
             );
             return fauxAssistantMessage("The reader may not write the store.");
           },
