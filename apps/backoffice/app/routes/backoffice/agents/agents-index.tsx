@@ -2,6 +2,8 @@ import type { PiManagerAgent } from "@fragno-dev/backoffice-api/v0/pi";
 import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
 import { Link, useOutletContext } from "react-router";
 
+import { backofficePageBodyClassName } from "@/components/backoffice/page-body";
+
 import { formatPiAgentName } from "./agent-name";
 import { AgentPermissions } from "./agent-permissions";
 import type { PiAgentsOutletContext } from "./agent-types";
@@ -14,7 +16,7 @@ export default function BackofficePiAgentsIndex() {
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
       <AgentsHeader basePath={basePath} agents={agents} selectedAgentName={null} options={null} />
       <div className="backoffice-scroll min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto flex w-full max-w-6xl flex-col px-4 py-8 sm:px-8 sm:py-10">
+        <div className={`${backofficePageBodyClassName} flex flex-col`}>
           <h2 className="text-2xl font-semibold tracking-[-0.025em] text-balance text-[var(--bo-fg)]">
             Agents
           </h2>

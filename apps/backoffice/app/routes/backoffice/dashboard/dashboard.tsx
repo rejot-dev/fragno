@@ -2,6 +2,7 @@ import { Button, ButtonLink } from "@fragno-private/design-system/button";
 import { ClientOnly } from "@fragno-private/design-system/client-only";
 import { Input } from "@fragno-private/design-system/input";
 import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
+import { BackofficeTabHeader } from "@fragno-private/design-system/tab-header";
 import { Suspense, use, useEffect, useMemo, useState } from "react";
 import {
   Form,
@@ -16,6 +17,7 @@ import { useLiveQuery } from "@tanstack/react-db";
 
 import { backofficeRouteScopeFromResolvedScope } from "@/backoffice-runtime/resolved-scope";
 import { useCurrentBackofficeContext } from "@/components/backoffice/current-context";
+import { backofficePageBodyClassName } from "@/components/backoffice/page-body";
 import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import {
   describeAutomationCollectionSource,
@@ -57,6 +59,7 @@ import { WORKFLOW_SCRIPT_PARAM, dashboardPath } from "./path";
 const CLOCK_TICK_MS = 60_000;
 const CREATE_PROJECT_PARAM = "createProject";
 const EMPTY_WORKFLOW_SOURCE = { script: null, scriptError: null };
+const pageClassName = `${backofficePageBodyClassName} flex flex-col gap-4`;
 
 type ProjectActionData = { ok: false; message: string };
 
@@ -184,15 +187,24 @@ export function meta({ loaderData }: Route.MetaArgs) {
 
 export default function BackofficeDashboard({ loaderData }: Route.ComponentProps) {
   const [searchParams] = useSearchParams();
+  const overviewPath = dashboardPath(
+    backofficeRouteScopeFromResolvedScope(loaderData.selectedScope),
+  );
+  const header = (
+    <BackofficeTabHeader
+      items={[{ id: "overview", label: "Overview", to: overviewPath, active: true }]}
+      ariaLabel="Dashboard"
+      options={null}
+    />
+  );
   if (searchParams.get(CREATE_PROJECT_PARAM) === "1") {
     return (
-      <div className="flex flex-col gap-4 p-4 sm:p-6">
-        <CreateProjectPanel
-          cancelPath={dashboardPath(
-            backofficeRouteScopeFromResolvedScope(loaderData.selectedScope),
-          )}
-        />
-      </div>
+      <>
+        {header}
+        <div className={pageClassName}>
+          <CreateProjectPanel cancelPath={overviewPath} />
+        </div>
+      </>
     );
   }
 
@@ -205,21 +217,17 @@ export default function BackofficeDashboard({ loaderData }: Route.ComponentProps
   );
 
   return (
-    <div className="flex flex-col gap-4 p-4 sm:p-6">
-      <header className="min-w-0">
-        <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
-          Dashboard
-        </p>
-        <h1 className="mt-1 truncate text-2xl font-semibold tracking-[-0.02em] text-[var(--bo-fg)]">
-          {loaderData.selectedScope.label}
-        </h1>
-      </header>
-      <ClientOnly fallback={loading}>
-        <Suspense fallback={loading}>
-          <DashboardClient loaderData={loaderData} />
-        </Suspense>
-      </ClientOnly>
-    </div>
+    <>
+      {header}
+      <div className={pageClassName}>
+        <h1 className="sr-only">Dashboard for {loaderData.selectedScope.label}</h1>
+        <ClientOnly fallback={loading}>
+          <Suspense fallback={loading}>
+            <DashboardClient loaderData={loaderData} />
+          </Suspense>
+        </ClientOnly>
+      </div>
+    </>
   );
 }
 

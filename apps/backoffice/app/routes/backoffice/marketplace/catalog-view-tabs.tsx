@@ -14,14 +14,17 @@ export function MarketplaceCatalogViewTabs({
   catalog: MarketplaceCatalog;
   activeView: "featured" | "all";
 }) {
+  // Pulled back by the tabs' own padding so their labels line up with the page content.
   return (
-    <AutomationSubpageTabs
-      tabs={[
-        { id: "featured", label: "Featured", to: marketplaceScopeTabPath(scope, catalog) },
-        { id: "all", label: "All", to: marketplaceCatalogAllPath(scope, catalog) },
-      ]}
-      activeTab={activeView}
-      ariaLabel="Marketplace catalog views"
-    />
+    <div className="-ml-2">
+      <AutomationSubpageTabs
+        tabs={[
+          { id: "featured", label: "Featured", to: marketplaceScopeTabPath(scope, catalog) },
+          { id: "all", label: "All", to: marketplaceCatalogAllPath(scope, catalog) },
+        ]}
+        activeTab={activeView}
+        ariaLabel="Marketplace catalog views"
+      />
+    </div>
   );
 }

@@ -1,7 +1,8 @@
-import { OverflowTabRow } from "@fragno-private/design-system/overflow-tab-row";
+import { BackofficeTabHeader } from "@fragno-private/design-system/tab-header";
 import { Outlet } from "react-router";
 
 import type { BackofficeScopeSelection } from "@/backoffice-runtime/resolved-scope";
+import { backofficePageBodyClassName } from "@/components/backoffice/page-body";
 import { findBackofficeMe } from "@/fragno/auth/auth-server";
 
 import { buildBackofficeLoginPath } from "../auth-navigation";
@@ -67,13 +68,15 @@ export default function BackofficeMarketplaceScopeLayout({
   return (
     <div className="flex flex-1 flex-col">
       <MarketplaceWorkspaceHeader selectedScope={loaderData.selectedScope} activeTab={activeTab} />
-      <Outlet
-        context={
-          {
-            selectedScope: loaderData.selectedScope,
-          } satisfies MarketplaceLayoutContext
-        }
-      />
+      <div className={`${backofficePageBodyClassName} flex flex-1 flex-col`}>
+        <Outlet
+          context={
+            {
+              selectedScope: loaderData.selectedScope,
+            } satisfies MarketplaceLayoutContext
+          }
+        />
+      </div>
     </div>
   );
 }
@@ -93,11 +96,9 @@ function MarketplaceWorkspaceHeader({
   }));
 
   return (
-    <section className="bo-fragment-surface overflow-hidden bg-[var(--bo-header-bg)]">
+    <>
       <h1 className="sr-only">Marketplace for {selectedScope.label}</h1>
-      <div className="flex flex-col bg-[color:var(--bo-sidebar-bg)] px-4 pt-4">
-        <OverflowTabRow items={tabs} ariaLabel="Marketplace workspace sections" variant="browser" />
-      </div>
-    </section>
+      <BackofficeTabHeader items={tabs} ariaLabel="Marketplace workspace sections" options={null} />
+    </>
   );
 }

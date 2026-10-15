@@ -1,9 +1,10 @@
-import { OverflowTabRow } from "@fragno-private/design-system/overflow-tab-row";
 import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
 import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
+import { BackofficeTabHeader } from "@fragno-private/design-system/tab-header";
 import { isRouteErrorResponse, Outlet, redirect } from "react-router";
 
 import { backofficeRouteScopeFromResolvedScope } from "@/backoffice-runtime/resolved-scope";
+import { backofficePageBodyClassName } from "@/components/backoffice/page-body";
 import { findBackofficeMe } from "@/fragno/auth/auth-server";
 
 import { buildBackofficeLoginPath } from "../auth-navigation";
@@ -98,20 +99,18 @@ export default function BackofficeComputersScopeLayout({ loaderData }: Route.Com
   }
 
   return (
-    <div className="@container flex flex-1 flex-col">
-      <section className="bo-fragment-surface overflow-hidden bg-[var(--bo-panel)]">
-        <h1 className="sr-only">Computers for {selectedScope.label}</h1>
-        <div className="flex flex-col bg-[color:var(--bo-sidebar-bg)] px-4 pt-4">
-          <OverflowTabRow
-            items={[
-              { id: "sandboxes", label: "Sandboxes", to: sandboxesPath(routeScope), active: true },
-            ]}
-            ariaLabel="Computer kinds"
-            variant="browser"
-          />
-        </div>
-      </section>
-      <Outlet context={{ routeScope } satisfies ComputersLayoutContext} />
+    <div className="flex flex-1 flex-col">
+      <h1 className="sr-only">Computers for {selectedScope.label}</h1>
+      <BackofficeTabHeader
+        items={[
+          { id: "sandboxes", label: "Sandboxes", to: sandboxesPath(routeScope), active: true },
+        ]}
+        ariaLabel="Computer kinds"
+        options={null}
+      />
+      <div className={`${backofficePageBodyClassName} flex flex-1 flex-col`}>
+        <Outlet context={{ routeScope } satisfies ComputersLayoutContext} />
+      </div>
     </div>
   );
 }

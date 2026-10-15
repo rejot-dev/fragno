@@ -1,5 +1,5 @@
 import type { PiManagerAgent } from "@fragno-dev/backoffice-api/v0/pi";
-import { OverflowTabRow } from "@fragno-private/design-system/overflow-tab-row";
+import { BackofficeTabHeader } from "@fragno-private/design-system/tab-header";
 import type { ReactNode } from "react";
 
 import { formatPiAgentName } from "./agent-name";
@@ -36,15 +36,5 @@ export function AgentsHeader({
     })),
   ];
 
-  return (
-    <header className="flex h-16 flex-none items-end gap-3 border-b border-[color:var(--bo-border)] px-3 sm:px-5">
-      {/* Tabs sit on the bottom edge so the selected underline lands on the header divider. */}
-      <div className="-mb-px min-w-0 flex-1">
-        <OverflowTabRow items={items} ariaLabel="Agents" variant="underline" />
-      </div>
-      {options ? (
-        <div className="flex shrink-0 items-center gap-2 self-center sm:gap-3">{options}</div>
-      ) : null}
-    </header>
-  );
+  return <BackofficeTabHeader items={items} ariaLabel="Agents" options={options} />;
 }
