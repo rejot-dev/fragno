@@ -25,6 +25,7 @@ import type { PiAgentCompactionStatus } from "@/fragno/pi/agent/pi-agent-contrac
 
 import type { Route } from "./+types/agent-detail";
 import { formatPiAgentName } from "./agent-name";
+import { AgentPermissions } from "./agent-permissions";
 import { resolvePiAgentRouteScope } from "./agent-scope.server";
 import { AgentStartComposer } from "./agent-start-composer";
 import type { PiAgentsOutletContext } from "./agent-types";
@@ -345,6 +346,7 @@ export default function BackofficeOrganizationPiAgentDetail({ loaderData }: Rout
         <AgentStartComposer
           agentName={agent.agentName}
           description={agent.description}
+          permissions={agent.permissions}
           billingOrganization={billingOrganization}
         />
       </div>
@@ -650,16 +652,22 @@ function BackofficeOrganizationPiAgent({
           agents={agents}
           selectedAgentName={agent.agentName}
           options={
-            <SessionDisplayOptions
-              exportHref={`${agentPath}.jsonl`}
-              exportFilename={`pi-agent-${agent.agentName}.jsonl`}
-              showToolCalls={displayOptions.showToolCalls}
-              showThinking={displayOptions.showThinking}
-              showUsage={displayOptions.showUsage}
-              onShowToolCallsChange={updateDisplayOption("showToolCalls")}
-              onShowThinkingChange={updateDisplayOption("showThinking")}
-              onShowUsageChange={updateDisplayOption("showUsage")}
-            />
+            <>
+              <AgentPermissions
+                permissions={agent.permissions}
+                className="hidden max-w-72 truncate text-sm sm:block"
+              />
+              <SessionDisplayOptions
+                exportHref={`${agentPath}.jsonl`}
+                exportFilename={`pi-agent-${agent.agentName}.jsonl`}
+                showToolCalls={displayOptions.showToolCalls}
+                showThinking={displayOptions.showThinking}
+                showUsage={displayOptions.showUsage}
+                onShowToolCallsChange={updateDisplayOption("showToolCalls")}
+                onShowThinkingChange={updateDisplayOption("showThinking")}
+                onShowUsageChange={updateDisplayOption("showUsage")}
+              />
+            </>
           }
         />
 

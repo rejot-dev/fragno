@@ -3,6 +3,7 @@ import { BackofficeStatusLight } from "@fragno-private/design-system/status-ligh
 import { Link, useOutletContext } from "react-router";
 
 import { formatPiAgentName } from "./agent-name";
+import { AgentPermissions } from "./agent-permissions";
 import type { PiAgentsOutletContext } from "./agent-types";
 import { AgentsHeader } from "./agents-header";
 
@@ -63,6 +64,10 @@ function AgentCard({ agent, to }: { agent: PiManagerAgent; to: string }) {
       <p className="mt-3 line-clamp-4 flex-1 text-sm leading-6 text-pretty text-[var(--bo-muted)]">
         {agent.description}
       </p>
+      <AgentPermissions
+        permissions={agent.permissions}
+        className="mt-4 line-clamp-2 font-mono text-xs break-words"
+      />
       <p className="mt-6 border-t border-[color:var(--bo-border)] pt-4 text-xs text-[var(--bo-muted-2)]">
         {agent.managedBy?.kind === "built-in"
           ? "Built in"
