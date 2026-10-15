@@ -64,6 +64,7 @@ const reson8TranscriptionActionDefinition = {
   id: "prerecorded.transcribe",
   label: "Transcribe prerecorded audio",
   description: "Transcribe audio bytes through the organization's current Reson8 configuration.",
+  validation: { kind: "checked" as const },
   inputSchema: z.toJSONSchema(reson8TranscriptionInputSchema, { io: "input" }),
   outputSchema: z.toJSONSchema(reson8PrerecordedTranscriptionSchema, { io: "output" }),
 };

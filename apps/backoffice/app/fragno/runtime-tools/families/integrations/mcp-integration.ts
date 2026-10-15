@@ -75,7 +75,10 @@ export function encodeMcpConnectionId(slug: string) {
   return `mcp#${slug}`;
 }
 
-type PublishableTool = { tool: McpTool; input: Validator; output: Validator | null };
+/** Checked tools carry their compiled validators; the others publish a reason instead. */
+type McpToolContract =
+  | { kind: "checked"; input: Validator; output: Validator | null }
+  | { kind: "unchecked"; reason: string };
 
 // The fragment pins its own zod version, so convert through Standard JSON Schema.
 const { $schema: mcpResultDialect, ...mcpResultEnvelope } = mcpToolCallResultSchema[
@@ -113,11 +116,13 @@ function rebaseLocalReferences(schema: unknown): unknown {
  * Successful results carry structuredContent matching the tool's output schema, so the published
  * contract says so. The tool's own validator still checks results in its original dialect.
  */
-function mcpActionOutputSchema(tool: McpTool): Record<string, unknown> {
-  if (!tool.outputSchema) {
+function mcpActionOutputSchema(
+  structuredContentSchema: Record<string, unknown> | null,
+): Record<string, unknown> {
+  if (!structuredContentSchema) {
     return { $schema: mcpResultDialect, ...mcpResultEnvelope };
   }
-  const { $schema: _toolDialect, ...structuredContent } = tool.outputSchema;
+  const { $schema: _toolDialect, ...structuredContent } = structuredContentSchema;
   return {
     $schema: mcpResultDialect,
     anyOf: [
@@ -138,22 +143,29 @@ function mcpActionOutputSchema(tool: McpTool): Record<string, unknown> {
   };
 }
 
-/** Tools whose contracts cannot be validated faithfully are withheld rather than weakened. */
-function partitionTools(tools: readonly McpTool[]) {
-  const publishable: PublishableTool[] = [];
-  const unsupported: string[] = [];
-  for (const tool of tools) {
-    // tools/call sends an arguments object, so a non-object root would promise an unusable action.
-    const input =
-      tool.inputSchema.type === "object" ? compileIntegrationActionSchema(tool.inputSchema) : null;
-    const output = tool.outputSchema ? compileIntegrationActionSchema(tool.outputSchema) : null;
-    if (input && (output || !tool.outputSchema)) {
-      publishable.push({ tool, input, output });
-    } else {
-      unsupported.push(tool.name);
-    }
+/** Contracts that cannot be validated faithfully are published unchecked rather than weakened. */
+function mcpToolContract(tool: McpTool): McpToolContract {
+  // tools/call sends an arguments object, so a non-object root cannot describe a call's input.
+  if (tool.inputSchema.type !== "object") {
+    return { kind: "unchecked", reason: "Its input schema does not describe an object." };
   }
-  return { publishable, unsupported };
+  const input = compileIntegrationActionSchema(tool.inputSchema);
+  if (!input) {
+    return {
+      kind: "unchecked",
+      reason: "Its input schema uses a dialect, reference, or keyword that cannot be validated.",
+    };
+  }
+  if (!tool.outputSchema) {
+    return { kind: "checked", input, output: null };
+  }
+  const output = compileIntegrationActionSchema(tool.outputSchema);
+  return output
+    ? { kind: "checked", input, output }
+    : {
+        kind: "unchecked",
+        reason: "Its output schema uses a dialect, reference, or keyword that cannot be validated.",
+      };
 }
 
 /**
@@ -210,7 +222,9 @@ function inspectMcpServer(
         });
     }
   })();
-  const unsupported = tools === null ? [] : partitionTools(tools).unsupported;
+  const unchecked = (tools ?? [])
+    .filter((tool) => mcpToolContract(tool).kind === "unchecked")
+    .map((tool) => tool.name);
   return {
     configuration: { status: "configured" },
     authorization,
@@ -220,9 +234,9 @@ function inspectMcpServer(
       ...(tools === null && authSteps.length === 0
         ? ["The server's tools have not been discovered yet; run integrations.verify."]
         : []),
-      ...(unsupported.length > 0
+      ...(unchecked.length > 0
         ? [
-            `Tools ${unsupported.join(", ")} publish schemas that cannot be validated, so they are not offered as actions; call them through mcp.callTool.`,
+            `Tools ${unchecked.join(", ")} publish schemas that cannot be validated, so they are unchecked actions; run them with integrations.execute and unchecked: true.`,
           ]
         : []),
     ],
@@ -761,22 +775,29 @@ export function createMcpIntegration({
           );
         },
         async actions() {
-          return partitionTools(cachedTools ?? []).publishable.map(
-            ({ tool, input, output }): IntegrationActionImplementation => ({
+          return (cachedTools ?? []).map((tool): IntegrationActionImplementation => {
+            const contract = mcpToolContract(tool);
+            return {
               definition: {
                 id: tool.name,
                 label: tool.title ?? tool.name,
                 description: `${tool.description ?? ""}${
-                  tool.outputSchema
+                  contract.kind === "checked" && tool.outputSchema
                     ? " Successful results carry structuredContent matching the tool's output schema."
                     : ""
                 } Tool errors return isError: true with an explanation in content.`.trim(),
+                validation:
+                  contract.kind === "checked"
+                    ? { kind: "checked" }
+                    : { kind: "unchecked", reason: contract.reason },
                 inputSchema: tool.inputSchema,
-                outputSchema: mcpActionOutputSchema(tool),
+                outputSchema: mcpActionOutputSchema(
+                  contract.kind === "checked" ? (tool.outputSchema ?? null) : null,
+                ),
               },
               async invoke(value) {
                 const args = z.record(z.string(), jsonValueSchema).parse(value);
-                if (!input.validate(args).valid) {
+                if (contract.kind === "checked" && !contract.input.validate(args).valid) {
                   throw new Error("MCP integration tool input failed its published JSON Schema.");
                 }
                 const result = mcpToolCallResultSchema.safeParse(
@@ -786,9 +807,10 @@ export function createMcpIntegration({
                 if (
                   !result.success ||
                   !json?.success ||
-                  (output &&
+                  (contract.kind === "checked" &&
+                    contract.output &&
                     !result.data.isError &&
-                    !output.validate(result.data.structuredContent).valid)
+                    !contract.output.validate(result.data.structuredContent).valid)
                 ) {
                   throw new Error(
                     "MCP integration tool output failed its published schema. The tool has already run and must not be automatically retried.",
@@ -796,8 +818,8 @@ export function createMcpIntegration({
                 }
                 return json.data;
               },
-            }),
-          );
+            };
+          });
         },
         async verify() {
           const checked = await access.refresh(localId);

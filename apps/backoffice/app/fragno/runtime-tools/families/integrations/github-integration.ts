@@ -52,6 +52,7 @@ const githubPullsListActionDefinition = {
   id: "pulls.list",
   label: "List pull requests",
   description: "List pull requests in this repository through the GitHub App installation.",
+  validation: { kind: "checked" as const },
   inputSchema: z.toJSONSchema(githubPullsListInputSchema, { io: "input" }),
   outputSchema: z.toJSONSchema(githubPullsListOutputSchema, { io: "output" }),
 };
@@ -64,6 +65,7 @@ const githubAccessTokenActionDefinition = {
   label: "Create repository access token",
   description:
     "Create a short-lived token that can only read this repository's contents, e.g. to clone it with https://x-access-token:<token>@github.com/owner/repo.git.",
+  validation: { kind: "checked" as const },
   inputSchema: z.toJSONSchema(z.strictObject({}), { io: "input" }),
   outputSchema: z.toJSONSchema(githubAccessTokenOutputSchema, { io: "output" }),
 };
@@ -92,6 +94,7 @@ const githubApiRequestActionDefinition = {
   label: "Call the GitHub REST API",
   description:
     "Send a GitHub REST API request about this repository, using the app's installation permissions restricted to this repository. Paths outside /repos/{owner}/{repo} are rejected.",
+  validation: { kind: "checked" as const },
   inputSchema: z.toJSONSchema(githubApiRequestInputSchema, { io: "input" }),
   outputSchema: z.toJSONSchema(githubApiRequestOutputSchema, { io: "output" }),
 };

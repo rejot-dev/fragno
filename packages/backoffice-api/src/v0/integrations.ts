@@ -340,7 +340,27 @@ export const integrationExecuteInputSchema = integrationConnectionInputSchema.ex
       "JSON action input, validated against the live action schema before dispatch. Binary inputs use schema-declared byte arrays of integers 0–255, never ArrayBuffer or typed arrays; implementations convert them privately.",
     )
     .meta({ codemodeType: "JsonValue" }),
+  unchecked: z
+    .boolean()
+    .default(false)
+    .describe(
+      "Required to run an action whose validation is unchecked: its input and output skip validation and the service alone rejects bad input. Checked actions validate regardless.",
+    ),
 });
+
+/**
+ * Whether execution validates an action against its schemas. Unchecked actions publish contracts
+ * that cannot be validated faithfully, so callers must opt in to running them.
+ */
+export const integrationActionValidationSchema = z
+  .discriminatedUnion("kind", [
+    z.strictObject({ kind: z.literal("checked") }),
+    z.strictObject({
+      kind: z.literal("unchecked"),
+      reason: z.string().describe("Why the published schemas cannot be validated."),
+    }),
+  ])
+  .meta({ id: "IntegrationActionValidation" });
 
 /** Integration action schemas describe the operation's own result, including asynchronous job handles. */
 export const integrationActionSchema = z
@@ -348,6 +368,7 @@ export const integrationActionSchema = z
     id: z.string().min(1).describe("Action identity returned by actions for this connection."),
     label: z.string(),
     description: z.string(),
+    validation: integrationActionValidationSchema,
     inputSchema: integrationJsonSchemaSchema,
     outputSchema: integrationJsonSchemaSchema.describe(
       "Describes the action's own result, including any asynchronous job handle.",
@@ -440,7 +461,7 @@ export const integrationsOperations = {
   },
   "integrations.execute": {
     description:
-      "Execute an explicit connection action with JSON input/output, validated against its live contracts and service permissions. Binary inputs are schema-declared byte arrays; results retain the action's domain and asynchronous semantics.",
+      "Execute an explicit connection action with JSON input/output, validated against its live contracts and service permissions. Unchecked actions run only with unchecked: true. Binary inputs are schema-declared byte arrays; results retain the action's domain and asynchronous semantics.",
     permissions: [BACKOFFICE_PERMISSION.integrations.execute],
     input: integrationExecuteInputSchema,
     output: jsonValueSchema.meta({ codemodeType: "JsonValue" }),

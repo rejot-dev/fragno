@@ -108,18 +108,28 @@ function renderIntegrationClientModule(
     const typeName = `${name.charAt(0).toUpperCase()}${name.slice(1)}`;
     const inputTypeName = `${typeName}Input`;
     const outputTypeName = `${typeName}Output`;
+    const { validation } = action;
     return [
-      ...renderSchemaTypedefs(action.inputSchema, inputTypeName),
+      // An unchecked input schema may not describe what the service accepts, so it types nothing.
+      ...(validation.kind === "checked"
+        ? renderSchemaTypedefs(action.inputSchema, inputTypeName)
+        : [`/** @typedef {Record<string, unknown>} ${inputTypeName} */`]),
       ...renderSchemaTypedefs(action.outputSchema, outputTypeName),
       renderComment([
         `${action.label}. ${action.description}`.trim(),
+        ...(validation.kind === "unchecked"
+          ? [
+              "",
+              `Unchecked: ${validation.reason} Input and output are not validated; the service alone rejects bad input.`,
+            ]
+          : []),
         "",
         `Action ${JSON.stringify(action.id)} of ${connectionId}.`,
         `@param {${inputTypeName}} input`,
         `@returns {Promise<${outputTypeName}>}`,
       ]),
       `export async function ${name}(input) {`,
-      `  return await ${INVOKE_ACTION}(${JSON.stringify(action.id)}, input);`,
+      `  return await ${INVOKE_ACTION}(${JSON.stringify(action.id)}, input, ${validation.kind === "unchecked"});`,
       "}",
     ].join("\n");
   });
@@ -132,13 +142,15 @@ function renderIntegrationClientModule(
     "/**",
     " * @param {string} actionId",
     " * @param {unknown} input",
+    " * @param {boolean} unchecked",
     " * @returns {Promise<any>}",
     " */",
-    `async function ${INVOKE_ACTION}(actionId, input) {`,
+    `async function ${INVOKE_ACTION}(actionId, input, unchecked) {`,
     "  return await integrations.execute({",
     `    connectionId: ${JSON.stringify(connectionId)},`,
     "    actionId,",
     "    input: /** @type {JsonValue} */ (input),",
+    "    unchecked,",
     "  });",
     "}",
     "",

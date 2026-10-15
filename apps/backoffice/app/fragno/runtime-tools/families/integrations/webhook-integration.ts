@@ -81,6 +81,7 @@ const webhookDescribeActionDefinition = {
   label: "Describe endpoint",
   description:
     "Read the endpoint's webhook URL, status, contract, and latest delivery outcomes. Stored secrets are named by reference, never returned.",
+  validation: { kind: "checked" as const },
   inputSchema: z.toJSONSchema(z.strictObject({}), { io: "input" }),
   outputSchema: z.toJSONSchema(webhookEndpointDescriptionSchema, { io: "output" }),
 };

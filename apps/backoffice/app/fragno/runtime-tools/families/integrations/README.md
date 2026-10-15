@@ -22,8 +22,12 @@ ownership, and configuration controls.
   reconfigure input, so a replacement can change one value without the caller knowing the rest; null
   when the source takes no replacement or nothing is stored. Each source projects them through
   `settings()` and never reads secrets back.
-- `actions({ connectionId })`: supported actions with authoritative input/output JSON Schemas.
-- `execute({ connectionId, actionId, input })`: invoke the exact live action with JSON input/output.
+- `actions({ connectionId })`: supported actions with authoritative input/output JSON Schemas. Each
+  action's `validation` is `checked`, or `unchecked` with a reason when its source publishes schemas
+  that cannot be validated faithfully.
+- `execute({ connectionId, actionId, input, unchecked })`: invoke the exact live action with JSON
+  input/output. An unchecked action runs only with `unchecked: true` and skips validation; the flag
+  changes nothing for checked actions.
 - `generateClient({ connectionId, out })`: write a `.js` module under `/workspace` with one
   JSDoc-typed function per action, each calling `execute`, so codemode and saved modules import
   typed calls. It renders from `actions`, so every source gets clients without source-specific code;
@@ -355,9 +359,10 @@ schema is a union on `isError` whose successful branch references the tool's sch
 `$defs` with its local references rebased. A tool error is a result the caller sees, not a thrown
 failure; auth, transport, and protocol failures throw. Successful `structuredContent` is validated
 against the tool's output schema, in its own dialect, when it declares one. A tool whose input or
-output schema cannot be validated is withheld from actions rather than published with a weaker
-contract, and inspection names it. Connector instead fails the whole catalog, since its catalogs are
-curated.
+output schema cannot be validated is published as an unchecked action with its raw input schema and
+the plain envelope as output, rather than with a weaker contract presented as checked; inspection
+names it. Running it requires the caller's `unchecked: true`. Connector instead fails the whole
+catalog, since its catalogs are curated.
 
 Source schemas without an explicit dialect use JSON Schema 2020-12; draft-07, which MCP SDK servers
 publish, is also accepted and validated as draft-07. Other explicit dialects, unresolved references,
