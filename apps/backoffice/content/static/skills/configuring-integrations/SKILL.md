@@ -133,6 +133,28 @@ provider's profile or account endpoint. `integrations.get` never contacts the pr
 **Complete when** a `passed` check or an `ok: true` read-only request proves access. Otherwise
 report the check message or error and the connection's `nextSteps`.
 
+## 5. Generate the client
+
+Generate a client for the connection at `/workspace/integrations/<namespace>/<local-id>.js`: the
+address with `#` as a folder separator, such as `/workspace/integrations/mcp/cloudflare.js` for
+`mcp#cloudflare`. Nothing generates or updates it automatically, so a client may be missing or
+outdated until this step runs.
+
+```js
+async () =>
+  await integrations.generateClient({
+    connectionId,
+    out: "/workspace/integrations/mcp/cloudflare.js",
+  });
+```
+
+Regenerate it whenever the connection's actions can change: after reconfiguration, and for an MCP
+server whenever `integrations.verify` lists different tools. MCP actions appear only after tool
+discovery, so verify before generating.
+
+**Complete when** the client exists and its returned `exports` cover every action from
+`integrations.actions`.
+
 ## Change or remove
 
 Both operations replace or delete live credentials, so run them on the user's instruction.
@@ -141,20 +163,21 @@ Both operations replace or delete live credentials, so run them on the user's in
   replacement `inputSchema`. Start the input from the `settings` that `integrations.get` returns,
   the stored values that are not secret, and change only what the user asked; collect secrets and
   any field `settings` omits as in step 3, then submit with `kind: "input"`. A submission replaces
-  the stored configuration and credentials, then returns setup progress: rerun the setup loop and
-  step 4. For an `api#` or `mcp#` OAuth connection whose provider revoked access, submit
+  the stored configuration and credentials, then returns setup progress: rerun the setup loop, step
+  4, and step 5. For an `api#` or `mcp#` OAuth connection whose provider revoked access, submit
   `{ reauthorize: true }` to consent again with the stored client; changing scopes, endpoints, or
   the client is a full replacement.
 - **Disconnect**: `integrations.disconnect({ connectionId, confirm: connectionId })` removes the
   configuration and credentials. `not-configured` means nothing was stored. The address stays valid
-  for a later setup.
+  for a later setup. Then delete its client with `state.rm({ path })`.
 
 Open Connector supports neither; to consent again, set up a fresh connection name. GitHub does not
 support reconfigure, since repository access is changed in the GitHub App's installation settings;
 its disconnect unlinks the repository from this organization.
 
-**Complete when** reconfiguration reaches `ready` and step 4 proves access again, or disconnect
-returns `disconnected` or `not-configured`.
+**Complete when** reconfiguration reaches `ready`, step 4 proves access again, and step 5
+regenerated the client; or disconnect returns `disconnected` or `not-configured` and the client file
+is gone.
 
 ## React to connection changes
 
@@ -189,18 +212,13 @@ call.
 
 ### Typed clients
 
-For code that calls a connection repeatedly, generate a client module:
-`integrations.generateClient({ connectionId, out: "/workspace/integrations/<slug>.js" })` writes one
-async function per action, typed with JSDoc from the action contracts, and returns each function's
-`name` and `actionId`. Every function calls `integrations.execute`, with the same validation and
-permissions. Inline codemode and workflow programs import it by absolute path with
-`await import("/workspace/integrations/<slug>.js")`; saved modules import it by path, including
-relative paths, and `js.check` checks callers against its types. A workflow instance pins its
-imports when it is created, so regenerating changes later instances only.
+A connection's client (step 5) exports one async function per action, typed with JSDoc from the
+action contracts; `exports` maps each function `name` to its `actionId`. Every function calls
+`integrations.execute`, with the same validation and permissions. Import the client by its absolute
+path; saved modules may also import it relatively, and `js.check` checks callers against its types.
 
-Put your own helpers in a separate module that imports the client: regenerating, needed after the
-connection's actions change, replaces the client, and generation refuses to replace any file it did
-not generate.
+Put your own helpers in a separate module that imports the client: regeneration replaces the client,
+and generation refuses to replace any file it did not generate.
 
 ### Direct API connections
 
