@@ -2,6 +2,9 @@ import { describe, expect, test, assert } from "vitest";
 
 import {
   backofficeContextScopeSchema,
+  backofficeScopeIdCodec,
+  formatBackofficeScopeRoutePath,
+  parseBackofficeScopeRouteParams,
   backofficeRoutableScopeSchema,
   backofficeScopePathSegment,
   BackofficeScopeParseError,
@@ -33,9 +36,25 @@ describe("Backoffice scopes", () => {
     expect(parseBackofficeScopePathSegment(segment)).toEqual(scope);
   });
 
+  test.each([
+    [{ kind: "system" } as const, "system/system"],
+    [{ kind: "org", orgId: "user:alice" } as const, "org/user%253Aalice"],
+    [{ kind: "project", orgId: "org-1", projectId: "p-2" } as const, "project/org-1:p-2"],
+    [{ kind: "project", orgId: "org:1", projectId: "p/2" } as const, "project/org%253A1:p%252F2"],
+  ])("round-trips route paths through once-decoded route params for %#", (scope, path) => {
+    expect(formatBackofficeScopeRoutePath(scope, backofficeScopeIdCodec)).toBe(path);
+    const [scopeKind, scopeId] = path.split("/").map(decodeURIComponent);
+    expect(
+      parseBackofficeScopeRouteParams(
+        { scopeKind: scopeKind ?? "", scopeId: scopeId ?? "" },
+        backofficeScopeIdCodec,
+      ),
+    ).toEqual(scope);
+  });
+
   test("rejects malformed segments instead of guessing a scope", () => {
     expect(() => parseBackofficeScopePathSegment("project:broken")).toThrow(
-      "Project scope requires org and project id components.",
+      "Project scope requires org id and project id components.",
     );
     expect(() => parseBackofficeScopePathSegment("system:extra")).toThrow(
       "System scope does not accept id components.",
