@@ -1,18 +1,21 @@
 import { describe, expect, test } from "vitest";
 
 import { backofficeUiComponentDefinitions } from "./catalog";
-import { generateBackofficeUiCatalogReferenceMarkdown } from "./component-reference-generation";
+import { generateBackofficeUiBuilderDeclarations } from "./component-reference-generation";
 
-describe("Backoffice UI component reference generation", () => {
-  test("renders exact nested prop types for every canonical component", () => {
-    const reference = generateBackofficeUiCatalogReferenceMarkdown();
+describe("Backoffice UI builder declaration generation", () => {
+  test("declares every canonical component with exact nested prop types and limits", () => {
+    const declarations = generateBackofficeUiBuilderDeclarations();
     const componentNames = Object.keys(backofficeUiComponentDefinitions);
 
-    expect(reference).toContain("# Production Component Catalog");
-    expect(reference).not.toContain("object[]");
-    expect(reference).toContain("detail?: string;");
-    expect(reference).toContain("[key: string]: string;");
-    expect(reference).toContain("- items[].title: 1-200 characters");
+    expect(declarations).toContain("declare const ui: {");
+    expect(declarations).not.toContain("object[]");
+    expect(declarations).toContain("detail?: string;");
+    expect(declarations).toContain("[key: string]: string;");
+    expect(declarations).toMatch(/\/\*\* 1-200 characters \*\/\s+title: string;/u);
+    expect(declarations).toMatch(
+      /\/\*\* at most 64 items; each item's values at most 2000 characters \*\/\s+rows: \{/u,
+    );
 
     expect(componentNames).toEqual([
       "Stack",
@@ -40,7 +43,7 @@ describe("Backoffice UI component reference generation", () => {
 
     let previousIndex = -1;
     for (const componentName of componentNames) {
-      const componentIndex = reference.indexOf(`### \`${componentName}\``);
+      const componentIndex = declarations.indexOf(`/** Builds ${componentName}. `);
       expect(componentIndex).toBeGreaterThan(previousIndex);
       previousIndex = componentIndex;
     }

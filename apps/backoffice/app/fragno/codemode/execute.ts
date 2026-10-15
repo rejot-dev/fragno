@@ -8,6 +8,7 @@ import {
 } from "@fragno-dev/codemode/runtime-api";
 
 import type { NpmDependencyMap } from "@/backoffice-runtime/dynamic-workers/npm-dependencies";
+import { withBackofficeUiBuilder } from "@/backoffice-ui/builder";
 import {
   createMcpCodemodeProviders,
   explainMcpCodemodeError,
@@ -241,7 +242,7 @@ export const runBackofficeCodemode = async ({
     codemode,
     {
       kind: "immediate",
-      code,
+      code: withBackofficeUiBuilder(code),
       dependencies: dependencies ?? {},
       providers: codemodeProviderManifest(providers),
       timeoutMs: timeout ?? 30_000,

@@ -11,150 +11,103 @@ description:
 1. **Ground.** Resolve the source data used by the interface. Use input, retrieved data, or
    persisted output already available to the current return path. Complete when every displayed
    operational value, record, status, and identifier traces to one of those sources.
-2. **Compose.** Read `/static/skills/generating-backoffice-uis/CATALOG.md`, then derive a flat
-   element graph from the grounded result. Complete when every component and prop matches the
-   catalog and every spec invariant passes.
-3. **Return.** Return one result object with `$ui` beside any ordinary fields needed by the user or
-   later code. Complete when `$ui.version` is `1`, later code consumes ordinary fields rather than
-   `$ui.state`, and follow-up prose does not restate rendered fields.
+2. **Compose.** Read `/static/codemode/ui.d.ts`, then build one element tree with the codemode `ui`
+   builder, passing grounded values directly as props. Complete when every component call and prop
+   matches its declaration and documented limits.
+3. **Return.** Return one result object with `$ui: ui.render(root)` beside any ordinary fields
+   needed by the user or later code. Complete when the tool result reports no generated UI error,
+   later code consumes ordinary fields, and follow-up prose does not restate rendered fields.
 
 ## Branches
 
 - When returning `$ui` from `step.do` or as workflow output, read
-  `/static/skills/workflows/SKILL.md` and `/static/skills/generating-backoffice-uis/WORKFLOWS.md`
-  before authoring the workflow.
-- When the interface contains `FileUpload`, read `/static/skills/using-prepared-uploads/SKILL.md`
+  `/static/skills/workflows/SKILL.md` before authoring the workflow, then apply **Durable results**.
+- When the interface collects input, apply **Collecting workflow input**.
+- When the interface contains `ui.fileUpload`, read `/static/skills/using-prepared-uploads/SKILL.md`
   before composing it.
+- When a tool result or step error reports an invalid generated UI, fix the element its id names.
+  Ids are tree positions: `root.1.0` is the first child of the root's second child.
 
-## Result contract
-
-The immediate result must have an own top-level `$ui` field with `version: 1`:
-
-```ts
-type StateVisibilityCondition = {
-  $state: string;
-  eq?: unknown;
-  neq?: unknown;
-  gt?: number | { $state: string };
-  gte?: number | { $state: string };
-  lt?: number | { $state: string };
-  lte?: number | { $state: string };
-  not?: true;
-};
-
-type VisibilityCondition =
-  | boolean
-  | StateVisibilityCondition
-  | StateVisibilityCondition[]
-  | { $and: VisibilityCondition[] }
-  | { $or: VisibilityCondition[] };
-
-type BackofficeUiResult = {
-  [ordinaryField: string]: unknown;
-  $ui: {
-    version: 1;
-    state: Record<string, unknown>;
-    spec: {
-      root: string;
-      elements: Record<
-        string,
-        {
-          type: CatalogComponentName;
-          props: Record<string, unknown>;
-          children: string[];
-          visible?: VisibilityCondition;
-        }
-      >;
-    };
-  };
-};
-```
+## Results
 
 Ordinary sibling fields remain part of the result. Preserve retrieved records, identifiers, and
-calculated summaries there when they remain useful to the user or later code.
-
-## Spec invariants
-
-The installed json-render shape is a flat element graph:
-
-- `root` names an element in `elements`.
-- Every child names an element in the same `elements` record.
-- Every element contains exactly `type`, `props`, and `children`, plus optional `visible`.
-- Component and prop names are case-sensitive and match the production catalog.
-- Component props may use read expressions such as `{ "$state": "/path" }` at any depth, including
-  inside array items and object fields.
-- Use `{ "$bindState": "/path" }` only as the complete top-level value of an editable component's
-  natural value prop.
-- `visible` may be a boolean or a state visibility condition. A state condition uses exactly one of
-  `eq`, `neq`, `gt`, `gte`, `lt`, or `lte`; omitting the comparison checks truthiness. `not: true`
-  inverts it. Arrays and `$and` are AND; `$or` is OR.
-- Every root and child reference resolves, and the child graph is acyclic.
-- The graph stays within 128 elements, 32 children per element, 512 total child references, and 24
-  levels of depth.
-
-## Immediate example
+calculated summaries there when they remain useful to the user or later code; `$ui.state` is
+presentation state, not a dataflow API. A rendered interface stays within 128 elements, 32 children
+per element, and 24 levels of depth.
 
 ```js
 async () => {
   const eventCatalog = await events.catalogList();
   const sourceCount = new Set(eventCatalog.map((event) => event.source)).size;
-  const summary = {
-    eventTypeCount: eventCatalog.length,
-    sourceCount,
-  };
 
   return {
     eventCatalog,
-    summary,
-    $ui: {
-      version: 1,
-      state: {
-        eventTypeCount: String(summary.eventTypeCount),
-        sourceCount: String(summary.sourceCount),
-      },
-      spec: {
-        root: "report",
-        elements: {
-          report: {
-            type: "Stack",
-            props: { gap: "md" },
-            children: ["heading", "description", "event-types", "sources"],
-          },
-          heading: {
-            type: "Heading",
-            props: { text: "Event catalog" },
-            children: [],
-          },
-          description: {
-            type: "Text",
-            props: { text: "Live capabilities retrieved from Backoffice." },
-            children: [],
-          },
-          "event-types": {
-            type: "Metric",
-            props: {
-              label: "Event types",
-              value: { $state: "/eventTypeCount" },
-            },
-            children: [],
-          },
-          sources: {
-            type: "Metric",
-            props: {
-              label: "Sources",
-              value: { $state: "/sourceCount" },
-            },
-            children: [],
-          },
-        },
-      },
-    },
+    summary: { eventTypeCount: eventCatalog.length, sourceCount },
+    $ui: ui.render(
+      ui.stack({ gap: "md" }, [
+        ui.heading({ text: "Event catalog" }),
+        ui.text({ text: "Live capabilities retrieved from Backoffice." }),
+        ui.grid({ columns: 2, gap: "md" }, [
+          ui.metric({ label: "Event types", value: String(eventCatalog.length) }),
+          ui.metric({ label: "Sources", value: String(sourceCount) }),
+        ]),
+      ]),
+    ),
   };
 };
 ```
 
+## Durable results
+
+- A `step.do` callback returns the same result shape as an immediate call. The complete result is
+  persisted, and its `$ui` renders inline in the completed step. A step that returns an invalid
+  `$ui` fails without retrying.
+- Later steps consume the resolved step result's ordinary fields.
+- Returning the same result from the workflow function renders it as the final output. When the
+  return directly delegates to that UI step, the Backoffice keeps the UI on the step instead of
+  rendering a duplicate final-output card.
+- Final workflow output is terminal and cannot collect workflow input.
+
+## Collecting workflow input
+
+1. Declare `const form = ui.form(eventType, initial)` in the workflow body. `initial` names every
+   field with its starting value.
+2. Return the interface from a completed `step.do`. Bind each control's value prop with
+   `form.bind(field)` and add one `form.submit({ label })`, which sends every field as the payload.
+3. Await `step.waitForEvent(name, { type: form.eventType })` after the UI step. The Backoffice
+   supplies the workflow name and instance id to the renderer.
+
+Complete when every requested field is bound to the form and the workflow consumes the submitted
+payload from `waitForEvent`.
+
+```js
+const approval = ui.form("approval", { decision: "approve", reason: "" });
+
+await step.do("request approval", async () => ({
+  $ui: ui.render(
+    ui.stack({ gap: "md" }, [
+      ui.select({
+        label: "Decision",
+        value: approval.bind("decision"),
+        options: [
+          { label: "Approve", value: "approve" },
+          { label: "Reject", value: "reject" },
+        ],
+      }),
+      ui.when(
+        approval.is("decision", { eq: "reject" }),
+        ui.textArea({ label: "Reason", value: approval.bind("reason") }),
+      ),
+      approval.submit({ label: "Submit decision" }),
+    ]),
+  ),
+}));
+
+const { payload } = await step.waitForEvent("approval", { type: approval.eventType });
+```
+
 ## Presentation boundaries
 
-Render content through catalog props as plain text. Raw HTML, scripts, iframes, embeds, arbitrary
+Render content through component props as plain text. Raw HTML, scripts, iframes, embeds, arbitrary
 URLs, class names, styles, and presentation colors are invalid. Let the rendered interface carry the
 primary presentation rather than repeating it in Markdown.

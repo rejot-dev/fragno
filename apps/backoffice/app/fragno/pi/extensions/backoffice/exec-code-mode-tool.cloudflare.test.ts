@@ -17,6 +17,7 @@ import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import { createBackofficeUserExecution } from "@/backoffice-runtime/context";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
+import { parseBackofficeUiResult } from "@/backoffice-ui/result";
 import { codemodeWorkflowParamsSchema } from "@/fragno/automation/engine/codemode-invocation";
 import { AutomationWorkflowRuntimeRequestError } from "@/fragno/automation/workflow-route-runtime";
 import { codemodeRunnerFor } from "@/fragno/codemode/codemode-object-execute";
@@ -215,6 +216,77 @@ describe("Pi execCodeMode tool", () => {
     });
   });
 
+  test("renders a ui builder tree into a generated UI with positional element ids", async () => {
+    const tool = await createExecCodeModeTool({});
+
+    const result = await tool.execute(
+      {
+        code: `async () => {
+          const orders = [{ id: "ord_1", total: 120 }, { id: "ord_2", total: 80 }];
+          return {
+            orderIds: orders.map((order) => order.id),
+            $ui: ui.render(
+              ui.stack({ gap: "md" }, [
+                ui.heading({ text: "Open orders" }),
+                ui.when(orders.length > 1, ui.metric({ label: "Orders", value: String(orders.length) })),
+                ui.table({
+                  caption: "Orders",
+                  columns: [{ key: "id", label: "ID" }, { key: "total", label: "Total", align: "end" }],
+                  rows: orders.map((order) => ({ id: order.id, total: String(order.total) })),
+                }),
+              ]),
+            ),
+          };
+        }`,
+      },
+      { taskId: "tool-call-ui-builder" } as never,
+      BACKGROUND_CONTEXT,
+    );
+
+    assert(!result.isError);
+    const generatedUi = parseBackofficeUiResult((result.details as { result: unknown }).result);
+    assert(generatedUi.kind === "valid");
+    expect(generatedUi.value).toEqual({
+      orderIds: ["ord_1", "ord_2"],
+      $ui: {
+        version: 1,
+        state: {},
+        spec: {
+          root: "root",
+          elements: {
+            root: {
+              type: "Stack",
+              props: { gap: "md" },
+              children: ["root.0", "root.1", "root.2"],
+            },
+            "root.0": { type: "Heading", props: { text: "Open orders" }, children: [] },
+            "root.1": {
+              type: "Metric",
+              props: { label: "Orders", value: "2" },
+              children: [],
+              visible: true,
+            },
+            "root.2": {
+              type: "Table",
+              props: {
+                caption: "Orders",
+                columns: [
+                  { key: "id", label: "ID" },
+                  { key: "total", label: "Total", align: "end" },
+                ],
+                rows: [
+                  { id: "ord_1", total: "120" },
+                  { id: "ord_2", total: "80" },
+                ],
+              },
+              children: [],
+            },
+          },
+        },
+      },
+    });
+  });
+
   test("fails the tool call with the element and prop that make a generated UI invalid", async () => {
     const tool = await createExecCodeModeTool({});
 
@@ -244,6 +316,25 @@ describe("Pi execCodeMode tool", () => {
     assert(content?.type === "text");
     expect(content.text).toContain(
       'Generated UI is invalid: Element "grid" has invalid props for Grid: columns: expected one of 1|2|3|4. Element "metric" has invalid props for Metric: value: Invalid input: expected string, received number.',
+    );
+  });
+
+  test("rejects form bindings to undeclared fields before the interface leaves the guest", async () => {
+    const tool = await createExecCodeModeTool({});
+
+    await expect(
+      tool.execute(
+        {
+          code: `async () => {
+            const form = ui.form("approval", { decision: "approve" });
+            return { $ui: ui.render(ui.textArea({ label: "Reason", value: form.bind("reason") })) };
+          }`,
+        },
+        { taskId: "tool-call-unknown-field" } as never,
+        BACKGROUND_CONTEXT,
+      ),
+    ).rejects.toThrow(
+      'form.bind("reason") names no field of ui.form("approval"); declare it in the initial values.',
     );
   });
 

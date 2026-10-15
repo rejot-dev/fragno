@@ -17,6 +17,7 @@ import {
 import type { RemoteWorkflowRunFn, WorkflowEvent } from "@fragno-dev/workflows/workflow";
 
 import type { NpmDependencyMap } from "@/backoffice-runtime/dynamic-workers/npm-dependencies";
+import { withBackofficeUiBuilder } from "@/backoffice-ui/builder";
 import type {
   BackofficeRuntimeToolFamily,
   BackofficeToolContext,
@@ -73,7 +74,8 @@ type WorkflowExecutionInput<TParams> = {
 async function executeBackofficeCodemodeWorkflow<TParams, TOutput>(
   input: WorkflowExecutionInput<TParams>,
 ): Promise<TOutput> {
-  const { code, event, remote, env, families, toolContext, dependencies, allowedHooks } = input;
+  const { event, remote, env, families, toolContext, dependencies, allowedHooks } = input;
+  const code = withBackofficeUiBuilder(input.code);
   const { providers, mcpDiscoveryError } = await createBackofficeCodemodeResolvedProviders({
     families,
     toolContext,

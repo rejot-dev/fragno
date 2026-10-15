@@ -14,11 +14,11 @@ export const workflowEventButtonDefinition = {
   }),
   slots: [],
   description:
-    "Sends payload to the current workflow waitForEvent step. Use only in durable workflow step UI, set eventType to the exact awaited type, and read the complete payload from UI state with {$state: '/path'}.",
+    "Sends payload to the current workflow waitForEvent step. Use only in durable workflow step UI. For forms, use form.submit(props), which sets eventType and the complete form payload; build this button directly only to send a fixed payload with eventType set to the exact awaited type.",
   example: {
-    label: "Submit decision",
+    label: "Approve",
     eventType: "approval",
-    payload: { $state: "/response" },
+    payload: { decision: "approve" },
     variant: "primary",
   },
 };

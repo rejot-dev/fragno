@@ -12,7 +12,7 @@ export const textInputDefinition = {
   }),
   slots: [],
   description:
-    "Collects a short text value. Bind value with {$bindState: '/path'} so edits update UI state. Set secret to true for sensitive values such as API keys.",
+    "Collects a short text value. Bind value with form.bind(field) so edits update the form response. Set secret to true for sensitive values such as API keys.",
   example: {
     label: "Reference",
     value: { $bindState: "/response/reference" },

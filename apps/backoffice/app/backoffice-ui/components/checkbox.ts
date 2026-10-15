@@ -10,7 +10,7 @@ export const checkboxDefinition = {
   }),
   slots: [],
   description:
-    "Collects a boolean choice. Bind checked with {$bindState: '/path'} so edits update UI state.",
+    "Collects a boolean choice. Bind checked with form.bind(field) so edits update the form response.",
   example: {
     label: "I confirm this operation",
     checked: { $bindState: "/response/confirmed" },
