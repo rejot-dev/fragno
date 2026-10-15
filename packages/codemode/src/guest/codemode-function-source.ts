@@ -2,6 +2,7 @@ import { CODEMODE_LIMITS } from "../codemode-limits";
 import { normalizeCode, type ResolvedProvider } from "../runtime-api";
 import {
   CODEMODE_GUEST_API_SOURCE,
+  createCodemodeProviderGlobalsSource,
   createCodemodeProviderProxySource,
 } from "./codemode-guest-api-source";
 
@@ -32,6 +33,7 @@ export function createCodemodeFunctionSource(
     }`,
     CODEMODE_GUEST_API_SOURCE,
     createCodemodeProviderProxySource(providers),
+    createCodemodeProviderGlobalsSource(providers),
     "",
     "    try {",
     "      const program = (" + normalizeCode(code) + ");",

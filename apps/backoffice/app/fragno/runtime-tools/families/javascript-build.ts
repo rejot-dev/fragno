@@ -7,6 +7,7 @@ import {
   javaScriptModuleArtifactSchema,
   resolveJavaScriptModuleArtifactPath,
 } from "@/fragno/codemode/javascript-module-artifact";
+import { readSavedModuleImports } from "@/fragno/codemode/saved-module-imports";
 import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
 import type { JavaScriptBuildFileOutput } from "@/fragno/runtime-tools/families/javascript-runtime";
 
@@ -51,11 +52,15 @@ export async function buildJavaScriptModuleFile(input: {
   if (source.size > CODEMODE_LIMITS.maxSourceBytes) {
     throw new Error("CODEMODE_SOURCE_LIMIT_EXCEEDED");
   }
+  const { modules } = await readSavedModuleImports({
+    state: input.state,
+    program: { kind: "file", path },
+  });
   const built = await buildBackofficeJavaScriptModule({
-    code: await input.state.readFile(path),
+    entry: path,
+    modules,
     dependencies: { "@earendil-works/pi-durable": dependencies["@earendil-works/pi-durable"] },
     codemode: input.codemode,
-    origin: { kind: "file", path },
   });
   const { runId } = built;
   if (built.status === "error") {

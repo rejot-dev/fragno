@@ -16,7 +16,14 @@ afterAll(async () => {
 test("codemode execution is routed alongside the sandbox API", async () => {
   const execute = createCodemodeNodeExecutor(server);
   const result = await execute(
-    { kind: "immediate", code: "42", dependencies: {}, providers: [], timeoutMs: 10_000 },
+    {
+      kind: "immediate",
+      code: "42",
+      dependencies: {},
+      modules: {},
+      providers: [],
+      timeoutMs: 10_000,
+    },
     createCodemodeHost([], null),
   );
   expect(result).toEqual({ status: "completed", value: 42, logs: [], workflowDefinition: null });

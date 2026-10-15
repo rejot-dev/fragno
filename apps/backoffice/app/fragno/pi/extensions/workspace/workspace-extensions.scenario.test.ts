@@ -649,10 +649,12 @@ test("source edits require an explicit rebuild, which the agent loads at its nex
 });
 
 for (const invalid of [
-  { name: "syntax", source: "export default {", error: "Expected identifier" },
+  { name: "syntax", source: "export default {", status: "error", error: "Expected identifier" },
   {
     name: "unresolved import",
     source: 'import "./missing.js"; export default {};',
+    // Imports are resolved before compilation, so no build run is recorded.
+    status: "rejected",
     error: "missing.js",
   },
 ]) {
@@ -673,7 +675,7 @@ for (const invalid of [
             const previous = await state.readFile(artifactPath);
             await state.writeFile(extensionPath, invalid.source);
             const result = await buildExtension(runtime);
-            expect(result).toMatchObject({ status: "error", artifactPath });
+            expect(result).toMatchObject({ status: invalid.status, artifactPath });
             expect(JSON.stringify(result).toLowerCase()).toContain(invalid.error.toLowerCase());
             assert.equal(await state.readFile(artifactPath), previous);
             assert.equal(await state.exists(manifestPath), false);

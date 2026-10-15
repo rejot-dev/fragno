@@ -40,10 +40,13 @@ async function compileCodemodeTestWorker(
             if (args.namespace === "file" || args.pluginData === "installed-dependency") {
               return undefined;
             }
+            // Like the production bundler, absolute specifiers resolve against the project root.
             const path = posix.normalize(
               args.path.startsWith(".")
                 ? posix.join(posix.dirname(args.importer), args.path)
-                : args.path,
+                : args.path.startsWith("/")
+                  ? args.path.slice(1)
+                  : args.path,
             );
             if (Object.hasOwn(input.files, path)) {
               return { path, namespace: "codemode" };

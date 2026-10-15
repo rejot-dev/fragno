@@ -70,15 +70,35 @@ const activationBase = {
     .record(z.string().min(1).max(214), z.string().min(1).max(256))
     .refine((value) => Object.keys(value).length <= CODEMODE_LIMITS.maxDependencies),
 };
+const sourceModulePath = z
+  .string()
+  .max(512)
+  .regex(/^\/[^\p{Cc}]*\.js$/u)
+  .refine((path) => !path.split("/").some((segment) => segment === ".." || segment === "."));
+/**
+ * Source modules by absolute path, importable by that path or relative to an importing module.
+ * The caller resolves the complete import graph; the compiler never reads files.
+ */
+const sourceModules = z
+  .record(sourceModulePath, z.string().max(CODEMODE_LIMITS.maxSourceBytes))
+  .refine((value) => Object.keys(value).length <= CODEMODE_LIMITS.maxSourceModules);
+/** A saved program compiles at its own path, so its relative imports resolve like the files'. */
+const moduleProgram = {
+  dependencies: activationBase.dependencies,
+  entry: sourceModulePath,
+  modules: sourceModules,
+};
+const isModuleProgramEntry = (activation: { entry: string; modules: Record<string, string> }) =>
+  Object.hasOwn(activation.modules, activation.entry);
 /** One activation owns one socket and one guest, regardless of its number of workflow steps. */
 export const codemodeActivationSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("immediate"), ...activationBase }),
-  z.strictObject({ kind: z.literal("module"), ...activationBase }),
-  z.strictObject({
-    kind: z.literal("module-build"),
-    code: activationBase.code,
-    dependencies: activationBase.dependencies,
-  }),
+  z.strictObject({ kind: z.literal("immediate"), ...activationBase, modules: sourceModules }),
+  z
+    .strictObject({ kind: z.literal("module"), ...executionBase, ...moduleProgram })
+    .refine(isModuleProgramEntry),
+  z
+    .strictObject({ kind: z.literal("module-build"), ...moduleProgram })
+    .refine(isModuleProgramEntry),
   z.strictObject({
     kind: z.literal("compiled"),
     ...executionBase,

@@ -53,7 +53,8 @@ export async function runBackofficeJavaScriptModule({
           codemode,
           {
             kind: "module",
-            code: program.code,
+            entry: program.path,
+            modules: program.modules,
             dependencies: {},
             providers: codemodeProviderManifest(providers),
             timeoutMs: 30_000,

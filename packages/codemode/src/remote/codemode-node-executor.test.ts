@@ -122,7 +122,14 @@ test("reserves Node capacity before preflight and releases failed preflight rese
   server.on("connection", accept);
   const running = Array.from({ length: CODEMODE_LIMITS.maxNodeActivations }, () =>
     execute(
-      { kind: "immediate", code: "() => 42", dependencies: {}, providers: [], timeoutMs: 10_000 },
+      {
+        kind: "immediate",
+        code: "() => 42",
+        dependencies: {},
+        modules: {},
+        providers: [],
+        timeoutMs: 10_000,
+      },
       createCodemodeHost([], null),
     ),
   );
@@ -161,7 +168,14 @@ test.each([true, false])(
   async (bridgeInitiatesClose) => {
     const connection = new Promise<WebSocket>((resolve) => server.once("connection", resolve));
     const execution = createCodemodeNodeExecutor({ url, apiKey: "local-test-key" })(
-      { kind: "immediate", code: "() => 42", dependencies: {}, providers: [], timeoutMs: 10_000 },
+      {
+        kind: "immediate",
+        code: "() => 42",
+        dependencies: {},
+        modules: {},
+        providers: [],
+        timeoutMs: 10_000,
+      },
       createCodemodeHost([], null),
     );
     const socket = await connection;
