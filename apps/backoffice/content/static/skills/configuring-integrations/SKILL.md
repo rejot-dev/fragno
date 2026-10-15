@@ -220,6 +220,10 @@ such as `mcp_cloudflare.search_docs({ query })` for `mcp#cloudflare`. Its declar
 `/static/codemode/sources/mcp.d.ts`. Provider calls return the same results and require
 `integrations.execute`; they are the way to call a tool whose schema could not be validated.
 
+When an `mcp#` OAuth connection loses its authorization, start consent again without waiting to be
+asked (submit `{ start: true }` when the setup check asks for it, otherwise `{ reauthorize: true }`
+through `integrations.reconfigure`) and give the user the returned `authorizationUrl` as a link.
+
 ## Authority and terminal
 
 Discovery, listing, inspection, and action contracts require `integrations.read`; setup,
