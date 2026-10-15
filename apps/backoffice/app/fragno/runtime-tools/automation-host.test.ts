@@ -68,7 +68,7 @@ const createPiRuntime = (): PiManagerRuntime => {
       description: "General-purpose assistant.",
       model: null,
       permissions: ["*"],
-      instructionsPath: null,
+      instructions: "",
       managedBy: { kind: "built-in" },
       provisioning: null,
       view: null,

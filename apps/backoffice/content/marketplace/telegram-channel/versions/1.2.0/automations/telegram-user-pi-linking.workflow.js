@@ -1,5 +1,5 @@
 defineWorkflow({ name: "telegram-user-pi-linking" }, async (event, step) => {
-  // Installed alongside this workflow as agents/telegram.md.
+  // Defined by this package's install workflow.
   const TELEGRAM_AGENT = "telegram";
   const automationEvent = /** @type {WorkflowEvent<{text?: string; chatId: string}>} */ (event);
 

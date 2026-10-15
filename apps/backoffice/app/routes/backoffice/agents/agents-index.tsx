@@ -63,10 +63,7 @@ function AgentCard({ agent, to }: { agent: PiManagerAgent; to: string }) {
       <p className="mt-3 line-clamp-4 flex-1 text-sm leading-6 text-pretty text-[var(--bo-muted)]">
         {agent.description}
       </p>
-      <p
-        title={agent.instructionsPath ?? undefined}
-        className="mt-6 border-t border-[color:var(--bo-border)] pt-4 text-xs text-[var(--bo-muted-2)]"
-      >
+      <p className="mt-6 border-t border-[color:var(--bo-border)] pt-4 text-xs text-[var(--bo-muted-2)]">
         {agent.managedBy?.kind === "built-in"
           ? "Built in"
           : agent.managedBy?.kind === "marketplace"

@@ -32,10 +32,7 @@ import {
   BUILT_IN_PI_AGENT_DEFINITIONS,
   builtInPiAgentDefinition,
   expandPiAgentPermissions,
-  piAgentInstructionsExist,
-  readPiAgentInstructions,
   resolvePiAgentModel,
-  type PiAgentInstructionFiles,
 } from "@/fragno/pi/agent/agent-definitions";
 import {
   PiConversationViewDamagedError,
@@ -71,8 +68,6 @@ type PiManagerConfig = {
   scope: BackofficeContextScope;
   agent: (config: PiAgentConfig) => PiAgent;
   supportedAvailableModels: () => Promise<readonly PiAvailableModel[]>;
-  /** The scope's files as the manager reads them; instructions are the same for every member. */
-  agentInstructionFiles: () => PiAgentInstructionFiles;
 };
 
 type PiManagerRequestContext = {
@@ -104,7 +99,7 @@ const piAgentDirectorySchema = schema("pi_manager", (s) =>
         .addColumn("description", column("text"))
         .addColumn("model", column("string").nullable())
         .addColumn("permissions", jsonColumn<string[]>())
-        .addColumn("instructionsPath", column("string").nullable())
+        .addColumn("instructions", column("text"))
         .addColumn("managedBy", jsonColumn<AutomationRouteManagedBy>().nullable()),
     ),
 );
@@ -114,7 +109,7 @@ type AgentDefinitionRow = {
   description: string;
   model: string | null;
   permissions: string[];
-  instructionsPath: string | null;
+  instructions: string;
   managedBy: AutomationRouteManagedBy | null;
 };
 
@@ -124,7 +119,7 @@ function definitionFromRow(row: AgentDefinitionRow): PiAgentDefinition {
     description: row.description,
     model: row.model,
     permissions: row.permissions,
-    instructionsPath: row.instructionsPath,
+    instructions: row.instructions,
     managedBy: row.managedBy,
   };
 }
@@ -329,7 +324,7 @@ function builtInResponse<T>(
 /** Agent routes hand off to an agent object only after finding its provisioned directory record. */
 const piManagerRoutes = defineRoutes(piManagerDefinition).create(
   ({ defineRoute, services, config }) => {
-    // A turn runs with its agent's definition and instructions as they are when it is admitted.
+    // A turn runs with its agent's definition as it is when the turn is admitted.
     async function admitTurn(
       definition: PiAgentDefinition | null,
       agentName: string,
@@ -338,8 +333,8 @@ const piManagerRoutes = defineRoutes(piManagerDefinition).create(
       | { type: "turn"; turn: PiAgentTurn }
       | {
           type: "error";
-          status: 400 | 404 | 422;
-          code: "AGENT_NOT_FOUND" | "AGENT_INSTRUCTIONS_NOT_FOUND" | "MODEL_UNAVAILABLE";
+          status: 400 | 404;
+          code: "AGENT_NOT_FOUND" | "MODEL_UNAVAILABLE";
           message: string;
         }
     > {
@@ -349,18 +344,6 @@ const piManagerRoutes = defineRoutes(piManagerDefinition).create(
           status: 404,
           code: "AGENT_NOT_FOUND",
           message: `Pi agent '${agentName}' is not defined.`,
-        };
-      }
-      const instructions = await readPiAgentInstructions(
-        config.agentInstructionFiles(),
-        definition,
-      );
-      if (instructions === null) {
-        return {
-          type: "error",
-          status: 422,
-          code: "AGENT_INSTRUCTIONS_NOT_FOUND",
-          message: `Pi agent '${agentName}' instructions file ${definition.instructionsPath} does not exist.`,
         };
       }
       const model = resolvePiAgentModel(definition, await config.supportedAvailableModels());
@@ -380,31 +363,11 @@ const piManagerRoutes = defineRoutes(piManagerDefinition).create(
           ...provenance,
           agent: {
             model: { provider: model.provider, modelId: model.modelId },
-            instructions,
+            instructions: definition.instructions,
             permissions: expandPiAgentPermissions(definition.permissions),
           },
         },
       };
-    }
-
-    // Checked on write so a definition names a real file; a later deletion fails its next turn.
-    async function missingInstructions<T>(
-      instructionsPath: string | null,
-      error: (body: { code: "AGENT_INSTRUCTIONS_NOT_FOUND"; message: string }, status: 400) => T,
-    ): Promise<T | undefined> {
-      if (
-        instructionsPath === null ||
-        (await piAgentInstructionsExist(config.agentInstructionFiles(), instructionsPath))
-      ) {
-        return undefined;
-      }
-      return error(
-        {
-          code: "AGENT_INSTRUCTIONS_NOT_FOUND",
-          message: `Pi agent instructions file ${instructionsPath} does not exist.`,
-        },
-        400,
-      );
     }
 
     return [
@@ -433,7 +396,7 @@ const piManagerRoutes = defineRoutes(piManagerDefinition).create(
         path: "/agents",
         inputSchema: piAgentDefinitionCreateSchema,
         outputSchema: piAgentDefinitionSchema,
-        errorCodes: ["AGENT_EXISTS", "AGENT_INSTRUCTIONS_NOT_FOUND"],
+        errorCodes: ["AGENT_EXISTS"],
         handler: async function ({ input }, { json, error }) {
           const definition = await input.valid();
           const conflict = error(
@@ -442,10 +405,6 @@ const piManagerRoutes = defineRoutes(piManagerDefinition).create(
           );
           if (builtInPiAgentDefinition(definition.agentName)) {
             return conflict;
-          }
-          const missing = await missingInstructions(definition.instructionsPath, error);
-          if (missing) {
-            return missing;
           }
           const created = await this.handlerTx()
             .withServiceCalls(() => [services.createAgentDefinition(definition)])
@@ -478,17 +437,13 @@ const piManagerRoutes = defineRoutes(piManagerDefinition).create(
         path: "/agents/:agentName",
         inputSchema: piAgentDefinitionUpdateSchema,
         outputSchema: piAgentDefinitionSchema,
-        errorCodes: ["AGENT_NOT_FOUND", "AGENT_BUILT_IN", "AGENT_INSTRUCTIONS_NOT_FOUND"],
+        errorCodes: ["AGENT_NOT_FOUND", "AGENT_BUILT_IN"],
         handler: async function ({ pathParams, input }, { json, error }) {
           const { agentName } = pathParams;
           if (builtInPiAgentDefinition(agentName)) {
             return builtInResponse(agentName, error);
           }
           const definition = { agentName, ...(await input.valid()) };
-          const missing = await missingInstructions(definition.instructionsPath, error);
-          if (missing) {
-            return missing;
-          }
           const replaced = await this.handlerTx()
             .withServiceCalls(() => [services.replaceAgentDefinition(definition)])
             .transform(({ serviceResult: [replaced] }) => replaced)
@@ -519,7 +474,6 @@ const piManagerRoutes = defineRoutes(piManagerDefinition).create(
         outputSchema: piPromptReceiptOutputSchema,
         errorCodes: [
           "AGENT_NOT_FOUND",
-          "AGENT_INSTRUCTIONS_NOT_FOUND",
           "MODEL_UNAVAILABLE",
           "PI_BILLING_OWNER_REQUIRED",
           "AGENT_BUSY",
@@ -701,12 +655,7 @@ const piManagerRoutes = defineRoutes(piManagerDefinition).create(
         path: "/agents/:agentName/compact",
         inputSchema: compactionSchema,
         outputSchema: z.object({ taskId: z.number().int().positive() }),
-        errorCodes: [
-          "AGENT_NOT_STARTED",
-          "AGENT_NOT_FOUND",
-          "AGENT_INSTRUCTIONS_NOT_FOUND",
-          "MODEL_UNAVAILABLE",
-        ],
+        errorCodes: ["AGENT_NOT_STARTED", "AGENT_NOT_FOUND", "MODEL_UNAVAILABLE"],
         handler: async function ({ pathParams, input }, { json, error }) {
           const { provenance, ...request } = await input.valid();
           const { definition, config: agent } = await this.handlerTx()

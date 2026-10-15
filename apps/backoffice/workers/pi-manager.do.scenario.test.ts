@@ -160,7 +160,7 @@ test("agents are defined through the manager, checked on write, and keep their c
     description: "Reviews changes.",
     model: null,
     permissions: ["upload.read"],
-    instructionsPath: "/workspace/agents/reviewer.md",
+    instructions: "Review carefully.",
     managedBy: null,
   };
   await runBackofficeScenario(
@@ -169,20 +169,13 @@ test("agents are defined through the manager, checked on write, and keep their c
       piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
       options: { drain: false },
       objects: { ...scenarioObjects, ...objectOverrides },
-      setup: ({ given }) => [
-        given.organization.exists({ id: orgId }),
-        given.codemode.writeFile({
-          orgId,
-          path: "/workspace/agents/reviewer.md",
-          content: "Review carefully.",
-        }),
-      ],
+      setup: ({ given }) => [given.organization.exists({ id: orgId })],
       steps: ({ then }) => [
         then.assert("refuse definitions that could not run", async ({ runtime }) => {
           const refusals = [
-            [{ ...reviewer, instructionsPath: "/workspace/agents/missing.md" }, 400],
             [{ ...reviewer, permissions: ["nope.read"] }, 400],
-            [{ ...reviewer, instructionsPath: "/workspace/../secrets.md" }, 400],
+            [{ ...reviewer, permissions: [] }, 400],
+            [{ ...reviewer, instructions: "x".repeat(32_769) }, 400],
             [{ ...reviewer, agentName: "Reviewer" }, 400],
             [{ ...reviewer, agentName: "assistant" }, 409],
           ] as const;
@@ -190,14 +183,6 @@ test("agents are defined through the manager, checked on write, and keep their c
             const response = await managerRequest(runtime, scope, "/agents", definition);
             assert.equal(response.status, status, await response.clone().text());
           }
-          expect(
-            await (
-              await managerRequest(runtime, scope, "/agents", {
-                ...reviewer,
-                instructionsPath: "/workspace/agents/missing.md",
-              })
-            ).json(),
-          ).toMatchObject({ code: "AGENT_INSTRUCTIONS_NOT_FOUND" });
           for (const method of ["PUT", "DELETE"] as const) {
             const builtIn = await managerRequest(
               runtime,
@@ -214,7 +199,7 @@ test("agents are defined through the manager, checked on write, and keep their c
         then.assert("define agents and list them with the built-in ones", async ({ runtime }) => {
           for (const definition of [
             reviewer,
-            { ...reviewer, agentName: "offline", model: "faux/missing", instructionsPath: null },
+            { ...reviewer, agentName: "offline", model: "faux/missing", instructions: "" },
           ]) {
             const created = await managerRequest(runtime, scope, "/agents", definition);
             assert.equal(created.status, 201, await created.clone().text());

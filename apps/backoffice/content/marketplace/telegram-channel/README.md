@@ -15,7 +15,7 @@ Version 1.1.0 sends replies through the `backoffice#telegram` integration, becau
 route grants `integrations.execute` instead of `telegram.send`, and the Pi route's linked user needs
 it.
 
-Version 1.2.0 installs `agents/telegram.md` and sends every linked chat's messages to that agent,
+Version 1.2.0 defines a `telegram` agent and sends every linked chat's messages to that agent,
 because Pi sessions were replaced by defined agents and earlier versions no longer run. Chats in one
 scope share the agent's conversation, so each message names its chat; each turn still runs with the
 linked user's permissions.

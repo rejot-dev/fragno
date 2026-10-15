@@ -324,7 +324,7 @@ describe("starter automation router scenarios", () => {
             assert.equal(response.status, 200, await response.clone().text());
             expect(await response.json()).toMatchObject({
               agentName: "telegram",
-              instructionsPath: "/workspace/telegram-channel/agents/telegram.md",
+              instructions: expect.stringContaining("Messages arrive from Telegram chats"),
               managedBy: { kind: "marketplace", resourceKey: "telegram-agent", version: "1.2.0" },
             });
           }),

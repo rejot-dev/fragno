@@ -65,8 +65,9 @@ function definitionArgsParser(command: string) {
   return defineCliArgsParser<PiAgentDefinitionCreate>(command, {
     agentName: { option: "agent", required: true },
     description: { required: true },
-    instructionsPath: { option: "instructions", defaultValue: null },
-    permissions: { option: "permission", kind: "stringArray", defaultValue: [] },
+    instructions: { defaultValue: "" },
+    // Turns already run with the prompter's permissions, so the default narrows nothing.
+    permissions: { option: "permission", kind: "stringArray", defaultValue: ["*"] },
     model: { defaultValue: null },
     managedBy: { kind: "json", defaultValue: null },
   });
@@ -93,14 +94,15 @@ const definitionOptions = [
   {
     name: "instructions",
     valueRequired: true,
-    valueName: "path",
-    description: "Markdown file in /workspace or /static with the agent's extra system guidance",
+    valueName: "markdown",
+    description: "Guidance added to the agent's system prompt; omitted adds none",
   },
   {
     name: "permission",
     valueRequired: true,
     valueName: "grant",
-    description: "Repeatable: *, namespace.*, or namespace.permission; omitted grants none",
+    description:
+      "Repeatable: *, namespace.*, or namespace.permission to limit the agent; omitted grants *",
   },
   {
     name: "model",
@@ -394,7 +396,7 @@ const agentCreateTool = defineBackofficeRuntimeTool({
         summary: "pi.agent.create defines an agent in the current scope.",
         options: definitionOptions,
         examples: [
-          'pi.agent.create --agent reviewer --description "Reviews changes" --instructions /workspace/agents/reviewer.md --permission upload.read',
+          'pi.agent.create --agent reviewer --description "Reviews changes" --instructions "Report problems before suggesting fixes." --permission upload.read',
         ],
       },
       parse: definitionArgsParser("pi.agent.create"),
@@ -416,7 +418,7 @@ const agentUpdateTool = defineBackofficeRuntimeTool({
         summary: "pi.agent.update replaces an agent's whole definition.",
         options: definitionOptions,
         examples: [
-          'pi.agent.update --agent reviewer --description "Reviews and fixes changes" --instructions /workspace/agents/reviewer.md --permission "*"',
+          'pi.agent.update --agent reviewer --description "Reviews and fixes changes" --instructions "Fix the problems you find." --permission "*"',
         ],
       },
       parse: definitionArgsParser("pi.agent.update"),

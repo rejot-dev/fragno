@@ -17,7 +17,6 @@ import {
   backofficeObjectScopeFromContextScope,
 } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
-import { createPiAgentInstructionFiles } from "@/fragno/pi/agent/agent-definitions";
 import {
   piAgentObjectName,
   type PiAgent,
@@ -72,7 +71,6 @@ export class InMemoryPiManagerObject extends RpcTarget {
             scope,
             agent,
             supportedAvailableModels,
-            agentInstructionFiles: () => createPiAgentInstructionFiles({ runtime, kernel, scope }),
           },
           {
             databaseAdapter: implementation.fragmentDatabase.adapters.createAdapter({

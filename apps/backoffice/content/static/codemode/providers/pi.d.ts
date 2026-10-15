@@ -4,9 +4,9 @@ type PiCodemodeProvider = {
   listAgents(input: PiListAgentsInput): Promise<PiListAgentsOutput>;
   /** Get one defined agent and its durable conversation view. */
   getAgent(input: PiGetAgentInput): Promise<PiGetAgentOutput>;
-  /** Define an agent in the current scope. Its instructions file must exist; edits to the file apply from the agent's next turn. */
+  /** Define an agent in the current scope. Use permissions ["*"] unless the agent should be limited: each turn already runs with the prompter's permissions, and the grants only narrow them. */
   createAgent(input: PiCreateAgentInput): Promise<PiCreateAgentOutput>;
-  /** Replace an agent's definition. The agent keeps its conversation; the new definition applies from its next turn. */
+  /** Replace an agent's whole definition, including its permissions (["*"] narrows nothing). The agent keeps its conversation; the new definition applies from its next turn. */
   updateAgent(input: PiUpdateAgentInput): Promise<PiUpdateAgentOutput>;
   /** Idempotently delete an agent's definition. Its stored conversation is kept and resumes if the name is defined again. */
   deleteAgent(input: PiDeleteAgentInput): Promise<PiDeleteAgentOutput>;
@@ -33,7 +33,7 @@ type PiListAgentsOutput = {
     description: string;
     model: string | null;
     permissions: string[];
-    instructionsPath: string | null;
+    instructions: string;
     agentName: string;
     managedBy:
       | {
@@ -50,7 +50,7 @@ type PiGetAgentOutput = {
   description: string;
   model: string | null;
   permissions: string[];
-  instructionsPath: string | null;
+  instructions: string;
   agentName: string;
   managedBy:
     | {
@@ -64,7 +64,7 @@ type PiCreateAgentInput = {
   description: string;
   model: string | null;
   permissions: string[];
-  instructionsPath: string | null;
+  instructions: string;
   managedBy: AutomationRouteManagedBy | null;
   agentName: string;
 };
@@ -72,7 +72,7 @@ type PiCreateAgentOutput = {
   description: string;
   model: string | null;
   permissions: string[];
-  instructionsPath: string | null;
+  instructions: string;
   agentName: string;
   managedBy:
     | {
@@ -85,7 +85,7 @@ type PiUpdateAgentInput = {
   description: string;
   model: string | null;
   permissions: string[];
-  instructionsPath: string | null;
+  instructions: string;
   managedBy: AutomationRouteManagedBy | null;
   agentName: string;
 };
@@ -93,7 +93,7 @@ type PiUpdateAgentOutput = {
   description: string;
   model: string | null;
   permissions: string[];
-  instructionsPath: string | null;
+  instructions: string;
   agentName: string;
   managedBy:
     | {
