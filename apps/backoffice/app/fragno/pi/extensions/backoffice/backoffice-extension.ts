@@ -26,6 +26,13 @@ export function createBackofficeExtension(agent: BackofficeAgentContext): Extens
         },
         { tag: false },
       ),
+      // Without its name an agent cannot find its own definition among the pi.agent.* tools.
+      section(
+        "identity",
+        async () =>
+          `You are the Backoffice agent \`${agent.agentName}\`: that is your \`agentName\` in \`pi.agent.*\` tools, such as \`pi.getAgent({ agentName: "${agent.agentName}" })\` for your own definition.`,
+        { tag: false },
+      ),
       section(
         "agent",
         async () => {

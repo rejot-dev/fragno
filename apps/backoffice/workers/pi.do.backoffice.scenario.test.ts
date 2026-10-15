@@ -202,6 +202,9 @@ test("durable Pi runs a workspace agent with its instructions, scoped skills, Ba
     const results = toolResults(context);
     if (results.length === 0) {
       expect(system).toContain("Keep the researcher instruction.");
+      expect(system).toContain(
+        "You are the Backoffice agent `researcher`: that is your `agentName` in `pi.agent.*` tools",
+      );
       expect(system.match(/# Backoffice System Guidance/g)).toHaveLength(1);
       expect(system).toContain("Scoped durable skill");
       expect(system).toContain("/workspace/skills/durable/SKILL.md");
