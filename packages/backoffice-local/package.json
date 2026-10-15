@@ -24,7 +24,9 @@
     "lint:fix:package": "node ../../scripts/run-package-quality.mjs lint:fix"
   },
   "dependencies": {
-    "@fragno-dev/db": "workspace:*"
+    "@fragno-dev/backoffice-api": "workspace:*",
+    "@fragno-dev/db": "workspace:*",
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@fragno-private/typescript-config": "workspace:*",

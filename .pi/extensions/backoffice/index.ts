@@ -14,7 +14,7 @@ import {
   findBackofficeServers,
   parseBackofficeScope,
   uploadBackofficeWorkspaceFile,
-  type BackofficeScope,
+  type BackofficeCliScope,
 } from "@rejot-dev/backoffice-local";
 
 import type { JsonValue } from "@earendil-works/pi-ai";
@@ -725,7 +725,7 @@ export default function registerBackofficeExtension(pi: ExtensionAPI) {
           return;
         }
 
-        const parsedScope: BackofficeScope = parseBackofficeScope(scope);
+        const parsedScope: BackofficeCliScope = parseBackofficeScope(scope);
         const systemPrompt = await fetchBackofficeSystemPrompt({
           baseUrl,
           scope: parsedScope,
