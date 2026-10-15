@@ -61,7 +61,7 @@ describe("object routing policy", () => {
       ),
     ).toEqual({
       binding: "AUTOMATIONS",
-      scope: { kind: "project", orgId: "org-1", projectId: "project-1" },
+      scope: { kind: "project", owner: { kind: "org", orgId: "org-1" }, projectId: "project-1" },
     });
   });
 

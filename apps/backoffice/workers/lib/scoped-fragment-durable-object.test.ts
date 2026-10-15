@@ -1,6 +1,9 @@
 import { describe, expect, test, vi } from "vitest";
 
-import { backofficeRoutableScopeSchema } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  backofficeRoutableScopeSchema,
+  backofficeScopeOrganization,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 
 import type { BackofficeObjectState } from "./backoffice-fragment-durable-object";
@@ -49,7 +52,7 @@ describe("scoped fragment Durable Object runtime", () => {
       host: warmHost.host,
       scopeSchema: backofficeRoutableScopeSchema,
       createSource: (scope) => ({
-        scopeId: scope.kind === "user" ? scope.userId : scope.orgId,
+        scopeId: scope.kind === "user" ? scope.userId : backofficeScopeOrganization(scope).orgId,
       }),
     });
 
@@ -65,7 +68,7 @@ describe("scoped fragment Durable Object runtime", () => {
       host: coldHost.host,
       scopeSchema: backofficeRoutableScopeSchema,
       createSource: (scope) => ({
-        scopeId: scope.kind === "user" ? scope.userId : scope.orgId,
+        scopeId: scope.kind === "user" ? scope.userId : backofficeScopeOrganization(scope).orgId,
       }),
     });
 

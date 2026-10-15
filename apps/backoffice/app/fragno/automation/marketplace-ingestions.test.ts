@@ -26,7 +26,11 @@ describe("marketplace ingestion request rules", () => {
     expect(() =>
       assertMarketplaceIngestionTargetBelongsToOrganization({
         organizationId: "org-1",
-        targetScope: { kind: "project", orgId: "org-2", projectId: "project-1" },
+        targetScope: {
+          kind: "project",
+          owner: { kind: "org", orgId: "org-2" },
+          projectId: "project-1",
+        },
       }),
     ).toThrow(
       new MarketplaceIngestionTargetAccessError(
@@ -37,7 +41,11 @@ describe("marketplace ingestion request rules", () => {
     await expect(
       assertMarketplaceIngestionTargetAccessible({
         organizationId: "org-1",
-        targetScope: { kind: "project", orgId: "org-2", projectId: "project-1" },
+        targetScope: {
+          kind: "project",
+          owner: { kind: "org", orgId: "org-2" },
+          projectId: "project-1",
+        },
         projectExists,
         organizationHasMember,
       }),
@@ -50,7 +58,11 @@ describe("marketplace ingestion request rules", () => {
     await expect(
       assertMarketplaceIngestionTargetAccessible({
         organizationId: "org-1",
-        targetScope: { kind: "project", orgId: "org-1", projectId: "missing-project" },
+        targetScope: {
+          kind: "project",
+          owner: { kind: "org", orgId: "org-1" },
+          projectId: "missing-project",
+        },
         projectExists: async () => false,
         organizationHasMember: async () => true,
       }),

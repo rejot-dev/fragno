@@ -272,7 +272,7 @@ describe("Workspace package runtime scenarios", () => {
             async (ctx) => {
               const scope = {
                 kind: "project",
-                orgId: "org-1",
+                owner: { kind: "org", orgId: "org-1" },
                 projectId: ctx.vars.projectId,
               } as const;
               const expected = {

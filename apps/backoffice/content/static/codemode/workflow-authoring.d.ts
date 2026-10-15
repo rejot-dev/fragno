@@ -6,7 +6,7 @@ type WorkflowContextScope =
   | { kind: "system" }
   | { kind: "org"; orgId: string }
   | { kind: "user"; userId: string }
-  | { kind: "project"; orgId: string; projectId: string };
+  | { kind: "project"; owner: { kind: "org"; orgId: string }; projectId: string };
 
 type WorkflowActorEntity =
   | { scope: "internal"; type: string; id: string }

@@ -2588,7 +2588,8 @@ const buildStepBuilders = <
           "marketplace.install",
           `install Marketplace entry ${input.slug}@${input.version} into ${backofficeContextScopeRoutePath(input.targetScope)}:${input.installationRoot}`,
           async (ctx) => {
-            ctx.rememberOrg(input.targetScope.orgId);
+            const targetOrgId = backofficeScopeOrganization(input.targetScope).orgId;
+            ctx.rememberOrg(targetOrgId);
             const entry = getStaticMarketplaceEntry({
               slug: input.slug,
               version: input.version,
@@ -2603,7 +2604,7 @@ const buildStepBuilders = <
               ownerScope: entry.owner.scope,
               slug: entry.slug,
             });
-            const automations = ctx.runtime.objects.automations.forOrg(input.targetScope.orgId);
+            const automations = ctx.runtime.objects.automations.forOrg(targetOrgId);
 
             await ctx.runtime.objects.automations
               .singleton()
@@ -2619,10 +2620,7 @@ const buildStepBuilders = <
                 installationRoot: input.installationRoot,
               },
               {
-                execution: createBackofficeSystemExecution({
-                  kind: "org",
-                  orgId: input.targetScope.orgId,
-                }),
+                execution: createBackofficeSystemExecution({ kind: "org", orgId: targetOrgId }),
                 propagationContext: null,
               },
             );
@@ -2660,7 +2658,7 @@ const buildStepBuilders = <
             const scenarioFileSystem =
               input.targetScope.kind === "project"
                 ? ctx.files.forProject(input.targetScope.projectId)
-                : ctx.files.forOrg(input.targetScope.orgId);
+                : ctx.files.forOrg(targetOrgId);
 
             // Scenario workflow execution uses a session filesystem, while Marketplace ingestion
             // writes through Upload. Mirror the installed result so later steps execute those files.

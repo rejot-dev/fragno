@@ -232,13 +232,13 @@ test("each section page selects the route's own scope, or reports a 404 inside t
             });
             // The shell looks the project up by slug once, for the layout and the leaf alike.
             expect(
-              await openPage(ctx, pageName, ada("project", `acme:${ctx.vars.launch.slug}`)),
+              await openPage(ctx, pageName, ada("project", `org:acme:${ctx.vars.launch.slug}`)),
               pageName,
             ).toEqual({
               renders: "page",
               selectedScope: {
                 kind: "project",
-                organization: acme,
+                owner: { kind: "org", organization: acme },
                 project: ctx.vars.launch,
                 label: "Launch",
               },
@@ -255,10 +255,10 @@ test("each section page selects the route's own scope, or reports a 404 inside t
           const ada = (kind: string, id: string) => ({ kind, id, cookie: ctx.vars.adaCookie });
           for (const pageName of Object.keys(pages) as PageName[]) {
             for (const scope of [
-              ada("project", `acme:${ctx.vars.archived.slug}`),
+              ada("project", `org:acme:${ctx.vars.archived.slug}`),
               // Page URLs name projects by slug, not ID.
-              ada("project", `acme:${ctx.vars.launch.id}`),
-              ada("project", "acme:missing-project"),
+              ada("project", `org:acme:${ctx.vars.launch.id}`),
+              ada("project", "org:acme:missing-project"),
               ada("org", "unknown-org"),
               ada("unknown-kind", "acme"),
               ada("user", ctx.vars.graceId),

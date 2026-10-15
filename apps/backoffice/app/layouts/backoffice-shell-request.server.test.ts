@@ -132,7 +132,7 @@ function createShellContext({
 describe("Backoffice shell request middleware", () => {
   test("establishes resolved scope and execution before descendant handlers run", async () => {
     const request = new Request(
-      "https://backoffice.example/backoffice/dashboard/project/acme:website",
+      "https://backoffice.example/backoffice/dashboard/project/org:acme:website",
     );
     const { context, getPrincipal } = createShellContext({ request });
     const response = new Response("descendant response");
@@ -142,19 +142,23 @@ describe("Backoffice shell request middleware", () => {
         principal: authenticatedPrincipal,
         resolvedScope: {
           kind: "project",
-          organization: activeOrganization.organization,
+          owner: { kind: "org" as const, organization: activeOrganization.organization },
           project: { id: "project-1", slug: "website", name: "Website" },
         },
         route: {
           status: "resolved",
           resolvedScope: {
             kind: "project",
-            organization: activeOrganization.organization,
+            owner: { kind: "org", organization: activeOrganization.organization },
             project: { id: "project-1", slug: "website", name: "Website" },
           },
           selection: { kind: "project", label: "Website" },
           execution: {
-            scope: { kind: "project", orgId: "org-1", projectId: "project-1" },
+            scope: {
+              kind: "project",
+              owner: { kind: "org", orgId: "org-1" },
+              projectId: "project-1",
+            },
             userAuthority: {
               scopeRestriction: null,
               kind: "verified-request-authority",
@@ -174,7 +178,7 @@ describe("Backoffice shell request middleware", () => {
         {
           request,
           context,
-          params: { scopeKind: "project", scopeId: "acme:website" },
+          params: { scopeKind: "project", scopeId: "org:acme:website" },
         },
         next,
       ),
@@ -184,7 +188,7 @@ describe("Backoffice shell request middleware", () => {
   });
 
   test.each([
-    { scopeKind: "project", scopeId: "acme:project-1" },
+    { scopeKind: "project", scopeId: "org:acme:project-1" },
     { scopeKind: "org", scopeId: "org-1" },
     { scopeKind: "org", scopeId: "acme:extra" },
   ])("keeps the default scope while recording that %o did not resolve", async (params) => {

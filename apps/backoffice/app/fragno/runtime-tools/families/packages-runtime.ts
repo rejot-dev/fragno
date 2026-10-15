@@ -6,7 +6,10 @@ import {
   MARKETPLACE_LOCK_PATH,
   marketplaceLockSchema,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
-import { isBackofficeRoutableScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  backofficeScopeOrganization,
+  isBackofficeRoutableScope,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
 
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
@@ -57,7 +60,7 @@ export function createPackagesRuntime({
         }
         organizationId = organization.organization.id;
       } else {
-        organizationId = targetScope.orgId;
+        organizationId = backofficeScopeOrganization(targetScope).orgId;
       }
       const workflowScope = { kind: "org" as const, orgId: organizationId };
       // Organization visibility installs from the coordinating organization's own Marketplace.

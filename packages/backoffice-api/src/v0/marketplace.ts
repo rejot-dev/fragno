@@ -29,7 +29,7 @@ export const marketplaceOwnerScopeSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("user"), userId: marketplaceOwnerIdSchema }),
   z.object({
     kind: z.literal("project"),
-    orgId: marketplaceOwnerIdSchema,
+    owner: marketplaceOrganizationOwnerScopeSchema,
     projectId: marketplaceOwnerIdSchema,
   }),
 ]);

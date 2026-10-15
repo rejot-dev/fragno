@@ -210,7 +210,10 @@ function scopeSelectionOf(
     case "project":
       return {
         kind: "project",
-        organization: backofficeOrganizationIdentity(scope.organization),
+        owner: {
+          kind: "org",
+          organization: backofficeOrganizationIdentity(scope.owner.organization),
+        },
         project: backofficeProjectIdentity(scope.project),
         label: scope.project.name,
       };

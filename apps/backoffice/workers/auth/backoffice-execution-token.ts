@@ -3,6 +3,7 @@ import type {
   AppInstallationExternalAccount,
   AppInstallationResourceScope,
 } from "@fragno-dev/backoffice-api/v0/apps";
+import { backofficeScopeOrganization } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { betterAuth } from "better-auth";
 import { APIError } from "better-auth/api";
 import { z } from "zod";
@@ -219,7 +220,7 @@ async function exchangeInstalledAppToken(
     );
   }
   const installation = await dependencies.resolveActiveInstallation({
-    organizationId: scope.orgId,
+    organizationId: backofficeScopeOrganization(scope).orgId,
     appId: identity.appId,
   });
   if (!installation) {

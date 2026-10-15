@@ -357,7 +357,11 @@ describe("admin app runtime tool SQLite scenarios", () => {
           then.assert("scope selection cannot expose global app management", async (ctx) => {
             for (const scope of [
               { kind: "org", orgId: "org-1" },
-              { kind: "project", orgId: "org-1", projectId: ctx.vars.projectId },
+              {
+                kind: "project",
+                owner: { kind: "org", orgId: "org-1" },
+                projectId: ctx.vars.projectId,
+              },
               { kind: "user", userId: "admin-1" },
             ] satisfies BackofficeContextScope[]) {
               const context = appAdminContext(ctx, "admin-1", scope);

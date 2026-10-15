@@ -68,7 +68,10 @@ type UploadReadPreparedInput = {
         }
       | {
           kind: "project";
-          orgId: string;
+          owner: {
+            kind: "org";
+            orgId: string;
+          };
           projectId: string;
         };
     uploadId: string;
@@ -98,7 +101,10 @@ type UploadReadPreparedOutput =
             }
           | {
               kind: "project";
-              orgId: string;
+              owner: {
+                kind: "org";
+                orgId: string;
+              };
               projectId: string;
             };
         uploadId: string;
@@ -128,7 +134,10 @@ type UploadReadPreparedOutput =
             }
           | {
               kind: "project";
-              orgId: string;
+              owner: {
+                kind: "org";
+                orgId: string;
+              };
               projectId: string;
             };
         uploadId: string;
@@ -158,7 +167,10 @@ type UploadReadPreparedOutput =
             }
           | {
               kind: "project";
-              orgId: string;
+              owner: {
+                kind: "org";
+                orgId: string;
+              };
               projectId: string;
             };
         uploadId: string;
@@ -188,7 +200,10 @@ type UploadCommitPreparedInput = {
         }
       | {
           kind: "project";
-          orgId: string;
+          owner: {
+            kind: "org";
+            orgId: string;
+          };
           projectId: string;
         };
     uploadId: string;
@@ -213,7 +228,10 @@ type UploadCommitPreparedOutput = {
       }
     | {
         kind: "project";
-        orgId: string;
+        owner: {
+          kind: "org";
+          orgId: string;
+        };
         projectId: string;
       };
   uploadId: string;
@@ -238,7 +256,10 @@ type UploadDiscardPreparedInput = {
         }
       | {
           kind: "project";
-          orgId: string;
+          owner: {
+            kind: "org";
+            orgId: string;
+          };
           projectId: string;
         };
     uploadId: string;

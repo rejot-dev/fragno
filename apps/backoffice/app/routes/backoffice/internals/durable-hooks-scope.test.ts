@@ -13,7 +13,7 @@ const scopes = {
   org: { kind: "org", organization, label: "Acme" },
   project: {
     kind: "project",
-    organization,
+    owner: { kind: "org", organization },
     project: { id: "project_1", slug: "launch-plan" },
     label: "Launch Plan",
   },
@@ -52,7 +52,7 @@ describe("resolveDurableHooksScopeSelection", () => {
       kind: "project",
       resolvedScope: {
         kind: "project",
-        organization: { id: "org_123", slug: "acme" },
+        owner: { kind: "org", organization: { id: "org_123", slug: "acme" } },
         project: { id: "project_1", slug: "launch-plan" },
       },
       label: "Launch Plan",

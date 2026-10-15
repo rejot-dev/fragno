@@ -576,7 +576,11 @@ describe("marketplace fragment", async () => {
   test("scopes listing identities to owners and rejects non-owners", async () => {
     const organization = organizationOwner("org-identity");
     const projectOwner: MarketplaceOwner = {
-      scope: { kind: "project", orgId: "org-identity", projectId: "project-1" },
+      scope: {
+        kind: "project",
+        owner: { kind: "org", orgId: "org-identity" },
+        projectId: "project-1",
+      },
       publisherName: "Identity project",
     };
     const slug = "owner-scoped-automation";

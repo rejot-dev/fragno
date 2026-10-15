@@ -32,10 +32,10 @@ const SCOPE_PARAMETER = {
   in: "path",
   required: true,
   description:
-    "Where the operation runs: `system`, `user:<userId>`, `org:<orgId>`, or `project:<orgId>:<projectId>`. Operations that are not available to the credential in this scope answer `404`.",
+    "Where the operation runs: `system`, `user:<userId>`, `org:<orgId>`, or `project:org:<orgId>:<projectId>`, a project naming its owning scope. Operations that are not available to the credential in this scope answer `404`.",
   schema: {
     type: "string",
-    pattern: "^(?:system|user:[^:/]+|org:[^:/]+|project:[^:/]+:[^:/]+)$",
+    pattern: "^(?:system|user:[^:/]+|org:[^:/]+|project:org:[^:/]+:[^:/]+)$",
   },
 };
 

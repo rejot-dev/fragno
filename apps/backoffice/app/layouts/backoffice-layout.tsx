@@ -48,20 +48,14 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     resolvedScope.kind === "org"
       ? automationCollectionSourcePromise
       : resolvedScope.kind === "project"
-        ? fetchAutomationCollectionSource(request, context, {
-            kind: "org",
-            organization: resolvedScope.organization,
-          }).then(
+        ? fetchAutomationCollectionSource(request, context, resolvedScope.owner).then(
             (source): CurrentBackofficeContext["automationCollectionSource"] => ({
               status: "ready",
               source,
             }),
             (error: unknown): CurrentBackofficeContext["automationCollectionSource"] => ({
               status: "unavailable",
-              resolvedScope: {
-                kind: "org",
-                organization: resolvedScope.organization,
-              },
+              resolvedScope: resolvedScope.owner,
               message:
                 error instanceof Error ? error.message : "Project synchronization is unavailable.",
             }),

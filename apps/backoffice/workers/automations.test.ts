@@ -1291,7 +1291,11 @@ describe("Automations object scope binding", () => {
               ownerScope: { kind: "system" },
               slug: "telegram-test-command",
             }),
-            targetScope: { kind: "project", orgId: "org-2", projectId: "project-1" },
+            targetScope: {
+              kind: "project",
+              owner: { kind: "org", orgId: "org-2" },
+              projectId: "project-1",
+            },
           },
           {
             execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),

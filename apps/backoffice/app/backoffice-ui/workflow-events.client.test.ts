@@ -23,7 +23,11 @@ describe("sendBackofficeWorkflowEvent", () => {
       sendBackofficeWorkflowEvent({
         eventId: "event-1",
         reference: {
-          scope: { kind: "project", orgId: "org-1", projectId: "project/one" },
+          scope: {
+            kind: "project",
+            owner: { kind: "org", orgId: "org-1" },
+            projectId: "project/one",
+          },
           workflowName: "reson8-setup",
           instanceId: "instance-1",
         },
@@ -36,7 +40,7 @@ describe("sendBackofficeWorkflowEvent", () => {
     const request = requests[0];
     assert(
       new URL(request.url).pathname ===
-        "/api/workflows/project%3Aorg-1%3Aproject%252Fone/reson8-setup/instances/instance-1/events",
+        "/api/workflows/project%3Aorg%3Aorg-1%3Aproject%252Fone/reson8-setup/instances/instance-1/events",
     );
     expect(await request.json()).toEqual({
       id: "event-1",

@@ -272,7 +272,9 @@ export class InMemoryAppInstallationsObject
       }
       const { installation, actions } = connection;
       if (
-        input.scopeRestriction.orgId !== this.#organizationId ||
+        (input.scopeRestriction.kind === "org"
+          ? input.scopeRestriction.orgId
+          : input.scopeRestriction.owner.orgId) !== this.#organizationId ||
         !appInstallationResourceScopeContains(installation.resourceScope, input.scopeRestriction)
       ) {
         throw new BackofficeAppDomainError(

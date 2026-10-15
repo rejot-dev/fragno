@@ -190,7 +190,7 @@ describe("Backoffice request state", () => {
       state.getAutomationCollectionSource({ kind: "org", organization }),
       state.getAutomationCollectionSource({
         kind: "project",
-        organization,
+        owner: { kind: "org", organization },
         project: { id: "project-1", slug: "project-1" },
       }),
     ]);

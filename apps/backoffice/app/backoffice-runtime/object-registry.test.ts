@@ -27,7 +27,7 @@ describe("Backoffice object context availability", () => {
     assert(
       !isBackofficeObjectAvailableInContext("RESEND", {
         kind: "project",
-        orgId: "org-1",
+        owner: { kind: "org", orgId: "org-1" },
         projectId: "project-1",
       }),
     );
@@ -39,7 +39,7 @@ describe("Automations object scope policy", () => {
     { kind: "singleton" } as const,
     { kind: "org", orgId: "org-1" } as const,
     { kind: "user", userId: "user-1" } as const,
-    { kind: "project", orgId: "org-1", projectId: "project-1" } as const,
+    { kind: "project", owner: { kind: "org", orgId: "org-1" }, projectId: "project-1" } as const,
   ])("allows $kind-scoped objects", (scope) => {
     expect(() =>
       assertBackofficeObjectAddressAllowed(scopedAddress("AUTOMATIONS", scope)),
@@ -90,7 +90,7 @@ describe("Connector object scope policy", () => {
       assertBackofficeObjectAddressAllowed(
         scopedAddress("PROJECT_CONNECTOR", {
           kind: "project",
-          orgId: "org-1",
+          owner: { kind: "org", orgId: "org-1" },
           projectId: "project-1",
         }),
       ),

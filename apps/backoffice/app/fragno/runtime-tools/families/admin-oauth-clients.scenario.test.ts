@@ -989,7 +989,7 @@ describe("admin OAuth client SQLite scenarios", () => {
             for (const scope of [
               { kind: "user", userId: "admin-1" },
               { kind: "org", orgId: "org-1" },
-              { kind: "project", orgId: "org-1", projectId: "project-1" },
+              { kind: "project", owner: { kind: "org", orgId: "org-1" }, projectId: "project-1" },
             ] satisfies BackofficeContextScope[]) {
               const context = oauthAdminContext(ctx, "admin-1", scope);
               expect(context.admin).toBeNull();

@@ -1,3 +1,4 @@
+import { backofficeScopeOrganization } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { ClientOnly } from "@fragno-private/design-system/client-only";
 import { Icon } from "@fragno-private/design-system/icon";
 import { Suspense, use } from "react";
@@ -115,6 +116,8 @@ export function BackofficeTopBar({
   onWorkflowDrawerToggle,
 }: BackofficeTopBarProps) {
   const routeScope = resolvedScope ? backofficeRouteScopeFromResolvedScope(resolvedScope) : null;
+  // Only organizations own projects so far.
+  const projectMenuOrganization = resolvedScope && backofficeScopeOrganization(resolvedScope);
 
   return (
     <header className="sticky top-0 z-30 border-b border-[color:var(--bo-border)] bg-[color:var(--bo-bg)]">
@@ -130,10 +133,10 @@ export function BackofficeTopBar({
           />
         </div>
 
-        {resolvedScope?.kind === "org" || resolvedScope?.kind === "project" ? (
+        {resolvedScope && projectMenuOrganization ? (
           <div className="flex min-w-0 flex-1 items-stretch min-[960px]:w-72 min-[960px]:flex-none min-[960px]:border-r min-[960px]:border-[color:var(--bo-border)]">
             <LocalFirstBackofficeProjectMenu
-              orgSlug={resolvedScope.organization.slug}
+              orgSlug={projectMenuOrganization.organization.slug}
               currentProject={
                 resolvedScope.kind === "project"
                   ? { slug: resolvedScope.project.slug, label: resolvedScope.project.name }

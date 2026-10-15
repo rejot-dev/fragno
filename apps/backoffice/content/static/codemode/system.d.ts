@@ -29,7 +29,7 @@ type BackofficeCodemodeScope =
   | { kind: "system" }
   | { kind: "org"; orgId: string }
   | { kind: "user"; userId: string }
-  | { kind: "project"; orgId: string; projectId: string };
+  | { kind: "project"; owner: { kind: "org"; orgId: string }; projectId: string };
 interface BackofficeCodemodeScopedProviders {
   state: StateCodemodeProvider;
   account: AccountCodemodeProvider;

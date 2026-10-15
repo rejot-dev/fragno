@@ -23,7 +23,7 @@ describe("Automation collection sources", () => {
     const description = describeAutomationCollectionSource({
       resolvedScope: {
         kind: "project",
-        organization: { id: "org-1", slug: "acme" },
+        owner: { kind: "org", organization: { id: "org-1", slug: "acme" } },
         project: { id: "project/one", slug: "project/one" },
       },
       adapterIdentity: "adapter-1",
@@ -31,7 +31,7 @@ describe("Automation collection sources", () => {
 
     assert.equal(
       description.internalUrl,
-      "/api/automations-scoped/project/org-1:project%252Fone/_internal",
+      "/api/automations-scoped/project/org:org-1:project%252Fone/_internal",
     );
   });
 

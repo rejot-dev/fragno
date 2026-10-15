@@ -111,7 +111,7 @@ describe("project automation event routing", () => {
     const projectFileSystem = createScopedTestFileSystem(
       runtime,
       createBackofficeUserExecution({
-        scope: { kind: "project", orgId, projectId },
+        scope: { kind: "project", owner: { kind: "org", orgId }, projectId },
         userId: "user-1",
       }),
     );
@@ -121,7 +121,11 @@ describe("project automation event routing", () => {
       `defineWorkflow({ name: "project-store" }, async (event) => event.payload);`,
     );
 
-    const projectAutomations = runtime.objects.automations.forProject({ orgId, projectId });
+    const projectAutomations = runtime.objects.automations.for({
+      kind: "project",
+      owner: { kind: "org", orgId: orgId },
+      projectId,
+    });
     const projectRoutesUrl =
       `https://automations.do/api/automations/routes?scopeKind=project` +
       `&orgId=${orgId}&projectId=${projectId}`;
@@ -155,7 +159,11 @@ describe("project automation event routing", () => {
         }),
       }),
       {
-        execution: createBackofficeSystemExecution({ kind: "project", orgId, projectId }),
+        execution: createBackofficeSystemExecution({
+          kind: "project",
+          owner: { kind: "org", orgId },
+          projectId,
+        }),
         propagationContext: null,
       },
     );
@@ -195,11 +203,11 @@ describe("project automation event routing", () => {
     await expect(
       events.emitEvent({
         eventType: "project.event",
-        targetScope: { kind: "project", orgId, projectId },
+        targetScope: { kind: "project", owner: { kind: "org", orgId }, projectId },
       }),
     ).resolves.toMatchObject({
       accepted: true,
-      scope: { kind: "project", orgId, projectId },
+      scope: { kind: "project", owner: { kind: "org", orgId }, projectId },
     });
 
     await runtime.drain();
@@ -207,7 +215,11 @@ describe("project automation event routing", () => {
     const workflowsResponse = await projectAutomations.http.fetchAuthorized(
       new Request("https://automations.do/api/workflows/codemode-script/instances"),
       {
-        execution: createBackofficeSystemExecution({ kind: "project", orgId, projectId }),
+        execution: createBackofficeSystemExecution({
+          kind: "project",
+          owner: { kind: "org", orgId },
+          projectId,
+        }),
         propagationContext: null,
       },
     );
@@ -276,7 +288,7 @@ describe("project automation event routing", () => {
     const projectFs = createScopedTestFileSystem(
       runtime,
       createBackofficeUserExecution({
-        scope: { kind: "project", orgId, projectId },
+        scope: { kind: "project", owner: { kind: "org", orgId }, projectId },
         userId: "user-1",
       }),
     );
@@ -344,14 +356,14 @@ describe("project automation event routing", () => {
     await expect(
       events.emitEvent({
         eventType: "project.event",
-        targetScope: { kind: "project", orgId, projectId },
+        targetScope: { kind: "project", owner: { kind: "org", orgId }, projectId },
       }),
     ).rejects.toThrow(`Project '${projectId}' is not available.`);
 
     assert(
       !runtime.hasObjectInstance({
         binding: "AUTOMATIONS",
-        scope: { kind: "project", orgId, projectId },
+        scope: { kind: "project", owner: { kind: "org", orgId }, projectId },
       }),
     );
   });

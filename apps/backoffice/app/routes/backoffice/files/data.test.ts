@@ -111,7 +111,11 @@ describe("files explorer route data", () => {
   });
 
   test("uses project-scoped Upload data and synchronization", async () => {
-    const scope = { kind: "project" as const, orgId: "acme-org", projectId: "project-1" };
+    const scope = {
+      kind: "project" as const,
+      owner: { kind: "org" as const, orgId: "acme-org" },
+      projectId: "project-1",
+    };
     const result = await loadFilesExplorerData({
       request: new Request("https://backoffice.test/files/project/acme-org:project-1"),
       context: mockContext,

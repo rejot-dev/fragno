@@ -4,7 +4,10 @@ import type {
 } from "@fragno-dev/backoffice-api/v0/apps";
 import type { AutomationActor } from "@fragno-dev/backoffice-api/v0/automation";
 import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api/v0/shared/permissions";
-import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  backofficeScopeOrganization,
+  type BackofficeContextScope,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import type { BackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
 import type { BackofficeDeferredExecution } from "@/backoffice-runtime/context";
@@ -132,7 +135,7 @@ export function createAppInstallationAuthorityResolver({
       return [];
     }
     const installation = await installations.getInstallation({
-      organizationId: scope.orgId,
+      organizationId: backofficeScopeOrganization(scope).orgId,
       appId: activation.appId,
     });
     if (

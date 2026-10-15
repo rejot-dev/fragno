@@ -4,7 +4,10 @@ import { automationActorsSchema } from "@fragno-dev/backoffice-api/v0/automation
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
 import { marketplaceLockSchema } from "@fragno-dev/backoffice-api/v0/marketplace";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
-import type { BackofficeRoutableScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  backofficeScopeOrganization,
+  type BackofficeRoutableScope,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
   class MockDurableObject {
@@ -144,7 +147,7 @@ async function submitTelegramTestCommandInstaller(
   ctx: BackofficeScenarioContext,
   targetScope: Extract<BackofficeRoutableScope, { kind: "org" | "project" }>,
 ) {
-  const coordinator = { kind: "org" as const, orgId: targetScope.orgId };
+  const coordinator = backofficeScopeOrganization(targetScope);
   const ingestionInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
     marketplace: { kind: "system" },
     installationRoot: "/workspace",
@@ -679,7 +682,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             };
 
             for (const targetScope of [
-              { kind: "project", orgId: "org-1", projectId },
+              { kind: "project", owner: { kind: "org" as const, orgId: "org-1" }, projectId },
               { kind: "user", userId: "user-1" },
             ] as const) {
               await expect(
@@ -702,7 +705,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             assert(typeof projectId === "string");
 
             for (const targetScope of [
-              { kind: "project", orgId: "org-1", projectId },
+              { kind: "project", owner: { kind: "org" as const, orgId: "org-1" }, projectId },
               { kind: "user", userId: "user-1" },
             ] as const) {
               await expect(
@@ -799,7 +802,11 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                   installationRoot: "/workspace",
                   listingId,
                   version: "1.4.0",
-                  targetScope: { kind: "project", orgId: "org-1", projectId: project.id },
+                  targetScope: {
+                    kind: "project",
+                    owner: { kind: "org" as const, orgId: "org-1" },
+                    projectId: project.id,
+                  },
                 },
                 {
                   execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
@@ -816,7 +823,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             await submitTelegramTestCommandInstaller(ctx, { kind: "org", orgId: "org-1" });
             await submitTelegramTestCommandInstaller(ctx, {
               kind: "project",
-              orgId: "org-1",
+              owner: { kind: "org" as const, orgId: "org-1" },
               projectId: String(ctx.vars.projectId),
             });
           }),
@@ -829,7 +836,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                 { kind: "org" as const, orgId: "org-1" },
                 {
                   kind: "project" as const,
-                  orgId: "org-1",
+                  owner: { kind: "org" as const, orgId: "org-1" },
                   projectId: String(ctx.vars.projectId),
                 },
               ]) {

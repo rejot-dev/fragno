@@ -144,16 +144,17 @@ async function pageScopeForPublicRoute(
     return routeScope;
   }
   const scope = await resolvePublicRouteScope(context, routeScope);
+  // Projects are stored with their owner.
   const project =
     scope?.kind === "project"
       ? await context
           .get(BackofficeWorkerContext)
-          .runtime.objects.automations.forOrg(scope.orgId)
+          .runtime.objects.automations.for(scope.owner)
           .commands.resolveProjectForExecution({ projectId: scope.projectId })
       : null;
   return project
-    ? { kind: "project", orgSlug: routeScope.orgSlug, projectSlug: project.slug }
-    : { kind: "org", orgSlug: routeScope.orgSlug };
+    ? { kind: "project", owner: routeScope.owner, projectSlug: project.slug }
+    : routeScope.owner;
 }
 
 async function handleScopedOAuthCallback<TCommands>({

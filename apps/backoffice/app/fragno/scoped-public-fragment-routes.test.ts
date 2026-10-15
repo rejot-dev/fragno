@@ -18,8 +18,12 @@ describe("scoped public fragment routes", () => {
     [{ kind: "org" as const, orgId: "org:one" }, "/api/workflows/org%3Aorg%253Aone"],
     [{ kind: "user" as const, userId: "user/one" }, "/api/workflows/user%3Auser%252Fone"],
     [
-      { kind: "project" as const, orgId: "org:one", projectId: "project/two" },
-      "/api/workflows/project%3Aorg%253Aone%3Aproject%252Ftwo",
+      {
+        kind: "project" as const,
+        owner: { kind: "org" as const, orgId: "org:one" },
+        projectId: "project/two",
+      },
+      "/api/workflows/project%3Aorg%3Aorg%253Aone%3Aproject%252Ftwo",
     ],
   ])("builds a mount path for the %s scope", (scope, expected) => {
     expect(scopedPublicMountPath({ publicPrefix: "/api/workflows", scope })).toBe(expected);
@@ -48,19 +52,19 @@ describe("scoped public fragment routes", () => {
   test("builds project addresses that name the project by ID", () => {
     const scopePathSegment = backofficePublicScopePathSegment({
       kind: "project",
-      orgSlug: "acme",
+      owner: { kind: "org" as const, orgSlug: "acme" },
       projectId: "project/one",
     });
 
     expect(apiPublicAddress("https://backoffice.example", scopePathSegment)).toEqual({
-      baseUrl: "https://backoffice.example/api/http/project%3Aacme%3Aproject%252Fone",
+      baseUrl: "https://backoffice.example/api/http/project%3Aorg%3Aacme%3Aproject%252Fone",
       oauthRedirectUri:
-        "https://backoffice.example/api/http/project%3Aacme%3Aproject%252Fone/oauth/callback",
+        "https://backoffice.example/api/http/project%3Aorg%3Aacme%3Aproject%252Fone/oauth/callback",
     });
     expect(mcpPublicAddress("https://backoffice.example", scopePathSegment)).toEqual({
-      baseUrl: "https://backoffice.example/api/mcp/project%3Aacme%3Aproject%252Fone",
+      baseUrl: "https://backoffice.example/api/mcp/project%3Aorg%3Aacme%3Aproject%252Fone",
       oauthRedirectUri:
-        "https://backoffice.example/api/mcp/project%3Aacme%3Aproject%252Fone/oauth/callback",
+        "https://backoffice.example/api/mcp/project%3Aorg%3Aacme%3Aproject%252Fone/oauth/callback",
     });
   });
 
@@ -69,7 +73,7 @@ describe("scoped public fragment routes", () => {
       apiPublicAddress("https://backoffice.example", "org:acme").oauthRedirectUri,
     );
     const mcpRedirectUri = new URL(
-      mcpPublicAddress("https://backoffice.example", "project:acme:project-1").oauthRedirectUri,
+      mcpPublicAddress("https://backoffice.example", "project:org:acme:project-1").oauthRedirectUri,
     );
 
     assert(

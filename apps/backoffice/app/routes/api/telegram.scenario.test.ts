@@ -367,7 +367,7 @@ describe("Telegram public authorization scenarios", () => {
           expect(await privateCommands.json()).toEqual({ commands: [] });
           for (const otherScope of [
             "org%3Aother-org",
-            "project%3Aother-org%3Aproject-1",
+            "project%3Aorg%3Aother-org%3Aproject-1",
             "user%3Aother-user",
             "system",
           ]) {

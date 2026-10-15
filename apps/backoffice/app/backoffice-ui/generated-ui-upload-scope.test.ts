@@ -5,7 +5,11 @@ import {
   resolveGeneratedUiUploadScope,
 } from "./generated-ui-upload-scope";
 
-const currentScope = { kind: "project" as const, orgId: "org-1", projectId: "project-1" };
+const currentScope = {
+  kind: "project" as const,
+  owner: { kind: "org" as const, orgId: "org-1" },
+  projectId: "project-1",
+};
 
 describe("generated UI Upload scopes", () => {
   test("accepts the current context sentinel", () => {
@@ -17,7 +21,11 @@ describe("generated UI Upload scopes", () => {
   });
 
   test("accepts an explicit project scope in the current organization", () => {
-    const projectScope = { kind: "project" as const, orgId: "org-1", projectId: "project-2" };
+    const projectScope = {
+      kind: "project" as const,
+      owner: { kind: "org" as const, orgId: "org-1" },
+      projectId: "project-2",
+    };
     expect(resolveGeneratedUiUploadScope(projectScope, currentScope)).toEqual(projectScope);
   });
 

@@ -25,7 +25,7 @@ const orgExecution = createBackofficeRequestExecution({
   verifiedRequestAuthority,
 });
 const projectExecution = createBackofficeRequestExecution({
-  scope: { kind: "project", orgId: "acme-org", projectId: "project-1" },
+  scope: { kind: "project", owner: { kind: "org", orgId: "acme-org" }, projectId: "project-1" },
   userId: "user-1",
   verifiedRequestAuthority,
 });

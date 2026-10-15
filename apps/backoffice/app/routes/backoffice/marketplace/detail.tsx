@@ -2,9 +2,10 @@ import {
   MARKETPLACE_LOCK_PATH,
   marketplaceInstallationRootSchema,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
-import type {
-  BackofficeContextScope,
-  BackofficeRoutableScope,
+import {
+  backofficeScopeOrganization,
+  type BackofficeContextScope,
+  type BackofficeRoutableScope,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { Button, ButtonLink } from "@fragno-private/design-system/button";
 import { ClientOnly } from "@fragno-private/design-system/client-only";
@@ -159,7 +160,7 @@ const resolveMarketplaceInstallationTarget = (
         };
   }
 
-  const organizationId = targetScope.orgId;
+  const organizationId = backofficeScopeOrganization(targetScope).orgId;
   if (
     (installationOrganizationId !== null && installationOrganizationId !== organizationId) ||
     !me.organizations.some(({ organization }) => organization.id === organizationId)

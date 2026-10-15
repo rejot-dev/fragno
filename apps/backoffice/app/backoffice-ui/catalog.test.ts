@@ -131,7 +131,7 @@ const componentFixtures = [
     component: "FileUpload",
     validProps: {
       label: "Document",
-      scope: { kind: "project", orgId: "org-1", projectId: "project-1" },
+      scope: { kind: "project", owner: { kind: "org", orgId: "org-1" }, projectId: "project-1" },
       value: null,
       accept: [".pdf", "image/*"],
       maxSizeBytes: 10_000,

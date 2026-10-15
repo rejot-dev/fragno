@@ -135,7 +135,13 @@ export async function action({ request, context }: Route.ActionArgs) {
     } satisfies ProjectActionData;
   }
 
-  return redirect(dashboardPath({ kind: "project", orgSlug: organization.slug, projectSlug }));
+  return redirect(
+    dashboardPath({
+      kind: "project",
+      owner: { kind: "org", orgSlug: organization.slug },
+      projectSlug,
+    }),
+  );
 }
 
 /** Agents are one panel of the dashboard, so an unavailable Pi manager does not fail the page. */

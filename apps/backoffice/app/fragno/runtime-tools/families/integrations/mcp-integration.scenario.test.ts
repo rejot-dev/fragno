@@ -874,7 +874,7 @@ test("an access token without a refresh token reports unavailable when it expire
 test("mcp addresses resolve only in their own scope and require both authority layers", async () => {
   const projectScope = {
     kind: "project",
-    orgId: orgScope.orgId,
+    owner: { kind: "org", orgId: orgScope.orgId },
     projectId: "mcp-project",
   } as const;
   const userScope = { kind: "user", userId: "mcp-member" } as const;

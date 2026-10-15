@@ -205,7 +205,7 @@ describe("Upload Durable Object", () => {
 
   test.each([
     ["user", "v1:user:user-1", "named/v1-user-user-1"],
-    ["project", "v1:project:org-1:project-1", "named/v1-project-org-1-project-1"],
+    ["project", "v1:project:org:org-1:project-1", "named/v1-project-org-org-1-project-1"],
   ])(
     "automatically configures %s workspace instances with fixed database storage",
     async (_kind, name, storageKeyPrefix) => {

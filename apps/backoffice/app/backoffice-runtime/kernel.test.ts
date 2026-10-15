@@ -569,7 +569,7 @@ describe("BackofficeKernel.assertScopedContextAccess", () => {
     expect(() =>
       scopeKernel.assertScopedContextAccess(linkedExecution, {
         kind: "project",
-        orgId: "org-1",
+        owner: { kind: "org" as const, orgId: "org-1" },
         projectId: "project-1",
       }),
     ).not.toThrow();
@@ -719,7 +719,11 @@ describe("BackofficeKernel.assertScopeAllowedByOwner", () => {
     await expect(
       scopeKernel.assertScopeAllowedByOwner({
         ownerScope: { kind: "org", orgId: "org-1" },
-        targetScope: { kind: "project", orgId: "org-1", projectId: "project-1" },
+        targetScope: {
+          kind: "project",
+          owner: { kind: "org" as const, orgId: "org-1" },
+          projectId: "project-1",
+        },
         operation: "automation.forward-event",
       }),
     ).resolves.toBeUndefined();
@@ -738,7 +742,11 @@ describe("BackofficeKernel.assertScopeAllowedByOwner", () => {
   test.each([
     { kind: "system" as const },
     { kind: "org" as const, orgId: "org-2" },
-    { kind: "project" as const, orgId: "org-2", projectId: "project-1" },
+    {
+      kind: "project" as const,
+      owner: { kind: "org" as const, orgId: "org-2" },
+      projectId: "project-1",
+    },
   ])("rejects $kind scopes outside the owning organization", async (targetScope) => {
     await expect(
       scopeKernel.assertScopeAllowedByOwner({

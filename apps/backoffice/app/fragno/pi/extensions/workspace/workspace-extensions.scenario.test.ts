@@ -579,7 +579,11 @@ test("user, project and system agents do not inherit organization build artifact
           compiler.available = false;
           for (const selectedScope of [
             { kind: "user", userId: "isolated-user" },
-            { kind: "project", orgId: "org-1", projectId: "isolated-project" },
+            {
+              kind: "project",
+              owner: { kind: "org", orgId: "org-1" },
+              projectId: "isolated-project",
+            },
             { kind: "system" },
           ] satisfies BackofficeContextScope[]) {
             expect(

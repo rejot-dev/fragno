@@ -108,7 +108,11 @@ describe("createRouteBackedRuntimeContext", () => {
       billingOrganizationId: null,
       workflowSourceReader: parentReadSource,
     });
-    const projectScope = { kind: "project" as const, orgId: "org-1", projectId: "project-1" };
+    const projectScope = {
+      kind: "project" as const,
+      owner: { kind: "org" as const, orgId: "org-1" },
+      projectId: "project-1",
+    };
     const scoped = context.createBackofficeScopedContext(projectScope);
 
     const createWorkflowInstance = scoped.workflow?.runtime.createInstance;

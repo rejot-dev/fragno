@@ -1,4 +1,7 @@
-import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  backofficeScopePathSegment,
+  type BackofficeContextScope,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { defineCommand } from "just-bash";
 
 import type { AutomationCommandHelp } from "./automation-types";
@@ -45,7 +48,7 @@ function formatCurrentScopeText(scope: BackofficeContextScope): string {
     case "user":
       return `kind    user\nuserId  ${scope.userId}\n`;
     case "project":
-      return `kind       project\norgId      ${scope.orgId}\nprojectId  ${scope.projectId}\n`;
+      return `kind       project\nowner      ${backofficeScopePathSegment(scope.owner)}\nprojectId  ${scope.projectId}\n`;
   }
 
   throw new Error("context.current received an unsupported Backoffice scope kind.");
