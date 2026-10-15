@@ -34,16 +34,27 @@ export function McpConnectionDetails({
             The server&apos;s tools have not been discovered yet.
           </p>
         ) : (
-          <ul className="divide-y divide-[color:var(--bo-border)]">
-            {server.tools.map((tool) => (
-              <li key={tool.name} className="space-y-1 px-3 py-2">
-                <p className="font-mono text-[11px] text-[var(--bo-fg)]">{tool.name}</p>
-                {tool.description ? (
-                  <p className="line-clamp-2 text-xs text-[var(--bo-muted)]">{tool.description}</p>
-                ) : null}
-              </li>
-            ))}
-          </ul>
+          // Columns follow the section's own width, which depends on the page layout around it.
+          <div className="@container">
+            <ul className="grid gap-2 p-2 @xl:grid-cols-2 @4xl:grid-cols-3">
+              {server.tools.map((tool) => (
+                <li
+                  key={tool.name}
+                  className="space-y-1 border border-[color:var(--bo-border)] px-3 py-2.5"
+                >
+                  <p className="font-mono text-[11px] text-[var(--bo-fg)]">{tool.name}</p>
+                  {tool.description ? (
+                    <p
+                      className="line-clamp-3 text-xs text-pretty text-[var(--bo-muted)]"
+                      title={tool.description}
+                    >
+                      {tool.description}
+                    </p>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
       </DetailSection>
     </>

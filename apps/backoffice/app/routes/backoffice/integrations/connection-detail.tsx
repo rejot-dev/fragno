@@ -61,9 +61,9 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
       ? error.message
       : "The connection could not be read.";
   return (
-    <aside className="bo-panel-surface bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-failed)]">
+    <p className="bo-panel-surface bg-[var(--bo-panel)] p-4 text-sm text-[var(--bo-failed)]">
       {message}
-    </aside>
+    </p>
   );
 }
 
@@ -75,101 +75,118 @@ export default function BackofficeIntegrationConnectionDetail({
   const current = history[0];
 
   return (
-    <aside className="bo-panel-surface flex min-w-0 flex-col gap-4 bg-[var(--bo-panel)] p-4">
-      <header className="space-y-2">
-        <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
-          {current ? describeIntegrationConnectionKind(current) : connection.integrationId}
-        </p>
-        <div className="flex items-center justify-between gap-3">
+    <article className="flex min-w-0 flex-col gap-4">
+      <header className="bo-panel-surface flex items-start justify-between gap-3 bg-[var(--bo-panel)] p-4">
+        <div className="min-w-0 space-y-1">
+          <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
+            {current ? describeIntegrationConnectionKind(current) : connection.integrationId}
+          </p>
           <h2 className="truncate text-xl font-semibold text-[var(--bo-fg)]">{connection.name}</h2>
-          {current ? <IntegrationConnectionStateLight state={current.state} /> : null}
+          <p className="font-mono text-[11px] break-all text-[var(--bo-muted)]">
+            {connection.connectionId}
+          </p>
         </div>
-        <p className="font-mono text-[11px] break-all text-[var(--bo-muted)]">
-          {connection.connectionId}
-        </p>
+        {current ? <IntegrationConnectionStateLight state={current.state} /> : null}
       </header>
 
-      {(() => {
-        switch (details.kind) {
-          case "api":
-            return <ApiConnectionDetails details={details} />;
-          case "webhook":
-            return <WebhookConnectionDetails details={details} collections={collections} />;
-          case "mcp":
-            return <McpConnectionDetails details={details} />;
-          case "connector":
-            return <ConnectorConnectionDetails details={details} />;
-          case "native":
-            return (
-              <NativeConnectionDetails
-                selectedScope={selectedScope}
-                service={connection.integrationId}
-              />
-            );
-          default:
-            throw new Error("Integration connection details are unsupported.", {
-              cause: details satisfies never,
-            });
-        }
-      })()}
+      {/* What the source reports gets the room; inspection and history are short lists beside it. */}
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_26rem]">
+        <div className="bo-panel-surface flex min-w-0 flex-col gap-4 bg-[var(--bo-panel)] p-4">
+          <ConnectionSourceDetails
+            details={details}
+            selectedScope={selectedScope}
+            collections={collections}
+            service={connection.integrationId}
+          />
+        </div>
+        <div className="bo-panel-surface flex min-w-0 flex-col gap-4 bg-[var(--bo-panel)] p-4">
+          <DetailSection title="Inspection">
+            <AutomationDetailRows
+              layout="inspector"
+              rows={[
+                {
+                  label: "Configuration",
+                  value:
+                    connection.configuration.status === "missing"
+                      ? `missing: ${connection.configuration.missingFields.join(", ")}`
+                      : "configured",
+                },
+                {
+                  label: "Auth method",
+                  value: connection.authMethod
+                    ? integrationAuthMethodLabels[connection.authMethod]
+                    : "—",
+                },
+                { label: "Authorization", value: connection.authorization.status },
+                ...connection.checks.map((check) => ({
+                  label: check.label,
+                  value:
+                    check.status === "not-checked"
+                      ? `not checked: ${check.reason}`
+                      : `${check.status} at ${formatTimestamp(check.checkedAt)}: ${check.message}`,
+                })),
+              ]}
+            />
+            {connection.nextSteps.length > 0 ? (
+              <ul className="list-disc space-y-1 px-8 py-3 text-xs text-[var(--bo-muted)]">
+                {connection.nextSteps.map((step) => (
+                  <li key={step}>{step}</li>
+                ))}
+              </ul>
+            ) : null}
+          </DetailSection>
 
-      <DetailSection title="Inspection">
-        <AutomationDetailRows
-          layout="inspector"
-          rows={[
-            {
-              label: "Configuration",
-              value:
-                connection.configuration.status === "missing"
-                  ? `missing: ${connection.configuration.missingFields.join(", ")}`
-                  : "configured",
-            },
-            {
-              label: "Auth method",
-              value: connection.authMethod
-                ? integrationAuthMethodLabels[connection.authMethod]
-                : "—",
-            },
-            { label: "Authorization", value: connection.authorization.status },
-            ...connection.checks.map((check) => ({
-              label: check.label,
-              value:
-                check.status === "not-checked"
-                  ? `not checked: ${check.reason}`
-                  : `${check.status} at ${formatTimestamp(check.checkedAt)}: ${check.message}`,
-            })),
-          ]}
-        />
-        {connection.nextSteps.length > 0 ? (
-          <ul className="list-disc space-y-1 px-8 py-3 text-xs text-[var(--bo-muted)]">
-            {connection.nextSteps.map((step) => (
-              <li key={step}>{step}</li>
-            ))}
-          </ul>
-        ) : null}
-      </DetailSection>
-
-      <DetailSection title="State history">
-        {history.length === 0 ? (
-          <p className="px-3 py-2.5 text-xs text-[var(--bo-muted)]">
-            No state change has been reported for this address.
-          </p>
-        ) : (
-          <ol className="divide-y divide-[color:var(--bo-border)]">
-            {history.map((change) => (
-              <li
-                key={change.eventId}
-                className="flex items-center justify-between gap-3 px-3 py-2"
-              >
-                <IntegrationConnectionStateLight state={change.state} />
-                <span className="text-xs text-[var(--bo-muted)]">
-                  {formatTimestamp(change.occurredAt)}
-                </span>
-              </li>
-            ))}
-          </ol>
-        )}
-      </DetailSection>
-    </aside>
+          <DetailSection title="State history">
+            {history.length === 0 ? (
+              <p className="px-3 py-2.5 text-xs text-[var(--bo-muted)]">
+                No state change has been reported for this address.
+              </p>
+            ) : (
+              <ol className="divide-y divide-[color:var(--bo-border)]">
+                {history.map((change) => (
+                  <li
+                    key={change.eventId}
+                    className="flex items-center justify-between gap-3 px-3 py-2"
+                  >
+                    <IntegrationConnectionStateLight state={change.state} />
+                    <span className="text-xs text-[var(--bo-muted)]">
+                      {formatTimestamp(change.occurredAt)}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </DetailSection>
+        </div>
+      </div>
+    </article>
   );
+}
+
+function ConnectionSourceDetails({
+  details,
+  selectedScope,
+  collections,
+  service,
+}: {
+  details: Route.ComponentProps["loaderData"]["details"];
+  selectedScope: IntegrationsLayoutContext["selectedScope"];
+  collections: IntegrationsLayoutContext["collections"];
+  service: string;
+}) {
+  switch (details.kind) {
+    case "api":
+      return <ApiConnectionDetails details={details} />;
+    case "webhook":
+      return <WebhookConnectionDetails details={details} collections={collections} />;
+    case "mcp":
+      return <McpConnectionDetails details={details} />;
+    case "connector":
+      return <ConnectorConnectionDetails details={details} />;
+    case "native":
+      return <NativeConnectionDetails selectedScope={selectedScope} service={service} />;
+  }
+  throw new Error("Integration connection details are unsupported.", {
+    cause: details satisfies never,
+  });
 }

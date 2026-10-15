@@ -1,6 +1,7 @@
 import { ClientOnly } from "@fragno-private/design-system/client-only";
 import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
-import { Suspense, use, useEffect, useMemo, useRef, useState } from "react";
+import { BackofficeTabHeader } from "@fragno-private/design-system/tab-header";
+import { Suspense, use, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Link,
   Outlet,
@@ -15,6 +16,7 @@ import { eq, useLiveQuery } from "@tanstack/react-db";
 
 import type { BackofficeScopeSelection } from "@/backoffice-runtime/resolved-scope";
 import { useCurrentBackofficeContext } from "@/components/backoffice/current-context";
+import { backofficePageBodyClassName } from "@/components/backoffice/page-body";
 import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import {
   describeAutomationCollectionSource,
@@ -41,7 +43,7 @@ import {
   integrationConnectionStateChanges,
   type IntegrationConnectionStateChange,
 } from "./connection-overview";
-import { integrationConnectionPath } from "./connection-paths";
+import { integrationConnectionPath, integrationsScopeBasePath } from "./connection-paths";
 import {
   listIntegrationConnections,
   type ListedIntegrationConnections,
@@ -99,23 +101,71 @@ export function meta({ loaderData }: Route.MetaArgs) {
 export default function BackofficeIntegrationsScopeLayout({ loaderData }: Route.ComponentProps) {
   const { selectedScope, listed } = loaderData;
   const loading = (
-    <BackofficeSystemState
-      tone="loading"
-      label="Synchronizing"
-      title="Synchronizing connection events…"
-    />
+    <IntegrationsPage selectedScope={selectedScope} connectionTabs={[]}>
+      <BackofficeSystemState
+        tone="loading"
+        label="Synchronizing"
+        title="Synchronizing connection events…"
+      />
+    </IntegrationsPage>
   );
 
   return (
-    <div data-integrations-workspace className="flex flex-col gap-4">
+    <div data-integrations-workspace className="flex flex-col">
       <h1 className="sr-only">Integrations in {selectedScope.label}</h1>
-      <ProviderReturnNotice />
       <ClientOnly fallback={loading}>
         <Suspense fallback={loading}>
           <IntegrationsClient selectedScope={selectedScope} listed={listed} />
         </Suspense>
       </ClientOnly>
     </div>
+  );
+}
+
+type ConnectionTab = { connectionId: string; label: string };
+
+/**
+ * Every connection is a tab beside the overview, so an open connection gets the page's full width
+ * and switching between connections never goes back through the table.
+ */
+function IntegrationsPage({
+  selectedScope,
+  connectionTabs,
+  children,
+}: {
+  selectedScope: BackofficeScopeSelection;
+  connectionTabs: readonly ConnectionTab[];
+  children: ReactNode;
+}) {
+  const { connectionId: selectedConnectionId } = useParams();
+  return (
+    <>
+      <BackofficeTabHeader
+        items={[
+          {
+            id: "overview",
+            label: "All connections",
+            to: integrationsScopeBasePath(selectedScope),
+            groupId: "overview",
+            active: selectedConnectionId === undefined,
+          },
+          // Prefixed so a connection id can never collide with the overview tab.
+          ...connectionTabs.map((tab) => ({
+            id: `connection:${tab.connectionId}`,
+            label: tab.label,
+            to: integrationConnectionPath(selectedScope, tab.connectionId),
+            groupId: "connections",
+            active: tab.connectionId === selectedConnectionId,
+          })),
+        ]}
+        ariaLabel="Integrations"
+        options={null}
+      />
+      <div className={`${backofficePageBodyClassName} flex flex-col gap-4`}>
+        <ProviderReturnNotice />
+        {children}
+      </div>
+    </>
   );
 }
 
@@ -128,12 +178,14 @@ function IntegrationsClient(props: WorkspaceProps) {
   const { automationCollectionSource } = useCurrentBackofficeContext();
   if (automationCollectionSource.status === "unavailable") {
     return (
-      <BackofficeSystemState
-        tone="error"
-        label="Unavailable"
-        title="Connection events could not be synchronized."
-        description={automationCollectionSource.message}
-      />
+      <IntegrationsPage selectedScope={props.selectedScope} connectionTabs={[]}>
+        <BackofficeSystemState
+          tone="error"
+          label="Unavailable"
+          title="Connection events could not be synchronized."
+          description={automationCollectionSource.message}
+        />
+      </IntegrationsPage>
     );
   }
   const source = automationCollectionSource.source;
@@ -180,75 +232,76 @@ function IntegrationsWorkspace({
           connection.state !== "disconnected" || connection.connectionId === selectedConnectionId,
       );
   const disconnectedCount = connections.length - visibleConnections.length;
-  // Without connections there is nothing to filter or select, so only the table remains.
-  const showPanel = connections.length > 0 || selectedConnectionId !== undefined;
+  const listedConnections = listed.status === "listed" ? listed.connections : {};
+  const connectionTabs = visibleConnections.map((connection) => ({
+    connectionId: connection.connectionId,
+    label: connectionLabel(connection, listedConnections),
+  }));
 
   return (
-    <div
-      className={`grid items-start gap-4 ${showPanel ? "xl:grid-cols-[minmax(0,1fr)_30rem]" : ""}`}
-    >
-      <div className="flex min-w-0 flex-col gap-4">
-        <section className="bo-panel-surface bg-[var(--bo-panel)]">
-          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-            <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
-              {connections.length} {connections.length === 1 ? "connection" : "connections"}
-            </p>
-            {connections.length > 0 ? (
-              <label className="flex items-center gap-2 text-xs text-[var(--bo-muted)]">
-                <input
-                  type="checkbox"
-                  checked={showDisconnected}
-                  onChange={(event) => {
-                    setShowDisconnected(event.target.checked);
-                  }}
-                />
-                Show disconnected
-                {disconnectedCount > 0 ? ` (${disconnectedCount})` : null}
-              </label>
+    <IntegrationsPage selectedScope={selectedScope} connectionTabs={connectionTabs}>
+      {selectedConnectionId === undefined ? (
+        <>
+          <section className="bo-panel-surface bg-[var(--bo-panel)]">
+            <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+              <p className="text-[10px] tracking-[0.24em] text-[var(--bo-muted-2)] uppercase">
+                {connections.length} {connections.length === 1 ? "connection" : "connections"}
+              </p>
+              {connections.length > 0 ? (
+                <label className="flex items-center gap-2 text-xs text-[var(--bo-muted)]">
+                  <input
+                    type="checkbox"
+                    checked={showDisconnected}
+                    onChange={(event) => {
+                      setShowDisconnected(event.target.checked);
+                    }}
+                  />
+                  Show disconnected
+                  {disconnectedCount > 0 ? ` (${disconnectedCount})` : null}
+                </label>
+              ) : null}
+            </div>
+            {listed.status === "unavailable" ? (
+              <p className="border-t border-[color:var(--bo-border)] px-4 py-2 text-xs text-[var(--bo-muted)]">
+                Names and auth methods are unavailable: {listed.message}
+              </p>
             ) : null}
-          </div>
-          {listed.status === "unavailable" ? (
-            <p className="border-t border-[color:var(--bo-border)] px-4 py-2 text-xs text-[var(--bo-muted)]">
-              Names and auth methods are unavailable: {listed.message}
-            </p>
-          ) : null}
-          {eventsQuery.isError ? (
-            <BackofficeSystemState
-              tone="error"
-              title="Connection events could not be read."
-              flush
-            />
-          ) : connections.length === 0 ? (
-            <BackofficeSystemState
-              tone="empty"
-              title="No connections yet."
-              description="Ask your agent to add a connection."
-              flush
-            />
-          ) : visibleConnections.length === 0 ? (
-            <BackofficeSystemState
-              tone="empty"
-              title="No active connections."
-              description="Every connection in this scope was disconnected. Ask your agent to add a connection."
-              flush
-            />
-          ) : (
-            <ConnectionsTable
-              selectedScope={selectedScope}
-              listed={listed.status === "listed" ? listed.connections : {}}
-              connections={visibleConnections}
-              selectedConnectionId={selectedConnectionId ?? null}
-            />
-          )}
-        </section>
-        <NativeServices selectedScope={selectedScope} />
-      </div>
-      {showPanel ? (
+            {eventsQuery.isError ? (
+              <BackofficeSystemState
+                tone="error"
+                title="Connection events could not be read."
+                flush
+              />
+            ) : connections.length === 0 ? (
+              <BackofficeSystemState
+                tone="empty"
+                title="No connections yet."
+                description="Ask your agent to add a connection."
+                flush
+              />
+            ) : visibleConnections.length === 0 ? (
+              <BackofficeSystemState
+                tone="empty"
+                title="No active connections."
+                description="Every connection in this scope was disconnected. Ask your agent to add a connection."
+                flush
+              />
+            ) : (
+              <ConnectionsTable
+                selectedScope={selectedScope}
+                listed={listedConnections}
+                connections={visibleConnections}
+              />
+            )}
+          </section>
+          <NativeServices selectedScope={selectedScope} />
+        </>
+      ) : (
         <Outlet
           context={{ selectedScope, collections, changes } satisfies IntegrationsLayoutContext}
         />
-      ) : null}
-    </div>
+      )}
+    </IntegrationsPage>
   );
 }
 
@@ -294,16 +347,26 @@ function useRevalidateOnNewChange(latestEventId: string | null) {
   }, [latestEventId, revalidator]);
 }
 
+type ListedConnectionSources = Extract<
+  ListedIntegrationConnections,
+  { status: "listed" }
+>["connections"];
+
+function connectionLabel(
+  connection: IntegrationConnectionStateChange,
+  listed: ListedConnectionSources,
+): string {
+  return listed[connection.connectionId]?.name ?? fallbackIntegrationConnectionName(connection);
+}
+
 function ConnectionsTable({
   selectedScope,
   listed,
   connections,
-  selectedConnectionId,
 }: {
   selectedScope: BackofficeScopeSelection;
-  listed: Extract<ListedIntegrationConnections, { status: "listed" }>["connections"];
+  listed: ListedConnectionSources;
   connections: IntegrationConnectionStateChange[];
-  selectedConnectionId: string | null;
 }) {
   return (
     <div className="backoffice-scroll overflow-x-auto border-t border-[color:var(--bo-border)]">
@@ -319,14 +382,9 @@ function ConnectionsTable({
         </thead>
         <tbody className="divide-y divide-[color:var(--bo-border)]">
           {connections.map((connection) => {
-            const selected = connection.connectionId === selectedConnectionId;
             const source = listed[connection.connectionId];
             return (
-              <tr
-                key={connection.connectionId}
-                aria-selected={selected}
-                className={selected ? "bg-[var(--bo-selected-bg)]" : "hover:bg-[var(--bo-panel-2)]"}
-              >
+              <tr key={connection.connectionId} className="hover:bg-[var(--bo-panel-2)]">
                 <td className="max-w-[24rem] px-3 py-2">
                   <Link
                     to={integrationConnectionPath(selectedScope, connection.connectionId)}
@@ -334,7 +392,7 @@ function ConnectionsTable({
                     className="group block min-w-0"
                   >
                     <span className="block truncate font-semibold text-[var(--bo-fg)] group-hover:underline">
-                      {source?.name ?? fallbackIntegrationConnectionName(connection)}
+                      {connectionLabel(connection, listed)}
                     </span>
                     <span className="block truncate font-mono text-[11px] text-[var(--bo-muted)]">
                       {connection.connectionId}

@@ -259,7 +259,6 @@ export default [
         "routes/backoffice/connections/forms/detail.tsx",
       ),
       route("integrations/:scopeKind/:scopeId", "routes/backoffice/integrations/scope-layout.tsx", [
-        index("routes/backoffice/integrations/connection-index.tsx"),
         route(":connectionId", "routes/backoffice/integrations/connection-detail.tsx"),
       ]),
       route("internals", "routes/backoffice/internals/redirect.tsx"),
