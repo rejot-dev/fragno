@@ -23,7 +23,6 @@
 /// <reference path="/static/codemode/providers/upload.d.ts" />
 /// <reference path="/static/codemode/providers/marketplace.d.ts" />
 /// <reference path="/static/codemode/providers/packages.d.ts" />
-/// <reference path="/static/codemode/sources/mcp.d.ts" />
 
 // Scoped context handles target a selected Backoffice context.
 type BackofficeCodemodeScope =

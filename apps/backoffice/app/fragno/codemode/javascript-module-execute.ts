@@ -15,7 +15,6 @@ import {
   type CodemodeRunner,
 } from "./codemode-object-execute";
 import { executeBackofficeCompiledModule } from "./compiled-module-execute";
-import { explainMcpCodemodeError } from "./mcp-codemode-tools";
 
 export type RunBackofficeJavaScriptModuleInput = {
   program: JavaScriptModuleProgram;
@@ -24,7 +23,7 @@ export type RunBackofficeJavaScriptModuleInput = {
   toolContext: CoreBackofficeToolContext;
 };
 
-/** Executes source or a compiled main module without invoking exports; startup failures are not rewritten. */
+/** Executes source or a compiled main module without invoking exports. */
 export async function runBackofficeJavaScriptModule({
   program,
   codemode,
@@ -32,11 +31,7 @@ export async function runBackofficeJavaScriptModule({
   toolContext,
 }: RunBackofficeJavaScriptModuleInput): Promise<JavaScriptModuleExecution> {
   const toolCalls: BackofficeRuntimeToolCall[] = [];
-  const { providers, mcpDiscoveryError } = await createBackofficeCodemodeResolvedProviders({
-    families,
-    toolContext,
-    toolCalls,
-  });
+  const providers = createBackofficeCodemodeResolvedProviders({ families, toolContext, toolCalls });
   const origin = { kind: "file", path: program.path } as const;
   const { runId, completion } =
     program.kind === "bundle"
@@ -67,7 +62,7 @@ export async function runBackofficeJavaScriptModule({
     ? {
         status: "error",
         runId,
-        error: explainMcpCodemodeError(mcpDiscoveryError, completion.error.message),
+        error: completion.error.message,
         logs: completion.logs,
       }
     : { status: "success", runId, logs: completion.logs };

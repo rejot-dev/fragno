@@ -22,7 +22,6 @@ export const createBackofficeToolContext = (
     forms: context.forms?.runtime,
     integrations: context.integrations?.runtime,
     internal: context.internal?.runtime,
-    mcp: context.mcp?.runtime,
     marketplace: context.marketplace?.runtime,
     packages: context.packages?.runtime,
     otp: context.otp?.runtime,

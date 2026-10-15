@@ -32,7 +32,6 @@ export const EMPTY_BASH_HOST_CONTEXT: BashHostContext = {
   durableHooks: null,
   integrations: null,
   internal: null,
-  mcp: null,
   marketplace: null,
   packages: null,
   otp: null,

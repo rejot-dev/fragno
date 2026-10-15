@@ -118,16 +118,10 @@ class BackofficeWorkflowTransactionHost {
 export class BackofficeWorkflowStepHost {
   readonly #host: RemoteWorkflowStepHost;
   readonly #allowedHooks: readonly RemoteWorkflowAllowedHook[];
-  readonly #explainError: (error: unknown) => unknown;
 
-  constructor(
-    host: RemoteWorkflowStepHost,
-    allowedHooks: readonly RemoteWorkflowAllowedHook[],
-    explainError: (error: unknown) => unknown,
-  ) {
+  constructor(host: RemoteWorkflowStepHost, allowedHooks: readonly RemoteWorkflowAllowedHook[]) {
     this.#host = host;
     this.#allowedHooks = allowedHooks;
-    this.#explainError = explainError;
   }
 
   async do<T>(
@@ -162,8 +156,7 @@ export class BackofficeWorkflowStepHost {
           if (isRemoteWorkflowSuspension(error)) {
             throw new RemoteWorkflowSuspendedError(error.reason);
           }
-          // Explain guest failures before the durable runner persists a retry or terminal error.
-          throw this.#explainError(error);
+          throw error;
         }
       });
     } catch (error) {

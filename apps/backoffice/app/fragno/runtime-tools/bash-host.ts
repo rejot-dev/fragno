@@ -31,7 +31,6 @@ import type { IntegrationsRuntime } from "./families/integrations/integration-to
 import type { InternalRuntime } from "./families/internal";
 import type { JavaScriptRuntime } from "./families/javascript-runtime";
 import type { MarketplaceRuntime } from "./families/marketplace-runtime";
-import type { McpRuntime } from "./families/mcp-runtime";
 import type { OrganizationRuntime } from "./families/organization";
 import type { RegisteredOtpCommandContext } from "./families/otp-runtime";
 import type { PackagesRuntime } from "./families/packages-runtime";
@@ -72,7 +71,6 @@ export type BashHostContext = {
   durableHooks?: { runtime: DurableHooksRuntime } | null;
   integrations: { runtime: IntegrationsRuntime } | null;
   internal?: { runtime: InternalRuntime } | null;
-  mcp?: { runtime: McpRuntime } | null;
   marketplace: { runtime: MarketplaceRuntime } | null;
   packages: { runtime: PackagesRuntime } | null;
   otp: RegisteredOtpCommandContext | null;
@@ -89,7 +87,6 @@ export type InteractiveRuntimeToolContext = Omit<BashHostContext, "automation"> 
   workflow?: BashHostContext["workflow"];
   durableHooks?: BashHostContext["durableHooks"];
   forms?: BashHostContext["forms"];
-  mcp?: BashHostContext["mcp"];
   otp: NonNullable<BashHostContext["otp"]>;
   pi: NonNullable<BashHostContext["pi"]>;
   sandbox?: BashHostContext["sandbox"];

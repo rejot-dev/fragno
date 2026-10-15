@@ -18,6 +18,8 @@ type IntegrationsCodemodeProvider = {
   actions(input: IntegrationsActionsInput): Promise<IntegrationsActionsOutput>;
   /** Execute an explicit connection action with JSON input/output, validated against its live contracts and service permissions. Binary inputs are schema-declared byte arrays; results retain the action's domain and asynchronous semantics. */
   execute(input: IntegrationsExecuteInput): Promise<IntegrationsExecuteOutput>;
+  /** Write a JavaScript module with one typed async function per action of the selected connection, for codemode and saved modules to import. Each function calls integrations.execute; its JSDoc types snapshot the action contracts, so regenerate after the connection's actions change. */
+  generateClient(input: IntegrationsGenerateClientInput): Promise<IntegrationsGenerateClientOutput>;
   /** Perform explicit supported live checks without authorizing the connection or executing service actions. Return timestamped evidence, not blanket health or retained verification state. */
   verify(input: IntegrationsVerifyInput): Promise<IntegrationsVerifyOutput>;
 };
@@ -201,6 +203,15 @@ type IntegrationAction = {
   /** Describes the action's own result, including any asynchronous job handle. */
   outputSchema: IntegrationJsonSchema;
 };
+type IntegrationClient = {
+  path: string;
+  exports: {
+    /** Exported function name. */
+    name: string;
+    /** Action the function executes. */
+    actionId: string;
+  }[];
+};
 type IntegrationConnection = {
   configuration: IntegrationConfigurationStatus;
   authorization: IntegrationAuthorizationStatus;
@@ -277,6 +288,12 @@ type IntegrationsExecuteInput = {
   input: JsonValue;
 };
 type IntegrationsExecuteOutput = JsonValue;
+type IntegrationsGenerateClientInput = {
+  connectionId: IntegrationConnectionId;
+  /** Absolute path of the .js module to write under /workspace. Only a module this operation generated is replaced. */
+  out: string;
+};
+type IntegrationsGenerateClientOutput = IntegrationClient;
 type IntegrationsVerifyInput = {
   connectionId: IntegrationConnectionId;
 };

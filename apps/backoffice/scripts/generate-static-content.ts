@@ -73,7 +73,6 @@ async function findManagedBackofficeStaticFiles() {
   const managedFiles = new Set<string>([
     resolve(CODEMODE_STATIC_DIRECTORY, "system.d.ts"),
     resolve(CODEMODE_STATIC_DIRECTORY, "ui.d.ts"),
-    resolve(CODEMODE_STATIC_DIRECTORY, "sources/mcp.d.ts"),
     TERMINAL_COMMAND_SPECS_PATH,
   ]);
   const providerDirectory = resolve(CODEMODE_STATIC_DIRECTORY, "providers");

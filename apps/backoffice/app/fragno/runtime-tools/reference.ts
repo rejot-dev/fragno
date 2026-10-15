@@ -48,7 +48,7 @@ export type DashboardCommandGroup = {
   commands: string[];
 };
 
-export const pascalCase = (value: string) =>
+const pascalCase = (value: string) =>
   value
     .split(/[^a-zA-Z0-9]+|(?=[A-Z])/)
     .filter(Boolean)
@@ -340,19 +340,6 @@ function renderCodemodeProviderSections(references: readonly RuntimeToolReferenc
     }),
   );
   return { namespaces: [...byNamespace.keys()], providerSections };
-}
-
-/** Renders providers that merge additional namespaces into the base scoped context interface. */
-export function renderCodemodeProviderExtensionTypes(references: readonly RuntimeToolReference[]) {
-  const { namespaces, providerSections } = renderCodemodeProviderSections(references);
-  const scopedProviderEntries = namespaces.map(
-    (namespace) => `  ${namespace}: ${pascalCase(namespace)}CodemodeProvider;`,
-  );
-  return [
-    "// ── Backoffice domain tool providers ───────────────────────────────────",
-    ...providerSections,
-    ["interface BackofficeCodemodeScopedProviders {", ...scopedProviderEntries, "}"].join("\n"),
-  ].join("\n\n");
 }
 
 export const renderCodemodeProviderTypes = (references: readonly RuntimeToolReference[]) => {

@@ -1,10 +1,10 @@
 ---
 name: configuring-integrations
 description: >
-  Integrations: any service the user names, whether an MCP server (each `mcp_<slug>` codemode
-  provider is the connection `mcp#<slug>`), an HTTP API, an inbound webhook, an Open Connector
-  account, or Telegram, Resend, Reson8, or GitHub. Use to connect one, change its auth, credentials,
-  or endpoint, verify, disconnect, call it, or react to its connection changes.
+  Integrations: any service the user names, whether an MCP server, an HTTP API, an inbound webhook,
+  an Open Connector account, or Telegram, Resend, Reson8, or GitHub. Use to connect one, change its
+  auth, credentials, or endpoint, verify, disconnect, call it, generate a typed client for it, or
+  react to its connection changes.
 ---
 
 # Configuring Integrations
@@ -187,6 +187,21 @@ Obtain the user's instruction before any action that writes or sends. `integrati
 once; an output failure arrives after the action has run, so report it rather than repeating the
 call.
 
+### Typed clients
+
+For code that calls a connection repeatedly, generate a client module:
+`integrations.generateClient({ connectionId, out: "/workspace/integrations/<slug>.js" })` writes one
+async function per action, typed with JSDoc from the action contracts, and returns each function's
+`name` and `actionId`. Every function calls `integrations.execute`, with the same validation and
+permissions. Inline codemode imports it by absolute path with
+`await import("/workspace/integrations/<slug>.js")`; saved modules import it by path, including
+relative paths, and `js.check` checks callers against its types. Scheduled workflow programs cannot
+import modules, so call `integrations.execute` there.
+
+Put your own helpers in a separate module that imports the client: regenerating, needed after the
+connection's actions change, replaces the client, and generation refuses to replace any file it did
+not generate.
+
 ### Direct API connections
 
 Direct API connections have two actions. `connection.describe` takes `{}` and returns the stored
@@ -215,10 +230,8 @@ Each server tool is an action with the tool's own input schema. Results are
 shortly after setup is ready; if `actions` is empty, run `integrations.verify`. Tools whose schemas
 cannot be validated are not offered as actions, and `integrations.get` names them in `nextSteps`.
 
-In organization and project codemode, each server with discovered tools is also a typed provider,
-such as `mcp_cloudflare.search_docs({ query })` for `mcp#cloudflare`. Its declarations are in
-`/static/codemode/sources/mcp.d.ts`. Provider calls return the same results and require
-`integrations.execute`; they are the way to call a tool whose schema could not be validated.
+An action's output schema types a successful result's `structuredContent` with the tool's own output
+schema, so a generated client narrows it after checking `isError`.
 
 When an `mcp#` OAuth connection loses its authorization, start consent again without waiting to be
 asked (submit `{ start: true }` when the setup check asks for it, otherwise `{ reauthorize: true }`

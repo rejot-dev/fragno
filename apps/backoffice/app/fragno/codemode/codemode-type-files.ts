@@ -1,11 +1,6 @@
 import { generateBackofficeUiBuilderDeclarations } from "@/backoffice-ui/component-reference-generation";
 import {
-  createMcpCodemodeReferences,
-  type McpCodemodeServer,
-} from "@/fragno/codemode/mcp-codemode-tools";
-import {
   createRuntimeToolReferences,
-  renderCodemodeProviderExtensionTypes,
   renderCodemodeProviderNamespaceTypes,
   renderCodemodeScopedContextTypes,
   type RuntimeToolReference,
@@ -16,7 +11,6 @@ const CODEMODE_TYPES_DIR_PATH = "/static/codemode";
 export const CODEMODE_SYSTEM_DTS_PATH = `${CODEMODE_TYPES_DIR_PATH}/system.d.ts`;
 export const CODEMODE_WORKFLOW_AUTHORING_DTS_PATH = `${CODEMODE_TYPES_DIR_PATH}/workflow-authoring.d.ts`;
 const CODEMODE_UI_DTS_PATH = `${CODEMODE_TYPES_DIR_PATH}/ui.d.ts`;
-export const CODEMODE_MCP_SOURCE_DTS_PATH = `${CODEMODE_TYPES_DIR_PATH}/sources/mcp.d.ts`;
 const CODEMODE_PROVIDER_TYPES_DIR_PATH = `${CODEMODE_TYPES_DIR_PATH}/providers`;
 
 const VALID_DECLARE_CONST_NAME = /^[A-Za-z_$][\w$]*$/u;
@@ -26,18 +20,6 @@ export type CodemodeTypeFile = {
   path: string;
   content: string;
 };
-
-/** Converts absolute /static codemode paths into static collection artifact keys. */
-export function codemodeTypeFilesToStaticArtifacts(files: readonly CodemodeTypeFile[]) {
-  return Object.fromEntries(
-    files.map((file) => {
-      if (!file.path.startsWith("/static/")) {
-        throw new Error(`Codemode type file must live under /static: ${file.path}`);
-      }
-      return [file.path.slice("/static/".length), file.content];
-    }),
-  );
-}
 
 function typePathForNamespace(directory: string, namespace: string) {
   if (!VALID_PROVIDER_FILE_NAME.test(namespace)) {
@@ -119,7 +101,6 @@ export function createCodemodeStaticTypeFiles({
     CODEMODE_WORKFLOW_AUTHORING_DTS_PATH,
     CODEMODE_UI_DTS_PATH,
     ...providerFiles.map((file) => file.path),
-    CODEMODE_MCP_SOURCE_DTS_PATH,
   ];
 
   return [
@@ -134,45 +115,22 @@ export function createCodemodeStaticTypeFiles({
     },
     { path: CODEMODE_UI_DTS_PATH, content: generateBackofficeUiBuilderDeclarations() },
     ...providerFiles,
-    createMcpCodemodeSourceTypeFile([]),
   ];
-}
-
-/** Generates the organization-specific MCP declaration file at its stable static path. */
-export function createMcpCodemodeSourceTypeFile(
-  mcpServers: readonly McpCodemodeServer[],
-): CodemodeTypeFile {
-  const references = createMcpCodemodeReferences(mcpServers);
-  return {
-    path: CODEMODE_MCP_SOURCE_DTS_PATH,
-    content: renderDtsContent(
-      // Agents search here by service name, so the header leads them to the connection itself.
-      "// Each mcp_<slug> provider calls the tools of the MCP server connection mcp#<slug>. Set up,",
-      "// reconfigure, verify, or disconnect that connection with integrations.*; see",
-      "// /static/skills/configuring-integrations/SKILL.md.",
-      renderCodemodeProviderExtensionTypes(references),
-    ),
-  };
 }
 
 /** Generates the complete codemode declaration set for tests and in-memory consumers. */
 export function createCodemodeTypeFiles({
   families,
-  mcpServers = [],
   workflowAuthoringTypes,
 }: {
   families: readonly BackofficeRuntimeToolFamily[];
-  mcpServers?: readonly McpCodemodeServer[];
   workflowAuthoringTypes: string;
 }): CodemodeTypeFile[] {
   return [
-    ...createCodemodeStaticTypeFiles({ families }).filter(
-      ({ path }) => path !== CODEMODE_MCP_SOURCE_DTS_PATH,
-    ),
+    ...createCodemodeStaticTypeFiles({ families }),
     {
       path: CODEMODE_WORKFLOW_AUTHORING_DTS_PATH,
       content: renderDtsContent(workflowAuthoringTypes.trimEnd()),
     },
-    createMcpCodemodeSourceTypeFile(mcpServers),
   ];
 }

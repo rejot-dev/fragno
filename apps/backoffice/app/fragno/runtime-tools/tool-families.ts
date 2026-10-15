@@ -49,7 +49,6 @@ import {
 import type { JavaScriptRuntime } from "./families/javascript-runtime";
 import { marketplaceToolFamily } from "./families/marketplace";
 import type { MarketplaceRuntime } from "./families/marketplace-runtime";
-import type { McpRuntime } from "./families/mcp-runtime";
 import { organizationToolFamily, type OrganizationRuntime } from "./families/organization";
 import { otpToolFamily, type OtpRuntime } from "./families/otp";
 import { packagesToolFamily } from "./families/packages";
@@ -82,7 +81,6 @@ export type CoreBackofficeRuntimeMap = {
   forms?: FormsRuntime;
   cloudflare?: CloudflareRuntime;
   internal?: InternalRuntime;
-  mcp?: McpRuntime;
   marketplace: MarketplaceRuntime | undefined;
   packages: PackagesRuntime | undefined;
   otp?: OtpRuntime;

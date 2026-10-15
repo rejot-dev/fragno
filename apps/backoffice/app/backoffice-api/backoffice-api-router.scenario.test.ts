@@ -7,6 +7,7 @@ import path from "node:path";
 
 import { createBackofficeApiClient } from "@fragno-dev/backoffice-api/v0/client";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+import type { McpTool } from "@fragno-dev/mcp-fragment/types";
 import * as ts from "typescript";
 import { z } from "zod";
 
@@ -23,6 +24,7 @@ vi.mock("cloudflare:workers", () => workers);
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
+import { STATIC_CODEMODE_CONTENT } from "@/files/content/static-codemode";
 import { backofficeExecutionTokenResultSchema } from "@/fragno/auth/execution-token";
 import {
   defineBackofficeScenario,
@@ -30,13 +32,6 @@ import {
   type BackofficeScenarioContext,
   type BackofficeScenarioStep,
 } from "@/fragno/automation/scenario";
-import { codemodeRunnerFor } from "@/fragno/codemode/codemode-object-execute";
-import { runBackofficeCodemode } from "@/fragno/codemode/execute";
-import { createCodemodeStaticArtifacts } from "@/fragno/codemode/static-codemode-artifacts";
-import type { McpListServersOutput } from "@/fragno/runtime-tools/families/mcp-runtime";
-import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
-import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
-import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 import { action as exchangeAction } from "@/routes/api/backoffice-execution-token";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
@@ -307,7 +302,7 @@ async function runApiScenario(
 }
 
 describe("Backoffice API v0 SQLite scenarios", () => {
-  test("MCP metadata survives refresh and listing, and Codemode types match tool results", async () => {
+  test("MCP metadata survives refresh and listing, and generated clients type tool results", async () => {
     const tools: {
       name: string;
       outputSchema: Record<string, unknown> | undefined;
@@ -351,6 +346,8 @@ describe("Backoffice API v0 SQLite scenarios", () => {
         value: { value: "root", next: null },
       },
       { name: "untyped", outputSchema: undefined, value: "text-only" },
+      // A reserved word cannot name the generated function.
+      { name: "delete", outputSchema: undefined, value: "deleted" },
     ];
     const icons = [
       {
@@ -407,7 +404,7 @@ describe("Backoffice API v0 SQLite scenarios", () => {
     }
 
     try {
-      await runApiScenario("MCP metadata through the public API and generated Codemode", (then) => [
+      await runApiScenario("MCP metadata through the public API and generated clients", (then) => [
         then("connect and verify a real MCP server through the public client", async (ctx) => {
           const client = clientFor(ctx);
           const scope = { kind: "org" as const, orgId: ctx.vars.orgId };
@@ -429,7 +426,9 @@ describe("Backoffice API v0 SQLite scenarios", () => {
             .for(execution.scope)
             .http.fetchAuthorized(new Request("https://mcp.do/api/mcp/servers"), { execution });
           assert(listed.ok, await listed.clone().text());
-          const { servers } = (await listed.json()) as McpListServersOutput;
+          const { servers } = (await listed.json()) as {
+            servers: { slug: string; cache: { tools: McpTool[] | null } | null }[];
+          };
           const cached = servers.find(({ slug }) => slug === "metadata")?.cache?.tools;
           assert(cached);
           expect(cached).toHaveLength(tools.length);
@@ -456,45 +455,84 @@ describe("Backoffice API v0 SQLite scenarios", () => {
           }
         }),
         then(
-          "generated declarations type the structured content and isolate schema references",
+          "a generated client types each tool's structured content and isolates schema references",
           async (ctx) => {
-            const generated = await createCodemodeStaticArtifacts({
-              objects: ctx.runtime.objects,
-              execution: createBackofficeSystemExecution({ kind: "org", orgId: ctx.vars.orgId }),
+            const client = clientFor(ctx);
+            const scope = { kind: "org" as const, orgId: ctx.vars.orgId };
+            const generated = await client.call(scope, "integrations.generateClient", {
+              connectionId: "mcp#metadata",
+              out: "/workspace/integrations/metadata.js",
             });
-            const declarations = generated.artifacts["codemode/sources/mcp.d.ts"];
-            assert(declarations);
+            expect(generated).toEqual({
+              path: "/workspace/integrations/metadata.js",
+              exports: tools.map(({ name }) => ({
+                name: name === "delete" ? "delete_" : name,
+                actionId: name,
+              })),
+            });
             const files = new Map([
-              ["/mcp.d.ts", declarations],
+              ...Object.entries(STATIC_CODEMODE_CONTENT).map(
+                ([staticPath, content]) => [`/static/${staticPath}`, String(content)] as const,
+              ),
               [
-                "/check.ts",
-                `async function check() {
-              const object = await mcp_metadata.object({});
-              const value: string = object.structuredContent.value;
-              const array: number[] = (await mcp_metadata.array({})).structuredContent;
-              const flag: boolean = (await mcp_metadata.flag({})).structuredContent;
-              const nil: null = (await mcp_metadata.nil({})).structuredContent;
-              const tree = (await mcp_metadata.tree({})).structuredContent;
-              const nested: string = tree.next?.value ?? tree.value;
-              // @ts-expect-error The object schema's Entry must not collide with the array's Entry.
-              const wrong: number = object.structuredContent.value;
-              // @ts-expect-error outputSchema describes structuredContent, not the whole result.
-              const unwrapped: string = object.value;
-              const untyped = await mcp_metadata.untyped({});
-              // @ts-expect-error Tools without outputSchema retain unknown result fields.
-              const invented: string = untyped.structuredContent;
-            }`,
+                generated.path,
+                await client.call(scope, "state.readFile", { path: generated.path }),
+              ],
+              [
+                "/workspace/check.js",
+                `import { object, array, flag, nil, tree, untyped, delete_ } from "/workspace/integrations/metadata.js";
+              const result = await object({});
+              if (!result.isError) {
+                /** @type {string} */ const value = result.structuredContent.value;
+                // @ts-expect-error The object schema's Entry must not collide with the array's Entry.
+                /** @type {number} */ const wrong = result.structuredContent.value;
+              }
+              // @ts-expect-error Tool errors carry no structured content contract.
+              /** @type {string} */ const unchecked = result.structuredContent.value;
+              const listed = await array({});
+              if (!listed.isError) {
+                /** @type {number[]} */ const numbers = listed.structuredContent;
+              }
+              const flagged = await flag({});
+              if (!flagged.isError) {
+                /** @type {boolean} */ const value = flagged.structuredContent;
+              }
+              const empty = await nil({});
+              if (!empty.isError) {
+                /** @type {null} */ const value = empty.structuredContent;
+              }
+              const linked = await tree({});
+              if (!linked.isError) {
+                /** @type {string} */ const value = linked.structuredContent.next?.value ?? linked.structuredContent.value;
+              }
+              const text = await untyped({});
+              // @ts-expect-error Tools without outputSchema retain unknown structured content.
+              /** @type {string} */ const invented = text.structuredContent;
+              await delete_({});
+              // @ts-expect-error Inputs follow the tool's input schema.
+              await delete_("everything");`,
               ],
             ]);
             const options: ts.CompilerOptions = {
+              allowJs: true,
+              checkJs: true,
               noEmit: true,
               strict: true,
               target: ts.ScriptTarget.ESNext,
+              module: ts.ModuleKind.ESNext,
+              moduleResolution: ts.ModuleResolutionKind.Bundler,
+              // Static provider declarations repeat shared types, as js.check tolerates.
+              skipLibCheck: true,
               types: [],
             };
             const host = ts.createCompilerHost(options);
             const program = ts.createProgram([...files.keys()], options, {
               ...host,
+              fileExists: (name) => files.has(name) || host.fileExists(name),
+              directoryExists: (name) =>
+                [...files.keys()].some((file) => file.startsWith(`${name}/`)) ||
+                host.directoryExists?.(name) === true,
+              readFile: (name) => files.get(name) ?? host.readFile(name),
               getSourceFile: (name, languageVersion, onError) => {
                 const source = files.get(name);
                 return source === undefined
@@ -505,46 +543,13 @@ describe("Backoffice API v0 SQLite scenarios", () => {
             expect(
               ts
                 .getPreEmitDiagnostics(program)
-                .map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n")),
+                .map(
+                  (diagnostic) =>
+                    `${diagnostic.file?.fileName}: ${ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n")}`,
+                ),
             ).toEqual([]);
           },
         ),
-        then("generated providers return the same result envelopes at runtime", async (ctx) => {
-          const execution = createBackofficeSystemExecution({ kind: "org", orgId: ctx.vars.orgId });
-          const toolContext = createBackofficeToolContext(
-            createCodemodeRouteBackedRuntimeContext({
-              runtime: ctx.runtime.services,
-              kernel: new BackofficeKernel(ctx.runtime.services),
-              execution,
-              billingOrganizationId: null,
-            }),
-          );
-          const result = await runBackofficeCodemode({
-            codemode: codemodeRunnerFor(
-              ctx.runtime.objects.codemode.for(execution.scope).commands,
-              execution,
-            ),
-            toolContext,
-            families: runtimeToolFamilies,
-            code: `async () => ({
-              object: (await mcp_metadata.object({})).structuredContent,
-              array: (await mcp_metadata.array({})).structuredContent,
-              flag: (await mcp_metadata.flag({})).structuredContent,
-              nil: (await mcp_metadata.nil({})).structuredContent,
-              tree: (await mcp_metadata.tree({})).structuredContent,
-              untyped: (await mcp_metadata.untyped({})).content,
-            })`,
-          });
-          expect(result.error).toBeUndefined();
-          expect(result.result).toEqual({
-            object: { value: "hello" },
-            array: [1, 2],
-            flag: false,
-            nil: null,
-            tree: { value: "root", next: null },
-            untyped: [{ type: "text", text: JSON.stringify("text-only") }],
-          });
-        }),
       ]);
     } finally {
       await handler.close();

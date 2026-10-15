@@ -358,6 +358,29 @@ export const integrationActionSchema = z
 /** Integration action metadata contains contracts but no executable handler. */
 export type IntegrationAction = z.output<typeof integrationActionSchema>;
 
+export const integrationGenerateClientInputSchema = integrationConnectionInputSchema.extend({
+  out: z
+    .string()
+    .trim()
+    .min(1)
+    .describe(
+      "Absolute path of the .js module to write under /workspace. Only a module this operation generated is replaced.",
+    ),
+});
+
+/** Generated clients are snapshots of the connection's action contracts. */
+export const integrationClientSchema = z
+  .strictObject({
+    path: z.string(),
+    exports: z.array(
+      z.strictObject({
+        name: z.string().describe("Exported function name."),
+        actionId: z.string().describe("Action the function executes."),
+      }),
+    ),
+  })
+  .meta({ id: "IntegrationClient" });
+
 export const integrationsOperations = {
   "integrations.discover": {
     description:
@@ -421,6 +444,13 @@ export const integrationsOperations = {
     permissions: [BACKOFFICE_PERMISSION.integrations.execute],
     input: integrationExecuteInputSchema,
     output: jsonValueSchema.meta({ codemodeType: "JsonValue" }),
+  },
+  "integrations.generateClient": {
+    description:
+      "Write a JavaScript module with one typed async function per action of the selected connection, for codemode and saved modules to import. Each function calls integrations.execute; its JSDoc types snapshot the action contracts, so regenerate after the connection's actions change.",
+    permissions: [BACKOFFICE_PERMISSION.integrations.read, BACKOFFICE_PERMISSION.upload.modify],
+    input: integrationGenerateClientInputSchema,
+    output: integrationClientSchema,
   },
   "integrations.verify": {
     description:

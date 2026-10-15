@@ -10,10 +10,6 @@ import {
 import type { NpmDependencyMap } from "@/backoffice-runtime/dynamic-workers/npm-dependencies";
 import { withBackofficeUiBuilder } from "@/backoffice-ui/builder";
 import {
-  createMcpCodemodeProviders,
-  explainMcpCodemodeError,
-} from "@/fragno/codemode/mcp-codemode-tools";
-import {
   createBackofficeCodemodeProviders,
   executeBackofficeRuntimeTool,
 } from "@/fragno/runtime-tools/runtime-tools";
@@ -170,16 +166,11 @@ const createBackofficeScopedCodemodeProvider = ({
   },
 });
 
-export async function createBackofficeCodemodeResolvedProviders({
+export function createBackofficeCodemodeResolvedProviders({
   families,
   toolContext,
   toolCalls,
-}: BackofficeCodemodeProvidersInput): Promise<{
-  providers: ResolvedProvider[];
-  mcpDiscoveryError: Error | null;
-}> {
-  const providers: ResolvedProvider[] = [];
-
+}: BackofficeCodemodeProvidersInput): ResolvedProvider[] {
   const tools = families.flatMap((family) => {
     if (family.isAvailable && !family.isAvailable(toolContext)) {
       return [];
@@ -187,30 +178,10 @@ export async function createBackofficeCodemodeResolvedProviders({
     return [...family.tools];
   });
 
-  providers.push(
-    ...createBackofficeCodemodeProviders({ tools, context: toolContext, toolCalls }).map(
-      (provider) => resolveProvider(provider),
-    ),
-  );
-
-  providers.push(
-    resolveProvider(
-      createBackofficeScopedCodemodeProvider({ families, context: toolContext, toolCalls }),
-    ),
-  );
-
-  let mcpDiscoveryError: Error | null = null;
-  if (toolContext.runtimes.mcp) {
-    const discovery = await createMcpCodemodeProviders({
-      runtime: toolContext.runtimes.mcp,
-      context: toolContext,
-      toolCalls,
-    });
-    providers.push(...discovery.providers.map((provider) => resolveProvider(provider)));
-    mcpDiscoveryError = discovery.discoveryError;
-  }
-
-  return { providers, mcpDiscoveryError };
+  return [
+    ...createBackofficeCodemodeProviders({ tools, context: toolContext, toolCalls }),
+    createBackofficeScopedCodemodeProvider({ families, context: toolContext, toolCalls }),
+  ].map((provider) => resolveProvider(provider));
 }
 
 /** Resolves the in-process test compiler or private production compiler service. */
@@ -239,11 +210,7 @@ export const runBackofficeCodemode = async ({
   const { modules } = state
     ? await readSavedModuleImports({ state, program: { kind: "inline", code } })
     : { modules: {} };
-  const { providers, mcpDiscoveryError } = await createBackofficeCodemodeResolvedProviders({
-    families,
-    toolContext,
-    toolCalls,
-  });
+  const providers = createBackofficeCodemodeResolvedProviders({ families, toolContext, toolCalls });
   const { runId, completion } = await executeCodemodeInObject(
     codemode,
     {
@@ -262,7 +229,7 @@ export const runBackofficeCodemode = async ({
     return {
       runId,
       result: undefined,
-      error: explainMcpCodemodeError(mcpDiscoveryError, completion.error.message),
+      error: completion.error.message,
       logs: completion.logs,
       toolCalls,
     };
