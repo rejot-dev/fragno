@@ -63,6 +63,8 @@ export type BackofficeCodemodeExecuteResult = ExecuteResult & {
   runId: string;
   toolCalls: BackofficeRuntimeToolCall[];
   workflowDefinition?: BackofficeCodemodeWorkflowDefinition;
+  /** Saved modules the code imported; a workflow it defines pins these when scheduled. */
+  modules: Record<string, string>;
 };
 
 type ScopedCodemodeCallInput = {
@@ -208,7 +210,10 @@ export const runBackofficeCodemode = async ({
   const state = toolContext.runtimes.state;
   // Without a filesystem, saved-module imports stay unresolved and fail when the code runs.
   const { modules } = state
-    ? await readSavedModuleImports({ state, program: { kind: "inline", code } })
+    ? await readSavedModuleImports({
+        readFile: (path) => state.readFile(path),
+        program: { kind: "inline", code },
+      })
     : { modules: {} };
   const providers = createBackofficeCodemodeResolvedProviders({ families, toolContext, toolCalls });
   const { runId, completion } = await executeCodemodeInObject(
@@ -232,16 +237,7 @@ export const runBackofficeCodemode = async ({
       error: completion.error.message,
       logs: completion.logs,
       toolCalls,
-    };
-  }
-  if (completion.workflowDefinition && Object.keys(modules).length > 0) {
-    // Scheduled workflows re-evaluate only their own source on every tick.
-    return {
-      runId,
-      result: undefined,
-      error: "Workflow programs cannot import saved modules; call providers directly.",
-      logs: completion.logs,
-      toolCalls,
+      modules,
     };
   }
   return {
@@ -250,5 +246,6 @@ export const runBackofficeCodemode = async ({
     logs: completion.logs,
     ...(completion.workflowDefinition ? { workflowDefinition: completion.workflowDefinition } : {}),
     toolCalls,
+    modules,
   };
 };

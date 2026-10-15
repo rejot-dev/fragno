@@ -36,6 +36,7 @@ const createSystemWorkflowOptions = () => ({
   allowedHooks: [],
   families: runtimeToolFamilies,
   toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
+  modules: {},
 });
 
 describe("codemode workflow execution", () => {
@@ -264,6 +265,7 @@ describe("codemode workflow execution", () => {
           remote,
           env,
           allowedHooks: [],
+          modules: {},
           families: runtimeToolFamilies,
           toolContext: createTrustedSystemBackofficeToolContext({
             runtimes: {},
@@ -437,6 +439,7 @@ describe("codemode workflow execution", () => {
         env,
         {
           allowedHooks: [],
+          modules: {},
           families: [
             defineBackofficeRuntimeToolFamily({
               namespace: "math",
@@ -1015,6 +1018,7 @@ describe("codemode workflow execution", () => {
         env,
         {
           allowedHooks: [],
+          modules: {},
           families: runtimeToolFamilies,
           toolContext: createTrustedSystemBackofficeToolContext({
             runtimes: {},

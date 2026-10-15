@@ -51,7 +51,7 @@ function terminal(ctx: BackofficeScenarioContext) {
   return createInteractiveBashHost({ context }).bash;
 }
 
-test("a generated MCP client is imported by codemode and saved modules, and calls the connection", async () => {
+test("a generated MCP client is imported by codemode, saved modules, and pinned workflows", async () => {
   const mcpServer = createTestMcpServer({
     protocolVersion: "2026-07-28",
     enableJsonResponse: true,
@@ -102,6 +102,8 @@ test("a generated MCP client is imported by codemode and saved modules, and call
             }),
         },
         env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(codemodeServer) } },
+        // The second workflow instance runs the edited client and fails.
+        options: { allowErroredWorkflows: true },
         setup: ({ given }) => [
           given.organization.exists({ id: scope.orgId }),
           given.codemode.writeFile({
@@ -115,6 +117,20 @@ test("a generated MCP client is imported by codemode and saved modules, and call
             content: `import { echo } from "../integrations/tools.js";
 const result = await echo({ text: "saved" });
 if (!result.isError) console.log(result.structuredContent.echoed);`,
+          }),
+          given.codemode.writeFile({
+            orgId: scope.orgId,
+            path: "/workspace/automations/echo-client.workflow.js",
+            content: `defineWorkflow({ name: "echo-client" }, async (_event, step) => {
+  const echoed = async (text) => {
+    const { echo } = await import(${JSON.stringify(clientPath)});
+    return (await echo({ text })).structuredContent;
+  };
+  const first = await step.do("first", async () => await echoed("first"));
+  await step.sleep("pause", "1 minute");
+  const second = await step.do("second", async () => await echoed("second"));
+  return { first, second };
+});`,
           }),
           given.codemode.writeFile({
             orgId: scope.orgId,
@@ -234,18 +250,40 @@ console.log(Object.keys(tools).join(","));`,
                   scope,
                   code: 'async () => await import("/workspace/integrations/missing.js")',
                 }),
-              ).rejects.toThrow("names a missing file: /workspace/integrations/missing.js");
-              await expect(
-                ctx.runCodemode({
-                  scope,
-                  code: `defineWorkflow({ name: "imports-client" }, async () => {
-                    const { echo } = await import(${JSON.stringify(clientPath)});
-                    return await echo({ text: "scheduled" });
-                  })`,
-                }),
-              ).rejects.toThrow("Workflow programs cannot import saved modules");
+              ).rejects.toThrow("'/workspace/integrations/missing.js' cannot be read");
             },
           ),
+          when.codemode.run({
+            scope,
+            code: `async () => await workflow.createInstance({
+              path: "/workspace/automations/echo-client.workflow.js",
+              instanceId: "echo-client-1",
+            })`,
+          }),
+          then.workflow.steps({ remoteWorkflowName: "echo-client", include: ["first"] }),
+          // The instance pinned the client when it was created; this edit reaches later instances only.
+          when.codemode.run({
+            scope,
+            code: `async () => await state.writeFile({
+              path: ${JSON.stringify(clientPath)},
+              content: 'export const echo = () => { throw new Error("edited after scheduling"); };',
+            })`,
+          }),
+          when.time.advance("2 minutes"),
+          then.workflow.instance({
+            remoteWorkflowName: "echo-client",
+            status: "complete",
+            output: { first: { echoed: "first" }, second: { echoed: "second" } },
+          }),
+          when.codemode.run({
+            scope,
+            code: `async () => await workflow.createInstance({
+              path: "/workspace/automations/echo-client.workflow.js",
+              instanceId: "echo-client-2",
+            })`,
+          }),
+          when.time.advance("2 minutes"),
+          then.workflow.instance({ remoteWorkflowName: "echo-client", status: "errored" }),
         ],
       }),
     );

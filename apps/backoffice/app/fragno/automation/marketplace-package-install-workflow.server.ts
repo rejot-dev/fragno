@@ -747,6 +747,8 @@ export function defineMarketplacePackageInstallWorkflow(
             try {
               prepared = prepareCodemodeWorkflowInstance({
                 code,
+                // The workflow comes from the package, not the workspace it installs into.
+                modules: {},
                 filename: MARKETPLACE_INSTALL_WORKFLOW_PATH,
                 instanceId: installationWorkflowInstanceId,
               });

@@ -2,7 +2,6 @@ import { CODEMODE_LIMITS } from "../codemode-limits";
 import { runWithCodemodeCompilerAdmission } from "../compiler/codemode-compiler-admission";
 import type { CompiledWorker, WorkerCompiler } from "../compiler/compile-worker";
 import { createCodemodeFunctionSource } from "../guest/codemode-function-source";
-import { createCodemodeProviderProxySource } from "../guest/codemode-guest-api-source";
 import { createCodemodeModuleInvocationSource } from "../guest/codemode-module-invocation-source";
 import { createCodemodeModuleSource } from "../guest/codemode-module-source";
 import {
@@ -22,6 +21,7 @@ import {
   type CodemodeActivation,
   type CodemodeCapabilities,
   type CodemodeCompletion,
+  sourceModuleFiles,
 } from "./codemode-activation-contract";
 import { CodemodeInterruptedError, encodeCodemodeError } from "./codemode-errors";
 import { CODEMODE_WORKER_RUNTIME } from "./codemode-worker-bundle";
@@ -127,9 +127,8 @@ export async function executeCodemodeActivation(
       warnings: [],
     };
   } else {
-    const sourceModules = activation.kind === "workflow" ? {} : activation.modules;
     const sources = "code" in activation ? [activation.code] : [];
-    const sourceBytes = [...sources, ...Object.values(sourceModules)].reduce(
+    const sourceBytes = [...sources, ...Object.values(activation.modules)].reduce(
       (size, source) => size + new TextEncoder().encode(source).byteLength,
       0,
     );
@@ -139,17 +138,14 @@ export async function executeCodemodeActivation(
     if (!services.compile) {
       throw new Error("CODEMODE_COMPILER_UNAVAILABLE");
     }
-    // Compilers resolve an absolute specifier against the project root, which has no leading slash.
-    const files: Record<string, string> = Object.fromEntries(
-      Object.entries(sourceModules).map(([path, source]) => [path.slice(1), source]),
-    );
+    const files = sourceModuleFiles(activation.modules);
     if (Object.hasOwn(files, "executor.js")) {
       throw new Error("CODEMODE_SOURCE_MODULE_PATH_RESERVED: /executor.js");
     }
     if (activation.kind === "workflow") {
       files["executor.js"] = createCodemodeWorkflowSource({
         code: activation.code.trim().replace(/;*$/, ""),
-        providerProxySource: createCodemodeProviderProxySource(providers),
+        providers,
       });
     } else if (activation.kind === "module") {
       files["executor.js"] = createCodemodeModuleSource(

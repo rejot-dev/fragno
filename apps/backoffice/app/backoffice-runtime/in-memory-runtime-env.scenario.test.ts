@@ -56,6 +56,7 @@ test("in-memory codemode returns host-realm values through a Backoffice scenario
             logs: [],
             workflowDefinition: undefined,
             toolCalls: [],
+            modules: {},
           });
           expect(Object.getPrototypeOf(result.result)).toBe(Object.prototype);
           expect(Object.getPrototypeOf((result.result as { nested: object }).nested)).toBe(

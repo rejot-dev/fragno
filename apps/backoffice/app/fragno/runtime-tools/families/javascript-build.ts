@@ -53,7 +53,7 @@ export async function buildJavaScriptModuleFile(input: {
     throw new Error("CODEMODE_SOURCE_LIMIT_EXCEEDED");
   }
   const { modules } = await readSavedModuleImports({
-    state: input.state,
+    readFile: (modulePath) => input.state.readFile(modulePath),
     program: { kind: "file", path },
   });
   const built = await buildBackofficeJavaScriptModule({

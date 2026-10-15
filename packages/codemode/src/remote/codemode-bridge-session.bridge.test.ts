@@ -100,10 +100,10 @@ function workflowHost(
 }
 const base = {
   dependencies: {},
+  modules: {},
   timeoutMs: 10_000,
   providers: [{ name: "store", tools: ["write"] }],
 };
-const runBase = { ...base, modules: {} };
 /** Saved programs compile at their own path; inline code has none. */
 function program(kind: "immediate" | "module", code: string, modules: Record<string, string> = {}) {
   return kind === "module"
@@ -424,7 +424,7 @@ test("the bridge rejects mismatched application versions and accepts only one ex
     const request = {
       protocolVersion: 2 as const,
       executionId: crypto.randomUUID(),
-      activation: { ...runBase, kind: "immediate" as const, providers: [], code: "42" },
+      activation: { ...base, kind: "immediate" as const, providers: [], code: "42" },
     };
     try {
       await expect(
@@ -453,7 +453,7 @@ test("ordinary Worker executes source and calls Node without a Durable Object", 
   const host = providerHost();
   const completion = await execute(
     {
-      ...runBase,
+      ...base,
       kind: "immediate",
       code: 'async () => { console.log("guest log"); return await store.write({ saved: true }); }',
     },
@@ -471,7 +471,7 @@ test("ordinary Worker executes source and calls Node without a Durable Object", 
 test("guest console calls are stored per channel with the guest's clock", async () => {
   const completion = await execute(
     {
-      ...runBase,
+      ...base,
       kind: "immediate",
       code: `async () => {
         console.log("plain", 1);
@@ -501,7 +501,7 @@ test("tool values survive native RPC and Cap'n Web without nested JSON codecs", 
   const host = providerHost();
   const completion = await execute(
     {
-      ...runBase,
+      ...base,
       kind: "immediate",
       code: `async () => {
     const value = await store.write({ date: new Date("2026-10-05"), bigint: 123n, missing: undefined, nan: NaN, bytes: new Uint16Array([256, 65535]), buffer: new Uint8Array([1, 2]).buffer, tag: { __codemode_binary_v1__: "Uint8Array", data: "not encoded" } });
@@ -578,7 +578,7 @@ test.each([
 test("object throws preserve string message properties", async () => {
   expect(
     await execute(
-      { ...runBase, kind: "immediate", code: '() => { throw { message: "object boom" }; }' },
+      { ...base, kind: "immediate", code: '() => { throw { message: "object boom" }; }' },
       providerHost(),
     ),
   ).toMatchObject({ status: "failed", error: { message: "object boom" } });
@@ -587,7 +587,7 @@ test.each([
   { label: "empty string", code: '() => { throw ""; }' },
   { label: "empty Error message", code: "() => { throw new Error(); }" },
 ])("$label throws use a non-empty execution failure", async ({ code }) => {
-  expect(await execute({ ...runBase, kind: "immediate", code }, providerHost())).toMatchObject({
+  expect(await execute({ ...base, kind: "immediate", code }, providerHost())).toMatchObject({
     status: "failed",
     error: { message: "CODEMODE_EXECUTION_FAILED" },
   });
@@ -615,7 +615,7 @@ test("guest cannot fetch or inspect host credentials", async () => {
   expect(
     await execute(
       {
-        ...runBase,
+        ...base,
         kind: "immediate",
         code: 'async () => { try { await fetch("https://example.com"); } catch { return { denied: true, credential: globalThis.SANDBOX_API_KEY }; } }',
       },
@@ -627,7 +627,7 @@ test("unauthorized clients never execute a provider operation", async () => {
   const host = providerHost();
   await expect(
     createCodemodeNodeExecutor({ ...server, apiKey: "incorrect" })(
-      { ...runBase, kind: "immediate", code: '() => store.write("wrong")' },
+      { ...base, kind: "immediate", code: '() => store.write("wrong")' },
       host,
     ),
   ).rejects.toThrow("HTTP 401");
@@ -673,7 +673,7 @@ test.each(["immediate", "workflow"] as const)(
             providers,
             code: `async (_event, step) => await step.do("restricted", ${callback})`,
           }
-        : { ...runBase, kind, providers, code: callback },
+        : { ...base, kind, providers, code: callback },
       host,
     );
     expect(completion).toMatchObject({
@@ -706,7 +706,7 @@ test.each(["immediate", "workflow"] as const)(
             providers,
             code: 'async (_event, step) => await step.do("restricted", async () => await store.write("wrong"))',
           }
-        : { ...runBase, kind, providers, code: 'async () => await store.write("wrong")' },
+        : { ...base, kind, providers, code: 'async () => await store.write("wrong")' },
       host,
     );
     expect(completion).toMatchObject({
@@ -722,7 +722,7 @@ test("unregistered tools cannot gain authority through remote property lookup", 
   expect(
     await execute(
       {
-        ...runBase,
+        ...base,
         kind: "immediate",
         providers: [{ name: "store", tools: ["write", "constructor"] }],
         code: "async () => await store.constructor()",
@@ -753,6 +753,19 @@ test("a workflow callback calls Node reentrantly and nested steps receive their 
   expect(completion).toMatchObject({ status: "completed", value: "nested" });
   expect(host.writes).toEqual(["nested"]);
   expect(scopes).toEqual([null, { stepKey: "do:outer", parentStepKey: null, depth: 0 }]);
+});
+test("a workflow step imports a source module that reaches providers through globals", async () => {
+  const host = providerHost(workflowHost());
+  const completion = await execute(
+    {
+      ...workflowBase,
+      code: 'async (_event, step) => await step.do("save", async () => { const { save } = await import("/lib/save.js"); return await save("workflow"); })',
+      modules: { "/lib/save.js": "export const save = (value) => store.write(value);" },
+    },
+    host,
+  );
+  expect(completion).toMatchObject({ status: "completed", value: "workflow" });
+  expect(host.writes).toEqual(["workflow"]);
 });
 test.each(["logs", "workflowProgram", "RpcTarget"])(
   "workflow rejects generated binding provider name %s before compilation",
@@ -964,7 +977,7 @@ test.each(["resolve", "reject"] as const)(
         expect(error).toBeInstanceOf(CodemodeInterruptedError);
       }
       const replacement = {
-        ...runBase,
+        ...base,
         kind: "immediate" as const,
         code: 'async () => await store.write("recovered")',
       };
@@ -1053,7 +1066,7 @@ test.each(["completed", "failed", "suspended"] as const)(
             )
           : await executeWarning(
               {
-                ...runBase,
+                ...base,
                 kind: "immediate",
                 code: `async () => { ${logSource} ${status === "failed" ? 'throw new Error("guest failure");' : "return 42;"} }`,
               },
@@ -1083,7 +1096,7 @@ test.each([0, 1])(
     }));
     try {
       const completion = await createCodemodeNodeExecutor(warningServer)(
-        { ...runBase, kind: "immediate", code: "() => 42" },
+        { ...base, kind: "immediate", code: "() => 42" },
         providerHost(),
       );
       expect(completion).toMatchObject({ status: "completed", value: 42 });
@@ -1098,7 +1111,7 @@ test.each([0, 1])(
 test("log floods fail with bounded output", async () => {
   const completion = await execute(
     {
-      ...runBase,
+      ...base,
       kind: "immediate",
       code: '() => { for (let i = 0; i < 10000; i++) console.log("message"); }',
     },

@@ -41,6 +41,7 @@ describe("codemode invocation preparation", () => {
 
     const preparedInstances = filenames.map((filename, index) =>
       prepareCodemodeWorkflowInstance({
+        modules: {},
         code: SOURCE,
         dependencies: { zod: "4.3.5" },
         filename,
@@ -55,6 +56,7 @@ describe("codemode invocation preparation", () => {
         instanceId: `instance-${index + 1}`,
         program: {
           code: SOURCE,
+          modules: {},
           dependencies: { zod: "4.3.5" },
           workflowName: "canonical-demo",
           filename: filenames[index],
@@ -65,6 +67,7 @@ describe("codemode invocation preparation", () => {
 
   test("combines a prepared program with trusted invocation context", () => {
     const prepared = prepareCodemodeWorkflowInstance({
+      modules: {},
       code: SOURCE,
       filename: "/workspace/automations/canonical-demo.workflow.js",
       instanceId: "instance-1",
@@ -97,6 +100,7 @@ describe("codemode invocation preparation", () => {
 
   test("preserves internal workflow completion metadata while validating canonical fields", () => {
     const prepared = prepareCodemodeWorkflowInstance({
+      modules: {},
       code: SOURCE,
       filename: "/workspace/automations/canonical-demo.workflow.js",
       instanceId: "instance-1",
@@ -133,6 +137,7 @@ describe("codemode invocation preparation", () => {
 
   test("rejects trusted invocation context from a different scope", () => {
     const prepared = prepareCodemodeWorkflowInstance({
+      modules: {},
       code: SOURCE,
       filename: "/workspace/automations/canonical-demo.workflow.js",
       instanceId: "instance-1",

@@ -43,6 +43,7 @@ describe("executeWorkflowCodemodeAutomation", () => {
       { name: "codemode-workflow-capabilities-test" },
       async (workflowEvent, remote) =>
         await executeWorkflowCodemodeAutomation({
+          modules: {},
           env,
           workflowEvent,
           remote,
@@ -161,6 +162,7 @@ describe("executeWorkflowCodemodeAutomation", () => {
       { name: "codemode-workflow-egress-test" },
       async (workflowEvent, remote) =>
         await executeWorkflowCodemodeAutomation({
+          modules: {},
           env,
           workflowEvent,
           remote,

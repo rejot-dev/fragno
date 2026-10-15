@@ -411,6 +411,7 @@ describe("Pi execCodeMode tool", () => {
       const params = codemodeWorkflowParamsSchema.parse(event.payload);
       const result = await runBackofficeCodemodeWorkflow({
         code: params.program.code,
+        modules: params.program.modules,
         dependencies: params.program.dependencies,
         event: {
           id: event.instanceId,

@@ -77,6 +77,7 @@ describe("runBackofficeCodemode", () => {
         error: "Backoffice codemode compiler service is not configured.",
         logs: [],
         toolCalls: [],
+        modules: {},
       });
     } finally {
       await runtime.cleanup();

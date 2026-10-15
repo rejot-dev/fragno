@@ -32,7 +32,7 @@ ownership, and configuration controls.
   JSDoc-typed function per action, each calling `execute`, so codemode and saved modules import
   typed calls. It renders from `actions`, so every source gets clients without source-specific code;
   the types snapshot the contracts at generation time. Generation replaces only a file whose header
-  marks it as generated.
+  marks it as generated. Workflow instances pin the saved modules they import when created.
 - `verify({ connectionId })`: explicit supported live checks, returning timestamped evidence.
 - `setup({ kind: "check", connectionId })`: read current source-owned setup requirements.
   `setup({ kind: "input", connectionId, input })` submits direct JSON values to the same operation.

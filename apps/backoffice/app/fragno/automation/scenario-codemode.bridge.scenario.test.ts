@@ -168,6 +168,7 @@ test("scenario TanStack DB exposes an in-flight step.do lifecycle", async () => 
             subject: { orgId: "org-1" },
           };
           const prepared = prepareCodemodeWorkflowInstance({
+            modules: {},
             code: await ctx.files.forOrg("org-1").readFile(workflowPath, "utf-8"),
             filename: workflowPath,
             instanceId: "tanstack-live-step-run",
