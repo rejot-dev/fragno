@@ -83,6 +83,7 @@ export const BACKOFFICE_PERMISSION = {
     create: { namespace: "otp", permission: "create" },
   },
   pi: {
+    manage: { namespace: "pi", permission: "manage" },
     modify: { namespace: "pi", permission: "modify" },
     read: { namespace: "pi", permission: "read" },
   },

@@ -231,6 +231,10 @@ type BackofficePermissionRequirement =
     }
   | {
       namespace: "pi";
+      permission: "manage";
+    }
+  | {
+      namespace: "pi";
       permission: "modify";
     }
   | {
