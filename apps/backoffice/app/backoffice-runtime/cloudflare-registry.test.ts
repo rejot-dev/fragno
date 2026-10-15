@@ -57,10 +57,14 @@ describe("createCloudflareBackofficeObjectRegistry", () => {
 
     const objects = createCloudflareBackofficeObjectRegistry(env);
     objects.upload.forUser({ userId: "user-1" });
-    objects.upload.forProject({ orgId: "org-1", projectId: "project-1" });
+    objects.upload.for({
+      kind: "project",
+      owner: { kind: "org", orgId: "org-1" },
+      projectId: "project-1",
+    });
 
     expect(upload.idFromName).toHaveBeenNthCalledWith(1, "v1:user:user-1");
-    expect(upload.idFromName).toHaveBeenNthCalledWith(2, "v1:project:org-1:project-1");
+    expect(upload.idFromName).toHaveBeenNthCalledWith(2, "v1:project:org:org-1:project-1");
   });
 
   it("rejects addresses for a different binding", () => {

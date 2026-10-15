@@ -18,12 +18,7 @@ import {
   isAutomationActorProvenancePath,
 } from "@fragno-dev/backoffice-api/v0/automation";
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
-
-type AutomationRouteScope =
-  | { kind: "system" }
-  | { kind: "org"; orgId: string }
-  | { kind: "project"; orgId: string; projectId: string }
-  | { kind: "user"; userId: string };
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 type AutomationRouteConfiguration =
   | { trigger: AutomationRouteEventTrigger; action: AutomationRouteAction }
@@ -323,7 +318,7 @@ export const renderAutomationScopeTemplate = (
   event: AutomationEvent,
   routeId: string,
   routingKey: string,
-): AutomationRouteScope => {
+): BackofficeContextScope => {
   switch (template.kind) {
     case "system":
       return { kind: "system" };
@@ -335,7 +330,15 @@ export const renderAutomationScopeTemplate = (
     case "project":
       return {
         kind: "project",
-        orgId: renderAutomationRawTemplateValue(template.orgIdTemplate, event, routeId, routingKey),
+        owner: {
+          kind: "org",
+          orgId: renderAutomationRawTemplateValue(
+            template.owner.orgIdTemplate,
+            event,
+            routeId,
+            routingKey,
+          ),
+        },
         projectId: renderAutomationRawTemplateValue(
           template.projectIdTemplate,
           event,

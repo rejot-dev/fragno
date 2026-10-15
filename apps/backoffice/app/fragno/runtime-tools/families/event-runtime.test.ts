@@ -38,7 +38,7 @@ const automationExecution = (scope: AutomationEvent["scope"]) =>
 function withScopedFor(family: {
   forOrg?: (orgId: string) => unknown;
   forUser?: (input: { userId: string }) => unknown;
-  forProject?: (input: { orgId: string; projectId: string }) => unknown;
+  forProject?: (scope: Extract<AutomationEvent["scope"], { kind: "project" }>) => unknown;
 }) {
   return {
     ...family,
@@ -48,7 +48,7 @@ function withScopedFor(family: {
         : scope.kind === "user"
           ? family.forUser?.({ userId: scope.userId })
           : scope.kind === "project"
-            ? family.forProject?.({ orgId: scope.orgId, projectId: scope.projectId })
+            ? family.forProject?.(scope)
             : undefined,
   };
 }
@@ -338,17 +338,21 @@ describe("createEventRuntime.emitEvent", () => {
     await expect(
       runtime.emitEvent({
         eventType: "project.event",
-        targetScope: { kind: "project", orgId: "org-1", projectId: "project-1" },
+        targetScope: {
+          kind: "project",
+          owner: { kind: "org", orgId: "org-1" },
+          projectId: "project-1",
+        },
       }),
     ).resolves.toMatchObject({
       accepted: true,
-      scope: { kind: "project", orgId: "org-1", projectId: "project-1" },
+      scope: { kind: "project", owner: { kind: "org", orgId: "org-1" }, projectId: "project-1" },
     });
 
     expect(resolveProjectForExecution).toHaveBeenCalledWith({ projectId: "project-1" });
     expect(triggerProjectIngestEvent).toHaveBeenCalledWith(
       expect.objectContaining({
-        scope: { kind: "project", orgId: "org-1", projectId: "project-1" },
+        scope: { kind: "project", owner: { kind: "org", orgId: "org-1" }, projectId: "project-1" },
         subject: expect.objectContaining({ orgId: "org-1", projectId: "project-1" }),
       }),
     );
@@ -374,7 +378,11 @@ describe("createEventRuntime.emitEvent", () => {
     await expect(
       runtime.emitEvent({
         eventType: "project.event",
-        targetScope: { kind: "project", orgId: "org-1", projectId: "missing" },
+        targetScope: {
+          kind: "project",
+          owner: { kind: "org", orgId: "org-1" },
+          projectId: "missing",
+        },
       }),
     ).rejects.toThrow("Project 'missing' is not available.");
 

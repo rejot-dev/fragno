@@ -100,17 +100,19 @@ describe("LocalObjectFactory", () => {
     const factory = createFactory();
     const objects = createBackofficeObjectRegistry(factory);
 
-    const projectOne = objects.upload.forProject({
-      orgId: "org-1",
+    const projectOne = objects.upload.for({
+      kind: "project",
+      owner: { kind: "org", orgId: "org-1" },
       projectId: "project-1",
     }).commands as unknown as NamedObjectStub;
-    const projectTwo = objects.upload.forProject({
-      orgId: "org-1",
+    const projectTwo = objects.upload.for({
+      kind: "project",
+      owner: { kind: "org", orgId: "org-1" },
       projectId: "project-2",
     }).commands as unknown as NamedObjectStub;
 
-    assert(projectOne.name === "UPLOAD:v1:project:org-1:project-1");
-    assert(projectTwo.name === "UPLOAD:v1:project:org-1:project-2");
+    assert(projectOne.name === "UPLOAD:v1:project:org:org-1:project-1");
+    assert(projectTwo.name === "UPLOAD:v1:project:org:org-1:project-2");
     expect(projectTwo).not.toBe(projectOne);
   });
 

@@ -21,8 +21,8 @@ describe("resolveBackofficePageScope", () => {
       { kind: "user", userId: "user-route" },
     ],
     [
-      { scopeKind: "project", scopeId: "route-org:website" },
-      { kind: "project", organization, project },
+      { scopeKind: "project", scopeId: "org:route-org:website" },
+      { kind: "project", owner: { kind: "org", organization }, project },
     ],
     [{ scopeKind: "system", scopeId: "system" }, { kind: "system" }],
     // Organization pages name their organization outside the scoped route parameters.

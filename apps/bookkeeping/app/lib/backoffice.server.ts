@@ -4,15 +4,14 @@ import {
   BackofficeApiUnreachableError,
   createBackofficeApiClient,
 } from "@fragno-dev/backoffice-api/v0/client";
+import type { BackofficeRoutableScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { env } from "cloudflare:workers";
 import { z } from "zod";
 
 import type { ActiveOrganization, BackofficeLink } from "../../workers/auth";
 
 /** Where Bookkeeping may act in Backoffice: the linked organization or one approved project. */
-export type BackofficeTarget =
-  | { kind: "org"; orgId: string }
-  | { kind: "project"; orgId: string; projectId: string };
+export type BackofficeTarget = Extract<BackofficeRoutableScope, { kind: "org" | "project" }>;
 
 const resourceScopeSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("organization") }),
@@ -55,16 +54,14 @@ async function readErrorMessage(response: Response): Promise<string> {
 
 /** The scopes the linked installation approved, in the order the page offers them. */
 export function linkTargets(link: BackofficeLink): BackofficeTarget[] {
-  const orgId = link.backofficeOrganizationId;
+  const organization = { kind: "org", orgId: link.backofficeOrganizationId } as const;
   return link.resourceScope.kind === "organization"
-    ? [{ kind: "org", orgId }]
-    : link.resourceScope.projectIds.map((projectId) => ({ kind: "project", orgId, projectId }));
-}
-
-export function targetKey(target: BackofficeTarget): string {
-  return target.kind === "org"
-    ? `org:${encodeURIComponent(target.orgId)}`
-    : `project:${encodeURIComponent(target.orgId)}:${encodeURIComponent(target.projectId)}`;
+    ? [organization]
+    : link.resourceScope.projectIds.map((projectId) => ({
+        kind: "project",
+        owner: organization,
+        projectId,
+      }));
 }
 
 /**

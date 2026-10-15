@@ -24,7 +24,7 @@ Organization scope arguments always use the organization **slug**, never its int
 
 ```text
 org:<organization-slug>
-project:<organization-slug>:<project-id>
+project:org:<organization-slug>:<project-id>
 ```
 
 For an organization with the slug `acme`, commands look like:

@@ -27,7 +27,7 @@ import type { BillingEventInput } from "@/fragno/billing/contracts";
 import { createPiBilling, PiDurableBillingDoc } from "./billing-extension";
 
 const config: PiAgentConfig = {
-  scope: { kind: "project", orgId: "org-1", projectId: "project-1" },
+  scope: { kind: "project", owner: { kind: "org", orgId: "org-1" }, projectId: "project-1" },
   agentName: "assistant",
   billingOrganizationId: "org-1",
 };

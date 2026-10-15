@@ -62,7 +62,7 @@ export function BackofficeProjectMenu({
               key={project.slug}
               to={scopeSwitchPath(location.pathname, {
                 kind: "project",
-                orgSlug,
+                owner: organizationRouteScope,
                 projectSlug: project.slug,
               })}
               label={project.label}

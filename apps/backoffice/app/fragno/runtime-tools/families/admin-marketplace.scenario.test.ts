@@ -168,7 +168,11 @@ describe("static Marketplace publication scenarios", () => {
             const publisherExecution = createBackofficeSystemExecution({ kind: "system" });
             const scopes: BackofficeContextScope[] = [
               { kind: "org", orgId: "org-1" },
-              { kind: "project", orgId: "org-1", projectId: ctx.vars.projectId },
+              {
+                kind: "project",
+                owner: { kind: "org", orgId: "org-1" },
+                projectId: ctx.vars.projectId,
+              },
               { kind: "user", userId: "owner-1" },
             ];
             for (const scope of scopes) {
@@ -241,7 +245,11 @@ describe("static Marketplace publication scenarios", () => {
             async (ctx) => {
               const scopes: BackofficeContextScope[] = [
                 { kind: "org", orgId: "org-1" },
-                { kind: "project", orgId: "org-1", projectId: ctx.vars.projectId },
+                {
+                  kind: "project",
+                  owner: { kind: "org", orgId: "org-1" },
+                  projectId: ctx.vars.projectId,
+                },
                 { kind: "user", userId: "owner-1" },
               ];
               for (const scope of scopes) {

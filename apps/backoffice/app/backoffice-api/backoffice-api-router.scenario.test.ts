@@ -751,7 +751,7 @@ describe("Backoffice API v0 SQLite scenarios", () => {
           );
           await expectError(
             await callApi(ctx, {
-              path: `/api/v0/scopes/project:${ctx.vars.orgId}:books/org.get`,
+              path: `/api/v0/scopes/project:org:${ctx.vars.orgId}:books/org.get`,
               credential,
             }),
             404,

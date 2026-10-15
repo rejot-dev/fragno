@@ -141,7 +141,11 @@ describe("billing fragment", async () => {
       }),
       usageEvent({
         id: "statement-project-event",
-        scope: { kind: "project", orgId: "org-statement", projectId: "project-1" },
+        scope: {
+          kind: "project",
+          owner: { kind: "org", orgId: "org-statement" },
+          projectId: "project-1",
+        },
         occurredAt: "2026-09-01T11:00:00.000Z",
         measurements: [
           { meter: "ai.tokens.total", unit: "token", quantity: 20 },

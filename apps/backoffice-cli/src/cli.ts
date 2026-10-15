@@ -55,7 +55,7 @@ Commands:
 Scope syntax:
   system
   org:<organization-slug>
-  project:<organization-slug>:<project-id>
+  project:org:<organization-slug>:<project-id>
   user:<user-id>
 
   Organization scopes always use the slug after org:, never the internal organization ID.
@@ -209,7 +209,7 @@ async function printAvailableScopes(args: string[]): Promise<void> {
     console.log(`  ${scope.argument.padEnd(argumentWidth)}  ${scope.label}${defaultLabel}`);
   }
   console.log("\nOrganization scopes use slugs after org:, never internal organization IDs.");
-  console.log("Project scope syntax: project:<organization-slug>:<project-id>");
+  console.log("Project scope syntax: project:org:<organization-slug>:<project-id>");
 }
 
 async function doctor(args: string[]): Promise<void> {

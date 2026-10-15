@@ -1,3 +1,4 @@
+import { backofficeScopePathSegment } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { Button } from "@fragno-private/design-system/button";
 import { Field } from "@fragno-private/design-system/field";
 import { FormContainer } from "@fragno-private/design-system/form-container";
@@ -13,7 +14,6 @@ import {
   linkTargets,
   sendConnectionTestEvent,
   startBackofficeInstall,
-  targetKey,
   type BackofficeTarget,
 } from "../lib/backoffice.server";
 import { requireSession } from "../lib/session.server";
@@ -51,7 +51,7 @@ export async function loader({ request, url }: Route.LoaderArgs) {
       ? {
           backofficeOrganizationId: link.backofficeOrganizationId,
           targets: linkTargets(link).map((target) => ({
-            key: targetKey(target),
+            key: backofficeScopePathSegment(target),
             label: targetLabel(target),
           })),
         }
@@ -99,7 +99,9 @@ export async function action({ request }: Route.ActionArgs) {
   if (!active || !link) {
     return { status: "not-linked" } as const;
   }
-  const target = linkTargets(link).find((candidate) => targetKey(candidate) === form.get("target"));
+  const target = linkTargets(link).find(
+    (candidate) => backofficeScopePathSegment(candidate) === form.get("target"),
+  );
   if (!target) {
     return { status: "rejected", message: "Choose one of the approved targets." } as const;
   }

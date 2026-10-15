@@ -36,7 +36,7 @@ const targetRows = (target: AutomationRouteTarget) => {
       return [{ label: "Organization ID", value: target.orgIdTemplate }];
     case "project":
       return [
-        { label: "Organization ID", value: target.orgIdTemplate },
+        { label: "Organization ID", value: target.owner.orgIdTemplate },
         { label: "Project ID", value: target.projectIdTemplate },
       ];
     case "user":

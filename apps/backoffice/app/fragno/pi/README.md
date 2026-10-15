@@ -5,8 +5,8 @@ object with one ongoing root conversation, compacted automatically, that runs on
 
 - `workers/pi-manager.do.ts`: one `PI_MANAGER` object per execution scope, with the same singleton,
   organization, user, and project scopes as Automations. Use `objects.piManager.for(scope)` or its
-  `singleton`, `forOrg`, `forUser`, and `forProject` selectors. Its embedded Fragno fragment stores
-  agent definitions and records which agents have been provisioned, with their billing owner.
+  `singleton`, `forOrg`, and `forUser` selectors. Its embedded Fragno fragment stores agent
+  definitions and records which agents have been provisioned, with their billing owner.
 - `workers/pi.do.ts`: one `PI` object per agent, addressed by `piAgentObjectName` from its scope and
   agent name.
 - `workers/lib/pi-session-store.ts`: Cloudflare SQLite implementation of Pi Durable's

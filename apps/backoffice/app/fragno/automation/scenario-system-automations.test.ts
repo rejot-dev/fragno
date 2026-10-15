@@ -362,7 +362,7 @@ describe("system automation scenarios", () => {
               ctx.runtime,
               createBackofficeSystemExecution({
                 kind: "project",
-                orgId: "org-1",
+                owner: { kind: "org", orgId: "org-1" },
                 projectId: ctx.vars.projectId,
               }),
             );
@@ -371,7 +371,11 @@ describe("system automation scenarios", () => {
             await expect(fs.readFile("/workspace/notes.txt")).resolves.toBe("project notes");
 
             const config = await ctx.runtime.objects.upload
-              .forProject({ orgId: "org-1", projectId: ctx.vars.projectId })
+              .for({
+                kind: "project",
+                owner: { kind: "org", orgId: "org-1" },
+                projectId: ctx.vars.projectId,
+              })
               .commands.getAdminConfig();
             assert(config.providers.database?.configured);
           }),

@@ -863,7 +863,11 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
             for (const scope of [
               { kind: "system" },
               { kind: "user", userId: "global-admin" },
-              { kind: "project", orgId: "org-1", projectId: ctx.vars.projectId },
+              {
+                kind: "project",
+                owner: { kind: "org", orgId: "org-1" },
+                projectId: ctx.vars.projectId,
+              },
             ] satisfies BackofficeContextScope[]) {
               const context = appContext(ctx, "global-admin", scope);
               expect(context.apps).toBeNull();

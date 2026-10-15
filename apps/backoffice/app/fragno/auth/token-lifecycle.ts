@@ -6,6 +6,8 @@ import {
 import {
   type BackofficeContextScope,
   backofficeContextScopeSchema,
+  backofficeOrganizationScopeSchema,
+  backofficeProjectScopeSchema,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { signJWT } from "better-auth/plugins/jwt";
 import { createLocalJWKSet, errors, jwtVerify, type JSONWebKeySet } from "jose";
@@ -58,12 +60,8 @@ const installedAppJwtPayloadSchema = z.object({
     externalAccount: z.strictObject({ id: z.string().min(1), label: z.string().min(1) }).nullable(),
   }),
   scopeRestriction: z.discriminatedUnion("kind", [
-    z.strictObject({ kind: z.literal("org"), orgId: z.string().min(1) }),
-    z.strictObject({
-      kind: z.literal("project"),
-      orgId: z.string().min(1),
-      projectId: z.string().min(1),
-    }),
+    backofficeOrganizationScopeSchema,
+    backofficeProjectScopeSchema,
   ]),
   iss: z.literal(ACCESS_TOKEN_ISSUER),
   aud: z.literal(INSTALLED_APP_ACCESS_TOKEN_AUDIENCE),

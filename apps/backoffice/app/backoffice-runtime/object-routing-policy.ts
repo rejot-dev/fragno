@@ -65,7 +65,10 @@ export const resolveProjectScopedObjectAddress = (
     throw new Error(`Cannot route automation event ${event.id}: missing subject project id.`);
   }
 
-  return objectAddress(binding, project({ orgId: resolveEventOrgId(event), projectId }));
+  return objectAddress(
+    binding,
+    project({ owner: { kind: "org", orgId: resolveEventOrgId(event) }, projectId }),
+  );
 };
 
 export const resolveSingletonObjectAddress = (

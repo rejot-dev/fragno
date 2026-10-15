@@ -11,6 +11,7 @@ import type {
   BackofficeAppInstallationPageInput,
 } from "@fragno-dev/backoffice-api/v0/apps";
 import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import { defineFragment } from "@fragno-dev/core";
 import { decodeCursor, withDatabase, type HookContext, type HookFn } from "@fragno-dev/db";
@@ -29,9 +30,7 @@ import type {
 import { appInstallationsFragmentSchema } from "./schema";
 
 /** A scope where an installation's integration connection resolves. */
-export type AppConnectionScope =
-  | { kind: "org"; orgId: string }
-  | { kind: "project"; orgId: string; projectId: string };
+export type AppConnectionScope = Extract<BackofficeContextScope, { kind: "org" | "project" }>;
 
 /** Every scope whose connection state the change may have affected, before and after it. */
 export type AppInstallationChangedPayload = { appId: string; scopes: AppConnectionScope[] };
@@ -55,14 +54,15 @@ function connectionScopesOf(
   organizationId: string,
   resourceProjectIds: readonly (string[] | null)[],
 ): AppConnectionScope[] {
+  const organization = { kind: "org", orgId: organizationId } as const;
   const scopes = new Map<string, AppConnectionScope>();
   for (const projectIds of resourceProjectIds) {
     if (projectIds === null) {
-      scopes.set("org", { kind: "org", orgId: organizationId });
+      scopes.set("org", organization);
       continue;
     }
     for (const projectId of projectIds) {
-      scopes.set(`project:${projectId}`, { kind: "project", orgId: organizationId, projectId });
+      scopes.set(`project:${projectId}`, { kind: "project", owner: organization, projectId });
     }
   }
   return [...scopes.values()];

@@ -1,4 +1,7 @@
-import { backofficeScopeOrganization } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  backofficeScopeOrganization,
+  type BackofficeContextScope,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { WorkerCompiler } from "@fragno-dev/codemode/compiler/compile-worker";
 import { createWorkerCompilerServiceClient } from "@fragno-dev/codemode/compiler/compiler-service-client";
 import type { CodemodeRemoteExecutor } from "@fragno-dev/codemode/execution/codemode-activation-contract";
@@ -73,7 +76,8 @@ type ScopedCodemodeCallInput = {
     | { kind: "current" }
     | { kind: "org"; orgId: string }
     | { kind: "user"; userId: string }
-    | { kind: "project"; orgId?: string; projectId: string };
+    // The guest names only the project; its owner is the current scope's organization.
+    | { kind: "project"; projectId: string };
   namespace: string;
   toolName: string;
   args: unknown[];
@@ -119,6 +123,28 @@ const callScopedTool = async (
   }
 };
 
+function codemodeCallScope(
+  requested: ScopedCodemodeCallInput["scope"],
+  current: BackofficeContextScope,
+): BackofficeContextScope {
+  switch (requested.kind) {
+    case "current":
+      return current;
+    case "project": {
+      const owner = backofficeScopeOrganization(current);
+      if (!owner) {
+        throw new Error("Project scoped codemode handles require a current org context.");
+      }
+      return { kind: "project", owner, projectId: requested.projectId };
+    }
+    case "org":
+    case "user":
+      return requested;
+    default:
+      throw new Error("Unsupported codemode scope kind.", { cause: requested satisfies never });
+  }
+}
+
 const createBackofficeScopedCodemodeProvider = ({
   families,
   context,
@@ -133,38 +159,7 @@ const createBackofficeScopedCodemodeProvider = ({
     getCurrentScope: async () => context.execution.scope,
     callScoped: async (rawInput: unknown) => {
       const input = rawInput as ScopedCodemodeCallInput;
-      const currentScope = context.execution.scope;
-      const scope = input.scope.kind === "current" ? currentScope : input.scope;
-      if (scope.kind === "project" && !scope.orgId) {
-        const currentOrganization = backofficeScopeOrganization(currentScope);
-        if (!currentOrganization) {
-          throw new Error("Project scoped codemode handles require a current org context.");
-        }
-        return await callScopedTool(
-          input,
-          context.createScopedContext({ ...scope, orgId: currentOrganization.orgId }),
-          families,
-          toolCalls,
-        );
-      }
-
-      if (scope.kind === "project") {
-        const orgId = scope.orgId;
-        if (!orgId) {
-          throw new Error("Project scoped codemode handles require an org id.");
-        }
-        return await callScopedTool(
-          input,
-          context.createScopedContext({
-            kind: "project",
-            orgId,
-            projectId: scope.projectId,
-          }),
-          families,
-          toolCalls,
-        );
-      }
-
+      const scope = codemodeCallScope(input.scope, context.execution.scope);
       return await callScopedTool(input, context.createScopedContext(scope), families, toolCalls);
     },
   },

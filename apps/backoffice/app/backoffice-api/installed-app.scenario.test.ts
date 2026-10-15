@@ -165,7 +165,7 @@ async function authorizeBookkeeping(ctx: Ctx, cookie: string): Promise<string> {
 }
 
 type OrgScope = { kind: "org"; orgId: string };
-type AppScope = OrgScope | { kind: "project"; orgId: string; projectId: string };
+type AppScope = OrgScope | { kind: "project"; owner: OrgScope; projectId: string };
 
 function orgScope(orgId: string): OrgScope {
   return { kind: "org", orgId };
@@ -895,7 +895,7 @@ describe("installed-app event delivery SQLite scenarios", () => {
           async (ctx) => {
             const finance = {
               kind: "project" as const,
-              orgId: ctx.vars.orgId,
+              owner: { kind: "org" as const, orgId: ctx.vars.orgId },
               projectId: ctx.vars.financeProjectId,
             };
             for (const outside of [
@@ -997,7 +997,7 @@ describe("installed-app event delivery SQLite scenarios", () => {
             await expectDenied(
               await exchange(ctx, ctx.vars.installationToken, {
                 kind: "project",
-                orgId: ctx.vars.orgId,
+                owner: { kind: "org" as const, orgId: ctx.vars.orgId },
                 projectId: ctx.vars.financeProjectId,
               }),
               403,

@@ -137,7 +137,7 @@ function scopePresentation(
     case "project":
       return {
         label: scope.projectId,
-        detail: `Project · ${scope.orgId}`,
+        detail: `Project · ${scope.owner.orgId}`,
       };
   }
 

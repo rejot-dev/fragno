@@ -6,23 +6,25 @@ describe("Files scope paths", () => {
   test("encodes project scopes and explorer paths canonically", () => {
     const scope = {
       kind: "project" as const,
-      organization: { id: "org-id", slug: "org/one" },
+      owner: { kind: "org" as const, organization: { id: "org-id", slug: "org/one" } },
       project: { id: "project:one", slug: "project:one" },
       label: "Project one",
     };
 
-    assert(filesScopeBasePath(scope) === "/backoffice/files/project/org%252Fone:project%253Aone");
+    assert(
+      filesScopeBasePath(scope) === "/backoffice/files/project/org:org%252Fone:project%253Aone",
+    );
     assert(
       filesExplorerPath(scope, "/workspace/notes/launch plan.md") ===
-        "/backoffice/files/project/org%252Fone:project%253Aone/workspace/notes/launch%20plan.md",
+        "/backoffice/files/project/org:org%252Fone:project%253Aone/workspace/notes/launch%20plan.md",
     );
     assert(
       filesDownloadPath(scope, "/static/SYSTEM.md", "attachment") ===
-        "/backoffice/files/project/org%252Fone:project%253Aone/download?path=%2Fstatic%2FSYSTEM.md",
+        "/backoffice/files/project/org:org%252Fone:project%253Aone/download?path=%2Fstatic%2FSYSTEM.md",
     );
     assert(
       filesDownloadPath(scope, "/static/logo.png", "inline") ===
-        "/backoffice/files/project/org%252Fone:project%253Aone/download?path=%2Fstatic%2Flogo.png&disposition=inline",
+        "/backoffice/files/project/org:org%252Fone:project%253Aone/download?path=%2Fstatic%2Flogo.png&disposition=inline",
     );
   });
 

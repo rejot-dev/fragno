@@ -62,7 +62,7 @@ describe("BackofficeShell resolved scope", () => {
   test("keeps shell navigation scoped when Automations synchronization is unavailable", () => {
     const resolvedScope = {
       kind: "project" as const,
-      organization,
+      owner: { kind: "org" as const, organization },
       project: { id: "project-1", slug: "project-1", name: "Project One" },
     };
 
@@ -85,7 +85,11 @@ describe("BackofficeShell resolved scope", () => {
     expect(topBarMock).toHaveBeenCalledWith(expect.objectContaining({ resolvedScope }));
     expect(sidebarMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        currentScope: { kind: "project", orgSlug: "acme", projectSlug: "project-1" },
+        currentScope: {
+          kind: "project",
+          owner: { kind: "org", orgSlug: "acme" },
+          projectSlug: "project-1",
+        },
       }),
     );
     expect(terminalMock).toHaveBeenCalledWith(

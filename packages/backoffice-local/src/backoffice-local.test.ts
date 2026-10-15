@@ -14,9 +14,9 @@ describe("parseBackofficeScope", () => {
       kind: "org",
       orgSlug: "acme",
     });
-    expect(parseBackofficeScope("project:org%2Fone:project%3Atwo")).toEqual({
+    expect(parseBackofficeScope("project:org:org%2Fone:project%3Atwo")).toEqual({
       kind: "project",
-      orgSlug: "org/one",
+      owner: { kind: "org", orgSlug: "org/one" },
       projectId: "project:two",
     });
   });

@@ -43,7 +43,10 @@ function backofficeTerminalScopeSelection(
     case "org":
       return { ...scope, label: scope.organization.name };
     case "project":
-      return { ...scope, label: `${scope.organization.name} / ${scope.project.name}` };
+      return {
+        ...scope,
+        label: `${backofficeTerminalScopeSelection(scope.owner, me).label} / ${scope.project.name}`,
+      };
     case "user":
       return {
         ...scope,

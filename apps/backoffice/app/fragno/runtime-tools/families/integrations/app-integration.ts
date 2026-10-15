@@ -38,13 +38,7 @@ type AppScope = AppActionTokenClaims["scopeRestriction"];
 
 function appScopeOf(context: IntegrationContext): AppScope | null {
   const scope = context.execution.scope;
-  if (scope.kind === "org") {
-    return { kind: "org", orgId: scope.orgId };
-  }
-  if (scope.kind === "project") {
-    return { kind: "project", orgId: scope.orgId, projectId: scope.projectId };
-  }
-  return null;
+  return scope.kind === "org" || scope.kind === "project" ? scope : null;
 }
 
 /** The app learns which user is behind a call; automated work calls as the installation. */
@@ -176,7 +170,7 @@ export function createAppIntegration({
     try {
       return context.kernel.scoped(
         "APP_INSTALLATIONS",
-        { kind: "org", orgId: scope.orgId },
+        scope.kind === "org" ? scope : scope.owner,
         runtime.objects.appInstallations,
       ).commands;
     } catch (error) {

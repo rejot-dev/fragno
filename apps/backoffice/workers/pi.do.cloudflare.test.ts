@@ -211,8 +211,12 @@ describe("Pi durable agent scenarios", () => {
     const scopes: BackofficeContextScope[] = [
       { kind: "system" },
       { kind: "user", userId: suffix },
-      { kind: "project", orgId: suffix, projectId: "shared-project" },
-      { kind: "project", orgId: `other-${suffix}`, projectId: "shared-project" },
+      { kind: "project", owner: { kind: "org", orgId: suffix }, projectId: "shared-project" },
+      {
+        kind: "project",
+        owner: { kind: "org", orgId: `other-${suffix}` },
+        projectId: "shared-project",
+      },
     ];
     for (const scope of scopes) {
       const address = {

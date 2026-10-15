@@ -27,7 +27,7 @@ export function resolveGeneratedUiUploadScope(
     return scope;
   }
   const organization = currentScope && backofficeScopeOrganization(currentScope);
-  if (!organization || organization.orgId !== scope.orgId) {
+  if (!organization || organization.orgId !== backofficeScopeOrganization(scope)?.orgId) {
     throw new Error("Generated UI uploads cannot target another organization.");
   }
   return scope;

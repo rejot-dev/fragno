@@ -726,7 +726,7 @@ describe("starter automation router scenarios", () => {
               kind: "forward_event",
               targetScope: {
                 kind: "project",
-                orgIdTemplate: "org-1",
+                owner: { kind: "org", orgIdTemplate: "org-1" },
                 projectIdTemplate: "fanout-retry-project",
               },
               idTemplate: "forwarded-${event.id}",
@@ -757,7 +757,7 @@ describe("starter automation router scenarios", () => {
           then.automation.event({
             scope: {
               kind: "project",
-              orgId: "org-1",
+              owner: { kind: "org", orgId: "org-1" },
               projectId: "fanout-retry-project",
             },
             where: { id: "forwarded-fanout-retry-1" },
@@ -805,7 +805,11 @@ describe("starter automation router scenarios", () => {
             assert.notEqual(sourceHook.lastAttemptAt, ctx.vars.firstAttemptAt);
 
             const response = await ctx.runtime.objects.automations
-              .forProject({ orgId: "org-1", projectId: "fanout-retry-project" })
+              .for({
+                kind: "project",
+                owner: { kind: "org", orgId: "org-1" },
+                projectId: "fanout-retry-project",
+              })
               .http.fetch(new Request("https://automations.test/api/automations/events?limit=100"));
             assert(response.ok);
             const result = (await response.json()) as { events: Array<{ id: string }> };

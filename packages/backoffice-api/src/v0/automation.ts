@@ -208,10 +208,17 @@ export type AutomationEventMatcher =
   | { any: AutomationEventMatcher[] }
   | { not: AutomationEventMatcher };
 
+type AutomationRouteOrganizationScopeTemplate = { kind: "org"; orgIdTemplate: string };
+
+/** Renders to a target scope; a project names its owner as a scope template too. */
 export type AutomationRouteScopeTemplate =
   | { kind: "system" }
-  | { kind: "org"; orgIdTemplate: string }
-  | { kind: "project"; orgIdTemplate: string; projectIdTemplate: string }
+  | AutomationRouteOrganizationScopeTemplate
+  | {
+      kind: "project";
+      owner: AutomationRouteOrganizationScopeTemplate;
+      projectIdTemplate: string;
+    }
   | { kind: "user"; userIdTemplate: string };
 
 export type AutomationStartWorkflowAction = {
@@ -391,13 +398,18 @@ const automationEventMatcherSchema: z.ZodType<AutomationEventMatcher> = z
   )
   .meta({ id: "AutomationEventMatcher" });
 
+const automationRouteOrganizationScopeTemplateSchema = z.object({
+  kind: z.literal("org"),
+  orgIdTemplate: z.string().trim().min(1),
+});
+
 const automationRouteScopeTemplateSchema: z.ZodType<AutomationRouteScopeTemplate> = z
   .discriminatedUnion("kind", [
     z.object({ kind: z.literal("system") }),
-    z.object({ kind: z.literal("org"), orgIdTemplate: z.string().trim().min(1) }),
+    automationRouteOrganizationScopeTemplateSchema,
     z.object({
       kind: z.literal("project"),
-      orgIdTemplate: z.string().trim().min(1),
+      owner: automationRouteOrganizationScopeTemplateSchema,
       projectIdTemplate: z.string().trim().min(1),
     }),
     z.object({ kind: z.literal("user"), userIdTemplate: z.string().trim().min(1) }),

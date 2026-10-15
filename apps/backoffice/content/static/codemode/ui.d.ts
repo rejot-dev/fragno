@@ -298,8 +298,11 @@ declare const ui: {
           }
         | {
             kind: "project";
-            /** at least 1 characters */
-            orgId: string;
+            owner: {
+              kind: "org";
+              /** at least 1 characters */
+              orgId: string;
+            };
             /** at least 1 characters */
             projectId: string;
           };
@@ -318,8 +321,11 @@ declare const ui: {
             }
           | {
               kind: "project";
-              /** at least 1 characters */
-              orgId: string;
+              owner: {
+                kind: "org";
+                /** at least 1 characters */
+                orgId: string;
+              };
               /** at least 1 characters */
               projectId: string;
             };

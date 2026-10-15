@@ -571,13 +571,13 @@ describe("runBackofficeCodemode", () => {
       org: ["mcp#org-org-1"],
       user: ["mcp#user-user-1"],
       current: ["mcp#org-org-1"],
-      project: ["mcp#project-org-1:project-1"],
+      project: ["mcp#project-org:org-1:project-1"],
     });
     expect(calls).toEqual([
       { scope: "org:org-1", method: "GET", pathname: "/api/mcp/servers" },
       { scope: "user:user-1", method: "GET", pathname: "/api/mcp/servers" },
       { scope: "org:org-1", method: "GET", pathname: "/api/mcp/servers" },
-      { scope: "project:org-1:project-1", method: "GET", pathname: "/api/mcp/servers" },
+      { scope: "project:org:org-1:project-1", method: "GET", pathname: "/api/mcp/servers" },
     ]);
   });
 
@@ -677,10 +677,18 @@ describe("runBackofficeCodemode", () => {
         org: { key: "org-key", value: "from-org" },
       });
 
-      const projectScope = { kind: "project" as const, orgId: "org-1", projectId: "project-1" };
+      const projectScope = {
+        kind: "project" as const,
+        owner: { kind: "org" as const, orgId: "org-1" },
+        projectId: "project-1",
+      };
       const orgScope = { kind: "org" as const, orgId: "org-1" };
       const projectStore = createRouteBackedAutomationStoreRuntime({
-        object: runtime.objects.automations.forProject({ orgId: "org-1", projectId: "project-1" }),
+        object: runtime.objects.automations.for({
+          kind: "project",
+          owner: { kind: "org", orgId: "org-1" },
+          projectId: "project-1",
+        }),
         execution: {
           kind: "deferred" as const,
           scopeRestriction: null,
@@ -706,7 +714,11 @@ describe("runBackofficeCodemode", () => {
       assert(
         runtime.hasObjectInstance({
           binding: "AUTOMATIONS",
-          scope: { kind: "project", orgId: "org-1", projectId: "project-1" },
+          scope: {
+            kind: "project",
+            owner: { kind: "org" as const, orgId: "org-1" },
+            projectId: "project-1",
+          },
         }),
       );
     } finally {
@@ -771,8 +783,6 @@ const createScopedMcpRuntimeServices = (
     forOrg: (orgId: string) => createMcpObject(`org:${orgId}`),
     forName: (name: string) => createMcpObject(`name:${name}`),
     forUser: ({ userId }: { userId: string }) => createMcpObject(`user:${userId}`),
-    forProject: ({ orgId, projectId }: { orgId: string; projectId: string }) =>
-      createMcpObject(`project:${orgId}:${projectId}`),
     for: (scope: BackofficeContextScope) =>
       createMcpObject(scope.kind === "system" ? "singleton" : backofficeScopePathSegment(scope)),
   };

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, test, assert } from "vitest";
 
 import type { AutomationRouteCreateInput } from "@fragno-dev/backoffice-api/v0/automation";
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { getDurableHooksService } from "@fragno-dev/db/durable-hooks";
 
 import { InMemoryAdapter } from "@fragno-dev/db";
@@ -18,11 +19,7 @@ import { createTestAutomationSourceReader } from "./test-automation-source-reade
 
 const createAutomation = async (
   options: {
-    ownerScope?:
-      | { kind: "system" }
-      | { kind: "org"; orgId: string }
-      | { kind: "project"; orgId: string; projectId: string }
-      | { kind: "user"; userId: string };
+    ownerScope?: BackofficeContextScope;
     workflows?: AutomationWorkflowsService;
     runtime?: BackofficeRuntimeServices;
     now?: () => Date;
@@ -985,7 +982,11 @@ describe("automation routes /projects", () => {
 
   test("requires org ownership to create projects", async () => {
     const projectOwnedFragment = await createAutomation({
-      ownerScope: { kind: "project", orgId: "org_123", projectId: "project_123" },
+      ownerScope: {
+        kind: "project",
+        owner: { kind: "org", orgId: "org_123" },
+        projectId: "project_123",
+      },
     });
 
     const response = await projectOwnedFragment.callRoute("POST", "/projects", {

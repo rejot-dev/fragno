@@ -502,7 +502,10 @@ type AutomationRouteScopeTemplate =
     }
   | {
       kind: "project";
-      orgIdTemplate: string;
+      owner: {
+        kind: "org";
+        orgIdTemplate: string;
+      };
       projectIdTemplate: string;
     }
   | {

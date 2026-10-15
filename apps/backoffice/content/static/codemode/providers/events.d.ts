@@ -36,7 +36,10 @@ type EventsFireInput = {
       }
     | {
         kind: "project";
-        orgId: string;
+        owner: {
+          kind: "org";
+          orgId: string;
+        };
         projectId: string;
       };
 };
@@ -57,7 +60,10 @@ type EventsFireOutput = {
       }
     | {
         kind: "project";
-        orgId: string;
+        owner: {
+          kind: "org";
+          orgId: string;
+        };
         projectId: string;
       };
   source: string;
@@ -84,7 +90,10 @@ type EventsListOutput = {
         }
       | {
           kind: "project";
-          orgId: string;
+          owner: {
+            kind: "org";
+            orgId: string;
+          };
           projectId: string;
         };
     scopeRestriction:
@@ -101,7 +110,10 @@ type EventsListOutput = {
         }
       | {
           kind: "project";
-          orgId: string;
+          owner: {
+            kind: "org";
+            orgId: string;
+          };
           projectId: string;
         }
       | null;
@@ -201,7 +213,10 @@ type EventsGetOutput = {
       }
     | {
         kind: "project";
-        orgId: string;
+        owner: {
+          kind: "org";
+          orgId: string;
+        };
         projectId: string;
       };
   scopeRestriction:
@@ -218,7 +233,10 @@ type EventsGetOutput = {
       }
     | {
         kind: "project";
-        orgId: string;
+        owner: {
+          kind: "org";
+          orgId: string;
+        };
         projectId: string;
       }
     | null;

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, test, vi, assert } from "vitest";
 
 import {
   type BackofficeRoutableScope,
+  backofficeScopeOrganization,
   backofficeScopePathSegment,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { createElement } from "react";
@@ -108,11 +109,11 @@ function routeScopeForTest(scope: BackofficeRoutableScope): BackofficeRoutableRo
   if (scope.kind === "user") {
     return scope;
   }
-  const orgSlug =
-    knownOrganizations.find(({ id }) => id === scope.orgId)?.slug ?? `unknown-${scope.orgId}`;
+  const { orgId } = backofficeScopeOrganization(scope);
+  const orgSlug = knownOrganizations.find(({ id }) => id === orgId)?.slug ?? `unknown-${orgId}`;
   return scope.kind === "org"
     ? { kind: "org", orgSlug }
-    : { kind: "project", orgSlug, projectSlug: scope.projectId };
+    : { kind: "project", owner: { kind: "org", orgSlug }, projectSlug: scope.projectId };
 }
 
 /** The request context after the Backoffice layout established the signed-in user and route scope. */
@@ -120,8 +121,8 @@ async function routeContext(scope: BackofficeRoutableScope) {
   const me = (await shellMeMock()) as typeof authenticatedUser;
   const context = new RouterContextProvider();
   context.set(BackofficeWorkerContext, workerContext as never);
-  const organization =
-    scope.kind === "user" ? undefined : knownOrganizations.find(({ id }) => id === scope.orgId);
+  const orgId = backofficeScopeOrganization(scope)?.orgId;
+  const organization = knownOrganizations.find(({ id }) => id === orgId);
   const routeScope =
     scope.kind === "user"
       ? scope
@@ -131,7 +132,7 @@ async function routeContext(scope: BackofficeRoutableScope) {
           ? { kind: "org", organization }
           : {
               kind: "project",
-              organization,
+              owner: { kind: "org", organization },
               project: { id: scope.projectId, slug: scope.projectId, name: scope.projectId },
             };
   provideBackofficeShellRequest(context, {
@@ -278,7 +279,7 @@ describe("marketplace detail loader", () => {
   test("uses the selected project's organization as the workflow coordinator", async () => {
     const result = await runLoader({
       kind: "project",
-      orgId: "org-1",
+      owner: { kind: "org", orgId: "org-1" },
       projectId: "project-1",
     });
 
@@ -325,7 +326,7 @@ describe("marketplace detail loader", () => {
 
   test.each([
     { kind: "org", orgId: "org-1" },
-    { kind: "project", orgId: "org-1", projectId: "project-1" },
+    { kind: "project", owner: { kind: "org", orgId: "org-1" }, projectId: "project-1" },
     { kind: "user", userId: "user-1" },
   ] as const)("recovers an interactive installation on reload in $kind scope", async (scope) => {
     const result = await runLoader(scope, installationReference.version, installationReference);
@@ -731,7 +732,11 @@ describe("marketplace ingestion action", () => {
   });
 
   test("starts ingestion into the project selected in the route", async () => {
-    const targetScope = { kind: "project", orgId: "org-1", projectId: "project-1" } as const;
+    const targetScope = {
+      kind: "project",
+      owner: { kind: "org", orgId: "org-1" },
+      projectId: "project-1",
+    } as const;
 
     await runAction({ scope: targetScope, version: "1.0.0" });
 

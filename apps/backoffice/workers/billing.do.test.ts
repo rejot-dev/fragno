@@ -112,7 +112,7 @@ describe("Billing Durable Object", () => {
     await billing.commands.recordEvent(
       event({
         id: "pi:org-1:project-1:hook-1",
-        scope: { kind: "project", orgId: "org-1", projectId: "project-1" },
+        scope: { kind: "project", owner: { kind: "org", orgId: "org-1" }, projectId: "project-1" },
         measurements: [{ meter: "ai.tokens.total", unit: "token", quantity: 40 }],
       }),
     );

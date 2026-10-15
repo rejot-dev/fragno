@@ -98,7 +98,7 @@ export function createEventRuntime(options: CreateEventRuntimeOptions): EventRun
       const targetProject =
         resolvedTargetScope.kind === "project"
           ? await options.objects.automations
-              .forOrg(resolvedTargetScope.orgId)
+              .for(resolvedTargetScope.owner)
               .commands.resolveProjectForExecution({ projectId: resolvedTargetScope.projectId })
           : null;
 
@@ -141,7 +141,7 @@ export function createEventRuntime(options: CreateEventRuntimeOptions): EventRun
           resolvedTargetScope.kind === "project"
             ? {
                 ...parentEvent?.subject,
-                orgId: resolvedTargetScope.orgId,
+                orgId: resolvedTargetScope.owner.orgId,
                 projectId: targetProject!.projectId,
                 ...(subjectUserId ? { userId: subjectUserId } : {}),
               }

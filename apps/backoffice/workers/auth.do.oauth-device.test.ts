@@ -293,7 +293,7 @@ describe("Backoffice OAuth device authorization", () => {
 
     const projectScope = {
       kind: "project" as const,
-      orgId: signedUp.organizationId,
+      owner: { kind: "org" as const, orgId: signedUp.organizationId },
       projectId: "project-1",
     };
     const projectResult = await signedUp.auth.commands.exchangeBackofficeExecutionToken({

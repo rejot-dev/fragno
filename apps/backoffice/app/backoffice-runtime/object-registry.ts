@@ -31,7 +31,9 @@ import type {
 import type { DirectoryPageInput } from "@fragno-dev/backoffice-api/v0/shared/pagination";
 import {
   type BackofficeContextScope,
+  type BackofficeProjectOwner,
   type BackofficeRoutableScope,
+  type BackofficeScopeIdNames,
   backofficeScopePathSegment,
   parseBackofficeScopePathSegment,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
@@ -207,7 +209,6 @@ type ScopedObjects<TObject> = {
   forOrg(orgId: string): TObject;
   forName(name: string): TObject;
   forUser(input: { userId: string }): TObject;
-  forProject(input: { orgId: string; projectId: string }): TObject;
 };
 
 /** Live provider evidence that inbound deliveries reach this deployment's webhook URL. */
@@ -814,14 +815,19 @@ export const user = (input: { userId: string }): BackofficeObjectScope => ({
   userId: validateScopeValue("user id", input.userId),
 });
 
-export const project = (input: { orgId: string; projectId: string }): BackofficeObjectScope => ({
+export const project = (input: {
+  owner: BackofficeProjectOwner<BackofficeScopeIdNames>;
+  projectId: string;
+}): BackofficeObjectScope => ({
   kind: "project",
-  orgId: validateScopeValue("org id", input.orgId),
+  owner: { kind: "org", orgId: validateScopeValue("org id", input.owner.orgId) },
   projectId: validateScopeValue("project id", input.projectId),
 });
 
 // Operator note: this v1 encoder is a full Durable Object identity reset. Existing
 // state stored under legacy raw names is intentionally not discovered by this model.
+// Project names embed their owner's segment (`v1:project:org:<orgId>:<projectId>`), so
+// project objects named before projects had owners are orphaned and no longer decode.
 export const decodeBackofficeObjectScope = (encodedName: string): BackofficeObjectScope | null => {
   const [version, kind, ...encodedValues] = encodedName.split(":");
   if (version !== "v1") {
@@ -942,9 +948,6 @@ const scoped = <TCommands>(
   },
   forUser(input: { userId: string }) {
     return scopedObject(factory, objectBinding, objectAddress(objectBinding, user(input)));
-  },
-  forProject(input: { orgId: string; projectId: string }) {
-    return scopedObject(factory, objectBinding, objectAddress(objectBinding, project(input)));
   },
 });
 

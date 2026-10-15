@@ -5,7 +5,10 @@ import os from "node:os";
 import path from "node:path";
 
 import type { PiManagerAgent, PiManagerAgentDirectory } from "@fragno-dev/backoffice-api/v0/pi";
-import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  backofficeScopeOrganization,
+  type BackofficeContextScope,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
   DurableObject: class {},
@@ -57,8 +60,8 @@ const scopes = [
   { kind: "system" },
   { kind: "org", orgId: "shared-id" },
   { kind: "user", userId: "shared-id" },
-  { kind: "project", orgId: "shared-id", projectId: "project-1" },
-  { kind: "project", orgId: "other-org", projectId: "project-1" },
+  { kind: "project", owner: { kind: "org", orgId: "shared-id" }, projectId: "project-1" },
+  { kind: "project", owner: { kind: "org", orgId: "other-org" }, projectId: "project-1" },
 ] satisfies BackofficeContextScope[];
 
 const objectOverrides = {
@@ -797,7 +800,7 @@ test("SQLite Pi directories and agent transcripts survive a complete local runti
                       ? "billing-org"
                       : scope.kind === "system"
                         ? null
-                        : scope.orgId,
+                        : backofficeScopeOrganization(scope).orgId,
                 });
                 const duplicate = await prompt(runtime, scope, {
                   requestId: "persisted-prompt",

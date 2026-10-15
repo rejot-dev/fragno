@@ -9,7 +9,11 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { BackofficeUiRenderer } from "../renderer";
 import { parseBackofficeUiResult } from "../result";
 
-const scope = { kind: "project" as const, orgId: "org-1", projectId: "project-1" };
+const scope = {
+  kind: "project" as const,
+  owner: { kind: "org" as const, orgId: "org-1" },
+  projectId: "project-1",
+};
 
 const uploadUi = parseBackofficeUiResult({
   $ui: {

@@ -23,12 +23,12 @@ const lookups = {
 describe("Backoffice route scope", () => {
   test("names projects by slug in page URLs and by ID at runtime", async () => {
     const resolution = await resolveBackofficeRouteScope(
-      backofficeRouteScopeFromParams({ scopeKind: "project", scopeId: "acme:website" })!,
+      backofficeRouteScopeFromParams({ scopeKind: "project", scopeId: "org:acme:website" })!,
       lookups,
     );
     expect(resolution).toEqual({
       status: "resolved",
-      scope: { kind: "project", organization, project },
+      scope: { kind: "project", owner: { kind: "org", organization }, project },
     });
     if (resolution.status !== "resolved") {
       throw new Error("Expected the project scope to resolve.");
@@ -36,11 +36,11 @@ describe("Backoffice route scope", () => {
 
     assert(
       backofficeRouteScopePath(backofficeRouteScopeFromResolvedScope(resolution.scope)) ===
-        "project/acme:website",
+        "project/org:acme:website",
     );
     expect(backofficeRuntimeScopeFromResolvedScope(resolution.scope)).toEqual({
       kind: "project",
-      orgId: "org_123",
+      owner: { kind: "org", orgId: "org_123" },
       projectId: "project_1",
     });
   });
@@ -49,16 +49,23 @@ describe("Backoffice route scope", () => {
     assert(
       backofficePublicScopePathSegment(
         backofficePublicScopeFromRuntimeScope(
-          { kind: "project", orgId: "org_123", projectId: "project_1" },
+          { kind: "project", owner: { kind: "org", orgId: "org_123" }, projectId: "project_1" },
           organization,
         ),
-      ) === "project:acme:project_1",
+      ) === "project:org:acme:project_1",
     );
   });
 
   test.each([
     [{ kind: "org", orgSlug: "org_123" } as const, "organization-not-found"],
-    [{ kind: "project", orgSlug: "acme", projectSlug: "project_1" } as const, "project-not-found"],
+    [
+      {
+        kind: "project",
+        owner: { kind: "org", orgSlug: "acme" },
+        projectSlug: "project_1",
+      } as const,
+      "project-not-found",
+    ],
   ])("rejects IDs where URLs name slugs: %o", async (routeScope, status) => {
     await expect(resolveBackofficeRouteScope(routeScope, lookups)).resolves.toMatchObject({
       status,

@@ -978,7 +978,7 @@ test("an access token without a refresh token reports unavailable when it expire
 test("api addresses resolve only in their own scope, page natively, and require both authority layers", async () => {
   const projectScope = {
     kind: "project",
-    orgId: orgScope.orgId,
+    owner: { kind: "org", orgId: orgScope.orgId },
     projectId: "api-project",
   } as const;
   const userScope = { kind: "user", userId: "api-member" } as const;

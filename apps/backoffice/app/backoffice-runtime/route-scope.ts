@@ -31,7 +31,7 @@ const routeScopeCodec: BackofficeScopeCodec<BackofficeRouteScopeNames> = {
   },
 };
 
-/** Encodes a Backoffice page URL scope, e.g. `project/acme:website`. */
+/** Encodes a Backoffice page URL scope, e.g. `project/org:acme:website`. */
 export function backofficeRouteScopePath(scope: BackofficeRouteScope): string {
   return formatBackofficeScopeRoutePath(scope, routeScopeCodec);
 }
@@ -63,7 +63,7 @@ export function requireBackofficeRouteScopeFromParams(params: {
   return routeScope;
 }
 
-/** Encodes the scope segment of a public fragment URL, e.g. `project:acme:<projectId>`. */
+/** Encodes the scope segment of a public fragment URL, e.g. `project:org:acme:<projectId>`. */
 export function backofficePublicScopePathSegment(
   scope: BackofficeRoutable<BackofficePublicScope>,
 ): string {

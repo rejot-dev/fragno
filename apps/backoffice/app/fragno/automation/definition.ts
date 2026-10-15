@@ -290,7 +290,7 @@ const handleForwardEventRouteAction = async ({
   if (scope.kind === "org" && !scope.orgId) {
     throw new Error(`Automation route ${route.id} resolved an empty target org id.`);
   }
-  if (scope.kind === "project" && (!scope.orgId || !scope.projectId)) {
+  if (scope.kind === "project" && (!scope.owner.orgId || !scope.projectId)) {
     throw new Error(`Automation route ${route.id} resolved an empty target project scope.`);
   }
   if (scope.kind === "user" && !scope.userId) {

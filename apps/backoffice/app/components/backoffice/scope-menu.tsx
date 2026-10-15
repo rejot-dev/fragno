@@ -30,12 +30,14 @@ type ScopeMenuOption = {
   scope: BackofficeResolvedScope<Organization>;
 };
 
-const scopeOptionId = (scope: BackofficeResolvedScope) => {
+// A project is chosen in the adjacent project menu, so this menu selects its owner.
+const scopeOptionId = (scope: BackofficeResolvedScope): string => {
   switch (scope.kind) {
     case "system":
       return "system:system";
-    case "org":
     case "project":
+      return scopeOptionId(scope.owner);
+    case "org":
       return `org:${scope.organization.id}`;
     case "user":
       return `user:${scope.userId}`;
@@ -44,31 +46,33 @@ const scopeOptionId = (scope: BackofficeResolvedScope) => {
   }
 };
 
-// While in project scope this menu keeps showing the parent organization; the
+// While in project scope this menu keeps showing the project's owner; the
 // project itself is surfaced by the adjacent project menu.
-const triggerKindLabel = (kind: BackofficeResolvedScope["kind"]) => {
-  switch (kind) {
+const triggerKindLabel = (scope: BackofficeResolvedScope): string => {
+  switch (scope.kind) {
     case "system":
       return "Scope";
-    case "org":
     case "project":
+      return triggerKindLabel(scope.owner);
+    case "org":
       return "Organization";
     case "user":
       return "Personal";
     default:
-      throw new Error("Unsupported Backoffice scope kind.", { cause: kind satisfies never });
+      throw new Error("Unsupported Backoffice scope kind.", { cause: scope satisfies never });
   }
 };
 
-// While in project scope this menu shows the parent organization, so it shares its mark.
+// While in project scope this menu shows the project's owner, so it shares its mark.
 const scopeMark = (
   scope: BackofficeResolvedScope<Organization>,
 ): { kind: "letter"; letter: string } | { kind: "icon"; icon: IconName } => {
   switch (scope.kind) {
     case "system":
       return { kind: "icon", icon: "server" };
-    case "org":
     case "project":
+      return scopeMark(scope.owner);
+    case "org":
       return { kind: "letter", letter: scope.organization.name.trim().charAt(0).toUpperCase() };
     case "user":
       return { kind: "icon", icon: "user" };
@@ -88,12 +92,16 @@ const scopeColor = (
     ? { kind: "primary" }
     : { kind: "seeded", seed: scopeId };
 
-const currentScopeLabel = (scope: BackofficeResolvedScope<Organization>, me: BackofficeMeData) => {
+const currentScopeLabel = (
+  scope: BackofficeResolvedScope<Organization>,
+  me: BackofficeMeData,
+): string => {
   switch (scope.kind) {
     case "system":
       return "System";
-    case "org":
     case "project":
+      return currentScopeLabel(scope.owner, me);
+    case "org":
       return scope.organization.name;
     case "user":
       return me.user.email ?? scope.userId;
@@ -143,7 +151,7 @@ export function BackofficeScopeMenu({
   return (
     <SelectorMenu>
       <SelectorMenuTrigger
-        label={triggerKindLabel(currentScope.kind)}
+        label={triggerKindLabel(currentScope)}
         value={triggerLabel}
         ariaLabel={`Switch scope. Current context: ${triggerLabel}`}
         layout={{

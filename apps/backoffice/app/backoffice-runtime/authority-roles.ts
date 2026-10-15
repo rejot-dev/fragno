@@ -6,7 +6,10 @@ import {
   type BackofficePermissionNamespace,
   type BackofficePermissionRequirement,
 } from "@fragno-dev/backoffice-api/v0/shared/permissions";
-import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  backofficeScopeOrganization,
+  type BackofficeContextScope,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import type { Role } from "@/fragno/auth/contracts";
 
@@ -272,7 +275,7 @@ export const resolveBackofficeUserAuthorityRole = (
     return authority.role === "admin" ? "system-administrator" : null;
   }
 
-  if (authority.organizationId !== scope.orgId) {
+  if (authority.organizationId !== backofficeScopeOrganization(scope)?.orgId) {
     return null;
   }
 

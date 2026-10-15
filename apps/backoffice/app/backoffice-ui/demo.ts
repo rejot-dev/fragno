@@ -227,7 +227,11 @@ const componentDemoInputs: ComponentDemoInput[] = [
     category: "Input",
     props: {
       label: "Supporting document",
-      scope: { kind: "project", orgId: "org-demo", projectId: "project-demo" },
+      scope: {
+        kind: "project",
+        owner: { kind: "org", orgId: "org-demo" },
+        projectId: "project-demo",
+      },
       value: null,
       accept: [".pdf", "image/*"],
       maxSizeBytes: 26_214_400,
