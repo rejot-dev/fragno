@@ -3,10 +3,12 @@ import { useState } from "react";
 import { useFetcher } from "react-router";
 
 import { formatPiAgentName } from "./agent-name";
+import { AgentPermissions } from "./agent-permissions";
 
 type AgentStartComposerProps = {
   agentName: string;
   description: string;
+  permissions: readonly string[];
   /** Null when no organization can pay for this agent's first turn. */
   billingOrganization: { id: string; name: string } | null;
 };
@@ -15,6 +17,7 @@ type AgentStartComposerProps = {
 export function AgentStartComposer({
   agentName,
   description,
+  permissions,
   billingOrganization,
 }: AgentStartComposerProps) {
   const fetcher = useFetcher<{ ok: boolean; error?: string }>();
@@ -30,7 +33,8 @@ export function AgentStartComposer({
         <h2 className="text-xl font-semibold tracking-[-0.02em] text-balance text-[var(--bo-fg)] sm:text-2xl">
           {displayName}
         </h2>
-        <p className="mt-2 mb-5 text-sm text-pretty text-[var(--bo-muted)]">{description}</p>
+        <p className="mt-2 text-sm text-pretty text-[var(--bo-muted)]">{description}</p>
+        <AgentPermissions permissions={permissions} className="mt-2 mb-5 font-mono text-xs" />
 
         <fetcher.Form method="post" className="w-full">
           <input type="hidden" name="intent" value="send" />
