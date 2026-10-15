@@ -29,6 +29,7 @@ import {
   executeCodemodeInObject,
   type CodemodeRunner,
 } from "./codemode-object-execute";
+import { readSavedModuleImports } from "./saved-module-imports";
 
 export type BackofficeCodemodeEnv =
   | LocalBackofficeCodemodeEnv
@@ -233,6 +234,11 @@ export const runBackofficeCodemode = async ({
 }: RunBackofficeCodemodeInput): Promise<BackofficeCodemodeExecuteResult> => {
   const toolCalls: BackofficeRuntimeToolCall[] = [];
 
+  const state = toolContext.runtimes.state;
+  // Without a filesystem, saved-module imports stay unresolved and fail when the code runs.
+  const { modules } = state
+    ? await readSavedModuleImports({ state, program: { kind: "inline", code } })
+    : { modules: {} };
   const { providers, mcpDiscoveryError } = await createBackofficeCodemodeResolvedProviders({
     families,
     toolContext,
@@ -243,6 +249,7 @@ export const runBackofficeCodemode = async ({
     {
       kind: "immediate",
       code: withBackofficeUiBuilder(code),
+      modules,
       dependencies: dependencies ?? {},
       providers: codemodeProviderManifest(providers),
       timeoutMs: timeout ?? 30_000,
@@ -256,6 +263,16 @@ export const runBackofficeCodemode = async ({
       runId,
       result: undefined,
       error: explainMcpCodemodeError(mcpDiscoveryError, completion.error.message),
+      logs: completion.logs,
+      toolCalls,
+    };
+  }
+  if (completion.workflowDefinition && Object.keys(modules).length > 0) {
+    // Scheduled workflows re-evaluate only their own source on every tick.
+    return {
+      runId,
+      result: undefined,
+      error: "Workflow programs cannot import saved modules; call providers directly.",
       logs: completion.logs,
       toolCalls,
     };

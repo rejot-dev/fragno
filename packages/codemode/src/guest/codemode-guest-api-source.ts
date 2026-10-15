@@ -80,6 +80,20 @@ function createScopedContextProxySource(): string {
     };`;
 }
 
+/** Imported modules have their own scope, so they reach providers through globals. */
+export function createCodemodeProviderGlobalsSource(
+  providers: readonly ResolvedProvider[],
+): string {
+  return [
+    ...providers
+      .filter((provider) => !CODEMODE_INTERNAL_PROVIDER_NAMES.has(provider.name))
+      .map((provider) => provider.name),
+    ...(providers.some((provider) => provider.name === "__context") ? ["context"] : []),
+  ]
+    .map((providerName) => `    globalThis[${JSON.stringify(providerName)}] = ${providerName};`)
+    .join("\n");
+}
+
 /** Generates provider proxies; host implementations remain behind the injected dispatchers. */
 export function createCodemodeProviderProxySource(providers: readonly ResolvedProvider[]): string {
   return [

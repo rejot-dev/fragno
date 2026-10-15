@@ -7,7 +7,9 @@ export const CODEMODE_LIMITS = {
   maxRpcPayloadBytes: maxFrameBytes - 64 * 1024,
   maxQueuedBytes: 16 * 1024 * 1024,
   maxSessionBytes: 64 * 1024 * 1024,
+  // Counts an activation's code together with its source modules.
   maxSourceBytes: 1024 * 1024,
+  maxSourceModules: 64,
   maxBundleBytes: 32 * 1024 * 1024,
   maxDepth: 64,
   maxEntries: 10_000,

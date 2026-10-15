@@ -83,6 +83,39 @@ test("named compiler RPC type-checks streamed JavaScript against caller declarat
   });
 });
 
+test("absolute and relative imports of source modules bundle and type-check from the project root", async () => {
+  const compile = createCompileWorkerServiceRequest({
+    files: {
+      "worker.js": `import { WorkerEntrypoint } from "cloudflare:workers";
+export default class extends WorkerEntrypoint {
+  async evaluate() { const { add } = await import("/workspace/lib/add.js"); return { result: add(2, 3) }; }
+}`,
+      "workspace/lib/add.js":
+        'import { offset } from "./offset.js"; export const add = (a, b) => a + b + offset;',
+      "workspace/lib/offset.js": "export const offset = 100;",
+    },
+    entryPoint: "worker.js",
+    dependencies: {},
+    runtime,
+  });
+  const executed = await server.requestCompiler(new Request("http://compiler/execute", compile));
+  expect(await executed.json()).toEqual({ result: 105 });
+
+  const files = {
+    "workspace/main.js": 'import { add } from "/workspace/lib/add.js"; add(1, "2");',
+    "workspace/lib/add.js":
+      "/** @param {number} a @param {number} b @returns {number} */ export const add = (a, b) => a + b;",
+  };
+  const check = createTypeCheckFilesServiceRequest({
+    files: Object.entries(files).map(([path, content]) => ({ path, read: async () => content })),
+    sourcePaths: Object.keys(files),
+  });
+  const checked = await server.requestCompiler(new Request("http://compiler/typecheck", check));
+  expect(await readTypeCheckFilesServiceResponse(checked)).toEqual({
+    diagnostics: [expect.objectContaining({ code: 2345, path: "workspace/main.js", line: 1 })],
+  });
+});
+
 test("Node HTTP clients compile and type-check through the authenticated public API", async () => {
   const compiler = createCodemodeCompilerHttpClient({ url: server.url, apiKey: server.apiKey });
   const compiled = await compiler.compileWorker({
@@ -173,6 +206,7 @@ test("RPC, HTTP, and WebSocket compilation share compiler admission and recover"
   const execute = createCodemodeNodeExecutor(server);
   const activation = {
     kind: "immediate" as const,
+    modules: {},
     code: "42",
     dependencies: {},
     providers: [],

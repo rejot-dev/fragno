@@ -154,8 +154,9 @@ only when the complete tool behavior is safe to repeat. Native hook retry/recove
 apply; use task memos where appropriate. A successful provider mutation is not rolled back when a
 callback later fails or is cancelled.
 
-Use the installed SDK import as shown. Standalone `js.check` and source `js.run` reject this import;
-compile through `js.build` rather than removing the native authoring API to satisfy those commands.
+Use the installed SDK import as shown. `js.check` cannot resolve this package and source `js.run`
+rejects it; compile through `js.build` rather than removing the native authoring API to satisfy
+those commands.
 
 **Complete when** every registration and callback uses only supported capabilities, replay policy
 matches its side effects, and I/O is inside callbacks rather than module initialization.

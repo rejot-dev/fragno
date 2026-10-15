@@ -103,6 +103,21 @@ const base = {
   timeoutMs: 10_000,
   providers: [{ name: "store", tools: ["write"] }],
 };
+const runBase = { ...base, modules: {} };
+/** Saved programs compile at their own path; inline code has none. */
+function program(kind: "immediate" | "module", code: string, modules: Record<string, string> = {}) {
+  return kind === "module"
+    ? { ...base, kind, entry: "/script.js", modules: { ...modules, "/script.js": code } }
+    : { ...base, kind, code, modules };
+}
+function moduleBuild(code: string) {
+  return {
+    kind: "module-build" as const,
+    dependencies: {},
+    entry: "/script.js",
+    modules: { "/script.js": code },
+  };
+}
 const workflowBase = {
   ...base,
   kind: "workflow" as const,
@@ -128,11 +143,9 @@ test("generic module bundles accept consumer invocations with fresh inputs and p
   const buildHost = providerHost();
   try {
     const built = await run(
-      {
-        dependencies: {},
-        kind: "module-build",
-        code: "let calls = 0; export const double = value => value * 2; export default value => `${value}:${calls++}`;",
-      },
+      moduleBuild(
+        "let calls = 0; export const double = value => value * 2; export default value => `${value}:${calls++}`;",
+      ),
       buildHost,
     );
     assert(built.status === "completed");
@@ -221,20 +234,14 @@ test("oversized module-build results return a failed completion without breaking
   });
   const build = createCodemodeNodeExecutor(buildServer);
   try {
-    const result = await build(
-      { kind: "module-build", code: "export default 42;", dependencies: {} },
-      createCodemodeHost([], null),
-    );
+    const result = await build(moduleBuild("export default 42;"), createCodemodeHost([], null));
     expect(result).toMatchObject({
       status: "failed",
       error: { message: expect.stringContaining("CODEMODE_REMOTE_PAYLOAD_LIMIT_EXCEEDED") },
     });
     oversized = false;
     expect(
-      await build(
-        { kind: "module-build", code: "export default 42;", dependencies: {} },
-        createCodemodeHost([], null),
-      ),
+      await build(moduleBuild("export default 42;"), createCodemodeHost([], null)),
     ).toMatchObject({ status: "completed" });
   } finally {
     await buildServer.close();
@@ -367,14 +374,7 @@ test.each(["resolve", "reject"] as const)(
 test("precompiled guests cannot bypass their host-owned wall deadline", async () => {
   const host = createCodemodeHost([], null);
   try {
-    const built = await execute(
-      {
-        dependencies: {},
-        kind: "module-build",
-        code: "export default () => new Promise(() => {});",
-      },
-      host,
-    );
+    const built = await execute(moduleBuild("export default () => new Promise(() => {});"), host);
     assert(built.status === "completed");
     const { bundle } = z.object({ bundle: codemodeWorkerBundleSchema }).parse(built.value);
     await expect(
@@ -424,7 +424,7 @@ test("the bridge rejects mismatched application versions and accepts only one ex
     const request = {
       protocolVersion: 2 as const,
       executionId: crypto.randomUUID(),
-      activation: { ...base, kind: "immediate" as const, providers: [], code: "42" },
+      activation: { ...runBase, kind: "immediate" as const, providers: [], code: "42" },
     };
     try {
       await expect(
@@ -453,7 +453,7 @@ test("ordinary Worker executes source and calls Node without a Durable Object", 
   const host = providerHost();
   const completion = await execute(
     {
-      ...base,
+      ...runBase,
       kind: "immediate",
       code: 'async () => { console.log("guest log"); return await store.write({ saved: true }); }',
     },
@@ -471,7 +471,7 @@ test("ordinary Worker executes source and calls Node without a Durable Object", 
 test("guest console calls are stored per channel with the guest's clock", async () => {
   const completion = await execute(
     {
-      ...base,
+      ...runBase,
       kind: "immediate",
       code: `async () => {
         console.log("plain", 1);
@@ -501,7 +501,7 @@ test("tool values survive native RPC and Cap'n Web without nested JSON codecs", 
   const host = providerHost();
   const completion = await execute(
     {
-      ...base,
+      ...runBase,
       kind: "immediate",
       code: `async () => {
     const value = await store.write({ date: new Date("2026-10-05"), bigint: 123n, missing: undefined, nan: NaN, bytes: new Uint16Array([256, 65535]), buffer: new Uint8Array([1, 2]).buffer, tag: { __codemode_binary_v1__: "Uint8Array", data: "not encoded" } });
@@ -530,11 +530,10 @@ test("tool values survive native RPC and Cap'n Web without nested JSON codecs", 
 test("module activation imports the file without invoking its default export", async () => {
   const host = providerHost();
   const completion = await execute(
-    {
-      ...base,
-      kind: "module",
-      code: 'await store.write("module body"); export default () => store.write("wrong");',
-    },
+    program(
+      "module",
+      'await store.write("module body"); export default () => store.write("wrong");',
+    ),
     host,
   );
   expect(completion.status, JSON.stringify(completion)).toBe("completed");
@@ -542,10 +541,36 @@ test("module activation imports the file without invoking its default export", a
 });
 
 test.each([
+  {
+    kind: "immediate" as const,
+    code: 'async () => { const { save } = await import("/lib/save.js"); return await save("immediate"); }',
+  },
+  {
+    kind: "module" as const,
+    code: 'import { save } from "/lib/save.js"; await save("module");',
+  },
+])(
+  "$kind source imports source modules that reach providers through globals",
+  async ({ kind, code }) => {
+    const host = providerHost();
+    const completion = await execute(
+      program(kind, code, {
+        "/lib/save.js":
+          'import { tag } from "./tag.js"; export const save = (value) => store.write(tag(value));',
+        "/lib/tag.js": "export const tag = (value) => `saved:${value}`;",
+      }),
+      host,
+    );
+    expect(completion.status, JSON.stringify(completion)).toBe("completed");
+    expect(host.writes).toEqual([`saved:${kind}`]);
+  },
+);
+
+test.each([
   { kind: "immediate" as const, code: '() => { throw "boom"; }' },
   { kind: "module" as const, code: 'throw "boom";' },
 ])("$kind source reports primitive throws as failures", async ({ kind, code }) => {
-  expect(await execute({ ...base, kind, code }, providerHost())).toMatchObject({
+  expect(await execute(program(kind, code), providerHost())).toMatchObject({
     status: "failed",
     error: { message: "boom" },
   });
@@ -553,7 +578,7 @@ test.each([
 test("object throws preserve string message properties", async () => {
   expect(
     await execute(
-      { ...base, kind: "immediate", code: '() => { throw { message: "object boom" }; }' },
+      { ...runBase, kind: "immediate", code: '() => { throw { message: "object boom" }; }' },
       providerHost(),
     ),
   ).toMatchObject({ status: "failed", error: { message: "object boom" } });
@@ -562,7 +587,7 @@ test.each([
   { label: "empty string", code: '() => { throw ""; }' },
   { label: "empty Error message", code: "() => { throw new Error(); }" },
 ])("$label throws use a non-empty execution failure", async ({ code }) => {
-  expect(await execute({ ...base, kind: "immediate", code }, providerHost())).toMatchObject({
+  expect(await execute({ ...runBase, kind: "immediate", code }, providerHost())).toMatchObject({
     status: "failed",
     error: { message: "CODEMODE_EXECUTION_FAILED" },
   });
@@ -573,13 +598,13 @@ test.each(["immediate", "module"] as const)(
     expect(
       await execute(
         {
-          ...base,
-          kind,
-          timeoutMs: 50,
-          code:
+          ...program(
+            kind,
             kind === "module"
               ? "await new Promise(() => {});"
               : "async () => await new Promise(() => {})",
+          ),
+          timeoutMs: 50,
         },
         providerHost(),
       ),
@@ -590,7 +615,7 @@ test("guest cannot fetch or inspect host credentials", async () => {
   expect(
     await execute(
       {
-        ...base,
+        ...runBase,
         kind: "immediate",
         code: 'async () => { try { await fetch("https://example.com"); } catch { return { denied: true, credential: globalThis.SANDBOX_API_KEY }; } }',
       },
@@ -602,7 +627,7 @@ test("unauthorized clients never execute a provider operation", async () => {
   const host = providerHost();
   await expect(
     createCodemodeNodeExecutor({ ...server, apiKey: "incorrect" })(
-      { ...base, kind: "immediate", code: '() => store.write("wrong")' },
+      { ...runBase, kind: "immediate", code: '() => store.write("wrong")' },
       host,
     ),
   ).rejects.toThrow("HTTP 401");
@@ -648,7 +673,7 @@ test.each(["immediate", "workflow"] as const)(
             providers,
             code: `async (_event, step) => await step.do("restricted", ${callback})`,
           }
-        : { ...base, kind, providers, code: callback },
+        : { ...runBase, kind, providers, code: callback },
       host,
     );
     expect(completion).toMatchObject({
@@ -681,7 +706,7 @@ test.each(["immediate", "workflow"] as const)(
             providers,
             code: 'async (_event, step) => await step.do("restricted", async () => await store.write("wrong"))',
           }
-        : { ...base, kind, providers, code: 'async () => await store.write("wrong")' },
+        : { ...runBase, kind, providers, code: 'async () => await store.write("wrong")' },
       host,
     );
     expect(completion).toMatchObject({
@@ -697,7 +722,7 @@ test("unregistered tools cannot gain authority through remote property lookup", 
   expect(
     await execute(
       {
-        ...base,
+        ...runBase,
         kind: "immediate",
         providers: [{ name: "store", tools: ["write", "constructor"] }],
         code: "async () => await store.constructor()",
@@ -939,7 +964,7 @@ test.each(["resolve", "reject"] as const)(
         expect(error).toBeInstanceOf(CodemodeInterruptedError);
       }
       const replacement = {
-        ...base,
+        ...runBase,
         kind: "immediate" as const,
         code: 'async () => await store.write("recovered")',
       };
@@ -979,7 +1004,7 @@ test.each(["immediate", "module", "workflow"] as const)(
       const code =
         kind === "module" ? logSource : `async (_event, _step) => { ${logSource} return 42; }`;
       const completion = await createCodemodeNodeExecutor(warningServer)(
-        kind === "workflow" ? { ...workflowBase, code } : { ...base, kind, code },
+        kind === "workflow" ? { ...workflowBase, code } : program(kind, code),
         providerHost(),
       );
       assert(completion.status === "completed");
@@ -1028,7 +1053,7 @@ test.each(["completed", "failed", "suspended"] as const)(
             )
           : await executeWarning(
               {
-                ...base,
+                ...runBase,
                 kind: "immediate",
                 code: `async () => { ${logSource} ${status === "failed" ? 'throw new Error("guest failure");' : "return 42;"} }`,
               },
@@ -1058,7 +1083,7 @@ test.each([0, 1])(
     }));
     try {
       const completion = await createCodemodeNodeExecutor(warningServer)(
-        { ...base, kind: "immediate", code: "() => 42" },
+        { ...runBase, kind: "immediate", code: "() => 42" },
         providerHost(),
       );
       expect(completion).toMatchObject({ status: "completed", value: 42 });
@@ -1073,7 +1098,7 @@ test.each([0, 1])(
 test("log floods fail with bounded output", async () => {
   const completion = await execute(
     {
-      ...base,
+      ...runBase,
       kind: "immediate",
       code: '() => { for (let i = 0; i < 10000; i++) console.log("message"); }',
     },

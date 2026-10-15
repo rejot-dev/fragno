@@ -22,11 +22,11 @@ that blocker rather than guessing a replacement API.
 
 Choose the operation:
 
-| Operation                 | Input                                               | Purpose                                                                             |
-| ------------------------- | --------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| `js.check({ path })`      | Standalone `.js` source                             | Type-check against the static declarations; does not execute.                       |
-| `js.build({ path, out })` | `.js` source and workspace `.json` output           | Compile an ES module into a reusable artifact; does not execute or inspect exports. |
-| `js.run({ path })`        | Standalone `.js` source or a built `.json` artifact | Execute top-level statements; ignore named and default exports.                     |
+| Operation                 | Input                                     | Purpose                                                                             |
+| ------------------------- | ----------------------------------------- | ----------------------------------------------------------------------------------- |
+| `js.check({ path })`      | `.js` source                              | Type-check it and its imports against the static declarations; does not execute.    |
+| `js.build({ path, out })` | `.js` source and workspace `.json` output | Compile an ES module into a reusable artifact; does not execute or inspect exports. |
+| `js.run({ path })`        | `.js` source or a built `.json` artifact  | Execute top-level statements; ignore named and default exports.                     |
 
 For durable steps, retries, sleeps, or external events, read `/static/skills/workflows/SKILL.md` and
 use the workflow runtime. Saved `.workflow.js` files start through `workflow.createInstance`, not
@@ -37,7 +37,7 @@ process; this skill owns their build/runtime semantics.
 known. Workspace files belong to the current scope; another organization's or project's files are
 not implicitly visible.
 
-## 2. Save and check standalone source
+## 2. Save and check source
 
 Write UTF-8 JavaScript with `state.writeFile({ path, content })`. Source paths are `.js` files under
 `/workspace/` or `/static/`; author editable files under `/workspace/`. Codemode paths must be
@@ -66,7 +66,12 @@ An exported function is a definition, not an entrypoint: `export default async (
 not execute its body under `js.run`. The run output contains logs, not the module's exports or a
 returned export value.
 
-Check standalone source before execution:
+Source imports other saved `.js` modules under `/workspace/` or `/static/` by absolute path or
+relative to the importing file, as with `import { echo } from "../integrations/tools.js"`; typed
+integration clients from `integrations.generateClient` are such modules. Imports name the file with
+its `.js` extension. Each run and check reads the imported modules as they are saved.
+
+Check source before execution:
 
 ```js
 async () => {
@@ -75,13 +80,13 @@ async () => {
 };
 ```
 
-Inspect `valid` and every diagnostic's path, line, column, code, and message. Fix source diagnostics
-and check again. Standalone checking and source execution reject module imports and re-exports from
-other modules; SDK-importing modules use the build branch below instead. Build success is not a
-substitute for type-check success.
+Inspect `valid` and every diagnostic's path, line, column, code, and message. Diagnostics cover the
+imported modules too, and an import that cannot be loaded is a diagnostic at the import. Fix them
+and check again. Source checking and execution resolve no npm packages; SDK-importing modules use
+the build branch below instead. Build success is not a substitute for type-check success.
 
-**Complete when** standalone source has `valid: true`, or the task deliberately uses the compiled
-module branch because it needs supported imports.
+**Complete when** the source has `valid: true`, or the task deliberately uses the compiled module
+branch because it imports the SDK.
 
 ## 3. Build a reusable module when needed
 
@@ -104,8 +109,9 @@ async () => {
 
 - Output is a `.json` file under the current `/workspace/`. `.build/` and `.module.json` are naming
   conventions, not required locations or suffixes. Use direct paths without `..` traversal.
-- Builds accept one source file and the installed, pinned `@earendil-works/pi-durable` dependency;
-  additional workspace modules and arbitrary npm dependencies are outside this build contract.
+- Builds bundle the source with the saved modules it imports and the installed, pinned
+  `@earendil-works/pi-durable` dependency; other npm dependencies are outside this build contract.
+  The artifact captures imported modules as they were at build time: rebuild after editing one.
 - The generic `fragno-javascript-module/v1` artifact contains code, not Pi metadata, capability
   grants, or a consumer-specific invocation wrapper. Use `js.build` without a target option.
 - Build neither initializes the module nor activates an extension. A successful build can still fail

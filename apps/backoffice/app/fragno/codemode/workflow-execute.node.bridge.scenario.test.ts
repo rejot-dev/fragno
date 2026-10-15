@@ -376,7 +376,7 @@ test("Node explains denied MCP discovery for immediate, module, and scheduled ex
               program: {
                 kind: "source",
                 path: "/workspace/scripts/module.js",
-                code: "await mcp_agensi.search({});",
+                modules: { "/workspace/scripts/module.js": "await mcp_agensi.search({});" },
               },
             });
             assert(moduleDenied.status === "error");
@@ -386,7 +386,9 @@ test("Node explains denied MCP discovery for immediate, module, and scheduled ex
               program: {
                 kind: "source",
                 path: "/workspace/scripts/module.js",
-                code: 'throw new Error("unrelated module failure");',
+                modules: {
+                  "/workspace/scripts/module.js": 'throw new Error("unrelated module failure");',
+                },
               },
             });
             assert(
@@ -398,7 +400,9 @@ test("Node explains denied MCP discovery for immediate, module, and scheduled ex
               program: {
                 kind: "source",
                 path: "/workspace/scripts/module.js",
-                code: 'console.log("non-MCP module completed");',
+                modules: {
+                  "/workspace/scripts/module.js": 'console.log("non-MCP module completed");',
+                },
               },
             });
             assert(moduleSuccessful.status === "success");

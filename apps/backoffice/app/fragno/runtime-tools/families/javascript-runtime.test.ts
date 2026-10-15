@@ -19,22 +19,29 @@ function createTestJavaScriptStateBackend(fileSystem: InMemoryFs): BackofficeSta
           type: entry.isDirectory ? ("directory" as const) : ("file" as const),
         })),
     resolvePath: (base, path) => fileSystem.resolvePath(base, path),
+    stat: async (path) => {
+      if (!(await fileSystem.exists(path))) {
+        return null;
+      }
+      const stat = await fileSystem.stat(path);
+      return { type: stat.isDirectory ? "directory" : "file", size: stat.size };
+    },
   } as BackofficeStateBackend;
 }
 
 describe("createJavaScriptRuntime", () => {
   test("checks a JavaScript file with static declarations", async () => {
     const fileSystem = new InMemoryFs();
-    await fileSystem.mkdir("/static/codemode/sources", { recursive: true });
+    await fileSystem.mkdir("/static/codemode/providers", { recursive: true });
     await fileSystem.mkdir("/workspace/types", { recursive: true });
-    await fileSystem.writeFile("/workspace/example.js", "declaredMcpValue.toUpperCase();");
+    await fileSystem.writeFile("/workspace/example.js", "declaredStaticValue.toUpperCase();");
     await fileSystem.writeFile(
       "/workspace/types/globals.d.ts",
       "declare const declaredWorkspaceValue: number;",
     );
     await fileSystem.writeFile(
-      "/static/codemode/sources/mcp.d.ts",
-      "declare const declaredMcpValue: string;",
+      "/static/codemode/providers/fixture.d.ts",
+      "declare const declaredStaticValue: string;",
     );
     await fileSystem.writeFile("/workspace/ignored.txt", "not TypeScript input");
     let checkedFiles: Record<string, string> = {};
@@ -80,13 +87,13 @@ describe("createJavaScriptRuntime", () => {
     assert(input);
     expect(input.sourcePaths).toEqual(["workspace/example.js"]);
     expect(checkedFiles).toEqual({
-      "workspace/example.js": "declaredMcpValue.toUpperCase();",
-      "static/codemode/sources/mcp.d.ts": "declare const declaredMcpValue: string;",
+      "workspace/example.js": "declaredStaticValue.toUpperCase();",
+      "static/codemode/providers/fixture.d.ts": "declare const declaredStaticValue: string;",
     });
     expect(readdirWithFileTypes).not.toHaveBeenCalledWith("/workspace");
   });
 
-  test("rejects imports before type checking", async () => {
+  test("reports an import of a missing module before type checking", async () => {
     const fileSystem = new InMemoryFs();
     await fileSystem.mkdir("/workspace", { recursive: true });
     await fileSystem.writeFile(
@@ -109,9 +116,8 @@ describe("createJavaScriptRuntime", () => {
           code: 95001,
           path: "/workspace/example.js",
           line: 1,
-          column: 3,
-          message:
-            "Standalone JavaScript import is not supported in '/workspace/example.js' at line 1, column 3. Saved JavaScript files must not import other modules.",
+          column: 21,
+          message: "Import './helper.js' names a missing file: /workspace/helper.js.",
         },
       ],
     });
@@ -166,7 +172,7 @@ describe("createJavaScriptRuntime", () => {
     expect(typeCheckFiles).toHaveBeenCalledOnce();
   });
 
-  test("rejects dynamic imports regardless of their position", async () => {
+  test("reports dynamic imports of missing modules regardless of their position", async () => {
     const fileSystem = new InMemoryFs();
     await fileSystem.mkdir("/workspace", { recursive: true });
     await fileSystem.writeFile(
@@ -188,14 +194,14 @@ describe("createJavaScriptRuntime", () => {
         expect.objectContaining({
           code: 95001,
           line: 1,
-          column: 21,
+          column: 28,
         }),
       ],
     });
     expect(typeCheckFiles).not.toHaveBeenCalled();
   });
 
-  test("allows import.meta in standalone JavaScript", async () => {
+  test("allows import.meta", async () => {
     const fileSystem = new InMemoryFs();
     await fileSystem.mkdir("/static", { recursive: true });
     await fileSystem.mkdir("/workspace", { recursive: true });
@@ -262,18 +268,19 @@ describe("createJavaScriptRuntime", () => {
       logs: [{ at: 0, channel: "log", text: "running" }],
     });
     expect(executeModule).toHaveBeenCalledWith(
-      { kind: "source", path: "/workspace/scripts/example.js", code: "console.log('done');" },
+      {
+        kind: "source",
+        path: "/workspace/scripts/example.js",
+        modules: { "/workspace/scripts/example.js": "console.log('done');" },
+      },
       toolContext,
     );
   });
 
-  test("rejects imports before running a saved JavaScript module", async () => {
+  test("rejects package imports before running a saved JavaScript module", async () => {
     const fileSystem = new InMemoryFs();
     await fileSystem.mkdir("/workspace/scripts", { recursive: true });
-    await fileSystem.writeFile(
-      "/workspace/scripts/example.js",
-      "export { helper } from './helper.js';",
-    );
+    await fileSystem.writeFile("/workspace/scripts/example.js", "export { helper } from 'helper';");
     const executeModule = vi.fn();
     const runtime = createJavaScriptRuntime({
       getStateBackend: async () => createTestJavaScriptStateBackend(fileSystem),
@@ -291,7 +298,7 @@ describe("createJavaScriptRuntime", () => {
       status: "rejected",
       path: "/workspace/scripts/example.js",
       error:
-        "Standalone JavaScript import is not supported in '/workspace/scripts/example.js' at line 1, column 1. Saved JavaScript files must not import other modules.",
+        "JavaScript run cannot install packages (helper); compile with js.build and run the artifact.",
     });
     expect(executeModule).not.toHaveBeenCalled();
   });

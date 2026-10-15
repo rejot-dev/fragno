@@ -127,35 +127,43 @@ export async function executeCodemodeActivation(
       warnings: [],
     };
   } else {
-    if (new TextEncoder().encode(activation.code).byteLength > CODEMODE_LIMITS.maxSourceBytes) {
+    const sourceModules = activation.kind === "workflow" ? {} : activation.modules;
+    const sources = "code" in activation ? [activation.code] : [];
+    const sourceBytes = [...sources, ...Object.values(sourceModules)].reduce(
+      (size, source) => size + new TextEncoder().encode(source).byteLength,
+      0,
+    );
+    if (sourceBytes > CODEMODE_LIMITS.maxSourceBytes) {
       throw new Error("CODEMODE_SOURCE_LIMIT_EXCEEDED");
     }
     if (!services.compile) {
       throw new Error("CODEMODE_COMPILER_UNAVAILABLE");
     }
-    const code = activation.code.trim().replace(/;*$/, "");
-    const files: Record<string, string> =
-      activation.kind === "workflow"
-        ? {
-            "executor.js": createCodemodeWorkflowSource({
-              code,
-              providerProxySource: createCodemodeProviderProxySource(providers),
-            }),
-          }
-        : activation.kind === "module-build"
-          ? { "script.js": activation.code }
-          : activation.kind === "module"
-            ? {
-                "executor.js": createCodemodeModuleSource(
-                  "./script.js",
-                  providers,
-                  activation.timeoutMs,
-                ),
-                "script.js": activation.code,
-              }
-            : {
-                "executor.js": createCodemodeFunctionSource(code, providers, activation.timeoutMs),
-              };
+    // Compilers resolve an absolute specifier against the project root, which has no leading slash.
+    const files: Record<string, string> = Object.fromEntries(
+      Object.entries(sourceModules).map(([path, source]) => [path.slice(1), source]),
+    );
+    if (Object.hasOwn(files, "executor.js")) {
+      throw new Error("CODEMODE_SOURCE_MODULE_PATH_RESERVED: /executor.js");
+    }
+    if (activation.kind === "workflow") {
+      files["executor.js"] = createCodemodeWorkflowSource({
+        code: activation.code.trim().replace(/;*$/, ""),
+        providerProxySource: createCodemodeProviderProxySource(providers),
+      });
+    } else if (activation.kind === "module") {
+      files["executor.js"] = createCodemodeModuleSource(
+        `.${activation.entry}`,
+        providers,
+        activation.timeoutMs,
+      );
+    } else if (activation.kind === "immediate") {
+      files["executor.js"] = createCodemodeFunctionSource(
+        activation.code.trim().replace(/;*$/, ""),
+        providers,
+        activation.timeoutMs,
+      );
+    }
     const compileDeadline = setTimeout(() => {
       interrupt(new CodemodeInterruptedError("CODEMODE_COMPILATION_TIMED_OUT"));
     }, CODEMODE_LIMITS.compileTimeoutMs);
@@ -164,7 +172,8 @@ export async function executeCodemodeActivation(
       compiled = await runWithCodemodeCompilerAdmission(() =>
         compile({
           files,
-          entryPoint: activation.kind === "module-build" ? "script.js" : "executor.js",
+          entryPoint:
+            activation.kind === "module-build" ? activation.entry.slice(1) : "executor.js",
           dependencies: activation.dependencies,
           runtime: CODEMODE_WORKER_RUNTIME,
         }),

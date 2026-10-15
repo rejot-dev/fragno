@@ -5,27 +5,20 @@ import type {
 } from "@fragno-dev/codemode/compiler/compile-worker";
 import type { WorkerBundle } from "@fragno-dev/codemode/compiler/worker-bundle";
 import type { CodemodeLogLine } from "@fragno-dev/codemode/runtime-api";
-import jsTokens, { type Token } from "js-tokens";
 
 import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
 import { isPathWithin, normalizeAbsolutePath } from "@/files/normalize-path";
 import { javaScriptModuleArtifactSchema } from "@/fragno/codemode/javascript-module-artifact";
+import {
+  readSavedModuleImports,
+  SavedModuleImportError,
+} from "@/fragno/codemode/saved-module-imports";
 import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
 import type { CoreBackofficeToolContext } from "@/fragno/runtime-tools/tool-families";
 
 const JAVASCRIPT_FILE_ROOTS = ["/static", "/workspace"] as const;
 const JAVASCRIPT_DECLARATION_ROOT = "/static";
-const STANDALONE_JAVASCRIPT_IMPORT_DIAGNOSTIC_CODE = 95001;
-
-type StandaloneJavaScriptImportViolation = {
-  line: number;
-  column: number;
-};
-
-type PositionedJavaScriptToken = {
-  token: Token;
-  start: number;
-};
+const SAVED_MODULE_IMPORT_DIAGNOSTIC_CODE = 95001;
 
 export type JavaScriptCheckFileOutput = {
   path: string;
@@ -55,9 +48,12 @@ export type JavaScriptBuildFileOutput =
   | { status: "error"; path: string; artifactPath: string; runId: string; error: string }
   | { status: "rejected"; path: string; artifactPath: string; error: string };
 
-/** A saved file to run: source requires compilation; a validated bundle runs without a compiler. */
+/**
+ * A saved file to run: source requires compilation together with the saved modules it imports,
+ * including itself; a validated bundle runs without a compiler.
+ */
 export type JavaScriptModuleProgram =
-  | { kind: "source"; path: string; code: string }
+  | { kind: "source"; path: string; modules: Record<string, string> }
   | { kind: "bundle"; path: string; bundle: WorkerBundle };
 
 export type JavaScriptModuleExecutor = (
@@ -124,98 +120,6 @@ function javaScriptVirtualPath(path: string) {
   return path.slice(1);
 }
 
-function isJavaScriptTriviaToken(token: Token) {
-  return (
-    token.type === "WhiteSpace" ||
-    token.type === "LineTerminatorSequence" ||
-    token.type === "SingleLineComment" ||
-    token.type === "MultiLineComment" ||
-    token.type === "HashbangComment"
-  );
-}
-
-function positionJavaScriptTokens(code: string) {
-  let offset = 0;
-  return [...jsTokens(code)].map((token): PositionedJavaScriptToken => {
-    const positionedToken = { token, start: offset };
-    offset += token.value.length;
-    return positionedToken;
-  });
-}
-
-function standaloneJavaScriptImportViolation(
-  code: string,
-  token: PositionedJavaScriptToken,
-): StandaloneJavaScriptImportViolation {
-  const precedingLines = code.slice(0, token.start).split(/\r\n|[\n\r\u2028\u2029]/u);
-  return {
-    line: precedingLines.length,
-    column: (precedingLines.at(-1)?.length ?? 0) + 1,
-  };
-}
-
-function findStandaloneJavaScriptImport(code: string): StandaloneJavaScriptImportViolation | null {
-  const tokens = positionJavaScriptTokens(code).filter(
-    ({ token }) => !isJavaScriptTriviaToken(token),
-  );
-
-  for (const [index, positionedToken] of tokens.entries()) {
-    const { token } = positionedToken;
-    const previousValue = tokens[index - 1]?.token.value;
-    const nextValue = tokens[index + 1]?.token.value;
-
-    if (token.type === "IdentifierName" && token.value === "import") {
-      if (
-        previousValue !== "." &&
-        previousValue !== "?." &&
-        nextValue !== "." &&
-        nextValue !== ":"
-      ) {
-        return standaloneJavaScriptImportViolation(code, positionedToken);
-      }
-      continue;
-    }
-
-    if (
-      token.type !== "IdentifierName" ||
-      token.value !== "export" ||
-      previousValue === "." ||
-      (nextValue !== "*" && nextValue !== "{")
-    ) {
-      continue;
-    }
-
-    if (nextValue === "*") {
-      return standaloneJavaScriptImportViolation(code, positionedToken);
-    }
-
-    let braceDepth = 0;
-    for (const [candidateOffset, candidate] of tokens.slice(index + 1).entries()) {
-      if (candidate.token.value === "{") {
-        braceDepth += 1;
-      } else if (candidate.token.value === "}") {
-        braceDepth -= 1;
-        if (braceDepth === 0) {
-          const tokenAfterExportList = tokens[index + candidateOffset + 2]?.token.value;
-          if (tokenAfterExportList === "from") {
-            return standaloneJavaScriptImportViolation(code, positionedToken);
-          }
-          break;
-        }
-      }
-    }
-  }
-
-  return null;
-}
-
-function standaloneJavaScriptImportError(
-  path: string,
-  violation: StandaloneJavaScriptImportViolation,
-) {
-  return `Standalone JavaScript import is not supported in '${path}' at line ${violation.line}, column ${violation.column}. Saved JavaScript files must not import other modules.`;
-}
-
 /** Creates file-backed JavaScript checking and ES module execution under /static and /workspace. */
 export function createJavaScriptRuntime({
   getStateBackend,
@@ -233,19 +137,26 @@ export function createJavaScriptRuntime({
       ? async function checkJavaScriptFile({ path }) {
           const sourcePath = parseJavaScriptFilePath(path, "source");
           const stateBackend = await getStateBackend();
-          const sourceCode = await stateBackend.readFile(sourcePath);
-          const importViolation = findStandaloneJavaScriptImport(sourceCode);
-          if (importViolation) {
+          let modules: Record<string, string>;
+          try {
+            ({ modules } = await readSavedModuleImports({
+              state: stateBackend,
+              program: { kind: "file", path: sourcePath },
+            }));
+          } catch (error) {
+            if (!(error instanceof SavedModuleImportError)) {
+              throw error;
+            }
             return {
               path: sourcePath,
               valid: false,
               diagnostics: [
                 {
-                  code: STANDALONE_JAVASCRIPT_IMPORT_DIAGNOSTIC_CODE,
-                  path: sourcePath,
-                  line: importViolation.line,
-                  column: importViolation.column,
-                  message: standaloneJavaScriptImportError(sourcePath, importViolation),
+                  code: SAVED_MODULE_IMPORT_DIAGNOSTIC_CODE,
+                  path: error.path,
+                  line: error.line,
+                  column: error.column,
+                  message: error.message,
                 },
               ],
             };
@@ -255,16 +166,20 @@ export function createJavaScriptRuntime({
             stateBackend,
             JAVASCRIPT_DECLARATION_ROOT,
           );
-          const sourceVirtualPath = javaScriptVirtualPath(sourcePath);
+          // Imported modules are checked too; their errors surface where they are written.
+          const sourcePaths = Object.keys(modules).map(javaScriptVirtualPath);
           const result = await typeCheckFiles({
             files: [
-              { path: sourceVirtualPath, read: async () => sourceCode },
+              ...Object.entries(modules).map(([modulePath, code]) => ({
+                path: javaScriptVirtualPath(modulePath),
+                read: async () => code,
+              })),
               ...declarationPaths.map((declarationPath) => ({
                 path: javaScriptVirtualPath(declarationPath),
                 read: async () => await stateBackend.readFile(declarationPath),
               })),
             ],
-            sourcePaths: [sourceVirtualPath],
+            sourcePaths,
           });
           const diagnostics = result.diagnostics.map((diagnostic) => ({
             ...diagnostic,
@@ -308,12 +223,16 @@ export function createJavaScriptRuntime({
                   "JavaScript run cannot execute a workflow file. Use workflow.instances.create instead.",
                 );
               }
-              const code = await stateBackend.readFile(sourcePath);
-              const importViolation = findStandaloneJavaScriptImport(code);
-              if (importViolation) {
-                throw new Error(standaloneJavaScriptImportError(sourcePath, importViolation));
+              const { modules, packages } = await readSavedModuleImports({
+                state: stateBackend,
+                program: { kind: "file", path: sourcePath },
+              });
+              if (packages.length > 0) {
+                throw new Error(
+                  `JavaScript run cannot install packages (${packages.join(", ")}); compile with js.build and run the artifact.`,
+                );
               }
-              program = { kind: "source", path: sourcePath, code };
+              program = { kind: "source", path: sourcePath, modules };
             }
             return { ...(await executeModule(program, toolContext)), path: sourcePath };
           } catch (error) {

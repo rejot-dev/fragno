@@ -13,18 +13,23 @@ import {
 
 /** Bundles an ES module without executing it or choosing a consumer-specific entrypoint. */
 export async function buildBackofficeJavaScriptModule(input: {
-  code: string;
+  entry: string;
+  modules: Record<string, string>;
   dependencies: Record<string, string>;
   codemode: CodemodeRunner;
-  origin: CodemodeRunOrigin;
 }): Promise<
   | ({ status: "success"; runId: string } & CompiledWorker)
   | { status: "error"; runId: string; error: string }
 > {
   const { runId, completion } = await executeCodemodeInObject(
     input.codemode,
-    { kind: "module-build", code: input.code, dependencies: input.dependencies },
-    input.origin,
+    {
+      kind: "module-build",
+      entry: input.entry,
+      modules: input.modules,
+      dependencies: input.dependencies,
+    },
+    { kind: "file", path: input.entry },
     [],
     null,
   );
