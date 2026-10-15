@@ -15,7 +15,6 @@
         "content/static/terminal/terminal-spec.json",
         "content/static/codemode/system.d.ts",
         "content/static/codemode/providers/**",
-        "content/static/codemode/sources/mcp.d.ts",
         "content/static/skills/generating-backoffice-uis/CATALOG.md"
       ]
     },

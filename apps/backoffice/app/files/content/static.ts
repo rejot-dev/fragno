@@ -15,44 +15,7 @@ export const STATIC_FILE_CONTENT = {
   ...STATIC_CODEMODE_CONTENT,
 } satisfies Record<string, string | Uint8Array>;
 
-export type StaticFileArtifactsLoader = () =>
-  | Promise<Record<string, string | Uint8Array>>
-  | Record<string, string | Uint8Array>;
-
-export function createBackofficeStaticFileCollection(
-  loadStaticFileArtifacts: StaticFileArtifactsLoader,
-): FileCollection {
-  const staticCollection = createStaticFileCollection(STATIC_FILE_CONTENT);
-  let collectionWithDynamicArtifactsPromise: Promise<FileCollection> | undefined;
-
-  function getCollectionWithDynamicArtifacts() {
-    return (collectionWithDynamicArtifactsPromise ??= Promise.resolve(
-      loadStaticFileArtifacts(),
-    ).then((loadedArtifacts) =>
-      createStaticFileCollection({
-        ...STATIC_FILE_CONTENT,
-        ...loadedArtifacts,
-      }),
-    ));
-  }
-
-  return {
-    async getTree() {
-      return staticCollection.getTree();
-    },
-    async getFile(path) {
-      if (path === "codemode/sources/mcp.d.ts") {
-        return (await getCollectionWithDynamicArtifacts()).getFile(path);
-      }
-      return staticCollection.getFile(path);
-    },
-    async searchFiles(pattern, keywords, options, cursor) {
-      return (await getCollectionWithDynamicArtifacts()).searchFiles(
-        pattern,
-        keywords,
-        options,
-        cursor,
-      );
-    },
-  };
+/** Product-owned files are identical for every execution. */
+export function createBackofficeStaticFileCollection(): FileCollection {
+  return createStaticFileCollection(STATIC_FILE_CONTENT);
 }

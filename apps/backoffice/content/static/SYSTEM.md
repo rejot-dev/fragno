@@ -66,7 +66,6 @@ completion.
 Declarations tell you what can be called; runtime checks tell you what is currently usable.
 
 - `/providers` contains the complete, stable Backoffice API.
-- `/sources` contains dynamically discovered APIs for the current context.
 - Before executing, confirm the method exists, required services are configured, scopes are
   concrete, and event types are exact; report an unavailable requirement as blocking.
 

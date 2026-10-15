@@ -1,6 +1,6 @@
 import { assert, describe, expect, test } from "vitest";
 
-import { createBackofficeStaticFileCollection } from "@/files/content/static";
+import { createStaticFileCollection } from "@/file-collection/create-static-file-collection";
 import { createCodemodeStateRuntime } from "@/fragno/runtime-tools/codemode-state-runtime";
 import { createTrustedSystemBackofficeToolContext } from "@/fragno/runtime-tools/runtime-tools";
 
@@ -12,14 +12,14 @@ const UNIQUE_SEARCH_TEXT = "state-backend-unique-telegram-token";
 describe("BackofficeStateBackend", () => {
   test("provides read-only system and static mounts without Upload", async () => {
     const state = createBackofficeSystemStateBackend({
-      staticFileCollection: createBackofficeStaticFileCollection(() => ({
-        "codemode/sources/mcp.d.ts": UNIQUE_SEARCH_TEXT,
-      })),
+      staticFileCollection: createStaticFileCollection({
+        "fixtures/state-backend-fixture-static.md": UNIQUE_SEARCH_TEXT,
+      }),
     });
 
     await expect(state.readdir("/")).resolves.toEqual(["static", "system"]);
     await expect(state.readFile("/system/README.md")).resolves.toContain("admin-only system-scope");
-    await expect(state.readFile("/static/codemode/sources/mcp.d.ts")).resolves.toBe(
+    await expect(state.readFile("/static/fixtures/state-backend-fixture-static.md")).resolves.toBe(
       UNIQUE_SEARCH_TEXT,
     );
     await expect(

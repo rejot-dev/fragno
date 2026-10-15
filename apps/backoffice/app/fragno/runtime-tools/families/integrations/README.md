@@ -6,11 +6,10 @@ history.
 
 API, inbound webhooks, MCP, GitHub, Reson8, Telegram, Resend, and Connector are implemented sources.
 Codemode and terminal commands use the same contracts, runtime, and permissions. Every source's
-connections are exposed only through `integrations.*`; the former standalone tool families have been
-removed. One native surface remains because the facade does not cover it: codemode generates a typed
-`mcp_<server>` provider per MCP server from its cached tools, whose declarations name the
-`mcp#<server>` connection so a search by service name leads to it. All sources retain their
-underlying Fragments, Durable Objects, ownership, and configuration controls.
+connections are exposed only through `integrations.*`; the former standalone tool families and the
+generated `mcp_<server>` codemode providers have been removed. Typed access is a generated client
+module instead (see below). All sources retain their underlying Fragments, Durable Objects,
+ownership, and configuration controls.
 
 ## Public surface
 
@@ -25,6 +24,11 @@ underlying Fragments, Durable Objects, ownership, and configuration controls.
   `settings()` and never reads secrets back.
 - `actions({ connectionId })`: supported actions with authoritative input/output JSON Schemas.
 - `execute({ connectionId, actionId, input })`: invoke the exact live action with JSON input/output.
+- `generateClient({ connectionId, out })`: write a `.js` module under `/workspace` with one
+  JSDoc-typed function per action, each calling `execute`, so codemode and saved modules import
+  typed calls. It renders from `actions`, so every source gets clients without source-specific code;
+  the types snapshot the contracts at generation time. Generation replaces only a file whose header
+  marks it as generated.
 - `verify({ connectionId })`: explicit supported live checks, returning timestamped evidence.
 - `setup({ kind: "check", connectionId })`: read current source-owned setup requirements.
   `setup({ kind: "input", connectionId, input })` submits direct JSON values to the same operation.
@@ -345,13 +349,15 @@ rejected. The full native envelope is returned, including `ok: false` upstream H
 request has run, and requests are never retried automatically.
 
 MCP publishes one action per tool in the Fragment's tool cache, with the tool name as its ID and its
-own input schema. Every tool shares the Fragment's result envelope as the output schema:
-`{ isError, content, structuredContent }`. A tool error is a result the caller sees, not a thrown
+own input schema. Its output schema is the Fragment's result envelope,
+`{ isError, content, structuredContent }`; when the tool declares an output schema, the published
+schema is a union on `isError` whose successful branch references the tool's schema, embedded under
+`$defs` with its local references rebased. A tool error is a result the caller sees, not a thrown
 failure; auth, transport, and protocol failures throw. Successful `structuredContent` is validated
-against the tool's output schema when it declares one. A tool whose input or output schema cannot be
-validated is withheld from actions rather than published with a weaker contract, and inspection
-names it; it stays callable through the generated `mcp_<server>` codemode provider. Connector
-instead fails the whole catalog, since its catalogs are curated.
+against the tool's output schema, in its own dialect, when it declares one. A tool whose input or
+output schema cannot be validated is withheld from actions rather than published with a weaker
+contract, and inspection names it. Connector instead fails the whole catalog, since its catalogs are
+curated.
 
 Source schemas without an explicit dialect use JSON Schema 2020-12; draft-07, which MCP SDK servers
 publish, is also accepted and validated as draft-07. Other explicit dialects, unresolved references,
@@ -487,12 +493,13 @@ integrations.execute --connection-id 'connector#n_ACJwcm9qZWN0LTEiACJnbWFpbC1wcm
 ## Authority and evidence
 
 Umbrella `integrations.read`, `.manage`, and `.execute` apply at the tool boundary. Setup,
-reconfigure, disconnect, and verification require manage. No source has permissions of its own:
-every receiving object authorizes the same three operations. Configuration reads, listing,
-resolution, inspection, setup checks, and live checks require `connections.read`; submitted or
-replaced configuration, OAuth starts, reauthorization, and disconnect require `connections.manage`;
-actions require `integrations.execute`. Both caller and receiving-object checks use the original
-execution authority; no roles gain grants.
+reconfigure, disconnect, and verification require manage. Generating a client requires read and
+`upload.modify`, since it writes a workspace file; the generated functions call `execute`. No source
+has permissions of its own: every receiving object authorizes the same three operations.
+Configuration reads, listing, resolution, inspection, setup checks, and live checks require
+`connections.read`; submitted or replaced configuration, OAuth starts, reauthorization, and
+disconnect require `connections.manage`; actions require `integrations.execute`. Both caller and
+receiving-object checks use the original execution authority; no roles gain grants.
 
 Reading a pending authorization link requires `connections.manage`, not read: a pending link carries
 the callback state, so a reader could otherwise complete consent with their own provider account.

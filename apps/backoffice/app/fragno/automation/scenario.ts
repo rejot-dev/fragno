@@ -241,21 +241,6 @@ type FakeResendQueueEmailCall = {
   options: { idempotencyKey: string };
 };
 
-type FakeMcpServer = {
-  slug: string;
-  name?: string | null;
-  endpointUrl?: string;
-  authMode?: string;
-  cache?: {
-    tools?: Array<{
-      name: string;
-      title?: string;
-      description?: string;
-      inputSchema?: Record<string, unknown>;
-    }> | null;
-  } | null;
-};
-
 type TelegramAdminApi = NonNullable<
   ConstructorParameters<typeof InMemoryTelegramObject>[0]["adminApi"]
 >;
@@ -289,16 +274,10 @@ export type FakeResendApi = {
   fetch(request: Request): Promise<Response>;
 };
 
-export type FakeMcpApi = {
-  servers: FakeMcpServer[];
-  fetch(request: Request): Promise<Response>;
-};
-
 export type ScenarioFakes = {
   telegram?: FakeTelegramApi;
   pi?: FakePiManagerApi;
   resend?: FakeResendApi;
-  mcp?: FakeMcpApi;
 };
 
 type ScenarioFakeFactory = {
@@ -307,7 +286,6 @@ type ScenarioFakeFactory = {
     assistantText?: (input: { agentName: string; content: string }) => string;
   }): FakePiManagerApi;
   resend(input?: { threads?: FakeResendThreadSeed[] }): FakeResendApi;
-  mcp(input?: { servers?: FakeMcpServer[] }): FakeMcpApi;
 };
 
 type FileDiffStatus = "added" | "changed" | "removed";
@@ -947,14 +925,10 @@ const createPreset = (
   ),
 });
 
-const SCENARIO_STATIC_FILE_CONTENT = Object.fromEntries(
-  Object.entries(STATIC_FILE_CONTENT).filter(([path]) => path !== "codemode/sources/mcp.d.ts"),
-);
-
 export const backofficeFiles = {
   systemOnly: () =>
     createPreset({
-      ...mapContentToMountedFiles("/static", SCENARIO_STATIC_FILE_CONTENT),
+      ...mapContentToMountedFiles("/static", STATIC_FILE_CONTENT),
       ...mapContentToMountedFiles("/system", SYSTEM_FILE_CONTENT),
     }),
   workspaceStarter: (additionalFiles: Record<string, string | Uint8Array> = {}) =>
@@ -966,7 +940,7 @@ export const backofficeFiles = {
     ),
   fullStarter: () =>
     createPreset({
-      ...mapContentToMountedFiles("/static", SCENARIO_STATIC_FILE_CONTENT),
+      ...mapContentToMountedFiles("/static", STATIC_FILE_CONTENT),
       ...mapContentToMountedFiles("/system", SYSTEM_FILE_CONTENT),
       ...mapContentToMountedFiles("/workspace", WORKSPACE_STARTER_CONTENT),
     }),
@@ -1406,29 +1380,7 @@ const createScenarioFakeFactory = (): ScenarioFakeFactory => ({
   telegram: createFakeTelegramApi,
   pi: createFakePiManagerApi,
   resend: createFakeResendApi,
-  mcp: createFakeMcpApi,
 });
-
-const createFakeMcpApi = (input: { servers?: FakeMcpServer[] } = {}): FakeMcpApi => {
-  const servers = input.servers ?? [];
-
-  const normalizeServer = (server: FakeMcpServer) => ({
-    endpointUrl: "https://example.com/mcp",
-    authMode: "none",
-    ...server,
-  });
-
-  return {
-    servers,
-    fetch: async (request) => {
-      const url = new URL(request.url);
-      if (request.method === "GET" && url.pathname.endsWith("/servers")) {
-        return Response.json({ servers: servers.map(normalizeServer) });
-      }
-      return Response.json({ message: "Not found", code: "NOT_FOUND" }, { status: 404 });
-    },
-  };
-};
 
 const readSnapshotContent = async (fs: IFileSystem, path: string): Promise<string | null> => {
   try {
@@ -4176,26 +4128,6 @@ const createFakeObjectOverrides = async (fakes: ScenarioFakes): Promise<LocalBac
       }),
       getDurableHook: async () => null,
     });
-  }
-
-  if (fakes.mcp) {
-    overrides.MCP = () => {
-      const object = {
-        init: () => object,
-        fetch: (request: Request) => fakes.mcp!.fetch(request),
-        alarm: async () => undefined,
-        getDurableHookQueue: async () => ({
-          configured: false,
-          hooksEnabled: false,
-          namespace: null,
-          items: [],
-          cursor: undefined,
-          hasNextPage: false,
-        }),
-        getDurableHook: async () => null,
-      };
-      return object;
-    };
   }
 
   return overrides;

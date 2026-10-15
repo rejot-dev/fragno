@@ -1656,6 +1656,44 @@
     ]
   },
   {
+    "command": "integrations.generateClient",
+    "summary": "Write a JavaScript module with one typed function per connection action, for codemode to import.",
+    "options": [
+      {
+        "name": "connection-id",
+        "required": true,
+        "valueRequired": true,
+        "description": "Deterministic connection address in the selected scope, such as backoffice#reson8"
+      },
+      {
+        "name": "out",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "path",
+        "description": "Output .js module under /workspace; only a previously generated client is replaced"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
     "command": "integrations.verify",
     "summary": "Perform explicit live checks without running service actions or retaining a health cache.",
     "options": [

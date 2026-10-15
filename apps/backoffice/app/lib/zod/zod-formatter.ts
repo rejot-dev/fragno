@@ -116,6 +116,10 @@ type JsonSchemaTypeScriptContext = {
   referencedDeclarationRefs: Set<string>;
   typeNamesByRef: Map<string, string>;
   usedTypeNames: Set<string>;
+  /** JSDoc type expressions cannot contain comments, so typedefs render none. */
+  propertyComments: boolean;
+  /** Typedefs share one module scope, so each schema prefixes the declarations it introduces. */
+  declarationPrefix: string;
 };
 
 const TYPE_NAME_RESERVED_WORDS = new Set([
@@ -198,11 +202,17 @@ const typeNameForRef = (
     return existing;
   }
 
-  const baseName = sanitizeTypeName(
-    typeof schema.id === "string" && schema.id.trim()
-      ? schema.id.trim()
-      : fallbackTypeNameForRef(ref, context.rootTypeName),
-  );
+  const baseName = context.declarationPrefix
+    ? `${context.declarationPrefix}${pascalCase(
+        typeof schema.id === "string" && schema.id.trim()
+          ? schema.id.trim()
+          : (jsonPointerSegments(ref).at(-1) ?? "Schema"),
+      )}`
+    : sanitizeTypeName(
+        typeof schema.id === "string" && schema.id.trim()
+          ? schema.id.trim()
+          : fallbackTypeNameForRef(ref, context.rootTypeName),
+      );
   let typeName = baseName;
   let suffix = 2;
   while (context.usedTypeNames.has(typeName)) {
@@ -346,7 +356,7 @@ const renderProperty = ({
 }) => {
   const key = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name) ? name : JSON.stringify(name);
   const property = `${key}${required ? "" : "?"}: ${renderJsonSchemaType(schema, depth, context)};`;
-  const jsDoc = schemaJSDoc(schema);
+  const jsDoc = context.propertyComments ? schemaJSDoc(schema) : undefined;
   return jsDoc ? `${renderSchemaJSDoc(jsDoc)}\n${property}` : property;
 };
 
@@ -359,10 +369,12 @@ const createRenderContext = (
   referencedDeclarationRefs: new Set(),
   typeNamesByRef: new Map(),
   usedTypeNames: new Set(rootTypeName ? [rootTypeName] : []),
+  propertyComments: true,
+  declarationPrefix: "",
 });
 
 const renderReferencedDeclarations = (context: JsonSchemaTypeScriptContext) => {
-  const declarations: string[] = [];
+  const declarations: { name: string; type: string }[] = [];
   const renderedRefs = new Set<string>();
   const pendingRefs = [...context.referencedDeclarationRefs];
 
@@ -380,7 +392,7 @@ const renderReferencedDeclarations = (context: JsonSchemaTypeScriptContext) => {
     renderedRefs.add(ref);
     const typeName = typeNameForRef(ref, schema, context);
     const type = renderJsonSchemaType(schema, 0, context);
-    declarations.push(`type ${typeName} = ${type};`);
+    declarations.push({ name: typeName, type });
 
     for (const discoveredRef of context.referencedDeclarationRefs) {
       if (!renderedRefs.has(discoveredRef) && !pendingRefs.includes(discoveredRef)) {
@@ -411,7 +423,7 @@ export const jsonSchemaToTypeScriptRender = (
     const rootType = renderJsonSchemaType(schema, 0, context);
     return {
       declarations: [
-        ...renderReferencedDeclarations(context),
+        ...renderReferencedDeclarations(context).map(renderTypeAlias),
         `type ${rootSchemaTypeName} = ${rootType};`,
       ],
       type: rootSchemaTypeName,
@@ -419,7 +431,67 @@ export const jsonSchemaToTypeScriptRender = (
   }
 
   const type = renderJsonSchemaType(schema, 0, context);
-  return { declarations: renderReferencedDeclarations(context), type };
+  return { declarations: renderReferencedDeclarations(context).map(renderTypeAlias), type };
+};
+
+const renderTypeAlias = ({ name, type }: { name: string; type: string }) =>
+  `type ${name} = ${type};`;
+
+const renderJSDocBlock = (lines: string[]) => {
+  // Schema text is untrusted for comment syntax; an embedded terminator would end the block.
+  const body = lines.join("\n").replaceAll("*/", "*\\/").split("\n");
+  return body.length === 1
+    ? `/** ${body[0]} */`
+    : ["/**", ...body.map((line) => ` * ${line}`), " */"].join("\n");
+};
+
+/**
+ * Renders a JSON Schema as JSDoc typedefs for checked JavaScript. A root object keeps its fields'
+ * descriptions as `@property` tags; nested descriptions have no JSDoc syntax and are dropped.
+ */
+export const jsonSchemaToJSDocTypedefs = (schema: JsonSchemaObject, typeName: string): string[] => {
+  // The caller names the root; a schema id would rename it out from under that name.
+  const { id: _id, ...root } = schema;
+  const context: JsonSchemaTypeScriptContext = {
+    ...createRenderContext(root, typeName),
+    propertyComments: false,
+    declarationPrefix: typeName,
+  };
+  const properties = Object.entries(root.properties ?? {});
+  const documentsFields =
+    root.type === "object" &&
+    !root.$ref &&
+    !root.anyOf &&
+    !root.oneOf &&
+    !root.allOf &&
+    root.additionalProperties !== true &&
+    typeof root.additionalProperties !== "object" &&
+    properties.length > 0 &&
+    properties.every(([name]) => /^[A-Za-z_$][\w$]*$/u.test(name));
+  const description = root.description?.trim() ? [root.description.trim()] : [];
+  let rootTypedef: string;
+  if (documentsFields) {
+    const required = new Set(root.required ?? []);
+    rootTypedef = renderJSDocBlock([
+      ...description,
+      `@typedef {Object} ${typeName}`,
+      ...properties.map(([name, property]) => {
+        const fieldDescription = schemaJSDoc(property);
+        return `@property {${renderJsonSchemaType(property, 0, context)}} ${required.has(name) ? name : `[${name}]`}${fieldDescription ? ` ${fieldDescription}` : ""}`;
+      }),
+    ]);
+  } else {
+    rootTypedef = renderJSDocBlock([
+      ...description,
+      `@typedef {${renderJsonSchemaType(root, 0, context)}} ${typeName}`,
+    ]);
+  }
+  return [
+    ...renderReferencedDeclarations(context).map(({ name, type }) =>
+      renderJSDocBlock([`@typedef {${type}} ${name}`]),
+    ),
+    rootTypedef,
+  ];
 };
 
 export const jsonSchemaToTypeScript = (schema: JsonSchemaObject | undefined, depth = 0): string => {

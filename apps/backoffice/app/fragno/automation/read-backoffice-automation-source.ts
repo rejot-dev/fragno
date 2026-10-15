@@ -10,7 +10,6 @@ import {
   createBackofficeStateBackend,
   createBackofficeSystemStateBackend,
 } from "@/fragno/codemode/state-backend";
-import { createCodemodeStaticArtifactsResolver } from "@/fragno/codemode/static-codemode-artifacts";
 
 export async function readBackofficeAutomationSource({
   objects,
@@ -25,9 +24,7 @@ export async function readBackofficeAutomationSource({
   config: BackofficeRuntimeConfig;
   path: string;
 }): Promise<string> {
-  const staticFileCollection = createBackofficeStaticFileCollection(
-    createCodemodeStaticArtifactsResolver({ objects, execution }),
-  );
+  const staticFileCollection = createBackofficeStaticFileCollection();
 
   if (execution.scope.kind === "system") {
     return await createBackofficeSystemStateBackend({ staticFileCollection }).readFile(path);

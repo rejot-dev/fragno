@@ -10,7 +10,6 @@ import {
   createBackofficeSystemStateBackend,
   type BackofficeStateBackend,
 } from "./state-backend";
-import { createCodemodeStaticArtifactsResolver } from "./static-codemode-artifacts";
 
 /** Selects shared state storage and reference collections for an established execution scope. */
 export function createRuntimeStateBackend({
@@ -22,9 +21,7 @@ export function createRuntimeStateBackend({
   kernel: BackofficeKernel;
   execution: BackofficeExecutionContext;
 }): BackofficeStateBackend {
-  const staticFileCollection = createBackofficeStaticFileCollection(
-    createCodemodeStaticArtifactsResolver({ objects: runtime.objects, execution }),
-  );
+  const staticFileCollection = createBackofficeStaticFileCollection();
   if (execution.scope.kind === "system") {
     return createBackofficeSystemStateBackend({ staticFileCollection });
   }

@@ -77,6 +77,67 @@ export function encodeMcpConnectionId(slug: string) {
 
 type PublishableTool = { tool: McpTool; input: Validator; output: Validator | null };
 
+// The fragment pins its own zod version, so convert through Standard JSON Schema.
+const { $schema: mcpResultDialect, ...mcpResultEnvelope } = mcpToolCallResultSchema[
+  "~standard"
+].jsonSchema.output({ target: "draft-2020-12" }) as {
+  $schema: string;
+  properties: Record<string, unknown>;
+} & Record<string, unknown>;
+
+const STRUCTURED_CONTENT_REF = "#/$defs/structuredContent";
+
+/** Points a schema's local references at the location it is embedded under. */
+function rebaseLocalReferences(schema: unknown): unknown {
+  if (Array.isArray(schema)) {
+    return schema.map(rebaseLocalReferences);
+  }
+  if (schema === null || typeof schema !== "object") {
+    return schema;
+  }
+  return Object.fromEntries(
+    Object.entries(schema).map(([key, value]) => {
+      if (key === "$ref" && typeof value === "string" && value.startsWith("#")) {
+        return [key, `${STRUCTURED_CONTENT_REF}${value.slice(1)}`];
+      }
+      // These keywords hold instance data, not subschemas.
+      if (key === "const" || key === "enum" || key === "default" || key === "examples") {
+        return [key, value];
+      }
+      return [key, rebaseLocalReferences(value)];
+    }),
+  );
+}
+
+/**
+ * Successful results carry structuredContent matching the tool's output schema, so the published
+ * contract says so. The tool's own validator still checks results in its original dialect.
+ */
+function mcpActionOutputSchema(tool: McpTool): Record<string, unknown> {
+  if (!tool.outputSchema) {
+    return { $schema: mcpResultDialect, ...mcpResultEnvelope };
+  }
+  const { $schema: _toolDialect, ...structuredContent } = tool.outputSchema;
+  return {
+    $schema: mcpResultDialect,
+    anyOf: [
+      {
+        ...mcpResultEnvelope,
+        properties: {
+          ...mcpResultEnvelope.properties,
+          isError: { const: false },
+          structuredContent: { $ref: STRUCTURED_CONTENT_REF },
+        },
+      },
+      {
+        ...mcpResultEnvelope,
+        properties: { ...mcpResultEnvelope.properties, isError: { const: true } },
+      },
+    ],
+    $defs: { structuredContent: rebaseLocalReferences(structuredContent) },
+  };
+}
+
 /** Tools whose contracts cannot be validated faithfully are withheld rather than weakened. */
 function partitionTools(tools: readonly McpTool[]) {
   const publishable: PublishableTool[] = [];
@@ -711,10 +772,7 @@ export function createMcpIntegration({
                     : ""
                 } Tool errors return isError: true with an explanation in content.`.trim(),
                 inputSchema: tool.inputSchema,
-                // The fragment pins its own zod version, so convert through Standard JSON Schema.
-                outputSchema: mcpToolCallResultSchema["~standard"].jsonSchema.output({
-                  target: "draft-2020-12",
-                }),
+                outputSchema: mcpActionOutputSchema(tool),
               },
               async invoke(value) {
                 const args = z.record(z.string(), jsonValueSchema).parse(value);

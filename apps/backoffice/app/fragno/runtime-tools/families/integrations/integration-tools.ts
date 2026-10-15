@@ -1,5 +1,6 @@
 import {
   integrationActionSchema,
+  integrationGenerateClientInputSchema,
   integrationConnectionEventsBackfillResultSchema,
   integrationConnectionInputSchema,
   integrationConnectionSchema,
@@ -16,6 +17,7 @@ import {
 import type { JsonValue } from "@fragno-dev/backoffice-api/v0/shared/json";
 import { z } from "zod";
 
+import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
 import type { AutomationCommandOutputOptions } from "@/fragno/runtime-tools/automation-types";
 import {
   defineCliArgsParser,
@@ -31,6 +33,7 @@ import {
   defineBackofficeRuntimeToolFamily,
   type BackofficeToolContext,
 } from "../../runtime-tools";
+import { writeIntegrationClientModule } from "./integration-client-module";
 import { type IntegrationSetupOperation } from "./integration-contracts";
 import type { IntegrationConnectionDetails } from "./integration-implementation";
 
@@ -70,6 +73,7 @@ export type IntegrationsRuntime = {
 };
 type IntegrationsToolContext = BackofficeToolContext<{
   integrations: IntegrationsRuntime | undefined;
+  state: BackofficeStateBackend | undefined;
 }>;
 
 function requireIntegrationsRuntime(context: IntegrationsToolContext): IntegrationsRuntime {
@@ -416,6 +420,57 @@ export const integrationsToolFamily = defineBackofficeRuntimeToolFamily({
             },
           ),
           format: formatIntegrationCommandOutput,
+        },
+      },
+    }),
+    defineBackofficeRuntimeTool({
+      ...backofficeApiOperationToolFields("integrations.generateClient"),
+      namespace: "integrations",
+      name: "generateClient",
+      getResource: (input) => ({ connectionId: input.connectionId, path: input.out }),
+      execute: async ({ connectionId, out }, context: IntegrationsToolContext) => {
+        const integrations = requireIntegrationsRuntime(context);
+        if (!context.runtimes.state) {
+          throw new Error("Generating a client requires the workspace filesystem.");
+        }
+        return await writeIntegrationClientModule({
+          connectionId,
+          out,
+          actions: await integrations.actions({ connectionId }),
+          state: context.runtimes.state,
+        });
+      },
+      adapters: {
+        bash: {
+          command: "integrations.generateClient",
+          help: {
+            summary:
+              "Write a JavaScript module with one typed function per connection action, for codemode to import.",
+            options: [
+              integrationConnectionOption,
+              {
+                name: "out",
+                required: true,
+                valueRequired: true,
+                valueName: "path",
+                description:
+                  "Output .js module under /workspace; only a previously generated client is replaced",
+              },
+            ],
+            examples: [
+              "integrations.generateClient --connection-id 'mcp#linear' --out /workspace/integrations/linear.js",
+            ],
+          },
+          parse: defineCliArgsParser<z.input<typeof integrationGenerateClientInputSchema>>(
+            "integrations.generateClient",
+            { ...integrationConnectionCliFields, out: { required: true } },
+          ),
+          format: (client, options) =>
+            options.format === "json" || options.print
+              ? { data: client }
+              : {
+                  stdout: `${client.path}\n${client.exports.map(({ name, actionId }) => `${name}\t${actionId}\n`).join("")}`,
+                },
         },
       },
     }),

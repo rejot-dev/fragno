@@ -426,12 +426,30 @@ test("Codemode registers an MCP server through setup, publishes its tools as act
                 label: "Echo",
                 // Draft-07 contracts are published as the server declared them.
                 inputSchema: { $schema: draft07, required: ["text"] },
+                // Successful results promise the tool's own structured content.
+                outputSchema: {
+                  anyOf: [
+                    {
+                      required: ["isError", "content", "structuredContent"],
+                      properties: {
+                        isError: { const: false },
+                        structuredContent: { $ref: "#/$defs/structuredContent" },
+                      },
+                    },
+                    { properties: { isError: { const: true } } },
+                  ],
+                  $defs: {
+                    structuredContent: { type: "object", required: ["echoed"] },
+                  },
+                },
+              },
+              {
+                id: "refuse",
                 outputSchema: {
                   type: "object",
                   required: ["isError", "content", "structuredContent"],
                 },
               },
-              { id: "refuse" },
               { id: "drift" },
             ],
             echoed: {

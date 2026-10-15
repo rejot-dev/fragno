@@ -8,7 +8,6 @@ import type { FileCollection } from "@/file-collection/file-collection";
 import { createBackofficeStaticFileCollection } from "@/files/content/static";
 import { systemFileCollection } from "@/files/content/system";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
-import { createCodemodeStaticArtifactsResolver } from "@/fragno/codemode/static-codemode-artifacts";
 import { UPLOAD_PROVIDER_DATABASE } from "@/fragno/upload";
 import { createUploadRouteCaller } from "@/fragno/upload-server";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
@@ -71,9 +70,7 @@ export async function createFilesOverviewCollections({
       rootKind: "static",
       readOnly: true,
       persistence: "persistent",
-      collection: createBackofficeStaticFileCollection(
-        createCodemodeStaticArtifactsResolver({ objects: runtime.objects, execution }),
-      ),
+      collection: createBackofficeStaticFileCollection(),
     });
   }
 

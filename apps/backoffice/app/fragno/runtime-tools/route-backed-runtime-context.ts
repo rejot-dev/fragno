@@ -14,7 +14,6 @@ import {
   type BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
 import { isBackofficeUnavailableError, type BackofficeKernel } from "@/backoffice-runtime/kernel";
-import { isBackofficeObjectAvailableInContext } from "@/backoffice-runtime/object-registry";
 import { resolveBackofficeRuntimeScope } from "@/backoffice-runtime/resolved-scope";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { createStaticFileCollection } from "@/file-collection/create-static-file-collection";
@@ -40,7 +39,6 @@ import {
   createBackofficeSystemStateBackend,
   type BackofficeStateBackend,
 } from "@/fragno/codemode/state-backend";
-import { createCodemodeStaticArtifactsResolver } from "@/fragno/codemode/static-codemode-artifacts";
 import {
   createPiManagerRuntime,
   type PiManagerRuntime,
@@ -57,7 +55,6 @@ import { createIntegrationsRuntime } from "@/fragno/runtime-tools/families/integ
 import { createInternalRuntime } from "@/fragno/runtime-tools/families/internal";
 import { createJavaScriptRuntime } from "@/fragno/runtime-tools/families/javascript-runtime";
 import { createMarketplaceRuntime } from "@/fragno/runtime-tools/families/marketplace-runtime";
-import { createMcpRuntime } from "@/fragno/runtime-tools/families/mcp-runtime";
 import { createOrganizationRuntime } from "@/fragno/runtime-tools/families/organization-runtime";
 import {
   createOtpRuntime,
@@ -146,15 +143,6 @@ function userPrincipalId(execution: BackofficeExecutionContext): string | null {
   return principal?.scope === "internal" && principal.type === "user" ? principal.id : null;
 }
 
-function createExecutionStaticFileCollection({
-  runtime,
-  execution,
-}: Pick<RouteBackedRuntimeContextOptions, "runtime" | "execution">) {
-  return createBackofficeStaticFileCollection(
-    createCodemodeStaticArtifactsResolver({ objects: runtime.objects, execution }),
-  );
-}
-
 const unavailableObject = <T>(resolve: () => T): T | null => {
   try {
     return resolve();
@@ -186,7 +174,7 @@ export const createRouteBackedRuntimeContext = ({
   const javaScriptStateBackend =
     stateBackend ??
     createBackofficeSystemStateBackend({
-      staticFileCollection: createExecutionStaticFileCollection({ runtime, execution }),
+      staticFileCollection: createBackofficeStaticFileCollection(),
       systemFileCollection: createStaticFileCollection({}),
     });
   const automationsObject = kernel.scoped(
@@ -419,18 +407,6 @@ export const createRouteBackedRuntimeContext = ({
             scope: { kind: "org", orgId: org.orgId },
           }),
         }
-      : null,
-    mcp: runtime.config.bindings.mcp
-      ? (() => {
-          const object = isBackofficeObjectAvailableInContext("MCP", execution.scope)
-            ? kernel.scoped("MCP", execution.scope, runtime.objects.mcp)
-            : null;
-          return object
-            ? {
-                runtime: createMcpRuntime(authorizedBackofficeObjectHttp(object.http, execution)),
-              }
-            : null;
-        })()
       : null,
     otp: {
       runtime: selectedOrg

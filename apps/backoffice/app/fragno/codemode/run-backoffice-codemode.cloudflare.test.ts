@@ -32,7 +32,6 @@ import type { RegisteredAutomationsRuntime } from "@/fragno/runtime-tools/bash-h
 import { createUnavailableAutomationRouterRuntime } from "@/fragno/runtime-tools/families/automations-routing";
 import { type EventRuntime } from "@/fragno/runtime-tools/families/event";
 import { createUnavailableEventRuntime } from "@/fragno/runtime-tools/families/event-runtime";
-import type { McpRuntime } from "@/fragno/runtime-tools/families/mcp-runtime";
 import { type OtpRuntime } from "@/fragno/runtime-tools/families/otp";
 import type { UploadRuntime } from "@/fragno/runtime-tools/families/upload-runtime";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
@@ -437,105 +436,6 @@ describe("runBackofficeCodemode", () => {
     expect(result.result).toEqual({ isUint8Array: true, bytes: [0, 1, 2, 255] });
   });
 
-  test("calls cached MCP tools through dispatcher-safe codemode providers", async () => {
-    const calls: unknown[] = [];
-    const mcpRuntime: McpRuntime = {
-      listServers: async () => ({
-        servers: [
-          {
-            slug: "cloudflare-mcp",
-            name: "Cloudflare MCP",
-            endpointUrl: "https://example.com/mcp",
-            authMode: "none",
-            cache: {
-              tools: [
-                {
-                  name: "search-docs",
-                  description: "Search docs.",
-                  inputSchema: {
-                    type: "object",
-                    properties: { query: { type: "string" } },
-                    required: ["query"],
-                  },
-                },
-                {
-                  name: "delete",
-                  description: "Call a reserved-name tool.",
-                  inputSchema: {
-                    type: "object",
-                    properties: { query: { type: "string" } },
-                    required: ["query"],
-                  },
-                },
-              ],
-            },
-          },
-        ],
-      }),
-      callTool: async (input) => {
-        calls.push(["callTool", input]);
-        return {
-          content: [{ type: "text", text: `result for ${String(input.arguments?.query ?? "")}` }],
-        };
-      },
-    };
-
-    const result = await runBackofficeCodemode({
-      codemode,
-      families: runtimeToolFamilies,
-      toolContext: createTrustedSystemBackofficeToolContext({ runtimes: { mcp: mcpRuntime } }),
-      code: `async () => {
-        const docs = await mcp_cloudflare_mcp.search_docs({ query: "fragno" });
-        const reserved = await mcp_cloudflare_mcp.delete_({ query: "reserved" });
-        return { docs, reserved };
-      }`,
-    });
-
-    expect(result.error).toBeUndefined();
-    expect(result.result).toEqual({
-      docs: { content: [{ type: "text", text: "result for fragno" }] },
-      reserved: { content: [{ type: "text", text: "result for reserved" }] },
-    });
-    expect(calls).toEqual([
-      ["callTool", { slug: "cloudflare-mcp", name: "search-docs", arguments: { query: "fragno" } }],
-      ["callTool", { slug: "cloudflare-mcp", name: "delete", arguments: { query: "reserved" } }],
-    ]);
-    expect(result.toolCalls).toMatchObject([
-      {
-        providerName: "mcp_cloudflare_mcp",
-        toolName: "search_docs",
-        toolId: "mcp.cloudflare-mcp.search-docs",
-        status: "success",
-      },
-      {
-        providerName: "mcp_cloudflare_mcp",
-        toolName: "delete_",
-        toolId: "mcp.cloudflare-mcp.delete",
-        status: "success",
-      },
-    ]);
-  });
-
-  test("fails fast when MCP codemode provider discovery fails", async () => {
-    const mcpRuntime: McpRuntime = {
-      listServers: async () => {
-        throw new Error("MCP server list failed");
-      },
-      callTool: async () => {
-        throw new Error("not used");
-      },
-    };
-
-    await expect(
-      runBackofficeCodemode({
-        codemode,
-        families: runtimeToolFamilies,
-        toolContext: createTrustedSystemBackofficeToolContext({ runtimes: { mcp: mcpRuntime } }),
-        code: `async () => "ok"`,
-      }),
-    ).rejects.toThrow("MCP server list failed");
-  });
-
   test("does not expose runtime tools that were not provided", async () => {
     const result = await runBackofficeCodemode({
       codemode,
@@ -669,8 +569,6 @@ describe("runBackofficeCodemode", () => {
       project: ["mcp#project-org-1:project-1"],
     });
     expect(calls).toEqual([
-      // Installed MCP provider discovery for the selected current scope.
-      { scope: "org:org-1", method: "GET", pathname: "/api/mcp/servers" },
       { scope: "org:org-1", method: "GET", pathname: "/api/mcp/servers" },
       { scope: "user:user-1", method: "GET", pathname: "/api/mcp/servers" },
       { scope: "org:org-1", method: "GET", pathname: "/api/mcp/servers" },
