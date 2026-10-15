@@ -1,6 +1,5 @@
 import { afterAll, afterEach, beforeAll, assert, expect, test, vi } from "vitest";
 
-import type { PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
@@ -98,7 +97,8 @@ function scriptedExtensionAgents(
   return {
     PI: ({ state, runtime, openPiSessionStore, piAgentIdFromConfig, nowEpochMs }) => {
       const faux = fauxProvider();
-      faux.setResponses([...responses, ...responses]);
+      // One agent object serves every turn in its scope.
+      faux.setResponses(Array.from({ length: 4 }, () => responses).flat());
       const models = createModels();
       models.setProvider(faux.provider);
       return new InMemoryPiObject({
@@ -165,42 +165,25 @@ async function request(
   );
 }
 
-async function createAgent(
-  runtime: InMemoryBackofficeRuntime,
-  selectedScope: BackofficeContextScope = scope,
-): Promise<PiAgentConfig> {
-  const response = await request(
-    runtime,
-    "/sessions",
-    {
-      name: "Workspace extension agent",
-      model: { provider: "faux", modelId: "faux-1" },
-      instructions: "Keep the session instruction.",
-      billingOrganizationId: selectedScope.kind === "system" ? null : "org-1",
-    },
-    selectedScope,
-  );
-  assert.equal(response.status, 201, await response.clone().text());
-  return await response.json<PiAgentConfig>();
-}
-
+/** Every turn goes to the scope's built-in assistant agent. */
 async function runPrompt(
   runtime: InMemoryBackofficeRuntime,
-  agent: PiAgentConfig,
+  selectedScope: BackofficeContextScope,
   requestId: string,
 ) {
   const response = await request(
     runtime,
-    `/sessions/${agent.sessionId}/prompts`,
+    "/agents/assistant/prompts",
     {
       requestId,
       content: "Use workspace guidance.",
+      billingOrganizationId: selectedScope.kind === "system" ? null : "org-1",
     },
-    agent.scope,
+    selectedScope,
   );
   assert.equal(response.status, 202, await response.clone().text());
   await runtime.drain();
-  const view = await request(runtime, `/sessions/${agent.sessionId}/view`, null, agent.scope);
+  const view = await request(runtime, "/agents/assistant/view", null, selectedScope);
   assert.equal(view.status, 200, await view.clone().text());
   return await view.json<ConversationView>();
 }
@@ -330,7 +313,6 @@ test("js.build bundles native imports once; Pi inspects and renders fresh files 
               expect(system).not.toContain("<plain_context>");
               expect(system).not.toContain("omitted_context");
               expect(system).toContain("# Backoffice System Guidance");
-              expect(system).toContain("Keep the session instruction.");
               return fauxAssistantMessage(`Extension answer ${modelCalls}.`);
             },
           ],
@@ -377,8 +359,7 @@ test("js.build bundles native imports once; Pi inspects and renders fresh files 
           assert.equal(compiler.compilations - before, 1);
           const afterBuild = compiler.compilations;
           compiler.available = false;
-          const agent = await createAgent(runtime);
-          expect(JSON.stringify((await runPrompt(runtime, agent, "first")).entries)).toContain(
+          expect(JSON.stringify((await runPrompt(runtime, scope, "first")).entries)).toContain(
             "Extension answer 1.",
           );
           await context.stateBackend.writeFile(
@@ -386,13 +367,12 @@ test("js.build bundles native imports once; Pi inspects and renders fresh files 
             "Updated workspace guidance",
           );
           await context.stateBackend.writeFile("/workspace/later.txt", "new file");
-          expect(JSON.stringify((await runPrompt(runtime, agent, "second")).entries)).toContain(
+          expect(JSON.stringify((await runPrompt(runtime, scope, "second")).entries)).toContain(
             "Extension answer 2.",
           );
-          const reopened = await createAgent(runtime);
-          expect(
-            JSON.stringify((await runPrompt(runtime, reopened, "new-session")).entries),
-          ).toContain("Extension answer 3.");
+          expect(JSON.stringify((await runPrompt(runtime, scope, "third")).entries)).toContain(
+            "Extension answer 3.",
+          );
           expect(compiler.compilations).toBe(afterBuild);
           expect(reports).toEqual([]);
         }),
@@ -534,7 +514,7 @@ test("native workspace tools and built-in hooks run through sealed codemode with
             expect(await buildExtension(runtime)).toMatchObject({ status: "success" });
             const before = compiler.compilations;
             compiler.available = false;
-            const view = await runPrompt(runtime, await createAgent(runtime), "simple-bridge");
+            const view = await runPrompt(runtime, scope, "simple-bridge");
             expect(reports.map(errorMessages)).toEqual([]);
             expect(calls).toBe(3);
             expect(JSON.stringify(view.entries)).toContain("Final bridge answer");
@@ -566,7 +546,7 @@ test("native workspace tools and built-in hooks run through sealed codemode with
   );
 });
 
-test("user, project and system sessions do not inherit organization build artifacts", async () => {
+test("user, project and system agents do not inherit organization build artifacts", async () => {
   const reports: unknown[] = [];
   await runBackofficeScenario(
     defineBackofficeScenario({
@@ -602,9 +582,8 @@ test("user, project and system sessions do not inherit organization build artifa
             { kind: "project", orgId: "org-1", projectId: "isolated-project" },
             { kind: "system" },
           ] satisfies BackofficeContextScope[]) {
-            const agent = await createAgent(runtime, selectedScope);
             expect(
-              JSON.stringify((await runPrompt(runtime, agent, "scope-isolation")).entries),
+              JSON.stringify((await runPrompt(runtime, selectedScope, "scope-isolation")).entries),
             ).toContain("No inherited extension.");
           }
           expect(reports).toEqual([]);
@@ -614,7 +593,7 @@ test("user, project and system sessions do not inherit organization build artifa
   );
 });
 
-test("source edits require an explicit rebuild and existing sessions retain their captured artifact", async () => {
+test("source edits require an explicit rebuild, which the agent loads at its next turn", async () => {
   const reports: unknown[] = [];
   let modelCalls = 0;
   await runBackofficeScenario(
@@ -632,7 +611,7 @@ test("source edits require an explicit rebuild and existing sessions retain thei
             (context) => {
               modelCalls += 1;
               expect(JSON.stringify(context.messages)).toContain(
-                modelCalls < 4 ? "Code revision one" : "Code revision two",
+                modelCalls < 3 ? "Code revision one" : "Code revision two",
               );
               return fauxAssistantMessage(`Lifecycle answer ${modelCalls}.`);
             },
@@ -651,24 +630,19 @@ test("source edits require an explicit rebuild and existing sessions retain thei
         }),
       ],
       steps: ({ then }) => [
-        then.assert(
-          "only rebuilt artifacts affect subsequently opened sessions",
-          async ({ runtime }) => {
-            expect(await buildExtension(runtime)).toMatchObject({ status: "success" });
-            const agent = await createAgent(runtime);
-            await runPrompt(runtime, agent, "original");
-            await workspace(runtime).stateBackend.writeFile(
-              extensionPath,
-              'export default { name: "code-lifecycle", sections: [{ key: "code_lifecycle", render: () => "Code revision two" }] };',
-            );
-            await runPrompt(runtime, await createAgent(runtime), "source-only-edit");
-            expect(await buildExtension(runtime)).toMatchObject({ status: "success" });
-            await runPrompt(runtime, agent, "existing-session-after-rebuild");
-            await runPrompt(runtime, await createAgent(runtime), "new-session-after-rebuild");
-            expect(modelCalls).toBe(4);
-            expect(reports).toEqual([]);
-          },
-        ),
+        then.assert("only a rebuilt artifact changes the next turn", async ({ runtime }) => {
+          expect(await buildExtension(runtime)).toMatchObject({ status: "success" });
+          await runPrompt(runtime, scope, "original");
+          await workspace(runtime).stateBackend.writeFile(
+            extensionPath,
+            'export default { name: "code-lifecycle", sections: [{ key: "code_lifecycle", render: () => "Code revision two" }] };',
+          );
+          await runPrompt(runtime, scope, "source-only-edit");
+          expect(await buildExtension(runtime)).toMatchObject({ status: "success" });
+          await runPrompt(runtime, scope, "after-rebuild");
+          expect(modelCalls).toBe(3);
+          expect(reports).toEqual([]);
+        }),
       ],
     }),
   );
@@ -831,9 +805,7 @@ for (const invalid of [
             const before = compiler.compilations;
             compiler.available = false;
             expect(
-              JSON.stringify(
-                (await runPrompt(runtime, await createAgent(runtime), "invalid-extension")).entries,
-              ),
+              JSON.stringify((await runPrompt(runtime, scope, "invalid-extension")).entries),
             ).toContain("Invalid extension does not brick the session.");
             expect(reports).toHaveLength(1);
             expect(errorMessages(reports[0]).toLowerCase()).toContain(invalid.error.toLowerCase());
@@ -921,9 +893,7 @@ for (const invalid of artifactFailureCases) {
             const before = compiler.compilations;
             compiler.available = false;
             expect(
-              JSON.stringify(
-                (await runPrompt(runtime, await createAgent(runtime), "invalid-artifact")).entries,
-              ),
+              JSON.stringify((await runPrompt(runtime, scope, "invalid-artifact")).entries),
             ).toContain("Built-in agent still works.");
             expect(reports).toHaveLength(1);
             expect(errorMessages(reports[0])).toContain("PI_EXTENSION_ARTIFACT_INVALID");
@@ -997,9 +967,7 @@ for (const invalid of [
             const before = compiler.compilations;
             compiler.available = false;
             expect(
-              JSON.stringify(
-                (await runPrompt(runtime, await createAgent(runtime), "no-fallback")).entries,
-              ),
+              JSON.stringify((await runPrompt(runtime, scope, "no-fallback")).entries),
             ).toContain("No implicit build.");
             expect(reports).toHaveLength(1);
             expect(errorMessages(reports[0])).toContain(invalid.error);
@@ -1061,9 +1029,7 @@ for (const invalid of [
               expect(await buildExtension(runtime)).toMatchObject({ status: "success" });
               compiler.available = false;
               expect(
-                JSON.stringify(
-                  (await runPrompt(runtime, await createAgent(runtime), "isolated")).entries,
-                ),
+                JSON.stringify((await runPrompt(runtime, scope, "isolated")).entries),
               ).toContain("Isolated extension failure.");
               expect(reports).toHaveLength(1);
               expect(errorMessages(reports[0])).toContain("PI_EXTENSION_RENDER_FAILED");
@@ -1154,7 +1120,7 @@ for (const invalid of [
             async ({ runtime }) => {
               expect(await buildExtension(runtime)).toMatchObject({ status: "success" });
               compiler.available = false;
-              const view = await runPrompt(runtime, await createAgent(runtime), "invalid-tool");
+              const view = await runPrompt(runtime, scope, "invalid-tool");
               expect(JSON.stringify(view.entries)).toContain("Tool failure handled.");
               expect(reports).toEqual([]);
             },
@@ -1198,7 +1164,7 @@ test("hook-only extensions preserve native failure isolation and reject malforme
           async ({ runtime }) => {
             expect(await buildExtension(runtime)).toMatchObject({ status: "success" });
             compiler.available = false;
-            const view = await runPrompt(runtime, await createAgent(runtime), "malformed-hook");
+            const view = await runPrompt(runtime, scope, "malformed-hook");
             expect(JSON.stringify(view.entries)).toContain(
               "Malformed hook did not break the session.",
             );

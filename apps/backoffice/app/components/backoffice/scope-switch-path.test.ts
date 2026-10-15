@@ -7,7 +7,7 @@ const projectScope = { kind: "project" as const, orgSlug: "org-a", projectId: "p
 describe("scopeSwitchPath", () => {
   test.each([
     ["/backoffice/dashboard", "/backoffice/dashboard/project/org-a%3Aproj-1"],
-    ["/backoffice/sessions", "/backoffice/sessions/project/org-a%3Aproj-1/sessions"],
+    ["/backoffice/agents", "/backoffice/agents/project/org-a%3Aproj-1/agents"],
     ["/backoffice/computers", "/backoffice/computers/project/org-a%3Aproj-1/sandboxes"],
     ["/backoffice/files", "/backoffice/files/project/org-a%3Aproj-1"],
     ["/backoffice/marketplace", "/backoffice/marketplace/project/org-a%3Aproj-1/marketplace"],

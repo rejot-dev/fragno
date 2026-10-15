@@ -17,6 +17,7 @@ import {
   backofficeObjectScopeFromContextScope,
 } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
+import { createPiAgentInstructionFiles } from "@/fragno/pi/agent/agent-definitions";
 import {
   piAgentObjectName,
   type PiAgent,
@@ -35,7 +36,7 @@ import {
 
 type PiManagerFragment = ReturnType<typeof createPiManagerFragment>;
 
-/** Shared scoped session directory; agent execution is handed to the runtime's agent namespace. */
+/** Shared scoped agent directory; agent execution is handed to the runtime's agent namespace. */
 export class InMemoryPiManagerObject extends RpcTarget {
   readonly #host: FragmentDurableObjectHost<BackofficeContextScope, PiManagerFragment>;
   readonly #scoped: ScopedFragmentDurableObjectRuntime<PiManagerFragment>;
@@ -67,7 +68,12 @@ export class InMemoryPiManagerObject extends RpcTarget {
       name: "PiManager",
       createRuntime: (scope) =>
         createPiManagerFragment(
-          { scope, agent, supportedAvailableModels },
+          {
+            scope,
+            agent,
+            supportedAvailableModels,
+            agentInstructionFiles: () => createPiAgentInstructionFiles({ runtime, kernel, scope }),
+          },
           {
             databaseAdapter: implementation.fragmentDatabase.adapters.createAdapter({
               kind: "pi-manager",
@@ -120,7 +126,7 @@ export class InMemoryPiManagerObject extends RpcTarget {
   }
 }
 
-/** Singleton, organization, user, and project session directories match Automations scopes. */
+/** Singleton, organization, user, and project agent directories match Automations scopes. */
 export class PiManager extends DurableObject<CloudflareEnv> {
   readonly #object: InMemoryPiManagerObject;
 

@@ -18,7 +18,7 @@ import { parseBackofficeUiResult } from "@/backoffice-ui/result";
 import { FileImageScopeProvider } from "@/components/backoffice/file-image";
 import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
 import { action as uploadWorkspaceFile } from "@/routes/api/files-scoped-workspace";
-import { MarkdownText } from "@/routes/backoffice/sessions/session-detail/message-content";
+import { MarkdownText } from "@/routes/backoffice/agents/session-detail/message-content";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
 import { InMemoryApiObject } from "../../../../workers/api.do";

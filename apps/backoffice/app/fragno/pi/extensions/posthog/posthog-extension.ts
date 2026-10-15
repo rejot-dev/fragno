@@ -1,7 +1,11 @@
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
 import type { PostHog } from "posthog-node";
 
 import { defineExtension, GenerationTask, hook } from "@earendil-works/pi-durable";
+
+import type { BackofficeAgentContext } from "@/fragno/pi/agent/backoffice-agent-context";
+import { piAgentObjectName } from "@/fragno/pi/agent/pi-agent-contract";
 
 async function generationEventUuid(key: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(key));
@@ -15,9 +19,11 @@ async function generationEventUuid(key: string): Promise<string> {
 /** Provider-neutral usage capture; conversation content never enters the analytics transport. */
 export function createPiPostHogExtension(input: {
   config: PiAgentConfig;
+  agent: BackofficeAgentContext;
   capture(event: Parameters<PostHog["capture"]>[0]): Promise<void>;
 }) {
-  const { config } = input;
+  const { config, agent } = input;
+  const agentId = piAgentObjectName(config);
   return defineExtension({
     name: "posthog",
     hooks: [
@@ -26,13 +32,15 @@ export function createPiPostHogExtension(input: {
           try {
             // A recovered terminal response must retain its ingestion identity without extra durable writes.
             const uuid = await generationEventUuid(
-              `${config.sessionId}:${api.conversationId}:${api.taskId}:${message.timestamp}`,
+              `${agentId}:${api.conversationId}:${api.taskId}:${message.timestamp}`,
             );
-            const principal = config.actors.principal;
+            // Generations are attributed to the person whose turn they serve.
+            const principal = (await agent.activeTurn(BACKGROUND_CONTEXT)).execution.actors
+              .principal;
             const userId =
               principal?.scope === "internal" && principal.type === "user"
                 ? principal.id
-                : `pi-session:${config.sessionId}`;
+                : `pi-agent:${agentId}`;
 
             await input.capture({
               event: "$ai_generation",
@@ -41,14 +49,14 @@ export function createPiPostHogExtension(input: {
               timestamp: new Date(message.timestamp),
               properties: {
                 source: "cloudflare-pi",
-                session_id: config.sessionId,
+                agent_name: config.agentName,
                 conversation_id: api.conversationId,
                 task_id: api.taskId,
                 scope_kind: config.scope.kind,
                 organization_id: config.billingOrganizationId,
                 stop_reason: message.stopReason,
-                $ai_trace_id: `${config.sessionId}:${api.conversationId}:${api.taskId}`,
-                $ai_session_id: config.sessionId,
+                $ai_trace_id: `${agentId}:${api.conversationId}:${api.taskId}`,
+                $ai_session_id: agentId,
                 $ai_span_id: uuid,
                 $ai_provider: message.provider,
                 $ai_model: message.responseModel ?? message.model,

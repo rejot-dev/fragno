@@ -20,9 +20,9 @@ export default mergeConfig(
         resolveConfig("./content/**"),
         // Read by `app/fragno/runtime-tools/async-execute.test.ts`.
         resolveConfig("./app/fragno/runtime-tools/families/!(*.test|*-runtime).ts"),
-        // Read by `app/routes/backoffice/sessions/session-detail/workspace-boundary.test.ts`.
-        resolveConfig("./app/routes/backoffice/sessions/session-detail/!(*.test).{ts,tsx}"),
-        resolveConfig("./app/routes/backoffice/sessions/organization-layout.tsx"),
+        // Read by `app/routes/backoffice/agents/session-detail/workspace-boundary.test.ts`.
+        resolveConfig("./app/routes/backoffice/agents/session-detail/!(*.test).{ts,tsx}"),
+        resolveConfig("./app/routes/backoffice/agents/organization-layout.tsx"),
         resolveConfig("./app/routes/backoffice/automations/script-view/workflow-graph.tsx"),
       ],
       coverage: {

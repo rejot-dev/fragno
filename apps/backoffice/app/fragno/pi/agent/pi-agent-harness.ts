@@ -18,17 +18,25 @@ import {
   createPiBilling,
   type PiBilling,
 } from "@/fragno/pi/extensions/billing/billing-extension";
-import { loadWorkspaceExtensions } from "@/fragno/pi/extensions/workspace/workspace-extensions";
+import {
+  loadWorkspaceExtensions,
+  type LoadedWorkspaceExtensions,
+} from "@/fragno/pi/extensions/workspace/workspace-extensions";
 
 import { createAuthorizedPiModels } from "./authorized-models";
-import { createBackofficeAgentContext } from "./backoffice-agent-context";
+import {
+  createBackofficeAgentContext,
+  type BackofficeAgentContext,
+} from "./backoffice-agent-context";
+import type { PiAgentTurn } from "./pi-agent-contract";
+import { readActivePiAgentTurn } from "./pi-agent-turns";
 import { createPiModels, PI_THINKING_LEVEL } from "./pi-models";
 
 /** What a runtime supplies to every agent it hosts; scenarios substitute scripted models. */
 export type PiAgentDependencies = {
   models: Models;
   /** Installed before Backoffice's own extensions, whose same-name tools therefore win. */
-  extensions: (config: PiAgentConfig) => readonly Extension[];
+  extensions: (config: PiAgentConfig, agent: BackofficeAgentContext) => readonly Extension[];
   settings: HarnessSettings;
   report: (error: unknown) => void;
 };
@@ -37,6 +45,8 @@ export type OpenPiAgent = {
   harness: Harness;
   storage: Storage;
   billing: PiBilling | null;
+  /** Installs the workspace's current extensions with the authority of the given turn. */
+  refreshWorkspaceExtensions: (turn: PiAgentTurn) => Promise<void>;
 };
 
 /** Production agents use credential-backed providers and Pi's default run policy. */
@@ -53,7 +63,7 @@ export function createPiAgentDependencies(
   };
 }
 
-/** Rebuilds an agent's registry from persisted provenance and opens its root conversation. */
+/** Rebuilds an agent's registry and opens its root conversation; authority comes from its turns. */
 export async function openPiAgentHarness(input: {
   config: PiAgentConfig;
   runtime: BackofficeRuntimeServices;
@@ -61,7 +71,13 @@ export async function openPiAgentHarness(input: {
   openStorage: () => Promise<Storage>;
 }): Promise<OpenPiAgent> {
   const { config, runtime, dependencies } = input;
-  const agent = createBackofficeAgentContext({ config, runtime });
+  let opened: { harness: Harness; storage: Storage } | null = null;
+  const agent = createBackofficeAgentContext({
+    config,
+    runtime,
+    readActiveTurn: async (context) =>
+      opened ? await readActivePiAgentTurn(opened.harness, opened.storage, context) : null,
+  });
   const billingOrganizationId = config.billingOrganizationId;
   // Usage remains in pi.usage and is backfilled when an optional Billing binding is later configured.
   const billing =
@@ -76,17 +92,10 @@ export async function openPiAgentHarness(input: {
 
   const registry = createRegistry();
   for (const extension of [
-    ...dependencies.extensions(config),
+    ...dependencies.extensions(config, agent),
     createBackofficeExtension(agent),
     ...(billing ? [billing.extension] : []),
   ]) {
-    registry.install(extension);
-  }
-  for (const extension of await loadWorkspaceExtensions({
-    agent,
-    registry: registry.snapshot(),
-    report: dependencies.report,
-  })) {
     registry.install(extension);
   }
 
@@ -95,7 +104,9 @@ export async function openPiAgentHarness(input: {
     storage,
     {
       // Pi isolates failures in prompt sections and hooks, so only the model boundary can fail closed.
-      models: createAuthorizedPiModels(dependencies.models, agent.authorize),
+      models: createAuthorizedPiModels(dependencies.models, async () => {
+        await (await agent.activeTurn(BACKGROUND_CONTEXT)).authorize();
+      }),
       registry,
       settings: {
         ...dependencies.settings,
@@ -105,17 +116,44 @@ export async function openPiAgentHarness(input: {
     },
     BACKGROUND_CONTEXT,
   );
+  opened = { harness, storage };
+  let workspaceExtensions: LoadedWorkspaceExtensions | null = null;
+  let refreshing = Promise.resolve();
+  // A shared agent has no fresh session to pick up rebuilt extensions, so each turn checks for them.
+  async function refreshWorkspaceExtensions(turn: PiAgentTurn) {
+    refreshing = refreshing
+      .then(async () => {
+        const reloaded = await loadWorkspaceExtensions({
+          agent,
+          turn: agent.turn(turn),
+          registry: registry.snapshot(),
+          loaded: workspaceExtensions,
+          report: dependencies.report,
+        });
+        if (!reloaded) {
+          return;
+        }
+        for (const extension of workspaceExtensions?.extensions ?? []) {
+          registry.uninstall(extension);
+        }
+        for (const extension of reloaded.extensions) {
+          registry.install(extension);
+        }
+        workspaceExtensions = reloaded;
+      })
+      .catch(dependencies.report);
+    await refreshing;
+  }
   try {
-    await harness.root(BACKGROUND_CONTEXT, {
-      agent: {
-        model: config.model,
-        instructions: config.instructions,
-        thinkingLevel: PI_THINKING_LEVEL,
-      },
-    });
+    await harness.root(BACKGROUND_CONTEXT, { agent: { thinkingLevel: PI_THINKING_LEVEL } });
+    // Recovered work resumes with the extensions it ran with before the restart.
+    const recovering = await readActivePiAgentTurn(harness, storage, BACKGROUND_CONTEXT);
+    if (recovering) {
+      await refreshWorkspaceExtensions(recovering);
+    }
   } catch (cause) {
     await harness.close(BACKGROUND_CONTEXT);
     throw cause;
   }
-  return { harness, storage, billing };
+  return { harness, storage, billing, refreshWorkspaceExtensions };
 }

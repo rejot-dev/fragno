@@ -25,6 +25,7 @@ import {
 import { useAutomationRoutes } from "@/fragno/automation/tanstack/use-automation-routes";
 import { runtimeToolWorkflowCatalog } from "@/fragno/runtime-tools/workflow-catalog.server";
 
+import { fetchPiManagerAgents, type PiManagerAgentsResult } from "../agents/data";
 import { buildBackofficeLoginPath } from "../auth-navigation";
 import {
   createAutomationProject,
@@ -42,7 +43,6 @@ import {
   workflowRunRecordsQuery,
 } from "../automations/script-view/use-script-workflow-runs";
 import { listIntegrationConnections } from "../integrations/connections.server";
-import { fetchPiManagerSessions, type PiManagerSessionsResult } from "../sessions/data";
 import type { Route } from "./+types/dashboard";
 import { DashboardSections, type DashboardLoaderData } from "./dashboard-sections";
 import {
@@ -54,7 +54,6 @@ import {
 } from "./overview";
 import { WORKFLOW_SCRIPT_PARAM, dashboardPath } from "./path";
 
-const RECENT_SESSION_COUNT = 5;
 const CLOCK_TICK_MS = 60_000;
 const CREATE_PROJECT_PARAM = "createProject";
 const EMPTY_WORKFLOW_SOURCE = { script: null, scriptError: null };
@@ -81,9 +80,9 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
   }
 
   const workflowScriptId = url.searchParams.get(WORKFLOW_SCRIPT_PARAM)?.trim() ?? "";
-  const [connectionNames, sessions, workflowSource] = await Promise.all([
+  const [connectionNames, agents, workflowSource] = await Promise.all([
     listIntegrationConnections(request, context, params),
-    fetchRecentPiSessions(request, context, runtimeScope),
+    fetchDashboardPiAgents(request, context, runtimeScope),
     workflowScriptId
       ? requireAutomationRouteExecution(request, context, params).then((execution) =>
           loadAutomationScriptSource({ context, execution, scriptId: workflowScriptId }),
@@ -98,7 +97,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
       user: me.user,
     }),
     connectionNames,
-    sessions,
+    agents,
     workflowSource,
     runtimeToolCatalog: runtimeToolWorkflowCatalog,
   } satisfies DashboardLoaderData;
@@ -163,23 +162,17 @@ export async function action({ request, params, context, url }: Route.ActionArgs
   return redirect(dashboardPath({ kind: "project", orgSlug: organization.slug, projectId }));
 }
 
-/** Sessions are one panel of the dashboard, so an unavailable Pi manager does not fail the page. */
-async function fetchRecentPiSessions(
+/** Agents are one panel of the dashboard, so an unavailable Pi manager does not fail the page. */
+async function fetchDashboardPiAgents(
   request: Request,
   context: Route.LoaderArgs["context"],
-  scope: Parameters<typeof fetchPiManagerSessions>[2],
-): Promise<PiManagerSessionsResult> {
+  scope: Parameters<typeof fetchPiManagerAgents>[2],
+): Promise<PiManagerAgentsResult> {
   try {
-    const { sessions, sessionsError } = await fetchPiManagerSessions(request, context, scope);
-    return {
-      sessions: [...sessions]
-        .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
-        .slice(0, RECENT_SESSION_COUNT),
-      sessionsError,
-    };
+    return await fetchPiManagerAgents(request, context, scope);
   } catch (error) {
     if (error instanceof Response) {
-      return { sessions: [], sessionsError: `Sessions are unavailable (${error.status}).` };
+      return { agents: [], agentsError: `Agents are unavailable (${error.status}).` };
     }
     throw error;
   }

@@ -1,7 +1,8 @@
 import { assert, expect, test, vi } from "vitest";
 
-import type { PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
+import type { PiAgentConfig, PiManagerAgentDirectory } from "@fragno-dev/backoffice-api/v0/pi";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
   DurableObject: class {},
@@ -29,6 +30,7 @@ import {
 } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { PostHog } from "posthog-node";
 
+import type { Context, Message } from "@earendil-works/pi-ai";
 import {
   defineExtension,
   hook,
@@ -40,9 +42,7 @@ import {
 import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import {
   createBackofficeRequestExecution,
-  BACKOFFICE_SYSTEM_ACTORS,
   createBackofficeServiceExecution,
-  createBackofficeSystemExecution,
   createBackofficeUserExecution,
   type BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
@@ -58,13 +58,10 @@ import {
   runBackofficeScenario,
 } from "@/fragno/automation/scenario";
 import { createRouteBackedAutomationWorkflowRuntime } from "@/fragno/automation/workflow-route-runtime";
+import { piAgentObjectName } from "@/fragno/pi/agent/pi-agent-contract";
 import { createPiPostHogExtension } from "@/fragno/pi/extensions/posthog/posthog-extension";
 import { BackofficePostHogContext, captureBackofficeServerException } from "@/posthog.server";
-import {
-  createPiManagerSession,
-  fetchPiManagerSessions,
-  submitPiManagerPrompt,
-} from "@/routes/backoffice/sessions/data";
+import { fetchPiManagerAgents, submitPiManagerPrompt } from "@/routes/backoffice/agents/data";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
 import { shutdownCloudflarePostHog } from "./lib/cloudflare-posthog";
@@ -77,6 +74,14 @@ const PI_SCENARIO_AVAILABLE_MODELS = [
   { provider: "faux", modelId: "faux-1", label: "Faux 1", contextWindow: 128_000 },
 ] as const;
 
+const PI_AGENT_ACTOR = {
+  scope: "internal",
+  type: "pi-agent",
+  id: "assistant",
+  role: "assistant",
+} as const;
+
+/** Every agent object gets its own copy of the scripted responses. */
 function scriptedAgents(
   responses: FauxResponseStep[],
   settings?: HarnessSettings,
@@ -107,10 +112,11 @@ async function request(
   execution: BackofficeExecutionContext,
   route: string,
   body: unknown,
+  method: "GET" | "POST" | "PUT" = body === null ? "GET" : "POST",
 ) {
   return await runtime.objects.piManager.for(execution.scope).http.fetchAuthorized(
     new Request(`https://pi-manager.test/api/pi-manager${route}`, {
-      method: body === null ? "GET" : "POST",
+      method,
       headers: body === null ? {} : { "content-type": "application/json" },
       body: body === null ? undefined : JSON.stringify(body),
     }),
@@ -118,30 +124,26 @@ async function request(
   );
 }
 
-async function createAgent(
-  runtime: InMemoryBackofficeRuntime,
-  execution: BackofficeExecutionContext,
-) {
-  const created = await request(runtime, execution, "/sessions", {
-    name: "Backoffice agent",
-    model: { provider: "faux", modelId: "faux-1" },
-    instructions: "Keep the session-specific instruction.",
-    billingOrganizationId: "org-1",
-    actors: BACKOFFICE_SYSTEM_ACTORS,
-    userAuthority: { role: "admin" },
-  });
-  assert.equal(created.status, 201, await created.clone().text());
-  return await created.json<PiAgentConfig>();
-}
-
 async function prompt(
   runtime: InMemoryBackofficeRuntime,
   execution: BackofficeExecutionContext,
-  config: PiAgentConfig,
+  input: {
+    agentName?: string;
+    requestId?: string;
+    content?: string;
+    billingOrganizationId?: string | null;
+  } = {},
 ) {
-  const submitted = await request(runtime, execution, `/sessions/${config.sessionId}/prompts`, {
-    requestId: "backoffice-prompt",
-    content: "Use the Backoffice context.",
+  const {
+    agentName = "assistant",
+    requestId = "backoffice-prompt",
+    content = "Use the Backoffice context.",
+    billingOrganizationId = null,
+  } = input;
+  const submitted = await request(runtime, execution, `/agents/${agentName}/prompts`, {
+    requestId,
+    content,
+    billingOrganizationId,
   });
   assert.equal(submitted.status, 202, await submitted.clone().text());
 }
@@ -149,37 +151,67 @@ async function prompt(
 async function view(
   runtime: InMemoryBackofficeRuntime,
   execution: BackofficeExecutionContext,
-  config: PiAgentConfig,
+  agentName = "assistant",
 ) {
-  const response = await request(runtime, execution, `/sessions/${config.sessionId}/view`, null);
+  const response = await request(runtime, execution, `/agents/${agentName}/view`, null);
   assert.equal(response.status, 200, await response.clone().text());
   return await response.json<ConversationView>();
 }
 
-test("durable Pi discovers scoped skills and executes read, search, codemode and manager-backed Pi tools", async () => {
+async function submission(
+  runtime: InMemoryBackofficeRuntime,
+  execution: BackofficeExecutionContext,
+  requestId: string,
+  agentName = "assistant",
+) {
+  return await (
+    await request(runtime, execution, `/agents/${agentName}/submissions/${requestId}`, null)
+  ).json<{ status: string } | { code: string }>();
+}
+
+function lastUserText(context: Context) {
+  const content = context.messages.filter((message) => message.role === "user").at(-1)?.content;
+  return typeof content === "string" ? content : JSON.stringify(content);
+}
+
+function userTexts(view: ConversationView) {
+  return view.entries.filter((entry) => entry.kind === "pi.user");
+}
+
+function toolResults(context: Context) {
+  return context.messages.filter(
+    (message): message is Extract<Message, { role: "toolResult" }> => message.role === "toolResult",
+  );
+}
+
+test("durable Pi runs a workspace agent with its instructions, scoped skills, Backoffice tools, and other agents", async () => {
   const execution = createBackofficeServiceExecution({
     scope: { kind: "org", orgId: "org-1" },
     service: { type: "automation", id: "durable-tool-scenario" },
   });
-  let config: PiAgentConfig;
-  const objectOverrides = scriptedAgents([
-    (context) => {
-      if (
-        context.messages.filter((message) => message.role === "user").at(-1)?.content ===
-        "First child prompt"
-      ) {
-        return fauxAssistantMessage("First child answer.");
-      }
-      const system = context.messages.filter((message) => message.role === "system");
-      const rendered = JSON.stringify(system);
-      expect(rendered).toContain("Keep the session-specific instruction.");
-      expect(rendered.match(/# Backoffice System Guidance/g)).toHaveLength(1);
-      expect(rendered).toContain("Scoped durable skill");
-      expect(rendered).toContain("/workspace/skills/durable/SKILL.md");
-      expect(rendered).toContain("/static/skills/");
-      expect(rendered).toContain("/static/codemode/");
+  // One dispatcher serves the researcher's turn and the assistant agent prompted from codemode.
+  const respond: FauxResponseStep = (context) => {
+    const system = JSON.stringify(context.messages.filter((message) => message.role === "system"));
+    const lastUser = lastUserText(context);
+    if (lastUser === "First other-agent prompt") {
+      return fauxAssistantMessage("First other-agent answer.");
+    }
+    if (lastUser === "Second other-agent prompt") {
+      return fauxAssistantMessage("Second other-agent answer.");
+    }
+    const results = toolResults(context);
+    if (results.length === 0) {
+      expect(system).toContain("Keep the researcher instruction.");
+      expect(system.match(/# Backoffice System Guidance/g)).toHaveLength(1);
+      expect(system).toContain("Scoped durable skill");
+      expect(system).toContain("/workspace/skills/durable/SKILL.md");
+      expect(system).toContain("/static/skills/");
+      expect(system).toContain("/static/codemode/");
       expect(
-        system.flatMap((message) => message.toolsAdded ?? []).map((tool) => tool.name),
+        context.messages
+          .filter((message) => message.role === "system")
+          .flatMap((message) => message.toolsAdded ?? [])
+          .map((tool) => tool.name),
       ).toEqual(expect.arrayContaining(["read", "search", "execCodeMode"]));
       return fauxAssistantMessage(
         [
@@ -191,54 +223,43 @@ test("durable Pi discovers scoped skills and executes read, search, codemode and
           fauxToolCall("execCodeMode", {
             code: `async () => {
           await state.writeFile({ path: "/workspace/durable-result.txt", content: "executed through Backoffice" });
-          const child = await pi.createSession({
-            name: "Durable child",
-            model: { provider: "faux", modelId: "faux-1" },
-          });
-          const first = await context.current.pi.runPrompt({ sessionId: child.sessionId, content: "First child prompt" });
-          const second = await context.current.pi.runPrompt({ sessionId: child.sessionId, content: "Second child prompt" });
-          const detail = await pi.getSession({ sessionId: child.sessionId });
-          const sessions = await pi.listSessions({ pageSize: 10 });
+          const first = await pi.runPrompt({ agentName: "assistant", content: "First other-agent prompt" });
+          const second = await context.current.pi.runPrompt({ agentName: "assistant", content: "Second other-agent prompt" });
+          const directory = await pi.listAgents({});
+          const assistant = await pi.getAgent({ agentName: "assistant" });
           return {
-            child: child.sessionId,
-            sessions: sessions.sessions.map(session => session.sessionId),
             first: first.assistantText,
             second: second.assistantText,
-            inputs: detail.view.entries.filter(entry => entry.kind === "pi.user").length,
+            agents: directory.agents.map(agent => agent.agentName),
+            inputs: assistant.view.entries.filter(entry => entry.kind === "pi.user").length,
           };
         }`,
           }),
         ],
         { stopReason: "toolUse" },
       );
-    },
-    (context) => {
-      if (
-        context.messages.filter((message) => message.role === "user").at(-1)?.content ===
-        "Second child prompt"
-      ) {
-        return fauxAssistantMessage("Second child answer.");
-      }
-      const results = context.messages.filter((message) => message.role === "toolResult");
-      expect(results).toHaveLength(3);
-      assert(
-        results.every((result) => !result.isError),
-        JSON.stringify(results),
-      );
-      expect(JSON.stringify(results)).toContain("Durable marker");
-      expect(JSON.stringify(results)).toContain("First child answer.");
-      expect(JSON.stringify(results)).toContain("Second child answer.");
-      expect(results.find((result) => result.toolName === "execCodeMode")?.details).toMatchObject({
-        result: { inputs: 2 },
-      });
-      return fauxAssistantMessage("Backoffice tool run finished.");
-    },
-  ]);
+    }
+    expect(results).toHaveLength(3);
+    assert(
+      results.every((result) => !result.isError),
+      JSON.stringify(results),
+    );
+    expect(JSON.stringify(results)).toContain("Durable marker");
+    expect(results.find((result) => result.toolName === "execCodeMode")?.details).toMatchObject({
+      result: {
+        first: "First other-agent answer.",
+        second: "Second other-agent answer.",
+        agents: ["assistant", "researcher"],
+        inputs: 2,
+      },
+    });
+    return fauxAssistantMessage("Backoffice tool run finished.");
+  };
   await runBackofficeScenario(
     defineBackofficeScenario({
       name: "durable Pi Backoffice environment and tools",
       options: { drain: false },
-      objects: { ...scenarioObjects, ...objectOverrides },
+      objects: { ...scenarioObjects, ...scriptedAgents([respond, respond, respond, respond]) },
       piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
       setup: ({ given }) => [
         given.organization.exists({ id: "org-1" }),
@@ -253,22 +274,36 @@ test("durable Pi discovers scoped skills and executes read, search, codemode and
           content:
             "---\nname: scoped-durable\ndescription: Scoped durable skill\n---\nRead the scoped notes before acting.",
         }),
+        given.codemode.writeFile({
+          orgId: "org-1",
+          path: "/workspace/agents/researcher.md",
+          content: "Keep the researcher instruction.",
+        }),
       ],
       steps: ({ then }) => [
-        then.assert("create, run and settle a real Backoffice agent", async ({ runtime }) => {
-          config = await createAgent(runtime, execution);
-          expect(config.actors).toEqual(execution.actors);
-          await prompt(runtime, execution, config);
+        then.assert("run and settle a real Backoffice agent turn", async ({ runtime }) => {
+          const defined = await request(runtime, execution, "/agents", {
+            agentName: "researcher",
+            description: "Researches the workspace.",
+            model: null,
+            permissions: ["*"],
+            instructionsPath: "/workspace/agents/researcher.md",
+            managedBy: null,
+          });
+          assert.equal(defined.status, 201, await defined.clone().text());
+          await prompt(runtime, execution, { agentName: "researcher" });
           await runtime.drain();
-          const transcript = await view(runtime, execution, config);
+          const transcript = await view(runtime, execution, "researcher");
           expect(JSON.stringify(transcript.entries)).toContain("Backoffice tool run finished.");
           const directory = await (
-            await request(runtime, execution, "/sessions", null)
-          ).json<{ sessions: PiAgentConfig[] }>();
-          expect(directory.sessions).toHaveLength(2);
+            await request(runtime, execution, "/agents", null)
+          ).json<PiManagerAgentDirectory>();
           expect(
-            directory.sessions.find((session) => session.name === "Durable child")?.actors,
-          ).toEqual(execution.actors);
+            directory.agents.map((agent) => [agent.agentName, agent.provisioning !== null]),
+          ).toEqual([
+            ["assistant", true],
+            ["researcher", true],
+          ]);
         }),
         then.files.contains({
           orgId: "org-1",
@@ -348,10 +383,9 @@ test("durable Pi lists Marketplace-installed skills and finds them by any keywor
       ],
       steps: ({ then }) => [
         then.assert("the agent finds the installed skill", async ({ runtime }) => {
-          const config = await createAgent(runtime, execution);
-          await prompt(runtime, execution, config);
+          await prompt(runtime, execution);
           await runtime.drain();
-          const transcript = await view(runtime, execution, config);
+          const transcript = await view(runtime, execution);
           expect(JSON.stringify(transcript.entries)).toContain("Search finished.");
         }),
       ],
@@ -359,17 +393,122 @@ test("durable Pi lists Marketplace-installed skills and finds them by any keywor
   );
 });
 
+test("an agent's definition narrows every turn and an edited definition applies from the next turn", async () => {
+  const execution = createBackofficeServiceExecution({
+    scope: { kind: "org", orgId: "org-1" },
+    service: { type: "automation", id: "narrowing-scenario" },
+  });
+  const reader = {
+    description: "Reads the workspace.",
+    model: null,
+    permissions: ["upload.read"],
+    instructionsPath: null,
+    managedBy: null,
+  };
+  const storeWrite = fauxAssistantMessage(
+    [
+      fauxToolCall("execCodeMode", {
+        code: `async () => await store.set({ key: "reader/result", value: "written" })`,
+      }),
+    ],
+    { stopReason: "toolUse" },
+  );
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "durable Pi definition narrowing",
+      options: { drain: false },
+      objects: {
+        ...scenarioObjects,
+        ...scriptedAgents([
+          storeWrite,
+          (context) => {
+            const result = toolResults(context).at(-1);
+            assert.equal(result?.isError, true, JSON.stringify(result));
+            expect(JSON.stringify(result)).toContain(
+              "A delegated actor does not have the required capability grant.",
+            );
+            return fauxAssistantMessage("The reader may not write the store.");
+          },
+          storeWrite,
+          (context) => {
+            const result = toolResults(context).at(-1);
+            assert.equal(result?.isError, false, JSON.stringify(result));
+            return fauxAssistantMessage("The widened reader wrote the store.");
+          },
+        ]),
+      },
+      piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
+      setup: ({ given }) => [given.organization.exists({ id: "org-1" })],
+      steps: ({ then }) => [
+        then.assert(
+          "an unrestricted principal is narrowed to the definition",
+          async ({ runtime }) => {
+            const defined = await request(runtime, execution, "/agents", {
+              agentName: "reader",
+              ...reader,
+            });
+            assert.equal(defined.status, 201, await defined.clone().text());
+            await prompt(runtime, execution, { agentName: "reader", requestId: "narrowed" });
+            await runtime.drain();
+            expect(await submission(runtime, execution, "narrowed", "reader")).toMatchObject({
+              status: "done",
+            });
+          },
+        ),
+        then.store.missing({ orgId: "org-1", key: "reader/result" }),
+        then.assert("the edited definition governs the next turn", async ({ runtime }) => {
+          const widened = await request(
+            runtime,
+            execution,
+            "/agents/reader",
+            { ...reader, description: "Reads and writes.", permissions: ["*"] },
+            "PUT",
+          );
+          assert.equal(widened.status, 200, await widened.clone().text());
+          await prompt(runtime, execution, { agentName: "reader", requestId: "widened" });
+          await runtime.drain();
+          expect(JSON.stringify((await view(runtime, execution, "reader")).entries)).toContain(
+            "The widened reader wrote the store.",
+          );
+        }),
+        then.store.entry({ orgId: "org-1", key: "reader/result", value: "written" }),
+      ],
+    }),
+  );
+});
+
 for (const revocation of ["restricted", "disabled", "deleted"] as const) {
-  test(`durable Pi resolves linked-user route grants and denies model calls after the route is ${revocation}`, async () => {
+  test(`durable Pi runs each turn as its own prompter after a linked-user route is ${revocation}`, async () => {
     const scope = { kind: "org", orgId: "org-1" } as const;
     const execution = createBackofficeUserExecution({ scope, userId: "member" });
     const workflowPath = "/workspace/automations/delegated-pi.workflow.js";
-    let config: PiAgentConfig;
     let modelCalls = 0;
+    const telegramEvent = (id: string) => ({
+      id,
+      scopeRestriction: null,
+      scope,
+      source: "telegram",
+      eventType: "message.received",
+      occurredAt: "2026-10-04T16:23:00.000Z",
+      payload: { chatId: "1001", messageId: id, fromUserId: "1001", text: "Hello" },
+      actors: {
+        initiator: {
+          scope: "external" as const,
+          source: "telegram",
+          type: "chat",
+          id: "1001",
+          role: "initiator" as const,
+        },
+        principal: null,
+        delegation: [],
+      },
+      subject: { orgId: "org-1" },
+    });
     await runBackofficeScenario(
       defineBackofficeScenario({
-        name: `durable Pi live route authority after ${revocation}`,
-        options: { drain: false },
+        name: `durable Pi turn authority after the route is ${revocation}`,
+        // The restricted route's later workflow fails because it may no longer prompt the agent.
+        options: { drain: false, allowErroredWorkflows: revocation === "restricted" },
         objects: {
           ...scenarioObjects,
           ...scriptedAgents([
@@ -387,10 +526,13 @@ for (const revocation of ["restricted", "disabled", "deleted"] as const) {
             },
             (context) => {
               modelCalls += 1;
-              const result = context.messages.find((message) => message.role === "toolResult");
-              assert(result?.role === "toolResult");
-              expect(result.isError, JSON.stringify(result)).toBe(false);
-              return fauxAssistantMessage("The linked-user agent answered.");
+              const result = toolResults(context).at(-1);
+              expect(result?.isError, JSON.stringify(result)).toBe(false);
+              return fauxAssistantMessage("The linked-user turn answered.");
+            },
+            () => {
+              modelCalls += 1;
+              return fauxAssistantMessage("The member's own turn answered.");
             },
           ]),
         },
@@ -405,14 +547,9 @@ for (const revocation of ["restricted", "disabled", "deleted"] as const) {
             orgId: "org-1",
             path: workflowPath,
             content: `defineWorkflow({ name: "delegated-pi" }, async (event, step) => {
-              const session = await step.do("create linked-user agent", async () => await pi.createSession({
-                requestId: "linked-user-agent",
-                name: "Linked-user agent",
-                model: { provider: "faux", modelId: "faux-1" },
-              }));
-              return await step.do("run linked-user agent", async () => await pi.runPrompt({
-                sessionId: session.sessionId,
-                requestId: "route-prompt",
+              return await step.do("run linked-user turn", async () => await pi.runPrompt({
+                agentName: "assistant",
+                requestId: event.instanceId + ":prompt",
                 content: "Answer on behalf of the linked user.",
               }));
             });`,
@@ -438,55 +575,31 @@ for (const revocation of ["restricted", "disabled", "deleted"] as const) {
           }),
         ],
         steps: ({ when, then, runner }) => [
-          when.automation.ingestEvent({
-            id: "linked-pi-message",
-            scopeRestriction: null,
-            scope,
-            source: "telegram",
-            eventType: "message.received",
-            occurredAt: "2026-10-04T16:23:00.000Z",
-            payload: { chatId: "1001", messageId: "1", fromUserId: "1001", text: "Hello" },
-            actors: {
-              initiator: {
-                scope: "external",
-                source: "telegram",
-                type: "chat",
-                id: "1001",
-                role: "initiator",
-              },
-              principal: null,
-              delegation: [],
-            },
-            subject: { orgId: "org-1" },
+          when.automation.ingestEvent(telegramEvent("linked-pi-message")),
+          then.assert("the route's turn runs as the linked user", async ({ runtime }) => {
+            await runtime.drain();
+            const transcript = await view(runtime, execution);
+            expect(JSON.stringify(transcript.entries)).toContain("The linked-user turn answered.");
+            expect(modelCalls).toBe(2);
           }),
-          then.assert(
-            "the durable agent honors its creator's route delegate",
-            async ({ runtime }) => {
-              await runtime.drain();
-              const directory = await (
-                await request(runtime, execution, "/sessions", null)
-              ).json<{ sessions: PiAgentConfig[] }>();
-              expect(directory.sessions).toHaveLength(1);
-              const session = directory.sessions[0];
-              assert(session);
-              config = session;
-              expect(config.actors.principal).toEqual(execution.actors.principal);
-              expect(config.actors.delegation).toEqual([
+          then.store.entry({ orgId: "org-1", key: "linked-pi/result", value: "written" }),
+          then.kernel.action({
+            operation: BACKOFFICE_PERMISSION.store.modify,
+            scope,
+            actors: {
+              initiator: telegramEvent("linked-pi-message").actors.initiator,
+              principal: { scope: "internal", type: "user", id: "member", role: "principal" },
+              delegation: [
                 {
                   scope: "internal",
                   type: "automation",
                   id: "automation-route:telegram-pi-linking",
                   role: "delegate",
                 },
-              ]);
-              const transcript = await view(runtime, execution, config);
-              expect(JSON.stringify(transcript.entries)).toContain(
-                "The linked-user agent answered.",
-              );
-              expect(modelCalls).toBe(2);
+                PI_AGENT_ACTOR,
+              ],
             },
-          ),
-          then.store.entry({ orgId: "org-1", key: "linked-pi/result", value: "written" }),
+          }),
           runner.restartObject({ binding: "AUTOMATIONS", scope }),
           then.assert("revoke the owning route's current authority", async ({ runtime }) => {
             const router = createRouteBackedAutomationRouterRuntime({
@@ -515,82 +628,56 @@ for (const revocation of ["restricted", "disabled", "deleted"] as const) {
             }
           }),
           then.assert(
-            "a human prompt cannot bypass the persisted route delegate",
+            "the member's own prompt runs without the route's authority",
             async ({ runtime }) => {
-              await prompt(runtime, execution, config);
+              await prompt(runtime, execution, { requestId: "member-prompt" });
               await runtime.drain();
-              const response = await request(
-                runtime,
-                execution,
-                `/sessions/${config.sessionId}/submissions/backoffice-prompt`,
-                null,
+              expect(await submission(runtime, execution, "member-prompt")).toMatchObject({
+                status: "done",
+              });
+              expect(JSON.stringify((await view(runtime, execution)).entries)).toContain(
+                "The member's own turn answered.",
               );
-              expect(await response.json()).toMatchObject({ status: "unanswered" });
-              const transcript = await view(runtime, execution, config);
-              expect(JSON.stringify(transcript.entries)).toContain(
-                "PI_AGENT_MODEL_REQUEST_FAILED: A delegated actor does not have the required capability grant.",
-              );
-              expect(modelCalls).toBe(2);
+              expect(modelCalls).toBe(3);
             },
           ),
+          ...(revocation === "restricted"
+            ? [
+                when.automation.ingestEvent(telegramEvent("restricted-pi-message")),
+                then.assert(
+                  "a later route turn has only the route's current grants",
+                  async ({ runtime }) => {
+                    await runtime.drain();
+                    // Without pi.modify the route cannot even admit a turn.
+                    expect(
+                      await submission(
+                        runtime,
+                        execution,
+                        "linked-pi-restricted-pi-message:prompt",
+                      ),
+                    ).toMatchObject({ code: "SUBMISSION_NOT_FOUND" });
+                    const workflow = createRouteBackedAutomationWorkflowRuntime({
+                      object: runtime.objects.automations.for(scope),
+                      execution: createBackofficeUserExecution({ scope, userId: "owner" }),
+                    });
+                    assert(
+                      (
+                        await workflow.getInstance({
+                          instanceId: "linked-pi-restricted-pi-message",
+                        })
+                      ).details.status === "errored",
+                    );
+                    expect(userTexts(await view(runtime, execution))).toHaveLength(2);
+                    expect(modelCalls).toBe(3);
+                  },
+                ),
+              ]
+            : []),
         ],
       }),
     );
   });
 }
-
-test("durable Pi preserves an explicit null child billing owner", async () => {
-  const execution = createBackofficeSystemExecution({ kind: "system" });
-  await runBackofficeScenario(
-    defineBackofficeScenario({
-      name: "durable Pi explicit null child billing owner",
-      options: { drain: false },
-      objects: {
-        ...scenarioObjects,
-        ...scriptedAgents([
-          fauxAssistantMessage(
-            [
-              fauxToolCall("execCodeMode", {
-                code: `async () => await pi.createSession({
-                requestId: "explicit-null-child",
-                name: "Unbilled child",
-                model: { provider: "faux", modelId: "faux-1" },
-                billingOrganizationId: null,
-              });`,
-              }),
-            ],
-            { stopReason: "toolUse" },
-          ),
-          fauxAssistantMessage("The child session was created."),
-        ]),
-      },
-      piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
-      setup: ({ given }) => [given.organization.exists({ id: "org-1" })],
-      steps: ({ then }) => [
-        then.assert("explicit null overrides inherited billing", async ({ runtime }) => {
-          const parent = await createAgent(runtime, execution);
-          await prompt(runtime, execution, parent);
-          await runtime.drain();
-
-          const directory = await (
-            await request(runtime, execution, "/sessions", null)
-          ).json<{ sessions: PiAgentConfig[] }>();
-          expect(directory.sessions).toHaveLength(2);
-          expect(
-            directory.sessions.find((session) => session.sessionId === parent.sessionId),
-          ).toMatchObject({
-            billingOrganizationId: "org-1",
-          });
-          expect(
-            directory.sessions.find((session) => session.name === "Unbilled child"),
-          ).toMatchObject({
-            billingOrganizationId: null,
-          });
-        }),
-      ],
-    }),
-  );
-});
 
 test("durable Pi delivers committed model usage to its persisted billing owner", async () => {
   const execution = createBackofficeServiceExecution({
@@ -615,8 +702,7 @@ test("durable Pi delivers committed model usage to its persisted billing owner",
       setup: ({ given }) => [given.organization.exists({ id: "org-1" })],
       steps: ({ then }) => [
         then.assert("bill the cumulative committed model usage once", async ({ runtime }) => {
-          const config = await createAgent(runtime, execution);
-          await prompt(runtime, execution, config);
+          await prompt(runtime, execution);
           await runtime.drain();
 
           const period = new Date(runtime.now()).toISOString().slice(0, 7);
@@ -631,12 +717,9 @@ test("durable Pi delivers committed model usage to its persisted billing owner",
           expect(Number(totalTokens?.quantity)).toBeGreaterThan(0);
           assert(totalTokens?.eventCount === "1");
 
-          const compacted = await request(
-            runtime,
-            execution,
-            `/sessions/${config.sessionId}/compact`,
-            { instructions: "Preserve the billed answer." },
-          );
+          const compacted = await request(runtime, execution, "/agents/assistant/compact", {
+            instructions: "Preserve the billed answer.",
+          });
           assert.equal(compacted.status, 202, await compacted.clone().text());
           await runtime.drain();
           const afterCompaction = await runtime.objects.billing
@@ -663,7 +746,7 @@ test("durable Pi delivers committed model usage to its persisted billing owner",
   );
 });
 
-test("durable Pi persists creator provenance rather than JWT authority and rechecks the billing organization before generation", async () => {
+test("a personal agent keeps its first turn's billing owner and rechecks current access before every generation", async () => {
   const scope = { kind: "user", userId: "member" } as const;
   const execution = createBackofficeRequestExecution({
     scope,
@@ -675,7 +758,6 @@ test("durable Pi persists creator provenance rather than JWT authority and reche
       expiresAt: new Date(Date.now() + 60_000),
     },
   });
-  let config: PiAgentConfig;
   let modelCalls = 0;
   await runBackofficeScenario(
     defineBackofficeScenario({
@@ -684,6 +766,10 @@ test("durable Pi persists creator provenance rather than JWT authority and reche
       objects: {
         ...scenarioObjects,
         ...scriptedAgents([
+          () => {
+            modelCalls += 1;
+            return fauxAssistantMessage("Billed to the organization.");
+          },
           () => {
             modelCalls += 1;
             return fauxAssistantMessage("Must not run.");
@@ -703,51 +789,37 @@ test("durable Pi persists creator provenance rather than JWT authority and reche
         given.auth.member({ orgId: "org-1", userId: "member", roles: ["member"] }),
       ],
       steps: ({ when, then }) => [
-        then.assert(
-          "creation strips forged actors and never persists token authority",
-          async ({ runtime }) => {
-            const missingOwner = await request(runtime, execution, "/sessions", {
-              name: null,
-              model: { provider: "faux", modelId: "faux-1" },
-              instructions: "",
-            });
-            assert.equal(missingOwner.status, 400, await missingOwner.clone().text());
-            const foreignOwner = await request(runtime, execution, "/sessions", {
-              name: null,
-              model: { provider: "faux", modelId: "faux-1" },
-              billingOrganizationId: "foreign-org",
-            });
-            assert.equal(foreignOwner.status, 403, await foreignOwner.clone().text());
-            config = await createAgent(runtime, execution);
-            expect(config.actors).toEqual(execution.actors);
-            expect(config).not.toHaveProperty("userAuthority");
-            const directory = await (
-              await request(runtime, execution, `/sessions/${config.sessionId}`, null)
-            ).json();
-            expect(directory).toMatchObject({
-              actors: execution.actors,
-              billingOrganizationId: "org-1",
-            });
-            expect(directory).not.toHaveProperty("userAuthority");
-          },
-        ),
+        then.assert("the first turn chooses an authorized billing owner", async ({ runtime }) => {
+          const missingOwner = await request(runtime, execution, "/agents/assistant/prompts", {
+            requestId: "unbilled",
+            content: "Answer.",
+            billingOrganizationId: null,
+          });
+          assert.equal(missingOwner.status, 400, await missingOwner.clone().text());
+          const foreignOwner = await request(runtime, execution, "/agents/assistant/prompts", {
+            requestId: "foreign",
+            content: "Answer.",
+            billingOrganizationId: "foreign-org",
+          });
+          assert.equal(foreignOwner.status, 403, await foreignOwner.clone().text());
+          await prompt(runtime, execution, { requestId: "billed", billingOrganizationId: "org-1" });
+          await runtime.drain();
+          expect(await submission(runtime, execution, "billed")).toMatchObject({ status: "done" });
+          const agent = await (await request(runtime, execution, "/agents/assistant", null)).json();
+          expect(agent).toMatchObject({ provisioning: { billingOrganizationId: "org-1" } });
+          expect(modelCalls).toBe(1);
+        }),
         when.auth.removeMember({ orgId: "org-1", userId: "member" }),
         then.assert(
           "the still-valid JWT cannot authorize a deferred model call after revocation",
           async ({ runtime }) => {
-            await prompt(runtime, execution, config);
+            await prompt(runtime, execution, { requestId: "revoked" });
             await runtime.drain();
-            const submission = await (
-              await request(
-                runtime,
-                execution,
-                `/sessions/${config.sessionId}/submissions/backoffice-prompt`,
-                null,
-              )
-            ).json();
-            expect(submission).toMatchObject({ status: "unanswered" });
-            expect(modelCalls).toBe(0);
-            const transcript = await view(runtime, execution, config);
+            expect(await submission(runtime, execution, "revoked")).toMatchObject({
+              status: "unanswered",
+            });
+            expect(modelCalls).toBe(1);
+            const transcript = await view(runtime, execution);
             expect(JSON.stringify(transcript.entries)).not.toContain("Must not run.");
           },
         ),
@@ -762,39 +834,43 @@ for (const revokeBillingAccess of [false, true]) {
     const execution = createBackofficeUserExecution({ scope, userId: "member" });
     const promptOperation = revokeBillingAccess ? "pi.submitPrompt" : "pi.runPrompt";
     const savedWorkflowCode = `defineWorkflow({ name: "saved-sentence-checker" }, async (event, step) => {
-      const classifier = await step.do("create saved classifier", async () => await pi.createSession({
-        requestId: event.instanceId + ":classifier",
-        name: "Saved classifier",
-        model: { provider: "faux", modelId: "faux-1" },
-      }));
       await step.waitForEvent("wait for sentence", { type: "sentence" });
       return await step.do("submit sentence", async () => await ${promptOperation}({
-        sessionId: classifier.sessionId,
+        agentName: "assistant",
         requestId: event.instanceId + ":sentence",
         content: "Classify this sentence",
       }));
     });`;
     const workflowCode = `defineWorkflow({ name: "inline-sentence-checker" }, async (event, step) => {
-      const classifier = await step.do("create inline classifier", async () => await pi.createSession({
-        requestId: event.instanceId + ":classifier",
-        name: "Inline classifier",
-        model: { provider: "faux", modelId: "faux-1" },
-      }));
       await step.do("start nested workflow", async () => await context.current.workflow.createInstance({
         path: "/workspace/automations/saved-sentence-checker.workflow.js",
         instanceId: "saved-checker",
       }));
       await step.waitForEvent("wait for sentence", { type: "sentence" });
       return await step.do("submit sentence", async () => await ${promptOperation}({
-        sessionId: classifier.sessionId,
+        agentName: "assistant",
         requestId: event.instanceId + ":sentence",
         content: "Classify this sentence",
       }));
     });`;
     let inlineInstanceId: string;
-    let classifiers: PiAgentConfig[];
     let tokensBeforeResume: { quantity: string; eventCount: string };
     let classifierCalls = 0;
+    const respond: FauxResponseStep = (context) => {
+      if (lastUserText(context) === "Classify this sentence") {
+        classifierCalls += 1;
+        return fauxAssistantMessage("Not naughty.");
+      }
+      const results = toolResults(context);
+      if (results.length === 0) {
+        return fauxAssistantMessage([fauxToolCall("execCodeMode", { code: workflowCode })], {
+          stopReason: "toolUse",
+        });
+      }
+      expect(results).toHaveLength(1);
+      expect(results[0]?.isError, JSON.stringify(results)).toBe(false);
+      return fauxAssistantMessage("Sentence checker is waiting.");
+    };
     await runBackofficeScenario(
       defineBackofficeScenario({
         name: `inherited workflow billing${revokeBillingAccess ? " after revocation" : ""}`,
@@ -802,29 +878,7 @@ for (const revokeBillingAccess of [false, true]) {
           "automations/saved-sentence-checker.workflow.js": savedWorkflowCode,
         }),
         options: { drain: false },
-        objects: {
-          ...scenarioObjects,
-          ...scriptedAgents([
-            (context) => {
-              if (
-                context.messages.filter((message) => message.role === "user").at(-1)?.content ===
-                "Classify this sentence"
-              ) {
-                classifierCalls += 1;
-                return fauxAssistantMessage("Not naughty.");
-              }
-              return fauxAssistantMessage([fauxToolCall("execCodeMode", { code: workflowCode })], {
-                stopReason: "toolUse",
-              });
-            },
-            (context) => {
-              const results = context.messages.filter((message) => message.role === "toolResult");
-              expect(results).toHaveLength(1);
-              expect(results[0]?.isError, JSON.stringify(results)).toBe(false);
-              return fauxAssistantMessage("Sentence checker is waiting.");
-            },
-          ]),
-        },
+        objects: { ...scenarioObjects, ...scriptedAgents([respond, respond, respond, respond]) },
         piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
         setup: ({ given }) => [
           given.auth.user({ id: "owner", role: "admin" }),
@@ -834,10 +888,9 @@ for (const revokeBillingAccess of [false, true]) {
         ],
         steps: ({ when, then, runner }) => [
           then.assert(
-            "inline and nested workflows persist the parent's billing selection",
+            "inline and nested workflows persist the turn's billing selection and actors",
             async ({ runtime }) => {
-              const config = await createAgent(runtime, execution);
-              await prompt(runtime, execution, config);
+              await prompt(runtime, execution, { billingOrganizationId: "org-1" });
               await runtime.drain();
               const workflow = createRouteBackedAutomationWorkflowRuntime({
                 object: runtime.objects.automations.for(scope),
@@ -865,28 +918,13 @@ for (const revokeBillingAccess of [false, true]) {
                 expect(stored.meta.params.execution).toMatchObject({
                   scopeRestriction: null,
                   scope,
-                  actors: execution.actors,
+                  actors: {
+                    ...execution.actors,
+                    delegation: [...execution.actors.delegation, PI_AGENT_ACTOR],
+                  },
                   billingOrganizationId: "org-1",
                 });
                 expect(stored.meta.params.execution).not.toHaveProperty("userAuthority");
-              }
-              const directory = await (
-                await request(runtime, execution, "/sessions", null)
-              ).json<{ sessions: PiAgentConfig[] }>();
-              expect(directory.sessions).toHaveLength(3);
-              classifiers = directory.sessions.filter(
-                (session) => session.sessionId !== config.sessionId,
-              );
-              expect(new Set(classifiers.map((session) => session.name))).toEqual(
-                new Set(["Inline classifier", "Saved classifier"]),
-              );
-              for (const classifier of classifiers) {
-                expect(classifier).toMatchObject({
-                  scopeRestriction: null,
-                  scope,
-                  billingOrganizationId: "org-1",
-                  actors: execution.actors,
-                });
               }
               const period = new Date(runtime.now()).toISOString().slice(0, 7);
               const trackers = await runtime.objects.billing
@@ -903,59 +941,62 @@ for (const revokeBillingAccess of [false, true]) {
           ...(revokeBillingAccess
             ? [when.auth.removeMember({ orgId: "org-1", userId: "member" })]
             : []),
-          then.assert("resumed classifiers use current billing authority", async ({ runtime }) => {
-            const workflow = createRouteBackedAutomationWorkflowRuntime({
-              object: runtime.objects.automations.for(scope),
-              execution,
-            });
-            for (const instanceId of [inlineInstanceId, "saved-checker"]) {
-              await workflow.sendEvent({
-                instanceId,
-                type: "sentence",
-                payload: { sentence: "hello" },
+          then.assert(
+            "resumed workflow turns use current billing authority",
+            async ({ runtime }) => {
+              const workflow = createRouteBackedAutomationWorkflowRuntime({
+                object: runtime.objects.automations.for(scope),
+                execution,
               });
-            }
-            await runtime.drain();
-            for (const instanceId of [inlineInstanceId, "saved-checker"]) {
-              assert.equal((await workflow.getInstance({ instanceId })).details.status, "complete");
-            }
-            for (const classifier of classifiers) {
-              const instanceId =
-                classifier.name === "Inline classifier" ? inlineInstanceId : "saved-checker";
-              const submission = await (
-                await request(
-                  runtime,
-                  execution,
-                  `/sessions/${classifier.sessionId}/submissions/${instanceId}:sentence`,
-                  null,
-                )
-              ).json();
-              expect(submission).toMatchObject({
-                status: revokeBillingAccess ? "unanswered" : "done",
-              });
-              const transcript = await view(runtime, execution, classifier);
-              if (revokeBillingAccess) {
-                expect(JSON.stringify(transcript.entries)).not.toContain("Not naughty.");
-              } else {
-                expect(JSON.stringify(transcript.entries)).toContain("Not naughty.");
+              for (const instanceId of [inlineInstanceId, "saved-checker"]) {
+                await workflow.sendEvent({
+                  instanceId,
+                  type: "sentence",
+                  payload: { sentence: "hello" },
+                });
               }
-            }
-            expect(classifierCalls).toBe(revokeBillingAccess ? 0 : 2);
-            const period = new Date(runtime.now()).toISOString().slice(0, 7);
-            const trackers = await runtime.objects.billing
-              .forOrg("org-1")
-              .commands.getTrackers({ scope, period, pageSize: 100 });
-            const tokens = trackers.trackers.find((tracker) => tracker.meter === "ai.tokens.total");
-            assert(tokens);
-            if (revokeBillingAccess) {
-              expect({ quantity: tokens.quantity, eventCount: tokens.eventCount }).toEqual(
-                tokensBeforeResume,
+              await runtime.drain();
+              for (const instanceId of [inlineInstanceId, "saved-checker"]) {
+                // A workflow that lost its billing organization cannot admit the turn at all.
+                assert.equal(
+                  (await workflow.getInstance({ instanceId })).details.status,
+                  revokeBillingAccess ? "errored" : "complete",
+                );
+                expect(
+                  await submission(runtime, execution, `${instanceId}:sentence`),
+                ).toMatchObject(
+                  revokeBillingAccess ? { code: "SUBMISSION_NOT_FOUND" } : { status: "done" },
+                );
+              }
+              const transcript = JSON.stringify((await view(runtime, execution)).entries);
+              if (revokeBillingAccess) {
+                expect(transcript).not.toContain("Not naughty.");
+              } else {
+                expect(transcript).toContain("Not naughty.");
+              }
+              expect(classifierCalls).toBe(revokeBillingAccess ? 0 : 2);
+              const period = new Date(runtime.now()).toISOString().slice(0, 7);
+              const trackers = await runtime.objects.billing
+                .forOrg("org-1")
+                .commands.getTrackers({ scope, period, pageSize: 100 });
+              const tokens = trackers.trackers.find(
+                (tracker) => tracker.meter === "ai.tokens.total",
               );
-            } else {
-              expect(Number(tokens.quantity)).toBeGreaterThan(Number(tokensBeforeResume.quantity));
-              expect(Number(tokens.eventCount)).toBe(Number(tokensBeforeResume.eventCount) + 2);
-            }
-          }),
+              assert(tokens);
+              if (revokeBillingAccess) {
+                expect({ quantity: tokens.quantity, eventCount: tokens.eventCount }).toEqual(
+                  tokensBeforeResume,
+                );
+              } else {
+                expect(Number(tokens.quantity)).toBeGreaterThan(
+                  Number(tokensBeforeResume.quantity),
+                );
+                expect(Number(tokens.eventCount)).toBeGreaterThan(
+                  Number(tokensBeforeResume.eventCount),
+                );
+              }
+            },
+          ),
         ],
       }),
     );
@@ -969,6 +1010,11 @@ test("durable Pi restores scoped tools and reports interrupted codemode without 
     scope: { kind: "org", orgId: "org-1" },
     service: { type: "automation", id: "codemode-recovery" },
   });
+  const config: PiAgentConfig = {
+    scope: execution.scope,
+    agentName: "assistant",
+    billingOrganizationId: "org-1",
+  };
   let source: {
     agent: InMemoryPiObject;
     options: ConstructorParameters<typeof InMemoryPiObject>[0];
@@ -1042,10 +1088,9 @@ test("durable Pi restores scoped tools and reports interrupted codemode without 
           then.assert(
             "restore the actual SQLite crash point with fresh runtime context",
             async ({ runtime }) => {
-              const config = await createAgent(runtime, execution);
-              await prompt(runtime, execution, config);
+              await prompt(runtime, execution);
               await runtime.drain();
-              expect(JSON.stringify((await view(runtime, execution, config)).entries)).toContain(
+              expect(JSON.stringify((await view(runtime, execution)).entries)).toContain(
                 "Original process completed.",
               );
               const captured = source;
@@ -1056,9 +1101,7 @@ test("durable Pi restores scoped tools and reports interrupted codemode without 
               const faux = fauxProvider();
               faux.setResponses([
                 (context) => {
-                  const result = context.messages
-                    .filter((message) => message.role === "toolResult")
-                    .at(-1);
+                  const result = toolResults(context).at(-1);
                   assert.equal(result?.isError, true, JSON.stringify(result));
                   expect(JSON.stringify(result)).toContain(
                     "Tool execCodeMode was interrupted and may have partially run",
@@ -1069,9 +1112,7 @@ test("durable Pi restores scoped tools and reports interrupted codemode without 
                   );
                 },
                 (context) => {
-                  const result = context.messages
-                    .filter((message) => message.role === "toolResult")
-                    .at(-1);
+                  const result = toolResults(context).at(-1);
                   assert.equal(result?.isError, false, JSON.stringify(result));
                   expect(result?.content).toEqual([{ type: "text", text: "1" }]);
                   return fauxAssistantMessage("Recovered with exactly one mutation.");
@@ -1085,6 +1126,7 @@ test("durable Pi restores scoped tools and reports interrupted codemode without 
                 openStorage: async () => await openNodeSqliteStorage(snapshot),
               });
               try {
+                // The restored turn record is the only authority the recovered tools can use.
                 await restored.alarm();
                 const transcript = (await restored.getView(config)) as ConversationView;
                 expect(JSON.stringify(transcript.entries)).toContain(
@@ -1106,63 +1148,59 @@ test("durable Pi restores scoped tools and reports interrupted codemode without 
   }
 });
 
-test("durable Pi scoped codemode handles select a different manager instead of reusing the parent directory", async () => {
+test("durable Pi scoped codemode handles prompt the selected scope's agent", async () => {
   const execution = createBackofficeServiceExecution({
     scope: { kind: "org", orgId: "org-1" },
     service: { type: "automation", id: "scope-scenario" },
   });
+  const userScope: BackofficeContextScope = { kind: "user", userId: "org-1" };
   await runBackofficeScenario(
     defineBackofficeScenario({
-      name: "durable Pi scoped child directory",
+      name: "durable Pi scoped agent",
       options: { drain: false },
       objects: {
         ...scenarioObjects,
         ...scriptedAgents([
-          fauxAssistantMessage(
-            [
-              fauxToolCall("execCodeMode", {
-                code: `async () => {
-        const user = context.user("org-1");
-        return await user.pi.createSession({
-          name: "User child",
-          model: { provider: "faux", modelId: "faux-1" },
-        });
-      }`,
-              }),
-            ],
-            { stopReason: "toolUse" },
-          ),
           (context) => {
-            const result = context.messages.find((message) => message.role === "toolResult");
+            if (lastUserText(context) === "Hello from the organization agent.") {
+              return fauxAssistantMessage("The personal agent answered.");
+            }
+            return fauxAssistantMessage(
+              [
+                fauxToolCall("execCodeMode", {
+                  code: `async () => await context.user("org-1").pi.runPrompt({
+                    agentName: "assistant",
+                    content: "Hello from the organization agent.",
+                  })`,
+                }),
+              ],
+              { stopReason: "toolUse" },
+            );
+          },
+          (context) => {
+            const result = toolResults(context).at(-1);
             assert(result?.role === "toolResult");
             expect(result.isError, JSON.stringify(result)).toBe(false);
-            return fauxAssistantMessage("Child created in the user scope.");
+            expect(JSON.stringify(result)).toContain("The personal agent answered.");
+            return fauxAssistantMessage("Prompted the user-scoped agent.");
           },
         ]),
       },
       piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
       steps: ({ then }) => [
         then.assert("scope changes rebuild the manager runtime", async ({ runtime }) => {
-          const config = await createAgent(runtime, execution);
-          await prompt(runtime, execution, config);
+          await prompt(runtime, execution);
           await runtime.drain();
-          const transcript = await view(runtime, execution, config);
-          expect(JSON.stringify(transcript.entries)).toContain("Child created in the user scope.");
-          const other = { ...execution, scope: { kind: "user", userId: "org-1" } as const };
-          const parentDirectory = await (
-            await request(runtime, execution, "/sessions", null)
-          ).json<{ sessions: PiAgentConfig[] }>();
-          const childDirectory = await (
-            await request(runtime, other, "/sessions", null)
-          ).json<{ sessions: PiAgentConfig[] }>();
-          expect(parentDirectory.sessions).toHaveLength(1);
-          expect(childDirectory.sessions).toHaveLength(1);
-          expect(childDirectory.sessions[0]).toMatchObject({
-            name: "User child",
-            scopeRestriction: null,
-            scope: other.scope,
-            actors: execution.actors,
-          });
+          expect(JSON.stringify((await view(runtime, execution)).entries)).toContain(
+            "Prompted the user-scoped agent.",
+          );
+          const other = { ...execution, scope: userScope };
+          const personal = await (await request(runtime, other, "/agents/assistant", null)).json();
+          // The personal agent inherits the organization agent's billing owner.
+          expect(personal).toMatchObject({ provisioning: { billingOrganizationId: "org-1" } });
+          expect(JSON.stringify((await view(runtime, other)).entries)).toContain(
+            "The personal agent answered.",
+          );
         }),
       ],
     }),
@@ -1208,11 +1246,13 @@ test("Cloudflare backend analytics delivers verified outcomes and Pi usage witho
   });
   const directory = await mkdtemp(path.join(os.tmpdir(), "backoffice-posthog-"));
   const deliveries: Promise<unknown>[] = [];
-  let config: PiAgentConfig | null = null;
   const objectOverrides: LocalBackofficeObjects = {
     PI: ({ state, runtime, openPiSessionStore, piAgentIdFromConfig, nowEpochMs }) => {
       const faux = fauxProvider();
-      faux.setResponses([fauxAssistantMessage("PRIVATE_ASSISTANT_OUTPUT")]);
+      faux.setResponses([
+        fauxAssistantMessage("PRIVATE_ASSISTANT_OUTPUT"),
+        fauxAssistantMessage("PRIVATE_SECOND_OUTPUT"),
+      ]);
       const models = createModels();
       models.setProvider(faux.provider);
       return new InMemoryPiObject({
@@ -1220,9 +1260,10 @@ test("Cloudflare backend analytics delivers verified outcomes and Pi usage witho
         runtime,
         dependencies: {
           ...createScriptedPiAgentDependencies(models),
-          extensions: (agentConfig) => [
+          extensions: (agentConfig, agent) => [
             createPiPostHogExtension({
               config: agentConfig,
+              agent,
               capture: async (event) => {
                 client.capture(event);
               },
@@ -1268,7 +1309,7 @@ test("Cloudflare backend analytics delivers verified outcomes and Pi usage witho
                 .getSetCookie()
                 .map((value) => value.split(";", 1)[0])
                 .join("; ");
-              const authenticatedRequest = new Request(`${origin}/backoffice/sessions`, {
+              const authenticatedRequest = new Request(`${origin}/backoffice/agents`, {
                 method: "POST",
                 headers: { cookie },
               });
@@ -1287,61 +1328,55 @@ test("Cloudflare backend analytics delivers verified outcomes and Pi usage witho
                   deliveries.push(promise);
                 },
               });
-              const created = await createPiManagerSession(authenticatedRequest, context, scope, {
-                name: "PRIVATE_SESSION_NAME",
-                model: { provider: "faux", modelId: "faux-1" },
-                instructions: "PRIVATE_SYSTEM_INSTRUCTIONS",
-                billingOrganizationId: organization.id,
-              });
-              assert(created.session, created.error ?? "No session created");
-              config = created.session;
-              const principal = config.actors.principal;
-              assert(principal?.scope === "internal" && principal.type === "user");
               const admission = await submitPiManagerPrompt(
                 authenticatedRequest,
                 context,
                 scope,
-                config.sessionId,
+                "assistant",
                 {
                   requestId: "accepted-prompt",
                   content: "PRIVATE_USER_PROMPT",
                   whenBusy: "reject",
+                  billingOrganizationId: null,
                 },
               );
-              expect(admission).toEqual({ requestId: "accepted-prompt", error: null });
+              expect(admission).toMatchObject({
+                receipt: { requestId: "accepted-prompt" },
+                error: null,
+              });
               const rejected = await submitPiManagerPrompt(
                 authenticatedRequest,
                 context,
                 scope,
-                "missing-session",
+                "missing-agent",
                 {
                   requestId: "rejected-prompt",
                   content: "PRIVATE_REJECTED_PROMPT",
                   whenBusy: "reject",
+                  billingOrganizationId: null,
                 },
               );
               assert(rejected.error !== null);
               await ctx.runtime.drain();
               await shutdownCloudflarePostHog(client);
-              expect(received.filter((event) => event.event === "session_created")).toHaveLength(1);
               expect(
-                received.filter((event) => event.event === "session_prompt_admitted"),
+                received.filter((event) => event.event === "agent_prompt_admitted"),
               ).toHaveLength(1);
               const generation = received.filter((event) => event.event === "$ai_generation");
               expect(generation).toHaveLength(1);
-              expect(generation[0].distinct_id).toBe(principal.id);
+              const userId = generation[0].distinct_id;
+              expect(userId).not.toMatch(/^pi-agent:/);
               expect(generation[0].uuid).toBe(generation[0].properties.$ai_span_id);
+              const agentId = piAgentObjectName({ scope, agentName: "assistant" });
               expect(generation[0].properties).toMatchObject({
-                session_id: config.sessionId,
-                $ai_session_id: config.sessionId,
+                agent_name: "assistant",
+                $ai_session_id: agentId,
                 $ai_provider: "faux",
                 $ai_model: "faux-1",
                 $ai_is_error: false,
                 $process_person_profile: false,
               });
               for (const marker of [
-                "PRIVATE_SESSION_NAME",
-                "PRIVATE_SYSTEM_INSTRUCTIONS",
                 "PRIVATE_USER_PROMPT",
                 "PRIVATE_ASSISTANT_OUTPUT",
                 "PRIVATE_REJECTED_PROMPT",
@@ -1356,7 +1391,7 @@ test("Cloudflare backend analytics delivers verified outcomes and Pi usage witho
               await Promise.all(deliveries);
               const exceptions = received.filter((event) => event.event === "$exception");
               expect(exceptions).toHaveLength(1);
-              expect(exceptions[0].distinct_id).toBe(principal.id);
+              expect(exceptions[0].distinct_id).toBe(userId);
 
               // An unavailable analytics service must not roll back or hide a successful server operation.
               receiverStatus = 503;
@@ -1370,20 +1405,30 @@ test("Cloudflare backend analytics delivers verified outcomes and Pi usage witho
               const analytics = context.get(BackofficePostHogContext);
               assert(analytics);
               context.set(BackofficePostHogContext, { ...analytics, client: failedDeliveryClient });
-              const second = await createPiManagerSession(authenticatedRequest, context, scope, {
-                name: null,
-                model: { provider: "faux", modelId: "faux-1" },
-                instructions: "",
-                billingOrganizationId: organization.id,
-              });
-              assert(second.session, second.error ?? "No second session created");
-              await shutdownCloudflarePostHog(failedDeliveryClient);
-              expect(second.error).toBeNull();
-              const persisted = await fetchPiManagerSessions(authenticatedRequest, context, scope);
-              expect(persisted.sessions.map((session) => session.sessionId)).toContain(
-                second.session.sessionId,
+              const second = await submitPiManagerPrompt(
+                authenticatedRequest,
+                context,
+                scope,
+                "assistant",
+                {
+                  requestId: "second-prompt",
+                  content: "PRIVATE_SECOND_PROMPT",
+                  whenBusy: "followUp",
+                  billingOrganizationId: null,
+                },
               );
-              expect(received.filter((event) => event.event === "session_created")).toHaveLength(1);
+              await shutdownCloudflarePostHog(failedDeliveryClient);
+              expect(second).toMatchObject({
+                receipt: { requestId: "second-prompt" },
+                error: null,
+              });
+              const persisted = await fetchPiManagerAgents(authenticatedRequest, context, scope);
+              expect(
+                persisted.agents.find((agent) => agent.agentName === "assistant")?.provisioning,
+              ).toEqual({ billingOrganizationId: organization.id });
+              expect(
+                received.filter((event) => event.event === "agent_prompt_admitted"),
+              ).toHaveLength(1);
             },
           ),
         ],

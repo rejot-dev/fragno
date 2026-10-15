@@ -68,7 +68,7 @@ describe("durable Pi billing counters", () => {
     const event = createPiDurableBillingEvent({
       eventId: "pi-durable:event-1",
       scope: { kind: "project", orgId: "org-1", projectId: "project-1" },
-      sessionId: "session-1",
+      agentName: "assistant",
       taskId: 42,
       occurredAt: "2026-10-03T12:00:00.000Z",
       through,
@@ -79,7 +79,7 @@ describe("durable Pi billing counters", () => {
       id: "pi-durable:event-1",
       source: "pi-durable",
       eventType: "usage.committed",
-      metadata: { sessionId: "session-1", taskId: 42, through },
+      metadata: { agentName: "assistant", taskId: 42, through },
     });
     expect(
       Object.fromEntries(event.measurements.map(({ meter, quantity }) => [meter, quantity])),

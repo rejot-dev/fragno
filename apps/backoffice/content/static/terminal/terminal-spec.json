@@ -3006,38 +3006,103 @@
     ]
   },
   {
-    "command": "pi.session.create",
-    "summary": "pi.session.create creates a durable Pi agent in the current scope.",
+    "command": "pi.agent.list",
+    "summary": "pi.agent.list lists the agents defined for the current scope.",
     "options": [
       {
-        "name": "request-id",
-        "valueRequired": true,
-        "valueName": "request-id",
-        "description": "Stable idempotency key for replay-safe creation"
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
       },
       {
-        "name": "model-json",
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
         "valueRequired": true,
-        "valueName": "json",
-        "description": "Optional durable model selection, for example {\"provider\":\"openai\",\"modelId\":\"gpt-6-luna\"}. Omitting it uses the configured default."
+        "valueName": "selector",
+        "required": false
       },
       {
-        "name": "name",
+        "name": "format",
+        "description": "Output format: text (default) or json",
         "valueRequired": true,
-        "valueName": "name",
-        "description": "Session name"
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "pi.agent.get",
+    "summary": "pi.agent.get retrieves an agent and its durable conversation view.",
+    "options": [
+      {
+        "name": "agent",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "agent-name",
+        "description": "Agent name"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "pi.agent.create",
+    "summary": "pi.agent.create defines an agent in the current scope.",
+    "options": [
+      {
+        "name": "agent",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "agent-name",
+        "description": "Agent name: lowercase letters, digits, and hyphens"
+      },
+      {
+        "name": "description",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "text",
+        "description": "What the agent is for, shown when choosing an agent"
       },
       {
         "name": "instructions",
         "valueRequired": true,
-        "valueName": "text",
-        "description": "Session-specific agent instructions"
+        "valueName": "path",
+        "description": "Markdown file in /workspace or /static with the agent's extra system guidance"
       },
       {
-        "name": "billing-organization-id",
+        "name": "permission",
         "valueRequired": true,
-        "valueName": "organization-id",
-        "description": "Billing owner for user-scoped sessions; omitted child sessions inherit the calling Pi session or workflow's owner"
+        "valueName": "grant",
+        "description": "Repeatable: *, namespace.*, or namespace.permission; omitted grants none"
+      },
+      {
+        "name": "model",
+        "valueRequired": true,
+        "valueName": "provider/model-id",
+        "description": "Model to use; omitted selects the preferred available model"
+      },
+      {
+        "name": "managed-by",
+        "valueRequired": true,
+        "valueName": "json",
+        "description": "Marketplace ownership, set by package installers"
       },
       {
         "name": "help",
@@ -3061,15 +3126,46 @@
     ]
   },
   {
-    "command": "pi.session.get",
-    "summary": "pi.session.get retrieves a durable Pi session and conversation view.",
+    "command": "pi.agent.update",
+    "summary": "pi.agent.update replaces an agent's whole definition.",
     "options": [
       {
-        "name": "session-id",
+        "name": "agent",
         "required": true,
         "valueRequired": true,
-        "valueName": "session-id",
-        "description": "Durable Pi session id"
+        "valueName": "agent-name",
+        "description": "Agent name: lowercase letters, digits, and hyphens"
+      },
+      {
+        "name": "description",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "text",
+        "description": "What the agent is for, shown when choosing an agent"
+      },
+      {
+        "name": "instructions",
+        "valueRequired": true,
+        "valueName": "path",
+        "description": "Markdown file in /workspace or /static with the agent's extra system guidance"
+      },
+      {
+        "name": "permission",
+        "valueRequired": true,
+        "valueName": "grant",
+        "description": "Repeatable: *, namespace.*, or namespace.permission; omitted grants none"
+      },
+      {
+        "name": "model",
+        "valueRequired": true,
+        "valueName": "provider/model-id",
+        "description": "Model to use; omitted selects the preferred available model"
+      },
+      {
+        "name": "managed-by",
+        "valueRequired": true,
+        "valueName": "json",
+        "description": "Marketplace ownership, set by package installers"
       },
       {
         "name": "help",
@@ -3093,20 +3189,15 @@
     ]
   },
   {
-    "command": "pi.session.list",
-    "summary": "pi.session.list lists a page of durable Pi sessions.",
+    "command": "pi.agent.delete",
+    "summary": "pi.agent.delete removes an agent's definition and keeps its conversation.",
     "options": [
       {
-        "name": "cursor",
+        "name": "agent",
+        "required": true,
         "valueRequired": true,
-        "valueName": "cursor",
-        "description": "Page cursor"
-      },
-      {
-        "name": "page-size",
-        "valueRequired": true,
-        "valueName": "count",
-        "description": "Page size from 1 to 100"
+        "valueName": "agent-name",
+        "description": "Agent name"
       },
       {
         "name": "help",
@@ -3134,11 +3225,11 @@
     "summary": "pi.prompt.submit admits durable agent work without waiting for completion.",
     "options": [
       {
-        "name": "session-id",
+        "name": "agent",
         "required": true,
         "valueRequired": true,
-        "valueName": "session-id",
-        "description": "Durable Pi session id"
+        "valueName": "agent-name",
+        "description": "Agent name"
       },
       {
         "name": "content",
@@ -3157,7 +3248,13 @@
         "name": "when-busy",
         "valueRequired": true,
         "valueName": "mode",
-        "description": "steer (default) or reject"
+        "description": "followUp (default) waits for the current turn, steer joins it, reject refuses"
+      },
+      {
+        "name": "billing-organization-id",
+        "valueRequired": true,
+        "valueName": "organization-id",
+        "description": "Billing owner chosen by a user-scoped agent's first turn; omitted inherits the calling Pi agent or workflow's owner"
       },
       {
         "name": "help",
@@ -3185,11 +3282,11 @@
     "summary": "pi.submission.get reads one durable prompt submission.",
     "options": [
       {
-        "name": "session-id",
+        "name": "agent",
         "required": true,
         "valueRequired": true,
-        "valueName": "session-id",
-        "description": "Durable Pi session id"
+        "valueName": "agent-name",
+        "description": "Agent name"
       },
       {
         "name": "request-id",
@@ -3224,11 +3321,11 @@
     "summary": "pi.prompt.run admits a prompt and waits for its durable submission to settle.",
     "options": [
       {
-        "name": "session-id",
+        "name": "agent",
         "required": true,
         "valueRequired": true,
-        "valueName": "session-id",
-        "description": "Durable Pi session id"
+        "valueName": "agent-name",
+        "description": "Agent name"
       },
       {
         "name": "content",
@@ -3247,7 +3344,13 @@
         "name": "when-busy",
         "valueRequired": true,
         "valueName": "mode",
-        "description": "steer (default) or reject"
+        "description": "followUp (default) waits for the current turn, steer joins it, reject refuses"
+      },
+      {
+        "name": "billing-organization-id",
+        "valueRequired": true,
+        "valueName": "organization-id",
+        "description": "Billing owner chosen by a user-scoped agent's first turn; omitted inherits the calling Pi agent or workflow's owner"
       },
       {
         "name": "timeout-ms",
@@ -3277,15 +3380,15 @@
     ]
   },
   {
-    "command": "pi.session.abort",
-    "summary": "pi.session.abort cancels active work in a durable Pi agent.",
+    "command": "pi.agent.abort",
+    "summary": "pi.agent.abort cancels an agent's active work.",
     "options": [
       {
-        "name": "session-id",
+        "name": "agent",
         "required": true,
         "valueRequired": true,
-        "valueName": "session-id",
-        "description": "Durable Pi session id"
+        "valueName": "agent-name",
+        "description": "Agent name"
       },
       {
         "name": "help",

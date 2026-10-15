@@ -190,13 +190,14 @@ export function createSearchTool(agent: BackofficeAgentContext) {
     parameters: searchParametersSchema,
     replay: "safe",
     async execute(params, api, context) {
-      await agent.authorize();
+      const turn = await agent.activeTurn(context);
+      await turn.authorize();
       if (context.abortSignal?.aborted) {
         throw new Error("Search aborted.");
       }
 
       const state = requirePiStateBackend(
-        agent.toolContext(`${agent.sessionId}:${api.taskId}`, context),
+        turn.toolContext(`${agent.agentName}:${api.taskId}`, context),
       );
       const glob = params.glob ?? "**";
       const cursor = params.cursor === undefined ? undefined : decodeSearchCursor(params.cursor);

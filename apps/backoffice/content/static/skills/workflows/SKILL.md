@@ -58,34 +58,28 @@ Use `defineWorkflow` for work that must survive retries, time, or an external co
 
 ### Prompting a durable Pi agent
 
-Use the `pi` runtime tools when a workflow needs model work. Create one durable session with a
-workflow-stable `requestId`, then give every prompt a deterministic `requestId` derived from the
-workflow instance and operation. These keys make external Pi effects safe when a workflow step is
-retried after an uncertain outcome.
+Use the `pi` runtime tools when a workflow needs model work. Prompt a defined agent by name; list
+them with `pi.listAgents({})`, and read `/static/skills/pi-agents/SKILL.md` to define a new one.
+Give every prompt a deterministic `requestId` derived from the workflow instance and operation, so a
+step retried after an uncertain outcome returns the original durable submission instead of a second
+turn.
 
 ```js
-const session = await step.do("create classification agent", async () => {
-  return await pi.createSession({
-    requestId: `${event.instanceId}:classification-agent`,
-    name: "Classification agent",
-    instructions: "Classify text and explain the decision concisely.",
-  });
-});
-
 const response = await step.do("classify text", async () => {
   return await pi.runPrompt({
-    sessionId: session.sessionId,
+    agentName: "assistant",
     requestId: `${event.instanceId}:classify-text`,
-    content: `Classify this text:\n\n${text}`,
+    content: `Classify this text and explain the decision concisely:\n\n${text}`,
   });
 });
 
 const classification = response.assistantText;
 ```
 
-A repeated session creation request returns the original session, and a repeated prompt request
-returns the original durable submission. Keep unrelated external effects in separate `step.do` calls
-with their own stable idempotency keys.
+An agent has one ongoing conversation and runs one turn at a time; a prompt to a busy agent waits
+for the current turn. The turn runs with the workflow's current permissions, narrowed by the agent's
+definition. Keep unrelated external effects in separate `step.do` calls with their own stable
+idempotency keys.
 
 ## Operating an existing workflow
 

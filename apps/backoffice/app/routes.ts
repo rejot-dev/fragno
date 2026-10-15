@@ -82,23 +82,20 @@ export default [
           route(":sandboxId", "routes/backoffice/computers/sandbox-detail.tsx"),
         ]),
       ]),
-      route("sessions", "routes/backoffice/sessions/index.tsx"),
-      route("sessions/:scopeKind/:scopeId", "routes/backoffice/sessions/organization-layout.tsx", [
-        index("routes/backoffice/sessions/organization-index.tsx"),
-        route("sessions", "routes/backoffice/sessions/sessions.tsx", [
-          index("routes/backoffice/sessions/sessions-index.tsx"),
-          route(":sessionId", "routes/backoffice/sessions/session-detail.tsx"),
-          route(":sessionId/view-stream", "routes/backoffice/sessions/session-view-stream.ts"),
-          route(":sessionId/entries", "routes/backoffice/sessions/session-entries.ts"),
-          route(":sessionId/export", "routes/backoffice/sessions/session-export.ts"),
-          route(":sessionId.jsonl", "routes/backoffice/sessions/session-export.ts", {
-            id: "sessions/session-jsonl",
+      route("agents", "routes/backoffice/agents/index.tsx"),
+      route("agents/:scopeKind/:scopeId", "routes/backoffice/agents/organization-layout.tsx", [
+        index("routes/backoffice/agents/organization-index.tsx"),
+        route("agents", "routes/backoffice/agents/agents.tsx", [
+          index("routes/backoffice/agents/agents-index.tsx"),
+          route(":agentName", "routes/backoffice/agents/agent-detail.tsx"),
+          route(":agentName/view-stream", "routes/backoffice/agents/agent-view-stream.ts"),
+          route(":agentName/entries", "routes/backoffice/agents/agent-entries.ts"),
+          route(":agentName/export", "routes/backoffice/agents/agent-export.ts"),
+          route(":agentName.jsonl", "routes/backoffice/agents/agent-export.ts", {
+            id: "agents/agent-jsonl",
           }),
-          route(
-            ":sessionId/compactions/:taskId",
-            "routes/backoffice/sessions/session-compaction.ts",
-          ),
-          route(":sessionId/debug", "routes/backoffice/sessions/debug-session-detail.tsx"),
+          route(":agentName/compactions/:taskId", "routes/backoffice/agents/agent-compaction.ts"),
+          route(":agentName/debug", "routes/backoffice/agents/debug-agent-detail.tsx"),
         ]),
       ]),
       route("files", "routes/backoffice/files/index.tsx"),

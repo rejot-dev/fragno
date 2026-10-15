@@ -71,15 +71,13 @@ function encodePiExportLine(value: unknown) {
 export function createPiConversationExportStream(root: Conversation, config: PiAgentConfig) {
   async function* exportLines() {
     yield encodePiExportLine({
-      type: "pi-durable-session",
+      type: "pi-durable-agent",
       version: 1,
       order: "newest-first",
-      session: {
-        sessionId: config.sessionId,
+      agent: {
+        agentName: config.agentName,
         scope: config.scope,
-        name: config.name,
-        model: config.model,
-        instructions: config.instructions,
+        billingOrganizationId: config.billingOrganizationId,
       },
     });
 

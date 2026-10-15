@@ -1,4 +1,4 @@
-import { assert, describe, test, vi } from "vitest";
+import { assert, describe, expect, test, vi } from "vitest";
 
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
@@ -28,6 +28,8 @@ vi.mock("cloudflare:workers", () => ({
   WorkerEntrypoint,
 }));
 
+import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
+import { createBackofficeServiceExecution } from "@/backoffice-runtime/context";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 
 import { InMemoryApiObject } from "../../../workers/api.do";
@@ -51,6 +53,7 @@ const scenarioObjects = {
   FORMS: (input) => new InMemoryFormsObject(input),
   MARKETPLACE: (input) => new InMemoryMarketplaceObject(input),
   MCP: (input) => new InMemoryMcpObject(input),
+  PI_MANAGER: allLocalObjects.PI_MANAGER,
   TELEGRAM: (input) => new InMemoryTelegramObject(input),
   UPLOAD: (input) => new InMemoryUploadObject(input),
 } satisfies LocalBackofficeObjects;
@@ -66,8 +69,9 @@ if (!telegramTestCommandEntry) {
 const TELEGRAM_CHANNEL_MARKETPLACE_INSTALLATION = {
   targetScope: { kind: "org", orgId: "org-1" },
   slug: "telegram-channel",
-  version: "1.1.0",
-  installationRoot: "/workspace",
+  version: "1.2.0",
+  // The Marketplace page's suggested folder, so nothing depends on where a package lands.
+  installationRoot: "/workspace/telegram-channel",
 } as const;
 
 const marketplaceTelegramTestWorkspace = () =>
@@ -303,6 +307,26 @@ describe("starter automation router scenarios", () => {
             enabled: true,
             priority: 120,
             trigger: { kind: "event" },
+          }),
+          then.assert("the package defines the agent its routes prompt", async (ctx) => {
+            const scope = { kind: "org", orgId: "org-1" } as const;
+            const response = await ctx.runtime.objects.piManager
+              .for(scope)
+              .http.fetchAuthorized(
+                new Request("https://pi-manager.test/api/pi-manager/agents/telegram"),
+                {
+                  execution: createBackofficeServiceExecution({
+                    scope,
+                    service: { type: "automation", id: "telegram-agent-check" },
+                  }),
+                },
+              );
+            assert.equal(response.status, 200, await response.clone().text());
+            expect(await response.json()).toMatchObject({
+              agentName: "telegram",
+              instructionsPath: "/workspace/telegram-channel/agents/telegram.md",
+              managedBy: { kind: "marketplace", resourceKey: "telegram-agent", version: "1.2.0" },
+            });
           }),
           then.assert("assert channel routes are visible through TanStack DB", async (ctx) => {
             const database = ctx.tanstack.automations.forOrg("org-1");
@@ -900,11 +924,11 @@ describe("starter automation router scenarios", () => {
     );
   });
 
-  test("Telegram /pi creates a Pi session for an authorized linked chat", async () => {
+  test("Telegram /pi reports the telegram agent to an authorized linked chat", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         objects: scenarioObjects,
-        name: "Telegram Channel /pi creates a Pi session",
+        name: "Telegram Channel /pi reports the telegram agent",
 
         fakes: ({ fake }) => ({
           telegram: fake.telegram(),
@@ -939,10 +963,6 @@ describe("starter automation router scenarios", () => {
           given.telegram.configured({
             orgId: "org-1",
             botUsername: "fragno_bot",
-          }),
-          given.pi.defaultAgent({
-            orgId: "org-1",
-            value: "openai::gpt-5-mini",
           }),
           given.identity.binding({
             orgId: "org-1",
@@ -1017,16 +1037,14 @@ describe("starter automation router scenarios", () => {
               subject: null,
             },
           }),
-          then.pi.createdSession({
-            model: { provider: "openai", modelId: "gpt-5.6-luna" },
-            name: "Telegram 1001",
-          }),
-          then.store.entries({
-            orgId: "org-1",
-            include: [{ key: "telegram-pi-session/user-1" }],
+          then.assert("assert /pi runs no agent turn", (ctx) => {
+            const calls = ctx.fakes.pi?.runPromptCalls ?? [];
+            if (calls.length !== 0) {
+              throw new Error(`Expected no Pi turn, got ${calls.length}.`);
+            }
           }),
           then.kernel.action({
-            operation: BACKOFFICE_PERMISSION.store.modify,
+            operation: BACKOFFICE_PERMISSION.integrations.execute,
             scope: { kind: "org", orgId: "org-1" },
             actors: {
               initiator: {
@@ -1054,7 +1072,7 @@ describe("starter automation router scenarios", () => {
           }),
           then.telegram.sentMessage({
             chatId: "1001",
-            text: /^Created Pi session: /,
+            text: "Messages in this chat go to the Telegram agent.",
           }),
           then.workflow.instance({
             remoteWorkflowName: "telegram-user-pi-linking",
@@ -1089,110 +1107,6 @@ describe("starter automation router scenarios", () => {
                 },
               },
             },
-          }),
-          then.workflow.noErrored({ orgId: "org-1" }),
-        ],
-      }),
-    );
-  });
-
-  test("Telegram /pi creates a session for a fresh organization without stored Pi configuration", async () => {
-    await runBackofficeScenario(
-      defineBackofficeScenario({
-        objects: scenarioObjects,
-        name: "Telegram Channel /pi uses the environment-backed default model",
-
-        fakes: ({ fake }) => ({
-          telegram: fake.telegram(),
-          pi: fake.pi(),
-        }),
-
-        setup: ({ given }) => [
-          given.auth.user({
-            id: "owner-1",
-            email: "owner@example.com",
-          }),
-          given.auth.user({
-            id: "user-1",
-            email: "linked-user@example.com",
-          }),
-          given.auth.organization({
-            id: "org-1",
-            name: "Ada Labs",
-            ownerUserId: "owner-1",
-            ownerRoles: ["owner"],
-          }),
-          given.auth.member({
-            orgId: "org-1",
-            userId: "user-1",
-            roles: ["member"],
-          }),
-          given.organization.exists({
-            id: "org-1",
-            name: "Ada Labs",
-            ownerUserId: "owner-1",
-          }),
-          given.telegram.configured({
-            orgId: "org-1",
-            botUsername: "fragno_bot",
-          }),
-          given.identity.binding({
-            orgId: "org-1",
-            externalId: "1001",
-            userId: "user-1",
-          }),
-        ],
-
-        steps: ({ when, then }) => [
-          when.marketplace.install(TELEGRAM_CHANNEL_MARKETPLACE_INSTALLATION),
-          then.auth.authority({
-            userId: "user-1",
-            orgId: "org-1",
-            expected: {
-              active: true,
-              role: "user",
-              organizationMember: true,
-            },
-          }),
-          then.auth.member({
-            orgId: "org-1",
-            userId: "user-1",
-            roles: ["member"],
-          }),
-          then.auth.permissions({
-            userId: "user-1",
-            scope: { kind: "org", orgId: "org-1" },
-            include: [
-              BACKOFFICE_PERMISSION.integrations.execute,
-              BACKOFFICE_PERMISSION.store.modify,
-            ],
-            exclude: [BACKOFFICE_PERMISSION.identity.bind],
-          }),
-
-          when.telegram.receivesMessage({
-            orgId: "org-1",
-            updateId: 20_004,
-            messageId: 604,
-            chatId: "1001",
-            text: "/pi",
-            from: { id: 1_001, firstName: "Ada", username: "ada_lovelace" },
-          }),
-
-          then.pi.createdSession({
-            model: { provider: "openai", modelId: "gpt-5.6-luna" },
-            name: "Telegram 1001",
-          }),
-          then.store.entries({
-            orgId: "org-1",
-            include: [{ key: "telegram-pi-session/user-1" }],
-          }),
-          then.telegram.sentMessage({
-            chatId: "1001",
-            text: /^Created Pi session: /,
-          }),
-          then.workflow.instance({
-            remoteWorkflowName: "telegram-user-pi-linking",
-            status: "complete",
           }),
           then.workflow.noErrored({ orgId: "org-1" }),
         ],
@@ -1286,9 +1200,9 @@ describe("starter automation router scenarios", () => {
 
           then.telegram.noMessages(),
           then.assert("assert Pi was not called after identity revocation", (ctx) => {
-            const calls = ctx.fakes.pi?.createSessionCalls ?? [];
+            const calls = ctx.fakes.pi?.runPromptCalls ?? [];
             if (calls.length !== 0) {
-              throw new Error(`Expected no Pi session creation, got ${calls.length}.`);
+              throw new Error(`Expected no Pi turn, got ${calls.length}.`);
             }
           }),
           then.workflow.missing({
@@ -1300,7 +1214,7 @@ describe("starter automation router scenarios", () => {
     );
   });
 
-  test("Telegram inputs from an unlinked chat start no Pi session or starter workflow", async () => {
+  test("Telegram inputs from an unlinked chat start no Pi turn or starter workflow", async () => {
     const unlinkedChatMessage = {
       orgId: "org-1",
       chatId: "1001",
@@ -1323,10 +1237,6 @@ describe("starter automation router scenarios", () => {
             orgId: "org-1",
             botUsername: "fragno_bot",
           }),
-          given.pi.defaultAgent({
-            orgId: "org-1",
-            value: "openai::gpt-5-mini",
-          }),
         ],
 
         steps: ({ when, then }) => {
@@ -1334,9 +1244,9 @@ describe("starter automation router scenarios", () => {
           const thenNothingStarted = () => [
             then.telegram.noMessages(),
             then.assert("assert Pi was not called", (ctx) => {
-              const calls = ctx.fakes.pi?.createSessionCalls ?? [];
+              const calls = ctx.fakes.pi?.runPromptCalls ?? [];
               if (calls.length !== 0) {
-                throw new Error(`Expected no Pi session creation, got ${calls.length}.`);
+                throw new Error(`Expected no Pi turn, got ${calls.length}.`);
               }
             }),
             then.workflow.missing({ remoteWorkflowName: "telegram-user-linking" }),
@@ -1399,11 +1309,11 @@ describe("starter automation router scenarios", () => {
     );
   });
 
-  test("Telegram text reuses a Pi session and forwards assistant text", async () => {
+  test("Telegram text runs a telegram agent turn as the linked user and forwards its answer", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         objects: scenarioObjects,
-        name: "Telegram Channel text reuses a Pi session",
+        name: "Telegram Channel text prompts the installed telegram agent",
 
         fakes: ({ fake }) => ({
           telegram: fake.telegram(),
@@ -1438,10 +1348,6 @@ describe("starter automation router scenarios", () => {
           given.telegram.configured({
             orgId: "org-1",
             botUsername: "fragno_bot",
-          }),
-          given.pi.defaultAgent({
-            orgId: "org-1",
-            value: "openai::gpt-5-mini",
           }),
           given.identity.binding({
             orgId: "org-1",
@@ -1494,268 +1400,51 @@ describe("starter automation router scenarios", () => {
             from: { id: 1_001, firstName: "Ada", username: "ada_lovelace" },
           }),
 
-          then.pi.createdSession({
-            model: { provider: "openai", modelId: "gpt-5.6-luna" },
-            name: "Telegram 1001",
+          when.telegram.receivesMessage({
+            orgId: "org-1",
+            updateId: 20_004,
+            messageId: 604,
+            chatId: "1001",
+            text: "Thanks",
+            from: { id: 1_001, firstName: "Ada", username: "ada_lovelace" },
           }),
-          then.assert("assert Pi session was reused", (ctx) => {
-            const calls = ctx.fakes.pi?.createSessionCalls ?? [];
-            if (calls.length !== 1) {
-              throw new Error(`Expected one Pi session creation, got ${calls.length}.`);
+
+          then.pi.provisionedAgent({ agentName: "telegram", billingOrganizationId: "org-1" }),
+          then.assert("assert every message continues one telegram agent conversation", (ctx) => {
+            const provisioned = ctx.fakes.pi?.provisionedAgents ?? [];
+            const turns = ctx.fakes.pi?.runPromptCalls ?? [];
+            if (provisioned.length !== 1 || turns.length !== 2) {
+              throw new Error(
+                `Expected one provisioned agent and two turns, got ${provisioned.length} and ${turns.length}.`,
+              );
             }
           }),
-          then.store.entries({
-            orgId: "org-1",
-            prefix: "telegram",
-            include: [{ key: "telegram-pi-session/user-1" }],
-          }),
+          then.assert(
+            "assert the turn runs as the linked user with the installed definition",
+            (ctx) => {
+              const turn = ctx.fakes.pi?.runPromptCalls[0]?.turn;
+              expect(turn?.actors.principal).toEqual({
+                scope: "internal",
+                type: "user",
+                id: "user-1",
+                role: "principal",
+              });
+              expect(turn?.agent.instructions).toContain("AUTOMATICALLY sent back to its chat");
+              expect(turn?.agent.model).toEqual({ provider: "openai", modelId: "gpt-5.6-luna" });
+            },
+          ),
           then.telegram.sentChatAction({
             chatId: "1001",
             action: "typing",
           }),
           then.pi.ranPrompt({
-            content: "Hello Pi",
-            assistantText: "agent:Hello Pi",
+            agentName: "telegram",
+            content: "[Telegram chat 1001] Hello Pi",
+            assistantText: "agent:[Telegram chat 1001] Hello Pi",
           }),
           then.telegram.sentMessage({
             chatId: "1001",
-            text: "agent:Hello Pi",
-          }),
-          then.workflow.instance({
-            remoteWorkflowName: "telegram-user-pi-linking",
-            status: "complete",
-          }),
-          then.workflow.noErrored({ orgId: "org-1" }),
-        ],
-      }),
-    );
-  });
-
-  test("Telegram /pi reuses an active stored Pi session", async () => {
-    await runBackofficeScenario(
-      defineBackofficeScenario({
-        objects: scenarioObjects,
-        name: "Telegram Channel /pi reuses an active Pi session",
-
-        fakes: ({ fake }) => ({
-          telegram: fake.telegram(),
-          pi: fake.pi(),
-        }),
-
-        setup: ({ given }) => [
-          given.auth.user({
-            id: "owner-1",
-            email: "owner@example.com",
-          }),
-          given.auth.user({
-            id: "user-1",
-            email: "linked-user@example.com",
-          }),
-          given.auth.organization({
-            id: "org-1",
-            name: "Ada Labs",
-            ownerUserId: "owner-1",
-            ownerRoles: ["owner"],
-          }),
-          given.auth.member({
-            orgId: "org-1",
-            userId: "user-1",
-            roles: ["member"],
-          }),
-          given.organization.exists({
-            id: "org-1",
-            name: "Ada Labs",
-            ownerUserId: "owner-1",
-          }),
-          given.telegram.configured({
-            orgId: "org-1",
-            botUsername: "fragno_bot",
-          }),
-          given.pi.defaultAgent({
-            orgId: "org-1",
-            value: "openai::gpt-5-mini",
-          }),
-          given.identity.binding({
-            orgId: "org-1",
-            externalId: "1001",
-            userId: "user-1",
-          }),
-        ],
-
-        steps: ({ when, then }) => [
-          when.marketplace.install(TELEGRAM_CHANNEL_MARKETPLACE_INSTALLATION),
-          then.auth.authority({
-            userId: "user-1",
-            orgId: "org-1",
-            expected: {
-              active: true,
-              role: "user",
-              organizationMember: true,
-            },
-          }),
-          then.auth.member({
-            orgId: "org-1",
-            userId: "user-1",
-            roles: ["member"],
-          }),
-          then.auth.permissions({
-            userId: "user-1",
-            scope: { kind: "org", orgId: "org-1" },
-            include: [
-              BACKOFFICE_PERMISSION.integrations.execute,
-              BACKOFFICE_PERMISSION.store.modify,
-            ],
-            exclude: [BACKOFFICE_PERMISSION.identity.bind],
-          }),
-
-          when.telegram.receivesMessage({
-            orgId: "org-1",
-            updateId: 20_009,
-            messageId: 609,
-            chatId: "1001",
-            text: "/pi",
-            from: { id: 1_001, firstName: "Ada", username: "ada_lovelace" },
-          }),
-
-          when.telegram.receivesMessage({
-            orgId: "org-1",
-            updateId: 20_010,
-            messageId: 610,
-            chatId: "1001",
-            text: "/pi",
-            from: { id: 1_001, firstName: "Ada", username: "ada_lovelace" },
-          }),
-
-          then.assert("assert Pi session creation was reused", (ctx) => {
-            const calls = ctx.fakes.pi?.createSessionCalls ?? [];
-            if (calls.length !== 1) {
-              throw new Error(`Expected one Pi session creation, got ${calls.length}.`);
-            }
-          }),
-          then.telegram.sentMessage({
-            chatId: "1001",
-            text: /^Created Pi session: /,
-          }),
-          then.telegram.sentMessage({
-            chatId: "1001",
-            text: /^Pi session: /,
-          }),
-          then.store.entries({
-            orgId: "org-1",
-            include: [{ key: "telegram-pi-session/user-1" }],
-          }),
-          then.workflow.instance({
-            remoteWorkflowName: "telegram-user-pi-linking",
-            status: "complete",
-          }),
-          then.workflow.noErrored({ orgId: "org-1" }),
-        ],
-      }),
-    );
-  });
-
-  test("Telegram /pi replaces a missing stored Pi session", async () => {
-    await runBackofficeScenario(
-      defineBackofficeScenario({
-        objects: scenarioObjects,
-        name: "Telegram Channel /pi replaces a missing stored Pi session",
-
-        fakes: ({ fake }) => ({
-          telegram: fake.telegram(),
-          pi: fake.pi(),
-        }),
-
-        setup: ({ given }) => [
-          given.auth.user({
-            id: "owner-1",
-            email: "owner@example.com",
-          }),
-          given.auth.user({
-            id: "user-1",
-            email: "linked-user@example.com",
-          }),
-          given.auth.organization({
-            id: "org-1",
-            name: "Ada Labs",
-            ownerUserId: "owner-1",
-            ownerRoles: ["owner"],
-          }),
-          given.auth.member({
-            orgId: "org-1",
-            userId: "user-1",
-            roles: ["member"],
-          }),
-          given.organization.exists({
-            id: "org-1",
-            name: "Ada Labs",
-            ownerUserId: "owner-1",
-          }),
-          given.telegram.configured({
-            orgId: "org-1",
-            botUsername: "fragno_bot",
-          }),
-          given.pi.defaultAgent({
-            orgId: "org-1",
-            value: "openai::gpt-5-mini",
-          }),
-          given.identity.binding({
-            orgId: "org-1",
-            externalId: "1001",
-            userId: "user-1",
-          }),
-          given.store.entry({
-            orgId: "org-1",
-            key: "telegram-pi-session/user-1",
-            value: "pi-session-missing",
-          }),
-        ],
-
-        steps: ({ when, then }) => [
-          when.marketplace.install(TELEGRAM_CHANNEL_MARKETPLACE_INSTALLATION),
-          then.auth.authority({
-            userId: "user-1",
-            orgId: "org-1",
-            expected: {
-              active: true,
-              role: "user",
-              organizationMember: true,
-            },
-          }),
-          then.auth.member({
-            orgId: "org-1",
-            userId: "user-1",
-            roles: ["member"],
-          }),
-          then.auth.permissions({
-            userId: "user-1",
-            scope: { kind: "org", orgId: "org-1" },
-            include: [
-              BACKOFFICE_PERMISSION.integrations.execute,
-              BACKOFFICE_PERMISSION.store.modify,
-            ],
-            exclude: [BACKOFFICE_PERMISSION.identity.bind],
-          }),
-
-          when.telegram.receivesMessage({
-            orgId: "org-1",
-            updateId: 20_011,
-            messageId: 611,
-            chatId: "1001",
-            text: "/pi",
-            from: { id: 1_001, firstName: "Ada", username: "ada_lovelace" },
-          }),
-
-          then.pi.createdSession({
-            model: { provider: "openai", modelId: "gpt-5.6-luna" },
-            name: "Telegram 1001",
-          }),
-          then.store.entries({
-            orgId: "org-1",
-            include: [{ key: "telegram-pi-session/user-1" }],
-          }),
-          then.telegram.sentMessage({
-            chatId: "1001",
-            text: /^Created Pi session: /,
+            text: "agent:[Telegram chat 1001] Hello Pi",
           }),
           then.workflow.instance({
             remoteWorkflowName: "telegram-user-pi-linking",
@@ -1806,10 +1495,6 @@ describe("starter automation router scenarios", () => {
           given.telegram.configured({
             orgId: "org-1",
             botUsername: "fragno_bot",
-          }),
-          given.pi.defaultAgent({
-            orgId: "org-1",
-            value: "openai::gpt-5-mini",
           }),
           given.identity.binding({
             orgId: "org-1",
@@ -1867,10 +1552,11 @@ describe("starter automation router scenarios", () => {
             action: "typing",
           }),
           then.pi.ranPrompt({
-            content: "No response expected",
+            agentName: "telegram",
+            content: "[Telegram chat 1001] No response expected",
             assistantText: "",
           }),
-          then.assert("assert only the Pi creation message was sent", (ctx) => {
+          then.assert("assert only the /pi reply was sent", (ctx) => {
             const calls = ctx.fakes.telegram?.sendMessageCalls ?? [];
             if (calls.length !== 1) {
               throw new Error(`Expected one Telegram message, got ${calls.length}.`);

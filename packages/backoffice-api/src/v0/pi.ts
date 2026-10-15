@@ -1,8 +1,12 @@
 import { z } from "zod";
 
 import type { BackofficeApiOperation } from "../api";
-import { automationActorsSchema } from "./automation";
-import { BACKOFFICE_PERMISSION } from "./shared/permissions";
+import { automationRouteManagedBySchema } from "./automation";
+import {
+  allBackofficePermissionRequirements,
+  BACKOFFICE_PERMISSION,
+  type BackofficePermissionRequirement,
+} from "./shared/permissions";
 import { backofficeContextScopeSchema } from "./shared/scope";
 
 export const piAgentModelSchema = z.object({
@@ -10,120 +14,189 @@ export const piAgentModelSchema = z.object({
   modelId: z.string().min(1),
 });
 
-/** Session choices accepted from callers; an omitted model selects the configured default. */
-export const piAgentCreationSchema = z.object({
-  name: z.string().nullable(),
-  model: piAgentModelSchema.optional(),
-  instructions: z.string().default(""),
-  billingOrganizationId: z.string().trim().min(1).nullable().default(null),
-});
+/** Agent names identify an agent's definition and its one ongoing conversation within a scope. */
+export const piAgentNameSchema = z
+  .string()
+  .regex(
+    /^[a-z][a-z0-9-]{0,62}$/,
+    "Agent names start with a lowercase letter and contain only lowercase letters, digits, and hyphens.",
+  );
 
-/** Provisioning persists actor provenance and a concrete immutable model selection. */
-export const piAgentConfigSchema = piAgentCreationSchema.extend({
-  model: piAgentModelSchema,
+/** Organization and project agents bill their organization; user and system agents choose once. */
+export const piBillingOrganizationIdSchema = z.string().trim().min(1).nullable();
+
+/** One agent object's immutable provisioning: its address and the billing owner chosen once. */
+export const piAgentConfigSchema = z.object({
   scope: backofficeContextScopeSchema,
-  scopeRestriction: backofficeContextScopeSchema.nullable(),
-  sessionId: z.string().min(1),
-  actors: automationActorsSchema,
+  agentName: piAgentNameSchema,
+  billingOrganizationId: piBillingOrganizationIdSchema,
 });
 
-/** Initial agent choices are immutable; Pi owns subsequent conversation state. */
 export type PiAgentConfig = z.infer<typeof piAgentConfigSchema>;
 
-/** Directory records share the provisioning contract and use database creation time. */
-export const piManagerSessionSchema = piAgentConfigSchema.extend({ createdAt: z.string() });
+/** The permissions a grant names: `*`, `namespace.*`, or one `namespace.permission`. */
+export function piAgentPermissionGrantRequirements(
+  grant: string,
+): readonly BackofficePermissionRequirement[] {
+  if (grant === "*") {
+    return allBackofficePermissionRequirements;
+  }
+  const separator = grant.indexOf(".");
+  const namespace = separator === -1 ? grant : grant.slice(0, separator);
+  const permission = separator === -1 ? "" : grant.slice(separator + 1);
+  return allBackofficePermissionRequirements.filter(
+    (requirement) =>
+      requirement.namespace === namespace &&
+      (permission === "*" || requirement.permission === permission),
+  );
+}
 
-export type PiManagerSession = z.infer<typeof piManagerSessionSchema>;
+const piAgentPermissionGrantSchema = z
+  .string()
+  .trim()
+  .refine((grant) => piAgentPermissionGrantRequirements(grant).length > 0, {
+    error: (issue) => `Unknown Backoffice permission '${String(issue.input)}'.`,
+  });
 
-const piRuntimeSessionOutputSchema = z.object({
-  sessionId: piAgentConfigSchema.shape.sessionId,
-  name: piAgentConfigSchema.shape.name,
-  model: piAgentConfigSchema.shape.model,
-  instructions: piAgentConfigSchema.shape.instructions,
-  billingOrganizationId: piAgentConfigSchema.shape.billingOrganizationId,
+const piAgentDefinitionFieldsSchema = z.object({
+  description: z.string().trim().min(1),
+  /** `provider/modelId`; null selects the preferred available model. */
+  model: z
+    .string()
+    .regex(/^[^/\s]+\/\S+$/, "Expected a model as provider/modelId.")
+    .nullable(),
+  /** Narrow every turn: an agent can never do more than the person prompting it. */
+  permissions: z.array(piAgentPermissionGrantSchema),
+  /** A Markdown file with the agent's extra system guidance; null adds none. */
+  instructionsPath: z
+    .string()
+    .regex(
+      /^\/(workspace|static)(\/(?!\.\.?(\/|$))[^/]+)+$/,
+      "Expected an absolute file path in /workspace or /static.",
+    )
+    .nullable(),
 });
 
-const piRuntimeDirectorySessionOutputSchema = piRuntimeSessionOutputSchema.extend({
-  createdAt: piManagerSessionSchema.shape.createdAt,
+/** Built-in agents are defined by Backoffice; others are created in a scope, by hand or a package. */
+const piAgentManagedBySchema = z.union([
+  z.object({ kind: z.literal("built-in") }),
+  automationRouteManagedBySchema,
+]);
+
+export const piAgentDefinitionSchema = piAgentDefinitionFieldsSchema.extend({
+  agentName: piAgentNameSchema,
+  managedBy: piAgentManagedBySchema.nullable(),
 });
 
-export type PiRuntimeDirectorySessionOutput = z.output<
-  typeof piRuntimeDirectorySessionOutputSchema
->;
+export type PiAgentDefinition = z.infer<typeof piAgentDefinitionSchema>;
+
+/** The definition fields an update replaces; packages set `managedBy` to claim their agents. */
+export const piAgentDefinitionUpdateSchema = piAgentDefinitionFieldsSchema.extend({
+  managedBy: automationRouteManagedBySchema.nullable(),
+});
+
+export type PiAgentDefinitionUpdate = z.infer<typeof piAgentDefinitionUpdateSchema>;
+
+export const piAgentDefinitionCreateSchema = piAgentDefinitionUpdateSchema.extend({
+  agentName: piAgentNameSchema,
+});
+
+export type PiAgentDefinitionCreate = z.infer<typeof piAgentDefinitionCreateSchema>;
+
+/** A defined agent; `provisioning` is null until its durable conversation receives a first turn. */
+export const piManagerAgentSchema = piAgentDefinitionSchema.extend({
+  provisioning: z.object({ billingOrganizationId: piBillingOrganizationIdSchema }).nullable(),
+});
+
+export type PiManagerAgent = z.infer<typeof piManagerAgentSchema>;
+
+export const piManagerAgentDirectorySchema = z.object({
+  agents: z.array(piManagerAgentSchema),
+});
+
+export type PiManagerAgentDirectory = z.infer<typeof piManagerAgentDirectorySchema>;
+
+/** `followUp` waits for the current turn; `steer` joins it at the next tool boundary. */
+export const piPromptWhenBusySchema = z.enum(["followUp", "steer", "reject"]);
+
+const piAgentDirectoryOutputSchema = z.object({
+  agents: z.array(piAgentDefinitionSchema),
+});
 
 export const piPromptReceiptOutputSchema = z.object({
   submissionId: z.number(),
   requestId: z.string(),
+  // What Pi applied: a steer from anyone but the running turn's submitter becomes a follow-up.
+  whenBusy: piPromptWhenBusySchema,
 });
+export type PiPromptReceipt = z.infer<typeof piPromptReceiptOutputSchema>;
 
-const piSessionDetailOutputSchema = piRuntimeDirectorySessionOutputSchema.extend({
+const piAgentDetailOutputSchema = piAgentDefinitionSchema.extend({
+  // Null until the agent's conversation has received its first turn.
   view: z.unknown(),
 });
 
-const piPromptResultOutputSchema = piSessionDetailOutputSchema.extend({
+const piPromptResultOutputSchema = z.object({
+  agentName: piAgentNameSchema,
+  view: z.unknown(),
   submission: z.unknown(),
   assistantText: z.string(),
 });
 
-export type PiRuntimeSessionOutput = z.output<typeof piRuntimeSessionOutputSchema>;
+const agentInputSchema = z.strictObject({ agentName: piAgentNameSchema });
 
-const piSessionPageOutputSchema = z.object({
-  sessions: z.array(piRuntimeDirectorySessionOutputSchema),
-  cursor: z.string().nullable(),
-  hasNextPage: z.boolean(),
-});
-
-const promptSubmitInputSchema = z.strictObject({
-  sessionId: z.string().trim().min(1),
+const promptSubmitInputSchema = agentInputSchema.extend({
   content: z.string().trim().min(1),
   requestId: z.string().trim().min(1).optional(),
-  whenBusy: z.enum(["steer", "reject"]).optional(),
+  whenBusy: piPromptWhenBusySchema.optional(),
+  billingOrganizationId: piBillingOrganizationIdSchema.optional(),
 });
 
 const promptRunInputSchema = promptSubmitInputSchema.extend({
   timeoutMs: z.number().int().positive().optional(),
 });
 
-const sessionCreateInputSchema = z.strictObject({
-  requestId: z.string().trim().min(1).max(256).optional(),
-  billingOrganizationId: z.string().trim().min(1).nullable().optional(),
-  instructions: z.string().optional(),
-  model: piAgentModelSchema.optional(),
-  name: z.string().trim().min(1).nullable().optional(),
-});
-
-const sessionListInputSchema = z.strictObject({
-  cursor: z.string().trim().min(1).optional(),
-  pageSize: z.number().int().min(1).max(100).optional(),
-});
-
-const submissionGetInputSchema = z.strictObject({
-  sessionId: z.string().trim().min(1),
+const submissionGetInputSchema = agentInputSchema.extend({
   requestId: z.string().trim().min(1),
 });
 
 export const piOperations = {
-  "pi.session.create": {
+  "pi.agent.list": {
+    description: "List the built-in agents and the agents defined in the current scope.",
+    permissions: [BACKOFFICE_PERMISSION.pi.read],
+    input: z.strictObject({}),
+    output: piAgentDirectoryOutputSchema,
+  },
+  "pi.agent.get": {
+    description: "Get one defined agent and its durable conversation view.",
+    permissions: [BACKOFFICE_PERMISSION.pi.read],
+    input: agentInputSchema,
+    output: piAgentDetailOutputSchema,
+  },
+  "pi.agent.create": {
     description:
-      "Create a durable Pi agent in the current scoped directory. User-scoped child sessions inherit the calling Pi session or workflow's billing organization when billingOrganizationId is omitted.",
-    permissions: [BACKOFFICE_PERMISSION.pi.modify],
-    input: sessionCreateInputSchema,
-    output: piRuntimeSessionOutputSchema,
+      "Define an agent in the current scope. Its instructions file must exist; edits to the file apply from the agent's next turn.",
+    permissions: [BACKOFFICE_PERMISSION.pi.manage],
+    input: piAgentDefinitionCreateSchema.strict(),
+    output: piAgentDefinitionSchema,
   },
-  "pi.session.get": {
-    description: "Get a durable Pi directory record and its conversation view.",
-    permissions: [BACKOFFICE_PERMISSION.pi.read],
-    input: z.strictObject({ sessionId: z.string().trim().min(1) }),
-    output: piSessionDetailOutputSchema,
+  "pi.agent.update": {
+    description:
+      "Replace an agent's definition. The agent keeps its conversation; the new definition applies from its next turn.",
+    permissions: [BACKOFFICE_PERMISSION.pi.manage],
+    input: piAgentDefinitionCreateSchema.strict(),
+    output: piAgentDefinitionSchema,
   },
-  "pi.session.list": {
-    description: "List one cursor-paginated page from the durable Pi directory.",
-    permissions: [BACKOFFICE_PERMISSION.pi.read],
-    input: sessionListInputSchema,
-    output: piSessionPageOutputSchema,
+  "pi.agent.delete": {
+    description:
+      "Idempotently delete an agent's definition. Its stored conversation is kept and resumes if the name is defined again.",
+    permissions: [BACKOFFICE_PERMISSION.pi.manage],
+    input: agentInputSchema,
+    output: z.object({ deleted: z.literal(true) }),
   },
   "pi.prompt.submit": {
-    description: "Durably admit a prompt and return its deduplicated submission receipt.",
+    description:
+      "Durably admit a prompt to an agent and return its deduplicated submission receipt. The turn runs with the caller's current permissions, narrowed by the agent's definition. A user- or system-scoped agent's first turn sets its billing organization; omitting billingOrganizationId inherits the calling Pi agent or workflow's.",
     permissions: [BACKOFFICE_PERMISSION.pi.modify],
     input: promptSubmitInputSchema,
     output: piPromptReceiptOutputSchema,
@@ -135,15 +208,16 @@ export const piOperations = {
     output: z.unknown(),
   },
   "pi.prompt.run": {
-    description: "Durably admit a prompt, wait for settlement, and return its conversation view.",
+    description:
+      "Durably admit a prompt to an agent, wait for settlement, and return its conversation view.",
     permissions: [BACKOFFICE_PERMISSION.pi.modify],
     input: promptRunInputSchema,
     output: piPromptResultOutputSchema,
   },
-  "pi.session.abort": {
-    description: "Abort active foreground and background work in a durable Pi agent.",
+  "pi.agent.abort": {
+    description: "Abort an agent's active foreground and background work.",
     permissions: [BACKOFFICE_PERMISSION.pi.modify],
-    input: z.strictObject({ sessionId: z.string().trim().min(1) }),
+    input: agentInputSchema,
     output: z.object({ aborted: z.literal(true) }),
   },
 } satisfies Record<string, BackofficeApiOperation>;

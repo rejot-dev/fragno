@@ -206,6 +206,9 @@ const INTERNAL_SERVICE_AUTHORITY_ROLE_GRANTS = {
   ],
   // Runtime capability grants remain the narrower per-execution boundary.
   capability: allBackofficePermissionRequirements,
+  // A Pi agent's definition narrows its turns at runtime. Work its turns persist, such as scheduled
+  // workflows, runs without that narrowing, bounded by the principal like any other delegation.
+  "pi-agent": allBackofficePermissionRequirements,
   object: [
     BACKOFFICE_PERMISSION.marketplace.publish,
     BACKOFFICE_PERMISSION.identity.bind,

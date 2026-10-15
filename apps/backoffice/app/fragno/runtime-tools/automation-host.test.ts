@@ -52,63 +52,39 @@ const createOtpRuntime = (): OtpRuntime => ({
 });
 
 const createPiRuntime = (): PiManagerRuntime => {
-  const session = {
-    name: null,
-    model: { provider: "openai", modelId: "test-model" },
-    instructions: "",
-    billingOrganizationId: "org-1",
-    scopeRestriction: null,
-    scope: { kind: "org" as const, orgId: "org-1" },
-    sessionId: "session-1",
-    actors: {
-      initiator: {
-        scope: "internal" as const,
-        type: "service",
-        id: "automation-host-test",
-        role: "initiator" as const,
-      },
-      principal: null,
-      delegation: [],
-    },
-  };
-  const directorySession = { ...session, createdAt: "2026-01-01T00:00:00.000Z" };
+  const submission = {
+    id: 1,
+    conversationId: 1,
+    requestId: "request-1",
+    type: "input",
+    status: "done",
+    entry: "input-1",
+    answer: "answer-1",
+  } as never;
   return {
-    createSession: async () => session,
-    getSession: async () => ({
-      ...directorySession,
-      view: { conversation: { id: 1 } as never, entries: [], docs: {} },
+    listAgents: async () => ({ agents: [] }),
+    getAgent: async ({ agentName }) => ({
+      agentName,
+      description: "General-purpose assistant.",
+      model: null,
+      permissions: ["*"],
+      instructionsPath: null,
+      managedBy: { kind: "built-in" },
+      provisioning: null,
+      view: null,
     }),
-    listSessions: async () => ({
-      sessions: [directorySession],
-      cursor: null,
-      hasNextPage: false,
-    }),
-    submitPrompt: async () => ({ submissionId: 1, requestId: "request-1" }),
-    getSubmission: async () =>
-      ({
-        id: 1,
-        conversationId: 1,
-        requestId: "request-1",
-        type: "input",
-        status: "done",
-        entry: "input-1",
-        answer: "answer-1",
-      }) as never,
-    runPrompt: async ({ content }) => ({
-      ...directorySession,
+    createAgent: async ({ managedBy, ...definition }) => ({ ...definition, managedBy }),
+    updateAgent: async ({ managedBy, ...definition }) => ({ ...definition, managedBy }),
+    deleteAgent: async () => undefined,
+    submitPrompt: async () => ({ submissionId: 1, requestId: "request-1", whenBusy: "followUp" }),
+    getSubmission: async () => submission,
+    runPrompt: async ({ agentName, content }) => ({
+      agentName,
       view: { conversation: { id: 1 } as never, entries: [], docs: {} },
-      submission: {
-        id: 1,
-        conversationId: 1,
-        requestId: "request-1",
-        type: "input",
-        status: "done",
-        entry: "input-1",
-        answer: "answer-1",
-      } as never,
+      submission,
       assistantText: content,
     }),
-    abortSession: async () => undefined,
+    abortAgent: async () => undefined,
   };
 };
 
@@ -200,13 +176,13 @@ describe("bash host command assembly", () => {
       },
     });
 
-    const piHelp = await bash.exec("pi.session.get --help");
+    const piHelp = await bash.exec("pi.agent.get --help");
     const automationsHelp = await bash.exec("store.get --help");
     const otpHelp = await bash.exec("otp.identity.create-claim --help");
     const missingEvent = await bash.exec("events.fire --event-type test");
 
     assert(piHelp.exitCode === 0);
-    expect(piHelp.stdout).toContain("pi.session.get");
+    expect(piHelp.stdout).toContain("pi.agent.get");
     assert(automationsHelp.exitCode === 0);
     expect(automationsHelp.stdout).toContain("store.get");
     assert(otpHelp.exitCode === 0);
@@ -215,8 +191,8 @@ describe("bash host command assembly", () => {
     expect(missingEvent.stderr).toContain("bash: events.fire: command not found");
     expect(commandCallsResult).toEqual([
       {
-        command: "pi.session.get",
-        output: expect.stringContaining("pi.session.get"),
+        command: "pi.agent.get",
+        output: expect.stringContaining("pi.agent.get"),
         exitCode: 0,
       },
       {
@@ -245,12 +221,12 @@ describe("bash host command assembly", () => {
     });
 
     const eventHelp = await bash.exec("events.fire --help");
-    const missingPi = await bash.exec("pi.session.create");
+    const missingPi = await bash.exec("pi.agent.list");
 
     assert(eventHelp.exitCode === 0);
     expect(eventHelp.stdout).toContain("events.fire");
     assert(missingPi.exitCode === 127);
-    expect(missingPi.stderr).toContain("bash: pi.session.create: command not found");
+    expect(missingPi.stderr).toContain("bash: pi.agent.list: command not found");
     expect(commandCallsResult).toEqual([
       {
         command: "events.fire",

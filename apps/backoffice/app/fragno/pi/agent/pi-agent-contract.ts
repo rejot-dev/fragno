@@ -1,5 +1,12 @@
-import type { PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
+import { automationActorsSchema } from "@fragno-dev/backoffice-api/v0/automation";
+import {
+  piAgentModelSchema,
+  piPromptWhenBusySchema,
+  type PiAgentConfig,
+} from "@fragno-dev/backoffice-api/v0/pi";
 import { jsonValueSchema } from "@fragno-dev/backoffice-api/v0/shared/json";
+import { backofficePermissionRequirementSchema } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+import { backofficeContextScopeSchema } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
 
 import type {
@@ -24,10 +31,10 @@ export type PiAvailableModel = z.infer<typeof piAvailableModelSchema>;
 export class PiConversationViewDamagedError extends Error {
   static readonly code = "PI_CONVERSATION_VIEW_DAMAGED";
   static readonly publicMessage =
-    "The Pi conversation state is damaged and cannot be resumed. Export its history and create a replacement session.";
+    "The Pi conversation state is damaged and cannot be resumed. Export its history before resetting the agent.";
 
-  constructor(sessionId: string, cause: unknown) {
-    super(`${PiConversationViewDamagedError.code}:${sessionId}`, { cause });
+  constructor(agentName: string, cause: unknown) {
+    super(`${PiConversationViewDamagedError.code}:${agentName}`, { cause });
     this.name = "PiConversationViewDamagedError";
   }
 
@@ -44,8 +51,23 @@ export class PiConversationViewDamagedError extends Error {
 export const piAgentPromptSchema = z.object({
   requestId: z.string().min(1),
   content: z.string().min(1),
-  whenBusy: z.enum(["steer", "reject"]).default("steer"),
+  whenBusy: piPromptWhenBusySchema.default("followUp"),
 });
+
+/**
+ * The authority of one turn: its submitter's actors, narrowed by the agent definition read when
+ * the turn was admitted. The kernel re-resolves the actors' permissions on every check.
+ */
+export const piAgentTurnSchema = z.object({
+  actors: automationActorsSchema,
+  scopeRestriction: backofficeContextScopeSchema.nullable(),
+  agent: z.object({
+    model: piAgentModelSchema,
+    instructions: z.string(),
+    permissions: z.array(backofficePermissionRequirementSchema),
+  }),
+});
+export type PiAgentTurn = z.infer<typeof piAgentTurnSchema>;
 
 /** Manual compaction accepts no instructions or one explicit summary requirement. */
 export const piAgentCompactionSchema = z.object({
@@ -94,12 +116,23 @@ export type PiAgentViewStreamFrame = {
   view: ConversationView;
 };
 
+/** `busy` answers a `reject` prompt that reached a running agent; nothing was recorded or queued. */
+export type PiAgentSubmitResult =
+  | {
+      type: "admitted";
+      submissionId: number;
+      requestId: string;
+      whenBusy: z.infer<typeof piPromptWhenBusySchema>;
+    }
+  | { type: "busy" };
+
 /** Agent operations shared by Cloudflare RPC and the local object runtime. */
 export type PiAgent = {
   submit(
     config: PiAgentConfig,
+    turn: PiAgentTurn,
     prompt: z.infer<typeof piAgentPromptSchema>,
-  ): Promise<{ submissionId: number; requestId: string }>;
+  ): Promise<PiAgentSubmitResult>;
   getView(config: PiAgentConfig): Promise<unknown>;
   watchView(config: PiAgentConfig): Promise<ReadableStream<Uint8Array>>;
   getSubmission(config: PiAgentConfig, requestId: string): Promise<unknown>;
@@ -115,6 +148,7 @@ export type PiAgent = {
   exportEntries(config: PiAgentConfig): Promise<ReadableStream<Uint8Array>>;
   compact(
     config: PiAgentConfig,
+    turn: PiAgentTurn,
     request: z.infer<typeof piAgentCompactionSchema>,
   ): Promise<{ taskId: number }>;
   getCompaction(config: PiAgentConfig, taskId: number): Promise<PiAgentCompactionStatus | null>;
@@ -122,6 +156,7 @@ export type PiAgent = {
 };
 
 /** Namespaced object identity prevents two execution scopes from sharing an agent. */
-export function piAgentObjectName(config: Pick<PiAgentConfig, "scope" | "sessionId">) {
-  return JSON.stringify([backofficeContextScopeRoutePath(config.scope), config.sessionId]);
+export function piAgentObjectName(config: Pick<PiAgentConfig, "scope" | "agentName">) {
+  // The `agent` tag keeps defined agents apart from objects addressed by earlier session ids.
+  return JSON.stringify(["agent", backofficeContextScopeRoutePath(config.scope), config.agentName]);
 }
