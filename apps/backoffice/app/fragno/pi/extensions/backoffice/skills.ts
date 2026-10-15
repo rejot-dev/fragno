@@ -13,7 +13,8 @@ export type BackofficePiSkillRegistry = Record<string, BackofficePiSkillDefiniti
 type SkillFrontmatter = { name: string; description: string } & Record<string, unknown>;
 type PiSkillState = Pick<BackofficeStateBackend, "glob" | "readFile">;
 
-const isUploadNotConfiguredError = (
+/** Workspace content is optional: runtimes without Upload expose only `/static`. */
+export const isUploadNotConfiguredError = (
   error: unknown,
 ): error is Error & { name: "UploadFileListingError"; code: "NOT_CONFIGURED" } =>
   error instanceof Error &&

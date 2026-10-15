@@ -4,6 +4,7 @@ import { expect, test } from "vitest";
 import { createModels } from "@earendil-works/pi-ai/models";
 import { fauxAssistantMessage, fauxProvider } from "@earendil-works/pi-ai/providers/faux";
 import type { PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
+import { allBackofficePermissionRequirements } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import { env } from "cloudflare:workers";
 
 import type { ConversationView } from "@earendil-works/pi-durable";
@@ -15,7 +16,7 @@ import {
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import { createCloudflareDurableObjectRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { createRuntimeStateBackend } from "@/fragno/codemode/runtime-state-backend";
-import { piAgentObjectName } from "@/fragno/pi/agent/pi-agent-contract";
+import { piAgentObjectName, type PiAgentTurn } from "@/fragno/pi/agent/pi-agent-contract";
 import {
   javaScriptBuildToolFamily,
   javaScriptRunToolFamily,
@@ -32,15 +33,15 @@ import { InMemoryPiObject } from "./pi.do";
 test("precompiled workspace extensions open concurrently and after restart without a compiler", async () => {
   const testEnv = env as CloudflareEnv;
   const scope = { kind: "org", orgId: `extension-gate-${crypto.randomUUID()}` } as const;
-  const config: PiAgentConfig = {
-    scope,
-    sessionId: crypto.randomUUID(),
-    name: "Streamed extension agent",
-    model: { provider: "faux", modelId: "faux-1" },
-    instructions: "Use the extension guidance.",
+  const config: PiAgentConfig = { scope, agentName: "assistant", billingOrganizationId: null };
+  const turn: PiAgentTurn = {
     actors: BACKOFFICE_SYSTEM_ACTORS,
-    billingOrganizationId: null,
     scopeRestriction: null,
+    agent: {
+      model: { provider: "faux", modelId: "faux-1" },
+      instructions: "Use the extension guidance.",
+      permissions: [...allBackofficePermissionRequirements],
+    },
   };
   const stub = testEnv.PI.getByName(piAgentObjectName(config));
   await runInDurableObject(stub, async (_instance, state) => {
@@ -156,10 +157,10 @@ test("precompiled workspace extensions open concurrently and after restart witho
         // Both requests share one harness; artifact loading and rendering cannot consult a compiler.
         const views = await Promise.all([object.getView(config), object.getView(config)]);
         expect(views[0]).toEqual(views[1]);
-        await object.submit(config, {
+        await object.submit(config, turn, {
           requestId,
           content: "Read the extension.",
-          whenBusy: "steer",
+          whenBusy: "followUp",
         });
         await object.alarm();
         const view = (await object.getView(config)) as ConversationView;

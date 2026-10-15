@@ -36,17 +36,18 @@ export function createReadTool(agent: BackofficeAgentContext) {
   return defineTool({
     name: "read",
     description:
-      "Read a known skill or TypeScript declaration from the combined Pi session filesystem. Read selected skills in full before applying them.",
+      "Read a known skill or TypeScript declaration from the combined Pi agent filesystem. Read selected skills in full before applying them.",
     parameters: readParametersSchema,
     replay: "safe",
     async execute(params, api, context) {
-      await agent.authorize();
+      const turn = await agent.activeTurn(context);
+      await turn.authorize();
       if (context.abortSignal?.aborted) {
         throw new Error("Read aborted.");
       }
 
       const state = requirePiStateBackend(
-        agent.toolContext(`${agent.sessionId}:${api.taskId}`, context),
+        turn.toolContext(`${agent.agentName}:${api.taskId}`, context),
       );
       const path = normalizeReadPath(params.path);
       const text = applyLineRange(await state.readFile(path), params.offset, params.limit);

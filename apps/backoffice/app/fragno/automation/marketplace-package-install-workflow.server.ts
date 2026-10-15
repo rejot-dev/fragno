@@ -770,6 +770,7 @@ export function defineMarketplacePackageInstallWorkflow(
                     BACKOFFICE_PERMISSION.events.read,
                     BACKOFFICE_PERMISSION.identity.resolve,
                     BACKOFFICE_PERMISSION.otp.create,
+                    BACKOFFICE_PERMISSION.pi.manage,
                     BACKOFFICE_PERMISSION.pi.modify,
                     BACKOFFICE_PERMISSION.pi.read,
                     BACKOFFICE_PERMISSION.router.modify,

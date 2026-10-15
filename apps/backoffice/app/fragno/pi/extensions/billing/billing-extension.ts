@@ -69,12 +69,12 @@ export function calculatePiDurableBillingRetryDelayMs(attempt: number) {
 }
 
 async function durableBillingEventId(config: PiAgentConfig, taskId: number) {
-  const source = JSON.stringify([config.scope, config.sessionId]);
+  const source = JSON.stringify(["agent", config.scope, config.agentName]);
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(source));
-  const sessionHash = [...new Uint8Array(digest)]
+  const agentHash = [...new Uint8Array(digest)]
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
-  return `pi-durable:${sessionHash}:${taskId}`;
+  return `pi-durable:${agentHash}:${taskId}`;
 }
 
 /** Creates the durable task whose checkpoint is the exact idempotent Billing RPC outbox event. */
@@ -133,7 +133,7 @@ function createPiDurableBillingTask(input: {
               event: createPiDurableBillingEvent({
                 eventId,
                 scope: config.scope,
-                sessionId: config.sessionId,
+                agentName: config.agentName,
                 taskId: task.id,
                 occurredAt: task.state.checkpoint.occurredAt,
                 through: task.state.checkpoint.through,

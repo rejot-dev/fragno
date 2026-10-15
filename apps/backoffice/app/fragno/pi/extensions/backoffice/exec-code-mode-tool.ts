@@ -105,14 +105,15 @@ export function createExecCodeModeTool(agent: BackofficeAgentContext) {
     // Codemode can execute arbitrary mutations. An interrupted call must not silently repeat them.
     replay: "unsafe",
     async execute(params, api, durableContext) {
-      await agent.authorize();
+      const turn = await agent.activeTurn(durableContext);
+      await turn.authorize();
       const { code, dependencies } = params;
       if (durableContext.abortSignal?.aborted) {
         throw new Error("Codemode execution aborted.");
       }
 
       const taskId = String(api.taskId);
-      const runtimeToolContext = agent.toolContext(`${agent.sessionId}:${taskId}`, durableContext);
+      const runtimeToolContext = turn.toolContext(`${agent.agentName}:${taskId}`, durableContext);
       const workflowRuntime = runtimeToolContext.workflow?.runtime;
       const workflowScheduler =
         workflowRuntime && "createInternalInstance" in workflowRuntime
@@ -123,11 +124,11 @@ export function createExecCodeModeTool(agent: BackofficeAgentContext) {
         workflow: workflowRuntime ? { runtime: workflowRuntime } : null,
       });
 
-      if (agent.codemode === null) {
+      if (turn.codemode === null) {
         throw new Error("Pi codemode is unavailable because the Worker Loader is not configured.");
       }
       const result = await runBackofficeCodemode({
-        codemode: agent.codemode,
+        codemode: turn.codemode,
         code,
         dependencies,
         families: runtimeToolFamilies,
@@ -158,11 +159,11 @@ export function createExecCodeModeTool(agent: BackofficeAgentContext) {
           };
         } else {
           try {
-            const instanceId = hashToolCallId(`${agent.sessionId}--${taskId}`);
+            const instanceId = hashToolCallId(`${agent.agentName}--${taskId}`);
             const prepared = prepareCodemodeWorkflowInstance({
               code,
               dependencies,
-              filename: `/pi/${agent.sessionId}/${taskId}.workflow.js`,
+              filename: `/pi/${agent.agentName}/${taskId}.workflow.js`,
               instanceId,
             });
             if (prepared.remoteWorkflowName !== result.workflowDefinition.name) {
@@ -173,8 +174,8 @@ export function createExecCodeModeTool(agent: BackofficeAgentContext) {
             const workflowInput = createCodemodeWorkflowInstanceInput({
               prepared,
               trigger: { type: "manual", payload: {} },
-              execution: agent.execution,
-              billingOrganizationId: agent.billingOrganizationId,
+              execution: turn.execution,
+              billingOrganizationId: turn.billingOrganizationId,
             });
             const created = await workflowScheduler.createInternalInstance(workflowInput);
             runHandle = { instanceId: created.instanceId };

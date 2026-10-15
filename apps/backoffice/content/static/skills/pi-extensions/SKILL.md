@@ -11,13 +11,13 @@ description: >
 Use **author → build → activate → verify**. Author native `@earendil-works/pi-durable` definitions;
 Backoffice installs host proxies and runs their callbacks in sealed codemode Workers. This is a
 supported subset of the durable extension API, not a host-loaded coding-agent plugin. Building
-creates generic code; Pi validates registrations when a scoped session opens.
+creates generic code; Pi validates registrations when an agent's next turn loads them.
 
 ## 1. Preflight
 
 Read `/static/skills/javascript-runtime/SKILL.md` for build/runtime semantics and permissions, and
 `/static/codemode/providers/state.d.ts` for workspace operations. Confirm `js.build` is declared and
-available before authoring a module that needs it. For session verification, read
+available before authoring a module that needs it. For verification, read
 `/static/codemode/providers/pi.d.ts` and apply the system's closed-world preflight.
 
 Work in the intended user, organization, or project scope. Extensions are loaded only from that
@@ -123,7 +123,7 @@ export default defineExtension({
   hooks: [
     hook(ToolTask, {
       beforeTool: (call) =>
-        call.name === "execCodeMode" ? { block: "This session is read-only." } : undefined,
+        call.name === "execCodeMode" ? { block: "This agent is read-only." } : undefined,
     }),
   ],
 });
@@ -232,27 +232,29 @@ and paths outside the workspace are invalid activation references.
 unrelated entries remain intact. Building or placing a file in a conventional directory does not
 activate it.
 
-## 5. Verify in a newly opened session
+## 5. Verify in the agent's next turn
 
-Create a fresh scoped session with `pi.createSession`, using a new verification request ID; reuse
-that ID only when retrying the same creation. Existing open sessions retain their captured bundle
-and metadata, so rebuilding or editing a manifest is not a hot reload.
+Every agent in the scope reloads extensions at the start of a turn when the manifest or a listed
+artifact changed, so rebuilding or editing the manifest takes effect at the next prompt, not during
+a running turn. Your own current turn keeps the extensions it started with: verify by prompting an
+agent with `pi.runPrompt` and a new verification request ID, or ask the person to send another
+message.
 
 Verify the contributed behavior: inspect rendered sections when available, otherwise use a narrow
 smoke prompt; invoke a custom tool and inspect its actual result; exercise a hook's intended
-decision and inspect the affected call/result. Inspect extension load/callback reports. Session
-creation, a successful generic `js.run`, or a model's unsupported claim alone is not proof of
+decision and inspect the affected call/result. Inspect extension load/callback reports. A prompt
+that completes, a successful generic `js.run`, or a model's unsupported claim alone is not proof of
 installation.
 
-**Complete only when** the new session demonstrably exercises the intended contribution. If
+**Complete only when** a later turn demonstrably exercises the intended contribution. If
 verification is unavailable, report the source/artifact/manifest paths as built and listed, with
 activation verification explicitly outstanding.
 
 ### Diagnose the failing stage
 
 - **Build required or invalid artifact:** check the manifest's resolved path, rebuild the source,
-  and open a fresh session. Source references and old Pi-specific artifact formats need rebuilding;
-  session opening never compiles source or falls back to it.
+  and verify in a later turn. Source references and old Pi-specific artifact formats need
+  rebuilding; loading never compiles source or falls back to it.
 - **Invalid export or unsupported member:** use a default extension with the supported registrations
   above. Compilation accepts ordinary modules that Pi may reject.
 - **Duplicate name, tool, section, or path:** compare the manifest and all activated extensions,
@@ -267,7 +269,7 @@ activation verification explicitly outstanding.
 - **Unsupported API:** choose an authorized runtime provider instead of a document/transaction,
   subagent, full-environment, or wrapper API.
 
-Load, section, and hook failures are reported without taking down the session; tool failures become
-native error results. Built-in guidance can still work. A usable session therefore does not
-establish extension success. Rebuild after source edits; workspace file content changes are read
-freshly by subsequent renders of the captured callback.
+Load, section, and hook failures are reported without taking down the agent; tool failures become
+native error results. Built-in guidance can still work. A usable agent therefore does not establish
+extension success. Rebuild after source edits; workspace file content changes are read freshly by
+subsequent renders of the captured callback.

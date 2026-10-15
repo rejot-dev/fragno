@@ -9,7 +9,7 @@ import {
   type AutomationEventPayload,
   automationEventSchema,
 } from "@fragno-dev/backoffice-api/v0/events";
-import { piAgentCreationSchema } from "@fragno-dev/backoffice-api/v0/pi";
+import { piBillingOrganizationIdSchema } from "@fragno-dev/backoffice-api/v0/pi";
 import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import {
   backofficeContextScopeSchema,
@@ -88,7 +88,7 @@ export const codemodeWorkflowParamsSchema: z.ZodType<CodemodeWorkflowParams> = z
     scopeRestriction: backofficeContextScopeSchema.nullable(),
     actors: automationActorsSchema,
     // Existing workflow snapshots predate billing inheritance and have no selected owner.
-    billingOrganizationId: piAgentCreationSchema.shape.billingOrganizationId,
+    billingOrganizationId: piBillingOrganizationIdSchema.default(null),
     capabilityGrants: z.array(codemodeCapabilityGrantSchema),
   }),
 });

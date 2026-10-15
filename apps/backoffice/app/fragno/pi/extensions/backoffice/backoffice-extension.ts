@@ -9,9 +9,8 @@ import { createReadTool } from "./read-tool";
 import { createSearchTool } from "./search-tool";
 import { buildBackofficePiSystemPrompt } from "./system-prompt";
 
-/** Backoffice guidance and the scoped read, search, and codemode tools every agent runs with. */
+/** Backoffice guidance, the agent's own instructions, and the tools every agent runs with. */
 export function createBackofficeExtension(agent: BackofficeAgentContext): Extension {
-  const promptContext = agent.toolContext(agent.sessionId, BACKGROUND_CONTEXT);
   return defineExtension({
     name: "backoffice",
     tools: [createExecCodeModeTool(agent), createReadTool(agent), createSearchTool(agent)],
@@ -19,8 +18,19 @@ export function createBackofficeExtension(agent: BackofficeAgentContext): Extens
       section(
         "backoffice",
         async () => {
-          await agent.authorize();
-          return await buildBackofficePiSystemPrompt({ runtimeToolContext: promptContext });
+          const turn = await agent.activeTurn(BACKGROUND_CONTEXT);
+          await turn.authorize();
+          return await buildBackofficePiSystemPrompt({
+            runtimeToolContext: turn.toolContext(agent.agentName, BACKGROUND_CONTEXT),
+          });
+        },
+        { tag: false },
+      ),
+      section(
+        "agent",
+        async () => {
+          const { instructions } = await agent.activeTurn(BACKGROUND_CONTEXT);
+          return instructions.trim() === "" ? undefined : instructions;
         },
         { tag: false },
       ),

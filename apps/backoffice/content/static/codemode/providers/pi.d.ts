@@ -1,114 +1,146 @@
 // pi tools
 type PiCodemodeProvider = {
-  /** Create a durable Pi agent in the current scoped directory. User-scoped child sessions inherit the calling Pi session or workflow's billing organization when billingOrganizationId is omitted. */
-  createSession(input: PiCreateSessionInput): Promise<PiCreateSessionOutput>;
-  /** Get a durable Pi directory record and its conversation view. */
-  getSession(input: PiGetSessionInput): Promise<PiGetSessionOutput>;
-  /** List one cursor-paginated page from the durable Pi directory. */
-  listSessions(input: PiListSessionsInput): Promise<PiListSessionsOutput>;
-  /** Durably admit a prompt and return its deduplicated submission receipt. */
+  /** List the built-in agents and the agents defined in the current scope. */
+  listAgents(input: PiListAgentsInput): Promise<PiListAgentsOutput>;
+  /** Get one defined agent and its durable conversation view. */
+  getAgent(input: PiGetAgentInput): Promise<PiGetAgentOutput>;
+  /** Define an agent in the current scope. Its instructions file must exist; edits to the file apply from the agent's next turn. */
+  createAgent(input: PiCreateAgentInput): Promise<PiCreateAgentOutput>;
+  /** Replace an agent's definition. The agent keeps its conversation; the new definition applies from its next turn. */
+  updateAgent(input: PiUpdateAgentInput): Promise<PiUpdateAgentOutput>;
+  /** Idempotently delete an agent's definition. Its stored conversation is kept and resumes if the name is defined again. */
+  deleteAgent(input: PiDeleteAgentInput): Promise<PiDeleteAgentOutput>;
+  /** Durably admit a prompt to an agent and return its deduplicated submission receipt. The turn runs with the caller's current permissions, narrowed by the agent's definition. A user- or system-scoped agent's first turn sets its billing organization; omitting billingOrganizationId inherits the calling Pi agent or workflow's. */
   submitPrompt(input: PiSubmitPromptInput): Promise<PiSubmitPromptOutput>;
   /** Get the durable status of one prompt submission. */
   getSubmission(input: PiGetSubmissionInput): Promise<unknown>;
-  /** Durably admit a prompt, wait for settlement, and return its conversation view. */
+  /** Durably admit a prompt to an agent, wait for settlement, and return its conversation view. */
   runPrompt(input: PiRunPromptInput): Promise<PiRunPromptOutput>;
-  /** Abort active foreground and background work in a durable Pi agent. */
-  abortSession(input: PiAbortSessionInput): Promise<PiAbortSessionOutput>;
+  /** Abort an agent's active foreground and background work. */
+  abortAgent(input: PiAbortAgentInput): Promise<PiAbortAgentOutput>;
 };
 declare const pi: PiCodemodeProvider;
 
-type PiCreateSessionInput = {
-  requestId?: string;
-  billingOrganizationId?: string | null;
-  instructions?: string;
-  model?: {
-    provider: string;
-    modelId: string;
-  };
-  name?: string | null;
+type AutomationRouteManagedBy = {
+  kind: "marketplace";
+  listingId: string;
+  resourceKey: string;
+  version: string;
 };
-type PiCreateSessionOutput = {
-  sessionId: string;
-  name: string | null;
-  model: {
-    provider: string;
-    modelId: string;
-  };
-  instructions: string;
-  billingOrganizationId: string | null;
+type PiListAgentsInput = Record<string, unknown>;
+type PiListAgentsOutput = {
+  agents: {
+    description: string;
+    model: string | null;
+    permissions: string[];
+    instructionsPath: string | null;
+    agentName: string;
+    managedBy:
+      | {
+          kind: "built-in";
+        }
+      | AutomationRouteManagedBy
+      | null;
+  }[];
 };
-type PiGetSessionInput = {
-  sessionId: string;
+type PiGetAgentInput = {
+  agentName: string;
 };
-type PiGetSessionOutput = {
-  sessionId: string;
-  name: string | null;
-  model: {
-    provider: string;
-    modelId: string;
-  };
-  instructions: string;
-  billingOrganizationId: string | null;
-  createdAt: string;
+type PiGetAgentOutput = {
+  description: string;
+  model: string | null;
+  permissions: string[];
+  instructionsPath: string | null;
+  agentName: string;
+  managedBy:
+    | {
+        kind: "built-in";
+      }
+    | AutomationRouteManagedBy
+    | null;
   view: unknown;
 };
-type PiListSessionsInput = {
-  cursor?: string;
-  pageSize?: number;
+type PiCreateAgentInput = {
+  description: string;
+  model: string | null;
+  permissions: string[];
+  instructionsPath: string | null;
+  managedBy: AutomationRouteManagedBy | null;
+  agentName: string;
 };
-type PiListSessionsOutput = {
-  sessions: {
-    sessionId: string;
-    name: string | null;
-    model: {
-      provider: string;
-      modelId: string;
-    };
-    instructions: string;
-    billingOrganizationId: string | null;
-    createdAt: string;
-  }[];
-  cursor: string | null;
-  hasNextPage: boolean;
+type PiCreateAgentOutput = {
+  description: string;
+  model: string | null;
+  permissions: string[];
+  instructionsPath: string | null;
+  agentName: string;
+  managedBy:
+    | {
+        kind: "built-in";
+      }
+    | AutomationRouteManagedBy
+    | null;
+};
+type PiUpdateAgentInput = {
+  description: string;
+  model: string | null;
+  permissions: string[];
+  instructionsPath: string | null;
+  managedBy: AutomationRouteManagedBy | null;
+  agentName: string;
+};
+type PiUpdateAgentOutput = {
+  description: string;
+  model: string | null;
+  permissions: string[];
+  instructionsPath: string | null;
+  agentName: string;
+  managedBy:
+    | {
+        kind: "built-in";
+      }
+    | AutomationRouteManagedBy
+    | null;
+};
+type PiDeleteAgentInput = {
+  agentName: string;
+};
+type PiDeleteAgentOutput = {
+  deleted: true;
 };
 type PiSubmitPromptInput = {
-  sessionId: string;
+  agentName: string;
   content: string;
   requestId?: string;
-  whenBusy?: "steer" | "reject";
+  whenBusy?: "followUp" | "steer" | "reject";
+  billingOrganizationId?: string | null;
 };
 type PiSubmitPromptOutput = {
   submissionId: number;
   requestId: string;
+  whenBusy: "followUp" | "steer" | "reject";
 };
 type PiGetSubmissionInput = {
-  sessionId: string;
+  agentName: string;
   requestId: string;
 };
 type PiRunPromptInput = {
-  sessionId: string;
+  agentName: string;
   content: string;
   requestId?: string;
-  whenBusy?: "steer" | "reject";
+  whenBusy?: "followUp" | "steer" | "reject";
+  billingOrganizationId?: string | null;
   timeoutMs?: number;
 };
 type PiRunPromptOutput = {
-  sessionId: string;
-  name: string | null;
-  model: {
-    provider: string;
-    modelId: string;
-  };
-  instructions: string;
-  billingOrganizationId: string | null;
-  createdAt: string;
+  agentName: string;
   view: unknown;
   submission: unknown;
   assistantText: string;
 };
-type PiAbortSessionInput = {
-  sessionId: string;
+type PiAbortAgentInput = {
+  agentName: string;
 };
-type PiAbortSessionOutput = {
+type PiAbortAgentOutput = {
   aborted: true;
 };

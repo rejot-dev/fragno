@@ -1,5 +1,14 @@
 import { awaitWithContext } from "@earendil-works/chord/context";
-import type { PiAgentConfig, PiManagerSession } from "@fragno-dev/backoffice-api/v0/pi";
+import {
+  piAgentNameSchema,
+  type PiAgentDefinition,
+  type PiAgentDefinitionCreate,
+  type PiManagerAgent,
+  type PiManagerAgentDirectory,
+  type PiPromptReceipt,
+  type piPromptWhenBusySchema,
+} from "@fragno-dev/backoffice-api/v0/pi";
+import type { z } from "zod";
 
 import type { Context } from "@earendil-works/chord";
 import type { ConversationView, SubmissionRecord } from "@earendil-works/pi-durable";
@@ -20,34 +29,22 @@ import {
   type PiAgentSubmissionWait,
 } from "@/fragno/pi/agent/pi-agent-contract";
 
-export type PiManagerCreateSessionInput = {
-  requestId?: string;
-  billingOrganizationId?: string | null;
-  instructions?: string;
-  model?: PiAgentConfig["model"];
-  name?: string | null;
-};
-
-export type PiManagerGetSessionInput = { sessionId: string };
-export type PiManagerListSessionsInput = { cursor?: string; pageSize?: number };
+export type PiManagerAgentInput = { agentName: string };
 export type PiManagerSubmitPromptInput = {
-  sessionId: string;
+  agentName: string;
   content: string;
   requestId?: string;
-  whenBusy?: "steer" | "reject";
+  whenBusy?: z.infer<typeof piPromptWhenBusySchema>;
+  billingOrganizationId?: string | null;
 };
-export type PiManagerGetSubmissionInput = { sessionId: string; requestId: string };
+export type PiManagerGetSubmissionInput = { agentName: string; requestId: string };
 export type PiManagerRunPromptInput = PiManagerSubmitPromptInput & { timeoutMs?: number };
-export type PiManagerAbortSessionInput = { sessionId: string };
 
-export type PiManagerSessionDetail = PiManagerSession & { view: ConversationView };
-export type PiManagerSessionPage = {
-  sessions: PiManagerSession[];
-  cursor: string | null;
-  hasNextPage: boolean;
-};
-export type PiManagerPromptReceipt = { submissionId: number; requestId: string };
-export type PiManagerPromptResult = PiManagerSessionDetail & {
+/** `view` is null until the agent's conversation has received its first turn. */
+export type PiManagerAgentDetail = PiManagerAgent & { view: ConversationView | null };
+export type PiManagerPromptResult = {
+  agentName: string;
+  view: ConversationView;
   submission: SubmissionRecord;
   assistantText: string;
 };
@@ -98,23 +95,22 @@ function piManagerRuntimeRequestError(status: number, responseText: string) {
 
 /** Durable Pi operations map directly to the scoped manager and agent contracts. */
 export type PiManagerRuntime = {
-  createSession(input: PiManagerCreateSessionInput): Promise<PiAgentConfig>;
-  getSession(input: PiManagerGetSessionInput): Promise<PiManagerSessionDetail>;
-  listSessions(input: PiManagerListSessionsInput): Promise<PiManagerSessionPage>;
-  submitPrompt(input: PiManagerSubmitPromptInput): Promise<PiManagerPromptReceipt>;
+  listAgents(): Promise<PiManagerAgentDirectory>;
+  getAgent(input: PiManagerAgentInput): Promise<PiManagerAgentDetail>;
+  createAgent(input: PiAgentDefinitionCreate): Promise<PiAgentDefinition>;
+  updateAgent(input: PiAgentDefinitionCreate): Promise<PiAgentDefinition>;
+  deleteAgent(input: PiManagerAgentInput): Promise<void>;
+  submitPrompt(input: PiManagerSubmitPromptInput): Promise<PiPromptReceipt>;
   getSubmission(input: PiManagerGetSubmissionInput): Promise<SubmissionRecord>;
   runPrompt(input: PiManagerRunPromptInput): Promise<PiManagerPromptResult>;
-  abortSession(input: PiManagerAbortSessionInput): Promise<void>;
+  abortAgent(input: PiManagerAgentInput): Promise<void>;
 };
 
-function assistantTextFromSubmission(
-  detail: PiManagerSessionDetail,
-  submission: SubmissionRecord,
-): string {
+function assistantTextFromSubmission(view: ConversationView, submission: SubmissionRecord): string {
   if (submission.status !== "done" || submission.type !== "input") {
     return "";
   }
-  const answer = detail.view.entries.find((entry) => entry.id === submission.answer);
+  const answer = view.entries.find((entry) => entry.id === submission.answer);
   return (
     answer?.model
       ?.flatMap((message) =>
@@ -132,11 +128,9 @@ export function createPiManagerRuntime(input: {
   kernel: BackofficeKernel;
   execution: BackofficeExecutionContext;
   defaultBillingOrganizationId?: string | null;
-  createSessionRequestId?: () => string;
   createPromptRequestId?: () => string;
   context?: Context;
 }): PiManagerRuntime {
-  const createSessionRequestId = input.createSessionRequestId ?? (() => crypto.randomUUID());
   const createPromptRequestId = input.createPromptRequestId ?? (() => crypto.randomUUID());
 
   async function awaitRequest<T>(promise: Promise<T>): Promise<T> {
@@ -144,7 +138,11 @@ export function createPiManagerRuntime(input: {
     return input.context ? await awaitWithContext(promise, input.context) : await promise;
   }
 
-  async function request<T>(route: string, body: unknown): Promise<T> {
+  async function request<T>(
+    route: string,
+    body: unknown,
+    method: "GET" | "POST" | "PUT" | "DELETE" = body === null ? "GET" : "POST",
+  ): Promise<T> {
     const object = input.kernel.scoped(
       "PI_MANAGER",
       input.execution.scope,
@@ -153,7 +151,7 @@ export function createPiManagerRuntime(input: {
     const response = await awaitRequest(
       object.http.fetchAuthorized(
         new Request(`https://pi-manager.do/api/pi-manager${route}`, {
-          method: body === null ? "GET" : "POST",
+          method,
           headers: body === null ? {} : { "content-type": "application/json" },
           body: body === null ? undefined : JSON.stringify(body),
         }),
@@ -173,20 +171,16 @@ export function createPiManagerRuntime(input: {
     return (await response.json()) as T;
   }
 
-  function sessionRoute(sessionId: string) {
-    const normalizedSessionId = sessionId.trim();
-    if (!normalizedSessionId) {
-      throw new Error("PI_MANAGER_SESSION_ID_REQUIRED");
-    }
-    return `/sessions/${encodeURIComponent(normalizedSessionId)}`;
+  function agentRoute(agentName: string) {
+    return `/agents/${encodeURIComponent(piAgentNameSchema.parse(agentName.trim()))}`;
   }
 
-  function submissionRoute({ sessionId, requestId }: PiManagerGetSubmissionInput) {
+  function submissionRoute({ agentName, requestId }: PiManagerGetSubmissionInput) {
     const normalizedRequestId = requestId.trim();
     if (!normalizedRequestId) {
       throw new Error("PI_MANAGER_PROMPT_REQUEST_ID_REQUIRED");
     }
-    return `${sessionRoute(sessionId)}/submissions/${encodeURIComponent(normalizedRequestId)}`;
+    return `${agentRoute(agentName)}/submissions/${encodeURIComponent(normalizedRequestId)}`;
   }
 
   async function getSubmission(input: PiManagerGetSubmissionInput): Promise<SubmissionRecord> {
@@ -202,46 +196,40 @@ export function createPiManagerRuntime(input: {
   }
 
   const managerRuntime: PiManagerRuntime = {
-    async createSession(args) {
-      const billingOrganizationId =
-        args.billingOrganizationId === undefined
-          ? (input.defaultBillingOrganizationId ?? null)
-          : args.billingOrganizationId;
-      return await request<PiAgentConfig>("/sessions", {
-        requestId: args.requestId?.trim() || createSessionRequestId(),
-        name: args.name ?? null,
-        model: args.model,
-        instructions: args.instructions ?? "",
-        billingOrganizationId,
-      });
+    async listAgents() {
+      return await request<PiManagerAgentDirectory>("/agents", null);
     },
-    async getSession({ sessionId }) {
-      const route = sessionRoute(sessionId);
-      const [session, view] = await Promise.all([
-        request<PiManagerSession>(route, null),
-        request<ConversationView>(`${route}/view`, null),
-      ]);
-      return { ...session, view };
+    async getAgent({ agentName }) {
+      const route = agentRoute(agentName);
+      const agent = await request<PiManagerAgent>(route, null);
+      return {
+        ...agent,
+        view: agent.provisioning ? await request<ConversationView>(`${route}/view`, null) : null,
+      };
     },
-    async listSessions({ cursor, pageSize = 20 }) {
-      if (!Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > 100) {
-        throw new Error("PI_MANAGER_SESSION_PAGE_SIZE_INVALID: expected an integer from 1 to 100.");
-      }
-      const query = new URLSearchParams({ pageSize: String(pageSize) });
-      if (cursor) {
-        query.set("cursor", cursor);
-      }
-      return await request<PiManagerSessionPage>(`/sessions?${query}`, null);
+    async createAgent(definition) {
+      return await request<PiAgentDefinition>("/agents", definition);
     },
-    async submitPrompt({ sessionId, content, requestId, whenBusy }) {
+    async updateAgent({ agentName, ...definition }) {
+      return await request<PiAgentDefinition>(agentRoute(agentName), definition, "PUT");
+    },
+    async deleteAgent({ agentName }) {
+      await request(agentRoute(agentName), null, "DELETE");
+    },
+    async submitPrompt({ agentName, content, requestId, whenBusy, billingOrganizationId }) {
       const normalizedContent = content.trim();
       if (!normalizedContent) {
         throw new Error("PI_MANAGER_PROMPT_CONTENT_REQUIRED");
       }
-      return await request<PiManagerPromptReceipt>(`${sessionRoute(sessionId)}/prompts`, {
+      return await request<PiPromptReceipt>(`${agentRoute(agentName)}/prompts`, {
         requestId: requestId?.trim() || createPromptRequestId(),
         content: normalizedContent,
         ...(whenBusy ? { whenBusy } : {}),
+        // Only an agent's first turn uses it, to choose a user- or system-scoped billing owner.
+        billingOrganizationId:
+          billingOrganizationId === undefined
+            ? (input.defaultBillingOrganizationId ?? null)
+            : billingOrganizationId,
       });
     },
     getSubmission,
@@ -255,26 +243,27 @@ export function createPiManagerRuntime(input: {
         const remainingMs = deadline - Date.now();
         if (remainingMs <= 0) {
           throw new Error(
-            `PI_MANAGER_PROMPT_TIMED_OUT: ${prompt.sessionId}; admitted request ${receipt.requestId} continues durably.`,
+            `PI_MANAGER_PROMPT_TIMED_OUT: ${prompt.agentName}; admitted request ${receipt.requestId} continues durably.`,
           );
         }
         const result = await waitForSubmission(
-          { sessionId: prompt.sessionId, requestId: receipt.requestId },
+          { agentName: prompt.agentName, requestId: receipt.requestId },
           Math.min(remainingMs, PI_AGENT_SUBMISSION_WAIT_MAX_MS),
         );
         if (result.status === "pending") {
           continue;
         }
-        const detail = await managerRuntime.getSession({ sessionId: prompt.sessionId });
+        const view = await request<ConversationView>(`${agentRoute(prompt.agentName)}/view`, null);
         return {
-          ...detail,
+          agentName: prompt.agentName,
+          view,
           submission: result.submission,
-          assistantText: assistantTextFromSubmission(detail, result.submission),
+          assistantText: assistantTextFromSubmission(view, result.submission),
         };
       }
     },
-    async abortSession({ sessionId }) {
-      await request(`${sessionRoute(sessionId)}/abort`, {});
+    async abortAgent({ agentName }) {
+      await request(`${agentRoute(agentName)}/abort`, {});
     },
   };
 

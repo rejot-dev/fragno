@@ -235,14 +235,14 @@ describe("Pi execCodeMode tool", () => {
 
     expect(result.details).toMatchObject({
       workflowDefinition: { name: "pi-session-workflow", options: { name: "pi-session-workflow" } },
-      result: { instanceId: "18tfv3i1e4o7fe" },
+      result: { instanceId: "12zjsps1wxc2bo" },
     });
     const content = result.content[0];
     assert(content?.type === "text");
     if (content?.type !== "text") {
       throw new Error("Expected text content from execCodeMode.");
     }
-    expect(content.text).toContain("18tfv3i1e4o7fe");
+    expect(content.text).toContain("12zjsps1wxc2bo");
   });
 
   test("returns structured scheduling failures as failed tool results", async () => {
@@ -353,14 +353,14 @@ describe("Pi execCodeMode tool", () => {
 
     expect(result.details).toMatchObject({
       workflowDefinition: { name: "pi-session-workflow", options: { name: "pi-session-workflow" } },
-      result: { instanceId: "18tfv3i1e4o7fe" },
+      result: { instanceId: "12zjsps1wxc2bo" },
     });
     await harness.runUntilIdle({
       workflowName: "codemode-script",
-      instanceId: "18tfv3i1e4o7fe",
+      instanceId: "12zjsps1wxc2bo",
       reason: "create",
     });
-    await expect(harness.getStatus("PI_CODEMODE_SCRIPT", "18tfv3i1e4o7fe")).resolves.toMatchObject({
+    await expect(harness.getStatus("PI_CODEMODE_SCRIPT", "12zjsps1wxc2bo")).resolves.toMatchObject({
       status: "complete",
       output: "ran from execCodeMode workflow",
     });
@@ -395,7 +395,7 @@ describe("Pi execCodeMode tool", () => {
       BACKGROUND_CONTEXT,
     );
 
-    expect(result.details).toMatchObject({ result: { instanceId: "18tfv3i1e4o7fe" } });
+    expect(result.details).toMatchObject({ result: { instanceId: "12zjsps1wxc2bo" } });
     expect(scheduledParams.map((params) => codemodeWorkflowParamsSchema.parse(params))).toEqual([
       expect.objectContaining({
         program: expect.objectContaining({ dependencies: { "is-number": "7.0.0" } }),
@@ -605,16 +605,22 @@ const createExecCodeModeTool = async ({
     workflow: workflowRuntime ? { runtime: workflowRuntime } : null,
     ...(automationsRuntime ? { automations: { runtime: automationsRuntime } } : {}),
   } as never;
-  const tool = createPiExecCodeModeTool({
-    sessionId: "session-1",
-    billingOrganizationId: "org-1",
+  const turn = {
     execution: createPiSystemFileContext().execution,
+    billingOrganizationId: "org-1",
+    instructions: "",
     codemode: codemodeRunnerFor(
       createCloudflareBackofficeObjectRegistry(env as CloudflareEnv).codemode.singleton().commands,
       createBackofficeSystemExecution({ kind: "system" }),
     ),
     authorize: async () => undefined,
     toolContext: () => runtimeToolContext,
+  };
+  const tool = createPiExecCodeModeTool({
+    agentName: "assistant",
+    scope: { kind: "system" },
+    activeTurn: async () => turn,
+    turn: () => turn,
   });
   return {
     ...tool,

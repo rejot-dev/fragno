@@ -19,6 +19,7 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
 
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
+import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 
 import { InMemoryApiObject } from "../../../workers/api.do";
@@ -45,6 +46,7 @@ const scenarioObjects = {
   MARKETPLACE: (input) => new InMemoryMarketplaceObject(input),
   MCP: (input) => new InMemoryMcpObject(input),
   OTP: (input) => new InMemoryOtpObject(input),
+  PI_MANAGER: allLocalObjects.PI_MANAGER,
   RESEND: (input) => new InMemoryResendObject(input),
   TELEGRAM: (input) => new InMemoryTelegramObject(input),
   UPLOAD: (input) => new InMemoryUploadObject(input),
@@ -53,7 +55,7 @@ const scenarioObjects = {
 const TELEGRAM_CHANNEL_MARKETPLACE_INSTALLATION = {
   targetScope: { kind: "org", orgId: "org-1" },
   slug: "telegram-channel",
-  version: "1.1.0",
+  version: "1.2.0",
   installationRoot: "/workspace",
 } as const;
 
@@ -149,11 +151,11 @@ describe("automation internal ingest scenarios", () => {
 
           then.telegram.noMessages(),
           then.assert("assert Pi was not called by legacy scripts", (ctx) => {
-            const createSessionCalls = ctx.fakes.pi?.createSessionCalls ?? [];
+            const provisionedAgents = ctx.fakes.pi?.provisionedAgents ?? [];
             const runPromptCalls = ctx.fakes.pi?.runPromptCalls ?? [];
-            if (createSessionCalls.length !== 0 || runPromptCalls.length !== 0) {
+            if (provisionedAgents.length !== 0 || runPromptCalls.length !== 0) {
               throw new Error(
-                `Expected no Pi calls, got create=${createSessionCalls.length}, turn=${runPromptCalls.length}.`,
+                `Expected no Pi calls, got provisioned=${provisionedAgents.length}, turn=${runPromptCalls.length}.`,
               );
             }
           }),

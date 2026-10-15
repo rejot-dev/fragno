@@ -10,7 +10,11 @@ import {
   javaScriptModuleArtifactSchema,
   resolveJavaScriptModuleArtifactPath,
 } from "@/fragno/codemode/javascript-module-artifact";
-import type { BackofficeAgentContext } from "@/fragno/pi/agent/backoffice-agent-context";
+import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
+import type {
+  BackofficeAgentContext,
+  BackofficeAgentTurnContext,
+} from "@/fragno/pi/agent/backoffice-agent-context";
 
 import { createPiWorkspaceExtensionBridge } from "./workspace-extension-bridge";
 import { createPiWorkspaceExtensionInvocation } from "./workspace-extension-guest";
@@ -23,43 +27,78 @@ const extensionFilePathSchema = z
   .max(512)
   .regex(/^[^\p{Cc}]+$/u);
 
-/** Loads activated artifacts and validates native proxies before a session can install them. */
+export type LoadedWorkspaceExtensions = {
+  /** Identifies the manifest and artifacts the extensions were loaded from. */
+  fingerprint: string;
+  extensions: readonly Extension[];
+};
+
+/**
+ * Loads activated artifacts and validates native proxies before an agent can install them.
+ * Returns null when the manifest and its artifacts are unchanged since `loaded`.
+ */
 export async function loadWorkspaceExtensions(input: {
   agent: BackofficeAgentContext;
+  /** The turn the extensions load for; it may not be admitted yet. */
+  turn: BackofficeAgentTurnContext;
   registry: RegistrySnapshot;
+  loaded: LoadedWorkspaceExtensions | null;
   report: (error: unknown) => void;
-}): Promise<Extension[]> {
-  if (input.agent.execution.scope.kind === "system") {
-    return [];
+}): Promise<LoadedWorkspaceExtensions | null> {
+  if (input.agent.scope.kind === "system") {
+    return input.loaded ? null : { fingerprint: "", extensions: [] };
   }
-  const runtimeToolContext = input.agent.toolContext(
-    `${input.agent.sessionId}:workspace-extension-load`,
-    BACKGROUND_CONTEXT,
-  );
-  if (!runtimeToolContext.stateBackend) {
-    return [];
-  }
-  const state = runtimeToolContext.stateBackend;
+  // The extensions being replaced do not conflict with their own replacements.
+  const replaced = new Set(input.loaded?.extensions.map((extension) => extension.name));
+  const kept = ({ extension }: { extension: Extension }) => !replaced.has(extension.name);
   const installed: Extension[] = [];
-  const names = new Set(input.registry.installed().map((extension) => extension.name));
+  const names = new Set(
+    input.registry
+      .installed()
+      .filter((extension) => kept({ extension }))
+      .map((extension) => extension.name),
+  );
   const keys = new Set([
     "backoffice",
-    ...input.registry.sections().map(({ section }) => section.key),
+    ...input.registry
+      .sections()
+      .filter(kept)
+      .map(({ section }) => section.key),
   ]);
-  const tools = new Set(input.registry.tools().map(({ tool }) => tool.name));
+  const tools = new Set(
+    input.registry
+      .tools()
+      .filter(kept)
+      .map(({ tool }) => tool.name),
+  );
   const validationRegistry = createRegistry();
-  let prepared: { paths: string[]; codemode: CodemodeRunner };
+  let state: BackofficeStateBackend;
+  let manifestText: string;
   try {
-    await input.agent.authorize();
-    if (!(await state.exists(PI_WORKSPACE_EXTENSION_MANIFEST))) {
-      return [];
+    // Every scope member reads the same workspace, so whichever turn loads it sees the same files.
+    const { turn } = input;
+    await turn.authorize();
+    const turnState = turn.toolContext(
+      `${input.agent.agentName}:workspace-extension-load`,
+      BACKGROUND_CONTEXT,
+    ).stateBackend;
+    if (!turnState || !(await turnState.exists(PI_WORKSPACE_EXTENSION_MANIFEST))) {
+      return input.loaded?.fingerprint === "" ? null : { fingerprint: "", extensions: [] };
     }
-    if (input.agent.codemode === null) {
-      throw new Error("PI_EXTENSION_CODEMODE_UNAVAILABLE");
-    }
+    state = turnState;
+    manifestText = await state.readFile(PI_WORKSPACE_EXTENSION_MANIFEST);
+  } catch (error) {
+    // Without a readable workspace the agent keeps the extensions it has.
+    input.report(
+      new Error(`PI_EXTENSION_LOAD_FAILED: ${PI_WORKSPACE_EXTENSION_MANIFEST}`, { cause: error }),
+    );
+    return null;
+  }
+  let prepared: { paths: string[]; codemode: CodemodeRunner; fingerprint: string };
+  try {
     const manifest = z
       .strictObject({ extensions: z.array(extensionFilePathSchema).max(16) })
-      .parse(await state.readJson(PI_WORKSPACE_EXTENSION_MANIFEST));
+      .parse(JSON.parse(manifestText) as unknown);
     const paths = manifest.extensions.map((path) => {
       if (path.endsWith(".js")) {
         throw new Error(
@@ -75,14 +114,29 @@ export async function loadWorkspaceExtensions(input: {
     if (new Set(paths).size !== paths.length) {
       throw new Error("PI_EXTENSION_DUPLICATE_PATH");
     }
-    prepared = { paths, codemode: input.agent.codemode };
+    // Rebuilding an artifact rewrites it, so its size and modification time identify the build.
+    const artifacts = await Promise.all(
+      paths.map(async (path) => {
+        const file = await state.stat(path);
+        return file ? [file.size, file.mtime.getTime()] : null;
+      }),
+    );
+    const fingerprint = JSON.stringify([manifestText, artifacts]);
+    if (input.loaded?.fingerprint === fingerprint) {
+      return null;
+    }
+    if (input.turn.codemode === null) {
+      throw new Error("PI_EXTENSION_CODEMODE_UNAVAILABLE");
+    }
+    prepared = { paths, codemode: input.turn.codemode, fingerprint };
   } catch (error) {
     input.report(
       new Error(`PI_EXTENSION_LOAD_FAILED: ${PI_WORKSPACE_EXTENSION_MANIFEST}`, { cause: error }),
     );
-    return [];
+    // An unusable manifest stays unloaded until it changes.
+    return { fingerprint: manifestText, extensions: [] };
   }
-  const { codemode, paths } = prepared;
+  const { codemode, paths, fingerprint } = prepared;
   const invocation = createPiWorkspaceExtensionInvocation([]);
   for (const path of paths) {
     try {
@@ -130,7 +184,6 @@ export async function loadWorkspaceExtensions(input: {
         metadata,
         bundle: artifact.bundle,
         path,
-        codemode,
       });
       // Reuse native registration rules inside per-artifact recovery, before the real host installation.
       validationRegistry.install(extension);
@@ -146,5 +199,5 @@ export async function loadWorkspaceExtensions(input: {
       input.report(new Error(`PI_EXTENSION_LOAD_FAILED: ${path}`, { cause: error }));
     }
   }
-  return installed;
+  return { fingerprint, extensions: installed };
 }

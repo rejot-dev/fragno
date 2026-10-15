@@ -17,7 +17,6 @@ import {
 } from "@earendil-works/pi-durable";
 
 import { backofficeContextScopeRouteId } from "@/backoffice-runtime/scope-codec";
-import type { CodemodeRunner } from "@/fragno/codemode/codemode-object-execute";
 import { runBackofficeCompiledModule } from "@/fragno/codemode/compiled-module-execute";
 import { createBackofficeCodemodeResolvedProviders } from "@/fragno/codemode/execute";
 import {
@@ -54,7 +53,6 @@ export function createPiWorkspaceExtensionBridge(input: {
   bundle: WorkerBundle;
   path: string;
   agent: BackofficeAgentContext;
-  codemode: CodemodeRunner;
 }): Extension {
   const { metadata, agent } = input;
 
@@ -67,10 +65,15 @@ export function createPiWorkspaceExtensionBridge(input: {
     api: HookApi | ToolExecutionApi | null,
     context: Context,
   ): Promise<unknown> {
-    await agent.authorize();
+    const turn = await agent.activeTurn(context);
+    await turn.authorize();
     context.abortSignal?.throwIfAborted();
-    const runtime = agent.toolContext(
-      `${agent.sessionId}:${metadata.name}:${request.operation}:${request.key}:${api?.taskId ?? request.conversationId}`,
+    if (turn.codemode === null) {
+      throw new Error("PI_EXTENSION_CODEMODE_UNAVAILABLE");
+    }
+    const codemode = turn.codemode;
+    const runtime = turn.toolContext(
+      `${agent.agentName}:${metadata.name}:${request.operation}:${request.key}:${api?.taskId ?? request.conversationId}`,
       context,
     );
     const state = requirePiStateBackend(runtime);
@@ -148,7 +151,7 @@ export function createPiWorkspaceExtensionBridge(input: {
         Object.entries(provider.fns).map(([name, fn]) => [
           name,
           async (...args: unknown[]) => {
-            await agent.authorize();
+            await turn.authorize();
             context.abortSignal?.throwIfAborted();
             return await fn(...args);
           },
@@ -166,10 +169,10 @@ export function createPiWorkspaceExtensionBridge(input: {
         input: {
           ...request,
           taskId: api?.taskId ?? null,
-          environmentId: `${agent.execution.scope.kind}:${backofficeContextScopeRouteId(agent.execution.scope)}`,
+          environmentId: `${agent.scope.kind}:${backofficeContextScopeRouteId(agent.scope)}`,
         },
         providers: authorizedProviders,
-        codemode: input.codemode,
+        codemode,
         origin: { kind: "file", path: input.path },
         signal: context.abortSignal ?? null,
       });

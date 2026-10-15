@@ -1,16 +1,12 @@
 import {
-  type PiRuntimeDirectorySessionOutput,
-  type PiRuntimeSessionOutput,
   piPromptReceiptOutputSchema,
+  type PiAgentDefinitionCreate,
+  type PiManagerAgent,
 } from "@fragno-dev/backoffice-api/v0/pi";
-import type { PiAgentConfig, PiManagerSession } from "@fragno-dev/backoffice-api/v0/pi";
 
 import type {
-  PiManagerAbortSessionInput,
-  PiManagerCreateSessionInput,
-  PiManagerGetSessionInput,
+  PiManagerAgentInput,
   PiManagerGetSubmissionInput,
-  PiManagerListSessionsInput,
   PiManagerRunPromptInput,
   PiManagerRuntime,
   PiManagerSubmitPromptInput,
@@ -32,25 +28,6 @@ import {
 export type RegisteredPiCommandContext = { runtime: PiManagerRuntime };
 type PiToolContext = BackofficeToolContext<{ pi?: PiManagerRuntime }>;
 
-function serializePiRuntimeSession(session: PiAgentConfig): PiRuntimeSessionOutput {
-  return {
-    sessionId: session.sessionId,
-    name: session.name,
-    model: session.model,
-    instructions: session.instructions,
-    billingOrganizationId: session.billingOrganizationId,
-  };
-}
-
-function serializePiRuntimeDirectorySession(
-  session: PiManagerSession,
-): PiRuntimeDirectorySessionOutput {
-  return {
-    ...serializePiRuntimeSession(session),
-    createdAt: session.createdAt,
-  };
-}
-
 function requirePiManagerRuntime(runtime: PiToolContext["runtimes"]["pi"]): PiManagerRuntime {
   if (!runtime) {
     throw new Error("PI_MANAGER_RUNTIME_UNAVAILABLE");
@@ -58,40 +35,91 @@ function requirePiManagerRuntime(runtime: PiToolContext["runtimes"]["pi"]): PiMa
   return runtime;
 }
 
-const parseSessionCreate = defineCliArgsParser<PiManagerCreateSessionInput>("pi.session.create", {
-  requestId: { option: "request-id" },
-  billingOrganizationId: { option: "billing-organization-id" },
-  instructions: {},
-  model: { kind: "json", option: "model-json" },
-  name: {},
-});
-const parseSessionGet = defineCliArgsParser<PiManagerGetSessionInput>("pi.session.get", {
-  sessionId: { required: true },
-});
-const parseSessionList = defineCliArgsParser<PiManagerListSessionsInput>("pi.session.list", {
-  cursor: {},
-  pageSize: { option: "page-size", kind: "integer" },
+const parseAgentList = defineCliArgsParser<Record<string, never>>("pi.agent.list", {});
+const parseAgentGet = defineCliArgsParser<PiManagerAgentInput>("pi.agent.get", {
+  agentName: { option: "agent", required: true },
 });
 const parsePromptSubmit = defineCliArgsParser<PiManagerSubmitPromptInput>("pi.prompt.submit", {
-  sessionId: { required: true },
+  agentName: { option: "agent", required: true },
   content: { required: true },
   requestId: { option: "request-id" },
   whenBusy: { option: "when-busy" },
+  billingOrganizationId: { option: "billing-organization-id" },
 });
 const parseSubmissionGet = defineCliArgsParser<PiManagerGetSubmissionInput>("pi.submission.get", {
-  sessionId: { required: true },
+  agentName: { option: "agent", required: true },
   requestId: { option: "request-id", required: true },
 });
 const parsePromptRun = defineCliArgsParser<PiManagerRunPromptInput>("pi.prompt.run", {
-  sessionId: { required: true },
+  agentName: { option: "agent", required: true },
   content: { required: true },
   requestId: { option: "request-id" },
   whenBusy: { option: "when-busy" },
+  billingOrganizationId: { option: "billing-organization-id" },
   timeoutMs: { option: "timeout-ms", kind: "integer" },
 });
-const parseSessionAbort = defineCliArgsParser<PiManagerAbortSessionInput>("pi.session.abort", {
-  sessionId: { required: true },
+const parseAgentAbort = defineCliArgsParser<PiManagerAgentInput>("pi.agent.abort", {
+  agentName: { option: "agent", required: true },
 });
+function definitionArgsParser(command: string) {
+  return defineCliArgsParser<PiAgentDefinitionCreate>(command, {
+    agentName: { option: "agent", required: true },
+    description: { required: true },
+    instructionsPath: { option: "instructions", defaultValue: null },
+    permissions: { option: "permission", kind: "stringArray", defaultValue: [] },
+    model: { defaultValue: null },
+    managedBy: { kind: "json", defaultValue: null },
+  });
+}
+const parseAgentDelete = defineCliArgsParser<PiManagerAgentInput>("pi.agent.delete", {
+  agentName: { option: "agent", required: true },
+});
+
+const definitionOptions = [
+  {
+    name: "agent",
+    required: true,
+    valueRequired: true,
+    valueName: "agent-name",
+    description: "Agent name: lowercase letters, digits, and hyphens",
+  },
+  {
+    name: "description",
+    required: true,
+    valueRequired: true,
+    valueName: "text",
+    description: "What the agent is for, shown when choosing an agent",
+  },
+  {
+    name: "instructions",
+    valueRequired: true,
+    valueName: "path",
+    description: "Markdown file in /workspace or /static with the agent's extra system guidance",
+  },
+  {
+    name: "permission",
+    valueRequired: true,
+    valueName: "grant",
+    description: "Repeatable: *, namespace.*, or namespace.permission; omitted grants none",
+  },
+  {
+    name: "model",
+    valueRequired: true,
+    valueName: "provider/model-id",
+    description: "Model to use; omitted selects the preferred available model",
+  },
+  {
+    name: "managed-by",
+    valueRequired: true,
+    valueName: "json",
+    description: "Marketplace ownership, set by package installers",
+  },
+];
+
+/** The scope configuration an agent runs with; its conversation's provisioning stays internal. */
+function agentDefinition({ provisioning: _provisioning, ...definition }: PiManagerAgent) {
+  return definition;
+}
 
 function jsonByDefaultOutputOptions(args: string[]) {
   const parsed = parseCliTokens(args);
@@ -101,121 +129,54 @@ function jsonByDefaultOutputOptions(args: string[]) {
     : { ...output, format: "json" as const };
 }
 
-const sessionCreateTool = defineBackofficeRuntimeTool({
-  ...backofficeApiOperationToolFields("pi.session.create"),
+const agentListTool = defineBackofficeRuntimeTool({
+  ...backofficeApiOperationToolFields("pi.agent.list"),
   namespace: "pi",
-  name: "createSession",
-  execute: async (input, context: PiToolContext) => {
-    const session = await requirePiManagerRuntime(context.runtimes.pi).createSession(input);
-    return serializePiRuntimeSession(session);
+  name: "listAgents",
+  execute: async (_input, context: PiToolContext) => {
+    const directory = await requirePiManagerRuntime(context.runtimes.pi).listAgents();
+    return { agents: directory.agents.map(agentDefinition) };
   },
   adapters: {
     bash: {
-      command: "pi.session.create",
+      command: "pi.agent.list",
       help: {
-        summary: "pi.session.create creates a durable Pi agent in the current scope.",
-        options: [
-          {
-            name: "request-id",
-            valueRequired: true,
-            valueName: "request-id",
-            description: "Stable idempotency key for replay-safe creation",
-          },
-          {
-            name: "model-json",
-            valueRequired: true,
-            valueName: "json",
-            description:
-              'Optional durable model selection, for example {"provider":"openai","modelId":"gpt-6-luna"}. Omitting it uses the configured default.',
-          },
-          { name: "name", valueRequired: true, valueName: "name", description: "Session name" },
-          {
-            name: "instructions",
-            valueRequired: true,
-            valueName: "text",
-            description: "Session-specific agent instructions",
-          },
-          {
-            name: "billing-organization-id",
-            valueRequired: true,
-            valueName: "organization-id",
-            description:
-              "Billing owner for user-scoped sessions; omitted child sessions inherit the calling Pi session or workflow's owner",
-          },
-        ],
-        examples: [
-          `pi.session.create --request-id workflow-123:create-research-agent --name research --model-json '${JSON.stringify({ provider: "openai", modelId: "gpt-6-luna" })}'`,
-        ],
+        summary: "pi.agent.list lists the agents defined for the current scope.",
+        options: [],
+        examples: ["pi.agent.list --format json"],
       },
-      parse: parseSessionCreate,
+      parse: parseAgentList,
+      outputOptions: jsonByDefaultOutputOptions,
       format: (data) => ({ data }),
     },
   },
 });
 
-const sessionGetTool = defineBackofficeRuntimeTool({
-  ...backofficeApiOperationToolFields("pi.session.get"),
+const agentGetTool = defineBackofficeRuntimeTool({
+  ...backofficeApiOperationToolFields("pi.agent.get"),
   namespace: "pi",
-  name: "getSession",
+  name: "getAgent",
   execute: async (input, context: PiToolContext) => {
-    const session = await requirePiManagerRuntime(context.runtimes.pi).getSession(input);
-    return {
-      ...serializePiRuntimeDirectorySession(session),
-      view: normalizeRuntimeOutput(session.view),
-    };
+    const { view, ...agent } = await requirePiManagerRuntime(context.runtimes.pi).getAgent(input);
+    return { ...agentDefinition(agent), view: normalizeRuntimeOutput(view) };
   },
   adapters: {
     bash: {
-      command: "pi.session.get",
+      command: "pi.agent.get",
       help: {
-        summary: "pi.session.get retrieves a durable Pi session and conversation view.",
+        summary: "pi.agent.get retrieves an agent and its durable conversation view.",
         options: [
           {
-            name: "session-id",
+            name: "agent",
             required: true,
             valueRequired: true,
-            valueName: "session-id",
-            description: "Durable Pi session id",
+            valueName: "agent-name",
+            description: "Agent name",
           },
         ],
-        examples: ["pi.session.get --session-id session-123 --format json"],
+        examples: ["pi.agent.get --agent assistant --format json"],
       },
-      parse: parseSessionGet,
-      format: (data) => ({ data }),
-    },
-  },
-});
-
-const sessionListTool = defineBackofficeRuntimeTool({
-  ...backofficeApiOperationToolFields("pi.session.list"),
-  namespace: "pi",
-  name: "listSessions",
-  execute: async (input, context: PiToolContext) => {
-    const page = await requirePiManagerRuntime(context.runtimes.pi).listSessions(input);
-    return {
-      sessions: page.sessions.map(serializePiRuntimeDirectorySession),
-      cursor: page.cursor,
-      hasNextPage: page.hasNextPage,
-    };
-  },
-  adapters: {
-    bash: {
-      command: "pi.session.list",
-      help: {
-        summary: "pi.session.list lists a page of durable Pi sessions.",
-        options: [
-          { name: "cursor", valueRequired: true, valueName: "cursor", description: "Page cursor" },
-          {
-            name: "page-size",
-            valueRequired: true,
-            valueName: "count",
-            description: "Page size from 1 to 100",
-          },
-        ],
-        examples: ["pi.session.list --page-size 10 --format json"],
-      },
-      parse: parseSessionList,
-      outputOptions: jsonByDefaultOutputOptions,
+      parse: parseAgentGet,
       format: (data) => ({ data }),
     },
   },
@@ -239,11 +200,11 @@ const promptSubmitTool = defineBackofficeRuntimeTool({
         summary: "pi.prompt.submit admits durable agent work without waiting for completion.",
         options: [
           {
-            name: "session-id",
+            name: "agent",
             required: true,
             valueRequired: true,
-            valueName: "session-id",
-            description: "Durable Pi session id",
+            valueName: "agent-name",
+            description: "Agent name",
           },
           {
             name: "content",
@@ -262,10 +223,18 @@ const promptSubmitTool = defineBackofficeRuntimeTool({
             name: "when-busy",
             valueRequired: true,
             valueName: "mode",
-            description: "steer (default) or reject",
+            description:
+              "followUp (default) waits for the current turn, steer joins it, reject refuses",
+          },
+          {
+            name: "billing-organization-id",
+            valueRequired: true,
+            valueName: "organization-id",
+            description:
+              "Billing owner chosen by a user-scoped agent's first turn; omitted inherits the calling Pi agent or workflow's owner",
           },
         ],
-        examples: ['pi.prompt.submit --session-id session-123 --content "Investigate the failure"'],
+        examples: ['pi.prompt.submit --agent assistant --content "Investigate the failure"'],
       },
       parse: parsePromptSubmit,
       format: (data) => ({ data }),
@@ -289,11 +258,11 @@ const submissionGetTool = defineBackofficeRuntimeTool({
         summary: "pi.submission.get reads one durable prompt submission.",
         options: [
           {
-            name: "session-id",
+            name: "agent",
             required: true,
             valueRequired: true,
-            valueName: "session-id",
-            description: "Durable Pi session id",
+            valueName: "agent-name",
+            description: "Agent name",
           },
           {
             name: "request-id",
@@ -303,7 +272,7 @@ const submissionGetTool = defineBackofficeRuntimeTool({
             description: "Prompt request id",
           },
         ],
-        examples: ["pi.submission.get --session-id session-123 --request-id request-456"],
+        examples: ["pi.submission.get --agent assistant --request-id request-456"],
       },
       parse: parseSubmissionGet,
       format: (data) => ({ data }),
@@ -318,7 +287,7 @@ const promptRunTool = defineBackofficeRuntimeTool({
   execute: async (input, context: PiToolContext) => {
     const result = await requirePiManagerRuntime(context.runtimes.pi).runPrompt(input);
     return {
-      ...serializePiRuntimeDirectorySession(result),
+      agentName: result.agentName,
       view: normalizeRuntimeOutput(result.view),
       submission: normalizeRuntimeOutput(result.submission),
       assistantText: result.assistantText,
@@ -331,11 +300,11 @@ const promptRunTool = defineBackofficeRuntimeTool({
         summary: "pi.prompt.run admits a prompt and waits for its durable submission to settle.",
         options: [
           {
-            name: "session-id",
+            name: "agent",
             required: true,
             valueRequired: true,
-            valueName: "session-id",
-            description: "Durable Pi session id",
+            valueName: "agent-name",
+            description: "Agent name",
           },
           {
             name: "content",
@@ -354,7 +323,15 @@ const promptRunTool = defineBackofficeRuntimeTool({
             name: "when-busy",
             valueRequired: true,
             valueName: "mode",
-            description: "steer (default) or reject",
+            description:
+              "followUp (default) waits for the current turn, steer joins it, reject refuses",
+          },
+          {
+            name: "billing-organization-id",
+            valueRequired: true,
+            valueName: "organization-id",
+            description:
+              "Billing owner chosen by a user-scoped agent's first turn; omitted inherits the calling Pi agent or workflow's owner",
           },
           {
             name: "timeout-ms",
@@ -364,7 +341,7 @@ const promptRunTool = defineBackofficeRuntimeTool({
           },
         ],
         examples: [
-          'pi.prompt.run --session-id session-123 --content "Summarize your findings" --print assistantText',
+          'pi.prompt.run --agent assistant --content "Summarize your findings" --print assistantText',
         ],
       },
       parse: parsePromptRun,
@@ -374,44 +351,120 @@ const promptRunTool = defineBackofficeRuntimeTool({
   },
 });
 
-const sessionAbortTool = defineBackofficeRuntimeTool({
-  ...backofficeApiOperationToolFields("pi.session.abort"),
+const agentAbortTool = defineBackofficeRuntimeTool({
+  ...backofficeApiOperationToolFields("pi.agent.abort"),
   namespace: "pi",
-  name: "abortSession",
+  name: "abortAgent",
   execute: async (input, context: PiToolContext) => {
-    await requirePiManagerRuntime(context.runtimes.pi).abortSession(input);
+    await requirePiManagerRuntime(context.runtimes.pi).abortAgent(input);
     return { aborted: true as const };
   },
   adapters: {
     bash: {
-      command: "pi.session.abort",
+      command: "pi.agent.abort",
       help: {
-        summary: "pi.session.abort cancels active work in a durable Pi agent.",
+        summary: "pi.agent.abort cancels an agent's active work.",
         options: [
           {
-            name: "session-id",
+            name: "agent",
             required: true,
             valueRequired: true,
-            valueName: "session-id",
-            description: "Durable Pi session id",
+            valueName: "agent-name",
+            description: "Agent name",
           },
         ],
-        examples: ["pi.session.abort --session-id session-123"],
+        examples: ["pi.agent.abort --agent assistant"],
       },
-      parse: parseSessionAbort,
+      parse: parseAgentAbort,
       format: (data) => ({ data }),
     },
   },
 });
 
+const agentCreateTool = defineBackofficeRuntimeTool({
+  ...backofficeApiOperationToolFields("pi.agent.create"),
+  namespace: "pi",
+  name: "createAgent",
+  execute: async (input, context: PiToolContext) =>
+    await requirePiManagerRuntime(context.runtimes.pi).createAgent(input),
+  adapters: {
+    bash: {
+      command: "pi.agent.create",
+      help: {
+        summary: "pi.agent.create defines an agent in the current scope.",
+        options: definitionOptions,
+        examples: [
+          'pi.agent.create --agent reviewer --description "Reviews changes" --instructions /workspace/agents/reviewer.md --permission upload.read',
+        ],
+      },
+      parse: definitionArgsParser("pi.agent.create"),
+      format: (data) => ({ data }),
+    },
+  },
+});
+
+const agentUpdateTool = defineBackofficeRuntimeTool({
+  ...backofficeApiOperationToolFields("pi.agent.update"),
+  namespace: "pi",
+  name: "updateAgent",
+  execute: async (input, context: PiToolContext) =>
+    await requirePiManagerRuntime(context.runtimes.pi).updateAgent(input),
+  adapters: {
+    bash: {
+      command: "pi.agent.update",
+      help: {
+        summary: "pi.agent.update replaces an agent's whole definition.",
+        options: definitionOptions,
+        examples: [
+          'pi.agent.update --agent reviewer --description "Reviews and fixes changes" --instructions /workspace/agents/reviewer.md --permission "*"',
+        ],
+      },
+      parse: definitionArgsParser("pi.agent.update"),
+      format: (data) => ({ data }),
+    },
+  },
+});
+
+const agentDeleteTool = defineBackofficeRuntimeTool({
+  ...backofficeApiOperationToolFields("pi.agent.delete"),
+  namespace: "pi",
+  name: "deleteAgent",
+  execute: async (input, context: PiToolContext) => {
+    await requirePiManagerRuntime(context.runtimes.pi).deleteAgent(input);
+    return { deleted: true as const };
+  },
+  adapters: {
+    bash: {
+      command: "pi.agent.delete",
+      help: {
+        summary: "pi.agent.delete removes an agent's definition and keeps its conversation.",
+        options: [
+          {
+            name: "agent",
+            required: true,
+            valueRequired: true,
+            valueName: "agent-name",
+            description: "Agent name",
+          },
+        ],
+        examples: ["pi.agent.delete --agent reviewer"],
+      },
+      parse: parseAgentDelete,
+      format: () => ({ stdout: "Deleted agent definition.\n" }),
+    },
+  },
+});
+
 export const piRuntimeTools = [
-  sessionCreateTool,
-  sessionGetTool,
-  sessionListTool,
+  agentListTool,
+  agentGetTool,
+  agentCreateTool,
+  agentUpdateTool,
+  agentDeleteTool,
   promptSubmitTool,
   submissionGetTool,
   promptRunTool,
-  sessionAbortTool,
+  agentAbortTool,
 ] as const;
 
 export const piToolFamily = defineBackofficeRuntimeToolFamily({

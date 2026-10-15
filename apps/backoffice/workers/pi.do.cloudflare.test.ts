@@ -4,14 +4,18 @@ import { describe, expect, test, assert, vi } from "vitest";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { createModels } from "@earendil-works/pi-ai/models";
 import { fauxAssistantMessage, fauxProvider, fauxText } from "@earendil-works/pi-ai/providers/faux";
-import { piAgentConfigSchema, type PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
+import {
+  piAgentConfigSchema,
+  type PiAgentConfig,
+  type PiManagerAgent,
+} from "@fragno-dev/backoffice-api/v0/pi";
+import { allBackofficePermissionRequirements } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { env } from "cloudflare:workers";
 
 import { createRegistry, Harness, type ConversationView } from "@earendil-works/pi-durable";
 
 import {
-  BACKOFFICE_SYSTEM_ACTORS,
   createBackofficeServiceExecution,
   createBackofficeSystemExecution,
 } from "@/backoffice-runtime/context";
@@ -21,7 +25,8 @@ import {
   encodeBackofficeObjectAddress,
 } from "@/backoffice-runtime/object-registry";
 import { createCloudflareDurableObjectRuntimeServices } from "@/backoffice-runtime/runtime-services";
-import { piAgentObjectName } from "@/fragno/pi/agent/pi-agent-contract";
+import { piAgentObjectName, type PiAgentTurn } from "@/fragno/pi/agent/pi-agent-contract";
+import { recordPiAgentTurn } from "@/fragno/pi/agent/pi-agent-turns";
 
 import { openPiSessionStore } from "./lib/pi-session-store";
 import { createScriptedPiAgentDependencies } from "./pi-durable-scenario.test-support";
@@ -88,53 +93,50 @@ async function expectAlarmCleared(agent: DurableObjectStub<Pi>) {
   });
 }
 
-async function createSession(organizationId: string, name: string) {
-  const response = await managerRequest(organizationId, "/sessions", {
-    name,
-    model: { provider: "faux", modelId: "faux-1" },
-    instructions: "You are a durable test agent.",
-  });
-  expect(response.status, await response.clone().text()).toBe(201);
-  return await response.json<PiAgentConfig>();
+function orgAgent(organizationId: string): PiAgentConfig {
+  return {
+    scope: { kind: "org", orgId: organizationId },
+    agentName: "assistant",
+    billingOrganizationId: organizationId,
+  };
 }
 
+/** Authority for turns seeded below Backoffice's manager, as the manager would record it. */
+function seededTurn(config: PiAgentConfig): PiAgentTurn {
+  return {
+    actors: createBackofficeServiceExecution({
+      scope: config.scope,
+      service: { type: "automation", id: "pi-durable-scenario" },
+    }).actors,
+    scopeRestriction: null,
+    agent: {
+      model: { provider: "faux", modelId: "faux-1" },
+      instructions: "",
+      permissions: [...allBackofficePermissionRequirements],
+    },
+  };
+}
 describe("Pi durable agent scenarios", () => {
-  test("creates an org directory, hands off a prompt, runs tools, and reconnects after eviction", async () => {
+  test("provisions an org agent with its first turn, runs tools, and reconnects after eviction", async () => {
     const organizationId = `pi-org-${crypto.randomUUID()}`;
-    const session = await createSession(organizationId, "First agent");
-    const other = await createSession(organizationId, "Second agent");
-    const firstPageResponse = await managerRequest(organizationId, "/sessions?pageSize=1");
-    assert(firstPageResponse.status === 200);
-    const firstPage = await firstPageResponse.json<{
-      sessions: PiAgentConfig[];
-      cursor: string;
-      hasNextPage: boolean;
-    }>();
-    expect(firstPage.sessions).toHaveLength(1);
-    assert(firstPage.hasNextPage);
-    const secondPage = await (
-      await managerRequest(
-        organizationId,
-        `/sessions?cursor=${encodeURIComponent(firstPage.cursor)}`,
-      )
-    ).json<{ sessions: PiAgentConfig[]; hasNextPage: boolean }>();
-    assert(!secondPage.hasNextPage);
-    expect(
-      [...firstPage.sessions, ...secondPage.sessions].map((entry) => entry.sessionId).sort(),
-    ).toEqual([session.sessionId, other.sessionId].sort());
+    const config = orgAgent(organizationId);
+    const before = await (
+      await managerRequest(organizationId, "/agents/assistant")
+    ).json<PiManagerAgent>();
+    expect(before.provisioning).toBeNull();
 
-    const prompt = { requestId: "prompt-1", content: "Please echo and answer." };
-    const submitted = await managerRequest(
-      organizationId,
-      `/sessions/${session.sessionId}/prompts`,
-      prompt,
-    );
+    const prompt = {
+      requestId: "prompt-1",
+      content: "Please echo and answer.",
+      billingOrganizationId: null,
+    };
+    const submitted = await managerRequest(organizationId, "/agents/assistant/prompts", prompt);
     expect(submitted.status, await submitted.clone().text()).toBe(202);
     const receipt = await submitted.json<{ submissionId: number }>();
-    const agent = (env as CloudflareEnv).PI.getByName(piAgentObjectName(session));
+    const agent = (env as CloudflareEnv).PI.getByName(piAgentObjectName(config));
     const waiting = managerRequest(
       organizationId,
-      `/sessions/${session.sessionId}/submissions/prompt-1/wait?waitMs=5000`,
+      "/agents/assistant/submissions/prompt-1/wait?waitMs=5000",
     );
     await runDurableObjectAlarm(agent);
     const waited = await waiting;
@@ -144,12 +146,12 @@ describe("Pi durable agent scenarios", () => {
       submission: { id: receipt.submissionId, status: "done" },
     });
 
-    const completed = await (
-      await managerRequest(organizationId, `/sessions/${session.sessionId}/submissions/prompt-1`)
-    ).json();
-    expect(completed).toMatchObject({ id: receipt.submissionId, status: "done" });
+    const after = await (
+      await managerRequest(organizationId, "/agents/assistant")
+    ).json<PiManagerAgent>();
+    expect(after.provisioning).toEqual({ billingOrganizationId: organizationId });
     const view = await (
-      await managerRequest(organizationId, `/sessions/${session.sessionId}/view`)
+      await managerRequest(organizationId, "/agents/assistant/view")
     ).json<ConversationView>();
     expect(view.entries.map((entry) => entry.kind)).toContain("pi.tool-result");
     expect(JSON.stringify(view.entries)).toContain("durable tool result");
@@ -158,14 +160,14 @@ describe("Pi durable agent scenarios", () => {
       { provider: "faux", modelId: "faux-1", label: "Faux 1", contextWindow: 128_000 },
     ]);
     const history = await (
-      await managerRequest(organizationId, `/sessions/${session.sessionId}/entries?pageSize=2`)
+      await managerRequest(organizationId, "/agents/assistant/entries?pageSize=2")
     ).json<{ entries: unknown[]; hasNextPage: boolean }>();
     expect(history.entries).toHaveLength(2);
     assert(history.hasNextPage);
-    const exported = await managerRequest(organizationId, `/sessions/${session.sessionId}/export`);
+    const exported = await managerRequest(organizationId, "/agents/assistant/export");
     assert(exported.status === 200);
     expect(new TextDecoder().decode(await exported.arrayBuffer())).toContain(
-      '"type":"pi-durable-session"',
+      '"type":"pi-durable-agent"',
     );
     await expectAlarmCleared(agent);
     await runInDurableObject(agent, async (_instance, state) => {
@@ -177,36 +179,29 @@ describe("Pi durable agent scenarios", () => {
 
     await evictDurableObject(agent);
     await evictDurableObject(manager(organizationId));
-    const duplicate = await managerRequest(
-      organizationId,
-      `/sessions/${session.sessionId}/prompts`,
-      prompt,
-    );
+    const duplicate = await managerRequest(organizationId, "/agents/assistant/prompts", prompt);
     expect(await duplicate.json()).toMatchObject(receipt);
     await runDurableObjectAlarm(agent);
     const restored = await (
-      await managerRequest(organizationId, `/sessions/${session.sessionId}/view`)
+      await managerRequest(organizationId, "/agents/assistant/view")
     ).json<ConversationView>();
     expect(restored.entries).toEqual(view.entries);
-    const untouched = await (
-      await managerRequest(organizationId, `/sessions/${other.sessionId}/view`)
-    ).json<ConversationView>();
-    expect(untouched.entries).toHaveLength(0);
   });
 
   test("transfers the Pi conversation NDJSON stream through Cloudflare RPC", async () => {
     const organizationId = `pi-stream-${crypto.randomUUID()}`;
-    const session = await createSession(organizationId, "Streaming agent");
-    const response = await managerRequest(
-      organizationId,
-      `/sessions/${session.sessionId}/view-stream`,
-    );
+    const submitted = await managerRequest(organizationId, "/agents/assistant/prompts", {
+      requestId: "stream-1",
+      content: "Start the conversation.",
+      billingOrganizationId: null,
+    });
+    expect(submitted.status, await submitted.clone().text()).toBe(202);
+    const response = await managerRequest(organizationId, "/agents/assistant/view-stream");
     expect(response.headers.get("content-type")).toContain("application/x-ndjson");
     const reader = response.body!.getReader();
 
     expect(await readPiViewStreamFrame(reader, { buffer: "" })).toMatchObject({
       type: "snapshot",
-      view: { entries: [] },
     });
     await reader.cancel();
   });
@@ -219,7 +214,6 @@ describe("Pi durable agent scenarios", () => {
       { kind: "project", orgId: suffix, projectId: "shared-project" },
       { kind: "project", orgId: `other-${suffix}`, projectId: "shared-project" },
     ];
-    const sessions: PiAgentConfig[] = [];
     for (const scope of scopes) {
       const address = {
         binding: "PI_MANAGER",
@@ -251,25 +245,19 @@ describe("Pi durable agent scenarios", () => {
           }),
         );
       }
-      const created = await request("/sessions", {
-        name: "Scoped agent",
-        model: { provider: "faux", modelId: "faux-1" },
-        instructions: "Answer in this scope.",
+      const prompt = {
+        requestId: "scoped-prompt",
+        content: "Echo and answer in this scope.",
         billingOrganizationId: scope.kind === "user" ? "billing-org" : null,
-      });
-      assert.equal(created.status, 201, await created.clone().text());
-      const session = await created.json<PiAgentConfig>();
-      expect(session.scope).toEqual(scope);
-      sessions.push(session);
-      const prompt = { requestId: "scoped-prompt", content: "Echo and answer in this scope." };
-      const submitted = await request(`/sessions/${session.sessionId}/prompts`, prompt);
+      };
+      const submitted = await request("/agents/assistant/prompts", prompt);
       assert.equal(submitted.status, 202, await submitted.clone().text());
-      const agent = (env as CloudflareEnv).PI.getByName(piAgentObjectName(session));
+      const agent = (env as CloudflareEnv).PI.getByName(
+        piAgentObjectName({ scope, agentName: "assistant" }),
+      );
       // Submission schedules a real alarm, which may already be running; wait for the prompt to
       // settle rather than assuming this alarm call performs the turn.
-      const waiting = request(
-        `/sessions/${session.sessionId}/submissions/${prompt.requestId}/wait?waitMs=5000`,
-      );
+      const waiting = request(`/agents/assistant/submissions/${prompt.requestId}/wait?waitMs=5000`);
       await runDurableObjectAlarm(agent);
       const waited = await waiting;
       assert.equal(waited.status, 200, await waited.clone().text());
@@ -277,28 +265,31 @@ describe("Pi durable agent scenarios", () => {
         status: "settled",
         submission: { status: "done" },
       });
-      const view = await (
-        await request(`/sessions/${session.sessionId}/view`)
-      ).json<ConversationView>();
+      const view = await (await request("/agents/assistant/view")).json<ConversationView>();
       expect(JSON.stringify(view.entries)).toContain("durable answer");
+      expect(view.entries.filter((entry) => entry.kind === "pi.user")).toHaveLength(1);
       await evictDurableObject(agent);
       await evictDurableObject(scopedManager);
-      const restored = await (
-        await request(`/sessions/${session.sessionId}/view`)
-      ).json<ConversationView>();
+      const restored = await (await request("/agents/assistant/view")).json<ConversationView>();
       expect(restored.entries).toEqual(view.entries);
-      const directory = await (await request("/sessions")).json<{ sessions: PiAgentConfig[] }>();
-      expect(directory.sessions.map((entry) => entry.sessionId)).toContain(session.sessionId);
-      for (const foreign of sessions.filter((entry) => entry.sessionId !== session.sessionId)) {
-        assert.equal((await request(`/sessions/${foreign.sessionId}/prompts`, prompt)).status, 404);
-      }
+      const provisioned = await (await request("/agents/assistant")).json<PiManagerAgent>();
+      expect(provisioned.provisioning).not.toBeNull();
     }
   });
 
   test("a cold alarm resumes an unfinished input without admitting it again", async () => {
     const organizationId = `pi-recovery-${crypto.randomUUID()}`;
-    const config = await createSession(organizationId, "Recovering agent");
+    const config = orgAgent(organizationId);
+    const directory = await managerRequest(organizationId, "/agents/assistant/prompts", {
+      requestId: "provision",
+      content: "Provision the agent.",
+      billingOrganizationId: null,
+    });
+    expect(directory.status, await directory.clone().text()).toBe(202);
     const agent = (env as CloudflareEnv).PI.getByName(piAgentObjectName(config));
+    await runDurableObjectAlarm(agent);
+    await expectAlarmCleared(agent);
+    await evictDurableObject(agent);
     await runInDurableObject(agent, async (_instance, state) => {
       // Seed the state left by a prior process using Pi's real admission and close APIs.
       const faux = fauxProvider({ tokensPerSecond: 1 });
@@ -311,8 +302,8 @@ describe("Pi durable agent scenarios", () => {
         { models, registry: createRegistry() },
         BACKGROUND_CONTEXT,
       );
-      await state.storage.put("pi-agent-config", piAgentConfigSchema.parse(config));
-      const root = await harness.root(BACKGROUND_CONTEXT, { agent: { model: config.model } });
+      const root = await harness.root(BACKGROUND_CONTEXT);
+      await recordPiAgentTurn(harness, "recovery-1", seededTurn(config), BACKGROUND_CONTEXT);
       await root.submit(
         { type: "input", content: "Recover this prompt.", requestId: "recovery-1" },
         BACKGROUND_CONTEXT,
@@ -326,7 +317,7 @@ describe("Pi durable agent scenarios", () => {
     // alarm call does; wait for the input to settle either way.
     const waiting = managerRequest(
       organizationId,
-      `/sessions/${config.sessionId}/submissions/recovery-1/wait?waitMs=5000`,
+      "/agents/assistant/submissions/recovery-1/wait?waitMs=5000",
     );
     await runDurableObjectAlarm(agent);
     const waited = await waiting;
@@ -336,26 +327,18 @@ describe("Pi durable agent scenarios", () => {
       submission: { status: "done", requestId: "recovery-1" },
     });
     const view = await (
-      await managerRequest(organizationId, `/sessions/${config.sessionId}/view`)
+      await managerRequest(organizationId, "/agents/assistant/view")
     ).json<ConversationView>();
-    expect(view.entries.filter((entry) => entry.kind === "pi.user")).toHaveLength(1);
-    expect(JSON.stringify(view.entries)).toContain("durable answer");
+    // The provisioning prompt and the recovered one, each admitted exactly once.
+    expect(view.entries.filter((entry) => entry.kind === "pi.user")).toHaveLength(2);
+    expect(JSON.stringify(view.entries)).toContain("Recover this prompt.");
     await expectAlarmCleared(agent);
   });
 
   test.each(["view", "alarm"] as const)(
-    "a cold startup failure does not prevent a later %s from reopening the session",
+    "a cold startup failure does not prevent a later %s from reopening the agent",
     async (retryThrough) => {
-      const config: PiAgentConfig = {
-        scope: { kind: "org", orgId: `pi-startup-retry-${crypto.randomUUID()}` },
-        sessionId: crypto.randomUUID(),
-        name: "Recovering startup",
-        model: { provider: "faux", modelId: "faux-1" },
-        instructions: "Recover after the storage connection fails.",
-        actors: BACKOFFICE_SYSTEM_ACTORS,
-        billingOrganizationId: null,
-        scopeRestriction: null,
-      };
+      const config = orgAgent(`pi-startup-retry-${crypto.randomUUID()}`);
       const testEnv = env as CloudflareEnv;
       const stub = testEnv.PI.getByName(piAgentObjectName(config));
       await runInDurableObject(stub, async (_instance, state) => {
@@ -385,7 +368,10 @@ describe("Pi durable agent scenarios", () => {
           nowEpochMs: Date.now,
         });
         try {
-          await expect(object.getView(config)).rejects.toThrow(startupError.message);
+          // The constructor's startup reports its failure without poisoning later opens.
+          await vi.waitFor(() => {
+            expect(reports).toEqual([startupError]);
+          });
           if (retryThrough === "alarm") {
             await object.alarm();
           }
@@ -393,10 +379,10 @@ describe("Pi durable agent scenarios", () => {
           expect(reports).toEqual([startupError]);
           await expect(state.storage.get("pi-agent-config")).resolves.toEqual(config);
 
-          await object.submit(config, {
+          await object.submit(config, seededTurn(config), {
             requestId: "startup-recovered",
-            content: "Finish the recovered session.",
-            whenBusy: "steer",
+            content: "Finish the recovered turn.",
+            whenBusy: "followUp",
           });
           // The real object's alarm may already have consumed the one this submission scheduled;
           // running this object's alarm performs the turn either way.
@@ -416,24 +402,20 @@ describe("Pi durable agent scenarios", () => {
     },
   );
 
-  test("rejects unsigned and wrong-scope requests and cannot hand off another org's session", async () => {
+  test("rejects unsigned and wrong-scope requests and cannot hand off another org's agent", async () => {
     const organizationId = `pi-owner-${crypto.randomUUID()}`;
     const strangerId = `pi-stranger-${crypto.randomUUID()}`;
-    const session = await createSession(organizationId, "Owned agent");
+    const config = orgAgent(organizationId);
     const unsigned = await manager(organizationId).fetch(
-      "https://backoffice.example/api/pi-manager/sessions",
+      "https://backoffice.example/api/pi-manager/agents",
     );
     assert(unsigned.status === 401);
-    assert((await managerRequest(organizationId, "/sessions", undefined, "agent")).status === 403);
-    assert((await managerRequest(organizationId, "/sessions?pageSize=0")).status === 400);
-    assert((await managerRequest(organizationId, "/sessions?cursor=invalid")).status === 400);
-    const missing = await managerRequest(strangerId, `/sessions/${session.sessionId}/prompts`, {
-      requestId: "unauthorized",
-      content: "Cannot reach the owned agent.",
-    });
-    assert(missing.status === 404);
+    assert((await managerRequest(organizationId, "/agents", undefined, "agent")).status === 403);
+    assert(
+      (await managerRequest(organizationId, "/agents/assistant/entries?pageSize=0")).status === 400,
+    );
     const foreign = await createAuthorizedBackofficeObjectRequest({
-      request: new Request("https://backoffice.example/api/pi-manager/sessions"),
+      request: new Request("https://backoffice.example/api/pi-manager/agents"),
       address: { binding: "PI_MANAGER", scope: { kind: "org", orgId: strangerId } },
       context: {
         execution: createBackofficeServiceExecution({
@@ -445,11 +427,11 @@ describe("Pi durable agent scenarios", () => {
       env: env as CloudflareEnv,
     });
     assert((await manager(organizationId).fetch(foreign)).status === 401);
-    const agent = (env as CloudflareEnv).PI.getByName(piAgentObjectName(session));
+    const agent = (env as CloudflareEnv).PI.getByName(piAgentObjectName(config));
     await runInDurableObject(agent, async (instance) => {
       const pi = instance as Pi;
       await expect(
-        pi.initialize({ ...session, scope: { kind: "org", orgId: strangerId } }),
+        pi.initialize({ ...config, scope: { kind: "org", orgId: strangerId } }),
       ).rejects.toThrow("object address");
     });
   });

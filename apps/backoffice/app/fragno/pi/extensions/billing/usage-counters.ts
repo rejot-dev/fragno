@@ -123,7 +123,7 @@ export function createPiBillingMeasurements(
 export function createPiDurableBillingEvent(input: {
   eventId: string;
   scope: BackofficeContextScope;
-  sessionId: string;
+  agentName: string;
   taskId: number;
   occurredAt: string;
   through: PiBillingCounters;
@@ -137,7 +137,7 @@ export function createPiDurableBillingEvent(input: {
     occurredAt: input.occurredAt,
     measurements: createPiBillingMeasurements(input.delta),
     metadata: {
-      sessionId: input.sessionId,
+      agentName: input.agentName,
       taskId: input.taskId,
       through: input.through,
     },

@@ -531,7 +531,7 @@ export const automationRouteActionSchema = z
     codemodeInputId: "AutomationRouteActionInput",
   }) satisfies z.ZodType<AutomationRouteAction>;
 
-const automationRouteManagedBySchema: z.ZodType<AutomationRouteManagedBy> = z
+export const automationRouteManagedBySchema: z.ZodType<AutomationRouteManagedBy> = z
   .strictObject({
     kind: z.literal("marketplace"),
     listingId: z.string().trim().min(1),

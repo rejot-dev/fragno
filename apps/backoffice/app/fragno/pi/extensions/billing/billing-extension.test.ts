@@ -22,20 +22,14 @@ import {
   type UsageState,
 } from "@earendil-works/pi-durable";
 
-import { BACKOFFICE_SYSTEM_ACTORS } from "@/backoffice-runtime/context";
 import type { BillingEventInput } from "@/fragno/billing/contracts";
 
 import { createPiBilling, PiDurableBillingDoc } from "./billing-extension";
 
 const config: PiAgentConfig = {
-  scopeRestriction: null,
   scope: { kind: "project", orgId: "org-1", projectId: "project-1" },
-  sessionId: "session-1",
-  name: "Billing test",
-  model: { provider: "faux", modelId: "faux-1" },
-  instructions: "",
+  agentName: "assistant",
   billingOrganizationId: "org-1",
-  actors: BACKOFFICE_SYSTEM_ACTORS,
 };
 
 const committedUsage: UsageState = {
@@ -105,7 +99,7 @@ test("durable Pi billing retries the exact event after delivery succeeds before 
       source: "pi-durable",
       eventType: "usage.committed",
       occurredAt: "2026-10-03T12:00:00.000Z",
-      metadata: { sessionId: "session-1" },
+      metadata: { agentName: "assistant" },
     });
     expect(
       Object.fromEntries(attempts[0].measurements.map(({ meter, quantity }) => [meter, quantity])),

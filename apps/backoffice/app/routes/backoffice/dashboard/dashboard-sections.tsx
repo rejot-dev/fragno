@@ -19,6 +19,8 @@ import { WorkflowRunGeneratedInterface } from "@/components/backoffice/workflow-
 import type { AutomationBrowserCollections } from "@/fragno/automation/tanstack/browser-database";
 import type { RuntimeToolWorkflowDescriptor } from "@/fragno/runtime-tools/workflow-catalog";
 
+import { formatPiAgentName } from "../agents/agent-name";
+import type { PiManagerAgentsResult } from "../agents/data";
 import type { AutomationScriptSourceRecord } from "../automations/data";
 import { formatRelativeTime } from "../automations/formatting";
 import {
@@ -31,7 +33,6 @@ import {
   integrationsScopeBasePath,
 } from "../integrations/connection-paths";
 import type { ListedIntegrationConnections } from "../integrations/connections.server";
-import type { PiManagerSessionsResult } from "../sessions/data";
 import { OrchestrationPanel } from "./orchestration-panel";
 import type { BackofficeDashboard, DashboardAttention } from "./overview";
 import {
@@ -53,7 +54,7 @@ const openedRunScrollMarginClassName = "scroll-mt-20";
 export type DashboardLoaderData = {
   selectedScope: BackofficeScopeSelection;
   connectionNames: ListedIntegrationConnections;
-  sessions: PiManagerSessionsResult;
+  agents: PiManagerAgentsResult;
   workflowSource: AutomationScriptSourceRecord;
   runtimeToolCatalog: readonly RuntimeToolWorkflowDescriptor[];
 };
@@ -74,9 +75,9 @@ export function DashboardSections({
   recentEvents: readonly { source: string; eventType: string }[];
 }) {
   const { selectedScope } = loaderData;
-  const sessionsPath = `/backoffice/sessions/${backofficeRouteScopePath(
+  const agentsPath = `/backoffice/agents/${backofficeRouteScopePath(
     backofficeRouteScopeFromResolvedScope(selectedScope),
-  )}/sessions`;
+  )}/agents`;
 
   return (
     <>
@@ -118,7 +119,7 @@ export function DashboardSections({
           {dashboard.upcoming.length > 0 ? (
             <UpcomingPanel upcoming={dashboard.upcoming} now={now} selectedScope={selectedScope} />
           ) : null}
-          <SessionsPanel sessions={loaderData.sessions} now={now} sessionsPath={sessionsPath} />
+          <AgentsPanel agents={loaderData.agents} agentsPath={agentsPath} />
         </div>
       </div>
     </>
@@ -687,46 +688,36 @@ function UpcomingRow({
   );
 }
 
-function SessionsPanel({
-  sessions,
-  now,
-  sessionsPath,
+function AgentsPanel({
+  agents,
+  agentsPath,
 }: {
-  sessions: PiManagerSessionsResult;
-  now: number;
-  sessionsPath: string;
+  agents: PiManagerAgentsResult;
+  agentsPath: string;
 }) {
   return (
-    <Panel
-      title="Recent sessions"
-      back={null}
-      footer={<PanelFooter to={sessionsPath} page="Sessions" />}
-    >
-      {sessions.sessionsError ? (
-        <p className="pt-3 text-xs text-[var(--bo-failed)]">{sessions.sessionsError}</p>
+    <Panel title="Agents" back={null} footer={<PanelFooter to={agentsPath} page="Agents" />}>
+      {agents.agentsError ? (
+        <p className="pt-3 text-xs text-[var(--bo-failed)]">{agents.agentsError}</p>
       ) : null}
-      {sessions.sessions.length === 0 ? (
-        <PanelEmpty>No sessions yet. Ask Pi to build or change an automation.</PanelEmpty>
-      ) : (
-        <ul className="divide-y divide-[color:var(--bo-border)]">
-          {sessions.sessions.map((session) => (
-            <li key={session.sessionId}>
-              <Link
-                to={`${sessionsPath}/${encodeURIComponent(session.sessionId)}`}
-                className="group flex items-center gap-3 py-2.5"
-              >
-                <Icon name="message-square" className="size-4 shrink-0 text-[var(--bo-muted-2)]" />
-                <span className="min-w-0 flex-1 truncate text-sm text-[var(--bo-fg)] group-hover:underline">
-                  {session.name || session.sessionId}
-                </span>
-                <span className="shrink-0 text-xs text-[var(--bo-muted-2)] tabular-nums">
-                  {formatRelativeTime(session.createdAt, now)}
-                </span>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
+      <ul className="divide-y divide-[color:var(--bo-border)]">
+        {agents.agents.map((agent) => (
+          <li key={agent.agentName}>
+            <Link
+              to={`${agentsPath}/${encodeURIComponent(agent.agentName)}`}
+              className="group flex items-center gap-3 py-2.5"
+            >
+              <Icon name="message-square" className="size-4 shrink-0 text-[var(--bo-muted-2)]" />
+              <span className="min-w-0 flex-1 truncate text-sm text-[var(--bo-fg)] group-hover:underline">
+                {formatPiAgentName(agent.agentName)}
+              </span>
+              <span className="shrink-0 text-xs text-[var(--bo-muted-2)]">
+                {agent.provisioning ? "Active" : "Not started"}
+              </span>
+            </Link>
+          </li>
+        ))}
+      </ul>
     </Panel>
   );
 }

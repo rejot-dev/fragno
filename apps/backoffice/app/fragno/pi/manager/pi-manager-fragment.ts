@@ -1,9 +1,16 @@
+import type { AutomationRouteManagedBy } from "@fragno-dev/backoffice-api/v0/automation";
 import {
-  piAgentConfigSchema,
-  piAgentCreationSchema,
-  piAgentModelSchema,
-  piManagerSessionSchema,
+  piAgentDefinitionCreateSchema,
+  piAgentDefinitionSchema,
+  piAgentDefinitionUpdateSchema,
+  piBillingOrganizationIdSchema,
+  piManagerAgentDirectorySchema,
+  piManagerAgentSchema,
+  piPromptReceiptOutputSchema,
+  piPromptWhenBusySchema,
   type PiAgentConfig,
+  type PiAgentDefinition,
+  type PiAgentDefinitionCreate,
 } from "@fragno-dev/backoffice-api/v0/pi";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import {
@@ -14,13 +21,22 @@ import { column, idColumn, schema, type Column } from "@fragno-dev/db/schema";
 import { z } from "zod";
 
 import { defineFragment, defineRoutes, instantiate } from "@fragno-dev/core";
-import { decodeCursor, withDatabase, type FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
+import { withDatabase, type FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
 
 import {
   backofficeExecutionScopeRestriction,
   type BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
 import { BackofficeForbiddenError, type BackofficeKernel } from "@/backoffice-runtime/kernel";
+import {
+  BUILT_IN_PI_AGENT_DEFINITIONS,
+  builtInPiAgentDefinition,
+  expandPiAgentPermissions,
+  piAgentInstructionsExist,
+  readPiAgentInstructions,
+  resolvePiAgentModel,
+  type PiAgentInstructionFiles,
+} from "@/fragno/pi/agent/agent-definitions";
 import {
   PiConversationViewDamagedError,
   piAgentCompactionSchema,
@@ -29,127 +45,254 @@ import {
   piAgentPromptSchema,
   piAgentSubmissionWaitRequestSchema,
   piAgentSubmissionWaitSchema,
+  piAgentTurnSchema,
   piAgentViewStreamFrameSchema,
   piAvailableModelSchema,
   type PiAgent,
+  type PiAgentTurn,
   type PiAvailableModel,
 } from "@/fragno/pi/agent/pi-agent-contract";
 
-const SESSION_ORDER_INDEX = "idx_pi_manager_session_created";
-const createSessionRequestSchema = piAgentCreationSchema.extend({
-  requestId: z.string().trim().min(1).max(256).optional(),
-});
 // Middleware resolves identity and overwrites provenance before route validation.
-const createSessionSchema = piAgentCreationSchema.extend({
-  requestId: z.string().trim().min(1).max(256),
-  actors: piAgentConfigSchema.shape.actors,
-  scopeRestriction: piAgentConfigSchema.shape.scopeRestriction,
+const turnProvenanceSchema = piAgentTurnSchema.pick({ actors: true, scopeRestriction: true });
+const promptRequestSchema = z.object({
+  requestId: z.string().trim().min(1).max(256).optional(),
+  content: piAgentPromptSchema.shape.content,
+  whenBusy: piPromptWhenBusySchema.default("followUp"),
+  billingOrganizationId: piBillingOrganizationIdSchema.default(null),
 });
-const provisionSessionSchema = createSessionSchema.extend({ model: piAgentModelSchema });
-const sessionSchema = piManagerSessionSchema;
+const promptSchema = piAgentPromptSchema.extend({
+  billingOrganizationId: piBillingOrganizationIdSchema,
+  provenance: turnProvenanceSchema,
+});
+const compactionSchema = piAgentCompactionSchema.extend({ provenance: turnProvenanceSchema });
 
 type PiManagerConfig = {
   scope: BackofficeContextScope;
   agent: (config: PiAgentConfig) => PiAgent;
   supportedAvailableModels: () => Promise<readonly PiAvailableModel[]>;
+  /** The scope's files as the manager reads them; instructions are the same for every member. */
+  agentInstructionFiles: () => PiAgentInstructionFiles;
 };
 
 type PiManagerRequestContext = {
   execution: BackofficeExecutionContext;
 };
 
-/** Only the session directory lives here; transcripts and tasks belong to agent objects. */
-const piManagerSchema = schema("pi_manager", (s) =>
+const jsonColumn = <T>() => column("json") as Column<"json", T, T>;
+
+/**
+ * A scope's agent definitions, keyed by agent name, and the agents that have been provisioned. A
+ * provisioning outlives its definition, so a deleted agent's conversation resumes if it returns.
+ */
+const piAgentDirectorySchema = schema("pi_manager", (s) =>
   s
-    .addTable("session", (t) =>
+    .noOp("removed obsolete session addTable history")
+    .noOp("removed obsolete session scopeRestriction alterTable history")
+    .addTable("agent", (t) =>
       t
         .addColumn("id", idColumn())
-        .addColumn("name", column("string").nullable())
-        .addColumn(
-          "model",
-          column("json") as Column<"json", PiAgentConfig["model"], PiAgentConfig["model"]>,
-        )
-        .addColumn("instructions", column("text"))
         .addColumn("billingOrganizationId", column("string").nullable())
-        .addColumn(
-          "actors",
-          column("json") as Column<"json", PiAgentConfig["actors"], PiAgentConfig["actors"]>,
-        )
         .addColumn(
           "createdAt",
           column("timestamp").defaultTo((b) => b.now()),
-        )
-        .createIndex(SESSION_ORDER_INDEX, ["createdAt", "id"]),
+        ),
     )
-    .alterTable("session", (t) =>
-      t.addColumn(
-        "scopeRestriction",
-        (
-          column("json") as Column<"json", BackofficeContextScope, BackofficeContextScope>
-        ).nullable(),
-      ),
+    .addTable("agent_definition", (t) =>
+      t
+        .addColumn("id", idColumn())
+        .addColumn("description", column("text"))
+        .addColumn("model", column("string").nullable())
+        .addColumn("permissions", jsonColumn<string[]>())
+        .addColumn("instructionsPath", column("string").nullable())
+        .addColumn("managedBy", jsonColumn<AutomationRouteManagedBy>().nullable()),
     ),
 );
 
-/** Execution scope is supplied by the object address, never by a session request body. */
+type AgentDefinitionRow = {
+  id: { valueOf(): string };
+  description: string;
+  model: string | null;
+  permissions: string[];
+  instructionsPath: string | null;
+  managedBy: AutomationRouteManagedBy | null;
+};
+
+function definitionFromRow(row: AgentDefinitionRow): PiAgentDefinition {
+  return {
+    agentName: row.id.valueOf(),
+    description: row.description,
+    model: row.model,
+    permissions: row.permissions,
+    instructionsPath: row.instructionsPath,
+    managedBy: row.managedBy,
+  };
+}
+
+type AgentProvisioning =
+  | { type: "provisioned"; config: PiAgentConfig }
+  | { type: "billing-owner-required" };
+
+/** Execution scope is supplied by the object address, never by a request body. */
 const piManagerDefinition = defineFragment<PiManagerConfig>("pi-manager")
-  .extend(withDatabase(piManagerSchema))
+  .extend(withDatabase(piAgentDirectorySchema))
   .providesBaseService(({ defineService, config }) =>
     defineService({
-      createSession: function (input: z.infer<typeof provisionSessionSchema>) {
-        return this.serviceTx(piManagerSchema)
+      /** A user-scoped agent's first turn chooses its billing owner; later turns reuse it. */
+      provisionAgent: function (input: {
+        agentName: string;
+        billingOrganizationId: string | null;
+      }) {
+        return this.serviceTx(piAgentDirectorySchema)
           .retrieve((uow) =>
-            uow.findFirst("session", (b) =>
-              b.whereIndex("primary", (eb) => eb("id", "=", input.requestId)),
+            uow.findFirst("agent", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", input.agentName)),
+            ),
+          )
+          .mutate(({ uow, retrieveResult: [existing] }): AgentProvisioning => {
+            if (existing) {
+              return {
+                type: "provisioned",
+                config: {
+                  scope: config.scope,
+                  agentName: input.agentName,
+                  billingOrganizationId: existing.billingOrganizationId,
+                },
+              };
+            }
+            if (config.scope.kind === "user" && input.billingOrganizationId === null) {
+              return { type: "billing-owner-required" };
+            }
+            uow.create("agent", {
+              id: input.agentName,
+              billingOrganizationId: input.billingOrganizationId,
+            });
+            return {
+              type: "provisioned",
+              config: {
+                scope: config.scope,
+                agentName: input.agentName,
+                billingOrganizationId: input.billingOrganizationId,
+              },
+            };
+          })
+          .build();
+      },
+      /** Built-in definitions shadow nothing: their names cannot be defined in a scope. */
+      getAgent: function (agentName: string) {
+        return this.serviceTx(piAgentDirectorySchema)
+          .retrieve((uow) =>
+            uow
+              .findFirst("agent_definition", (b) =>
+                b.whereIndex("primary", (eb) => eb("id", "=", agentName)),
+              )
+              .findFirst("agent", (b) => b.whereIndex("primary", (eb) => eb("id", "=", agentName))),
+          )
+          .transformRetrieve(([definition, agent]) => ({
+            definition:
+              builtInPiAgentDefinition(agentName) ??
+              (definition ? definitionFromRow(definition) : null),
+            config: agent
+              ? {
+                  scope: config.scope,
+                  agentName,
+                  billingOrganizationId: agent.billingOrganizationId,
+                }
+              : null,
+          }))
+          .build();
+      },
+      listAgents: function () {
+        return this.serviceTx(piAgentDirectorySchema)
+          .retrieve((uow) =>
+            uow
+              .find("agent_definition", (b) => b.whereIndex("primary"))
+              .find("agent", (b) => b.whereIndex("primary")),
+          )
+          .transformRetrieve(([definitions, agents]) => {
+            const provisioned = new Map(
+              agents.map((agent) => [agent.id.valueOf(), agent.billingOrganizationId]),
+            );
+            return [...BUILT_IN_PI_AGENT_DEFINITIONS, ...definitions.map(definitionFromRow)]
+              .sort((left, right) => left.agentName.localeCompare(right.agentName))
+              .map((definition) => ({
+                ...definition,
+                provisioning: provisioned.has(definition.agentName)
+                  ? { billingOrganizationId: provisioned.get(definition.agentName) ?? null }
+                  : null,
+              }));
+          })
+          .build();
+      },
+      /** Null when the name is taken. */
+      createAgentDefinition: function (definition: PiAgentDefinitionCreate) {
+        return this.serviceTx(piAgentDirectorySchema)
+          .retrieve((uow) =>
+            uow.findFirst("agent_definition", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", definition.agentName)),
+            ),
+          )
+          .mutate(({ uow, retrieveResult: [existing] }): PiAgentDefinition | null => {
+            if (existing) {
+              return null;
+            }
+            const { agentName, ...fields } = definition;
+            uow.create("agent_definition", { id: agentName, ...fields });
+            return definition;
+          })
+          .build();
+      },
+      /** Null when no definition has the name. */
+      replaceAgentDefinition: function (definition: PiAgentDefinitionCreate) {
+        return this.serviceTx(piAgentDirectorySchema)
+          .retrieve((uow) =>
+            uow.findFirst("agent_definition", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", definition.agentName)),
+            ),
+          )
+          .mutate(({ uow, retrieveResult: [existing] }): PiAgentDefinition | null => {
+            if (!existing) {
+              return null;
+            }
+            const { agentName: _agentName, ...fields } = definition;
+            uow.update("agent_definition", existing.id, (b) => b.set(fields).check());
+            return definition;
+          })
+          .build();
+      },
+      deleteAgentDefinition: function (agentName: string) {
+        return this.serviceTx(piAgentDirectorySchema)
+          .retrieve((uow) =>
+            uow.findFirst("agent_definition", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", agentName)),
             ),
           )
           .mutate(({ uow, retrieveResult: [existing] }) => {
             if (existing) {
-              return {
-                created: false,
-                session: {
-                  scope: config.scope,
-                  sessionId: existing.id.valueOf(),
-                  name: existing.name,
-                  model: existing.model,
-                  instructions: existing.instructions,
-                  actors: existing.actors,
-                  scopeRestriction: existing.scopeRestriction,
-                  billingOrganizationId: existing.billingOrganizationId,
-                },
-              } as const;
+              uow.delete("agent_definition", existing.id, (b) => b.check());
             }
-
-            const { requestId, ...sessionConfig } = input;
-            const id = uow.create("session", { id: requestId, ...sessionConfig });
-            return {
-              created: true,
-              session: { scope: config.scope, sessionId: id.valueOf(), ...sessionConfig },
-            } as const;
           })
           .build();
       },
-      getSession: function (sessionId: string) {
-        return this.serviceTx(piManagerSchema)
+      getAgents: function (agentNames: readonly string[]) {
+        return this.serviceTx(piAgentDirectorySchema)
           .retrieve((uow) =>
-            uow.findFirst("session", (b) =>
-              b.whereIndex("primary", (eb) => eb("id", "=", sessionId)),
+            uow.find("agent", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "in", [...agentNames])),
             ),
           )
-          .transformRetrieve(([session]) =>
-            session
-              ? {
-                  scope: config.scope,
-                  sessionId: session.id.valueOf(),
-                  name: session.name,
-                  model: session.model,
-                  instructions: session.instructions,
-                  actors: session.actors,
-                  scopeRestriction: session.scopeRestriction,
-                  billingOrganizationId: session.billingOrganizationId,
-                  createdAt: session.createdAt.toISOString(),
-                }
-              : null,
+          .transformRetrieve(
+            ([agents]) =>
+              new Map(
+                agents.map((agent): [string, PiAgentConfig] => [
+                  agent.id.valueOf(),
+                  {
+                    scope: config.scope,
+                    agentName: agent.id.valueOf(),
+                    billingOrganizationId: agent.billingOrganizationId,
+                  },
+                ]),
+              ),
           )
           .build();
       },
@@ -157,413 +300,522 @@ const piManagerDefinition = defineFragment<PiManagerConfig>("pi-manager")
   )
   .build();
 
-/** Minimal directory routes hand off agent operations only after finding an owned session. */
+function damagedViewResponse<T>(
+  cause: unknown,
+  error: (body: { code: string; message: string }, status: 409) => T,
+): T {
+  if (!PiConversationViewDamagedError.is(cause)) {
+    throw cause;
+  }
+  return error(
+    {
+      code: PiConversationViewDamagedError.code,
+      message: PiConversationViewDamagedError.publicMessage,
+    },
+    409,
+  );
+}
+
+function builtInResponse<T>(
+  agentName: string,
+  error: (body: { code: "AGENT_BUILT_IN"; message: string }, status: 409) => T,
+): T {
+  return error(
+    { code: "AGENT_BUILT_IN", message: `Pi agent '${agentName}' is built in and cannot change.` },
+    409,
+  );
+}
+
+/** Agent routes hand off to an agent object only after finding its provisioned directory record. */
 const piManagerRoutes = defineRoutes(piManagerDefinition).create(
-  ({ defineRoute, services, config }) => [
-    defineRoute({
-      method: "GET",
-      path: "/models",
-      outputSchema: z.array(piAvailableModelSchema),
-      handler: async function (_request, { json }) {
-        return json([...(await config.supportedAvailableModels())]);
-      },
-    }),
-    defineRoute({
-      method: "POST",
-      path: "/sessions",
-      inputSchema: createSessionSchema,
-      outputSchema: piAgentConfigSchema,
-      errorCodes: ["MODEL_UNAVAILABLE"],
-      handler: async function ({ input }, { json, error }) {
-        const values = await input.valid();
-        const availableModels = await config.supportedAvailableModels();
-        const requestedModel = values.model;
-        const model = requestedModel
-          ? availableModels.find(
-              (candidate) =>
-                candidate.provider === requestedModel.provider &&
-                candidate.modelId === requestedModel.modelId,
-            )
-          : (availableModels[0] ?? null);
-        if (!model) {
-          const message = requestedModel
-            ? `Pi model ${requestedModel.provider}/${requestedModel.modelId} is not available.`
-            : "No configured Pi model is available.";
-          return error({ code: "MODEL_UNAVAILABLE", message }, 400);
+  ({ defineRoute, services, config }) => {
+    // A turn runs with its agent's definition and instructions as they are when it is admitted.
+    async function admitTurn(
+      definition: PiAgentDefinition | null,
+      agentName: string,
+      provenance: z.infer<typeof turnProvenanceSchema>,
+    ): Promise<
+      | { type: "turn"; turn: PiAgentTurn }
+      | {
+          type: "error";
+          status: 400 | 404 | 422;
+          code: "AGENT_NOT_FOUND" | "AGENT_INSTRUCTIONS_NOT_FOUND" | "MODEL_UNAVAILABLE";
+          message: string;
         }
-        const result = await this.handlerTx()
-          .withServiceCalls(() => [
-            services.createSession({
-              ...values,
-              model: { provider: model.provider, modelId: model.modelId },
-            }),
-          ])
-          .transform(({ serviceResult: [result] }) => result)
-          .execute();
-        // Agent initialization is lazy: directory creation cannot strand an undiscoverable agent.
-        return json(result.session, result.created ? 201 : 200);
-      },
-    }),
-    defineRoute({
-      method: "GET",
-      path: "/sessions",
-      queryParameters: ["cursor", "pageSize"],
-      outputSchema: z.object({
-        sessions: z.array(sessionSchema),
-        cursor: z.string().nullable(),
-        hasNextPage: z.boolean(),
+    > {
+      if (!definition) {
+        return {
+          type: "error",
+          status: 404,
+          code: "AGENT_NOT_FOUND",
+          message: `Pi agent '${agentName}' is not defined.`,
+        };
+      }
+      const instructions = await readPiAgentInstructions(
+        config.agentInstructionFiles(),
+        definition,
+      );
+      if (instructions === null) {
+        return {
+          type: "error",
+          status: 422,
+          code: "AGENT_INSTRUCTIONS_NOT_FOUND",
+          message: `Pi agent '${agentName}' instructions file ${definition.instructionsPath} does not exist.`,
+        };
+      }
+      const model = resolvePiAgentModel(definition, await config.supportedAvailableModels());
+      if (!model) {
+        return {
+          type: "error",
+          status: 400,
+          code: "MODEL_UNAVAILABLE",
+          message: definition.model
+            ? `Pi model ${definition.model} is not available.`
+            : "No configured Pi model is available.",
+        };
+      }
+      return {
+        type: "turn",
+        turn: {
+          ...provenance,
+          agent: {
+            model: { provider: model.provider, modelId: model.modelId },
+            instructions,
+            permissions: expandPiAgentPermissions(definition.permissions),
+          },
+        },
+      };
+    }
+
+    // Checked on write so a definition names a real file; a later deletion fails its next turn.
+    async function missingInstructions<T>(
+      instructionsPath: string | null,
+      error: (body: { code: "AGENT_INSTRUCTIONS_NOT_FOUND"; message: string }, status: 400) => T,
+    ): Promise<T | undefined> {
+      if (
+        instructionsPath === null ||
+        (await piAgentInstructionsExist(config.agentInstructionFiles(), instructionsPath))
+      ) {
+        return undefined;
+      }
+      return error(
+        {
+          code: "AGENT_INSTRUCTIONS_NOT_FOUND",
+          message: `Pi agent instructions file ${instructionsPath} does not exist.`,
+        },
+        400,
+      );
+    }
+
+    return [
+      defineRoute({
+        method: "GET",
+        path: "/models",
+        outputSchema: z.array(piAvailableModelSchema),
+        handler: async function (_request, { json }) {
+          return json([...(await config.supportedAvailableModels())]);
+        },
       }),
-      errorCodes: ["INVALID_CURSOR", "INVALID_PAGE_SIZE"],
-      handler: async function ({ query }, { json, error }) {
-        let cursor;
-        try {
-          const encoded = query.get("cursor");
-          cursor = encoded ? decodeCursor(encoded) : null;
-          if (
-            cursor &&
-            (cursor.indexName !== SESSION_ORDER_INDEX ||
-              cursor.orderDirection !== "desc" ||
-              cursor.pageSize < 1 ||
-              cursor.pageSize > 100 ||
-              !z
-                .object({ createdAt: z.coerce.date(), id: z.string().min(1) })
-                .safeParse(cursor.indexValues).success)
-          ) {
-            return error({ code: "INVALID_CURSOR", message: "Invalid Pi session cursor." }, 400);
-          }
-        } catch {
-          return error({ code: "INVALID_CURSOR", message: "Invalid Pi session cursor." }, 400);
-        }
-        const pageSize = z.coerce
-          .number()
-          .int()
-          .min(1)
-          .max(100)
-          .safeParse(query.get("pageSize") ?? 20);
-        if (!pageSize.success) {
-          return error(
-            {
-              code: "INVALID_PAGE_SIZE",
-              message: "Pi session page size must be between 1 and 100.",
-            },
-            400,
+      defineRoute({
+        method: "GET",
+        path: "/agents",
+        outputSchema: piManagerAgentDirectorySchema,
+        handler: async function (_request, { json }) {
+          const agents = await this.handlerTx()
+            .withServiceCalls(() => [services.listAgents()])
+            .transform(({ serviceResult: [agents] }) => agents)
+            .execute();
+          return json({ agents });
+        },
+      }),
+      defineRoute({
+        method: "POST",
+        path: "/agents",
+        inputSchema: piAgentDefinitionCreateSchema,
+        outputSchema: piAgentDefinitionSchema,
+        errorCodes: ["AGENT_EXISTS", "AGENT_INSTRUCTIONS_NOT_FOUND"],
+        handler: async function ({ input }, { json, error }) {
+          const definition = await input.valid();
+          const conflict = error(
+            { code: "AGENT_EXISTS", message: `Pi agent '${definition.agentName}' already exists.` },
+            409,
           );
-        }
-        const page = await this.handlerTx()
-          .retrieve(({ forSchema }) =>
-            forSchema(piManagerSchema).findWithCursor("session", (b) => {
-              const ordered = b
-                .whereIndex(SESSION_ORDER_INDEX)
-                .orderByIndex(SESSION_ORDER_INDEX, "desc")
-                .pageSize(cursor?.pageSize ?? pageSize.data);
-              return cursor ? ordered.after(cursor) : ordered;
-            }),
-          )
-          .transformRetrieve(([page]) => page)
-          .execute();
-        return json({
-          sessions: page.items.map((session) => ({
-            scope: config.scope,
-            sessionId: session.id.valueOf(),
-            name: session.name,
-            model: session.model,
-            instructions: session.instructions,
-            actors: session.actors,
-            scopeRestriction: session.scopeRestriction,
-            billingOrganizationId: session.billingOrganizationId,
-            createdAt: session.createdAt.toISOString(),
-          })),
-          cursor: page.cursor?.encode() ?? null,
-          hasNextPage: page.hasNextPage,
-        });
-      },
-    }),
-    defineRoute({
-      method: "GET",
-      path: "/sessions/:sessionId",
-      outputSchema: sessionSchema,
-      errorCodes: ["SESSION_NOT_FOUND"],
-      handler: async function ({ pathParams }, { json, error }) {
-        const session = await this.handlerTx()
-          .withServiceCalls(() => [services.getSession(pathParams.sessionId)])
-          .transform(({ serviceResult: [session] }) => session)
-          .execute();
-        return session
-          ? json(session)
-          : error({ code: "SESSION_NOT_FOUND", message: "Pi session was not found." }, 404);
-      },
-    }),
-    defineRoute({
-      method: "POST",
-      path: "/sessions/:sessionId/prompts",
-      inputSchema: piAgentPromptSchema,
-      outputSchema: z.object({ submissionId: z.number(), requestId: z.string() }),
-      errorCodes: ["SESSION_NOT_FOUND"],
-      handler: async function ({ pathParams, input }, { json, error }) {
-        const prompt = await input.valid();
-        const session = await this.handlerTx()
-          .withServiceCalls(() => [services.getSession(pathParams.sessionId)])
-          .transform(({ serviceResult: [session] }) => session)
-          .execute();
-        if (!session) {
-          return error({ code: "SESSION_NOT_FOUND", message: "Pi session was not found." }, 404);
-        }
-        return json(await config.agent(session).submit(session, prompt), 202);
-      },
-    }),
-    defineRoute({
-      method: "GET",
-      path: "/sessions/:sessionId/view",
-      // Pi owns this experimental structural view; the manager deliberately keeps it opaque.
-      outputSchema: z.unknown(),
-      errorCodes: ["SESSION_NOT_FOUND", PiConversationViewDamagedError.code],
-      handler: async function ({ pathParams }, { json, error }) {
-        const session = await this.handlerTx()
-          .withServiceCalls(() => [services.getSession(pathParams.sessionId)])
-          .transform(({ serviceResult: [session] }) => session)
-          .execute();
-        if (!session) {
-          return error({ code: "SESSION_NOT_FOUND", message: "Pi session was not found." }, 404);
-        }
-        try {
-          return json(await config.agent(session).getView(session));
-        } catch (cause) {
-          if (PiConversationViewDamagedError.is(cause)) {
+          if (builtInPiAgentDefinition(definition.agentName)) {
+            return conflict;
+          }
+          const missing = await missingInstructions(definition.instructionsPath, error);
+          if (missing) {
+            return missing;
+          }
+          const created = await this.handlerTx()
+            .withServiceCalls(() => [services.createAgentDefinition(definition)])
+            .transform(({ serviceResult: [created] }) => created)
+            .execute();
+          return created ? json(created, 201) : conflict;
+        },
+      }),
+      defineRoute({
+        method: "GET",
+        path: "/agents/:agentName",
+        outputSchema: piManagerAgentSchema,
+        errorCodes: ["AGENT_NOT_FOUND"],
+        handler: async function ({ pathParams }, { json, error }) {
+          const { definition, config: agent } = await this.handlerTx()
+            .withServiceCalls(() => [services.getAgent(pathParams.agentName)])
+            .transform(({ serviceResult: [agent] }) => agent)
+            .execute();
+          if (!definition) {
+            return error({ code: "AGENT_NOT_FOUND", message: "Pi agent is not defined." }, 404);
+          }
+          return json({
+            ...definition,
+            provisioning: agent ? { billingOrganizationId: agent.billingOrganizationId } : null,
+          });
+        },
+      }),
+      defineRoute({
+        method: "PUT",
+        path: "/agents/:agentName",
+        inputSchema: piAgentDefinitionUpdateSchema,
+        outputSchema: piAgentDefinitionSchema,
+        errorCodes: ["AGENT_NOT_FOUND", "AGENT_BUILT_IN", "AGENT_INSTRUCTIONS_NOT_FOUND"],
+        handler: async function ({ pathParams, input }, { json, error }) {
+          const { agentName } = pathParams;
+          if (builtInPiAgentDefinition(agentName)) {
+            return builtInResponse(agentName, error);
+          }
+          const definition = { agentName, ...(await input.valid()) };
+          const missing = await missingInstructions(definition.instructionsPath, error);
+          if (missing) {
+            return missing;
+          }
+          const replaced = await this.handlerTx()
+            .withServiceCalls(() => [services.replaceAgentDefinition(definition)])
+            .transform(({ serviceResult: [replaced] }) => replaced)
+            .execute();
+          return replaced
+            ? json(replaced)
+            : error({ code: "AGENT_NOT_FOUND", message: "Pi agent is not defined." }, 404);
+        },
+      }),
+      defineRoute({
+        method: "DELETE",
+        path: "/agents/:agentName",
+        errorCodes: ["AGENT_BUILT_IN"],
+        handler: async function ({ pathParams }, { empty, error }) {
+          if (builtInPiAgentDefinition(pathParams.agentName)) {
+            return builtInResponse(pathParams.agentName, error);
+          }
+          await this.handlerTx()
+            .withServiceCalls(() => [services.deleteAgentDefinition(pathParams.agentName)])
+            .execute();
+          return empty(204);
+        },
+      }),
+      defineRoute({
+        method: "POST",
+        path: "/agents/:agentName/prompts",
+        inputSchema: promptSchema,
+        outputSchema: piPromptReceiptOutputSchema,
+        errorCodes: [
+          "AGENT_NOT_FOUND",
+          "AGENT_INSTRUCTIONS_NOT_FOUND",
+          "MODEL_UNAVAILABLE",
+          "PI_BILLING_OWNER_REQUIRED",
+          "AGENT_BUSY",
+        ],
+        handler: async function ({ pathParams, input }, { json, error }) {
+          const { provenance, billingOrganizationId, ...prompt } = await input.valid();
+          const { definition } = await this.handlerTx()
+            .withServiceCalls(() => [services.getAgent(pathParams.agentName)])
+            .transform(({ serviceResult: [agent] }) => agent)
+            .execute();
+          const admitted = await admitTurn(definition, pathParams.agentName, provenance);
+          if (admitted.type === "error") {
+            return error({ code: admitted.code, message: admitted.message }, admitted.status);
+          }
+          const provisioning = await this.handlerTx()
+            .withServiceCalls(() => [
+              services.provisionAgent({ agentName: pathParams.agentName, billingOrganizationId }),
+            ])
+            .transform(({ serviceResult: [result] }) => result)
+            .execute();
+          if (provisioning.type === "billing-owner-required") {
             return error(
               {
-                code: PiConversationViewDamagedError.code,
-                message: PiConversationViewDamagedError.publicMessage,
+                code: "PI_BILLING_OWNER_REQUIRED",
+                message: "A user-scoped Pi agent's first turn requires a billing organization.",
+              },
+              400,
+            );
+          }
+          const { config: agentConfig } = provisioning;
+          const submitted = await config
+            .agent(agentConfig)
+            .submit(agentConfig, admitted.turn, prompt);
+          if (submitted.type === "busy") {
+            return error(
+              {
+                code: "AGENT_BUSY",
+                message: `Agent "${pathParams.agentName}" is running a turn; the prompt was not queued.`,
               },
               409,
             );
           }
-          throw cause;
-        }
-      },
-    }),
-    defineRoute({
-      method: "GET",
-      path: "/sessions/:sessionId/view-stream",
-      outputSchema: z.array(piAgentViewStreamFrameSchema),
-      errorCodes: ["SESSION_NOT_FOUND", PiConversationViewDamagedError.code],
-      handler: async function ({ pathParams }, { error }) {
-        const session = await this.handlerTx()
-          .withServiceCalls(() => [services.getSession(pathParams.sessionId)])
-          .transform(({ serviceResult: [session] }) => session)
-          .execute();
-        if (!session) {
-          return error({ code: "SESSION_NOT_FOUND", message: "Pi session was not found." }, 404);
-        }
-        try {
-          return new Response(await config.agent(session).watchView(session), {
+          return json(
+            {
+              submissionId: submitted.submissionId,
+              requestId: submitted.requestId,
+              whenBusy: submitted.whenBusy,
+            },
+            202,
+          );
+        },
+      }),
+      defineRoute({
+        method: "GET",
+        path: "/agents/:agentName/view",
+        // Pi owns this experimental structural view; the manager deliberately keeps it opaque.
+        outputSchema: z.unknown(),
+        errorCodes: ["AGENT_NOT_STARTED", PiConversationViewDamagedError.code],
+        handler: async function ({ pathParams }, { json, error }) {
+          const agent = await this.handlerTx()
+            .withServiceCalls(() => [services.getAgents([pathParams.agentName])])
+            .transform(({ serviceResult: [agents] }) => agents.get(pathParams.agentName))
+            .execute();
+          if (!agent) {
+            return error({ code: "AGENT_NOT_STARTED", message: "Pi agent has no turns yet." }, 404);
+          }
+          try {
+            return json(await config.agent(agent).getView(agent));
+          } catch (cause) {
+            return damagedViewResponse(cause, error);
+          }
+        },
+      }),
+      defineRoute({
+        method: "GET",
+        path: "/agents/:agentName/view-stream",
+        outputSchema: z.array(piAgentViewStreamFrameSchema),
+        errorCodes: ["AGENT_NOT_STARTED", PiConversationViewDamagedError.code],
+        handler: async function ({ pathParams }, { error }) {
+          const agent = await this.handlerTx()
+            .withServiceCalls(() => [services.getAgents([pathParams.agentName])])
+            .transform(({ serviceResult: [agents] }) => agents.get(pathParams.agentName))
+            .execute();
+          if (!agent) {
+            return error({ code: "AGENT_NOT_STARTED", message: "Pi agent has no turns yet." }, 404);
+          }
+          try {
+            return new Response(await config.agent(agent).watchView(agent), {
+              headers: {
+                "cache-control": "no-cache",
+                "content-type": "application/x-ndjson; charset=utf-8",
+                "x-content-type-options": "nosniff",
+              },
+            });
+          } catch (cause) {
+            return damagedViewResponse(cause, error);
+          }
+        },
+      }),
+      defineRoute({
+        method: "GET",
+        path: "/agents/:agentName/entries",
+        queryParameters: ["cursor", "pageSize"],
+        outputSchema: z.object({
+          entries: z.array(z.unknown()),
+          cursor: z.string().nullable(),
+          hasNextPage: z.boolean(),
+        }),
+        errorCodes: ["AGENT_NOT_STARTED", "INVALID_CURSOR", "INVALID_PAGE_SIZE"],
+        handler: async function ({ pathParams, query }, { json, error }) {
+          const pageSize = z.coerce
+            .number()
+            .int()
+            .min(1)
+            .max(256)
+            .safeParse(query.get("pageSize") ?? 100);
+          if (!pageSize.success) {
+            return error(
+              {
+                code: "INVALID_PAGE_SIZE",
+                message: "Pi entry page size must be between 1 and 256.",
+              },
+              400,
+            );
+          }
+          let cursor: z.infer<typeof piAgentEntryPageRequestSchema>["cursor"] = null;
+          const encodedCursor = query.get("cursor");
+          if (encodedCursor) {
+            try {
+              cursor = piAgentEntryPageRequestSchema.shape.cursor.parse(
+                JSON.parse(encodedCursor) as unknown,
+              );
+            } catch {
+              return error({ code: "INVALID_CURSOR", message: "Invalid Pi entry cursor." }, 400);
+            }
+          }
+          const agent = await this.handlerTx()
+            .withServiceCalls(() => [services.getAgents([pathParams.agentName])])
+            .transform(({ serviceResult: [agents] }) => agents.get(pathParams.agentName))
+            .execute();
+          if (!agent) {
+            return error({ code: "AGENT_NOT_STARTED", message: "Pi agent has no turns yet." }, 404);
+          }
+          const page = await config.agent(agent).listEntries(agent, {
+            pageSize: pageSize.data,
+            cursor,
+          });
+          return json({
+            entries: [...page.entries],
+            cursor: page.cursor === null ? null : JSON.stringify(page.cursor),
+            hasNextPage: page.cursor !== null,
+          });
+        },
+      }),
+      defineRoute({
+        method: "GET",
+        path: "/agents/:agentName/export",
+        errorCodes: ["AGENT_NOT_STARTED"],
+        handler: async function ({ pathParams }, { error }) {
+          const agent = await this.handlerTx()
+            .withServiceCalls(() => [services.getAgents([pathParams.agentName])])
+            .transform(({ serviceResult: [agents] }) => agents.get(pathParams.agentName))
+            .execute();
+          if (!agent) {
+            return error({ code: "AGENT_NOT_STARTED", message: "Pi agent has no turns yet." }, 404);
+          }
+          return new Response(await config.agent(agent).exportEntries(agent), {
             headers: {
-              "cache-control": "no-cache",
+              "cache-control": "no-store",
+              "content-disposition": `attachment; filename="pi-agent-${agent.agentName}.jsonl"`,
               "content-type": "application/x-ndjson; charset=utf-8",
               "x-content-type-options": "nosniff",
             },
           });
-        } catch (cause) {
-          if (PiConversationViewDamagedError.is(cause)) {
+        },
+      }),
+      defineRoute({
+        method: "POST",
+        path: "/agents/:agentName/compact",
+        inputSchema: compactionSchema,
+        outputSchema: z.object({ taskId: z.number().int().positive() }),
+        errorCodes: [
+          "AGENT_NOT_STARTED",
+          "AGENT_NOT_FOUND",
+          "AGENT_INSTRUCTIONS_NOT_FOUND",
+          "MODEL_UNAVAILABLE",
+        ],
+        handler: async function ({ pathParams, input }, { json, error }) {
+          const { provenance, ...request } = await input.valid();
+          const { definition, config: agent } = await this.handlerTx()
+            .withServiceCalls(() => [services.getAgent(pathParams.agentName)])
+            .transform(({ serviceResult: [agent] }) => agent)
+            .execute();
+          if (!agent) {
+            return error({ code: "AGENT_NOT_STARTED", message: "Pi agent has no turns yet." }, 404);
+          }
+          const admitted = await admitTurn(definition, pathParams.agentName, provenance);
+          if (admitted.type === "error") {
+            return error({ code: admitted.code, message: admitted.message }, admitted.status);
+          }
+          return json(await config.agent(agent).compact(agent, admitted.turn, request), 202);
+        },
+      }),
+      defineRoute({
+        method: "GET",
+        path: "/agents/:agentName/compactions/:taskId",
+        outputSchema: piAgentCompactionStatusSchema,
+        errorCodes: ["AGENT_NOT_STARTED", "COMPACTION_NOT_FOUND"],
+        handler: async function ({ pathParams }, { json, error }) {
+          const agent = await this.handlerTx()
+            .withServiceCalls(() => [services.getAgents([pathParams.agentName])])
+            .transform(({ serviceResult: [agents] }) => agents.get(pathParams.agentName))
+            .execute();
+          if (!agent) {
+            return error({ code: "AGENT_NOT_STARTED", message: "Pi agent has no turns yet." }, 404);
+          }
+          const taskId = z.coerce.number().int().positive().safeParse(pathParams.taskId);
+          const compaction = taskId.success
+            ? await config.agent(agent).getCompaction(agent, taskId.data)
+            : null;
+          return compaction
+            ? json(compaction)
+            : error({ code: "COMPACTION_NOT_FOUND", message: "Pi compaction was not found." }, 404);
+        },
+      }),
+      defineRoute({
+        method: "GET",
+        path: "/agents/:agentName/submissions/:requestId/wait",
+        queryParameters: ["waitMs"],
+        outputSchema: piAgentSubmissionWaitSchema,
+        errorCodes: ["AGENT_NOT_STARTED", "SUBMISSION_NOT_FOUND", "INVALID_WAIT_DURATION"],
+        handler: async function ({ pathParams, query }, { json, error }) {
+          const wait = piAgentSubmissionWaitRequestSchema.safeParse({
+            waitMs: Number(query.get("waitMs")),
+          });
+          if (!wait.success) {
             return error(
               {
-                code: PiConversationViewDamagedError.code,
-                message: PiConversationViewDamagedError.publicMessage,
+                code: "INVALID_WAIT_DURATION",
+                message: "Pi submission wait duration is invalid.",
               },
-              409,
+              400,
             );
           }
-          throw cause;
-        }
-      },
-    }),
-    defineRoute({
-      method: "GET",
-      path: "/sessions/:sessionId/entries",
-      queryParameters: ["cursor", "pageSize"],
-      outputSchema: z.object({
-        entries: z.array(z.unknown()),
-        cursor: z.string().nullable(),
-        hasNextPage: z.boolean(),
+          const agent = await this.handlerTx()
+            .withServiceCalls(() => [services.getAgents([pathParams.agentName])])
+            .transform(({ serviceResult: [agents] }) => agents.get(pathParams.agentName))
+            .execute();
+          if (!agent) {
+            return error({ code: "AGENT_NOT_STARTED", message: "Pi agent has no turns yet." }, 404);
+          }
+          const result = await config
+            .agent(agent)
+            .waitForSubmission(agent, pathParams.requestId, wait.data);
+          return result
+            ? json(result)
+            : error({ code: "SUBMISSION_NOT_FOUND", message: "Pi submission was not found." }, 404);
+        },
       }),
-      errorCodes: ["SESSION_NOT_FOUND", "INVALID_CURSOR", "INVALID_PAGE_SIZE"],
-      handler: async function ({ pathParams, query }, { json, error }) {
-        const pageSize = z.coerce
-          .number()
-          .int()
-          .min(1)
-          .max(256)
-          .safeParse(query.get("pageSize") ?? 100);
-        if (!pageSize.success) {
-          return error(
-            {
-              code: "INVALID_PAGE_SIZE",
-              message: "Pi entry page size must be between 1 and 256.",
-            },
-            400,
-          );
-        }
-        let cursor: z.infer<typeof piAgentEntryPageRequestSchema>["cursor"] = null;
-        const encodedCursor = query.get("cursor");
-        if (encodedCursor) {
-          try {
-            cursor = piAgentEntryPageRequestSchema.shape.cursor.parse(
-              JSON.parse(encodedCursor) as unknown,
-            );
-          } catch {
-            return error({ code: "INVALID_CURSOR", message: "Invalid Pi entry cursor." }, 400);
+      defineRoute({
+        method: "GET",
+        path: "/agents/:agentName/submissions/:requestId",
+        outputSchema: z.unknown(),
+        errorCodes: ["AGENT_NOT_STARTED", "SUBMISSION_NOT_FOUND"],
+        handler: async function ({ pathParams }, { json, error }) {
+          const agent = await this.handlerTx()
+            .withServiceCalls(() => [services.getAgents([pathParams.agentName])])
+            .transform(({ serviceResult: [agents] }) => agents.get(pathParams.agentName))
+            .execute();
+          if (!agent) {
+            return error({ code: "AGENT_NOT_STARTED", message: "Pi agent has no turns yet." }, 404);
           }
-        }
-        const session = await this.handlerTx()
-          .withServiceCalls(() => [services.getSession(pathParams.sessionId)])
-          .transform(({ serviceResult: [session] }) => session)
-          .execute();
-        if (!session) {
-          return error({ code: "SESSION_NOT_FOUND", message: "Pi session was not found." }, 404);
-        }
-        const page = await config.agent(session).listEntries(session, {
-          pageSize: pageSize.data,
-          cursor,
-        });
-        return json({
-          entries: [...page.entries],
-          cursor: page.cursor === null ? null : JSON.stringify(page.cursor),
-          hasNextPage: page.cursor !== null,
-        });
-      },
-    }),
-    defineRoute({
-      method: "GET",
-      path: "/sessions/:sessionId/export",
-      errorCodes: ["SESSION_NOT_FOUND"],
-      handler: async function ({ pathParams }, { error }) {
-        const session = await this.handlerTx()
-          .withServiceCalls(() => [services.getSession(pathParams.sessionId)])
-          .transform(({ serviceResult: [session] }) => session)
-          .execute();
-        if (!session) {
-          return error({ code: "SESSION_NOT_FOUND", message: "Pi session was not found." }, 404);
-        }
-        const filenameSessionId = session.sessionId.replaceAll(/[^a-zA-Z0-9._-]/g, "-");
-        return new Response(await config.agent(session).exportEntries(session), {
-          headers: {
-            "cache-control": "no-store",
-            "content-disposition": `attachment; filename="pi-session-${filenameSessionId}.jsonl"`,
-            "content-type": "application/x-ndjson; charset=utf-8",
-            "x-content-type-options": "nosniff",
-          },
-        });
-      },
-    }),
-    defineRoute({
-      method: "POST",
-      path: "/sessions/:sessionId/compact",
-      inputSchema: piAgentCompactionSchema,
-      outputSchema: z.object({ taskId: z.number().int().positive() }),
-      errorCodes: ["SESSION_NOT_FOUND"],
-      handler: async function ({ pathParams, input }, { json, error }) {
-        const request = await input.valid();
-        const session = await this.handlerTx()
-          .withServiceCalls(() => [services.getSession(pathParams.sessionId)])
-          .transform(({ serviceResult: [session] }) => session)
-          .execute();
-        if (!session) {
-          return error({ code: "SESSION_NOT_FOUND", message: "Pi session was not found." }, 404);
-        }
-        return json(await config.agent(session).compact(session, request), 202);
-      },
-    }),
-    defineRoute({
-      method: "GET",
-      path: "/sessions/:sessionId/compactions/:taskId",
-      outputSchema: piAgentCompactionStatusSchema,
-      errorCodes: ["SESSION_NOT_FOUND", "COMPACTION_NOT_FOUND"],
-      handler: async function ({ pathParams }, { json, error }) {
-        const session = await this.handlerTx()
-          .withServiceCalls(() => [services.getSession(pathParams.sessionId)])
-          .transform(({ serviceResult: [session] }) => session)
-          .execute();
-        if (!session) {
-          return error({ code: "SESSION_NOT_FOUND", message: "Pi session was not found." }, 404);
-        }
-        const taskId = z.coerce.number().int().positive().safeParse(pathParams.taskId);
-        const compaction = taskId.success
-          ? await config.agent(session).getCompaction(session, taskId.data)
-          : null;
-        return compaction
-          ? json(compaction)
-          : error({ code: "COMPACTION_NOT_FOUND", message: "Pi compaction was not found." }, 404);
-      },
-    }),
-    defineRoute({
-      method: "GET",
-      path: "/sessions/:sessionId/submissions/:requestId/wait",
-      queryParameters: ["waitMs"],
-      outputSchema: piAgentSubmissionWaitSchema,
-      errorCodes: ["SESSION_NOT_FOUND", "SUBMISSION_NOT_FOUND", "INVALID_WAIT_DURATION"],
-      handler: async function ({ pathParams, query }, { json, error }) {
-        const wait = piAgentSubmissionWaitRequestSchema.safeParse({
-          waitMs: Number(query.get("waitMs")),
-        });
-        if (!wait.success) {
-          return error(
-            {
-              code: "INVALID_WAIT_DURATION",
-              message: "Pi submission wait duration is invalid.",
-            },
-            400,
-          );
-        }
-        const session = await this.handlerTx()
-          .withServiceCalls(() => [services.getSession(pathParams.sessionId)])
-          .transform(({ serviceResult: [session] }) => session)
-          .execute();
-        if (!session) {
-          return error({ code: "SESSION_NOT_FOUND", message: "Pi session was not found." }, 404);
-        }
-        const result = await config
-          .agent(session)
-          .waitForSubmission(session, pathParams.requestId, wait.data);
-        return result
-          ? json(result)
-          : error({ code: "SUBMISSION_NOT_FOUND", message: "Pi submission was not found." }, 404);
-      },
-    }),
-    defineRoute({
-      method: "GET",
-      path: "/sessions/:sessionId/submissions/:requestId",
-      outputSchema: z.unknown(),
-      errorCodes: ["SESSION_NOT_FOUND", "SUBMISSION_NOT_FOUND"],
-      handler: async function ({ pathParams }, { json, error }) {
-        const session = await this.handlerTx()
-          .withServiceCalls(() => [services.getSession(pathParams.sessionId)])
-          .transform(({ serviceResult: [session] }) => session)
-          .execute();
-        if (!session) {
-          return error({ code: "SESSION_NOT_FOUND", message: "Pi session was not found." }, 404);
-        }
-        const submission = await config.agent(session).getSubmission(session, pathParams.requestId);
-        return submission
-          ? json(submission)
-          : error({ code: "SUBMISSION_NOT_FOUND", message: "Pi submission was not found." }, 404);
-      },
-    }),
-    defineRoute({
-      method: "POST",
-      path: "/sessions/:sessionId/abort",
-      errorCodes: ["SESSION_NOT_FOUND"],
-      handler: async function ({ pathParams }, { empty, error }) {
-        const session = await this.handlerTx()
-          .withServiceCalls(() => [services.getSession(pathParams.sessionId)])
-          .transform(({ serviceResult: [session] }) => session)
-          .execute();
-        if (!session) {
-          return error({ code: "SESSION_NOT_FOUND", message: "Pi session was not found." }, 404);
-        }
-        await config.agent(session).abort(session);
-        return empty(204);
-      },
-    }),
-  ],
+          const submission = await config.agent(agent).getSubmission(agent, pathParams.requestId);
+          return submission
+            ? json(submission)
+            : error({ code: "SUBMISSION_NOT_FOUND", message: "Pi submission was not found." }, 404);
+        },
+      }),
+      defineRoute({
+        method: "POST",
+        path: "/agents/:agentName/abort",
+        errorCodes: ["AGENT_NOT_STARTED"],
+        handler: async function ({ pathParams }, { empty, error }) {
+          const agent = await this.handlerTx()
+            .withServiceCalls(() => [services.getAgents([pathParams.agentName])])
+            .transform(({ serviceResult: [agents] }) => agents.get(pathParams.agentName))
+            .execute();
+          if (!agent) {
+            return error({ code: "AGENT_NOT_STARTED", message: "Pi agent has no turns yet." }, 404);
+          }
+          await config.agent(agent).abort(agent);
+          return empty(204);
+        },
+      }),
+    ];
+  },
 );
 
 /** Authorizes every scoped directory request with trusted execution context and Pi permissions. */
@@ -579,7 +831,7 @@ export function createPiManagerFragment(
     .withOptions(options)
     .build()
     .withMiddleware(async function authorizePiManager(
-      { requestContext, method, ifMatchesRoute, requestState },
+      { requestContext, method, path, ifMatchesRoute, requestState },
       { error },
     ) {
       if (
@@ -594,71 +846,84 @@ export function createPiManagerFragment(
           403,
         );
       }
-      try {
-        await kernel.assertAuthorized({
-          execution: requestContext.execution,
-          operation:
-            method === "GET" ? BACKOFFICE_PERMISSION.pi.read : BACKOFFICE_PERMISSION.pi.modify,
-          resource: { kind: "pi-session-directory", scope: config.scope },
-        });
-      } catch (cause) {
-        if (cause instanceof BackofficeForbiddenError) {
-          return error(
-            { code: cause.reason, message: cause.message },
-            cause.reason === "authority-unavailable" ? 503 : 403,
-          );
+      async function authorize(
+        execution: BackofficeExecutionContext,
+        operation: (typeof BACKOFFICE_PERMISSION.pi)[keyof typeof BACKOFFICE_PERMISSION.pi],
+        resource: Record<string, unknown>,
+      ) {
+        try {
+          await kernel.assertAuthorized({ execution, operation, resource });
+          return undefined;
+        } catch (cause) {
+          if (cause instanceof BackofficeForbiddenError) {
+            return error(
+              { code: cause.reason, message: cause.message },
+              cause.reason === "authority-unavailable" ? 503 : 403,
+            );
+          }
+          throw cause;
         }
-        throw cause;
       }
-      return await ifMatchesRoute("POST", "/sessions", async () => {
-        const parsed = createSessionRequestSchema.safeParse(requestState.body);
+      const changesDefinitions =
+        (method === "POST" && path === "/agents") ||
+        ((method === "PUT" || method === "DELETE") && path === "/agents/:agentName");
+      const denied = await authorize(
+        requestContext.execution,
+        method === "GET"
+          ? BACKOFFICE_PERMISSION.pi.read
+          : changesDefinitions
+            ? BACKOFFICE_PERMISSION.pi.manage
+            : BACKOFFICE_PERMISSION.pi.modify,
+        { kind: "pi-agent-directory", scope: config.scope },
+      );
+      if (denied) {
+        return denied;
+      }
+      // Persisted turn authority is identity only; temporary request authority never leaves here.
+      const provenance = {
+        actors: requestContext.execution.actors,
+        scopeRestriction: backofficeExecutionScopeRestriction(requestContext.execution),
+      };
+      const prompted = await ifMatchesRoute("POST", "/agents/:agentName/prompts", async () => {
+        const parsed = promptRequestSchema.safeParse(requestState.body);
         if (!parsed.success) {
-          return error({ code: "INVALID_SESSION", message: parsed.error.message }, 400);
+          return error({ code: "INVALID_PROMPT", message: parsed.error.message }, 400);
         }
         const values = parsed.data;
         const billingOrganizationId =
           config.scope.kind === "org" || config.scope.kind === "project"
             ? config.scope.orgId
             : values.billingOrganizationId;
-        if (config.scope.kind === "user" && billingOrganizationId === null) {
-          return error(
-            {
-              code: "PI_BILLING_OWNER_REQUIRED",
-              message: "User-scoped Pi sessions require a billing organization.",
-            },
-            400,
-          );
-        }
         if (
           billingOrganizationId !== null &&
           (config.scope.kind === "user" || config.scope.kind === "system")
         ) {
-          try {
-            await kernel.assertAuthorized({
-              execution: {
-                ...requestContext.execution,
-                scope: { kind: "org", orgId: billingOrganizationId },
-              },
-              operation: BACKOFFICE_PERMISSION.pi.modify,
-              resource: { kind: "pi-session-billing" },
-            });
-          } catch (cause) {
-            if (cause instanceof BackofficeForbiddenError) {
-              return error(
-                { code: cause.reason, message: cause.message },
-                cause.reason === "authority-unavailable" ? 503 : 403,
-              );
-            }
-            throw cause;
+          const billingDenied = await authorize(
+            { ...requestContext.execution, scope: { kind: "org", orgId: billingOrganizationId } },
+            BACKOFFICE_PERMISSION.pi.modify,
+            { kind: "pi-agent-billing" },
+          );
+          if (billingDenied) {
+            return billingDenied;
           }
         }
         requestState.setBody({
           ...values,
           requestId: values.requestId ?? crypto.randomUUID(),
           billingOrganizationId,
-          actors: requestContext.execution.actors,
-          scopeRestriction: backofficeExecutionScopeRestriction(requestContext.execution),
+          provenance,
         });
+        return undefined;
+      });
+      if (prompted) {
+        return prompted;
+      }
+      return await ifMatchesRoute("POST", "/agents/:agentName/compact", async () => {
+        const parsed = piAgentCompactionSchema.safeParse(requestState.body);
+        if (!parsed.success) {
+          return error({ code: "INVALID_COMPACTION", message: parsed.error.message }, 400);
+        }
+        requestState.setBody({ ...parsed.data, provenance });
         return undefined;
       });
     });

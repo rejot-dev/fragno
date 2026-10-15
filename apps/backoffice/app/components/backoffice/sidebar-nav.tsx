@@ -28,10 +28,10 @@ const PRIMARY_NAVIGATION: PrimaryNavigationItem[] = [
     isActive: (pathname) => pathname.startsWith("/backoffice/integrations"),
   },
   {
-    label: "Sessions",
-    to: "/backoffice/sessions",
+    label: "Agents",
+    to: "/backoffice/agents",
     icon: "message-square",
-    isActive: (pathname) => pathname.startsWith("/backoffice/sessions"),
+    isActive: (pathname) => pathname.startsWith("/backoffice/agents"),
   },
   {
     label: "Files",

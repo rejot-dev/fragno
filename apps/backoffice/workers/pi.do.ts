@@ -5,7 +5,7 @@ import { DurableObject, RpcTarget } from "cloudflare:workers";
 import type { PostHog } from "posthog-node";
 import type { z } from "zod";
 
-import type { Storage } from "@earendil-works/pi-durable";
+import { ConversationBusy, type Storage } from "@earendil-works/pi-durable";
 
 import {
   createCloudflareDurableObjectRuntimeServices,
@@ -22,10 +22,13 @@ import {
   piAgentObjectName,
   piAgentPromptSchema,
   piAgentSubmissionWaitRequestSchema,
+  piAgentTurnSchema,
   PiConversationViewDamagedError,
   type PiAgent,
   type PiAgentCompactionStatus,
   type PiAgentSubmissionWait,
+  type PiAgentSubmitResult,
+  type PiAgentTurn,
 } from "@/fragno/pi/agent/pi-agent-contract";
 import {
   createPiAgentDependencies,
@@ -33,6 +36,14 @@ import {
   type OpenPiAgent,
   type PiAgentDependencies,
 } from "@/fragno/pi/agent/pi-agent-harness";
+import {
+  mayJoinPiAgentTurn,
+  readPiAgentRun,
+  recordAdmittedPiAgentTurn,
+  recordPiAgentCompactionTurn,
+  recordPiAgentTurn,
+  withdrawPiAgentTurn,
+} from "@/fragno/pi/agent/pi-agent-turns";
 import { createPiPostHogExtension } from "@/fragno/pi/extensions/posthog/posthog-extension";
 
 import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-object";
@@ -166,16 +177,56 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
     await this.#requireAgent(config);
   }
 
-  async submit(config: PiAgentConfig, rawPrompt: z.infer<typeof piAgentPromptSchema>) {
+  async submit(
+    config: PiAgentConfig,
+    rawTurn: PiAgentTurn,
+    rawPrompt: z.infer<typeof piAgentPromptSchema>,
+  ): Promise<PiAgentSubmitResult> {
     const prompt = piAgentPromptSchema.parse(rawPrompt);
-    const { harness } = await this.#requireAgent(config);
+    const turn = piAgentTurnSchema.parse(rawTurn);
+    const opened = await this.#requireAgent(config);
+    const { harness, storage } = opened;
     const root = await harness.root(BACKGROUND_CONTEXT);
     this.#admitting += 1;
     try {
       // The wake must be durable before Pi admits work, not after the HTTP request returns.
       await this.#state.storage.setAlarm(this.#nowEpochMs());
-      const submission = await root.submit({ type: "input", ...prompt }, BACKGROUND_CONTEXT);
-      return { submissionId: submission.id, requestId: prompt.requestId };
+      const run = await readPiAgentRun(harness, storage, BACKGROUND_CONTEXT);
+      const whenBusy =
+        prompt.whenBusy === "steer" &&
+        run.type === "running" &&
+        (run.turn === null || !mayJoinPiAgentTurn(run.turn, turn))
+          ? "followUp"
+          : prompt.whenBusy;
+      await recordPiAgentTurn(harness, prompt.requestId, turn, BACKGROUND_CONTEXT);
+      try {
+        await opened.refreshWorkspaceExtensions(turn);
+        const { model } = await root.agent(BACKGROUND_CONTEXT);
+        if (
+          model?.provider !== turn.agent.model.provider ||
+          model.modelId !== turn.agent.model.modelId
+        ) {
+          await root.configure({ model: turn.agent.model }, BACKGROUND_CONTEXT);
+        }
+        const submission = await root.submit(
+          { type: "input", requestId: prompt.requestId, content: prompt.content, whenBusy },
+          BACKGROUND_CONTEXT,
+        );
+        await recordAdmittedPiAgentTurn(harness, turn, BACKGROUND_CONTEXT);
+        return {
+          type: "admitted",
+          submissionId: submission.id,
+          requestId: prompt.requestId,
+          whenBusy,
+        };
+      } catch (error) {
+        // Withdrawal keeps the record of a submission Pi did admit before the failure.
+        await withdrawPiAgentTurn(harness, prompt.requestId, BACKGROUND_CONTEXT);
+        if (error instanceof ConversationBusy) {
+          return { type: "busy" };
+        }
+        throw error;
+      }
     } finally {
       this.#admitting -= 1;
     }
@@ -250,13 +301,16 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
 
   async compact(
     config: PiAgentConfig,
+    rawTurn: PiAgentTurn,
     rawRequest: z.infer<typeof piAgentCompactionSchema>,
   ): Promise<{ taskId: number }> {
     const request = piAgentCompactionSchema.parse(rawRequest);
+    const turn = piAgentTurnSchema.parse(rawTurn);
     const { harness } = await this.#requireAgent(config);
     this.#admitting += 1;
     try {
       await this.#state.storage.setAlarm(this.#nowEpochMs());
+      await recordPiAgentCompactionTurn(harness, turn, BACKGROUND_CONTEXT);
       const taskId = await (
         await harness.root(BACKGROUND_CONTEXT)
       ).compact(request.instructions ?? undefined, BACKGROUND_CONTEXT);
@@ -291,7 +345,7 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
       if (!(cause instanceof PathError)) {
         throw cause;
       }
-      throw new PiConversationViewDamagedError(config.sessionId, cause);
+      throw new PiConversationViewDamagedError(config.agentName, cause);
     }
   }
 
@@ -304,7 +358,7 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
       if (!(cause instanceof PathError)) {
         throw cause;
       }
-      throw new PiConversationViewDamagedError(config.sessionId, cause);
+      throw new PiConversationViewDamagedError(config.agentName, cause);
     }
   }
 
@@ -359,7 +413,7 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
   }
 }
 
-/** One durable agent per object; scoped managers own session discovery. */
+/** One durable agent per object; scoped managers own agent discovery. */
 export class Pi extends DurableObject<CloudflareEnv> implements PiAgent {
   readonly #object: InMemoryPiObject;
 
@@ -389,9 +443,9 @@ export class Pi extends DurableObject<CloudflareEnv> implements PiAgent {
       dependencies: analyticsEnabled
         ? {
             ...dependencies,
-            extensions: (config) => [
-              ...dependencies.extensions(config),
-              createPiPostHogExtension({ config, capture: queuePiGenerationEvent }),
+            extensions: (config, agent) => [
+              ...dependencies.extensions(config, agent),
+              createPiPostHogExtension({ config, agent, capture: queuePiGenerationEvent }),
             ],
           }
         : dependencies,
@@ -405,8 +459,12 @@ export class Pi extends DurableObject<CloudflareEnv> implements PiAgent {
   async initialize(config: PiAgentConfig): Promise<void> {
     await this.#object.initialize(config);
   }
-  async submit(config: PiAgentConfig, prompt: z.infer<typeof piAgentPromptSchema>) {
-    return await this.#object.submit(config, prompt);
+  async submit(
+    config: PiAgentConfig,
+    turn: PiAgentTurn,
+    prompt: z.infer<typeof piAgentPromptSchema>,
+  ) {
+    return await this.#object.submit(config, turn, prompt);
   }
   async getSubmission(config: PiAgentConfig, requestId: string): Promise<unknown> {
     return await this.#object.getSubmission(config, requestId);
@@ -426,9 +484,10 @@ export class Pi extends DurableObject<CloudflareEnv> implements PiAgent {
   }
   async compact(
     config: PiAgentConfig,
+    turn: PiAgentTurn,
     request: z.infer<typeof piAgentCompactionSchema>,
   ): Promise<{ taskId: number }> {
-    return await this.#object.compact(config, request);
+    return await this.#object.compact(config, turn, request);
   }
   async getCompaction(
     config: PiAgentConfig,

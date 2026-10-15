@@ -1,5 +1,5 @@
 import type { AutomationRouteAction } from "@fragno-dev/backoffice-api/v0/automation";
-import { piAgentCreationSchema } from "@fragno-dev/backoffice-api/v0/pi";
+import { piBillingOrganizationIdSchema } from "@fragno-dev/backoffice-api/v0/pi";
 import {
   BACKOFFICE_PERMISSION,
   type BackofficePermissionRequirement,
@@ -9,6 +9,7 @@ import {
   type DurableHooksDispatcherDurableObjectHandler,
 } from "@fragno-dev/db/dispatchers/cloudflare-do";
 import type { DurableHooksInstrumentation } from "@fragno-dev/db/hooks";
+import { z } from "zod";
 
 import { defaultFragnoRuntime } from "@fragno-dev/core";
 import { createWorkflowsFragment } from "@fragno-dev/workflows";
@@ -340,8 +341,8 @@ export const createAutomationsRuntime = (
       let billingOrganizationId: string | null = null;
       if (workflowName === CODEMODE_WORKFLOW) {
         // Restart-or-create may ignore the program input; only validate the billing selection here.
-        const parsed = piAgentCreationSchema
-          .pick({ billingOrganizationId: true })
+        const parsed = z
+          .object({ billingOrganizationId: piBillingOrganizationIdSchema.default(null) })
           .safeParse(
             execution.scope.kind === "org" || execution.scope.kind === "project"
               ? { billingOrganizationId: execution.scope.orgId }

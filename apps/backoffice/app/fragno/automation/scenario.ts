@@ -75,10 +75,12 @@ import { isMarketplaceInternalArtifactPath } from "@/fragno/marketplace/artifact
 import type { MarketplaceStaticEntry } from "@/fragno/marketplace/contracts";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
 import { getStaticMarketplaceEntry } from "@/fragno/marketplace/static-entries";
-import type {
-  PiAgent,
-  PiAgentEntryPage,
-  PiAvailableModel,
+import {
+  piAgentObjectName,
+  type PiAgent,
+  type PiAgentEntryPage,
+  type PiAgentTurn,
+  type PiAvailableModel,
 } from "@/fragno/pi/agent/pi-agent-contract";
 import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 import type { BackofficeRuntimeToolCall } from "@/fragno/runtime-tools/runtime-tools";
@@ -188,28 +190,27 @@ type FakeTelegramFile = TelegramAutomationFileMetadata & {
   contentType?: string;
 };
 
-type FakePiSession = {
-  config: PiAgentConfig;
+type FakePiAgent = {
+  model: PiAgentTurn["agent"]["model"] | null;
   assistantText: string;
   answerEntryId: string | null;
   submissions: Map<string, SubmissionRecord>;
 };
 
-type PiCreateSessionCall = {
-  model: PiAgentConfig["model"];
-  name: string | null;
-  instructions: string;
-  sessionId: string;
+type PiProvisionedAgentCall = {
+  agentName: string;
+  billingOrganizationId: string | null;
 };
 
-type PiGetSessionCall = {
-  sessionId: string;
+type PiGetViewCall = {
+  agentName: string;
 };
 
 type PiRunPromptCall = {
-  sessionId: string;
+  agentName: string;
   content: string;
   assistantText: string;
+  turn: PiAgentTurn;
 };
 
 type FakeResendThreadSeed = {
@@ -275,11 +276,10 @@ export type FakeTelegramApi = {
 };
 
 export type FakePiManagerApi = {
-  createSessionCalls: PiCreateSessionCall[];
-  getSessionCalls: PiGetSessionCall[];
+  provisionedAgents: PiProvisionedAgentCall[];
+  getViewCalls: PiGetViewCall[];
   runPromptCalls: PiRunPromptCall[];
   agent: PiAgent;
-  recordCreatedSession(config: PiAgentConfig): void;
 };
 
 export type FakeResendApi = {
@@ -304,7 +304,7 @@ export type ScenarioFakes = {
 type ScenarioFakeFactory = {
   telegram(input?: { files?: FakeTelegramFile[] }): FakeTelegramApi;
   pi(input?: {
-    assistantText?: (input: { sessionId: string; content: string }) => string;
+    assistantText?: (input: { agentName: string; content: string }) => string;
   }): FakePiManagerApi;
   resend(input?: { threads?: FakeResendThreadSeed[] }): FakeResendApi;
   mcp(input?: { servers?: FakeMcpServer[] }): FakeMcpApi;
@@ -449,14 +449,13 @@ type TelegramSentChatActionInput = {
   action: string;
 };
 
-type PiCreatedSessionInput = {
-  model?: PiAgentConfig["model"];
-  name?: string | null;
-  sessionId?: string;
+type PiProvisionedAgentInput = {
+  agentName?: string;
+  billingOrganizationId?: string | null;
 };
 
 type PiRanPromptInput = {
-  sessionId?: string;
+  agentName?: string;
   content?: string;
   assistantText?: string | RegExp;
 };
@@ -510,11 +509,6 @@ type StoreEntriesInput = {
   orgId: string;
   prefix?: string;
   include: Array<string | { key: string; value?: string }>;
-};
-
-type PiDefaultAgentInput = {
-  orgId: string;
-  value: string;
 };
 
 type ProjectCreateInput = {
@@ -775,9 +769,6 @@ export type BackofficeScenarioStepBuilders<TVars extends ScenarioVars = Scenario
     telegram: {
       configured(input: TelegramConfiguredInput): BackofficeScenarioStep;
     };
-    pi: {
-      defaultAgent(input: PiDefaultAgentInput): BackofficeScenarioStep;
-    };
     store: {
       entry(input: StoreEntryInput): BackofficeScenarioStep;
     };
@@ -878,7 +869,7 @@ export type BackofficeScenarioStepBuilders<TVars extends ScenarioVars = Scenario
       sentChatAction(input: TelegramSentChatActionInput): BackofficeScenarioStep;
     };
     pi: {
-      createdSession(input: PiCreatedSessionInput): BackofficeScenarioStep;
+      provisionedAgent(input: PiProvisionedAgentInput): BackofficeScenarioStep;
       ranPrompt(input: PiRanPromptInput): BackofficeScenarioStep;
     };
     billing: {
@@ -1074,41 +1065,53 @@ const createFakeTelegramApi = (input: { files?: FakeTelegramFile[] } = {}): Fake
 
 const createFakePiManagerApi = (
   options: {
-    assistantText?: (input: { sessionId: string; content: string }) => string;
+    assistantText?: (input: { agentName: string; content: string }) => string;
   } = {},
 ): FakePiManagerApi => {
-  const createSessionCalls: PiCreateSessionCall[] = [];
-  const getSessionCalls: PiGetSessionCall[] = [];
+  const provisionedAgents: PiProvisionedAgentCall[] = [];
+  const getViewCalls: PiGetViewCall[] = [];
   const runPromptCalls: PiRunPromptCall[] = [];
-  const sessions = new Map<string, FakePiSession>();
+  const agents = new Map<string, FakePiAgent>();
   const assistantText =
     options.assistantText ?? ((input: { content: string }) => `agent:${input.content}`);
 
-  function requireSession(config: PiAgentConfig) {
-    const session = sessions.get(config.sessionId);
-    if (!session) {
-      throw new Error(`FAKE_PI_MANAGER_SESSION_NOT_FOUND: ${config.sessionId}`);
+  function requireAgent(config: PiAgentConfig) {
+    const key = piAgentObjectName(config);
+    const existing = agents.get(key);
+    if (existing) {
+      return existing;
     }
-    return session;
+    const agent: FakePiAgent = {
+      model: null,
+      assistantText: "",
+      answerEntryId: null,
+      submissions: new Map(),
+    };
+    agents.set(key, agent);
+    provisionedAgents.push({
+      agentName: config.agentName,
+      billingOrganizationId: config.billingOrganizationId,
+    });
+    return agent;
   }
 
-  function conversationView(session: FakePiSession) {
+  function conversationView(agent: FakePiAgent) {
     const timestamp = Date.parse("2026-01-01T00:00:00.000Z");
     return {
       conversation: { id: 1 },
-      entries: session.answerEntryId
+      entries: agent.answerEntryId
         ? [
             {
-              id: session.answerEntryId,
+              id: agent.answerEntryId,
               conversationId: 1,
               kind: "assistant",
               model: [
                 {
                   role: "assistant",
-                  content: [{ type: "text", text: session.assistantText }],
+                  content: [{ type: "text", text: agent.assistantText }],
                   api: "openai-responses",
-                  provider: session.config.model.provider,
-                  model: session.config.model.modelId,
+                  provider: agent.model?.provider,
+                  model: agent.model?.modelId,
                   usage: {
                     input: 1,
                     output: 1,
@@ -1129,14 +1132,15 @@ const createFakePiManagerApi = (
   }
 
   const agent: PiAgent = {
-    async submit(config, prompt) {
-      const session = requireSession(config);
-      const reply = assistantText({ sessionId: config.sessionId, content: prompt.content });
+    async submit(config, turn, prompt) {
+      const fake = requireAgent(config);
+      const reply = assistantText({ agentName: config.agentName, content: prompt.content });
       const submissionId = runPromptCalls.length + 1;
       const answerEntryId = `answer-${submissionId}`;
-      session.assistantText = reply;
-      session.answerEntryId = answerEntryId;
-      session.submissions.set(prompt.requestId, {
+      fake.model = turn.agent.model;
+      fake.assistantText = reply;
+      fake.answerEntryId = answerEntryId;
+      fake.submissions.set(prompt.requestId, {
         id: submissionId,
         conversationId: 1,
         requestId: prompt.requestId,
@@ -1146,21 +1150,28 @@ const createFakePiManagerApi = (
         answer: answerEntryId,
       } as unknown as SubmissionRecord);
       runPromptCalls.push({
-        sessionId: config.sessionId,
+        agentName: config.agentName,
         content: prompt.content,
         assistantText: reply,
+        turn,
       });
-      return { submissionId, requestId: prompt.requestId };
+      // The fake answers synchronously, so a prompt never finds the agent busy.
+      return {
+        type: "admitted",
+        submissionId,
+        requestId: prompt.requestId,
+        whenBusy: prompt.whenBusy,
+      };
     },
     async getView(config) {
-      const session = requireSession(config);
-      getSessionCalls.push({ sessionId: config.sessionId });
-      return conversationView(session);
+      const fake = requireAgent(config);
+      getViewCalls.push({ agentName: config.agentName });
+      return conversationView(fake);
     },
     async watchView(config) {
-      const session = requireSession(config);
+      const fake = requireAgent(config);
       const encoded = new TextEncoder().encode(
-        `${JSON.stringify({ type: "snapshot", view: conversationView(session) })}\n`,
+        `${JSON.stringify({ type: "snapshot", view: conversationView(fake) })}\n`,
       );
       return new ReadableStream<Uint8Array>({
         start(controller) {
@@ -1170,24 +1181,24 @@ const createFakePiManagerApi = (
       });
     },
     async getSubmission(config, requestId) {
-      return requireSession(config).submissions.get(requestId) ?? null;
+      return requireAgent(config).submissions.get(requestId) ?? null;
     },
     async waitForSubmission(config, requestId) {
-      const submission = requireSession(config).submissions.get(requestId);
+      const submission = requireAgent(config).submissions.get(requestId);
       return submission ? { status: "settled", submission } : null;
     },
     async listEntries(config) {
-      const view = conversationView(requireSession(config));
+      const view = conversationView(requireAgent(config));
       return {
         entries: [...view.entries].reverse() as unknown as PiAgentEntryPage["entries"],
         cursor: null,
       };
     },
     async exportEntries(config) {
-      const session = requireSession(config);
+      const fake = requireAgent(config);
       const bytes = new TextEncoder().encode(
-        `${JSON.stringify({ type: "pi-durable-session", version: 1, order: "newest-first" })}\n${[
-          ...conversationView(session).entries,
+        `${JSON.stringify({ type: "pi-durable-agent", version: 1, order: "newest-first" })}\n${[
+          ...conversationView(fake).entries,
         ]
           .reverse()
           .map((entry) => JSON.stringify({ type: "entry", entry }))
@@ -1209,29 +1220,7 @@ const createFakePiManagerApi = (
     async abort() {},
   };
 
-  return {
-    createSessionCalls,
-    getSessionCalls,
-    runPromptCalls,
-    agent,
-    recordCreatedSession(config) {
-      if (sessions.has(config.sessionId)) {
-        return;
-      }
-      sessions.set(config.sessionId, {
-        config,
-        assistantText: "",
-        answerEntryId: null,
-        submissions: new Map(),
-      });
-      createSessionCalls.push({
-        model: config.model,
-        name: config.name,
-        instructions: config.instructions,
-        sessionId: config.sessionId,
-      });
-    },
-  };
+  return { provisionedAgents, getViewCalls, runPromptCalls, agent };
 };
 
 const RESEND_FAKE_TIMESTAMP = "2026-03-18T12:00:00.000Z";
@@ -2343,23 +2332,6 @@ const buildStepBuilders = <
           },
         ),
     },
-    pi: {
-      defaultAgent: (input) =>
-        createStep(
-          "given",
-          "pi.defaultAgent",
-          `setup Pi default agent for ${input.orgId}`,
-          async (ctx) => {
-            ctx.rememberOrg(input.orgId);
-            await getStore(ctx, input.orgId).set({
-              key: "pi/pi-default-agent",
-              value: input.value,
-              description: "Default Pi agent for automation-created sessions.",
-              category: ["pi"],
-            });
-          },
-        ),
-    },
     store: {
       entry: (input) =>
         createStep(
@@ -3345,24 +3317,22 @@ const buildStepBuilders = <
         ),
     },
     pi: {
-      createdSession: (input) =>
+      provisionedAgent: (input) =>
         createStep(
           "then",
-          "pi.createdSession",
-          "assert Pi session was created",
+          "pi.provisionedAgent",
+          "assert Pi agent was provisioned",
           (ctx) => {
-            const calls = ctx.fakes.pi?.createSessionCalls ?? [];
+            const calls = ctx.fakes.pi?.provisionedAgents ?? [];
             const call = calls.find(
               (candidate) =>
-                (!input.model ||
-                  (candidate.model.provider === input.model.provider &&
-                    candidate.model.modelId === input.model.modelId)) &&
-                (typeof input.name === "undefined" || candidate.name === input.name) &&
-                (!input.sessionId || candidate.sessionId === input.sessionId),
+                (!input.agentName || candidate.agentName === input.agentName) &&
+                (typeof input.billingOrganizationId === "undefined" ||
+                  candidate.billingOrganizationId === input.billingOrganizationId),
             );
             if (!call) {
               throw new Error(
-                `Expected Pi createSession call was not found. Calls: ${JSON.stringify(
+                `Expected Pi agent provisioning was not found. Calls: ${JSON.stringify(
                   calls,
                   null,
                   2,
@@ -3387,7 +3357,7 @@ const buildStepBuilders = <
                     ? candidate.assistantText === input.assistantText
                     : input.assistantText.test(candidate.assistantText);
               return (
-                (!input.sessionId || candidate.sessionId === input.sessionId) &&
+                (!input.agentName || candidate.agentName === input.agentName) &&
                 (!input.content || candidate.content === input.content) &&
                 assistantOk
               );
@@ -4168,19 +4138,7 @@ const createFakeObjectOverrides = async (fakes: ScenarioFakes): Promise<LocalBac
     const { InMemoryPiManagerObject } = await import("../../../workers/pi-manager.do");
     overrides.PI_MANAGER = ({ state, env, runtime, implementation, nowEpochMs }) => {
       const fakePi = fakes.pi!;
-      return new (class extends InMemoryPiManagerObject {
-        async fetch(request: Request): Promise<Response> {
-          const response = await super.fetch(request);
-          if (
-            request.method === "POST" &&
-            new URL(request.url).pathname === "/api/pi-manager/sessions" &&
-            response.ok
-          ) {
-            fakePi.recordCreatedSession(await response.clone().json());
-          }
-          return response;
-        }
-      })({
+      return new InMemoryPiManagerObject({
         state,
         env,
         runtime,
@@ -4343,8 +4301,8 @@ const collectDiagnostics = async (ctx: BackofficeScenarioContext): Promise<unkno
       : null,
     pi: ctx.fakes.pi
       ? {
-          createSessionCalls: ctx.fakes.pi.createSessionCalls,
-          getSessionCalls: ctx.fakes.pi.getSessionCalls,
+          provisionedAgents: ctx.fakes.pi.provisionedAgents,
+          getViewCalls: ctx.fakes.pi.getViewCalls,
           runPromptCalls: ctx.fakes.pi.runPromptCalls,
         }
       : null,

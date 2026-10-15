@@ -70,6 +70,7 @@ describe("Backoffice authority role grants", () => {
       "user-owner",
       "automation",
       "capability",
+      "pi-agent",
     ]);
     for (const [role, grants] of Object.entries(BACKOFFICE_AUTHORITY_ROLE_GRANTS)) {
       if (!unrestrictedRoles.has(role)) {
@@ -78,11 +79,14 @@ describe("Backoffice authority role grants", () => {
     }
   });
 
-  test("uses the canonical permission set for automation and capability actors", () => {
+  test("uses the canonical permission set for automation, capability, and Pi agent actors", () => {
     expect(BACKOFFICE_AUTHORITY_ROLE_GRANTS.automation).toEqual(
       allBackofficePermissionRequirements,
     );
     expect(BACKOFFICE_AUTHORITY_ROLE_GRANTS.capability).toEqual(
+      allBackofficePermissionRequirements,
+    );
+    expect(BACKOFFICE_AUTHORITY_ROLE_GRANTS["pi-agent"]).toEqual(
       allBackofficePermissionRequirements,
     );
   });
@@ -104,7 +108,12 @@ describe("Backoffice authority role grants", () => {
   });
 
   test("keeps organization administration out of constrained authority roles", () => {
-    const unrestrictedRoles = new Set(["system-administrator", "automation", "capability"]);
+    const unrestrictedRoles = new Set([
+      "system-administrator",
+      "automation",
+      "capability",
+      "pi-agent",
+    ]);
     for (const [role, grants] of Object.entries(BACKOFFICE_AUTHORITY_ROLE_GRANTS)) {
       if (!unrestrictedRoles.has(role)) {
         expect(grants).not.toContain(BACKOFFICE_PERMISSION.admin.organizationsManage);
@@ -134,6 +143,7 @@ describe("Backoffice authority role grants", () => {
       "user-owner",
       "automation",
       "capability",
+      "pi-agent",
     ]);
     for (const [role, grants] of Object.entries(BACKOFFICE_AUTHORITY_ROLE_GRANTS)) {
       if (!unrestrictedRoles.has(role)) {
