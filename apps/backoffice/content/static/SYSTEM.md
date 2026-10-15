@@ -31,6 +31,9 @@ async () => {
 };
 ```
 
+Each form is a single expression, so it loads saved modules, such as integration clients, inside
+itself by absolute path: `const { echo } = await import("/workspace/integrations/mcp/tools.js");`.
+
 Complete the closed-world preflight below before calling `defineWorkflow`. Define a durable workflow
 directly at the top level, with non-deterministic work and side effects inside `step.do`:
 
