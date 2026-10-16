@@ -124,7 +124,10 @@ async function seedPackage(
   await state.writeFileBytes(`${PACKAGE_ROOT}/assets/payload.bin`, BINARY);
 }
 
-function publisherShell(ctx: BackofficeScenarioContext, execution: BackofficeExecutionContext) {
+async function publisherShell(
+  ctx: BackofficeScenarioContext,
+  execution: BackofficeExecutionContext,
+) {
   const context = createRouteBackedRuntimeContext({
     runtime: ctx.runtime.services,
     kernel: new BackofficeKernel(ctx.runtime.services),
@@ -132,11 +135,12 @@ function publisherShell(ctx: BackofficeScenarioContext, execution: BackofficeExe
     billingOrganizationId: null,
   });
   assert(context.stateBackend);
-  return createInteractiveBashHost({ context: { ...context, stateBackend: context.stateBackend } })
-    .bash;
+  return (
+    await createInteractiveBashHost({ context: { ...context, stateBackend: context.stateBackend } })
+  ).bash;
 }
 
-function systemPublisher(ctx: BackofficeScenarioContext, state: BackofficeStateBackend) {
+async function systemPublisher(ctx: BackofficeScenarioContext, state: BackofficeStateBackend) {
   const execution = createBackofficeSystemExecution({ kind: "system" });
   const kernel = new BackofficeKernel(ctx.runtime.services);
   const context = createRouteBackedRuntimeContext({
@@ -154,11 +158,11 @@ function systemPublisher(ctx: BackofficeScenarioContext, state: BackofficeStateB
       publication: { state },
     }),
   };
-  return createInteractiveBashHost({ context: { ...context, stateBackend: state } }).bash;
+  return (await createInteractiveBashHost({ context: { ...context, stateBackend: state } })).bash;
 }
 
 async function publishFromShell(
-  bash: ReturnType<typeof publisherShell>,
+  bash: Awaited<ReturnType<typeof publisherShell>>,
   flags: string,
   visibility: MarketplaceVisibility = "public",
 ): Promise<MarketplacePublishResult> {
@@ -345,7 +349,7 @@ describe("Marketplace package publication scenarios", () => {
             });
             await state.writeFile(`${PACKAGE_ROOT}/README.md`, "Original README");
             const repeat = await publishFromShell(
-              publisherShell(ctx, createBackofficeSystemExecution(ORG_SCOPE)),
+              await publisherShell(ctx, createBackofficeSystemExecution(ORG_SCOPE)),
               "",
             );
             assert(repeat.state === "published");
@@ -400,7 +404,7 @@ describe("Marketplace package publication scenarios", () => {
                       scope: USER_SCOPE,
                       userId: "member-1",
                     });
-              const bash = publisherShell(ctx, execution);
+              const bash = await publisherShell(ctx, execution);
               const preview = await publishFromShell(bash, "--dry-run");
               assert(preview.state === "preview");
               await expect(
@@ -476,7 +480,7 @@ describe("Marketplace package publication scenarios", () => {
               readme: "Not ours",
               files: ["README.md"],
             });
-            const bash = publisherShell(
+            const bash = await publisherShell(
               ctx,
               createBackofficeUserExecution({ scope: ORG_SCOPE, userId: "owner-1" }),
             );
@@ -505,7 +509,9 @@ describe("Marketplace package publication scenarios", () => {
                 files: ["README.md"],
               }),
             );
-            const missing = await systemPublisher(ctx, state).exec(
+            const missing = await (
+              await systemPublisher(ctx, state)
+            ).exec(
               `marketplace.publish --package-root ${PACKAGE_ROOT} --visibility public --skip-author-check`,
             );
             assert(missing.exitCode !== 0);
@@ -554,7 +560,7 @@ describe("Marketplace package publication scenarios", () => {
               files: ["README.md"],
             });
             const publication = await publishFromShell(
-              publisherShell(
+              await publisherShell(
                 ctx,
                 createBackofficeUserExecution({ scope: ORG_SCOPE, userId: "owner-1" }),
               ),
@@ -619,7 +625,7 @@ describe("Marketplace package publication scenarios", () => {
                 "Shared with everyone",
               );
               const publication = await publishFromShell(
-                publisherShell(
+                await publisherShell(
                   ctx,
                   createBackofficeUserExecution({ scope: ORG_SCOPE, userId: "owner-1" }),
                 ),
@@ -689,17 +695,21 @@ describe("Marketplace package publication scenarios", () => {
                 readme: "Not a member",
                 files: ["README.md"],
               });
-              const denied = await publisherShell(
-                ctx,
-                createBackofficeUserExecution({ scope: OTHER_SCOPE, userId: "other-1" }),
+              const denied = await (
+                await publisherShell(
+                  ctx,
+                  createBackofficeUserExecution({ scope: OTHER_SCOPE, userId: "other-1" }),
+                )
               ).exec(
                 `marketplace.publish --package-root ${PACKAGE_ROOT} --visibility organization`,
               );
               assert(denied.exitCode !== 0);
               expect(denied.stderr).toContain("membership in the owning organization");
-              const missingVisibility = await publisherShell(
-                ctx,
-                createBackofficeUserExecution({ scope: ORG_SCOPE, userId: "owner-1" }),
+              const missingVisibility = await (
+                await publisherShell(
+                  ctx,
+                  createBackofficeUserExecution({ scope: ORG_SCOPE, userId: "owner-1" }),
+                )
               ).exec(`marketplace.publish --package-root ${PACKAGE_ROOT}`);
               assert(missingVisibility.exitCode !== 0);
               await expect(
@@ -749,7 +759,7 @@ describe("Marketplace package publication scenarios", () => {
                 files: ["README.md"],
               });
               const publication = await publishFromShell(
-                publisherShell(
+                await publisherShell(
                   ctx,
                   createBackofficeUserExecution({ scope: ORG_SCOPE, userId: "owner-1" }),
                 ),
@@ -805,7 +815,7 @@ describe("Marketplace package publication scenarios", () => {
               files: ["README.md"],
             });
             await publishFromShell(
-              publisherShell(
+              await publisherShell(
                 ctx,
                 createBackofficeUserExecution({ scope: ORG_SCOPE, userId: "owner-1" }),
               ),
@@ -934,7 +944,7 @@ describe("Marketplace package publication scenarios", () => {
               readme: "Original release",
               files: ["README.md", "assets/"],
             });
-            const bash = systemPublisher(ctx, state);
+            const bash = await systemPublisher(ctx, state);
             const denied = await bash.exec(
               `marketplace.publish --package-root ${PACKAGE_ROOT} --visibility public --skip-version-check`,
             );
@@ -958,7 +968,7 @@ describe("Marketplace package publication scenarios", () => {
                 readme: "Backfill",
                 files: ["README.md"],
               });
-              const bash = systemPublisher(ctx, state);
+              const bash = await systemPublisher(ctx, state);
               const denied = await bash.exec(
                 `marketplace.publish --package-root ${PACKAGE_ROOT} --visibility public --skip-author-check`,
               );
@@ -981,7 +991,7 @@ describe("Marketplace package publication scenarios", () => {
               readme: "Replacement release",
               files: ["README.md"],
             });
-            const bash = systemPublisher(ctx, state);
+            const bash = await systemPublisher(ctx, state);
             const denied = await bash.exec(
               `marketplace.publish --package-root ${PACKAGE_ROOT} --visibility public --skip-author-check`,
             );
@@ -1082,7 +1092,7 @@ describe("Marketplace package publication scenarios", () => {
               files: ["README.md"],
             });
             ctx.vars.first = await publishFromShell(
-              systemPublisher(ctx, state),
+              await systemPublisher(ctx, state),
               "--skip-author-check",
             );
           }),
@@ -1098,7 +1108,7 @@ describe("Marketplace package publication scenarios", () => {
               const state = sourceState(ctx, ORG_SCOPE);
               await state.writeFile(`${PACKAGE_ROOT}/README.md`, "Second snapshot");
               ctx.vars.second = await publishFromShell(
-                systemPublisher(ctx, state),
+                await systemPublisher(ctx, state),
                 "--skip-author-check --skip-version-check",
               );
             },
@@ -1150,7 +1160,7 @@ describe("Marketplace package publication scenarios", () => {
                 readme: "Identical snapshot",
                 files: ["README.md"],
               });
-              const bash = publisherShell(ctx, createBackofficeSystemExecution(ORG_SCOPE));
+              const bash = await publisherShell(ctx, createBackofficeSystemExecution(ORG_SCOPE));
               ctx.vars.publications = [
                 await publishFromShell(bash, ""),
                 await publishFromShell(bash, ""),
@@ -1290,9 +1300,8 @@ describe("Marketplace package publication scenarios", () => {
                   readme: "Original README",
                   files: ["README.md", "assets/"],
                 });
-                const result = await publisherShell(
-                  ctx,
-                  createBackofficeSystemExecution(ORG_SCOPE),
+                const result = await (
+                  await publisherShell(ctx, createBackofficeSystemExecution(ORG_SCOPE))
                 ).exec(`marketplace.publish --package-root ${PACKAGE_ROOT} --visibility public`);
                 assert(result.exitCode !== 0);
                 expect(result.stderr).toMatch(/changed during capture|file selection changed/u);
@@ -1365,7 +1374,7 @@ describe("Marketplace package publication scenarios", () => {
               files: ["README.md"],
             });
             ctx.vars.publication = await publishFromShell(
-              publisherShell(ctx, createBackofficeSystemExecution(ORG_SCOPE)),
+              await publisherShell(ctx, createBackofficeSystemExecution(ORG_SCOPE)),
               "",
             );
             await state.writeFile(
@@ -1452,14 +1461,14 @@ describe("Marketplace package publication scenarios", () => {
               readme: "Base snapshot",
               files: ["README.md"],
             });
-            await publishFromShell(systemPublisher(ctx, state), "--skip-author-check");
+            await publishFromShell(await systemPublisher(ctx, state), "--skip-author-check");
           }),
           runner.drain(),
           then.assert(
             "submit two different replacements against the same revision",
             async (ctx) => {
               const state = sourceState(ctx, ORG_SCOPE);
-              const bash = systemPublisher(ctx, state);
+              const bash = await systemPublisher(ctx, state);
               await state.writeFile(`${PACKAGE_ROOT}/README.md`, "First replacement");
               ctx.vars.first = await publishFromShell(
                 bash,
@@ -1516,7 +1525,7 @@ describe("Marketplace package publication scenarios", () => {
               readme: "Original README",
               files: ["README.md", "assets/"],
             });
-            await publishFromShell(systemPublisher(ctx, state), "--skip-author-check");
+            await publishFromShell(await systemPublisher(ctx, state), "--skip-author-check");
           }),
           runner.drain(),
           then.assert(
@@ -1530,7 +1539,7 @@ describe("Marketplace package publication scenarios", () => {
                 files: ["README.md"],
               });
               ctx.vars.replacement = await publishFromShell(
-                systemPublisher(ctx, state),
+                await systemPublisher(ctx, state),
                 "--skip-author-check --skip-version-check",
               );
               const artifactState = createBackofficeStateBackend({
@@ -1571,7 +1580,7 @@ describe("Marketplace package publication scenarios", () => {
             expect(oldManifest.files).toEqual(["README.md", "assets/"]);
             const state = sourceState(ctx, ORG_SCOPE);
             ctx.vars.replacement = await publishFromShell(
-              systemPublisher(ctx, state),
+              await systemPublisher(ctx, state),
               "--skip-author-check --skip-version-check",
             );
           }),
@@ -1640,7 +1649,7 @@ describe("Marketplace package publication scenarios", () => {
               readme: "Original file set",
               files: ["README.md", "assets/"],
             });
-            await publishFromShell(systemPublisher(ctx, state), "--skip-author-check");
+            await publishFromShell(await systemPublisher(ctx, state), "--skip-author-check");
           }),
           runner.drain(),
           then.assert(
@@ -1654,7 +1663,7 @@ describe("Marketplace package publication scenarios", () => {
                 files: ["README.md"],
               });
               ctx.vars.abandoned = await publishFromShell(
-                systemPublisher(ctx, state),
+                await systemPublisher(ctx, state),
                 "--skip-author-check --skip-version-check",
               );
               loseTransfers = true;
@@ -1665,7 +1674,7 @@ describe("Marketplace package publication scenarios", () => {
             assert(ctx.vars.abandoned);
             assert((await publicationStatus(ctx, ctx.vars.abandoned)).details.status === "waiting");
             const repeated = await publishFromShell(
-              systemPublisher(ctx, sourceState(ctx, ORG_SCOPE)),
+              await systemPublisher(ctx, sourceState(ctx, ORG_SCOPE)),
               "--skip-author-check --skip-version-check",
             );
             assert(repeated.state === "requested" && ctx.vars.abandoned.state !== "preview");
@@ -1693,7 +1702,7 @@ describe("Marketplace package publication scenarios", () => {
             const state = sourceState(ctx, ORG_SCOPE);
             await state.writeFile(`${PACKAGE_ROOT}/README.md`, "Successful replacement");
             ctx.vars.replacement = await publishFromShell(
-              systemPublisher(ctx, state),
+              await systemPublisher(ctx, state),
               "--skip-author-check --skip-version-check",
             );
           }),
@@ -1792,7 +1801,7 @@ describe("Marketplace package publication scenarios", () => {
                   files: ["README.md"],
                 });
                 ctx.vars.publication = await publishFromShell(
-                  publisherShell(
+                  await publisherShell(
                     ctx,
                     createBackofficeUserExecution({ scope: userScope, userId: "member-1" }),
                   ),
@@ -1898,7 +1907,7 @@ describe("Marketplace package publication scenarios", () => {
                 files: ["README.md"],
               });
               ctx.vars.publication = await publishFromShell(
-                publisherShell(
+                await publisherShell(
                   ctx,
                   createBackofficeUserExecution({ scope: USER_SCOPE, userId: "member-1" }),
                 ),
@@ -1942,7 +1951,7 @@ describe("Marketplace package publication scenarios", () => {
         steps: ({ then, runner }) => [
           then.assert("reject invalid package boundaries", async (ctx) => {
             const state = sourceState(ctx, ORG_SCOPE);
-            const bash = publisherShell(ctx, createBackofficeSystemExecution(ORG_SCOPE));
+            const bash = await publisherShell(ctx, createBackofficeSystemExecution(ORG_SCOPE));
             const base = {
               name: "@ada-labs/durable-package",
               version: "1.0.0",

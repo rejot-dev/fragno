@@ -178,7 +178,7 @@ export const runBackofficeTerminalAction = async ({
   }
 
   try {
-    const { bash } = createInteractiveBashHost({
+    const { bash } = await createInteractiveBashHost({
       context: createCodemodeRouteBackedRuntimeContext({
         runtime,
         kernel,

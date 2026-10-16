@@ -130,7 +130,7 @@ const createAutomationContext = () => ({
 
 describe("interactive bash host", () => {
   it("explains when a known command requires a different scope", async () => {
-    const { bash, commandCallsResult } = createInteractiveBashHost({
+    const { bash, commandCallsResult } = await createInteractiveBashHost({
       context: {
         ...EMPTY_BASH_HOST_CONTEXT,
         stateBackend: createTestStateBackend(),
@@ -159,7 +159,7 @@ describe("interactive bash host", () => {
 
 describe("bash host command assembly", () => {
   it("loads pi, automations, and otp command families without exposing automation event commands", async () => {
-    const { bash, commandCallsResult } = createBashHost({
+    const { bash, commandCallsResult } = await createBashHost({
       fs: new InMemoryFs(),
       context: {
         ...EMPTY_BASH_HOST_CONTEXT,
@@ -209,7 +209,7 @@ describe("bash host command assembly", () => {
   });
 
   it("loads automation event families only when automation context is provided", async () => {
-    const { bash, commandCallsResult } = createBashHost({
+    const { bash, commandCallsResult } = await createBashHost({
       fs: new InMemoryFs(),
       context: {
         ...EMPTY_BASH_HOST_CONTEXT,

@@ -94,7 +94,7 @@ test("stored event commands read scoped SQLite records with text, JSON, and curs
               billingOrganizationId: null,
             });
             assert(context.stateBackend);
-            const { bash } = createInteractiveBashHost({
+            const { bash } = await createInteractiveBashHost({
               context: { ...context, stateBackend: context.stateBackend },
             });
             const first = await bash.exec("events.list --limit 1 --format json");
@@ -161,9 +161,11 @@ test("stored event commands read scoped SQLite records with text, JSON, and curs
               billingOrganizationId: null,
             });
             assert(emptyContext.stateBackend);
-            const emptyBash = createInteractiveBashHost({
-              context: { ...emptyContext, stateBackend: emptyContext.stateBackend },
-            }).bash;
+            const emptyBash = (
+              await createInteractiveBashHost({
+                context: { ...emptyContext, stateBackend: emptyContext.stateBackend },
+              })
+            ).bash;
             expect(await emptyBash.exec("events.list")).toMatchObject({
               exitCode: 0,
               stdout: "No automation events found.\n",

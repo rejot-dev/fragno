@@ -1,5 +1,5 @@
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
-import { Bash as BashRuntime, defineCommand, type Bash } from "just-bash";
+import type { Bash, BashOptions, Command } from "just-bash";
 
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
@@ -91,8 +91,6 @@ export type InteractiveRuntimeToolContext = Omit<BashHostContext, "automation"> 
   sandbox?: BashHostContext["sandbox"];
 };
 
-type BashOptions = NonNullable<ConstructorParameters<typeof BashRuntime>[0]>;
-
 type CreateBashHostInput = {
   fs: BashOptions["fs"];
   env?: BashOptions["env"];
@@ -166,7 +164,7 @@ function createUnavailableRuntimeToolBashCommands({
 }: {
   context: BackofficeToolContext;
   commandCallsResult: BashAutomationCommandResult[];
-}) {
+}): Command[] {
   return runtimeToolFamilies.flatMap((family) => {
     if (!family.isAvailable || family.isAvailable(context)) {
       return [];
@@ -179,18 +177,21 @@ function createUnavailableRuntimeToolBashCommands({
       }
 
       return [
-        defineCommand(command, async () => {
-          commandCallsResult.push({ command, output: "", exitCode: 1 });
-          return {
-            stdout: "",
-            stderr: `${unavailableRuntimeToolCommandMessage({
-              command,
-              namespace: tool.namespace,
-              context,
-            })}\n`,
-            exitCode: 1,
-          };
-        }),
+        {
+          name: command,
+          async execute() {
+            commandCallsResult.push({ command, output: "", exitCode: 1 });
+            return {
+              stdout: "",
+              stderr: `${unavailableRuntimeToolCommandMessage({
+                command,
+                namespace: tool.namespace,
+                context,
+              })}\n`,
+              exitCode: 1,
+            };
+          },
+        },
       ];
     });
   });
@@ -218,14 +219,17 @@ function createRegisteredBashCommands(
           commandCallsResult: input.commandCallsResult,
         })
       : []),
-    createCurrentScopeBashCommand(input.context.execution.scope, defineCommand),
+    createCurrentScopeBashCommand(input.context.execution.scope),
   ];
 }
 
-function createConfiguredBashHost(
+async function createConfiguredBashHost(
   input: CreateBashHostInput,
   commandAvailability: BashCommandAvailability,
-): BashHost {
+): Promise<BashHost> {
+  // Shells are an advanced feature most requests never open, so just-bash loads with the first
+  // shell instead of at Worker startup.
+  const { Bash: BashRuntime } = await import("just-bash");
   const commandCallsResult = input.commandCallsResult ?? [];
   const commandInput: BashCommandFactoryInput = {
     sessionId: input.sessionId,
@@ -246,11 +250,13 @@ function createConfiguredBashHost(
   };
 }
 
-export function createBashHost(input: CreateBashHostInput): BashHost {
-  return createConfiguredBashHost(input, "available-only");
+export async function createBashHost(input: CreateBashHostInput): Promise<BashHost> {
+  return await createConfiguredBashHost(input, "available-only");
 }
 
 /** Creates an interactive shell that explains why known commands are unavailable. */
-export function createInteractiveRuntimeBashHost(input: CreateBashHostInput): BashHost {
-  return createConfiguredBashHost(input, "describe-unavailable");
+export async function createInteractiveRuntimeBashHost(
+  input: CreateBashHostInput,
+): Promise<BashHost> {
+  return await createConfiguredBashHost(input, "describe-unavailable");
 }

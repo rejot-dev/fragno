@@ -247,7 +247,7 @@ async function runMcpIntegrationScenario<TVars extends Record<string, unknown>>(
   }
 }
 
-function createIntegrationScenarioTerminal(
+async function createIntegrationScenarioTerminal(
   runtime: BackofficeRuntimeServices,
   execution: BackofficeExecutionContext,
   kernel: BackofficeKernel,
@@ -259,8 +259,9 @@ function createIntegrationScenarioTerminal(
     billingOrganizationId: null,
   });
   assert(context.stateBackend);
-  return createInteractiveBashHost({ context: { ...context, stateBackend: context.stateBackend } })
-    .bash;
+  return (
+    await createInteractiveBashHost({ context: { ...context, stateBackend: context.stateBackend } })
+  ).bash;
 }
 
 function createDelegatedExecution(
@@ -909,7 +910,7 @@ test("mcp addresses resolve only in their own scope and require both authority l
               actions: [],
             });
           }
-          const system = createIntegrationScenarioTerminal(
+          const system = await createIntegrationScenarioTerminal(
             ctx.runtime.services,
             createBackofficeSystemExecution({ kind: "system" }),
             new BackofficeKernel(ctx.runtime.services),
@@ -977,10 +978,12 @@ test("mcp addresses resolve only in their own scope and require both authority l
             BACKOFFICE_PERMISSION.connections.read,
             BACKOFFICE_PERMISSION.upload.read,
           ]);
-          const denied = await createIntegrationScenarioTerminal(
-            ctx.runtime.services,
-            setupOnly.execution,
-            setupOnly.kernel,
+          const denied = await (
+            await createIntegrationScenarioTerminal(
+              ctx.runtime.services,
+              setupOnly.execution,
+              setupOnly.kernel,
+            )
           ).exec(
             `integrations.setup --connection-id 'mcp#denied' --input-json '${JSON.stringify({ type: "none", endpointUrl: `${toolsOrigin}/mcp` })}'`,
           );
@@ -996,10 +999,12 @@ test("mcp addresses resolve only in their own scope and require both authority l
           ]);
           // Resolution reads the server and its tools, so calls also need connection-read authority.
           expect(
-            await createIntegrationScenarioTerminal(
-              ctx.runtime.services,
-              callOnly.execution,
-              callOnly.kernel,
+            await (
+              await createIntegrationScenarioTerminal(
+                ctx.runtime.services,
+                callOnly.execution,
+                callOnly.kernel,
+              )
             ).exec(command),
           ).toMatchObject({
             exitCode: 1,
@@ -1011,10 +1016,12 @@ test("mcp addresses resolve only in their own scope and require both authority l
             BACKOFFICE_PERMISSION.connections.read,
             BACKOFFICE_PERMISSION.upload.read,
           ]);
-          const executed = await createIntegrationScenarioTerminal(
-            ctx.runtime.services,
-            delegated.execution,
-            delegated.kernel,
+          const executed = await (
+            await createIntegrationScenarioTerminal(
+              ctx.runtime.services,
+              delegated.execution,
+              delegated.kernel,
+            )
           ).exec(`${command} --print structuredContent.echoed`);
           expect(executed.exitCode, executed.stderr).toBe(0);
           assert(executed.stdout === "delegated\n");

@@ -79,15 +79,17 @@ async function submitInstallerConfiguration(ctx: BackofficeScenarioContext, inst
   });
 }
 
-function createScenarioShell(ctx: BackofficeScenarioContext, scope: BackofficeContextScope) {
-  return createInteractiveBashHost({
-    context: createCodemodeRouteBackedRuntimeContext({
-      runtime: ctx.runtime.services,
-      kernel: new BackofficeKernel(ctx.runtime.services),
-      execution: createBackofficeSystemExecution(scope),
-      billingOrganizationId: null,
-    }),
-  }).bash;
+async function createScenarioShell(ctx: BackofficeScenarioContext, scope: BackofficeContextScope) {
+  return (
+    await createInteractiveBashHost({
+      context: createCodemodeRouteBackedRuntimeContext({
+        runtime: ctx.runtime.services,
+        kernel: new BackofficeKernel(ctx.runtime.services),
+        execution: createBackofficeSystemExecution(scope),
+        billingOrganizationId: null,
+      }),
+    })
+  ).bash;
 }
 
 describe("Workspace package runtime scenarios", () => {
@@ -144,7 +146,7 @@ describe("Workspace package runtime scenarios", () => {
           then.assert(
             "success records the selected folder and publishes the real files and route",
             async (ctx) => {
-              const bash = createScenarioShell(ctx, ORG_SCOPE);
+              const bash = await createScenarioShell(ctx, ORG_SCOPE);
               const list = await bash.exec("packages.ls --format json");
               assert(list.exitCode === 0, list.stderr);
               expect(JSON.parse(list.stdout)).toEqual({
@@ -251,7 +253,7 @@ describe("Workspace package runtime scenarios", () => {
                 }),
                 billingOrganizationId: "org-2",
               });
-              const { bash } = createInteractiveBashHost({ context });
+              const { bash } = await createInteractiveBashHost({ context });
               const personal = await bash.exec(
                 `packages.install --listing-id '${LISTING_ID}' --version 1.0.0 --installation-root ${INSTALLATION_ROOT} --format json`,
               );
@@ -335,7 +337,9 @@ describe("Workspace package runtime scenarios", () => {
               }),
               billingOrganizationId: "org-2",
             });
-            const result = await createInteractiveBashHost({ context }).bash.exec(
+            const result = await (
+              await createInteractiveBashHost({ context })
+            ).bash.exec(
               `packages.install --listing-id '${LISTING_ID}' --version 1.0.0 --installation-root ${INSTALLATION_ROOT} --format json`,
             );
             assert(result.exitCode === 0, result.stderr);
@@ -373,7 +377,7 @@ describe("Workspace package runtime scenarios", () => {
           then.assert(
             "validation does not schedule workflows or rewrite malformed locks",
             async (ctx) => {
-              const bash = createScenarioShell(ctx, ORG_SCOPE);
+              const bash = await createScenarioShell(ctx, ORG_SCOPE);
               for (const args of [
                 "",
                 "--installation-root /static/telegram",
@@ -490,7 +494,7 @@ describe("Workspace package runtime scenarios", () => {
                 }),
                 billingOrganizationId: null,
               });
-              const { bash } = createInteractiveBashHost({ context: agentContext });
+              const { bash } = await createInteractiveBashHost({ context: agentContext });
               for (const [command, permission] of [
                 ["marketplace.search --query telegram", "marketplace.read"],
                 ["packages.ls", "packages.read"],
@@ -503,7 +507,7 @@ describe("Workspace package runtime scenarios", () => {
                 expect(result.exitCode).not.toBe(0);
                 expect(result.stderr).toContain(`Required permission: ${permission}.`);
               }
-              const system = createScenarioShell(ctx, { kind: "system" });
+              const system = await createScenarioShell(ctx, { kind: "system" });
               const unavailable = await system.exec("packages.ls");
               expect(unavailable.exitCode).not.toBe(0);
               expect(unavailable.stderr).toContain("Backoffice command unavailable");
@@ -516,7 +520,8 @@ describe("Workspace package runtime scenarios", () => {
                 }),
                 billingOrganizationId: null,
               });
-              const personalShell = createInteractiveBashHost({ context: personalContext }).bash;
+              const personalShell = (await createInteractiveBashHost({ context: personalContext }))
+                .bash;
               const membership = await personalShell.exec(
                 `packages.install --listing-id '${LISTING_ID}' --installation-root ${INSTALLATION_ROOT}`,
               );
@@ -531,9 +536,11 @@ describe("Workspace package runtime scenarios", () => {
                 }),
                 billingOrganizationId: null,
               });
-              const denied = await createInteractiveBashHost({
-                context: deniedContext,
-              }).bash.exec("packages.ls");
+              const denied = await (
+                await createInteractiveBashHost({
+                  context: deniedContext,
+                })
+              ).bash.exec("packages.ls");
               expect(denied.exitCode).not.toBe(0);
               expect(denied.stderr).toContain("Required permission: packages.read.");
             },

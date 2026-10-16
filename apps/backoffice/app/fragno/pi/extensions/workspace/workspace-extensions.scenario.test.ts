@@ -216,7 +216,7 @@ test("js.build publishes ordinary ES modules without executing or inspecting the
           "generic code builds and consumers choose how to invoke it",
           async ({ runtime }) => {
             const context = workspace(runtime);
-            const { bash } = createInteractiveBashHost({ context });
+            const { bash } = await createInteractiveBashHost({ context });
             for (const name of ["math", "deferred"]) {
               const result = await bash.exec(
                 `js.build scripts/${name}.js --out .build/${name}.module.json --format json`,
@@ -349,7 +349,7 @@ test("js.build bundles native imports once; Pi inspects and renders fresh files 
           });
           const before = compiler.compilations;
           const context = workspace(runtime);
-          const { bash } = createInteractiveBashHost({ context });
+          const { bash } = await createInteractiveBashHost({ context });
           const built = await bash.exec(
             "js.build scripts/project-context.js --out .build/project-context.module.json --format json",
             { cwd: "/workspace" },
@@ -1198,7 +1198,7 @@ test("js.build validates CLI inputs and scoped modification authority before com
         then.assert("rejected commands publish nothing", async ({ runtime }) => {
           const before = compiler.compilations;
           const context = workspace(runtime);
-          const { bash } = createInteractiveBashHost({ context });
+          const { bash } = await createInteractiveBashHost({ context });
           for (const command of [
             `js.build ${extensionPath}`,
             `js.build ${extensionPath} --target pi-extension --out ${artifactPath}`,
@@ -1215,9 +1215,9 @@ test("js.build validates CLI inputs and scoped modification authority before com
             execution: createBackofficeUserExecution({ scope, userId: "outsider" }),
             billingOrganizationId: null,
           });
-          const denied = await createInteractiveBashHost({ context: deniedContext }).bash.exec(
-            `js.build ${extensionPath} --out ${artifactPath}`,
-          );
+          const denied = await (
+            await createInteractiveBashHost({ context: deniedContext })
+          ).bash.exec(`js.build ${extensionPath} --out ${artifactPath}`);
           expect(denied.exitCode).not.toBe(0);
           assert.equal(compiler.compilations, before);
           assert.equal(await context.stateBackend.exists(artifactPath), false);

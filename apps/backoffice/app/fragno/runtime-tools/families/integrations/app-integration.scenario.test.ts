@@ -129,7 +129,11 @@ afterAll(async () => {
   await codemodeServer?.close();
 });
 
-function terminal(ctx: BackofficeScenarioContext, scope: BackofficeContextScope, userId: string) {
+async function terminal(
+  ctx: BackofficeScenarioContext,
+  scope: BackofficeContextScope,
+  userId: string,
+) {
   const context = createRouteBackedRuntimeContext({
     runtime: ctx.runtime.services,
     kernel: new BackofficeKernel(ctx.runtime.services),
@@ -137,22 +141,27 @@ function terminal(ctx: BackofficeScenarioContext, scope: BackofficeContextScope,
     billingOrganizationId: null,
   });
   assert(context.stateBackend);
-  return createInteractiveBashHost({
-    context: { ...context, stateBackend: context.stateBackend },
-  }).bash;
+  return (
+    await createInteractiveBashHost({
+      context: { ...context, stateBackend: context.stateBackend },
+    })
+  ).bash;
 }
 
-async function run(bash: ReturnType<typeof terminal>, command: string) {
+async function run(bash: Awaited<ReturnType<typeof terminal>>, command: string) {
   const result = await bash.exec(command);
   assert.equal(result.exitCode, 0, `${command}\n${result.stderr}`);
   return result.stdout;
 }
 
-async function runJson(bash: ReturnType<typeof terminal>, command: string): Promise<unknown> {
+async function runJson(
+  bash: Awaited<ReturnType<typeof terminal>>,
+  command: string,
+): Promise<unknown> {
   return JSON.parse(await run(bash, `${command} --format json`));
 }
 
-async function fails(bash: ReturnType<typeof terminal>, command: string) {
+async function fails(bash: Awaited<ReturnType<typeof terminal>>, command: string) {
   const result = await bash.exec(command);
   assert.notEqual(result.exitCode, 0, `${command} succeeded:\n${result.stdout}`);
   return result.stderr;
@@ -183,7 +192,7 @@ test("an installed app's declared actions run on its server, signed per call and
   const connection = () => "'app#ledger'";
   const execute = (actionId: string, input: unknown) =>
     `integrations.execute --connection-id ${connection()} --action-id ${actionId} --input-json ${quote(input)}`;
-  const actionIds = async (bash: ReturnType<typeof terminal>) =>
+  const actionIds = async (bash: Awaited<ReturnType<typeof terminal>>) =>
     (
       (await runJson(bash, `integrations.actions --connection-id ${connection()}`)) as {
         id: string;
@@ -218,7 +227,7 @@ test("an installed app's declared actions run on its server, signed per call and
               redirectUris: ["https://ledger.example/callback"],
               scopes: ["openid", "backoffice"],
             });
-          const admin = terminal(ctx, { kind: "system" }, "global-admin");
+          const admin = await terminal(ctx, { kind: "system" }, "global-admin");
           const unenforceable = declaration("installation", [
             {
               ...countInvoices,
@@ -240,7 +249,7 @@ test("an installed app's declared actions run on its server, signed per call and
         then.assert(
           "the owner reviews the actions, installs Ledger, and Ledger links the installation",
           async (ctx) => {
-            const owner = terminal(ctx, org, "owner");
+            const owner = await terminal(ctx, org, "owner");
             const review = await run(owner, `apps.get --app-id ${appId}`);
             expect(review).toContain("Slug: ledger (integration connection app#ledger)\n");
             expect(review).toContain("Actions revision: 1\n");
@@ -289,7 +298,7 @@ test("an installed app's declared actions run on its server, signed per call and
         then.assert(
           "actions run on Ledger with the caller's identity, and contracts hold both ways",
           async (ctx) => {
-            const owner = terminal(ctx, org, "owner");
+            const owner = await terminal(ctx, org, "owner");
             expect(await runJson(owner, execute("invoices.count", { year: 2025 }))).toEqual({
               count: 3,
             });
@@ -322,7 +331,7 @@ test("an installed app's declared actions run on its server, signed per call and
         then.assert(
           "a generated client calls Ledger from codemode as the installation",
           async (ctx) => {
-            const owner = terminal(ctx, org, "owner");
+            const owner = await terminal(ctx, org, "owner");
             expect(
               await run(
                 owner,
@@ -346,8 +355,8 @@ test("an installed app's declared actions run on its server, signed per call and
         then.assert(
           "changed actions wait for the owner's approval of the reviewed revision",
           async (ctx) => {
-            const admin = terminal(ctx, { kind: "system" }, "global-admin");
-            const owner = terminal(ctx, org, "owner");
+            const admin = await terminal(ctx, { kind: "system" }, "global-admin");
+            const owner = await terminal(ctx, org, "owner");
             expect(
               await runJson(
                 admin,
@@ -390,8 +399,8 @@ test("an installed app's declared actions run on its server, signed per call and
         then.assert(
           "automatic declarations apply at once, and uninstalling removes the connection",
           async (ctx) => {
-            const admin = terminal(ctx, { kind: "system" }, "global-admin");
-            const owner = terminal(ctx, org, "owner");
+            const admin = await terminal(ctx, { kind: "system" }, "global-admin");
+            const owner = await terminal(ctx, org, "owner");
             await run(
               admin,
               `admin.apps.update-actions --app-id ${appId} --actions-json ${quote(declaration("automatic", [countInvoices]))}`,

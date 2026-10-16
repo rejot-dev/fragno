@@ -83,15 +83,20 @@ const restrictedExecution = {
   scopeRestriction: { kind: "org", orgId: "org-1" } as const,
 };
 
-function bash(runtime: InMemoryBackofficeRuntime, as: BackofficeExecutionContext = execution) {
-  return createInteractiveBashHost({
-    context: createCodemodeRouteBackedRuntimeContext({
-      runtime: runtime.services,
-      kernel: new BackofficeKernel(runtime.services),
-      execution: as,
-      billingOrganizationId: null,
-    }),
-  }).bash;
+async function bash(
+  runtime: InMemoryBackofficeRuntime,
+  as: BackofficeExecutionContext = execution,
+) {
+  return (
+    await createInteractiveBashHost({
+      context: createCodemodeRouteBackedRuntimeContext({
+        runtime: runtime.services,
+        kernel: new BackofficeKernel(runtime.services),
+        execution: as,
+        billingOrganizationId: null,
+      }),
+    })
+  ).bash;
 }
 
 test("codemode runs are retained with their outcome until a later run expires them", async () => {
@@ -119,30 +124,29 @@ test("codemode runs are retained with their outcome until a later run expires th
         when.time.advance("1 hour"),
         then.assert("both scripts build", async ({ runtime }) => {
           for (const name of ["report", "failing"]) {
-            const built = await bash(runtime).exec(
-              `js.build scripts/${name}.js --out .build/${name}.module.json --format json`,
-              { cwd: "/workspace" },
-            );
+            const built = await (
+              await bash(runtime)
+            ).exec(`js.build scripts/${name}.js --out .build/${name}.module.json --format json`, {
+              cwd: "/workspace",
+            });
             assert.equal(built.exitCode, 0, built.stderr);
             buildRunIds.push(JSON.parse(built.stdout).runId);
           }
         }),
         when.time.advance("1 day"),
         then.assert("runs page newest first with outcomes and logs", async ({ runtime }) => {
-          const report = await bash(runtime).exec(
-            "js.run .build/report.module.json --format json",
-            {
-              cwd: "/workspace",
-            },
-          );
+          const report = await (
+            await bash(runtime)
+          ).exec("js.run .build/report.module.json --format json", {
+            cwd: "/workspace",
+          });
           assert.equal(report.exitCode, 0, report.stderr);
           runIds.report = JSON.parse(report.stdout).runId;
-          const failing = await bash(runtime).exec(
-            "js.run .build/failing.module.json --format json",
-            {
-              cwd: "/workspace",
-            },
-          );
+          const failing = await (
+            await bash(runtime)
+          ).exec("js.run .build/failing.module.json --format json", {
+            cwd: "/workspace",
+          });
           assert.notEqual(failing.exitCode, 0);
           runIds.failing = JSON.parse(failing.stdout).runId;
 
@@ -196,7 +200,9 @@ test("codemode runs are retained with their outcome until a later run expires th
           "each run's start and outcome become codemode events attributed to its caller",
           async (ctx) => {
             await ctx.drain();
-            const listed = await bash(ctx.runtime).exec("events.list --limit 100 --format json");
+            const listed = await (
+              await bash(ctx.runtime)
+            ).exec("events.list --limit 100 --format json");
             assert.equal(listed.exitCode, 0, listed.stderr);
             const events = automationEventListResultSchema
               .parse(JSON.parse(listed.stdout))
@@ -259,23 +265,25 @@ test("codemode runs are retained with their outcome until a later run expires th
           },
         ),
         then.assert("js.run's run ID leads its principal to the run's logs", async (ctx) => {
-          const report = await bash(ctx.runtime).exec(`js.logs ${runIds.report}`);
+          const report = await (await bash(ctx.runtime)).exec(`js.logs ${runIds.report}`);
           assert.equal(report.exitCode, 0, report.stderr);
           assert.equal(report.stdout, "report ready\n");
 
           // Lines are stored with their channel and labelled only when read as text.
-          const failing = await bash(ctx.runtime).exec(`js.logs ${runIds.failing}`);
+          const failing = await (await bash(ctx.runtime)).exec(`js.logs ${runIds.failing}`);
           assert.equal(failing.exitCode, 1);
           assert.equal(failing.stdout, "[error] about to explode\n");
           expect(failing.stderr).toContain("Startup exploded");
-          const failingJson = await bash(ctx.runtime).exec(
-            `js.logs ${runIds.failing} --format json`,
-          );
+          const failingJson = await (
+            await bash(ctx.runtime)
+          ).exec(`js.logs ${runIds.failing} --format json`);
           expect(JSON.parse(failingJson.stdout).logs).toEqual([
             { at: expect.any(Number), channel: "error", text: "about to explode" },
           ]);
 
-          const foreign = await bash(ctx.runtime, otherExecution).exec(`js.logs ${runIds.report}`);
+          const foreign = await (
+            await bash(ctx.runtime, otherExecution)
+          ).exec(`js.logs ${runIds.report}`);
           assert.notEqual(foreign.exitCode, 0);
           expect(foreign.stderr).toContain("CODEMODE_RUN_FORBIDDEN");
         }),
@@ -283,15 +291,14 @@ test("codemode runs are retained with their outcome until a later run expires th
           "runs keep their caller's ceiling and only callers holding that authority read their logs",
           async (ctx) => {
             const runAs = async (as: BackofficeExecutionContext) => {
-              const ran = await bash(ctx.runtime, as).exec(
-                "js.run .build/report.module.json --format json",
-                { cwd: "/workspace" },
-              );
+              const ran = await (
+                await bash(ctx.runtime, as)
+              ).exec("js.run .build/report.module.json --format json", { cwd: "/workspace" });
               assert.equal(ran.exitCode, 0, ran.stderr);
               return z.object({ runId: z.string() }).parse(JSON.parse(ran.stdout)).runId;
             };
             const readAs = async (as: BackofficeExecutionContext, runId: string) => {
-              const read = await bash(ctx.runtime, as).exec(`js.logs ${runId}`);
+              const read = await (await bash(ctx.runtime, as)).exec(`js.logs ${runId}`);
               if (read.exitCode === 0) {
                 return "allowed";
               }
@@ -317,7 +324,9 @@ test("codemode runs are retained with their outcome until a later run expires th
             });
 
             await ctx.drain();
-            const listed = await bash(ctx.runtime).exec("events.list --limit 100 --format json");
+            const listed = await (
+              await bash(ctx.runtime)
+            ).exec("events.list --limit 100 --format json");
             const ceilings = automationEventListResultSchema
               .parse(JSON.parse(listed.stdout))
               .events.filter(
@@ -336,7 +345,9 @@ test("codemode runs are retained with their outcome until a later run expires th
         ),
         when.time.advance("6.5 days"),
         then.assert("a new run removes only runs past retention", async ({ runtime }) => {
-          const report = await bash(runtime).exec("js.run .build/report.module.json", {
+          const report = await (
+            await bash(runtime)
+          ).exec("js.run .build/report.module.json", {
             cwd: "/workspace",
           });
           assert.equal(report.exitCode, 0, report.stderr);
@@ -346,7 +357,7 @@ test("codemode runs are retained with their outcome until a later run expires th
           // Builds and setup writes expired; the runs from day one and the new run remain.
           expect(runs.runs.map((run) => run.activationKind)).toEqual(Array(5).fill("compiled"));
           assert.equal(await codemode.getRun(buildRunIds[1]), null);
-          const expired = await bash(runtime).exec(`js.logs ${buildRunIds[1]}`);
+          const expired = await (await bash(runtime)).exec(`js.logs ${buildRunIds[1]}`);
           assert.notEqual(expired.exitCode, 0);
           expect(expired.stderr).toContain("CODEMODE_RUN_NOT_FOUND");
         }),

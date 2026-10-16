@@ -58,7 +58,7 @@ describe("cloudflare runtime tools", () => {
 
   test("preserves capture bytes through Bash redirection", async () => {
     const fs = new InMemoryFs();
-    const { bash, commandCallsResult } = createBashHost({
+    const { bash, commandCallsResult } = await createBashHost({
       fs,
       context: {
         ...EMPTY_BASH_HOST_CONTEXT,

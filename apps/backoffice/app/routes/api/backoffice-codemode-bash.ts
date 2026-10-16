@@ -60,7 +60,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   const timeoutMs = body.timeout ?? DASHBOARD_COMMAND_TIMEOUT_MS;
 
   const { runtime, kernel } = context.get(BackofficeWorkerContext);
-  const { bash, commandCallsResult } = createInteractiveBashHost({
+  const { bash, commandCallsResult } = await createInteractiveBashHost({
     context: createCodemodeRouteBackedRuntimeContext({
       runtime,
       kernel,

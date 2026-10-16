@@ -174,7 +174,7 @@ async function runApiIntegrationScenario<TVars extends Record<string, unknown>>(
   }
 }
 
-function createIntegrationScenarioTerminal(
+async function createIntegrationScenarioTerminal(
   runtime: BackofficeRuntimeServices,
   execution: BackofficeExecutionContext,
   kernel: BackofficeKernel,
@@ -186,8 +186,9 @@ function createIntegrationScenarioTerminal(
     billingOrganizationId: null,
   });
   assert(context.stateBackend);
-  return createInteractiveBashHost({ context: { ...context, stateBackend: context.stateBackend } })
-    .bash;
+  return (
+    await createInteractiveBashHost({ context: { ...context, stateBackend: context.stateBackend } })
+  ).bash;
 }
 
 function createDelegatedExecution(
@@ -1014,7 +1015,7 @@ test("api addresses resolve only in their own scope, page natively, and require 
             ],
           });
 
-          const system = createIntegrationScenarioTerminal(
+          const system = await createIntegrationScenarioTerminal(
             ctx.runtime.services,
             createBackofficeSystemExecution({ kind: "system" }),
             new BackofficeKernel(ctx.runtime.services),
@@ -1077,7 +1078,7 @@ test("api addresses resolve only in their own scope, page natively, and require 
             BACKOFFICE_PERMISSION.connections.read,
             BACKOFFICE_PERMISSION.upload.read,
           ]);
-          const setupTerminal = createIntegrationScenarioTerminal(
+          const setupTerminal = await createIntegrationScenarioTerminal(
             ctx.runtime.services,
             setupOnly.execution,
             setupOnly.kernel,
@@ -1106,10 +1107,12 @@ test("api addresses resolve only in their own scope, page natively, and require 
           ]);
           // Resolution reads the connection name, so execution also needs connection-read authority.
           expect(
-            await createIntegrationScenarioTerminal(
-              ctx.runtime.services,
-              executeOnly.execution,
-              executeOnly.kernel,
+            await (
+              await createIntegrationScenarioTerminal(
+                ctx.runtime.services,
+                executeOnly.execution,
+                executeOnly.kernel,
+              )
             ).exec(command),
           ).toMatchObject({
             exitCode: 1,
@@ -1121,10 +1124,12 @@ test("api addresses resolve only in their own scope, page natively, and require 
             BACKOFFICE_PERMISSION.connections.read,
             BACKOFFICE_PERMISSION.upload.read,
           ]);
-          const executed = await createIntegrationScenarioTerminal(
-            ctx.runtime.services,
-            delegated.execution,
-            delegated.kernel,
+          const executed = await (
+            await createIntegrationScenarioTerminal(
+              ctx.runtime.services,
+              delegated.execution,
+              delegated.kernel,
+            )
           ).exec(`${command} --print ok`);
           expect(executed.exitCode, executed.stderr).toBe(0);
           assert(executed.stdout === "true\n");

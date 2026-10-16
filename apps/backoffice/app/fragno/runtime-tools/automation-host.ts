@@ -13,8 +13,10 @@ type CreateInteractiveBashHostInput = {
 };
 
 /** Runs shell commands against the same scoped state backend as codemode and PI. */
-export function createInteractiveBashHost(input: CreateInteractiveBashHostInput): BashHost {
-  return createInteractiveRuntimeBashHost({
+export async function createInteractiveBashHost(
+  input: CreateInteractiveBashHostInput,
+): Promise<BashHost> {
+  return await createInteractiveRuntimeBashHost({
     fs: createStateShellFileSystem(input.context.stateBackend),
     sessionId: input.sessionId,
     context: input.context,

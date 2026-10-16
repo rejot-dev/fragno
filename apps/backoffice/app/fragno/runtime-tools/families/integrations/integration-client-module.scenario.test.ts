@@ -41,14 +41,14 @@ afterAll(async () => {
   await codemodeServer?.close();
 });
 
-function terminal(ctx: BackofficeScenarioContext) {
+async function terminal(ctx: BackofficeScenarioContext) {
   const context = createCodemodeRouteBackedRuntimeContext({
     runtime: ctx.runtime.services,
     kernel: new BackofficeKernel(ctx.runtime.services),
     execution: createBackofficeSystemExecution(scope),
     billingOrganizationId: null,
   });
-  return createInteractiveBashHost({ context }).bash;
+  return (await createInteractiveBashHost({ context })).bash;
 }
 
 test("a generated MCP client is imported by codemode, saved modules, and pinned workflows", async () => {
@@ -151,9 +151,9 @@ console.log(Object.keys(tools).join(","));`,
           then.assert("the client exports one function per published action", async (ctx) => {
             // Tools arrive through the source's background refresh.
             await ctx.drain();
-            const generated = await terminal(ctx).exec(
-              `integrations.generateClient --connection-id 'mcp#tools' --out ${clientPath}`,
-            );
+            const generated = await (
+              await terminal(ctx)
+            ).exec(`integrations.generateClient --connection-id 'mcp#tools' --out ${clientPath}`);
             assert.equal(generated.exitCode, 0, generated.stderr);
             expect(generated.stdout).toBe(
               `${clientPath}\necho\techo\nrefuse\trefuse\nlegacy\tlegacy\n`,
@@ -201,7 +201,7 @@ console.log(Object.keys(tools).join(","));`,
           then.assert(
             "saved modules import the client relatively, as source and as a built artifact",
             async (ctx) => {
-              const bash = terminal(ctx);
+              const bash = await terminal(ctx);
               const source = await bash.exec("js.run /workspace/scripts/echo.js --format json");
               assert.equal(source.exitCode, 0, source.stdout);
               expect(JSON.parse(source.stdout)).toMatchObject({
@@ -226,7 +226,7 @@ console.log(Object.keys(tools).join(","));`,
           then.assert(
             "regeneration replaces generated clients but never a hand-written module",
             async (ctx) => {
-              const bash = terminal(ctx);
+              const bash = await terminal(ctx);
               const regenerated = await bash.exec(
                 `integrations.generateClient --connection-id 'mcp#tools' --out ${clientPath}`,
               );

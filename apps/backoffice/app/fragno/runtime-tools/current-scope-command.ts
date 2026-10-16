@@ -2,7 +2,7 @@ import {
   backofficeScopePathSegment,
   type BackofficeContextScope,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
-import type { defineCommand } from "just-bash";
+import type { Command } from "just-bash";
 
 import type { AutomationCommandHelp } from "./automation-types";
 import {
@@ -15,8 +15,6 @@ import {
   readOutputOptions,
   STANDARD_COMMAND_OPTIONS,
 } from "./bash-cli";
-
-type DefineBashCommand = typeof defineCommand;
 
 /** Bash command that prints the exact scope governing the current execution. */
 export const CURRENT_SCOPE_BASH_COMMAND = "context.current";
@@ -57,13 +55,10 @@ function formatCurrentScopeText(scope: BackofficeContextScope): string {
 }
 
 /** Creates the Bash command that exposes trusted current execution scope metadata. */
-export function createCurrentScopeBashCommand(
-  scope: BackofficeContextScope,
-  defineBashCommand: DefineBashCommand,
-) {
-  return defineBashCommand(
-    CURRENT_SCOPE_BASH_COMMAND,
-    async function executeCurrentScopeBashCommand(args) {
+export function createCurrentScopeBashCommand(scope: BackofficeContextScope): Command {
+  return {
+    name: CURRENT_SCOPE_BASH_COMMAND,
+    async execute(args) {
       const parsed = parseCliTokens(args);
       if (hasHelpOption(parsed)) {
         return {
@@ -94,5 +89,5 @@ export function createCurrentScopeBashCommand(
         };
       }
     },
-  );
+  };
 }

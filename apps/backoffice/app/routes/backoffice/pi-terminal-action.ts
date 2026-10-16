@@ -332,7 +332,7 @@ const handleRunCommand = async ({
       kind: "org",
       orgId: activeOrg.id,
     });
-    const { bash } = createInteractiveBashHost({
+    const { bash } = await createInteractiveBashHost({
       context: createCodemodeRouteBackedRuntimeContext({
         runtime,
         kernel,

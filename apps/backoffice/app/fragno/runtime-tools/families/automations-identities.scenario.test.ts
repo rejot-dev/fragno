@@ -84,7 +84,7 @@ test("identity.external.list pages through active and revoked bindings", async (
               billingOrganizationId: null,
             });
             assert(context.stateBackend);
-            const { bash } = createInteractiveBashHost({
+            const { bash } = await createInteractiveBashHost({
               context: { ...context, stateBackend: context.stateBackend },
             });
 

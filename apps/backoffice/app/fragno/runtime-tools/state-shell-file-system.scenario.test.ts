@@ -41,14 +41,14 @@ const scenarioObjects = {
   UPLOAD: (input) => new InMemoryUploadObject(input),
 } satisfies LocalBackofficeObjects;
 
-function createScenarioShell(ctx: BackofficeScenarioContext) {
+async function createScenarioShell(ctx: BackofficeScenarioContext) {
   const context = createCodemodeRouteBackedRuntimeContext({
     runtime: ctx.runtime.services,
     kernel: new BackofficeKernel(ctx.runtime.services),
     execution: createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
     billingOrganizationId: null,
   });
-  return { ...createInteractiveBashHost({ context }), state: context.stateBackend };
+  return { ...(await createInteractiveBashHost({ context })), state: context.stateBackend };
 }
 
 describe("shared state shell scenarios", () => {
@@ -60,7 +60,7 @@ describe("shared state shell scenarios", () => {
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ then }) => [
           then.assert("shell mutations are visible through the same state backend", async (ctx) => {
-            const { bash, state } = createScenarioShell(ctx);
+            const { bash, state } = await createScenarioShell(ctx);
             await state.writeFile("/workspace/state.txt", "from state\n");
             const result = await bash.exec(
               [
@@ -106,7 +106,7 @@ describe("shared state shell scenarios", () => {
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ then }) => [
           then.assert("touch succeeds for new and existing workspace entries", async (ctx) => {
-            const { bash, state } = createScenarioShell(ctx);
+            const { bash, state } = await createScenarioShell(ctx);
             const bytes = new Uint8Array([0, 255, 128, 65, 10]);
             await state.writeFileBytes("/workspace/existing.bin", bytes);
             await state.mkdir("/workspace/folder");
@@ -152,7 +152,7 @@ describe("shared state shell scenarios", () => {
           then.assert(
             "unsupported metadata operations leave shared files unchanged",
             async (ctx) => {
-              const { bash, state } = createScenarioShell(ctx);
+              const { bash, state } = await createScenarioShell(ctx);
               await state.writeFile("/workspace/keep.txt", "keep");
               const roots = await bash.exec("ls /", { cwd: "/" });
               expect(roots.exitCode, roots.stderr).toBe(0);
@@ -195,7 +195,7 @@ describe("shared state shell scenarios", () => {
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ then }) => [
           then.assert("forced seeding restores content without a permission model", async (ctx) => {
-            const { state } = createScenarioShell(ctx);
+            const { state } = await createScenarioShell(ctx);
             await state.writeFile("/workspace/AGENTS.md", "edited guidance");
             const input = {
               objects: ctx.runtime.objects,

@@ -550,7 +550,7 @@ describe("system automation scenarios", () => {
                 userId: "scenario-user",
               });
               const fs = createScopedTestFileSystem(ctx.runtime, execution);
-              const { bash } = createInteractiveBashHost({
+              const { bash } = await createInteractiveBashHost({
                 context: createCodemodeRouteBackedRuntimeContext({
                   runtime: ctx.runtime.services,
                   kernel,

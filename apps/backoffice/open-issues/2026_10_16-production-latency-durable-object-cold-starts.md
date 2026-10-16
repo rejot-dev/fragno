@@ -183,9 +183,12 @@ returns 404. A WAF custom rule could drop them before they reach the worker. Not
      integration action definitions convert to JSON Schema on first listing, and every
      backoffice-api module-level schema is lazy. Local `wrangler check startup` went from ~105–119
      ms to ~86–90 ms active. Zod is still ~30 ms of startup, now spread across fragment contracts,
-     app modules, and third-party packages (MCP SDK protocol schemas, better-auth). Non-zod
-     top-level work worth deferring next: turndown (~13 ms in Node) and `systemFileCollection` (~5
-     ms).
+     app modules, and third-party packages (MCP SDK protocol schemas, better-auth). Since then, the
+     system file collection is built per execution (its tree sort initialized ICU collation; ~5 ms),
+     and just-bash (1.2 MB browser bundle, with turndown and domino) loads with the first shell: the
+     object worker no longer contains it, and the web worker imports it on demand. Startup is ~82–84
+     ms active for the object worker and ~87–91 ms for the web worker. Other top-level costs: MCP
+     SDK `preloadSchemas()` (~3 ms) and Octokit's endpoint table (~3 ms in Node).
    - If that's not enough, split the object worker into several scripts (for example Pi / PiManager
      / Codemode / Sandbox vs Auth / Automations / Upload / integrations) so each activation loads
      only its own graph.

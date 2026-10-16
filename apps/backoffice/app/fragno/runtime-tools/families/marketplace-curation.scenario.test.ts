@@ -92,9 +92,11 @@ async function curate(
     billingOrganizationId: null,
   });
   assert(context.stateBackend);
-  return await createInteractiveBashHost({
-    context: { ...context, stateBackend: context.stateBackend },
-  }).bash.exec(`${command} --format json`);
+  return await (
+    await createInteractiveBashHost({
+      context: { ...context, stateBackend: context.stateBackend },
+    })
+  ).bash.exec(`${command} --format json`);
 }
 
 async function featuredEntries(

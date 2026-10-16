@@ -374,7 +374,7 @@ describe("admin OAuth client SQLite scenarios", () => {
             async (ctx) => {
               const context = oauthAdminContext(ctx, "admin-1");
               assert(context.stateBackend);
-              const { bash, commandCallsResult } = createInteractiveBashHost({
+              const { bash, commandCallsResult } = await createInteractiveBashHost({
                 context: { ...context, stateBackend: context.stateBackend },
               });
               const confidential = await bash.exec(
@@ -508,7 +508,7 @@ describe("admin OAuth client SQLite scenarios", () => {
               seen.push(page.clients[0].clientId);
               const context = oauthAdminContext(ctx, "admin-1");
               assert(context.stateBackend);
-              const { bash } = createInteractiveBashHost({
+              const { bash } = await createInteractiveBashHost({
                 context: { ...context, stateBackend: context.stateBackend },
               });
               const text = await bash.exec("admin.oauth-clients.list --page-size 1");
@@ -693,7 +693,7 @@ describe("admin OAuth client SQLite scenarios", () => {
                 ),
               ).rejects.toThrow("must allow the backoffice scope");
 
-              const { bash, commandCallsResult } = createInteractiveBashHost({
+              const { bash, commandCallsResult } = await createInteractiveBashHost({
                 context: { ...context, stateBackend: context.stateBackend },
               });
               const updateCommand = `admin.oauth-clients.update --client-id ${created.clientId} ${clientInput.redirectUris.map((uri) => `--redirect-uri ${uri}`).join(" ")} ${[...clientInput.scopes, "backoffice"].map((scope) => `--scope ${scope}`).join(" ")} --client-credentials --format json`;
@@ -709,9 +709,11 @@ describe("admin OAuth client SQLite scenarios", () => {
               });
               const otherContext = oauthAdminContext(ctx, "other-admin");
               assert(otherContext.stateBackend);
-              const notOwner = await createInteractiveBashHost({
-                context: { ...otherContext, stateBackend: otherContext.stateBackend },
-              }).bash.exec(updateCommand);
+              const notOwner = await (
+                await createInteractiveBashHost({
+                  context: { ...otherContext, stateBackend: otherContext.stateBackend },
+                })
+              ).bash.exec(updateCommand);
               assert.equal(notOwner.exitCode, 1);
               assert.equal(
                 notOwner.stderr,
@@ -909,7 +911,7 @@ describe("admin OAuth client SQLite scenarios", () => {
                 executeBackofficeRuntimeTool(adminOAuthClientsRuntimeTools[1], {}, tools),
               ).rejects.toThrow("Required permission: admin.oauth-clients.read.");
               assert(reusedContext.stateBackend);
-              const { bash } = createInteractiveBashHost({
+              const { bash } = await createInteractiveBashHost({
                 context: { ...reusedContext, stateBackend: reusedContext.stateBackend },
               });
               const denied = await bash.exec(

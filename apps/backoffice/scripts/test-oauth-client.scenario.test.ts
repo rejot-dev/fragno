@@ -162,7 +162,7 @@ async function createNativeTestClient(
   let client: z.output<typeof backofficeOAuthClientCreateResultSchema>;
   if (authentication === "none") {
     assert(context.stateBackend);
-    const { bash, commandCallsResult } = createInteractiveBashHost({
+    const { bash, commandCallsResult } = await createInteractiveBashHost({
       context: { ...context, stateBackend: context.stateBackend },
     });
     const help = await bash.exec("admin.oauth-clients.create --help");

@@ -101,7 +101,7 @@ test("js.run executes bundled top-level statements and dependencies with the com
               }),
               billingOrganizationId: null,
             });
-            const { bash } = createInteractiveBashHost({ context });
+            const { bash } = await createInteractiveBashHost({ context });
             const built = await bash.exec(
               `js.build scripts/example.js --out .build/example.module.json`,
               { cwd: "/workspace" },
@@ -156,9 +156,9 @@ test("js.run executes bundled top-level statements and dependencies with the com
               execution: createBackofficeUserExecution({ scope, userId: "outsider" }),
               billingOrganizationId: null,
             });
-            const denied = await createInteractiveBashHost({ context: deniedContext }).bash.exec(
-              `js.run ${artifactPath}`,
-            );
+            const denied = await (
+              await createInteractiveBashHost({ context: deniedContext })
+            ).bash.exec(`js.run ${artifactPath}`);
             assert.notEqual(denied.exitCode, 0);
           },
         ),
@@ -204,7 +204,7 @@ for (const invalid of [
               }),
               billingOrganizationId: null,
             });
-            const { bash } = createInteractiveBashHost({ context });
+            const { bash } = await createInteractiveBashHost({ context });
             assert.equal(
               (await bash.exec(`js.build /workspace/scripts/invalid.js --out ${artifactPath}`))
                 .exitCode,
@@ -255,7 +255,7 @@ test("js.run validates artifact format, entrypoint, runtime, JSON and scope befo
               }),
               billingOrganizationId: null,
             });
-            const { bash } = createInteractiveBashHost({ context });
+            const { bash } = await createInteractiveBashHost({ context });
             assert.equal(
               (await bash.exec(`js.build /workspace/scripts/example.js --out ${artifactPath}`))
                 .exitCode,
@@ -299,9 +299,9 @@ test("js.run validates artifact format, entrypoint, runtime, JSON and scope befo
               }),
               billingOrganizationId: null,
             });
-            const missing = await createInteractiveBashHost({ context: other }).bash.exec(
-              `js.run ${artifactPath} --format json`,
-            );
+            const missing = await (
+              await createInteractiveBashHost({ context: other })
+            ).bash.exec(`js.run ${artifactPath} --format json`);
             assert.notEqual(missing.exitCode, 0);
             expect(missing.stdout).toContain("JAVASCRIPT_RUN_ARTIFACT_MISSING");
             assert.equal(compiler.compilations, before);

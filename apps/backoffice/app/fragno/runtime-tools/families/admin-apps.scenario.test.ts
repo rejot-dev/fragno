@@ -115,7 +115,7 @@ describe("admin app runtime tool SQLite scenarios", () => {
             const config = await createAppClient(ctx, "admin-1");
             const context = appAdminContext(ctx, "admin-1");
             assert(context.stateBackend);
-            const { bash } = createInteractiveBashHost({
+            const { bash } = await createInteractiveBashHost({
               context: { ...context, stateBackend: context.stateBackend },
             });
             const empty = await bash.exec("admin.apps.list");
@@ -211,7 +211,7 @@ describe("admin app runtime tool SQLite scenarios", () => {
               "admin.apps.create",
               "admin.apps.list",
             ]);
-            const { bash } = createInteractiveBashHost({
+            const { bash } = await createInteractiveBashHost({
               context: { ...context, stateBackend: context.stateBackend },
             });
             const repeated = await bash.exec(
@@ -283,7 +283,7 @@ describe("admin app runtime tool SQLite scenarios", () => {
             await expect(
               executeBackofficeRuntimeTool(adminAppsRuntimeTools[1], {}, userTools),
             ).rejects.toThrow("Required permission: admin.apps.read.");
-            const { bash } = createInteractiveBashHost({
+            const { bash } = await createInteractiveBashHost({
               context: { ...userContext, stateBackend: userContext.stateBackend },
             });
             for (const [command, permission] of [
@@ -377,7 +377,7 @@ describe("admin app runtime tool SQLite scenarios", () => {
               await expect(
                 executeBackofficeRuntimeTool(adminAppsRuntimeTools[1], {}, tools),
               ).rejects.toThrow("requires System context");
-              const { bash } = createInteractiveBashHost({
+              const { bash } = await createInteractiveBashHost({
                 context: { ...context, stateBackend: context.stateBackend },
               });
               const result = await bash.exec("admin.apps.list");
@@ -438,7 +438,7 @@ describe("admin app runtime tool SQLite scenarios", () => {
                   ),
                 ).rejects.toThrow();
               }
-              const { bash } = createInteractiveBashHost({
+              const { bash } = await createInteractiveBashHost({
                 context: { ...context, stateBackend: context.stateBackend },
               });
               for (const command of [
@@ -523,7 +523,7 @@ describe("admin app runtime tool SQLite scenarios", () => {
             firstId = page.apps[0].id;
             const context = appAdminContext(ctx, "admin-1");
             assert(context.stateBackend);
-            const { bash } = createInteractiveBashHost({
+            const { bash } = await createInteractiveBashHost({
               context: { ...context, stateBackend: context.stateBackend },
             });
             const text = await bash.exec("admin.apps.list --page-size 1");

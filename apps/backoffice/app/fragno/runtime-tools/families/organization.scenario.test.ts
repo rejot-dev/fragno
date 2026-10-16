@@ -44,7 +44,11 @@ const scenarioObjects = {
 
 const acme: BackofficeContextScope = { kind: "org", orgId: "org-acme" };
 
-function terminal(ctx: BackofficeScenarioContext, userId: string, scope: BackofficeContextScope) {
+async function terminal(
+  ctx: BackofficeScenarioContext,
+  userId: string,
+  scope: BackofficeContextScope,
+) {
   const context = createRouteBackedRuntimeContext({
     runtime: ctx.runtime.services,
     kernel: new BackofficeKernel(ctx.runtime.services),
@@ -52,11 +56,12 @@ function terminal(ctx: BackofficeScenarioContext, userId: string, scope: Backoff
     billingOrganizationId: null,
   });
   assert(context.stateBackend);
-  return createInteractiveBashHost({ context: { ...context, stateBackend: context.stateBackend } })
-    .bash;
+  return (
+    await createInteractiveBashHost({ context: { ...context, stateBackend: context.stateBackend } })
+  ).bash;
 }
 
-async function runJson(bash: ReturnType<typeof terminal>, command: string) {
+async function runJson(bash: Awaited<ReturnType<typeof terminal>>, command: string) {
   const result = await bash.exec(`${command} --format json`);
   assert.equal(result.exitCode, 0, result.stderr);
   return JSON.parse(result.stdout);
@@ -86,7 +91,7 @@ describe("account and organization runtime tool scenarios", () => {
         ],
         steps: ({ then }) => [
           then.assert("members can read but not manage the organization", async (ctx) => {
-            const bash = terminal(ctx, "member", acme);
+            const bash = await terminal(ctx, "member", acme);
             expect(await runJson(bash, "org.get")).toMatchObject({
               organization: { name: "Acme", slug: "acme" },
               roles: ["member"],
@@ -98,14 +103,14 @@ describe("account and organization runtime tool scenarios", () => {
             expect(denied.stderr).toContain("Required permission: org.manage.");
           }),
           then.assert("admins cannot invite owners", async (ctx) => {
-            const denied = await terminal(ctx, "admin", acme).exec(
-              "org.invitations.create --email invitee@example.com --role owner",
-            );
+            const denied = await (
+              await terminal(ctx, "admin", acme)
+            ).exec("org.invitations.create --email invitee@example.com --role owner");
             assert.equal(denied.exitCode, 1);
             expect(denied.stderr).toMatch(/not allowed to invite a user with this role/iu);
           }),
           then.assert("admins rename the organization and invite by link", async (ctx) => {
-            const bash = terminal(ctx, "admin", acme);
+            const bash = await terminal(ctx, "admin", acme);
             expect(await runJson(bash, 'org.update --name "Acme Inc."')).toMatchObject({
               name: "Acme Inc.",
               slug: "acme",
@@ -129,7 +134,7 @@ describe("account and organization runtime tool scenarios", () => {
             expect(repeated.stderr).toMatch(/already invited/iu);
           }),
           then.assert("the invitee accepts from their own account", async (ctx) => {
-            const bash = terminal(ctx, "invitee", { kind: "user", userId: "invitee" });
+            const bash = await terminal(ctx, "invitee", { kind: "user", userId: "invitee" });
             expect(await runJson(bash, "account.orgs.list")).toEqual({ organizations: [] });
             expect((await runJson(bash, "account.invitations.list")).invitations).toMatchObject([
               {
@@ -146,7 +151,7 @@ describe("account and organization runtime tool scenarios", () => {
             expect(await runJson(bash, "account.invitations.list")).toEqual({ invitations: [] });
           }),
           then.assert("the organization reflects the accepted invitation", async (ctx) => {
-            const bash = terminal(ctx, "invitee", acme);
+            const bash = await terminal(ctx, "invitee", acme);
             expect(await runJson(bash, "org.invitations.list")).toMatchObject({
               invitations: [],
             });
@@ -174,7 +179,7 @@ describe("account and organization runtime tool scenarios", () => {
             assert.equal(members.length, 4);
           }),
           then.assert("users manage only their own profile", async (ctx) => {
-            const bash = terminal(ctx, "invitee", acme);
+            const bash = await terminal(ctx, "invitee", acme);
             expect(await runJson(bash, 'account.profile.update --name "Ivy"')).toMatchObject({
               userId: "invitee",
               name: "Ivy",

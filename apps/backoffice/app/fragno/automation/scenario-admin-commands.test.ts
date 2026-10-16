@@ -36,14 +36,16 @@ const scenarioObjects = {
 async function createSystemTerminalBash(ctx: BackofficeScenarioContext) {
   const execution = createBackofficeSystemExecution({ kind: "system" });
   const kernel = new BackofficeKernel(ctx.runtime.services);
-  return createInteractiveBashHost({
-    context: createCodemodeRouteBackedRuntimeContext({
-      runtime: ctx.runtime.services,
-      kernel,
-      execution,
-      billingOrganizationId: null,
-    }),
-  }).bash;
+  return (
+    await createInteractiveBashHost({
+      context: createCodemodeRouteBackedRuntimeContext({
+        runtime: ctx.runtime.services,
+        kernel,
+        execution,
+        billingOrganizationId: null,
+      }),
+    })
+  ).bash;
 }
 
 describe("system admin command scenarios", () => {

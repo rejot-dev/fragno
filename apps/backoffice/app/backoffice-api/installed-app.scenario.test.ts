@@ -379,7 +379,7 @@ async function getEventAsOwner(ctx: Ctx, eventId: string): Promise<unknown> {
     billingOrganizationId: null,
   });
   assert(ownerContext.stateBackend);
-  const { bash } = createInteractiveBashHost({
+  const { bash } = await createInteractiveBashHost({
     context: { ...ownerContext, stateBackend: ownerContext.stateBackend },
   });
   const listed = await bash.exec("events.list --format json");
@@ -1308,7 +1308,7 @@ describe("installed-app event delivery SQLite scenarios", () => {
               billingOrganizationId: null,
             });
             assert(context.stateBackend);
-            const { bash } = createInteractiveBashHost({
+            const { bash } = await createInteractiveBashHost({
               context: { ...context, stateBackend: context.stateBackend },
             });
             return await bash.exec(command);

@@ -161,7 +161,7 @@ async function runReson8IntegrationScenario<TVars extends Record<string, unknown
   }
 }
 
-function createIntegrationScenarioTerminal(
+async function createIntegrationScenarioTerminal(
   runtime: BackofficeRuntimeServices,
   execution: BackofficeExecutionContext,
   kernel: BackofficeKernel,
@@ -173,8 +173,9 @@ function createIntegrationScenarioTerminal(
     billingOrganizationId: null,
   });
   assert(context.stateBackend);
-  return createInteractiveBashHost({ context: { ...context, stateBackend: context.stateBackend } })
-    .bash;
+  return (
+    await createInteractiveBashHost({ context: { ...context, stateBackend: context.stateBackend } })
+  ).bash;
 }
 
 function createIntegrationScenarioContext(
@@ -438,7 +439,7 @@ test("terminal commands use scalar connection IDs without setup handles or persi
       then.assert(
         "unconfigured discovery and setup work and every command has help",
         async (ctx) => {
-          const bash = createIntegrationScenarioTerminal(
+          const bash = await createIntegrationScenarioTerminal(
             ctx.runtime.services,
             createBackofficeSystemExecution(scope),
             new BackofficeKernel(ctx.runtime.services),
@@ -494,7 +495,7 @@ test("terminal commands use scalar connection IDs without setup handles or persi
       then.assert(
         "a fresh shell submits setup, lists a plain ID, and verifies real transcription",
         async (ctx) => {
-          const bash = createIntegrationScenarioTerminal(
+          const bash = await createIntegrationScenarioTerminal(
             ctx.runtime.services,
             createBackofficeSystemExecution(scope),
             new BackofficeKernel(ctx.runtime.services),
@@ -591,7 +592,7 @@ test("terminal commands use scalar connection IDs without setup handles or persi
       then.assert(
         "invalid addresses, legacy options, malformed JSON, cursors, and action contracts stop before transport",
         async (ctx) => {
-          const bash = createIntegrationScenarioTerminal(
+          const bash = await createIntegrationScenarioTerminal(
             ctx.runtime.services,
             createBackofficeSystemExecution(scope),
             new BackofficeKernel(ctx.runtime.services),
@@ -683,7 +684,7 @@ test("connection IDs cannot select an owner or replace umbrella and service auth
         async (ctx) => {
           const execution = createBackofficeSystemExecution(scope);
           const kernel = new BackofficeKernel(ctx.runtime.services);
-          const agent = createIntegrationScenarioTerminal(
+          const agent = await createIntegrationScenarioTerminal(
             ctx.runtime.services,
             createBackofficeServiceExecution({
               scope,
@@ -715,7 +716,7 @@ test("connection IDs cannot select an owner or replace umbrella and service auth
               ],
             }),
           });
-          const limited = createIntegrationScenarioTerminal(
+          const limited = await createIntegrationScenarioTerminal(
             ctx.runtime.services,
             { ...execution, actors: { ...execution.actors, delegation: [actor] } },
             limitedKernel,
@@ -731,7 +732,11 @@ test("connection IDs cannot select an owner or replace umbrella and service auth
           expect(
             await ctx.runtime.objects.reson8.forOrg(scope.orgId).commands.getAdminConfig(),
           ).toEqual({ configured: false });
-          const bash = createIntegrationScenarioTerminal(ctx.runtime.services, execution, kernel);
+          const bash = await createIntegrationScenarioTerminal(
+            ctx.runtime.services,
+            execution,
+            kernel,
+          );
           const saved = await bash.exec(
             `integrations.setup --connection-id 'backoffice#reson8' --input-json '${JSON.stringify({ apiKey })}' --json`,
           );
@@ -744,7 +749,7 @@ test("connection IDs cannot select an owner or replace umbrella and service auth
         "an address copied into another scope uses only that scope's configuration and cannot smuggle an owner",
         async (ctx) => {
           const kernel = new BackofficeKernel(ctx.runtime.services);
-          const other = createIntegrationScenarioTerminal(
+          const other = await createIntegrationScenarioTerminal(
             ctx.runtime.services,
             createBackofficeSystemExecution({ kind: "org", orgId: "other-org" }),
             kernel,
@@ -844,7 +849,7 @@ test("connection IDs cannot select an owner or replace umbrella and service auth
             }),
           });
           const execution = createBackofficeSystemExecution(scope);
-          const limited = createIntegrationScenarioTerminal(
+          const limited = await createIntegrationScenarioTerminal(
             ctx.runtime.services,
             { ...execution, actors: { ...execution.actors, delegation: [actor] } },
             kernel,
@@ -854,7 +859,7 @@ test("connection IDs cannot select an owner or replace umbrella and service auth
             exitCode: 1,
             stderr: expect.stringContaining("is not granted"),
           });
-          const agent = createIntegrationScenarioTerminal(
+          const agent = await createIntegrationScenarioTerminal(
             ctx.runtime.services,
             createBackofficeServiceExecution({
               scope,
@@ -891,7 +896,7 @@ test("connection IDs cannot select an owner or replace umbrella and service auth
             }),
           });
           const execution = createBackofficeSystemExecution(scope);
-          const bash = createIntegrationScenarioTerminal(
+          const bash = await createIntegrationScenarioTerminal(
             ctx.runtime.services,
             { ...execution, actors: { ...execution.actors, delegation: [actor] } },
             kernel,
@@ -991,7 +996,7 @@ test.each([
                 name: "BackofficeForbiddenError",
                 reason,
               });
-              const bash = createIntegrationScenarioTerminal(
+              const bash = await createIntegrationScenarioTerminal(
                 ctx.runtime.services,
                 execution,
                 kernel,

@@ -191,7 +191,10 @@ async function runGitHubIntegrationScenario<TVars extends Record<string, unknown
   }
 }
 
-function createTerminal(ctx: BackofficeScenarioContext, execution: BackofficeExecutionContext) {
+async function createTerminal(
+  ctx: BackofficeScenarioContext,
+  execution: BackofficeExecutionContext,
+) {
   const runtime: BackofficeRuntimeServices = ctx.runtime.services;
   const context = createRouteBackedRuntimeContext({
     runtime,
@@ -200,7 +203,7 @@ function createTerminal(ctx: BackofficeScenarioContext, execution: BackofficeExe
     billingOrganizationId: null,
   });
   assert(context.stateBackend);
-  const { bash } = createInteractiveBashHost({
+  const { bash } = await createInteractiveBashHost({
     context: { ...context, stateBackend: context.stateBackend },
   });
   return {
@@ -289,7 +292,7 @@ test("a repository becomes a connection after the GitHub App is installed, linke
       then.assert(
         "an unreachable repository asks a user for GitHub access and resumes the pending link",
         async (ctx) => {
-          const system = createTerminal(ctx, createBackofficeSystemExecution(scope));
+          const system = await createTerminal(ctx, createBackofficeSystemExecution(scope));
           const services = await system.json("integrations.discover");
           expect(services).toContainEqual(
             expect.objectContaining({
@@ -308,7 +311,7 @@ test("a repository becomes a connection after the GitHub App is installed, linke
             status: "blocked",
             reason: expect.stringContaining("signed-in user"),
           });
-          const user = createTerminal(
+          const user = await createTerminal(
             ctx,
             createBackofficeUserExecution({ scope, userId: ownerUserId }),
           );
@@ -358,7 +361,7 @@ test("a repository becomes a connection after the GitHub App is installed, linke
       then.assert(
         "returning from GitHub linked the requested repository, so setup is ready and it lists",
         async (ctx) => {
-          const system = createTerminal(ctx, createBackofficeSystemExecution(scope));
+          const system = await createTerminal(ctx, createBackofficeSystemExecution(scope));
           expect(await system.json(setup("github#acme/project"))).toEqual({
             status: "ready",
             connectionId: "github#acme/project",
@@ -389,7 +392,7 @@ test("a repository becomes a connection after the GitHub App is installed, linke
         async (ctx) => {
           github.repositories = [project, web];
           github.requests = [];
-          const system = createTerminal(ctx, createBackofficeSystemExecution(scope));
+          const system = await createTerminal(ctx, createBackofficeSystemExecution(scope));
           expect(await system.json(setup("github#acme/web"))).toMatchObject({
             status: "needs-input",
             instructions: expect.stringContaining("can reach acme/web"),
@@ -411,7 +414,7 @@ test("a repository becomes a connection after the GitHub App is installed, linke
         },
       ),
       then.assert("actions and verification read the repository through GitHub", async (ctx) => {
-        const system = createTerminal(ctx, createBackofficeSystemExecution(scope));
+        const system = await createTerminal(ctx, createBackofficeSystemExecution(scope));
         const target = "--connection-id 'github#acme/project'";
         expect(await system.json(`integrations.actions ${target}`)).toMatchObject([
           { id: "pulls.list" },
@@ -492,7 +495,7 @@ test("a repository becomes a connection after the GitHub App is installed, linke
       }),
       runner.drain(),
       then.assert("restored repositories are available again", async (ctx) => {
-        const system = createTerminal(ctx, createBackofficeSystemExecution(scope));
+        const system = await createTerminal(ctx, createBackofficeSystemExecution(scope));
         expect(
           await system.json(`integrations.get --connection-id 'github#acme/web'`),
         ).toMatchObject({ authorization: { status: "available" } });
@@ -500,7 +503,7 @@ test("a repository becomes a connection after the GitHub App is installed, linke
       then.assert(
         "disconnecting unlinks the repository but leaves GitHub access in place",
         async (ctx) => {
-          const system = createTerminal(ctx, createBackofficeSystemExecution(scope));
+          const system = await createTerminal(ctx, createBackofficeSystemExecution(scope));
           const target = "github#acme/project";
           expect(
             await system.json(
@@ -551,7 +554,7 @@ test("without a GitHub App configuration, GitHub is unavailable and other integr
       setup: ({ given }) => [given.organization.exists({ id: scope.orgId, name: "GitHub Org" })],
       steps: ({ then }) => [
         then.assert("listing, discovery, and setup report GitHub as unavailable", async (ctx) => {
-          const system = createTerminal(ctx, createBackofficeSystemExecution(scope));
+          const system = await createTerminal(ctx, createBackofficeSystemExecution(scope));
           expect(await system.json("integrations.list")).toEqual({
             connections: [],
             unavailableSources: [],

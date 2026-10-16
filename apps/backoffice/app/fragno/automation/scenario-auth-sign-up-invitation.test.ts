@@ -125,7 +125,7 @@ function createSignUpInvitation(input: CreateSignUpInvitationStepInput): Backoff
     async run(ctx: BackofficeScenarioContext<SignUpInvitationScenarioVars>) {
       const execution = createBackofficeSystemExecution({ kind: "system" });
       const kernel = new BackofficeKernel(ctx.runtime.services);
-      const { bash } = createInteractiveBashHost({
+      const { bash } = await createInteractiveBashHost({
         context: createCodemodeRouteBackedRuntimeContext({
           runtime: ctx.runtime.services,
           kernel,

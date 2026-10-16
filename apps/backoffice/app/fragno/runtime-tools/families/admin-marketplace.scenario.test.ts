@@ -110,7 +110,7 @@ describe("static Marketplace publication scenarios", () => {
               billingOrganizationId: null,
             });
             assert(context.stateBackend);
-            const { bash } = createInteractiveBashHost({
+            const { bash } = await createInteractiveBashHost({
               context: { ...context, stateBackend: context.stateBackend },
             });
             const result = await bash.exec("admin.marketplace.push-static --format json");
@@ -190,7 +190,7 @@ describe("static Marketplace publication scenarios", () => {
                 billingOrganizationId: null,
               });
               assert(context.stateBackend);
-              const { bash } = createInteractiveBashHost({
+              const { bash } = await createInteractiveBashHost({
                 context: { ...context, stateBackend: context.stateBackend },
               });
               const result = await bash.exec("admin.marketplace.push-static --format json");
@@ -300,7 +300,7 @@ describe("static Marketplace publication scenarios", () => {
               billingOrganizationId: null,
             });
             assert(context.stateBackend);
-            const { bash } = createInteractiveBashHost({
+            const { bash } = await createInteractiveBashHost({
               context: { ...context, stateBackend: context.stateBackend },
             });
             const result = await bash.exec("admin.marketplace.push-static --format json");

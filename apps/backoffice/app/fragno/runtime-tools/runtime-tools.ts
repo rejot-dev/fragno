@@ -2,7 +2,7 @@ import { backofficeApiV0 } from "@fragno-dev/backoffice-api/v0";
 import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { ToolProvider } from "@fragno-dev/codemode/runtime-api";
-import { defineCommand } from "just-bash";
+import type { Command } from "just-bash";
 import type { z } from "zod";
 
 import { unrestrictedBackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
@@ -378,89 +378,92 @@ export const createBackofficeBashCommands = ({
   tools: readonly AnyBackofficeRuntimeTool[];
   context: BackofficeToolContext;
   commandCallsResult: BashAutomationCommandResult[];
-}) =>
+}): Command[] =>
   tools.flatMap((tool) => {
     const bash = tool.adapters?.bash;
     if (!bash) {
       return [];
     }
 
-    return defineCommand(bash.command, async (args, shell) => {
-      const parsed = parseCliTokens(args);
+    return {
+      name: bash.command,
+      async execute(args, shell) {
+        const parsed = parseCliTokens(args);
 
-      if (hasHelpOption(parsed)) {
-        const output = buildCommandHelp({
-          name: bash.command,
-          help: bash.help,
-          parse: (rawArgs) => ({
+        if (hasHelpOption(parsed)) {
+          const output = buildCommandHelp({
             name: bash.command,
-            args: bash.parse(rawArgs),
-            output: readOutputOptions(parseCliTokens(rawArgs)),
-            rawArgs,
-          }),
-        });
-
-        commandCallsResult.push({
-          command: bash.command,
-          output: output.replace(/\n$/, ""),
-          exitCode: 0,
-        });
-
-        return { stdout: output, stderr: "", exitCode: 0 };
-      }
-
-      try {
-        const input = bash.parse(args);
-        const commandOutput = bash.outputOptions
-          ? bash.outputOptions(args, parsed)
-          : readOutputOptions(parsed);
-        let rawResult: unknown;
-        if (bash.execute) {
-          await authorizeBackofficeRuntimeTool(tool, tool.inputSchema.parse(input), context);
-          rawResult = await bash.execute({
-            input,
-            args,
-            context,
-            commandOutput,
-            shell: shell as unknown as BackofficeBashShellContext,
+            help: bash.help,
+            parse: (rawArgs) => ({
+              name: bash.command,
+              args: bash.parse(rawArgs),
+              output: readOutputOptions(parseCliTokens(rawArgs)),
+              rawArgs,
+            }),
           });
-        } else if (bash.format) {
-          rawResult = bash.format(
-            await executeBackofficeRuntimeTool(tool, input, context),
-            commandOutput,
-          );
-        } else {
-          rawResult = { data: await executeBackofficeRuntimeTool(tool, input, context) };
+
+          commandCallsResult.push({
+            command: bash.command,
+            output: output.replace(/\n$/, ""),
+            exitCode: 0,
+          });
+
+          return { stdout: output, stderr: "", exitCode: 0 };
         }
-        const result = normalizeExecutionResult(rawResult);
-        const stdout = formatCommandStdout(commandOutput, result);
-        const stderr = typeof result.stderr === "string" ? result.stderr : "";
-        const exitCode = typeof result.exitCode === "number" ? result.exitCode : 0;
 
-        commandCallsResult.push({
-          command: bash.command,
-          output:
-            tool.resultLogging === "redacted"
-              ? "[redacted]"
-              : result.stdoutEncoding === "binary"
-                ? "<binary>"
-                : stdout.replace(/\n$/, ""),
-          exitCode,
-        });
+        try {
+          const input = bash.parse(args);
+          const commandOutput = bash.outputOptions
+            ? bash.outputOptions(args, parsed)
+            : readOutputOptions(parsed);
+          let rawResult: unknown;
+          if (bash.execute) {
+            await authorizeBackofficeRuntimeTool(tool, tool.inputSchema.parse(input), context);
+            rawResult = await bash.execute({
+              input,
+              args,
+              context,
+              commandOutput,
+              shell: shell as unknown as BackofficeBashShellContext,
+            });
+          } else if (bash.format) {
+            rawResult = bash.format(
+              await executeBackofficeRuntimeTool(tool, input, context),
+              commandOutput,
+            );
+          } else {
+            rawResult = { data: await executeBackofficeRuntimeTool(tool, input, context) };
+          }
+          const result = normalizeExecutionResult(rawResult);
+          const stdout = formatCommandStdout(commandOutput, result);
+          const stderr = typeof result.stderr === "string" ? result.stderr : "";
+          const exitCode = typeof result.exitCode === "number" ? result.exitCode : 0;
 
-        return {
-          stdout,
-          stderr,
-          exitCode,
-          ...(result.stdoutEncoding ? { stdoutEncoding: result.stdoutEncoding } : {}),
-        };
-      } catch (error) {
-        commandCallsResult.push({ command: bash.command, output: "", exitCode: 1 });
-        return {
-          stdout: "",
-          stderr: ensureTrailingNewline(error instanceof Error ? error.message : String(error)),
-          exitCode: 1,
-        };
-      }
-    });
+          commandCallsResult.push({
+            command: bash.command,
+            output:
+              tool.resultLogging === "redacted"
+                ? "[redacted]"
+                : result.stdoutEncoding === "binary"
+                  ? "<binary>"
+                  : stdout.replace(/\n$/, ""),
+            exitCode,
+          });
+
+          return {
+            stdout,
+            stderr,
+            exitCode,
+            ...(result.stdoutEncoding ? { stdoutEncoding: result.stdoutEncoding } : {}),
+          };
+        } catch (error) {
+          commandCallsResult.push({ command: bash.command, output: "", exitCode: 1 });
+          return {
+            stdout: "",
+            stderr: ensureTrailingNewline(error instanceof Error ? error.message : String(error)),
+            exitCode: 1,
+          };
+        }
+      },
+    };
   });

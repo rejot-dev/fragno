@@ -71,7 +71,7 @@ test("event catalog commands combine built-in descriptors with scoped dynamic de
               billingOrganizationId: null,
             });
             assert(context.stateBackend);
-            const { bash } = createInteractiveBashHost({
+            const { bash } = await createInteractiveBashHost({
               context: { ...context, stateBackend: context.stateBackend },
             });
             const created = await bash.exec(
@@ -130,9 +130,11 @@ test("event catalog commands combine built-in descriptors with scoped dynamic de
               billingOrganizationId: null,
             });
             assert(otherContext.stateBackend);
-            const otherBash = createInteractiveBashHost({
-              context: { ...otherContext, stateBackend: otherContext.stateBackend },
-            }).bash;
+            const otherBash = (
+              await createInteractiveBashHost({
+                context: { ...otherContext, stateBackend: otherContext.stateBackend },
+              })
+            ).bash;
             expect(await otherBash.exec(get)).toMatchObject({
               exitCode: 1,
               stderr: expect.stringContaining("Automation event not found"),

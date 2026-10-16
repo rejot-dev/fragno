@@ -7,7 +7,7 @@ import { EMPTY_BASH_HOST_CONTEXT } from "./bash-host.test-utils";
 
 describe("createBashHost", () => {
   test("exposes the exact current execution scope", async () => {
-    const { bash } = createBashHost({
+    const { bash } = await createBashHost({
       fs: new InMemoryFs(),
       context: {
         ...EMPTY_BASH_HOST_CONTEXT,
@@ -36,7 +36,7 @@ describe("createBashHost", () => {
   });
 
   test.skip("regression: defense-in-depth handles assignment command substitutions", async () => {
-    const { bash } = createBashHost({
+    const { bash } = await createBashHost({
       fs: new InMemoryFs(),
       context: EMPTY_BASH_HOST_CONTEXT,
     });

@@ -205,7 +205,7 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
 
                 const ownerContext = appContext(ctx, "owner");
                 assert(ownerContext.stateBackend);
-                const { bash } = createInteractiveBashHost({
+                const { bash } = await createInteractiveBashHost({
                   context: { ...ownerContext, stateBackend: ownerContext.stateBackend },
                 });
                 const app = await bash.exec(`apps.get --app-id ${appId} --format json`);
@@ -252,7 +252,7 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
               const appId = await registerApp(ctx);
               const ownerContext = appContext(ctx, "owner");
               assert(ownerContext.stateBackend);
-              const { bash } = createInteractiveBashHost({
+              const { bash } = await createInteractiveBashHost({
                 context: { ...ownerContext, stateBackend: ownerContext.stateBackend },
               });
               const empty = await bash.exec("apps.installations.list");
@@ -490,7 +490,7 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
               ).rejects.toThrow("Required permission: apps.manage.");
             }
             assert(memberContext.stateBackend);
-            const memberShell = createInteractiveBashHost({
+            const memberShell = await createInteractiveBashHost({
               context: { ...memberContext, stateBackend: memberContext.stateBackend },
             });
             const denied = await memberShell.bash.exec(
@@ -555,7 +555,7 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
               ),
             ).rejects.toThrow("app was not found");
             assert(ownerContext.stateBackend);
-            const ownerShell = createInteractiveBashHost({
+            const ownerShell = await createInteractiveBashHost({
               context: { ...ownerContext, stateBackend: ownerContext.stateBackend },
             });
             for (const suffix of [
@@ -781,7 +781,7 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
                 ),
               ).rejects.toThrow();
               assert(context.stateBackend);
-              const { bash } = createInteractiveBashHost({
+              const { bash } = await createInteractiveBashHost({
                 context: { ...context, stateBackend: context.stateBackend },
               });
               const uninstalled = await bash.exec(`apps.uninstall --app-id ${appId}`);
@@ -878,7 +878,7 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
               const context = appContext(ctx, "global-admin", scope);
               expect(context.apps).toBeNull();
               assert(context.stateBackend);
-              const { bash } = createInteractiveBashHost({
+              const { bash } = await createInteractiveBashHost({
                 context: { ...context, stateBackend: context.stateBackend },
               });
               const unavailable = await bash.exec("apps.installations.list");
