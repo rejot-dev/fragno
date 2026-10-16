@@ -136,7 +136,7 @@ describe("Backoffice token exchange", () => {
     });
 
     const setCookie = getSetCookieHeaders(tokenResponse.headers).find((header) =>
-      header.startsWith(`${backofficeAccessTokenCookieName(false)}=`),
+      header.startsWith(`${backofficeAccessTokenCookieName(true)}=`),
     );
     assert(setCookie);
     expect(setCookie).toContain("HttpOnly");

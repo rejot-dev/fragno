@@ -943,7 +943,8 @@ export class InMemoryAuthObject implements AuthObject {
     const runtime = this.#runtime;
     const emailVerification = runtime.config.authEmailVerification;
     const secret = resolveLiveAccessTokenSecret(this.#env, import.meta.env.MODE === "development");
-    const isDevelopment = import.meta.env.MODE === "development";
+    // Follow the origin, not the build mode: `pnpm preview` serves a production build over HTTP.
+    const secureCookies = new URL(baseURL).protocol === "https:";
     const schemaPlugins = createBackofficeBetterAuthSchemaPlugins({
       baseURL,
       isUserAdministrator: async (userId) => await this.#isUserAdministrator(userId),
@@ -964,7 +965,7 @@ export class InMemoryAuthObject implements AuthObject {
     });
 
     const backofficeTokenPlugin = createBackofficeTokenPlugin({
-      isDevelopment,
+      secureCookies,
       resolveBackofficeUserTokenGrant,
     });
     const signUpInvitationPlugins = runtime.config.signUpInvitationsEnabled
@@ -1065,7 +1066,7 @@ export class InMemoryAuthObject implements AuthObject {
       },
       disabledPaths: ["/token"],
       advanced: {
-        useSecureCookies: import.meta.env.MODE !== "development",
+        useSecureCookies: secureCookies,
         defaultCookieAttributes: { path: "/api/auth" },
         cookies: {
           session_token: { attributes: { path: "/" } },

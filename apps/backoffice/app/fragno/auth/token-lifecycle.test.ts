@@ -34,7 +34,7 @@ const createRequestUrl = (): string =>
 
 const cookieRequest = (token: string, requestUrl: string) =>
   new Request(requestUrl, {
-    headers: { cookie: `${backofficeAccessTokenCookieName(false)}=${token}` },
+    headers: { cookie: `${backofficeAccessTokenCookieName(true)}=${token}` },
   });
 
 describe("Backoffice JWT verification", () => {
