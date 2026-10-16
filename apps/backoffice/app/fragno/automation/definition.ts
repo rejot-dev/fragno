@@ -1,5 +1,6 @@
 import {
   automationActorsSchema,
+  automationEntityRefsEqual,
   type AutomationAuthorityMode,
   type AutomationForwardEventAction,
   type AutomationNotifyAgentAction,
@@ -28,8 +29,8 @@ import {
 } from "@/backoffice-runtime/context";
 import { BackofficeKernel, BackofficeForbiddenError } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
-import { PI_AUTOMATION_SOURCE } from "@/fragno/backoffice-capabilities/capabilities/pi";
 import { readSavedModuleImports } from "@/fragno/codemode/saved-module-imports";
+import { piAgentActor } from "@/fragno/pi/agent/pi-agent-actor";
 import { createPiManagerRuntime } from "@/fragno/pi/manager/pi-manager-runtime";
 
 import {
@@ -294,6 +295,7 @@ const handleStartWorkflowRouteAction = async ({
     trigger: { type: "event", event: triggerEvent },
     execution,
     billingOrganizationId: null,
+    replyTo: null,
   });
 
   await runWorkflowServiceCall(
@@ -364,10 +366,6 @@ const handleNotifyAgentRouteAction = async ({
   action: AutomationNotifyAgentAction;
   runtime: BackofficeRuntimeServices | undefined;
 }) => {
-  // An agent's own turn events never reach it, so no route can make an agent wake itself forever.
-  if (event.source === PI_AUTOMATION_SOURCE && event.subject?.agentName === action.agentName) {
-    return;
-  }
   if (!runtime) {
     throw new Error("Notifying agents requires Backoffice runtime services.");
   }
@@ -378,6 +376,13 @@ const handleNotifyAgentRouteAction = async ({
     linkedUserId,
   });
   if (!acting) {
+    return;
+  }
+  // Everything an agent's turns produce, reclassified or forwarded too, keeps the agent as a
+  // delegate. Never delivering such an event to that agent means no route can make an agent wake
+  // itself forever.
+  const agent = piAgentActor(acting.execution.scope, action.agentName);
+  if (event.actors.delegation.some((actor) => automationEntityRefsEqual(actor, agent))) {
     return;
   }
   const { id, source, eventType, occurredAt, subject, payload } = acting.event;

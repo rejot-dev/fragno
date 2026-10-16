@@ -1,4 +1,3 @@
-import type { AutomationActors } from "@fragno-dev/backoffice-api/v0/automation";
 import type { PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import {
@@ -27,6 +26,7 @@ import type {
 import type { OtpRuntime } from "@/fragno/runtime-tools/families/otp-runtime";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 
+import { piAgentActor } from "./pi-agent-actor";
 import type { PiAgentTurn } from "./pi-agent-contract";
 
 /** Runtime services available to Backoffice tools executed by a durable Pi agent. */
@@ -68,11 +68,6 @@ export function requirePiStateBackend(context: PiRuntimeToolContext): Backoffice
   return context.stateBackend;
 }
 
-/** The delegate that narrows every turn of one agent to its definition's permissions. */
-function piAgentActor(agentName: string): AutomationActors["delegation"][number] {
-  return { scope: "internal", type: "pi-agent", id: agentName, role: "assistant" };
-}
-
 /** Rebuilds the scoped Backoffice context of whichever turn currently owns the agent's work. */
 export function createBackofficeAgentContext(input: {
   config: PiAgentConfig;
@@ -80,7 +75,7 @@ export function createBackofficeAgentContext(input: {
   readActiveTurn: (context: Context) => Promise<PiAgentTurn | null>;
 }): BackofficeAgentContext {
   const { config } = input;
-  const agentActor = piAgentActor(config.agentName);
+  const agentActor = piAgentActor(config.scope, config.agentName);
 
   function createTurnContext(turn: PiAgentTurn): BackofficeAgentTurnContext {
     // Grants bind to this turn only; elsewhere the pi-agent actor does not narrow, like other

@@ -10,6 +10,8 @@ import {
   backofficeScopeRootOwner,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
+import { piAgentActorName } from "@/fragno/pi/agent/pi-agent-actor";
+
 import type { BackofficeAuthorityResolver } from "./authority-resolver";
 import { resolveBackofficeInternalServiceAuthorityRole } from "./authority-roles";
 import {
@@ -149,7 +151,7 @@ function delegatedActorDenialMessage(
   const required = `${requirement.namespace}.${requirement.permission}`;
   // A Pi agent's grants are its definition's permissions, which is where they are changed.
   return actor.type === "pi-agent"
-    ? `Agent '${actor.id}' is not granted ${required}; its definition grants: ${held}.`
+    ? `Agent '${piAgentActorName(actor)}' is not granted ${required}; its definition grants: ${held}.`
     : `Delegated ${actor.type} '${actor.id}' is not granted ${required}; it is granted: ${held}.`;
 }
 

@@ -55,10 +55,13 @@ export const piAgentPromptSchema = z.object({
   whenBusy: piPromptWhenBusySchema.default("followUp"),
 });
 
-/** An Automations event a route delivers to an agent; the route and event IDs name its turn. */
+/**
+ * An event delivered to an agent, by an Automations route or, with no route, addressed to the
+ * agent itself, as a workflow it started reports back. The route and event IDs name its turn.
+ */
 export const piAgentNotificationSchema = z.lazy(() =>
   z.object({
-    routeId: z.string().min(1),
+    routeId: z.string().min(1).nullable(),
     event: automationEventSchema._zod.innerType.pick({
       id: true,
       source: true,

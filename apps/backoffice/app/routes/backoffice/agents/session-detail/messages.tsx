@@ -207,9 +207,11 @@ export function NotificationMessage() {
             <span className="truncate">
               {notification.event.source} · {notification.event.eventType}
             </span>
-            <span className="truncate text-[10px] font-normal text-[var(--bo-muted-2)]">
-              via {notification.routeId}
-            </span>
+            {notification.routeId === null ? null : (
+              <span className="truncate text-[10px] font-normal text-[var(--bo-muted-2)]">
+                via {notification.routeId}
+              </span>
+            )}
           </span>
           <span className="grid w-[10.5rem] shrink-0 grid-cols-[7rem_3.5rem] items-center text-right text-[10px] text-[var(--bo-muted-2)]">
             <time className="tabular-nums">{formatEventTimestamp(createdAt)}</time>
@@ -221,7 +223,10 @@ export function NotificationMessage() {
         </summary>
         <div className="border-t border-[color:var(--bo-border)] px-4 py-3">
           <p className="mb-2 text-[10px] text-[var(--bo-muted-2)]">
-            Event {notification.event.id}, delivered by an automation route.
+            Event {notification.event.id},{" "}
+            {notification.routeId === null
+              ? "addressed to this agent."
+              : "delivered by an automation route."}
           </p>
           <pre className="overflow-x-auto text-xs leading-5 whitespace-pre-wrap text-[var(--bo-muted)]">
             {data}
@@ -244,7 +249,9 @@ export function NotificationRequestMessage() {
       <span className="h-px flex-1 bg-[var(--bo-border)]" />
       <span
         className="flex items-center gap-2 font-medium"
-        title={notifications.map(({ routeId, eventId }) => `${eventId} via ${routeId}`).join("\n")}
+        title={notifications
+          .map(({ routeId, eventId }) => (routeId === null ? eventId : `${eventId} via ${routeId}`))
+          .join("\n")}
       >
         <span className="size-1.5 shrink-0 bg-amber-500" />
         {notificationRequestLabel(notifications)}

@@ -8,7 +8,6 @@ import { createBackofficeUserExecution } from "@/backoffice-runtime/context";
 import {
   assertCodemodeCapabilityGrantsBelongToExecution,
   CODEMODE_CAPABILITY_ACTOR,
-  codemodeWorkflowParamsSchema,
   createCodemodeWorkflowInstanceInput,
   prepareCodemodeWorkflowInstance,
 } from "./codemode-invocation";
@@ -79,6 +78,7 @@ describe("codemode invocation preparation", () => {
         trigger: { type: "event", event },
         execution,
         billingOrganizationId: null,
+        replyTo: null,
       }),
     ).toEqual({
       workflowName: "codemode-script",
@@ -94,31 +94,9 @@ describe("codemode invocation preparation", () => {
           billingOrganizationId: "org-1",
           capabilityGrants: [],
         },
+        replyTo: null,
       },
     });
-  });
-
-  test("preserves internal workflow completion metadata while validating canonical fields", () => {
-    const prepared = prepareCodemodeWorkflowInstance({
-      modules: {},
-      code: SOURCE,
-      filename: "/workspace/automations/canonical-demo.workflow.js",
-      instanceId: "instance-1",
-    });
-    const input = createCodemodeWorkflowInstanceInput({
-      prepared,
-      trigger: { type: "manual", payload: { requestId: "request-1" } },
-      execution,
-      billingOrganizationId: null,
-    });
-    const completion = { workflowName: "parent-workflow", instanceId: "parent-instance" };
-
-    expect(
-      codemodeWorkflowParamsSchema.parse({
-        ...input.params,
-        __workflowCompletion: completion,
-      }),
-    ).toMatchObject({ __workflowCompletion: completion });
   });
 
   test("rejects persisted capability grants outside the execution delegation chain", () => {
@@ -152,6 +130,7 @@ describe("codemode invocation preparation", () => {
         },
         execution,
         billingOrganizationId: null,
+        replyTo: null,
       }),
     ).toThrow("Codemode event and execution scopes must match.");
   });
