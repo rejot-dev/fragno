@@ -281,11 +281,16 @@ export function defineMarketplacePackageInstallWorkflow(
             await assertMarketplaceIngestionTargetAccessible({
               organizationId,
               targetScope: input.targetScope,
-              projectExists: async (projectId) =>
+              // This organization's projects are stored here; any other owner stores its own.
+              projectExists: async ({ owner, projectId }) =>
                 Boolean(
-                  await automationFragment.callServices(() =>
-                    automationFragment.services.resolveProjectForExecution({ projectId }),
-                  ),
+                  backofficeContextScopesEqual(owner, ownerScope)
+                    ? await automationFragment.callServices(() =>
+                        automationFragment.services.resolveProjectForExecution({ projectId }),
+                      )
+                    : await runtime.objects.automations
+                        .for(owner)
+                        .commands.resolveProjectForExecution({ projectId }),
                 ),
               organizationHasMember: async (userId) =>
                 await runtime.objects.auth.singleton().commands.hasOrganizationMember({

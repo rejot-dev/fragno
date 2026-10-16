@@ -1,7 +1,4 @@
-import {
-  backofficeScopeOrganization,
-  type BackofficeContextScope,
-} from "@fragno-dev/backoffice-api/v0/shared/scope";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { WorkerCompiler } from "@fragno-dev/codemode/compiler/compile-worker";
 import { createWorkerCompilerServiceClient } from "@fragno-dev/codemode/compiler/compiler-service-client";
 import type { CodemodeRemoteExecutor } from "@fragno-dev/codemode/execution/codemode-activation-contract";
@@ -130,10 +127,11 @@ function codemodeCallScope(
   switch (requested.kind) {
     case "current":
       return current;
+    // A project handle names a sibling: a project of the scope that owns the current workspace.
     case "project": {
-      const owner = backofficeScopeOrganization(current);
-      if (!owner) {
-        throw new Error("Project scoped codemode handles require a current org context.");
+      const owner = current.kind === "project" ? current.owner : current;
+      if (owner.kind === "system") {
+        throw new Error("Project scoped codemode handles require a workspace that owns projects.");
       }
       return { kind: "project", owner, projectId: requested.projectId };
     }

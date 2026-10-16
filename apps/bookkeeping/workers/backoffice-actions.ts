@@ -59,10 +59,13 @@ export async function handleBackofficeAction(
     throw error;
   }
   const { claims, request: call } = verified;
-  const organization = await env.AUTH.getByName("auth").describeLinkedOrganization({
-    organizationId: claims.installation.externalAccount.id,
-    backofficeOrganizationId: backofficeScopeOrganization(claims.scopeRestriction).orgId,
-  });
+  const backofficeOrganization = backofficeScopeOrganization(claims.scopeRestriction);
+  const organization =
+    backofficeOrganization &&
+    (await env.AUTH.getByName("auth").describeLinkedOrganization({
+      organizationId: claims.installation.externalAccount.id,
+      backofficeOrganizationId: backofficeOrganization.orgId,
+    }));
   if (!organization) {
     return message(403, "This Bookkeeping organization is no longer linked to Backoffice.");
   }

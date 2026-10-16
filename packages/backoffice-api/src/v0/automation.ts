@@ -208,18 +208,26 @@ export type AutomationEventMatcher =
   | { any: AutomationEventMatcher[] }
   | { not: AutomationEventMatcher };
 
-type AutomationRouteOrganizationScopeTemplate = { kind: "org"; orgIdTemplate: string };
+type AutomationRouteRootOwnerTemplate =
+  | { kind: "org"; orgIdTemplate: string }
+  | { kind: "user"; userIdTemplate: string };
 
-/** Renders to a target scope; a project names its owner as a scope template too. */
+type AutomationRouteAppScopeTemplate = {
+  kind: "app";
+  owner: AutomationRouteRootOwnerTemplate;
+  appIdTemplate: string;
+};
+
+/** Renders to a target scope; app and project scopes name their owner as a scope template too. */
 export type AutomationRouteScopeTemplate =
   | { kind: "system" }
-  | AutomationRouteOrganizationScopeTemplate
+  | AutomationRouteRootOwnerTemplate
+  | AutomationRouteAppScopeTemplate
   | {
       kind: "project";
-      owner: AutomationRouteOrganizationScopeTemplate;
+      owner: AutomationRouteRootOwnerTemplate | AutomationRouteAppScopeTemplate;
       projectIdTemplate: string;
-    }
-  | { kind: "user"; userIdTemplate: string };
+    };
 
 export type AutomationStartWorkflowAction = {
   kind: "start_workflow";
@@ -402,17 +410,34 @@ const automationRouteOrganizationScopeTemplateSchema = z.object({
   kind: z.literal("org"),
   orgIdTemplate: z.string().trim().min(1),
 });
+const automationRouteUserScopeTemplateSchema = z.object({
+  kind: z.literal("user"),
+  userIdTemplate: z.string().trim().min(1),
+});
+const automationRouteAppScopeTemplateSchema = z.object({
+  kind: z.literal("app"),
+  owner: z.discriminatedUnion("kind", [
+    automationRouteOrganizationScopeTemplateSchema,
+    automationRouteUserScopeTemplateSchema,
+  ]),
+  appIdTemplate: z.string().trim().min(1),
+});
 
 const automationRouteScopeTemplateSchema: z.ZodType<AutomationRouteScopeTemplate> = z
   .discriminatedUnion("kind", [
     z.object({ kind: z.literal("system") }),
     automationRouteOrganizationScopeTemplateSchema,
+    automationRouteUserScopeTemplateSchema,
+    automationRouteAppScopeTemplateSchema,
     z.object({
       kind: z.literal("project"),
-      owner: automationRouteOrganizationScopeTemplateSchema,
+      owner: z.discriminatedUnion("kind", [
+        automationRouteOrganizationScopeTemplateSchema,
+        automationRouteUserScopeTemplateSchema,
+        automationRouteAppScopeTemplateSchema,
+      ]),
       projectIdTemplate: z.string().trim().min(1),
     }),
-    z.object({ kind: z.literal("user"), userIdTemplate: z.string().trim().min(1) }),
   ])
   .meta({ id: "AutomationRouteScopeTemplate" });
 

@@ -2,11 +2,15 @@
 /** Relative duration. Numbers are milliseconds; strings use duration syntax such as "5 minutes", "30s", or "1 day". */
 type WorkflowDuration = string | number;
 
+type WorkflowRootOwnerScope = { kind: "org"; orgId: string } | { kind: "user"; userId: string };
+
+type WorkflowAppScope = { kind: "app"; owner: WorkflowRootOwnerScope; appId: string };
+
 type WorkflowContextScope =
   | { kind: "system" }
-  | { kind: "org"; orgId: string }
-  | { kind: "user"; userId: string }
-  | { kind: "project"; owner: { kind: "org"; orgId: string }; projectId: string };
+  | WorkflowRootOwnerScope
+  | WorkflowAppScope
+  | { kind: "project"; owner: WorkflowRootOwnerScope | WorkflowAppScope; projectId: string };
 
 type WorkflowActorEntity =
   | { scope: "internal"; type: string; id: string }

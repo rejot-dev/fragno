@@ -3,7 +3,10 @@ import {
   type AutomationEvent,
   automationEventListResultSchema,
 } from "@fragno-dev/backoffice-api/v0/events";
-import { backofficeContextScopesEqual } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  backofficeContextScopesEqual,
+  backofficeScopeOrganization,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import {
   backofficeExecutionScopeRestriction,
@@ -95,6 +98,7 @@ export function createEventRuntime(options: CreateEventRuntimeOptions): EventRun
         options.kernel.assertScopedContextAccess(options.execution, resolvedTargetScope);
       }
 
+      const targetOrganization = backofficeScopeOrganization(resolvedTargetScope);
       const targetProject =
         resolvedTargetScope.kind === "project"
           ? await options.objects.automations
@@ -141,7 +145,7 @@ export function createEventRuntime(options: CreateEventRuntimeOptions): EventRun
           resolvedTargetScope.kind === "project"
             ? {
                 ...parentEvent?.subject,
-                orgId: resolvedTargetScope.owner.orgId,
+                ...(targetOrganization ? { orgId: targetOrganization.orgId } : {}),
                 projectId: targetProject!.projectId,
                 ...(subjectUserId ? { userId: subjectUserId } : {}),
               }

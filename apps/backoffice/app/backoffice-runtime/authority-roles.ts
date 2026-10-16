@@ -6,10 +6,7 @@ import {
   type BackofficePermissionNamespace,
   type BackofficePermissionRequirement,
 } from "@fragno-dev/backoffice-api/v0/shared/permissions";
-import {
-  backofficeScopeOrganization,
-  type BackofficeContextScope,
-} from "@fragno-dev/backoffice-api/v0/shared/scope";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import type { Role } from "@/fragno/auth/contracts";
 
@@ -253,7 +250,10 @@ export const BACKOFFICE_AUTHORITY_ROLE_GRANTS = {
 
 type BackofficeAuthorityRole = keyof typeof BACKOFFICE_AUTHORITY_ROLE_GRANTS;
 
-/** Maps verified or current user facts to the one Backoffice role available in a scope. */
+/**
+ * Maps verified or current user facts to the one Backoffice role available in a scope. A project
+ * answers to its owner, so a person's role in a project is their role in the owning scope.
+ */
 export const resolveBackofficeUserAuthorityRole = (
   authority: Readonly<{
     userId: string;
@@ -262,24 +262,28 @@ export const resolveBackofficeUserAuthorityRole = (
   }>,
   scope: BackofficeContextScope,
 ): BackofficeUserAuthorityRole | null => {
-  // A system administrator may administer shared scopes, but not another user's private scope.
-  if (scope.kind === "user") {
-    if (scope.userId !== authority.userId) {
+  switch (scope.kind) {
+    case "system":
+      return authority.role === "admin" ? "system-administrator" : null;
+    // A system administrator may administer shared scopes, but not another user's private scope.
+    case "user":
+      if (scope.userId !== authority.userId) {
+        return null;
+      }
+      return authority.role === "admin" ? "system-administrator" : "user-owner";
+    case "org":
+      if (authority.organizationId !== scope.orgId) {
+        return null;
+      }
+      return authority.role === "admin" ? "system-administrator" : "organization-member";
+    case "project":
+      return resolveBackofficeUserAuthorityRole(authority, scope.owner);
+    // People do not act in an app's workspace yet.
+    case "app":
       return null;
-    }
-
-    return authority.role === "admin" ? "system-administrator" : "user-owner";
+    default:
+      throw new Error("Unsupported Backoffice scope kind.", { cause: scope satisfies never });
   }
-
-  if (scope.kind === "system") {
-    return authority.role === "admin" ? "system-administrator" : null;
-  }
-
-  if (authority.organizationId !== backofficeScopeOrganization(scope)?.orgId) {
-    return null;
-  }
-
-  return authority.role === "admin" ? "system-administrator" : "organization-member";
 };
 
 export const resolveBackofficeInternalServiceAuthorityRole = ({

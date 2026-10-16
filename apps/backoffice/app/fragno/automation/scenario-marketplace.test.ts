@@ -145,7 +145,9 @@ const CURRENT_TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE = getStaticMarketplaceEntry(
  */
 async function submitTelegramTestCommandInstaller(
   ctx: BackofficeScenarioContext,
-  targetScope: Extract<BackofficeRoutableScope, { kind: "org" | "project" }>,
+  targetScope:
+    | { kind: "org"; orgId: string }
+    | { kind: "project"; owner: { kind: "org"; orgId: string }; projectId: string },
 ) {
   const coordinator = backofficeScopeOrganization(targetScope);
   const ingestionInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({

@@ -17,6 +17,7 @@ import {
   type BackofficeContextScope,
   backofficeContextScopesEqual,
   backofficeScopeOrganization,
+  backofficeScopeRootOwner,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { column, idColumn, schema, type Column } from "@fragno-dev/db/schema";
 import { z } from "zod";
@@ -156,7 +157,11 @@ const piManagerDefinition = defineFragment<PiManagerConfig>("pi-manager")
                 },
               };
             }
-            if (config.scope.kind === "user" && input.billingOrganizationId === null) {
+            // Work a user answers for has no organization to bill unless the user picks one.
+            if (
+              backofficeScopeRootOwner(config.scope)?.kind === "user" &&
+              input.billingOrganizationId === null
+            ) {
               return { type: "billing-owner-required" };
             }
             uow.create("agent", {
@@ -842,10 +847,7 @@ export function createPiManagerFragment(
         const values = parsed.data;
         const billingOrganizationId =
           backofficeScopeOrganization(config.scope)?.orgId ?? values.billingOrganizationId;
-        if (
-          billingOrganizationId !== null &&
-          (config.scope.kind === "user" || config.scope.kind === "system")
-        ) {
+        if (billingOrganizationId !== null && !backofficeScopeOrganization(config.scope)) {
           const billingDenied = await authorize(
             { ...requestContext.execution, scope: { kind: "org", orgId: billingOrganizationId } },
             BACKOFFICE_PERMISSION.pi.modify,

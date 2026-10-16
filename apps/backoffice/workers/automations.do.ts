@@ -667,11 +667,16 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
     await assertMarketplaceIngestionTargetAccessible({
       organizationId: scope.orgId,
       targetScope: input.targetScope,
-      projectExists: async (projectId) =>
+      // This organization's projects are stored here; any other owner stores its own.
+      projectExists: async ({ owner, projectId }) =>
         Boolean(
-          await runtime.automationFragment.callServices(() =>
-            runtime.automationFragment.services.resolveProjectForExecution({ projectId }),
-          ),
+          backofficeContextScopesEqual(owner, scope)
+            ? await runtime.automationFragment.callServices(() =>
+                runtime.automationFragment.services.resolveProjectForExecution({ projectId }),
+              )
+            : await this.#runtimeServices.objects.automations
+                .for(owner)
+                .commands.resolveProjectForExecution({ projectId }),
         ),
       organizationHasMember: async (userId) =>
         await this.#runtimeServices.objects.auth.singleton().commands.hasOrganizationMember({

@@ -35,11 +35,42 @@ type EventsFireInput = {
         userId: string;
       }
     | {
+        kind: "app";
+        owner:
+          | {
+              kind: "org";
+              orgId: string;
+            }
+          | {
+              kind: "user";
+              userId: string;
+            };
+        appId: string;
+      }
+    | {
         kind: "project";
-        owner: {
-          kind: "org";
-          orgId: string;
-        };
+        owner:
+          | {
+              kind: "org";
+              orgId: string;
+            }
+          | {
+              kind: "user";
+              userId: string;
+            }
+          | {
+              kind: "app";
+              owner:
+                | {
+                    kind: "org";
+                    orgId: string;
+                  }
+                | {
+                    kind: "user";
+                    userId: string;
+                  };
+              appId: string;
+            };
         projectId: string;
       };
 };
@@ -59,11 +90,42 @@ type EventsFireOutput = {
         userId: string;
       }
     | {
+        kind: "app";
+        owner:
+          | {
+              kind: "org";
+              orgId: string;
+            }
+          | {
+              kind: "user";
+              userId: string;
+            };
+        appId: string;
+      }
+    | {
         kind: "project";
-        owner: {
-          kind: "org";
-          orgId: string;
-        };
+        owner:
+          | {
+              kind: "org";
+              orgId: string;
+            }
+          | {
+              kind: "user";
+              userId: string;
+            }
+          | {
+              kind: "app";
+              owner:
+                | {
+                    kind: "org";
+                    orgId: string;
+                  }
+                | {
+                    kind: "user";
+                    userId: string;
+                  };
+              appId: string;
+            };
         projectId: string;
       };
   source: string;
@@ -89,11 +151,42 @@ type EventsListOutput = {
           userId: string;
         }
       | {
+          kind: "app";
+          owner:
+            | {
+                kind: "org";
+                orgId: string;
+              }
+            | {
+                kind: "user";
+                userId: string;
+              };
+          appId: string;
+        }
+      | {
           kind: "project";
-          owner: {
-            kind: "org";
-            orgId: string;
-          };
+          owner:
+            | {
+                kind: "org";
+                orgId: string;
+              }
+            | {
+                kind: "user";
+                userId: string;
+              }
+            | {
+                kind: "app";
+                owner:
+                  | {
+                      kind: "org";
+                      orgId: string;
+                    }
+                  | {
+                      kind: "user";
+                      userId: string;
+                    };
+                appId: string;
+              };
           projectId: string;
         };
     scopeRestriction:
@@ -109,11 +202,42 @@ type EventsListOutput = {
           userId: string;
         }
       | {
+          kind: "app";
+          owner:
+            | {
+                kind: "org";
+                orgId: string;
+              }
+            | {
+                kind: "user";
+                userId: string;
+              };
+          appId: string;
+        }
+      | {
           kind: "project";
-          owner: {
-            kind: "org";
-            orgId: string;
-          };
+          owner:
+            | {
+                kind: "org";
+                orgId: string;
+              }
+            | {
+                kind: "user";
+                userId: string;
+              }
+            | {
+                kind: "app";
+                owner:
+                  | {
+                      kind: "org";
+                      orgId: string;
+                    }
+                  | {
+                      kind: "user";
+                      userId: string;
+                    };
+                appId: string;
+              };
           projectId: string;
         }
       | null;
@@ -212,11 +336,42 @@ type EventsGetOutput = {
         userId: string;
       }
     | {
+        kind: "app";
+        owner:
+          | {
+              kind: "org";
+              orgId: string;
+            }
+          | {
+              kind: "user";
+              userId: string;
+            };
+        appId: string;
+      }
+    | {
         kind: "project";
-        owner: {
-          kind: "org";
-          orgId: string;
-        };
+        owner:
+          | {
+              kind: "org";
+              orgId: string;
+            }
+          | {
+              kind: "user";
+              userId: string;
+            }
+          | {
+              kind: "app";
+              owner:
+                | {
+                    kind: "org";
+                    orgId: string;
+                  }
+                | {
+                    kind: "user";
+                    userId: string;
+                  };
+              appId: string;
+            };
         projectId: string;
       };
   scopeRestriction:
@@ -232,11 +387,42 @@ type EventsGetOutput = {
         userId: string;
       }
     | {
+        kind: "app";
+        owner:
+          | {
+              kind: "org";
+              orgId: string;
+            }
+          | {
+              kind: "user";
+              userId: string;
+            };
+        appId: string;
+      }
+    | {
         kind: "project";
-        owner: {
-          kind: "org";
-          orgId: string;
-        };
+        owner:
+          | {
+              kind: "org";
+              orgId: string;
+            }
+          | {
+              kind: "user";
+              userId: string;
+            }
+          | {
+              kind: "app";
+              owner:
+                | {
+                    kind: "org";
+                    orgId: string;
+                  }
+                | {
+                    kind: "user";
+                    userId: string;
+                  };
+              appId: string;
+            };
         projectId: string;
       }
     | null;

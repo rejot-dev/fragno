@@ -26,16 +26,21 @@ export type OpenApiDocument = {
   };
 };
 
-/** Scope ids are URI-encoded inside the segment, so `:` only separates components. */
+// Scope ids are URI-encoded inside the segment, so `:` only separates components.
+const SCOPE_ID_PATTERN = "[^:/]+";
+const ROOT_OWNER_PATTERN = `(?:org|user):${SCOPE_ID_PATTERN}`;
+const APP_SCOPE_PATTERN = `app:${ROOT_OWNER_PATTERN}:${SCOPE_ID_PATTERN}`;
+const PROJECT_SCOPE_PATTERN = `project:(?:${ROOT_OWNER_PATTERN}|${APP_SCOPE_PATTERN}):${SCOPE_ID_PATTERN}`;
+
 const SCOPE_PARAMETER = {
   name: "scope",
   in: "path",
   required: true,
   description:
-    "Where the operation runs: `system`, `user:<userId>`, `org:<orgId>`, or `project:org:<orgId>:<projectId>`, a project naming its owning scope. Operations that are not available to the credential in this scope answer `404`.",
+    "Where the operation runs: `system`, `user:<userId>`, `org:<orgId>`, `app:<owner>:<appId>`, or `project:<owner>:<projectId>`. App and project scopes name their owning scope, e.g. `app:org:<orgId>:<appId>` or `project:app:user:<userId>:<appId>:<projectId>`. Operations that are not available to the credential in this scope answer `404`.",
   schema: {
     type: "string",
-    pattern: "^(?:system|user:[^:/]+|org:[^:/]+|project:org:[^:/]+:[^:/]+)$",
+    pattern: `^(?:system|${ROOT_OWNER_PATTERN}|${APP_SCOPE_PATTERN}|${PROJECT_SCOPE_PATTERN})$`,
   },
 };
 

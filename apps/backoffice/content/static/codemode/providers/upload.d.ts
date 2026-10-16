@@ -67,11 +67,42 @@ type UploadReadPreparedInput = {
           userId: string;
         }
       | {
+          kind: "app";
+          owner:
+            | {
+                kind: "org";
+                orgId: string;
+              }
+            | {
+                kind: "user";
+                userId: string;
+              };
+          appId: string;
+        }
+      | {
           kind: "project";
-          owner: {
-            kind: "org";
-            orgId: string;
-          };
+          owner:
+            | {
+                kind: "org";
+                orgId: string;
+              }
+            | {
+                kind: "user";
+                userId: string;
+              }
+            | {
+                kind: "app";
+                owner:
+                  | {
+                      kind: "org";
+                      orgId: string;
+                    }
+                  | {
+                      kind: "user";
+                      userId: string;
+                    };
+                appId: string;
+              };
           projectId: string;
         };
     uploadId: string;
@@ -100,11 +131,42 @@ type UploadReadPreparedOutput =
               userId: string;
             }
           | {
+              kind: "app";
+              owner:
+                | {
+                    kind: "org";
+                    orgId: string;
+                  }
+                | {
+                    kind: "user";
+                    userId: string;
+                  };
+              appId: string;
+            }
+          | {
               kind: "project";
-              owner: {
-                kind: "org";
-                orgId: string;
-              };
+              owner:
+                | {
+                    kind: "org";
+                    orgId: string;
+                  }
+                | {
+                    kind: "user";
+                    userId: string;
+                  }
+                | {
+                    kind: "app";
+                    owner:
+                      | {
+                          kind: "org";
+                          orgId: string;
+                        }
+                      | {
+                          kind: "user";
+                          userId: string;
+                        };
+                    appId: string;
+                  };
               projectId: string;
             };
         uploadId: string;
@@ -133,11 +195,42 @@ type UploadReadPreparedOutput =
               userId: string;
             }
           | {
+              kind: "app";
+              owner:
+                | {
+                    kind: "org";
+                    orgId: string;
+                  }
+                | {
+                    kind: "user";
+                    userId: string;
+                  };
+              appId: string;
+            }
+          | {
               kind: "project";
-              owner: {
-                kind: "org";
-                orgId: string;
-              };
+              owner:
+                | {
+                    kind: "org";
+                    orgId: string;
+                  }
+                | {
+                    kind: "user";
+                    userId: string;
+                  }
+                | {
+                    kind: "app";
+                    owner:
+                      | {
+                          kind: "org";
+                          orgId: string;
+                        }
+                      | {
+                          kind: "user";
+                          userId: string;
+                        };
+                    appId: string;
+                  };
               projectId: string;
             };
         uploadId: string;
@@ -166,11 +259,42 @@ type UploadReadPreparedOutput =
               userId: string;
             }
           | {
+              kind: "app";
+              owner:
+                | {
+                    kind: "org";
+                    orgId: string;
+                  }
+                | {
+                    kind: "user";
+                    userId: string;
+                  };
+              appId: string;
+            }
+          | {
               kind: "project";
-              owner: {
-                kind: "org";
-                orgId: string;
-              };
+              owner:
+                | {
+                    kind: "org";
+                    orgId: string;
+                  }
+                | {
+                    kind: "user";
+                    userId: string;
+                  }
+                | {
+                    kind: "app";
+                    owner:
+                      | {
+                          kind: "org";
+                          orgId: string;
+                        }
+                      | {
+                          kind: "user";
+                          userId: string;
+                        };
+                    appId: string;
+                  };
               projectId: string;
             };
         uploadId: string;
@@ -199,11 +323,42 @@ type UploadCommitPreparedInput = {
           userId: string;
         }
       | {
+          kind: "app";
+          owner:
+            | {
+                kind: "org";
+                orgId: string;
+              }
+            | {
+                kind: "user";
+                userId: string;
+              };
+          appId: string;
+        }
+      | {
           kind: "project";
-          owner: {
-            kind: "org";
-            orgId: string;
-          };
+          owner:
+            | {
+                kind: "org";
+                orgId: string;
+              }
+            | {
+                kind: "user";
+                userId: string;
+              }
+            | {
+                kind: "app";
+                owner:
+                  | {
+                      kind: "org";
+                      orgId: string;
+                    }
+                  | {
+                      kind: "user";
+                      userId: string;
+                    };
+                appId: string;
+              };
           projectId: string;
         };
     uploadId: string;
@@ -227,11 +382,42 @@ type UploadCommitPreparedOutput = {
         userId: string;
       }
     | {
+        kind: "app";
+        owner:
+          | {
+              kind: "org";
+              orgId: string;
+            }
+          | {
+              kind: "user";
+              userId: string;
+            };
+        appId: string;
+      }
+    | {
         kind: "project";
-        owner: {
-          kind: "org";
-          orgId: string;
-        };
+        owner:
+          | {
+              kind: "org";
+              orgId: string;
+            }
+          | {
+              kind: "user";
+              userId: string;
+            }
+          | {
+              kind: "app";
+              owner:
+                | {
+                    kind: "org";
+                    orgId: string;
+                  }
+                | {
+                    kind: "user";
+                    userId: string;
+                  };
+              appId: string;
+            };
         projectId: string;
       };
   uploadId: string;
@@ -255,11 +441,42 @@ type UploadDiscardPreparedInput = {
           userId: string;
         }
       | {
+          kind: "app";
+          owner:
+            | {
+                kind: "org";
+                orgId: string;
+              }
+            | {
+                kind: "user";
+                userId: string;
+              };
+          appId: string;
+        }
+      | {
           kind: "project";
-          owner: {
-            kind: "org";
-            orgId: string;
-          };
+          owner:
+            | {
+                kind: "org";
+                orgId: string;
+              }
+            | {
+                kind: "user";
+                userId: string;
+              }
+            | {
+                kind: "app";
+                owner:
+                  | {
+                      kind: "org";
+                      orgId: string;
+                    }
+                  | {
+                      kind: "user";
+                      userId: string;
+                    };
+                appId: string;
+              };
           projectId: string;
         };
     uploadId: string;

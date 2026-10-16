@@ -47,6 +47,8 @@ function formatCurrentScopeText(scope: BackofficeContextScope): string {
       return `kind   org\norgId  ${scope.orgId}\n`;
     case "user":
       return `kind    user\nuserId  ${scope.userId}\n`;
+    case "app":
+      return `kind   app\nowner  ${backofficeScopePathSegment(scope.owner)}\nappId  ${scope.appId}\n`;
     case "project":
       return `kind       project\nowner      ${backofficeScopePathSegment(scope.owner)}\nprojectId  ${scope.projectId}\n`;
   }

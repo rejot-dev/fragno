@@ -139,7 +139,7 @@ export function parseBackofficeScope(segment: string): BackofficeCliScope {
     return parseBackofficeScopeSegment(segment, backofficePublicScopeCodec);
   } catch (error) {
     throw new Error(
-      `Invalid Backoffice scope: ${backofficeErrorMessage(error)} Expected system, org:<organization-slug>, project:org:<organization-slug>:<project-id>, or user:<user-id>. Organization scopes use slugs, not internal IDs.`,
+      `Invalid Backoffice scope: ${backofficeErrorMessage(error)} Expected system, org:<organization-slug>, user:<user-id>, app:<owner>:<app-id>, or project:<owner>:<project-id>. Organization scopes use slugs, not internal IDs.`,
       { cause: error },
     );
   }

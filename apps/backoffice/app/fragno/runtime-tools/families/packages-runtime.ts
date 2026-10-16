@@ -7,7 +7,7 @@ import {
   marketplaceLockSchema,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 import {
-  backofficeScopeOrganization,
+  backofficeScopeRootOwner,
   isBackofficeRoutableScope,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
@@ -45,10 +45,15 @@ export function createPackagesRuntime({
 
   return {
     async install({ visibility, ...input }) {
+      if (targetScope.kind === "app") {
+        throw new Error("Packages cannot be installed into an app's workspace.");
+      }
+      const owner = backofficeScopeRootOwner(targetScope);
       let organizationId: string;
-      if (targetScope.kind === "user") {
+      // A user's workspace installs through one of the user's organizations.
+      if (owner.kind === "user") {
         const me = await objects.auth.singleton().commands.getBackofficeMe({
-          userId: targetScope.userId,
+          userId: owner.userId,
           activeOrganizationId: preferredOrganizationId,
         });
         const organization =
@@ -60,7 +65,7 @@ export function createPackagesRuntime({
         }
         organizationId = organization.organization.id;
       } else {
-        organizationId = backofficeScopeOrganization(targetScope).orgId;
+        organizationId = owner.orgId;
       }
       const workflowScope = { kind: "org" as const, orgId: organizationId };
       // Organization visibility installs from the coordinating organization's own Marketplace.

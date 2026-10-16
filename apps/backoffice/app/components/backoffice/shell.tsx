@@ -52,6 +52,11 @@ function backofficeTerminalScopeSelection(
         ...scope,
         label: me?.user.id === scope.userId ? (me.user.email ?? scope.userId) : scope.userId,
       };
+    case "app":
+      return {
+        ...scope,
+        label: `${backofficeTerminalScopeSelection(scope.owner, me).label} / ${scope.appId}`,
+      };
   }
 
   scope satisfies never;

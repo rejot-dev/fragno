@@ -1,11 +1,12 @@
 import {
   marketplaceIngestionRequestInputSchema,
   marketplaceVersionSchema,
+  type MarketplaceIngestionTargetScope,
   type MarketplaceScope,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 import {
-  type BackofficeRoutableScope,
   backofficeScopeOrganization,
+  backofficeScopeRootOwner,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import { type MarketplaceArtifactManifest } from "@/fragno/marketplace/contracts";
@@ -34,7 +35,7 @@ export class MarketplaceIngestionArtifactUnavailableError extends Error {
 
 export const assertMarketplaceIngestionTargetBelongsToOrganization = (input: {
   organizationId: string;
-  targetScope: BackofficeRoutableScope;
+  targetScope: MarketplaceIngestionTargetScope;
 }): void => {
   const targetOrganization = backofficeScopeOrganization(input.targetScope);
   if (targetOrganization && targetOrganization.orgId !== input.organizationId) {
@@ -56,29 +57,36 @@ export const assertMarketplaceIngestionSourceAccessible = (input: {
   }
 };
 
+/**
+ * An installation target answers to its root owner: the coordinating organization itself, or one of
+ * its members. A project must exist in its owner's store. App workspaces are not install targets.
+ */
 export const assertMarketplaceIngestionTargetAccessible = async (input: {
   organizationId: string;
-  targetScope: BackofficeRoutableScope;
-  projectExists: (projectId: string) => Promise<boolean>;
+  targetScope: MarketplaceIngestionTargetScope;
+  projectExists: (
+    project: Extract<MarketplaceIngestionTargetScope, { kind: "project" }>,
+  ) => Promise<boolean>;
   organizationHasMember: (userId: string) => Promise<boolean>;
 }): Promise<void> => {
+  const { targetScope } = input;
+  if (targetScope.kind === "project" && targetScope.owner.kind === "app") {
+    throw new MarketplaceIngestionTargetAccessError(
+      "Marketplace ingestion cannot target an app's workspace.",
+    );
+  }
   assertMarketplaceIngestionTargetBelongsToOrganization(input);
 
-  if (
-    input.targetScope.kind === "project" &&
-    !(await input.projectExists(input.targetScope.projectId))
-  ) {
+  const owner = backofficeScopeRootOwner(targetScope);
+  if (owner.kind === "user" && !(await input.organizationHasMember(owner.userId))) {
     throw new MarketplaceIngestionTargetAccessError(
-      "Marketplace ingestion project target was not found.",
+      "Marketplace ingestion user target is not a member of the organization.",
     );
   }
 
-  if (
-    input.targetScope.kind === "user" &&
-    !(await input.organizationHasMember(input.targetScope.userId))
-  ) {
+  if (targetScope.kind === "project" && !(await input.projectExists(targetScope))) {
     throw new MarketplaceIngestionTargetAccessError(
-      "Marketplace ingestion user target is not a member of the organization.",
+      "Marketplace ingestion project target was not found.",
     );
   }
 };

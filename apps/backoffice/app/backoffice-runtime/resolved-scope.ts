@@ -9,7 +9,7 @@ import {
   mapBackofficeScopeNames,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
-import type { BackofficeRoutableRouteScope, BackofficeRouteScope } from "./route-scope";
+import type { BackofficeRouteScope } from "./route-scope";
 
 /** Canonical organization identity required to address both runtime services and public routes. */
 export type BackofficeOrganizationIdentity = Readonly<{ id: string; slug: string }>;
@@ -64,7 +64,16 @@ export type BackofficeRouteScopeResolution<
   | { status: "organization-not-found"; orgSlug: string }
   | { status: "project-not-found"; projectSlug: string };
 
-/** Resolves untrusted URL slugs into the organization and project they name. */
+/** A resolved scope that can own projects. */
+export type BackofficeResolvedProjectOwner<
+  TOrganization extends BackofficeOrganizationIdentity = BackofficeOrganizationIdentity,
+  TProject extends BackofficeProjectIdentity = BackofficeProjectIdentity,
+> = Extract<BackofficeResolvedScope<TOrganization, TProject>, { kind: "project" }>["owner"];
+
+/**
+ * Resolves untrusted URL slugs into the organization and project they name. A project slug is
+ * looked up with its owner, which stores it.
+ */
 export async function resolveBackofficeRouteScope<
   TOrganization extends BackofficeOrganizationIdentity,
   TProject extends BackofficeProjectIdentity,
@@ -72,7 +81,10 @@ export async function resolveBackofficeRouteScope<
   routeScope: BackofficeRouteScope,
   lookups: {
     organizations: readonly TOrganization[];
-    findProject(organization: TOrganization, projectSlug: string): Promise<TProject | null>;
+    findProject(
+      owner: BackofficeResolvedProjectOwner<TOrganization, TProject>,
+      projectSlug: string,
+    ): Promise<TProject | null>;
   },
 ): Promise<BackofficeRouteScopeResolution<TOrganization, TProject>> {
   const reference = backofficeScopeOrganization(routeScope);
@@ -82,49 +94,36 @@ export async function resolveBackofficeRouteScope<
   if (reference && !organization) {
     return { status: "organization-not-found", orgSlug: reference.orgSlug };
   }
-  const project =
-    routeScope.kind === "project" && organization
-      ? await lookups.findProject(organization, routeScope.projectSlug)
-      : null;
-  if (routeScope.kind === "project" && !project) {
+  // The map only visits names the lookups found: the organization above, the project below.
+  const resolvedNames = (project: TProject | null) => ({
+    organization: () => ({ organization: organization! }),
+    project: () => ({ project: project! }),
+  });
+  if (routeScope.kind !== "project") {
+    return { status: "resolved", scope: mapBackofficeScopeNames(routeScope, resolvedNames(null)) };
+  }
+  const owner = mapBackofficeScopeNames(routeScope.owner, resolvedNames(null));
+  const project = await lookups.findProject(owner, routeScope.projectSlug);
+  if (!project) {
     return { status: "project-not-found", projectSlug: routeScope.projectSlug };
   }
-  return {
-    status: "resolved",
-    // The map only visits names the lookups above found.
-    scope: mapBackofficeScopeNames(routeScope, {
-      organization: () => ({ organization: organization! }),
-      project: () => ({ project: project! }),
-    }),
-  };
+  return { status: "resolved", scope: { kind: "project", owner, project } };
 }
 
-export function backofficeRuntimeScopeFromResolvedScope(
-  scope: BackofficeRoutableResolvedScope,
-): BackofficeRoutableScope;
-export function backofficeRuntimeScopeFromResolvedScope(
-  scope: BackofficeResolvedScope,
-): BackofficeContextScope;
 /** Converts authenticated resolved identity into the ID-backed scope accepted by runtime services. */
-export function backofficeRuntimeScopeFromResolvedScope(
-  scope: BackofficeResolvedScope,
-): BackofficeContextScope {
+export function backofficeRuntimeScopeFromResolvedScope<TScope extends BackofficeResolvedScope>(
+  scope: TScope,
+): Extract<BackofficeContextScope, { kind: TScope["kind"] }> {
   return mapBackofficeScopeNames(scope, {
     organization: ({ organization }) => ({ orgId: organization.id }),
     project: ({ project }) => ({ projectId: project.id }),
   });
 }
 
-export function backofficeRouteScopeFromResolvedScope(
-  scope: BackofficeRoutableResolvedScope,
-): BackofficeRoutableRouteScope;
-export function backofficeRouteScopeFromResolvedScope(
-  scope: BackofficeResolvedScope,
-): BackofficeRouteScope;
 /** Converts authenticated resolved identity into the slug-backed scope of page URLs. */
-export function backofficeRouteScopeFromResolvedScope(
-  scope: BackofficeResolvedScope,
-): BackofficeRouteScope {
+export function backofficeRouteScopeFromResolvedScope<TScope extends BackofficeResolvedScope>(
+  scope: TScope,
+): Extract<BackofficeRouteScope, { kind: TScope["kind"] }> {
   return mapBackofficeScopeNames(scope, {
     organization: ({ organization }) => ({ orgSlug: organization.slug }),
     project: ({ project }) => ({ projectSlug: project.slug }),

@@ -1,3 +1,4 @@
+import { mapBackofficeScopeNames } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { RouterContextProvider } from "react-router";
 
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
@@ -91,27 +92,32 @@ function selectionOf(
   scope: BackofficeResolvedScope<Organization, BackofficeNamedProject>,
   me: BackofficeMeData,
 ): BackofficeScopeSelection {
+  return {
+    ...mapBackofficeScopeNames(scope, {
+      organization: ({ organization }) => ({
+        organization: backofficeOrganizationIdentity(organization),
+      }),
+      project: ({ project }) => ({ project: backofficeProjectIdentity(project) }),
+    }),
+    label: labelOf(scope, me),
+  };
+}
+
+function labelOf(
+  scope: BackofficeResolvedScope<Organization, BackofficeNamedProject>,
+  me: BackofficeMeData,
+): string {
   switch (scope.kind) {
     case "system":
-      return { kind: "system", label: "System" };
+      return "System";
     case "org":
-      return {
-        kind: "org",
-        organization: backofficeOrganizationIdentity(scope.organization),
-        label: scope.organization.name ?? scope.organization.id,
-      };
-    case "project":
-      return {
-        kind: "project",
-        owner: {
-          kind: "org",
-          organization: backofficeOrganizationIdentity(scope.owner.organization),
-        },
-        project: backofficeProjectIdentity(scope.project),
-        label: scope.project.name,
-      };
+      return scope.organization.name ?? scope.organization.id;
     case "user":
-      return { kind: "user", userId: scope.userId, label: me.user.email ?? me.user.id };
+      return me.user.email ?? me.user.id;
+    case "app":
+      return scope.appId;
+    case "project":
+      return scope.project.name;
     default:
       throw new Error("Backoffice scope kind is unsupported.", { cause: scope satisfies never });
   }

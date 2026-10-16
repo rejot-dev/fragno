@@ -1,4 +1,8 @@
-import { backofficeScopeOrganization } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  backofficeScopeOrganization,
+  backofficeScopeRootOwner,
+  mapBackofficeScopeNames,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import {
   createContext,
   redirect,
@@ -107,8 +111,12 @@ export async function establishBackofficeShellRequest(
   const pageScope = await resolveBackofficePageScope({
     params,
     organizations: me.organizations.map(({ organization }) => organization),
-    findProject: async (organization, slug): Promise<BackofficeNamedProject | null> => {
-      const lookup = await lookupAutomationProject(context, organization.id, { slug });
+    findProject: async (owner, slug): Promise<BackofficeNamedProject | null> => {
+      const lookup = await lookupAutomationProject(
+        context,
+        backofficeRuntimeScopeFromResolvedScope(owner),
+        { slug },
+      );
       if (lookup.status === "error") {
         projectLookupFailure = lookup.message;
         return null;
@@ -138,10 +146,11 @@ export async function establishBackofficeShellRequest(
         cause: pageScope satisfies never,
       });
   }
-  // Administrators may act in any user's scope, but sections show only the user's own, and they
-  // hide System scope from everyone else rather than refusing it.
+  // Administrators may act in any user's scope, but sections show only what the user owns, and
+  // they hide System scope from everyone else rather than refusing it.
+  const routeOwner = routeScope && backofficeScopeRootOwner(routeScope);
   if (
-    (routeScope?.kind === "user" && routeScope.userId !== me.user.id) ||
+    (routeOwner?.kind === "user" && routeOwner.userId !== me.user.id) ||
     (routeScope?.kind === "system" && !isBackofficeSystemAdministrator(me.user))
   ) {
     routeScope = null;
@@ -197,28 +206,33 @@ function scopeSelectionOf(
   scope: BackofficePageResolvedScope,
   user: BackofficeMeData["user"],
 ): BackofficeScopeSelection {
+  return {
+    ...mapBackofficeScopeNames(scope, {
+      organization: ({ organization }) => ({
+        organization: backofficeOrganizationIdentity(organization),
+      }),
+      project: ({ project }) => ({ project: backofficeProjectIdentity(project) }),
+    }),
+    label: scopeSelectionLabel(scope, user),
+  };
+}
+
+function scopeSelectionLabel(
+  scope: BackofficePageResolvedScope,
+  user: BackofficeMeData["user"],
+): string {
   switch (scope.kind) {
     // The route's execution established that System scope belongs to an administrator.
     case "system":
-      return { kind: "system", label: SYSTEM_SCOPE_LABEL };
+      return SYSTEM_SCOPE_LABEL;
     case "org":
-      return {
-        kind: "org",
-        organization: backofficeOrganizationIdentity(scope.organization),
-        label: scope.organization.name ?? scope.organization.id,
-      };
-    case "project":
-      return {
-        kind: "project",
-        owner: {
-          kind: "org",
-          organization: backofficeOrganizationIdentity(scope.owner.organization),
-        },
-        project: backofficeProjectIdentity(scope.project),
-        label: scope.project.name,
-      };
+      return scope.organization.name ?? scope.organization.id;
     case "user":
-      return { kind: "user", userId: user.id, label: userScopeLabel(user) };
+      return userScopeLabel(user);
+    case "app":
+      return scope.appId;
+    case "project":
+      return scope.project.name;
     default:
       throw new Error("Backoffice scope kind is unsupported.", { cause: scope satisfies never });
   }

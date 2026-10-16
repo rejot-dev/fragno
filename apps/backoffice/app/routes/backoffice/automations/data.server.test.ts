@@ -42,7 +42,7 @@ describe("lookupAutomationProject", () => {
     fetchMock.mockResolvedValue(Response.json(project));
 
     await expect(
-      lookupAutomationProject(context, scope.orgId, { projectId: "project-1" }),
+      lookupAutomationProject(context, scope, { projectId: "project-1" }),
     ).resolves.toEqual({
       status: "found",
       project,
@@ -59,7 +59,7 @@ describe("lookupAutomationProject", () => {
     );
 
     await expect(
-      lookupAutomationProject(context, scope.orgId, { projectId: "missing" }),
+      lookupAutomationProject(context, scope, { projectId: "missing" }),
     ).resolves.toEqual({
       status: "not-found",
     });

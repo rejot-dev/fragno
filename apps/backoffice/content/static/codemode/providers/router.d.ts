@@ -501,16 +501,47 @@ type AutomationRouteScopeTemplate =
       orgIdTemplate: string;
     }
   | {
-      kind: "project";
-      owner: {
-        kind: "org";
-        orgIdTemplate: string;
-      };
-      projectIdTemplate: string;
-    }
-  | {
       kind: "user";
       userIdTemplate: string;
+    }
+  | {
+      kind: "app";
+      owner:
+        | {
+            kind: "org";
+            orgIdTemplate: string;
+          }
+        | {
+            kind: "user";
+            userIdTemplate: string;
+          };
+      appIdTemplate: string;
+    }
+  | {
+      kind: "project";
+      owner:
+        | {
+            kind: "org";
+            orgIdTemplate: string;
+          }
+        | {
+            kind: "user";
+            userIdTemplate: string;
+          }
+        | {
+            kind: "app";
+            owner:
+              | {
+                  kind: "org";
+                  orgIdTemplate: string;
+                }
+              | {
+                  kind: "user";
+                  userIdTemplate: string;
+                };
+            appIdTemplate: string;
+          };
+      projectIdTemplate: string;
     };
 type AutomationEventPayloadProjection = {
   kind: "projection";

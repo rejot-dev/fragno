@@ -24,12 +24,15 @@ reported, and how a version is described as OpenAPI.
 
 Every operation is `POST /api/<version>/scopes/<scope>/<operationId>` with a bearer token and the
 operation's input as the JSON body. Operations whose input is `z.void()` take no body. The scope is
-`system`, `user:<userId>`, `org:<orgId>`, or `project:<owner>:<projectId>`, where `<owner>` is the
-owning scope (`org:<orgId>`), with each id URI-encoded. An operation that is not available to the
-credential in that scope, such as an organization operation in a project scope, answers `404`. Each
-operation lists the permissions it requires in the request's scope (`permissions`, from
-`v0/shared/permissions`); the OpenAPI document repeats them as the roles of the operation's `bearer`
-security requirement. A credential lacking one answers `403`.
+`system`, `user:<userId>`, `org:<orgId>`, `app:<owner>:<appId>`, or `project:<owner>:<projectId>`,
+with each id URI-encoded. An app's `<owner>` is the organization or user scope that installed it; a
+project's may also be an app scope, e.g. `project:app:org:<orgId>:<appId>:<projectId>`. Owning a
+scope does not reach into owned apps: an organization's credential cannot act in its apps'
+workspaces, and an event emitted in an app's workspace only reaches that workspace's routes. An
+operation that is not available to the credential in that scope, such as an organization operation
+in a project scope, answers `404`. Each operation lists the permissions it requires in the request's
+scope (`permissions`, from `v0/shared/permissions`); the OpenAPI document repeats them as the roles
+of the operation's `bearer` security requirement. A credential lacking one answers `403`.
 
 Successful calls return `200` with the operation's output, or `204` when the output is `z.void()`.
 Bytes travel as standard base64 strings (`v0/shared/bytes`). This is temporary: dedicated file

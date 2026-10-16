@@ -19,6 +19,8 @@ const targetLabel = (target: AutomationRouteTarget) => {
       return "Project scope";
     case "user":
       return "User scope";
+    case "app":
+      return "App scope";
     case "instance_id":
       return "Workflow instance";
     case "stored_instance_id":
@@ -28,19 +30,21 @@ const targetLabel = (target: AutomationRouteTarget) => {
   throw new Error("Unsupported automation route target kind.");
 };
 
-const targetRows = (target: AutomationRouteTarget) => {
+const targetRows = (target: AutomationRouteTarget): { label: string; value: string }[] => {
   switch (target.kind) {
     case "system":
       return [];
     case "org":
       return [{ label: "Organization ID", value: target.orgIdTemplate }];
-    case "project":
-      return [
-        { label: "Organization ID", value: target.owner.orgIdTemplate },
-        { label: "Project ID", value: target.projectIdTemplate },
-      ];
     case "user":
       return [{ label: "User ID", value: target.userIdTemplate }];
+    case "app":
+      return [...targetRows(target.owner), { label: "App ID", value: target.appIdTemplate }];
+    case "project":
+      return [
+        ...targetRows(target.owner),
+        { label: "Project ID", value: target.projectIdTemplate },
+      ];
     case "instance_id":
       return [{ label: "Instance ID", value: target.template }];
     case "stored_instance_id":

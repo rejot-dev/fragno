@@ -2,7 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 
 import {
   backofficeRoutableScopeSchema,
-  backofficeScopeOrganization,
+  backofficeScopePathSegment,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 
@@ -52,7 +52,7 @@ describe("scoped fragment Durable Object runtime", () => {
       host: warmHost.host,
       scopeSchema: backofficeRoutableScopeSchema,
       createSource: (scope) => ({
-        scopeId: scope.kind === "user" ? scope.userId : backofficeScopeOrganization(scope).orgId,
+        scopeId: backofficeScopePathSegment(scope),
       }),
     });
 
@@ -68,14 +68,14 @@ describe("scoped fragment Durable Object runtime", () => {
       host: coldHost.host,
       scopeSchema: backofficeRoutableScopeSchema,
       createSource: (scope) => ({
-        scopeId: scope.kind === "user" ? scope.userId : backofficeScopeOrganization(scope).orgId,
+        scopeId: backofficeScopePathSegment(scope),
       }),
     });
 
     await coldState.blockConcurrencyWhile(async () => await coldRuntime.initializeFromOwnerScope());
     await coldRuntime.alarm();
 
-    expect(coldHost.initialize).toHaveBeenCalledWith({ scopeId: "org-1" });
+    expect(coldHost.initialize).toHaveBeenCalledWith({ scopeId: "org:org-1" });
     expect(coldHost.alarm).toHaveBeenCalledOnce();
   });
 

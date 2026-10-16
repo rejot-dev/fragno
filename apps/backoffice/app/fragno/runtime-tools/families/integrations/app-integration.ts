@@ -10,6 +10,8 @@ import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import {
   appInstallationResourceScopeContains,
+  appInstallationTargetScope,
+  type AppInstallationTargetScope,
   type BackofficeAppConnection,
 } from "@/fragno/app-installations/contracts";
 import { requireBackofficeAppOperationValue } from "@/fragno/apps/errors";
@@ -34,11 +36,10 @@ export function encodeAppConnectionId(slug: string) {
   return `${APP_CONNECTION_NAMESPACE}#${slug}`;
 }
 
-type AppScope = AppActionTokenClaims["scopeRestriction"];
+type AppScope = AppInstallationTargetScope;
 
 function appScopeOf(context: IntegrationContext): AppScope | null {
-  const scope = context.execution.scope;
-  return scope.kind === "org" || scope.kind === "project" ? scope : null;
+  return appInstallationTargetScope(context.execution.scope);
 }
 
 /** The app learns which user is behind a call; automated work calls as the installation. */

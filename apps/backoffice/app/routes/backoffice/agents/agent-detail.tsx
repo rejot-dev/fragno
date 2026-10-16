@@ -1,4 +1,5 @@
 import type { PiManagerAgent, PiPromptReceipt } from "@fragno-dev/backoffice-api/v0/pi";
+import { backofficeScopeOrganization } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { usePostHog } from "@posthog/react/slim";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useFetcher, useOutletContext, useSearchParams } from "react-router";
@@ -132,11 +133,10 @@ export async function action(args: Route.ActionArgs): Promise<PiAgentActionData>
     requestId: crypto.randomUUID(),
     content: content.trim(),
     whenBusy: "steer",
-    // Personal agents keep the organization that pays for their first turn.
-    billingOrganizationId:
-      scope.kind === "user" || scope.kind === "system"
-        ? (me.activeOrganization?.organization.id ?? null)
-        : null,
+    // Agents outside an organization keep the organization that pays for their first turn.
+    billingOrganizationId: backofficeScopeOrganization(scope)
+      ? null
+      : (me.activeOrganization?.organization.id ?? null),
   });
   return result.error === null
     ? { ok: true, intent, receipt: result.receipt }

@@ -11,7 +11,6 @@ import type {
   BackofficeAppInstallationPageInput,
 } from "@fragno-dev/backoffice-api/v0/apps";
 import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api/v0/shared/permissions";
-import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import { defineFragment } from "@fragno-dev/core";
 import { decodeCursor, withDatabase, type HookContext, type HookFn } from "@fragno-dev/db";
@@ -26,14 +25,12 @@ import type {
   BackofficeAppInstallationClaimResult,
   BackofficeAppInstallationInput,
   BackofficeAppInstallationStatus,
+  AppInstallationTargetScope,
 } from "./contracts";
 import { appInstallationsFragmentSchema } from "./schema";
 
-/** A scope where an installation's integration connection resolves. */
-export type AppConnectionScope = Extract<BackofficeContextScope, { kind: "org" | "project" }>;
-
 /** Every scope whose connection state the change may have affected, before and after it. */
-export type AppInstallationChangedPayload = { appId: string; scopes: AppConnectionScope[] };
+export type AppInstallationChangedPayload = { appId: string; scopes: AppInstallationTargetScope[] };
 
 type AppInstallationsHooksMap = {
   onInstallationChanged: HookFn<AppInstallationChangedPayload>;
@@ -53,9 +50,9 @@ export type AppInstallationsConfig = {
 function connectionScopesOf(
   organizationId: string,
   resourceProjectIds: readonly (string[] | null)[],
-): AppConnectionScope[] {
+): AppInstallationTargetScope[] {
   const organization = { kind: "org", orgId: organizationId } as const;
-  const scopes = new Map<string, AppConnectionScope>();
+  const scopes = new Map<string, AppInstallationTargetScope>();
   for (const projectIds of resourceProjectIds) {
     if (projectIds === null) {
       scopes.set("org", organization);

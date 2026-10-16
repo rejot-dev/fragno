@@ -158,8 +158,13 @@ function forwardTargetLabel(action: Extract<AutomationRouteAction, { kind: "forw
       return `Project · ${scope.projectIdTemplate}`;
     case "user":
       return `User · ${scope.userIdTemplate}`;
+    case "app":
+      return `App · ${scope.appIdTemplate}`;
+    default:
+      throw new Error("Unsupported automation route target scope.", {
+        cause: scope satisfies never,
+      });
   }
-  throw new Error("Unsupported automation route target scope.");
 }
 
 function scheduleLabel(route: AutomationRouteDefinition): string {

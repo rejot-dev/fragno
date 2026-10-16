@@ -4,6 +4,7 @@ import {
   type BackofficeRoutableScope,
   backofficeScopeOrganization,
   backofficeScopePathSegment,
+  mapBackofficeScopeNames,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -105,15 +106,15 @@ const knownOrganizations = [
   { id: "org-2", slug: "second-labs" },
 ];
 
+function slugOf(orgId: string): string {
+  return knownOrganizations.find(({ id }) => id === orgId)?.slug ?? `unknown-${orgId}`;
+}
+
 function routeScopeForTest(scope: BackofficeRoutableScope): BackofficeRoutableRouteScope {
-  if (scope.kind === "user") {
-    return scope;
-  }
-  const { orgId } = backofficeScopeOrganization(scope);
-  const orgSlug = knownOrganizations.find(({ id }) => id === orgId)?.slug ?? `unknown-${orgId}`;
-  return scope.kind === "org"
-    ? { kind: "org", orgSlug }
-    : { kind: "project", owner: { kind: "org", orgSlug }, projectSlug: scope.projectId };
+  return mapBackofficeScopeNames(scope, {
+    organization: ({ orgId }) => ({ orgSlug: slugOf(orgId) }),
+    project: ({ projectId }) => ({ projectSlug: projectId }),
+  });
 }
 
 /** The request context after the Backoffice layout established the signed-in user and route scope. */
@@ -124,17 +125,14 @@ async function routeContext(scope: BackofficeRoutableScope) {
   const orgId = backofficeScopeOrganization(scope)?.orgId;
   const organization = knownOrganizations.find(({ id }) => id === orgId);
   const routeScope =
-    scope.kind === "user"
-      ? scope
-      : !organization
-        ? null
-        : scope.kind === "org"
-          ? { kind: "org", organization }
-          : {
-              kind: "project",
-              owner: { kind: "org", organization },
-              project: { id: scope.projectId, slug: scope.projectId, name: scope.projectId },
-            };
+    orgId && !organization
+      ? null
+      : mapBackofficeScopeNames(scope, {
+          organization: () => ({ organization }),
+          project: ({ projectId }) => ({
+            project: { id: projectId, slug: projectId, name: projectId },
+          }),
+        });
   provideBackofficeShellRequest(context, {
     me: me as unknown as BackofficeMeData,
     routeScope: routeScope as never,
