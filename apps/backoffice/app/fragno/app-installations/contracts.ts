@@ -30,15 +30,20 @@ import { z } from "zod";
 
 import type { BackofficeAppOperationResult } from "@/fragno/apps/errors";
 
+type OrganizationScope = BackofficeOrganizationScope<BackofficeScopeIdNames>;
+type OrganizationAppScope = { kind: "app"; owner: OrganizationScope; appId: string };
+
 /**
- * Where an organization's installation can be approved to act: the organization and the projects it
- * owns directly. Other owners' projects can share a project ID, so the owner is part of the target.
+ * Where an organization's installation can act: the organization and the projects it owns directly,
+ * as approved, and an app's own workspace with its projects. Other owners' projects can share a
+ * project ID, so the owner is part of the target.
  */
 export type AppInstallationTargetScope =
-  | BackofficeOrganizationScope<BackofficeScopeIdNames>
+  | OrganizationScope
+  | OrganizationAppScope
   | {
       kind: "project";
-      owner: BackofficeOrganizationScope<BackofficeScopeIdNames>;
+      owner: OrganizationScope | OrganizationAppScope;
       projectId: string;
     };
 
@@ -49,27 +54,40 @@ export function appInstallationTargetScope(
   switch (scope.kind) {
     case "org":
       return scope;
-    case "project":
+    case "app":
       return scope.owner.kind === "org"
-        ? { kind: "project", owner: scope.owner, projectId: scope.projectId }
+        ? { kind: "app", owner: scope.owner, appId: scope.appId }
         : null;
+    case "project": {
+      // An owner is never a project, which the narrowed type cannot express.
+      const owner = appInstallationTargetScope(scope.owner);
+      return owner && owner.kind !== "project"
+        ? { kind: "project", owner, projectId: scope.projectId }
+        : null;
+    }
     case "system":
     case "user":
-    case "app":
       return null;
     default:
       throw new Error("Unsupported Backoffice scope kind.", { cause: scope satisfies never });
   }
 }
 
-/** The one installation resource policy, shared by credential issuance and live authorization. */
-export function appInstallationResourceScopeContains(
-  resourceScope: AppInstallationResourceScope,
-  scope: AppInstallationTargetScope,
+/**
+ * The one installation reach policy, shared by credential issuance and live authorization. An app's
+ * own workspace is always within reach; the organization's resources only as approved.
+ */
+export function appInstallationReaches(
+  installation: { appId: string; resourceScope: AppInstallationResourceScope },
+  target: AppInstallationTargetScope,
 ): boolean {
+  const workspace = target.kind === "project" ? target.owner : target;
+  if (workspace.kind === "app") {
+    return workspace.appId === installation.appId;
+  }
   return (
-    resourceScope.kind === "organization" ||
-    (scope.kind === "project" && resourceScope.projectIds.includes(scope.projectId))
+    installation.resourceScope.kind === "organization" ||
+    (target.kind === "project" && installation.resourceScope.projectIds.includes(target.projectId))
   );
 }
 

@@ -6,7 +6,7 @@ import {
   backofficeContextScopesEqual,
   backofficeScopeContains,
   isBackofficeRoutableScope,
-  backofficeScopeOrganization,
+  backofficeWorkspaceOrganization,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import { authorizedBackofficeObjectHttp } from "@/backoffice-runtime/authorized-object-http";
@@ -103,8 +103,9 @@ const unavailableRuntime = <T>(message: string): T =>
     },
   ) as T;
 
+// Organization internals are reachable from the organization's own workspaces only.
 const ownerOrgScope = (execution: BackofficeExecutionContext): { orgId: string } | null => {
-  const organization = backofficeScopeOrganization(execution.scope);
+  const organization = backofficeWorkspaceOrganization(execution.scope);
   return organization ? { orgId: organization.orgId } : null;
 };
 

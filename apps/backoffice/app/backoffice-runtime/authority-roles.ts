@@ -56,6 +56,9 @@ type BackofficePermissionDecisions = {
  * non-administration permission; organization members additionally link and resolve external
  * identities, route events, and receive live organization-role permissions. Admins resolve to
  * `system-administrator` in either scope.
+ *
+ * `app-workspace-observer` is anyone with a role in the scope that installed an app, inside that
+ * app's workspace: the app keeps its data there, so people may read but not change it.
  */
 export const USER_AUTHORITY_ROLE_PERMISSION_DECISIONS = {
   "system-administrator": {
@@ -158,6 +161,39 @@ export const USER_AUTHORITY_ROLE_PERMISSION_DECISIONS = {
     upload: { modify: "grant", read: "grant" },
     workflow: { executeCode: "grant", modify: "grant", read: "grant" },
   },
+  "app-workspace-observer": {
+    // A person's own account is not the workspace's.
+    account: { read: "grant", manage: "grant" },
+    admin: {
+      appsManage: "deny",
+      appsRead: "deny",
+      oauthClientsManage: "deny",
+      oauthClientsRead: "deny",
+      signUpInvitationsManage: "deny",
+      organizationsManage: "deny",
+    },
+    apps: { read: "deny", manage: "deny" },
+    capabilities: { read: "grant" },
+    cloudflare: { browserRun: "deny" },
+    // Integrations are not available in a workspace, so there is nothing of them to read.
+    connections: { manage: "deny", read: "deny" },
+    events: { emit: "deny", manage: "deny", read: "grant", route: "deny" },
+    forms: { create: "deny", read: "grant", update: "deny" },
+    hooks: { read: "grant" },
+    identity: { link: "deny", bind: "deny", read: "grant", resolve: "deny", revoke: "deny" },
+    integrations: { read: "deny", manage: "deny", execute: "deny" },
+    internal: { manage: "deny" },
+    org: { read: "deny", manage: "deny" },
+    marketplace: { read: "grant", publish: "deny", feature: "deny" },
+    packages: { read: "grant", install: "deny" },
+    otp: { create: "deny" },
+    pi: { manage: "deny", modify: "deny", read: "grant" },
+    router: { modify: "deny", read: "grant" },
+    sandbox: { modify: "deny", read: "grant" },
+    store: { modify: "deny", read: "grant" },
+    upload: { modify: "deny", read: "grant" },
+    workflow: { executeCode: "deny", modify: "deny", read: "grant" },
+  },
 } as const satisfies Record<string, BackofficePermissionDecisions>;
 
 function grantedPermissionRequirements(
@@ -184,6 +220,9 @@ const USER_AUTHORITY_ROLE_GRANTS = {
   ),
   "organization-member": grantedPermissionRequirements(
     USER_AUTHORITY_ROLE_PERMISSION_DECISIONS["organization-member"],
+  ),
+  "app-workspace-observer": grantedPermissionRequirements(
+    USER_AUTHORITY_ROLE_PERMISSION_DECISIONS["app-workspace-observer"],
   ),
 } as const satisfies Record<string, readonly BackofficePermissionRequirement[]>;
 
@@ -278,9 +317,10 @@ export const resolveBackofficeUserAuthorityRole = (
       return authority.role === "admin" ? "system-administrator" : "organization-member";
     case "project":
       return resolveBackofficeUserAuthorityRole(authority, scope.owner);
-    // People do not act in an app's workspace yet.
     case "app":
-      return null;
+      return resolveBackofficeUserAuthorityRole(authority, scope.owner) === null
+        ? null
+        : "app-workspace-observer";
     default:
       throw new Error("Unsupported Backoffice scope kind.", { cause: scope satisfies never });
   }

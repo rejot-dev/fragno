@@ -4,7 +4,7 @@ import type {
 } from "@fragno-dev/backoffice-api/v0/capabilities";
 import {
   type BackofficeContextScope,
-  backofficeScopeOrganization,
+  backofficeWorkspaceOrganization,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import {
@@ -173,7 +173,7 @@ export const createBackofficeCapabilitiesRuntime = ({
   config: BackofficeRuntimeConfig;
   scope: BackofficeContextScope;
 }): BackofficeCapabilitiesRuntime => {
-  const ownerOrgId = backofficeScopeOrganization(scope)?.orgId;
+  const ownerOrgId = backofficeWorkspaceOrganization(scope)?.orgId;
   const capabilityContext = {
     objects,
     config,

@@ -462,7 +462,7 @@ its installation:
 3. The app's server obtains an OAuth access token for `resource=<Backoffice origin>`: through the
    authorization-code flow for a member, or the client-credentials grant for the installation.
 4. It exchanges that token at `POST /api/backoffice/execution-token` with an organization or
-   approved project scope, receiving a 15-minute app-bound credential.
+   approved project scope, or its own workspace (below), receiving a 15-minute app-bound credential.
 5. It calls the versioned API (`POST /api/v0/scopes/:scope/<operationId>`) with that credential,
    e.g. with `createBackofficeApiClient` from `@fragno-dev/backoffice-api/v0/client`.
 
@@ -472,6 +472,20 @@ grants. Either way the target must be inside the approved resources. Narrowing a
 member, banning the user, or uninstalling affects already-issued credentials immediately. Each
 reinstall increments `activation`; credentials and app-started work from an earlier activation never
 revive. Installation management is never available to an app.
+
+### App workspaces
+
+Each installation also gives the app a workspace of its own, the scope `app:org:<orgId>:<appId>`,
+where it keeps its data for that organization: store entries, files, events, routes, and workflows.
+It exists while the installation is active, regardless of the approved resources, and only that
+app's credentials reach it. Data survives uninstalling, so a reinstall picks up where the app left
+off.
+
+The workspace is private. An organization credential does not reach it, and events fired there only
+trigger the workspace's own routes; to make the organization react, the app fires into the
+organization scope. People with a role in the organization may read the workspace, at
+`/backoffice/dashboard/app/org:<org-slug>:<appId>`, but not change it. Organization internals,
+integrations, and publishing as the organization are not available from a workspace.
 
 App-bound credentials have a distinct JWT audience and cannot be used where user credentials are
 accepted. Events use source `app:<appId>` and persist actors that keep the app's restrictions for

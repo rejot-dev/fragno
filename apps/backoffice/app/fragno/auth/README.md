@@ -68,7 +68,8 @@ ceiling and maximum 15-minute lifetime.
 Registering an app never confers first-party policy. A registered app's client receives an app-bound
 credential only when the request names an explicit organization or project scope, the organization
 has the app actively installed, and the scope is inside the installation's approved resources (the
-whole organization, or selected projects). The app then acts as one of:
+whole organization, or selected projects), or is the app's own workspace in that organization
+(`app:org:<orgId>:<appId>`). The app then acts as one of:
 
 | Token                                     | Acts as          | Kernel requires                                    |
 | ----------------------------------------- | ---------------- | -------------------------------------------------- |

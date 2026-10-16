@@ -8,7 +8,10 @@ import type { BackofficeApiErrorCode } from "@fragno-dev/backoffice-api/errors";
 import type { backofficeApiV0 } from "@fragno-dev/backoffice-api/v0";
 import { createBackofficeApiClient } from "@fragno-dev/backoffice-api/v0/client";
 import { automationEventListResultSchema } from "@fragno-dev/backoffice-api/v0/events";
-import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+import {
+  BACKOFFICE_PERMISSION,
+  type BackofficePermissionRequirement,
+} from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import { z } from "zod";
 
 const workers = vi.hoisted(() => ({
@@ -33,9 +36,11 @@ import {
 } from "@/fragno/automation/scenario";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
+import { behindBackofficeLayout } from "@/layouts/backoffice-layout.test-support";
 import { action as claimAction } from "@/routes/api/backoffice-app-installation-claim";
 import { action as exchangeAction } from "@/routes/api/backoffice-execution-token";
 import { action as installAction, loader as installLoader } from "@/routes/backoffice/app-install";
+import { loader as dashboardLoader } from "@/routes/backoffice/dashboard/dashboard";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
 import { InMemoryApiObject } from "../../workers/api.do";
@@ -165,7 +170,8 @@ async function authorizeBookkeeping(ctx: Ctx, cookie: string): Promise<string> {
 }
 
 type OrgScope = { kind: "org"; orgId: string };
-type AppScope = OrgScope | { kind: "project"; owner: OrgScope; projectId: string };
+type WorkspaceScope = { kind: "app"; owner: OrgScope; appId: string };
+type AppScope = OrgScope | WorkspaceScope | { kind: "project"; owner: OrgScope; projectId: string };
 
 function orgScope(orgId: string): OrgScope {
   return { kind: "org", orgId };
@@ -217,6 +223,53 @@ async function sendEvent(
       payload: { message: "Hello from Bookkeeping" },
     }) as EventFireInput,
   );
+}
+
+/** Lists events the way Bookkeeping's server does, through the published client. */
+async function listEventIds(ctx: Ctx, credential: string, scope: AppScope): Promise<string[]> {
+  const client = createBackofficeApiClient({
+    origin,
+    accessToken: credential,
+    fetch: async (url, init) =>
+      await backofficeApiRouter.fetch(new Request(url, init), {
+        runtime: ctx.runtime.services,
+        kernel: new BackofficeKernel(ctx.runtime.services),
+      }),
+  });
+  const { events } = await client.call(scope, "events.list", {});
+  return events.map(({ id }) => id);
+}
+
+async function exchangeCredential(ctx: Ctx, token: string, scope: AppScope): Promise<string> {
+  const response = await exchange(ctx, token, scope);
+  assert.equal(response.status, 200, await response.clone().text());
+  return backofficeExecutionTokenResultSchema.parse(await response.json()).accessToken;
+}
+
+/** Loads the workspace's dashboard for a signed-in browser, or returns the Response it threw. */
+async function openWorkspaceDashboard(ctx: Ctx, sessionCookie: string, orgSlug: string) {
+  const exchanged = await authRequest(ctx, "/backoffice-token", sessionCookie, {
+    selection: "required",
+    organizationId: ctx.vars.orgId,
+  });
+  assert(exchanged.ok, await exchanged.clone().text());
+  const cookie = [
+    sessionCookie,
+    ...exchanged.headers.getSetCookie().map((header) => header.split(";", 1)[0]),
+  ].join("; ");
+  const scopeId = `org:${orgSlug}:${ctx.vars.appId}`;
+  const url = new URL(`/backoffice/dashboard/app/${scopeId}`, origin);
+  const request = new Request(url, { headers: { cookie, origin } });
+  return await behindBackofficeLayout(dashboardLoader)({
+    request,
+    url,
+    pattern: url.pathname,
+    params: { scopeKind: "app", scopeId },
+    context: routerContext(ctx, request),
+  }).catch((error: unknown) => {
+    assert(error instanceof Response, `Expected a thrown Response, got ${String(error)}`);
+    return error;
+  });
 }
 
 async function expectApiError(delivery: Promise<unknown>, code: BackofficeApiErrorCode) {
@@ -338,7 +391,7 @@ async function expectDenied(response: Response, status: number, error: string) {
   expect(await response.json()).toMatchObject({ error });
 }
 
-async function updateGrants(ctx: Ctx, grantedPermissions: (typeof emit)[]) {
+async function updateGrants(ctx: Ctx, grantedPermissions: BackofficePermissionRequirement[]) {
   const updated = await ctx.runtime.objects.appInstallations
     .forOrg(ctx.vars.orgId)
     .commands.updateInstallationAccess({
@@ -1015,5 +1068,109 @@ describe("installed-app event delivery SQLite scenarios", () => {
         ),
       ],
     );
+  });
+
+  test("Bookkeeping keeps its own data in its workspace, which the organization can read but not change", async () => {
+    await runInstalledAppScenario("Bookkeeping keeps data in its workspace", (then) => [
+      then(
+        "Bookkeeping, acting as its installation, records events in its workspace",
+        async (ctx) => {
+          await updateGrants(ctx, [emit, BACKOFFICE_PERMISSION.events.read]);
+          ctx.vars.installationToken = await requestClientCredentialsToken(ctx);
+          const workspace = {
+            kind: "app",
+            owner: orgScope(ctx.vars.orgId),
+            appId: ctx.vars.appId,
+          } as const;
+          const credential = await exchangeCredential(ctx, ctx.vars.installationToken, workspace);
+          const fired = await sendEvent(ctx, { credential, scope: workspace });
+          ctx.vars.eventId = fired.eventId;
+          expect(await listEventIds(ctx, credential, workspace)).toEqual([fired.eventId]);
+          // A workspace is private: the organization's routes never see its events.
+          const orgCredential = await exchangeCredential(
+            ctx,
+            ctx.vars.installationToken,
+            orgScope(ctx.vars.orgId),
+          );
+          expect(await listEventIds(ctx, orgCredential, orgScope(ctx.vars.orgId))).not.toContain(
+            fired.eventId,
+          );
+        },
+      ),
+      then("an organization credential does not reach into the workspace", async (ctx) => {
+        const workspace = {
+          kind: "app",
+          owner: orgScope(ctx.vars.orgId),
+          appId: ctx.vars.appId,
+        } as const;
+        const orgCredential = await exchangeCredential(
+          ctx,
+          ctx.vars.installationToken,
+          orgScope(ctx.vars.orgId),
+        );
+        await expectApiError(listEventIds(ctx, orgCredential, workspace), "forbidden");
+        await expectDenied(
+          await exchange(ctx, ctx.vars.installationToken, { ...workspace, appId: "another-app" }),
+          403,
+          "scope_unavailable",
+        );
+      }),
+      then(
+        "a member acting through Bookkeeping reads the workspace but cannot write",
+        async (ctx) => {
+          const workspace = {
+            kind: "app",
+            owner: orgScope(ctx.vars.orgId),
+            appId: ctx.vars.appId,
+          } as const;
+          const memberCredential = await exchangeCredential(
+            ctx,
+            ctx.vars.oauthAccessToken,
+            workspace,
+          );
+          expect(await listEventIds(ctx, memberCredential, workspace)).toEqual([ctx.vars.eventId]);
+          await expectApiError(
+            sendEvent(ctx, { credential: memberCredential, scope: workspace }),
+            "forbidden",
+          );
+        },
+      ),
+      then(
+        "the workspace opens while Bookkeeping is installed, and closes on uninstall",
+        async (ctx) => {
+          const organization = (
+            await ctx.runtime.objects.auth.singleton().commands.getAllOrganizations()
+          ).find(({ id }) => id === ctx.vars.orgId);
+          assert(organization);
+          expect(
+            await openWorkspaceDashboard(ctx, ctx.vars.ownerCookie, organization.slug),
+          ).toMatchObject({
+            selectedScope: {
+              kind: "app",
+              owner: { kind: "org", organization: { id: ctx.vars.orgId } },
+              appId: ctx.vars.appId,
+            },
+            agents: { agents: [], agentsError: null },
+          });
+
+          const installations = ctx.runtime.objects.appInstallations.forOrg(
+            ctx.vars.orgId,
+          ).commands;
+          assert((await installations.uninstallApp({ appId: ctx.vars.appId })).ok);
+          const closed = await openWorkspaceDashboard(ctx, ctx.vars.ownerCookie, organization.slug);
+          assert(closed instanceof Response);
+          assert(closed.status === 404);
+          await expectDenied(
+            await exchange(ctx, ctx.vars.installationToken, {
+              kind: "app",
+              owner: orgScope(ctx.vars.orgId),
+              appId: ctx.vars.appId,
+            }),
+            403,
+            "scope_unavailable",
+          );
+        },
+      ),
+    ]);
   });
 });

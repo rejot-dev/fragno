@@ -726,10 +726,11 @@ export const backofficeObjectScopePolicy = {
   APPS: ["singleton"],
   APP_INSTALLATIONS: ["org"],
 
-  AUTOMATIONS: ["singleton", "org", "user", "project"],
+  // An installed app's workspace keeps its data: store, files, events, routes, and workflows.
+  AUTOMATIONS: ["singleton", "org", "user", "app", "project"],
   PI_MANAGER: ["singleton", "org", "user", "project"],
   BILLING: ["org"],
-  CODEMODE: ["singleton", "org", "user", "project"],
+  CODEMODE: ["singleton", "org", "user", "app", "project"],
   MARKETPLACE: ["singleton", "org"],
 
   TELEGRAM: ["singleton", "org", "user", "project"],
@@ -738,7 +739,7 @@ export const backofficeObjectScopePolicy = {
   RESON8: ["org"],
   MCP: ["org", "user", "project"],
   PROJECT_CONNECTOR: ["user"],
-  UPLOAD: ["org", "named", "user", "project"],
+  UPLOAD: ["org", "named", "user", "app", "project"],
   GITHUB: ["org"],
 
   GITHUB_WEBHOOK_ROUTER: ["singleton"],

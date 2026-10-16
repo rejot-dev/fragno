@@ -39,6 +39,7 @@ import {
   SYSTEM_SCOPE_LABEL,
   userScopeLabel,
 } from "@/routes/backoffice/scope-labels";
+import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import { getBackofficeAuthenticatedRequest } from "./backoffice-authenticated-request.server";
 import { resolveBackofficePageScope } from "./backoffice-layout-scope";
@@ -111,6 +112,17 @@ export async function establishBackofficeShellRequest(
   const pageScope = await resolveBackofficePageScope({
     params,
     organizations: me.organizations.map(({ organization }) => organization),
+    // Apps are only installed by organizations so far.
+    isAppInstalled: async (owner, appId) => {
+      if (owner.kind !== "org") {
+        return false;
+      }
+      const installation = await context
+        .get(BackofficeWorkerContext)
+        .runtime.objects.appInstallations.forOrg(owner.organization.id)
+        .commands.getInstallation({ appId });
+      return installation?.status === "active";
+    },
     findProject: async (owner, slug): Promise<BackofficeNamedProject | null> => {
       // Another user's projects are not looked up, so their slugs cannot be probed.
       const rootOwner = backofficeScopeRootOwner(owner);
@@ -143,6 +155,7 @@ export async function establishBackofficeShellRequest(
       break;
     case "invalid":
     case "organization-not-found":
+    case "app-not-found":
     case "project-not-found":
       routeScope = null;
       break;

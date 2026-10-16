@@ -18,6 +18,7 @@ import {
 
 import { useLiveQuery } from "@tanstack/react-db";
 
+import { isBackofficeObjectAvailableInContext } from "@/backoffice-runtime/object-registry";
 import {
   backofficeRouteScopeFromResolvedScope,
   backofficeRuntimeScopeFromResolvedScope,
@@ -153,6 +154,10 @@ async function fetchDashboardPiAgents(
   context: Route.LoaderArgs["context"],
   scope: Parameters<typeof fetchPiManagerAgents>[2],
 ): Promise<PiManagerAgentsResult> {
+  // Some workspaces, such as an installed app's, have no agents.
+  if (!isBackofficeObjectAvailableInContext("PI_MANAGER", scope)) {
+    return { agents: [], agentsError: null };
+  }
   try {
     return await fetchPiManagerAgents(request, context, scope);
   } catch (error) {

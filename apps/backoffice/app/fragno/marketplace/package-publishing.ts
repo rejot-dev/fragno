@@ -4,7 +4,7 @@ import {
   type MarketplaceOwner,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
-import { backofficeScopeOrganization } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import { backofficeWorkspaceOrganization } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
 
 import {
@@ -193,7 +193,7 @@ export async function assertMarketplacePublicationAuthority({
     ) {
       return;
     }
-  } else if (backofficeScopeOrganization(execution.scope)?.orgId === organizationId) {
+  } else if (backofficeWorkspaceOrganization(execution.scope)?.orgId === organizationId) {
     return;
   }
   throw new MarketplacePublicationAccessError(
