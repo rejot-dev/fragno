@@ -1,4 +1,7 @@
-import type { AutomationRouteDefinition } from "@fragno-dev/backoffice-api/v0/automation";
+import type {
+  AutomationAuthorityMode,
+  AutomationRouteDefinition,
+} from "@fragno-dev/backoffice-api/v0/automation";
 
 import { automationRouteWorkflowName } from "./route-workflow";
 
@@ -19,6 +22,7 @@ const actionDetailLabels = (labelSet: AutomationRouteDetailLabelSet) =>
         target: "Target",
         event: "Event",
         eventId: "Event ID",
+        agent: "Agent",
       }
     : {
         workflow: "workflow",
@@ -31,7 +35,39 @@ const actionDetailLabels = (labelSet: AutomationRouteDetailLabelSet) =>
         target: "target",
         event: "event",
         eventId: "event id",
+        agent: "agent",
       };
+
+function authorityDetailRows(
+  authority: AutomationAuthorityMode,
+  labels: ReturnType<typeof actionDetailLabels>,
+): AutomationRouteDetailRow[] {
+  const runsAs = {
+    "organization-automation": "Organization-owned automation",
+    "linked-user": "Backoffice user linked to the incoming sender",
+    "delegated-user": "Backoffice user carried by the incoming event",
+  }[authority.kind];
+  const permissions =
+    authority.grants === "inherit"
+      ? "User's current permissions — no additional route restriction"
+      : authority.grants.length === 0
+        ? "None — no protected operations granted"
+        : authority.grants.map((grant) => `${grant.namespace}.${grant.permission}`).join("\n");
+  return [
+    { label: labels.runsAs, value: runsAs },
+    { label: labels.authority, value: authority.kind },
+    ...(authority.kind !== "organization-automation" && authority.grants !== "inherit"
+      ? [
+          {
+            label: labels.permissionBasis,
+            value:
+              "These grants restrict the user's current permissions; they do not add permissions.",
+          },
+        ]
+      : []),
+    { label: labels.permissions, value: permissions },
+  ];
+}
 
 export const automationRouteActionDetailRows = (
   route: AutomationRouteDefinition,
@@ -49,32 +85,9 @@ export const automationRouteActionDetailRows = (
   const labels = actionDetailLabels(labelSet);
 
   switch (action.kind) {
-    case "start_workflow": {
-      const authority = action.authority;
-      const runsAs = {
-        "organization-automation": "Organization-owned automation",
-        "linked-user": "Backoffice user linked to the incoming sender",
-        "delegated-user": "Backoffice user carried by the incoming event",
-      }[authority.kind];
-      const permissions =
-        authority.grants === "inherit"
-          ? "User's current permissions — no additional route restriction"
-          : authority.grants.length === 0
-            ? "None — no protected operations granted"
-            : authority.grants.map((grant) => `${grant.namespace}.${grant.permission}`).join("\n");
+    case "start_workflow":
       return [
-        { label: labels.runsAs, value: runsAs },
-        { label: labels.authority, value: authority.kind },
-        ...(authority.kind !== "organization-automation" && authority.grants !== "inherit"
-          ? [
-              {
-                label: labels.permissionBasis,
-                value:
-                  "These grants restrict the user's current permissions; they do not add permissions.",
-              },
-            ]
-          : []),
-        { label: labels.permissions, value: permissions },
+        ...authorityDetailRows(action.authority, labels),
         {
           label: labels.workflow,
           value: automationRouteWorkflowName(route) ?? "Unknown saved workflow",
@@ -82,7 +95,6 @@ export const automationRouteActionDetailRows = (
         { label: labels.script, value: action.workflowScriptPath, to: scriptLink ?? undefined },
         { label: labels.instanceId, value: action.instanceIdTemplate },
       ];
-    }
     case "send_workflow_event":
       return [
         {
@@ -98,6 +110,11 @@ export const automationRouteActionDetailRows = (
       const eventId = action.idTemplate ?? missingForwardEventId;
       return eventId ? [{ label: labels.eventId, value: eventId }] : [];
     }
+    case "notify_agent":
+      return [
+        ...authorityDetailRows(action.authority, labels),
+        { label: labels.agent, value: action.agentName },
+      ];
     case "reclassify_event":
       return [
         { label: "Output source", value: action.source },
@@ -122,6 +139,8 @@ export const automationRouteActionLabel = (route: AutomationRouteDefinition) => 
       return "Forward event";
     case "reclassify_event":
       return "Reclassify event";
+    case "notify_agent":
+      return "Notify agent";
   }
 
   throw new Error("Unsupported automation route action kind.");

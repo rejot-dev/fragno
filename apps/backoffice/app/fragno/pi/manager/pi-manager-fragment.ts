@@ -41,6 +41,7 @@ import {
   piAgentCompactionSchema,
   piAgentCompactionStatusSchema,
   piAgentEntryPageRequestSchema,
+  piAgentNotificationSchema,
   piAgentPromptSchema,
   piAgentSubmissionWaitRequestSchema,
   piAgentSubmissionWaitSchema,
@@ -65,6 +66,9 @@ const promptSchema = piAgentPromptSchema.extend({
   provenance: turnProvenanceSchema,
 });
 const compactionSchema = piAgentCompactionSchema.extend({ provenance: turnProvenanceSchema });
+const notificationSchema = z.lazy(() =>
+  piAgentNotificationSchema._zod.innerType.extend({ provenance: turnProvenanceSchema }),
+);
 
 type PiManagerConfig = {
   scope: BackofficeContextScope;
@@ -533,6 +537,29 @@ const piManagerRoutes = defineRoutes(piManagerDefinition).create(
         },
       }),
       defineRoute({
+        method: "POST",
+        path: "/agents/:agentName/notifications",
+        inputSchema: notificationSchema,
+        errorCodes: ["AGENT_NOT_STARTED", "AGENT_NOT_FOUND", "MODEL_UNAVAILABLE"],
+        handler: async function ({ pathParams, input }, { empty, error }) {
+          const { provenance, ...notification } = await input.valid();
+          const { definition, config: agentConfig } = await this.handlerTx()
+            .withServiceCalls(() => [services.getAgent(pathParams.agentName)])
+            .transform(({ serviceResult: [agent] }) => agent)
+            .execute();
+          // A notification never starts an agent: a personal agent has no billing owner to pick.
+          if (!agentConfig) {
+            return error({ code: "AGENT_NOT_STARTED", message: "Pi agent has no turns yet." }, 404);
+          }
+          const admitted = await admitTurn(definition, pathParams.agentName, provenance);
+          if (admitted.type === "error") {
+            return error({ code: admitted.code, message: admitted.message }, admitted.status);
+          }
+          await config.agent(agentConfig).notify(agentConfig, admitted.turn, notification);
+          return empty(204);
+        },
+      }),
+      defineRoute({
         method: "GET",
         path: "/agents/:agentName/view",
         // Pi owns this experimental structural view; the manager deliberately keeps it opaque.
@@ -877,6 +904,21 @@ export function createPiManagerFragment(
       });
       if (prompted) {
         return prompted;
+      }
+      const notified = await ifMatchesRoute(
+        "POST",
+        "/agents/:agentName/notifications",
+        async () => {
+          const parsed = piAgentNotificationSchema.safeParse(requestState.body);
+          if (!parsed.success) {
+            return error({ code: "INVALID_NOTIFICATION", message: parsed.error.message }, 400);
+          }
+          requestState.setBody({ ...parsed.data, provenance });
+          return undefined;
+        },
+      );
+      if (notified) {
+        return notified;
       }
       return await ifMatchesRoute("POST", "/agents/:agentName/compact", async () => {
         const parsed = piAgentCompactionSchema.safeParse(requestState.body);

@@ -46,7 +46,10 @@ function normalizeStoredAutomationRouteAction(
       authority: { ...action.authority, grants: [] },
     };
   }
-  if (action.kind !== "start_workflow" || action.authority.grants === "inherit") {
+  if (
+    (action.kind !== "start_workflow" && action.kind !== "notify_agent") ||
+    action.authority.grants === "inherit"
+  ) {
     return action;
   }
   return {

@@ -1188,6 +1188,9 @@ const createFakePiManagerApi = (
         },
       });
     },
+    async notify() {
+      throw new Error("Scripted Pi agents take no notifications; override PI with a real agent.");
+    },
     async compact() {
       return { taskId: 1 };
     },

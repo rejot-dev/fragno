@@ -1,4 +1,7 @@
-import type { AutomationRouteAction } from "@fragno-dev/backoffice-api/v0/automation";
+import {
+  automationRouteActionAuthority,
+  type AutomationRouteAction,
+} from "@fragno-dev/backoffice-api/v0/automation";
 import { piBillingOrganizationIdSchema } from "@fragno-dev/backoffice-api/v0/pi";
 import {
   BACKOFFICE_PERMISSION,
@@ -661,9 +664,10 @@ export const createAutomationsRuntime = (
           resource: { kind: "automation-route", routeId },
         },
       ];
-      if (action?.kind === "start_workflow" && action.authority.grants !== "inherit") {
+      const authority = action ? automationRouteActionAuthority(action) : null;
+      if (authority && authority.grants !== "inherit") {
         requirements.push(
-          ...action.authority.grants.map((grant) => ({
+          ...authority.grants.map((grant) => ({
             operation: grant,
             resource: { kind: "automation-route-grant", routeId, grant },
           })),
@@ -705,12 +709,8 @@ export const createAutomationsRuntime = (
         const execution = requestContext;
         setAutomationRouteMutationActors(request, execution.actors);
         setAutomationRouteMutationActionAuthorizer(request, async ({ routeId, action }) => {
-          if (action.kind !== "start_workflow") {
-            return;
-          }
-
-          const grants = action.authority.grants;
-          if (grants === "inherit") {
+          const grants = automationRouteActionAuthority(action)?.grants;
+          if (grants === undefined || grants === "inherit") {
             return;
           }
 

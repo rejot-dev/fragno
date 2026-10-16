@@ -1,4 +1,5 @@
 import { automationActorsSchema } from "@fragno-dev/backoffice-api/v0/automation";
+import { automationEventSchema } from "@fragno-dev/backoffice-api/v0/events";
 import {
   piAgentModelSchema,
   piPromptWhenBusySchema,
@@ -53,6 +54,22 @@ export const piAgentPromptSchema = z.object({
   content: z.string().min(1),
   whenBusy: piPromptWhenBusySchema.default("followUp"),
 });
+
+/** An Automations event a route delivers to an agent; the route and event IDs name its turn. */
+export const piAgentNotificationSchema = z.lazy(() =>
+  z.object({
+    routeId: z.string().min(1),
+    event: automationEventSchema._zod.innerType.pick({
+      id: true,
+      source: true,
+      eventType: true,
+      occurredAt: true,
+      subject: true,
+      payload: true,
+    }),
+  }),
+);
+export type PiAgentNotification = z.infer<typeof piAgentNotificationSchema>;
 
 /**
  * The authority of one turn: its submitter's actors, narrowed by the agent definition read when
@@ -151,6 +168,15 @@ export type PiAgent = {
     request: z.infer<typeof piAgentEntryPageRequestSchema>,
   ): Promise<PiAgentEntryPage>;
   exportEntries(config: PiAgentConfig): Promise<ReadableStream<Uint8Array>>;
+  /**
+   * Writes the event into the conversation, then asks for a turn with the given authority unless
+   * a follow-up with that authority is still queued.
+   */
+  notify(
+    config: PiAgentConfig,
+    turn: PiAgentTurn,
+    notification: PiAgentNotification,
+  ): Promise<void>;
   compact(
     config: PiAgentConfig,
     turn: PiAgentTurn,

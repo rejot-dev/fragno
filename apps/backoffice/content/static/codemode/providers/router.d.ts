@@ -171,7 +171,8 @@ type AutomationRouteAction =
   | AutomationStartWorkflowAction
   | AutomationSendWorkflowEventAction
   | AutomationForwardEventAction
-  | AutomationReclassifyEventAction;
+  | AutomationReclassifyEventAction
+  | AutomationNotifyAgentAction;
 type AutomationRouteManagedBy = {
   kind: "marketplace";
   listingId: string;
@@ -275,6 +276,23 @@ type AutomationReclassifyEventAction = {
   source: string;
   eventType: string;
   payload: AutomationEventPayloadProjection;
+};
+type AutomationNotifyAgentAction = {
+  kind: "notify_agent";
+  agentName: string;
+  authority:
+    | {
+        kind: "delegated-user";
+        grants: BackofficePermissionRequirement[] | "inherit";
+      }
+    | {
+        kind: "linked-user";
+        grants: BackofficePermissionRequirement[] | "inherit";
+      }
+    | {
+        kind: "organization-automation";
+        grants: BackofficePermissionRequirement[];
+      };
 };
 type BackofficePermissionRequirement =
   | {
@@ -561,7 +579,8 @@ type AutomationRouteActionInput =
   | AutomationStartWorkflowActionInput
   | AutomationSendWorkflowEventActionInput
   | AutomationForwardEventActionInput
-  | AutomationReclassifyEventActionInput;
+  | AutomationReclassifyEventActionInput
+  | AutomationNotifyAgentActionInput;
 type AutomationSendWorkflowEventActionInput = {
   kind: "send_workflow_event";
   target: AutomationWorkflowEventTarget;
@@ -596,6 +615,23 @@ type AutomationStartWorkflowActionInput = {
       };
   workflowScriptPath: string;
   instanceIdTemplate: string;
+};
+type AutomationNotifyAgentActionInput = {
+  kind: "notify_agent";
+  agentName: string;
+  authority:
+    | {
+        kind: "delegated-user";
+        grants: BackofficePermissionRequirement[] | "inherit";
+      }
+    | {
+        kind: "linked-user";
+        grants: BackofficePermissionRequirement[] | "inherit";
+      }
+    | {
+        kind: "organization-automation";
+        grants: BackofficePermissionRequirement[];
+      };
 };
 type AutomationRouteTriggerInput =
   | {
@@ -672,7 +708,15 @@ type RouterCreateInput =
           }
         | AutomationSendWorkflowEventActionInput
         | AutomationForwardEventActionInput
-        | AutomationReclassifyEventActionInput;
+        | AutomationReclassifyEventActionInput
+        | {
+            kind: "notify_agent";
+            agentName: string;
+            authority: {
+              kind: "organization-automation";
+              grants: BackofficePermissionRequirement[];
+            };
+          };
     };
 type RouterCreateOutput = AutomationRoute;
 type RouterUpdateInput = {
