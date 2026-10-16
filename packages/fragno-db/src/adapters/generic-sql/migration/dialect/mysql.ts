@@ -92,6 +92,19 @@ export class MySQLSQLGenerator extends SQLGenerator {
   }
 
   /**
+   * MySQL names the table an index belongs to.
+   */
+  protected override compileDropIndex(
+    operation: Extract<MigrationOperation, { type: "drop-index" }>,
+    resolver?: NamingResolver,
+  ): CompiledQuery {
+    return this.getSchemaBuilder(resolver)
+      .dropIndex(this.getIndexName(operation.name, operation.table, resolver, operation.unique))
+      .on(this.getTableName(operation.table, resolver))
+      .compile();
+  }
+
+  /**
    * MySQL doesn't support IF EXISTS for dropping constraints.
    */
   protected override compileDropForeignKey(

@@ -1168,10 +1168,11 @@ describe("SQLiteSQLGenerator", () => {
         type: "drop-index",
         table: "test_table",
         name: "idx_email",
+        unique: false,
       };
 
       const sql = compileOne(operation);
-      expect(sql).toMatchInlineSnapshot(`"drop index if exists "idx_email" on "test_table""`);
+      expect(sql).toMatchInlineSnapshot(`"drop index "idx_email""`);
     });
   });
 
@@ -1915,6 +1916,21 @@ describe("SQLiteSQLGenerator", () => {
       expect(statements[1].sql).toMatchInlineSnapshot(
         `"create unique index "uidx_idx_email" on "prefix_users" ("email")"`,
       );
+    });
+
+    it("drops an index by the name it was created under, unique or not", () => {
+      // Unique and other indexes are named differently, so the drop must know which it is.
+      const statements = generator.compile(
+        [
+          { type: "drop-index", table: "users", name: "idx_email", unique: true },
+          { type: "drop-index", table: "users", name: "idx_name", unique: false },
+        ],
+        resolver,
+      );
+      expect(statements.slice(1).map(({ sql }) => sql)).toEqual([
+        'drop index "uidx_idx_email"',
+        'drop index "idx_idx_name"',
+      ]);
     });
   });
 
