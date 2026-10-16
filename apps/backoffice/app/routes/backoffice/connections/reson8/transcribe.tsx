@@ -1,5 +1,9 @@
 import { Button } from "@fragno-private/design-system/button";
-import { FormContainer, FormField } from "@fragno-private/design-system/form-container";
+import { Checkbox } from "@fragno-private/design-system/checkbox";
+import { Field } from "@fragno-private/design-system/field";
+import { FileInput } from "@fragno-private/design-system/file-input";
+import { FormContainer } from "@fragno-private/design-system/form-container";
+import { Select } from "@fragno-private/design-system/select";
 import {
   useEffect,
   useEffectEvent,
@@ -267,6 +271,13 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
   } satisfies TranscribeActionData;
 }
 
+function customModelOptions(models: Reson8CustomModel[]) {
+  return [
+    { label: "No custom model", value: "" },
+    ...models.map((model) => ({ label: model.name, value: model.id })),
+  ];
+}
+
 function RealtimeSpeechSection({
   orgSlug,
   models,
@@ -409,23 +420,16 @@ function RealtimeSpeechSection({
       eyebrow="Live microphone"
       description="Capture microphone audio in the browser, stream it to Reson8, and add final segments to the conversation (starting clears a file-only transcript)."
     >
-      <FormField label="Realtime custom model" hint="Optional vocabulary boost for live speech.">
-        <select
+      <Field label="Realtime custom model" description="Optional vocabulary boost for live speech.">
+        <Select
+          options={customModelOptions(models)}
           value={realtimeModelId}
           disabled={realtime.started}
-          onChange={(event) => {
-            setRealtimeModelId(event.target.value);
+          onValueChange={(value) => {
+            setRealtimeModelId(value ?? "");
           }}
-          className="bo-input w-full px-3 py-2 text-sm"
-        >
-          <option value="">No custom model</option>
-          {models.map((model) => (
-            <option key={model.id} value={model.id}>
-              {model.name}
-            </option>
-          ))}
-        </select>
-      </FormField>
+        />
+      </Field>
 
       {realtimeOriginDiagnostic && !realtimeOriginDiagnostic.websocketAccepted ? (
         <div className="border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-100">
@@ -616,9 +620,8 @@ export default function BackofficeOrganizationReson8Transcribe() {
               className="space-y-4"
             >
               <div className="grid gap-4 md:grid-cols-2">
-                <FormField label="Audio file" hint="Any format Reson8 accepts upstream.">
-                  <input
-                    type="file"
+                <Field label="Audio file" description="Any format Reson8 accepts upstream.">
+                  <FileInput
                     name="audioFile"
                     accept="audio/*"
                     onChange={(event: ChangeEvent<HTMLInputElement>) => {
@@ -629,48 +632,40 @@ export default function BackofficeOrganizationReson8Transcribe() {
                         fileName: nextFile?.name ?? "",
                       }));
                     }}
-                    className="w-full border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-sm text-[var(--bo-fg)] file:mr-3 file:border-0 file:bg-transparent file:text-[var(--bo-fg)]"
                   />
-                </FormField>
+                </Field>
 
-                <FormField label="Custom model" hint="Optional vocabulary boost for this upload.">
-                  <select
+                <Field
+                  label="Custom model"
+                  description="Optional vocabulary boost for this upload."
+                >
+                  <Select
                     name="customModelId"
+                    options={customModelOptions(models)}
                     value={prerecordedForm.customModelId}
-                    onChange={(event) => {
+                    onValueChange={(value) => {
                       setPrerecordedForm((prev) => ({
                         ...prev,
-                        customModelId: event.target.value,
+                        customModelId: value ?? "",
                       }));
                     }}
-                    className="bo-input w-full px-3 py-2 text-sm"
-                  >
-                    <option value="">No custom model</option>
-                    {models.map((model) => (
-                      <option key={model.id} value={model.id}>
-                        {model.name}
-                      </option>
-                    ))}
-                  </select>
-                </FormField>
+                  />
+                </Field>
               </div>
 
               <div className="flex flex-wrap gap-3 text-sm text-[var(--bo-muted)]">
-                <label className="inline-flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    name="includeTimestamps"
-                    checked={prerecordedForm.includeTimestamps}
-                    onChange={(event) => {
-                      setPrerecordedForm((prev) => ({
-                        ...prev,
-                        includeTimestamps: event.target.checked,
-                      }));
-                    }}
-                    className="h-4 w-4 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)]"
-                  />
+                <Checkbox
+                  name="includeTimestamps"
+                  checked={prerecordedForm.includeTimestamps}
+                  onCheckedChange={(checked) => {
+                    setPrerecordedForm((prev) => ({
+                      ...prev,
+                      includeTimestamps: checked,
+                    }));
+                  }}
+                >
                   Include timestamps
-                </label>
+                </Checkbox>
               </div>
 
               {prerecordedForm.fileName ? (

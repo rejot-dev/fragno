@@ -1,3 +1,4 @@
+import { Checkbox } from "@fragno-private/design-system/checkbox";
 import { ClientOnly } from "@fragno-private/design-system/client-only";
 import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
 import { BackofficeTabHeader } from "@fragno-private/design-system/tab-header";
@@ -208,17 +209,15 @@ function IntegrationsWorkspace({
                 {connections.length} {connections.length === 1 ? "connection" : "connections"}
               </p>
               {connections.length > 0 ? (
-                <label className="flex items-center gap-2 text-xs text-[var(--bo-muted)]">
-                  <input
-                    type="checkbox"
-                    checked={showDisconnected}
-                    onChange={(event) => {
-                      setShowDisconnected(event.target.checked);
-                    }}
-                  />
+                <Checkbox
+                  density="compact"
+                  checked={showDisconnected}
+                  onCheckedChange={setShowDisconnected}
+                  className="text-[var(--bo-muted)]"
+                >
                   Show disconnected
                   {disconnectedCount > 0 ? ` (${disconnectedCount})` : null}
-                </label>
+                </Checkbox>
               ) : null}
             </div>
             {eventsQuery.isError ? (

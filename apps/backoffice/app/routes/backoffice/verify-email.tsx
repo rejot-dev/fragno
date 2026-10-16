@@ -1,7 +1,8 @@
 import "@fragno-private/design-system/components.css";
 
 import { Button, ButtonLink } from "@fragno-private/design-system/button";
-import { FormContainer, FormField } from "@fragno-private/design-system/form-container";
+import { Field } from "@fragno-private/design-system/field";
+import { FormContainer } from "@fragno-private/design-system/form-container";
 import { Input } from "@fragno-private/design-system/input";
 import { useEffect, useRef } from "react";
 import { Form, useActionData, useFetcher, useLoaderData, useNavigation } from "react-router";
@@ -229,9 +230,9 @@ export default function VerifyEmail() {
                 {data.result !== "confirmation_recorded" && data.result !== "already_confirmed" ? (
                   <Form method="post" action="/backoffice/verify-email" className="space-y-3">
                     <input type="hidden" name="intent" value="resend" />
-                    <FormField
+                    <Field
                       label="Email address"
-                      hint="Enter the address used for this account."
+                      description="Enter the address used for this account."
                     >
                       <Input
                         type="email"
@@ -240,7 +241,7 @@ export default function VerifyEmail() {
                         required
                         className="w-full"
                       />
-                    </FormField>
+                    </Field>
                     <Button variant="accent" type="submit" disabled={routeSubmissionPending}>
                       {routeSubmissionPending ? "Requesting…" : "Send a new verification email"}
                     </Button>

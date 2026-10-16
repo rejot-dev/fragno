@@ -1,5 +1,6 @@
 import { ButtonLink } from "@fragno-private/design-system/button";
 import { Icon } from "@fragno-private/design-system/icon";
+import { Select } from "@fragno-private/design-system/select";
 import { WorkflowRunTimeline } from "@fragno-private/design-system/workflow-run-timeline";
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
@@ -288,24 +289,28 @@ function WorkflowRunSelector({
   }
 
   return (
-    <label className="flex min-h-10 items-center gap-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-2.5">
-      <span className="text-[9px] font-semibold tracking-[0.16em] text-[var(--bo-muted-2)] uppercase">
+    <div className="flex items-center gap-2">
+      <span
+        aria-hidden
+        className="text-[9px] font-semibold tracking-[0.16em] text-[var(--bo-muted-2)] uppercase"
+      >
         Active run
       </span>
-      <select
+      <Select
         aria-label="Active workflow run"
+        density="compact"
         value={selectedRun.instanceId}
-        onChange={(event) => {
-          onSelect(event.target.value);
+        options={runs.map((run) => ({
+          label: `${run.workflowName} · ${run.instanceId} · ${run.status}`,
+          value: run.instanceId,
+        }))}
+        onValueChange={(instanceId) => {
+          if (instanceId !== null) {
+            onSelect(instanceId);
+          }
         }}
-        className="max-w-56 min-w-0 bg-transparent font-mono text-[10px] text-[var(--bo-fg)] outline-none"
-      >
-        {runs.map((run) => (
-          <option key={run.id} value={run.instanceId}>
-            {run.workflowName} · {run.instanceId} · {run.status}
-          </option>
-        ))}
-      </select>
-    </label>
+        className="max-w-56 min-w-0 font-mono text-[10px]"
+      />
+    </div>
   );
 }

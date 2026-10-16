@@ -1,7 +1,8 @@
 import { ScrollArea } from "@base-ui/react/scroll-area";
 import { Button, ButtonLink } from "@fragno-private/design-system/button";
-import { FormField } from "@fragno-private/design-system/form-container";
+import { Field } from "@fragno-private/design-system/field";
 import { Input } from "@fragno-private/design-system/input";
+import { TextArea } from "@fragno-private/design-system/text-area";
 import { useEffect, useState } from "react";
 import { useFetcher, useLoaderData, useOutletContext, useParams } from "react-router";
 
@@ -283,7 +284,7 @@ export default function BackofficeOrganizationResendThreadDetail() {
 
         <fetcher.Form key={formResetKey} method="post" className="mt-3 space-y-3">
           <div className="grid gap-3 md:grid-cols-2">
-            <FormField label="To" hint="Comma or newline separated list.">
+            <Field label="To" description="Comma or newline separated list.">
               <Input
                 name="to"
                 required
@@ -291,48 +292,47 @@ export default function BackofficeOrganizationResendThreadDetail() {
                 placeholder="reply@example.com"
                 className="w-full"
               />
-            </FormField>
-            <FormField label="Subject" hint="Optional. Defaults to the thread subject.">
+            </Field>
+            <Field label="Subject" description="Optional. Defaults to the thread subject.">
               <Input
                 name="subject"
                 defaultValue={thread.subject ?? ""}
                 placeholder={thread.subject ?? "Reply subject"}
                 className="w-full"
               />
-            </FormField>
+            </Field>
           </div>
 
           <div className="grid gap-3 md:grid-cols-2">
-            <FormField label="CC" hint="Optional additional recipients.">
+            <Field label="CC" description="Optional additional recipients.">
               <Input
                 name="cc"
                 defaultValue={defaultCc}
                 placeholder="team@example.com"
                 className="w-full"
               />
-            </FormField>
-            <FormField label="BCC" hint="Optional blind-copy recipients.">
+            </Field>
+            <Field label="BCC" description="Optional blind-copy recipients.">
               <Input name="bcc" placeholder="audit@example.com" className="w-full" />
-            </FormField>
+            </Field>
           </div>
 
           <div className="grid gap-3 lg:grid-cols-2">
-            <FormField label="Text" hint="Provide either text or HTML.">
-              <textarea
+            <Field label="Text" description="Provide either text or HTML.">
+              <TextArea
                 name="text"
                 rows={6}
                 placeholder="Write the plain text version of the reply..."
-                className="bo-input w-full px-3 py-2 text-sm"
               />
-            </FormField>
-            <FormField label="HTML" hint="Optional rich HTML body.">
-              <textarea
+            </Field>
+            <Field label="HTML" description="Optional rich HTML body.">
+              <TextArea
                 name="html"
                 rows={6}
                 placeholder="<p>Thanks for the update...</p>"
                 className="bo-input w-full px-3 py-2 text-sm"
               />
-            </FormField>
+            </Field>
           </div>
 
           {sendError ? <p className="text-xs text-red-500">{sendError}</p> : null}

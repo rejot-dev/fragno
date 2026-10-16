@@ -3,6 +3,8 @@ import {
   type MarketplaceVisibility,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 import { Button, ButtonLink } from "@fragno-private/design-system/button";
+import { Field } from "@fragno-private/design-system/field";
+import { Select } from "@fragno-private/design-system/select";
 import { Form, Link } from "react-router";
 
 import { backofficeRuntimeScopeFromResolvedScope } from "@/backoffice-runtime/resolved-scope";
@@ -143,35 +145,29 @@ export default function BackofficeMarketplaceMyListings({ loaderData }: Route.Co
         </div>
         <Form method="get" className="mt-4 flex flex-col gap-3 md:flex-row md:items-end">
           {organizationSlug ? (
-            <label className="flex flex-col gap-1">
-              <span className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-                Marketplace
-              </span>
-              <select
+            <Field label="Marketplace" className="md:w-48">
+              <Select
                 name="visibility"
                 defaultValue={visibility}
-                className="bo-input px-3 py-2 text-sm"
-              >
-                <option value="public">Public</option>
-                <option value="organization">Organization</option>
-              </select>
-            </label>
+                options={[
+                  { label: "Public", value: "public" },
+                  { label: "Organization", value: "organization" },
+                ]}
+              />
+            </Field>
           ) : null}
-          <label className="flex flex-col gap-1">
-            <span className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-              Status
-            </span>
-            <select
+          <Field label="Status" className="md:w-48">
+            <Select
               name="status"
               defaultValue={status ?? ""}
-              className="bo-input px-3 py-2 text-sm"
-            >
-              <option value="">All statuses</option>
-              <option value="draft">Draft</option>
-              <option value="published">Published</option>
-              <option value="archived">Archived</option>
-            </select>
-          </label>
+              options={[
+                { label: "All statuses", value: "" },
+                { label: "Draft", value: "draft" },
+                { label: "Published", value: "published" },
+                { label: "Archived", value: "archived" },
+              ]}
+            />
+          </Field>
           <Button type="submit" variant="secondary">
             Apply
           </Button>

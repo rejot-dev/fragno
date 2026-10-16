@@ -1,5 +1,6 @@
 import { Button } from "@fragno-private/design-system/button";
-import { FormContainer, FormField } from "@fragno-private/design-system/form-container";
+import { Field } from "@fragno-private/design-system/field";
+import { FormContainer } from "@fragno-private/design-system/form-container";
 import { Input } from "@fragno-private/design-system/input";
 import { useEffect, useState, type SubmitEvent } from "react";
 import { Form, useActionData, useNavigation, useOutletContext } from "react-router";
@@ -217,7 +218,7 @@ export default function BackofficeOrganizationTelegramConfiguration() {
         <Form method="post" onSubmit={handleSubmit} className="space-y-4">
           <input type="hidden" name="intent" value="save-config" />
           <div className="grid gap-4 md:grid-cols-2">
-            <FormField label="Bot token" hint="Copy from BotFather. Required.">
+            <Field label="Bot token" description="Copy from BotFather. Required.">
               <Input
                 type="password"
                 name="botToken"
@@ -232,9 +233,9 @@ export default function BackofficeOrganizationTelegramConfiguration() {
                 placeholder="123456:ABC-DEF1234ghIkl"
                 className="w-full"
               />
-            </FormField>
+            </Field>
 
-            <FormField label="Bot username" hint="Optional, used for display.">
+            <Field label="Bot username" description="Optional, used for display.">
               <Input
                 type="text"
                 name="botUsername"
@@ -249,9 +250,9 @@ export default function BackofficeOrganizationTelegramConfiguration() {
                 placeholder="my_bot"
                 className="w-full"
               />
-            </FormField>
+            </Field>
 
-            <FormField label="API base URL" hint="Leave empty for api.telegram.org.">
+            <Field label="API base URL" description="Leave empty for api.telegram.org.">
               <Input
                 type="url"
                 name="apiBaseUrl"
@@ -267,7 +268,7 @@ export default function BackofficeOrganizationTelegramConfiguration() {
                 className="w-full"
               />
               {apiBaseUrlError ? <p className="text-xs text-red-500">{apiBaseUrlError}</p> : null}
-            </FormField>
+            </Field>
           </div>
 
           {saveError ? <p className="text-xs text-red-500">{saveError}</p> : null}

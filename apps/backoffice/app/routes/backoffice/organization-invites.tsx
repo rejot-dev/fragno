@@ -1,6 +1,7 @@
 import { Button } from "@fragno-private/design-system/button";
 import { cn } from "@fragno-private/design-system/cn";
-import { FormContainer, FormField } from "@fragno-private/design-system/form-container";
+import { Field } from "@fragno-private/design-system/field";
+import { FormContainer } from "@fragno-private/design-system/form-container";
 import { Input } from "@fragno-private/design-system/input";
 import { usePostHog } from "@posthog/react/slim";
 import { useEffect, useReducer, useState, type SubmitEvent } from "react";
@@ -209,9 +210,9 @@ export default function BackofficeOrganizationInvites() {
         description="Create a shareable invitation link and assign default roles. Invitations are not emailed automatically."
       >
         <form onSubmit={(event) => void handleInviteSubmit(event)} className="space-y-3">
-          <FormField
+          <Field
             label="Email"
-            hint="Invites are not emailed automatically. Share the generated link manually or via your own hook."
+            description="Invites are not emailed automatically. Share the generated link manually or via your own hook."
           >
             <Input
               type="email"
@@ -223,7 +224,7 @@ export default function BackofficeOrganizationInvites() {
               disabled={!canManageMembers}
               className="w-full"
             />
-          </FormField>
+          </Field>
           <div className="space-y-2">
             <p className="text-[11px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
               Roles

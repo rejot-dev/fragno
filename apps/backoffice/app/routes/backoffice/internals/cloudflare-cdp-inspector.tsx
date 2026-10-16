@@ -1,5 +1,6 @@
 import { Button } from "@fragno-private/design-system/button";
-import { FormContainer, FormField } from "@fragno-private/design-system/form-container";
+import { Field } from "@fragno-private/design-system/field";
+import { FormContainer } from "@fragno-private/design-system/form-container";
 import { Input } from "@fragno-private/design-system/input";
 import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
 import { useEffect, useRef, useState, type SubmitEvent } from "react";
@@ -580,9 +581,9 @@ export function CloudflareCdpInspector({
         onSubmit={(event) => void navigate(event)}
       >
         <div className="min-w-0 flex-1">
-          <FormField
+          <Field
             label="Navigate target"
-            hint="Runs Page.navigate through the active connection."
+            description="Runs Page.navigate through the active connection."
           >
             <Input
               className="min-h-10 w-full"
@@ -592,7 +593,7 @@ export function CloudflareCdpInspector({
                 setNavigationUrl(event.target.value);
               }}
             />
-          </FormField>
+          </Field>
         </div>
         <Button variant="accent" disabled={!connected || operation !== null} type="submit">
           Navigate

@@ -1,5 +1,6 @@
 import { Button } from "@fragno-private/design-system/button";
-import { FormContainer, FormField } from "@fragno-private/design-system/form-container";
+import { Field } from "@fragno-private/design-system/field";
+import { FormContainer } from "@fragno-private/design-system/form-container";
 import { Input } from "@fragno-private/design-system/input";
 import { useEffect, useState, type SubmitEvent } from "react";
 import { useOutletContext, useRevalidator } from "react-router";
@@ -103,7 +104,7 @@ export default function BackofficeOrganizationOverview() {
         description="Update the name shown across dashboards and invitations."
       >
         <form onSubmit={(event) => void handleNameSubmit(event)} className="space-y-3">
-          <FormField label="Organization name">
+          <Field label="Organization name">
             <Input
               type="text"
               value={nameInput}
@@ -114,7 +115,7 @@ export default function BackofficeOrganizationOverview() {
               disabled={!canManageOrganization}
               className="w-full"
             />
-          </FormField>
+          </Field>
           <div className="flex flex-wrap items-center gap-2">
             <Button
               variant="accent"

@@ -1,5 +1,6 @@
 import { ScrollArea } from "@base-ui/react/scroll-area";
 import { Button, ButtonLink } from "@fragno-private/design-system/button";
+import { TextArea } from "@fragno-private/design-system/text-area";
 import { useEffect, useRef, useState } from "react";
 import {
   Form,
@@ -504,14 +505,14 @@ function ChatMessages({
       <Form ref={formRef} method="post" className="space-y-2">
         {sendError ? <div className="text-sm text-red-500">{sendError}</div> : null}
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-          <textarea
+          <TextArea
             name="text"
             aria-label="Bot message"
             rows={3}
             required
             minLength={1}
             placeholder="Write a message as the bot..."
-            className="bo-input w-full flex-1 px-3 py-2 text-sm"
+            className="flex-1"
           />
           <Button variant="secondary" type="submit" disabled={isSending}>
             {isSending ? "Sending..." : "Send"}

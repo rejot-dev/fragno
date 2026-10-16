@@ -1,5 +1,6 @@
 import { Button } from "@fragno-private/design-system/button";
-import { FormContainer, FormField } from "@fragno-private/design-system/form-container";
+import { Field } from "@fragno-private/design-system/field";
+import { FormContainer } from "@fragno-private/design-system/form-container";
 import { Input } from "@fragno-private/design-system/input";
 import { useState } from "react";
 import { Link } from "react-router";
@@ -44,15 +45,15 @@ export default function Signup() {
             }
           }}
         >
-          <FormField label="Name">
+          <Field label="Name">
             <Input
               className="w-full focus-visible:ring-2 focus-visible:ring-[var(--bo-accent)]/30"
               name="name"
               autoComplete="name"
               required
             />
-          </FormField>
-          <FormField label="Email">
+          </Field>
+          <Field label="Email">
             <Input
               className="w-full focus-visible:ring-2 focus-visible:ring-[var(--bo-accent)]/30"
               name="email"
@@ -60,8 +61,8 @@ export default function Signup() {
               autoComplete="email"
               required
             />
-          </FormField>
-          <FormField label="Password" hint="Use 8–128 characters.">
+          </Field>
+          <Field label="Password" description="Use 8–128 characters.">
             <Input
               className="w-full focus-visible:ring-2 focus-visible:ring-[var(--bo-accent)]/30"
               name="password"
@@ -71,7 +72,7 @@ export default function Signup() {
               maxLength={128}
               required
             />
-          </FormField>
+          </Field>
           {error && (
             <p role="alert" className="error">
               {error}
