@@ -6,7 +6,6 @@ import { TextArea } from "@fragno-private/design-system/text-area";
 import { useEffect, useMemo, useState, type SubmitEvent } from "react";
 import {
   Form,
-  redirect,
   useActionData,
   useLoaderData,
   useNavigation,
@@ -15,9 +14,10 @@ import {
   type LoaderFunctionArgs,
 } from "react-router";
 
-import { resolveAuthenticatedOrgIntegrationContext } from "../../integrations/scope.server";
 import { formatTimestamp } from "../formatting";
-import { createReson8CustomModel, fetchReson8Config, fetchReson8CustomModels } from "./data";
+import type { Route } from "./+types/custom-models";
+import { reson8Connection } from "./connection.server";
+import { createReson8CustomModel, fetchReson8CustomModels } from "./data";
 import type { Reson8LayoutContext } from "./shared";
 
 type Reson8CustomModelsActionData = {
@@ -61,23 +61,18 @@ const normalizeCustomModelInput = (input: Reson8CustomModelForm) => {
   };
 };
 
-export async function loader({ request, context }: LoaderFunctionArgs) {
-  const { integration, orgId } = resolveAuthenticatedOrgIntegrationContext({
-    context,
-    integration: "reson8",
-  });
+export const middleware: Route.MiddlewareFunction[] = [reson8Connection.requireConfigured];
 
-  const { configState, configError } = await fetchReson8Config(context, orgId);
+export async function loader({ request, context }: LoaderFunctionArgs) {
+  const connection = reson8Connection.require({ request, context });
+  const { orgId } = connection.scope;
+  const { configError } = await connection.configuration();
   if (configError) {
     return {
       configError,
       modelsError: null,
       models: [],
     };
-  }
-
-  if (!configState?.configured) {
-    return redirect(`${integration.basePath}/configuration`);
   }
 
   const { models, modelsError } = await fetchReson8CustomModels(request, context, orgId);
@@ -89,10 +84,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 }
 
 export async function action({ request, context }: ActionFunctionArgs) {
-  const { orgId } = resolveAuthenticatedOrgIntegrationContext({
-    context,
-    integration: "reson8",
-  });
+  const { orgId } = reson8Connection.require({ request, context }).scope;
 
   const formData = await request.formData();
   const payload = {

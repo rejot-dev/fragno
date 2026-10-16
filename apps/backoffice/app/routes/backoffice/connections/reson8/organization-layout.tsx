@@ -1,43 +1,23 @@
 import { useState } from "react";
 import { Outlet, redirect } from "react-router";
 
-import { getBackofficeShellRequest } from "@/layouts/backoffice-shell-request.server";
-
-import { resolveIntegrationContext } from "../../integrations/scope.server";
+import { selectIntegrationScope } from "../../integrations/connection.server";
 import { IntegrationServiceHeader } from "../../integrations/service-header";
 import type { Route } from "./+types/organization-layout";
-import { fetchReson8Config } from "./data";
+import { reson8Connection } from "./connection.server";
 import { Reson8ErrorBoundary, Reson8Tabs, type Reson8ConfigState, type Reson8Tab } from "./shared";
 
-export async function loader({ context, url }: Route.LoaderArgs) {
-  const { me } = getBackofficeShellRequest(context);
-
-  const integration = resolveIntegrationContext({
-    context,
-    integration: "reson8",
-    allowedScopes: ["org"],
-  });
-  if (integration.scope.kind !== "org") {
-    throw new Response("Not Found", { status: 404 });
-  }
-
-  const orgId = integration.scope.orgId;
-  const organization =
-    me.organizations.find((entry) => entry.organization.id === orgId)?.organization ?? null;
-  if (!organization) {
-    throw new Response("Not Found", { status: 404 });
-  }
-  const { configState, configError } = await fetchReson8Config(context, orgId);
-  const currentPath = url.pathname.replace(/\/+$/, "");
-  if (currentPath === integration.basePath) {
-    return redirect(
-      `${integration.basePath}/${configState?.configured ? "transcribe" : "configuration"}`,
-    );
+export async function loader({ request, context, url }: Route.LoaderArgs) {
+  const connection = reson8Connection.require({ request, context });
+  const { configState, configError } = await connection.configuration();
+  const { basePath } = connection;
+  if (url.pathname.replace(/\/+$/, "") === basePath) {
+    return redirect(`${basePath}/${configState?.configured ? "transcribe" : "configuration"}`);
   }
 
   return {
-    ...integration,
-    organization,
+    ...selectIntegrationScope(context, connection),
+    organization: connection.resolvedScope.organization,
     configState,
     configError,
   };

@@ -1,7 +1,6 @@
 import {
   Link,
   Outlet,
-  redirect,
   useLoaderData,
   useLocation,
   useOutletContext,
@@ -10,10 +9,10 @@ import {
 
 import type { ResendEmailSummary } from "@fragno-dev/resend-fragment";
 
-import { resolveAuthenticatedIntegrationRuntimeScope } from "../../integrations/scope.server";
 import { formatTimestamp } from "../formatting";
 import type { Route } from "./+types/outbox";
-import { fetchResendConfig, fetchResendOutbox } from "./data";
+import { resendConnection } from "./connection.server";
+import { fetchResendOutbox } from "./data";
 import type { ResendConfigState, ResendLayoutContext } from "./shared";
 
 type ResendOutboxLoaderData = {
@@ -32,13 +31,11 @@ export type ResendOutgoingOutletContext = {
   configState: ResendConfigState | null;
 };
 
-export async function loader({ request, context, url }: Route.LoaderArgs) {
-  const scope = resolveAuthenticatedIntegrationRuntimeScope({
-    context,
-    allowedScopes: ["org", "system"],
-  });
+export const middleware: Route.MiddlewareFunction[] = [resendConnection.requireConfigured];
 
-  const { configState, configError } = await fetchResendConfig(context, scope);
+export async function loader({ request, context }: Route.LoaderArgs) {
+  const connection = resendConnection.require({ request, context });
+  const { configError } = await connection.configuration();
   if (configError) {
     return {
       configError,
@@ -49,16 +46,10 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
     } satisfies ResendOutboxLoaderData;
   }
 
-  if (!configState?.configured) {
-    return redirect(
-      `${url.pathname.replace(/\/(?:domains|threads|incoming|outgoing)(?:\/.*)?$/u, "")}/configuration`,
-    );
-  }
-
   const { emails, cursor, hasNextPage, outboxError } = await fetchResendOutbox(
     request,
     context,
-    scope,
+    connection.scope,
     { order: "desc", pageSize: 50 },
   );
 

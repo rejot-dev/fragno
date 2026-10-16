@@ -18,7 +18,6 @@ import {
 import {
   Form,
   Link,
-  redirect,
   useActionData,
   useLoaderData,
   useNavigation,
@@ -47,10 +46,11 @@ import {
   type UploadCollectionSource,
 } from "@/fragno/upload/tanstack/browser-database";
 
-import { deleteUploadFile, fetchUploadConfig, fetchUploadDownloadUrl } from "./data";
+import type { Route } from "./+types/files";
+import { uploadConnection } from "./connection.server";
+import { deleteUploadFile, fetchUploadDownloadUrl } from "./data";
 import { formatUploadTimestamp } from "./formatting";
 import type { UploadLayoutContext } from "./layout-context";
-import { requireUploadRouteOrganization } from "./organization.server";
 import { shouldAutoStartUploads } from "./upload-queue";
 
 type ExplorerSelectionKind = "root" | "folder" | "file";
@@ -534,9 +534,12 @@ const createSyntheticFolderNode = (prefix: string): UploadTreeFolderNode => ({
   providers: [],
 });
 
-export async function loader({ params, context, url }: LoaderFunctionArgs) {
-  const { organization } = requireUploadRouteOrganization(context, params.orgSlug);
-  const { configState, configError } = await fetchUploadConfig(context, organization.id);
+export const middleware: Route.MiddlewareFunction[] = [uploadConnection.requireConfigured];
+
+export async function loader({ request, context, url }: LoaderFunctionArgs) {
+  const { configState, configError } = await uploadConnection
+    .require({ request, context })
+    .configuration();
   if (configError) {
     return {
       configState,
@@ -546,12 +549,6 @@ export async function loader({ params, context, url }: LoaderFunctionArgs) {
       selectedNodeKind: "root",
       selectedPrefix: "",
     } satisfies FilesLoaderData;
-  }
-
-  if (!configState?.configured) {
-    return redirect(
-      `/backoffice/connections/upload/${encodeURIComponent(organization.slug)}/configuration`,
-    );
   }
 
   let selectedNodeKind = parseSelectedNodeKind(url.searchParams.get("node"));
@@ -584,8 +581,8 @@ export async function loader({ params, context, url }: LoaderFunctionArgs) {
   } satisfies FilesLoaderData;
 }
 
-export async function action({ request, params, context }: ActionFunctionArgs) {
-  const { organization } = requireUploadRouteOrganization(context, params.orgSlug);
+export async function action({ request, context }: ActionFunctionArgs) {
+  const { organization } = uploadConnection.require({ request, context }).resolvedScope;
   const formData = await request.formData();
   const intent = formData.get("intent");
   const providerValue = formData.get("provider");

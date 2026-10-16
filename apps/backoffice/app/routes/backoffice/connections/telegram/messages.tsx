@@ -1,10 +1,10 @@
-import { Link, Outlet, redirect, useLoaderData, useOutletContext, useParams } from "react-router";
+import { Link, Outlet, useLoaderData, useOutletContext, useParams } from "react-router";
 
 import type { TelegramChatSummary } from "@fragno-dev/telegram-fragment";
 
-import { resolveAuthenticatedIntegrationRuntimeScope } from "../../integrations/scope.server";
 import type { Route } from "./+types/messages";
-import { fetchTelegramChats, fetchTelegramConfig } from "./data";
+import { telegramConnection } from "./connection.server";
+import { fetchTelegramChats } from "./data";
 import type { TelegramLayoutContext } from "./shared";
 
 type TelegramMessagesLoaderData = {
@@ -19,13 +19,11 @@ export type TelegramMessagesOutletContext = {
   basePath: string;
 };
 
-export async function loader({ request, context, url }: Route.LoaderArgs) {
-  const scope = resolveAuthenticatedIntegrationRuntimeScope({
-    context,
-  });
-  const basePath = url.pathname.replace(/\/messages(?:\/.*)?$/u, "");
+export const middleware: Route.MiddlewareFunction[] = [telegramConnection.requireConfigured];
 
-  const { configState, configError } = await fetchTelegramConfig(context, scope);
+export async function loader({ request, context }: Route.LoaderArgs) {
+  const connection = telegramConnection.require({ request, context });
+  const { configError } = await connection.configuration();
   if (configError) {
     return {
       configError,
@@ -34,11 +32,7 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
     } satisfies TelegramMessagesLoaderData;
   }
 
-  if (!configState?.configured) {
-    return redirect(`${basePath}/configuration`);
-  }
-
-  const { chats, chatsError } = await fetchTelegramChats(request, context, scope);
+  const { chats, chatsError } = await fetchTelegramChats(request, context, connection.scope);
   if (chatsError) {
     return {
       configError: null,

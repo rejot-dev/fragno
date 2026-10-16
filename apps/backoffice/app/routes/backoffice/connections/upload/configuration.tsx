@@ -21,9 +21,9 @@ import {
 } from "@/fragno/upload";
 import { getUploadDurableObject } from "@/worker-runtime/durable-objects";
 
+import { uploadConnection } from "./connection.server";
 import { formatUploadTimestamp } from "./formatting";
 import type { UploadConfigurableProvider, UploadLayoutContext } from "./layout-context";
-import { requireUploadRouteOrganization } from "./organization.server";
 import { UploadProviderTabs } from "./shared";
 
 type UploadConfigActionData = {
@@ -416,8 +416,8 @@ const normalizeUploadConfigInput = (
   return { ok: true, payload };
 };
 
-export async function action({ request, context, params }: ActionFunctionArgs) {
-  const { organization } = requireUploadRouteOrganization(context, params.orgSlug);
+export async function action({ request, context }: ActionFunctionArgs) {
+  const { organization } = uploadConnection.require({ request, context }).resolvedScope;
   const formData = await request.formData();
   const getValue = (key: string) => {
     const value = formData.get(key);

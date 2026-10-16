@@ -9,9 +9,9 @@ import { Form, useActionData, useNavigation, useOutletContext } from "react-rout
 
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
-import { resolveAuthenticatedIntegrationContext } from "../../integrations/scope.server";
 import { formatTimestamp } from "../formatting";
 import type { Route } from "./+types/configuration";
+import { resendConnection } from "./connection.server";
 import type { ResendConfigState, ResendLayoutContext } from "./shared";
 
 const SETUP_STEPS = [
@@ -98,12 +98,7 @@ const normalizeResendConfigInput = (input: ResendConfigForm): ResendConfigValida
 };
 
 export async function action({ request, context }: Route.ActionArgs) {
-  const integration = resolveAuthenticatedIntegrationContext({
-    context,
-    integration: "resend",
-    allowedScopes: ["org", "system"],
-  });
-  const scope = integration.scope;
+  const { scope } = resendConnection.require({ request, context });
 
   const formData = await request.formData();
   const getValue = (key: string) => {
@@ -127,9 +122,6 @@ export async function action({ request, context }: Route.ActionArgs) {
   }
 
   const origin = new URL(request.url).origin;
-  if (scope.kind !== "system" && scope.kind !== "org") {
-    throw new Response("Not Found", { status: 404 });
-  }
 
   const resendObjects = context.get(BackofficeWorkerContext).runtime.objects.resend;
   const resendDo =

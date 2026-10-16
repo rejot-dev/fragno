@@ -21,15 +21,23 @@ Completed:
   request. Equivalent organization identities share an operation; organization and project scopes
   remain distinct; rejected operations are shared.
 - P3.1 is complete for Backoffice sections. The shell resolves the route's own scope once: `route`
-  is `resolved` (with its execution and a lazy, memoized `selectScope()` that looks up a project
-  scope's project once per request) or `not-found`. Another user's user scope and, for
-  non-administrators, System scope are `not-found` rather than 403s. Sections call
+  is `resolved` (with its execution and selection; the shell looks a project scope's project up by
+  slug once per request), `not-found`, or `unavailable` when that lookup fails. Another user's
+  scopes and, for non-administrators, System scope are `not-found` rather than 403s. Sections call
   `requireScopeSelection`, `requireRoutableScopeSelection`, or `requireRouteScope`, which throw the
   section's 404 or 502 from its loader so it renders inside the shell. Files, computers,
   integrations, marketplace, dashboard, agents, durable hooks, internals, the terminal, and the
   sandbox and files helpers use them; the per-section resolvers are deleted.
 - Routes under the Backoffice layout read `me` from the shell request instead of looking it up and
   redirecting signed-out users themselves.
+- P3.2 and P3.3 are complete. Each integration defines its connection with
+  `defineIntegrationConnection`: the route's scope from the shell and a configuration loaded once
+  per request, shared by the layout, middleware, loaders, and actions. Configured routes (Resend
+  lists, Telegram messages, Reson8 custom models and transcribe, GitHub repositories, Upload files)
+  export its `requireConfigured` middleware, which redirects to configuration before their loaders
+  run. The middleware sits on each configured route rather than a pathless layout, so outlet
+  contexts are unchanged. GitHub's configuration includes its linked repositories, which its layout,
+  index, list, and detail share. Connection index redirects read the shared configuration.
 
 Pending:
 
@@ -38,9 +46,7 @@ Pending:
   `/_internal` requests.
 - The project selector and workflow drawer still depend on layout-owned collection sources. They
   need focused resource routes and keyed fetchers before global loading can be removed.
-- The connection routes still resolve their scope through `resolveIntegrationContext`; fold it into
-  the shell's route scope together with P3.2's configured-integration middleware.
-- Integration configuration, list/detail, and redirect cleanup remain outstanding.
+- P3.4 list/detail ownership and the rest of P3.6's redirect cleanup remain outstanding.
 - Deferred: derive project labels from a client-side projects collection instead of the server
   project lookup. This would turn a missing project into a client-side state, and it conflicts with
   P2.4 moving the project selector off layout-owned collection sources; decide after P2.

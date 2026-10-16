@@ -13,10 +13,6 @@ import {
 
 import type { TelegramAttachment, TelegramMessageSummary } from "@fragno-dev/telegram-fragment";
 
-import {
-  resolveAuthenticatedIntegrationContext,
-  resolveAuthenticatedIntegrationRuntimeScope,
-} from "../../integrations/scope.server";
 import { formatTimestamp } from "../formatting";
 import type { Route } from "./+types/message-thread";
 import {
@@ -24,6 +20,7 @@ import {
   buildTelegramAttachmentInlinePath,
   buildTelegramAttachmentPathForBase,
 } from "./attachment-paths";
+import { telegramConnection } from "./connection.server";
 import { fetchTelegramChatMessages, sendTelegramChatMessage } from "./data";
 import type { TelegramMessagesOutletContext } from "./messages";
 
@@ -42,9 +39,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     throw new Response("Not Found", { status: 404 });
   }
 
-  const scope = resolveAuthenticatedIntegrationRuntimeScope({
-    context,
-  });
+  const { scope } = telegramConnection.require({ request, context });
   const messageResult = await fetchTelegramChatMessages(request, context, scope, params.chatId, {
     order: "desc",
     pageSize: 50,
@@ -61,11 +56,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     throw new Response("Not Found", { status: 404 });
   }
 
-  const integration = resolveAuthenticatedIntegrationContext({
-    context,
-    integration: "telegram",
-  });
-  const scope = integration.scope;
+  const { scope } = telegramConnection.require({ request, context });
   const formData = await request.formData();
   const text = formData.get("text");
 

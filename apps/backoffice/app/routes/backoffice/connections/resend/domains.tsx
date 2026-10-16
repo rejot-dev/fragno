@@ -1,11 +1,11 @@
-import { Link, Outlet, redirect, useLoaderData, useOutletContext, useParams } from "react-router";
+import { Link, Outlet, useLoaderData, useOutletContext, useParams } from "react-router";
 
 import type { ResendDomain } from "@fragno-dev/resend-fragment";
 
-import { resolveAuthenticatedIntegrationRuntimeScope } from "../../integrations/scope.server";
 import { formatTimestamp } from "../formatting";
 import type { Route } from "./+types/domains";
-import { fetchResendConfig, fetchResendDomains } from "./data";
+import { resendConnection } from "./connection.server";
+import { fetchResendDomains } from "./data";
 import {
   formatResendCapability,
   formatResendDomainStatus,
@@ -26,13 +26,11 @@ export type ResendDomainsOutletContext = {
   basePath: string;
 };
 
-export async function loader({ request, context, url }: Route.LoaderArgs) {
-  const scope = resolveAuthenticatedIntegrationRuntimeScope({
-    context,
-    allowedScopes: ["org", "system"],
-  });
+export const middleware: Route.MiddlewareFunction[] = [resendConnection.requireConfigured];
 
-  const { configState, configError } = await fetchResendConfig(context, scope);
+export async function loader({ request, context }: Route.LoaderArgs) {
+  const connection = resendConnection.require({ request, context });
+  const { configError } = await connection.configuration();
   if (configError) {
     return {
       configError,
@@ -42,13 +40,11 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
     } satisfies ResendDomainsLoaderData;
   }
 
-  if (!configState?.configured) {
-    return redirect(
-      `${url.pathname.replace(/\/(?:domains|threads|incoming|outgoing)(?:\/.*)?$/u, "")}/configuration`,
-    );
-  }
-
-  const { domains, hasMore, domainsError } = await fetchResendDomains(request, context, scope);
+  const { domains, hasMore, domainsError } = await fetchResendDomains(
+    request,
+    context,
+    connection.scope,
+  );
   return {
     configError: null,
     domainsError,

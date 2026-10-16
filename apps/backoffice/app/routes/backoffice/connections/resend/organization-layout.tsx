@@ -1,41 +1,26 @@
-import { backofficeScopeOrganization } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { useEffect, useState } from "react";
 import { Outlet, redirect } from "react-router";
 
-import { getBackofficeShellRequest } from "@/layouts/backoffice-shell-request.server";
-
-import { resolveIntegrationContext } from "../../integrations/scope.server";
+import { selectIntegrationScope } from "../../integrations/connection.server";
 import { IntegrationServiceHeader } from "../../integrations/service-header";
 import type { Route } from "./+types/organization-layout";
-import { fetchResendConfig } from "./data";
+import { resendConnection } from "./connection.server";
 import { ResendErrorBoundary, ResendTabs, type ResendConfigState, type ResendTab } from "./shared";
 
-export async function loader({ context, url }: Route.LoaderArgs) {
-  const { me } = getBackofficeShellRequest(context);
-
-  const integration = resolveIntegrationContext({
-    context,
-    integration: "resend",
-    allowedScopes: ["org", "system"],
-  });
-  const organizationForScope = backofficeScopeOrganization(integration.scope)?.orgId ?? null;
-  const organization = organizationForScope
-    ? (me.organizations.find((entry) => entry.organization.id === organizationForScope)
-        ?.organization ?? null)
-    : null;
-
-  const { configState, configError } = await fetchResendConfig(context, integration.scope);
-  const currentPath = url.pathname.replace(/\/+$/, "");
-  const basePath = integration.basePath;
-  if (currentPath === basePath) {
+export async function loader({ request, context, url }: Route.LoaderArgs) {
+  const connection = resendConnection.require({ request, context });
+  const { configState, configError } = await connection.configuration();
+  const { basePath } = connection;
+  if (url.pathname.replace(/\/+$/, "") === basePath) {
     const target = configState?.configured ? "threads" : "configuration";
     return redirect(`${basePath}/${target}`);
   }
 
   return {
-    ...integration,
+    ...selectIntegrationScope(context, connection),
     origin: url.origin,
-    organization,
+    organization:
+      connection.resolvedScope.kind === "org" ? connection.resolvedScope.organization : null,
     configState,
     configError,
   };

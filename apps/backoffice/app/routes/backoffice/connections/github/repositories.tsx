@@ -1,12 +1,8 @@
-import { Link, Outlet, redirect, useLoaderData, useOutletContext, useParams } from "react-router";
+import { Link, Outlet, useLoaderData, useOutletContext, useParams } from "react-router";
 
-import { resolveAuthenticatedOrgIntegrationRuntimeScope } from "../../integrations/scope.server";
 import type { Route } from "./+types/repositories";
-import {
-  fetchGitHubAdminConfig,
-  fetchGitHubLinkedRepositories,
-  type GitHubRepositorySummary,
-} from "./data";
+import { gitHubConnection } from "./connection.server";
+import type { GitHubRepositorySummary } from "./data";
 import type { GitHubLayoutContext } from "./shared";
 
 type GitHubRepositoriesLoaderData = {
@@ -21,42 +17,21 @@ export type GitHubRepositoriesOutletContext = {
   basePath: string;
 };
 
-export async function loader({ request, context, url }: Route.LoaderArgs) {
-  const { orgId: organizationId } = resolveAuthenticatedOrgIntegrationRuntimeScope({
-    context,
-  });
+export const middleware: Route.MiddlewareFunction[] = [gitHubConnection.requireConfigured];
 
-  const origin = url.origin;
-  const { configState, configError } = await fetchGitHubAdminConfig(
-    context,
-    organizationId,
-    origin,
-  );
-  if (configError) {
-    return {
-      configError,
-      reposError: null,
-      repos: [],
-    } satisfies GitHubRepositoriesLoaderData;
-  }
-
-  if (!configState?.configured) {
-    return redirect(`${url.pathname.replace(/\/(?:repositories)(?:\/.*)?$/u, "")}/configuration`);
-  }
-
-  const { repos, reposError } = await fetchGitHubLinkedRepositories(
-    request,
-    context,
-    organizationId,
-  );
-  if (!reposError && repos.length === 0) {
-    return redirect(`${url.pathname.replace(/\/(?:repositories)(?:\/.*)?$/u, "")}/configuration`);
+export async function loader({ request, context }: Route.LoaderArgs) {
+  const { configError, linkedRepositories } = await gitHubConnection
+    .require({ request, context })
+    .configuration();
+  // The middleware sent a loaded configuration without linked repositories to configuration.
+  if (linkedRepositories === null) {
+    return { configError, reposError: null, repos: [] } satisfies GitHubRepositoriesLoaderData;
   }
 
   return {
     configError: null,
-    reposError,
-    repos,
+    reposError: linkedRepositories.reposError,
+    repos: linkedRepositories.repos,
   } satisfies GitHubRepositoriesLoaderData;
 }
 

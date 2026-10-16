@@ -3,7 +3,7 @@ import { ButtonLink } from "@fragno-private/design-system/button";
 import type { BackofficeScopeSelection } from "@/backoffice-runtime/resolved-scope";
 import { backofficeConnectionCatalog } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 
-import { integrationBasePath } from "./scope";
+import { integrationBasePath } from "./connection-paths";
 
 /** Native services whose management pages serve the system scope. */
 const SYSTEM_SERVICE_IDS: readonly string[] = ["telegram", "resend"];

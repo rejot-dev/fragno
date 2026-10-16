@@ -1,34 +1,6 @@
-import { afterEach, describe, expect, it, vi, assert } from "vitest";
+import { describe, it, assert } from "vitest";
 
-import { RouterContextProvider } from "react-router";
-
-import type { BackofficeMeData } from "@/fragno/auth/contracts";
-import { provideBackofficeShellRequest } from "@/layouts/backoffice-layout.test-support";
-
-import { fetchUploadConfig } from "./data";
-import { loader } from "./files";
 import { shouldAutoStartUploads } from "./upload-queue";
-
-vi.mock("@base-ui/react", () => ({
-  Collapsible: {},
-  Progress: {},
-}));
-
-vi.mock("@fragno-private/design-system/units", () => ({
-  formatBytes: vi.fn(),
-}));
-
-vi.mock("@/fragno/upload-client", () => ({
-  createUploadClient: vi.fn(() => ({
-    useUploadHelpers: () => ({}),
-  })),
-}));
-
-vi.mock("./data", () => ({
-  fetchUploadConfig: vi.fn(),
-  fetchUploadDownloadUrl: vi.fn(),
-  deleteUploadFile: vi.fn(),
-}));
 
 describe("upload files helpers", () => {
   it("auto-starts queued uploads for the root prefix", () => {
@@ -49,72 +21,5 @@ describe("upload files helpers", () => {
         nextQueuedUploadPrefix: null,
       }),
     );
-  });
-});
-
-describe("upload files loader", () => {
-  afterEach(() => {
-    vi.clearAllMocks();
-  });
-
-  const createLoaderArgs = (url: string) => {
-    const context = new RouterContextProvider();
-    provideBackofficeShellRequest(context, {
-      me: {
-        user: { id: "user-1" },
-        organizations: [{ organization: { id: "org_123", slug: "fragno" } }],
-        activeOrganization: null,
-      } as unknown as BackofficeMeData,
-      routeScope: null,
-    });
-    return {
-      request: new Request(url),
-      url: new URL(url),
-      params: { orgSlug: "fragno" },
-      context,
-    } as unknown as Parameters<typeof loader>[0];
-  };
-
-  it("returns the loader-fetched config state alongside configError", async () => {
-    const configState = {
-      configured: true,
-      defaultProvider: "r2-binding" as const,
-      providers: {},
-    };
-
-    vi.mocked(fetchUploadConfig).mockResolvedValue({
-      configState,
-      configError: null,
-    });
-    const result = await loader(
-      createLoaderArgs("https://example.com/backoffice/connections/upload/fragno/files"),
-    );
-
-    expect(result).not.toBeInstanceOf(Response);
-    expect(result).toMatchObject({
-      configState,
-      configError: null,
-      selectedNodeKind: "root",
-      selectedPrefix: "",
-    });
-  });
-
-  it("returns the failed config source without loading file metadata", async () => {
-    vi.mocked(fetchUploadConfig).mockResolvedValue({
-      configState: null,
-      configError: "Failed to load configuration.",
-    });
-
-    const result = await loader(
-      createLoaderArgs("https://example.com/backoffice/connections/upload/fragno/files"),
-    );
-
-    expect(result).not.toBeInstanceOf(Response);
-    expect(result).toMatchObject({
-      configState: null,
-      configError: "Failed to load configuration.",
-      selectedNodeKind: "root",
-      selectedPrefix: "",
-    });
   });
 });

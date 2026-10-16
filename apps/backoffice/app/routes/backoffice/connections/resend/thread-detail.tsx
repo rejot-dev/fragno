@@ -8,12 +8,9 @@ import { useFetcher, useLoaderData, useOutletContext, useParams } from "react-ro
 
 import type { ResendThreadMessage, ResendThreadReplyInput } from "@fragno-dev/resend-fragment";
 
-import {
-  resolveAuthenticatedIntegrationContext,
-  resolveAuthenticatedIntegrationRuntimeScope,
-} from "../../integrations/scope.server";
 import { formatTimestamp } from "../formatting";
 import type { Route } from "./+types/thread-detail";
+import { resendConnection } from "./connection.server";
 import { fetchResendThreadDetail, replyToResendThread } from "./data";
 import type { ResendThreadsOutletContext } from "./threads";
 
@@ -58,10 +55,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   if (!params.threadId) {
     throw new Response("Not Found", { status: 404 });
   }
-  const scope = resolveAuthenticatedIntegrationRuntimeScope({
-    context,
-    allowedScopes: ["org", "system"],
-  });
+  const { scope } = resendConnection.require({ request, context });
 
   const result = await fetchResendThreadDetail(request, context, scope, params.threadId, {
     order: "desc",
@@ -80,12 +74,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   if (!params.threadId) {
     throw new Response("Not Found", { status: 404 });
   }
-  const integration = resolveAuthenticatedIntegrationContext({
-    context,
-    integration: "resend",
-    allowedScopes: ["org", "system"],
-  });
-  const scope = integration.scope;
+  const { scope } = resendConnection.require({ request, context });
 
   const formData = await request.formData();
   const getValue = (key: string) => {

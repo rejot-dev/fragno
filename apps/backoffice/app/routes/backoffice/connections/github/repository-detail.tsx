@@ -1,14 +1,10 @@
 import { ButtonLink } from "@fragno-private/design-system/button";
 import { useLoaderData, useOutletContext, useParams } from "react-router";
 
-import { resolveAuthenticatedOrgIntegrationRuntimeScope } from "../../integrations/scope.server";
 import { formatTimestamp } from "../formatting";
 import type { Route } from "./+types/repository-detail";
-import {
-  fetchGitHubLinkedRepositories,
-  fetchGitHubPulls,
-  type GitHubRepositorySummary,
-} from "./data";
+import { gitHubConnection } from "./connection.server";
+import { fetchGitHubPulls, type GitHubRepositorySummary } from "./data";
 import type { GitHubRepositoriesOutletContext } from "./repositories";
 
 type GitHubRepositoryDetailLoaderData = {
@@ -34,17 +30,16 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   if (!params.repoId) {
     throw new Response("Not Found", { status: 404 });
   }
-  const { orgId: organizationId } = resolveAuthenticatedOrgIntegrationRuntimeScope({
-    context,
-  });
-
-  const linkedResult = await fetchGitHubLinkedRepositories(request, context, organizationId);
-  if (linkedResult.reposError) {
+  const connection = gitHubConnection.require({ request, context });
+  const organizationId = connection.scope.orgId;
+  const { configError, linkedRepositories: linkedResult } = await connection.configuration();
+  // Behind the repositories middleware, no linked repositories means the configuration failed.
+  if (linkedResult?.reposError !== null) {
     return {
       repo: null,
       pulls: [],
       pullsError: null,
-      error: linkedResult.reposError,
+      error: linkedResult?.reposError ?? configError,
       pageInfo: null,
     } satisfies GitHubRepositoryDetailLoaderData;
   }

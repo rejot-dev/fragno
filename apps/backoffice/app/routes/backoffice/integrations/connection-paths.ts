@@ -10,6 +10,9 @@ import {
 export const integrationsScopeBasePath = (scope: BackofficeResolvedScope): string =>
   `/backoffice/integrations/${backofficeRouteScopePath(backofficeRouteScopeFromResolvedScope(scope))}`;
 
+export const integrationBasePath = (scope: BackofficeResolvedScope, integration: string) =>
+  `${integrationsScopeBasePath(scope)}/${integration}`;
+
 export const integrationConnectionPath = (scope: BackofficeResolvedScope, connectionId: string) =>
   `${integrationsScopeBasePath(scope)}/${encodeURIComponent(connectionId)}`;
 

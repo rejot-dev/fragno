@@ -1,11 +1,11 @@
-import { Link, Outlet, redirect, useLoaderData, useOutletContext, useParams } from "react-router";
+import { Link, Outlet, useLoaderData, useOutletContext, useParams } from "react-router";
 
 import type { ResendReceivedEmailSummary } from "@fragno-dev/resend-fragment";
 
-import { resolveAuthenticatedIntegrationRuntimeScope } from "../../integrations/scope.server";
 import { formatTimestamp } from "../formatting";
 import type { Route } from "./+types/incoming";
-import { fetchResendConfig, fetchResendReceivedEmails } from "./data";
+import { resendConnection } from "./connection.server";
+import { fetchResendReceivedEmails } from "./data";
 import type { ResendLayoutContext } from "./shared";
 
 type ResendIncomingLoaderData = {
@@ -22,13 +22,11 @@ export type ResendIncomingOutletContext = {
   basePath: string;
 };
 
-export async function loader({ request, context, url }: Route.LoaderArgs) {
-  const scope = resolveAuthenticatedIntegrationRuntimeScope({
-    context,
-    allowedScopes: ["org", "system"],
-  });
+export const middleware: Route.MiddlewareFunction[] = [resendConnection.requireConfigured];
 
-  const { configState, configError } = await fetchResendConfig(context, scope);
+export async function loader({ request, context }: Route.LoaderArgs) {
+  const connection = resendConnection.require({ request, context });
+  const { configError } = await connection.configuration();
   if (configError) {
     return {
       configError,
@@ -39,16 +37,10 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
     } satisfies ResendIncomingLoaderData;
   }
 
-  if (!configState?.configured) {
-    return redirect(
-      `${url.pathname.replace(/\/(?:domains|threads|incoming|outgoing)(?:\/.*)?$/u, "")}/configuration`,
-    );
-  }
-
   const { emails, cursor, hasNextPage, incomingError } = await fetchResendReceivedEmails(
     request,
     context,
-    scope,
+    connection.scope,
     { order: "desc", pageSize: 50 },
   );
 

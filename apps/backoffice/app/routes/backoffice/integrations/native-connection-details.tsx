@@ -3,7 +3,7 @@ import { ButtonLink } from "@fragno-private/design-system/button";
 import type { BackofficeScopeSelection } from "@/backoffice-runtime/resolved-scope";
 
 import { DetailSection } from "./connection-display";
-import { integrationBasePath } from "./scope";
+import { integrationBasePath } from "./connection-paths";
 
 /** Native services keep their configuration and history on their own pages. */
 export function NativeConnectionDetails({

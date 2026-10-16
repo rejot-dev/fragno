@@ -5,8 +5,8 @@ import { useFetcher, useOutletContext } from "react-router";
 
 import type { ResendEmailRecord, ResendSendEmailInput } from "@fragno-dev/resend-fragment";
 
-import { resolveAuthenticatedIntegrationContext } from "../../integrations/scope.server";
 import type { Route } from "./+types/send";
+import { resendConnection } from "./connection.server";
 import { sendResendEmail } from "./data";
 import { EmailComposeFields } from "./email-compose-fields";
 import type { ResendOutgoingOutletContext } from "./outbox";
@@ -34,12 +34,7 @@ const parseOptionalValue = (value: string) => {
 };
 
 export async function action({ request, context }: Route.ActionArgs) {
-  const integration = resolveAuthenticatedIntegrationContext({
-    context,
-    integration: "resend",
-    allowedScopes: ["org", "system"],
-  });
-  const scope = integration.scope;
+  const { scope } = resendConnection.require({ request, context });
 
   const formData = await request.formData();
   const getValue = (key: string) => {

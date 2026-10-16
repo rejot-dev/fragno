@@ -16,7 +16,6 @@ import {
 } from "react";
 import {
   Form,
-  redirect,
   useActionData,
   useLoaderData,
   useNavigation,
@@ -33,9 +32,9 @@ import type {
 
 import { createReson8Client } from "@/fragno/reson8-client";
 
-import { resolveAuthenticatedOrgIntegrationContext } from "../../integrations/scope.server";
+import type { Route } from "./+types/transcribe";
+import { reson8Connection } from "./connection.server";
 import {
-  fetchReson8Config,
   fetchReson8CustomModels,
   fetchReson8RealtimeOriginDiagnostic,
   transcribeReson8Prerecorded,
@@ -182,13 +181,12 @@ const getErrorMessage = (value: unknown) => {
   return typeof value === "string" ? value : null;
 };
 
-export async function loader({ request, context }: LoaderFunctionArgs) {
-  const { integration, orgId } = resolveAuthenticatedOrgIntegrationContext({
-    context,
-    integration: "reson8",
-  });
+export const middleware: Route.MiddlewareFunction[] = [reson8Connection.requireConfigured];
 
-  const { configState, configError } = await fetchReson8Config(context, orgId);
+export async function loader({ request, context }: LoaderFunctionArgs) {
+  const connection = reson8Connection.require({ request, context });
+  const { orgId } = connection.scope;
+  const { configError } = await connection.configuration();
   if (configError) {
     return {
       configError,
@@ -197,10 +195,6 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       realtimeOriginDiagnostic: null,
       realtimeOriginDiagnosticError: null,
     };
-  }
-
-  if (!configState?.configured) {
-    return redirect(`${integration.basePath}/configuration`);
   }
 
   const { models, modelsError } = await fetchReson8CustomModels(request, context, orgId);
@@ -221,10 +215,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 }
 
 export async function action({ request, context }: ActionFunctionArgs) {
-  const { orgId } = resolveAuthenticatedOrgIntegrationContext({
-    context,
-    integration: "reson8",
-  });
+  const { orgId } = reson8Connection.require({ request, context }).scope;
 
   const formData = await request.formData();
   const audioFile = formData.get("audioFile");

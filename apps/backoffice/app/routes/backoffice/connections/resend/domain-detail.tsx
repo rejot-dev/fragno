@@ -3,9 +3,9 @@ import { useLoaderData, useOutletContext, useParams } from "react-router";
 
 import type { ResendDomainRecord } from "@fragno-dev/resend-fragment";
 
-import { resolveAuthenticatedIntegrationRuntimeScope } from "../../integrations/scope.server";
 import { formatTimestamp } from "../formatting";
 import type { Route } from "./+types/domain-detail";
+import { resendConnection } from "./connection.server";
 import { fetchResendDomainDetail } from "./data";
 import type { ResendDomainsOutletContext } from "./domains";
 import {
@@ -30,10 +30,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   if (!params.domainId) {
     throw new Response("Not Found", { status: 404 });
   }
-  const scope = resolveAuthenticatedIntegrationRuntimeScope({
-    context,
-    allowedScopes: ["org", "system"],
-  });
+  const { scope } = resendConnection.require({ request, context });
 
   const result = await fetchResendDomainDetail(request, context, scope, params.domainId);
   return {

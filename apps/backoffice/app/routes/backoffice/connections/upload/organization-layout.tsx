@@ -4,23 +4,23 @@ import { Outlet, redirect, useLoaderData, useMatches, type LoaderFunctionArgs } 
 import type { UploadAdminConfigResponse } from "@/fragno/upload";
 import { fetchUploadAdapterIdentity } from "@/fragno/upload/tanstack/server";
 
-import { fetchUploadConfig } from "./data";
+import { uploadConnection } from "./connection.server";
 import type { UploadLayoutContext } from "./layout-context";
 import { resolveUploadWorkspaceTab } from "./organization-layout-state";
-import { requireUploadRouteOrganization } from "./organization.server";
 import { UploadErrorBoundary, UploadHeader, UploadWorkspaceTabs } from "./shared";
 
-export async function loader({ request, params, context, url }: LoaderFunctionArgs) {
-  const { organization } = requireUploadRouteOrganization(context, params.orgSlug);
-  const orgId = organization.id;
-  const orgSlug = organization.slug;
+export async function loader({ request, context, url }: LoaderFunctionArgs) {
+  const connection = uploadConnection.require({ request, context });
+  const { scope, basePath } = connection;
+  const { configState, configError } = await connection.configuration();
+  if (url.pathname.replace(/\/+$/, "") === basePath) {
+    return redirect(`${basePath}/${configState?.configured ? "files" : "configuration"}`);
+  }
 
-  const { configState, configError } = await fetchUploadConfig(context, orgId);
   let persistenceSource: UploadLayoutContext["persistenceSource"] = null;
   let persistenceError: string | null = null;
   if (configState?.configured) {
     try {
-      const scope = { kind: "org" as const, orgId };
       const adapterIdentity = await fetchUploadAdapterIdentity(request, context, scope);
       persistenceSource = { scope, adapterIdentity };
     } catch (error) {
@@ -29,16 +29,9 @@ export async function loader({ request, params, context, url }: LoaderFunctionAr
     }
   }
 
-  const currentPath = url.pathname.replace(/\/+$/, "");
-  const basePath = `/backoffice/connections/upload/${encodeURIComponent(orgSlug)}`;
-  if (currentPath === basePath) {
-    const target = configState?.configured ? "files" : "configuration";
-    return redirect(`${basePath}/${target}`);
-  }
-
   return {
     origin: url.origin,
-    organization,
+    organization: connection.resolvedScope.organization,
     configState,
     configError,
     persistenceSource,

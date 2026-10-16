@@ -1,17 +1,11 @@
-import { backofficeScopeOrganization } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { useEffect, useState } from "react";
 import { Outlet } from "react-router";
 
-import { getBackofficeShellRequest } from "@/layouts/backoffice-shell-request.server";
-
-import { resolveIntegrationContext } from "../../integrations/scope.server";
+import { selectIntegrationScope } from "../../integrations/connection.server";
 import { IntegrationServiceHeader } from "../../integrations/service-header";
 import type { Route } from "./+types/organization-layout";
-import {
-  fetchGitHubAdminConfig,
-  fetchGitHubLinkedRepositories,
-  gitHubRepositoriesRouteAvailable,
-} from "./data";
+import { gitHubConnection } from "./connection.server";
+import { gitHubRepositoriesRouteAvailable } from "./data";
 import {
   GitHubErrorBoundary,
   GitHubTabs,
@@ -20,42 +14,20 @@ import {
 } from "./shared";
 
 export async function loader({ request, context, url }: Route.LoaderArgs) {
-  const { me } = getBackofficeShellRequest(context);
-
-  const integration = resolveIntegrationContext({
-    context,
-    integration: "github",
-    allowedScopes: ["org"],
-  });
-  const organizationId = backofficeScopeOrganization(integration.scope)?.orgId ?? null;
-  if (!organizationId) {
-    throw new Response("Not Found", { status: 404 });
-  }
-  const organization =
-    me.organizations.find((entry) => entry.organization.id === organizationId)?.organization ??
-    null;
-
-  const origin = url.origin;
-  const { configState, configError } = await fetchGitHubAdminConfig(
-    context,
-    organizationId,
-    origin,
-  );
-  const linkedRepositories = configState?.configured
-    ? await fetchGitHubLinkedRepositories(request, context, organizationId)
-    : null;
-  const repositoriesEnabled = linkedRepositories
-    ? gitHubRepositoriesRouteAvailable(linkedRepositories)
-    : false;
+  const connection = gitHubConnection.require({ request, context });
+  const integration = selectIntegrationScope(context, connection);
+  const { configState, configError, linkedRepositories } = await connection.configuration();
 
   return {
     ...integration,
-    organizationId,
-    origin,
-    organization,
+    organizationId: connection.scope.orgId,
+    origin: url.origin,
+    organization: connection.resolvedScope.organization,
     configState,
     configError,
-    repositoriesEnabled,
+    repositoriesEnabled: linkedRepositories
+      ? gitHubRepositoriesRouteAvailable(linkedRepositories)
+      : false,
   };
 }
 

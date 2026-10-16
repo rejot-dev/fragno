@@ -1,9 +1,9 @@
 import { ButtonLink } from "@fragno-private/design-system/button";
 import { useLoaderData, useOutletContext, useParams } from "react-router";
 
-import { resolveAuthenticatedIntegrationRuntimeScope } from "../../integrations/scope.server";
 import { formatTimestamp } from "../formatting";
 import type { Route } from "./+types/incoming-detail";
+import { resendConnection } from "./connection.server";
 import { fetchResendReceivedEmailDetail } from "./data";
 import type { ResendIncomingOutletContext } from "./incoming";
 
@@ -23,10 +23,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   if (!params.emailId) {
     throw new Response("Not Found", { status: 404 });
   }
-  const scope = resolveAuthenticatedIntegrationRuntimeScope({
-    context,
-    allowedScopes: ["org", "system"],
-  });
+  const { scope } = resendConnection.require({ request, context });
 
   const result = await fetchResendReceivedEmailDetail(request, context, scope, params.emailId);
   return {

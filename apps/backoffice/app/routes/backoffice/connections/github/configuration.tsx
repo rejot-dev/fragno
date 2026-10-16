@@ -17,15 +17,11 @@ import {
   getGitHubWebhookRouterDurableObject,
 } from "@/worker-runtime/durable-objects";
 
-import {
-  resolveAuthenticatedIntegrationContext,
-  resolveAuthenticatedOrgIntegrationRuntimeScope,
-} from "../../integrations/scope.server";
 import { formatTimestamp } from "../formatting";
 import type { Route } from "./+types/configuration";
+import { gitHubConnection } from "./connection.server";
 import {
   createGitHubRouteCaller,
-  fetchGitHubAdminConfig,
   fetchGitHubInstallationRepos,
   fetchGitHubInstallations,
   linkGitHubRepository,
@@ -169,12 +165,10 @@ const readInstallNotice = (requestUrl: URL): InstallFlowNotice => {
 };
 
 export async function loader({ request, context, url }: Route.LoaderArgs) {
-  const { orgId: organizationId } = resolveAuthenticatedOrgIntegrationRuntimeScope({
-    context,
-  });
+  const connection = gitHubConnection.require({ request, context });
+  const organizationId = connection.scope.orgId;
 
   const requestUrl = url;
-  const origin = requestUrl.origin;
   const callbackState = requestUrl.searchParams.get("state")?.trim() ?? "";
   const callbackInstallationId = requestUrl.searchParams.get("installation_id")?.trim() ?? "";
   const setupAction = requestUrl.searchParams.get("setup_action")?.trim() ?? "";
@@ -204,10 +198,6 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
     }
 
     const { me } = getBackofficeShellRequest(context);
-    const memberEntry = me.organizations.find((entry) => entry.organization.id === organizationId);
-    if (!memberEntry) {
-      throw new Response("Not Found", { status: 404 });
-    }
 
     try {
       const outcome = await completeGitHubInstallCallback({
@@ -232,11 +222,7 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
   }
 
   const installNotice = readInstallNotice(requestUrl);
-  const { configState, configError } = await fetchGitHubAdminConfig(
-    context,
-    organizationId,
-    origin,
-  );
+  const { configState, configError } = await connection.configuration();
   if (configError) {
     return {
       configState,
@@ -306,16 +292,8 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
 }
 
 export async function action({ request, context, url }: Route.ActionArgs) {
-  const integration = resolveAuthenticatedIntegrationContext({
-    context,
-    integration: "github",
-    allowedScopes: ["org"],
-  });
-  if (integration.scope.kind !== "org") {
-    throw new Response("Not Found", { status: 404 });
-  }
-  const organizationId = integration.scope.orgId;
-  const { me } = integration;
+  const organizationId = gitHubConnection.require({ request, context }).scope.orgId;
+  const { me } = getBackofficeShellRequest(context);
 
   const formData = await request.formData();
   const intent = getStringValue(formData, "intent");
@@ -363,7 +341,7 @@ export async function action({ request, context, url }: Route.ActionArgs) {
       await githubWebhookRouterDo.commands.storeInstallationClaimState({
         state: claim.result.state,
         userId: me.user.id,
-        orgId: integration.scope.orgId,
+        orgId: organizationId,
         returnTo,
         expiresAt: new Date(claim.result.expiresAt).getTime(),
       });

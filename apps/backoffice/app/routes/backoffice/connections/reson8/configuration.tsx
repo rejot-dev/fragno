@@ -13,8 +13,8 @@ import {
 
 import { getReson8DurableObject } from "@/worker-runtime/durable-objects";
 
-import { resolveAuthenticatedOrgIntegrationContext } from "../../integrations/scope.server";
 import { formatTimestamp } from "../formatting";
+import { reson8Connection } from "./connection.server";
 import type { Reson8ConfigState, Reson8LayoutContext } from "./shared";
 
 type Reson8ConfigForm = {
@@ -28,10 +28,7 @@ type Reson8ConfigActionData = {
 };
 
 export async function action({ request, context }: ActionFunctionArgs) {
-  const { orgId } = resolveAuthenticatedOrgIntegrationContext({
-    context,
-    integration: "reson8",
-  });
+  const { orgId } = reson8Connection.require({ request, context }).scope;
 
   const formData = await request.formData();
   const apiKey = typeof formData.get("apiKey") === "string" ? String(formData.get("apiKey")) : "";

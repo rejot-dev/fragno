@@ -2,12 +2,10 @@ import { backofficeScopeOrganization } from "@fragno-dev/backoffice-api/v0/share
 import { useEffect, useState } from "react";
 import { Outlet } from "react-router";
 
-import { getBackofficeShellRequest } from "@/layouts/backoffice-shell-request.server";
-
-import { resolveIntegrationContext } from "../../integrations/scope.server";
+import { selectIntegrationScope } from "../../integrations/connection.server";
 import { IntegrationServiceHeader } from "../../integrations/service-header";
 import type { Route } from "./+types/organization-layout";
-import { fetchTelegramConfig } from "./data";
+import { telegramConnection } from "./connection.server";
 import {
   TelegramErrorBoundary,
   TelegramTabs,
@@ -15,21 +13,15 @@ import {
   type TelegramTab,
 } from "./shared";
 
-export async function loader({ context }: Route.LoaderArgs) {
-  const { me } = getBackofficeShellRequest(context);
-
-  const integration = resolveIntegrationContext({ context, integration: "telegram" });
-  const organizationForScope = backofficeScopeOrganization(integration.scope)?.orgId ?? null;
-  const organization = organizationForScope
-    ? (me.organizations.find((entry) => entry.organization.id === organizationForScope)
-        ?.organization ?? null)
-    : null;
-
-  const { configState, configError } = await fetchTelegramConfig(context, integration.scope);
+export async function loader({ request, context }: Route.LoaderArgs) {
+  const connection = telegramConnection.require({ request, context });
+  const { resolvedScope } = connection;
+  const integration = selectIntegrationScope(context, connection);
+  const { configState, configError } = await connection.configuration();
 
   return {
     ...integration,
-    organization,
+    organization: backofficeScopeOrganization(resolvedScope)?.organization ?? null,
     configState,
     configError,
   };
