@@ -181,18 +181,25 @@ export const billingFragmentDefinition = defineFragment("billing")
             }
 
             const now = uow.now();
-            uow.create("billing_event", {
-              id: input.id,
-              scopeKey,
-              scope: input.scope,
-              source: input.source,
-              eventType: input.eventType,
-              period,
-              occurredAt,
-              measurements: input.measurements,
-              metadata: input.metadata ?? null,
-              createdAt: now,
-            });
+            // Concurrent writers race to create the same event or a meter's first tracker; the loser
+            // retries against the winner's row instead of failing.
+            const retryOnUniqueConflict = { retryOnUniqueConflict: () => true };
+            uow.create(
+              "billing_event",
+              {
+                id: input.id,
+                scopeKey,
+                scope: input.scope,
+                source: input.source,
+                eventType: input.eventType,
+                period,
+                occurredAt,
+                measurements: input.measurements,
+                metadata: input.metadata ?? null,
+                createdAt: now,
+              },
+              retryOnUniqueConflict,
+            );
 
             const trackersByMeter = new Map(
               existingTrackers.map((tracker) => [tracker.meter, tracker] as const),
@@ -229,19 +236,23 @@ export const billingFragmentDefinition = defineFragment("billing")
                 continue;
               }
 
-              uow.create("billing_tracker", {
-                scopeKey,
-                scope: input.scope,
-                period,
-                meter: measurement.meter,
-                unit: measurement.unit,
-                quantity: BigInt(measurement.quantity),
-                eventCount: 1n,
-                firstOccurredAt: occurredAt,
-                lastOccurredAt: occurredAt,
-                createdAt: now,
-                updatedAt: now,
-              });
+              uow.create(
+                "billing_tracker",
+                {
+                  scopeKey,
+                  scope: input.scope,
+                  period,
+                  meter: measurement.meter,
+                  unit: measurement.unit,
+                  quantity: BigInt(measurement.quantity),
+                  eventCount: 1n,
+                  firstOccurredAt: occurredAt,
+                  lastOccurredAt: occurredAt,
+                  createdAt: now,
+                  updatedAt: now,
+                },
+                retryOnUniqueConflict,
+              );
             }
 
             return { accepted: true, eventId: input.id } satisfies BillingRecordEventResult;
