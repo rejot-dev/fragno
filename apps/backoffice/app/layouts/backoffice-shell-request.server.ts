@@ -112,6 +112,11 @@ export async function establishBackofficeShellRequest(
     params,
     organizations: me.organizations.map(({ organization }) => organization),
     findProject: async (owner, slug): Promise<BackofficeNamedProject | null> => {
+      // Another user's projects are not looked up, so their slugs cannot be probed.
+      const rootOwner = backofficeScopeRootOwner(owner);
+      if (rootOwner.kind === "user" && rootOwner.userId !== me.user.id) {
+        return null;
+      }
       const lookup = await lookupAutomationProject(
         context,
         backofficeRuntimeScopeFromResolvedScope(owner),

@@ -1,5 +1,10 @@
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
-import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  type BackofficeContextScope,
+  type BackofficeProjectOwner,
+  type BackofficeScopeIdNames,
+  backofficeScopeRootOwner,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import type { DatabaseServiceContext } from "@fragno-dev/db";
 
@@ -76,13 +81,14 @@ const triggerProjectEvent = ({
   timestamps,
 }: {
   uow: ProjectEventUnitOfWork;
-  ownerScope: Extract<BackofficeContextScope, { kind: "org" }>;
+  ownerScope: BackofficeProjectOwner<BackofficeScopeIdNames>;
   eventType: "project.created" | "project.updated" | "project.archived";
   project: Parameters<typeof buildProjectPayload>[0];
   occurredAt: string;
   timestamps: ProjectTimestampFields;
 }) => {
   const projectId = project.id.valueOf();
+  const rootOwner = backofficeScopeRootOwner(ownerScope);
   const event: AutomationEvent = {
     id: crypto.randomUUID(),
     scopeRestriction: null,
@@ -97,7 +103,7 @@ const triggerProjectEvent = ({
       delegation: [],
     },
     subject: {
-      orgId: ownerScope.orgId,
+      ...(rootOwner.kind === "org" ? { orgId: rootOwner.orgId } : { userId: rootOwner.userId }),
       projectId,
     },
   };
@@ -111,6 +117,24 @@ const triggerProjectEvent = ({
     { id: event.id },
   );
 };
+
+/** This Automations object's scope cannot own projects. */
+export class AutomationProjectOwnerRequiredError extends Error {
+  constructor() {
+    super("Projects are only stored by organization, user, and app Automations.");
+    this.name = "AutomationProjectOwnerRequiredError";
+  }
+}
+
+/** Projects are stored by the scope that owns them; system and project scopes own none. */
+function requireProjectOwner(
+  ownerScope: BackofficeContextScope,
+): BackofficeProjectOwner<BackofficeScopeIdNames> {
+  if (ownerScope.kind === "system" || ownerScope.kind === "project") {
+    throw new AutomationProjectOwnerRequiredError();
+  }
+  return ownerScope;
+}
 
 export const createAutomationProjectServices = (
   defineService: <TService>(
@@ -179,11 +203,7 @@ export const createAutomationProjectServices = (
     },
 
     createProject(args: AutomationProjectCreateInput) {
-      if (options.ownerScope?.kind !== "org") {
-        throw new Error("Projects can only be created in org-scoped Automations.");
-      }
-
-      const ownerScope = options.ownerScope;
+      const ownerScope = requireProjectOwner(options.ownerScope);
       const input = automationProjectCreateInputSchema.parse(args);
       const slug = projectSlugSchema.parse(input.slug ?? slugFromProjectName(input.name));
       return this.serviceTx(automationFragmentSchema)
@@ -225,6 +245,7 @@ export const createAutomationProjectServices = (
     },
 
     updateProject(args: AutomationProjectUpdateInput) {
+      const ownerScope = requireProjectOwner(options.ownerScope);
       const input = automationProjectUpdateInputSchema.parse(args);
       return this.serviceTx(automationFragmentSchema)
         .retrieve((uow) =>
@@ -263,13 +284,9 @@ export const createAutomationProjectServices = (
               .check(),
           );
 
-          if (options.ownerScope.kind !== "org") {
-            throw new Error("Projects can only be updated in org-scoped Automations.");
-          }
-
           triggerProjectEvent({
             uow,
-            ownerScope: options.ownerScope,
+            ownerScope,
             eventType: "project.updated",
             project: next,
             occurredAt: nowIso,
@@ -285,6 +302,7 @@ export const createAutomationProjectServices = (
     },
 
     archiveProject(args: AutomationProjectArchiveInput) {
+      const ownerScope = requireProjectOwner(options.ownerScope);
       const input = automationProjectArchiveInputSchema.parse(args);
       return this.serviceTx(automationFragmentSchema)
         .retrieve((uow) =>
@@ -321,13 +339,9 @@ export const createAutomationProjectServices = (
             updatedAt: nowIso,
           };
 
-          if (options.ownerScope.kind !== "org") {
-            throw new Error("Projects can only be archived in org-scoped Automations.");
-          }
-
           triggerProjectEvent({
             uow,
-            ownerScope: options.ownerScope,
+            ownerScope,
             eventType: "project.archived",
             project: next,
             occurredAt: nowIso,

@@ -18,7 +18,10 @@ import type { PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
 import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import {
   type BackofficeContextScope,
+  type BackofficeProjectOwner,
+  type BackofficeScopeIdNames,
   backofficeScopeOrganization,
+  backofficeScopePathSegment,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { workflowsSchema } from "@fragno-dev/workflows/schema";
 import { InMemoryFs, type IFileSystem } from "just-bash";
@@ -491,7 +494,7 @@ type StoreEntriesInput = {
 };
 
 type ProjectCreateInput = {
-  orgId: string;
+  owner: BackofficeProjectOwner<BackofficeScopeIdNames>;
   slug?: string;
   name: string;
   description?: string | null;
@@ -2762,10 +2765,14 @@ const buildStepBuilders = <
         createStep(
           "when",
           "project.create",
-          input.label ?? `create project ${input.orgId}:${input.slug ?? input.name}`,
+          input.label ??
+            `create project ${backofficeScopePathSegment(input.owner)}:${input.slug ?? input.name}`,
           async (ctx) => {
-            ctx.rememberOrg(input.orgId);
-            const response = await ctx.runtime.objects.automations.forOrg(input.orgId).http.fetch(
+            const organization = backofficeScopeOrganization(input.owner);
+            if (organization) {
+              ctx.rememberOrg(organization.orgId);
+            }
+            const response = await ctx.runtime.objects.automations.for(input.owner).http.fetch(
               new Request("https://automations.local/api/automations/projects", {
                 method: "POST",
                 headers: { "content-type": "application/json" },

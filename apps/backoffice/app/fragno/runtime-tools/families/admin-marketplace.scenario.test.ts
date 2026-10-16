@@ -152,7 +152,7 @@ describe("static Marketplace publication scenarios", () => {
         ],
         steps: ({ when, then, runner }) => [
           when.project.create({
-            orgId: "org-1",
+            owner: { kind: "org", orgId: "org-1" },
             name: "Delivery",
             slug: "delivery",
             createdByUserId: "owner-1",

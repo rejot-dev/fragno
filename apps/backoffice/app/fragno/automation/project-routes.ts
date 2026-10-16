@@ -11,6 +11,7 @@ import {
   automationProjectUpdateInputSchema,
   projectSlugSchema,
 } from "./projects";
+import { AutomationProjectOwnerRequiredError } from "./projects-storage-runtime";
 
 export const automationProjectRoutes = defineRoutes(automationFragmentDefinition).create(
   ({ defineRoute, services }) => {
@@ -65,10 +66,7 @@ export const automationProjectRoutes = defineRoutes(automationFragmentDefinition
                 409,
               );
             }
-            if (
-              cause instanceof Error &&
-              cause.message === "Projects can only be created in org-scoped Automations."
-            ) {
+            if (cause instanceof AutomationProjectOwnerRequiredError) {
               return error({ message: cause.message, code: "PROJECT_OWNER_SCOPE_REQUIRED" }, 500);
             }
             throw cause;

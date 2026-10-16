@@ -350,7 +350,7 @@ describe("system automation scenarios", () => {
 
         steps: ({ when, then }) => [
           when.project.create({
-            orgId: "org-1",
+            owner: { kind: "org", orgId: "org-1" },
             slug: "alpha-project",
             name: "Alpha Project",
             createdByUserId: "user-1",

@@ -980,7 +980,7 @@ describe("automation routes /projects", () => {
     }
   });
 
-  test("requires org ownership to create projects", async () => {
+  test("refuses to store projects in a scope that cannot own them", async () => {
     const projectOwnedFragment = await createAutomation({
       ownerScope: {
         kind: "project",
@@ -998,9 +998,7 @@ describe("automation routes /projects", () => {
 
     assert(response.type === "error");
     if (response.type === "error") {
-      expect(response.error.message).toContain(
-        "Projects can only be created in org-scoped Automations.",
-      );
+      assert(response.error.code === "PROJECT_OWNER_SCOPE_REQUIRED");
     }
   });
 });

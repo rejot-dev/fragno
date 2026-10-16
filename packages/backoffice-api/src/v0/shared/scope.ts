@@ -180,6 +180,27 @@ export function backofficeScopeOrganization<TScope extends BackofficeScope<Backo
     | NullUnlessOrganizationOwned<TScope>;
 }
 
+/**
+ * The scope whose projects sit beside a workspace: the workspace itself, or a project's owner.
+ * The system scope owns no projects.
+ */
+export function backofficeScopeProjectOwner<TNames extends BackofficeScopeNames>(
+  scope: BackofficeScope<TNames>,
+): BackofficeProjectOwner<TNames> | null {
+  switch (scope.kind) {
+    case "system":
+      return null;
+    case "project":
+      return scope.owner;
+    case "org":
+    case "user":
+    case "app":
+      return scope;
+    default:
+      throw new Error("Unsupported Backoffice scope kind.", { cause: scope satisfies never });
+  }
+}
+
 /** Renames the records a scope refers to, e.g. from route slugs to runtime IDs; kinds are kept. */
 export function mapBackofficeScopeNames<
   TScope extends BackofficeScope<BackofficeScopeNames>,
