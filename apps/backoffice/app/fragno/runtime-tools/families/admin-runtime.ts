@@ -1,9 +1,37 @@
+import type { AppActionsDeclaration } from "@fragno-dev/backoffice-api/v0/apps";
+
 import type { AuthObject, OtpObject, ResendObject } from "@/backoffice-runtime/object-registry";
 import type { BackofficeAppsCommands } from "@/fragno/apps/contracts";
 import { requireBackofficeAppOperationValue } from "@/fragno/apps/errors";
 import { buildSignUpInvitationEmail } from "@/transactional-emails/sign-up-invitation";
 
 import type { AdminRuntime } from "./admin";
+import { compileIntegrationActionSchema } from "./integrations/integration-action-json-schema";
+
+/**
+ * Apps' actions are validated with the same compiler integrations.execute uses, so a contract it
+ * cannot enforce is rejected when declared rather than published unchecked.
+ */
+function assertAppActionContractsEnforceable(actions: AppActionsDeclaration) {
+  if (actions.kind === "none") {
+    return;
+  }
+  for (const action of actions.actions) {
+    if (action.inputSchema.type !== "object") {
+      throw new Error(`App action '${action.id}' must declare an object input schema.`);
+    }
+    for (const [label, schema] of [
+      ["input", action.inputSchema],
+      ["output", action.outputSchema],
+    ] as const) {
+      if (compileIntegrationActionSchema(schema) === null) {
+        throw new Error(
+          `App action '${action.id}' has an ${label} schema Backoffice cannot validate. Use JSON Schema 2020-12 or draft-07 without $dynamicRef, $vocabulary, or unresolved references.`,
+        );
+      }
+    }
+  }
+}
 
 type AdminAuthCommands = Pick<
   AuthObject,
@@ -83,7 +111,15 @@ export function createAdminRuntime({
           `OAuth client '${input.oauthClientId}' must allow the backoffice scope before it can be registered as an app. Update it with admin.oauth-clients.update.`,
         );
       }
+      assertAppActionContractsEnforceable(input.actions);
       return requireBackofficeAppOperationValue(await apps.registerApp(input));
+    },
+    updateAppActions: async (input) => {
+      if (!apps) {
+        throw new Error("Admin app action updates require the APPS binding.");
+      }
+      assertAppActionContractsEnforceable(input.actions);
+      return requireBackofficeAppOperationValue(await apps.updateAppActions(input));
     },
     listApps: async (input) => {
       if (!apps) {

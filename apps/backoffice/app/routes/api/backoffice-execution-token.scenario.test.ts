@@ -335,9 +335,12 @@ describe("Backoffice execution token SQLite scenarios", () => {
       expect(await unregistered.json()).toMatchObject({ error: "authentication_failed" });
 
       const requestedPermissions = [{ namespace: "events" as const, permission: "emit" as const }];
-      const registered = await ctx.runtime.objects.apps
-        .singleton()
-        .commands.registerApp({ oauthClientId: client.client_id, requestedPermissions });
+      const registered = await ctx.runtime.objects.apps.singleton().commands.registerApp({
+        actions: { kind: "none" },
+        slug: "accounting",
+        oauthClientId: client.client_id,
+        requestedPermissions,
+      });
       assert(registered.ok);
       const notInstalled = await requestExecutionToken(ctx, exchangeRequest(token, scope));
       assert.equal(notInstalled.status, 403);
@@ -345,6 +348,7 @@ describe("Backoffice execution token SQLite scenarios", () => {
       const installed = await ctx.runtime.objects.appInstallations
         .forOrg(organization.id)
         .commands.installApp({
+          actionsRevision: 1,
           appId: registered.value.appId,
           grantedPermissions: requestedPermissions,
           installedByUserId: user.id,

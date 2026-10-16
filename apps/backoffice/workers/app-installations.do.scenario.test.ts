@@ -94,7 +94,12 @@ describe("App registry and organization installation SQLite scenarios", () => {
             "register a provisioned OAuth client idempotently",
             async ({ runtime }) => {
               const registry = runtime.objects.apps.singleton().commands;
-              const input = { oauthClientId: "accounting-client", requestedPermissions };
+              const input = {
+                slug: "accounting",
+                oauthClientId: "accounting-client",
+                requestedPermissions,
+                actions: { kind: "none" } as const,
+              };
               const registered = appOperationValue(await registry.registerApp(input));
               assert(registered.created);
               appId = registered.appId;
@@ -108,6 +113,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
               ).toEqual({ appId, created: false });
               expect(await registry.getApp({ appId })).toMatchObject({
                 id: appId,
+                slug: "accounting",
                 oauthClientId: "accounting-client",
                 requestedPermissions,
               });
@@ -120,6 +126,30 @@ describe("App registry and organization installation SQLite scenarios", () => {
                   ],
                 }),
               ).toMatchObject({ ok: false, error: { code: "APP_REGISTRATION_CONFLICT" } });
+              expect(await registry.getAppBySlug({ slug: "accounting" })).toMatchObject({
+                id: appId,
+              });
+              expect(await registry.registerApp({ ...input, slug: "ledger" })).toEqual({
+                ok: false,
+                error: {
+                  code: "APP_REGISTRATION_CONFLICT",
+                  message:
+                    "Backoffice app OAuth client is already registered as app#accounting; slugs never change.",
+                },
+              });
+              // Another app's ID is taken too: apps registered before slugs answer to their IDs.
+              for (const slug of ["accounting", appId]) {
+                expect(
+                  await registry.registerApp({ ...input, slug, oauthClientId: "reporting-client" }),
+                ).toEqual({
+                  ok: false,
+                  error: {
+                    code: "APP_SLUG_TAKEN",
+                    message: `Backoffice app slug '${slug}' is already taken; choose another slug.`,
+                  },
+                });
+              }
+              expect(await registry.getAppBySlug({ slug: appId })).toBeNull();
             },
           ),
           appsCommandStep(
@@ -129,6 +159,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
               const second = runtime.objects.appInstallations.forOrg("customer-two").commands;
               const input = {
                 appId,
+                actionsRevision: 1,
                 installedByUserId: "installer",
                 resourceScope: wholeOrganization,
                 grantedPermissions: [BACKOFFICE_PERMISSION.events.emit],
@@ -146,6 +177,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
               expect(await second.getInstallation({ appId })).toBeNull();
               appOperationValue(
                 await second.installApp({
+                  actionsRevision: 1,
                   appId,
                   installedByUserId: "customer-two-owner",
                   resourceScope: wholeOrganization,
@@ -240,6 +272,8 @@ describe("App registry and organization installation SQLite scenarios", () => {
             const registry = runtime.objects.apps.singleton().commands;
             await expect(
               registry.registerApp({
+                actions: { kind: "none" },
+                slug: "accounting",
                 oauthClientId: "accounting-client",
                 requestedPermissions: [
                   BACKOFFICE_PERMISSION.events.emit,
@@ -249,6 +283,8 @@ describe("App registry and organization installation SQLite scenarios", () => {
             ).rejects.toThrow("must not contain duplicates");
             const registered = appOperationValue(
               await registry.registerApp({
+                actions: { kind: "none" },
+                slug: "accounting",
                 oauthClientId: "accounting-client",
                 requestedPermissions,
               }),
@@ -263,6 +299,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
               const installations = runtime.objects.appInstallations.forOrg("customer").commands;
               const input = {
                 appId,
+                actionsRevision: 1,
                 installedByUserId: "installer",
                 grantedPermissions: [],
                 resourceScope: wholeOrganization,
@@ -359,6 +396,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
               expect(
                 appOperationValue(
                   await installations.installApp({
+                    actionsRevision: 1,
                     appId,
                     installedByUserId: "new-installer",
                     resourceScope: wholeOrganization,
@@ -408,11 +446,17 @@ describe("App registry and organization installation SQLite scenarios", () => {
               "receipts-client",
             ]) {
               const { appId } = appOperationValue(
-                await registry.registerApp({ oauthClientId, requestedPermissions }),
+                await registry.registerApp({
+                  actions: { kind: "none" },
+                  slug: oauthClientId.replace(/-client$/, ""),
+                  oauthClientId,
+                  requestedPermissions,
+                }),
               );
               registeredAppIds.push(appId);
               appOperationValue(
                 await installations.installApp({
+                  actionsRevision: 1,
                   appId,
                   installedByUserId: "installer",
                   resourceScope: wholeOrganization,
@@ -422,6 +466,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
             }
             appOperationValue(
               await runtime.objects.appInstallations.forOrg("customer-two").commands.installApp({
+                actionsRevision: 1,
                 appId: registeredAppIds[0],
                 installedByUserId: "other-installer",
                 resourceScope: wholeOrganization,
@@ -517,6 +562,8 @@ describe("App registry and organization installation SQLite scenarios", () => {
             appsCommandStep("register and install", async ({ runtime }) => {
               appId = appOperationValue(
                 await runtime.objects.apps.singleton().commands.registerApp({
+                  actions: { kind: "none" },
+                  slug: "accounting",
                   oauthClientId: "accounting-client",
                   requestedPermissions,
                 }),
@@ -526,6 +573,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
                   await runtime.objects.appInstallations
                     .forOrg(organizationId)
                     .commands.installApp({
+                      actionsRevision: 1,
                       appId,
                       installedByUserId: "installer",
                       resourceScope: wholeOrganization,
@@ -548,6 +596,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
               async ({ runtime }) => {
                 const registry = runtime.objects.apps.singleton().commands;
                 expect(await registry.getApp({ appId })).toMatchObject({
+                  slug: "accounting",
                   oauthClientId: "accounting-client",
                   requestedPermissions,
                 });
@@ -567,6 +616,8 @@ describe("App registry and organization installation SQLite scenarios", () => {
                 expect(
                   appOperationValue(
                     await registry.registerApp({
+                      actions: { kind: "none" },
+                      slug: "accounting",
                       oauthClientId: "accounting-client",
                       requestedPermissions,
                     }),
@@ -601,12 +652,15 @@ describe("App registry and organization installation SQLite scenarios", () => {
           appsCommandStep("register and install before registry failure", async ({ runtime }) => {
             appId = appOperationValue(
               await runtime.objects.apps.singleton().commands.registerApp({
+                actions: { kind: "none" },
+                slug: "accounting",
                 oauthClientId: "accounting-client",
                 requestedPermissions,
               }),
             ).appId;
             installationId = appOperationValue(
               await runtime.objects.appInstallations.forOrg("customer").commands.installApp({
+                actionsRevision: 1,
                 appId,
                 installedByUserId: "installer",
                 resourceScope: wholeOrganization,
@@ -643,6 +697,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
               ).rejects.toThrow();
               await expect(
                 installations.installApp({
+                  actionsRevision: 1,
                   appId,
                   installedByUserId: "new-installer",
                   resourceScope: wholeOrganization,

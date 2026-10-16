@@ -1,6 +1,7 @@
 import { backofficeApiOperationSummary } from "@fragno-dev/backoffice-api/api";
 import { backofficeApiV0 } from "@fragno-dev/backoffice-api/v0";
 import type {
+  AppActionsDeclaration,
   AppInstallationResourceScope,
   BackofficeAppInstallation,
 } from "@fragno-dev/backoffice-api/v0/apps";
@@ -33,12 +34,19 @@ const installDecisionSchema = z.discriminatedUnion("intent", [
     permissions: z.array(z.string().min(1)),
     resources: z.enum(["organization", "projects"]),
     projectIds: z.array(z.string().min(1)),
+    // The revision the page showed, so actions changed since are not approved unseen.
+    actionsRevision: z.coerce.number().int().positive(),
   }),
 ]);
 
 export type AppInstallRequest = {
   client: { clientId: string; name: string };
-  app: { id: string; requestedPermissions: BackofficePermissionRequirement[] };
+  app: {
+    id: string;
+    requestedPermissions: BackofficePermissionRequirement[];
+    actions: AppActionsDeclaration;
+    actionsRevision: number;
+  };
   redirectUri: string;
   state: string;
 };
@@ -80,7 +88,12 @@ export async function resolveAppInstallRequest(
   }
   return {
     client: { clientId: client.clientId, name: client.name ?? client.clientId },
-    app: { id: app.id, requestedPermissions: app.requestedPermissions },
+    app: {
+      id: app.id,
+      requestedPermissions: app.requestedPermissions,
+      actions: app.actions,
+      actionsRevision: app.actionsRevision,
+    },
     redirectUri: query.data.redirect_uri,
     state: query.data.state,
   };
@@ -187,6 +200,7 @@ export async function decideAppInstallation(
     permissions: input.formData.getAll("permission"),
     resources: input.formData.get("resources") ?? undefined,
     projectIds: input.formData.getAll("projectId"),
+    actionsRevision: input.formData.get("actionsRevision") ?? undefined,
   });
   if (!decision.success) {
     return { status: "invalid", message: "Choose an organization and the access to approve." };
@@ -197,7 +211,7 @@ export async function decideAppInstallation(
       location: redirectToApp(input.request, { error: "access_denied" }),
     };
   }
-  const { organizationId, projectIds } = decision.data;
+  const { organizationId, projectIds, actionsRevision } = decision.data;
   if (decision.data.resources === "projects" && projectIds.length === 0) {
     return {
       status: "invalid",
@@ -230,11 +244,20 @@ export async function decideAppInstallation(
       resource: { kind: "app-installation", appId: access.appId },
       execute: async () => {
         const existing = await installations.getInstallation({ appId: access.appId });
-        requireBackofficeAppOperationValue(
-          existing?.status === "active"
-            ? await installations.updateInstallationAccess(access)
-            : await installations.installApp({ ...access, installedByUserId: input.userId }),
-        );
+        if (existing?.status === "active") {
+          requireBackofficeAppOperationValue(await installations.updateInstallationAccess(access));
+          requireBackofficeAppOperationValue(
+            await installations.approveActions({ appId: access.appId, actionsRevision }),
+          );
+        } else {
+          requireBackofficeAppOperationValue(
+            await installations.installApp({
+              ...access,
+              installedByUserId: input.userId,
+              actionsRevision,
+            }),
+          );
+        }
         return await installations.getInstallation({ appId: access.appId });
       },
     });

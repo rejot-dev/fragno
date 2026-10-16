@@ -8,10 +8,15 @@ import { DurableObject, RpcTarget } from "cloudflare:workers";
 
 import { requireBackofficeContextScopeFromDurableObjectId } from "@/backoffice-runtime/object-registry";
 import {
+  backofficeAppActionsUpdateInputSchema,
   backofficeAppOAuthClientLookupInputSchema,
+  backofficeAppSlugLookupInputSchema,
   backofficeAppPageInputSchema,
   backofficeAppRegistrationInputSchema,
+  type BackofficeAppActionsUpdateInput,
+  type BackofficeAppActionsUpdateResult,
   type BackofficeAppOAuthClientLookupInput,
+  type BackofficeAppSlugLookupInput,
   type BackofficeAppPage,
   type BackofficeAppPageInput,
   type BackofficeAppRegistrationInput,
@@ -72,6 +77,16 @@ export class InMemoryAppsObject extends RpcTarget implements BackofficeAppsComma
     });
   }
 
+  async updateAppActions(
+    input: BackofficeAppActionsUpdateInput,
+  ): Promise<BackofficeAppOperationResult<BackofficeAppActionsUpdateResult>> {
+    const update = backofficeAppActionsUpdateInputSchema.parse(input);
+    return await runBackofficeAppOperation(async () => {
+      const fragment = this.#getFragment();
+      return await fragment.callServices(() => fragment.services.updateAppActions(update));
+    });
+  }
+
   async getApp(input: BackofficeAppLookupInput): Promise<BackofficeApp | null> {
     const lookup = backofficeAppLookupInputSchema.parse(input);
     const fragment = this.#getFragment();
@@ -84,6 +99,12 @@ export class InMemoryAppsObject extends RpcTarget implements BackofficeAppsComma
     const lookup = backofficeAppOAuthClientLookupInputSchema.parse(input);
     const fragment = this.#getFragment();
     return await fragment.callServices(() => fragment.services.getAppByOAuthClientId(lookup));
+  }
+
+  async getAppBySlug(input: BackofficeAppSlugLookupInput): Promise<BackofficeApp | null> {
+    const lookup = backofficeAppSlugLookupInputSchema.parse(input);
+    const fragment = this.#getFragment();
+    return await fragment.callServices(() => fragment.services.getAppBySlug(lookup));
   }
 
   async listApps(
@@ -120,12 +141,22 @@ export class Apps extends DurableObject<CloudflareEnv> implements BackofficeApps
     return this.#object.registerApp(input);
   }
 
+  updateAppActions(
+    input: BackofficeAppActionsUpdateInput,
+  ): Promise<BackofficeAppOperationResult<BackofficeAppActionsUpdateResult>> {
+    return this.#object.updateAppActions(input);
+  }
+
   getApp(input: BackofficeAppLookupInput): Promise<BackofficeApp | null> {
     return this.#object.getApp(input);
   }
 
   getAppByOAuthClientId(input: BackofficeAppOAuthClientLookupInput): Promise<BackofficeApp | null> {
     return this.#object.getAppByOAuthClientId(input);
+  }
+
+  getAppBySlug(input: BackofficeAppSlugLookupInput): Promise<BackofficeApp | null> {
+    return this.#object.getAppBySlug(input);
   }
 
   listApps(

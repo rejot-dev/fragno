@@ -77,7 +77,11 @@ import {
   type BackofficeOAuthClientUpdateInput,
   type BackofficeOAuthClientUpdateResult,
 } from "@/fragno/auth/oauth-client";
-import { issueAppInstallationCode } from "@/fragno/auth/token-lifecycle";
+import {
+  issueAppActionToken,
+  issueAppInstallationCode,
+  type AppActionTokenInput,
+} from "@/fragno/auth/token-lifecycle";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 import {
   AUTH_AUTOMATION_EVENT_ORGANIZATION_CREATED,
@@ -1451,6 +1455,16 @@ export class InMemoryAuthObject implements AuthObject {
     return { code: issued.token };
   }
 
+  /** Callers are the installation objects, which resolve every claim from installation state. */
+  async issueAppActionToken(input: AppActionTokenInput): Promise<{ token: string }> {
+    const authContext = await this.#authContext();
+    const issued = await issueAppActionToken(
+      { context: authContext } as Parameters<typeof issueAppActionToken>[0],
+      input,
+    );
+    return { token: issued.token };
+  }
+
   async getBackofficeCliOAuthConfig(input: {
     requestUrl: string;
   }): Promise<BackofficeCliOAuthConfig> {
@@ -2235,6 +2249,10 @@ export class Auth extends DurableObject<CloudflareEnv> implements AuthObject {
     activation: number;
   }) {
     return await this.#object.issueAppInstallationCode(input);
+  }
+
+  async issueAppActionToken(input: AppActionTokenInput): Promise<{ token: string }> {
+    return await this.#object.issueAppActionToken(input);
   }
 
   async getBackofficeCliOAuthConfig(input: {

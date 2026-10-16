@@ -1,4 +1,9 @@
 import {
+  APP_ACTION_TOKEN_LIFETIME_SECONDS,
+  BACKOFFICE_TOKEN_ISSUER,
+  type AppActionTokenClaims,
+} from "@fragno-dev/backoffice-api/v0/app-actions";
+import {
   type BackofficeContextScope,
   backofficeContextScopeSchema,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
@@ -6,7 +11,7 @@ import { signJWT } from "better-auth/plugins/jwt";
 import { createLocalJWKSet, errors, jwtVerify, type JSONWebKeySet } from "jose";
 import { z } from "zod";
 
-export const ACCESS_TOKEN_ISSUER = "fragno-backoffice-auth";
+export const ACCESS_TOKEN_ISSUER = BACKOFFICE_TOKEN_ISSUER;
 export const ACCESS_TOKEN_AUDIENCE = "fragno-backoffice";
 export const BACKOFFICE_JWT_LIFETIME_SECONDS = 15 * 60;
 
@@ -206,6 +211,31 @@ export async function issueInstalledAppJwt(
         : `app:${authority.installation.appId}`,
     ...authority,
   });
+}
+
+/** Everything an app action token asserts except the timing fields signing adds. */
+export type AppActionTokenInput = Pick<
+  AppActionTokenClaims,
+  "aud" | "actor" | "installation" | "scopeRestriction" | "bodySha256"
+>;
+
+/**
+ * Its audience is the app's endpoint URL, never one of Backoffice's own audiences, so no Backoffice
+ * verifier accepts it and no other app's endpoint does either.
+ */
+export async function issueAppActionToken(
+  context: BackofficeJwtSigningContext,
+  { aud, ...claims }: AppActionTokenInput,
+): Promise<{ token: string; expiresAt: Date }> {
+  return await signBackofficeAccessToken(
+    context,
+    aud,
+    {
+      sub: claims.actor.kind === "user" ? claims.actor.userId : `app:${claims.installation.appId}`,
+      ...claims,
+    },
+    APP_ACTION_TOKEN_LIFETIME_SECONDS,
+  );
 }
 
 export async function issueAppInstallationCode(

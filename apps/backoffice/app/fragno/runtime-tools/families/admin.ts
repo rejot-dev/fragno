@@ -20,6 +20,8 @@ import type {
 import type {
   BackofficeAppPage,
   BackofficeAppPageInput,
+  BackofficeAppActionsUpdateInput,
+  BackofficeAppActionsUpdateResult,
   BackofficeAppRegistrationInput,
   BackofficeAppRegistrationResult,
 } from "@/fragno/apps/contracts";
@@ -74,6 +76,9 @@ export type AdminRuntime = {
     administratorUserId: string,
   ): Promise<BackofficeOAuthClientRotateSecretResult>;
   createApp(input: BackofficeAppRegistrationInput): Promise<BackofficeAppRegistrationResult>;
+  updateAppActions(
+    input: BackofficeAppActionsUpdateInput,
+  ): Promise<BackofficeAppActionsUpdateResult>;
   listApps(input: BackofficeAppPageInput): Promise<BackofficeAppPage>;
   createSignUpInvitation(input: {
     email: string;

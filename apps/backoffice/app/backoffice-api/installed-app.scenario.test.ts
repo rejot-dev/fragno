@@ -426,6 +426,8 @@ async function runInstalledAppScenario(
               ctx.vars.clientId = client.clientId;
               ctx.vars.clientSecret = client.clientSecret;
               const registered = await ctx.runtime.objects.apps.singleton().commands.registerApp({
+                actions: { kind: "none" },
+                slug: "accounting",
                 oauthClientId: client.clientId,
                 requestedPermissions: [emit, BACKOFFICE_PERMISSION.events.read],
               });
@@ -434,6 +436,7 @@ async function runInstalledAppScenario(
               const installed = await ctx.runtime.objects.appInstallations
                 .forOrg(ctx.vars.orgId)
                 .commands.installApp({
+                  actionsRevision: 1,
                   appId: ctx.vars.appId,
                   grantedPermissions: [emit],
                   installedByUserId: ctx.vars.ownerId,
@@ -585,6 +588,7 @@ describe("installed-app event delivery SQLite scenarios", () => {
             const installed = await ctx.runtime.objects.appInstallations
               .forOrg(ctx.vars.memberOrgId)
               .commands.installApp({
+                actionsRevision: 1,
                 appId: ctx.vars.appId,
                 grantedPermissions: [emit],
                 installedByUserId: ctx.vars.memberId,
@@ -693,6 +697,7 @@ describe("installed-app event delivery SQLite scenarios", () => {
             "scope_unavailable",
           );
           const reinstalled = await installations.installApp({
+            actionsRevision: 1,
             appId: ctx.vars.appId,
             grantedPermissions: [emit],
             installedByUserId: ctx.vars.ownerId,
@@ -784,6 +789,7 @@ describe("installed-app event delivery SQLite scenarios", () => {
 
             const forbidden = await submitInstallPage(ctx, ctx.vars.memberCookie, [
               ["intent", "install"],
+              ["actionsRevision", "1"],
               ["organizationId", ctx.vars.orgId],
               ["permission", "events.emit"],
               ["resources", "organization"],
@@ -810,6 +816,7 @@ describe("installed-app event delivery SQLite scenarios", () => {
           async (ctx) => {
             const approved = await submitInstallPage(ctx, ctx.vars.ownerCookie, [
               ["intent", "install"],
+              ["actionsRevision", "1"],
               ["organizationId", ctx.vars.orgId],
               ["permission", "events.emit"],
               ["resources", "projects"],

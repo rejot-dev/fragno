@@ -1,4 +1,4 @@
-import type { BackofficeAppInstallation } from "@fragno-dev/backoffice-api/v0/apps";
+import type { BackofficeApp, BackofficeAppInstallation } from "@fragno-dev/backoffice-api/v0/apps";
 
 import { defineCliArgsParser } from "@/fragno/runtime-tools/bash-cli";
 
@@ -45,6 +45,14 @@ const grantsOption = {
   valueName: "json",
   description: "Explicitly approved subset of requested permissions; use [] for no grants",
 };
+const actionsRevisionOption = {
+  name: "actions-revision",
+  required: true,
+  valueRequired: true,
+  valueName: "revision",
+  description:
+    "The app's actionsRevision reviewed with apps.get; fails if its actions changed since",
+};
 const resourceScopeDescription =
   'Resources the grants apply to: {"kind":"organization"} or {"kind":"projects","projectIds":["..."]}';
 
@@ -71,8 +79,10 @@ const getAppTool = defineBackofficeRuntimeTool({
               stdout: app
                 ? [
                     `App ID: ${app.id}`,
+                    `Slug: ${app.slug} (integration connection app#${app.slug})`,
                     `OAuth client ID: ${app.oauthClientId}`,
                     `Requested permissions: ${app.requestedPermissions.map(({ namespace, permission }) => `${namespace}.${permission}`).join(", ") || "none"}`,
+                    ...renderAppActions(app),
                     `Created at: ${app.createdAt}`,
                     "",
                   ].join("\n")
@@ -81,6 +91,19 @@ const getAppTool = defineBackofficeRuntimeTool({
     },
   },
 });
+
+function renderAppActions(app: BackofficeApp) {
+  if (app.actions.kind === "none") {
+    return [`Actions revision: ${app.actionsRevision}`, "Actions: none"];
+  }
+  return [
+    `Actions revision: ${app.actionsRevision}`,
+    `Action endpoint: ${app.actions.endpointUrl}`,
+    `Action changes: ${app.actions.changeApproval === "automatic" ? "apply automatically" : "need installation approval"}`,
+    `Actions (${app.actions.actions.length}):`,
+    ...app.actions.actions.map(({ id, label, description }) => `  ${id}: ${label}. ${description}`),
+  ];
+}
 
 const installAppTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("apps.install"),
@@ -99,6 +122,7 @@ const installAppTool = defineBackofficeRuntimeTool({
         options: [
           appIdOption,
           grantsOption,
+          actionsRevisionOption,
           {
             name: "resource-scope-json",
             valueRequired: true,
@@ -107,13 +131,14 @@ const installAppTool = defineBackofficeRuntimeTool({
           },
         ],
         examples: [
-          "apps.install --app-id APP_ID --granted-permissions-json '[]'",
-          'apps.install --app-id APP_ID --granted-permissions-json \'[{"namespace":"events","permission":"emit"}]\' --resource-scope-json \'{"kind":"projects","projectIds":["PROJECT_ID"]}\'',
+          "apps.install --app-id APP_ID --granted-permissions-json '[]' --actions-revision 1",
+          'apps.install --app-id APP_ID --granted-permissions-json \'[{"namespace":"events","permission":"emit"}]\' --actions-revision 1 --resource-scope-json \'{"kind":"projects","projectIds":["PROJECT_ID"]}\'',
         ],
       },
       parse: defineCliArgsParser("apps.install", {
         appId: { kind: "string", required: true },
         grantedPermissions: { kind: "json", option: "granted-permissions-json", required: true },
+        actionsRevision: { kind: "positiveInteger", required: true },
         resourceScope: { kind: "json", option: "resource-scope-json" },
       }),
       format: (result, options) =>
@@ -164,6 +189,7 @@ function renderInstallation(installation: BackofficeAppInstallation) {
     `  Organization ID: ${installation.organizationId}`,
     `  Status: ${installation.status}`,
     `  Activation: ${installation.activation}`,
+    `  Approved actions revision: ${installation.approvedActionsRevision}`,
     `  Granted permissions: ${installation.grantedPermissions.map(({ namespace, permission }) => `${namespace}.${permission}`).join(", ") || "none"}`,
     `  Resources: ${installation.resourceScope.kind === "organization" ? "whole organization" : `projects ${installation.resourceScope.projectIds.join(", ")}`}`,
     `  Linked account: ${installation.externalAccount ? `${installation.externalAccount.label} (${installation.externalAccount.id})` : "none"}`,
@@ -269,6 +295,36 @@ const updateInstallationTool = defineBackofficeRuntimeTool({
   },
 });
 
+const approveActionsTool = defineBackofficeRuntimeTool({
+  ...backofficeApiOperationToolFields("apps.installations.approveActions"),
+  namespace: "apps",
+  name: "approveInstallationActions",
+  execute: async (input, context: AppsToolContext) =>
+    await requireAppsContext(context).apps.approveActions(input),
+  adapters: {
+    bash: {
+      command: "apps.installations.approve-actions",
+      help: {
+        summary:
+          "apps.installations.approve-actions approves the app's current action declaration for this organization (organization owners/admins only). Review it with apps.get first.",
+        options: [appIdOption, actionsRevisionOption],
+        examples: ["apps.installations.approve-actions --app-id APP_ID --actions-revision 2"],
+      },
+      parse: defineCliArgsParser("apps.installations.approve-actions", {
+        appId: { kind: "string", required: true },
+        actionsRevision: { kind: "positiveInteger", required: true },
+      }),
+      format: (result, options) =>
+        options.format === "json" || options.print
+          ? { data: result }
+          : {
+              data: result,
+              stdout: `${result.changed ? "Approved app actions." : "App actions already approved."}\nInstallation ID: ${result.installationId}\n`,
+            },
+    },
+  },
+});
+
 const uninstallAppTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("apps.uninstall"),
   namespace: "apps",
@@ -304,6 +360,7 @@ export const appsToolFamily = defineBackofficeRuntimeToolFamily({
     getInstallationTool,
     listInstallationsTool,
     updateInstallationTool,
+    approveActionsTool,
     uninstallAppTool,
   ],
   isAvailable: (context: AppsToolContext) =>

@@ -6,6 +6,7 @@ import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 
 import { createApiIntegration } from "./api-integration";
+import { createAppIntegration } from "./app-integration";
 import { createConnectorIntegration } from "./connector-integration";
 import { createGitHubIntegration } from "./github-integration";
 import { recordIntegrationConnectionState } from "./integration-events";
@@ -37,6 +38,7 @@ export function createIntegrationsRuntime({
     createReson8Integration({ runtime, nowEpochMs }),
     createTelegramIntegration({ runtime, nowEpochMs }),
     createResendIntegration({ runtime, nowEpochMs }),
+    createAppIntegration({ runtime, nowEpochMs }),
     ...(execution.scope.kind === "user"
       ? [createConnectorIntegration({ runtime, nowEpochMs })]
       : []),

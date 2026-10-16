@@ -124,7 +124,7 @@ describe("admin app runtime tool SQLite scenarios", () => {
               empty.stdout,
               "No Backoffice apps found.\nMore results: no\nNext cursor: none\n",
             );
-            const command = `admin.apps.create --oauth-client-id '${config.clientId}' --requested-permissions-json '[]'`;
+            const command = `admin.apps.create --slug accounting --oauth-client-id '${config.clientId}' --requested-permissions-json '[]'`;
             const created = await bash.exec(command);
             assert.equal(created.exitCode, 0, created.stderr);
             const page = await executeBackofficeRuntimeTool(
@@ -145,7 +145,7 @@ describe("admin app runtime tool SQLite scenarios", () => {
             assert.equal(listed.exitCode, 0, listed.stderr);
             assert.equal(
               listed.stdout,
-              `Backoffice apps (1):\nApp ID: ${app.id}\n  OAuth client ID: ${config.clientId}\n  Requested permissions: none\n  Created at: ${app.createdAt}\nMore results: no\nNext cursor: none\n`,
+              `Backoffice apps (1):\nApp ID: ${app.id}\n  Slug: accounting\n  OAuth client ID: ${config.clientId}\n  Requested permissions: none\n  Actions: none (revision 1)\n  Created at: ${app.createdAt}\nMore results: no\nNext cursor: none\n`,
             );
             const printed = await bash.exec(`${command} --print appId`);
             assert.equal(printed.exitCode, 0, printed.stderr);
@@ -167,7 +167,11 @@ describe("admin app runtime tool SQLite scenarios", () => {
         steps: ({ then }) => [
           then.assert("both adapters share registration and listing semantics", async (ctx) => {
             const client = await createAppClient(ctx, "admin-1");
-            const input = { oauthClientId: client.clientId, requestedPermissions: permissions };
+            const input = {
+              slug: "accounting",
+              oauthClientId: client.clientId,
+              requestedPermissions: permissions,
+            };
             const context = appAdminContext(ctx, "admin-1");
             assert(context.stateBackend);
             const toolContext = createBackofficeToolContext(context);
@@ -195,8 +199,11 @@ describe("admin app runtime tool SQLite scenarios", () => {
             expect(data.page.apps).toEqual([
               {
                 id: data.created.appId,
+                slug: "accounting",
                 oauthClientId: client.clientId,
                 requestedPermissions: permissions,
+                actions: { kind: "none" },
+                actionsRevision: 1,
                 createdAt: expect.any(String),
               },
             ]);
@@ -208,7 +215,7 @@ describe("admin app runtime tool SQLite scenarios", () => {
               context: { ...context, stateBackend: context.stateBackend },
             });
             const repeated = await bash.exec(
-              `admin.apps.create --oauth-client-id '${client.clientId}' --requested-permissions-json '${JSON.stringify(permissions)}' --format json`,
+              `admin.apps.create --slug accounting --oauth-client-id '${client.clientId}' --requested-permissions-json '${JSON.stringify(permissions)}' --format json`,
             );
             assert.equal(repeated.exitCode, 0, repeated.stderr);
             expect(
@@ -252,7 +259,11 @@ describe("admin app runtime tool SQLite scenarios", () => {
             context = appAdminContext(ctx, "admin-1");
             await executeBackofficeRuntimeTool(
               adminAppsRuntimeTools[0],
-              { oauthClientId: cli.clientId, requestedPermissions: permissions },
+              {
+                slug: "accounting",
+                oauthClientId: cli.clientId,
+                requestedPermissions: permissions,
+              },
               createBackofficeToolContext(context),
             );
             const userContext = appAdminContext(ctx, "user-1");
@@ -261,7 +272,11 @@ describe("admin app runtime tool SQLite scenarios", () => {
             await expect(
               executeBackofficeRuntimeTool(
                 adminAppsRuntimeTools[0],
-                { oauthClientId: "not-an-oauth-client", requestedPermissions: [] },
+                {
+                  slug: "accounting",
+                  oauthClientId: "not-an-oauth-client",
+                  requestedPermissions: [],
+                },
                 userTools,
               ),
             ).rejects.toThrow("Required permission: admin.apps.manage.");
@@ -273,7 +288,7 @@ describe("admin app runtime tool SQLite scenarios", () => {
             });
             for (const [command, permission] of [
               [
-                "admin.apps.create --oauth-client-id missing --requested-permissions-json '[]'",
+                "admin.apps.create --slug accounting --oauth-client-id missing --requested-permissions-json '[]'",
                 "admin.apps.manage",
               ],
               ["admin.apps.list", "admin.apps.read"],
@@ -310,7 +325,7 @@ describe("admin app runtime tool SQLite scenarios", () => {
               await expect(
                 executeBackofficeRuntimeTool(
                   adminAppsRuntimeTools[0],
-                  { oauthClientId: "missing", requestedPermissions: [] },
+                  { slug: "accounting", oauthClientId: "missing", requestedPermissions: [] },
                   tools,
                 ),
               ).rejects.toThrow("Required permission: admin.apps.manage.");
@@ -351,7 +366,7 @@ describe("admin app runtime tool SQLite scenarios", () => {
               await expect(
                 executeBackofficeRuntimeTool(
                   adminAppsRuntimeTools[0],
-                  { oauthClientId: "missing", requestedPermissions: [] },
+                  { slug: "accounting", oauthClientId: "missing", requestedPermissions: [] },
                   tools,
                 ),
               ).rejects.toThrow("requires System context");
@@ -398,7 +413,7 @@ describe("admin app runtime tool SQLite scenarios", () => {
               await expect(
                 executeBackofficeRuntimeTool(
                   adminAppsRuntimeTools[0],
-                  { oauthClientId: "missing", requestedPermissions: [] },
+                  { slug: "accounting", oauthClientId: "missing", requestedPermissions: [] },
                   tools,
                 ),
               ).rejects.toThrow(
@@ -414,7 +429,7 @@ describe("admin app runtime tool SQLite scenarios", () => {
                 await expect(
                   executeBackofficeRuntimeTool(
                     adminAppsRuntimeTools[0],
-                    { oauthClientId: cli.clientId, requestedPermissions },
+                    { slug: "accounting", oauthClientId: cli.clientId, requestedPermissions },
                     tools,
                   ),
                 ).rejects.toThrow();
@@ -423,9 +438,9 @@ describe("admin app runtime tool SQLite scenarios", () => {
                 context: { ...context, stateBackend: context.stateBackend },
               });
               for (const command of [
-                "admin.apps.create --oauth-client-id missing --requested-permissions-json '[]'",
-                "admin.apps.create --oauth-client-id missing --requested-permissions-json invalid-json",
-                "admin.apps.create --oauth-client-id missing",
+                "admin.apps.create --slug accounting --oauth-client-id missing --requested-permissions-json '[]'",
+                "admin.apps.create --slug accounting --oauth-client-id missing --requested-permissions-json invalid-json",
+                "admin.apps.create --slug accounting --oauth-client-id missing",
                 "admin.apps.list --page-size 101",
               ]) {
                 const result = await bash.exec(command);
@@ -434,7 +449,7 @@ describe("admin app runtime tool SQLite scenarios", () => {
               // The Codemode client is first-party: it can be neither an app nor reconfigured.
               const codemodeFailures = [
                 [
-                  `admin.apps.create --oauth-client-id ${cli.clientId} --requested-permissions-json '[]'`,
+                  `admin.apps.create --slug accounting --oauth-client-id ${cli.clientId} --requested-permissions-json '[]'`,
                   "is the deployment's Codemode client and cannot be registered as an app. Create a dedicated client with admin.oauth-clients.create.",
                 ],
                 [
@@ -484,6 +499,8 @@ describe("admin app runtime tool SQLite scenarios", () => {
             const registry = ctx.runtime.objects.apps.singleton().commands;
             for (const oauthClientId of ["accounting", "reporting", "receipts"]) {
               const registered = await registry.registerApp({
+                actions: { kind: "none" },
+                slug: oauthClientId.replace(/-client$/, ""),
                 oauthClientId,
                 requestedPermissions: permissions,
               });
@@ -548,6 +565,7 @@ describe("admin app runtime tool SQLite scenarios", () => {
             const installations = ctx.runtime.objects.appInstallations.forOrg("org-1").commands;
             for (const appId of registeredIds) {
               const installed = await installations.installApp({
+                actionsRevision: 1,
                 appId,
                 installedByUserId: "admin-1",
                 resourceScope: wholeOrganization,

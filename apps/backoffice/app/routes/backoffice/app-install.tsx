@@ -1,6 +1,9 @@
 import "@fragno-private/design-system/components.css";
 
-import type { AppInstallationResourceScope } from "@fragno-dev/backoffice-api/v0/apps";
+import type {
+  AppActionsDeclaration,
+  AppInstallationResourceScope,
+} from "@fragno-dev/backoffice-api/v0/apps";
 import { AuthorizationScreen } from "@fragno-private/design-system/authorization-screen";
 import { Button } from "@fragno-private/design-system/button";
 import { useState } from "react";
@@ -50,6 +53,8 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
       userEmail: user.email,
       clientName: installRequest.client.name,
       requestedPermissions: describeAppPermissions(installRequest.app.requestedPermissions),
+      actions: installRequest.app.actions,
+      actionsRevision: installRequest.app.actionsRevision,
       returnOrigin: new URL(installRequest.redirectUri).origin,
       appRequest: {
         client_id: installRequest.client.clientId,
@@ -152,6 +157,7 @@ export default function BackofficeAppInstall({
             ) : null}
             <Form method="post" className="space-y-4" key={install.selectedOrganizationId}>
               <input type="hidden" name="organizationId" value={install.selectedOrganizationId} />
+              <input type="hidden" name="actionsRevision" value={install.actionsRevision} />
               <fieldset className="space-y-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4">
                 <legend className="px-1 text-[11px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
                   Permissions
@@ -187,6 +193,12 @@ export default function BackofficeAppInstall({
                   ))
                 )}
               </fieldset>
+              <ActionsSummary
+                actions={install.actions}
+                pendingApproval={
+                  current !== null && current.approvedActionsRevision !== install.actionsRevision
+                }
+              />
               <ResourceFields
                 projects={install.projects}
                 current={current?.resourceScope ?? null}
@@ -231,6 +243,47 @@ export default function BackofficeAppInstall({
         )}
       </div>
     </AuthorizationScreen>
+  );
+}
+
+/** Actions are approved as a whole: the app serves them, so there is nothing to select. */
+function ActionsSummary({
+  actions,
+  pendingApproval,
+}: {
+  actions: AppActionsDeclaration;
+  pendingApproval: boolean;
+}) {
+  if (actions.kind === "none") {
+    return null;
+  }
+  return (
+    <fieldset className="space-y-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4">
+      <legend className="px-1 text-[11px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
+        Actions
+      </legend>
+      <p className="text-sm text-[var(--bo-muted)]">
+        Members and agents in this organization can call these actions, which run on{" "}
+        <span className="break-all">{new URL(actions.endpointUrl).origin}</span>.
+        {actions.changeApproval === "automatic"
+          ? " Changes to them apply without approving them again."
+          : " Changes to them need your approval before they run."}
+      </p>
+      {pendingApproval ? (
+        <p className="text-sm text-[var(--bo-fg)]">
+          These actions changed since this installation was approved.
+        </p>
+      ) : null}
+      <ul className="space-y-1 text-sm">
+        {actions.actions.map((action) => (
+          <li key={action.id}>
+            <span className="font-semibold">{action.label}</span>{" "}
+            <span className="font-mono text-xs text-[var(--bo-muted)]">{action.id}</span>
+            <p className="text-xs leading-5 text-[var(--bo-muted)]">{action.description}</p>
+          </li>
+        ))}
+      </ul>
+    </fieldset>
   );
 }
 

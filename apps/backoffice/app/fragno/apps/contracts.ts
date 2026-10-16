@@ -3,17 +3,39 @@ import {
   type BackofficeAppLookupInput,
   backofficeAppSchema,
 } from "@fragno-dev/backoffice-api/v0/apps";
-import { appPermissionsSchema } from "@fragno-dev/backoffice-api/v0/apps";
+import {
+  appActionsDeclarationSchema,
+  appPermissionsSchema,
+  appSlugSchema,
+  backofficeAppLookupInputSchema,
+} from "@fragno-dev/backoffice-api/v0/apps";
 import { z } from "zod";
 
 import type { BackofficeAppOperationResult } from "./errors";
 
 /** Registers an already-provisioned OAuth client; Auth owns its identity and metadata. */
 export const backofficeAppRegistrationInputSchema = z.strictObject({
+  slug: appSlugSchema,
   oauthClientId: z.string().min(1).max(191),
   requestedPermissions: appPermissionsSchema,
+  actions: appActionsDeclarationSchema,
 });
 export type BackofficeAppRegistrationInput = z.infer<typeof backofficeAppRegistrationInputSchema>;
+
+/** Replaces an app's action declaration; installations approve the new revision unless automatic. */
+export const backofficeAppActionsUpdateInputSchema = backofficeAppLookupInputSchema.extend({
+  actions: appActionsDeclarationSchema,
+});
+export type BackofficeAppActionsUpdateInput = z.infer<typeof backofficeAppActionsUpdateInputSchema>;
+
+/** An unchanged declaration keeps its revision, so repeating an update needs no new approval. */
+export const backofficeAppActionsUpdateResultSchema = z.strictObject({
+  actionsRevision: z.number().int().positive(),
+  changed: z.boolean(),
+});
+export type BackofficeAppActionsUpdateResult = z.infer<
+  typeof backofficeAppActionsUpdateResultSchema
+>;
 
 /** Auth resolves the app behind a verified OAuth client; the client ID is never caller-chosen. */
 export const backofficeAppOAuthClientLookupInputSchema = z.strictObject({
@@ -22,6 +44,10 @@ export const backofficeAppOAuthClientLookupInputSchema = z.strictObject({
 export type BackofficeAppOAuthClientLookupInput = z.infer<
   typeof backofficeAppOAuthClientLookupInputSchema
 >;
+
+/** Integration addresses name apps by slug; the registry resolves it to the app. */
+export const backofficeAppSlugLookupInputSchema = z.strictObject({ slug: appSlugSchema });
+export type BackofficeAppSlugLookupInput = z.infer<typeof backofficeAppSlugLookupInputSchema>;
 
 /** Registration returns the transaction-resolved identity, not unresolved database timestamps. */
 export const backofficeAppRegistrationResultSchema = z.strictObject({
@@ -50,7 +76,11 @@ export type BackofficeAppsCommands = {
   registerApp(
     input: BackofficeAppRegistrationInput,
   ): Promise<BackofficeAppOperationResult<BackofficeAppRegistrationResult>>;
+  updateAppActions(
+    input: BackofficeAppActionsUpdateInput,
+  ): Promise<BackofficeAppOperationResult<BackofficeAppActionsUpdateResult>>;
   getApp(input: BackofficeAppLookupInput): Promise<BackofficeApp | null>;
   getAppByOAuthClientId(input: BackofficeAppOAuthClientLookupInput): Promise<BackofficeApp | null>;
+  getAppBySlug(input: BackofficeAppSlugLookupInput): Promise<BackofficeApp | null>;
   listApps(input: BackofficeAppPageInput): Promise<BackofficeAppOperationResult<BackofficeAppPage>>;
 };

@@ -30,7 +30,7 @@ format, but actual stdout contains credentials; do not capture it in unrelated l
 ```bash
 admin.oauth-clients.list
 admin.apps.list --format text
-admin.apps.create --oauth-client-id existing-client-id --requested-permissions-json '[]' --print appId
+admin.apps.create --slug accounting --oauth-client-id existing-client-id --requested-permissions-json '[]' --print appId
 ```
 
 ## Ownership and trust
@@ -75,6 +75,7 @@ const client = await admin.oauthClientsCreate({
 });
 // Store the initial confidential client secret securely before discarding this response.
 await admin.appsCreate({
+  slug: "accounting",
   oauthClientId: client.clientId,
   requestedPermissions: [{ namespace: "events", permission: "emit" }],
 });
@@ -270,17 +271,27 @@ or automatic consent backfill. Reauthorizing after revocation requires a new exp
 
 ## System admin app runtime tools
 
-`admin.appsCreate` / `admin.apps.create` requires the canonical `admin.apps.manage` permission.
-`admin.appsList` / `admin.apps.list` requires `admin.apps.read`. Both use the existing authorization
-kernel and require System context; they are unavailable in organization, project, and user contexts.
-No grants are added to ordinary user or organization-member roles.
+`admin.appsCreate` / `admin.apps.create` and `admin.appsUpdateActions` / `admin.apps.update-actions`
+require the canonical `admin.apps.manage` permission. `admin.appsList` / `admin.apps.list` requires
+`admin.apps.read`. All use the existing authorization kernel and require System context; they are
+unavailable in organization, project, and user contexts. No grants are added to ordinary user or
+organization-member roles.
 
 Creation registers an **existing** Better Auth OAuth client. It does not create credentials or
 install the app. Repeating the same declaration returns the same app ID with `created: false`;
-changing a declaration through repeated creation fails explicitly.
+changing a declaration through repeated creation fails explicitly. Requested permissions and the
+slug never change; actions change only through `admin.apps.update-actions` (see
+[App actions](#app-actions)).
+
+The slug is the app's permanent, globally unique name: lowercase words separated by `-`, at most 63
+characters. Its integration connection is `app#<slug>`, so connection IDs, generated clients, and
+automation triggers depend on it. Apps registered before slugs answer to their app ID as the slug;
+registering the same client again with a slug names it once. Because those IDs are addresses, an
+app's ID is also taken as a slug.
 
 ```ts
 await admin.appsCreate({
+  slug: "accounting",
   oauthClientId: "existing-client-id",
   requestedPermissions: [{ namespace: "events", permission: "emit" }],
 });
@@ -288,7 +299,7 @@ const page = await admin.appsList({ pageSize: 25, cursor: null });
 ```
 
 ```bash
-admin.apps.create --oauth-client-id existing-client-id \
+admin.apps.create --slug accounting --oauth-client-id existing-client-id \
   --requested-permissions-json '[{"namespace":"events","permission":"emit"}]' --format json
 admin.apps.list --page-size 25 --format json
 ```
@@ -301,20 +312,78 @@ Listing defaults to 25 registrations, allows 1–100 per page, and returns `apps
 `hasNextPage`. Resume using the same page size. Output contains only registry data, never OAuth
 credentials or organization installation grants.
 
+## App actions
+
+An app may declare actions: operations it serves on its own server that Backoffice calls through the
+`app#<slug>` integration connection. The declaration is `{ "kind": "none" }` (the default) or:
+
+```json
+{
+  "kind": "endpoint",
+  "endpointUrl": "https://ledger.example/backoffice/actions",
+  "changeApproval": "installation",
+  "actions": [
+    {
+      "id": "invoices.count",
+      "label": "Count invoices",
+      "description": "Count the invoices issued in one fiscal year.",
+      "inputSchema": { "type": "object", "properties": { "year": { "type": "integer" } } },
+      "outputSchema": { "type": "object", "properties": { "count": { "type": "integer" } } }
+    }
+  ]
+}
+```
+
+```bash
+admin.apps.create --slug ledger --oauth-client-id CLIENT_ID --requested-permissions-json '[]' \
+  --actions-json "$(cat ledger-actions.json)"
+admin.apps.update-actions --app-id APP_ID --actions-json "$(cat ledger-actions.json)"
+```
+
+Endpoints use HTTPS; plain HTTP is accepted only on loopback hosts for development. Input schemas
+describe objects, and both schemas must compile with the JSON Schema validator
+`integrations.execute` uses (2020-12 or draft-07), so a contract Backoffice cannot enforce is
+rejected when declared.
+
+Every change gets a new `actionsRevision`; an unchanged update keeps it. Installing approves the
+revision the approver reviewed (`apps.install --actions-revision N`, or the install page, which
+shows the actions), and the installation keeps that declaration. With
+`changeApproval: "installation"` a later revision waits: the installation keeps calling the actions
+it approved, `integrations.get` says a newer revision exists, and an owner or admin approves it with
+`apps.installations.approve-actions --app-id APP_ID --actions-revision N` or by passing through the
+install page again. Approval names the revision, so a declaration changed since review fails with
+`APP_ACTIONS_REVISION_STALE`. `changeApproval: "automatic"` applies every revision immediately,
+without approval. Only system administrators register apps, so reserve it for apps they operate.
+
+Calls require `integrations.execute` only. The connection is ready once the app has claimed the
+installation; Backoffice validates the input, then the organization's installation object asks Auth
+to sign a 60-second token and POSTs the JSON body `{ "type": "action", actionId, input }` with it as
+the bearer. `integrations.verify` sends `{ "type": "ping" }` the same way. The token's audience is
+the endpoint URL, and its claims carry the installation (app ID, activation, linked account), the
+scope, the `actor` (the Backoffice user behind the call, or `installation` for automated calls), a
+`jti` usable as an idempotency key, and the SHA-256 of the exact body. A 2xx JSON answer must match
+the output schema; any other status fails the call with the answer's `message`.
+
+Apps verify requests with `createAppActionVerifier` from
+`@fragno-dev/backoffice-api/v0/app-actions`, which checks the signature against Backoffice's JWKS,
+the audience, expiry, and body hash, and parses the body. Bookkeeping's
+`workers/backoffice-actions.ts` is a complete endpoint.
+
 ## Organization installation runtime tools
 
 Select an **organization context** in the Backoffice terminal or Codemode. The `apps` tool family is
 unavailable in System, project, and user contexts. Organization identity comes from the selected
 context and the installation object's scope, never from command input.
 
-| Codemode method           | Bash command                | Permission    | Purpose                                            |
-| ------------------------- | --------------------------- | ------------- | -------------------------------------------------- |
-| `apps.get`                | `apps.get`                  | `apps.read`   | Review the global app declaration                  |
-| `apps.getInstallation`    | `apps.installations.get`    | `apps.read`   | Inspect this organization's installation           |
-| `apps.listInstallations`  | `apps.installations.list`   | `apps.read`   | List active and uninstalled installations          |
-| `apps.install`            | `apps.install`              | `apps.manage` | Approve explicit permissions and resources         |
-| `apps.updateInstallation` | `apps.installations.update` | `apps.manage` | Replace approved permissions and resources         |
-| `apps.uninstall`          | `apps.uninstall`            | `apps.manage` | Clear grants and link; retain installation history |
+| Codemode method                   | Bash command                         | Permission    | Purpose                                            |
+| --------------------------------- | ------------------------------------ | ------------- | -------------------------------------------------- |
+| `apps.get`                        | `apps.get`                           | `apps.read`   | Review the global app declaration                  |
+| `apps.getInstallation`            | `apps.installations.get`             | `apps.read`   | Inspect this organization's installation           |
+| `apps.listInstallations`          | `apps.installations.list`            | `apps.read`   | List active and uninstalled installations          |
+| `apps.install`                    | `apps.install`                       | `apps.manage` | Approve explicit permissions and resources         |
+| `apps.updateInstallation`         | `apps.installations.update`          | `apps.manage` | Replace approved permissions and resources         |
+| `apps.approveInstallationActions` | `apps.installations.approve-actions` | `apps.manage` | Approve the app's current action declaration       |
+| `apps.uninstall`                  | `apps.uninstall`                     | `apps.manage` | Clear grants and link; retain installation history |
 
 Active organization members may review declarations and installations. Management additionally
 requires an organization `owner` or `admin` role, or global administrator status **and membership in
@@ -329,10 +398,11 @@ Review before approving:
 
 ```ts
 const app = await apps.get({ appId: "APP_ID" });
-// Review app.requestedPermissions; OAuth scopes are not installation permissions.
+// Review app.requestedPermissions and app.actions; OAuth scopes are not installation permissions.
 await apps.install({
   appId: "APP_ID",
   grantedPermissions: [{ namespace: "events", permission: "emit" }],
+  actionsRevision: app.actionsRevision,
   resourceScope: { kind: "projects", projectIds: ["PROJECT_ID"] }, // default: whole organization
 });
 const page = await apps.listInstallations({ pageSize: 25, cursor: null });
@@ -346,7 +416,7 @@ await apps.uninstall({ appId: "APP_ID" });
 
 ```bash
 apps.get --app-id APP_ID
-apps.install --app-id APP_ID \
+apps.install --app-id APP_ID --actions-revision 1 \
   --granted-permissions-json '[{"namespace":"events","permission":"emit"}]'
 apps.installations.get --app-id APP_ID --format json
 apps.installations.list --page-size 25
@@ -420,18 +490,23 @@ const registry = runtime.objects.apps.singleton().commands;
 const installations = runtime.objects.appInstallations.forOrg(organizationId).commands;
 ```
 
-| Object       | Command                                                      | Registry access                                           |
-| ------------ | ------------------------------------------------------------ | --------------------------------------------------------- |
-| Registry     | `registerApp`, `getApp`, `getAppByOAuthClientId`, `listApps` | Own local database                                        |
-| Organization | `installApp`                                                 | Resolve declaration and projects before local transaction |
-| Organization | `updateInstallationAccess`                                   | Resolve declaration and projects before local transaction |
-| Organization | `claimInstallation`                                          | None                                                      |
-| Organization | `getInstallation`, `listInstallations`, `uninstallApp`       | None                                                      |
+| Object       | Command                                                                                          | Registry access                                           |
+| ------------ | ------------------------------------------------------------------------------------------------ | --------------------------------------------------------- |
+| Registry     | `registerApp`, `updateAppActions`, `getApp`, `getAppByOAuthClientId`, `getAppBySlug`, `listApps` | Own local database                                        |
+| Organization | `installApp`                                                                                     | Resolve declaration and projects before local transaction |
+| Organization | `updateInstallationAccess`                                                                       | Resolve declaration and projects before local transaction |
+| Organization | `approveActions`, `getAppConnection`                                                             | Resolve declaration before local reads and writes         |
+| Organization | `callAppEndpoint`                                                                                | Resolve declaration, then sign through Auth and send      |
+| Organization | `claimInstallation`                                                                              | None                                                      |
+| Organization | `getInstallation`, `listInstallations`, `uninstallApp`                                           | None                                                      |
 
-Declarations are immutable and cannot be deleted in this scaffold. Installation setup and grant
-updates fetch that authoritative declaration before opening the organization's transaction. There is
-**no cross-object transaction or foreign key**. Declaration changes and global app disablement
-require an explicit coordination policy before being added.
+Requested permissions and slugs are immutable, and apps cannot be deleted in this scaffold. Action
+declarations change by revision; each installation stores the declaration it approved, so a registry
+change never widens what an installation calls without approval (except
+`changeApproval: "automatic"`). Installation setup, grant updates, and action approval fetch the
+authoritative declaration before opening the organization's transaction. There is **no cross-object
+transaction or foreign key**. Global app disablement requires an explicit coordination policy before
+being added.
 
 Routine authority reads, installation lists, and revocation remain local to the customer object.
 They do not depend on registry availability. This is command-level independence; the single-process
@@ -443,6 +518,8 @@ this split.
 - OAuth client references are unique in the global registry.
 - Each organization database has at most one installation per app ID.
 - Grants use canonical Backoffice permissions and cannot exceed the app declaration.
+- An installation approves exactly the action revision its approver reviewed; `approvedActions` is
+  `null` before any approval (earlier installations, and after uninstall).
 - Duplicate registration or installation cannot silently enlarge declarations or grants.
 - Grant updates are explicit; duplicate install does not change installer attribution.
 - Uninstall clears grants and the linked external account but retains identity. Reinstall reuses

@@ -257,6 +257,15 @@ When an `mcp#` OAuth connection loses its authorization, start consent again wit
 asked (submit `{ start: true }` when the setup check asks for it, otherwise `{ reauthorize: true }`
 through `integrations.reconfigure`) and give the user the returned `authorizationUrl` as a link.
 
+### Installed apps
+
+An `app#<slug>` connection, e.g. `app#bookkeeping`, exists once an organization owner installs an
+app that declares actions; there is nothing to set up. Its actions run on the app's own server, as
+the signed-in user or, in automations, as the installation. When `integrations.get` reports a
+missing installation, an unlinked account, or changed actions awaiting approval, pass its
+`nextSteps` to an organization owner: installing and approving are theirs (`apps.install`,
+`apps.installations.approveActions`).
+
 ## Authority and terminal
 
 Discovery, listing, inspection, and action contracts require `integrations.read`; setup,

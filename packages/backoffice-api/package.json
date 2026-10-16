@@ -51,6 +51,9 @@
     "lint:package": "node ../../scripts/run-package-quality.mjs lint",
     "lint:fix:package": "node ../../scripts/run-package-quality.mjs lint:fix"
   },
+  "dependencies": {
+    "jose": "^6.2.3"
+  },
   "devDependencies": {
     "@fragno-private/typescript-config": "workspace:*",
     "tsdown": "^0.22.4",
