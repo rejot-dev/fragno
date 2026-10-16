@@ -554,6 +554,67 @@ describe("IndexedDbAdapter", () => {
     dbAfter.close();
   });
 
+  it("keys indexes by renamed columns and replaces dropped ones", async () => {
+    const schemaV1 = schema("app", (s) =>
+      s.addTable("users", (t) =>
+        t
+          .addColumn("id", idColumn())
+          .addColumn("name", column("string"))
+          .addColumn("email", column("string"))
+          .createIndex("idx_lookup", ["name"])
+          .createIndex("idx_contact", ["email"]),
+      ),
+    );
+    const schemaV2 = schema("app", (s) =>
+      s
+        .addTable("users", (t) =>
+          t
+            .addColumn("id", idColumn())
+            .addColumn("name", column("string"))
+            .addColumn("email", column("string"))
+            .createIndex("idx_lookup", ["name"])
+            .createIndex("idx_contact", ["email"]),
+        )
+        .alterTable("users", (t) =>
+          t
+            .renameColumn("name", "displayName")
+            .dropIndex("idx_contact")
+            .createIndex("idx_contact", ["email", "displayName"], { unique: true }),
+        ),
+    );
+
+    const dbName = createDbName();
+    for (const current of [schemaV1, schemaV2]) {
+      const adapter = new IndexedDbAdapter({
+        dbName,
+        endpointName: "app",
+        schemas: [{ schema: current }],
+      });
+      await adapter.getMeta("app::schema_fingerprint");
+    }
+
+    const db = await openDb(dbName);
+    const rowsStore = db.transaction("lofi_rows", "readonly").objectStore("lofi_rows");
+    expect(rowsStore.index("idx__app__users__idx_lookup").keyPath).toEqual([
+      "endpoint",
+      "schema",
+      "table",
+      "_lofi.norm.displayName",
+      "id",
+    ]);
+    const contact = rowsStore.index("idx__app__users__idx_contact");
+    expect(contact.keyPath).toEqual([
+      "endpoint",
+      "schema",
+      "table",
+      "_lofi.norm.email",
+      "_lofi.norm.displayName",
+      "id",
+    ]);
+    assert(contact.unique);
+    db.close();
+  });
+
   it("clears registered custom cursor state on schema fingerprint changes", async () => {
     const schemaV1 = schema("app", (s) =>
       s.addTable("users", (t) => t.addColumn("id", idColumn()).addColumn("name", column("string"))),

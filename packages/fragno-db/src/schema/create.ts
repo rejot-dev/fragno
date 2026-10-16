@@ -22,6 +22,7 @@ export type AnyColumn = Column<keyof TypeMap> | IdColumn | InternalIdColumn | Ve
 export type TableSubOperation =
   | { type: "add-column"; columnName: string; column: AnyColumn }
   | { type: "add-index"; name: string; columns: string[]; unique: boolean }
+  | { type: "drop-index"; name: string; unique: boolean }
   | { type: "rename-column"; from: string; to: string }
   | { type: "drop-column"; name: string }
   | {
@@ -748,6 +749,11 @@ export class TableBuilder<
   #columns: TColumns;
   #indexes: TIndexes;
   readonly #columnOrder: string[] = [];
+  // Changes to existing state that a diff cannot recover, in the order they were made.
+  readonly #alterations: TableAlteration[] = [];
+  // What existed before alterTable; only that can be renamed or dropped.
+  readonly #existingColumnNames = new Set<string>();
+  readonly #existingIndexNames = new Set<string>();
 
   constructor(name: string) {
     this.#name = name;
@@ -758,10 +764,16 @@ export class TableBuilder<
   // For alterTable to set existing state
   setColumns(columns: TColumns): void {
     this.#columns = { ...columns };
+    for (const name of Object.keys(columns)) {
+      this.#existingColumnNames.add(name);
+    }
   }
 
   setIndexes(indexes: TIndexes): void {
     this.#indexes = { ...indexes };
+    for (const name of Object.keys(indexes)) {
+      this.#existingIndexNames.add(name);
+    }
   }
 
   // For SchemaBuilder to read collected indexes
@@ -771,6 +783,11 @@ export class TableBuilder<
 
   getColumnOrder(): string[] {
     return this.#columnOrder;
+  }
+
+  // For alterTable to emit renames and index drops in order
+  getAlterations(): readonly TableAlteration[] {
+    return this.#alterations;
   }
 
   /**
@@ -832,6 +849,85 @@ export class TableBuilder<
         >;
       },
     };
+  }
+
+  /**
+   * Rename an existing column, keeping its data. Indexes on the column follow the rename; their
+   * names are kept. Only available in `alterTable()`.
+   *
+   * Integrators who apply migrations with their own tools from generated Drizzle or Prisma
+   * schemas see a rename as a dropped and an added column, so tell them to rename it instead.
+   */
+  renameColumn<TFrom extends NonIdColumnName<TColumns> & string, TTo extends string>(
+    from: TFrom,
+    to: TTo & (TTo extends keyof TColumns ? never : TTo),
+  ): TableBuilder<RenameColumn<TColumns, TFrom, TTo>, RenameIndexColumns<TIndexes, TFrom, TTo>> {
+    const column = this.#columns[from];
+    if (!column || !this.#existingColumnNames.has(from)) {
+      throw new Error(
+        `Unknown column name ${from}; only columns of an existing table can be renamed.`,
+      );
+    }
+    if (column.role !== "regular") {
+      throw new Error(
+        `Column ${this.#name}.${from} cannot be renamed: only regular columns can, not ID, system, or reference columns.`,
+      );
+    }
+    if (this.#columns[to]) {
+      throw new Error(`Column ${this.#name}.${to} already exists.`);
+    }
+
+    const renamed = cloneColumn(column);
+    renamed.name = to;
+    // Rebuild in place so the column keeps its position.
+    this.#columns = Object.fromEntries(
+      Object.entries(this.#columns).map(([name, existing]) =>
+        name === from ? [to, renamed] : [name, existing],
+      ),
+    ) as TColumns;
+    this.#existingColumnNames.delete(from);
+    this.#existingColumnNames.add(to);
+    this.#indexes = Object.fromEntries(
+      Object.entries(this.#indexes).map(([name, index]) => [
+        name,
+        index.columnNames.includes(from)
+          ? {
+              ...index,
+              columns: index.columns.map((indexed) => (indexed.name === from ? renamed : indexed)),
+              columnNames: index.columnNames.map((columnName) =>
+                columnName === from ? to : columnName,
+              ),
+            }
+          : index,
+      ]),
+    ) as TIndexes;
+    this.#alterations.push({ type: "rename-column", from, to });
+
+    return this as unknown as TableBuilder<
+      RenameColumn<TColumns, TFrom, TTo>,
+      RenameIndexColumns<TIndexes, TFrom, TTo>
+    >;
+  }
+
+  /**
+   * Drop an existing index. Its name can be used again, e.g. to recreate the index on other
+   * columns. Only available in `alterTable()`.
+   */
+  dropIndex<TIndexName extends string & keyof TIndexes>(
+    name: TIndexName,
+  ): TableBuilder<TColumns, Omit<TIndexes, TIndexName>> {
+    const index = this.#indexes[name];
+    if (!index || !this.#existingIndexNames.has(name)) {
+      throw new Error(
+        `Unknown index name ${name}; only indexes of an existing table can be dropped.`,
+      );
+    }
+    this.#existingIndexNames.delete(name);
+    const { [name]: _dropped, ...remaining } = this.#indexes;
+    this.#indexes = remaining as TIndexes;
+    this.#alterations.push({ type: "drop-index", name, unique: index.unique });
+
+    return this as unknown as TableBuilder<TColumns, Omit<TIndexes, TIndexName>>;
   }
 
   /**
@@ -1002,6 +1098,29 @@ type UpdateColumn<
   TColumnName extends keyof TColumns,
   TUpdatedColumn extends AnyColumn,
 > = Prettify<Omit<TColumns, TColumnName> & Record<TColumnName, TUpdatedColumn>>;
+
+type TableAlteration = Extract<TableSubOperation, { type: "rename-column" | "drop-index" }>;
+
+type RenameColumn<
+  TColumns extends Record<string, AnyColumn>,
+  TFrom extends keyof TColumns,
+  TTo extends string,
+> = Prettify<Omit<TColumns, TFrom> & Record<TTo, TColumns[TFrom]>>;
+
+type RenameInTuple<TNames extends readonly string[], TFrom, TTo extends string> = {
+  readonly [K in keyof TNames]: TNames[K] extends TFrom ? TTo : TNames[K];
+};
+
+/** Index types name their columns, which types `whereIndex`; a rename rewrites those names. */
+type RenameIndexColumns<
+  TIndexes extends Record<string, Index>,
+  TFrom extends string,
+  TTo extends string,
+> = {
+  [K in keyof TIndexes]: TIndexes[K] extends Index<infer TIndexColumns, infer TNames>
+    ? Index<TIndexColumns, RenameInTuple<TNames, TFrom, TTo>>
+    : TIndexes[K];
+};
 
 type NonIdColumnName<TColumns extends Record<string, AnyColumn>> = {
   [K in keyof TColumns]: TColumns[K] extends IdColumn | InternalIdColumn | VersionColumn
@@ -1219,7 +1338,7 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
   }
 
   /**
-   * Alter an existing table by adding columns, altering columns, or adding indexes.
+   * Alter an existing table: add, rename, or alter columns, and add or drop indexes.
    * This is used for forward-only schema modifications.
    *
    * @param tableName - The name of the table to modify
@@ -1265,8 +1384,6 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
     tableBuilder.setIndexes(table.indexes);
 
     // Track existing columns and indexes
-    const existingColumns = new Set(Object.keys(table.columns));
-    const existingIndexes = new Set(Object.keys(table.indexes));
     const existingColumnState = new Map<string, { isNullable: boolean }>();
     for (const [colName, col] of Object.entries(table.columns)) {
       existingColumnState.set(colName, { isNullable: col.isNullable });
@@ -1275,9 +1392,29 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
     // Apply modifications
     const resultBuilder = callback(tableBuilder);
     const newTable = resultBuilder.build();
+    const alterations = resultBuilder.getAlterations();
 
-    // Collect sub-operations
-    const subOperations: TableSubOperation[] = [];
+    // Renames and drops come first, in order, so later operations see their result.
+    const subOperations: TableSubOperation[] = [...alterations];
+    const currentColumnNames = new Map(
+      Object.keys(table.columns).map((colName) => [colName, colName]),
+    );
+    const droppedIndexes = new Set<string>();
+    for (const alteration of alterations) {
+      if (alteration.type === "rename-column") {
+        for (const [original, current] of currentColumnNames) {
+          if (current === alteration.from) {
+            currentColumnNames.set(original, alteration.to);
+          }
+        }
+      } else {
+        droppedIndexes.add(alteration.name);
+      }
+    }
+    const existingColumns = new Set(currentColumnNames.values());
+    const existingIndexes = new Set(
+      Object.keys(table.indexes).filter((indexName) => !droppedIndexes.has(indexName)),
+    );
 
     // Find new columns (preserve order from builder)
     const columnOrder = resultBuilder.getColumnOrder();
@@ -1296,7 +1433,8 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
     }
 
     // Track updates to existing columns
-    for (const [colName, previousState] of existingColumnState.entries()) {
+    for (const [originalName, previousState] of existingColumnState.entries()) {
+      const colName = currentColumnNames.get(originalName)!;
       const updatedColumn = newTable.columns[colName];
       if (!updatedColumn) {
         continue;
@@ -1316,7 +1454,7 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
     // Add only new indexes
     for (const idx of resultBuilder.getIndexes()) {
       if (!existingIndexes.has(idx.name)) {
-        if (this.#indexNames.has(idx.name)) {
+        if (this.#indexNames.has(idx.name) && !droppedIndexes.has(idx.name)) {
           throw new Error(
             `Duplicate index name "${idx.name}" in schema "${this.#name}". Index names must be unique across tables (conflict on "${tableName}").`,
           );
@@ -1341,6 +1479,9 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
 
     // Update table reference in schema
     this.#tables[tableName] = newTable as unknown as TTables[TTableName];
+    for (const indexName of droppedIndexes) {
+      this.#indexNames.delete(indexName);
+    }
     for (const idx of resultBuilder.getIndexes()) {
       if (!existingIndexes.has(idx.name)) {
         this.#indexNames.add(idx.name);

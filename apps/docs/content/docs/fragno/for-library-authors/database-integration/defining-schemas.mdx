@@ -239,6 +239,32 @@ missing.
 - always use `alterTable()` to add columns
 - New columns **must** be nullable
 
+### Renaming columns and replacing indexes
+
+`alterTable()` can also rename a column and drop an index, keeping the table's rows:
+
+```typescript
+.alterTable("comment", (t) => {
+  return t
+    .renameColumn("rating", "score")
+    .dropIndex("idx_rating")
+    .createIndex("idx_rating", ["score", "id"]);
+})
+```
+
+- A rename keeps the column's data, and indexes on the column follow it under their old names.
+- A dropped index's name can be used again in the same call, for example to recreate the index on
+  other columns.
+- Only regular columns of an existing table can be renamed: not ID, system, or reference columns,
+  and not a column added in the same call.
+
+Fragno has no data migrations, so a change that needs existing values rewritten has to avoid
+rewriting them. For example, add a column with a default that is right for every existing row.
+
+Integrators who generate Drizzle or Prisma schemas and run migrations with their own tools see a
+rename as a dropped column and an added one, which loses the column's data. Tell them in your
+release notes to apply it as a rename.
+
 ## System Columns
 
 Fragno automatically adds hidden system columns to every table:

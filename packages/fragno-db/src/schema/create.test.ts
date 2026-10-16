@@ -665,6 +665,98 @@ describe("create", () => {
   });
 });
 
+describe("renameColumn and dropIndex", () => {
+  const evolving = schema("evolving", (s) =>
+    s
+      .addTable("installation", (t) =>
+        t
+          .addColumn("id", idColumn())
+          .addColumn("organizationId", column("string"))
+          .addColumn("note", column("string").nullable())
+          .createIndex("idx_org", ["organizationId", "id"])
+          .createIndex("idx_note", ["note"]),
+      )
+      .alterTable("installation", (t) =>
+        t
+          .renameColumn("organizationId", "ownerId")
+          .dropIndex("idx_note")
+          .createIndex("idx_note", ["ownerId", "note"], { unique: true }),
+      ),
+  );
+
+  it("types the table by the new names, including in the indexes that cover a renamed column", () => {
+    expectTypeOf<TableToColumnValues<typeof evolving.tables.installation>>().toEqualTypeOf<{
+      id: FragnoId;
+      ownerId: string;
+      note: string | null;
+    }>();
+    expectTypeOf<
+      (typeof evolving.tables.installation.indexes.idx_org.columnNames)[number]
+    >().toEqualTypeOf<"ownerId" | "id">();
+    expect(evolving.tables.installation.indexes.idx_org.columnNames).toEqual(["ownerId", "id"]);
+    expect(evolving.tables.installation.indexes.idx_note).toMatchObject({
+      columnNames: ["ownerId", "note"],
+      unique: true,
+    });
+    // One version for the whole change, with renames and drops before what depends on them.
+    assert(evolving.version === 2);
+    expect(evolving.operations[1]).toMatchObject({
+      type: "alter-table",
+      operations: [
+        { type: "rename-column", from: "organizationId", to: "ownerId" },
+        { type: "drop-index", name: "idx_note", unique: false },
+        { type: "add-index", name: "idx_note", columns: ["ownerId", "note"], unique: true },
+      ],
+    });
+  });
+
+  it("refuses changes that do not apply to columns and indexes of an existing table", () => {
+    const base = () =>
+      new SchemaBuilder("refusals").addTable("item", (t) =>
+        t
+          .addColumn("id", idColumn())
+          .addColumn("name", column("string"))
+          .addColumn("label", column("string"))
+          .addColumn("parentId", referenceColumn({ table: "item" }).nullable())
+          .createIndex("idx_name", ["name"]),
+      );
+
+    expect(() =>
+      base().alterTable("item", (t) =>
+        // @ts-expect-error A column cannot take the name of another.
+        t.renameColumn("name", "label"),
+      ),
+    ).toThrow("Column item.label already exists.");
+    expect(() =>
+      base().alterTable("item", (t) =>
+        // @ts-expect-error ID columns keep their names.
+        t.renameColumn("id", "key"),
+      ),
+    ).toThrow("only regular columns can");
+    expect(() => base().alterTable("item", (t) => t.renameColumn("parentId", "ownerId"))).toThrow(
+      "only regular columns can",
+    );
+    expect(() =>
+      base().alterTable("item", (t) =>
+        t.addColumn("added", column("string").nullable()).renameColumn("added", "renamed"),
+      ),
+    ).toThrow("only columns of an existing table can be renamed");
+    expect(() =>
+      base().alterTable("item", (t) =>
+        t.createIndex("idx_label", ["label"]).dropIndex("idx_label"),
+      ),
+    ).toThrow("only indexes of an existing table can be dropped");
+    expect(() =>
+      new SchemaBuilder("added").addTable("item", (t) =>
+        t
+          .addColumn("id", idColumn())
+          .addColumn("name", column("string"))
+          .renameColumn("name", "title"),
+      ),
+    ).toThrow("only columns of an existing table can be renamed");
+  });
+});
+
 describe("idColumn", () => {
   it("should create a table with an id column", () => {
     const idCol = idColumn();
