@@ -1,4 +1,5 @@
 import { createStaticFileCollection } from "../../file-collection/create-static-file-collection";
+import type { FileCollection } from "../../file-collection/file-collection";
 import { SYSTEM_AUTOMATION_CONTENT } from "./system-automations";
 
 const SYSTEM_README = `# Backoffice System Filesystem
@@ -18,4 +19,7 @@ export const SYSTEM_FILE_CONTENT = {
   ...SYSTEM_AUTOMATION_CONTENT,
 } satisfies Record<string, string | Uint8Array>;
 
-export const systemFileCollection = createStaticFileCollection(SYSTEM_FILE_CONTENT);
+/** Built per execution, like the static collection, so module evaluation stays cheap. */
+export function createBackofficeSystemFileCollection(): FileCollection {
+  return createStaticFileCollection(SYSTEM_FILE_CONTENT);
+}

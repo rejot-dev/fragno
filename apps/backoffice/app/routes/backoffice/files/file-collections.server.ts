@@ -6,7 +6,7 @@ import type { FilesExplorerSource } from "@/components/backoffice/files-explorer
 import { createUploadFileCollection } from "@/file-collection/create-upload-file-collection";
 import type { FileCollection } from "@/file-collection/file-collection";
 import { createBackofficeStaticFileCollection } from "@/files/content/static";
-import { systemFileCollection } from "@/files/content/system";
+import { createBackofficeSystemFileCollection } from "@/files/content/system";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { UPLOAD_PROVIDER_DATABASE } from "@/fragno/upload";
 import { createUploadRouteCaller } from "@/fragno/upload-server";
@@ -58,7 +58,7 @@ export async function createFilesOverviewCollections({
       rootKind: "static",
       readOnly: true,
       persistence: "persistent",
-      collection: systemFileCollection,
+      collection: createBackofficeSystemFileCollection(),
     });
   }
 

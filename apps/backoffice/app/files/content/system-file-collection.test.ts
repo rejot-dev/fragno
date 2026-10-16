@@ -1,9 +1,10 @@
 import { describe, expect, test } from "vitest";
 
-import { SYSTEM_FILE_CONTENT, systemFileCollection } from "./system";
+import { createBackofficeSystemFileCollection, SYSTEM_FILE_CONTENT } from "./system";
 
 describe("Backoffice system file collection", () => {
   test("exposes system files as a static collection", async () => {
+    const systemFileCollection = createBackofficeSystemFileCollection();
     const tree = await systemFileCollection.getTree();
     expect(tree.entries.map((entry) => entry.path)).toEqual(
       expect.arrayContaining(["README.md", "automations"]),

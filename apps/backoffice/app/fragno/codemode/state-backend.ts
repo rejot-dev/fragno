@@ -31,7 +31,7 @@ import type {
   FileTreeEntry,
 } from "@/file-collection/file-collection";
 import { inferFileContentType } from "@/file-collection/file-content-type";
-import { systemFileCollection } from "@/files/content/system";
+import { createBackofficeSystemFileCollection } from "@/files/content/system";
 import { UPLOAD_PROVIDER_DATABASE } from "@/fragno/upload";
 import { createUploadRouteCaller, type UploadRouteCaller } from "@/fragno/upload-server";
 
@@ -203,7 +203,7 @@ export const createBackofficeSystemStateBackend = (input: {
   new SystemStaticStateBackend({
     system: {
       mountPoint: "/system",
-      collection: input.systemFileCollection ?? systemFileCollection,
+      collection: input.systemFileCollection ?? createBackofficeSystemFileCollection(),
     },
     static: { mountPoint: STATIC_MOUNT_POINT, collection: input.staticFileCollection },
   });
