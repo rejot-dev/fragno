@@ -90,6 +90,8 @@ function applyTableSubOperations(state: TableState, operations: TableSubOperatio
         columns: [...subOp.columns],
         unique: subOp.unique,
       };
+    } else if (subOp.type === "drop-index") {
+      delete state.indexes[subOp.name];
     } else if (subOp.type === "add-foreign-key") {
       state.foreignKeys.push({
         name: subOp.name,
@@ -348,6 +350,21 @@ export function generateMigrationFromSchema(
       const columnOps: ColumnOperation[] = [];
       const tableState = tableStates.get(op.tableName);
 
+      // Dropped first: a table rebuild below must not restore them, and an index of the same
+      // name may be added again afterwards.
+      const droppedIndexes = new Set<string>();
+      for (const subOp of op.operations) {
+        if (subOp.type === "drop-index") {
+          droppedIndexes.add(subOp.name);
+          migrationOperations.push({
+            type: "drop-index",
+            table: op.tableName,
+            name: subOp.name,
+            unique: subOp.unique,
+          });
+        }
+      }
+
       for (const subOp of op.operations) {
         if (subOp.type === "add-column") {
           columnOps.push({
@@ -400,6 +417,9 @@ export function generateMigrationFromSchema(
               ),
               copyColumns: buildCopyColumns(tableState.columnOrder, op.operations),
               indexes: Object.values(tableState.indexes).flatMap((idx) => {
+                if (droppedIndexes.has(idx.name)) {
+                  return [];
+                }
                 const columns = applyRenameDropToColumnList(idx.columns, op.operations);
                 if (!columns) {
                   return [];

@@ -1,4 +1,3 @@
-import { generateMigrationFromSchema } from "@fragno-dev/db/client";
 import type { AnyColumn, AnySchema, AnyTable } from "@fragno-dev/db/schema";
 import { FragnoId, FragnoReference, getTableRelations } from "@fragno-dev/db/schema";
 import { openDB, type IDBPDatabase, type IDBPObjectStore, type IDBPTransaction } from "idb";
@@ -599,27 +598,19 @@ const cursorKeysRegistryKey = (endpointName: string) => `${endpointName}::cursor
 const seqKey = (endpointName: string, schema: string, table: string) =>
   `${endpointName}::seq::${schema}::${table}`;
 
-const buildIndexDefinitions = (schemas: AnySchema[]): IndexDefinition[] => {
-  const definitions: IndexDefinition[] = [];
-
-  for (const schema of schemas) {
-    const operations = generateMigrationFromSchema(schema, 0, schema.version);
-    for (const op of operations) {
-      if (op.type !== "add-index") {
-        continue;
-      }
-      definitions.push({
-        name: op.name,
+// The schema's current indexes, after any that were dropped or had columns renamed.
+const buildIndexDefinitions = (schemas: AnySchema[]): IndexDefinition[] =>
+  schemas.flatMap((schema) =>
+    Object.values(schema.tables).flatMap((table) =>
+      Object.values(table.indexes).map((index) => ({
+        name: index.name,
         schema: schema.name,
-        table: op.table,
-        columns: op.columns,
-        unique: op.unique,
-      });
-    }
-  }
-
-  return definitions;
-};
+        table: table.name,
+        columns: [...index.columnNames],
+        unique: index.unique,
+      })),
+    ),
+  );
 
 const buildSchemaFingerprint = (schemas: AnySchema[], indexes: IndexDefinition[]): string => {
   const payload = {
