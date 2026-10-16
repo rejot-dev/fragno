@@ -581,6 +581,8 @@ type AuthSignUpInput = {
   email: string;
   password?: string;
   captureSessionCookieAs?: string;
+  // Session cookies are origin-bound: plain-HTTP origins get insecure cookie names.
+  origin?: string;
 };
 type AuthCreateOrganizationInput<TVars extends ScenarioVars> = {
   cookie: ScenarioValue<TVars, string>;
@@ -2090,12 +2092,13 @@ const scenarioAuthRequest = (
   ctx: BackofficeScenarioContext,
   path: string,
   input: { cookie?: string; body?: unknown } = {},
+  origin = "https://backoffice.example",
 ) =>
   ctx.runtime.objects.auth.singleton().http.fetch(
-    new Request(`https://backoffice.example/api/auth${path}`, {
+    new Request(`${origin}/api/auth${path}`, {
       method: input.body === undefined ? "GET" : "POST",
       headers: {
-        origin: "https://backoffice.example",
+        origin,
         ...(input.cookie ? { cookie: input.cookie } : {}),
         ...(input.body === undefined ? {} : { "content-type": "application/json" }),
       },
@@ -2448,15 +2451,20 @@ const buildStepBuilders = <
             throw new Error("Scenario sign-up invitation URL is missing its code.");
           }
 
-          const response = await scenarioAuthRequest(ctx, "/sign-up/email", {
-            body: {
-              name: input.email.split("@", 1)[0] || input.email,
-              email: input.email,
-              password: input.password ?? "password123",
-              invitationId: invitation.invitationId,
-              invitationCode,
+          const response = await scenarioAuthRequest(
+            ctx,
+            "/sign-up/email",
+            {
+              body: {
+                name: input.email.split("@", 1)[0] || input.email,
+                email: input.email,
+                password: input.password ?? "password123",
+                invitationId: invitation.invitationId,
+                invitationCode,
+              },
             },
-          });
+            input.origin,
+          );
           if (!response.ok) {
             throw new Error(`Auth sign-up failed (${response.status}): ${await response.text()}`);
           }

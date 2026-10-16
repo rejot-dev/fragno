@@ -15,7 +15,7 @@ import {
 } from "./backoffice-user-token-grant";
 
 export function createBackofficeTokenPlugin(input: {
-  isDevelopment: boolean;
+  secureCookies: boolean;
   resolveBackofficeUserTokenGrant: ResolveBackofficeUserTokenGrant;
 }): BetterAuthPlugin {
   return {
@@ -34,9 +34,9 @@ export function createBackofficeTokenPlugin(input: {
           }
 
           deleteSessionCookie(context);
-          for (const isDevelopmentCookie of [true, false]) {
-            context.setCookie(backofficeAccessTokenCookieName(isDevelopmentCookie), "", {
-              ...backofficeAccessTokenCookieAttributes(isDevelopmentCookie),
+          for (const secure of [false, true]) {
+            context.setCookie(backofficeAccessTokenCookieName(secure), "", {
+              ...backofficeAccessTokenCookieAttributes(secure),
               maxAge: 0,
             });
           }
@@ -77,14 +77,14 @@ export function createBackofficeTokenPlugin(input: {
             ...grant.authority,
             scopeRestriction: null,
           });
-          context.setCookie(backofficeAccessTokenCookieName(!input.isDevelopment), "", {
-            ...backofficeAccessTokenCookieAttributes(!input.isDevelopment),
+          context.setCookie(backofficeAccessTokenCookieName(!input.secureCookies), "", {
+            ...backofficeAccessTokenCookieAttributes(!input.secureCookies),
             maxAge: 0,
           });
           context.setCookie(
-            backofficeAccessTokenCookieName(input.isDevelopment),
+            backofficeAccessTokenCookieName(input.secureCookies),
             issued.token,
-            backofficeAccessTokenCookieAttributes(input.isDevelopment),
+            backofficeAccessTokenCookieAttributes(input.secureCookies),
           );
 
           return context.json({

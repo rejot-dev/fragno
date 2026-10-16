@@ -21,7 +21,7 @@ export const ACCESS_TOKEN_AUDIENCE = "fragno-backoffice";
 export const BACKOFFICE_JWT_LIFETIME_SECONDS = 15 * 60;
 
 // These are public cookie names, not credentials; the cookie values remain HTTP-only.
-const DEVELOPMENT_COOKIE_NAME = "fragno-backoffice.access_token";
+const INSECURE_COOKIE_NAME = "fragno-backoffice.access_token";
 const HOST_COOKIE_NAME = "__Host-fragno-backoffice.access_token";
 
 export const backofficeJwtPayloadSchema = z.object({
@@ -104,22 +104,23 @@ const betterAuthJwksSchema = z.object({
   ),
 });
 
-export const backofficeAccessTokenCookieName = (isDevelopment: boolean): string =>
-  isDevelopment ? DEVELOPMENT_COOKIE_NAME : HOST_COOKIE_NAME;
+// Plain-HTTP origins (local dev and preview) cannot keep `Secure` or `__Host-` cookies in Safari.
+export const backofficeAccessTokenCookieName = (secure: boolean): string =>
+  secure ? HOST_COOKIE_NAME : INSECURE_COOKIE_NAME;
 
-export const backofficeAccessTokenCookieAttributes = (isDevelopment: boolean) => ({
+export const backofficeAccessTokenCookieAttributes = (secure: boolean) => ({
   httpOnly: true,
-  secure: !isDevelopment,
+  secure,
   sameSite: "lax" as const,
   path: "/",
   maxAge: BACKOFFICE_JWT_LIFETIME_SECONDS,
 });
 
 export const expiredBackofficeAccessTokenCookieHeaders = (): string[] =>
-  [true, false].map((isDevelopment) => {
-    const attributes = backofficeAccessTokenCookieAttributes(isDevelopment);
+  [false, true].map((secure) => {
+    const attributes = backofficeAccessTokenCookieAttributes(secure);
     return [
-      `${backofficeAccessTokenCookieName(isDevelopment)}=`,
+      `${backofficeAccessTokenCookieName(secure)}=`,
       `Path=${attributes.path}`,
       "Max-Age=0",
       "HttpOnly",
@@ -135,7 +136,7 @@ export const readBackofficeAccessTokenCookie = (cookieHeader: string | null): st
     return null;
   }
 
-  const acceptedNames = new Set([DEVELOPMENT_COOKIE_NAME, HOST_COOKIE_NAME]);
+  const acceptedNames = new Set([INSECURE_COOKIE_NAME, HOST_COOKIE_NAME]);
   for (const cookie of cookieHeader.split(";")) {
     const separator = cookie.indexOf("=");
     if (separator === -1) {

@@ -98,9 +98,9 @@ function authRequest(
   );
 }
 
-async function createClient(ctx: BackofficeScenarioContext) {
+async function createClient(ctx: BackofficeScenarioContext, sessionOrigin = origin) {
   assert(typeof ctx.vars.session === "string");
-  const session = await authRequest(ctx, "/get-session", ctx.vars.session);
+  const session = await authRequest(ctx, "/get-session", ctx.vars.session, null, sessionOrigin);
   const user = z.object({ user: z.object({ id: z.string() }) }).parse(await session.json()).user;
   await ctx.runtime.objects.auth
     .singleton()
@@ -193,7 +193,10 @@ async function exchangeCode(
   );
 }
 
-async function runConsentScenario(check: (ctx: BackofficeScenarioContext) => Promise<void>) {
+async function runConsentScenario(
+  check: (ctx: BackofficeScenarioContext) => Promise<void>,
+  sessionOrigin = origin,
+) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "backoffice-consent-"));
   try {
     await runBackofficeScenario(
@@ -207,10 +210,12 @@ async function runConsentScenario(check: (ctx: BackofficeScenarioContext) => Pro
           when.auth.signUp({
             email: "consent-owner@example.test",
             captureSessionCookieAs: "session",
+            origin: sessionOrigin,
           }),
           when.auth.signUp({
             email: "other-user@example.test",
             captureSessionCookieAs: "otherSession",
+            origin: sessionOrigin,
           }),
           then.assert("consent state reflects real approval and revocation", check),
         ],
@@ -609,7 +614,7 @@ test.each(["http://localhost:5173", "http://127.0.0.1:5173"])(
       assert.equal(decodeJwt(refreshedToken).iss, requestOrigin);
       const refreshedExecution = await exchangeExecution(refreshedToken);
       assert.equal(refreshedExecution.status, 200, await refreshedExecution.clone().text());
-      const client = await createClient(ctx);
+      const client = await createClient(ctx, requestOrigin);
       const login = await consentRequest(
         ctx,
         client.clientId,
@@ -669,7 +674,7 @@ test.each(["http://localhost:5173", "http://127.0.0.1:5173"])(
         z.object({ message: z.string() }).parse(await forbidden.json()).message,
         "Backoffice execution OAuth consent is missing or has been revoked.",
       );
-    });
+    }, requestOrigin);
   },
 );
 

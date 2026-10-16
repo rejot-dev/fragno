@@ -64,7 +64,11 @@ for (const origin of ["http://localhost:5173", "http://127.0.0.1:5173"]) {
         env: { AUTH_EMAIL_VERIFICATION_ENABLED: "false" },
         vars: () => ({ cookie: "" }),
         steps: ({ when, then }) => [
-          when.auth.signUp({ email: "local-oauth@example.com", captureSessionCookieAs: "cookie" }),
+          when.auth.signUp({
+            email: "local-oauth@example.com",
+            captureSessionCookieAs: "cookie",
+            origin,
+          }),
           then.assert(
             "approved local device token exchanges without weakening audience verification",
             async ({ runtime, vars }) => {

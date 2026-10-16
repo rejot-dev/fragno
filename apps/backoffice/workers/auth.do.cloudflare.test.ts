@@ -79,7 +79,7 @@ describe("Better Auth Durable Object SQLite", () => {
       organization: { id: organizationId },
     });
     const accessTokenCookie = cookieHeader(tokenResponse);
-    expect(accessTokenCookie).toContain(`${backofficeAccessTokenCookieName(false)}=`);
+    expect(accessTokenCookie).toContain(`${backofficeAccessTokenCookieName(true)}=`);
 
     const verification = await verifyBackofficeJwtRequest(
       new Request("https://backoffice.example/api/backoffice/me", {

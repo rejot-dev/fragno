@@ -88,7 +88,7 @@ describe("Backoffice request authentication", () => {
       requirePrincipalForRequest(
         new Request("https://backoffice.example/private", {
           headers: {
-            cookie: `${backofficeAccessTokenCookieName(false)}=${token}; better-auth.session_token=session`,
+            cookie: `${backofficeAccessTokenCookieName(true)}=${token}; better-auth.session_token=session`,
           },
         }),
       ),
@@ -104,7 +104,7 @@ describe("Backoffice request authentication", () => {
     const request = new Request("https://backoffice.example/private", {
       headers: {
         authorization: "Basic opaque-session",
-        cookie: `${backofficeAccessTokenCookieName(false)}=valid-looking-cookie`,
+        cookie: `${backofficeAccessTokenCookieName(true)}=valid-looking-cookie`,
       },
     });
     expect(resolveBackofficeJwtTransport(request)).toEqual({ ok: false, reason: "invalid" });
@@ -137,7 +137,7 @@ describe("Backoffice request authentication", () => {
 
     const authorization = await authorizePrincipalForRequest(
       new Request("https://backoffice.example/private", {
-        headers: { cookie: `${backofficeAccessTokenCookieName(false)}=${token}` },
+        headers: { cookie: `${backofficeAccessTokenCookieName(true)}=${token}` },
       }),
     );
 
@@ -157,7 +157,7 @@ describe("Backoffice request authentication", () => {
         headers: { authorization: `Bearer ${token}` },
       }),
       new Request("https://backoffice.example/private", {
-        headers: { cookie: `${backofficeAccessTokenCookieName(false)}=${token}` },
+        headers: { cookie: `${backofficeAccessTokenCookieName(true)}=${token}` },
       }),
     ];
 
