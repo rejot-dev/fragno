@@ -15,10 +15,12 @@ import {
 
 import { useLiveQuery } from "@tanstack/react-db";
 
-import { backofficeRouteScopeFromResolvedScope } from "@/backoffice-runtime/resolved-scope";
+import {
+  backofficeRouteScopeFromResolvedScope,
+  backofficeRuntimeScopeFromResolvedScope,
+} from "@/backoffice-runtime/resolved-scope";
 import { useCurrentBackofficeContext } from "@/components/backoffice/current-context";
 import { backofficePageBodyClassName } from "@/components/backoffice/page-body";
-import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import {
   describeAutomationCollectionSource,
   getAutomationBrowserDatabase,
@@ -26,20 +28,18 @@ import {
 } from "@/fragno/automation/tanstack/browser-database";
 import { useAutomationRoutes } from "@/fragno/automation/tanstack/use-automation-routes";
 import { runtimeToolWorkflowCatalog } from "@/fragno/runtime-tools/workflow-catalog.server";
+import {
+  getBackofficeShellRequest,
+  requireRouteScope,
+  requireScopeSelection,
+} from "@/layouts/backoffice-shell-request.server";
 
 import { fetchPiManagerAgents, type PiManagerAgentsResult } from "../agents/data";
-import { buildBackofficeLoginPath } from "../auth-navigation";
 import {
   createAutomationProject,
   loadAutomationScriptSource,
-  lookupAutomationProject,
   toExternalId,
 } from "../automations/data.server";
-import {
-  automationRuntimeScopeFromRouteParams,
-  resolveAutomationScopeSelection,
-} from "../automations/scope";
-import { requireAutomationRouteExecution } from "../automations/scope.server";
 import {
   automationWorkflowRunsFromRecords,
   workflowRunRecordsQuery,
@@ -62,41 +62,25 @@ const pageClassName = `${backofficePageBodyClassName} flex flex-col gap-4`;
 
 type ProjectActionData = { ok: false; message: string };
 
-export async function loader({ request, params, context, url }: Route.LoaderArgs) {
-  const me = await findBackofficeMe(request, context);
-  if (!me?.user) {
-    throw redirect(buildBackofficeLoginPath(`${url.pathname}${url.search}`));
-  }
-
-  const organizations = me.organizations.map((entry) => entry.organization);
-  const runtimeScope = automationRuntimeScopeFromRouteParams(params, organizations);
-  const projectLookup =
-    runtimeScope.kind === "project"
-      ? await lookupAutomationProject(context, runtimeScope.orgId, runtimeScope.projectId)
-      : null;
-  if (projectLookup?.status === "error") {
-    throw new Response(projectLookup.message, { status: 502 });
-  }
-  if (projectLookup?.status === "not-found") {
-    throw new Response("Not Found", { status: 404 });
-  }
-
+export async function loader({ request, context, url }: Route.LoaderArgs) {
+  const selectedScope = await requireScopeSelection(context);
   const workflowScriptId = url.searchParams.get(WORKFLOW_SCRIPT_PARAM)?.trim() ?? "";
   const [agents, workflowSource] = await Promise.all([
-    fetchDashboardPiAgents(request, context, runtimeScope),
+    fetchDashboardPiAgents(
+      request,
+      context,
+      backofficeRuntimeScopeFromResolvedScope(selectedScope),
+    ),
     workflowScriptId
-      ? requireAutomationRouteExecution(request, context, params).then((execution) =>
-          loadAutomationScriptSource({ context, execution, scriptId: workflowScriptId }),
-        )
+      ? loadAutomationScriptSource({
+          context,
+          execution: requireRouteScope(context).execution,
+          scriptId: workflowScriptId,
+        })
       : EMPTY_WORKFLOW_SOURCE,
   ]);
   return {
-    selectedScope: resolveAutomationScopeSelection({
-      params,
-      organizations,
-      project: projectLookup?.status === "found" ? projectLookup.project : null,
-      user: me.user,
-    }),
+    selectedScope,
     agents,
     workflowSource,
     runtimeToolCatalog: runtimeToolWorkflowCatalog,
@@ -119,19 +103,15 @@ export function shouldRevalidate({
   );
 }
 
-export async function action({ request, params, context, url }: Route.ActionArgs) {
+export async function action({ request, context }: Route.ActionArgs) {
   const formData = await request.formData();
   if (formData.get("intent") !== "create-project") {
     return { ok: false, message: "Unknown dashboard action." } satisfies ProjectActionData;
   }
 
-  const me = await findBackofficeMe(request, context);
-  if (!me?.user) {
-    throw redirect(buildBackofficeLoginPath(`${url.pathname}${url.search}`));
-  }
-
+  const { me } = getBackofficeShellRequest(context);
   const organizations = me.organizations.map((entry) => entry.organization);
-  const scope = automationRuntimeScopeFromRouteParams(params, organizations);
+  const scope = requireRouteScope(context).execution.scope;
   const organization =
     scope.kind === "org" || scope.kind === "project"
       ? organizations.find(({ id }) => id === scope.orgId)

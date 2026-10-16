@@ -4,7 +4,10 @@ import { useLoaderData, useOutletContext } from "react-router";
 
 import { and, eq, useLiveQuery } from "@tanstack/react-db";
 
-import type { BackofficeScopeSelection } from "@/backoffice-runtime/resolved-scope";
+import {
+  backofficeRuntimeScopeFromResolvedScope,
+  type BackofficeScopeSelection,
+} from "@/backoffice-runtime/resolved-scope";
 import { useCurrentBackofficeContext } from "@/components/backoffice/current-context";
 import type { AutomationCollectionSourceState } from "@/components/backoffice/current-context-state";
 import {
@@ -25,21 +28,15 @@ import {
   describeUploadCollectionSource,
   getUploadBrowserDatabase,
 } from "@/fragno/upload/tanstack/browser-database";
+import { requireScopeSelection } from "@/layouts/backoffice-shell-request.server";
 
 import type { Route } from "./+types/explorer";
-import {
-  loadFilesExplorerData,
-  resolveAuthorizedFilesRouteScope,
-  type FilesExplorerSourceSnapshot,
-} from "./data";
+import { loadFilesExplorerData, type FilesExplorerSourceSnapshot } from "./data";
 import type { FilesLayoutContext } from "./layout-context";
 import { filesDownloadPath, filesExplorerPath } from "./scope";
 
-export async function loader({ request, params, context, url }: Route.LoaderArgs) {
-  const scope = await resolveAuthorizedFilesRouteScope({ request, context, params, url });
-  if (scope instanceof Response) {
-    return scope;
-  }
+export async function loader({ request, context }: Route.LoaderArgs) {
+  const scope = backofficeRuntimeScopeFromResolvedScope(await requireScopeSelection(context));
   return loadFilesExplorerData({ request, context, scope });
 }
 

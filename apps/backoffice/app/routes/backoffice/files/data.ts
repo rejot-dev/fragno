@@ -4,23 +4,15 @@ import {
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { RouterContextProvider } from "react-router";
 
-import { backofficeRuntimeScopeFromResolvedScope } from "@/backoffice-runtime/resolved-scope";
 import type {
   FilesExplorerSelectedContent,
   FilesExplorerSource,
 } from "@/components/backoffice/files-explorer";
 import type { FilesExplorerSearchGroup } from "@/components/backoffice/files-explorer/view";
 import type { FileTreeEntry } from "@/file-collection/file-collection";
-import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import type { UploadCollectionSource } from "@/fragno/upload/tanstack/browser-database";
 import { fetchUploadAdapterIdentity } from "@/fragno/upload/tanstack/server";
 
-import { buildBackofficeLoginPath } from "../auth-navigation";
-import { lookupAutomationProject } from "../automations/data.server";
-import {
-  automationRuntimeScopeFromRouteParams,
-  resolveAutomationScopeSelection,
-} from "../automations/scope";
 import {
   createFilesOverviewCollections,
   type FilesOverviewCollection,
@@ -46,48 +38,6 @@ type FilesExplorerLoaderData = {
   searchQuery: string;
   searchGroups: FilesExplorerSearchGroup[];
 };
-
-export async function resolveAuthorizedFilesRouteScope({
-  request,
-  context,
-  params,
-  url,
-}: {
-  request: Request;
-  context: Readonly<RouterContextProvider>;
-  params: { scopeKind?: string; scopeId?: string };
-  url: URL;
-}): Promise<BackofficeContextScope | Response> {
-  const returnTo = `${url.pathname}${url.search}`;
-  const me = await findBackofficeMe(request, context);
-  if (!me?.user) {
-    return Response.redirect(new URL(buildBackofficeLoginPath(returnTo), request.url), 302);
-  }
-
-  const parsedScope = automationRuntimeScopeFromRouteParams(
-    params,
-    me.organizations.map(({ organization }) => organization),
-  );
-  const projectLookup =
-    parsedScope.kind === "project"
-      ? await lookupAutomationProject(context, parsedScope.orgId, parsedScope.projectId)
-      : null;
-  if (projectLookup?.status === "error") {
-    throw new Response(projectLookup.message, { status: 502 });
-  }
-  if (projectLookup?.status === "not-found") {
-    throw new Response("Not Found", { status: 404 });
-  }
-
-  return backofficeRuntimeScopeFromResolvedScope(
-    resolveAutomationScopeSelection({
-      params,
-      organizations: me.organizations.map((entry) => entry.organization),
-      project: projectLookup?.status === "found" ? projectLookup.project : null,
-      user: me.user,
-    }),
-  );
-}
 
 export async function loadFilesExplorerData({
   request,

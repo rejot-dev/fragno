@@ -19,8 +19,8 @@ export function meta() {
   ];
 }
 
-export async function loader({ request, params, context }: Route.LoaderArgs) {
-  const { listSandboxes } = await requireScopedSandboxRuntime({ request, params, context });
+export async function loader({ context }: Route.LoaderArgs) {
+  const { listSandboxes } = await requireScopedSandboxRuntime(context);
   try {
     return { status: "success", sandboxes: await listSandboxes() } satisfies SandboxListLoad;
   } catch (error) {

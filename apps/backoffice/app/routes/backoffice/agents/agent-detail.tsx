@@ -14,7 +14,6 @@ import type { ConversationView, EntryRecord } from "@earendil-works/pi-durable";
 import { eq, inArray, useLiveQuery } from "@tanstack/react-db";
 
 import { useCurrentBackofficeContext } from "@/components/backoffice/current-context";
-import { requireBackofficeMe } from "@/fragno/auth/auth-server";
 import { CODEMODE_WORKFLOW } from "@/fragno/automation/engine/codemode-invocation";
 import {
   describeAutomationCollectionSource,
@@ -22,11 +21,14 @@ import {
   type AutomationBrowserCollections,
 } from "@/fragno/automation/tanstack/browser-database";
 import type { PiAgentCompactionStatus } from "@/fragno/pi/agent/pi-agent-contract";
+import {
+  getBackofficeShellRequest,
+  requireRouteScope,
+} from "@/layouts/backoffice-shell-request.server";
 
 import type { Route } from "./+types/agent-detail";
 import { formatPiAgentName } from "./agent-name";
 import { AgentPermissions } from "./agent-permissions";
-import { resolvePiAgentRouteScope } from "./agent-scope.server";
 import { AgentStartComposer } from "./agent-start-composer";
 import type { PiAgentsOutletContext } from "./agent-types";
 import { AgentsHeader } from "./agents-header";
@@ -81,7 +83,7 @@ type SessionWorkflowCollectionsState = {
 
 export async function loader(args: Route.LoaderArgs) {
   const { request, params, context } = args;
-  const scope = await resolvePiAgentRouteScope(request, context, params);
+  const { scope } = requireRouteScope(context).execution;
   const result = await fetchPiManagerAgentDetail(request, context, scope, params.agentName);
   if (!result.detail) {
     throw Response.json(result.agentError, { status: result.status ?? 500 });
@@ -97,7 +99,7 @@ export async function loader(args: Route.LoaderArgs) {
 export async function action(args: Route.ActionArgs): Promise<PiAgentActionData> {
   const { request, params, context } = args;
   const agentName = params.agentName;
-  const scope = await resolvePiAgentRouteScope(request, context, params);
+  const { scope } = requireRouteScope(context).execution;
   const formData = await request.formData();
   const intent = formData.get("intent");
 
@@ -123,7 +125,7 @@ export async function action(args: Route.ActionArgs): Promise<PiAgentActionData>
     return { ok: false, intent, error: "Write a message before sending." };
   }
 
-  const me = await requireBackofficeMe(request, context);
+  const { me } = getBackofficeShellRequest(context);
   // An idle agent starts a turn. A busy one takes your message at its next tool boundary when the
   // running turn is yours, and after it otherwise.
   const result = await submitPiManagerPrompt(request, context, scope, agentName, {

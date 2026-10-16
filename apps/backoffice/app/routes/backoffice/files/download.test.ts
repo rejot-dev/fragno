@@ -1,30 +1,26 @@
 import { beforeEach, describe, expect, test, vi, assert } from "vitest";
 
+import { RouterContextProvider } from "react-router";
+
 import { createStaticFileCollection } from "@/file-collection/create-static-file-collection";
+import type { BackofficeMeData } from "@/fragno/auth/contracts";
+import { provideBackofficeShellRequest } from "@/layouts/backoffice-layout.test-support";
 
-const { findBackofficeMeMock, createFilesOverviewCollectionsMock } = vi.hoisted(() => ({
-  findBackofficeMeMock: vi.fn(),
+const { createFilesOverviewCollectionsMock } = vi.hoisted(() => ({
   createFilesOverviewCollectionsMock: vi.fn(),
-}));
-
-vi.mock("@/fragno/auth/auth-server", () => ({
-  findBackofficeMe: findBackofficeMeMock,
 }));
 
 vi.mock("./file-collections.server", () => ({
   createFilesOverviewCollections: createFilesOverviewCollectionsMock,
 }));
 
-import { buildBackofficeLoginPath } from "../auth-navigation";
 import { loader } from "./download";
 
 const DOWNLOAD_PATH = "/backoffice/files/org/fragno/download";
 
 describe("backoffice files download route", () => {
   beforeEach(() => {
-    findBackofficeMeMock.mockReset();
     createFilesOverviewCollectionsMock.mockReset();
-    findBackofficeMeMock.mockResolvedValue(createAuthMe());
     createFilesOverviewCollectionsMock.mockResolvedValue([
       {
         rootPath: "/static",
@@ -35,17 +31,6 @@ describe("backoffice files download route", () => {
         }),
       },
     ]);
-  });
-
-  test("redirects anonymous users to login", async () => {
-    findBackofficeMeMock.mockResolvedValue(null);
-    const returnTo = `${DOWNLOAD_PATH}?path=%2Fstatic%2FSYSTEM.md`;
-    const response = toResponse(await loader(createLoaderArgs(`https://example.com${returnTo}`)));
-
-    assert(response.status === 302);
-    expect(response.headers.get("Location")).toBe(
-      `https://example.com${buildBackofficeLoginPath(returnTo)}`,
-    );
   });
 
   test("streams a selected collection file as an attachment", async () => {
@@ -97,24 +82,23 @@ describe("backoffice files download route", () => {
       loader(createLoaderArgs(`https://example.com${DOWNLOAD_PATH}?path=%2Fstatic%2Fmissing.txt`)),
     ).rejects.toMatchObject({ status: 404 });
   });
-
-  test("rejects organizations unavailable to the current user", async () => {
-    findBackofficeMeMock.mockResolvedValue({ ...createAuthMe(), organizations: [] });
-
-    await expect(
-      loader(createLoaderArgs(`https://example.com${DOWNLOAD_PATH}?path=%2Fstatic%2FSYSTEM.md`)),
-    ).rejects.toMatchObject({ status: 404 });
-    expect(createFilesOverviewCollectionsMock).not.toHaveBeenCalled();
-  });
 });
 
-const createLoaderArgs = (url: string) =>
-  ({
+const fragno = { id: "org_123", slug: "fragno", name: "Fragno" };
+
+const createLoaderArgs = (url: string) => {
+  const context = new RouterContextProvider();
+  provideBackofficeShellRequest(context, {
+    me: createAuthMe() as unknown as BackofficeMeData,
+    routeScope: { kind: "org", organization: fragno } as never,
+  });
+  return {
     request: new Request(url),
     url: new URL(url),
-    context: { get: () => ({ runtime: { objects: {}, config: {} } }) } as never,
+    context,
     params: { scopeKind: "org", scopeId: "fragno" },
-  }) as unknown as Parameters<typeof loader>[0];
+  } as unknown as Parameters<typeof loader>[0];
+};
 
 function toResponse(result: Awaited<ReturnType<typeof loader>>): Response {
   expect(result).toBeInstanceOf(Response);

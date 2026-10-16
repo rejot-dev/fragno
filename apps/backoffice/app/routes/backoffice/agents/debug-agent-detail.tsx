@@ -1,9 +1,5 @@
-import {
-  backofficeRuntimeScopeFromResolvedScope,
-  resolveBackofficeRouteScope,
-} from "@/backoffice-runtime/resolved-scope";
-import { requireBackofficeRouteScopeFromParams } from "@/backoffice-runtime/route-scope";
-import { requireBackofficeMe } from "@/fragno/auth/auth-server";
+import {} from "@/backoffice-runtime/resolved-scope";
+import { requireRouteScope } from "@/layouts/backoffice-shell-request.server";
 
 import type { Route } from "./+types/debug-agent-detail";
 import { formatPiAgentName } from "./agent-name";
@@ -42,19 +38,10 @@ function JsonPanel({ title, value }: { title: string; value: unknown }) {
 }
 
 export async function loader({ request, params, context }: Route.LoaderArgs) {
-  const me = await requireBackofficeMe(request, context);
-  const routeScope = requireBackofficeRouteScopeFromParams(params);
-  const resolvedScope = resolveBackofficeRouteScope(
-    routeScope,
-    me.organizations.map(({ organization }) => organization),
-  );
-  if (!resolvedScope) {
-    throw new Response("Not Found", { status: 404 });
-  }
   const result = await fetchPiManagerAgentDetail(
     request,
     context,
-    backofficeRuntimeScopeFromResolvedScope(resolvedScope),
+    requireRouteScope(context).execution.scope,
     params.agentName,
   );
   if (!result.detail) {

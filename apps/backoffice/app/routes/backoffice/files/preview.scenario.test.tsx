@@ -17,6 +17,7 @@ import { BackofficeUiRenderer } from "@/backoffice-ui/renderer";
 import { parseBackofficeUiResult } from "@/backoffice-ui/result";
 import { FileImageScopeProvider } from "@/components/backoffice/file-image";
 import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
+import { behindBackofficeLayout } from "@/layouts/backoffice-layout.test-support";
 import { action as uploadWorkspaceFile } from "@/routes/api/files-scoped-workspace";
 import { MarkdownText } from "@/routes/backoffice/agents/session-detail/message-content";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
@@ -28,10 +29,14 @@ import { InMemoryFormsObject } from "../../../../workers/forms.do";
 import { InMemoryOtpObject } from "../../../../workers/otp.do";
 import { InMemoryTelegramObject } from "../../../../workers/telegram.do";
 import { InMemoryUploadObject } from "../../../../workers/upload.do";
-import { loader as downloadFile } from "./download";
-import { loader as exploreFile } from "./explorer-path";
-import { loader as previewFile } from "./preview";
+import { loader as downloadLoader } from "./download";
+import { loader as explorerPathLoader } from "./explorer-path";
+import { loader as previewLoader } from "./preview";
 import { filesPreviewPath } from "./scope";
+
+const downloadFile = behindBackofficeLayout(downloadLoader);
+const exploreFile = behindBackofficeLayout(explorerPathLoader);
+const previewFile = behindBackofficeLayout(previewLoader);
 
 const scenarioObjects = {
   MCP: null,
@@ -303,7 +308,9 @@ test("private workspace images flow through session Markdown and generated UI wi
               });
             }
             const cookie = ctx.vars.cookie as string;
-            assert.equal((await requestPreview(imagePath, "org", "image-team", "")).status, 302);
+            await expect(requestPreview(imagePath, "org", "image-team", "")).rejects.toMatchObject({
+              status: 302,
+            });
             await expect(
               requestPreview(imagePath, "org", "private-team", cookie),
             ).rejects.toMatchObject({ status: 404 });

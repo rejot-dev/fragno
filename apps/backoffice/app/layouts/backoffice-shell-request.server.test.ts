@@ -130,15 +130,22 @@ describe("Backoffice shell request middleware", () => {
           organization: activeOrganization.organization,
           projectId: "project-1",
         },
-        runtimeScope: { kind: "project", orgId: "org-1", projectId: "project-1" },
-        execution: {
-          scope: { kind: "project", orgId: "org-1", projectId: "project-1" },
-          userAuthority: {
-            scopeRestriction: null,
-            kind: "verified-request-authority",
-            userId: "user-1",
-            organizationId: "org-1",
-            expiresAtEpochMs: expiresAt.getTime(),
+        route: {
+          status: "resolved",
+          resolvedScope: {
+            kind: "project",
+            organization: activeOrganization.organization,
+            projectId: "project-1",
+          },
+          execution: {
+            scope: { kind: "project", orgId: "org-1", projectId: "project-1" },
+            userAuthority: {
+              scopeRestriction: null,
+              kind: "verified-request-authority",
+              userId: "user-1",
+              organizationId: "org-1",
+              expiresAtEpochMs: expiresAt.getTime(),
+            },
           },
         },
         accessTokenExpiresAt: expiresAt,
@@ -205,20 +212,21 @@ describe("Backoffice shell request middleware", () => {
     expect(getPrincipal).not.toHaveBeenCalled();
   });
 
-  test("rejects forbidden scopes before descendant handlers run", async () => {
+  test("hides System scope from non-administrators so sections report it as not found", async () => {
     const request = new Request("https://backoffice.example/backoffice/dashboard/system/system");
-    const { context, getPrincipal } = createShellContext({ request });
-    const next = vi.fn(async () => new Response("descendant response"));
+    const { context } = createShellContext({ request });
+    const next = vi.fn(async () => {
+      expect(getBackofficeShellRequest(context)).toMatchObject({
+        resolvedScope: { kind: "org", organization: activeOrganization.organization },
+        route: { status: "not-found" },
+      });
+      return new Response("descendant response");
+    });
 
-    const result = await establishBackofficeShellRequest(
+    await establishBackofficeShellRequest(
       { request, context, params: { scopeKind: "system", scopeId: "system" } },
       next,
-    ).catch((error: unknown) => error);
-
-    assert(result instanceof Response);
-    assert.equal(result.status, 403);
-    assert.equal(await result.text(), "System context requires an admin user.");
-    expect(next).not.toHaveBeenCalled();
-    expect(getPrincipal).toHaveBeenCalledOnce();
+    );
+    expect(next).toHaveBeenCalledOnce();
   });
 });

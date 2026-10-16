@@ -1,48 +1,14 @@
-import { Outlet, redirect } from "react-router";
+import { Outlet } from "react-router";
 
 import { backofficeRuntimeScopeFromResolvedScope } from "@/backoffice-runtime/resolved-scope";
-import { findBackofficeMe } from "@/fragno/auth/auth-server";
+import { requireScopeSelection } from "@/layouts/backoffice-shell-request.server";
 
-import { buildBackofficeLoginPath } from "../auth-navigation";
-import { lookupAutomationProject } from "../automations/data.server";
-import {
-  automationRuntimeScopeFromRouteParams,
-  resolveAutomationScopeSelection,
-} from "../automations/scope";
 import type { Route } from "./+types/scope-layout";
 import type { FilesLayoutContext } from "./layout-context";
 import { FilesErrorBoundary } from "./shared";
 
-export async function loader({ request, params, context, url }: Route.LoaderArgs) {
-  const returnTo = `${url.pathname}${url.search}`;
-  const me = await findBackofficeMe(request, context);
-  if (!me?.user) {
-    throw redirect(buildBackofficeLoginPath(returnTo));
-  }
-
-  const organizations = me.organizations.map((entry) => entry.organization);
-  const parsedScope = automationRuntimeScopeFromRouteParams(params, organizations);
-  const projectLookup =
-    parsedScope.kind === "project"
-      ? await lookupAutomationProject(context, parsedScope.orgId, parsedScope.projectId)
-      : null;
-  if (projectLookup?.status === "error") {
-    throw new Response(projectLookup.message, { status: 502 });
-  }
-  if (projectLookup?.status === "not-found") {
-    throw new Response("Not Found", { status: 404 });
-  }
-
-  const selectedScope = resolveAutomationScopeSelection({
-    params,
-    organizations,
-    project: projectLookup?.status === "found" ? projectLookup.project : null,
-    user: me.user,
-  });
-  return {
-    origin: url.origin,
-    selectedScope,
-  };
+export async function loader({ context, url }: Route.LoaderArgs) {
+  return { origin: url.origin, selectedScope: await requireScopeSelection(context) };
 }
 
 export function meta({ loaderData }: Route.MetaArgs) {

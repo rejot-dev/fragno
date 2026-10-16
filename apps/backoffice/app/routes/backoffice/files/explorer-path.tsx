@@ -1,13 +1,13 @@
+import { backofficeRuntimeScopeFromResolvedScope } from "@/backoffice-runtime/resolved-scope";
+import { requireScopeSelection } from "@/layouts/backoffice-shell-request.server";
+
 import type { Route } from "./+types/explorer-path";
-import { loadFilesExplorerData, resolveAuthorizedFilesRouteScope } from "./data";
+import { loadFilesExplorerData } from "./data";
 
 export { default } from "./explorer";
 
-export async function loader({ request, params, context, url }: Route.LoaderArgs) {
-  const scope = await resolveAuthorizedFilesRouteScope({ request, context, params, url });
-  if (scope instanceof Response) {
-    return scope;
-  }
+export async function loader({ request, params, context }: Route.LoaderArgs) {
+  const scope = backofficeRuntimeScopeFromResolvedScope(await requireScopeSelection(context));
   return loadFilesExplorerData({
     request,
     context,

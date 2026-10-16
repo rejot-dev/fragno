@@ -2,35 +2,29 @@ import { ButtonLink } from "@fragno-private/design-system/button";
 import { useOutletContext } from "react-router";
 
 import { MarketplaceListingCard } from "@/components/marketplace/listing-card";
-import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import {
   decodeMarketplaceListingCursor,
   MarketplaceListingCursorError,
 } from "@/fragno/marketplace/pagination";
+import { requireRouteScope } from "@/layouts/backoffice-shell-request.server";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
-import { buildBackofficeLoginPath } from "../auth-navigation";
 import type { Route } from "./+types/browse-all";
 import { MarketplaceCatalogViewTabs } from "./catalog-view-tabs";
 import type { MarketplaceLayoutContext } from "./layout-context";
 import { loadMarketplaceListingRefs } from "./listing-route.server";
 import { marketplaceListingPath } from "./navigation";
-import { marketplaceFromRouteParams } from "./scope";
+import { marketplaceForCatalog } from "./scope";
 
 function marketplacePagePath(basePath: string, cursor: string): string {
   return `${basePath}?${new URLSearchParams({ cursor })}`;
 }
 
-export async function loader({ request, params, context, url }: Route.LoaderArgs) {
-  const me = await findBackofficeMe(request, context);
-  if (!me?.user) {
-    return Response.redirect(
-      new URL(buildBackofficeLoginPath(`${url.pathname}${url.search}`), request.url),
-      302,
-    );
-  }
-
-  const { catalog, marketplace: marketplaceScope } = marketplaceFromRouteParams(params, me);
+export async function loader({ params, context, url }: Route.LoaderArgs) {
+  const { catalog, marketplace: marketplaceScope } = marketplaceForCatalog(
+    requireRouteScope(context).execution.scope,
+    params.catalog,
+  );
   const cursor = url.searchParams.get("cursor")?.trim() || undefined;
   try {
     decodeMarketplaceListingCursor({ encodedCursor: cursor });

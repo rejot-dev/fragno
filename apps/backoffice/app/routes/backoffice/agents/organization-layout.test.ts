@@ -1,18 +1,14 @@
 import { assert, beforeEach, describe, expect, test, vi } from "vitest";
 
-const { fetchPiManagerAvailableModelsMock, requireBackofficeContextMock, requireBackofficeMeMock } =
-  vi.hoisted(() => ({
-    fetchPiManagerAvailableModelsMock: vi.fn(),
-    requireBackofficeContextMock: vi.fn(),
-    requireBackofficeMeMock: vi.fn(),
-  }));
+import { RouterContextProvider } from "react-router";
 
-vi.mock("@/fragno/auth/auth-server", () => ({
-  requireBackofficeMe: requireBackofficeMeMock,
+import type { BackofficeMeData } from "@/fragno/auth/contracts";
+import { provideBackofficeShellRequest } from "@/layouts/backoffice-layout.test-support";
+
+const { fetchPiManagerAvailableModelsMock } = vi.hoisted(() => ({
+  fetchPiManagerAvailableModelsMock: vi.fn(),
 }));
-vi.mock("@/fragno/auth/backoffice-principal.server", () => ({
-  requireBackofficeContext: requireBackofficeContextMock,
-}));
+
 vi.mock("./data", () => ({
   fetchPiManagerAvailableModels: fetchPiManagerAvailableModelsMock,
 }));
@@ -24,62 +20,56 @@ beforeEach(() => {
   fetchPiManagerAvailableModelsMock.mockResolvedValue([
     { provider: "faux", modelId: "faux-1", label: "Faux 1", contextWindow: 128_000 },
   ]);
-  requireBackofficeContextMock.mockReset();
-  requireBackofficeMeMock.mockReset();
 });
+
+const organization = {
+  id: "org-123",
+  slug: "wilcos-organization",
+  name: "Wilco's organization",
+};
+
+function layoutContext(
+  me: Pick<BackofficeMeData, "organizations" | "activeOrganization">,
+  routeScope: { kind: "system" } | { kind: "org"; organization: typeof organization },
+) {
+  const context = new RouterContextProvider();
+  provideBackofficeShellRequest(context, {
+    me: { user: { id: "user-1" }, ...me } as BackofficeMeData,
+    routeScope: routeScope as never,
+  });
+  return context;
+}
 
 describe("organization agents layout", () => {
   test("uses the active organization for system agent billing", async () => {
-    const organization = {
-      id: "org-123",
-      slug: "wilcos-organization",
-      name: "Wilco's organization",
-    };
-    requireBackofficeMeMock.mockResolvedValue({
-      user: { id: "user-1" },
-      organizations: [{ organization }],
-      activeOrganization: { organization },
-    });
-    requireBackofficeContextMock.mockResolvedValue({ scope: { kind: "system" } });
-
     const result = await loader({
       request: new Request("http://localhost:5173/backoffice/agents/system/system/agents"),
       params: { scopeKind: "system", scopeId: "system" },
-      context: {},
+      context: layoutContext(
+        { organizations: [{ organization }], activeOrganization: { organization } } as never,
+        { kind: "system" },
+      ),
     } as never);
 
     expect(result.billingOrganization).toEqual(organization);
   });
 
   test("uses the route organization for billing without requiring an active organization", async () => {
-    const organization = {
-      id: "org-123",
-      slug: "wilcos-organization",
-      name: "Wilco's organization",
-    };
-    requireBackofficeMeMock.mockResolvedValue({
-      user: { id: "user-1" },
-      organizations: [{ organization }],
-      activeOrganization: null,
-    });
-    requireBackofficeContextMock.mockResolvedValue({
-      scope: { kind: "org", orgId: organization.id },
-    });
-
     const result = await loader({
       request: new Request(
         "http://localhost:5173/backoffice/agents/org/wilcos-organization/agents",
       ),
       params: { scopeKind: "org", scopeId: organization.slug },
-      context: {},
+      context: layoutContext(
+        { organizations: [{ organization }], activeOrganization: null } as never,
+        {
+          kind: "org",
+          organization,
+        },
+      ),
     } as never);
 
     expect(result.billingOrganization).toEqual(organization);
-    expect(requireBackofficeContextMock).toHaveBeenCalledWith(
-      expect.any(Request),
-      expect.anything(),
-      { kind: "org", orgId: organization.id },
-    );
   });
 });
 

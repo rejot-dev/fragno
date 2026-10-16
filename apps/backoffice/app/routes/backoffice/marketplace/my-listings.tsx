@@ -5,7 +5,7 @@ import {
 import { Button, ButtonLink } from "@fragno-private/design-system/button";
 import { Form, Link } from "react-router";
 
-import { findBackofficeMe } from "@/fragno/auth/auth-server";
+import { backofficeRuntimeScopeFromResolvedScope } from "@/backoffice-runtime/resolved-scope";
 import {
   marketplaceListingStatusSchema,
   type MarketplaceListingStatus,
@@ -14,18 +14,13 @@ import {
   decodeMarketplaceOwnedListingCursor,
   MarketplaceListingCursorError,
 } from "@/fragno/marketplace/pagination";
+import { requireRoutableScopeSelection } from "@/layouts/backoffice-shell-request.server";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
-import { buildBackofficeLoginPath } from "../auth-navigation";
-import { lookupAutomationProject } from "../automations/data.server";
 import type { Route } from "./+types/my-listings";
 import { loadMarketplaceListingRefs } from "./listing-route.server";
 import { marketplaceListingManagePath, marketplaceListingPath } from "./navigation";
-import {
-  marketplaceCatalogForVisibility,
-  marketplaceRuntimeScopeFromRouteParams,
-  resolveMarketplaceScopeSelection,
-} from "./scope";
+import { marketplaceCatalogForVisibility } from "./scope";
 
 const updatedAtFormatter = new Intl.DateTimeFormat("en-US", {
   month: "short",
@@ -51,36 +46,9 @@ const minePath = (input: {
   return query ? `${input.basePath}?${query}` : input.basePath;
 };
 
-export async function loader({ request, params, context, url }: Route.LoaderArgs) {
-  const me = await findBackofficeMe(request, context);
-  if (!me?.user) {
-    return Response.redirect(
-      new URL(buildBackofficeLoginPath(`${url.pathname}${url.search}`), request.url),
-      302,
-    );
-  }
-
-  const routeScope = marketplaceRuntimeScopeFromRouteParams(
-    params,
-    me.organizations.map(({ organization }) => organization),
-  );
-  const organizations = me.organizations.map(({ organization }) => organization);
-  const projectLookup =
-    routeScope.kind === "project"
-      ? await lookupAutomationProject(context, routeScope.orgId, routeScope.projectId)
-      : null;
-  if (projectLookup?.status === "error") {
-    throw new Response(projectLookup.message, { status: 502 });
-  }
-  if (projectLookup?.status === "not-found") {
-    throw new Response("Not Found", { status: 404 });
-  }
-  const selectedScope = resolveMarketplaceScopeSelection({
-    params,
-    organizations: organizations,
-    project: projectLookup?.status === "found" ? projectLookup.project : null,
-    user: me.user,
-  });
+export async function loader({ context, url }: Route.LoaderArgs) {
+  const selectedScope = await requireRoutableScopeSelection(context);
+  const routeScope = backofficeRuntimeScopeFromResolvedScope(selectedScope);
 
   const statusResult = marketplaceListingStatusSchema
     .optional()

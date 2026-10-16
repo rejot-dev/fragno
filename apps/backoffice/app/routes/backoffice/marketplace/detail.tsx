@@ -25,7 +25,6 @@ import {
   type ShouldRevalidateFunctionArgs,
 } from "react-router";
 
-import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import type { BackofficeMeData } from "@/fragno/auth/contracts";
 import { buildMarketplacePackageInstallWorkflowInstanceId } from "@/fragno/automation/marketplace-package-install-identity";
@@ -35,10 +34,13 @@ import {
   decodeMarketplacePublishedVersionCursor,
   MarketplaceListingCursorError,
 } from "@/fragno/marketplace/pagination";
+import {
+  getBackofficeShellRequest,
+  requireRouteScope,
+} from "@/layouts/backoffice-shell-request.server";
 import { captureBackofficeServerEvent } from "@/posthog.server";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
-import { buildBackofficeLoginPath } from "../auth-navigation";
 import { filesExplorerPath } from "../files/scope";
 import type { Route } from "./+types/detail";
 import type { MarketplaceArtifactExplorerData } from "./artifact-files-model";
@@ -63,7 +65,7 @@ import {
 } from "./package-tabs";
 import {
   marketplaceCatalogVisibility,
-  marketplaceFromRouteParams,
+  marketplaceForCatalog,
   type MarketplaceCatalog,
 } from "./scope";
 
@@ -191,19 +193,13 @@ export function shouldRevalidate({
 }
 
 export async function loader({ request, params, context, url }: Route.LoaderArgs) {
-  const me = await findBackofficeMe(request, context);
-  if (!me?.user) {
-    return Response.redirect(
-      new URL(buildBackofficeLoginPath(`${url.pathname}${url.search}`), request.url),
-      302,
-    );
-  }
+  const { me } = getBackofficeShellRequest(context);
 
-  const {
-    scope: selectedScope,
-    catalog,
-    marketplace: marketplaceScope,
-  } = marketplaceFromRouteParams(params, me);
+  const selectedScope = requireRouteScope(context).execution.scope;
+  const { catalog, marketplace: marketplaceScope } = marketplaceForCatalog(
+    selectedScope,
+    params.catalog,
+  );
   let persistedInstallation: MarketplaceInstallationReference | null;
   try {
     persistedInstallation = readMarketplaceInstallationReference(url.search);
@@ -303,20 +299,15 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
 }
 
 export async function action({ request, params, context, url }: Route.ActionArgs) {
-  const me = await findBackofficeMe(request, context);
-  if (!me?.user) {
-    throw redirect(buildBackofficeLoginPath(`${url.pathname}${url.search}`));
-  }
+  const { me } = getBackofficeShellRequest(context);
 
   const { listingId } = await resolveMarketplaceListingRoute(
     context.get(BackofficeWorkerContext).runtime.objects,
     params,
   );
 
-  const { scope: targetScope, marketplace: marketplaceScope } = marketplaceFromRouteParams(
-    params,
-    me,
-  );
+  const targetScope = requireRouteScope(context).execution.scope;
+  const { marketplace: marketplaceScope } = marketplaceForCatalog(targetScope, params.catalog);
   const installationTarget = resolveMarketplaceInstallationTarget(me, targetScope, null);
   if (installationTarget.state !== "ready") {
     return {

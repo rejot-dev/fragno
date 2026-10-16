@@ -2,24 +2,22 @@ import {
   SANDBOX_IMAGES,
   SANDBOX_INSTANCE_TYPES,
 } from "@fragno-apps/cf-sandbox-bridge/sandbox/sandbox-container-contract";
-import type { BackofficeRoutableScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { RouterContextProvider } from "react-router";
 
 import {
-  requireBackofficeRouteScopeFromParams,
-  type BackofficeRoutableRouteScope,
-} from "@/backoffice-runtime/route-scope";
-import { findBackofficeMe } from "@/fragno/auth/auth-server";
+  backofficeRouteScopeFromResolvedScope,
+  backofficeRuntimeScopeFromResolvedScope,
+} from "@/backoffice-runtime/resolved-scope";
+import type { BackofficeRoutableRouteScope } from "@/backoffice-runtime/route-scope";
 import type { SandboxRuntime } from "@/fragno/runtime-tools/families/sandbox-runtime";
 import type { SandboxInstanceRecord } from "@/fragno/sandbox-manager/contracts";
 import { isSandboxWorkspaceSnapshotResumable } from "@/fragno/sandbox-manager/workspace-snapshot";
+import { requireRoutableScopeSelection } from "@/layouts/backoffice-shell-request.server";
 import { CLOUDFLARE_SANDBOX_PROVIDER } from "@/sandbox/contracts";
 import { parseSleepAfterInput } from "@/sandbox/sleep-after";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 import { getScopedSandboxRuntime } from "@/worker-runtime/sandbox-manager";
 
-import { lookupAutomationProject } from "../automations/data.server";
-import { automationRuntimeScopeFromRouteParams } from "../automations/scope";
 import {
   DEFAULT_NEW_SANDBOX_VALUES,
   type NewSandboxFormValues,
@@ -27,21 +25,16 @@ import {
   type StartSandboxResult,
 } from "./sandbox-model";
 
-/** Opens the sandbox runtime of a route scope the signed-in user may use. */
-export async function requireScopedSandboxRuntime({
-  request,
-  params,
-  context,
-}: {
-  request: Request;
-  params: { scopeKind?: string; scopeId?: string };
-  context: Readonly<RouterContextProvider>;
-}): Promise<{
+/** Opens the sandbox runtime of the route's scope; computers have no System scope. */
+export async function requireScopedSandboxRuntime(
+  context: Readonly<RouterContextProvider>,
+): Promise<{
   sandboxRuntime: SandboxRuntime;
   listSandboxes: () => Promise<SandboxView[]>;
   routeScope: BackofficeRoutableRouteScope;
 }> {
-  const scope = await requireSandboxScope({ request, params, context });
+  const selection = await requireRoutableScopeSelection(context);
+  const scope = backofficeRuntimeScopeFromResolvedScope(selection);
   const sandboxManager = context
     .get(BackofficeWorkerContext)
     .runtime.objects.sandboxManager.for(scope).commands;
@@ -58,62 +51,8 @@ export async function requireScopedSandboxRuntime({
         .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
         .map((instance) => toSandboxView(instance, now));
     },
-    // requireSandboxScope rejected the system scope, so the route scope is routable.
-    routeScope: requireBackofficeRouteScopeFromParams(params) as BackofficeRoutableRouteScope,
+    routeScope: backofficeRouteScopeFromResolvedScope(selection),
   };
-}
-
-async function requireSandboxScope({
-  request,
-  params,
-  context,
-}: {
-  request: Request;
-  params: { scopeKind?: string; scopeId?: string };
-  context: Readonly<RouterContextProvider>;
-}): Promise<BackofficeRoutableScope> {
-  const me = await findBackofficeMe(request, context);
-  if (!me?.user) {
-    throw new Response("Unauthorized", { status: 401 });
-  }
-
-  const scope = automationRuntimeScopeFromRouteParams(
-    params,
-    me.organizations.map(({ organization }) => organization),
-  );
-  if (scope.kind === "system") {
-    throw new Response("Not Found", { status: 404 });
-  }
-
-  if (scope.kind === "user") {
-    if (scope.userId !== me.user.id) {
-      throw new Response("Not Found", { status: 404 });
-    }
-    return scope;
-  }
-
-  const hasOrgAccess = me.organizations.some((entry) => entry.organization.id === scope.orgId);
-  if (!hasOrgAccess) {
-    throw new Response("Not Found", { status: 404 });
-  }
-
-  if (scope.kind === "project") {
-    const projectLookup = await lookupAutomationProject(context, scope.orgId, scope.projectId);
-    if (projectLookup.status === "error") {
-      throw Response.json(
-        {
-          code: "AUTOMATION_PROJECT_UNAVAILABLE",
-          message: projectLookup.message,
-        },
-        { status: 502, statusText: "Bad Gateway" },
-      );
-    }
-    if (projectLookup.status === "not-found" || projectLookup.project.archivedAt) {
-      throw new Response("Not Found", { status: 404 });
-    }
-  }
-
-  return scope;
 }
 
 /** Starts a new sandbox, or resumes the one whose id the form names. */

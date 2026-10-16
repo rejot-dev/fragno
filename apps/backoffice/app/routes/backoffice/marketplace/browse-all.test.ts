@@ -1,12 +1,16 @@
 import { assert, beforeEach, describe, expect, test, vi } from "vitest";
 
-const { findBackofficeMeMock, listPublishedListingsMock, marketplaceForMock } = vi.hoisted(() => ({
-  findBackofficeMeMock: vi.fn(),
+import { RouterContextProvider } from "react-router";
+
+import type { BackofficeResolvedScope } from "@/backoffice-runtime/resolved-scope";
+import type { BackofficeMeData, Organization } from "@/fragno/auth/contracts";
+import { provideBackofficeShellRequest } from "@/layouts/backoffice-layout.test-support";
+import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
+
+const { listPublishedListingsMock, marketplaceForMock } = vi.hoisted(() => ({
   listPublishedListingsMock: vi.fn(),
   marketplaceForMock: vi.fn(),
 }));
-
-vi.mock("@/fragno/auth/auth-server", () => ({ findBackofficeMe: findBackofficeMeMock }));
 
 import { loader } from "./browse-all";
 
@@ -18,13 +22,18 @@ const authenticatedUser = {
   },
 };
 const marketplace = { listPublishedListings: listPublishedListingsMock };
-const context = {
-  get: () => ({
-    runtime: {
-      objects: { marketplace: { for: marketplaceForMock } },
-    },
-  }),
-};
+function routeContext(routeScope: BackofficeResolvedScope<Organization>) {
+  const context = new RouterContextProvider();
+  context.set(BackofficeWorkerContext, {
+    runtime: { objects: { marketplace: { for: marketplaceForMock } } },
+  } as never);
+  provideBackofficeShellRequest(context, {
+    me: authenticatedUser as unknown as BackofficeMeData,
+    routeScope,
+  });
+  return context;
+}
+const adaLabs = { kind: "org", organization: authenticatedUser.organizations[0]!.organization };
 const listings = [
   {
     listingId: "system#telegram-channel",
@@ -43,11 +52,9 @@ const listings = [
 ];
 
 beforeEach(() => {
-  findBackofficeMeMock.mockReset();
   listPublishedListingsMock.mockReset();
   marketplaceForMock.mockReset();
   marketplaceForMock.mockReturnValue({ commands: marketplace });
-  findBackofficeMeMock.mockResolvedValue(authenticatedUser);
   listPublishedListingsMock.mockResolvedValue({
     listings,
     hasNextPage: false,
@@ -63,7 +70,7 @@ describe("Marketplace catalog listing", () => {
     const result = await loader({
       request: new Request(url),
       params: { scopeKind: "org", scopeId: "ada-labs", catalog: "marketplace" },
-      context,
+      context: routeContext(adaLabs as never),
       url,
     } as never);
 
@@ -73,33 +80,30 @@ describe("Marketplace catalog listing", () => {
   });
 
   test("the organization catalog reads the route organization's Marketplace", async () => {
-    const runCatalog = (scopeKind: string, scopeId: string) => {
+    const runCatalog = (routeScope: BackofficeResolvedScope<Organization>, scopeId: string) => {
       const url = new URL(
-        `https://example.test/backoffice/marketplace/${scopeKind}/${scopeId}/organization/all`,
+        `https://example.test/backoffice/marketplace/${routeScope.kind}/${scopeId}/organization/all`,
       );
       return loader({
         request: new Request(url),
-        params: { scopeKind, scopeId, catalog: "organization" },
-        context,
+        params: { scopeKind: routeScope.kind, scopeId, catalog: "organization" },
+        context: routeContext(routeScope),
         url,
       } as never);
     };
 
-    const result = await runCatalog("org", "ada-labs");
+    const result = await runCatalog(adaLabs as never, "ada-labs");
     assert(!(result instanceof Response));
     assert(result.catalog === "organization");
     expect(marketplaceForMock).toHaveBeenCalledWith({ kind: "org", orgId: "org-1" });
 
-    // Personal workspaces have no organization Marketplace, and non-members cannot resolve one.
-    for (const [scopeKind, scopeId] of [
-      ["user", "user-1"],
-      ["org", "other-labs"],
-    ]) {
-      marketplaceForMock.mockClear();
-      const rejected = await runCatalog(scopeKind, scopeId).catch((error: unknown) => error);
-      assert(rejected instanceof Response);
-      assert(rejected.status === 404);
-      expect(marketplaceForMock).not.toHaveBeenCalled();
-    }
+    // Personal workspaces have no organization Marketplace.
+    marketplaceForMock.mockClear();
+    const rejected = await runCatalog({ kind: "user", userId: "user-1" }, "user-1").catch(
+      (error: unknown) => error,
+    );
+    assert(rejected instanceof Response);
+    assert(rejected.status === 404);
+    expect(marketplaceForMock).not.toHaveBeenCalled();
   });
 });

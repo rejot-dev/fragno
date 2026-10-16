@@ -1,4 +1,3 @@
-import { isBackofficeScopeParseError } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { ButtonLink } from "@fragno-private/design-system/button";
 import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
 import type { MouseEvent as ReactMouseEvent } from "react";
@@ -8,15 +7,11 @@ import { Link, Outlet, useLocation, useNavigate, useParams } from "react-router"
 import {
   backofficeRouteScopeFromResolvedScope,
   backofficeRuntimeScopeFromResolvedScope,
-  resolveBackofficeRouteScope,
 } from "@/backoffice-runtime/resolved-scope";
-import { requireBackofficeRouteScopeFromParams } from "@/backoffice-runtime/route-scope";
-import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import type { DurableHookQueueEntry, DurableHookQueueResponse } from "@/fragno/durable-hooks";
+import { requireScopeSelection } from "@/layouts/backoffice-shell-request.server";
 import { getBackofficeObjects } from "@/worker-runtime/durable-objects";
 
-import { buildBackofficeLoginPath } from "../auth-navigation";
-import { lookupAutomationProject, toExternalId } from "../automations/data.server";
 import type { Route } from "./+types/durable-hooks-scope-layout";
 import {
   createDurableHooksObjectOptions,
@@ -27,7 +22,6 @@ import {
   getDurableHooksObjectDefinition,
   resolveDurableHooksScopeSelection,
   type DurableHooksObjectOption,
-  type DurableHooksProject,
   type DurableHooksScopeSelection,
 } from "./durable-hooks-scope";
 import { formatTimestamp, getStatusBadgeClasses } from "./durable-hooks-shared";
@@ -101,89 +95,17 @@ const loadDurableHookQueue = async ({
   throw new Error("Unsupported durable hooks object.");
 };
 
-function normalizeProject(
-  orgId: string,
-  project: Awaited<ReturnType<typeof lookupAutomationProject>>,
-): DurableHooksProject[] {
-  if (project.status !== "found" || project.project.archivedAt) {
-    return [];
-  }
-
-  const id = toExternalId(project.project.id);
-  if (!id) {
-    return [];
-  }
-
-  return [
-    {
-      id,
-      orgId,
-      label: project.project.name?.trim() || project.project.slug?.trim() || id,
-      slug: project.project.slug?.trim() || null,
-    },
-  ];
-}
-
-export async function loader({ request, params, context, url }: Route.LoaderArgs) {
-  const me = await findBackofficeMe(request, context);
-  if (!me?.user) {
-    return Response.redirect(
-      new URL(buildBackofficeLoginPath(`${url.pathname}${url.search}`), request.url),
-      302,
-    );
-  }
-
-  const organizations = me.organizations.map((entry) => entry.organization);
-  let routeScope;
-  try {
-    routeScope = requireBackofficeRouteScopeFromParams(params);
-  } catch (error) {
-    if (isBackofficeScopeParseError(error)) {
-      throw new Response("Not Found", { status: 404 });
-    }
-    throw error;
-  }
-  const resolvedScope = resolveBackofficeRouteScope(routeScope, organizations);
-  if (!resolvedScope) {
-    throw new Response("Not Found", { status: 404 });
-  }
-  if (resolvedScope.kind === "user" && resolvedScope.userId !== me.user.id) {
-    throw new Response("Not Found", { status: 404 });
-  }
-  const runtimeScope = backofficeRuntimeScopeFromResolvedScope(resolvedScope);
-  const projectLookup =
-    runtimeScope.kind === "project"
-      ? await lookupAutomationProject(context, runtimeScope.orgId, runtimeScope.projectId)
-      : null;
-  if (projectLookup?.status === "error") {
-    throw Response.json(
-      {
-        code: "DURABLE_HOOK_PROJECT_UNAVAILABLE",
-        message: projectLookup.message,
-      },
-      { status: 502, statusText: "Bad Gateway" },
-    );
-  }
-  const projects =
-    runtimeScope.kind === "project" && projectLookup
-      ? normalizeProject(runtimeScope.orgId, projectLookup)
-      : [];
-
+export async function loader({ params, context, url }: Route.LoaderArgs) {
+  const scope = await requireScopeSelection(context);
   const requestedSelection = resolveDurableHooksScopeSelection({
-    scope: runtimeScope,
+    scope,
     objectId: params.objectId,
-    organizations,
-    projects,
-    user: me.user,
   });
   const selection =
     requestedSelection ??
     resolveDurableHooksScopeSelection({
-      scope: runtimeScope,
-      objectId: defaultDurableHooksObjectForScope(runtimeScope),
-      organizations,
-      projects,
-      user: me.user,
+      scope,
+      objectId: defaultDurableHooksObjectForScope(backofficeRuntimeScopeFromResolvedScope(scope)),
     });
   if (!selection) {
     throw new Response("Not Found", { status: 404 });

@@ -3,15 +3,12 @@ import { Outlet } from "react-router";
 
 import type { BackofficeScopeSelection } from "@/backoffice-runtime/resolved-scope";
 import { backofficePageBodyClassName } from "@/components/backoffice/page-body";
-import { findBackofficeMe } from "@/fragno/auth/auth-server";
+import { requireScopeSelection } from "@/layouts/backoffice-shell-request.server";
 
-import { buildBackofficeLoginPath } from "../auth-navigation";
-import { lookupAutomationProject } from "../automations/data.server";
 import type { Route } from "./+types/scope-layout";
 import type { MarketplaceLayoutContext } from "./layout-context";
 import {
   marketplaceScopeTabPath,
-  resolveMarketplaceBrowsingSelection,
   marketplaceCatalogsForScope,
   type MarketplaceCatalog,
   type MarketplaceTab,
@@ -28,30 +25,9 @@ const currentTabFromPath = (pathname: string): MarketplaceTab => {
   return segment === "organization" || segment === "my-listings" ? segment : "marketplace";
 };
 
-export async function loader({ request, params, context, url }: Route.LoaderArgs) {
-  const me = await findBackofficeMe(request, context);
-  if (!me?.user) {
-    return Response.redirect(
-      new URL(buildBackofficeLoginPath(`${url.pathname}${url.search}`), request.url),
-      302,
-    );
-  }
-
-  const selectedScope = await resolveMarketplaceBrowsingSelection({
-    params,
-    me,
-    lookupProject: async (orgId, projectId) => {
-      const projectLookup = await lookupAutomationProject(context, orgId, projectId);
-      if (projectLookup.status === "error") {
-        throw new Response(projectLookup.message, { status: 502 });
-      }
-      if (projectLookup.status === "not-found") {
-        throw new Response("Not Found", { status: 404 });
-      }
-      return projectLookup.project;
-    },
-  });
-  return { selectedScope };
+/** System administrators browse the public Marketplace they curate from System scope. */
+export async function loader({ context }: Route.LoaderArgs) {
+  return { selectedScope: await requireScopeSelection(context) };
 }
 
 export function meta({ loaderData }: Route.MetaArgs) {

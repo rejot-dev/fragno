@@ -135,7 +135,10 @@ test.each([
                     },
                     async () => {
                       const shell = getBackofficeShellRequest(context);
-                      expect(shell.runtimeScope).toEqual({ kind: "org", orgId: organization.id });
+                      expect(shell.route).toMatchObject({
+                        status: "resolved",
+                        execution: { scope: { kind: "org", orgId: organization.id } },
+                      });
                       expect(shell.resolvedScope).toMatchObject({ kind: "org", organization });
                       return new Response("Workspace opened");
                     },

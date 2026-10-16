@@ -9,10 +9,13 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { createMemoryRouter, Outlet, RouterProvider, RouterContextProvider } from "react-router";
 
 import { createBackofficeRequestExecution } from "@/backoffice-runtime/context";
+import { backofficeResolvedScopeFromRuntimeScope } from "@/backoffice-runtime/resolved-scope";
+import type { BackofficeMeData } from "@/fragno/auth/contracts";
+import { provideBackofficeShellRequest } from "@/layouts/backoffice-layout.test-support";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 const {
-  findBackofficeMeMock,
+  shellMeMock,
   requireBackofficeContextMock,
   getPublishedListingMock,
   getArtifactManifestMock,
@@ -20,7 +23,7 @@ const {
   fetchAutomationCollectionSourceMock,
   loadPublishedMarketplaceArtifactExplorerMock,
 } = vi.hoisted(() => ({
-  findBackofficeMeMock: vi.fn(),
+  shellMeMock: vi.fn(),
   requireBackofficeContextMock: vi.fn(),
   getPublishedListingMock: vi.fn(),
   getArtifactManifestMock: vi.fn(),
@@ -29,7 +32,6 @@ const {
   loadPublishedMarketplaceArtifactExplorerMock: vi.fn(),
 }));
 
-vi.mock("@/fragno/auth/auth-server", () => ({ findBackofficeMe: findBackofficeMeMock }));
 vi.mock("@/fragno/auth/backoffice-principal.server", () => ({
   requireBackofficeContext: requireBackofficeContextMock,
 }));
@@ -89,15 +91,32 @@ const marketplace = {
   getPublishedListing: getPublishedListingMock,
   getArtifactManifest: getArtifactManifestMock,
 };
-const context = new RouterContextProvider();
-context.set(BackofficeWorkerContext, {
+const workerContext = {
   runtime: {
     objects: {
       automations: { forOrg: forOrgMock },
       marketplace: { for: () => ({ commands: marketplace }) },
     },
   },
-} as never);
+};
+
+/** The request context after the Backoffice layout established the signed-in user and route scope. */
+async function routeContext(scope: BackofficeRoutableScope) {
+  const me = (await shellMeMock()) as typeof authenticatedUser;
+  const context = new RouterContextProvider();
+  context.set(BackofficeWorkerContext, workerContext as never);
+  const routeScope = routeScopeForTest(scope);
+  const organization =
+    scope.kind === "user" || routeScope.kind === "user"
+      ? null
+      : (me.organizations.find(({ organization }) => organization.id === scope.orgId)
+          ?.organization ?? { id: scope.orgId, slug: routeScope.orgSlug, name: null });
+  provideBackofficeShellRequest(context, {
+    me: me as unknown as BackofficeMeData,
+    routeScope: backofficeResolvedScopeFromRuntimeScope(scope, organization) as never,
+  });
+  return context;
+}
 
 function routeScopeForTest(scope: BackofficeRoutableScope): BackofficeRoutableRouteScope {
   if (scope.kind === "user") {
@@ -110,7 +129,7 @@ function routeScopeForTest(scope: BackofficeRoutableScope): BackofficeRoutableRo
     : { kind: "project", orgSlug, projectId: scope.projectId };
 }
 
-const runLoader = (
+const runLoader = async (
   scope: BackofficeRoutableScope = { kind: "org", orgId: "org-1" },
   artifactVersion?: string,
   installation?: MarketplaceInstallationReference,
@@ -135,12 +154,12 @@ const runLoader = (
       scopeKind: routeScope.kind,
       scopeId: decodeURIComponent(routePath.split("/")[1]!),
     },
-    context,
+    context: await routeContext(scope),
     url,
   } as never);
 };
 
-const runAction = (input: {
+const runAction = async (input: {
   scope?: BackofficeRoutableScope;
   version?: string;
   extraFormEntries?: Record<string, string>;
@@ -171,13 +190,13 @@ const runAction = (input: {
       scopeKind: routeScope.kind,
       scopeId: decodeURIComponent(routePath.split("/")[1]!),
     },
-    context,
+    context: await routeContext(scope),
     url,
   } as never);
 };
 
 beforeEach(() => {
-  findBackofficeMeMock.mockReset();
+  shellMeMock.mockReset();
   requireBackofficeContextMock.mockReset();
   getPublishedListingMock.mockReset();
   getArtifactManifestMock.mockReset();
@@ -185,7 +204,7 @@ beforeEach(() => {
   fetchAutomationCollectionSourceMock.mockReset();
   loadPublishedMarketplaceArtifactExplorerMock.mockReset();
   forOrgMock.mockClear();
-  findBackofficeMeMock.mockResolvedValue(authenticatedUser);
+  shellMeMock.mockResolvedValue(authenticatedUser);
   requireBackofficeContextMock.mockImplementation(async (_request, _context, scope) =>
     createBackofficeRequestExecution({
       scope,
@@ -230,7 +249,7 @@ beforeEach(() => {
 
 describe("marketplace detail loader", () => {
   test("uses the organization selected in the route as the installation location", async () => {
-    findBackofficeMeMock.mockResolvedValueOnce({
+    shellMeMock.mockResolvedValueOnce({
       ...authenticatedUser,
       organizations: [
         authenticatedUser.organizations[0],
@@ -265,7 +284,7 @@ describe("marketplace detail loader", () => {
   });
 
   test("disables personal-scope installation when the user has no organization", async () => {
-    findBackofficeMeMock.mockResolvedValueOnce({
+    shellMeMock.mockResolvedValueOnce({
       ...authenticatedUser,
       organizations: [],
       activeOrganization: null,
@@ -313,7 +332,7 @@ describe("marketplace detail loader", () => {
   });
 
   test("personal reload keeps the original coordinator after the active organization changes", async () => {
-    findBackofficeMeMock.mockResolvedValueOnce({
+    shellMeMock.mockResolvedValueOnce({
       ...authenticatedUser,
       organizations: [
         ...authenticatedUser.organizations,
@@ -369,16 +388,6 @@ describe("marketplace detail loader", () => {
     );
 
     await expect(runLoader()).rejects.toThrow("Workflow synchronization failed.");
-  });
-
-  test("rejects an organization scope outside the authenticated memberships", async () => {
-    const response = await runLoader({ kind: "org", orgId: "org-other" }).catch(
-      (error: unknown) => error,
-    );
-
-    assert(response instanceof Response);
-    assert(response.status === 404);
-    expect(forOrgMock).not.toHaveBeenCalled();
   });
 });
 

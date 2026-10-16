@@ -1,5 +1,6 @@
+import { requireRouteScope } from "@/layouts/backoffice-shell-request.server";
+
 import type { Route } from "./+types/agent-entries";
-import { resolvePiAgentRouteScope } from "./agent-scope.server";
 import { fetchPiManagerEntryPage } from "./data";
 
 /** Returns one authorized newest-first page from the durable Pi transcript history. */
@@ -9,7 +10,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   return await fetchPiManagerEntryPage(
     request,
     context,
-    await resolvePiAgentRouteScope(request, context, params),
+    requireRouteScope(context).execution.scope,
     params.agentName,
     { cursor: url.searchParams.get("cursor"), pageSize },
   );

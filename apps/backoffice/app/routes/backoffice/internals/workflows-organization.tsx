@@ -2,21 +2,16 @@ import { BackofficePageHeader } from "@fragno-private/design-system/page-header"
 import { Link, Outlet, useLoaderData, useLocation, useParams } from "react-router";
 
 import { backofficeContextScopeLabel } from "@/backoffice-runtime/context";
-import {
-  backofficeRouteScopePath,
-  requireBackofficeRouteScopeFromParams,
-} from "@/backoffice-runtime/route-scope";
-import { requireBackofficeMe } from "@/fragno/auth/auth-server";
-import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
+import { backofficeRouteScopeFromResolvedScope } from "@/backoffice-runtime/resolved-scope";
+import { requireRouteScope } from "@/layouts/backoffice-shell-request.server";
 
-import { automationRuntimeScopeFromRouteParams } from "../automations/scope";
 import type { Route } from "./+types/workflows-organization";
 import { internalsScopeBasePath } from "./internals-scope";
 import { loadWorkflowInstanceSummaries, parsePageSize, WorkflowApiError } from "./workflows-data";
 import { formatTimestamp, getWorkflowStatusBadgeClasses } from "./workflows-shared";
 
 type WorkflowsOrgLoaderData = {
-  scopePath: string;
+  internalsBasePath: string;
   scopeLabel: string;
   configured: boolean;
   workflows: string[];
@@ -27,18 +22,13 @@ type WorkflowsOrgLoaderData = {
 
 export async function loader({
   request,
-  params,
   context,
   url,
 }: Route.LoaderArgs): Promise<WorkflowsOrgLoaderData> {
-  const me = await requireBackofficeMe(request, context);
-  const routeScope = requireBackofficeRouteScopeFromParams(params);
-  const scope = automationRuntimeScopeFromRouteParams(
-    params,
-    me.organizations.map(({ organization }) => organization),
-  );
-  await requireBackofficeContext(request, context, scope);
-  const scopePath = backofficeRouteScopePath(routeScope);
+  const { resolvedScope, execution } = requireRouteScope(context);
+  const routeScope = backofficeRouteScopeFromResolvedScope(resolvedScope);
+  const { scope } = execution;
+  const internalsBasePath = internalsScopeBasePath(routeScope);
   const scopeLabel = backofficeContextScopeLabel(scope);
   const pageSize = parsePageSize(url.searchParams.get("pageSize"));
 
@@ -49,7 +39,15 @@ export async function loader({
       scope,
       pageSize,
     });
-    return { scopePath, scopeLabel, configured: true, workflows, instances, warnings, error: null };
+    return {
+      internalsBasePath,
+      scopeLabel,
+      configured: true,
+      workflows,
+      instances,
+      warnings,
+      error: null,
+    };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to load workflows.";
     const isNotConfigured =
@@ -57,7 +55,7 @@ export async function loader({
       error.status === 400 &&
       message.toLowerCase().includes("not configured");
     return {
-      scopePath,
+      internalsBasePath,
       scopeLabel,
       configured: !isNotConfigured,
       workflows: [],
@@ -74,7 +72,7 @@ export function meta({ loaderData }: Route.MetaArgs) {
 }
 
 export default function BackofficeWorkflowsOrganization() {
-  const { scopeLabel, configured, workflows, instances, warnings, error } =
+  const { internalsBasePath, scopeLabel, configured, workflows, instances, warnings, error } =
     useLoaderData<typeof loader>();
   const location = useLocation();
   const params = useParams();
@@ -86,7 +84,6 @@ export default function BackofficeWorkflowsOrganization() {
   const listVisibility = isDetailRoute ? "hidden lg:block" : "block";
   const detailVisibility = isDetailRoute ? "block" : "hidden lg:block";
 
-  const internalsBasePath = internalsScopeBasePath(requireBackofficeRouteScopeFromParams(params));
   const baseScopePath = `${internalsBasePath}/workflows`;
 
   return (

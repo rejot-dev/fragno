@@ -1,14 +1,12 @@
+import { backofficeRuntimeScopeFromResolvedScope } from "@/backoffice-runtime/resolved-scope";
 import { absoluteFilePathSchema } from "@/file-collection/absolute-file-path";
+import { requireScopeSelection } from "@/layouts/backoffice-shell-request.server";
 
 import type { Route } from "./+types/preview";
-import { resolveAuthorizedFilesRouteScope } from "./data";
 import { createFilesOverviewCollections } from "./file-collections.server";
 
-export async function loader({ request, params, context, url }: Route.LoaderArgs) {
-  const scope = await resolveAuthorizedFilesRouteScope({ request, context, params, url });
-  if (scope instanceof Response) {
-    return scope;
-  }
+export async function loader({ request, context, url }: Route.LoaderArgs) {
+  const scope = backofficeRuntimeScopeFromResolvedScope(await requireScopeSelection(context));
   const parsedPath = absoluteFilePathSchema.safeParse(url.searchParams.get("path"));
   if (!parsedPath.success) {
     throw new Response("A safe absolute file path is required.", { status: 400 });

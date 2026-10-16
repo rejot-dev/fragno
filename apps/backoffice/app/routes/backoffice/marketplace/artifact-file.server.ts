@@ -1,11 +1,11 @@
 import type { RouterContextProvider } from "react-router";
 
-import { findBackofficeMe } from "@/fragno/auth/auth-server";
+import { requireRouteScope } from "@/layouts/backoffice-shell-request.server";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import { fetchPublishedMarketplaceArtifactFile } from "./artifact-files.server";
 import { resolveMarketplaceListingRoute } from "./listing-route.server";
-import { marketplaceFromRouteParams } from "./scope";
+import { marketplaceForCatalog } from "./scope";
 
 type MarketplaceArtifactFileLoaderArgs = {
   request: Request;
@@ -20,21 +20,10 @@ export async function loadMarketplaceArtifactFile({
   context,
   url,
 }: MarketplaceArtifactFileLoaderArgs) {
-  const me = await findBackofficeMe(request, context);
-  if (!me?.user) {
-    throw new Response("Unauthorized", { status: 401 });
-  }
-
-  const { scope, marketplace } = marketplaceFromRouteParams(params, me);
-  // System scope was restricted to System administrators when the route was resolved.
-  const canAccessScope =
-    scope.kind === "system" ||
-    (scope.kind === "user"
-      ? scope.userId === me.user.id
-      : me.organizations.some(({ organization }) => organization.id === scope.orgId));
-  if (!canAccessScope) {
-    throw new Response("Not Found", { status: 404 });
-  }
+  const { marketplace } = marketplaceForCatalog(
+    requireRouteScope(context).execution.scope,
+    params.catalog,
+  );
 
   const path = url.searchParams.get("artifactPath")?.trim();
   if (!path) {

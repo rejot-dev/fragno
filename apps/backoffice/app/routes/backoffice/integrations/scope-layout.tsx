@@ -5,7 +5,6 @@ import { Suspense, use, useMemo, useState, type ReactNode } from "react";
 import {
   Link,
   Outlet,
-  redirect,
   useParams,
   useSearchParams,
   type ShouldRevalidateFunctionArgs,
@@ -16,20 +15,14 @@ import { eq, useLiveQuery } from "@tanstack/react-db";
 import type { BackofficeScopeSelection } from "@/backoffice-runtime/resolved-scope";
 import { useCurrentBackofficeContext } from "@/components/backoffice/current-context";
 import { backofficePageBodyClassName } from "@/components/backoffice/page-body";
-import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import {
   describeAutomationCollectionSource,
   getAutomationBrowserDatabase,
 } from "@/fragno/automation/tanstack/browser-database";
 import { INTEGRATIONS_EVENT_SOURCE } from "@/fragno/runtime-tools/families/integrations/integration-events";
+import { requireScopeSelection } from "@/layouts/backoffice-shell-request.server";
 
-import { buildBackofficeLoginPath } from "../auth-navigation";
-import { lookupAutomationProject } from "../automations/data.server";
 import { formatTimestamp } from "../automations/formatting";
-import {
-  automationRuntimeScopeFromRouteParams,
-  resolveAutomationScopeSelection,
-} from "../automations/scope";
 import type { Route } from "./+types/scope-layout";
 import {
   IntegrationConnectionStateLight,
@@ -47,33 +40,8 @@ import type { IntegrationsLayoutContext } from "./layout-context";
 import { NativeServices } from "./native-services";
 
 /** Connections and their labels come from local connection events; the loader only selects scope. */
-export async function loader({ request, params, context, url }: Route.LoaderArgs) {
-  const me = await findBackofficeMe(request, context);
-  if (!me?.user) {
-    throw redirect(buildBackofficeLoginPath(`${url.pathname}${url.search}`));
-  }
-
-  const organizations = me.organizations.map((entry) => entry.organization);
-  const parsedScope = automationRuntimeScopeFromRouteParams(params, organizations);
-  const projectLookup =
-    parsedScope.kind === "project"
-      ? await lookupAutomationProject(context, parsedScope.orgId, parsedScope.projectId)
-      : null;
-  if (projectLookup?.status === "error") {
-    throw new Response(projectLookup.message, { status: 502 });
-  }
-  if (projectLookup?.status === "not-found") {
-    throw new Response("Not Found", { status: 404 });
-  }
-
-  return {
-    selectedScope: resolveAutomationScopeSelection({
-      params,
-      organizations,
-      project: projectLookup?.status === "found" ? projectLookup.project : null,
-      user: me.user,
-    }),
-  };
+export async function loader({ context }: Route.LoaderArgs) {
+  return { selectedScope: await requireScopeSelection(context) };
 }
 
 /** Selecting a connection changes nothing the loader selects. */

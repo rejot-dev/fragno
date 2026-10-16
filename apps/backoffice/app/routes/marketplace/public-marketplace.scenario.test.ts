@@ -21,6 +21,7 @@ import {
   type BackofficeScenarioContext,
 } from "@/fragno/automation/scenario";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
+import { behindBackofficeLayout } from "@/layouts/backoffice-layout.test-support";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
 import { InMemoryApiObject } from "../../../workers/api.do";
@@ -31,17 +32,29 @@ import { InMemoryMarketplaceObject } from "../../../workers/marketplace.do";
 import { InMemoryOtpObject } from "../../../workers/otp.do";
 import { InMemoryTelegramObject } from "../../../workers/telegram.do";
 import { InMemoryUploadObject } from "../../../workers/upload.do";
-import { buildBackofficeLoginPath } from "../backoffice/auth-navigation";
-import { loadMarketplaceArtifactFile } from "../backoffice/marketplace/artifact-file.server";
-import { loader as catalogFeaturedLoader } from "../backoffice/marketplace/browse";
-import { loader as catalogAllLoader } from "../backoffice/marketplace/browse-all";
-import { loader as catalogListingLoader } from "../backoffice/marketplace/detail";
-import { loader as backofficeMarketplaceLoader } from "../backoffice/marketplace/index";
-import { loader as manageLoader, action as manageAction } from "../backoffice/marketplace/manage";
+import { buildBackofficeAuthBootstrapPath } from "../backoffice/auth-navigation";
+import { loadMarketplaceArtifactFile as artifactFileLoader } from "../backoffice/marketplace/artifact-file.server";
+import { loader as browseLoaderRaw } from "../backoffice/marketplace/browse";
+import { loader as browseAllLoader } from "../backoffice/marketplace/browse-all";
+import { loader as detailLoader } from "../backoffice/marketplace/detail";
+import { loader as marketplaceIndexLoader } from "../backoffice/marketplace/index";
+import {
+  loader as manageLoaderRaw,
+  action as manageActionRaw,
+} from "../backoffice/marketplace/manage";
 import { marketplaceInstallEntryPath } from "../backoffice/marketplace/navigation";
-import { loader as scopeLayoutLoader } from "../backoffice/marketplace/scope-layout";
+import { loader as scopeLayoutLoaderRaw } from "../backoffice/marketplace/scope-layout";
 import { loader as browseLoader } from "./index";
 import { loader as listingLoader } from "./listing";
+
+const loadMarketplaceArtifactFile = behindBackofficeLayout(artifactFileLoader);
+const catalogFeaturedLoader = behindBackofficeLayout(browseLoaderRaw);
+const catalogAllLoader = behindBackofficeLayout(browseAllLoader);
+const catalogListingLoader = behindBackofficeLayout(detailLoader);
+const backofficeMarketplaceLoader = behindBackofficeLayout(marketplaceIndexLoader);
+const manageLoader = behindBackofficeLayout(manageLoaderRaw);
+const manageAction = behindBackofficeLayout(manageActionRaw);
+const scopeLayoutLoader = behindBackofficeLayout(scopeLayoutLoaderRaw);
 
 const scenarioObjects = {
   API: (input) => new InMemoryApiObject(input),
@@ -144,13 +157,14 @@ async function openInstallEntry(
 ) {
   const url = new URL(marketplaceInstallEntryPath(listingRef), "https://backoffice.test");
   const request = new Request(url, { headers: cookie ? { cookie } : {} });
+  // The Backoffice layout throws its sign-in redirect; the route returns its own redirects.
   const response = await backofficeMarketplaceLoader({
     request,
     url,
     pattern: "/backoffice/marketplace",
     params: {},
     context: routeContext(ctx, request),
-  });
+  }).catch((error: unknown) => error);
   assert(response instanceof Response);
   return response;
 }
@@ -461,7 +475,7 @@ describe("Marketplace browsing scenarios", () => {
                     request: anonymous,
                     context: routeContext(ctx, anonymous),
                   }),
-                ).rejects.toMatchObject({ status: 401 });
+                ).rejects.toMatchObject({ status: 302 });
                 await uploadArtifactFile("README.md", `${content} listing`);
                 assert((await overviewPath()) === "/artifact/README.md");
               }
@@ -540,12 +554,12 @@ describe("Marketplace browsing scenarios", () => {
               status: 404,
             });
           }),
-          then.assert("installing sends anonymous visitors through login", async (ctx) => {
+          then.assert("installing sends anonymous visitors through sign-in", async (ctx) => {
             const listingRef = "@ada-labs/invoice-digest";
             const response = await openInstallEntry(ctx, listingRef, "");
             assert(response.status === 302);
             expect(response.headers.get("location")).toBe(
-              `https://backoffice.test${buildBackofficeLoginPath(marketplaceInstallEntryPath(listingRef))}`,
+              buildBackofficeAuthBootstrapPath(marketplaceInstallEntryPath(listingRef)),
             );
           }),
           when.auth.signUp({
@@ -602,7 +616,8 @@ describe("Marketplace browsing scenarios", () => {
               await ctx.runtime.objects.auth.singleton().commands.applyScenarioFixture({
                 users: [{ id: user.id, email: user.email, role: "admin", status: "active" }],
               });
-              const { cookie } = ctx.vars;
+              // The access token carries the role, so the new administrator signs in again.
+              const cookie = await memberCookie(ctx);
               expect(await marketplaceWorkspace(ctx, SYSTEM_SCOPE, cookie)).toEqual({
                 kind: "system",
                 label: "System",

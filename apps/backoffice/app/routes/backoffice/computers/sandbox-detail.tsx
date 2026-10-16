@@ -33,11 +33,7 @@ export function meta({ params }: Route.MetaArgs) {
 }
 
 export async function action({ request, params, context }: Route.ActionArgs) {
-  const { sandboxRuntime, routeScope } = await requireScopedSandboxRuntime({
-    request,
-    params,
-    context,
-  });
+  const { sandboxRuntime, routeScope } = await requireScopedSandboxRuntime(context);
   const { sandboxId } = params;
   const formData = await request.formData();
   const intent = readText(formData.get("intent"));

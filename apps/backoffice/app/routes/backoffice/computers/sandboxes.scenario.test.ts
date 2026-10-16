@@ -16,6 +16,7 @@ import {
   runBackofficeScenario,
   type BackofficeScenarioContext,
 } from "@/fragno/automation/scenario";
+import { behindBackofficeLayout } from "@/layouts/backoffice-layout.test-support";
 import { CLOUDFLARE_SANDBOX_PROVIDER, type SandboxRuntimeProviders } from "@/sandbox/contracts";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
@@ -27,9 +28,13 @@ import { InMemoryOtpObject } from "../../../../workers/otp.do";
 import { InMemorySandboxManagerObject } from "../../../../workers/sandbox-manager.do";
 import { InMemoryTelegramObject } from "../../../../workers/telegram.do";
 import { InMemoryUploadObject } from "../../../../workers/upload.do";
-import { action as sandboxAction } from "./sandbox-detail";
-import { action as createSandbox } from "./sandbox-new";
-import { loader as listSandboxes } from "./sandboxes";
+import { action as sandboxDetailAction } from "./sandbox-detail";
+import { action as sandboxNewAction } from "./sandbox-new";
+import { loader as sandboxesLoader } from "./sandboxes";
+
+const sandboxAction = behindBackofficeLayout(sandboxDetailAction);
+const createSandbox = behindBackofficeLayout(sandboxNewAction);
+const listSandboxes = behindBackofficeLayout(sandboxesLoader);
 
 const ORIGIN = "https://backoffice.example";
 

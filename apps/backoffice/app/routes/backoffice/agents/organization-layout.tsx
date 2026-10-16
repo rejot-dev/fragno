@@ -1,32 +1,20 @@
 import { Outlet } from "react-router";
 
 import { backofficeContextScopeLabel } from "@/backoffice-runtime/context";
+import { backofficeRouteScopeFromResolvedScope } from "@/backoffice-runtime/resolved-scope";
 import {
-  backofficeRouteScopeFromResolvedScope,
-  backofficeRuntimeScopeFromResolvedScope,
-  resolveBackofficeRouteScope,
-} from "@/backoffice-runtime/resolved-scope";
-import { requireBackofficeRouteScopeFromParams } from "@/backoffice-runtime/route-scope";
-import { requireBackofficeMe } from "@/fragno/auth/auth-server";
-import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
+  getBackofficeShellRequest,
+  requireRouteScope,
+} from "@/layouts/backoffice-shell-request.server";
 
 import type { Route } from "./+types/organization-layout";
 import { fetchPiManagerAvailableModels } from "./data";
 import { isPiAgentsPath } from "./path";
 import { PiErrorBoundary } from "./shared";
 
-export async function loader({ request, params, context }: Route.LoaderArgs) {
-  const me = await requireBackofficeMe(request, context);
-  const routeScope = requireBackofficeRouteScopeFromParams(params);
-  const resolvedScope = resolveBackofficeRouteScope(
-    routeScope,
-    me.organizations.map(({ organization }) => organization),
-  );
-  if (!resolvedScope) {
-    throw new Response("Not Found", { status: 404 });
-  }
-  const scope = backofficeRuntimeScopeFromResolvedScope(resolvedScope);
-  const execution = await requireBackofficeContext(request, context, scope);
+export async function loader({ request, context }: Route.LoaderArgs) {
+  const { me } = getBackofficeShellRequest(context);
+  const { resolvedScope, execution } = requireRouteScope(context);
 
   const availableModelOptions = await fetchPiManagerAvailableModels(
     request,

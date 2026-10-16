@@ -34,12 +34,8 @@ export function meta() {
   return [{ title: "New sandbox" }];
 }
 
-export async function action({ request, params, context }: Route.ActionArgs) {
-  const { sandboxRuntime, routeScope } = await requireScopedSandboxRuntime({
-    request,
-    params,
-    context,
-  });
+export async function action({ request, context }: Route.ActionArgs) {
+  const { sandboxRuntime, routeScope } = await requireScopedSandboxRuntime(context);
   const result = await startSandboxFromForm(sandboxRuntime, await request.formData());
   if (!result.ok) {
     return result;

@@ -2,14 +2,10 @@ import { ButtonLink } from "@fragno-private/design-system/button";
 import type { ReactNode } from "react";
 import { useLoaderData, useSearchParams } from "react-router";
 
-import {
-  backofficeRouteScopePath,
-  requireBackofficeRouteScopeFromParams,
-} from "@/backoffice-runtime/route-scope";
-import { requireBackofficeMe } from "@/fragno/auth/auth-server";
-import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
+import { backofficeRouteScopeFromResolvedScope } from "@/backoffice-runtime/resolved-scope";
+import { backofficeRouteScopePath } from "@/backoffice-runtime/route-scope";
+import { requireRouteScope } from "@/layouts/backoffice-shell-request.server";
 
-import { automationRuntimeScopeFromRouteParams } from "../automations/scope";
 import type { Route } from "./+types/workflows-organization-detail";
 import { loadWorkflowInstanceDetail, WorkflowApiError } from "./workflows-data";
 import {
@@ -42,13 +38,9 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   if (!params.workflowName || !params.instanceId) {
     throw new Response("Not Found", { status: 404 });
   }
-  const me = await requireBackofficeMe(request, context);
-  const routeScope = requireBackofficeRouteScopeFromParams(params);
-  const scope = automationRuntimeScopeFromRouteParams(
-    params,
-    me.organizations.map(({ organization }) => organization),
-  );
-  await requireBackofficeContext(request, context, scope);
+  const { resolvedScope, execution } = requireRouteScope(context);
+  const routeScope = backofficeRouteScopeFromResolvedScope(resolvedScope);
+  const { scope } = execution;
   try {
     const detail = await loadWorkflowInstanceDetail({
       request,

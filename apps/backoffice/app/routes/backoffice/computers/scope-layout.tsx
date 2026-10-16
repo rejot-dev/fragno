@@ -1,49 +1,19 @@
 import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
 import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
 import { BackofficeTabHeader } from "@fragno-private/design-system/tab-header";
-import { isRouteErrorResponse, Outlet, redirect } from "react-router";
+import { isRouteErrorResponse, Outlet } from "react-router";
 
 import { backofficeRouteScopeFromResolvedScope } from "@/backoffice-runtime/resolved-scope";
 import { backofficePageBodyClassName } from "@/components/backoffice/page-body";
-import { findBackofficeMe } from "@/fragno/auth/auth-server";
+import { requireScopeSelection } from "@/layouts/backoffice-shell-request.server";
 
-import { buildBackofficeLoginPath } from "../auth-navigation";
-import { lookupAutomationProject } from "../automations/data.server";
-import {
-  automationRuntimeScopeFromRouteParams,
-  resolveAutomationScopeSelection,
-} from "../automations/scope";
 import { getRouteErrorMessage } from "../route-errors";
 import type { Route } from "./+types/scope-layout";
 import type { ComputersLayoutContext } from "./layout-context";
 import { sandboxesPath } from "./paths";
 
-export async function loader({ request, params, context, url }: Route.LoaderArgs) {
-  const me = await findBackofficeMe(request, context);
-  if (!me?.user) {
-    throw redirect(buildBackofficeLoginPath(`${url.pathname}${url.search}`));
-  }
-
-  const organizations = me.organizations.map((entry) => entry.organization);
-  const parsedScope = automationRuntimeScopeFromRouteParams(params, organizations);
-  const projectLookup =
-    parsedScope.kind === "project"
-      ? await lookupAutomationProject(context, parsedScope.orgId, parsedScope.projectId)
-      : null;
-  if (projectLookup?.status === "error") {
-    throw new Response(projectLookup.message, { status: 502 });
-  }
-  if (projectLookup?.status === "not-found") {
-    throw new Response("Not Found", { status: 404 });
-  }
-
-  const selectedScope = resolveAutomationScopeSelection({
-    params,
-    organizations,
-    project: projectLookup?.status === "found" ? projectLookup.project : null,
-    user: me.user,
-  });
-  return { selectedScope };
+export async function loader({ context }: Route.LoaderArgs) {
+  return { selectedScope: await requireScopeSelection(context) };
 }
 
 export function meta({ loaderData }: Route.MetaArgs) {

@@ -2,13 +2,20 @@ import { IconButton } from "@fragno-private/design-system/button";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 
-import type { BackofficeScopeSelection } from "@/backoffice-runtime/resolved-scope";
-import { terminalCommandPath } from "@/routes/backoffice/automations/scope";
+import {
+  backofficeRouteScopeFromResolvedScope,
+  type BackofficeScopeSelection,
+} from "@/backoffice-runtime/resolved-scope";
+import { backofficeRouteScopePath } from "@/backoffice-runtime/route-scope";
 import type { DashboardCommandSpec } from "@/routes/backoffice/dashboard-terminal";
 import { DashboardTerminalPanel } from "@/routes/backoffice/dashboard-terminal-panel";
 import { loadBackofficeTerminalCommandSpecs } from "@/routes/backoffice/terminal-command-spec-loader.client";
 
 import { useGlobalHotkey } from "./global-hotkeys";
+
+function terminalCommandPath(scope: BackofficeScopeSelection) {
+  return `/backoffice/terminal/${backofficeRouteScopePath(backofficeRouteScopeFromResolvedScope(scope))}`;
+}
 
 type QuakeTerminalProps = {
   selectedScope: BackofficeScopeSelection;

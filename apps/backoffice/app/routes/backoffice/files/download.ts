@@ -1,19 +1,17 @@
+import { backofficeRuntimeScopeFromResolvedScope } from "@/backoffice-runtime/resolved-scope";
 import { inferFileContentType } from "@/file-collection/file-content-type";
+import { requireScopeSelection } from "@/layouts/backoffice-shell-request.server";
 
 import type { Route } from "./+types/download";
-import { resolveAuthorizedFilesRouteScope } from "./data";
 import { createFilesOverviewCollections } from "./file-collections.server";
 
-export async function loader({ request, params, context, url }: Route.LoaderArgs) {
+export async function loader({ request, context, url }: Route.LoaderArgs) {
   const path = url.searchParams.get("path")?.trim() ?? "";
   if (!path) {
     throw new Response("Missing file path.", { status: 400 });
   }
 
-  const scope = await resolveAuthorizedFilesRouteScope({ request, context, params, url });
-  if (scope instanceof Response) {
-    return scope;
-  }
+  const scope = backofficeRuntimeScopeFromResolvedScope(await requireScopeSelection(context));
   const registrations = await createFilesOverviewCollections({ request, context, scope });
   const target = registrations.find(
     (registration) => path.startsWith(`${registration.rootPath}/`) && !path.endsWith("/"),

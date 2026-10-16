@@ -7,11 +7,11 @@ import {
 } from "@/backoffice-runtime/kernel";
 import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
 import { createIntegrationsRuntime } from "@/fragno/runtime-tools/families/integrations/integrations-runtime";
+import { requireRouteScope } from "@/layouts/backoffice-shell-request.server";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import { AutomationDetailRows } from "../automations/detail-rows";
 import { formatTimestamp } from "../automations/formatting";
-import { requireAutomationRouteExecution } from "../automations/scope.server";
 import type { Route } from "./+types/connection-detail";
 import { ApiConnectionDetails } from "./api-connection-details";
 import {
@@ -26,12 +26,12 @@ import { McpConnectionDetails } from "./mcp-connection-details";
 import { NativeConnectionDetails } from "./native-connection-details";
 import { WebhookConnectionDetails } from "./webhook-connection-details";
 
-export async function loader({ request, context, params }: Route.LoaderArgs) {
+export async function loader({ context, params }: Route.LoaderArgs) {
   const connectionId = integrationConnectionIdSchema.safeParse(params.connectionId);
   if (!connectionId.success) {
     throw new Response("Not Found", { status: 404 });
   }
-  const execution = await requireAutomationRouteExecution(request, context, params);
+  const { execution } = requireRouteScope(context);
   const { runtime, kernel } = context.get(BackofficeWorkerContext);
   try {
     return await createIntegrationsRuntime({
