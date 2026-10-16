@@ -736,6 +736,7 @@ const createExecCodeModeTool = async ({
     codemode: codemodeRunnerFor(
       createCloudflareBackofficeObjectRegistry(env as CloudflareEnv).codemode.singleton().commands,
       createBackofficeSystemExecution({ kind: "system" }),
+      null,
     ),
     authorize: async () => undefined,
     toolContext: () => runtimeToolContext,

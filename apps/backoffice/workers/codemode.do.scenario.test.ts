@@ -16,18 +16,24 @@ import { z } from "zod";
 
 import {
   createBackofficeServiceExecution,
+  createBackofficeSystemExecution,
   type BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
 import type { InMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
+import { codemodeRunnerFor } from "@/fragno/codemode/codemode-object-execute";
+import { runBackofficeCodemode } from "@/fragno/codemode/execute";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
 import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
+import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
+import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 
 import { InMemoryApiObject } from "./api.do";
 import { InMemoryAuthObject } from "./auth.do";
 import { InMemoryAutomationsObject } from "./automations.do";
+import { InMemoryBillingObject } from "./billing.do";
 import { InMemoryCodemodeObject } from "./codemode.do";
 import { InMemoryFormsObject } from "./forms.do";
 import { InMemoryMcpObject } from "./mcp.do";
@@ -39,6 +45,7 @@ const scenarioObjects = {
   API: (input) => new InMemoryApiObject(input),
   AUTH: (input) => new InMemoryAuthObject({ ...input, database: input.getAuthDatabase() }),
   AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
+  BILLING: (input) => new InMemoryBillingObject(input),
   CODEMODE: (input) => new InMemoryCodemodeObject(input),
   FORMS: (input) => new InMemoryFormsObject(input),
   MCP: (input) => new InMemoryMcpObject(input),
@@ -86,6 +93,7 @@ const restrictedExecution = {
 async function bash(
   runtime: InMemoryBackofficeRuntime,
   as: BackofficeExecutionContext = execution,
+  billingOrganizationId: string | null = null,
 ) {
   return (
     await createInteractiveBashHost({
@@ -93,7 +101,7 @@ async function bash(
         runtime: runtime.services,
         kernel: new BackofficeKernel(runtime.services),
         execution: as,
-        billingOrganizationId: null,
+        billingOrganizationId,
       }),
     })
   ).bash;
@@ -360,6 +368,104 @@ test("codemode runs are retained with their outcome until a later run expires th
           const expired = await (await bash(runtime)).exec(`js.logs ${buildRunIds[1]}`);
           assert.notEqual(expired.exitCode, 0);
           expect(expired.stderr).toContain("CODEMODE_RUN_NOT_FOUND");
+        }),
+      ],
+    }),
+  );
+});
+
+test("codemode runs that load a guest bill their scope's organization, or else their caller's choice", async () => {
+  const userScope = { kind: "user", userId: "user-1" } as const;
+  const userExecution = createBackofficeSystemExecution(userScope);
+
+  async function executions(
+    runtime: InMemoryBackofficeRuntime,
+    billingOrganizationId: string,
+    scope: BackofficeExecutionContext["scope"],
+  ) {
+    const page = await runtime.objects.billing.forOrg(billingOrganizationId).commands.getTrackers({
+      scope,
+      period: new Date(runtime.now()).toISOString().slice(0, 7),
+      pageSize: 100,
+    });
+    const tracker = page.trackers.find((tracker) => tracker.meter === "codemode.executions");
+    return tracker ? { quantity: tracker.quantity, eventCount: tracker.eventCount } : null;
+  }
+
+  async function runAsUser(
+    runtime: InMemoryBackofficeRuntime,
+    billingOrganizationId: string | null,
+  ) {
+    const result = await runBackofficeCodemode({
+      code: "async () => 1",
+      codemode: codemodeRunnerFor(
+        runtime.objects.codemode.for(userScope).commands,
+        userExecution,
+        billingOrganizationId,
+      ),
+      families: runtimeToolFamilies,
+      toolContext: createBackofficeToolContext(
+        createCodemodeRouteBackedRuntimeContext({
+          runtime: runtime.services,
+          kernel: new BackofficeKernel(runtime.services),
+          execution: userExecution,
+          billingOrganizationId,
+        }),
+      ),
+    });
+    assert.equal(result.error, undefined);
+  }
+
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "codemode run billing",
+      objects: scenarioObjects,
+      env: { codemode: { remoteExecutor: createCodemodeNodeExecutor(server) } },
+      setup: ({ given }) => [
+        given.organization.exists({ id: "org-1" }),
+        given.organization.exists({ id: "org-2" }),
+        given.codemode.writeFile({
+          orgId: "org-1",
+          path: "/workspace/scripts/report.js",
+          content: 'console.log("report ready");',
+        }),
+      ],
+      steps: ({ then }) => [
+        then.assert("an organization's runs bill it whatever their caller chose", async (ctx) => {
+          const orgBash = await bash(ctx.runtime, execution, "org-2");
+          const built = await orgBash.exec(
+            "js.build scripts/report.js --out .build/report.module.json",
+            { cwd: "/workspace" },
+          );
+          assert.equal(built.exitCode, 0, built.stderr);
+          for (let run = 0; run < 2; run++) {
+            const ran = await orgBash.exec("js.run .build/report.module.json", {
+              cwd: "/workspace",
+            });
+            assert.equal(ran.exitCode, 0, ran.stderr);
+          }
+          await ctx.drain();
+
+          // The setup write and both runs loaded a guest; the build only compiled.
+          expect(await executions(ctx.runtime, "org-1", execution.scope)).toEqual({
+            quantity: "3",
+            eventCount: "3",
+          });
+          expect(await executions(ctx.runtime, "org-2", execution.scope)).toBeNull();
+        }),
+        then.assert("a user's runs bill the organization their caller chose", async (ctx) => {
+          await runAsUser(ctx.runtime, "org-1");
+          await runAsUser(ctx.runtime, null);
+          await ctx.drain();
+
+          expect(await executions(ctx.runtime, "org-1", userScope)).toEqual({
+            quantity: "1",
+            eventCount: "1",
+          });
+          const runs = await ctx.runtime.objects.codemode
+            .for(userScope)
+            .commands.listRuns({ page: "first", pageSize: 20 });
+          expect(runs.runs.map((run) => run.billingOrganizationId)).toEqual([null, "org-1"]);
         }),
       ],
     }),
