@@ -20,7 +20,11 @@ import type { GitHubFragment } from "@/fragno/github";
 
 import { isSuccessStatus, throwOnRouteRuntimeError } from "../../runtime-errors";
 import { connectionStateOfInspection } from "./integration-events";
-import type { IntegrationContext, IntegrationImplementation } from "./integration-implementation";
+import {
+  checkedIntegrationActionDefinition,
+  type IntegrationContext,
+  type IntegrationImplementation,
+} from "./integration-implementation";
 
 const GITHUB_CONNECTION_NAMESPACE = "github";
 const GITHUB_INTEGRATION_ID = "github";
@@ -48,27 +52,25 @@ const githubPullsListOutputSchema = z.strictObject({
   pulls: z.array(z.record(z.string(), jsonValueSchema)),
   pageInfo: z.strictObject({ page: z.number(), perPage: z.number() }),
 });
-const githubPullsListActionDefinition = {
+const githubPullsListActionDefinition = checkedIntegrationActionDefinition({
   id: "pulls.list",
   label: "List pull requests",
   description: "List pull requests in this repository through the GitHub App installation.",
-  validation: { kind: "checked" as const },
-  inputSchema: z.toJSONSchema(githubPullsListInputSchema, { io: "input" }),
-  outputSchema: z.toJSONSchema(githubPullsListOutputSchema, { io: "output" }),
-};
+  input: githubPullsListInputSchema,
+  output: githubPullsListOutputSchema,
+});
 const githubAccessTokenOutputSchema = z.strictObject({
   token: z.string().describe("Credential; keep it out of logs, files, and replies."),
   expiresAt: z.string(),
 });
-const githubAccessTokenActionDefinition = {
+const githubAccessTokenActionDefinition = checkedIntegrationActionDefinition({
   id: "repository.access-token.create",
   label: "Create repository access token",
   description:
     "Create a short-lived token that can only read this repository's contents, e.g. to clone it with https://x-access-token:<token>@github.com/owner/repo.git.",
-  validation: { kind: "checked" as const },
-  inputSchema: z.toJSONSchema(z.strictObject({}), { io: "input" }),
-  outputSchema: z.toJSONSchema(githubAccessTokenOutputSchema, { io: "output" }),
-};
+  input: z.strictObject({}),
+  output: githubAccessTokenOutputSchema,
+});
 const githubApiRequestInputSchema = z.strictObject({
   method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]),
   path: z
@@ -89,15 +91,14 @@ const githubApiRequestOutputSchema = z.strictObject({
     .describe("Only link (pagination) and x-ratelimit-* headers."),
   body: jsonValueSchema,
 });
-const githubApiRequestActionDefinition = {
+const githubApiRequestActionDefinition = checkedIntegrationActionDefinition({
   id: "api.request",
   label: "Call the GitHub REST API",
   description:
     "Send a GitHub REST API request about this repository, using the app's installation permissions restricted to this repository. Paths outside /repos/{owner}/{repo} are rejected.",
-  validation: { kind: "checked" as const },
-  inputSchema: z.toJSONSchema(githubApiRequestInputSchema, { io: "input" }),
-  outputSchema: z.toJSONSchema(githubApiRequestOutputSchema, { io: "output" }),
-};
+  input: githubApiRequestInputSchema,
+  output: githubApiRequestOutputSchema,
+});
 const githubRepositoryReadCheck = { id: "pulls.read", label: "Read pull requests" };
 
 type GitHubCallRoute = ReturnType<typeof createRouteCaller<GitHubFragment>>;
@@ -559,7 +560,7 @@ export function createGitHubIntegration({
         async actions() {
           return [
             {
-              definition: githubPullsListActionDefinition,
+              definition: githubPullsListActionDefinition(),
               async invoke(input) {
                 const values = githubPullsListInputSchema.parse(input);
                 const response = await access.listPulls(owner, repo, {
@@ -577,14 +578,14 @@ export function createGitHubIntegration({
               },
             },
             {
-              definition: githubAccessTokenActionDefinition,
+              definition: githubAccessTokenActionDefinition(),
               async invoke(input) {
                 z.strictObject({}).parse(input);
                 return await access.createAccessToken(fullName);
               },
             },
             {
-              definition: githubApiRequestActionDefinition,
+              definition: githubApiRequestActionDefinition(),
               async invoke(input) {
                 return await access.requestApi(fullName, githubApiRequestInputSchema.parse(input));
               },

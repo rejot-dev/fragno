@@ -23,7 +23,11 @@ import {
   throwOnRouteRuntimeError,
 } from "../../runtime-errors";
 import { connectionStateOfInspection } from "./integration-events";
-import type { IntegrationContext, IntegrationImplementation } from "./integration-implementation";
+import {
+  checkedIntegrationActionDefinition,
+  type IntegrationContext,
+  type IntegrationImplementation,
+} from "./integration-implementation";
 
 const reson8ConnectionId = "backoffice#reson8";
 export const reson8ConnectionIdentity = {
@@ -60,14 +64,13 @@ const reson8TranscriptionInputSchema = z.strictObject({
       "Null uses service defaults. Null query fields are omitted from the provider request.",
     ),
 });
-const reson8TranscriptionActionDefinition = {
+const reson8TranscriptionActionDefinition = checkedIntegrationActionDefinition({
   id: "prerecorded.transcribe",
   label: "Transcribe prerecorded audio",
   description: "Transcribe audio bytes through the organization's current Reson8 configuration.",
-  validation: { kind: "checked" as const },
-  inputSchema: z.toJSONSchema(reson8TranscriptionInputSchema, { io: "input" }),
-  outputSchema: z.toJSONSchema(reson8PrerecordedTranscriptionSchema, { io: "output" }),
-};
+  input: reson8TranscriptionInputSchema,
+  output: reson8PrerecordedTranscriptionSchema,
+});
 const reson8AccessCheckIdentity = { id: "custom-models.read", label: "Read custom models" };
 
 function inspectReson8Configuration(configured: boolean): IntegrationInspection {
@@ -304,7 +307,7 @@ export function createReson8Integration({
         async actions() {
           return [
             {
-              definition: reson8TranscriptionActionDefinition,
+              definition: reson8TranscriptionActionDefinition(),
               async invoke(input) {
                 const parsed = reson8TranscriptionInputSchema.parse(input);
                 const callRoute = createReson8Caller(context);

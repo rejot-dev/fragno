@@ -1,5 +1,4 @@
 import type {
-  IntegrationAction,
   IntegrationInspection,
   IntegrationSetupProgress,
 } from "@fragno-dev/backoffice-api/v0/integrations";
@@ -14,10 +13,11 @@ import { generateTelegramWebhookSecretToken } from "@/fragno/telegram-webhook-se
 import { createTelegramRuntime } from "../telegram-runtime";
 import type { IntegrationSetupOperation } from "./integration-contracts";
 import { connectionStateOfInspection } from "./integration-events";
-import type {
-  IntegrationActionImplementation,
-  IntegrationContext,
-  IntegrationImplementation,
+import {
+  checkedIntegrationActionDefinition,
+  type IntegrationActionImplementation,
+  type IntegrationContext,
+  type IntegrationImplementation,
 } from "./integration-implementation";
 
 const telegramConnectionId = "backoffice#telegram";
@@ -68,18 +68,11 @@ function defineTelegramAction<
     input: z.output<TInput>,
   ) => Promise<z.input<TOutput>>;
 }) {
-  const definition: IntegrationAction = {
-    id: action.id,
-    label: action.label,
-    description: action.description,
-    validation: { kind: "checked" },
-    inputSchema: z.toJSONSchema(action.input, { io: "input" }),
-    outputSchema: z.toJSONSchema(action.output, { io: "output" }),
-  };
+  const definition = checkedIntegrationActionDefinition(action);
   return {
     bind(runtime: ReturnType<typeof createTelegramRuntime>): IntegrationActionImplementation {
       return {
-        definition,
+        definition: definition(),
         async invoke(input) {
           return action.output.parse(await action.run(runtime, action.input.parse(input)));
         },

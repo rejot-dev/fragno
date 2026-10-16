@@ -12,6 +12,7 @@ import type {
 } from "@fragno-dev/backoffice-api/v0/integrations";
 import type { JsonValue } from "@fragno-dev/backoffice-api/v0/shared/json";
 import type { McpAuthStatus, McpTool } from "@fragno-dev/mcp-fragment/types";
+import { z } from "zod";
 
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
@@ -42,6 +43,29 @@ export interface IntegrationActionImplementation {
    * skip validation; the facade runs them only when the caller opts in.
    */
   invoke(input: JsonValue): Promise<JsonValue>;
+}
+
+/**
+ * Every Object activation evaluates the integration modules, so a checked action converts its
+ * contracts to JSON Schema when it is first listed or invoked, then reuses that definition.
+ */
+export function checkedIntegrationActionDefinition(action: {
+  id: string;
+  label: string;
+  description: string;
+  input: z.ZodType;
+  output: z.ZodType;
+}): () => IntegrationAction {
+  let definition: IntegrationAction | null = null;
+  return () =>
+    (definition ??= {
+      id: action.id,
+      label: action.label,
+      description: action.description,
+      validation: { kind: "checked" },
+      inputSchema: z.toJSONSchema(action.input, { io: "input" }),
+      outputSchema: z.toJSONSchema(action.output, { io: "output" }),
+    });
 }
 
 /**

@@ -35,6 +35,7 @@ import { resolveRuntimePublicScopePathSegment } from "../../runtime-public-scope
 import { connectionStateOfInspection } from "./integration-events";
 import {
   authMethodOfFragmentAuthMode,
+  checkedIntegrationActionDefinition,
   type IntegrationContext,
   type IntegrationImplementation,
 } from "./integration-implementation";
@@ -72,26 +73,24 @@ const apiConnectionDescriptionSchema = z.strictObject({
   name: z.string().nullable(),
   auth: apiAuthStatusSchema,
 });
-const apiDescribeActionDefinition = {
+const apiDescribeActionDefinition = checkedIntegrationActionDefinition({
   id: "connection.describe",
   label: "Describe connection",
   description:
     "Read the stored base URL, auth mode, connection status, and sanitized auth state without contacting the provider. Request paths are relative to this base URL.",
-  validation: { kind: "checked" as const },
-  inputSchema: z.toJSONSchema(z.strictObject({}), { io: "input" }),
-  outputSchema: z.toJSONSchema(apiConnectionDescriptionSchema, { io: "output" }),
-};
+  input: z.strictObject({}),
+  output: apiConnectionDescriptionSchema,
+});
 // The slug comes from the resolved address; requests cannot name another connection.
 const apiIntegrationRequestInputSchema = z.strictObject(apiRequestInputSchema.shape);
-const apiRequestActionDefinition = {
+const apiRequestActionDefinition = checkedIntegrationActionDefinition({
   id: "request",
   label: "Send HTTP request",
   description:
     "Send one HTTP request relative to the connection's base URL, which connection.describe returns, with its stored authentication. Upstream errors are returned in the result envelope.",
-  validation: { kind: "checked" as const },
-  inputSchema: z.toJSONSchema(apiIntegrationRequestInputSchema, { io: "input" }),
-  outputSchema: z.toJSONSchema(apiRequestOutputSchema, { io: "output" }),
-};
+  input: apiIntegrationRequestInputSchema,
+  output: apiRequestOutputSchema,
+});
 
 export function encodeApiConnectionId(slug: string) {
   return `api#${slug}`;
@@ -648,7 +647,7 @@ export function createApiIntegration({
         async actions() {
           return [
             {
-              definition: apiRequestActionDefinition,
+              definition: apiRequestActionDefinition(),
               async invoke(input) {
                 const result = await access.request(
                   localId,
@@ -665,7 +664,7 @@ export function createApiIntegration({
               },
             },
             {
-              definition: apiDescribeActionDefinition,
+              definition: apiDescribeActionDefinition(),
               async invoke(input) {
                 z.strictObject({}).parse(input);
                 const [connection, auth] = await Promise.all([

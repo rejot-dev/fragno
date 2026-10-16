@@ -32,7 +32,11 @@ import { apiPublicAddress, apiWebhookPublicUrl } from "@/fragno/scoped-public-fr
 import { isSuccessStatus, throwOnRouteRuntimeError } from "../../runtime-errors";
 import { resolveRuntimePublicScopePathSegment } from "../../runtime-public-scope";
 import type { IntegrationConnectionState } from "./integration-events";
-import type { IntegrationContext, IntegrationImplementation } from "./integration-implementation";
+import {
+  checkedIntegrationActionDefinition,
+  type IntegrationContext,
+  type IntegrationImplementation,
+} from "./integration-implementation";
 
 const webhookIntegrationId = "webhook";
 const webhookSetupInputSchema = z.strictObject({
@@ -76,15 +80,14 @@ const webhookEndpointDescriptionSchema = z.strictObject({
     deliveries: true,
   }).shape,
 });
-const webhookDescribeActionDefinition = {
+const webhookDescribeActionDefinition = checkedIntegrationActionDefinition({
   id: "endpoint.describe",
   label: "Describe endpoint",
   description:
     "Read the endpoint's webhook URL, status, contract, and latest delivery outcomes. Stored secrets are named by reference, never returned.",
-  validation: { kind: "checked" as const },
-  inputSchema: z.toJSONSchema(z.strictObject({}), { io: "input" }),
-  outputSchema: z.toJSONSchema(webhookEndpointDescriptionSchema, { io: "output" }),
-};
+  input: z.strictObject({}),
+  output: webhookEndpointDescriptionSchema,
+});
 const deliveryCheckIdentity = { id: "delivery.received", label: "Receive a delivery" };
 const rejectionReasons: Record<WebhookRejectionCode, string> = {
   WEBHOOK_ENDPOINT_DISABLED: "the endpoint is disabled",
@@ -571,7 +574,7 @@ export function createWebhookIntegration({
         async actions() {
           return [
             {
-              definition: webhookDescribeActionDefinition,
+              definition: webhookDescribeActionDefinition(),
               async invoke(input) {
                 z.strictObject({}).parse(input);
                 const [endpoint, publicUrl] = await Promise.all([
