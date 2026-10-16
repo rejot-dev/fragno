@@ -122,6 +122,10 @@ export interface IntegrationImplementation {
   >;
 
   discover(context: IntegrationContext): Promise<readonly IntegrationOverview[]>;
-  list(context: IntegrationContext, cursor: string | null): Promise<IntegrationConnectionPage>;
+  /** Lists only this source's connections; the registry reports sources that fail to list. */
+  list(
+    context: IntegrationContext,
+    cursor: string | null,
+  ): Promise<Omit<IntegrationConnectionPage, "unavailableSources">>;
   resolve(context: IntegrationContext, localId: string): Promise<ResolvedIntegrationConnection>;
 }

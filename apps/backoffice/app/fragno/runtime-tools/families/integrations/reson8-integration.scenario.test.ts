@@ -456,7 +456,11 @@ test("terminal commands use scalar connection IDs without setup handles or persi
           ]);
           const page = await bash.exec("integrations.list --json");
           expect(page.exitCode, page.stderr).toBe(0);
-          expect(JSON.parse(page.stdout)).toEqual({ connections: [], cursor: null });
+          expect(JSON.parse(page.stdout)).toEqual({
+            connections: [],
+            unavailableSources: [],
+            cursor: null,
+          });
           for (const command of [
             "integrations.discover",
             "integrations.list",
@@ -796,6 +800,7 @@ test("connection IDs cannot select an owner or replace umbrella and service auth
           ]);
           expect(await userHost.integrations.runtime.list({ cursor: null })).toEqual({
             connections: [],
+            unavailableSources: [],
             cursor: null,
           });
           expect(
@@ -1325,6 +1330,22 @@ test("implementation claims reject collisions and wrong publication instead of s
           // A finished source does not end the page; the empty disabled source adds nothing.
           expect(await registry.list(context, null)).toMatchObject({
             connections: [{ connectionId }],
+            cursor: null,
+          });
+          const withFailing = createIntegrationRegistry([
+            {
+              ...disabled,
+              connectionIds: [{ kind: "namespace", namespace: "failing" }],
+              list: async () => {
+                throw new Error("Failing storage is unreachable.");
+              },
+            },
+            source,
+          ]);
+          // A failing source is reported instead of hiding the connections of every other source.
+          expect(await withFailing.list(context, null)).toMatchObject({
+            connections: [{ connectionId }],
+            unavailableSources: [{ source: "failing#", reason: "Failing storage is unreachable." }],
             cursor: null,
           });
           const unsupported = createIntegrationRegistry([

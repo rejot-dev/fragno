@@ -138,12 +138,37 @@ export function createIntegrationRegistry(implementations: readonly IntegrationI
         }
         sourceCursor = decoded.cursor;
       }
+      // Sources are often cold Durable Objects, so they list in parallel and the slowest bounds the
+      // page instead of their sum. Pages after the first source with more pages are discarded and
+      // read again on the next request.
+      const results = await Promise.all(
+        entries.slice(index).map(async (entry, offset) => {
+          const resumedCursor = offset === 0 ? sourceCursor : null;
+          try {
+            const page = await entry.implementation.list(context, resumedCursor);
+            return { status: "listed" as const, entry, page };
+          } catch (error) {
+            // Skipping a resumed source would drop its remaining pages, so the caller retries the
+            // cursor instead.
+            if (resumedCursor !== null) {
+              throw error;
+            }
+            // One failing source must not hide every other source's connections.
+            const reason = error instanceof Error ? error.message : "The source could not list.";
+            return { status: "unavailable" as const, entry, reason };
+          }
+        }),
+      );
       // Finished sources are combined into one page, so a page stops only at a source with more
       // pages; each source's own page size still bounds the result.
       const connections: IntegrationConnectionPage["connections"] = [];
-      for (; index < entries.length; index++) {
-        const entry = entries[index];
-        const page = await entry.implementation.list(context, sourceCursor);
+      const unavailableSources: IntegrationConnectionPage["unavailableSources"] = [];
+      for (const result of results) {
+        if (result.status === "unavailable") {
+          unavailableSources.push({ source: result.entry.key, reason: result.reason });
+          continue;
+        }
+        const { entry, page } = result;
         for (const connection of page.connections) {
           assertPublishedConnectionOwner(connection.connectionId, entry.implementation);
         }
@@ -151,12 +176,12 @@ export function createIntegrationRegistry(implementations: readonly IntegrationI
         if (page.cursor !== null) {
           return {
             connections,
+            unavailableSources,
             cursor: JSON.stringify({ source: entry.key, cursor: page.cursor }),
           };
         }
-        sourceCursor = null;
       }
-      return { connections, cursor: null };
+      return { connections, unavailableSources, cursor: null };
     },
     async resolve(context: IntegrationContext, connectionId: string) {
       const { implementation, localId } = resolveConnectionOwner(connectionId);

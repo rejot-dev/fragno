@@ -55,6 +55,15 @@ export function createIntegrationsRuntime({
       let cursor: string | null = null;
       do {
         const page = await registry.list(context, cursor);
+        // A backfill reports every configured connection, so a skipped source fails it; a rerun
+        // records nothing already recorded.
+        const [unavailable] = page.unavailableSources;
+        if (unavailable) {
+          throw new BackofficeOperationError(
+            "operation_failed",
+            `Integrations source ${unavailable.source} could not list: ${unavailable.reason}`,
+          );
+        }
         for (const { connectionId, integrationId } of page.connections) {
           const state = await (await registry.resolve(context, connectionId)).state();
           await recordIntegrationConnectionState(

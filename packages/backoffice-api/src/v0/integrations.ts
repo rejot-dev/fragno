@@ -301,6 +301,20 @@ export type IntegrationOverview = z.output<typeof integrationOverviewSchema>;
 /** Integration list pages project existing configured connections, not independent binding records. */
 export const integrationListOutputSchema = z.strictObject({
   connections: z.array(configuredIntegrationSchema),
+  unavailableSources: z
+    .array(
+      z.strictObject({
+        source: z
+          .string()
+          .describe(
+            "Addresses the source owns: `namespace#` for a whole namespace, or one exact connection ID.",
+          ),
+        reason: z.string(),
+      }),
+    )
+    .describe(
+      "Sources that failed to list in this page. Their connections are missing from the listing, not removed; list again later.",
+    ),
   cursor: z
     .string()
     .nullable()

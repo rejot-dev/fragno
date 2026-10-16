@@ -373,6 +373,7 @@ test("a repository becomes a connection after the GitHub App is installed, linke
                 authorization: { status: "available" },
               }),
             ],
+            unavailableSources: [],
             cursor: null,
           });
         },
@@ -551,7 +552,11 @@ test("without a GitHub App configuration, GitHub is unavailable and other integr
       steps: ({ then }) => [
         then.assert("listing, discovery, and setup report GitHub as unavailable", async (ctx) => {
           const system = createTerminal(ctx, createBackofficeSystemExecution(scope));
-          expect(await system.json("integrations.list")).toEqual({ connections: [], cursor: null });
+          expect(await system.json("integrations.list")).toEqual({
+            connections: [],
+            unavailableSources: [],
+            cursor: null,
+          });
           expect(await system.json("integrations.discover")).toContainEqual(
             expect.objectContaining({
               id: "github",

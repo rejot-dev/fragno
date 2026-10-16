@@ -220,6 +220,12 @@ type IntegrationsListInput = {
 };
 type IntegrationsListOutput = {
   connections: ConfiguredIntegrationConnection[];
+  /** Sources that failed to list in this page. Their connections are missing from the listing, not removed; list again later. */
+  unavailableSources: {
+    /** Addresses the source owns: `namespace#` for a whole namespace, or one exact connection ID. */
+    source: string;
+    reason: string;
+  }[];
   /** Null means all configured integrations in this scope have been listed. */
   cursor: string | null;
 };
