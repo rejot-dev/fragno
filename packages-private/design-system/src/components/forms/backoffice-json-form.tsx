@@ -1,14 +1,9 @@
-import { Checkbox } from "@base-ui/react/checkbox";
-import { Field } from "@base-ui/react/field";
-import { Input } from "@base-ui/react/input";
-import { Select } from "@base-ui/react/select";
 import {
   useCallback,
   useMemo,
   useRef,
   useState,
   type ComponentType,
-  type ReactNode,
   type SubmitEvent,
 } from "react";
 
@@ -47,13 +42,15 @@ import {
 
 import { Button } from "../button";
 import { ClientOnly } from "../client-only";
+import { CheckboxField, Field } from "../field";
 import { Icon } from "../icon";
+import { Input } from "../input";
+import { Select } from "../select";
+import { TextArea } from "../text-area";
 import {
   getBackofficeJsonFormErrorMessages,
   translateBackofficeJsonFormError,
 } from "./backoffice-json-form-errors";
-
-const inputClassName = "bo-input min-h-12 w-full px-4 text-[15px]";
 
 function withJsonFormsControlProps(component: ComponentType<ControlProps>) {
   return jsonFormsControlProps(component);
@@ -69,49 +66,6 @@ function withJsonFormsLayoutProps<T extends LayoutProps>(component: ComponentTyp
 
 function withJsonFormsDetailProps(component: ComponentType<StatePropsOfControlWithDetail>) {
   return jsonFormsDetailProps(component);
-}
-
-function BackofficeControlField({
-  children,
-  description,
-  errors,
-  id,
-  invalid,
-  label,
-  required,
-}: {
-  children: ReactNode;
-  description: string | undefined;
-  errors: string;
-  id: string;
-  invalid: boolean;
-  label: string;
-  required: boolean;
-}) {
-  return (
-    <Field.Root invalid={invalid} className="space-y-2.5">
-      <Field.Label
-        htmlFor={id}
-        className="flex items-center justify-between gap-3 text-sm font-semibold text-[var(--bo-fg)]"
-      >
-        <span>{label}</span>
-        {required ? (
-          <span className="shrink-0 rounded-[4px] bg-[var(--bo-panel-2)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--bo-muted)]">
-            Required
-          </span>
-        ) : null}
-      </Field.Label>
-      {description ? (
-        <Field.Description className="text-xs leading-5 text-[var(--bo-muted)]">
-          {description}
-        </Field.Description>
-      ) : null}
-      {children}
-      <Field.Error match={invalid} className="text-xs leading-5 text-[var(--bo-failed)]">
-        {errors}
-      </Field.Error>
-    </Field.Root>
-  );
 }
 
 function useTouchedControl() {
@@ -167,20 +121,20 @@ function BackofficeTextControl(props: ControlProps) {
   };
 
   return (
-    <BackofficeControlField
-      id={inputId}
+    <Field
+      controlId={inputId}
+      density="comfortable"
       label={label}
       description={description}
       required={required === true}
-      errors={errors}
-      invalid={invalid}
+      error={invalid ? errors : null}
     >
       {multiline ? (
-        <textarea
+        <TextArea
           {...commonProps}
+          density="comfortable"
           rows={5}
           maxLength={schema.maxLength}
-          className={`${inputClassName} min-h-32 resize-y py-3`}
           onChange={(event) => {
             markTouched();
             props.handleChange(path, event.target.value);
@@ -189,17 +143,18 @@ function BackofficeTextControl(props: ControlProps) {
       ) : (
         <Input
           {...commonProps}
+          density="comfortable"
           type={inputType}
           minLength={schema.minLength}
           maxLength={schema.maxLength}
-          className={inputClassName}
-          onValueChange={(value) => {
+          className="w-full"
+          onChange={(event) => {
             markTouched();
-            props.handleChange(path, value);
+            props.handleChange(path, event.target.value);
           }}
         />
       )}
-    </BackofficeControlField>
+    </Field>
   );
 }
 
@@ -212,16 +167,17 @@ function BackofficeNumberControl(props: ControlProps) {
 
   const inputId = `${id}-input`;
   return (
-    <BackofficeControlField
-      id={inputId}
+    <Field
+      controlId={inputId}
+      density="comfortable"
       label={label}
       description={description}
       required={required === true}
-      errors={errors}
-      invalid={touched && errors.length > 0}
+      error={touched && errors.length > 0 ? errors : null}
     >
       <Input
         id={inputId}
+        density="comfortable"
         type="number"
         disabled={!enabled}
         required={required}
@@ -229,14 +185,15 @@ function BackofficeNumberControl(props: ControlProps) {
         min={schema.minimum}
         max={schema.maximum}
         step={schema.type === "integer" ? 1 : "any"}
-        className={`${inputClassName} tabular-nums`}
+        className="w-full tabular-nums"
         onBlur={markTouched}
-        onValueChange={(value) => {
+        onChange={(event) => {
           markTouched();
+          const value = event.target.value;
           props.handleChange(path, value === "" ? undefined : Number(value));
         }}
       />
-    </BackofficeControlField>
+    </Field>
   );
 }
 
@@ -247,49 +204,21 @@ function BackofficeBooleanControl(props: ControlProps) {
     return null;
   }
 
-  const inputId = `${id}-input`;
-  const invalid = touched && errors.length > 0;
   return (
-    <Field.Root invalid={invalid} className="space-y-2.5">
-      <label
-        htmlFor={inputId}
-        className="flex min-h-14 cursor-pointer items-start gap-3 rounded-[4px] border border-[color:var(--bo-selected-border)] bg-[var(--bo-selected-bg)] px-4 py-3.5 shadow-[var(--bo-selected-shadow)] transition-[border-color] duration-150 ease-out hover:border-[color:var(--bo-border-strong)]"
-      >
-        <Checkbox.Root
-          id={inputId}
-          checked={data === true}
-          disabled={!enabled}
-          required={required}
-          onCheckedChange={(checked) => {
-            markTouched();
-            props.handleChange(path, checked);
-          }}
-          className="group mt-0.5 inline-flex size-5 shrink-0 items-center justify-center rounded-[4px] border border-[color:var(--bo-border-strong)] bg-[var(--bo-panel)] text-[var(--bo-btn-fg)] transition-[border-color,background-color,scale] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-50 data-[checked]:border-[color:var(--bo-accent)] data-[checked]:bg-[var(--bo-btn-bg)]"
-        >
-          <Checkbox.Indicator>
-            <Icon name="check" className="size-3.5" strokeWidth={2} />
-          </Checkbox.Indicator>
-        </Checkbox.Root>
-        <span className="min-w-0 flex-1">
-          <span className="flex items-center justify-between gap-3 text-sm font-semibold text-[var(--bo-fg)]">
-            {label}
-            {required ? (
-              <span className="shrink-0 rounded-[4px] bg-[var(--bo-panel-2)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--bo-muted)]">
-                Required
-              </span>
-            ) : null}
-          </span>
-          {description ? (
-            <span className="mt-1 block text-xs leading-5 text-[var(--bo-muted)]">
-              {description}
-            </span>
-          ) : null}
-        </span>
-      </label>
-      <Field.Error match={invalid} className="text-xs leading-5 text-[var(--bo-failed)]">
-        {errors}
-      </Field.Error>
-    </Field.Root>
+    <CheckboxField
+      controlId={`${id}-input`}
+      density="comfortable"
+      label={label}
+      description={description}
+      required={required === true}
+      disabled={!enabled}
+      checked={data === true}
+      error={touched && errors.length > 0 ? errors : null}
+      onCheckedChange={(checked) => {
+        markTouched();
+        props.handleChange(path, checked);
+      }}
+    />
   );
 }
 
@@ -301,71 +230,29 @@ function BackofficeEnumControl(props: ControlProps & OwnPropsOfEnum) {
   }
 
   const inputId = `${id}-input`;
-  const items = options ?? [];
   return (
-    <BackofficeControlField
-      id={inputId}
+    <Field
+      controlId={inputId}
+      density="comfortable"
       label={label}
       description={description}
       required={required === true}
-      errors={errors}
-      invalid={touched && errors.length > 0}
+      error={touched && errors.length > 0 ? errors : null}
     >
-      <Select.Root
-        id={inputId}
-        items={items}
+      <Select
+        controlId={inputId}
+        density="comfortable"
+        options={options ?? []}
         value={data ?? null}
+        placeholder="Choose an option"
         disabled={!enabled}
-        required={required}
-        itemToStringLabel={(value) =>
-          items.find((option) => Object.is(option.value, value))?.label ?? String(value)
-        }
-        itemToStringValue={(value) => String(value)}
+        required={required === true}
         onValueChange={(value) => {
           markTouched();
           props.handleChange(path, value ?? undefined);
         }}
-      >
-        <Select.Trigger className="bo-input group flex min-h-12 w-full cursor-pointer items-center text-left disabled:cursor-not-allowed">
-          <Select.Value
-            placeholder="Choose an option"
-            className="min-w-0 flex-1 truncate px-4 text-[15px]"
-          />
-          <span className="flex size-10 shrink-0 items-center justify-center text-[var(--bo-muted-2)] transition-colors duration-150 ease-out group-hover:text-[var(--bo-fg)]">
-            <Icon
-              name="chevron-down"
-              className="size-4 transition-transform duration-150 ease-out group-data-[popup-open]:rotate-180"
-              strokeWidth={1.75}
-            />
-          </span>
-        </Select.Trigger>
-        <Select.Portal>
-          <Select.Positioner
-            sideOffset={4}
-            align="start"
-            className="z-50 w-[var(--anchor-width)] min-w-52"
-          >
-            <Select.Popup
-              data-backoffice-root
-              className="bo-popover-surface flex origin-[var(--transform-origin)] flex-col gap-0.5 rounded-[6px] border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-1.5 text-[var(--bo-fg)] transition-[opacity,scale] duration-150 ease-out data-[ending-style]:scale-[0.98] data-[ending-style]:opacity-0 data-[starting-style]:scale-[0.98] data-[starting-style]:opacity-0"
-            >
-              {items.map((option) => (
-                <Select.Item
-                  key={`${option.label}-${String(option.value)}`}
-                  value={option.value}
-                  className="grid min-h-10 cursor-pointer grid-cols-[1fr_auto] items-center gap-3 rounded-[4px] px-2.5 py-2 text-sm font-medium text-[var(--bo-fg)] transition-[background-color,box-shadow] duration-150 ease-out outline-none data-[highlighted]:bg-[var(--bo-panel-2)] data-[selected]:bg-[var(--bo-selected-bg)] data-[selected]:shadow-[var(--bo-selected-shadow)]"
-                >
-                  <Select.ItemText>{option.label}</Select.ItemText>
-                  <Select.ItemIndicator>
-                    <Icon name="check" className="size-4 text-[var(--bo-accent)]" />
-                  </Select.ItemIndicator>
-                </Select.Item>
-              ))}
-            </Select.Popup>
-          </Select.Positioner>
-        </Select.Portal>
-      </Select.Root>
-    </BackofficeControlField>
+      />
+    </Field>
   );
 }
 
