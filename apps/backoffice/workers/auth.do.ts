@@ -15,6 +15,7 @@ import type { DirectoryPageInput } from "@fragno-dev/backoffice-api/v0/shared/pa
 import {
   type BackofficeContextScope,
   backofficeScopeOrganization,
+  backofficeScopeRootOwner,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { DurableObjectDialect } from "@fragno-dev/db/dialects/durable-object";
 import { betterAuth, type BetterAuthOptions } from "better-auth";
@@ -695,8 +696,10 @@ async function resolveBackofficeUserTokenGrant(
     };
   }
 
-  if (input.scope?.kind === "user") {
-    if (input.scope.userId !== storedUser.id) {
+  // What a user owns is only ever available to that user.
+  const requestedOwner = input.scope && backofficeScopeRootOwner(input.scope);
+  if (input.scope && requestedOwner?.kind === "user") {
+    if (requestedOwner.userId !== storedUser.id) {
       throw new BackofficeUserTokenGrantForbiddenError(
         "The requested user scope is not available to this user.",
       );

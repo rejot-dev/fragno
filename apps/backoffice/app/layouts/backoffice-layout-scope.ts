@@ -5,6 +5,7 @@ import {
   type BackofficeProjectIdentity,
   type BackofficeRouteScopeResolution,
   resolveBackofficeRouteScope,
+  type BackofficeResolvedProjectOwner,
 } from "@/backoffice-runtime/resolved-scope";
 import {
   backofficeRouteScopeFromParams,
@@ -36,7 +37,10 @@ export async function resolveBackofficePageScope<
 }: {
   params: BackofficeRouteScopeParams;
   organizations: readonly TOrganization[];
-  findProject(organization: TOrganization, projectSlug: string): Promise<TProject | null>;
+  findProject(
+    owner: BackofficeResolvedProjectOwner<TOrganization, TProject>,
+    projectSlug: string,
+  ): Promise<TProject | null>;
 }): Promise<BackofficePageScope<TOrganization, TProject>> {
   let routeScope: BackofficeRouteScope | null;
   try {

@@ -21,15 +21,51 @@ import {
   type BackofficeAppLookupInput,
 } from "@fragno-dev/backoffice-api/v0/apps";
 import type { JsonValue } from "@fragno-dev/backoffice-api/v0/shared/json";
-import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import type {
+  BackofficeContextScope,
+  BackofficeOrganizationScope,
+  BackofficeScopeIdNames,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
 
 import type { BackofficeAppOperationResult } from "@/fragno/apps/errors";
 
+/**
+ * Where an organization's installation can be approved to act: the organization and the projects it
+ * owns directly. Other owners' projects can share a project ID, so the owner is part of the target.
+ */
+export type AppInstallationTargetScope =
+  | BackofficeOrganizationScope<BackofficeScopeIdNames>
+  | {
+      kind: "project";
+      owner: BackofficeOrganizationScope<BackofficeScopeIdNames>;
+      projectId: string;
+    };
+
+/** Narrows a scope to an installation target, or `null` where installations never act. */
+export function appInstallationTargetScope(
+  scope: BackofficeContextScope,
+): AppInstallationTargetScope | null {
+  switch (scope.kind) {
+    case "org":
+      return scope;
+    case "project":
+      return scope.owner.kind === "org"
+        ? { kind: "project", owner: scope.owner, projectId: scope.projectId }
+        : null;
+    case "system":
+    case "user":
+    case "app":
+      return null;
+    default:
+      throw new Error("Unsupported Backoffice scope kind.", { cause: scope satisfies never });
+  }
+}
+
 /** The one installation resource policy, shared by credential issuance and live authorization. */
 export function appInstallationResourceScopeContains(
   resourceScope: AppInstallationResourceScope,
-  scope: Extract<BackofficeContextScope, { kind: "org" | "project" }>,
+  scope: AppInstallationTargetScope,
 ): boolean {
   return (
     resourceScope.kind === "organization" ||
@@ -107,7 +143,7 @@ export type BackofficeAppConnection =
 /** Backoffice's identity claims for one call; the installation object adds the rest. */
 export type AppEndpointCallInput = {
   appId: string;
-  scopeRestriction: AppActionTokenClaims["scopeRestriction"];
+  scopeRestriction: AppInstallationTargetScope;
   actor: AppActionTokenClaims["actor"];
   request: AppActionRequest;
 };

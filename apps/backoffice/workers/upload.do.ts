@@ -148,6 +148,7 @@ function resolveUploadStoragePolicy(id: DurableObjectId): UploadStoragePolicy {
     case "named":
       return { kind: "fixed-database", namespace: objectScope.name };
     case "user":
+    case "app":
     case "project":
       return { kind: "fixed-database", namespace: id.name };
     case "singleton":

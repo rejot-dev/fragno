@@ -7,6 +7,7 @@ import {
   backofficeContextScopesEqual,
   backofficeScopeContains,
   backofficeScopePathSegment,
+  backofficeScopeRootOwner,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import type { BackofficeAuthorityResolver } from "./authority-resolver";
@@ -435,11 +436,13 @@ export class BackofficeKernel {
       );
     }
 
+    // Only the owning user acts in what a user owns.
+    const owner = backofficeScopeRootOwner(execution.scope);
     if (
-      execution.scope.kind === "user" &&
+      owner?.kind === "user" &&
       execution.actors.principal?.scope === "internal" &&
       execution.actors.principal.type === "user" &&
-      execution.actors.principal.id !== execution.scope.userId
+      execution.actors.principal.id !== owner.userId
     ) {
       throw new BackofficeForbiddenError("Forbidden", "context-access-denied");
     }
@@ -576,6 +579,7 @@ export class BackofficeKernel {
         }
         deny();
         return;
+      case "app":
       case "project":
       case "user":
         if (backofficeContextScopesEqual(ownerScope, targetScope)) {

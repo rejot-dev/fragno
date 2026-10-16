@@ -127,6 +127,8 @@ function describeBackofficeScope(context: BackofficeToolContext): string {
       return "project";
     case "user":
       return "user";
+    case "app":
+      return "app";
     default:
       throw new Error("Unsupported Backoffice scope kind.", {
         cause: context.execution.scope satisfies never,

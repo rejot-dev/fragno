@@ -134,14 +134,16 @@ function scopePresentation(
         detail: `Organization · ${scope.orgId}`,
       };
     }
+    case "app":
+      return { label: scope.appId, detail: `App · ${scopePresentation(scope.owner, me).label}` };
     case "project":
       return {
         label: scope.projectId,
-        detail: `Project · ${scope.owner.orgId}`,
+        detail: `Project · ${scopePresentation(scope.owner, me).label}`,
       };
+    default:
+      throw new Error("Unsupported permission scope.", { cause: scope satisfies never });
   }
-
-  throw new Error("Unsupported permission scope.");
 }
 
 function PermissionsSettings({

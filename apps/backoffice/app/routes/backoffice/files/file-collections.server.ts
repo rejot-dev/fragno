@@ -27,8 +27,9 @@ export const filesOverviewRootPathsForScope = (
     case "system":
       return ["/system"];
     case "org":
-    case "project":
     case "user":
+    case "app":
+    case "project":
       return ["/static", "/workspace"];
     default:
       throw new Error("Unsupported Backoffice file scope kind.", { cause: scope satisfies never });

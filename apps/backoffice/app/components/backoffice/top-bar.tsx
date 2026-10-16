@@ -1,4 +1,3 @@
-import { backofficeScopeOrganization } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { ClientOnly } from "@fragno-private/design-system/client-only";
 import { Icon } from "@fragno-private/design-system/icon";
 import { Suspense, use } from "react";
@@ -116,8 +115,9 @@ export function BackofficeTopBar({
   onWorkflowDrawerToggle,
 }: BackofficeTopBarProps) {
   const routeScope = resolvedScope ? backofficeRouteScopeFromResolvedScope(resolvedScope) : null;
-  // Only organizations own projects so far.
-  const projectMenuOrganization = resolvedScope && backofficeScopeOrganization(resolvedScope);
+  // The menu lists the projects the current scope owns, or those of the current project's owner.
+  const projectOwner = resolvedScope?.kind === "project" ? resolvedScope.owner : resolvedScope;
+  const projectMenuOrganization = projectOwner?.kind === "org" ? projectOwner : null;
 
   return (
     <header className="sticky top-0 z-30 border-b border-[color:var(--bo-border)] bg-[color:var(--bo-bg)]">

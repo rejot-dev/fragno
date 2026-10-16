@@ -1,11 +1,11 @@
 import {
   MARKETPLACE_LOCK_PATH,
   marketplaceInstallationRootSchema,
+  type MarketplaceIngestionTargetScope,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 import {
-  backofficeScopeOrganization,
+  backofficeScopeRootOwner,
   type BackofficeContextScope,
-  type BackofficeRoutableScope,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { Button, ButtonLink } from "@fragno-private/design-system/button";
 import { ClientOnly } from "@fragno-private/design-system/client-only";
@@ -113,7 +113,7 @@ type MarketplaceInstallationTarget =
   | {
       state: "ready";
       organizationId: string;
-      targetScope: BackofficeRoutableScope;
+      targetScope: MarketplaceIngestionTargetScope;
     }
   | { state: "unavailable" | "forbidden"; message: string };
 
@@ -132,8 +132,15 @@ const resolveMarketplaceInstallationTarget = (
         }
       : { state: "forbidden", message: "System has no workspace to install into." };
   }
-  if (targetScope.kind === "user") {
-    if (targetScope.userId !== me.user.id) {
+  if (
+    targetScope.kind === "app" ||
+    (targetScope.kind === "project" && targetScope.owner.kind === "app")
+  ) {
+    return { state: "unavailable", message: "App workspaces do not install Marketplace packages." };
+  }
+  const owner = backofficeScopeRootOwner(targetScope);
+  if (owner.kind === "user") {
+    if (owner.userId !== me.user.id) {
       return {
         state: "forbidden",
         message: "You can only install into your personal workspace.",
@@ -160,7 +167,7 @@ const resolveMarketplaceInstallationTarget = (
         };
   }
 
-  const organizationId = backofficeScopeOrganization(targetScope).orgId;
+  const organizationId = owner.orgId;
   if (
     (installationOrganizationId !== null && installationOrganizationId !== organizationId) ||
     !me.organizations.some(({ organization }) => organization.id === organizationId)

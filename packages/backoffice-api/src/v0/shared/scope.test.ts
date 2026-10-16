@@ -5,6 +5,7 @@ import {
   backofficeScopeContains,
   backofficeScopeIdCodec,
   backofficeScopeOrganization,
+  backofficeScopeRootOwner,
   formatBackofficeScopeRoutePath,
   parseBackofficeScopeRouteParams,
   backofficeRoutableScopeSchema,
@@ -37,6 +38,18 @@ describe("Backoffice scopes", () => {
       { kind: "project", owner: { kind: "org", orgId: "org:1" }, projectId: "p/2" } as const,
       "project:org:org%3A1:p%2F2",
     ],
+    [
+      { kind: "app", owner: { kind: "user", userId: "alice" }, appId: "app:1" } as const,
+      "app:user:alice:app%3A1",
+    ],
+    [
+      {
+        kind: "project",
+        owner: { kind: "app", owner: { kind: "org", orgId: "acme" }, appId: "books" },
+        projectId: "ledger",
+      } as const,
+      "project:app:org:acme:books:ledger",
+    ],
   ])("round-trips path segments with encoded delimiters for %#", (scope, segment) => {
     expect(backofficeScopePathSegment(scope)).toBe(segment);
     expect(parseBackofficeScopePathSegment(segment)).toEqual(scope);
@@ -52,6 +65,10 @@ describe("Backoffice scopes", () => {
     [
       { kind: "project", owner: { kind: "org", orgId: "org:1" }, projectId: "p/2" } as const,
       "project/org:org%253A1:p%252F2",
+    ],
+    [
+      { kind: "app", owner: { kind: "org", orgId: "acme" }, appId: "books" } as const,
+      "app/org:acme:books",
     ],
   ])("round-trips route paths through once-decoded route params for %#", (scope, path) => {
     expect(formatBackofficeScopeRoutePath(scope, backofficeScopeIdCodec)).toBe(path);
@@ -75,9 +92,19 @@ describe("Backoffice scopes", () => {
     expect(() => parseBackofficeScopePathSegment("project:org-1:project-1")).toThrow(
       "Unknown scope kind 'org-1'.",
     );
-    expect(() => parseBackofficeScopePathSegment("project:user:alice:project-1")).toThrow(
-      "User scope cannot own a project.",
+    expect(() => parseBackofficeScopePathSegment("project:system:project-1")).toThrow(
+      "System scope cannot own a project.",
     );
+    expect(() =>
+      parseBackofficeScopePathSegment("project:project:org:org-1:project-1:project-2"),
+    ).toThrow("Project scope cannot own a project.");
+    expect(() => parseBackofficeScopePathSegment("app:app:org:org-1:books:other")).toThrow(
+      "App scope cannot own an app.",
+    );
+    expect(() => parseBackofficeScopePathSegment("app")).toThrow(
+      "App scope requires an owner scope.",
+    );
+    expect(() => parseBackofficeScopePathSegment("app:org:org-1")).toThrow("Missing app id.");
     expect(() => parseBackofficeScopePathSegment("project:org:org-1:project-1:extra")).toThrow(
       "Project scope has unexpected components after it.",
     );
@@ -101,6 +128,27 @@ describe("Backoffice scopes", () => {
     assert(!backofficeScopeContains(website, acme));
     assert(!backofficeScopeContains({ kind: "org", orgId: "beta" }, website));
     assert(!backofficeScopeContains({ kind: "user", userId: "acme" }, website));
+  });
+
+  test("an organization contains neither its apps' workspaces nor their projects", () => {
+    const acme = { kind: "org", orgId: "acme" } as const;
+    const books = { kind: "app", owner: acme, appId: "books" } as const;
+    const ledger = { kind: "project", owner: books, projectId: "ledger" } as const;
+    assert(!backofficeScopeContains(acme, books));
+    assert(!backofficeScopeContains(acme, ledger));
+    assert(backofficeScopeContains(books, ledger));
+  });
+
+  test("follows owner chains to the organization or user that answers for a scope", () => {
+    const alice = { kind: "user", userId: "alice" } as const;
+    const ledger = {
+      kind: "project",
+      owner: { kind: "app", owner: alice, appId: "books" },
+      projectId: "ledger",
+    } as const;
+    expect(backofficeScopeRootOwner(ledger)).toEqual(alice);
+    expect(backofficeScopeOrganization(ledger)).toBeNull();
+    expect(backofficeScopeRootOwner({ kind: "system" })).toBeNull();
   });
 
   test("renames a project's owner along with the project", () => {

@@ -18,7 +18,12 @@ import {
   isAutomationActorProvenancePath,
 } from "@fragno-dev/backoffice-api/v0/automation";
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
-import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import type {
+  BackofficeContextScope,
+  BackofficeProjectOwner,
+  BackofficeRootOwner,
+  BackofficeScopeIdNames,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 type AutomationRouteConfiguration =
   | { trigger: AutomationRouteEventTrigger; action: AutomationRouteAction }
@@ -311,7 +316,7 @@ export const renderAutomationTemplateValue = (
  *
  * `start_workflow` no longer has scope overrides: workflows always run in the current event scope.
  * Scope templates remain only for `forward_event`, where preserving raw org/user/project ids is
- * required.
+ * required. An id that renders empty names no scope, so rendering fails.
  */
 export const renderAutomationScopeTemplate = (
   template: AutomationRouteScopeTemplate,
@@ -319,46 +324,48 @@ export const renderAutomationScopeTemplate = (
   routeId: string,
   routingKey: string,
 ): BackofficeContextScope => {
+  const renderId = (idTemplate: string, label: string) => {
+    const id = renderAutomationRawTemplateValue(idTemplate, event, routeId, routingKey);
+    if (!id) {
+      throw new Error(`Automation route ${routeId} resolved an empty target ${label}.`);
+    }
+    return id;
+  };
+  const renderRootOwner = (
+    owner: Extract<AutomationRouteScopeTemplate, { kind: "org" | "user" }>,
+  ): BackofficeRootOwner<BackofficeScopeIdNames> =>
+    owner.kind === "org"
+      ? { kind: "org", orgId: renderId(owner.orgIdTemplate, "org id") }
+      : { kind: "user", userId: renderId(owner.userIdTemplate, "user id") };
+  const renderOwner = (
+    owner: Extract<AutomationRouteScopeTemplate, { kind: "project" }>["owner"],
+  ): BackofficeProjectOwner<BackofficeScopeIdNames> =>
+    owner.kind === "app"
+      ? {
+          kind: "app",
+          owner: renderRootOwner(owner.owner),
+          appId: renderId(owner.appIdTemplate, "app id"),
+        }
+      : renderRootOwner(owner);
+
   switch (template.kind) {
     case "system":
       return { kind: "system" };
     case "org":
-      return {
-        kind: "org",
-        orgId: renderAutomationRawTemplateValue(template.orgIdTemplate, event, routeId, routingKey),
-      };
+    case "user":
+    case "app":
+      return renderOwner(template);
     case "project":
       return {
         kind: "project",
-        owner: {
-          kind: "org",
-          orgId: renderAutomationRawTemplateValue(
-            template.owner.orgIdTemplate,
-            event,
-            routeId,
-            routingKey,
-          ),
-        },
-        projectId: renderAutomationRawTemplateValue(
-          template.projectIdTemplate,
-          event,
-          routeId,
-          routingKey,
-        ),
+        owner: renderOwner(template.owner),
+        projectId: renderId(template.projectIdTemplate, "project id"),
       };
-    case "user":
-      return {
-        kind: "user",
-        userId: renderAutomationRawTemplateValue(
-          template.userIdTemplate,
-          event,
-          routeId,
-          routingKey,
-        ),
-      };
+    default:
+      throw new Error("Unsupported automation route scope template kind.", {
+        cause: template satisfies never,
+      });
   }
-
-  throw new Error("Unsupported automation route scope template kind.");
 };
 
 /**

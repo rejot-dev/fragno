@@ -59,6 +59,12 @@ export type DurableHooksScopeSelection =
       objectId: DurableHooksObjectId;
     }
   | {
+      kind: "app";
+      label: string;
+      resolvedScope: Extract<BackofficeResolvedScope, { kind: "app" }>;
+      objectId: DurableHooksObjectId;
+    }
+  | {
       kind: "project";
       label: string;
       resolvedScope: Extract<BackofficeResolvedScope, { kind: "project" }>;
@@ -154,6 +160,8 @@ export const resolveDurableHooksScopeSelection = ({
       return { kind: "project", label, resolvedScope, objectId: objectDefinition.id };
     case "user":
       return { kind: "user", label, resolvedScope, objectId: objectDefinition.id };
+    case "app":
+      return { kind: "app", label, resolvedScope, objectId: objectDefinition.id };
     default:
       throw new Error("Unsupported Backoffice scope kind.", {
         cause: resolvedScope satisfies never,

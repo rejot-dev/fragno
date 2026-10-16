@@ -22,6 +22,7 @@ import {
   createInstalledAppExecution,
   installedAppEventSource,
 } from "@/fragno/app-installations/authority";
+import { appInstallationTargetScope } from "@/fragno/app-installations/contracts";
 import { createBackofficeExecutionForPrincipal } from "@/fragno/auth/backoffice-principal.server";
 import {
   BACKOFFICE_AUTH_ERROR_HEADER,
@@ -114,10 +115,8 @@ async function authorizeApiRequest(
       throw error;
     }
   }
-  if (
-    (scope.kind !== "org" && scope.kind !== "project") ||
-    !backofficeScopeContains(credential.scopeRestriction, scope)
-  ) {
+  const target = appInstallationTargetScope(scope);
+  if (!target || !backofficeScopeContains(credential.scopeRestriction, target)) {
     return {
       ok: false,
       response: apiError("forbidden", "The credential does not permit this scope."),
@@ -126,7 +125,7 @@ async function authorizeApiRequest(
   return {
     ok: true,
     execution: createInstalledAppExecution({
-      scope,
+      scope: target,
       actor: credential.actor,
       installation: credential.installation,
     }),

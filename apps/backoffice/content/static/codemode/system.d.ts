@@ -25,11 +25,23 @@
 /// <reference path="/static/codemode/providers/packages.d.ts" />
 
 // Scoped context handles target a selected Backoffice context.
+type BackofficeCodemodeRootOwner =
+  | { kind: "org"; orgId: string }
+  | { kind: "user"; userId: string };
+type BackofficeCodemodeAppScope = {
+  kind: "app";
+  owner: BackofficeCodemodeRootOwner;
+  appId: string;
+};
 type BackofficeCodemodeScope =
   | { kind: "system" }
-  | { kind: "org"; orgId: string }
-  | { kind: "user"; userId: string }
-  | { kind: "project"; owner: { kind: "org"; orgId: string }; projectId: string };
+  | BackofficeCodemodeRootOwner
+  | BackofficeCodemodeAppScope
+  | {
+      kind: "project";
+      owner: BackofficeCodemodeRootOwner | BackofficeCodemodeAppScope;
+      projectId: string;
+    };
 interface BackofficeCodemodeScopedProviders {
   state: StateCodemodeProvider;
   account: AccountCodemodeProvider;

@@ -360,10 +360,7 @@ export const createAutomationsRuntime = (
           };
         }
         billingOrganizationId = parsed.data.billingOrganizationId;
-        if (
-          billingOrganizationId !== null &&
-          (execution.scope.kind === "user" || execution.scope.kind === "system")
-        ) {
+        if (billingOrganizationId !== null && !scopeOrganization) {
           try {
             // Billing selection survives the handoff, but never grants access to its organization.
             await config.kernel.assertAuthorized({

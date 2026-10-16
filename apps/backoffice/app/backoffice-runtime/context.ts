@@ -21,8 +21,10 @@ export const backofficeContextScopeLabel = (scope: BackofficeContextScope): stri
       return scope.orgId;
     case "user":
       return scope.userId;
+    case "app":
+      return `${backofficeContextScopeLabel(scope.owner)} / ${scope.appId}`;
     case "project":
-      return `${scope.owner.orgId} / ${scope.projectId}`;
+      return `${backofficeContextScopeLabel(scope.owner)} / ${scope.projectId}`;
     default:
       throw new Error("Unsupported Backoffice context scope kind.", {
         cause: scope satisfies never,

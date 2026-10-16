@@ -55,8 +55,12 @@ Commands:
 Scope syntax:
   system
   org:<organization-slug>
-  project:org:<organization-slug>:<project-id>
   user:<user-id>
+  app:<owner>:<app-id>
+  project:<owner>:<project-id>
+
+  An app's <owner> is org:<organization-slug> or user:<user-id>. A project's owner may
+  also be an app, e.g. project:app:org:<organization-slug>:<app-id>:<project-id>.
 
   Organization scopes always use the slug after org:, never the internal organization ID.
   Run 'backoffice scopes' to print the exact values available to you.
@@ -209,7 +213,7 @@ async function printAvailableScopes(args: string[]): Promise<void> {
     console.log(`  ${scope.argument.padEnd(argumentWidth)}  ${scope.label}${defaultLabel}`);
   }
   console.log("\nOrganization scopes use slugs after org:, never internal organization IDs.");
-  console.log("Project scope syntax: project:org:<organization-slug>:<project-id>");
+  console.log("Project scope syntax: project:<owner>:<project-id>, e.g. project:org:acme:website");
 }
 
 async function doctor(args: string[]): Promise<void> {

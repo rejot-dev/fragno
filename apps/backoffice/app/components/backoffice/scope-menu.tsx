@@ -10,6 +10,7 @@ import {
 import { useLocation } from "react-router";
 
 import {
+  backofficeResolvedScopeId,
   backofficeRouteScopeFromResolvedScope,
   type BackofficeResolvedScope,
 } from "@/backoffice-runtime/resolved-scope";
@@ -41,6 +42,8 @@ const scopeOptionId = (scope: BackofficeResolvedScope): string => {
       return `org:${scope.organization.id}`;
     case "user":
       return `user:${scope.userId}`;
+    case "app":
+      return backofficeResolvedScopeId(scope);
     default:
       throw new Error("Unsupported Backoffice scope kind.", { cause: scope satisfies never });
   }
@@ -58,6 +61,8 @@ const triggerKindLabel = (scope: BackofficeResolvedScope): string => {
       return "Organization";
     case "user":
       return "Personal";
+    case "app":
+      return "App";
     default:
       throw new Error("Unsupported Backoffice scope kind.", { cause: scope satisfies never });
   }
@@ -76,6 +81,8 @@ const scopeMark = (
       return { kind: "letter", letter: scope.organization.name.trim().charAt(0).toUpperCase() };
     case "user":
       return { kind: "icon", icon: "user" };
+    case "app":
+      return { kind: "icon", icon: "box" };
     default:
       throw new Error("Unsupported Backoffice scope kind.", { cause: scope satisfies never });
   }
@@ -105,6 +112,8 @@ const currentScopeLabel = (
       return scope.organization.name;
     case "user":
       return me.user.email ?? scope.userId;
+    case "app":
+      return scope.appId;
     default:
       throw new Error("Unsupported Backoffice scope kind.", { cause: scope satisfies never });
   }

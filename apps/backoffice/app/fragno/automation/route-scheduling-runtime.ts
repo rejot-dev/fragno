@@ -2,7 +2,7 @@ import type { AutomationRouteDefinition } from "@fragno-dev/backoffice-api/v0/au
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
 import {
   type BackofficeContextScope,
-  backofficeScopeOrganization,
+  backofficeScopeRootOwner,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import type { DatabaseHandlerTx } from "@fragno-dev/db";
@@ -54,7 +54,7 @@ const buildScheduledRouteEvent = ({
     id: route.id,
     role: "initiator" as const,
   };
-  const organization = backofficeScopeOrganization(scope);
+  const owner = backofficeScopeRootOwner(scope);
   return {
     id: `schedule:${route.id}:${scheduledFor.getTime()}`,
     scopeRestriction: null,
@@ -72,14 +72,10 @@ const buildScheduledRouteEvent = ({
       principal: null,
       delegation: [],
     },
-    subject: organization
-      ? {
-          orgId: organization.orgId,
-          ...(scope.kind === "project" ? { projectId: scope.projectId } : {}),
-        }
-      : scope.kind === "user"
-        ? { userId: scope.userId }
-        : null,
+    subject: owner && {
+      ...(owner.kind === "org" ? { orgId: owner.orgId } : { userId: owner.userId }),
+      ...(scope.kind === "project" ? { projectId: scope.projectId } : {}),
+    },
   };
 };
 

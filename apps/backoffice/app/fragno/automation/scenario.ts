@@ -18,7 +18,6 @@ import type { PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
 import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import {
   type BackofficeContextScope,
-  type BackofficeRoutableScope,
   backofficeScopeOrganization,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { workflowsSchema } from "@fragno-dev/workflows/schema";
@@ -702,10 +701,10 @@ type RouterUpdateRouteInput = AutomationRouteUpdateInput & { orgId: string; labe
 
 type RouterSeedStarterInput = { orgId: string };
 
-type MarketplaceInstallTargetScope = Extract<
-  BackofficeRoutableScope,
-  { kind: "org" } | { kind: "project" }
->;
+/** Scenario installs coordinate in the organization that owns the target. */
+type MarketplaceInstallTargetScope =
+  | { kind: "org"; orgId: string }
+  | { kind: "project"; owner: { kind: "org"; orgId: string }; projectId: string };
 
 type MarketplaceInstallInput = {
   targetScope: MarketplaceInstallTargetScope;

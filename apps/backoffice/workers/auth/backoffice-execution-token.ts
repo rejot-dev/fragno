@@ -8,7 +8,10 @@ import type { betterAuth } from "better-auth";
 import { APIError } from "better-auth/api";
 import { z } from "zod";
 
-import { appInstallationResourceScopeContains } from "@/fragno/app-installations/contracts";
+import {
+  appInstallationResourceScopeContains,
+  appInstallationTargetScope,
+} from "@/fragno/app-installations/contracts";
 import {
   BackofficeExecutionTokenAuthenticationError,
   BackofficeExecutionTokenScopeError,
@@ -206,10 +209,10 @@ async function exchangeInstalledAppToken(
   identity: { userId: string | null; appId: string },
   dependencies: BackofficeExecutionTokenDependencies,
 ): Promise<BackofficeExecutionTokenResult> {
-  const scope = input.scope;
-  if (scope?.kind !== "org" && scope?.kind !== "project") {
+  const scope = input.scope && appInstallationTargetScope(input.scope);
+  if (!scope) {
     throw new BackofficeExecutionTokenScopeError(
-      "Installed apps require an explicit organization or project scope.",
+      "Installed apps require an explicit organization scope or one of its projects.",
     );
   }
   if (identity.userId !== null) {

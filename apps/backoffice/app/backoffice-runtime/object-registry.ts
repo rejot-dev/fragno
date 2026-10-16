@@ -31,9 +31,7 @@ import type {
 import type { DirectoryPageInput } from "@fragno-dev/backoffice-api/v0/shared/pagination";
 import {
   type BackofficeContextScope,
-  type BackofficeProjectOwner,
   type BackofficeRoutableScope,
-  type BackofficeScopeIdNames,
   backofficeScopePathSegment,
   parseBackofficeScopePathSegment,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
@@ -796,37 +794,28 @@ const validateScopeValue = (label: string, value: string): string => {
   return normalized;
 };
 
-export const singleton = (): BackofficeObjectScope => ({
+const singleton = (): BackofficeObjectScope => ({
   kind: "singleton",
 });
 
-export const org = (orgId: string): BackofficeObjectScope => ({
+const org = (orgId: string): BackofficeObjectScope => ({
   kind: "org",
   orgId: validateScopeValue("org id", orgId),
 });
 
-export const named = (name: string): BackofficeObjectScope => ({
+const named = (name: string): BackofficeObjectScope => ({
   kind: "named",
   name: validateScopeValue("name", name),
 });
 
-export const user = (input: { userId: string }): BackofficeObjectScope => ({
+const user = (input: { userId: string }): BackofficeObjectScope => ({
   kind: "user",
   userId: validateScopeValue("user id", input.userId),
 });
 
-export const project = (input: {
-  owner: BackofficeProjectOwner<BackofficeScopeIdNames>;
-  projectId: string;
-}): BackofficeObjectScope => ({
-  kind: "project",
-  owner: { kind: "org", orgId: validateScopeValue("org id", input.owner.orgId) },
-  projectId: validateScopeValue("project id", input.projectId),
-});
-
 // Operator note: this v1 encoder is a full Durable Object identity reset. Existing
 // state stored under legacy raw names is intentionally not discovered by this model.
-// Project names embed their owner's segment (`v1:project:org:<orgId>:<projectId>`), so
+// App and project names embed their owner's segment (`v1:project:org:<orgId>:<projectId>`), so
 // project objects named before projects had owners are orphaned and no longer decode.
 export const decodeBackofficeObjectScope = (encodedName: string): BackofficeObjectScope | null => {
   const [version, kind, ...encodedValues] = encodedName.split(":");

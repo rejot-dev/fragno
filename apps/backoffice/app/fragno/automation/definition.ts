@@ -80,8 +80,9 @@ function getStarterAutomationRoutesForScope(ownerScope: BackofficeContextScope) 
     case "system":
       return SYSTEM_STARTER_AUTOMATION_ROUTES;
     case "org":
-    case "project":
     case "user":
+    case "app":
+    case "project":
       return [];
     default:
       throw new Error("Unsupported Backoffice context scope kind.", {
@@ -287,15 +288,6 @@ const handleForwardEventRouteAction = async ({
   }
 
   const scope = renderAutomationScopeTemplate(action.targetScope, event, route.id, routingKey);
-  if (scope.kind === "org" && !scope.orgId) {
-    throw new Error(`Automation route ${route.id} resolved an empty target org id.`);
-  }
-  if (scope.kind === "project" && (!scope.owner.orgId || !scope.projectId)) {
-    throw new Error(`Automation route ${route.id} resolved an empty target project scope.`);
-  }
-  if (scope.kind === "user" && !scope.userId) {
-    throw new Error(`Automation route ${route.id} resolved an empty target user id.`);
-  }
 
   const kernel = new BackofficeKernel(runtime);
   if (event.scopeRestriction && !backofficeScopeContains(event.scopeRestriction, scope)) {

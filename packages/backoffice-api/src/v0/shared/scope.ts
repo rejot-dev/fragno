@@ -8,18 +8,38 @@ export type BackofficeOrganizationScope<TNames extends BackofficeScopeNames> = {
   kind: "org";
 } & TNames["organization"];
 
+/** A user's personal scope. */
+export type BackofficeUserScope = { kind: "user"; userId: string };
+
+/** The scopes that own everything else: every scope chain ends in an organization or a user. */
+export type BackofficeRootOwner<TNames extends BackofficeScopeNames> =
+  | BackofficeOrganizationScope<TNames>
+  | BackofficeUserScope;
+
+/**
+ * An installed app's own workspace, one per installation. The installation's owner owns it, and
+ * the app ID is stable, so every spelling names the app by ID.
+ */
+export type BackofficeAppScope<TNames extends BackofficeScopeNames> = {
+  kind: "app";
+  owner: BackofficeRootOwner<TNames>;
+  appId: string;
+};
+
 /** The scopes that can own a project. Projects never own projects. */
 export type BackofficeProjectOwner<TNames extends BackofficeScopeNames> =
-  BackofficeOrganizationScope<TNames>;
+  | BackofficeRootOwner<TNames>
+  | BackofficeAppScope<TNames>;
 
 /**
  * Where Backoffice work runs, generic over how it names its organization and project: by ID at
- * runtime, by slug in Backoffice URLs, or as loaded records. A project names its owner as a scope.
+ * runtime, by slug in Backoffice URLs, or as loaded records. App and project scopes name their
+ * owner as a scope.
  */
 export type BackofficeScope<TNames extends BackofficeScopeNames> =
   | { kind: "system" }
-  | BackofficeOrganizationScope<TNames>
-  | { kind: "user"; userId: string }
+  | BackofficeRootOwner<TNames>
+  | BackofficeAppScope<TNames>
   | ({ kind: "project"; owner: BackofficeProjectOwner<TNames> } & TNames["project"]);
 
 /** Scopes that own resources; system scope only administers them. */
@@ -58,15 +78,29 @@ export const backofficeUserScopeSchema = z.strictObject({
   kind: z.literal("user"),
   userId: z.string().trim().min(1),
 });
+export const backofficeRootOwnerSchema = z.discriminatedUnion("kind", [
+  backofficeOrganizationScopeSchema,
+  backofficeUserScopeSchema,
+]);
+export const backofficeAppScopeSchema = z.strictObject({
+  kind: z.literal("app"),
+  owner: backofficeRootOwnerSchema,
+  appId: z.string().trim().min(1),
+});
 export const backofficeProjectScopeSchema = z.strictObject({
   kind: z.literal("project"),
-  owner: backofficeOrganizationScopeSchema,
+  owner: z.discriminatedUnion("kind", [
+    backofficeOrganizationScopeSchema,
+    backofficeUserScopeSchema,
+    backofficeAppScopeSchema,
+  ]),
   projectId: z.string().trim().min(1),
 });
 
 export const backofficeRoutableScopeSchema = z.discriminatedUnion("kind", [
   backofficeOrganizationScopeSchema,
   backofficeUserScopeSchema,
+  backofficeAppScopeSchema,
   backofficeProjectScopeSchema,
 ]) satisfies z.ZodType<BackofficeRoutableScope>;
 
@@ -74,6 +108,7 @@ export const backofficeContextScopeSchema = z.discriminatedUnion("kind", [
   backofficeSystemScopeSchema,
   backofficeOrganizationScopeSchema,
   backofficeUserScopeSchema,
+  backofficeAppScopeSchema,
   backofficeProjectScopeSchema,
 ]) satisfies z.ZodType<BackofficeContextScope>;
 
@@ -85,43 +120,64 @@ export function isBackofficeRoutableScope(
 
 type ProjectNamesOf<TScope> = Omit<Extract<TScope, { kind: "project" }>, "kind" | "owner">;
 
-/** The organization scope among a scope type's kinds, including the one owning its projects. */
-export type BackofficeOrganizationScopeOf<TScope> = TScope extends { kind: "org" }
+/** The root owners among a scope type's kinds, found by following each owner chain. */
+export type BackofficeRootOwnerOf<TScope> = TScope extends { kind: "org" } | { kind: "user" }
   ? TScope
-  : TScope extends { kind: "project"; owner: infer TOwner }
-    ? Extract<TOwner, { kind: "org" }>
+  : TScope extends { owner: infer TOwner }
+    ? BackofficeRootOwnerOf<TOwner>
     : never;
+
+/** The organization scope a scope type's chains can end in. */
+export type BackofficeOrganizationScopeOf<TScope> = Extract<
+  BackofficeRootOwnerOf<TScope>,
+  { kind: "org" }
+>;
 
 type OrganizationNamesOf<TScope> = Omit<BackofficeOrganizationScopeOf<TScope>, "kind">;
 
-/** `null` when a scope type includes kinds that belong to no organization. */
+/** `null` when a scope type includes the system scope, which no root owner owns. */
+type NullIfSystem<TScope> = [Extract<TScope, { kind: "system" }>] extends [never] ? never : null;
+
+/** `null` when a scope type includes scopes that belong to no organization. */
 type NullUnlessOrganizationOwned<TScope> = [
-  Extract<TScope, { kind: "system" } | { kind: "user" }>,
+  Extract<TScope, { kind: "system" }> | Extract<BackofficeRootOwnerOf<TScope>, { kind: "user" }>,
 ] extends [never]
   ? never
   : null;
 
 /**
- * The organization a scope belongs to: itself, or its project's owner. System and user scopes
- * belong to none, so the result is only nullable when the scope type includes them.
+ * The organization or user at the end of a scope's owner chain, who answers for everything in it.
+ * The system scope has none, so the result is only nullable when the scope type includes it.
+ */
+export function backofficeScopeRootOwner<TScope extends BackofficeScope<BackofficeScopeNames>>(
+  scope: TScope,
+): BackofficeRootOwnerOf<TScope> | NullIfSystem<TScope> {
+  const named: BackofficeScope<BackofficeScopeNames> = scope;
+  switch (named.kind) {
+    case "org":
+    case "user":
+      return named as BackofficeRootOwnerOf<TScope>;
+    case "app":
+    case "project":
+      return backofficeScopeRootOwner(named.owner) as BackofficeRootOwnerOf<TScope>;
+    case "system":
+      return null as NullIfSystem<TScope>;
+    default:
+      throw new Error("Unsupported Backoffice scope kind.", { cause: named satisfies never });
+  }
+}
+
+/**
+ * The organization a scope belongs to: its root owner, when that is an organization. The result is
+ * only nullable when the scope type includes scopes that a user or nobody owns.
  */
 export function backofficeScopeOrganization<TScope extends BackofficeScope<BackofficeScopeNames>>(
   scope: TScope,
 ): BackofficeOrganizationScopeOf<TScope> | NullUnlessOrganizationOwned<TScope> {
-  const named: BackofficeScope<BackofficeScopeNames> = scope;
-  switch (named.kind) {
-    case "org":
-      return named as BackofficeOrganizationScopeOf<TScope>;
-    case "project":
-      return backofficeScopeOrganization(
-        named.owner,
-      ) as unknown as BackofficeOrganizationScopeOf<TScope>;
-    case "system":
-    case "user":
-      return null as NullUnlessOrganizationOwned<TScope>;
-    default:
-      throw new Error("Unsupported Backoffice scope kind.", { cause: named satisfies never });
-  }
+  const owner: BackofficeRootOwner<BackofficeScopeNames> | null = backofficeScopeRootOwner(scope);
+  return (owner?.kind === "org" ? owner : null) as
+    | BackofficeOrganizationScopeOf<TScope>
+    | NullUnlessOrganizationOwned<TScope>;
 }
 
 /** Renames the records a scope refers to, e.g. from route slugs to runtime IDs; kinds are kept. */
@@ -156,6 +212,15 @@ export function mapBackofficeScopeNames<
         return { kind: "org", ...map.organization(named as OrganizationNamesOf<TScope>) };
       case "user":
         return { kind: "user", userId: named.userId };
+      case "app":
+        return {
+          kind: "app",
+          owner: renameScope(named.owner) as BackofficeRootOwner<{
+            organization: TOrganization;
+            project: TProject;
+          }>,
+          appId: named.appId,
+        };
       case "project":
         return {
           kind: "project",
@@ -179,7 +244,10 @@ export function backofficeContextScopesEqual(
   return backofficeScopePathSegment(left) === backofficeScopePathSegment(right);
 }
 
-/** A scope restriction is an upper bound: a project's owner contains the project. */
+/**
+ * A scope restriction is an upper bound: a project's owner contains the project. Containment does
+ * not chain, so an organization contains neither its apps' workspaces nor their projects.
+ */
 export function backofficeScopeContains(
   restriction: BackofficeContextScope,
   target: BackofficeContextScope,
@@ -254,8 +322,8 @@ export const backofficePublicScopeCodec: BackofficeScopeCodec<BackofficeScopePub
 };
 
 /**
- * Names a scope in one URL path segment, e.g. `project:org:<org>:<projectId>`: a project embeds
- * its owner's segment. Components are URI-encoded, so `:` only ever separates them.
+ * Names a scope in one URL path segment, e.g. `project:org:<org>:<projectId>`: app and project
+ * scopes embed their owner's segment. Components are URI-encoded, so `:` only ever separates them.
  */
 export function formatBackofficeScopeSegment<TNames extends BackofficeScopeNames>(
   scope: BackofficeScope<TNames>,
@@ -268,6 +336,8 @@ export function formatBackofficeScopeSegment<TNames extends BackofficeScopeNames
       return `org:${encodeURIComponent(codec.organization.format(scope))}`;
     case "user":
       return `user:${encodeURIComponent(scope.userId)}`;
+    case "app":
+      return `app:${formatBackofficeScopeSegment<TNames>(scope.owner, codec)}:${encodeURIComponent(scope.appId)}`;
     case "project":
       return `project:${formatBackofficeScopeSegment<TNames>(scope.owner, codec)}:${encodeURIComponent(codec.project.format(scope))}`;
     default:
@@ -303,12 +373,16 @@ export function parseBackofficeScopeSegment<TNames extends BackofficeScopeNames>
         } as BackofficeOrganizationScope<TNames>;
       case "user":
         return { kind: "user", userId: readComponent("user id") };
-      case "project": {
-        if (next === components.length) {
-          throw new BackofficeScopeParseError("Project scope requires an owner scope.");
+      case "app": {
+        const owner = readOwner("App");
+        if (owner.kind !== "org" && owner.kind !== "user") {
+          throw new BackofficeScopeParseError(`${scopeLabel(owner.kind)} scope cannot own an app.`);
         }
-        const owner = readScope();
-        if (owner.kind !== "org") {
+        return { kind: "app", owner, appId: readComponent("app id") };
+      }
+      case "project": {
+        const owner = readOwner("Project");
+        if (owner.kind === "system" || owner.kind === "project") {
           throw new BackofficeScopeParseError(
             `${scopeLabel(owner.kind)} scope cannot own a project.`,
           );
@@ -322,6 +396,13 @@ export function parseBackofficeScopeSegment<TNames extends BackofficeScopeNames>
       default:
         throw new BackofficeScopeParseError(`Unknown scope kind '${kind ?? ""}'.`);
     }
+  }
+
+  function readOwner(ownedLabel: string): BackofficeScope<TNames> {
+    if (next === components.length) {
+      throw new BackofficeScopeParseError(`${ownedLabel} scope requires an owner scope.`);
+    }
+    return readScope();
   }
 
   function readComponent(label: string): string {
@@ -354,6 +435,8 @@ function scopeLabel(kind: BackofficeContextScope["kind"]): string {
       return "Org";
     case "user":
       return "User";
+    case "app":
+      return "App";
     case "project":
       return "Project";
     default:

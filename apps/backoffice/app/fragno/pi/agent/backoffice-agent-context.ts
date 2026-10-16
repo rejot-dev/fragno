@@ -1,7 +1,11 @@
 import type { AutomationActors } from "@fragno-dev/backoffice-api/v0/automation";
 import type { PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
-import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  type BackofficeContextScope,
+  backofficeScopeOrganization,
+  backofficeScopeRootOwner,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import type { Context } from "@earendil-works/chord";
 
@@ -103,9 +107,12 @@ export function createBackofficeAgentContext(input: {
 
     // Running a turn is the submitter's act; the definition narrows only what the turn does.
     async function authorize() {
-      if (config.scope.kind === "user" && config.billingOrganizationId === null) {
+      if (
+        backofficeScopeRootOwner(config.scope)?.kind === "user" &&
+        config.billingOrganizationId === null
+      ) {
         throw new Error(
-          "PI_BILLING_OWNER_REQUIRED: user-scoped Pi agents require a billing organization.",
+          "PI_BILLING_OWNER_REQUIRED: Pi agents a user owns require a billing organization.",
         );
       }
       await kernel.assertAuthorized({
@@ -113,10 +120,7 @@ export function createBackofficeAgentContext(input: {
         operation: BACKOFFICE_PERMISSION.pi.modify,
         resource: { kind: "pi-agent-turn", agentName: config.agentName },
       });
-      if (
-        config.billingOrganizationId !== null &&
-        (config.scope.kind === "user" || config.scope.kind === "system")
-      ) {
+      if (config.billingOrganizationId !== null && !backofficeScopeOrganization(config.scope)) {
         await kernel.assertAuthorized({
           execution: {
             ...submitterExecution,

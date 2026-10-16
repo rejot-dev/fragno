@@ -23,13 +23,31 @@ export const marketplaceOrganizationOwnerScopeSchema = z.strictObject({
   orgId: marketplaceOwnerIdSchema,
 });
 
+const marketplaceUserOwnerScopeSchema = z.object({
+  kind: z.literal("user"),
+  userId: marketplaceOwnerIdSchema,
+});
+const marketplaceAppOwnerScopeSchema = z.object({
+  kind: z.literal("app"),
+  owner: z.discriminatedUnion("kind", [
+    marketplaceOrganizationOwnerScopeSchema,
+    marketplaceUserOwnerScopeSchema,
+  ]),
+  appId: marketplaceOwnerIdSchema,
+});
+
 export const marketplaceOwnerScopeSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("system") }),
   marketplaceOrganizationOwnerScopeSchema,
-  z.object({ kind: z.literal("user"), userId: marketplaceOwnerIdSchema }),
+  marketplaceUserOwnerScopeSchema,
+  marketplaceAppOwnerScopeSchema,
   z.object({
     kind: z.literal("project"),
-    owner: marketplaceOrganizationOwnerScopeSchema,
+    owner: z.discriminatedUnion("kind", [
+      marketplaceOrganizationOwnerScopeSchema,
+      marketplaceUserOwnerScopeSchema,
+      marketplaceAppOwnerScopeSchema,
+    ]),
     projectId: marketplaceOwnerIdSchema,
   }),
 ]);
@@ -105,6 +123,7 @@ export const marketplaceIngestionTargetScopeSchema = z.discriminatedUnion("kind"
   backofficeProjectScopeSchema,
   backofficeUserScopeSchema,
 ]);
+export type MarketplaceIngestionTargetScope = z.infer<typeof marketplaceIngestionTargetScopeSchema>;
 
 export type MarketplaceCategory = z.infer<typeof marketplaceCategorySchema>;
 

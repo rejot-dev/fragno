@@ -12,7 +12,11 @@ import {
 import type { BackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
 import type { BackofficeDeferredExecution } from "@/backoffice-runtime/context";
 
-import { appInstallationResourceScopeContains } from "./contracts";
+import {
+  appInstallationResourceScopeContains,
+  appInstallationTargetScope,
+  type AppInstallationTargetScope,
+} from "./contracts";
 
 const APP_INSTALLATION_ACTOR_TYPE = "app-installation";
 const appInstallationActorIdPattern = /^(.+):([1-9][0-9]*)$/;
@@ -49,7 +53,7 @@ export function createInstalledAppExecution({
   actor,
   installation,
 }: {
-  scope: Extract<BackofficeContextScope, { kind: "org" | "project" }>;
+  scope: AppInstallationTargetScope;
   actor: InstalledAppActor;
   installation: InstalledAppActivation & { externalAccount: AppInstallationExternalAccount | null };
 }): BackofficeDeferredExecution {
@@ -131,17 +135,18 @@ export function createAppInstallationAuthorityResolver({
     activation: InstalledAppActivation,
     scope: BackofficeContextScope,
   ): Promise<readonly BackofficePermissionRequirement[]> {
-    if (scope.kind !== "org" && scope.kind !== "project") {
+    const target = appInstallationTargetScope(scope);
+    if (!target) {
       return [];
     }
     const installation = await installations.getInstallation({
-      organizationId: backofficeScopeOrganization(scope).orgId,
+      organizationId: backofficeScopeOrganization(target).orgId,
       appId: activation.appId,
     });
     if (
       installation?.status !== "active" ||
       installation.activation !== activation.activation ||
-      !appInstallationResourceScopeContains(installation.resourceScope, scope)
+      !appInstallationResourceScopeContains(installation.resourceScope, target)
     ) {
       return [];
     }

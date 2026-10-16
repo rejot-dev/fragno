@@ -796,11 +796,9 @@ test("SQLite Pi directories and agent transcripts survive a complete local runti
                 ).json<PiManagerAgent>();
                 expect(agent.provisioning).toEqual({
                   billingOrganizationId:
-                    scope.kind === "user"
-                      ? "billing-org"
-                      : scope.kind === "system"
-                        ? null
-                        : backofficeScopeOrganization(scope).orgId,
+                    scope.kind === "system"
+                      ? null
+                      : (backofficeScopeOrganization(scope)?.orgId ?? "billing-org"),
                 });
                 const duplicate = await prompt(runtime, scope, {
                   requestId: "persisted-prompt",

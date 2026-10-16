@@ -1,4 +1,8 @@
-import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import type {
+  BackofficeContextScope,
+  BackofficeProjectOwner,
+  BackofficeScopeIdNames,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { RouterContextProvider } from "react-router";
 
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
@@ -77,12 +81,13 @@ type AutomationProjectLookupResult =
 /** Looks up one project only when a server boundary must validate a project-scoped request. */
 export async function lookupAutomationProject(
   context: Readonly<RouterContextProvider>,
-  orgId: string,
+  owner: BackofficeProjectOwner<BackofficeScopeIdNames>,
   project: { projectId: string } | { slug: string },
 ): Promise<AutomationProjectLookupResult> {
   try {
+    // Projects are stored with their owner.
     const callRoute = createAutomationsRouteCaller({
-      object: getScopedAutomationsObject(context, { kind: "org", orgId }),
+      object: getScopedAutomationsObject(context, owner),
     });
     const response =
       "slug" in project

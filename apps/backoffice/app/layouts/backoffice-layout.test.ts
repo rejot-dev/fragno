@@ -6,8 +6,7 @@ const organization = { id: "org-route", slug: "route-org" };
 const project = { id: "project-1", slug: "website" };
 const lookups = {
   organizations: [organization],
-  findProject: async (_organization: typeof organization, slug: string) =>
-    slug === project.slug ? project : null,
+  findProject: async (_owner: unknown, slug: string) => (slug === project.slug ? project : null),
 };
 
 describe("resolveBackofficePageScope", () => {

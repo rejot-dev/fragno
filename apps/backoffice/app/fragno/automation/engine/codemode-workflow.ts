@@ -1,5 +1,8 @@
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
-import { backofficeScopeOrganization } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  backofficeScopeOrganization,
+  backofficeScopeRootOwner,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { defineRemoteWorkflow } from "@fragno-dev/workflows/workflow";
 
 import { withBackofficeActorCapabilityGrants } from "@/backoffice-runtime/authority-resolver";
@@ -143,7 +146,7 @@ export const defineCodemodeWorkflow = (config: CodemodeWorkflowConfig) =>
       });
 
       const runtime = runtimeWithCapabilityGrants({ runtime: config.runtime, params });
-      const executionOrganization = backofficeScopeOrganization(execution.scope);
+      const executionOwner = backofficeScopeRootOwner(execution.scope);
       const automationEvent: AutomationEvent =
         params.trigger.type === "event"
           ? params.trigger.event
@@ -156,11 +159,11 @@ export const defineCodemodeWorkflow = (config: CodemodeWorkflowConfig) =>
               occurredAt: event.timestamp.toISOString(),
               payload: params.trigger.payload,
               actors: execution.actors,
-              subject: executionOrganization
-                ? { orgId: executionOrganization.orgId }
-                : execution.scope.kind === "user"
-                  ? { userId: execution.scope.userId }
-                  : null,
+              subject:
+                executionOwner &&
+                (executionOwner.kind === "org"
+                  ? { orgId: executionOwner.orgId }
+                  : { userId: executionOwner.userId }),
             };
       const sourceReader = config.readAutomationSource;
 

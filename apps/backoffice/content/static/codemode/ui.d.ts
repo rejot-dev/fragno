@@ -297,12 +297,50 @@ declare const ui: {
             userId: string;
           }
         | {
+            kind: "app";
+            owner:
+              | {
+                  kind: "org";
+                  /** at least 1 characters */
+                  orgId: string;
+                }
+              | {
+                  kind: "user";
+                  /** at least 1 characters */
+                  userId: string;
+                };
+            /** at least 1 characters */
+            appId: string;
+          }
+        | {
             kind: "project";
-            owner: {
-              kind: "org";
-              /** at least 1 characters */
-              orgId: string;
-            };
+            owner:
+              | {
+                  kind: "org";
+                  /** at least 1 characters */
+                  orgId: string;
+                }
+              | {
+                  kind: "user";
+                  /** at least 1 characters */
+                  userId: string;
+                }
+              | {
+                  kind: "app";
+                  owner:
+                    | {
+                        kind: "org";
+                        /** at least 1 characters */
+                        orgId: string;
+                      }
+                    | {
+                        kind: "user";
+                        /** at least 1 characters */
+                        userId: string;
+                      };
+                  /** at least 1 characters */
+                  appId: string;
+                };
             /** at least 1 characters */
             projectId: string;
           };
@@ -320,12 +358,50 @@ declare const ui: {
               userId: string;
             }
           | {
+              kind: "app";
+              owner:
+                | {
+                    kind: "org";
+                    /** at least 1 characters */
+                    orgId: string;
+                  }
+                | {
+                    kind: "user";
+                    /** at least 1 characters */
+                    userId: string;
+                  };
+              /** at least 1 characters */
+              appId: string;
+            }
+          | {
               kind: "project";
-              owner: {
-                kind: "org";
-                /** at least 1 characters */
-                orgId: string;
-              };
+              owner:
+                | {
+                    kind: "org";
+                    /** at least 1 characters */
+                    orgId: string;
+                  }
+                | {
+                    kind: "user";
+                    /** at least 1 characters */
+                    userId: string;
+                  }
+                | {
+                    kind: "app";
+                    owner:
+                      | {
+                          kind: "org";
+                          /** at least 1 characters */
+                          orgId: string;
+                        }
+                      | {
+                          kind: "user";
+                          /** at least 1 characters */
+                          userId: string;
+                        };
+                    /** at least 1 characters */
+                    appId: string;
+                  };
               /** at least 1 characters */
               projectId: string;
             };

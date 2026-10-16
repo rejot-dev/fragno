@@ -24,8 +24,13 @@ Organization scope arguments always use the organization **slug**, never its int
 
 ```text
 org:<organization-slug>
-project:org:<organization-slug>:<project-id>
+user:<user-id>
+app:<owner>:<app-id>
+project:<owner>:<project-id>
 ```
+
+An `<owner>` is `org:<organization-slug>` or `user:<user-id>`; a project's owner may also be an app,
+e.g. `project:app:org:<organization-slug>:<app-id>:<project-id>`.
 
 For an organization with the slug `acme`, commands look like:
 
