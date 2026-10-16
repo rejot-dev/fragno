@@ -4,7 +4,7 @@ import { column, idColumn, schema, type Column } from "@fragno-dev/db/schema";
 
 import type { AppApprovedActions, BackofficeAppInstallationStatus } from "./contracts";
 
-/** Each organization owns its installation database; app IDs refer to the external registry. */
+/** Each owner has its own installation database; app IDs refer to the external registry. */
 export const appInstallationsFragmentSchema = schema("app-installations", (s) =>
   s
     .addTable("app_installation", (t) =>
@@ -46,8 +46,8 @@ export const appInstallationsFragmentSchema = schema("app-installations", (s) =>
       // and app-delegated work started under an earlier activation.
       t
         .addColumn("activation", column("integer").defaultTo(1))
-        // Null approves the whole organization, which is also what earlier installations approved.
-        // A non-empty list limits the installation to those projects.
+        // Null approves everything the owner has, which is also what earlier installations
+        // approved. A non-empty list limits the installation to those projects.
         .addColumn(
           "resourceProjectIds",
           column("json").nullable() as Column<"json", string[] | null, string[] | null>,
@@ -72,5 +72,13 @@ export const appInstallationsFragmentSchema = schema("app-installations", (s) =>
           AppApprovedActions | null
         >,
       ),
+    )
+    .alterTable("app_installation", (t) =>
+      // An owner is an organization or a user. The stamp is its ID; the object's identity says
+      // which kind it is, so existing organization rows are already correct.
+      t
+        .renameColumn("organizationId", "ownerId")
+        .dropIndex("idx_app_installation_organizationId_id")
+        .createIndex("idx_app_installation_ownerId_id", ["ownerId", "id"]),
     ),
 );

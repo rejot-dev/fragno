@@ -879,7 +879,7 @@ describe("Backoffice API v0 SQLite scenarios", () => {
               appId: ctx.vars.appId,
               grantedPermissions: permissions,
               installedByUserId: ctx.vars.ownerId,
-              resourceScope: { kind: "organization" },
+              resourceScope: { kind: "owner" },
             });
           assert(installed.ok);
         },

@@ -5,7 +5,7 @@ import type {
 import type { AutomationActor } from "@fragno-dev/backoffice-api/v0/automation";
 import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import {
-  backofficeScopeOrganization,
+  backofficeScopeRootOwner,
   type BackofficeContextScope,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
@@ -15,6 +15,7 @@ import type { BackofficeDeferredExecution } from "@/backoffice-runtime/context";
 import {
   appInstallationReaches,
   appInstallationTargetScope,
+  type AppInstallationOwner,
   type AppInstallationTargetScope,
 } from "./contracts";
 
@@ -39,7 +40,7 @@ export function isInstalledAppEventSource(source: string): boolean {
 }
 
 /**
- * Creates execution for an installed app inside the organization resources it was approved for.
+ * Creates execution for an installed app inside the owner's resources it was approved for.
  *
  * Acting for a user, the user stays the principal and the installation activation is a delegate,
  * so the kernel requires the user's current permissions and the installation's current grants.
@@ -126,7 +127,7 @@ export function createAppInstallationAuthorityResolver({
   resolver: BackofficeAuthorityResolver;
   installations: {
     getInstallation(input: {
-      organizationId: string;
+      owner: AppInstallationOwner;
       appId: string;
     }): Promise<BackofficeAppInstallation | null>;
   };
@@ -140,7 +141,7 @@ export function createAppInstallationAuthorityResolver({
       return [];
     }
     const installation = await installations.getInstallation({
-      organizationId: backofficeScopeOrganization(target).orgId,
+      owner: backofficeScopeRootOwner(target),
       appId: activation.appId,
     });
     if (

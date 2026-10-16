@@ -168,6 +168,9 @@ export const createRouteBackedRuntimeContext = ({
 }: RouteBackedRuntimeContextOptions): InteractiveRuntimeToolContext => {
   const org = ownerOrgScope(execution);
   const selectedOrg = selectedOrgScope(execution);
+  // Installations are managed where they belong: in their organization or personal scope.
+  const installationOwner =
+    execution.scope.kind === "org" || execution.scope.kind === "user" ? execution.scope : null;
   const userId = userPrincipalId(execution);
   const stateBackend =
     execution.scope.kind === "system" || runtime.config.bindings.upload
@@ -233,11 +236,15 @@ export const createRouteBackedRuntimeContext = ({
           }
         : null,
     apps:
-      runtime.config.bindings.auth && selectedOrg
+      runtime.config.bindings.auth && installationOwner
         ? (() => {
             const apps = unavailableObject(() => runtime.objects.apps.singleton());
             const installations = unavailableObject(() =>
-              kernel.scoped("APP_INSTALLATIONS", selectedOrg, runtime.objects.appInstallations),
+              kernel.scoped(
+                "APP_INSTALLATIONS",
+                installationOwner,
+                runtime.objects.appInstallations,
+              ),
             );
             return installations
               ? {

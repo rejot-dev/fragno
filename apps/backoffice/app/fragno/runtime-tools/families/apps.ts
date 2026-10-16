@@ -1,4 +1,5 @@
 import type { BackofficeApp, BackofficeAppInstallation } from "@fragno-dev/backoffice-api/v0/apps";
+import { backofficeScopePathSegment } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import { defineCliArgsParser } from "@/fragno/runtime-tools/bash-cli";
 
@@ -13,9 +14,6 @@ import type { AppsRuntime } from "./apps-runtime";
 type AppsToolContext = BackofficeToolContext<{ apps: AppsRuntime | undefined }>;
 
 function requireAppsContext(context: AppsToolContext) {
-  if (context.execution.scope.kind !== "org") {
-    throw new Error("App installation management requires organization context.");
-  }
   const principal = context.execution.actors.principal;
   if (
     principal?.scope !== "internal" ||
@@ -54,7 +52,7 @@ const actionsRevisionOption = {
     "The app's actionsRevision reviewed with apps.get; fails if its actions changed since",
 };
 const resourceScopeDescription =
-  'Resources the grants apply to: {"kind":"organization"} or {"kind":"projects","projectIds":["..."]}';
+  'Resources the grants apply to: {"kind":"owner"} for everything the owner has, or {"kind":"projects","projectIds":["..."]}';
 
 const getAppTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("apps.get"),
@@ -118,7 +116,7 @@ const installAppTool = defineBackofficeRuntimeTool({
       command: "apps.install",
       help: {
         summary:
-          "apps.install approves an organization-owned installation (organization owners/admins only). The app can then act only within these grants and resources; OAuth user consent is separate.",
+          "apps.install approves an installation owned by the current organization (owners/admins only) or by you in your user scope. The app can then act only within these grants and resources; OAuth user consent is separate.",
         options: [
           appIdOption,
           grantsOption,
@@ -127,7 +125,7 @@ const installAppTool = defineBackofficeRuntimeTool({
             name: "resource-scope-json",
             valueRequired: true,
             valueName: "json",
-            description: `${resourceScopeDescription} (default: whole organization)`,
+            description: `${resourceScopeDescription} (default: everything the owner has)`,
           },
         ],
         examples: [
@@ -162,7 +160,7 @@ const getInstallationTool = defineBackofficeRuntimeTool({
     bash: {
       command: "apps.installations.get",
       help: {
-        summary: "apps.installations.get inspects an organization's installation by app ID.",
+        summary: "apps.installations.get inspects the current owner's installation by app ID.",
         options: [appIdOption],
         examples: ["apps.installations.get --app-id APP_ID --format json"],
       },
@@ -186,12 +184,12 @@ function renderInstallation(installation: BackofficeAppInstallation) {
   return [
     `Installation ID: ${installation.id}`,
     `  App ID: ${installation.appId}`,
-    `  Organization ID: ${installation.organizationId}`,
+    `  Owner: ${backofficeScopePathSegment(installation.owner)}`,
     `  Status: ${installation.status}`,
     `  Activation: ${installation.activation}`,
     `  Approved actions revision: ${installation.approvedActionsRevision}`,
     `  Granted permissions: ${installation.grantedPermissions.map(({ namespace, permission }) => `${namespace}.${permission}`).join(", ") || "none"}`,
-    `  Resources: ${installation.resourceScope.kind === "organization" ? "whole organization" : `projects ${installation.resourceScope.projectIds.join(", ")}`}`,
+    `  Resources: ${installation.resourceScope.kind === "owner" ? "everything the owner has" : `projects ${installation.resourceScope.projectIds.join(", ")}`}`,
     `  Linked account: ${installation.externalAccount ? `${installation.externalAccount.label} (${installation.externalAccount.id})` : "none"}`,
     `  Installed by user ID: ${installation.installedByUserId}`,
     `  Created at: ${installation.createdAt}`,
@@ -209,7 +207,8 @@ const listInstallationsTool = defineBackofficeRuntimeTool({
     bash: {
       command: "apps.installations.list",
       help: {
-        summary: "apps.installations.list lists installation history in organization context.",
+        summary:
+          "apps.installations.list lists installation history in organization or user context.",
         options: [
           {
             name: "page-size",
@@ -221,7 +220,7 @@ const listInstallationsTool = defineBackofficeRuntimeTool({
             name: "cursor",
             valueRequired: true,
             valueName: "cursor",
-            description: "Cursor from the previous page; keep the same page size and organization",
+            description: "Cursor from the previous page; keep the same page size and owner",
           },
         ],
         examples: [
@@ -263,7 +262,7 @@ const updateInstallationTool = defineBackofficeRuntimeTool({
       command: "apps.installations.update",
       help: {
         summary:
-          "apps.installations.update replaces approved permissions and resources (organization owners/admins only). Both are required so access is never widened implicitly.",
+          "apps.installations.update replaces approved permissions and resources (organization owners/admins, or you in your user scope). Both are required so access is never widened implicitly.",
         options: [
           appIdOption,
           grantsOption,
@@ -276,7 +275,7 @@ const updateInstallationTool = defineBackofficeRuntimeTool({
           },
         ],
         examples: [
-          "apps.installations.update --app-id APP_ID --granted-permissions-json '[]' --resource-scope-json '{\"kind\":\"organization\"}'",
+          "apps.installations.update --app-id APP_ID --granted-permissions-json '[]' --resource-scope-json '{\"kind\":\"owner\"}'",
         ],
       },
       parse: defineCliArgsParser("apps.installations.update", {
@@ -336,7 +335,7 @@ const uninstallAppTool = defineBackofficeRuntimeTool({
       command: "apps.uninstall",
       help: {
         summary:
-          "apps.uninstall clears organization installation grants (organization owners/admins only).",
+          "apps.uninstall clears installation grants (organization owners/admins, or you in your user scope).",
         options: [appIdOption],
         examples: ["apps.uninstall --app-id APP_ID"],
       },
@@ -363,6 +362,6 @@ export const appsToolFamily = defineBackofficeRuntimeToolFamily({
     approveActionsTool,
     uninstallAppTool,
   ],
-  isAvailable: (context: AppsToolContext) =>
-    context.execution.scope.kind === "org" && !!context.runtimes.apps,
+  // The runtime exists only in an installation owner's own scope.
+  isAvailable: (context: AppsToolContext) => !!context.runtimes.apps,
 });

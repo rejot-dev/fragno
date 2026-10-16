@@ -9,6 +9,8 @@ import {
   backofficeAppScopeSchema,
   backofficeOrganizationScopeSchema,
   backofficeProjectScopeSchema,
+  backofficeRootOwnerSchema,
+  backofficeUserScopeSchema,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { signJWT } from "better-auth/plugins/jwt";
 import { createLocalJWKSet, errors, jwtVerify, type JSONWebKeySet } from "jose";
@@ -62,6 +64,7 @@ const installedAppJwtPayloadSchema = z.object({
   }),
   scopeRestriction: z.discriminatedUnion("kind", [
     backofficeOrganizationScopeSchema,
+    backofficeUserScopeSchema,
     backofficeAppScopeSchema,
     backofficeProjectScopeSchema,
   ]),
@@ -75,7 +78,7 @@ const installedAppJwtPayloadSchema = z.object({
 export type InstalledAppJwtPayload = z.infer<typeof installedAppJwtPayloadSchema>;
 
 /**
- * A browser-carried proof that an organization approved an app installation. It is not a
+ * A browser-carried proof that an owner approved an app installation. It is not a
  * credential: only the app's authenticated server can redeem it, and only to claim that activation.
  */
 const APP_INSTALLATION_CODE_AUDIENCE = "fragno-backoffice-app-installation-code";
@@ -83,7 +86,7 @@ const APP_INSTALLATION_CODE_LIFETIME_SECONDS = 5 * 60;
 
 const appInstallationCodePayloadSchema = z.object({
   appId: z.string().min(1),
-  organizationId: z.string().min(1),
+  owner: backofficeRootOwnerSchema,
   activation: z.number().int().positive(),
   iss: z.literal(ACCESS_TOKEN_ISSUER),
   aud: z.literal(APP_INSTALLATION_CODE_AUDIENCE),
@@ -240,7 +243,7 @@ export async function issueAppActionToken(
 
 export async function issueAppInstallationCode(
   context: BackofficeJwtSigningContext,
-  installation: Pick<AppInstallationCodePayload, "appId" | "organizationId" | "activation">,
+  installation: Pick<AppInstallationCodePayload, "appId" | "owner" | "activation">,
 ): Promise<{ token: string; expiresAt: Date }> {
   return await signBackofficeAccessToken(
     context,

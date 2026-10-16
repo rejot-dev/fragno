@@ -4,17 +4,23 @@ import {
   BackofficeApiUnreachableError,
   createBackofficeApiClient,
 } from "@fragno-dev/backoffice-api/v0/client";
-import type { BackofficeRoutableScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  backofficeRootOwnerSchema,
+  type BackofficeRoutableScope,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { env } from "cloudflare:workers";
 import { z } from "zod";
 
 import type { ActiveOrganization, BackofficeLink } from "../../workers/auth";
 
-/** Where Bookkeeping may act in Backoffice: the linked organization or one approved project. */
-export type BackofficeTarget = Extract<BackofficeRoutableScope, { kind: "org" | "project" }>;
+/** Where Bookkeeping may act in Backoffice: the linked owner or one approved project. */
+export type BackofficeTarget = Extract<
+  BackofficeRoutableScope,
+  { kind: "org" | "user" | "project" }
+>;
 
 const resourceScopeSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("organization") }),
+  z.object({ kind: z.literal("owner") }),
   z.object({ kind: z.literal("projects"), projectIds: z.array(z.string().min(1)).min(1) }),
 ]);
 
@@ -54,14 +60,10 @@ async function readErrorMessage(response: Response): Promise<string> {
 
 /** The scopes the linked installation approved, in the order the page offers them. */
 export function linkTargets(link: BackofficeLink): BackofficeTarget[] {
-  const organization = { kind: "org", orgId: link.backofficeOrganizationId } as const;
-  return link.resourceScope.kind === "organization"
-    ? [organization]
-    : link.resourceScope.projectIds.map((projectId) => ({
-        kind: "project",
-        owner: organization,
-        projectId,
-      }));
+  const owner = link.backofficeOwner;
+  return link.resourceScope.kind === "owner"
+    ? [owner]
+    : link.resourceScope.projectIds.map((projectId) => ({ kind: "project", owner, projectId }));
 }
 
 /**
@@ -125,7 +127,7 @@ export type InstallCallbackResult =
 
 /**
  * Completes the link after Backoffice's install page. The state proves this browser session
- * started it; the code proves an organization admin approved it; Bookkeeping's client
+ * started it; the code proves the Backoffice owner approved it; Bookkeeping's client
  * credentials prove the claim comes from Bookkeeping's own server.
  */
 export async function completeBackofficeInstall(
@@ -169,11 +171,11 @@ export async function completeBackofficeInstall(
     return { status: "failed", message: await readErrorMessage(claimed) };
   }
   const installation = z
-    .object({ organizationId: z.string().min(1), resourceScope: resourceScopeSchema })
+    .object({ owner: backofficeRootOwnerSchema, resourceScope: resourceScopeSchema })
     .parse(await claimed.json());
   const saved = await auth().saveBackofficeLink({
     organizationId: pending.organizationId,
-    backofficeOrganizationId: installation.organizationId,
+    backofficeOwner: installation.owner,
     resourceScope: installation.resourceScope,
     linkedByUserId: pending.userId,
   });

@@ -17,7 +17,10 @@ import {
   type BackofficeAppLookupInput,
 } from "@fragno-dev/backoffice-api/v0/apps";
 import { jsonValueSchema } from "@fragno-dev/backoffice-api/v0/shared/json";
-import { backofficeScopeRootOwner } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  backofficeContextScopesEqual,
+  backofficeScopeRootOwner,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { DurableObject, RpcTarget } from "cloudflare:workers";
 
@@ -27,6 +30,7 @@ import { requireBackofficeContextScopeFromDurableObjectId } from "@/backoffice-r
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import {
   appInstallationReaches,
+  type AppInstallationOwner,
   backofficeAppInstallationClaimInputSchema,
   backofficeAppInstallationInputSchema,
   effectiveAppActions,
@@ -57,14 +61,14 @@ import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-ob
 import type { BackofficeObjectImplementation } from "./lib/backoffice-object-implementation";
 import { createCloudflareBackofficeObjectContext } from "./lib/cloudflare-backoffice-object-implementation";
 
-/** Organization-scoped behavior shared by Cloudflare and file-backed SQLite. */
+/** Owner-scoped behavior shared by Cloudflare and file-backed SQLite. */
 export class InMemoryAppInstallationsObject
   extends RpcTarget
   implements BackofficeAppInstallationsCommands
 {
   readonly #host: FragmentDurableObjectHost<void, AppInstallationsFragment>;
   readonly #runtime: BackofficeRuntimeServices;
-  readonly #organizationId: string;
+  readonly #owner: AppInstallationOwner;
   readonly #fetch: typeof fetch;
   #fragment: AppInstallationsFragment | null = null;
 
@@ -84,16 +88,17 @@ export class InMemoryAppInstallationsObject
     // workerd rejects the global fetch when it is invoked as a method of this object.
     this.#fetch = (input, init) => fetchImpl(input, init);
     const scope = requireBackofficeContextScopeFromDurableObjectId(state.id, "APP_INSTALLATIONS");
-    if (scope.kind !== "org") {
-      throw new Error("Backoffice app installation objects require an organization scope.");
+    if (scope.kind !== "org" && scope.kind !== "user") {
+      throw new Error("Backoffice app installation objects require an organization or user scope.");
     }
+    const owner = scope;
     this.#runtime = runtime;
-    this.#organizationId = scope.orgId;
+    this.#owner = owner;
     this.#host = implementation.createFragmentHost({
       name: "AppInstallations",
       createRuntime: () =>
         createAppInstallationsServer(implementation.fragmentDatabase, {
-          organizationId: scope.orgId,
+          owner,
           onInstallationChanged: (payload, context) =>
             this.#recordConnectionStates(payload, context),
         }),
@@ -155,12 +160,12 @@ export class InMemoryAppInstallationsObject
     return app;
   }
 
-  /** Projects live in the organization's automations object; approve only current projects. */
+  /** Projects live in the owner's automations object; approve only current projects. */
   async #assertProjectsAvailable(resourceScope: AppInstallationResourceScope) {
-    if (resourceScope.kind === "organization") {
+    if (resourceScope.kind === "owner") {
       return;
     }
-    const automations = this.#runtime.objects.automations.forOrg(this.#organizationId).commands;
+    const automations = this.#runtime.objects.automations.for(this.#owner).commands;
     const projects = await Promise.all(
       resourceScope.projectIds.map((projectId) =>
         automations.resolveProjectForExecution({ projectId }),
@@ -170,7 +175,7 @@ export class InMemoryAppInstallationsObject
     if (missing.length > 0) {
       throw new BackofficeAppDomainError(
         "APP_INSTALLATION_PROJECT_NOT_FOUND",
-        `Projects are not available in this organization: ${missing.join(", ")}.`,
+        `Projects are not available here: ${missing.join(", ")}.`,
       );
     }
   }
@@ -268,12 +273,15 @@ export class InMemoryAppInstallationsObject
       if (connection.status !== "installed") {
         throw new BackofficeAppDomainError(
           "APP_INSTALLATION_INACTIVE",
-          "Backoffice app is not installed in this organization.",
+          "Backoffice app is not installed by this owner.",
         );
       }
       const { installation, actions } = connection;
       if (
-        backofficeScopeRootOwner(input.scopeRestriction).orgId !== this.#organizationId ||
+        !backofficeContextScopesEqual(
+          backofficeScopeRootOwner(input.scopeRestriction),
+          this.#owner,
+        ) ||
         !appInstallationReaches(installation, input.scopeRestriction)
       ) {
         throw new BackofficeAppDomainError(

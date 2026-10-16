@@ -45,7 +45,7 @@ const scenarioObjects = {
   UPLOAD: (input) => new InMemoryUploadObject(input),
 } satisfies LocalBackofficeObjects;
 
-const wholeOrganization = { kind: "organization" } as const;
+const wholeOrganization = { kind: "owner" } as const;
 
 const origin = "https://backoffice.example";
 const deviceGrant = "urn:ietf:params:oauth:grant-type:device_code";

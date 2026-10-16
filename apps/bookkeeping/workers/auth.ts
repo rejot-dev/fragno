@@ -1,3 +1,9 @@
+import {
+  backofficeScopePathSegment,
+  parseBackofficeScopePathSegment,
+  type BackofficeRootOwner,
+  type BackofficeScopeIdNames,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { DurableObjectDialect } from "@fragno-dev/db/dialects/durable-object";
 import { betterAuth } from "better-auth";
 import { symmetricDecrypt, symmetricEncrypt } from "better-auth/crypto";
@@ -7,10 +13,11 @@ import { Kysely } from "kysely";
 import { z } from "zod";
 
 import organizationsSchema from "./auth-schema-0002-organizations.sql?raw";
+import backofficeOwnerSchema from "./auth-schema-0003-backoffice-owner.sql?raw";
 import initialSchema from "./auth-schema.sql?raw";
 
 /** Applied in order; the stored version is the number of migrations already applied. */
-const migrations = [initialSchema, organizationsSchema];
+const migrations = [initialSchema, organizationsSchema, backofficeOwnerSchema];
 
 const LINK_REQUEST_LIFETIME_MS = 10 * 60 * 1000;
 const BACKOFFICE_PROVIDER_ID = "backoffice";
@@ -31,14 +38,17 @@ export type BackofficeLinkRequest =
   | { status: "expired" }
   | { status: "forbidden" };
 
-/** Resources the Backoffice organization approved, as reported when Bookkeeping claimed it. */
+/** Who installed Bookkeeping in Backoffice: an organization, or a user for themselves. */
+export type BackofficeOwner = BackofficeRootOwner<BackofficeScopeIdNames>;
+
+/** Resources the Backoffice owner approved, as reported when Bookkeeping claimed it. */
 export type BackofficeResourceScope =
-  | { kind: "organization" }
+  | { kind: "owner" }
   | { kind: "projects"; projectIds: string[] };
 
 export type BackofficeLink = {
   organizationId: string;
-  backofficeOrganizationId: string;
+  backofficeOwner: BackofficeOwner;
   resourceScope: BackofficeResourceScope;
   linkedAt: string;
 };
@@ -369,29 +379,30 @@ export class Auth extends DurableObject<CloudflareEnv> {
    * Records the link Backoffice confirmed, if the linking user still manages the organization.
    * The check shares the write's transaction because claiming in Backoffice happens in between.
    * Backoffice is authoritative: a stale local link from another organization to the same
-   * Backoffice organization is replaced.
+   * Backoffice owner is replaced.
    */
   async saveBackofficeLink(input: {
     organizationId: string;
-    backofficeOrganizationId: string;
+    backofficeOwner: BackofficeOwner;
     resourceScope: BackofficeResourceScope;
     linkedByUserId: string;
   }): Promise<boolean> {
+    const backofficeOwner = backofficeScopePathSegment(input.backofficeOwner);
     return this.ctx.storage.transactionSync(() => {
       if (!this.canManageOrganization(input.organizationId, input.linkedByUserId)) {
         return false;
       }
       this.ctx.storage.sql.exec(
-        `DELETE FROM "backoffice_link" WHERE "organizationId" = ? OR "backofficeOrganizationId" = ?`,
+        `DELETE FROM "backoffice_link" WHERE "organizationId" = ? OR "backofficeOwner" = ?`,
         input.organizationId,
-        input.backofficeOrganizationId,
+        backofficeOwner,
       );
       this.ctx.storage.sql.exec(
         `INSERT INTO "backoffice_link"
-           ("organizationId", "backofficeOrganizationId", "resourceScope", "linkedByUserId", "linkedAt")
+           ("organizationId", "backofficeOwner", "resourceScope", "linkedByUserId", "linkedAt")
          VALUES (?, ?, ?, ?, ?)`,
         input.organizationId,
-        input.backofficeOrganizationId,
+        backofficeOwner,
         JSON.stringify(input.resourceScope),
         input.linkedByUserId,
         Date.now(),
@@ -402,8 +413,8 @@ export class Auth extends DurableObject<CloudflareEnv> {
 
   async getBackofficeLink(organizationId: string): Promise<BackofficeLink | null> {
     const [row] = this.ctx.storage.sql
-      .exec<{ backofficeOrganizationId: string; resourceScope: string; linkedAt: number }>(
-        `SELECT "backofficeOrganizationId", "resourceScope", "linkedAt"
+      .exec<{ backofficeOwner: string; resourceScope: string; linkedAt: number }>(
+        `SELECT "backofficeOwner", "resourceScope", "linkedAt"
          FROM "backoffice_link" WHERE "organizationId" = ?`,
         organizationId,
       )
@@ -411,8 +422,8 @@ export class Auth extends DurableObject<CloudflareEnv> {
     return row
       ? {
           organizationId,
-          backofficeOrganizationId: row.backofficeOrganizationId,
-          // Written only by saveBackofficeLink from a validated Backoffice response.
+          // Both are written only by saveBackofficeLink from a validated Backoffice response.
+          backofficeOwner: parseBackofficeScopePathSegment(row.backofficeOwner) as BackofficeOwner,
           resourceScope: JSON.parse(row.resourceScope) as BackofficeResourceScope,
           linkedAt: new Date(row.linkedAt).toISOString(),
         }
@@ -425,16 +436,16 @@ export class Auth extends DurableObject<CloudflareEnv> {
    */
   async describeLinkedOrganization(input: {
     organizationId: string;
-    backofficeOrganizationId: string;
+    backofficeOwner: BackofficeOwner;
   }): Promise<LinkedOrganization | null> {
     const [row] = this.ctx.storage.sql
       .exec<{ name: string; slug: string; memberCount: number; linkedAt: number }>(
         `SELECT o."name", o."slug", l."linkedAt",
            (SELECT COUNT(*) FROM "member" m WHERE m."organizationId" = o."id") AS "memberCount"
          FROM "backoffice_link" l JOIN "organization" o ON o."id" = l."organizationId"
-         WHERE l."organizationId" = ? AND l."backofficeOrganizationId" = ?`,
+         WHERE l."organizationId" = ? AND l."backofficeOwner" = ?`,
         input.organizationId,
-        input.backofficeOrganizationId,
+        backofficeScopePathSegment(input.backofficeOwner),
       )
       .toArray();
     return row

@@ -3,7 +3,7 @@ import type {
   AppInstallationExternalAccount,
   AppInstallationResourceScope,
 } from "@fragno-dev/backoffice-api/v0/apps";
-import { backofficeScopeOrganization } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import { backofficeScopeRootOwner } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { betterAuth } from "better-auth";
 import { APIError } from "better-auth/api";
 import { z } from "zod";
@@ -11,6 +11,7 @@ import { z } from "zod";
 import {
   appInstallationReaches,
   appInstallationTargetScope,
+  type AppInstallationOwner,
 } from "@/fragno/app-installations/contracts";
 import {
   BackofficeExecutionTokenAuthenticationError,
@@ -44,7 +45,7 @@ const oauthProviderJwksSchema = z.object({
  * Server-selected authority for a verified OAuth client.
  *
  * Only server-controlled first-party clients receive user authority. A registered app receives an
- * app-bound credential whose authority is limited by its organization installation.
+ * app-bound credential whose authority is limited by its installation.
  */
 export type BackofficeOAuthExecutionPolicy =
   | { kind: "first-party-user" }
@@ -53,8 +54,8 @@ export type BackofficeOAuthExecutionPolicy =
 type BackofficeExecutionTokenDependencies = {
   resolveClientPolicy(clientId: string): Promise<BackofficeOAuthExecutionPolicy | null>;
   resolveUserGrant: ResolveBackofficeUserTokenGrant;
-  /** Returns the organization's active installation, or null when it approves nothing. */
-  resolveActiveInstallation(input: { organizationId: string; appId: string }): Promise<{
+  /** Returns the owner's active installation, or null when it approves nothing. */
+  resolveActiveInstallation(input: { owner: AppInstallationOwner; appId: string }): Promise<{
     activation: number;
     resourceScope: AppInstallationResourceScope;
     externalAccount: AppInstallationExternalAccount | null;
@@ -198,10 +199,10 @@ async function exchangeFirstPartyUserToken(
 }
 
 /**
- * Issues an app credential for an organization that has the app installed: within the
- * installation's approved resources, or in the app's own workspace there. A user token additionally requires the user's own current
- * membership, never the installing administrator's; a client-credentials token acts as the
- * installation itself.
+ * Issues an app credential under an owner that has the app installed: within the installation's
+ * approved resources, or in the app's own workspace there. A user token additionally requires the
+ * user's own current access to the scope, never the installing user's; a client-credentials token
+ * acts as the installation itself.
  */
 async function exchangeInstalledAppToken(
   authContext: BetterAuthContext,
@@ -212,7 +213,7 @@ async function exchangeInstalledAppToken(
   const scope = input.scope && appInstallationTargetScope(input.scope);
   if (!scope) {
     throw new BackofficeExecutionTokenScopeError(
-      "Installed apps require an explicit organization scope, one of its projects, or the app's workspace.",
+      "Installed apps require an explicit organization or user scope, one of its projects, or the app's workspace.",
     );
   }
   if (identity.userId !== null) {
@@ -223,12 +224,12 @@ async function exchangeInstalledAppToken(
     );
   }
   const installation = await dependencies.resolveActiveInstallation({
-    organizationId: backofficeScopeOrganization(scope).orgId,
+    owner: backofficeScopeRootOwner(scope),
     appId: identity.appId,
   });
   if (!installation) {
     throw new BackofficeExecutionTokenScopeError(
-      "This app is not installed in the requested organization.",
+      "This app is not installed by the requested scope's owner.",
     );
   }
   if (

@@ -21,6 +21,7 @@ import { appPermissionsEqual } from "@/fragno/apps/permissions";
 
 import type {
   AppApprovedActions,
+  AppInstallationOwner,
   BackofficeAppInstallationClaimInput,
   BackofficeAppInstallationClaimResult,
   BackofficeAppInstallationInput,
@@ -36,9 +37,9 @@ type AppInstallationsHooksMap = {
   onInstallationChanged: HookFn<AppInstallationChangedPayload>;
 };
 
-/** The owning organization is established from the Durable Object identity. */
+/** The owner is established from the Durable Object identity. */
 export type AppInstallationsConfig = {
-  organizationId: string;
+  owner: AppInstallationOwner;
   /** Runs after commit, so the object can report the connection state the change produced. */
   onInstallationChanged: (
     payload: AppInstallationChangedPayload,
@@ -46,20 +47,19 @@ export type AppInstallationsConfig = {
   ) => Promise<void>;
 };
 
-/** An organization-wide installation's connection lives in the organization scope. */
+/** An owner-wide installation's connection lives in the owner's scope. */
 function connectionScopesOf(
-  organizationId: string,
+  owner: AppInstallationOwner,
   resourceProjectIds: readonly (string[] | null)[],
 ): AppInstallationTargetScope[] {
-  const organization = { kind: "org", orgId: organizationId } as const;
   const scopes = new Map<string, AppInstallationTargetScope>();
   for (const projectIds of resourceProjectIds) {
     if (projectIds === null) {
-      scopes.set("org", organization);
+      scopes.set("owner", owner);
       continue;
     }
     for (const projectId of projectIds) {
-      scopes.set(`project:${projectId}`, { kind: "project", owner: organization, projectId });
+      scopes.set(`project:${projectId}`, { kind: "project", owner, projectId });
     }
   }
   return [...scopes.values()];
@@ -99,7 +99,7 @@ function resourceScopesEqual(
   left: AppInstallationResourceScope,
   right: AppInstallationResourceScope,
 ): boolean {
-  if (left.kind === "organization" || right.kind === "organization") {
+  if (left.kind === "owner" || right.kind === "owner") {
     return left.kind === right.kind;
   }
   // Both lists are normalized to sorted sets at the boundary.
@@ -110,33 +110,35 @@ function resourceScopesEqual(
 }
 
 function toResourceProjectIds(resourceScope: AppInstallationResourceScope): string[] | null {
-  return resourceScope.kind === "organization" ? null : resourceScope.projectIds;
+  return resourceScope.kind === "owner" ? null : resourceScope.projectIds;
 }
 
 function toResourceScope(resourceProjectIds: string[] | null): AppInstallationResourceScope {
   return resourceProjectIds === null
-    ? { kind: "organization" }
+    ? { kind: "owner" }
     : { kind: "projects", projectIds: resourceProjectIds };
 }
 
-function toBackofficeAppInstallation(installation: {
-  id: { externalId: string };
-  appId: string;
-  organizationId: string;
-  grantedPermissions: BackofficePermissionRequirement[];
-  resourceProjectIds: string[] | null;
-  externalAccount: AppInstallationExternalAccount | null;
-  installedByUserId: string;
-  status: BackofficeAppInstallationStatus;
-  activation: number;
-  approvedActions: AppApprovedActions | null;
-  createdAt: Date;
-  updatedAt: Date;
-}): BackofficeAppInstallation {
+function toBackofficeAppInstallation(
+  owner: AppInstallationOwner,
+  installation: {
+    id: { externalId: string };
+    appId: string;
+    grantedPermissions: BackofficePermissionRequirement[];
+    resourceProjectIds: string[] | null;
+    externalAccount: AppInstallationExternalAccount | null;
+    installedByUserId: string;
+    status: BackofficeAppInstallationStatus;
+    activation: number;
+    approvedActions: AppApprovedActions | null;
+    createdAt: Date;
+    updatedAt: Date;
+  },
+): BackofficeAppInstallation {
   return {
     id: installation.id.externalId,
     appId: installation.appId,
-    organizationId: installation.organizationId,
+    owner,
     grantedPermissions: knownBackofficePermissions(installation.grantedPermissions),
     resourceScope: toResourceScope(installation.resourceProjectIds),
     externalAccount: installation.externalAccount,
@@ -149,23 +151,20 @@ function toBackofficeAppInstallation(installation: {
   };
 }
 
-function decodeAppInstallationCursor(
-  input: BackofficeAppInstallationPageInput,
-  organizationId: string,
-) {
+function decodeAppInstallationCursor(input: BackofficeAppInstallationPageInput, ownerId: string) {
   if (input.cursor === null) {
     return undefined;
   }
   try {
     const cursor = decodeCursor(input.cursor);
     if (
-      cursor.indexName !== "idx_app_installation_organizationId_id" ||
+      cursor.indexName !== "idx_app_installation_ownerId_id" ||
       cursor.orderDirection !== "asc" ||
       cursor.pageSize !== input.pageSize ||
-      cursor.indexValues.organizationId !== organizationId ||
+      cursor.indexValues.ownerId !== ownerId ||
       typeof cursor.indexValues.id !== "string"
     ) {
-      throw new Error("Cursor does not match the organization installation query.");
+      throw new Error("Cursor does not match the owner's installation query.");
     }
     return cursor;
   } catch {
@@ -186,8 +185,9 @@ export const appInstallationsFragmentDefinition = defineFragment<AppInstallation
       await config.onInstallationChanged(payload, this);
     }),
   }))
-  .providesBaseService(({ defineService, config }) =>
-    defineService({
+  .providesBaseService(({ defineService, config }) => {
+    const ownerId = config.owner.kind === "org" ? config.owner.orgId : config.owner.userId;
+    return defineService({
       installApp: function (input: BackofficeAppInstallationInput, app: BackofficeApp) {
         return this.serviceTx(appInstallationsFragmentSchema)
           .retrieve((uow) =>
@@ -236,7 +236,7 @@ export const appInstallationsFragmentDefinition = defineFragment<AppInstallation
                 );
                 uow.triggerHook("onInstallationChanged", {
                   appId: input.appId,
-                  scopes: connectionScopesOf(config.organizationId, [
+                  scopes: connectionScopesOf(config.owner, [
                     installation.resourceProjectIds,
                     toResourceProjectIds(input.resourceScope),
                   ]),
@@ -253,7 +253,7 @@ export const appInstallationsFragmentDefinition = defineFragment<AppInstallation
                   grantedPermissions: input.grantedPermissions,
                   resourceProjectIds: toResourceProjectIds(input.resourceScope),
                   installedByUserId: input.installedByUserId,
-                  organizationId: config.organizationId,
+                  ownerId,
                   externalAccount: null,
                   approvedActions,
                   status: "active",
@@ -265,7 +265,7 @@ export const appInstallationsFragmentDefinition = defineFragment<AppInstallation
               );
               uow.triggerHook("onInstallationChanged", {
                 appId: input.appId,
-                scopes: connectionScopesOf(config.organizationId, [
+                scopes: connectionScopesOf(config.owner, [
                   toResourceProjectIds(input.resourceScope),
                 ]),
               });
@@ -283,7 +283,7 @@ export const appInstallationsFragmentDefinition = defineFragment<AppInstallation
             ),
           )
           .transformRetrieve(([installation]): BackofficeAppInstallation | null =>
-            installation ? toBackofficeAppInstallation(installation) : null,
+            installation ? toBackofficeAppInstallation(config.owner, installation) : null,
           )
           .build();
       },
@@ -299,7 +299,7 @@ export const appInstallationsFragmentDefinition = defineFragment<AppInstallation
           .transformRetrieve(([installation]) =>
             installation
               ? {
-                  installation: toBackofficeAppInstallation(installation),
+                  installation: toBackofficeAppInstallation(config.owner, installation),
                   approvedActions: installation.approvedActions,
                 }
               : null,
@@ -340,9 +340,7 @@ export const appInstallationsFragmentDefinition = defineFragment<AppInstallation
               );
               uow.triggerHook("onInstallationChanged", {
                 appId: input.appId,
-                scopes: connectionScopesOf(config.organizationId, [
-                  installation.resourceProjectIds,
-                ]),
+                scopes: connectionScopesOf(config.owner, [installation.resourceProjectIds]),
               });
               return { installationId: installation.id.externalId, changed: true };
             },
@@ -351,22 +349,22 @@ export const appInstallationsFragmentDefinition = defineFragment<AppInstallation
       },
 
       listInstallations: function (input: BackofficeAppInstallationPageInput) {
-        const cursor = decodeAppInstallationCursor(input, config.organizationId);
+        const cursor = decodeAppInstallationCursor(input, ownerId);
         return this.serviceTx(appInstallationsFragmentSchema)
           .retrieve((uow) =>
             uow.findWithCursor("app_installation", (b) => {
               const query = b
-                .whereIndex("idx_app_installation_organizationId_id", (eb) =>
-                  eb("organizationId", "=", config.organizationId),
-                )
-                .orderByIndex("idx_app_installation_organizationId_id", "asc")
+                .whereIndex("idx_app_installation_ownerId_id", (eb) => eb("ownerId", "=", ownerId))
+                .orderByIndex("idx_app_installation_ownerId_id", "asc")
                 .pageSize(input.pageSize);
               return cursor ? query.after(cursor) : query;
             }),
           )
           .transformRetrieve(
             ([page]): BackofficeAppInstallationPage => ({
-              installations: page.items.map(toBackofficeAppInstallation),
+              installations: page.items.map((installation) =>
+                toBackofficeAppInstallation(config.owner, installation),
+              ),
               nextCursor: page.cursor?.encode() ?? null,
               hasNextPage: page.hasNextPage,
             }),
@@ -419,7 +417,7 @@ export const appInstallationsFragmentDefinition = defineFragment<AppInstallation
               );
               uow.triggerHook("onInstallationChanged", {
                 appId: input.appId,
-                scopes: connectionScopesOf(config.organizationId, [
+                scopes: connectionScopesOf(config.owner, [
                   installation.resourceProjectIds,
                   toResourceProjectIds(input.resourceScope),
                 ]),
@@ -446,7 +444,7 @@ export const appInstallationsFragmentDefinition = defineFragment<AppInstallation
               if (installation?.status !== "active") {
                 throw new BackofficeAppDomainError(
                   "APP_INSTALLATION_INACTIVE",
-                  "Backoffice app is not installed in this organization.",
+                  "Backoffice app is not installed here.",
                 );
               }
               if (installation.activation !== input.activation) {
@@ -469,14 +467,12 @@ export const appInstallationsFragmentDefinition = defineFragment<AppInstallation
               );
               uow.triggerHook("onInstallationChanged", {
                 appId: input.appId,
-                scopes: connectionScopesOf(config.organizationId, [
-                  installation.resourceProjectIds,
-                ]),
+                scopes: connectionScopesOf(config.owner, [installation.resourceProjectIds]),
               });
               return {
                 id: installation.id.externalId,
                 appId: installation.appId,
-                organizationId: installation.organizationId,
+                owner: config.owner,
                 grantedPermissions: installation.grantedPermissions,
                 resourceScope: toResourceScope(installation.resourceProjectIds),
                 externalAccount: input.externalAccount,
@@ -518,15 +514,13 @@ export const appInstallationsFragmentDefinition = defineFragment<AppInstallation
               );
               uow.triggerHook("onInstallationChanged", {
                 appId: input.appId,
-                scopes: connectionScopesOf(config.organizationId, [
-                  installation.resourceProjectIds,
-                ]),
+                scopes: connectionScopesOf(config.owner, [installation.resourceProjectIds]),
               });
               return { installationId: installation.id.externalId, changed: true };
             },
           )
           .build();
       },
-    }),
-  )
+    });
+  })
   .build();

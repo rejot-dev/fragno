@@ -33,7 +33,7 @@ export type AppsRuntime = {
   uninstallApp(input: BackofficeAppLookupInput): Promise<BackofficeAppInstallationMutationResult>;
 };
 
-/** Objects are bound to the selected organization before exposing this control-plane runtime. */
+/** Objects are bound to the selected owner before exposing this control-plane runtime. */
 export function createAppsRuntime({
   apps,
   installations,

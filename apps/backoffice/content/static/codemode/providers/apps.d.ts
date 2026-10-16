@@ -2,19 +2,19 @@
 type AppsCodemodeProvider = {
   /** Review a registered app's requested permissions and declared actions before approving an installation. */
   get(input: AppsGetInput): Promise<AppsGetOutput>;
-  /** Approve an app installation in the selected organization, limited to explicit permissions and resources, and approve the app's declared actions at the reviewed revision. Installer identity comes from the authenticated user. */
+  /** Approve an app installation in the selected organization or personal scope, limited to explicit permissions and resources, and approve the app's declared actions at the reviewed revision. Installer identity comes from the authenticated user. */
   install(input: AppsInstallInput): Promise<AppsInstallOutput>;
-  /** Inspect one app installation in the selected organization, including approved grants. */
+  /** Inspect one app installation in the selected organization or personal scope, including approved grants. */
   getInstallation(input: AppsGetInstallationInput): Promise<AppsGetInstallationOutput>;
-  /** List the selected organization's active and uninstalled apps using cursor pagination. Does not expose other organizations or OAuth credentials. */
+  /** List the selected organization's or personal scope's active and uninstalled apps using cursor pagination. Does not expose other owners or OAuth credentials. */
   listInstallations(input: AppsListInstallationsInput): Promise<AppsListInstallationsOutput>;
   /** Replace an active installation's approved permissions and resources. Takes effect immediately, including for issued app credentials. Does not change installer attribution. */
   updateInstallation(input: AppsUpdateInstallationInput): Promise<AppsUpdateInstallationOutput>;
-  /** Approve an app's current action declaration for the selected organization's installation, so its new and changed actions run. Only needed when the app's changeApproval is installation. */
+  /** Approve an app's current action declaration for the selected owner's installation, so its new and changed actions run. Only needed when the app's changeApproval is installation. */
   approveInstallationActions(
     input: AppsApproveInstallationActionsInput,
   ): Promise<AppsApproveInstallationActionsOutput>;
-  /** Uninstall an app in the selected organization, clearing approved grants and its linked account while retaining installation identity. Immediately invalidates app credentials. Does not revoke personal OAuth consent. */
+  /** Uninstall an app in the selected organization or personal scope, clearing approved grants and its linked account while retaining installation identity. Immediately invalidates app credentials. Does not revoke personal OAuth consent. */
   uninstall(input: AppsUninstallInput): Promise<AppsUninstallOutput>;
 };
 declare const apps: AppsCodemodeProvider;
@@ -271,7 +271,7 @@ type AppAction = {
 };
 type AppInstallationResourceScope =
   | {
-      kind: "organization";
+      kind: "owner";
     }
   | {
       kind: "projects";
@@ -284,7 +284,15 @@ type BackofficeAppInstallationMutationResult = {
 type BackofficeAppInstallation = {
   id: string;
   appId: string;
-  organizationId: string;
+  owner:
+    | {
+        kind: "org";
+        orgId: string;
+      }
+    | {
+        kind: "user";
+        userId: string;
+      };
   grantedPermissions: BackofficePermissionRequirement[];
   resourceScope: AppInstallationResourceScope;
   externalAccount: {

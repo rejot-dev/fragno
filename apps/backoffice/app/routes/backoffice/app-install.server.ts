@@ -9,11 +9,13 @@ import {
   BACKOFFICE_PERMISSION,
   type BackofficePermissionRequirement,
 } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+import { backofficeScopePathSegment } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { RouterContextProvider } from "react-router";
 import { z } from "zod";
 
 import { createBackofficeUserExecution } from "@/backoffice-runtime/context";
 import { isBackofficeForbiddenError } from "@/backoffice-runtime/kernel";
+import type { AppInstallationOwner } from "@/fragno/app-installations/contracts";
 import { BackofficeAppDomainError, requireBackofficeAppOperationValue } from "@/fragno/apps/errors";
 import { createAutomationsRouteCaller } from "@/fragno/automation/route-callers";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
@@ -30,9 +32,9 @@ const installDecisionSchema = z.discriminatedUnion("intent", [
   z.object({ intent: z.literal("cancel") }),
   z.strictObject({
     intent: z.literal("install"),
-    organizationId: z.string().min(1),
+    owner: z.string().min(1),
     permissions: z.array(z.string().min(1)),
-    resources: z.enum(["organization", "projects"]),
+    resources: z.enum(["owner", "projects"]),
     projectIds: z.array(z.string().min(1)),
     // The revision the page showed, so actions changed since are not approved unseen.
     actionsRevision: z.coerce.number().int().positive(),
@@ -120,32 +122,48 @@ export function describeAppPermissions(
   }));
 }
 
-/** Organizations where this user may approve installations, with the selected one's details. */
-export async function loadAppInstallChoices(
+/** Where an installation may go, named in the form by the owner's scope segment. */
+type AppInstallOwnerChoice = { value: string; label: string; owner: AppInstallationOwner };
+
+/** Where this user may approve installations: organizations they own or administer, and themselves. */
+async function listAppInstallOwners(
   context: Readonly<RouterContextProvider>,
-  input: { userId: string; appId: string; selectedOrganizationId: string | null },
-) {
+  userId: string,
+): Promise<AppInstallOwnerChoice[]> {
   const { runtime } = context.get(BackofficeWorkerContext);
   const me = await runtime.objects.auth
     .singleton()
-    .commands.getBackofficeMe({ userId: input.userId, activeOrganizationId: null });
+    .commands.getBackofficeMe({ userId, activeOrganizationId: null });
   const organizations = (me?.organizations ?? [])
     .filter(({ member }) => member.roles.some((role) => role === "owner" || role === "admin"))
-    .map(({ organization }) => ({ id: organization.id, name: organization.name }));
-  const selected =
-    organizations.find(({ id }) => id === input.selectedOrganizationId) ?? organizations[0];
-  if (!selected) {
-    return { organizations, selectedOrganizationId: null, projects: [], installation: null };
-  }
+    .map(({ organization }) => ({
+      label: organization.name,
+      owner: { kind: "org", orgId: organization.id } as const,
+    }));
+  // Listed first, an organization is the default: most apps are installed for one.
+  return [...organizations, { label: "Personal", owner: { kind: "user", userId } } as const].map(
+    (choice) => ({ ...choice, value: backofficeScopePathSegment(choice.owner) }),
+  );
+}
+
+/** The install page's choices of owner, with the selected owner's projects and installation. */
+export async function loadAppInstallChoices(
+  context: Readonly<RouterContextProvider>,
+  input: { userId: string; appId: string; selectedOwner: string | null },
+) {
+  const { runtime } = context.get(BackofficeWorkerContext);
+  const owners = await listAppInstallOwners(context, input.userId);
+  // The personal scope is always offered, so there is always a selection.
+  const selected = owners.find(({ value }) => value === input.selectedOwner) ?? owners[0];
 
   const projectsResponse = await createAutomationsRouteCaller({
-    object: runtime.objects.automations.forOrg(selected.id),
+    object: runtime.objects.automations.for(selected.owner),
   })("GET", "/projects", {});
   // An unavailable project list must not look like "no projects": the page would then offer only
-  // whole-organization access.
+  // access to everything the owner has.
   if (projectsResponse.type !== "json") {
     throw new Error(
-      `Projects for organization '${selected.id}' could not be loaded (${projectsResponse.status}).`,
+      `Projects for '${selected.value}' could not be loaded (${projectsResponse.status}).`,
     );
   }
   const projects = z
@@ -154,11 +172,11 @@ export async function loadAppInstallChoices(
     .filter(({ archivedAt }) => archivedAt === null)
     .map(({ id, name }) => ({ id: String(id), name }));
   const installation = await runtime.objects.appInstallations
-    .forOrg(selected.id)
+    .for(selected.owner)
     .commands.getInstallation({ appId: input.appId });
   return {
-    organizations,
-    selectedOrganizationId: selected.id,
+    owners: owners.map(({ value, label }) => ({ value, label })),
+    selectedOwner: { value: selected.value, kind: selected.owner.kind },
     projects,
     installation: installation?.status === "active" ? installation : null,
   };
@@ -196,14 +214,14 @@ export async function decideAppInstallation(
 ): Promise<AppInstallDecisionResult> {
   const decision = installDecisionSchema.safeParse({
     intent: input.formData.get("intent"),
-    organizationId: input.formData.get("organizationId") ?? undefined,
+    owner: input.formData.get("owner") ?? undefined,
     permissions: input.formData.getAll("permission"),
     resources: input.formData.get("resources") ?? undefined,
     projectIds: input.formData.getAll("projectId"),
     actionsRevision: input.formData.get("actionsRevision") ?? undefined,
   });
   if (!decision.success) {
-    return { status: "invalid", message: "Choose an organization and the access to approve." };
+    return { status: "invalid", message: "Choose where to install and the access to approve." };
   }
   if (decision.data.intent === "cancel") {
     return {
@@ -211,16 +229,21 @@ export async function decideAppInstallation(
       location: redirectToApp(input.request, { error: "access_denied" }),
     };
   }
-  const { organizationId, projectIds, actionsRevision } = decision.data;
+  // Only an offered owner may be chosen; the kernel still checks live authority below.
+  const chosenOwner = decision.data.owner;
+  const owner = (await listAppInstallOwners(context, input.userId)).find(
+    ({ value }) => value === chosenOwner,
+  )?.owner;
+  if (!owner) {
+    return { status: "invalid", message: "Choose where to install and the access to approve." };
+  }
+  const { projectIds, actionsRevision } = decision.data;
   if (decision.data.resources === "projects" && projectIds.length === 0) {
-    return {
-      status: "invalid",
-      message: "Select at least one project, or the whole organization.",
-    };
+    return { status: "invalid", message: "Select at least one project, or everything." };
   }
   const resourceScope: AppInstallationResourceScope =
-    decision.data.resources === "organization"
-      ? { kind: "organization" }
+    decision.data.resources === "owner"
+      ? { kind: "owner" }
       : { kind: "projects", projectIds: [...new Set(projectIds)].sort() };
   const access = {
     appId: input.request.app.id,
@@ -232,14 +255,11 @@ export async function decideAppInstallation(
   };
 
   const { runtime, kernel } = context.get(BackofficeWorkerContext);
-  const installations = runtime.objects.appInstallations.forOrg(organizationId).commands;
+  const installations = runtime.objects.appInstallations.for(owner).commands;
   let installation: BackofficeAppInstallation | null;
   try {
     installation = await kernel.invoke({
-      execution: createBackofficeUserExecution({
-        scope: { kind: "org", orgId: organizationId },
-        userId: input.userId,
-      }),
+      execution: createBackofficeUserExecution({ scope: owner, userId: input.userId }),
       operation: BACKOFFICE_PERMISSION.apps.manage,
       resource: { kind: "app-installation", appId: access.appId },
       execute: async () => {
@@ -278,7 +298,7 @@ export async function decideAppInstallation(
   }
   const { code } = await runtime.objects.auth.singleton().commands.issueAppInstallationCode({
     appId: access.appId,
-    organizationId,
+    owner,
     activation: installation.activation,
   });
   return { status: "redirect", location: redirectToApp(input.request, { code }) };

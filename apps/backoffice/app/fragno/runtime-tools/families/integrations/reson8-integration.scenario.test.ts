@@ -799,7 +799,8 @@ test("connection IDs cannot select an owner or replace umbrella and service auth
             { id: "reson8", availability: { status: "unavailable" } },
             { id: "telegram", availability: { status: "available" } },
             { id: "resend", availability: { status: "unavailable" } },
-            { id: "app", availability: { status: "unavailable" } },
+            // A user can install apps for themselves.
+            { id: "app", availability: { status: "available" } },
           ]);
           expect(await userHost.integrations.runtime.list({ cursor: null })).toEqual({
             connections: [],

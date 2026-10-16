@@ -64,7 +64,7 @@ const scenarioObjects = {
   UPLOAD: (input) => new InMemoryUploadObject(input),
 } satisfies LocalBackofficeObjects;
 
-const wholeOrganization = { kind: "organization" } as const;
+const wholeOrganization = { kind: "owner" } as const;
 
 const origin = "https://backoffice.example";
 const redirectUri = "https://bookkeeping.example/api/auth/oauth2/callback/backoffice";
@@ -170,8 +170,12 @@ async function authorizeBookkeeping(ctx: Ctx, cookie: string): Promise<string> {
 }
 
 type OrgScope = { kind: "org"; orgId: string };
-type WorkspaceScope = { kind: "app"; owner: OrgScope; appId: string };
-type AppScope = OrgScope | WorkspaceScope | { kind: "project"; owner: OrgScope; projectId: string };
+type OwnerScope = OrgScope | { kind: "user"; userId: string };
+type WorkspaceScope = { kind: "app"; owner: OwnerScope; appId: string };
+type AppScope =
+  | OwnerScope
+  | WorkspaceScope
+  | { kind: "project"; owner: OwnerScope; projectId: string };
 
 function orgScope(orgId: string): OrgScope {
   return { kind: "org", orgId };
@@ -246,8 +250,11 @@ async function exchangeCredential(ctx: Ctx, token: string, scope: AppScope): Pro
   return backofficeExecutionTokenResultSchema.parse(await response.json()).accessToken;
 }
 
-/** Loads the workspace's dashboard for a signed-in browser, or returns the Response it threw. */
-async function openWorkspaceDashboard(ctx: Ctx, sessionCookie: string, orgSlug: string) {
+/**
+ * Loads the app workspace's dashboard for a signed-in browser, or returns the Response it threw.
+ * The owner is named as in page URLs, e.g. `org:<org-slug>` or `user:<userId>`.
+ */
+async function openWorkspaceDashboard(ctx: Ctx, sessionCookie: string, owner: string) {
   const exchanged = await authRequest(ctx, "/backoffice-token", sessionCookie, {
     selection: "required",
     organizationId: ctx.vars.orgId,
@@ -257,7 +264,7 @@ async function openWorkspaceDashboard(ctx: Ctx, sessionCookie: string, orgSlug: 
     sessionCookie,
     ...exchanged.headers.getSetCookie().map((header) => header.split(";", 1)[0]),
   ].join("; ");
-  const scopeId = `org:${orgSlug}:${ctx.vars.appId}`;
+  const scopeId = `${owner}:${ctx.vars.appId}`;
   const url = new URL(`/backoffice/dashboard/app/${scopeId}`, origin);
   const request = new Request(url, { headers: { cookie, origin } });
   return await behindBackofficeLayout(dashboardLoader)({
@@ -792,7 +799,7 @@ describe("installed-app event delivery SQLite scenarios", () => {
       "Bookkeeping is installed, linked, and acts as itself",
       (then) => [
         then(
-          "only organizations the user administers are offered, and foreign return addresses are refused",
+          "only organizations the user administers and their personal scope are offered, and foreign return addresses are refused",
           async (ctx) => {
             const installations = ctx.runtime.objects.appInstallations.forOrg(
               ctx.vars.orgId,
@@ -819,18 +826,22 @@ describe("installed-app event delivery SQLite scenarios", () => {
                 },
               ],
               returnOrigin: "https://bookkeeping.example",
-              organizations: [{ id: ctx.vars.orgId }],
-              selectedOrganizationId: ctx.vars.orgId,
+              owners: [
+                { value: `org:${ctx.vars.orgId}`, label: expect.any(String) },
+                { value: `user:${ctx.vars.ownerId}`, label: "Personal" },
+              ],
+              selectedOwner: { value: `org:${ctx.vars.orgId}`, kind: "org" },
               installation: null,
             });
             expect(ownerPage.projects.map(({ name }) => name).sort()).toEqual([
               "Finance",
               "Payroll",
             ]);
-            // The member administers only their personal organization.
+            // The member administers only the organization created for them.
             const memberPage = await openInstallPage(ctx, ctx.vars.memberCookie);
-            expect(memberPage.organizations).toEqual([
-              { id: ctx.vars.memberOrgId, name: expect.any(String) },
+            expect(memberPage.owners).toEqual([
+              { value: `org:${ctx.vars.memberOrgId}`, label: expect.any(String) },
+              { value: `user:${ctx.vars.memberId}`, label: "Personal" },
             ]);
             await expect(
               openInstallPage(
@@ -843,12 +854,12 @@ describe("installed-app event delivery SQLite scenarios", () => {
             const forbidden = await submitInstallPage(ctx, ctx.vars.memberCookie, [
               ["intent", "install"],
               ["actionsRevision", "1"],
-              ["organizationId", ctx.vars.orgId],
+              ["owner", `org:${ctx.vars.orgId}`],
               ["permission", "events.emit"],
-              ["resources", "organization"],
+              ["resources", "owner"],
             ]);
             expect(forbidden).toMatchObject({
-              data: { message: "Only an owner or admin of this organization can install apps." },
+              data: { message: "Choose where to install and the access to approve." },
             });
             expect(await installations.getInstallation({ appId: ctx.vars.appId })).toMatchObject({
               status: "uninstalled",
@@ -870,7 +881,7 @@ describe("installed-app event delivery SQLite scenarios", () => {
             const approved = await submitInstallPage(ctx, ctx.vars.ownerCookie, [
               ["intent", "install"],
               ["actionsRevision", "1"],
-              ["organizationId", ctx.vars.orgId],
+              ["owner", `org:${ctx.vars.orgId}`],
               ["permission", "events.emit"],
               ["resources", "projects"],
               ["projectId", ctx.vars.financeProjectId],
@@ -922,7 +933,7 @@ describe("installed-app event delivery SQLite scenarios", () => {
             expect(await claimed.json()).toEqual({
               id: expect.any(String),
               appId: ctx.vars.appId,
-              organizationId: ctx.vars.orgId,
+              owner: orgScope(ctx.vars.orgId),
               grantedPermissions: [emit],
               resourceScope: { kind: "projects", projectIds: [ctx.vars.financeProjectId] },
               externalAccount: acme,
@@ -1143,7 +1154,7 @@ describe("installed-app event delivery SQLite scenarios", () => {
           ).find(({ id }) => id === ctx.vars.orgId);
           assert(organization);
           expect(
-            await openWorkspaceDashboard(ctx, ctx.vars.ownerCookie, organization.slug),
+            await openWorkspaceDashboard(ctx, ctx.vars.ownerCookie, `org:${organization.slug}`),
           ).toMatchObject({
             selectedScope: {
               kind: "app",
@@ -1157,7 +1168,11 @@ describe("installed-app event delivery SQLite scenarios", () => {
             ctx.vars.orgId,
           ).commands;
           assert((await installations.uninstallApp({ appId: ctx.vars.appId })).ok);
-          const closed = await openWorkspaceDashboard(ctx, ctx.vars.ownerCookie, organization.slug);
+          const closed = await openWorkspaceDashboard(
+            ctx,
+            ctx.vars.ownerCookie,
+            `org:${organization.slug}`,
+          );
           assert(closed instanceof Response);
           assert(closed.status === 404);
           await expectDenied(
@@ -1169,6 +1184,152 @@ describe("installed-app event delivery SQLite scenarios", () => {
             403,
             "scope_unavailable",
           );
+        },
+      ),
+    ]);
+  });
+  test("a member installs Bookkeeping for themselves, and only they and Bookkeeping reach their personal scope", async () => {
+    await runInstalledAppScenario("Bookkeeping is installed in a personal scope", (then) => [
+      then(
+        "the member installs Bookkeeping in their personal scope, which nobody else can choose for them",
+        async (ctx) => {
+          const personal = { kind: "user", userId: ctx.vars.memberId } as const;
+          const url = installUrl(ctx);
+          url.searchParams.set("owner", `user:${ctx.vars.memberId}`);
+          expect(await openInstallPage(ctx, ctx.vars.memberCookie, url)).toMatchObject({
+            selectedOwner: { value: `user:${ctx.vars.memberId}`, kind: "user" },
+            projects: [],
+            installation: null,
+          });
+          const forOther = await submitInstallPage(ctx, ctx.vars.ownerCookie, [
+            ["intent", "install"],
+            ["actionsRevision", "1"],
+            ["owner", `user:${ctx.vars.memberId}`],
+            ["permission", "events.emit"],
+            ["resources", "owner"],
+          ]);
+          expect(forOther).toMatchObject({
+            data: { message: "Choose where to install and the access to approve." },
+          });
+
+          const approved = await submitInstallPage(ctx, ctx.vars.memberCookie, [
+            ["intent", "install"],
+            ["actionsRevision", "1"],
+            ["owner", `user:${ctx.vars.memberId}`],
+            ["permission", "events.emit"],
+            ["permission", "events.read"],
+            ["resources", "owner"],
+          ]);
+          assert(approved instanceof Response, JSON.stringify(approved));
+          ctx.vars.installCode =
+            new URL(approved.headers.get("location") ?? "").searchParams.get("code") ?? "";
+          expect(
+            await ctx.runtime.objects.appInstallations
+              .for(personal)
+              .commands.getInstallation({ appId: ctx.vars.appId }),
+          ).toMatchObject({
+            owner: personal,
+            installedByUserId: ctx.vars.memberId,
+            status: "active",
+            resourceScope: { kind: "owner" },
+          });
+
+          ctx.vars.installationToken = await requestClientCredentialsToken(ctx);
+          const claimed = await claim(ctx, ctx.vars.installationToken, {
+            code: ctx.vars.installCode,
+            externalAccount: { id: "bookkeeping-org-solo", label: "Solo Books" },
+          });
+          assert.equal(claimed.status, 200, await claimed.clone().text());
+          expect(await claimed.json()).toMatchObject({ owner: personal });
+        },
+      ),
+      then(
+        "Bookkeeping acts in the personal scope and its workspace there, as itself or for the member only",
+        async (ctx) => {
+          const personal = { kind: "user", userId: ctx.vars.memberId } as const;
+          const workspace = { kind: "app", owner: personal, appId: ctx.vars.appId } as const;
+          const asInstallation = await exchangeCredential(
+            ctx,
+            ctx.vars.installationToken,
+            personal,
+          );
+          const { eventId } = await sendEvent(ctx, {
+            credential: asInstallation,
+            scope: personal,
+          });
+          expect(await listEventIds(ctx, asInstallation, personal)).toEqual([eventId]);
+          await sendEvent(ctx, {
+            credential: await exchangeCredential(ctx, ctx.vars.installationToken, workspace),
+            scope: workspace,
+          });
+          await sendEvent(ctx, {
+            credential: await exchangeCredential(ctx, ctx.vars.oauthAccessToken, personal),
+            scope: personal,
+          });
+
+          // The organization's installation does not reach its members' personal scopes, and
+          // nobody else can authorize Bookkeeping in the member's.
+          await expectDenied(
+            await exchange(ctx, ctx.vars.installationToken, {
+              kind: "user",
+              userId: ctx.vars.ownerId,
+            }),
+            403,
+            "scope_unavailable",
+          );
+          const ownerToken = await authorizeBookkeeping(ctx, ctx.vars.ownerCookie);
+          for (const scope of [personal, workspace]) {
+            await expectDenied(await exchange(ctx, ownerToken, scope), 403, "scope_unavailable");
+          }
+        },
+      ),
+      then(
+        "only the member opens the workspace and manages the installation, and uninstalling closes both",
+        async (ctx) => {
+          const personal = { kind: "user", userId: ctx.vars.memberId } as const;
+          expect(
+            await openWorkspaceDashboard(ctx, ctx.vars.memberCookie, `user:${ctx.vars.memberId}`),
+          ).toMatchObject({
+            selectedScope: { kind: "app", owner: personal, appId: ctx.vars.appId },
+          });
+          const hidden = await openWorkspaceDashboard(
+            ctx,
+            ctx.vars.ownerCookie,
+            `user:${ctx.vars.memberId}`,
+          );
+          assert(hidden instanceof Response);
+          assert.equal(hidden.status, 404);
+
+          const manage = async (userId: string, command: string) => {
+            const context = createRouteBackedRuntimeContext({
+              runtime: ctx.runtime.services,
+              kernel: new BackofficeKernel(ctx.runtime.services),
+              execution: createBackofficeUserExecution({ scope: personal, userId }),
+              billingOrganizationId: null,
+            });
+            assert(context.stateBackend);
+            const { bash } = createInteractiveBashHost({
+              context: { ...context, stateBackend: context.stateBackend },
+            });
+            return await bash.exec(command);
+          };
+          const uninstall = `apps.uninstall --app-id ${ctx.vars.appId}`;
+          expect((await manage(ctx.vars.ownerId, uninstall)).exitCode).not.toBe(0);
+          const uninstalled = await manage(ctx.vars.memberId, uninstall);
+          assert.equal(uninstalled.exitCode, 0, uninstalled.stderr);
+
+          await expectDenied(
+            await exchange(ctx, ctx.vars.installationToken, personal),
+            403,
+            "scope_unavailable",
+          );
+          const closed = await openWorkspaceDashboard(
+            ctx,
+            ctx.vars.memberCookie,
+            `user:${ctx.vars.memberId}`,
+          );
+          assert(closed instanceof Response);
+          assert.equal(closed.status, 404);
         },
       ),
     ]);

@@ -1173,7 +1173,7 @@
   },
   {
     "command": "apps.install",
-    "summary": "apps.install approves an organization-owned installation (organization owners/admins only). The app can then act only within these grants and resources; OAuth user consent is separate.",
+    "summary": "apps.install approves an installation owned by the current organization (owners/admins only) or by you in your user scope. The app can then act only within these grants and resources; OAuth user consent is separate.",
     "options": [
       {
         "name": "app-id",
@@ -1200,7 +1200,7 @@
         "name": "resource-scope-json",
         "valueRequired": true,
         "valueName": "json",
-        "description": "Resources the grants apply to: {\"kind\":\"organization\"} or {\"kind\":\"projects\",\"projectIds\":[\"...\"]} (default: whole organization)"
+        "description": "Resources the grants apply to: {\"kind\":\"owner\"} for everything the owner has, or {\"kind\":\"projects\",\"projectIds\":[\"...\"]} (default: everything the owner has)"
       },
       {
         "name": "help",
@@ -1225,7 +1225,7 @@
   },
   {
     "command": "apps.installations.get",
-    "summary": "apps.installations.get inspects an organization's installation by app ID.",
+    "summary": "apps.installations.get inspects the current owner's installation by app ID.",
     "options": [
       {
         "name": "app-id",
@@ -1257,7 +1257,7 @@
   },
   {
     "command": "apps.installations.list",
-    "summary": "apps.installations.list lists installation history in organization context.",
+    "summary": "apps.installations.list lists installation history in organization or user context.",
     "options": [
       {
         "name": "page-size",
@@ -1269,7 +1269,7 @@
         "name": "cursor",
         "valueRequired": true,
         "valueName": "cursor",
-        "description": "Cursor from the previous page; keep the same page size and organization"
+        "description": "Cursor from the previous page; keep the same page size and owner"
       },
       {
         "name": "help",
@@ -1294,7 +1294,7 @@
   },
   {
     "command": "apps.installations.update",
-    "summary": "apps.installations.update replaces approved permissions and resources (organization owners/admins only). Both are required so access is never widened implicitly.",
+    "summary": "apps.installations.update replaces approved permissions and resources (organization owners/admins, or you in your user scope). Both are required so access is never widened implicitly.",
     "options": [
       {
         "name": "app-id",
@@ -1315,7 +1315,7 @@
         "required": true,
         "valueRequired": true,
         "valueName": "json",
-        "description": "Resources the grants apply to: {\"kind\":\"organization\"} or {\"kind\":\"projects\",\"projectIds\":[\"...\"]}"
+        "description": "Resources the grants apply to: {\"kind\":\"owner\"} for everything the owner has, or {\"kind\":\"projects\",\"projectIds\":[\"...\"]}"
       },
       {
         "name": "help",
@@ -1379,7 +1379,7 @@
   },
   {
     "command": "apps.uninstall",
-    "summary": "apps.uninstall clears organization installation grants (organization owners/admins only).",
+    "summary": "apps.uninstall clears installation grants (organization owners/admins, or you in your user scope).",
     "options": [
       {
         "name": "app-id",

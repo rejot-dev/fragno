@@ -42,7 +42,7 @@ implemented.
 
 The login and signup pages offer **Continue with Backoffice**. New Backoffice users get a local
 Bookkeeping account on their first successful login. The same authorization also lets Bookkeeping's
-server act for that user in Backoffice organizations that have installed Bookkeeping (see
+server act for that user wherever Bookkeeping is installed in Backoffice (see
 [Organizations and Backoffice](#organizations-and-backoffice)).
 
 `pnpm --dir apps/bookkeeping backoffice:connect` sets all of these up (see
@@ -95,8 +95,9 @@ only Bookkeeping's server reads them through the Auth Durable Object.
 Bookkeeping uses Better Auth's organization plugin. Create an organization at
 `/dashboard/organizations`; you become its owner and it becomes your active organization.
 
-An organization connects to one Backoffice organization (and vice versa). One-time setup, as a
-Backoffice global administrator, from the repository root:
+An organization connects to one Backoffice owner (and vice versa): a Backoffice organization, or a
+Backoffice user who installed Bookkeeping for themselves. One-time setup, as a Backoffice global
+administrator, from the repository root:
 
 ```sh
 pnpm --dir apps/bookkeeping backoffice:connect
@@ -110,19 +111,21 @@ secret, and both origins to `.dev.vars`. It reads both origins from `.dev.vars` 
 to change them, which also moves the callback and the action endpoint. The app is registered as
 `app#bookkeeping`; pass `--slug` to choose another permanent name. Rerunning converges on the same
 client and app. Action changes apply automatically to existing installations; pass
-`--change-approval installation` to make each organization approve them. Production requires HTTPS.
+`--change-approval installation` to make each installation's owner approve them. Production requires
+HTTPS.
 
 Then an owner or admin of the Bookkeeping organization opens **Backoffice → Connect to Backoffice**:
 
 1. Bookkeeping records a single-use, 10-minute state bound to that user and organization, and
    redirects to Backoffice's install page.
-2. In Backoffice, an owner or admin of a Backoffice organization chooses the organization, the
-   permissions to approve, and either the whole organization or selected projects.
+2. In Backoffice, the user chooses where to install: an organization they own or administer, or
+   themselves. They then approve permissions and either everything the owner has or selected
+   projects.
 3. Backoffice returns to `/dashboard/backoffice/callback` with a short-lived code. Bookkeeping
    consumes the state, authenticates with client credentials, and claims the installation for its
    organization at `POST /api/backoffice/app-installations/claim`. The Backoffice installation
-   records the Bookkeeping organization; Bookkeeping records the Backoffice organization and the
-   approved access.
+   records the Bookkeeping organization; Bookkeeping records the Backoffice owner and the approved
+   access.
 
 To link a different Bookkeeping organization, uninstall Bookkeeping in Backoffice first.
 **Disconnect** only forgets the link in Bookkeeping; revoking access is Backoffice's decision.
@@ -130,13 +133,14 @@ To link a different Bookkeeping organization, uninstall Bookkeeping in Backoffic
 ### Sending events
 
 Any member of a connected organization can send one `bookkeeping.connection.tested` event to an
-approved target (the organization, or one of the approved projects):
+approved target (the owner, or one of the approved projects):
 
 - **Send as the organization** uses a client-credentials token, so it needs no Backoffice account.
   Backoffice attributes the event to the Bookkeeping organization and limits it to the
   installation's approved permissions and resources.
 - **Send as you** uses your own linked Backoffice account. Backoffice additionally requires that you
-  are currently a member there and may emit events yourself.
+  are currently a member there and may emit events yourself; where a user installed Bookkeeping for
+  themselves, only that user can.
 
 Either way, Bookkeeping's server exchanges its OAuth token at `POST /api/backoffice/execution-token`
 for a 15-minute credential bound to that target, then calls the `events.fire` operation of the

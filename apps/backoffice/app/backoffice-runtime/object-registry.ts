@@ -48,7 +48,10 @@ import type { FragnoExecutionContext } from "@fragno-dev/core";
 import type { ResendSendEmailInput } from "@fragno-dev/resend-fragment";
 
 import type { TelegramAutomationFileMetadata } from "@/backoffice-runtime/telegram-file-response";
-import type { BackofficeAppInstallationsCommands } from "@/fragno/app-installations/contracts";
+import type {
+  AppInstallationOwner,
+  BackofficeAppInstallationsCommands,
+} from "@/fragno/app-installations/contracts";
 import type { BackofficeAppsCommands } from "@/fragno/apps/contracts";
 import type {
   BackofficeCliOAuthConfig,
@@ -296,7 +299,7 @@ export type AuthObject = DurableHookCommands & {
   /** Signs a short-lived code that lets the app's server claim an approved installation. */
   issueAppInstallationCode(input: {
     appId: string;
-    organizationId: string;
+    owner: AppInstallationOwner;
     activation: number;
   }): Promise<{ code: string }>;
   /** Signs one request to an app's action endpoint; the token is valid only for that body. */
@@ -724,7 +727,7 @@ export const backofficeObjectScopePolicy = {
   API: ["org", "user", "project"],
   AUTH: ["singleton"],
   APPS: ["singleton"],
-  APP_INSTALLATIONS: ["org"],
+  APP_INSTALLATIONS: ["org", "user"],
 
   // An installed app's workspace keeps its data: store, files, events, routes, and workflows.
   AUTOMATIONS: ["singleton", "org", "user", "app", "project"],

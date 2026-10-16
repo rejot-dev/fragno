@@ -43,11 +43,11 @@ command have been removed, and `@rejot-dev/backoffice-local` uses the shared rou
 
 Auth selects the policy from the verified OAuth client ID. Callers never choose it.
 
-| Client                                      | Policy             | Credential                                    |
-| ------------------------------------------- | ------------------ | --------------------------------------------- |
-| The deployment's Codemode client            | `first-party-user` | User JWT with a scope ceiling                 |
-| An enabled client registered as an app      | `installed-app`    | App-bound JWT for one organization or project |
-| Any other, disabled, or unregistered client | none               | `401 authentication_failed`                   |
+| Client                                      | Policy             | Credential                                  |
+| ------------------------------------------- | ------------------ | ------------------------------------------- |
+| The deployment's Codemode client            | `first-party-user` | User JWT with a scope ceiling               |
+| An enabled client registered as an app      | `installed-app`    | App-bound JWT for one scope under its owner |
+| Any other, disabled, or unregistered client | none               | `401 authentication_failed`                 |
 
 User tokens require current OAuth consent for the client and token scopes; revoking consent prevents
 further issuance, even with an unexpired OAuth JWT. Client-credentials tokens (whose subject is the
@@ -66,18 +66,18 @@ ceiling and maximum 15-minute lifetime.
 ### Installed apps
 
 Registering an app never confers first-party policy. A registered app's client receives an app-bound
-credential only when the request names an explicit organization or project scope, the organization
-has the app actively installed, and the scope is inside the installation's approved resources (the
-whole organization, or selected projects), or is the app's own workspace in that organization
-(`app:org:<orgId>:<appId>`). The app then acts as one of:
+credential only when the request names an explicit scope other than System, the scope's root owner
+(an organization or a user) has the app actively installed, and the scope is inside the
+installation's approved resources (everything the owner has, or selected projects), or is the app's
+own workspace there (`app:<owner>:<appId>`). The app then acts as one of:
 
 | Token                                     | Acts as          | Kernel requires                                    |
 | ----------------------------------------- | ---------------- | -------------------------------------------------- |
 | User token (authorization code)           | the user         | user's current permissions ∩ installation's grants |
 | Client-credentials token (`sub` = client) | the installation | installation's grants                              |
 
-For a user token, the user must currently be an active member of that organization; the installing
-administrator's authority is irrelevant.
+For a user token, the user must currently be an active member of that organization, or be the user
+who owns the scope; the installing administrator's authority is irrelevant.
 
 The credential has its own JWT audience, so every user-credential verifier rejects it. It names the
 actor, app, scope, installation activation, and any linked external account, but carries no role or
@@ -110,16 +110,18 @@ does not mean downstream automation has completed.
 
 ### App-initiated installation
 
-An app links its own tenant (for example, a Bookkeeping organization) to a Backoffice organization:
+An app links its own tenant (for example, a Bookkeeping organization) to a Backoffice organization,
+or to a user who installs it for themselves:
 
 ```text
 app server ──redirect──► /backoffice/apps/install?client_id&redirect_uri&state
-  owner/admin picks organization, permissions, and resources; kernel checks live apps.manage
+  user picks an organization they own or administer, or themselves, then permissions and
+  resources; kernel checks live apps.manage
 ◄──redirect── redirect_uri?code&state          (or ?error=access_denied&state)
 app server ──POST /api/backoffice/app-installations/claim──►
   Authorization: Bearer <client-credentials token>
   { "code": "…", "externalAccount": { "id": "…", "label": "…" } }
-◄── { id, appId, organizationId, grantedPermissions, resourceScope, externalAccount, activation }
+◄── { id, appId, owner, grantedPermissions, resourceScope, externalAccount, activation }
 ```
 
 - `redirect_uri` must share an origin with one of the client's registered OAuth redirect URIs.
@@ -181,7 +183,7 @@ Users manage their own authorizations at `/backoffice/settings/authorized-applic
 from the account menu and Settings. Listing is credential-free and cursor-bound to the session user.
 Revocation derives the user ID from that session and transactionally removes that client's consents,
 stored access tokens, refresh tokens, and pending/approved device codes for that user. Other users,
-browser sessions, and organization installations are unaffected.
+browser sessions, and app installations are unaffected.
 
 Provider claim issuance and userinfo also require current consent. Self-contained JWTs accepted by
 external verifiers remain subject to their expiry; the UI does not promise global immediate token

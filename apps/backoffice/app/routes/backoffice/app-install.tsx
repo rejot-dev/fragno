@@ -46,7 +46,7 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
   const choices = await loadAppInstallChoices(context, {
     userId: user.id,
     appId: installRequest.app.id,
-    selectedOrganizationId: url.searchParams.get("organization"),
+    selectedOwner: url.searchParams.get("owner"),
   });
   return data(
     {
@@ -97,6 +97,7 @@ export default function BackofficeAppInstall({
   const submit = useSubmit();
   const pending = navigation.state !== "idle";
   const current = install.installation;
+  const personal = install.selectedOwner.kind === "user";
   const grantedByDefault = (permission: string) =>
     current
       ? current.grantedPermissions.some(
@@ -107,142 +108,129 @@ export default function BackofficeAppInstall({
   return (
     <AuthorizationScreen
       title={`Install ${install.clientName}`}
-      description={`${install.clientName} is asking to be installed in one of your organizations.`}
+      description={`${install.clientName} is asking to be installed for you or one of your organizations.`}
       eyebrow="Backoffice apps"
     >
       <div className="space-y-4">
         <p className="text-sm text-[var(--bo-muted)]">
           Signed in as <strong className="text-[var(--bo-fg)]">{install.userEmail}</strong>
         </p>
-        {install.selectedOrganizationId === null ? (
-          <p role="alert" className="text-sm text-[var(--bo-failed)]">
-            You need to be an owner or admin of an organization to install apps.
-          </p>
-        ) : (
-          <>
-            {/* Native controls keep this consent screen usable without JavaScript, where the
-                design-system pickers cannot be operated. */}
-            <Form method="get" className="space-y-2">
-              {/* Keep the app's request while switching organizations. */}
-              {Object.entries(install.appRequest).map(([name, value]) => (
-                <input key={name} type="hidden" name={name} value={value} />
+        {/* Native controls keep this consent screen usable without JavaScript, where the
+            design-system pickers cannot be operated. */}
+        <Form method="get" className="space-y-2">
+          {/* Keep the app's request while switching where to install. */}
+          {Object.entries(install.appRequest).map(([name, value]) => (
+            <input key={name} type="hidden" name={name} value={value} />
+          ))}
+          <label className="block space-y-2 text-sm">
+            <span className="font-semibold">Install for</span>
+            <select
+              name="owner"
+              defaultValue={install.selectedOwner.value}
+              className="bo-input min-h-11 w-full px-3 py-2 text-sm"
+              onChange={(event) => {
+                void submit(event.currentTarget.form);
+              }}
+            >
+              {install.owners.map((owner) => (
+                <option key={owner.value} value={owner.value}>
+                  {owner.label}
+                </option>
               ))}
-              <label className="block space-y-2 text-sm">
-                <span className="font-semibold">Organization</span>
-                <select
-                  name="organization"
-                  defaultValue={install.selectedOrganizationId}
-                  className="bo-input min-h-11 w-full px-3 py-2 text-sm"
-                  onChange={(event) => {
-                    void submit(event.currentTarget.form);
-                  }}
-                >
-                  {install.organizations.map((organization) => (
-                    <option key={organization.id} value={organization.id}>
-                      {organization.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <noscript>
-                <Button type="submit" variant="secondary">
-                  Switch organization
-                </Button>
-              </noscript>
-            </Form>
-            {current?.externalAccount ? (
-              <p className="text-sm text-[var(--bo-muted)]">
-                Already installed and linked to{" "}
-                <strong className="text-[var(--bo-fg)]">{current.externalAccount.label}</strong>. To
-                link a different account, uninstall the app first.
-              </p>
-            ) : null}
-            <Form method="post" className="space-y-4" key={install.selectedOrganizationId}>
-              <input type="hidden" name="organizationId" value={install.selectedOrganizationId} />
-              <input type="hidden" name="actionsRevision" value={install.actionsRevision} />
-              <fieldset className="space-y-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4">
-                <legend className="px-1 text-[11px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-                  Permissions
-                </legend>
-                {install.requestedPermissions.length === 0 ? (
-                  <p className="text-sm text-[var(--bo-muted)]">
-                    This app requests no permissions.
-                  </p>
-                ) : (
-                  install.requestedPermissions.map(({ permission, operations }) => (
-                    <div key={permission} className="space-y-1">
-                      <label className="flex items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          name="permission"
-                          value={permission}
-                          defaultChecked={grantedByDefault(permission)}
-                        />
-                        <span className="font-mono">{permission}</span>
-                      </label>
-                      {operations.length === 0 ? (
-                        <p className="pl-6 text-xs text-[var(--bo-muted)]">
-                          No API operation uses this permission yet.
-                        </p>
-                      ) : (
-                        <ul className="list-disc space-y-0.5 pl-10 text-xs leading-5 text-[var(--bo-muted)]">
-                          {operations.map((operation) => (
-                            <li key={operation}>{operation}</li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
-                  ))
-                )}
-              </fieldset>
-              <ActionsSummary
-                actions={install.actions}
-                pendingApproval={
-                  current !== null && current.approvedActionsRevision !== install.actionsRevision
-                }
-              />
-              <ResourceFields
-                projects={install.projects}
-                current={current?.resourceScope ?? null}
-              />
-              <p className="text-sm leading-6 text-pretty text-[var(--bo-muted)]">
-                {install.clientName} can then act in this organization within the access above: as
-                itself, and on behalf of members who authorize it, limited to what those members may
-                do. You can change or remove this installation at any time.
-              </p>
-              <dl className="text-xs text-[var(--bo-muted)]">
-                <dt>Returns to</dt>
-                <dd className="mt-1 break-all">{install.returnOrigin}</dd>
-              </dl>
-              {actionData ? (
-                <p role="alert" className="text-sm text-[var(--bo-failed)]">
-                  {actionData.message}
-                </p>
-              ) : null}
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <Button
-                  variant="accent"
-                  type="submit"
-                  name="intent"
-                  value="install"
-                  disabled={pending}
-                >
-                  {pending ? "Installing…" : current ? "Update installation" : "Install"}
-                </Button>
-                <Button
-                  variant="secondary"
-                  type="submit"
-                  name="intent"
-                  value="cancel"
-                  formNoValidate
-                  disabled={pending}
-                >
-                  Cancel
-                </Button>
-              </div>
-            </Form>
-          </>
-        )}
+            </select>
+          </label>
+          <noscript>
+            <Button type="submit" variant="secondary">
+              Switch
+            </Button>
+          </noscript>
+        </Form>
+        {current?.externalAccount ? (
+          <p className="text-sm text-[var(--bo-muted)]">
+            Already installed and linked to{" "}
+            <strong className="text-[var(--bo-fg)]">{current.externalAccount.label}</strong>. To
+            link a different account, uninstall the app first.
+          </p>
+        ) : null}
+        <Form method="post" className="space-y-4" key={install.selectedOwner.value}>
+          <input type="hidden" name="owner" value={install.selectedOwner.value} />
+          <input type="hidden" name="actionsRevision" value={install.actionsRevision} />
+          <fieldset className="space-y-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4">
+            <legend className="px-1 text-[11px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
+              Permissions
+            </legend>
+            {install.requestedPermissions.length === 0 ? (
+              <p className="text-sm text-[var(--bo-muted)]">This app requests no permissions.</p>
+            ) : (
+              install.requestedPermissions.map(({ permission, operations }) => (
+                <div key={permission} className="space-y-1">
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      name="permission"
+                      value={permission}
+                      defaultChecked={grantedByDefault(permission)}
+                    />
+                    <span className="font-mono">{permission}</span>
+                  </label>
+                  {operations.length === 0 ? (
+                    <p className="pl-6 text-xs text-[var(--bo-muted)]">
+                      No API operation uses this permission yet.
+                    </p>
+                  ) : (
+                    <ul className="list-disc space-y-0.5 pl-10 text-xs leading-5 text-[var(--bo-muted)]">
+                      {operations.map((operation) => (
+                        <li key={operation}>{operation}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ))
+            )}
+          </fieldset>
+          <ActionsSummary
+            actions={install.actions}
+            pendingApproval={
+              current !== null && current.approvedActionsRevision !== install.actionsRevision
+            }
+            personal={personal}
+          />
+          <ResourceFields
+            projects={install.projects}
+            current={current?.resourceScope ?? null}
+            personal={personal}
+          />
+          <p className="text-sm leading-6 text-pretty text-[var(--bo-muted)]">
+            {personal
+              ? `${install.clientName} can then act for you within the access above: as itself, and on your behalf when you authorize it.`
+              : `${install.clientName} can then act in this organization within the access above: as itself, and on behalf of members who authorize it, limited to what those members may do.`}{" "}
+            You can change or remove this installation at any time.
+          </p>
+          <dl className="text-xs text-[var(--bo-muted)]">
+            <dt>Returns to</dt>
+            <dd className="mt-1 break-all">{install.returnOrigin}</dd>
+          </dl>
+          {actionData ? (
+            <p role="alert" className="text-sm text-[var(--bo-failed)]">
+              {actionData.message}
+            </p>
+          ) : null}
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button variant="accent" type="submit" name="intent" value="install" disabled={pending}>
+              {pending ? "Installing…" : current ? "Update installation" : "Install"}
+            </Button>
+            <Button
+              variant="secondary"
+              type="submit"
+              name="intent"
+              value="cancel"
+              formNoValidate
+              disabled={pending}
+            >
+              Cancel
+            </Button>
+          </div>
+        </Form>
       </div>
     </AuthorizationScreen>
   );
@@ -252,9 +240,11 @@ export default function BackofficeAppInstall({
 function ActionsSummary({
   actions,
   pendingApproval,
+  personal,
 }: {
   actions: AppActionsDeclaration;
   pendingApproval: boolean;
+  personal: boolean;
 }) {
   if (actions.kind === "none") {
     return null;
@@ -265,7 +255,8 @@ function ActionsSummary({
         Actions
       </legend>
       <p className="text-sm text-[var(--bo-muted)]">
-        Members and agents in this organization can call these actions, which run on{" "}
+        {personal ? "You and your agents" : "Members and agents in this organization"} can call
+        these actions, which run on{" "}
         <span className="break-all">{new URL(actions.endpointUrl).origin}</span>.
         {actions.changeApproval === "automatic"
           ? " Changes to them apply without approving them again."
@@ -289,16 +280,18 @@ function ActionsSummary({
   );
 }
 
-/** Keyed by organization through its form, so switching organizations resets the selection. */
+/** Keyed by owner through its form, so switching owners resets the selection. */
 function ResourceFields({
   projects,
   current,
+  personal,
 }: {
   projects: { id: string; name: string }[];
   current: AppInstallationResourceScope | null;
+  personal: boolean;
 }) {
-  const [resources, setResources] = useState<"organization" | "projects">(
-    current?.kind ?? "organization",
+  const [resources, setResources] = useState<AppInstallationResourceScope["kind"]>(
+    current?.kind ?? "owner",
   );
   return (
     <fieldset className="space-y-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4">
@@ -309,13 +302,13 @@ function ResourceFields({
         <input
           type="radio"
           name="resources"
-          value="organization"
-          checked={resources === "organization"}
+          value="owner"
+          checked={resources === "owner"}
           onChange={() => {
-            setResources("organization");
+            setResources("owner");
           }}
         />
-        The whole organization
+        {personal ? "Your whole personal workspace" : "The whole organization"}
       </label>
       <label className="flex items-center gap-2 text-sm">
         <input
