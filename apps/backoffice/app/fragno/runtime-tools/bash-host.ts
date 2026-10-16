@@ -38,7 +38,6 @@ import type { RegisteredPiCommandContext } from "./families/pi";
 import type { SandboxRuntime } from "./families/sandbox-runtime";
 import type { UploadRuntime } from "./families/upload-runtime";
 import type { WebRuntime } from "./families/web-runtime";
-import { isomorphicGitCommands } from "./isomorphic-git-command";
 
 export type RegisteredAutomationsRuntime = AutomationStoreRuntime & AutomationRouterRuntime;
 
@@ -220,7 +219,6 @@ function createRegisteredBashCommands(
         })
       : []),
     createCurrentScopeBashCommand(input.context.execution.scope, defineCommand),
-    ...isomorphicGitCommands,
   ];
 }
 

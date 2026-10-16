@@ -44,7 +44,7 @@ describe("formatPiTerminalHelp", () => {
   test("defaults to the real terminal command specs", () => {
     const output = formatPiTerminalHelp();
     expect(output).toContain("ls");
-    expect(output).toContain("git.clone");
+    expect(output).toContain("context.current");
   });
 
   test("every real spec command appears in the listing", () => {
@@ -72,17 +72,7 @@ describe("getAvailablePiTerminalCommandSpecs", () => {
   test("always includes the shell helper commands", () => {
     const commands = commandsFor({});
 
-    expect(commands).toEqual(
-      expect.arrayContaining([
-        "ls",
-        "help",
-        "find",
-        "context.current",
-        "git.clone",
-        "git.status",
-        "git.call",
-      ]),
-    );
+    expect(commands).toEqual(expect.arrayContaining(["ls", "help", "find", "context.current"]));
   });
 
   test("excludes hidden families even when their runtime is wired", () => {
@@ -110,10 +100,10 @@ describe("formatPiTerminalCommandHelp", () => {
   });
 
   test("renders invocation examples", () => {
-    const output = formatPiTerminalCommandHelp("git.clone");
+    const output = formatPiTerminalCommandHelp("context.current");
 
     expect(output).toContain("Examples:");
-    expect(output).toContain("git.clone https://github.com/example/repository.git");
+    expect(output).toContain("context.current --format json");
   });
 
   test("returns null for an unknown command", () => {
