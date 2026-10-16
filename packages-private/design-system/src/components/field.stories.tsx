@@ -1,6 +1,9 @@
-import { useId, useState } from "react";
+import { useState } from "react";
 
-import { CheckboxField, Field, type FieldDensity } from "./field";
+import { Checkbox } from "./checkbox";
+import { CheckboxField, Field } from "./field";
+import type { FieldDensity } from "./field-density";
+import { FileInput } from "./file-input";
 import { Input } from "./input";
 import { Select } from "./select";
 import { TextArea } from "./text-area";
@@ -13,7 +16,6 @@ const DECISIONS = [
 ];
 
 function FieldSet({ density }: { density: FieldDensity }) {
-  const id = useId();
   const [name, setName] = useState("");
   const [decision, setDecision] = useState<string | null>(null);
   const [reason, setReason] = useState("");
@@ -22,16 +24,8 @@ function FieldSet({ density }: { density: FieldDensity }) {
   return (
     <div className="flex w-80 flex-col gap-4">
       <code className="font-mono text-xs font-semibold">density="{density}"</code>
-      <Field
-        controlId={`${id}-name`}
-        density={density}
-        label="Name"
-        description="Shown on the receipt."
-        required
-        error={null}
-      >
+      <Field density={density} label="Name" description="Shown on the receipt." required>
         <Input
-          id={`${id}-name`}
           density={density}
           value={name}
           onChange={(event) => {
@@ -40,53 +34,33 @@ function FieldSet({ density }: { density: FieldDensity }) {
           className="w-full"
         />
       </Field>
-      <Field
-        controlId={`${id}-decision`}
-        density={density}
-        label="Decision"
-        description={undefined}
-        required={false}
-        error={null}
-      >
+      <Field density={density} label="Decision">
         <Select
-          controlId={`${id}-decision`}
           density={density}
           options={DECISIONS}
           value={decision}
-          placeholder="Choose an option"
-          disabled={false}
-          required={false}
           onValueChange={setDecision}
         />
       </Field>
-      <Field
-        controlId={`${id}-reason`}
-        density={density}
-        label="Reason"
-        description={undefined}
-        required={false}
-        error="Enter at least 10 characters."
-      >
+      <Field density={density} label="Reason" error="Enter at least 10 characters.">
         <TextArea
-          id={`${id}-reason`}
           density={density}
           rows={3}
-          aria-invalid
           value={reason}
           onChange={(event) => {
             setReason(event.target.value);
           }}
         />
       </Field>
+      <Field density={density} label="Attachment" description="PDF or image, up to 10 MB.">
+        <FileInput density={density} accept="application/pdf,image/*" />
+      </Field>
       <CheckboxField
-        controlId={`${id}-confirmed`}
         density={density}
         label="I confirm this operation"
         description="The workflow continues once you submit."
         required
-        disabled={false}
         checked={confirmed}
-        error={null}
         onCheckedChange={setConfirmed}
       />
     </div>
@@ -100,5 +74,36 @@ export function Densities() {
       <FieldSet density="default" />
       <FieldSet density="comfortable" />
     </div>
+  );
+}
+
+export function Choices() {
+  return (
+    <form className="w-80">
+      <fieldset className="space-y-2">
+        <legend className="text-sm font-semibold text-[var(--bo-fg)]">Permissions</legend>
+        <Checkbox name="permission" value="files.read" defaultChecked>
+          files.read
+        </Checkbox>
+        <Checkbox name="permission" value="files.write">
+          files.write
+        </Checkbox>
+        <Checkbox name="permission" value="admin" disabled>
+          admin
+        </Checkbox>
+      </fieldset>
+      <fieldset className="mt-4 grid grid-cols-3 gap-2">
+        <legend className="mb-2 text-sm font-semibold text-[var(--bo-fg)]">Capture</legend>
+        <Checkbox appearance="card" density="compact" name="capture" value="record" defaultChecked>
+          Record
+        </Checkbox>
+        <Checkbox appearance="card" density="compact" name="capture" value="lab">
+          Lab
+        </Checkbox>
+        <Checkbox appearance="card" density="compact" name="capture" value="targets">
+          Targets
+        </Checkbox>
+      </fieldset>
+    </form>
   );
 }

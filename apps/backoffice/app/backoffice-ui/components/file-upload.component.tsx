@@ -1,6 +1,7 @@
 import type { PreparedUploadedFileReference } from "@fragno-dev/backoffice-api/v0/upload";
 import { Button } from "@fragno-private/design-system/button";
 import { Field } from "@fragno-private/design-system/field";
+import { FileInput } from "@fragno-private/design-system/file-input";
 import { Icon } from "@fragno-private/design-system/icon";
 import { useEffect, useId, useRef, useState } from "react";
 
@@ -112,29 +113,28 @@ export const FileUpload: ComponentFn<typeof backofficeUiCatalog, "FileUpload"> =
 
   return (
     <Field
-      controlId={inputId}
       density="compact"
       label={props.label}
       description={props.description}
       required={props.required === true}
-      error={null}
     >
-      <input
-        ref={inputRef}
-        id={inputId}
-        type="file"
-        accept={props.accept?.join(",")}
-        disabled={disabled || uploadState === "uploading"}
-        aria-describedby={`${props.description ? `${inputId}-description` : ""} ${statusId}`.trim()}
-        onChange={(event) => {
-          const file = event.currentTarget.files?.[0];
-          event.currentTarget.value = "";
-          if (file) {
-            void upload(file);
-          }
-        }}
-        className="sr-only"
-      />
+      {/* The card below is the visible picker; the native input stays reachable for labels. */}
+      <div className="sr-only">
+        <FileInput
+          ref={inputRef}
+          id={inputId}
+          accept={props.accept?.join(",")}
+          disabled={disabled || uploadState === "uploading"}
+          aria-describedby={statusId}
+          onChange={(event) => {
+            const file = event.currentTarget.files?.[0];
+            event.currentTarget.value = "";
+            if (file) {
+              void upload(file);
+            }
+          }}
+        />
+      </div>
 
       <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 shadow-[0_1px_0_rgba(0,0,0,0.04)]">
         <div className="flex min-w-0 items-center gap-3">
