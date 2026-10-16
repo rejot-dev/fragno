@@ -1,6 +1,5 @@
 import { awaitWithContext } from "@earendil-works/chord/context";
 import {
-  piAgentNameSchema,
   type PiAgentDefinition,
   type PiAgentDefinitionCreate,
   type PiManagerAgent,
@@ -8,6 +7,7 @@ import {
   type PiPromptReceipt,
   type piPromptWhenBusySchema,
 } from "@fragno-dev/backoffice-api/v0/pi";
+import { piAgentNameSchema } from "@fragno-dev/backoffice-api/v0/shared/pi-agent-name";
 import type { z } from "zod";
 
 import type { Context } from "@earendil-works/chord";
