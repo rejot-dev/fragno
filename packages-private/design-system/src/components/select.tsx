@@ -1,51 +1,62 @@
 import { Select as BaseSelect } from "@base-ui/react/select";
 
 import { cn } from "../cn";
-import { fieldControlClassName, type FieldDensity } from "./field";
+import { fieldDensityClassNames, type FieldDensity } from "./field-density";
 import { Icon } from "./icon";
 
 type SelectOption<TValue> = { label: string; value: TValue };
 
-// Single-value picker on the shared .bo-input surface. Pair it with Field for a label; the trigger
-// takes controlId as its id. A value matching no option shows the placeholder.
+// Single-value picker on the shared .bo-input surface. Inside a Field it takes the field's label;
+// outside one, name it with aria-label. With a name it submits the chosen value with its form.
+// A value matching no option shows the placeholder.
 export function Select<TValue>({
-  controlId,
-  density,
-  disabled,
+  "aria-label": ariaLabel,
+  className,
+  defaultValue,
+  density = "default",
+  disabled = false,
+  name,
   options,
-  placeholder,
-  required,
+  placeholder = "Choose an option",
+  required = false,
   value,
   onValueChange,
 }: {
-  controlId: string;
-  density: FieldDensity;
-  disabled: boolean;
+  "aria-label"?: string;
+  className?: string;
+  defaultValue?: TValue | null;
+  density?: FieldDensity;
+  disabled?: boolean;
+  name?: string;
   options: readonly SelectOption<TValue>[];
-  placeholder: string;
-  required: boolean;
-  value: TValue | null;
-  onValueChange: (value: TValue | null) => void;
+  placeholder?: string;
+  required?: boolean;
+  value?: TValue | null;
+  onValueChange?: (value: TValue | null) => void;
 }) {
-  const selected = options.some((option) => Object.is(option.value, value)) ? value : null;
+  const matchOption = (candidate: TValue | null | undefined) =>
+    options.some((option) => Object.is(option.value, candidate)) ? candidate : null;
 
   return (
     <BaseSelect.Root
       items={options}
-      value={selected}
+      name={name}
+      value={value === undefined ? undefined : matchOption(value)}
+      defaultValue={defaultValue === undefined ? undefined : matchOption(defaultValue)}
       disabled={disabled}
       required={required}
       itemToStringLabel={(itemValue) =>
         options.find((option) => Object.is(option.value, itemValue))?.label ?? String(itemValue)
       }
       itemToStringValue={(itemValue) => String(itemValue)}
-      onValueChange={onValueChange}
+      onValueChange={(nextValue) => onValueChange?.(nextValue)}
     >
       <BaseSelect.Trigger
-        id={controlId}
+        aria-label={ariaLabel}
         className={cn(
           "bo-input group flex w-full cursor-pointer items-center gap-2 text-left data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50",
-          fieldControlClassName(density),
+          fieldDensityClassNames(density).control,
+          className,
         )}
       >
         <BaseSelect.Value placeholder={placeholder} className="min-w-0 flex-1 truncate" />

@@ -2,7 +2,7 @@ import { Input as BaseInput } from "@base-ui/react/input";
 import type { ComponentProps } from "react";
 
 import { cn } from "../cn";
-import { fieldControlClassName, type FieldDensity } from "./field";
+import { fieldDensityClassNames, type FieldDensity } from "./field-density";
 
 // Only text-entry types: checkboxes, radios, files, and hidden fields have their own controls and
 // must not pick up the field surface.
@@ -31,7 +31,7 @@ export function Input({
   return (
     <BaseInput
       type={type}
-      className={cn("bo-input py-2", fieldControlClassName(density), className)}
+      className={cn("bo-input py-2", fieldDensityClassNames(density).control, className)}
       {...props}
     />
   );

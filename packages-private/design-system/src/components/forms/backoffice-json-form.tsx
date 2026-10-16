@@ -79,25 +79,13 @@ function useTouchedControl() {
 }
 
 function BackofficeTextControl(props: ControlProps) {
-  const {
-    data,
-    description,
-    enabled,
-    errors,
-    id,
-    label,
-    path,
-    required,
-    schema,
-    uischema,
-    visible,
-  } = props;
+  const { data, description, enabled, errors, label, path, required, schema, uischema, visible } =
+    props;
   const { touched, markTouched } = useTouchedControl();
   if (!visible) {
     return null;
   }
 
-  const inputId = `${id}-input`;
   const multiline = uischema.options?.multi === true;
   const invalid = touched && errors.length > 0;
   const inputType =
@@ -111,7 +99,6 @@ function BackofficeTextControl(props: ControlProps) {
             ? "datetime-local"
             : "text";
   const commonProps = {
-    id: inputId,
     disabled: !enabled,
     required,
     value: typeof data === "string" ? data : "",
@@ -122,7 +109,6 @@ function BackofficeTextControl(props: ControlProps) {
 
   return (
     <Field
-      controlId={inputId}
       density="comfortable"
       label={label}
       description={description}
@@ -159,16 +145,14 @@ function BackofficeTextControl(props: ControlProps) {
 }
 
 function BackofficeNumberControl(props: ControlProps) {
-  const { data, description, enabled, errors, id, label, path, required, schema, visible } = props;
+  const { data, description, enabled, errors, label, path, required, schema, visible } = props;
   const { touched, markTouched } = useTouchedControl();
   if (!visible) {
     return null;
   }
 
-  const inputId = `${id}-input`;
   return (
     <Field
-      controlId={inputId}
       density="comfortable"
       label={label}
       description={description}
@@ -176,7 +160,6 @@ function BackofficeNumberControl(props: ControlProps) {
       error={touched && errors.length > 0 ? errors : null}
     >
       <Input
-        id={inputId}
         density="comfortable"
         type="number"
         disabled={!enabled}
@@ -198,7 +181,7 @@ function BackofficeNumberControl(props: ControlProps) {
 }
 
 function BackofficeBooleanControl(props: ControlProps) {
-  const { data, description, enabled, errors, id, label, path, required, visible } = props;
+  const { data, description, enabled, errors, label, path, required, visible } = props;
   const { touched, markTouched } = useTouchedControl();
   if (!visible) {
     return null;
@@ -206,7 +189,6 @@ function BackofficeBooleanControl(props: ControlProps) {
 
   return (
     <CheckboxField
-      controlId={`${id}-input`}
       density="comfortable"
       label={label}
       description={description}
@@ -223,16 +205,14 @@ function BackofficeBooleanControl(props: ControlProps) {
 }
 
 function BackofficeEnumControl(props: ControlProps & OwnPropsOfEnum) {
-  const { data, description, enabled, errors, id, label, options, path, required, visible } = props;
+  const { data, description, enabled, errors, label, options, path, required, visible } = props;
   const { touched, markTouched } = useTouchedControl();
   if (!visible) {
     return null;
   }
 
-  const inputId = `${id}-input`;
   return (
     <Field
-      controlId={inputId}
       density="comfortable"
       label={label}
       description={description}
@@ -240,7 +220,6 @@ function BackofficeEnumControl(props: ControlProps & OwnPropsOfEnum) {
       error={touched && errors.length > 0 ? errors : null}
     >
       <Select
-        controlId={inputId}
         density="comfortable"
         options={options ?? []}
         value={data ?? null}
