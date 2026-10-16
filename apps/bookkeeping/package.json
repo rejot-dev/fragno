@@ -9,7 +9,8 @@
     "deploy": "pnpm run build && wrangler deploy",
     "types:generate": "wrangler types --env-interface CloudflareEnv --env-file .dev.vars.example && react-router typegen",
     "types:check": "pnpm run types:generate && tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "backoffice:connect": "tsx scripts/connect-backoffice.ts"
   },
   "dependencies": {
     "@fragno-dev/backoffice-api": "workspace:*",

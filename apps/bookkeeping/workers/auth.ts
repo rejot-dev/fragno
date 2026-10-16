@@ -43,6 +43,15 @@ export type BackofficeLink = {
   linkedAt: string;
 };
 
+/** What Bookkeeping shares about a linked organization with Backoffice. */
+export type LinkedOrganization = {
+  id: string;
+  name: string;
+  slug: string;
+  memberCount: number;
+  linkedAt: string;
+};
+
 export type ActiveOrganization = {
   organization: { id: string; name: string };
   /** Owners and admins may connect and disconnect Backoffice. */
@@ -405,6 +414,35 @@ export class Auth extends DurableObject<CloudflareEnv> {
           backofficeOrganizationId: row.backofficeOrganizationId,
           // Written only by saveBackofficeLink from a validated Backoffice response.
           resourceScope: JSON.parse(row.resourceScope) as BackofficeResourceScope,
+          linkedAt: new Date(row.linkedAt).toISOString(),
+        }
+      : null;
+  }
+
+  /**
+   * The organization a Backoffice action addresses, only while it is linked to the Backoffice
+   * organization the request was signed for.
+   */
+  async describeLinkedOrganization(input: {
+    organizationId: string;
+    backofficeOrganizationId: string;
+  }): Promise<LinkedOrganization | null> {
+    const [row] = this.ctx.storage.sql
+      .exec<{ name: string; slug: string; memberCount: number; linkedAt: number }>(
+        `SELECT o."name", o."slug", l."linkedAt",
+           (SELECT COUNT(*) FROM "member" m WHERE m."organizationId" = o."id") AS "memberCount"
+         FROM "backoffice_link" l JOIN "organization" o ON o."id" = l."organizationId"
+         WHERE l."organizationId" = ? AND l."backofficeOrganizationId" = ?`,
+        input.organizationId,
+        input.backofficeOrganizationId,
+      )
+      .toArray();
+    return row
+      ? {
+          id: input.organizationId,
+          name: row.name,
+          slug: row.slug,
+          memberCount: row.memberCount,
           linkedAt: new Date(row.linkedAt).toISOString(),
         }
       : null;
