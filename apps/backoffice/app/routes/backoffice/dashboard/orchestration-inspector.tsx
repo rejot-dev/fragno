@@ -1,6 +1,10 @@
 import type { AutomationRouteDefinition } from "@fragno-dev/backoffice-api/v0/automation";
 import { IconButton } from "@fragno-private/design-system/button";
 import { Icon } from "@fragno-private/design-system/icon";
+import {
+  ORCHESTRATION_TARGET_KIND_LABEL,
+  type OrchestrationTarget,
+} from "@fragno-private/design-system/orchestration-graph-model";
 import { useMemo, type ReactNode } from "react";
 
 import { visualizeWorkflowSource } from "@fragno-dev/workflow-visualizer-tokens";
@@ -36,7 +40,7 @@ export type OrchestrationInspectorSelection =
   | {
       kind: "target";
       label: string;
-      targetKind: "workflow" | "scope";
+      targetKind: OrchestrationTarget["kind"];
       routes: readonly AutomationRouteDefinition[];
       workflowScriptPath: string | null;
     };
@@ -138,7 +142,7 @@ function TargetInspector({
     <div className="space-y-3 p-3">
       <div className="min-w-0">
         <p className="text-[10px] font-semibold tracking-[0.22em] text-violet-700 uppercase dark:text-violet-300">
-          {selection.targetKind === "workflow" ? "Workflow" : "Forward target"}
+          {ORCHESTRATION_TARGET_KIND_LABEL[selection.targetKind]}
         </p>
         <h2 className="mt-1 text-sm font-semibold break-all text-[var(--bo-fg)]">
           {selection.label}
