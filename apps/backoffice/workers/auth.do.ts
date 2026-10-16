@@ -917,14 +917,14 @@ export class InMemoryAuthObject implements AuthObject {
           );
           await installBetterAuthDurableHooks<AuthDatabase>(transaction);
         });
+        // Installing creates the Codemode client once; activations then skip building a Better
+        // Auth instance for it, and the paths that hand the client out still ensure it exists.
+        await initializeBackofficeCodemodeOAuthClient(this.#getAuth("http://localhost"));
         await state.storage.put(
           AUTH_SCHEMA_VERSION_STORAGE_KEY,
           BACKOFFICE_BETTER_AUTH_SCHEMA_VERSION,
         );
       }
-
-      const auth = this.#getAuth("http://localhost");
-      await initializeBackofficeCodemodeOAuthClient(auth);
 
       const nextHookWakeAt = await findNextBetterAuthDurableHookWakeAt(this.#database, {
         wakeImmediately: false,

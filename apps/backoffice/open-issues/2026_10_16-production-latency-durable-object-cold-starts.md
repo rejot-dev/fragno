@@ -190,9 +190,11 @@ returns 404. A WAF custom rule could drop them before they reach the worker. Not
      / Codemode / Sandbox vs Auth / Automations / Upload / integrations) so each activation loads
      only its own graph.
    - Track `wrangler check startup` for the object bundle as a budget.
-2. **Do less in constructors.** Move `initializeBackofficeCodemodeOAuthClient` into the
-   schema-migration branch (or a deploy-time step) so a cold Auth DO doesn't rebuild it. Audit
-   `blockConcurrencyWhile` initializers in PiManager (slowest activation) and Automations.
+2. **Do less in constructors.** ~~Move `initializeBackofficeCodemodeOAuthClient` into the
+   schema-migration branch (or a deploy-time step) so a cold Auth DO doesn't rebuild it.~~ Done: a
+   cold Auth DO no longer builds a Better Auth instance or reads the Codemode client; not yet
+   measured in production. Audit `blockConcurrencyWhile` initializers in PiManager (slowest
+   activation) and Automations.
 3. **Take DO hops off every page's critical path.**
    - Answer `getBackofficeMe` from verified token claims plus a short isolate-local cache instead of
      calling the Auth singleton on every request. JWKS is already fetched for local verification.
