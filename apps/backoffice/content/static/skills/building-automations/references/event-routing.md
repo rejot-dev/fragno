@@ -107,7 +107,8 @@ agent sees the event at its next tool round and may handle it in its running tur
 turn follows. Several events delivered while the agent is busy share one requested turn per route
 authority, whose prompt request ID is `route:<routeId>:<eventId>` for the last of them. Delivering
 one event through one route twice writes it once. Only started agents receive notifications; prompt
-an agent once first. An agent's own `pi` turn events are never delivered to it.
+an agent once first. Events an agent's own turns produced, even reclassified or forwarded, are never
+delivered to it.
 
 ## Catalog versus delivery
 

@@ -45,7 +45,9 @@ import type { InMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-r
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { backofficeObjectScopeFromContextScope } from "@/backoffice-runtime/object-registry";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
+import { createRouteBackedAutomationRouterRuntime } from "@/fragno/automation/routing-route-runtime";
 import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
+import { piAgentActor } from "@/fragno/pi/agent/pi-agent-actor";
 import {
   PI_NOTIFICATION_ENTRY_KIND,
   renderPiNotificationRequest,
@@ -151,14 +153,16 @@ async function readPiViewStreamFrame(
 }
 
 /** Every `pi` Automations event recorded in the scope. */
-async function piTurnEvents(runtime: InMemoryBackofficeRuntime, scope: BackofficeContextScope) {
+async function automationEvents(runtime: InMemoryBackofficeRuntime, scope: BackofficeContextScope) {
   const response = await runtime.objects.automations
     .for(scope)
     .http.fetch(new Request("https://automations.test/api/automations/events?limit=500"));
   assert(response.ok, await response.clone().text());
-  return automationEventListResultSchema
-    .parse(await response.json())
-    .events.filter((event) => event.source === "pi");
+  return automationEventListResultSchema.parse(await response.json()).events;
+}
+
+async function piTurnEvents(runtime: InMemoryBackofficeRuntime, scope: BackofficeContextScope) {
+  return (await automationEvents(runtime, scope)).filter((event) => event.source === "pi");
 }
 
 function notificationEntryTexts(view: ConversationView) {
@@ -604,7 +608,7 @@ test("each settled turn is recorded once as a pi Automations event", async () =>
               requestId: "answered",
             },
             actors: {
-              delegation: [{ type: "pi-agent", id: "assistant", role: "assistant" }],
+              delegation: [piAgentActor(scope, "assistant")],
             },
           });
         }),
@@ -630,7 +634,93 @@ test("each settled turn is recorded once as a pi Automations event", async () =>
   );
 });
 
-test("a notify_agent route delivers events as turns but never an agent's own turn events", async () => {
+test("a turn whose event cannot be recorded stays pending without holding back later turns", async () => {
+  const scope: BackofficeContextScope = { kind: "org", orgId: "report-org" };
+  const unrecordable = new Set(["pi:assistant:first"]);
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "Pi turn events after a failed report",
+      piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
+      options: { drain: false },
+      objects: {
+        ...scenarioObjects,
+        PI: ({ state, runtime, openPiSessionStore, piAgentIdFromConfig, nowEpochMs }) => {
+          const faux = fauxProvider();
+          faux.setResponses([
+            fauxAssistantMessage([fauxText("First.")]),
+            fauxAssistantMessage([fauxText("Second.")]),
+            fauxAssistantMessage([fauxText("Third.")]),
+          ]);
+          const models = createModels();
+          models.setProvider(faux.provider);
+          const { automations } = runtime.objects;
+          return new InMemoryPiObject({
+            state,
+            dependencies: createScriptedPiAgentDependencies(models),
+            // Automations refuses the events in `unrecordable`, as an unavailable object would.
+            runtime: {
+              ...runtime,
+              objects: {
+                ...runtime.objects,
+                automations: {
+                  ...automations,
+                  for(target) {
+                    const handle = automations.for(target);
+                    const ingestEvent: typeof handle.commands.ingestEvent = async (...args) => {
+                      if (unrecordable.has(args[0].id)) {
+                        throw new Error("Automations is unavailable.");
+                      }
+                      return await handle.commands.ingestEvent(...args);
+                    };
+                    const commands = new Proxy(handle.commands, {
+                      get: (object, property) =>
+                        property === "ingestEvent"
+                          ? ingestEvent
+                          : object[property as keyof typeof object],
+                    });
+                    return { ...handle, commands };
+                  },
+                },
+              },
+            },
+            openStorage: openPiSessionStore,
+            idFromConfig: piAgentIdFromConfig,
+            nowEpochMs,
+          });
+        },
+      },
+      steps: ({ then }) => [
+        then.assert("a later turn is recorded past an unrecordable one", async ({ runtime }) => {
+          for (const requestId of ["first", "second"]) {
+            const submitted = await prompt(runtime, scope, { requestId, content: "Answer." });
+            assert.equal(submitted.status, 202, await submitted.clone().text());
+            // The alarm fails while a turn is unrecorded, which keeps its heartbeat to retry.
+            await expect(runtime.drain()).rejects.toThrow("alarms failed");
+          }
+          expect((await piTurnEvents(runtime, scope)).map((event) => event.id)).toEqual([
+            "pi:assistant:second",
+          ]);
+        }),
+        then.assert("the next report records the turn once it can", async ({ runtime }) => {
+          unrecordable.clear();
+          const submitted = await prompt(runtime, scope, {
+            requestId: "third",
+            content: "Answer.",
+          });
+          assert.equal(submitted.status, 202, await submitted.clone().text());
+          await runtime.drain();
+          expect(
+            (await piTurnEvents(runtime, scope))
+              .map((event) => event.id)
+              .sort((left, right) => left.localeCompare(right)),
+          ).toEqual(["pi:assistant:first", "pi:assistant:second", "pi:assistant:third"]);
+        }),
+      ],
+    }),
+  );
+});
+
+test("a notify_agent route delivers events as turns but never the agent's own work", async () => {
   const orgId = "notify-org";
   const scope: BackofficeContextScope = { kind: "org", orgId };
   // Each route's notification runs as the route itself, which needs pi.modify to run a turn.
@@ -687,6 +777,30 @@ test("a notify_agent route delivers events as turns but never an agent's own tur
           trigger: { kind: "event", source: "pi", eventType: "turn.completed", matcher: null },
           action: notifyAssistant,
         }),
+        // A reclassified turn event no longer has the pi source, but still names its agent.
+        given.router.route({
+          orgId,
+          id: "reclassify-turn",
+          name: "Reclassify the assistant's turns",
+          enabled: true,
+          priority: 1000,
+          trigger: { kind: "event", source: "pi", eventType: "turn.completed", matcher: null },
+          action: {
+            kind: "reclassify_event",
+            source: "assistant",
+            eventType: "answered",
+            payload: { kind: "projection", fields: {} },
+          },
+        }),
+        given.router.route({
+          orgId,
+          id: "notify-on-answer",
+          name: "Notify the assistant of its reclassified turns",
+          enabled: true,
+          priority: 1000,
+          trigger: { kind: "event", source: "assistant", eventType: "answered", matcher: null },
+          action: notifyAssistant,
+        }),
       ],
       steps: ({ then }) => [
         then.assert("a started agent answers a delivered event", async ({ runtime }) => {
@@ -737,6 +851,115 @@ test("a notify_agent route delivers events as turns but never an agent's own tur
               .map((event) => `${String(event.subject?.requestId)} ${event.eventType}`)
               .sort((left, right) => left.localeCompare(right)),
           ).toEqual(["route:notify-on-order:order-1 turn.completed", "start turn.completed"]);
+          // Both were reclassified too, and those events reached no one either.
+          expect(
+            (await automationEvents(runtime, scope))
+              .filter((event) => event.source === "assistant")
+              .map((event) => event.id)
+              .sort((left, right) => left.localeCompare(right)),
+          ).toEqual([
+            "reclassified:reclassify-turn:pi:assistant:route:notify-on-order:order-1",
+            "reclassified:reclassify-turn:pi:assistant:start",
+          ]);
+        }),
+      ],
+    }),
+  );
+});
+
+test("a forwarded turn event reaches a same-named agent of another scope", async () => {
+  const orgId = "forward-org";
+  const orgScope: BackofficeContextScope = { kind: "org", orgId };
+  const projectScope: BackofficeContextScope = {
+    kind: "project",
+    owner: { kind: "org", orgId },
+    projectId: "p-1",
+  };
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "Pi notifications across scopes",
+      piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
+      options: { drain: false },
+      objects: {
+        ...scenarioObjects,
+        PI: ({ state, runtime, openPiSessionStore, piAgentIdFromConfig, nowEpochMs }) => {
+          // Each agent answers its own prompt; only the project's assistant has a second turn.
+          const faux = fauxProvider();
+          faux.setResponses([
+            fauxAssistantMessage([fauxText("Started.")]),
+            fauxAssistantMessage([fauxText("The organization's assistant answered.")]),
+          ]);
+          const models = createModels();
+          models.setProvider(faux.provider);
+          return new InMemoryPiObject({
+            state,
+            dependencies: createScriptedPiAgentDependencies(models),
+            runtime,
+            openStorage: openPiSessionStore,
+            idFromConfig: piAgentIdFromConfig,
+            nowEpochMs,
+          });
+        },
+      },
+      setup: ({ given }) => [
+        given.router.route({
+          orgId,
+          id: "forward-turns",
+          name: "Forward the assistant's turns to the project",
+          enabled: true,
+          priority: 1000,
+          trigger: { kind: "event", source: "pi", eventType: "turn.completed", matcher: null },
+          action: {
+            kind: "forward_event",
+            targetScope: {
+              kind: "project",
+              owner: { kind: "org", orgIdTemplate: orgId },
+              projectIdTemplate: "p-1",
+            },
+          },
+        }),
+      ],
+      steps: ({ then }) => [
+        then.assert("the project's assistant hears of the organization's", async ({ runtime }) => {
+          await createRouteBackedAutomationRouterRuntime({
+            object: runtime.objects.automations.for(projectScope),
+            execution: scopeExecution(projectScope),
+          }).createRoute({
+            id: "notify-on-turn",
+            name: "Notify the project's assistant of assistant turns",
+            enabled: true,
+            priority: 1000,
+            trigger: { kind: "event", source: "pi", eventType: "turn.completed", matcher: null },
+            action: {
+              kind: "notify_agent",
+              agentName: "assistant",
+              authority: {
+                kind: "organization-automation",
+                grants: [{ namespace: "pi", permission: "modify" }],
+              },
+            },
+          });
+          const projectStarted = await prompt(runtime, projectScope, {
+            requestId: "start",
+            content: "Start.",
+          });
+          assert.equal(projectStarted.status, 202, await projectStarted.clone().text());
+          await runtime.drain();
+
+          const orgPrompted = await prompt(runtime, orgScope, {
+            requestId: "org-turn",
+            content: "Answer.",
+          });
+          assert.equal(orgPrompted.status, 202, await orgPrompted.clone().text());
+          await runtime.drain();
+
+          // The route also sees the project assistant's own turns, but delivers none of them.
+          expect(userEntryTexts(await readView(runtime, projectScope))).toEqual([
+            "Start.",
+            renderPiNotificationRequest([
+              { routeId: "notify-on-turn", eventId: "pi:assistant:org-turn" },
+            ]),
+          ]);
         }),
       ],
     }),

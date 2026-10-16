@@ -2886,6 +2886,7 @@ const buildStepBuilders = <
                   actors: event.actors,
                 },
                 billingOrganizationId: null,
+                replyTo: null,
               });
               await getWorkflow(ctx, input.orgId, execution).createInternalInstance(workflowInput);
               return;

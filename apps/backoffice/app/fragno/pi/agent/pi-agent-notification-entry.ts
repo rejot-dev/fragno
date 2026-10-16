@@ -7,8 +7,8 @@ import type { PiAgentNotification } from "./pi-agent-contract";
  */
 export const PI_NOTIFICATION_ENTRY_KIND = "backoffice.notification";
 
-/** One notification entry, by the route that delivered it and the event it carries. */
-export type PiNotificationReference = { routeId: string; eventId: string };
+/** One notification entry, by the route that delivered it, if any, and the event it carries. */
+export type PiNotificationReference = { routeId: string | null; eventId: string };
 
 function escapeAttribute(value: string) {
   return value
@@ -27,18 +27,18 @@ function unescapeAttribute(value: string) {
 }
 
 const REQUEST_PATTERN =
-  /^<backoffice-notifications-request>\n((?:<notification route="[^"]*" event="[^"]*"\/>\n)+)<\/backoffice-notifications-request>$/u;
-const REQUEST_ITEM_PATTERN = /<notification route="([^"]*)" event="([^"]*)"\/>/gu;
+  /^<backoffice-notifications-request>\n((?:<notification (?:route="[^"]*" )?event="[^"]*"\/>\n)+)<\/backoffice-notifications-request>$/u;
+const REQUEST_ITEM_PATTERN = /<notification (?:route="([^"]*)" )?event="([^"]*)"\/>/gu;
 
 /**
  * The follow-up input that asks the agent to handle notifications. It names each one by the
  * `route` and `id` of its `<backoffice-event>`, since one event can reach an agent through two
- * routes.
+ * routes. An event addressed to the agent has no route.
  */
 export function renderPiNotificationRequest(notifications: readonly PiNotificationReference[]) {
   const items = notifications.map(
     ({ routeId, eventId }) =>
-      `<notification route="${escapeAttribute(routeId)}" event="${escapeAttribute(eventId)}"/>\n`,
+      `<notification ${routeId === null ? "" : `route="${escapeAttribute(routeId)}" `}event="${escapeAttribute(eventId)}"/>\n`,
   );
   return `<backoffice-notifications-request>\n${items.join("")}</backoffice-notifications-request>`;
 }
@@ -50,7 +50,7 @@ export function parsePiNotificationRequest(text: string): PiNotificationReferenc
     return null;
   }
   return [...items.matchAll(REQUEST_ITEM_PATTERN)].map(([, routeId, eventId]) => ({
-    routeId: unescapeAttribute(routeId),
+    routeId: routeId === undefined ? null : unescapeAttribute(routeId),
     eventId: unescapeAttribute(eventId),
   }));
 }
@@ -64,7 +64,7 @@ export function renderPiNotification({ routeId, event }: PiAgentNotification) {
     ["id", event.id],
     ["source", event.source],
     ["type", event.eventType],
-    ["route", routeId],
+    ...(routeId === null ? [] : [["route", routeId]]),
     ["occurred-at", event.occurredAt],
   ]
     .map(([name, value]) => `${name}="${escapeAttribute(value)}"`)

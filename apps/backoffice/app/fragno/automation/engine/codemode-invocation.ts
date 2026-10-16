@@ -24,6 +24,7 @@ import { backofficeExecutionScopeRestriction } from "@/backoffice-runtime/contex
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { NpmDependencyMap } from "@/backoffice-runtime/dynamic-workers/npm-dependencies";
 import { knownBackofficePermissions } from "@/backoffice-runtime/stored-permissions";
+import { type WorkflowReplyTo, workflowReplyToSchema } from "@/fragno/automation/workflow-reply";
 
 export const CODEMODE_WORKFLOW = "codemode-script";
 
@@ -70,9 +71,10 @@ export type CodemodeWorkflowParams = {
     billingOrganizationId: string | null;
     capabilityGrants: readonly CodemodeCapabilityGrant[];
   };
+  replyTo: WorkflowReplyTo | null;
 };
 
-export const codemodeWorkflowParamsSchema: z.ZodType<CodemodeWorkflowParams> = z.looseObject({
+export const codemodeWorkflowParamsSchema: z.ZodType<CodemodeWorkflowParams> = z.object({
   program: z.strictObject({
     code: z.string().min(1),
     // Existing workflow snapshots predate pinned imports and import nothing.
@@ -96,6 +98,8 @@ export const codemodeWorkflowParamsSchema: z.ZodType<CodemodeWorkflowParams> = z
     billingOrganizationId: piBillingOrganizationIdSchema.default(null),
     capabilityGrants: z.array(codemodeCapabilityGrantSchema),
   }),
+  // Existing workflow snapshots predate replies and report to no one.
+  replyTo: workflowReplyToSchema.nullable().default(null),
 });
 
 const workflowNameFromSource = (filename: string, code: string) => {
@@ -176,12 +180,14 @@ export function createCodemodeWorkflowInstanceInput<TPayload extends AutomationE
   execution,
   billingOrganizationId,
   capabilityGrants = [],
+  replyTo,
 }: {
   prepared: PreparedCodemodeWorkflowInstance;
   trigger: CodemodeWorkflowTrigger<TPayload>;
   execution: BackofficeExecutionContext;
   billingOrganizationId: string | null;
   capabilityGrants?: readonly CodemodeCapabilityGrant[];
+  replyTo: WorkflowReplyTo | null;
 }) {
   if (
     trigger.type === "event" &&
@@ -206,6 +212,7 @@ export function createCodemodeWorkflowInstanceInput<TPayload extends AutomationE
           backofficeScopeOrganization(execution.scope)?.orgId ?? billingOrganizationId,
         capabilityGrants,
       },
+      replyTo,
     } satisfies CodemodeWorkflowParams,
   };
 }

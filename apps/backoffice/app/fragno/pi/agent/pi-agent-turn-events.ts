@@ -81,24 +81,40 @@ export function startReportingPiAgentTurns(input: {
   const { config, agent, harness, storage, automations } = input;
   let reporting = Promise.resolve();
 
+  async function reportSettledTurn(settled: SettledPiAgentTurn, context: Context) {
+    // Unanswered turns, such as aborted or withdrawn prompts, are forgotten without an event.
+    const { submission } = settled;
+    if (submission.type === "input" && submission.status === "done") {
+      // The settling commit carries no time; its listener reports right after it.
+      await automations?.ingestEvent(
+        piAgentTurnCompletedEvent(
+          config,
+          agent,
+          settled,
+          submission.answer,
+          new Date(input.nowEpochMs()),
+        ),
+        { propagationContext: null },
+      );
+    }
+    await forgetReportedPiAgentTurn(harness, settled.requestId, context);
+  }
+
   async function reportSettledTurns(context: Context) {
+    // A turn that cannot be reported stays pending without holding back the turns after it.
+    const failures: unknown[] = [];
     for (const settled of await readSettledPiAgentTurns(harness, storage, context)) {
-      // Unanswered turns, such as aborted or withdrawn prompts, are forgotten without an event.
-      const { submission } = settled;
-      if (submission.type === "input" && submission.status === "done") {
-        // The settling commit carries no time; its listener reports right after it.
-        await automations?.ingestEvent(
-          piAgentTurnCompletedEvent(
-            config,
-            agent,
-            settled,
-            submission.answer,
-            new Date(input.nowEpochMs()),
-          ),
-          { propagationContext: null },
-        );
+      try {
+        await reportSettledTurn(settled, context);
+      } catch (error) {
+        failures.push(error);
       }
-      await forgetReportedPiAgentTurn(harness, settled.requestId, context);
+    }
+    if (failures.length === 1) {
+      throw failures[0];
+    }
+    if (failures.length > 1) {
+      throw new AggregateError(failures, "Some settled Pi turns could not be reported.");
     }
   }
 
