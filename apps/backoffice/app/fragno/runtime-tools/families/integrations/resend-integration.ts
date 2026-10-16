@@ -24,8 +24,8 @@ import type {
   IntegrationImplementation,
 } from "./integration-implementation";
 
-export const resendConnectionId = "backoffice#resend";
-const resendConnectionIdentity = {
+const resendConnectionId = "backoffice#resend";
+export const resendConnectionIdentity = {
   connectionId: resendConnectionId,
   integrationId: "resend",
   name: "Resend",

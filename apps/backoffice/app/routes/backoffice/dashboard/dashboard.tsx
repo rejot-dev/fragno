@@ -44,7 +44,6 @@ import {
   automationWorkflowRunsFromRecords,
   workflowRunRecordsQuery,
 } from "../automations/script-view/use-script-workflow-runs";
-import { listIntegrationConnections } from "../integrations/connections.server";
 import type { Route } from "./+types/dashboard";
 import { DashboardSections, type DashboardLoaderData } from "./dashboard-sections";
 import {
@@ -83,8 +82,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
   }
 
   const workflowScriptId = url.searchParams.get(WORKFLOW_SCRIPT_PARAM)?.trim() ?? "";
-  const [connectionNames, agents, workflowSource] = await Promise.all([
-    listIntegrationConnections(request, context, params),
+  const [agents, workflowSource] = await Promise.all([
     fetchDashboardPiAgents(request, context, runtimeScope),
     workflowScriptId
       ? requireAutomationRouteExecution(request, context, params).then((execution) =>
@@ -99,7 +97,6 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
       project: projectLookup?.status === "found" ? projectLookup.project : null,
       user: me.user,
     }),
-    connectionNames,
     agents,
     workflowSource,
     runtimeToolCatalog: runtimeToolWorkflowCatalog,

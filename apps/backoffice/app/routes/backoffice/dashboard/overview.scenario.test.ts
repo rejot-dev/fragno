@@ -147,7 +147,7 @@ function connectionEvent(
   at: number,
 ) {
   return event(id, "integrations", `connection.${state}`, at, {
-    payload: {},
+    payload: { name: connectionId, authMethod: null },
     subject: { scope, orgId, service: connectionId.split("#", 1)[0], connectionId },
   });
 }

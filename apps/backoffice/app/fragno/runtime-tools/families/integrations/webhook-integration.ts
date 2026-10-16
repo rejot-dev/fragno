@@ -133,7 +133,9 @@ function deliveryCheck({
   };
 }
 
-function authMethodOfWebhookAuth(auth: WebhookEndpoint["authConfig"]): IntegrationAuthMethod {
+export function authMethodOfWebhookAuth(
+  auth: WebhookEndpoint["authConfig"],
+): IntegrationAuthMethod {
   switch (auth.type) {
     case "none":
     case "bearer":

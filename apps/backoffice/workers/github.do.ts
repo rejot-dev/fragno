@@ -108,6 +108,7 @@ export class InMemoryGitHubObject implements GitHubObject {
                 return;
               }
               const { scope } = this.#host.requireConfigured().stored;
+              const state = connectionStateOfLink(payload.status);
               await recordIntegrationConnectionState(
                 this.#runtimeServices.objects.automations.for(scope).commands,
                 {
@@ -115,7 +116,9 @@ export class InMemoryGitHubObject implements GitHubObject {
                   scope,
                   service: "github",
                   connectionId: encodeGitHubRepositoryConnectionId(payload.fullName),
-                  state: connectionStateOfLink(payload.status),
+                  ...(state === "disconnected"
+                    ? { state }
+                    : { state, label: { name: payload.fullName, authMethod: "app-installation" } }),
                   occurredAt: context.createdAt,
                 },
                 { propagationContext: context.capturePropagationContext() },

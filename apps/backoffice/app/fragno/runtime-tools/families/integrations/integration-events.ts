@@ -1,4 +1,8 @@
-import type { IntegrationInspection } from "@fragno-dev/backoffice-api/v0/integrations";
+import {
+  integrationAuthMethodSchema,
+  type IntegrationConnection,
+  type IntegrationInspection,
+} from "@fragno-dev/backoffice-api/v0/integrations";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
 
@@ -9,6 +13,14 @@ export const INTEGRATIONS_EVENT_SOURCE = "integrations";
 
 /** An existing connection is ready or unavailable; only removal reports disconnected. */
 export type IntegrationConnectionState = "ready" | "unavailable";
+
+/** How an existing connection presents itself; its state events carry it so views need no source read. */
+export type IntegrationConnectionLabel = Pick<IntegrationConnection, "name" | "authMethod">;
+
+const integrationConnectionLabelSchema = z.strictObject({
+  name: z.string().describe("The connection's display name, as integrations.list reports it."),
+  authMethod: integrationAuthMethodSchema.nullable(),
+});
 
 /** For sources whose readiness is exactly stored configuration plus authorization. */
 export function connectionStateOfInspection(
@@ -56,6 +68,7 @@ const connectionEventStates = {
 export function readIntegrationConnectionEvent(event: {
   source: string;
   eventType: string;
+  payload: unknown;
   subject: unknown;
 }) {
   const subject = integrationConnectionSubjectSchema.safeParse(event.subject);
@@ -66,10 +79,13 @@ export function readIntegrationConnectionEvent(event: {
   ) {
     return null;
   }
+  const label = integrationConnectionLabelSchema.safeParse(event.payload);
   return {
     state: connectionEventStates[event.eventType as keyof typeof connectionEventStates],
     service: subject.data.service,
     connectionId: subject.data.connectionId,
+    // Disconnections carry none, and neither do events recorded before state events carried labels.
+    label: label.success ? label.data : null,
   };
 }
 
@@ -84,18 +100,18 @@ export const integrationConnectionEvents = [
     eventType: "connection.ready",
     label: "Integration connection ready",
     description: `The connection's stored configuration and authorization are in place. Providers can still reject requests; integrations.verify checks live access. ${repeatNote}`,
-    payloadSchema: z.strictObject({}),
+    payloadSchema: integrationConnectionLabelSchema,
     subjectSchema: integrationConnectionSubjectSchema,
-    example: {},
+    example: { name: "Billing API", authMethod: "bearer" },
   },
   {
     source: INTEGRATIONS_EVENT_SOURCE,
     eventType: "connection.unavailable",
     label: "Integration connection unavailable",
     description: `The connection exists but cannot be used, for example while consent is pending, after credentials were cleared or rejected, or while the provider installation is suspended. It also fires when an API or MCP access token without a refresh token expires. integrations.get lists the next steps. ${repeatNote}`,
-    payloadSchema: z.strictObject({}),
+    payloadSchema: integrationConnectionLabelSchema,
     subjectSchema: integrationConnectionSubjectSchema,
-    example: {},
+    example: { name: "Billing API", authMethod: "bearer" },
   },
   {
     source: INTEGRATIONS_EVENT_SOURCE,
@@ -121,9 +137,11 @@ export async function recordIntegrationConnectionState(
     scope: BackofficeContextScope;
     service: string;
     connectionId: string;
-    state: IntegrationConnectionState | "disconnected";
     occurredAt: Date;
-  },
+  } & (
+    | { state: IntegrationConnectionState; label: IntegrationConnectionLabel }
+    | { state: "disconnected" }
+  ),
   context: BackofficeRpcContext,
 ) {
   await automations.ingestEvent(
@@ -134,7 +152,7 @@ export async function recordIntegrationConnectionState(
       source: INTEGRATIONS_EVENT_SOURCE,
       eventType: `connection.${change.state}`,
       occurredAt: change.occurredAt.toISOString(),
-      payload: {},
+      payload: change.state === "disconnected" ? {} : change.label,
       actors: { initiator: AUTOMATION_SYSTEM_INITIATOR, principal: null, delegation: [] },
       subject: {
         scope: change.scope,
@@ -164,17 +182,20 @@ export type IntegrationSlotOutboxItem = {
 export async function recordIntegrationSlotChange(
   automationsFor: (scope: BackofficeContextScope) => Pick<AutomationsObject, "ingestEvent">,
   item: IntegrationSlotOutboxItem,
-  connection: { service: string; connectionId: string },
+  slot: Pick<IntegrationConnection, "connectionId" | "integrationId" | "name" | "authMethod">,
 ) {
+  const change = {
+    id: item.id,
+    scope: item.scope,
+    service: slot.integrationId,
+    connectionId: slot.connectionId,
+    occurredAt: new Date(item.createdAt),
+  };
   await recordIntegrationConnectionState(
     automationsFor(item.scope),
-    {
-      id: item.id,
-      scope: item.scope,
-      ...connection,
-      state: item.type === "connection.ready" ? "ready" : "disconnected",
-      occurredAt: new Date(item.createdAt),
-    },
+    item.type === "connection.ready"
+      ? { ...change, state: "ready", label: { name: slot.name, authMethod: slot.authMethod } }
+      : { ...change, state: "disconnected" },
     { propagationContext: null },
   );
 }

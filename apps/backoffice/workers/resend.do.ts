@@ -23,7 +23,7 @@ import {
   recordIntegrationSlotChange,
   type IntegrationSlotOutboxItem,
 } from "@/fragno/runtime-tools/families/integrations/integration-events";
-import { resendConnectionId } from "@/fragno/runtime-tools/families/integrations/resend-integration";
+import { resendConnectionIdentity } from "@/fragno/runtime-tools/families/integrations/resend-integration";
 
 import type {
   BackofficeFragmentDurableObject,
@@ -375,7 +375,7 @@ export class InMemoryResendObject implements ResendObject {
           recordIntegrationSlotChange(
             (scope) => this.#runtimeServices.objects.automations.for(scope).commands,
             item,
-            { service: "resend", connectionId: resendConnectionId },
+            resendConnectionIdentity,
           ),
       },
     });

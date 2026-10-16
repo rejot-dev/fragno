@@ -30,7 +30,7 @@ import {
   recordIntegrationSlotChange,
   type IntegrationSlotOutboxItem,
 } from "@/fragno/runtime-tools/families/integrations/integration-events";
-import { telegramConnectionId } from "@/fragno/runtime-tools/families/integrations/telegram-integration";
+import { telegramConnectionIdentity } from "@/fragno/runtime-tools/families/integrations/telegram-integration";
 import {
   buildTelegramAutomationEvent,
   createTelegramServer,
@@ -406,7 +406,7 @@ export class InMemoryTelegramObject extends RpcTarget implements TelegramObject 
           recordIntegrationSlotChange(
             (scope) => this.#runtime.objects.automations.for(scope).commands,
             item,
-            { service: "telegram", connectionId: telegramConnectionId },
+            telegramConnectionIdentity,
           ),
       },
     });

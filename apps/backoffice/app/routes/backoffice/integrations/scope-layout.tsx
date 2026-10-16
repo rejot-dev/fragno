@@ -1,13 +1,12 @@
 import { ClientOnly } from "@fragno-private/design-system/client-only";
 import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
 import { BackofficeTabHeader } from "@fragno-private/design-system/tab-header";
-import { Suspense, use, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Suspense, use, useMemo, useState, type ReactNode } from "react";
 import {
   Link,
   Outlet,
   redirect,
   useParams,
-  useRevalidator,
   useSearchParams,
   type ShouldRevalidateFunctionArgs,
 } from "react-router";
@@ -35,8 +34,8 @@ import type { Route } from "./+types/scope-layout";
 import {
   IntegrationConnectionStateLight,
   describeIntegrationConnectionKind,
-  fallbackIntegrationConnectionName,
   integrationAuthMethodLabels,
+  integrationConnectionName,
 } from "./connection-display";
 import {
   currentIntegrationConnections,
@@ -44,13 +43,10 @@ import {
   type IntegrationConnectionStateChange,
 } from "./connection-overview";
 import { integrationConnectionPath, integrationsScopeBasePath } from "./connection-paths";
-import {
-  listIntegrationConnections,
-  type ListedIntegrationConnections,
-} from "./connections.server";
 import type { IntegrationsLayoutContext } from "./layout-context";
 import { NativeServices } from "./native-services";
 
+/** Connections and their labels come from local connection events; the loader only selects scope. */
 export async function loader({ request, params, context, url }: Route.LoaderArgs) {
   const me = await findBackofficeMe(request, context);
   if (!me?.user) {
@@ -77,11 +73,10 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
       project: projectLookup?.status === "found" ? projectLookup.project : null,
       user: me.user,
     }),
-    listed: await listIntegrationConnections(request, context, params),
   };
 }
 
-/** Selecting a connection changes nothing listed; new connection events revalidate explicitly. */
+/** Selecting a connection changes nothing the loader selects. */
 export function shouldRevalidate({
   currentParams,
   nextParams,
@@ -99,7 +94,7 @@ export function meta({ loaderData }: Route.MetaArgs) {
 }
 
 export default function BackofficeIntegrationsScopeLayout({ loaderData }: Route.ComponentProps) {
-  const { selectedScope, listed } = loaderData;
+  const { selectedScope } = loaderData;
   const loading = (
     <IntegrationsPage selectedScope={selectedScope} connectionTabs={[]}>
       <BackofficeSystemState
@@ -115,7 +110,7 @@ export default function BackofficeIntegrationsScopeLayout({ loaderData }: Route.
       <h1 className="sr-only">Integrations in {selectedScope.label}</h1>
       <ClientOnly fallback={loading}>
         <Suspense fallback={loading}>
-          <IntegrationsClient selectedScope={selectedScope} listed={listed} />
+          <IntegrationsClient selectedScope={selectedScope} />
         </Suspense>
       </ClientOnly>
     </div>
@@ -171,7 +166,6 @@ function IntegrationsPage({
 
 type WorkspaceProps = {
   selectedScope: BackofficeScopeSelection;
-  listed: ListedIntegrationConnections;
 };
 
 function IntegrationsClient(props: WorkspaceProps) {
@@ -200,7 +194,6 @@ function IntegrationsClient(props: WorkspaceProps) {
 
 function IntegrationsWorkspace({
   selectedScope,
-  listed,
   collections,
 }: WorkspaceProps & Pick<IntegrationsLayoutContext, "collections">) {
   const { connectionId: selectedConnectionId } = useParams();
@@ -214,6 +207,7 @@ function IntegrationsWorkspace({
           id: event.id,
           source: event.source,
           eventType: event.eventType,
+          payload: event.payload,
           subject: event.subject,
           occurredAt: event.occurredAt,
         })),
@@ -223,7 +217,6 @@ function IntegrationsWorkspace({
     () => integrationConnectionStateChanges(eventsQuery.data ?? []),
     [eventsQuery.data],
   );
-  useRevalidateOnNewChange(changes[0]?.eventId ?? null);
   const connections = currentIntegrationConnections(changes);
   const visibleConnections = showDisconnected
     ? connections
@@ -232,10 +225,9 @@ function IntegrationsWorkspace({
           connection.state !== "disconnected" || connection.connectionId === selectedConnectionId,
       );
   const disconnectedCount = connections.length - visibleConnections.length;
-  const listedConnections = listed.status === "listed" ? listed.connections : {};
   const connectionTabs = visibleConnections.map((connection) => ({
     connectionId: connection.connectionId,
-    label: connectionLabel(connection, listedConnections),
+    label: integrationConnectionName(connection),
   }));
 
   return (
@@ -261,11 +253,6 @@ function IntegrationsWorkspace({
                 </label>
               ) : null}
             </div>
-            {listed.status === "unavailable" ? (
-              <p className="border-t border-[color:var(--bo-border)] px-4 py-2 text-xs text-[var(--bo-muted)]">
-                Names and auth methods are unavailable: {listed.message}
-              </p>
-            ) : null}
             {eventsQuery.isError ? (
               <BackofficeSystemState
                 tone="error"
@@ -287,11 +274,7 @@ function IntegrationsWorkspace({
                 flush
               />
             ) : (
-              <ConnectionsTable
-                selectedScope={selectedScope}
-                listed={listedConnections}
-                connections={visibleConnections}
-              />
+              <ConnectionsTable selectedScope={selectedScope} connections={visibleConnections} />
             )}
           </section>
           <NativeServices selectedScope={selectedScope} />
@@ -335,37 +318,11 @@ function ProviderReturnNotice() {
   return null;
 }
 
-/** Names and auth methods come from the source, so a new state change refreshes the listing. */
-function useRevalidateOnNewChange(latestEventId: string | null) {
-  const revalidator = useRevalidator();
-  const seen = useRef(latestEventId);
-  useEffect(() => {
-    if (seen.current !== latestEventId) {
-      seen.current = latestEventId;
-      void revalidator.revalidate();
-    }
-  }, [latestEventId, revalidator]);
-}
-
-type ListedConnectionSources = Extract<
-  ListedIntegrationConnections,
-  { status: "listed" }
->["connections"];
-
-function connectionLabel(
-  connection: IntegrationConnectionStateChange,
-  listed: ListedConnectionSources,
-): string {
-  return listed[connection.connectionId]?.name ?? fallbackIntegrationConnectionName(connection);
-}
-
 function ConnectionsTable({
   selectedScope,
-  listed,
   connections,
 }: {
   selectedScope: BackofficeScopeSelection;
-  listed: ListedConnectionSources;
   connections: IntegrationConnectionStateChange[];
 }) {
   return (
@@ -382,7 +339,7 @@ function ConnectionsTable({
         </thead>
         <tbody className="divide-y divide-[color:var(--bo-border)]">
           {connections.map((connection) => {
-            const source = listed[connection.connectionId];
+            const authMethod = connection.label?.authMethod ?? null;
             return (
               <tr key={connection.connectionId} className="hover:bg-[var(--bo-panel-2)]">
                 <td className="max-w-[24rem] px-3 py-2">
@@ -392,7 +349,7 @@ function ConnectionsTable({
                     className="group block min-w-0"
                   >
                     <span className="block truncate font-semibold text-[var(--bo-fg)] group-hover:underline">
-                      {connectionLabel(connection, listed)}
+                      {integrationConnectionName(connection)}
                     </span>
                     <span className="block truncate font-mono text-[11px] text-[var(--bo-muted)]">
                       {connection.connectionId}
@@ -403,7 +360,7 @@ function ConnectionsTable({
                   {describeIntegrationConnectionKind(connection)}
                 </td>
                 <td className="px-3 py-2 whitespace-nowrap text-[var(--bo-muted)]">
-                  {source?.authMethod ? integrationAuthMethodLabels[source.authMethod] : "—"}
+                  {authMethod ? integrationAuthMethodLabels[authMethod] : "—"}
                 </td>
                 <td className="px-3 py-2 whitespace-nowrap text-[var(--bo-muted)]">
                   {selectedScope.label}

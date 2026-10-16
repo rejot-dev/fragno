@@ -25,8 +25,8 @@ import {
 import { connectionStateOfInspection } from "./integration-events";
 import type { IntegrationContext, IntegrationImplementation } from "./integration-implementation";
 
-export const reson8ConnectionId = "backoffice#reson8";
-const reson8ConnectionIdentity = {
+const reson8ConnectionId = "backoffice#reson8";
+export const reson8ConnectionIdentity = {
   connectionId: reson8ConnectionId,
   integrationId: "reson8",
   name: "Reson8",

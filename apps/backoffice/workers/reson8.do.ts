@@ -16,7 +16,7 @@ import {
   recordIntegrationSlotChange,
   type IntegrationSlotOutboxItem,
 } from "@/fragno/runtime-tools/families/integrations/integration-events";
-import { reson8ConnectionId } from "@/fragno/runtime-tools/families/integrations/reson8-integration";
+import { reson8ConnectionIdentity } from "@/fragno/runtime-tools/families/integrations/reson8-integration";
 
 import type {
   BackofficeFragmentDurableObject,
@@ -155,7 +155,7 @@ export class InMemoryReson8Object implements Reson8Object {
           recordIntegrationSlotChange(
             (scope) => this.#runtime.objects.automations.for(scope).commands,
             item,
-            { service: "reson8", connectionId: reson8ConnectionId },
+            reson8ConnectionIdentity,
           ),
       },
     });

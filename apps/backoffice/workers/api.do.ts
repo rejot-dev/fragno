@@ -24,7 +24,11 @@ import {
 } from "@/fragno/durable-hooks";
 import { encodeApiConnectionId } from "@/fragno/runtime-tools/families/integrations/api-integration";
 import { recordIntegrationConnectionState } from "@/fragno/runtime-tools/families/integrations/integration-events";
-import { encodeWebhookConnectionId } from "@/fragno/runtime-tools/families/integrations/webhook-integration";
+import { authMethodOfFragmentAuthMode } from "@/fragno/runtime-tools/families/integrations/integration-implementation";
+import {
+  authMethodOfWebhookAuth,
+  encodeWebhookConnectionId,
+} from "@/fragno/runtime-tools/families/integrations/webhook-integration";
 import {
   API_PUBLIC_PREFIX,
   isScopedPublicOAuthRedirectUriAllowed,
@@ -47,19 +51,24 @@ function scopeSubject(scope: BackofficeRoutableScope, subject?: Record<string, u
 }
 
 /** An endpoint is ready while it accepts deliveries; writes that keep that unchanged report nothing. */
-function webhookEndpointState(payload: WebhookEndpointChangedPayload) {
+function webhookEndpointStateChange(payload: WebhookEndpointChangedPayload) {
   switch (payload.change) {
     case "created":
-      return payload.endpoint.status === "active" ? "ready" : "unavailable";
     case "updated": {
       const ready = payload.endpoint.status === "active";
-      if (ready === (payload.previousStatus === "active")) {
+      if (payload.change === "updated" && ready === (payload.previousStatus === "active")) {
         return null;
       }
-      return ready ? "ready" : "unavailable";
+      return {
+        state: ready ? ("ready" as const) : ("unavailable" as const),
+        label: {
+          name: payload.endpoint.name,
+          authMethod: authMethodOfWebhookAuth(payload.endpoint.authConfig),
+        },
+      };
     }
     case "deleted":
-      return "disconnected";
+      return { state: "disconnected" as const };
     default:
       throw new Error("Webhook endpoint change is unsupported.", {
         cause: payload satisfies never,
@@ -160,6 +169,11 @@ export class InMemoryApiObject extends RpcTarget implements ApiObject {
             service: "api",
             connectionId: encodeApiConnectionId(payload.connectionId),
             state: payload.ready ? "ready" : "unavailable",
+            label: {
+              name: payload.connection?.name ?? payload.connectionId,
+              authMethod:
+                payload.connection && authMethodOfFragmentAuthMode(payload.connection.authMode),
+            },
             occurredAt: context.createdAt,
           },
           { propagationContext: context.capturePropagationContext() },
@@ -176,8 +190,8 @@ export class InMemoryApiObject extends RpcTarget implements ApiObject {
             category: "custom",
           });
         }
-        const state = webhookEndpointState(payload);
-        if (state === null) {
+        const stateChange = webhookEndpointStateChange(payload);
+        if (stateChange === null) {
           return;
         }
         await recordIntegrationConnectionState(
@@ -187,7 +201,7 @@ export class InMemoryApiObject extends RpcTarget implements ApiObject {
             scope: ownerScope,
             service: "webhook",
             connectionId: encodeWebhookConnectionId(payload.endpointId),
-            state,
+            ...stateChange,
             occurredAt: context.createdAt,
           },
           { propagationContext: context.capturePropagationContext() },

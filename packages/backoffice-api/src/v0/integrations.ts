@@ -403,7 +403,7 @@ export const integrationsOperations = {
   },
   "integrations.backfillConnectionEvents": {
     description:
-      "Record every configured connection's current state in the selected scope as an integrations.connection.ready or connection.unavailable event, for connections that existed before those events were recorded. Routes on those events run for each new event. A rerun records a connection again only when its state differs from every earlier backfill of it.",
+      "Record every configured connection's current state in the selected scope as an integrations.connection.ready or connection.unavailable event, for connections that existed before those events were recorded. Routes on those events run for each new event. Events carry each connection's name and auth method. A rerun records a connection again only when its state, name, or auth method differs from every earlier backfill of it, so a rerun adds names to connections recorded before events carried them.",
     permissions: [BACKOFFICE_PERMISSION.integrations.manage],
     input: z.void(),
     output: integrationConnectionEventsBackfillResultSchema,

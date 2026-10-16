@@ -1,5 +1,6 @@
 import {
   readIntegrationConnectionEvent,
+  type IntegrationConnectionLabel,
   type IntegrationConnectionState,
 } from "@/fragno/runtime-tools/families/integrations/integration-events";
 
@@ -19,6 +20,7 @@ type StoredEvent = {
   id: string;
   source: string;
   eventType: string;
+  payload: unknown;
   subject: unknown;
   occurredAt: Date;
 };
@@ -29,6 +31,7 @@ export type IntegrationConnectionStateChange = {
   service: string;
   kind: IntegrationConnectionKind;
   state: IntegrationConnectionState | "disconnected";
+  label: IntegrationConnectionLabel | null;
   occurredAt: Date;
 };
 
@@ -47,14 +50,20 @@ export function integrationConnectionStateChanges(
     .sort((left, right) => right.occurredAt.getTime() - left.occurredAt.getTime());
 }
 
-/** A connection's latest state change is its current state. */
+/**
+ * A connection's latest state change is its current state, labeled by its latest labeled change:
+ * disconnections carry no label, so a removed connection keeps the name it had.
+ */
 export function currentIntegrationConnections(
   changes: readonly IntegrationConnectionStateChange[],
 ): IntegrationConnectionStateChange[] {
   const latest = new Map<string, IntegrationConnectionStateChange>();
   for (const change of changes) {
-    if (!latest.has(change.connectionId)) {
+    const current = latest.get(change.connectionId);
+    if (!current) {
       latest.set(change.connectionId, change);
+    } else if (current.label === null && change.label !== null) {
+      latest.set(change.connectionId, { ...current, label: change.label });
     }
   }
   return [...latest.values()].sort(

@@ -64,17 +64,19 @@ export function createIntegrationsRuntime({
             `Integrations source ${unavailable.source} could not list: ${unavailable.reason}`,
           );
         }
-        for (const { connectionId, integrationId } of page.connections) {
+        for (const { connectionId, integrationId, name, authMethod } of page.connections) {
           const state = await (await registry.resolve(context, connectionId)).state();
           await recordIntegrationConnectionState(
             automations,
             {
-              // Stable per connection, so a rerun repeats no state an earlier backfill recorded.
-              id: `integrations-backfill:${connectionId}`,
+              // Stable per connection and label, so a rerun repeats no state an earlier backfill
+              // recorded, but records a renamed connection or one recorded before events had labels.
+              id: `integrations-backfill:${connectionId}:${JSON.stringify([name, authMethod])}`,
               scope: execution.scope,
               service: integrationId,
               connectionId,
               state,
+              label: { name, authMethod },
               occurredAt: new Date(nowEpochMs()),
             },
             { propagationContext: null },

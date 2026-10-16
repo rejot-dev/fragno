@@ -36,6 +36,7 @@ import { InMemoryResendObject } from "../../../../workers/resend.do";
 import { InMemoryReson8Object } from "../../../../workers/reson8.do";
 import { InMemoryTelegramObject } from "../../../../workers/telegram.do";
 import { InMemoryUploadObject } from "../../../../workers/upload.do";
+import { integrationConnectionName } from "./connection-display";
 import {
   currentIntegrationConnections,
   integrationConnectionStateChanges,
@@ -112,11 +113,11 @@ test("the integrations section shows each connection's reported state and source
         when.codemode.run({
           scope,
           label: "an agent fires a connection event no source reported",
-          code: `async () => await events.fire({ source: "integrations", eventType: "connection.ready", payload: {} })`,
+          code: `async () => await events.fire({ source: "integrations", eventType: "connection.ready", payload: { name: "Forged", authMethod: null } })`,
           assertToolCalls: ["events.fire"],
         }),
         runner.drain(),
-        then.assert("the overview lists each connection's latest state", async (ctx) => {
+        then.assert("the overview lists each connection's latest state and label", async (ctx) => {
           const database = ctx.tanstack.automations.forOrg(orgId);
           await database.drain();
           const events = await queryOnce((query) =>
@@ -124,26 +125,65 @@ test("the integrations section shows each connection's reported state and source
               .from({ event: database.collections.events })
               .where(({ event }) => eq(event.source, INTEGRATIONS_EVENT_SOURCE)),
           );
+          // Deployed sources recorded events like this one before state events carried labels.
+          const recordedBeforeLabels = {
+            id: "recorded-before-labels",
+            source: INTEGRATIONS_EVENT_SOURCE,
+            eventType: "connection.ready",
+            payload: {},
+            subject: { scope, orgId, service: "mcp", connectionId: "mcp#before-labels" },
+            occurredAt: new Date("2026-01-01T00:00:00.000Z"),
+          };
           const connections = currentIntegrationConnections(
-            integrationConnectionStateChanges(events),
+            integrationConnectionStateChanges([...events, recordedBeforeLabels]),
           );
           expect(
-            connections.map(({ connectionId, service, kind, state }) => ({
-              connectionId,
-              service,
-              kind,
-              state,
+            connections.map((connection) => ({
+              connectionId: connection.connectionId,
+              kind: connection.kind,
+              state: connection.state,
+              name: integrationConnectionName(connection),
+              authMethod: connection.label?.authMethod ?? null,
             })),
           ).toEqual([
-            { connectionId: "api#billing", service: "api", kind: "api", state: "ready" },
-            { connectionId: "api#legacy", service: "api", kind: "api", state: "disconnected" },
+            {
+              connectionId: "api#billing",
+              kind: "api",
+              state: "ready",
+              name: "billing",
+              authMethod: "bearer",
+            },
+            // A disconnection carries no label, so the removed connection keeps its earlier one.
+            // Its readiness was delivered after removal, so that label has only the address.
+            {
+              connectionId: "api#legacy",
+              kind: "api",
+              state: "disconnected",
+              name: "legacy",
+              authMethod: null,
+            },
+            // Unlabeled events fall back to the address until a backfill records a label.
+            {
+              connectionId: "mcp#before-labels",
+              kind: "mcp",
+              state: "ready",
+              name: "before-labels",
+              authMethod: null,
+            },
             {
               connectionId: "backoffice#reson8",
-              service: "reson8",
               kind: "native",
               state: "ready",
+              name: "Reson8",
+              authMethod: "api-key",
             },
-            { connectionId: "webhook#acme", service: "webhook", kind: "webhook", state: "ready" },
+            {
+              connectionId: "webhook#acme",
+              kind: "webhook",
+              state: "ready",
+              name: "Acme",
+              authMethod: "signature",
+            },
           ]);
         }),
         then.assert("each connection describes its own source without secrets", async (ctx) => {

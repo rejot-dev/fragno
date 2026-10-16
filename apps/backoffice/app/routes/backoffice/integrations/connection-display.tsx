@@ -97,12 +97,15 @@ export function describeIntegrationConnectionKind(
 }
 
 /**
- * The name to show when the source no longer lists the connection. Connector addresses are opaque
- * encodings and native slots are named after their service, so both fall back to the service.
+ * The name the connection's events carry. Without one, connector addresses are opaque encodings
+ * and native slots are named after their service, so both fall back to the service.
  */
-export function fallbackIntegrationConnectionName(
-  change: Pick<IntegrationConnectionStateChange, "connectionId" | "kind" | "service">,
+export function integrationConnectionName(
+  change: Pick<IntegrationConnectionStateChange, "connectionId" | "kind" | "service" | "label">,
 ) {
+  if (change.label !== null) {
+    return change.label.name;
+  }
   const [namespace, localId] = splitConnectionId(change.connectionId);
   return change.kind === "connector" || namespace === "backoffice" ? change.service : localId;
 }

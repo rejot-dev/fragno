@@ -20,8 +20,8 @@ import type {
   IntegrationImplementation,
 } from "./integration-implementation";
 
-export const telegramConnectionId = "backoffice#telegram";
-const telegramConnectionIdentity = {
+const telegramConnectionId = "backoffice#telegram";
+export const telegramConnectionIdentity = {
   connectionId: telegramConnectionId,
   integrationId: "telegram",
   name: "Telegram",

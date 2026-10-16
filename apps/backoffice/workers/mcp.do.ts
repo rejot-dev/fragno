@@ -22,6 +22,7 @@ import {
 } from "@/fragno/durable-hooks";
 import { createMcpServer, type McpConfig, type McpFragment } from "@/fragno/mcp";
 import { recordIntegrationConnectionState } from "@/fragno/runtime-tools/families/integrations/integration-events";
+import { authMethodOfFragmentAuthMode } from "@/fragno/runtime-tools/families/integrations/integration-implementation";
 import { encodeMcpConnectionId } from "@/fragno/runtime-tools/families/integrations/mcp-integration";
 import {
   isScopedPublicOAuthRedirectUriAllowed,
@@ -161,6 +162,10 @@ export class InMemoryMcpObject extends RpcTarget implements McpObject {
             service: "mcp",
             connectionId: encodeMcpConnectionId(payload.serverId),
             state: payload.ready ? "ready" : "unavailable",
+            label: {
+              name: payload.server?.name ?? payload.serverId,
+              authMethod: payload.server && authMethodOfFragmentAuthMode(payload.server.authMode),
+            },
             occurredAt: context.createdAt,
           },
           { propagationContext: context.capturePropagationContext() },

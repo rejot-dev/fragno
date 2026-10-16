@@ -132,6 +132,7 @@ export class InMemoryProjectConnectorObject extends RpcTarget implements Project
                   payload.connection.connectionName,
                 ]),
                 state: payload.ready ? "ready" : "unavailable",
+                label: { name: payload.connection.connectionName, authMethod: "oauth" },
                 occurredAt: context.createdAt,
               },
               { propagationContext: context.capturePropagationContext() },

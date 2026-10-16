@@ -82,6 +82,7 @@ export function dashboardConnectionEventsQuery(
       id: event.id,
       source: event.source,
       eventType: event.eventType,
+      payload: event.payload,
       subject: event.subject,
       occurredAt: event.occurredAt,
     }));
@@ -102,7 +103,11 @@ type DashboardRunRecord = {
 
 type DashboardEventRecord = { source: string; eventType: string; occurredAt: Date };
 
-type DashboardConnectionEventRecord = DashboardEventRecord & { id: string; subject: unknown };
+type DashboardConnectionEventRecord = DashboardEventRecord & {
+  id: string;
+  payload: unknown;
+  subject: unknown;
+};
 
 /** The run a dashboard row opens. */
 export type DashboardRunReference = {

@@ -26,13 +26,12 @@ import { formatRelativeTime } from "../automations/formatting";
 import {
   IntegrationConnectionStateLight,
   describeIntegrationConnectionKind,
-  fallbackIntegrationConnectionName,
+  integrationConnectionName,
 } from "../integrations/connection-display";
 import {
   integrationConnectionPath,
   integrationsScopeBasePath,
 } from "../integrations/connection-paths";
-import type { ListedIntegrationConnections } from "../integrations/connections.server";
 import { OrchestrationPanel } from "./orchestration-panel";
 import type { BackofficeDashboard, DashboardAttention } from "./overview";
 import {
@@ -53,7 +52,6 @@ const openedRunScrollMarginClassName = "scroll-mt-20";
 
 export type DashboardLoaderData = {
   selectedScope: BackofficeScopeSelection;
-  connectionNames: ListedIntegrationConnections;
   agents: PiManagerAgentsResult;
   workflowSource: AutomationScriptSourceRecord;
   runtimeToolCatalog: readonly RuntimeToolWorkflowDescriptor[];
@@ -81,12 +79,7 @@ export function DashboardSections({
 
   return (
     <>
-      <AttentionPanel
-        attention={dashboard.attention}
-        now={now}
-        selectedScope={selectedScope}
-        connectionNames={loaderData.connectionNames}
-      />
+      <AttentionPanel attention={dashboard.attention} now={now} selectedScope={selectedScope} />
 
       <Panel title="Orchestration" back={null} footer={null}>
         <OrchestrationPanel
@@ -110,12 +103,7 @@ export function DashboardSections({
           <EventVolumePanel eventVolume={dashboard.eventVolume} />
         </div>
         <div className="flex min-w-0 flex-col gap-10">
-          <ConnectionsPanel
-            dashboard={dashboard}
-            now={now}
-            selectedScope={selectedScope}
-            connectionNames={loaderData.connectionNames}
-          />
+          <ConnectionsPanel dashboard={dashboard} now={now} selectedScope={selectedScope} />
           {dashboard.upcoming.length > 0 ? (
             <UpcomingPanel upcoming={dashboard.upcoming} now={now} selectedScope={selectedScope} />
           ) : null}
@@ -215,12 +203,10 @@ function AttentionPanel({
   attention,
   now,
   selectedScope,
-  connectionNames,
 }: {
   attention: readonly DashboardAttention[];
   now: number;
   selectedScope: BackofficeScopeSelection;
-  connectionNames: ListedIntegrationConnections;
 }) {
   return (
     <Panel title="Needs attention" back={null} footer={null}>
@@ -233,12 +219,7 @@ function AttentionPanel({
         <ul className="divide-y divide-[color:var(--bo-border)]">
           {attention.map((item) => (
             <li key={attentionKey(item)} className="py-3">
-              <AttentionItem
-                item={item}
-                now={now}
-                selectedScope={selectedScope}
-                connectionNames={connectionNames}
-              />
+              <AttentionItem item={item} now={now} selectedScope={selectedScope} />
             </li>
           ))}
         </ul>
@@ -263,12 +244,10 @@ function AttentionItem({
   item,
   now,
   selectedScope,
-  connectionNames,
 }: {
   item: DashboardAttention;
   now: number;
   selectedScope: BackofficeScopeSelection;
-  connectionNames: ListedIntegrationConnections;
 }) {
   const tile = attentionTiles[item.kind];
   const row = (title: string, detail: ReactNode, time: Date | string, action: ReactNode) => (
@@ -339,7 +318,7 @@ function AttentionItem({
       );
     case "connection-unavailable":
       return row(
-        connectionName(item.connection, connectionNames),
+        integrationConnectionName(item.connection),
         <>
           {describeIntegrationConnectionKind(item.connection)} connection is unavailable ·{" "}
           <span className="font-mono">{item.connection.connectionId}</span>
@@ -351,17 +330,6 @@ function AttentionItem({
       );
   }
   throw new Error("Unsupported dashboard attention item.");
-}
-
-function connectionName(
-  connection: BackofficeDashboard["connections"][number],
-  connectionNames: ListedIntegrationConnections,
-) {
-  return (
-    (connectionNames.status === "listed"
-      ? connectionNames.connections[connection.connectionId]?.name
-      : undefined) ?? fallbackIntegrationConnectionName(connection)
-  );
 }
 
 const runStatusLights = {
@@ -573,12 +541,10 @@ function ConnectionsPanel({
   dashboard,
   now,
   selectedScope,
-  connectionNames,
 }: {
   dashboard: BackofficeDashboard;
   now: number;
   selectedScope: BackofficeScopeSelection;
-  connectionNames: ListedIntegrationConnections;
 }) {
   return (
     <Panel
@@ -598,7 +564,7 @@ function ConnectionsPanel({
               >
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-semibold text-[var(--bo-fg)] group-hover:underline">
-                    {connectionName(connection, connectionNames)}
+                    {integrationConnectionName(connection)}
                   </span>
                   <span className="block truncate text-xs text-[var(--bo-muted-2)]">
                     {describeIntegrationConnectionKind(connection)} ·{" "}

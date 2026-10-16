@@ -39,7 +39,14 @@ underlying Fragments, Durable Objects, ownership, and configuration controls.
   `integrations.connection.*` event, for connections created before sources reported their state.
   Each source answers through `state()`, the same state its own events report; a disabled webhook
   endpoint, for example, is unavailable although its configuration is complete. Event IDs are stable
-  per connection and state, so a rerun records nothing for unchanged connections.
+  per connection, state, and label, so a rerun records nothing for unchanged connections but records
+  a renamed connection, or one recorded before events carried labels.
+
+Ready and unavailable events carry the connection's label, its `name` and `authMethod` as `list()`
+reports them, so the Integrations and Dashboard pages read connections from local events without
+calling sources. Disconnections carry none; views keep a removed connection's earlier label, and
+fall back to its address for events recorded before labels. A rename that leaves the state unchanged
+records no event; a backfill picks it up.
 
 Each source declares setup, reconfigure, and disconnect as `supported` or `unsupported`; an
 unsupported operation fails with its reason. `connect` and `continueSetup` are not registered. There

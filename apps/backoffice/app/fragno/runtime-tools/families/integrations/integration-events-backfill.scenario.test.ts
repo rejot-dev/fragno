@@ -123,8 +123,8 @@ test("a backfill records each connection's current state once", async () => {
           });
           await ctx.drain();
           expect(await backfilledEventIds(ctx)).toEqual([
-            "integrations-backfill:api#billing:connection.ready",
-            "integrations-backfill:webhook#acme:connection.unavailable",
+            'integrations-backfill:api#billing:["billing","bearer"]:connection.ready',
+            'integrations-backfill:webhook#acme:["Acme","none"]:connection.unavailable',
           ]);
         }),
         then.automation.event({
@@ -132,15 +132,42 @@ test("a backfill records each connection's current state once", async () => {
           where: {
             source: "integrations",
             eventType: "connection.unavailable",
-            id: "integrations-backfill:webhook#acme:connection.unavailable",
+            id: 'integrations-backfill:webhook#acme:["Acme","none"]:connection.unavailable',
           },
-          expected: { payload: {}, subject: { service: "webhook", connectionId: "webhook#acme" } },
+          expected: {
+            payload: { name: "Acme", authMethod: "none" },
+            subject: { service: "webhook", connectionId: "webhook#acme" },
+          },
         }),
         then.assert("a rerun with unchanged states records nothing new", async (ctx) => {
           await backfill(ctx);
           await ctx.drain();
           expect(await backfilledEventIds(ctx)).toHaveLength(2);
         }),
+        then.assert("the Backoffice API page renames the webhook endpoint", async (ctx) => {
+          const response = await ctx.runtime.objects.api.for(scope).http.fetchAuthorized(
+            new Request("https://api.do/api/api/webhooks/endpoints/acme", {
+              method: "PATCH",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ name: "Acme Corp" }),
+            }),
+            { execution: createBackofficeSystemExecution(scope) },
+          );
+          assert(response.ok, await response.clone().text());
+        }),
+        runner.drain(),
+        then.assert(
+          "a rerun records the new name the unchanged state did not report",
+          async (ctx) => {
+            await backfill(ctx);
+            await ctx.drain();
+            expect(await backfilledEventIds(ctx)).toEqual([
+              'integrations-backfill:api#billing:["billing","bearer"]:connection.ready',
+              'integrations-backfill:webhook#acme:["Acme Corp","none"]:connection.unavailable',
+              'integrations-backfill:webhook#acme:["Acme","none"]:connection.unavailable',
+            ]);
+          },
+        ),
         then.hooks.noFailed({ orgId, fragments: ["api", "automations"] }),
       ],
     }),
