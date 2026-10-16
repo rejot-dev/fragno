@@ -876,7 +876,11 @@ for (const revokeBillingAccess of [false, true]) {
           "automations/saved-sentence-checker.workflow.js": savedWorkflowCode,
         }),
         options: { drain: false },
-        objects: { ...scenarioObjects, ...scriptedAgents([respond, respond, respond, respond]) },
+        // Beyond the classifications, the agent hears back when its workflow ends.
+        objects: {
+          ...scenarioObjects,
+          ...scriptedAgents(Array.from({ length: 5 }, () => respond)),
+        },
         piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
         setup: ({ given }) => [
           given.auth.user({ id: "owner", role: "admin" }),
@@ -1000,6 +1004,101 @@ for (const revokeBillingAccess of [false, true]) {
     );
   });
 }
+
+/** The events an agent was notified of, as the model reads them. */
+function heardEvents(context: Context) {
+  return context.messages.flatMap((message) => {
+    if (message.role !== "user" || typeof message.content !== "string") {
+      return [];
+    }
+    const match = /^<backoffice-event ([^>]*)>\n(.*)\n<\/backoffice-event>$/su.exec(
+      message.content,
+    );
+    if (!match) {
+      return [];
+    }
+    const data = JSON.parse(match[2]) as {
+      subject: { workflowName: string; instanceId: string };
+      payload: Record<string, unknown>;
+    };
+    return [{ attributes: match[1], ...data }];
+  });
+}
+
+test("an agent hears back from the workflow it starts when it ends", async () => {
+  const execution = createBackofficeServiceExecution({
+    scope: { kind: "org", orgId: "org-1" },
+    service: { type: "automation", id: "workflow-reply-scenario" },
+  });
+  const workflowCode = `defineWorkflow({ name: "approval-checker" }, async (event, step) => {
+    const approval = await step.waitForEvent("wait for approval", { type: "approval" });
+    return { approved: approval.payload.approved };
+  });`;
+  let instanceId = "";
+  const heard: Array<ReturnType<typeof heardEvents>[number]> = [];
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "durable Pi workflow replies",
+      options: { drain: false },
+      objects: {
+        ...scenarioObjects,
+        ...scriptedAgents([
+          fauxAssistantMessage([fauxToolCall("execCodeMode", { code: workflowCode })], {
+            stopReason: "toolUse",
+          }),
+          fauxAssistantMessage("The approval checker is waiting for approval."),
+          (context) => {
+            const completed = heardEvents(context).at(-1);
+            assert(completed);
+            heard.push(completed);
+            return fauxAssistantMessage("The approval checker approved.");
+          },
+        ]),
+      },
+      piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
+      setup: ({ given }) => [given.organization.exists({ id: "org-1" })],
+      steps: ({ then }) => [
+        then.assert("the waiting workflow does not notify its agent", async ({ runtime }) => {
+          await prompt(runtime, execution, { content: "Check the approval." });
+          await runtime.drain();
+          const workflow = createRouteBackedAutomationWorkflowRuntime({
+            object: runtime.objects.automations.forOrg("org-1"),
+            execution,
+          });
+          const [instance] = (await workflow.listInstances({ pageSize: 10 })).instances;
+          assert(instance);
+          instanceId = instance.id;
+          assert.equal(instance.details.status, "waiting");
+          expect(heard).toEqual([]);
+        }),
+        then.assert("the agent reads the result once it is approved", async ({ runtime }) => {
+          const workflow = createRouteBackedAutomationWorkflowRuntime({
+            object: runtime.objects.automations.forOrg("org-1"),
+            execution,
+          });
+          await workflow.sendEvent({ instanceId, type: "approval", payload: { approved: true } });
+          await runtime.drain();
+          expect((await workflow.getInstance({ instanceId })).details).toMatchObject({
+            status: "complete",
+            output: { approved: true },
+          });
+          const transcript = JSON.stringify((await view(runtime, execution)).entries);
+          expect(transcript).toContain("The approval checker approved.");
+        }),
+        then.assert("the notification names the workflow and carries no route", () => {
+          expect(heard).toEqual([
+            {
+              attributes: expect.stringMatching(/source="workflows" type="instance.completed"/),
+              subject: { workflowName: "approval-checker", instanceId },
+              payload: { status: "complete", output: { approved: true }, error: null },
+            },
+          ]);
+          expect(heard[0]?.attributes).not.toContain("route=");
+        }),
+      ],
+    }),
+  );
+});
 
 test("durable Pi restores scoped tools and reports interrupted codemode without repeating its mutation", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "pi-codemode-recovery-"));

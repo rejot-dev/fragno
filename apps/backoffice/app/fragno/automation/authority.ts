@@ -2,6 +2,7 @@ import type { AutomationAuthorityMode } from "@fragno-dev/backoffice-api/v0/auto
 import {
   automationActorsSchema,
   automationEntityRefsEqual,
+  automationRouteActionAuthority,
   type AutomationActor,
   type AutomationActors,
   type AutomationRouteDefinition,
@@ -84,11 +85,11 @@ async function resolveAutomationRouteActorGrants({
   }
 
   const route = await lookupRoute({ scope: execution.scope, routeId });
-  if (!route?.enabled || route.action.kind !== "start_workflow") {
+  const authority = route?.enabled ? automationRouteActionAuthority(route.action) : null;
+  if (!authority) {
     return noAutomationRouteGrants;
   }
 
-  const authority = route.action.authority;
   const roleMatchesAuthorityMode =
     (actor.role === "principal" && authority.kind === "organization-automation") ||
     (actor.role === "delegate" &&

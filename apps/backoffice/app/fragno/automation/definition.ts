@@ -1,6 +1,8 @@
 import {
   automationActorsSchema,
+  type AutomationAuthorityMode,
   type AutomationForwardEventAction,
+  type AutomationNotifyAgentAction,
   type AutomationReclassifyEventAction,
   type AutomationRouteDefinition,
   type AutomationSendWorkflowEventAction,
@@ -20,10 +22,15 @@ import { defineFragment } from "@fragno-dev/core";
 import { withDatabase, type TxResult } from "@fragno-dev/db";
 import type { WorkflowsFragmentServices } from "@fragno-dev/workflows";
 
-import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
+import {
+  createBackofficeSystemExecution,
+  type BackofficeExecutionContext,
+} from "@/backoffice-runtime/context";
 import { BackofficeKernel, BackofficeForbiddenError } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
+import { PI_AUTOMATION_SOURCE } from "@/fragno/backoffice-capabilities/capabilities/pi";
 import { readSavedModuleImports } from "@/fragno/codemode/saved-module-imports";
+import { createPiManagerRuntime } from "@/fragno/pi/manager/pi-manager-runtime";
 
 import {
   automationRouteAuthority,
@@ -192,6 +199,44 @@ type RouteExecutionContext = {
 const routeRoutingKey = (event: AutomationEvent, route: AutomationRouteDefinition) =>
   `${event.id}:${route.id}`;
 
+/**
+ * The event an action with its own authority acts on, and the execution it runs as. Null when a
+ * linked-user route receives an event from a sender with no linked user.
+ */
+function routeActionExecution({
+  authority,
+  event,
+  route,
+  linkedUserId,
+}: {
+  authority: AutomationAuthorityMode;
+  event: AutomationEvent;
+  route: AutomationRouteDefinition;
+  linkedUserId: string | null;
+}): { event: AutomationEvent; execution: BackofficeExecutionContext } | null {
+  const actingEvent =
+    authority.kind === "linked-user"
+      ? linkedUserId &&
+        event.actors.initiator.scope === "external" &&
+        event.actors.principal === null
+        ? linkAutomationEventToUser({ event, userId: linkedUserId })
+        : null
+      : event;
+  if (!actingEvent) {
+    return null;
+  }
+  return {
+    event: actingEvent,
+    execution:
+      actingEvent.scope.kind === "system"
+        ? createBackofficeSystemExecution(actingEvent.scope)
+        : createAutomationRuntimeExecution({
+            event: actingEvent,
+            authority: automationRouteAuthority({ routeId: route.id, mode: authority }),
+          }),
+  };
+}
+
 const handleStartWorkflowRouteAction = async ({
   action,
   event,
@@ -205,17 +250,16 @@ const handleStartWorkflowRouteAction = async ({
   action: AutomationStartWorkflowAction;
   config: Pick<AutomationFragmentConfig, "readAutomationSource">;
 }) => {
-  const workflowEvent =
-    action.authority.kind === "linked-user"
-      ? linkedUserId &&
-        event.actors.initiator.scope === "external" &&
-        event.actors.principal === null
-        ? linkAutomationEventToUser({ event, userId: linkedUserId })
-        : null
-      : event;
-  if (!workflowEvent) {
+  const acting = routeActionExecution({
+    authority: action.authority,
+    event,
+    route,
+    linkedUserId,
+  });
+  if (!acting) {
     return;
   }
+  const { event: workflowEvent, execution } = acting;
 
   const instanceId = renderAutomationTemplateValue(
     action.instanceIdTemplate,
@@ -223,13 +267,6 @@ const handleStartWorkflowRouteAction = async ({
     route.id,
     routingKey,
   );
-  const execution =
-    workflowEvent.scope.kind === "system"
-      ? createBackofficeSystemExecution(workflowEvent.scope)
-      : createAutomationRuntimeExecution({
-          event: workflowEvent,
-          authority: automationRouteAuthority({ routeId: route.id, mode: action.authority }),
-        });
   if (!config.readAutomationSource) {
     throw new Error("Automation workflow source reading is not configured.");
   }
@@ -257,6 +294,7 @@ const handleStartWorkflowRouteAction = async ({
     trigger: { type: "event", event: triggerEvent },
     execution,
     billingOrganizationId: null,
+    replyTo: null,
   });
 
   await runWorkflowServiceCall(
@@ -315,6 +353,44 @@ const handleForwardEventRouteAction = async ({
     await targetAutomations.commands.seedStarterAutomationRoutes();
   }
   await targetAutomations.commands.ingestEvent(forwardedEvent);
+};
+
+const handleNotifyAgentRouteAction = async ({
+  action,
+  event,
+  route,
+  linkedUserId,
+  runtime,
+}: RouteExecutionContext & {
+  action: AutomationNotifyAgentAction;
+  runtime: BackofficeRuntimeServices | undefined;
+}) => {
+  // An agent's own turn events never reach it, so no route can make an agent wake itself forever.
+  if (event.source === PI_AUTOMATION_SOURCE && event.subject?.agentName === action.agentName) {
+    return;
+  }
+  if (!runtime) {
+    throw new Error("Notifying agents requires Backoffice runtime services.");
+  }
+  const acting = routeActionExecution({
+    authority: action.authority,
+    event,
+    route,
+    linkedUserId,
+  });
+  if (!acting) {
+    return;
+  }
+  const { id, source, eventType, occurredAt, subject, payload } = acting.event;
+  await createPiManagerRuntime({
+    runtime,
+    kernel: new BackofficeKernel(runtime),
+    execution: acting.execution,
+  }).notifyAgent({
+    agentName: action.agentName,
+    routeId: route.id,
+    event: { id, source, eventType, occurredAt, subject: subject ?? null, payload },
+  });
 };
 
 const MAX_AUTOMATION_EVENT_RECLASSIFICATION_CHAIN_LENGTH = 32;
@@ -637,6 +713,14 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
                   ...context,
                   action,
                   ownerScope: config.ownerScope,
+                  runtime: config.runtime,
+                });
+                break;
+
+              case "notify_agent":
+                await handleNotifyAgentRouteAction({
+                  ...context,
+                  action,
                   runtime: config.runtime,
                 });
                 break;

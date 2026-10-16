@@ -110,6 +110,8 @@ export function routeTargetId(action: TargetedRouteAction): string {
         : `stored-instance:${action.target.keyTemplate}`;
     case "forward_event":
       return `scope:${JSON.stringify(action.targetScope)}`;
+    case "notify_agent":
+      return `agent:${action.agentName}`;
   }
   throw new Error("Unsupported automation route action kind.");
 }
@@ -143,6 +145,8 @@ function routeTarget(
       };
     case "forward_event":
       return { id, label: forwardTargetLabel(action), kind: "scope", activeCount: 0 };
+    case "notify_agent":
+      return { id, label: action.agentName, kind: "agent", activeCount: 0 };
   }
   throw new Error("Unsupported automation route action kind.");
 }

@@ -1,4 +1,8 @@
-import type { AutomationRouteAction } from "@fragno-dev/backoffice-api/v0/automation";
+import {
+  automationEntityRefsEqual,
+  automationRouteActionAuthority,
+  type AutomationRouteAction,
+} from "@fragno-dev/backoffice-api/v0/automation";
 import { piBillingOrganizationIdSchema } from "@fragno-dev/backoffice-api/v0/pi";
 import {
   BACKOFFICE_PERMISSION,
@@ -29,9 +33,16 @@ import {
 import { BACKOFFICE_REQUIRED_PERMISSION_HEADER } from "@/backoffice-runtime/required-permission-header";
 import { createAutomationFragment, type AutomationFragmentConfig } from "@/fragno/automation";
 import { BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY } from "@/fragno/automation/actors";
-import { CODEMODE_WORKFLOW } from "@/fragno/automation/engine/codemode-invocation";
+import {
+  CODEMODE_WORKFLOW,
+  codemodeWorkflowParamsSchema,
+  type CodemodeWorkflowParams,
+} from "@/fragno/automation/engine/codemode-invocation";
 import { defineCodemodeWorkflow } from "@/fragno/automation/engine/codemode-workflow";
 import { listAutomationEventDescriptors } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
+import { piAgentActor } from "@/fragno/pi/agent/pi-agent-actor";
+import type { PiAgentNotification } from "@/fragno/pi/agent/pi-agent-contract";
+import { createPiManagerRuntime } from "@/fragno/pi/manager/pi-manager-runtime";
 
 import { defineMarketplacePackageInstallWorkflow } from "./marketplace-package-install-workflow.server";
 import {
@@ -45,11 +56,11 @@ import {
   setAutomationRouteMutationActors,
 } from "./route-routes";
 import {
-  parseWorkflowCompletionTarget,
   workflowCompletedEventType,
+  workflowCompletedNotificationEvent,
   workflowCompletionEventId,
-  WORKFLOW_COMPLETION_PARAM,
-} from "./workflow-completion";
+  workflowReplyToSchema,
+} from "./workflow-reply";
 
 type AutomationFragmentWithExecutionContext = ReturnType<
   typeof createAutomationFragment<BackofficeExecutionContext>
@@ -142,6 +153,29 @@ export const createAutomationsRuntime = (
     kind: "automations",
   });
   let automationFragment: AutomationFragmentWithExecutionContext | undefined;
+  const fragnoRuntime = config.runtime?.fragnoRuntime ?? defaultFragnoRuntime;
+
+  /** A reply carries the run's authority, so the agent admits it as a turn of the run's actors. */
+  async function notifyReplyAgent(
+    params: CodemodeWorkflowParams,
+    agentName: string,
+    event: PiAgentNotification["event"],
+  ) {
+    if (!config.runtime) {
+      throw new Error("Notifying agents requires Backoffice runtime services.");
+    }
+    await createPiManagerRuntime({
+      runtime: config.runtime,
+      kernel: config.kernel,
+      execution: {
+        kind: "deferred",
+        scope: params.execution.scope,
+        scopeRestriction: params.execution.scopeRestriction,
+        actors: params.execution.actors,
+      },
+    }).notifyAgent({ agentName, routeId: null, event });
+  }
+
   const workflowsFragment = createWorkflowsFragment<BackofficeExecutionContext>(
     {
       workflows: {
@@ -161,7 +195,7 @@ export const createAutomationsRuntime = (
           getWorkflowsFragment: (): AutomationsRuntime["workflowsFragment"] => workflowsFragment,
         }),
       },
-      runtime: config.runtime?.fragnoRuntime ?? defaultFragnoRuntime,
+      runtime: fragnoRuntime,
       onWorkflowTerminal: async function notifyWorkflowOwnerOfTerminalInstance(payload) {
         if (
           config.ownerScope.kind === "system" &&
@@ -187,34 +221,46 @@ export const createAutomationsRuntime = (
               });
           }
         }
-        const completionTarget = parseWorkflowCompletionTarget(payload.params);
-        if (!completionTarget) {
+        if (payload.workflowName !== CODEMODE_WORKFLOW) {
+          return;
+        }
+        const params = codemodeWorkflowParamsSchema.parse(payload.params);
+        const { replyTo } = params;
+        if (replyTo === null) {
+          return;
+        }
+        if (replyTo.kind === "agent") {
+          await notifyReplyAgent(
+            params,
+            replyTo.agentName,
+            workflowCompletedNotificationEvent({
+              terminal: payload,
+              workflowName: params.program.workflowName,
+              occurredAt: fragnoRuntime.time.now(),
+            }),
+          );
           return;
         }
 
         await workflowsFragment.callServices(() =>
-          workflowsFragment.services.sendEvent(
-            completionTarget.workflowName,
-            completionTarget.instanceId,
-            {
-              id: workflowCompletionEventId({
-                instanceRef: payload.instanceRef,
-                runGeneration: payload.runGeneration,
-                terminalTransitionId: payload.terminalTransitionId,
-              }),
-              type: workflowCompletedEventType(payload.runGeneration),
-              payload: {
-                terminalTransitionId: payload.terminalTransitionId,
-                workflowName: payload.workflowName,
-                instanceId: payload.instanceId,
-                runGeneration: payload.runGeneration,
-                status: payload.status,
-                ...(payload.output === undefined ? {} : { output: payload.output }),
-                ...(payload.error === undefined ? {} : { error: payload.error }),
-              },
-              ignoreTerminal: true,
+          workflowsFragment.services.sendEvent(replyTo.workflowName, replyTo.instanceId, {
+            id: workflowCompletionEventId({
+              instanceRef: payload.instanceRef,
+              runGeneration: payload.runGeneration,
+              terminalTransitionId: payload.terminalTransitionId,
+            }),
+            type: workflowCompletedEventType(payload.runGeneration),
+            payload: {
+              terminalTransitionId: payload.terminalTransitionId,
+              workflowName: payload.workflowName,
+              instanceId: payload.instanceId,
+              runGeneration: payload.runGeneration,
+              status: payload.status,
+              ...(payload.output === undefined ? {} : { output: payload.output }),
+              ...(payload.error === undefined ? {} : { error: payload.error }),
             },
-          ),
+            ignoreTerminal: true,
+          }),
         );
       },
     },
@@ -283,14 +329,25 @@ export const createAutomationsRuntime = (
         }
       }
 
-      if (Object.hasOwn(params, WORKFLOW_COMPLETION_PARAM)) {
-        return error(
-          {
-            message: "Workflow completion targets cannot be set through this route.",
-            code: "WORKFLOW_COMPLETION_TARGET_NOT_ALLOWED",
-          },
-          400,
-        );
+      if (workflowName === CODEMODE_WORKFLOW && (params.replyTo ?? null) !== null) {
+        const replyTo = workflowReplyToSchema.safeParse(params.replyTo).data;
+        // A reply to a workflow sends it an event unauthorized, so only internal services set one.
+        // A reply to an agent is always news of that agent's own work.
+        const startingAgent = replyTo?.kind === "agent" ? piAgentActor(replyTo.agentName) : null;
+        const repliesToStartingAgent =
+          startingAgent !== null &&
+          requestContext.actors.delegation.some((actor) =>
+            automationEntityRefsEqual(actor, startingAgent),
+          );
+        if (!repliesToStartingAgent) {
+          return error(
+            {
+              message: "A workflow can reply only to the agent whose turn starts it.",
+              code: "WORKFLOW_REPLY_NOT_ALLOWED",
+            },
+            400,
+          );
+        }
       }
 
       return undefined;
@@ -661,9 +718,10 @@ export const createAutomationsRuntime = (
           resource: { kind: "automation-route", routeId },
         },
       ];
-      if (action?.kind === "start_workflow" && action.authority.grants !== "inherit") {
+      const authority = action ? automationRouteActionAuthority(action) : null;
+      if (authority && authority.grants !== "inherit") {
         requirements.push(
-          ...action.authority.grants.map((grant) => ({
+          ...authority.grants.map((grant) => ({
             operation: grant,
             resource: { kind: "automation-route-grant", routeId, grant },
           })),
@@ -705,12 +763,8 @@ export const createAutomationsRuntime = (
         const execution = requestContext;
         setAutomationRouteMutationActors(request, execution.actors);
         setAutomationRouteMutationActionAuthorizer(request, async ({ routeId, action }) => {
-          if (action.kind !== "start_workflow") {
-            return;
-          }
-
-          const grants = action.authority.grants;
-          if (grants === "inherit") {
+          const grants = automationRouteActionAuthority(action)?.grants;
+          if (grants === undefined || grants === "inherit") {
             return;
           }
 

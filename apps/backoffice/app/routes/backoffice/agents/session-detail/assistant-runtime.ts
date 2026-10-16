@@ -8,6 +8,13 @@ import type {
   LiveState,
 } from "@earendil-works/pi-durable";
 
+import type { PiAgentNotification } from "@/fragno/pi/agent/pi-agent-contract";
+import {
+  parsePiNotificationRequest,
+  PI_NOTIFICATION_ENTRY_KIND,
+  type PiNotificationReference,
+} from "@/fragno/pi/agent/pi-agent-notification-entry";
+
 /** A compaction summary, shown in the transcript where Pi compacted the context. */
 export type PiCompactionMessage = {
   role: "compaction";
@@ -15,7 +22,23 @@ export type PiCompactionMessage = {
   summary: string;
   timestamp: number;
 };
-export type PiConversationMessage = PiDurableMessage | PiCompactionMessage;
+/** An event a route delivered, shown where Pi placed it in the transcript. */
+export type PiNotificationMessage = {
+  role: "notification";
+  notification: PiAgentNotification;
+  timestamp: number;
+};
+/** The follow-up asking the agent to handle notifications, shown as a divider. */
+export type PiNotificationRequestMessage = {
+  role: "notification-request";
+  notifications: PiNotificationReference[];
+  timestamp: number;
+};
+export type PiConversationMessage =
+  | PiDurableMessage
+  | PiCompactionMessage
+  | PiNotificationMessage
+  | PiNotificationRequestMessage;
 export type ToolResultMessage = Extract<PiConversationMessage, { role: "toolResult" }>;
 export type PiDraftTool = {
   id: string;
@@ -56,6 +79,16 @@ export type PiToolCallArtifact = {
 export type PiCompactionMessageMetadata = {
   kind: "compaction";
   reason: CompactionReason;
+};
+
+export type PiNotificationMessageMetadata = {
+  kind: "notification";
+  notification: PiAgentNotification;
+};
+
+export type PiNotificationRequestMessageMetadata = {
+  kind: "notification-request";
+  notifications: PiNotificationReference[];
 };
 
 export type PiAssistantMessageMetadata = {
@@ -142,8 +175,10 @@ function assistantRecoveryFingerprint(
   );
 }
 
-// Matches pi-durable's `CompactionEntry.kind`; its runtime export would pull the harness into the client.
+// Match pi-durable's `CompactionEntry.kind` and `UserEntry.kind`; their runtime exports would pull
+// the harness into the client.
 const COMPACTION_ENTRY_KIND = "pi.compaction";
+const USER_ENTRY_KIND = "pi.user";
 
 /** Pi wraps the summary in model-facing framing; only the summary itself is worth reading. */
 function compactionMessage(entry: EntryRecord): PiCompactionMessage {
@@ -158,6 +193,33 @@ function compactionMessage(entry: EntryRecord): PiCompactionMessage {
     summary: /<summary>\n([\s\S]*)\n<\/summary>$/.exec(text)?.[1] ?? text,
     timestamp: message.timestamp,
   };
+}
+
+function notificationMessage(entry: EntryRecord): PiNotificationMessage {
+  // Notification entries carry the delivered notification and one user message for the model.
+  const [message] = entry.model as [Extract<PiDurableMessage, { role: "user" }>];
+  return {
+    role: "notification",
+    notification: entry.data as PiAgentNotification,
+    timestamp: message.timestamp,
+  };
+}
+
+function userText(content: unknown) {
+  return normalizePiContent(content)
+    .flatMap((block) => (block.type === "text" ? [block.text] : []))
+    .join("\n");
+}
+
+function notificationRequestMessage(entry: EntryRecord): PiNotificationRequestMessage | null {
+  const [message] = entry.model ?? [];
+  if (entry.kind !== USER_ENTRY_KIND || message?.role !== "user") {
+    return null;
+  }
+  const notifications = parsePiNotificationRequest(userText(message.content));
+  return (
+    notifications && { role: "notification-request", notifications, timestamp: message.timestamp }
+  );
 }
 
 /**
@@ -189,6 +251,15 @@ export function piConversationMessages(
     }
     if (entry.kind === COMPACTION_ENTRY_KIND) {
       messages.push(compactionMessage(entry));
+      return;
+    }
+    if (entry.kind === PI_NOTIFICATION_ENTRY_KIND) {
+      messages.push(notificationMessage(entry));
+      return;
+    }
+    const request = notificationRequestMessage(entry);
+    if (request) {
+      messages.push(request);
       return;
     }
     const taskKey = entry.byTaskId === undefined ? `entry:${entry.id}` : `task:${entry.byTaskId}`;
@@ -383,6 +454,42 @@ export function createAssistantUiMessages({
     if (message.role === "toolResult") {
       return;
     }
+    if (message.role === "notification") {
+      const { notification } = message;
+      converted.push({
+        id: `pi-notification-${notification.routeId}-${notification.event.id}`,
+        role: "system",
+        content: [
+          {
+            type: "text",
+            text: readableJson({
+              subject: notification.event.subject,
+              payload: notification.event.payload,
+            }),
+          },
+        ],
+        createdAt: messageDate(message.timestamp, index),
+        metadata: {
+          custom: { kind: "notification", notification } satisfies PiNotificationMessageMetadata,
+        },
+      });
+      return;
+    }
+    if (message.role === "notification-request") {
+      converted.push({
+        id: `pi-notification-request-${message.timestamp}-${index}`,
+        role: "system",
+        content: [{ type: "text", text: notificationRequestLabel(message.notifications) }],
+        createdAt: messageDate(message.timestamp, index),
+        metadata: {
+          custom: {
+            kind: "notification-request",
+            notifications: message.notifications,
+          } satisfies PiNotificationRequestMessageMetadata,
+        },
+      });
+      return;
+    }
     if (message.role === "compaction") {
       converted.push({
         id: `pi-compaction-${message.timestamp}-${index}`,
@@ -536,12 +643,21 @@ export function piConversationQueue(view: ConversationView): PiConversationQueue
       continue;
     }
     const id = String(item.id);
-    const prompt =
+    const text =
       typeof item.content === "string"
         ? item.content
         : item.content.map((part) => (part.type === "text" ? part.text : "[image]")).join("\n");
+    const notifications = parsePiNotificationRequest(text);
+    const prompt = notifications ? notificationRequestLabel(notifications) : text;
     items.push({ id, prompt });
     modes.set(id, item.mode);
   }
   return { items, modes };
+}
+
+/** How the chat names a request to handle notifications. */
+export function notificationRequestLabel(notifications: readonly PiNotificationReference[]) {
+  return notifications.length === 1
+    ? "Handling 1 notification"
+    : `Handling ${notifications.length} notifications`;
 }

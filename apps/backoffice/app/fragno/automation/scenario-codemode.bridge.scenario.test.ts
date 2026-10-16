@@ -179,6 +179,7 @@ test("scenario TanStack DB exposes an in-flight step.do lifecycle", async () => 
             trigger: { type: "event", event },
             execution,
             billingOrganizationId: null,
+            replyTo: null,
           });
           await workflow.createInternalInstance(workflowInput);
 

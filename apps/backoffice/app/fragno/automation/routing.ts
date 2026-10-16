@@ -8,7 +8,9 @@ import {
   type AutomationActorMatcher,
   type AutomationEventMatcher,
   type AutomationEventPayloadProjection,
+  type AutomationNotifyAgentAction,
   type AutomationRouteAction,
+  automationRouteActionAuthority,
   type AutomationRouteEventTrigger,
   type AutomationRouteScheduleTrigger,
   type AutomationRouteScopeTemplate,
@@ -25,13 +27,15 @@ import type {
   BackofficeScopeIdNames,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
+type AutomationAuthorityAction = AutomationStartWorkflowAction | AutomationNotifyAgentAction;
+
 type AutomationRouteConfiguration =
   | { trigger: AutomationRouteEventTrigger; action: AutomationRouteAction }
   | {
       trigger: AutomationRouteScheduleTrigger;
       action:
-        | Exclude<AutomationRouteAction, AutomationStartWorkflowAction>
-        | (AutomationStartWorkflowAction & {
+        | Exclude<AutomationRouteAction, AutomationAuthorityAction>
+        | (AutomationAuthorityAction & {
             authority: Extract<AutomationAuthorityMode, { kind: "organization-automation" }>;
           });
     };
@@ -49,10 +53,12 @@ export function assertAutomationRouteAuthorityMatchesTrigger(configuration: {
   trigger: AutomationRouteTrigger;
   action: AutomationRouteAction;
 }): asserts configuration is AutomationRouteConfiguration {
+  const authority = automationRouteActionAuthority(configuration.action);
+  // A schedule has no user principal for delegated or linked authority to act for.
   if (
     configuration.trigger.kind === "schedule" &&
-    configuration.action.kind === "start_workflow" &&
-    configuration.action.authority.kind !== "organization-automation"
+    authority &&
+    authority.kind !== "organization-automation"
   ) {
     throw new AutomationRouteAuthorityError();
   }

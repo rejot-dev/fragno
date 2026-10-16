@@ -5,7 +5,13 @@ import { DurableObject, RpcTarget } from "cloudflare:workers";
 import type { PostHog } from "posthog-node";
 import type { z } from "zod";
 
-import { ConversationBusy, type EntryId, type Storage } from "@earendil-works/pi-durable";
+import { copyJson } from "@earendil-works/chord";
+import {
+  ConversationBusy,
+  type EntryId,
+  type JsonObject,
+  type Storage,
+} from "@earendil-works/pi-durable";
 
 import {
   createCloudflareDurableObjectRuntimeServices,
@@ -19,6 +25,7 @@ import {
 import {
   piAgentCompactionSchema,
   piAgentEntryPageRequestSchema,
+  piAgentNotificationSchema,
   piAgentObjectName,
   piAgentPromptSchema,
   piAgentSubmissionWaitRequestSchema,
@@ -26,6 +33,7 @@ import {
   PiConversationViewDamagedError,
   type PiAgent,
   type PiAgentCompactionStatus,
+  type PiAgentNotification,
   type PiAgentSubmissionWait,
   type PiAgentSubmitResult,
   type PiAgentTurn,
@@ -37,8 +45,15 @@ import {
   type PiAgentDependencies,
 } from "@/fragno/pi/agent/pi-agent-harness";
 import {
+  PI_NOTIFICATION_ENTRY_KIND,
+  renderPiNotification,
+  renderPiNotificationRequest,
+} from "@/fragno/pi/agent/pi-agent-notification-entry";
+import {
   mayJoinPiAgentTurn,
   readPiAgentRun,
+  readQueuedPiAgentNotificationFollowUps,
+  recordPiAgentNotificationFollowUp,
   recordAdmittedPiAgentTurn,
   recordPiAgentCompactionTurn,
   recordPiAgentTurn,
@@ -68,6 +83,7 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
   #opened: OpenPiAgent | null = null;
   #opening: Promise<OpenPiAgent> | null = null;
   #admitting = 0;
+  #notifying = Promise.resolve();
 
   constructor({
     state,
@@ -139,6 +155,7 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
       runtime: this.#runtime,
       dependencies: this.#dependencies,
       openStorage: this.#openStorage,
+      nowEpochMs: this.#nowEpochMs,
     });
     this.#opening = opening;
     try {
@@ -230,6 +247,86 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
     } finally {
       this.#admitting -= 1;
     }
+  }
+
+  async notify(
+    config: PiAgentConfig,
+    rawTurn: PiAgentTurn,
+    rawNotification: PiAgentNotification,
+  ): Promise<void> {
+    const notification = piAgentNotificationSchema.parse(rawNotification);
+    const turn = piAgentTurnSchema.parse(rawTurn);
+    // One at a time, so two notifications never both replace, or both miss, a queued follow-up.
+    const notified = this.#notifying.then(async () => {
+      await this.#notify(config, turn, notification);
+    });
+    this.#notifying = notified.catch(() => undefined);
+    await notified;
+  }
+
+  async #notify(config: PiAgentConfig, turn: PiAgentTurn, notification: PiAgentNotification) {
+    const { harness, storage } = await this.#requireAgent(config);
+    const root = await harness.root(BACKGROUND_CONTEXT);
+    // Redelivering one event through one route, or to one agent directly, reuses its write and
+    // its follow-up.
+    const requestId =
+      notification.routeId === null
+        ? `reply:${notification.event.id}`
+        : `route:${notification.routeId}:${notification.event.id}`;
+    // A busy agent places the write at its next boundary, so a running turn may handle it first.
+    await root.submit(
+      {
+        type: "write",
+        requestId: `${requestId}:event`,
+        entry: {
+          kind: PI_NOTIFICATION_ENTRY_KIND,
+          data: copyJson(notification) as JsonObject,
+          model: [
+            {
+              role: "user",
+              content: renderPiNotification(notification),
+              timestamp: this.#nowEpochMs(),
+            },
+          ],
+        },
+      },
+      BACKGROUND_CONTEXT,
+    );
+    const reference = { routeId: notification.routeId, eventId: notification.event.id };
+    const queued = await readQueuedPiAgentNotificationFollowUps(
+      harness,
+      storage,
+      BACKGROUND_CONTEXT,
+    );
+    // A redelivered event that a queued follow-up already asks for needs nothing more.
+    if (
+      queued.some((followUp) =>
+        followUp.notifications.some(
+          ({ routeId, eventId }) => routeId === reference.routeId && eventId === reference.eventId,
+        ),
+      )
+    ) {
+      return;
+    }
+    // A queued input cannot change, so a follow-up with this authority is replaced by one that
+    // also asks for this notification. Pi may place it first; then it keeps its own list.
+    const replaced = queued.find((followUp) => mayJoinPiAgentTurn(followUp.turn, turn));
+    const carried =
+      replaced &&
+      (await harness.abortSubmission(replaced.submissionId, BACKGROUND_CONTEXT)) === "aborted"
+        ? replaced.notifications
+        : [];
+    const notifications = [...carried, reference];
+    await recordPiAgentNotificationFollowUp(
+      harness,
+      { requestId, notifications },
+      BACKGROUND_CONTEXT,
+    );
+    await this.submit(config, turn, {
+      requestId,
+      content: renderPiNotificationRequest(notifications),
+      whenBusy: "followUp",
+    });
   }
 
   async getSubmission(config: PiAgentConfig, requestId: string): Promise<unknown> {
@@ -386,6 +483,8 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
     try {
       // Keep the alarm invocation alive while Pi runs; a persisted heartbeat covers eviction.
       await harness.waitForIdle(alarmContext);
+      // A throw keeps the heartbeat alarm, which retries reports a restart or failure left behind.
+      await opened.reportSettledTurns(alarmContext);
       await opened.billing?.flush(harness, this.#nowEpochMs, alarmContext);
     } catch (error) {
       if (!controller.signal.aborted) {
@@ -482,6 +581,13 @@ export class Pi extends DurableObject<CloudflareEnv> implements PiAgent {
   }
   async exportEntries(config: PiAgentConfig): Promise<ReadableStream<Uint8Array>> {
     return await this.#object.exportEntries(config);
+  }
+  async notify(
+    config: PiAgentConfig,
+    turn: PiAgentTurn,
+    notification: PiAgentNotification,
+  ): Promise<void> {
+    await this.#object.notify(config, turn, notification);
   }
   async compact(
     config: PiAgentConfig,

@@ -6,14 +6,20 @@ import {
   ROOT_CONVERSATION_ID,
   type DocumentReader,
   type Harness,
+  type SettledSubmissionRecord,
   type Storage,
+  type SubmissionId,
 } from "@earendil-works/pi-durable";
 
 import type { PiAgentTurn } from "./pi-agent-contract";
+import type { PiNotificationReference } from "./pi-agent-notification-entry";
 
 // Turns are stored as JSON; this module writes every value, so reads cast them back.
 type PiAgentTurnsState = {
-  /** Turns whose root-conversation submissions have not settled, by prompt request id. */
+  /**
+   * Turns by prompt request id, until their settlement has been reported. Pi settles submissions
+   * in its own commits, so a settled turn stays here as the outbox of its turn event.
+   */
   pending: { [requestId: string]: JsonObject };
   /** Authority for work outside any run, such as compaction after the last turn ended. */
   latest: JsonObject | null;
@@ -42,15 +48,43 @@ export async function recordPiAgentTurn(
 ): Promise<void> {
   await harness.commit(async (tx) => {
     const turns = await tx.doc(PiAgentTurnsDoc);
-    for (const pendingRequestId of Object.keys(turns.pending)) {
-      const submission = await tx.submissionByRequest(ROOT_CONVERSATION_ID, pendingRequestId);
-      if (submission?.status === "done" || submission?.status === "unanswered") {
-        delete turns.pending[pendingRequestId];
-      }
-    }
     if (!(await tx.submissionByRequest(ROOT_CONVERSATION_ID, requestId))) {
       turns.pending[requestId] = storedTurn(turn);
     }
+  }, context);
+}
+
+/** A recorded turn whose submission Pi has settled but whose settlement is not yet reported. */
+export type SettledPiAgentTurn = {
+  requestId: string;
+  turn: PiAgentTurn;
+  submission: SettledSubmissionRecord;
+};
+
+export async function readSettledPiAgentTurns(
+  read: DocumentReader,
+  storage: Pick<Storage, "submissionByRequest">,
+  context: Context,
+): Promise<SettledPiAgentTurn[]> {
+  const turns = await read.snapshot(PiAgentTurnsDoc, context);
+  const settled: SettledPiAgentTurn[] = [];
+  for (const [requestId, turn] of Object.entries(turns?.pending ?? {})) {
+    const submission = await storage.submissionByRequest(ROOT_CONVERSATION_ID, requestId, context);
+    if (submission?.status === "done" || submission?.status === "unanswered") {
+      settled.push({ requestId, turn: turn as unknown as PiAgentTurn, submission });
+    }
+  }
+  return settled;
+}
+
+/** Forgets a settled turn once its turn event is recorded; running turns keep their authority. */
+export async function forgetReportedPiAgentTurn(
+  harness: Harness,
+  requestId: string,
+  context: Context,
+): Promise<void> {
+  await harness.commit(async (tx) => {
+    delete (await tx.doc(PiAgentTurnsDoc)).pending[requestId];
   }, context);
 }
 
@@ -90,6 +124,76 @@ export async function recordPiAgentCompactionTurn(
 ): Promise<void> {
   await harness.commit(async (tx) => {
     (await tx.doc(PiAgentTurnsDoc)).latest = storedTurn(turn);
+  }, context);
+}
+
+/** A follow-up this agent posted, by request ID, and the notifications it asks the agent for. */
+type PiAgentNotificationFollowUp = { requestId: string; notifications: PiNotificationReference[] };
+
+// Follow-ups that may still be queued; ones Pi placed, withdrew, or never received are pruned.
+type PiAgentNotificationsState = { followUps: PiAgentNotificationFollowUp[] };
+
+const PiAgentNotificationsDoc = defineDoc<PiAgentNotificationsState>({
+  kind: "backoffice.pi.notifications",
+  version: 1,
+  scope: "session",
+  initial: () => ({ followUps: [] }),
+});
+
+/** A posted follow-up still in the inbox, with the turn it will run as. */
+export type QueuedPiAgentNotificationFollowUp = PiAgentNotificationFollowUp & {
+  submissionId: SubmissionId;
+  turn: PiAgentTurn;
+};
+
+export async function readQueuedPiAgentNotificationFollowUps(
+  read: DocumentReader,
+  storage: Pick<Storage, "submissionByRequest">,
+  context: Context,
+): Promise<QueuedPiAgentNotificationFollowUp[]> {
+  const [notifications, turns] = await Promise.all([
+    read.snapshot(PiAgentNotificationsDoc, context),
+    read.snapshot(PiAgentTurnsDoc, context),
+  ]);
+  const queued: QueuedPiAgentNotificationFollowUp[] = [];
+  for (const followUp of notifications?.followUps ?? []) {
+    const submission = await storage.submissionByRequest(
+      ROOT_CONVERSATION_ID,
+      followUp.requestId,
+      context,
+    );
+    const turn = turns?.pending[followUp.requestId] as PiAgentTurn | undefined;
+    if (submission?.status === "queued" && turn) {
+      queued.push({
+        requestId: followUp.requestId,
+        notifications: [...followUp.notifications],
+        submissionId: submission.id,
+        turn,
+      });
+    }
+  }
+  return queued;
+}
+
+/** Records a follow-up before it is submitted, so a restart between the two still finds it. */
+export async function recordPiAgentNotificationFollowUp(
+  harness: Harness,
+  followUp: PiAgentNotificationFollowUp,
+  context: Context,
+): Promise<void> {
+  await harness.commit(async (tx) => {
+    const notifications = await tx.doc(PiAgentNotificationsDoc);
+    const queued = [];
+    for (const recorded of notifications.followUps) {
+      if (
+        recorded.requestId !== followUp.requestId &&
+        (await tx.submissionByRequest(ROOT_CONVERSATION_ID, recorded.requestId))?.status ===
+          "queued"
+      ) {
+        queued.push(recorded);
+      }
+    }
+    notifications.followUps = [...queued, followUp];
   }, context);
 }
 

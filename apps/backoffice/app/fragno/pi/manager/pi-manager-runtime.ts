@@ -1,6 +1,5 @@
 import { awaitWithContext } from "@earendil-works/chord/context";
 import {
-  piAgentNameSchema,
   type PiAgentDefinition,
   type PiAgentDefinitionCreate,
   type PiManagerAgent,
@@ -8,6 +7,7 @@ import {
   type PiPromptReceipt,
   type piPromptWhenBusySchema,
 } from "@fragno-dev/backoffice-api/v0/pi";
+import { piAgentNameSchema } from "@fragno-dev/backoffice-api/v0/shared/pi-agent-name";
 import type { z } from "zod";
 
 import type { Context } from "@earendil-works/chord";
@@ -26,6 +26,7 @@ import {
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import {
   PI_AGENT_SUBMISSION_WAIT_MAX_MS,
+  type PiAgentNotification,
   type PiAgentSubmissionWait,
 } from "@/fragno/pi/agent/pi-agent-contract";
 
@@ -39,6 +40,7 @@ export type PiManagerSubmitPromptInput = {
 };
 export type PiManagerGetSubmissionInput = { agentName: string; requestId: string };
 export type PiManagerRunPromptInput = PiManagerSubmitPromptInput & { timeoutMs?: number };
+export type PiManagerNotifyAgentInput = { agentName: string } & PiAgentNotification;
 
 /** `view` is null until the agent's conversation has received its first turn. */
 export type PiManagerAgentDetail = PiManagerAgent & { view: ConversationView | null };
@@ -103,6 +105,8 @@ export type PiManagerRuntime = {
   submitPrompt(input: PiManagerSubmitPromptInput): Promise<PiPromptReceipt>;
   getSubmission(input: PiManagerGetSubmissionInput): Promise<SubmissionRecord>;
   runPrompt(input: PiManagerRunPromptInput): Promise<PiManagerPromptResult>;
+  /** Writes an event into a started agent's conversation and asks it to handle the event. */
+  notifyAgent(input: PiManagerNotifyAgentInput): Promise<void>;
   abortAgent(input: PiManagerAgentInput): Promise<void>;
 };
 
@@ -261,6 +265,9 @@ export function createPiManagerRuntime(input: {
           assistantText: assistantTextFromSubmission(view, result.submission),
         };
       }
+    },
+    async notifyAgent({ agentName, ...notification }) {
+      await request(`${agentRoute(agentName)}/notifications`, notification);
     },
     async abortAgent({ agentName }) {
       await request(`${agentRoute(agentName)}/abort`, {});

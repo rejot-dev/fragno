@@ -2407,6 +2407,55 @@ describe("Workflows Runner", () => {
     assert(status.status === "complete");
   });
 
+  test("a tick that meets a concurrent tick's step commits nothing, even when the workflow catches it", async () => {
+    // Remote workflow code sees the conflict only as a failed step call, as this caught one does.
+    const started = Promise.withResolvers<void>();
+    const blocker = Promise.withResolvers<void>();
+
+    const CaughtConflictWorkflow = defineWorkflow(
+      { name: "caught-concurrent-tick-workflow" },
+      async (_event, step) => {
+        try {
+          await step.do("block", async () => {
+            started.resolve();
+            await blocker.promise;
+          });
+          return { outcome: "completed" };
+        } catch {
+          return { outcome: "caught" };
+        }
+      },
+    );
+
+    const harness = await createWorkflowsTestHarness({
+      workflows: { CAUGHT_CONFLICT: CaughtConflictWorkflow },
+      adapter: { type: "kysely-sqlite" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      autoTickHooks: false,
+    });
+
+    const instanceId = await harness.createInstance("CAUGHT_CONFLICT");
+    const [instance] = (
+      await harness.db
+        .createUnitOfWork("read")
+        .forSchema(workflowsSchema)
+        .find("workflow_instance", (b) => b.whereIndex("primary"))
+        .executeRetrieve()
+    )[0];
+    assert(instance);
+
+    const tickOne = harness.tick(buildPayload(instance, "create"));
+    await started.promise;
+    await expect(harness.tick(buildPayload(instance, "create"))).resolves.toBe(0);
+    blocker.resolve();
+    await expect(tickOne).resolves.toBe(1);
+
+    await expect(harness.getStatus("CAUGHT_CONFLICT", instanceId)).resolves.toMatchObject({
+      status: "complete",
+      output: { outcome: "completed" },
+    });
+  });
+
   test("concurrent create and event ticks converge on the first committed wait step", async () => {
     const firstPassageStarted = Promise.withResolvers<void>();
     const releaseFirstPassage = Promise.withResolvers<void>();

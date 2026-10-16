@@ -33,7 +33,6 @@ import {
   createAutomationsRouteCaller,
   createWorkflowsRouteCaller,
 } from "@/fragno/automation/route-callers";
-import { WORKFLOW_COMPLETION_PARAM } from "@/fragno/automation/workflow-completion";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
 import { getStaticMarketplaceEntry } from "@/fragno/marketplace/static-entries";
 
@@ -803,7 +802,7 @@ describe("Automations authorized HTTP context", () => {
     }
   });
 
-  test("rejects public workflow completion targets", async () => {
+  test("rejects workflow replies the caller may not address", async () => {
     const runtime = await createInMemoryBackofficeRuntime({
       objects: localObjects,
       authorityResolver: {
@@ -827,36 +826,35 @@ describe("Automations authorized HTTP context", () => {
           execution: createBackofficeUserExecution({ scope, userId: "user-1" }),
         },
       });
-      const params = {
-        [WORKFLOW_COMPLETION_PARAM]: {
-          workflowName: "target-workflow",
-          instanceId: "target-instance",
-        },
-      };
-
-      await expect(
-        call("POST", "/:workflowName/instances", {
-          pathParams: { workflowName: CODEMODE_WORKFLOW },
-          body: { id: "forged-completion", params },
-        }),
-      ).resolves.toMatchObject({
-        type: "error",
-        status: 400,
-        error: {
-          code: "WORKFLOW_COMPLETION_TARGET_NOT_ALLOWED",
-          message: "Workflow completion targets cannot be set through this route.",
-        },
-      });
-      await expect(
-        call("POST", "/:workflowName/instances/batch", {
-          pathParams: { workflowName: CODEMODE_WORKFLOW },
-          body: { instances: [{ id: "forged-completion", params }] },
-        }),
-      ).resolves.toMatchObject({
-        type: "error",
-        status: 400,
-        error: { code: "WORKFLOW_COMPLETION_TARGET_NOT_ALLOWED" },
-      });
+      // A user's own request starts no agent turn, so it can address no agent either.
+      for (const replyTo of [
+        { kind: "workflow", workflowName: "target-workflow", instanceId: "target-instance" },
+        { kind: "agent", agentName: "assistant" },
+      ]) {
+        await expect(
+          call("POST", "/:workflowName/instances", {
+            pathParams: { workflowName: CODEMODE_WORKFLOW },
+            body: { id: "forged-reply", params: { replyTo } },
+          }),
+        ).resolves.toMatchObject({
+          type: "error",
+          status: 400,
+          error: {
+            code: "WORKFLOW_REPLY_NOT_ALLOWED",
+            message: "A workflow can reply only to the agent whose turn starts it.",
+          },
+        });
+        await expect(
+          call("POST", "/:workflowName/instances/batch", {
+            pathParams: { workflowName: CODEMODE_WORKFLOW },
+            body: { instances: [{ id: "forged-reply", params: { replyTo } }] },
+          }),
+        ).resolves.toMatchObject({
+          type: "error",
+          status: 400,
+          error: { code: "WORKFLOW_REPLY_NOT_ALLOWED" },
+        });
+      }
     } finally {
       await runtime.cleanup();
     }
@@ -945,6 +943,7 @@ describe("Automations authorized HTTP context", () => {
         trigger: { type: "manual", payload: {} },
         execution,
         billingOrganizationId: null,
+        replyTo: null,
       }).params;
 
       await expect(

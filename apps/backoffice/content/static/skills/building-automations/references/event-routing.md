@@ -86,6 +86,29 @@ Inspect the target's destination event definition: its schema validates the unch
 Verify both the source record and target record, using the rendered ID when `idTemplate` is set, and
 correlate their respective hook or workflow outcomes.
 
+## Notify agents
+
+Use `notify_agent` to hand an event to an agent of the route's scope:
+
+```js
+const action = {
+  kind: "notify_agent",
+  agentName: "support",
+  authority: {
+    kind: "organization-automation",
+    grants: [{ namespace: "pi", permission: "modify" }],
+  },
+};
+```
+
+The event is written into the agent's conversation, and the agent is asked to handle it in a turn
+run with the route's authority, so grant `pi.modify` plus whatever the agent's work needs. A busy
+agent sees the event at its next tool round and may handle it in its running turn; the requested
+turn follows. Several events delivered while the agent is busy share one requested turn per route
+authority, whose prompt request ID is `route:<routeId>:<eventId>` for the last of them. Delivering
+one event through one route twice writes it once. Only started agents receive notifications; prompt
+an agent once first. An agent's own `pi` turn events are never delivered to it.
+
 ## Catalog versus delivery
 
 `events.catalogList` and `events.catalogGet` describe event types and their schemas. `events.list`

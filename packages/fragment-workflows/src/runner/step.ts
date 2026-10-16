@@ -2,7 +2,10 @@
 
 import { AsyncLocalStorage } from "node:async_hooks";
 
-import { BufferedPumpRegistry } from "@fragno-dev/db/buffered-pump";
+import {
+  BufferedPumpRegistry,
+  BufferedPumpScopeAlreadyOpenError,
+} from "@fragno-dev/db/buffered-pump";
 
 import type { DatabaseRequestContext } from "@fragno-dev/db";
 
@@ -174,6 +177,7 @@ export class RunnerStep implements WorkflowStep {
   readonly #stepEmissions: WorkflowStepLivePumpRegistry;
   readonly #workflowsByName: Map<string, WorkflowRegistryEntry>;
   readonly #checkpoint: "step" | undefined;
+  #concurrencyConflict: BufferedPumpScopeAlreadyOpenError | null = null;
   #completedTopLevelSteps = 0;
 
   constructor(options: RunnerStepOptions) {
@@ -340,6 +344,26 @@ export class RunnerStep implements WorkflowStep {
     return this.#runInStepContext(parentScope, execute);
   }
 
+  /**
+   * The conflict this tick met when another tick of its instance was already running one of its
+   * steps. Workflow code can catch the error, and remote code receives it as a failed call, so
+   * the runner reads it here instead.
+   */
+  get concurrencyConflict(): BufferedPumpScopeAlreadyOpenError | null {
+    return this.#concurrencyConflict;
+  }
+
+  #openEmissionScope<TScope>(open: () => TScope): TScope {
+    try {
+      return open();
+    } catch (error) {
+      if (error instanceof BufferedPumpScopeAlreadyOpenError) {
+        this.#concurrencyConflict = error;
+      }
+      throw error;
+    }
+  }
+
   get remote(): RemoteWorkflowStepHost {
     return {
       do: async <T>(
@@ -488,14 +512,16 @@ export class RunnerStep implements WorkflowStep {
           instanceId: this.#instanceId,
         }),
     );
-    const emissionScope = livePumpHandle.pump.openScope(identity.stepKey, {
-      stepKey: identity.stepKey,
-      executionId: this.#executionId,
-      epoch: this.#createEpoch(),
-      eventConsumptions: pendingEventConsumptions,
-      queueEventConsumption,
-      isEventConsumptionQueued,
-    });
+    const emissionScope = this.#openEmissionScope(() =>
+      livePumpHandle.pump.openScope(identity.stepKey, {
+        stepKey: identity.stepKey,
+        executionId: this.#executionId,
+        epoch: this.#createEpoch(),
+        eventConsumptions: pendingEventConsumptions,
+        queueEventConsumption,
+        isEventConsumptionQueued,
+      }),
+    );
     const stepStartedAt = performance.now();
     let emissionsEnqueued = 0;
     const schedulerAbortController = new AbortController();
@@ -837,14 +863,16 @@ export class RunnerStep implements WorkflowStep {
             instanceId: this.#instanceId,
           }),
       );
-      const emissionScope = livePumpHandle.pump.openScope(stepKey, {
-        stepKey,
-        executionId: this.#executionId,
-        epoch: this.#createEpoch(),
-        eventConsumptions: new Map(),
-        queueEventConsumption: () => {},
-        isEventConsumptionQueued: () => false,
-      });
+      const emissionScope = this.#openEmissionScope(() =>
+        livePumpHandle.pump.openScope(stepKey, {
+          stepKey,
+          executionId: this.#executionId,
+          epoch: this.#createEpoch(),
+          eventConsumptions: new Map(),
+          queueEventConsumption: () => {},
+          isEventConsumptionQueued: () => false,
+        }),
+      );
       const schedulerAbortController = new AbortController();
       const schedulerLease = livePumpHandle.runWhile({
         kind: "writer",

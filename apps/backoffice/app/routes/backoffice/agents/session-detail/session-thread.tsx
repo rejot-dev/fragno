@@ -5,7 +5,18 @@ import { useEffect, useRef, useState, type UIEvent } from "react";
 
 import { ComposerPrimitive, QueueItemPrimitive, ThreadPrimitive } from "@assistant-ui/react";
 
-import { AssistantMessage, CompactionMessage, UserMessage } from "./messages";
+import type {
+  PiCompactionMessageMetadata,
+  PiNotificationMessageMetadata,
+  PiNotificationRequestMessageMetadata,
+} from "./assistant-runtime";
+import {
+  AssistantMessage,
+  CompactionMessage,
+  NotificationMessage,
+  NotificationRequestMessage,
+  UserMessage,
+} from "./messages";
 import { tapScale } from "./ui";
 
 const contextTokenFormatter = new Intl.NumberFormat("en-US", {
@@ -181,7 +192,16 @@ export function SessionThread({
                     showUsage={showUsage}
                   />
                 ) : (
-                  <CompactionMessage />
+                  <SystemMessage
+                    kind={
+                      (
+                        message.metadata.custom as
+                          | PiCompactionMessageMetadata
+                          | PiNotificationMessageMetadata
+                          | PiNotificationRequestMessageMetadata
+                      ).kind
+                    }
+                  />
                 )}
               </>
             )}
@@ -491,4 +511,25 @@ function ComposerActionItem({
       </Menu.RadioItemIndicator>
     </Menu.RadioItem>
   );
+}
+
+/** System messages are compactions or notifications; their metadata names which. */
+function SystemMessage({
+  kind,
+}: {
+  kind: (
+    | PiCompactionMessageMetadata
+    | PiNotificationMessageMetadata
+    | PiNotificationRequestMessageMetadata
+  )["kind"];
+}) {
+  switch (kind) {
+    case "notification":
+      return <NotificationMessage />;
+    case "notification-request":
+      return <NotificationRequestMessage />;
+    case "compaction":
+      return <CompactionMessage />;
+  }
+  throw new Error("Unsupported system message kind.");
 }

@@ -7,6 +7,7 @@ import {
   BACKOFFICE_PERMISSION,
   type BackofficePermissionRequirement,
 } from "./shared/permissions";
+import { piAgentNameSchema } from "./shared/pi-agent-name";
 import { backofficeContextScopeSchema } from "./shared/scope";
 
 export const piAgentModelSchema = z.lazy(() =>
@@ -14,16 +15,6 @@ export const piAgentModelSchema = z.lazy(() =>
     provider: z.string().min(1),
     modelId: z.string().min(1),
   }),
-);
-
-/** Agent names identify an agent's definition and its one ongoing conversation within a scope. */
-export const piAgentNameSchema = z.lazy(() =>
-  z
-    .string()
-    .regex(
-      /^[a-z][a-z0-9-]{0,62}$/,
-      "Agent names start with a lowercase letter and contain only lowercase letters, digits, and hyphens.",
-    ),
 );
 
 /** Organization and project agents bill their organization; user and system agents choose once. */

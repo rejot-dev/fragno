@@ -12,6 +12,7 @@ import { cn } from "../cn";
 import { Icon, type IconName } from "./icon";
 import {
   itemKey,
+  ORCHESTRATION_TARGET_KIND_LABEL,
   relatedOrchestrationItems,
   type OrchestrationGraph,
   type OrchestrationGraphItem,
@@ -26,6 +27,7 @@ import {
   DISABLED_EDGE_DASH,
   OrchestrationPulseAnimation,
   routeActionLabel,
+  TARGET_KIND_PRESENTATION,
   type OrchestrationPulse,
 } from "./orchestration-graph-parts";
 import {
@@ -412,9 +414,9 @@ export function OrchestrationRadialGraph({
         const target = graph.targets.find((candidate) => candidate.id === active.id);
         return target ? (
           <HubDetail
-            eyebrow={target.kind === "workflow" ? "Workflow" : "Scope"}
+            eyebrow={ORCHESTRATION_TARGET_KIND_LABEL[target.kind]}
             title={target.label}
-            detail={target.kind === "workflow" ? `${target.activeCount} running` : "Forward target"}
+            detail={target.kind === "workflow" ? `${target.activeCount} running` : null}
           />
         ) : null;
       }
@@ -738,22 +740,16 @@ export function OrchestrationRadialGraph({
               r={TARGET_NODE_RADIUS}
               className={cn(
                 "fill-[var(--bo-panel)] transition-[stroke-width]",
-                target.kind === "workflow"
-                  ? "stroke-rose-800/60 dark:stroke-rose-300/60"
-                  : "stroke-violet-600/70 dark:stroke-violet-300/70",
+                TARGET_KIND_PRESENTATION[target.kind].strokeClassName,
               )}
               strokeWidth={isSelected(item) ? 3 : 1.5}
             />
             <SvgIcon
-              name={target.kind === "workflow" ? "share-2" : "globe"}
+              name={TARGET_KIND_PRESENTATION[target.kind].icon}
               x={x}
               y={y}
               size={16}
-              className={
-                target.kind === "workflow"
-                  ? "text-rose-900 dark:text-rose-200"
-                  : "text-violet-700 dark:text-violet-200"
-              }
+              className={TARGET_KIND_PRESENTATION[target.kind].iconClassName}
             />
             <text
               x={labelX}
