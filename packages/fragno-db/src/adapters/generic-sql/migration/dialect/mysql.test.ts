@@ -707,10 +707,11 @@ describe("MySQLSQLGenerator", () => {
         type: "drop-index",
         table: "test_table",
         name: "idx_email",
+        unique: false,
       };
 
       const sql = compileOne(operation);
-      expect(sql).toMatchInlineSnapshot(`"drop index if exists \`idx_email\` on \`test_table\`"`);
+      expect(sql).toMatchInlineSnapshot(`"drop index \`idx_email\` on \`test_table\`"`);
     });
   });
 

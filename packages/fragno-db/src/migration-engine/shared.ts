@@ -74,6 +74,8 @@ export type MigrationOperation<
       type: "drop-index";
       table: string;
       name: string;
+      // Unique and other indexes are named differently in the database.
+      unique: boolean;
     } & { metadata?: TMeta })
   | ({
       type: "add-index";

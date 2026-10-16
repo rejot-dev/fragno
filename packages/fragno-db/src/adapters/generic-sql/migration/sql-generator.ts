@@ -394,9 +394,10 @@ export abstract class SQLGenerator {
     operation: Extract<MigrationOperation, { type: "drop-index" }>,
     resolver?: NamingResolver,
   ): CompiledQuery {
-    const tableName = this.getTableName(operation.table, resolver);
-    const indexName = this.getIndexName(operation.name, operation.table, resolver);
-    return this.getSchemaBuilder(resolver).dropIndex(indexName).ifExists().on(tableName).compile();
+    // The schema created the index, so a missing one is an error, not something to skip.
+    return this.getSchemaBuilder(resolver)
+      .dropIndex(this.getIndexName(operation.name, operation.table, resolver, operation.unique))
+      .compile();
   }
 
   /**
