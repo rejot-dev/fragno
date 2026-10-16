@@ -45,7 +45,9 @@ Bookkeeping account on their first successful login. The same authorization also
 server act for that user in Backoffice organizations that have installed Bookkeeping (see
 [Organizations and Backoffice](#organizations-and-backoffice)).
 
-Set these values in `.dev.vars` (never commit credentials):
+`pnpm --dir apps/bookkeeping backoffice:connect` sets all of these up (see
+[Organizations and Backoffice](#organizations-and-backoffice)). To configure them by hand, set these
+values in `.dev.vars` (never commit credentials):
 
 - `BACKOFFICE_BASE_URL`: the exact Backoffice origin used in your browser, e.g.
   `http://127.0.0.1:5173`. Do not mix `localhost` and `127.0.0.1`.
@@ -93,12 +95,22 @@ only Bookkeeping's server reads them through the Auth Durable Object.
 Bookkeeping uses Better Auth's organization plugin. Create an organization at
 `/dashboard/organizations`; you become its owner and it becomes your active organization.
 
-An organization connects to one Backoffice organization (and vice versa). One-time setup in the
-**Backoffice terminal**, in System context, as a global administrator:
+An organization connects to one Backoffice organization (and vice versa). One-time setup, as a
+Backoffice global administrator, from the repository root:
 
 ```sh
-admin.apps.create --oauth-client-id BOOKKEEPING_CLIENT_ID --requested-permissions-json '[{"namespace":"events","permission":"emit"}]'
+pnpm --dir apps/bookkeeping backoffice:connect
 ```
+
+The script signs in through the Backoffice CLI, creates Bookkeeping's OAuth client (or repairs the
+one in `.dev.vars`: callback URL, scopes, and client credentials), registers the app with
+`events.emit` and the actions declared in `workers/backoffice-actions.ts`, and writes the client ID,
+secret, and both origins to `.dev.vars`. It reads both origins from `.dev.vars` and defaults to
+`http://127.0.0.1:5173` and `http://127.0.0.1:6174`; pass `--backoffice-url` or `--bookkeeping-url`
+to change them, which also moves the callback and the action endpoint. The app is registered as
+`app#bookkeeping`; pass `--slug` to choose another permanent name. Rerunning converges on the same
+client and app. Action changes apply automatically to existing installations; pass
+`--change-approval installation` to make each organization approve them. Production requires HTTPS.
 
 Then an owner or admin of the Bookkeeping organization opens **Backoffice → Connect to Backoffice**:
 
@@ -136,6 +148,17 @@ to reauthorize. A delivery that cannot be confirmed is reported, not retried, to
 
 Uninstalling Bookkeeping, narrowing its permissions or projects, or removing a member in Backoffice
 takes effect immediately, including for credentials already issued.
+
+### Backoffice actions
+
+Backoffice calls Bookkeeping too: a connected organization's members and agents run
+`organization.get` through the `app#bookkeeping` integration connection, e.g.
+`integrations.execute --connection-id 'app#bookkeeping' --action-id organization.get --input-json '{}'`,
+or through a client from `integrations.generateClient`. `workers/backoffice-actions.ts` serves
+`POST /api/backoffice/actions`: it verifies Backoffice's per-request token with
+`createAppActionVerifier`, then answers only for the Bookkeeping organization the installation
+claimed, and only while that organization is still linked to the Backoffice organization the request
+names.
 
 ## Bookkeeping schema
 
