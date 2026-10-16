@@ -15,6 +15,7 @@ export type OrchestrationRouteAction =
   | { kind: "start_workflow"; targetId: string }
   | { kind: "send_workflow_event"; targetId: string; eventType: string }
   | { kind: "forward_event"; targetId: string }
+  | { kind: "notify_agent"; targetId: string }
   | { kind: "reclassify_event"; eventId: string };
 
 export type OrchestrationRoute = {
@@ -30,8 +31,15 @@ export type OrchestrationRoute = {
 export type OrchestrationTarget = {
   id: string;
   label: string;
-  kind: "workflow" | "scope";
+  kind: "workflow" | "scope" | "agent";
   activeCount: number;
+};
+
+/** What each kind of route target is called wherever a graph or its inspector names it. */
+export const ORCHESTRATION_TARGET_KIND_LABEL: Record<OrchestrationTarget["kind"], string> = {
+  workflow: "Workflow",
+  scope: "Forward target",
+  agent: "Agent",
 };
 
 export type OrchestrationGraph = {

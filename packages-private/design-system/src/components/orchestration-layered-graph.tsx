@@ -13,6 +13,7 @@ import { Icon } from "./icon";
 import { Input } from "./input";
 import {
   itemKey,
+  ORCHESTRATION_TARGET_KIND_LABEL,
   relatedOrchestrationItems,
   searchOrchestrationGraph,
   searchTerms,
@@ -28,6 +29,7 @@ import {
   DISABLED_EDGE_DASH,
   OrchestrationPulseAnimation,
   routeActionLabel,
+  TARGET_KIND_PRESENTATION,
   type OrchestrationPulse,
 } from "./orchestration-graph-parts";
 import {
@@ -618,7 +620,7 @@ export function OrchestrationLayeredGraph({
 
             {layout.targets.map((node) => {
               const targetItem = { kind: "target", id: node.target.id } as const;
-              const isWorkflow = node.target.kind === "workflow";
+              const presentation = TARGET_KIND_PRESENTATION[node.target.kind];
               return (
                 <button
                   key={node.target.id}
@@ -627,10 +629,7 @@ export function OrchestrationLayeredGraph({
                   aria-label={`${node.target.label} ${node.target.kind}`}
                   className={cn(
                     "absolute flex items-center gap-2.5 rounded-[4px] border border-[var(--bo-border)] bg-[var(--bo-panel)] px-2.5 text-left shadow-[0_1px_2px_rgb(0_0_0/0.04)] transition-[opacity,box-shadow] duration-200 hover:shadow-[0_4px_14px_rgb(0_0_0/0.06)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none",
-                    isSelected(targetItem) &&
-                      (isWorkflow
-                        ? "ring-2 ring-rose-900/25 dark:ring-rose-300/25"
-                        : "ring-2 ring-violet-600/30"),
+                    isSelected(targetItem) && presentation.ringClassName,
                   )}
                   style={{
                     left: targetLeft,
@@ -643,16 +642,10 @@ export function OrchestrationLayeredGraph({
                   <span
                     className={cn(
                       "flex h-7 w-7 shrink-0 items-center justify-center rounded-[3px]",
-                      isWorkflow
-                        ? "bg-rose-950/8 text-rose-950 dark:bg-rose-300/10 dark:text-rose-200"
-                        : "bg-violet-500/10 text-violet-700 dark:text-violet-300",
+                      presentation.badgeClassName,
                     )}
                   >
-                    <Icon
-                      name={isWorkflow ? "share-2" : "globe"}
-                      className="h-3.5 w-3.5"
-                      strokeWidth={1.8}
-                    />
+                    <Icon name={presentation.icon} className="h-3.5 w-3.5" strokeWidth={1.8} />
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-semibold text-[var(--bo-fg)]">
@@ -666,11 +659,9 @@ export function OrchestrationLayeredGraph({
                           : "text-[var(--bo-muted-2)]",
                       )}
                     >
-                      {isWorkflow
-                        ? node.target.activeCount > 0
-                          ? `${node.target.activeCount} running`
-                          : "Workflow"
-                        : "Forward target"}
+                      {node.target.activeCount > 0
+                        ? `${node.target.activeCount} running`
+                        : ORCHESTRATION_TARGET_KIND_LABEL[node.target.kind]}
                     </span>
                   </span>
                 </button>
