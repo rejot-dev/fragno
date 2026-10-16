@@ -6,6 +6,7 @@ import {
 import {
   type BackofficeContextScope,
   backofficeContextScopeSchema,
+  backofficeAppScopeSchema,
   backofficeOrganizationScopeSchema,
   backofficeProjectScopeSchema,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
@@ -61,6 +62,7 @@ const installedAppJwtPayloadSchema = z.object({
   }),
   scopeRestriction: z.discriminatedUnion("kind", [
     backofficeOrganizationScopeSchema,
+    backofficeAppScopeSchema,
     backofficeProjectScopeSchema,
   ]),
   iss: z.literal(ACCESS_TOKEN_ISSUER),

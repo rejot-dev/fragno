@@ -17,6 +17,7 @@ import {
   type BackofficeAppLookupInput,
 } from "@fragno-dev/backoffice-api/v0/apps";
 import { jsonValueSchema } from "@fragno-dev/backoffice-api/v0/shared/json";
+import { backofficeScopeRootOwner } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { DurableObject, RpcTarget } from "cloudflare:workers";
 
@@ -25,7 +26,7 @@ import type { HookContext } from "@fragno-dev/db";
 import { requireBackofficeContextScopeFromDurableObjectId } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import {
-  appInstallationResourceScopeContains,
+  appInstallationReaches,
   backofficeAppInstallationClaimInputSchema,
   backofficeAppInstallationInputSchema,
   effectiveAppActions,
@@ -134,7 +135,7 @@ export class InMemoryAppInstallationsObject
       await recordIntegrationConnectionState(
         this.#runtime.objects.automations.for(scope).commands,
         {
-          id: `${context.hookId.toString()}:${scope.kind === "org" ? "org" : scope.projectId}`,
+          id: `${context.hookId.toString()}:${scope.kind === "project" ? scope.projectId : scope.kind}`,
           scope,
           service: "app",
           connectionId: encodeAppConnectionId(app.slug),
@@ -272,10 +273,8 @@ export class InMemoryAppInstallationsObject
       }
       const { installation, actions } = connection;
       if (
-        (input.scopeRestriction.kind === "org"
-          ? input.scopeRestriction.orgId
-          : input.scopeRestriction.owner.orgId) !== this.#organizationId ||
-        !appInstallationResourceScopeContains(installation.resourceScope, input.scopeRestriction)
+        backofficeScopeRootOwner(input.scopeRestriction).orgId !== this.#organizationId ||
+        !appInstallationReaches(installation, input.scopeRestriction)
       ) {
         throw new BackofficeAppDomainError(
           "APP_INSTALLATION_OUT_OF_SCOPE",

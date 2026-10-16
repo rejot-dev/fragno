@@ -4,12 +4,13 @@ import type {
   IntegrationConnection,
   IntegrationInspection,
 } from "@fragno-dev/backoffice-api/v0/integrations";
+import { backofficeScopeRootOwner } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import { isBackofficeUnavailableError } from "@/backoffice-runtime/kernel";
 import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import {
-  appInstallationResourceScopeContains,
+  appInstallationReaches,
   appInstallationTargetScope,
   type AppInstallationTargetScope,
   type BackofficeAppConnection,
@@ -54,7 +55,7 @@ function actorOf(context: IntegrationContext): AppActionTokenClaims["actor"] {
 function callableActions(connection: BackofficeAppConnection, scope: AppScope) {
   if (
     connection.status !== "installed" ||
-    !appInstallationResourceScopeContains(connection.installation.resourceScope, scope) ||
+    !appInstallationReaches(connection.installation, scope) ||
     connection.actions.kind === "none"
   ) {
     return null;
@@ -84,7 +85,7 @@ function inspectAppConnection(
       : [
           `The app's actions changed (revision ${pendingActionsRevision}). Review them with apps.get and approve them with apps.installations.approveActions to run new or changed actions; until then the approved actions run.`,
         ];
-  if (!appInstallationResourceScopeContains(installation.resourceScope, scope)) {
+  if (!appInstallationReaches(installation, scope)) {
     return {
       configuration: { status: "missing", missingFields: ["installation"] },
       authorization: { status: "missing" },
@@ -145,7 +146,7 @@ export function appConnectionState(
 ): IntegrationConnectionState | "disconnected" {
   if (
     connection.status !== "installed" ||
-    !appInstallationResourceScopeContains(connection.installation.resourceScope, scope)
+    !appInstallationReaches(connection.installation, scope)
   ) {
     return "disconnected";
   }
@@ -171,7 +172,7 @@ export function createAppIntegration({
     try {
       return context.kernel.scoped(
         "APP_INSTALLATIONS",
-        scope.kind === "org" ? scope : scope.owner,
+        backofficeScopeRootOwner(scope),
         runtime.objects.appInstallations,
       ).commands;
     } catch (error) {

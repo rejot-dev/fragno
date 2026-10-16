@@ -13,7 +13,7 @@ import type { BackofficeAuthorityResolver } from "@/backoffice-runtime/authority
 import type { BackofficeDeferredExecution } from "@/backoffice-runtime/context";
 
 import {
-  appInstallationResourceScopeContains,
+  appInstallationReaches,
   appInstallationTargetScope,
   type AppInstallationTargetScope,
 } from "./contracts";
@@ -146,7 +146,7 @@ export function createAppInstallationAuthorityResolver({
     if (
       installation?.status !== "active" ||
       installation.activation !== activation.activation ||
-      !appInstallationResourceScopeContains(installation.resourceScope, target)
+      !appInstallationReaches(installation, target)
     ) {
       return [];
     }

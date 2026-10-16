@@ -62,7 +62,25 @@ export type BackofficeRouteScopeResolution<
 > =
   | { status: "resolved"; scope: BackofficeResolvedScope<TOrganization, TProject> }
   | { status: "organization-not-found"; orgSlug: string }
+  | { status: "app-not-found"; appId: string }
   | { status: "project-not-found"; projectSlug: string };
+
+/** What resolving a page URL looks up beyond the user's organizations. */
+export type BackofficeRouteScopeLookups<
+  TOrganization extends BackofficeOrganizationIdentity,
+  TProject extends BackofficeProjectIdentity,
+> = {
+  organizations: readonly TOrganization[];
+  // An app's owner names no project, so this lookup does not infer the project type.
+  isAppInstalled(
+    owner: Extract<BackofficeResolvedScope<TOrganization>, { kind: "app" }>["owner"],
+    appId: string,
+  ): Promise<boolean>;
+  findProject(
+    owner: BackofficeResolvedProjectOwner<TOrganization, TProject>,
+    projectSlug: string,
+  ): Promise<TProject | null>;
+};
 
 /** A resolved scope that can own projects. */
 export type BackofficeResolvedProjectOwner<
@@ -71,21 +89,15 @@ export type BackofficeResolvedProjectOwner<
 > = Extract<BackofficeResolvedScope<TOrganization, TProject>, { kind: "project" }>["owner"];
 
 /**
- * Resolves untrusted URL slugs into the organization and project they name. A project slug is
- * looked up with its owner, which stores it.
+ * Resolves untrusted URL slugs into the organization and project they name. An app's workspace
+ * exists while the app is installed, and a project slug is looked up with its owner, which stores it.
  */
 export async function resolveBackofficeRouteScope<
   TOrganization extends BackofficeOrganizationIdentity,
   TProject extends BackofficeProjectIdentity,
 >(
   routeScope: BackofficeRouteScope,
-  lookups: {
-    organizations: readonly TOrganization[];
-    findProject(
-      owner: BackofficeResolvedProjectOwner<TOrganization, TProject>,
-      projectSlug: string,
-    ): Promise<TProject | null>;
-  },
+  lookups: BackofficeRouteScopeLookups<TOrganization, TProject>,
 ): Promise<BackofficeRouteScopeResolution<TOrganization, TProject>> {
   const reference = backofficeScopeOrganization(routeScope);
   const organization = reference
@@ -99,6 +111,16 @@ export async function resolveBackofficeRouteScope<
     organization: () => ({ organization: organization! }),
     project: () => ({ project: project! }),
   });
+  const workspace = routeScope.kind === "project" ? routeScope.owner : routeScope;
+  if (
+    workspace.kind === "app" &&
+    !(await lookups.isAppInstalled(
+      mapBackofficeScopeNames(workspace.owner, resolvedNames(null)),
+      workspace.appId,
+    ))
+  ) {
+    return { status: "app-not-found", appId: workspace.appId };
+  }
   if (routeScope.kind !== "project") {
     return { status: "resolved", scope: mapBackofficeScopeNames(routeScope, resolvedNames(null)) };
   }

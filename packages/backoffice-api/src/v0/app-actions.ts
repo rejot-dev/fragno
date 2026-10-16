@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { appInstallationExternalAccountSchema } from "./apps";
 import { jsonValueSchema } from "./shared/json";
-import { backofficeOrganizationScopeSchema, backofficeProjectScopeSchema } from "./shared/scope";
+import { backofficeRoutableScopeSchema } from "./shared/scope";
 
 /** Issuer of every token Backoffice's auth server signs. */
 export const BACKOFFICE_TOKEN_ISSUER = "fragno-backoffice-auth";
@@ -45,10 +45,7 @@ export const appActionTokenClaimsSchema = z.object({
     activation: z.number().int().positive(),
     externalAccount: appInstallationExternalAccountSchema,
   }),
-  scopeRestriction: z.discriminatedUnion("kind", [
-    backofficeOrganizationScopeSchema,
-    backofficeProjectScopeSchema,
-  ]),
+  scopeRestriction: backofficeRoutableScopeSchema,
   /** Base64url SHA-256 of the exact request body bytes. */
   bodySha256: z.string().min(1),
 });

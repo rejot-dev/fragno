@@ -201,6 +201,17 @@ export function backofficeScopeProjectOwner<TNames extends BackofficeScopeNames>
   }
 }
 
+/**
+ * The organization whose own workspace a scope is: the organization, or one of its projects. Unlike
+ * `backofficeScopeOrganization`, an installed app's workspace is not its organization's.
+ */
+export function backofficeWorkspaceOrganization<TNames extends BackofficeScopeNames>(
+  scope: BackofficeScope<TNames>,
+): BackofficeOrganizationScope<TNames> | null {
+  const owner = backofficeScopeProjectOwner(scope);
+  return owner?.kind === "org" ? owner : null;
+}
+
 /** Renames the records a scope refers to, e.g. from route slugs to runtime IDs; kinds are kept. */
 export function mapBackofficeScopeNames<
   TScope extends BackofficeScope<BackofficeScopeNames>,

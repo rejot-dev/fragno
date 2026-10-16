@@ -9,7 +9,7 @@ import { APIError } from "better-auth/api";
 import { z } from "zod";
 
 import {
-  appInstallationResourceScopeContains,
+  appInstallationReaches,
   appInstallationTargetScope,
 } from "@/fragno/app-installations/contracts";
 import {
@@ -198,8 +198,8 @@ async function exchangeFirstPartyUserToken(
 }
 
 /**
- * Issues an app credential for an organization or project that has the app installed, within the
- * installation's approved resources. A user token additionally requires the user's own current
+ * Issues an app credential for an organization that has the app installed: within the
+ * installation's approved resources, or in the app's own workspace there. A user token additionally requires the user's own current
  * membership, never the installing administrator's; a client-credentials token acts as the
  * installation itself.
  */
@@ -212,7 +212,7 @@ async function exchangeInstalledAppToken(
   const scope = input.scope && appInstallationTargetScope(input.scope);
   if (!scope) {
     throw new BackofficeExecutionTokenScopeError(
-      "Installed apps require an explicit organization scope or one of its projects.",
+      "Installed apps require an explicit organization scope, one of its projects, or the app's workspace.",
     );
   }
   if (identity.userId !== null) {
@@ -231,7 +231,12 @@ async function exchangeInstalledAppToken(
       "This app is not installed in the requested organization.",
     );
   }
-  if (!appInstallationResourceScopeContains(installation.resourceScope, scope)) {
+  if (
+    !appInstallationReaches(
+      { appId: identity.appId, resourceScope: installation.resourceScope },
+      scope,
+    )
+  ) {
     throw new BackofficeExecutionTokenScopeError(
       "This app's installation does not include the requested scope.",
     );
