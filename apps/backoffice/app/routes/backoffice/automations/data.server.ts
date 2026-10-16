@@ -119,7 +119,7 @@ export async function lookupAutomationProject(
 
 export async function createAutomationProject(
   context: Readonly<RouterContextProvider>,
-  orgId: string,
+  owner: BackofficeProjectOwner<BackofficeScopeIdNames>,
   input: {
     name: string;
     slug?: string;
@@ -129,7 +129,7 @@ export async function createAutomationProject(
 ): Promise<{ project: AutomationProjectRecord | null; error: string | null }> {
   try {
     const callRoute = createAutomationsRouteCaller({
-      object: getScopedAutomationsObject(context, { kind: "org", orgId }),
+      object: getScopedAutomationsObject(context, owner),
     });
     const response = await callRoute("POST", "/projects", { body: input });
 

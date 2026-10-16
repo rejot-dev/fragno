@@ -1,4 +1,4 @@
-import { backofficeScopeOrganization } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import { backofficeScopeProjectOwner } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { Button, ButtonLink } from "@fragno-private/design-system/button";
 import { ClientOnly } from "@fragno-private/design-system/client-only";
 import { Field } from "@fragno-private/design-system/field";
@@ -109,10 +109,9 @@ export async function action({ request, context }: Route.ActionArgs) {
   }
 
   const { me } = getBackofficeShellRequest(context);
-  const organization =
-    backofficeScopeOrganization(requireRouteScope(context).resolvedScope)?.organization ??
-    me.activeOrganization?.organization;
-  if (!organization) {
+  // A new project sits beside the current workspace.
+  const owner = backofficeScopeProjectOwner(requireRouteScope(context).resolvedScope);
+  if (!owner) {
     throw new Response("Not Found", { status: 404 });
   }
 
@@ -122,11 +121,15 @@ export async function action({ request, context }: Route.ActionArgs) {
   }
   const description = String(formData.get("description") ?? "").trim();
 
-  const result = await createAutomationProject(context, organization.id, {
-    name,
-    description: description || null,
-    createdByUserId: me.user.id,
-  });
+  const result = await createAutomationProject(
+    context,
+    backofficeRuntimeScopeFromResolvedScope(owner),
+    {
+      name,
+      description: description || null,
+      createdByUserId: me.user.id,
+    },
+  );
   const projectSlug = result.project?.slug;
   if (result.error || !projectSlug) {
     return {
@@ -138,7 +141,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   return redirect(
     dashboardPath({
       kind: "project",
-      owner: { kind: "org", orgSlug: organization.slug },
+      owner: backofficeRouteScopeFromResolvedScope(owner),
       projectSlug,
     }),
   );

@@ -661,7 +661,7 @@ describe("marketplace scenarios", { concurrent: false }, () => {
         ],
         steps: ({ when, then, runner }) => [
           when.project.create({
-            orgId: "org-1",
+            owner: { kind: "org", orgId: "org-1" },
             slug: "telegram-project",
             name: "Telegram Project",
             createdByUserId: "user-1",

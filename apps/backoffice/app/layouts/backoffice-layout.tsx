@@ -45,8 +45,9 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const projectCollectionSourcePromise: Promise<
     CurrentBackofficeContext["projectCollectionSource"]
   > | null =
-    resolvedScope.kind === "org"
-      ? automationCollectionSourcePromise
+    // The project menu lists the projects beside the workspace, which their owner stores.
+    resolvedScope.kind === "system"
+      ? null
       : resolvedScope.kind === "project"
         ? fetchAutomationCollectionSource(request, context, resolvedScope.owner).then(
             (source): CurrentBackofficeContext["automationCollectionSource"] => ({
@@ -60,7 +61,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
                 error instanceof Error ? error.message : "Project synchronization is unavailable.",
             }),
           )
-        : null;
+        : automationCollectionSourcePromise;
   const [automationCollectionSource, projectCollectionSource] = await Promise.all([
     automationCollectionSourcePromise,
     projectCollectionSourcePromise,

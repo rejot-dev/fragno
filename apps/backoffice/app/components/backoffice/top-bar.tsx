@@ -1,3 +1,4 @@
+import { backofficeScopeProjectOwner } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { ClientOnly } from "@fragno-private/design-system/client-only";
 import { Icon } from "@fragno-private/design-system/icon";
 import { Suspense, use } from "react";
@@ -17,7 +18,11 @@ import { useAutomationProjects } from "@/fragno/automation/tanstack/use-automati
 
 import { BackofficeAccountMenu } from "./account-menu";
 import { GLOBAL_WORKFLOW_DRAWER_ID } from "./global-workflow-drawer";
-import { BackofficeProjectMenu, type BackofficeProjectOption } from "./project-menu";
+import {
+  BackofficeProjectMenu,
+  type BackofficeProjectMenuOwner,
+  type BackofficeProjectOption,
+} from "./project-menu";
 import { BackofficeScopeMenu } from "./scope-menu";
 import { BackofficeMobileNav } from "./sidebar-nav";
 
@@ -34,17 +39,17 @@ type BackofficeTopBarProps = {
 };
 
 function LocalFirstBackofficeProjectMenu({
-  orgSlug,
+  owner,
   currentProject,
   sourceState,
 }: {
-  orgSlug: string;
+  owner: BackofficeProjectMenuOwner;
   currentProject: BackofficeProjectOption | null;
   sourceState: AutomationCollectionSourceState | null;
 }) {
   const loadingMenu = (
     <BackofficeProjectMenu
-      orgSlug={orgSlug}
+      owner={owner}
       currentProject={currentProject}
       projects={EMPTY_PROJECTS}
       projectsError={null}
@@ -54,7 +59,7 @@ function LocalFirstBackofficeProjectMenu({
   if (!sourceState || sourceState.status === "unavailable") {
     return (
       <BackofficeProjectMenu
-        orgSlug={orgSlug}
+        owner={owner}
         currentProject={currentProject}
         projects={EMPTY_PROJECTS}
         projectsError={sourceState?.message ?? "Project synchronization is unavailable."}
@@ -69,7 +74,7 @@ function LocalFirstBackofficeProjectMenu({
     <ClientOnly fallback={loadingMenu}>
       <Suspense fallback={loadingMenu}>
         <SynchronizedBackofficeProjectMenu
-          orgSlug={orgSlug}
+          owner={owner}
           currentProject={currentProject}
           source={sourceState.source}
         />
@@ -79,11 +84,11 @@ function LocalFirstBackofficeProjectMenu({
 }
 
 function SynchronizedBackofficeProjectMenu({
-  orgSlug,
+  owner,
   currentProject,
   source,
 }: {
-  orgSlug: string;
+  owner: BackofficeProjectMenuOwner;
   currentProject: BackofficeProjectOption | null;
   source: AutomationCollectionSource;
 }) {
@@ -96,7 +101,7 @@ function SynchronizedBackofficeProjectMenu({
 
   return (
     <BackofficeProjectMenu
-      orgSlug={orgSlug}
+      owner={owner}
       currentProject={currentProject}
       projects={projects}
       projectsError={projectsState.status === "error" ? projectsState.message : null}
@@ -115,9 +120,7 @@ export function BackofficeTopBar({
   onWorkflowDrawerToggle,
 }: BackofficeTopBarProps) {
   const routeScope = resolvedScope ? backofficeRouteScopeFromResolvedScope(resolvedScope) : null;
-  // The menu lists the projects the current scope owns, or those of the current project's owner.
-  const projectOwner = resolvedScope?.kind === "project" ? resolvedScope.owner : resolvedScope;
-  const projectMenuOrganization = projectOwner?.kind === "org" ? projectOwner : null;
+  const projectOwner = resolvedScope && backofficeScopeProjectOwner(resolvedScope);
 
   return (
     <header className="sticky top-0 z-30 border-b border-[color:var(--bo-border)] bg-[color:var(--bo-bg)]">
@@ -133,10 +136,10 @@ export function BackofficeTopBar({
           />
         </div>
 
-        {resolvedScope && projectMenuOrganization ? (
+        {resolvedScope && projectOwner ? (
           <div className="flex min-w-0 flex-1 items-stretch min-[960px]:w-72 min-[960px]:flex-none min-[960px]:border-r min-[960px]:border-[color:var(--bo-border)]">
             <LocalFirstBackofficeProjectMenu
-              orgSlug={projectMenuOrganization.organization.slug}
+              owner={backofficeRouteScopeFromResolvedScope(projectOwner)}
               currentProject={
                 resolvedScope.kind === "project"
                   ? { slug: resolvedScope.project.slug, label: resolvedScope.project.name }

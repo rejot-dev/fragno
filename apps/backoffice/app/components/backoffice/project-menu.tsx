@@ -9,7 +9,10 @@ import {
 } from "@fragno-private/design-system/selector-menu";
 import { useLocation } from "react-router";
 
-import { backofficeRouteScopePath } from "@/backoffice-runtime/route-scope";
+import {
+  backofficeRouteScopePath,
+  type BackofficeRouteScope,
+} from "@/backoffice-runtime/route-scope";
 
 import { scopeSwitchPath } from "./scope-switch-path";
 
@@ -18,22 +21,41 @@ export type BackofficeProjectOption = {
   label: string;
 };
 
+/** The workspace whose projects the menu lists, as page URLs name it. */
+export type BackofficeProjectMenuOwner = Extract<
+  BackofficeRouteScope,
+  { kind: "project" }
+>["owner"];
+
+function ownerDescription(owner: BackofficeProjectMenuOwner): { name: string; scope: string } {
+  switch (owner.kind) {
+    case "org":
+      return { name: "This organization", scope: "the organization scope" };
+    case "user":
+      return { name: "Your personal workspace", scope: "your personal scope" };
+    case "app":
+      return { name: "This app", scope: "the app's workspace" };
+    default:
+      throw new Error("Unsupported project owner kind.", { cause: owner satisfies never });
+  }
+}
+
 export function BackofficeProjectMenu({
-  orgSlug,
+  owner,
   currentProject,
   projects,
   projectsError,
   projectsLoading,
 }: {
-  orgSlug: string;
+  owner: BackofficeProjectMenuOwner;
   currentProject: BackofficeProjectOption | null;
   projects: BackofficeProjectOption[];
   projectsError: string | null;
   projectsLoading: boolean;
 }) {
   const location = useLocation();
-  const organizationRouteScope = { kind: "org", orgSlug } as const;
-  const createProjectPath = `/backoffice/dashboard/${backofficeRouteScopePath(organizationRouteScope)}?createProject=1`;
+  const description = ownerDescription(owner);
+  const createProjectPath = `/backoffice/dashboard/${backofficeRouteScopePath(owner)}?createProject=1`;
 
   return (
     <SelectorMenu>
@@ -50,9 +72,9 @@ export function BackofficeProjectMenu({
         <SelectorMenuGroup label={null}>
           {currentProject ? (
             <SelectorMenuOption
-              to={scopeSwitchPath(location.pathname, organizationRouteScope)}
+              to={scopeSwitchPath(location.pathname, owner)}
               label="No project"
-              description="Return to the organization scope"
+              description={`Return to ${description.scope}`}
               badge={null}
               current={false}
             />
@@ -62,7 +84,7 @@ export function BackofficeProjectMenu({
               key={project.slug}
               to={scopeSwitchPath(location.pathname, {
                 kind: "project",
-                owner: organizationRouteScope,
+                owner,
                 projectSlug: project.slug,
               })}
               label={project.label}
@@ -74,7 +96,9 @@ export function BackofficeProjectMenu({
           {projectsLoading ? (
             <SelectorMenuNote tone="muted">Synchronizing projects…</SelectorMenuNote>
           ) : projects.length === 0 && !projectsError ? (
-            <SelectorMenuNote tone="muted">This organization has no projects yet.</SelectorMenuNote>
+            <SelectorMenuNote tone="muted">
+              {description.name} has no projects yet.
+            </SelectorMenuNote>
           ) : null}
           {projectsError ? <SelectorMenuNote tone="error">{projectsError}</SelectorMenuNote> : null}
           <SelectorMenuOption

@@ -809,7 +809,7 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
         ],
         steps: ({ when, then, runner }) => [
           when.project.create({
-            orgId: "org-1",
+            owner: { kind: "org", orgId: "org-1" },
             name: "Accounting",
             slug: "accounting",
             createdByUserId: "global-admin",

@@ -348,7 +348,7 @@ describe("admin app runtime tool SQLite scenarios", () => {
         ],
         steps: ({ when, then }) => [
           when.project.create({
-            orgId: "org-1",
+            owner: { kind: "org", orgId: "org-1" },
             name: "Accounting",
             slug: "accounting",
             createdByUserId: "admin-1",

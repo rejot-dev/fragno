@@ -579,10 +579,11 @@ export class BackofficeKernel {
         }
         deny();
         return;
+      // A scope reaches itself and the projects it owns.
       case "app":
       case "project":
       case "user":
-        if (backofficeContextScopesEqual(ownerScope, targetScope)) {
+        if (backofficeScopeContains(ownerScope, targetScope)) {
           return;
         }
         deny();
