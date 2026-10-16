@@ -70,7 +70,7 @@ const scenarioObjects = {
   UPLOAD: (input) => new InMemoryUploadObject(input),
 } satisfies LocalBackofficeObjects;
 
-const wholeOrganization = { kind: "organization" } as const;
+const wholeOrganization = { kind: "owner" } as const;
 
 const requestedPermissions = [BACKOFFICE_PERMISSION.events.emit, BACKOFFICE_PERMISSION.events.read];
 
@@ -294,7 +294,7 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
               expect(data.installation).toMatchObject({
                 id: data.installed.installationId,
                 appId,
-                organizationId: "org-1",
+                owner: { kind: "org", orgId: "org-1" },
                 status: "active",
                 installedByUserId: "owner",
                 grantedPermissions: [BACKOFFICE_PERMISSION.events.emit],
@@ -339,7 +339,7 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
                 ),
               ).rejects.toThrow("update it explicitly");
               const updated = await bash.exec(
-                `apps.installations.update --app-id ${appId} --granted-permissions-json '[]' --resource-scope-json '{"kind":"organization"}'`,
+                `apps.installations.update --app-id ${appId} --granted-permissions-json '[]' --resource-scope-json '{"kind":"owner"}'`,
               );
               assert.equal(updated.exitCode, 0, updated.stderr);
               expect(updated.stdout).toContain("Updated installation access.");
@@ -399,7 +399,7 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
                   .commands.getInstallation({ appId }),
               ).toMatchObject({
                 id: data.installation.id,
-                organizationId: "org-1",
+                owner: { kind: "org", orgId: "org-1" },
                 installedByUserId: "org-admin",
                 grantedPermissions: [BACKOFFICE_PERMISSION.events.read],
                 status: "active",
@@ -510,7 +510,12 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
             expect(deniedCode.error).toContain("Required permission: apps.manage.");
             for (const forged of [
               { appId, grantedPermissions: [], actionsRevision: 1, installedByUserId: "outsider" },
-              { appId, grantedPermissions: [], actionsRevision: 1, organizationId: "other-org" },
+              {
+                appId,
+                grantedPermissions: [],
+                actionsRevision: 1,
+                owner: { kind: "org", orgId: "other-org" },
+              },
             ]) {
               await expect(
                 executeBackofficeRuntimeTool(appTool("install"), forged, ownerTools),
@@ -589,7 +594,7 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
                 .forOrg("org-1")
                 .commands.getInstallation({ appId }),
             ).toMatchObject({
-              organizationId: "org-1",
+              owner: { kind: "org", orgId: "org-1" },
               installedByUserId: "owner",
               grantedPermissions: [],
               status: "active",
@@ -860,9 +865,10 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
                 other,
               ),
             ).rejects.toThrow("installation cursor is invalid");
+            // Installations are managed in their owner's scope, not in its projects or workspaces.
             for (const scope of [
               { kind: "system" },
-              { kind: "user", userId: "global-admin" },
+              { kind: "app", owner: { kind: "org", orgId: "org-1" }, appId: "any-app" },
               {
                 kind: "project",
                 owner: { kind: "org", orgId: "org-1" },
@@ -914,10 +920,10 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
                 new Set([firstId, second.installations[0].id, third.installations[0].id]).size,
                 3,
               );
-              expect([
-                second.installations[0].organizationId,
-                third.installations[0].organizationId,
-              ]).toEqual(["org-1", "org-1"]);
+              expect([second.installations[0].owner, third.installations[0].owner]).toEqual([
+                { kind: "org", orgId: "org-1" },
+                { kind: "org", orgId: "org-1" },
+              ]);
               for (const input of [
                 { pageSize: 2, cursor },
                 { pageSize: 1, cursor: "invalid" },

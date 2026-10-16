@@ -3,7 +3,7 @@ import {
   createAppActionVerifier,
 } from "@fragno-dev/backoffice-api/v0/app-actions";
 import type { AppAction } from "@fragno-dev/backoffice-api/v0/apps";
-import { backofficeScopeOrganization } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import { backofficeScopeRootOwner } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 /** Where Backoffice sends Bookkeeping's declared actions; registration names this URL. */
 export const BACKOFFICE_ACTIONS_PATH = "/api/backoffice/actions";
@@ -59,13 +59,10 @@ export async function handleBackofficeAction(
     throw error;
   }
   const { claims, request: call } = verified;
-  const backofficeOrganization = backofficeScopeOrganization(claims.scopeRestriction);
-  const organization =
-    backofficeOrganization &&
-    (await env.AUTH.getByName("auth").describeLinkedOrganization({
-      organizationId: claims.installation.externalAccount.id,
-      backofficeOrganizationId: backofficeOrganization.orgId,
-    }));
+  const organization = await env.AUTH.getByName("auth").describeLinkedOrganization({
+    organizationId: claims.installation.externalAccount.id,
+    backofficeOwner: backofficeScopeRootOwner(claims.scopeRestriction),
+  });
   if (!organization) {
     return message(403, "This Bookkeeping organization is no longer linked to Backoffice.");
   }

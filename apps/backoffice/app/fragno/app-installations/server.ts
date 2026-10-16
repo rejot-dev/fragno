@@ -3,7 +3,7 @@ import type { BackofficeFragmentRuntimeOptions } from "@/backoffice-runtime/frag
 import type { AppInstallationsConfig } from "./definition";
 import { createAppInstallationsFragment } from "./fragment";
 
-/** Organization-scoped storage is supplied by the dedicated AppInstallations object. */
+/** Owner-scoped storage is supplied by the dedicated AppInstallations object. */
 export function createAppInstallationsServer(
   runtime: BackofficeFragmentRuntimeOptions,
   config: AppInstallationsConfig,

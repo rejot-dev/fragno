@@ -7,6 +7,7 @@ import type { BackofficeAuthorityResolver } from "./authority-resolver";
 import {
   getOrganizationRoleGrants,
   ORGANIZATION_ROLE_PERMISSION_NAMESPACES,
+  PERSONAL_SCOPE_GRANTS,
 } from "./authority-roles";
 import type { AuthObject } from "./object-registry";
 
@@ -25,6 +26,7 @@ const PRINCIPAL_ONLY_PERMISSION_KEYS: ReadonlySet<string> = new Set(
  *
  * Organization-role namespaces are replaced by grants for the principal's current roles in the
  * scoped organization. System administrators administer organizations they belong to as owners.
+ * In a user scope, only that user receives the personal grants; administrators do not.
  */
 export function createControlPlaneAuthorityResolver({
   resolver,
@@ -46,12 +48,15 @@ export function createControlPlaneAuthorityResolver({
       const withoutOrganizationRolePermissions = permissions.filter(
         ({ namespace }) => !ORGANIZATION_ROLE_PERMISSION_NAMESPACES.has(namespace),
       );
-      if (
-        execution.scope.kind !== "org" ||
-        principal.scope !== "internal" ||
-        principal.type !== "user" ||
-        permissions.length === 0
-      ) {
+      if (principal.scope !== "internal" || principal.type !== "user" || permissions.length === 0) {
+        return withoutOrganizationRolePermissions;
+      }
+      if (execution.scope.kind === "user") {
+        return execution.scope.userId === principal.id
+          ? [...withoutOrganizationRolePermissions, ...PERSONAL_SCOPE_GRANTS]
+          : withoutOrganizationRolePermissions;
+      }
+      if (execution.scope.kind !== "org") {
         return withoutOrganizationRolePermissions;
       }
 

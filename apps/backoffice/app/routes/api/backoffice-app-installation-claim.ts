@@ -16,8 +16,7 @@ function jsonResponse(body: unknown, status: number) {
 }
 
 /**
- * Lets an app's server link one of its own accounts to an installation an organization admin
- * just approved. The install code proves that approval and travels through the browser; the
+ * Lets an app's server link one of its own accounts to an installation its owner just approved. The install code proves that approval and travels through the browser; the
  * client-credentials token proves the caller is the app it was issued for. Neither alone suffices.
  */
 export async function action({ request, context }: Route.ActionArgs) {
@@ -72,7 +71,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   }
 
   const claimed = await runtime.objects.appInstallations
-    .forOrg(code.payload.organizationId)
+    .for(code.payload.owner)
     .commands.claimInstallation({
       appId: app.appId,
       activation: code.payload.activation,

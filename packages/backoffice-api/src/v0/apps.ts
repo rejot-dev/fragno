@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { BackofficeApiOperation } from "../api";
 import { BACKOFFICE_PERMISSION } from "./shared/permissions";
 import { backofficePermissionRequirementSchema } from "./shared/permissions";
+import { backofficeRootOwnerSchema } from "./shared/scope";
 
 /** App permission declarations and grants are sets; duplicate entries are malformed input. */
 export const appPermissionsSchema = z
@@ -14,7 +15,7 @@ export const appPermissionsSchema = z
     "Backoffice app permissions must not contain duplicates.",
   );
 
-/** App identity is global; an organization installation refers to the same registry ID. */
+/** App identity is global; an installation refers to the same registry ID. */
 export const backofficeAppLookupInputSchema = z.strictObject({ appId: z.string().min(1).max(191) });
 export type BackofficeAppLookupInput = z.infer<typeof backofficeAppLookupInputSchema>;
 
@@ -111,12 +112,13 @@ export const backofficeAppSchema = z
 export type BackofficeApp = z.infer<typeof backofficeAppSchema>;
 
 /**
- * The organization resources an installation may act on. Project lists are sets; they are
- * normalized so equal selections compare equal regardless of order.
+ * The owner's resources an installation may act on: everything the owner has, or some of the
+ * projects it owns. Project lists are sets; they are normalized so equal selections compare equal
+ * regardless of order.
  */
 const appInstallationResourceScopeSchema = z
   .discriminatedUnion("kind", [
-    z.strictObject({ kind: z.literal("organization") }),
+    z.strictObject({ kind: z.literal("owner") }),
     z.strictObject({
       kind: z.literal("projects"),
       // Piping into an array schema keeps the normalized form describable as JSON Schema.
@@ -131,7 +133,7 @@ const appInstallationResourceScopeSchema = z
   .meta({ id: "AppInstallationResourceScope" });
 export type AppInstallationResourceScope = z.infer<typeof appInstallationResourceScopeSchema>;
 
-/** What an organization approves: permissions, and the resources they apply to. */
+/** What an owner approves: permissions, and the resources they apply to. */
 export const appInstallationAccessSchema = z.strictObject({
   grantedPermissions: appPermissionsSchema,
   resourceScope: appInstallationResourceScopeSchema,
@@ -144,7 +146,7 @@ export const appInstallationExternalAccountSchema = z.strictObject({
 });
 export type AppInstallationExternalAccount = z.infer<typeof appInstallationExternalAccountSchema>;
 
-/** Access changes are explicit control-plane operations and cannot change organization ownership. */
+/** Access changes are explicit control-plane operations and cannot change the owner. */
 export const backofficeAppInstallationAccessInputSchema = backofficeAppLookupInputSchema.extend(
   appInstallationAccessSchema.shape,
 );
@@ -154,7 +156,7 @@ export type BackofficeAppInstallationAccessInput = z.infer<
 
 /** Installing approves access and, at the reviewed revision, the app's declared actions. */
 export const backofficeAppInstallInputSchema = backofficeAppInstallationAccessInputSchema.extend({
-  resourceScope: appInstallationResourceScopeSchema.default({ kind: "organization" }),
+  resourceScope: appInstallationResourceScopeSchema.default({ kind: "owner" }),
   actionsRevision: appActionsRevisionSchema.describe(
     "The actionsRevision reviewed with apps.get; installation fails if the declaration changed since.",
   ),
@@ -172,7 +174,7 @@ export type BackofficeAppInstallationActionsApprovalInput = z.infer<
   typeof backofficeAppInstallationActionsApprovalInputSchema
 >;
 
-/** Cursors remain bound to the owning organization even when each object has its own database. */
+/** Cursors remain bound to the owner even when each object has its own database. */
 export const backofficeAppInstallationPageInputSchema = z.strictObject({
   pageSize: z.number().int().min(1).max(100),
   cursor: z.string().min(1).nullable(),
@@ -181,12 +183,15 @@ export type BackofficeAppInstallationPageInput = z.infer<
   typeof backofficeAppInstallationPageInputSchema
 >;
 
-/** Installation authority belongs to the customer organization, not the installing user. */
+/**
+ * Installation authority belongs to its owner, an organization or a person, not to the installing
+ * user: an organization's installation outlives the administrator who approved it.
+ */
 export const backofficeAppInstallationSchema = z
   .strictObject({
     id: z.string().min(1),
     appId: z.string().min(1),
-    organizationId: z.string().min(1),
+    owner: backofficeRootOwnerSchema,
     grantedPermissions: appPermissionsSchema,
     resourceScope: appInstallationResourceScopeSchema,
     /** Null until the app's server claims the installation for one of its own tenants. */
@@ -219,7 +224,7 @@ export type BackofficeAppInstallationMutationResult = z.infer<
   typeof backofficeAppInstallationMutationResultSchema
 >;
 
-/** Organization installation history includes uninstalled records. */
+/** An owner's installation history includes uninstalled records. */
 export const backofficeAppInstallationPageSchema = z
   .strictObject({
     installations: z.array(backofficeAppInstallationSchema),
@@ -229,7 +234,10 @@ export const backofficeAppInstallationPageSchema = z
   .meta({ id: "BackofficeAppInstallationPage" });
 export type BackofficeAppInstallationPage = z.infer<typeof backofficeAppInstallationPageSchema>;
 
-/** App operations manage the scoped organization's installations as the calling user. */
+/**
+ * App operations manage the installations of the scoped owner, an organization or the calling
+ * user's personal scope, as the calling user.
+ */
 export const appsOperations = {
   "apps.get": {
     description:
@@ -240,21 +248,21 @@ export const appsOperations = {
   },
   "apps.install": {
     description:
-      "Approve an app installation in the selected organization, limited to explicit permissions and resources, and approve the app's declared actions at the reviewed revision. Installer identity comes from the authenticated user.",
+      "Approve an app installation in the selected organization or personal scope, limited to explicit permissions and resources, and approve the app's declared actions at the reviewed revision. Installer identity comes from the authenticated user.",
     permissions: [BACKOFFICE_PERMISSION.apps.manage],
     input: backofficeAppInstallInputSchema,
     output: backofficeAppInstallationMutationResultSchema,
   },
   "apps.installations.get": {
     description:
-      "Inspect one app installation in the selected organization, including approved grants.",
+      "Inspect one app installation in the selected organization or personal scope, including approved grants.",
     permissions: [BACKOFFICE_PERMISSION.apps.read],
     input: backofficeAppLookupInputSchema,
     output: backofficeAppInstallationSchema.nullable(),
   },
   "apps.installations.list": {
     description:
-      "List the selected organization's active and uninstalled apps using cursor pagination. Does not expose other organizations or OAuth credentials.",
+      "List the selected organization's or personal scope's active and uninstalled apps using cursor pagination. Does not expose other owners or OAuth credentials.",
     permissions: [BACKOFFICE_PERMISSION.apps.read],
     input: backofficeAppInstallationPageInputSchema.extend({
       pageSize: backofficeAppInstallationPageInputSchema.shape.pageSize.default(25),
@@ -271,14 +279,14 @@ export const appsOperations = {
   },
   "apps.installations.approveActions": {
     description:
-      "Approve an app's current action declaration for the selected organization's installation, so its new and changed actions run. Only needed when the app's changeApproval is installation.",
+      "Approve an app's current action declaration for the selected owner's installation, so its new and changed actions run. Only needed when the app's changeApproval is installation.",
     permissions: [BACKOFFICE_PERMISSION.apps.manage],
     input: backofficeAppInstallationActionsApprovalInputSchema,
     output: backofficeAppInstallationMutationResultSchema,
   },
   "apps.uninstall": {
     description:
-      "Uninstall an app in the selected organization, clearing approved grants and its linked account while retaining installation identity. Immediately invalidates app credentials. Does not revoke personal OAuth consent.",
+      "Uninstall an app in the selected organization or personal scope, clearing approved grants and its linked account while retaining installation identity. Immediately invalidates app credentials. Does not revoke personal OAuth consent.",
     permissions: [BACKOFFICE_PERMISSION.apps.manage],
     input: backofficeAppLookupInputSchema,
     output: backofficeAppInstallationMutationResultSchema,

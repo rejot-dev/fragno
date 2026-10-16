@@ -61,7 +61,7 @@ const scenarioObjects = {
   UPLOAD: (input) => new InMemoryUploadObject(input),
 } satisfies LocalBackofficeObjects;
 
-const wholeOrganization = { kind: "organization" } as const;
+const wholeOrganization = { kind: "owner" } as const;
 
 const permissions = [BACKOFFICE_PERMISSION.events.emit];
 

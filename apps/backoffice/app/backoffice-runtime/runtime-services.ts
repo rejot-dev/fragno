@@ -187,10 +187,8 @@ export const createCloudflareBackofficeRuntimeServices = (
             await objects.automations.for(scope).commands.getRouteForAuthority({ id: routeId }),
         }),
         installations: {
-          getInstallation: async ({ organizationId, appId }) =>
-            await objects.appInstallations
-              .forOrg(organizationId)
-              .commands.getInstallation({ appId }),
+          getInstallation: async ({ owner, appId }) =>
+            await objects.appInstallations.for(owner).commands.getInstallation({ appId }),
         },
       }),
       auth: {

@@ -1,11 +1,11 @@
-# Backoffice apps and organization installations
+# Backoffice apps and their installations
 
 Two fragments separate global registration from customer-owned installation authority:
 
-| Fragment            | Durable Object                           | Scope        | Owns                                                            |
-| ------------------- | ---------------------------------------- | ------------ | --------------------------------------------------------------- |
-| `apps`              | `APPS` / `Apps`                          | Singleton    | App registration, OAuth client reference, requested permissions |
-| `app-installations` | `APP_INSTALLATIONS` / `AppInstallations` | Organization | Installation lifecycle, approved grants, installer attribution  |
+| Fragment            | Durable Object                           | Scope       | Owns                                                            |
+| ------------------- | ---------------------------------------- | ----------- | --------------------------------------------------------------- |
+| `apps`              | `APPS` / `Apps`                          | Singleton   | App registration, OAuth client reference, requested permissions |
+| `app-installations` | `APP_INSTALLATIONS` / `AppInstallations` | Org or user | Installation lifecycle, approved grants, installer attribution  |
 
 Both directories use `contracts.ts`, `schema.ts`, `definition.ts`, `fragment.ts`, and `server.ts`.
 The registry's `permissions.ts` and `errors.ts` own the shared permission set semantics and
@@ -43,18 +43,19 @@ creation tool checks client existence through Auth before invoking registration.
 Publisher organizations and customer organizations are distinct. A publisher reference must never be
 interpreted as the organization where an app is installed.
 
-Installations belong to the organization encoded in the Durable Object identity. RPC inputs have
-**no organization ID**. The fragment receives its organization from object scope and stamps it into
-new rows; it is also part of the pagination index, preventing cursors from crossing organization
-objects.
+Installations belong to their owner: an organization, or a person who installed the app for
+themselves. The owner is encoded in the Durable Object identity, and RPC inputs have **no owner**.
+The fragment receives its owner from object scope and stamps the owner's ID (`ownerId`, an
+organization or user ID) into new rows; it is also part of the pagination index, preventing cursors
+from crossing owner objects.
 
-The installation's `appId` is an external registry reference, not a foreign key into the
-organization's database. Installer IDs refer to Auth-owned users. Trusted command callers must
-establish Auth identities and management authority before calling either object.
+The installation's `appId` is an external registry reference, not a foreign key into the owner's
+database. Installer IDs refer to Auth-owned users. Trusted command callers must establish Auth
+identities and management authority before calling either object.
 
 Neither fragment exposes HTTP routes. System admin runtime tools expose OAuth client provisioning,
-app registration, and listing. Organization runtime tools expose declaration review and installation
-management. An installed app can act for a signed-in organization member through an app-bound
+app registration, and listing. Organization and user runtime tools expose declaration review and
+installation management. An installed app can act for a signed-in member through an app-bound
 credential (see below). Ordinary developer registration and app-only background execution remain
 outside this scaffold. Marketplace packages remain independent.
 
@@ -356,29 +357,29 @@ install page again. Approval names the revision, so a declaration changed since 
 without approval. Only system administrators register apps, so reserve it for apps they operate.
 
 Calls require `integrations.execute` only. The connection is ready once the app has claimed the
-installation; Backoffice validates the input, then the organization's installation object asks Auth
-to sign a 60-second token and POSTs the JSON body `{ "type": "action", actionId, input }` with it as
-the bearer. `integrations.verify` sends `{ "type": "ping" }` the same way. The token's audience is
-the endpoint URL, and its claims carry the installation (app ID, activation, linked account), the
-scope, the `actor` (the Backoffice user behind the call, or `installation` for automated calls), a
-`jti` usable as an idempotency key, and the SHA-256 of the exact body. A 2xx JSON answer must match
-the output schema; any other status fails the call with the answer's `message`.
+installation; Backoffice validates the input, then the owner's installation object asks Auth to sign
+a 60-second token and POSTs the JSON body `{ "type": "action", actionId, input }` with it as the
+bearer. `integrations.verify` sends `{ "type": "ping" }` the same way. The token's audience is the
+endpoint URL, and its claims carry the installation (app ID, activation, linked account), the scope,
+the `actor` (the Backoffice user behind the call, or `installation` for automated calls), a `jti`
+usable as an idempotency key, and the SHA-256 of the exact body. A 2xx JSON answer must match the
+output schema; any other status fails the call with the answer's `message`.
 
 Apps verify requests with `createAppActionVerifier` from
 `@fragno-dev/backoffice-api/v0/app-actions`, which checks the signature against Backoffice's JWKS,
 the audience, expiry, and body hash, and parses the body. Bookkeeping's
 `workers/backoffice-actions.ts` is a complete endpoint.
 
-## Organization installation runtime tools
+## Installation runtime tools
 
-Select an **organization context** in the Backoffice terminal or Codemode. The `apps` tool family is
-unavailable in System, project, and user contexts. Organization identity comes from the selected
+Select an **organization or user context** in the Backoffice terminal or Codemode. The `apps` tool
+family is unavailable in System, app, and project contexts. The owner comes from the selected
 context and the installation object's scope, never from command input.
 
 | Codemode method                   | Bash command                         | Permission    | Purpose                                            |
 | --------------------------------- | ------------------------------------ | ------------- | -------------------------------------------------- |
 | `apps.get`                        | `apps.get`                           | `apps.read`   | Review the global app declaration                  |
-| `apps.getInstallation`            | `apps.installations.get`             | `apps.read`   | Inspect this organization's installation           |
+| `apps.getInstallation`            | `apps.installations.get`             | `apps.read`   | Inspect this owner's installation                  |
 | `apps.listInstallations`          | `apps.installations.list`            | `apps.read`   | List active and uninstalled installations          |
 | `apps.install`                    | `apps.install`                       | `apps.manage` | Approve explicit permissions and resources         |
 | `apps.updateInstallation`         | `apps.installations.update`          | `apps.manage` | Replace approved permissions and resources         |
@@ -394,6 +395,9 @@ reused tool context does not preserve installation authority after those rights 
 live policy is specific to app management; unrelated operations retain their existing authority
 policy and do not acquire an extra Auth lookup.
 
+In a user context, the user manages the apps they installed for themselves; nobody else does, global
+administrators included.
+
 Review before approving:
 
 ```ts
@@ -403,13 +407,13 @@ await apps.install({
   appId: "APP_ID",
   grantedPermissions: [{ namespace: "events", permission: "emit" }],
   actionsRevision: app.actionsRevision,
-  resourceScope: { kind: "projects", projectIds: ["PROJECT_ID"] }, // default: whole organization
+  resourceScope: { kind: "projects", projectIds: ["PROJECT_ID"] }, // default: { kind: "owner" }
 });
 const page = await apps.listInstallations({ pageSize: 25, cursor: null });
 await apps.updateInstallation({
   appId: "APP_ID",
   grantedPermissions: [],
-  resourceScope: { kind: "organization" },
+  resourceScope: { kind: "owner" },
 });
 await apps.uninstall({ appId: "APP_ID" });
 ```
@@ -421,48 +425,49 @@ apps.install --app-id APP_ID --actions-revision 1 \
 apps.installations.get --app-id APP_ID --format json
 apps.installations.list --page-size 25
 apps.installations.update --app-id APP_ID --granted-permissions-json '[]' \
-  --resource-scope-json '{"kind":"organization"}'
+  --resource-scope-json '{"kind":"owner"}'
 apps.uninstall --app-id APP_ID
 ```
 
 Install and update inputs require an explicit permission array; `[]` approves no capabilities.
-Resources are `{ "kind": "organization" }` or `{ "kind": "projects", "projectIds": [...] }` for
-current, unarchived projects of the organization; install defaults to the whole organization, while
-update requires both so access is never widened implicitly. Installer attribution comes from the
-authenticated principal. Neither `installedByUserId` nor an organization ID is accepted from
-callers. Duplicate install cannot change access or replace the installer; use the explicit update
-command. Reinstallation retains installation identity, records the newly approving user, and
-increments `activation`.
+Resources are `{ "kind": "owner" }`, everything the owner has, or
+`{ "kind": "projects", "projectIds": [...] }` for current, unarchived projects the owner owns
+directly; install defaults to everything, while update requires both so access is never widened
+implicitly. Installer attribution comes from the authenticated principal. Neither
+`installedByUserId` nor an owner is accepted from callers. Duplicate install cannot change access or
+replace the installer; use the explicit update command. Reinstallation retains installation
+identity, records the newly approving user, and increments `activation`.
 
 Lists default to 25 records, accept 1–100, and return `{ installations, nextCursor, hasNextPage }`.
-Resume with the same organization and page size. Bash commands produce readable text by default;
+Resume with the same owner and page size. Bash commands produce readable text by default;
 `--format json` returns structured results and `--print installations.0.id` selects a nested field.
 Declaration review returns registry metadata and requested permissions, never OAuth credentials.
 Installation inspection, listing, and uninstall remain independent of registry availability;
 approval and grant updates still require the authoritative declaration.
 
 **Installation approval is not OAuth user consent.** It does not change OAuth scopes or create
-credentials. It is the organization-side ceiling for
-[installed-app execution](#installed-app-execution): the app may act only within the approved
-permissions and resources, and when acting for a member, only within what that member may currently
-do as well. Uninstall clears grants and any linked external account and immediately invalidates
-app-bound credentials, but does not revoke personal OAuth authorizations.
+credentials. It is the owner-side ceiling for [installed-app execution](#installed-app-execution):
+the app may act only within the approved permissions and resources, and when acting for a member,
+only within what that member may currently do as well. Uninstall clears grants and any linked
+external account and immediately invalidates app-bound credentials, but does not revoke personal
+OAuth authorizations.
 
 ## Installed-app execution
 
-A registered app exercises its organization's approval either on behalf of a signed-in member or as
-its installation:
+A registered app exercises its owner's approval either on behalf of a signed-in member or as its
+installation:
 
 1. An administrator creates the app's confidential OAuth client with the `backoffice` scope (plus
    identity scopes, `offline_access`, and client credentials as needed) and registers it.
-2. An organization owner or admin installs it, approving permissions and resources: with the tools
-   above, or through the app-initiated install page
-   `/backoffice/apps/install?client_id&redirect_uri&state`, after which the app's server claims the
-   installation for one of its own accounts.
+2. An organization owner or admin installs it for the organization, or a user for themselves,
+   approving permissions and resources: with the tools above, or through the app-initiated install
+   page `/backoffice/apps/install?client_id&redirect_uri&state`, after which the app's server claims
+   the installation for one of its own accounts.
 3. The app's server obtains an OAuth access token for `resource=<Backoffice origin>`: through the
    authorization-code flow for a member, or the client-credentials grant for the installation.
-4. It exchanges that token at `POST /api/backoffice/execution-token` with an organization or
-   approved project scope, or its own workspace (below), receiving a 15-minute app-bound credential.
+4. It exchanges that token at `POST /api/backoffice/execution-token` with its owner's scope or an
+   approved project, or its own workspace (below), receiving a 15-minute app-bound credential. A
+   personal installation acts for its owner only: no one else can authorize it for that scope.
 5. It calls the versioned API (`POST /api/v0/scopes/:scope/<operationId>`) with that credential,
    e.g. with `createBackofficeApiClient` from `@fragno-dev/backoffice-api/v0/client`.
 
@@ -475,16 +480,17 @@ revive. Installation management is never available to an app.
 
 ### App workspaces
 
-Each installation also gives the app a workspace of its own, the scope `app:org:<orgId>:<appId>`,
-where it keeps its data for that organization: store entries, files, events, routes, and workflows.
-It exists while the installation is active, regardless of the approved resources, and only that
-app's credentials reach it. Data survives uninstalling, so a reinstall picks up where the app left
-off.
+Each installation also gives the app a workspace of its own, the scope `app:<owner>:<appId>` (e.g.
+`app:org:<orgId>:<appId>` or `app:user:<userId>:<appId>`), where it keeps its data for that owner:
+store entries, files, events, routes, and workflows. It exists while the installation is active,
+regardless of the approved resources, and only that app's credentials reach it. Data survives
+uninstalling, so a reinstall picks up where the app left off.
 
-The workspace is private. An organization credential does not reach it, and events fired there only
-trigger the workspace's own routes; to make the organization react, the app fires into the
-organization scope. People with a role in the organization may read the workspace, at
-`/backoffice/dashboard/app/org:<org-slug>:<appId>`, but not change it. Organization internals,
+The workspace is private. An owner's credential does not reach it, and events fired there only
+trigger the workspace's own routes; to make the owner react, the app fires into the owner's scope.
+People with a role in an owning organization, or the owning user, may read the workspace, at
+`/backoffice/dashboard/app/org:<org-slug>:<appId>` or
+`/backoffice/dashboard/app/user:<userId>:<appId>`, but not change it. Organization internals,
 integrations, and publishing as the organization are not available from a workspace.
 
 App-bound credentials have a distinct JWT audience and cannot be used where user credentials are
@@ -494,31 +500,31 @@ endpoint, install, and claim contracts, and `apps/bookkeeping` for an example ap
 
 `app/fragno/runtime-tools/families/apps.scenario.test.ts` exercises both Codemode and Bash through
 real Auth and installation SQLite storage, including approval lifecycle, authenticated attribution,
-member versus manager authority, live revocation with request snapshots, strict inputs, organization
+member versus manager authority, live revocation with request snapshots, strict inputs, owner
 isolation, scope restrictions, and pagination after object restart.
 
 ## Commands and transaction boundaries
 
 ```ts
 const registry = runtime.objects.apps.singleton().commands;
-const installations = runtime.objects.appInstallations.forOrg(organizationId).commands;
+const installations = runtime.objects.appInstallations.for(owner).commands;
 ```
 
-| Object       | Command                                                                                          | Registry access                                           |
-| ------------ | ------------------------------------------------------------------------------------------------ | --------------------------------------------------------- |
-| Registry     | `registerApp`, `updateAppActions`, `getApp`, `getAppByOAuthClientId`, `getAppBySlug`, `listApps` | Own local database                                        |
-| Organization | `installApp`                                                                                     | Resolve declaration and projects before local transaction |
-| Organization | `updateInstallationAccess`                                                                       | Resolve declaration and projects before local transaction |
-| Organization | `approveActions`, `getAppConnection`                                                             | Resolve declaration before local reads and writes         |
-| Organization | `callAppEndpoint`                                                                                | Resolve declaration, then sign through Auth and send      |
-| Organization | `claimInstallation`                                                                              | None                                                      |
-| Organization | `getInstallation`, `listInstallations`, `uninstallApp`                                           | None                                                      |
+| Object   | Command                                                                                          | Registry access                                           |
+| -------- | ------------------------------------------------------------------------------------------------ | --------------------------------------------------------- |
+| Registry | `registerApp`, `updateAppActions`, `getApp`, `getAppByOAuthClientId`, `getAppBySlug`, `listApps` | Own local database                                        |
+| Owner    | `installApp`                                                                                     | Resolve declaration and projects before local transaction |
+| Owner    | `updateInstallationAccess`                                                                       | Resolve declaration and projects before local transaction |
+| Owner    | `approveActions`, `getAppConnection`                                                             | Resolve declaration before local reads and writes         |
+| Owner    | `callAppEndpoint`                                                                                | Resolve declaration, then sign through Auth and send      |
+| Owner    | `claimInstallation`                                                                              | None                                                      |
+| Owner    | `getInstallation`, `listInstallations`, `uninstallApp`                                           | None                                                      |
 
 Requested permissions and slugs are immutable, and apps cannot be deleted in this scaffold. Action
 declarations change by revision; each installation stores the declaration it approved, so a registry
 change never widens what an installation calls without approval (except
 `changeApproval: "automatic"`). Installation setup, grant updates, and action approval fetch the
-authoritative declaration before opening the organization's transaction. There is **no cross-object
+authoritative declaration before opening the owner's transaction. There is **no cross-object
 transaction or foreign key**. Global app disablement requires an explicit coordination policy before
 being added.
 
@@ -530,7 +536,7 @@ this split.
 ## Persistence invariants
 
 - OAuth client references are unique in the global registry.
-- Each organization database has at most one installation per app ID.
+- Each owner database has at most one installation per app ID.
 - Grants use canonical Backoffice permissions and cannot exceed the app declaration.
 - An installation approves exactly the action revision its approver reviewed; `approvedActions` is
   `null` before any approval (earlier installations, and after uninstall).
@@ -539,19 +545,21 @@ this split.
 - Uninstall clears grants and the linked external account but retains identity. Reinstall reuses
   that identity, records the newly approved access and installer, and increments `activation`.
 - An installation links at most one external account; linking a different one requires uninstalling.
-- Resources are stored as `resourceProjectIds`: `null` is the whole organization (also what earlier
-  installations approved), otherwise a non-empty project list.
+- `ownerId` was `organizationId` while only organizations installed apps. Renaming it kept every
+  existing installation, whose stamp was already its organization's ID.
+- Resources are stored as `resourceProjectIds`: `null` is everything the owner has, otherwise a
+  non-empty project list.
 - Installer membership removal does not delete an organization-owned installation.
 - Local absence checks, row-version checks, and unique indexes guard concurrent mutations.
 - All database reads precede mutation; timestamps come from database time.
 - Registry cursors are bound to the primary index, direction, and page size. Installation cursors
-  additionally bind the owning organization.
+  additionally bind the owner.
 
 Domain failures return `{ ok: false, error: { code, message } }`. Invalid RPC input fails before
 orchestration or domain services; unexpected infrastructure failures propagate.
 
 `workers/app-installations.do.scenario.test.ts` exercises both production object behaviors through
-real SQLite, including organization isolation, object and full-runtime restart, and local reads and
+real SQLite, including owner isolation, object and full-runtime restart, and local reads and
 revocation after the real registry connection fails. New installation approvals and grant changes
 fail closed during that outage.
 

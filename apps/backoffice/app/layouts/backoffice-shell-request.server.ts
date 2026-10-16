@@ -112,14 +112,14 @@ export async function establishBackofficeShellRequest(
   const pageScope = await resolveBackofficePageScope({
     params,
     organizations: me.organizations.map(({ organization }) => organization),
-    // Apps are only installed by organizations so far.
     isAppInstalled: async (owner, appId) => {
-      if (owner.kind !== "org") {
+      // Another user's installations are not looked up, so their apps cannot be probed.
+      if (owner.kind === "user" && owner.userId !== me.user.id) {
         return false;
       }
       const installation = await context
         .get(BackofficeWorkerContext)
-        .runtime.objects.appInstallations.forOrg(owner.organization.id)
+        .runtime.objects.appInstallations.for(backofficeRuntimeScopeFromResolvedScope(owner))
         .commands.getInstallation({ appId });
       return installation?.status === "active";
     },

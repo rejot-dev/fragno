@@ -24,7 +24,16 @@ export function meta() {
 }
 
 function targetLabel(target: BackofficeTarget): string {
-  return target.kind === "org" ? "Whole organization" : `Project ${target.projectId}`;
+  switch (target.kind) {
+    case "org":
+      return "Whole organization";
+    case "user":
+      return "Whole personal workspace";
+    case "project":
+      return `Project ${target.projectId}`;
+    default:
+      throw new Error("Unsupported Backoffice target kind.", { cause: target satisfies never });
+  }
 }
 
 async function hasLinkedBackofficeAccount(request: Request): Promise<boolean> {
@@ -49,7 +58,10 @@ export async function loader({ request, url }: Route.LoaderArgs) {
     organization: active ? { name: active.organization.name, canManage: active.canManage } : null,
     link: link
       ? {
-          backofficeOrganizationId: link.backofficeOrganizationId,
+          owner:
+            link.backofficeOwner.kind === "org"
+              ? { label: "Backoffice organization", id: link.backofficeOwner.orgId }
+              : { label: "Backoffice user", id: link.backofficeOwner.userId },
           targets: linkTargets(link).map((target) => ({
             key: backofficeScopePathSegment(target),
             label: targetLabel(target),
@@ -200,7 +212,7 @@ export default function BackofficeConnection({ loaderData, actionData }: Route.C
     <div className="space-y-6">
       <BackofficePageHeader
         title="Backoffice"
-        description={`Connect ${organization.name} to a Backoffice organization and send it events.`}
+        description={`Connect ${organization.name} to Backoffice and send it events.`}
         breadcrumbs={[{ label: "Bookkeeping", to: "/dashboard" }, { label: "Backoffice" }]}
       />
       <div className="max-w-2xl space-y-6">
@@ -226,10 +238,8 @@ export default function BackofficeConnection({ loaderData, actionData }: Route.C
           {link ? (
             <dl className="grid gap-3 text-sm sm:grid-cols-2">
               <div>
-                <dt className="text-xs text-[var(--bo-muted)]">Backoffice organization</dt>
-                <dd className="mt-1 font-mono text-xs break-all">
-                  {link.backofficeOrganizationId}
-                </dd>
+                <dt className="text-xs text-[var(--bo-muted)]">{link.owner.label}</dt>
+                <dd className="mt-1 font-mono text-xs break-all">{link.owner.id}</dd>
               </div>
               <div>
                 <dt className="text-xs text-[var(--bo-muted)]">Approved access</dt>

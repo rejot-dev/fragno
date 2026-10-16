@@ -14,6 +14,7 @@ import {
 import type { DirectoryPageInput } from "@fragno-dev/backoffice-api/v0/shared/pagination";
 import {
   type BackofficeContextScope,
+  backofficeRootOwnerSchema,
   backofficeScopeOrganization,
   backofficeScopeRootOwner,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
@@ -38,6 +39,7 @@ import {
   createCloudflareDurableObjectRuntimeServices,
   type BackofficeRuntimeServices,
 } from "@/backoffice-runtime/runtime-services";
+import type { AppInstallationOwner } from "@/fragno/app-installations/contracts";
 import {
   type AuthHookContext,
   type AuthUser,
@@ -1442,13 +1444,13 @@ export class InMemoryAuthObject implements AuthObject {
   /** Signs a short-lived code the app's server redeems to claim the installation it was sent for. */
   async issueAppInstallationCode(input: {
     appId: string;
-    organizationId: string;
+    owner: AppInstallationOwner;
     activation: number;
   }): Promise<{ code: string }> {
     const parsed = z
       .strictObject({
         appId: z.string().min(1),
-        organizationId: z.string().min(1),
+        owner: backofficeRootOwnerSchema,
         activation: z.number().int().positive(),
       })
       .parse(input);
@@ -1520,7 +1522,7 @@ export class InMemoryAuthObject implements AuthObject {
       resolveUserGrant: resolveBackofficeUserTokenGrant,
       resolveActiveInstallation: async function resolveActiveInstallation(input) {
         const installation = await objects.appInstallations
-          .forOrg(input.organizationId)
+          .for(input.owner)
           .commands.getInstallation({ appId: input.appId });
         return installation?.status === "active"
           ? {
@@ -2250,7 +2252,7 @@ export class Auth extends DurableObject<CloudflareEnv> implements AuthObject {
 
   async issueAppInstallationCode(input: {
     appId: string;
-    organizationId: string;
+    owner: AppInstallationOwner;
     activation: number;
   }) {
     return await this.#object.issueAppInstallationCode(input);

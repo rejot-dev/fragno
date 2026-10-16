@@ -32,6 +32,15 @@ const ORGANIZATION_ROLE_GRANTS = {
   member: [BACKOFFICE_PERMISSION.apps.read, BACKOFFICE_PERMISSION.org.read],
 } as const satisfies Record<OrganizationRole, readonly BackofficePermissionRequirement[]>;
 
+/**
+ * What a person administers in their own user scope, where no membership exists to consult: the
+ * apps they installed for themselves.
+ */
+export const PERSONAL_SCOPE_GRANTS = [
+  BACKOFFICE_PERMISSION.apps.read,
+  BACKOFFICE_PERMISSION.apps.manage,
+] as const satisfies readonly BackofficePermissionRequirement[];
+
 export const ORGANIZATION_ROLE_PERMISSION_NAMESPACES: ReadonlySet<string> = new Set(
   Object.values(ORGANIZATION_ROLE_GRANTS).flatMap((grants) =>
     grants.map(({ namespace }) => namespace),

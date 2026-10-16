@@ -44,7 +44,7 @@ const scenarioObjects = {
   UPLOAD: (input) => new InMemoryUploadObject(input),
 } satisfies LocalBackofficeObjects;
 
-const wholeOrganization = { kind: "organization" } as const;
+const wholeOrganization = { kind: "owner" } as const;
 
 const requestedPermissions = [
   BACKOFFICE_PERMISSION.events.emit,
@@ -223,14 +223,14 @@ describe("App registry and organization installation SQLite scenarios", () => {
               expect(await first.getInstallation({ appId })).toMatchObject({
                 id: installationId,
                 appId,
-                organizationId: "customer-one",
+                owner: { kind: "org", orgId: "customer-one" },
                 status: "active",
                 installedByUserId: "installer",
                 resourceScope: wholeOrganization,
                 grantedPermissions: requestedPermissions,
               });
               expect(await second.getInstallation({ appId })).toMatchObject({
-                organizationId: "customer-two",
+                owner: { kind: "org", orgId: "customer-two" },
                 grantedPermissions: [BACKOFFICE_PERMISSION.integrations.execute],
                 status: "active",
               });
@@ -304,14 +304,11 @@ describe("App registry and organization installation SQLite scenarios", () => {
                 grantedPermissions: [],
                 resourceScope: wholeOrganization,
               };
-              const forgedOwnership = { ...input, organizationId: "other-customer" };
-              await expect(installations.installApp(forgedOwnership)).rejects.toThrow(
-                "organizationId",
-              );
-              const forgedLookup = { appId, organizationId: "other-customer" };
-              await expect(installations.getInstallation(forgedLookup)).rejects.toThrow(
-                "organizationId",
-              );
+              const forgedOwner = { kind: "org", orgId: "other-customer" };
+              const forgedOwnership = { ...input, owner: forgedOwner };
+              await expect(installations.installApp(forgedOwnership)).rejects.toThrow("owner");
+              const forgedLookup = { appId, owner: forgedOwner };
+              await expect(installations.getInstallation(forgedLookup)).rejects.toThrow("owner");
               expect(
                 await installations.installApp({ ...input, appId: "missing-app" }),
               ).toMatchObject({
@@ -353,7 +350,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
                 }),
               ).toMatchObject({ ok: false, error: { code: "APP_GRANTS_NOT_REQUESTED" } });
               expect(await installations.getInstallation({ appId })).toMatchObject({
-                organizationId: "customer",
+                owner: { kind: "org", orgId: "customer" },
                 grantedPermissions: [BACKOFFICE_PERMISSION.events.emit],
                 status: "active",
               });
@@ -415,7 +412,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
                   .commands.getInstallation({ appId }),
               ).toMatchObject({
                 id: installationId,
-                organizationId: "customer",
+                owner: { kind: "org", orgId: "customer" },
                 status: "active",
                 installedByUserId: "new-installer",
                 resourceScope: wholeOrganization,
@@ -518,7 +515,9 @@ describe("App registry and organization installation SQLite scenarios", () => {
               const otherPage = appOperationValue(
                 await second.listInstallations({ pageSize: 2, cursor: null }),
               );
-              expect(otherPage.installations).toMatchObject([{ organizationId: "customer-two" }]);
+              expect(otherPage.installations).toMatchObject([
+                { owner: { kind: "org", orgId: "customer-two" } },
+              ]);
             },
           ),
           then.assert(
@@ -608,7 +607,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
                   ).toMatchObject({
                     id: installationIds[organizationId],
                     appId,
-                    organizationId,
+                    owner: { kind: "org", orgId: organizationId },
                     status: "active",
                     grantedPermissions: requestedPermissions,
                   });
@@ -687,7 +686,9 @@ describe("App registry and organization installation SQLite scenarios", () => {
                 appOperationValue(
                   await installations.listInstallations({ pageSize: 20, cursor: null }),
                 ).installations,
-              ).toMatchObject([{ id: installationId, appId, organizationId: "customer" }]);
+              ).toMatchObject([
+                { id: installationId, appId, owner: { kind: "org", orgId: "customer" } },
+              ]);
               await expect(
                 installations.updateInstallationAccess({
                   appId,
