@@ -1,7 +1,6 @@
 // New single-transaction runner scaffold (no task claiming, OCC-only coordination).
 
 import type { StandardSchemaV1 } from "@fragno-dev/core/api";
-import { BufferedPumpScopeAlreadyOpenError } from "@fragno-dev/db/buffered-pump";
 
 import {
   ConcurrencyConflictError,
@@ -422,21 +421,22 @@ async function runTask(
   });
   const initialEvent = buildWorkflowEvent(instance);
 
+  let outcome: RunnerTaskOutcome;
   try {
     const rawOutput = await workflow.run(initialEvent, step);
     const output = await validateWorkflowOutput(instance.workflowName, outputSchema, rawOutput);
-    return { type: "completed", output };
+    outcome = { type: "completed", output };
   } catch (err) {
-    if (err instanceof BufferedPumpScopeAlreadyOpenError) {
-      throw new WorkflowRunnerConcurrencyConflict(err);
-    }
-
-    if (isRunnerStepSuspended(err)) {
-      return { type: "suspended", reason: err.reason };
-    }
-
-    return { type: "errored", error: toError(err) };
+    outcome = isRunnerStepSuspended(err)
+      ? { type: "suspended", reason: err.reason }
+      : { type: "errored", error: toError(err) };
   }
+  // The other tick owns the instance, so this one commits nothing, whatever the workflow made of
+  // the conflict.
+  if (step.concurrencyConflict) {
+    throw new WorkflowRunnerConcurrencyConflict(step.concurrencyConflict);
+  }
+  return outcome;
 }
 
 /**
