@@ -36,8 +36,6 @@ import { AgentsHeader } from "./agents-header";
 import {
   abortPiManagerAgent,
   compactPiManagerAgent,
-  fetchPiManagerAgentDetail,
-  fetchPiManagerEntryPage,
   submitPiManagerPrompt,
   type PiManagerEntryPage,
 } from "./data";
@@ -72,30 +70,15 @@ const PI_ENTRY_HISTORY_PAGE_SIZE = 100;
 const PI_COMPACTION_POLL_MS = 250;
 
 type PiAgentActionData =
-  | { ok: true; intent: "send"; receipt: PiPromptReceipt }
+  | { ok: true; intent: "start" | "send"; receipt: PiPromptReceipt }
   | { ok: true; intent: "abort" }
   | { ok: true; intent: "compact"; taskId: number }
-  | { ok: false; intent: "send" | "abort" | "compact"; error: string };
+  | { ok: false; intent: "start" | "send" | "abort" | "compact"; error: string };
 
 type SessionWorkflowCollectionsState = {
   collections: AutomationBrowserCollections | null;
   error: string | null;
 };
-
-export async function loader(args: Route.LoaderArgs) {
-  const { request, params, context } = args;
-  const { scope } = requireRouteScope(context).execution;
-  const result = await fetchPiManagerAgentDetail(request, context, scope, params.agentName);
-  if (!result.detail) {
-    throw Response.json(result.agentError, { status: result.status ?? 500 });
-  }
-  const entryPage: PiManagerEntryPage = result.detail.view
-    ? await fetchPiManagerEntryPage(request, context, scope, params.agentName, {
-        pageSize: PI_ENTRY_HISTORY_PAGE_SIZE,
-      })
-    : { entries: [], cursor: null, hasNextPage: false };
-  return { ...result.detail, entryPage };
-}
 
 export async function action(args: Route.ActionArgs): Promise<PiAgentActionData> {
   const { request, params, context } = args;
@@ -117,7 +100,8 @@ export async function action(args: Route.ActionArgs): Promise<PiAgentActionData>
       ? { ok: false, intent, error: result.error ?? "Failed to compact the conversation." }
       : { ok: true, intent, taskId: result.taskId };
   }
-  if (intent !== "send") {
+  // Starting is sending the first turn; the separate intent tells the agents layouts to reload.
+  if (intent !== "start" && intent !== "send") {
     return { ok: false, intent: "send", error: "Unsupported agent action." };
   }
 
@@ -169,29 +153,50 @@ function useSessionDisplayOptions() {
   return { displayOptions, updateDisplayOption };
 }
 
-function usePiEntryHistory({
-  initialPage,
-  pageUrl,
-}: {
-  initialPage: PiManagerEntryPage;
-  pageUrl: string;
-}) {
-  const [entries, setEntries] = useState(initialPage.entries);
-  const [cursor, setCursor] = useState(initialPage.cursor);
+/** Where the active context begins, when a compaction or reset cut it off from earlier history. */
+function piActiveContextStart(view: ConversationView): number | null {
+  // Pi's view leads with its newest head marker, and only head markers carry `head`.
+  return view.entries[0]?.head ?? null;
+}
+
+type PiEntryHistory = {
+  before: number;
+  /** Newest first. */
+  entries: EntryRecord[];
+  /** Null once the conversation's oldest entry arrived. */
+  nextPage: { cursor: string | null } | null;
+};
+
+/** Earlier history is fetched only on request, a page at a time. */
+function usePiEntryHistory({ before, pageUrl }: { before: number | null; pageUrl: string }) {
+  const [loaded, setLoaded] = useState<PiEntryHistory | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // A new compaction moves the active context; history loaded before it would leave a gap.
+  const history = useMemo<PiEntryHistory | null>(
+    () =>
+      before === null
+        ? null
+        : loaded?.before === before
+          ? loaded
+          : { before, entries: [], nextPage: { cursor: null } },
+    [before, loaded],
+  );
 
   const loadMore = useCallback(async () => {
-    if (!cursor || loading) {
+    if (!history?.nextPage || loading) {
       return;
     }
     setLoading(true);
     setError(null);
     try {
       const query = new URLSearchParams({
-        cursor,
+        before: String(history.before),
         pageSize: String(PI_ENTRY_HISTORY_PAGE_SIZE),
       });
+      if (history.nextPage.cursor) {
+        query.set("cursor", history.nextPage.cursor);
+      }
       const response = await fetch(`${pageUrl}?${query}`, {
         headers: { accept: "application/json" },
       });
@@ -200,31 +205,35 @@ function usePiEntryHistory({
       }
       // This application-owned resource route returns the manager's typed entry page unchanged.
       const page = (await response.json()) as PiManagerEntryPage;
-      setEntries((current) => {
-        const knownEntryIds = new Set(current.map((entry) => entry.id));
-        return [...current, ...page.entries.filter((entry) => !knownEntryIds.has(entry.id))];
+      setLoaded({
+        before: history.before,
+        entries: [...history.entries, ...page.entries],
+        nextPage: page.cursor === null ? null : { cursor: page.cursor },
       });
-      setCursor(page.cursor);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
       setLoading(false);
     }
-  }, [cursor, loading, pageUrl]);
+  }, [history, loading, pageUrl]);
 
-  return { entries, hasMore: cursor !== null, loading, error, loadMore };
+  return {
+    entries: history?.entries ?? [],
+    hasMore: history?.nextPage != null,
+    loading,
+    error,
+    loadMore,
+  };
 }
 
 function conversationViewWithInactiveHistory(
   view: ConversationView,
   newestFirstHistory: readonly EntryRecord[],
 ) {
-  const activeEntryIds = new Set(view.entries.map((entry) => entry.id));
-  const inactiveEntries = newestFirstHistory.filter((entry) => !activeEntryIds.has(entry.id));
+  // The active view leads with its compaction marker; the transcript shows it where it happened.
   return {
-    // The active view leads with its compaction marker; the transcript shows it where it happened.
-    view: { ...view, entries: [...inactiveEntries, ...view.entries].sort((a, b) => a.id - b.id) },
-    inactiveEntryCount: inactiveEntries.length,
+    ...view,
+    entries: [...newestFirstHistory, ...view.entries].sort((a, b) => a.id - b.id),
   };
 }
 
@@ -334,10 +343,18 @@ async function waitForPiCompaction(url: string, signal: AbortSignal) {
   }
 }
 
-export default function BackofficeOrganizationPiAgentDetail({ loaderData }: Route.ComponentProps) {
-  const { agent, view, entryPage } = loaderData;
-  const { agents, basePath, billingOrganization } = useOutletContext<PiAgentsOutletContext>();
-  if (view === null) {
+export default function BackofficeOrganizationPiAgentDetail({ params }: Route.ComponentProps) {
+  const { agents, agentsError, basePath, billingOrganization } =
+    useOutletContext<PiAgentsOutletContext>();
+  const agent = agents.find((candidate) => candidate.agentName === params.agentName);
+  if (!agent) {
+    return (
+      <AgentStatusPane selectedAgentName={params.agentName} tone="failed">
+        {agentsError ?? `${formatPiAgentName(params.agentName)} is not an agent in this scope.`}
+      </AgentStatusPane>
+    );
+  }
+  if (agent.provisioning === null) {
     return (
       <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
         <AgentsHeader
@@ -357,23 +374,71 @@ export default function BackofficeOrganizationPiAgentDetail({ loaderData }: Rout
   }
   // Agent-owned client state survives same-agent revalidation and resets on agent navigation.
   return (
-    <BackofficeOrganizationPiAgent
-      key={`${basePath}/${agent.agentName}`}
-      agent={agent}
-      view={view}
-      entryPage={entryPage}
-    />
+    <BackofficeOrganizationPiAgentStream key={`${basePath}/${agent.agentName}`} agent={agent} />
   );
+}
+
+function AgentStatusPane({
+  selectedAgentName,
+  tone,
+  children,
+}: {
+  selectedAgentName: string;
+  tone: "muted" | "failed";
+  children: string;
+}) {
+  const { agents, basePath } = useOutletContext<PiAgentsOutletContext>();
+  return (
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
+      <AgentsHeader
+        basePath={basePath}
+        agents={agents}
+        selectedAgentName={selectedAgentName}
+        options={null}
+      />
+      <div className="flex min-h-0 flex-1 items-center justify-center px-4">
+        <p
+          role={tone === "failed" ? "alert" : "status"}
+          className={`max-w-md text-sm text-pretty ${
+            tone === "failed" ? "text-[var(--bo-failed)]" : "text-[var(--bo-muted)]"
+          }`}
+        >
+          {children}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/** The conversation renders from the view stream; its first frame is the whole view. */
+function BackofficeOrganizationPiAgentStream({ agent }: { agent: PiManagerAgent }) {
+  const { basePath } = useOutletContext<PiAgentsOutletContext>();
+  const stream = usePiSessionViewStream(
+    `${basePath}/${encodeURIComponent(agent.agentName)}/view-stream`,
+  );
+  if (stream.status === "connecting") {
+    return (
+      <AgentStatusPane selectedAgentName={agent.agentName} tone="muted">
+        Loading conversation…
+      </AgentStatusPane>
+    );
+  }
+  if (stream.status === "failed") {
+    return (
+      <AgentStatusPane selectedAgentName={agent.agentName} tone="failed">
+        {stream.message}
+      </AgentStatusPane>
+    );
+  }
+  return <BackofficeOrganizationPiAgent agent={agent} view={stream.view} />;
 }
 
 function BackofficeOrganizationPiAgent({
   agent,
   view,
-  entryPage,
 }: {
   agent: PiManagerAgent;
   view: ConversationView;
-  entryPage: PiManagerEntryPage;
 }) {
   const posthog = usePostHog();
   const {
@@ -394,45 +459,39 @@ function BackofficeOrganizationPiAgent({
   const acceptedCompactionTaskIdRef = useRef<number | null>(null);
   const runtimeRef = useRef<AssistantRuntime | null>(null);
   const { displayOptions, updateDisplayOption } = useSessionDisplayOptions();
-  const streamedView = usePiSessionViewStream({
-    initialView: view,
-    streamUrl: `${agentPath}/view-stream`,
-  });
+  const activeContextStart = piActiveContextStart(view);
   const history = usePiEntryHistory({
-    initialPage: entryPage,
+    before: activeContextStart,
     pageUrl: `${agentPath}/entries`,
   });
   const transcript = useMemo(
-    () => conversationViewWithInactiveHistory(streamedView, history.entries),
-    [history.entries, streamedView],
+    () => conversationViewWithInactiveHistory(view, history.entries),
+    [history.entries, view],
   );
   const submittingCompaction =
     fetcher.state !== "idle" && fetcher.formData?.get("intent") === "compact";
   const running =
-    isPiConversationRunning(streamedView) ||
-    submittingCompaction ||
-    pendingCompactionTaskId !== null;
+    isPiConversationRunning(view) || submittingCompaction || pendingCompactionTaskId !== null;
   const compacting =
-    isPiConversationCompacting(streamedView) ||
-    submittingCompaction ||
-    pendingCompactionTaskId !== null;
-  const messages = useMemo(() => piConversationMessages(transcript.view), [transcript.view]);
-  const draftAgentMessage = useMemo(
-    () => piConversationDraftAgentMessage(streamedView),
-    [streamedView],
+    isPiConversationCompacting(view) || submittingCompaction || pendingCompactionTaskId !== null;
+  const { messages, activeContextStartIndex } = useMemo(
+    () => piConversationMessages(transcript, activeContextStart),
+    [activeContextStart, transcript],
   );
-  const conversationQueue = useMemo(() => piConversationQueue(streamedView), [streamedView]);
-  const contextTokens = useMemo(() => estimatePiContextTokens(streamedView), [streamedView]);
+  const draftAgentMessage = useMemo(() => piConversationDraftAgentMessage(view), [view]);
+  const conversationQueue = useMemo(() => piConversationQueue(view), [view]);
+  const contextTokens = useMemo(() => estimatePiContextTokens(view), [view]);
   const statusText = compacting ? "Compacting…" : running ? "Working…" : null;
-  const assistantMessages = useMemo(
+  const { messages: assistantMessages, activeContextStartMessageId } = useMemo(
     () =>
       createAssistantUiMessages({
         draftAgentMessage,
         messages,
+        activeContextStartIndex,
         readyForInput: !running,
         statusText,
       }),
-    [draftAgentMessage, messages, running, statusText],
+    [activeContextStartIndex, draftAgentMessage, messages, running, statusText],
   );
   const initialPromptError = searchParams.get("initialPromptError");
   const actionError = fetcher.data && !fetcher.data.ok ? fetcher.data.error : null;
@@ -638,7 +697,7 @@ function BackofficeOrganizationPiAgent({
   // The definition can change models between turns; the conversation's stored agent is current.
   // Pi's agent document stores the conversation's model choice as a provider and model id.
   const conversationModel = (
-    streamedView.docs["pi.agent"] as { model?: { provider: string; modelId: string } } | undefined
+    view.docs["pi.agent"] as { model?: { provider: string; modelId: string } } | undefined
   )?.model;
   const sessionModel = availableModelOptions.find(
     (model) =>
@@ -706,7 +765,7 @@ function BackofficeOrganizationPiAgent({
                   tokens: contextTokens,
                   window: sessionModel?.contextWindow ?? null,
                 }}
-                inactiveHistoryCount={transcript.inactiveEntryCount}
+                activeContextStartMessageId={activeContextStartMessageId}
                 hasMoreHistory={history.hasMore}
                 historyLoading={history.loading}
                 historyError={history.error}

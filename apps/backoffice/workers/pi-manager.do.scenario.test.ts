@@ -685,31 +685,6 @@ test("durable Pi paginates history, streams exports, and compacts without deleti
           assert.equal(submitted.status, 202, await submitted.clone().text());
           await runtime.drain();
 
-          const firstHistoryPage = await managerRequest(
-            runtime,
-            scope,
-            "/agents/assistant/entries?pageSize=1",
-          );
-          assert.equal(firstHistoryPage.status, 200);
-          const firstPage = await firstHistoryPage.json<{
-            entries: Array<{ id: number }>;
-            cursor: string | null;
-            hasNextPage: boolean;
-          }>();
-          expect(firstPage.entries).toHaveLength(1);
-          assert(firstPage.hasNextPage);
-          assert(firstPage.cursor);
-
-          const secondPage = await (
-            await managerRequest(
-              runtime,
-              scope,
-              `/agents/assistant/entries?pageSize=1&cursor=${encodeURIComponent(firstPage.cursor)}`,
-            )
-          ).json<{ entries: Array<{ id: number }>; hasNextPage: boolean }>();
-          expect(secondPage.entries).toHaveLength(1);
-          expect(secondPage.entries[0]?.id).not.toBe(firstPage.entries[0]?.id);
-
           const exported = await managerRequest(runtime, scope, "/agents/assistant/export");
           assert.equal(exported.status, 200);
           expect(exported.headers.get("content-disposition")).toContain("pi-agent-assistant");
@@ -739,11 +714,38 @@ test("durable Pi paginates history, streams exports, and compacts without deleti
           const activeView = await readView(runtime, scope);
           expect(JSON.stringify(activeView.entries)).toContain("Compacted durable summary.");
 
-          const retainedHistory = await (
-            await managerRequest(runtime, scope, "/agents/assistant/entries?pageSize=256")
-          ).json<{ entries: unknown[] }>();
-          expect(JSON.stringify(retainedHistory.entries)).toContain("Original durable answer.");
-          expect(JSON.stringify(retainedHistory.entries)).toContain("Compacted durable summary.");
+          // The view leads with the compaction's head marker; history is everything before it.
+          const before = activeView.entries[0]?.head;
+          assert(before !== undefined, "the compacted view leads with its head marker");
+          const history: ConversationView["entries"][number][] = [];
+          let cursor: string | null = null;
+          do {
+            const query = new URLSearchParams({ before: String(before), pageSize: "1" });
+            if (cursor) {
+              query.set("cursor", cursor);
+            }
+            const response = await managerRequest(
+              runtime,
+              scope,
+              `/agents/assistant/entries?${query}`,
+            );
+            assert.equal(response.status, 200, await response.clone().text());
+            const page = await response.json<{
+              entries: ConversationView["entries"];
+              cursor: string | null;
+            }>();
+            expect(page.entries).toHaveLength(1);
+            history.push(...page.entries);
+            cursor = page.cursor;
+          } while (cursor !== null);
+
+          const historyIds = history.map((entry) => entry.id);
+          expect(historyIds.length).toBeGreaterThan(1);
+          expect(historyIds).toEqual([...historyIds].sort((a, b) => b - a));
+          expect(historyIds.filter((id) => id >= before)).toEqual([]);
+          const activeIds = new Set(activeView.entries.map((entry) => entry.id));
+          expect(historyIds.filter((id) => activeIds.has(id))).toEqual([]);
+          expect(JSON.stringify(history)).toContain("Create history.");
         }),
       ],
     }),

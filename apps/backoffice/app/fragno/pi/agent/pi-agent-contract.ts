@@ -96,8 +96,13 @@ export const piAgentCompactionStatusSchema = z.object({
 });
 export type PiAgentCompactionStatus = z.infer<typeof piAgentCompactionStatusSchema>;
 
-/** Entry pagination state is backend-owned JSON round-tripped only to the same Pi agent. */
+/**
+ * Pages newest-first through the history older than entry `before`, which callers set to where the
+ * active context begins; the conversation view already carries everything from there on. Entry
+ * pagination state is backend-owned JSON round-tripped only to the same Pi agent and `before`.
+ */
 export const piAgentEntryPageRequestSchema = z.object({
+  before: z.number().int().positive(),
   pageSize: z.number().int().min(1).max(256),
   cursor: z.record(z.string(), jsonValueSchema).nullable(),
 });

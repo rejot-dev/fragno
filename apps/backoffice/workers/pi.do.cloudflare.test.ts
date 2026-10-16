@@ -160,7 +160,10 @@ describe("Pi durable agent scenarios", () => {
       { provider: "faux", modelId: "faux-1", label: "Faux 1", contextWindow: 128_000 },
     ]);
     const history = await (
-      await managerRequest(organizationId, "/agents/assistant/entries?pageSize=2")
+      await managerRequest(
+        organizationId,
+        `/agents/assistant/entries?before=${view.entries.at(-1)?.id}&pageSize=2`,
+      )
     ).json<{ entries: unknown[]; hasNextPage: boolean }>();
     expect(history.entries).toHaveLength(2);
     assert(history.hasNextPage);
@@ -416,7 +419,8 @@ describe("Pi durable agent scenarios", () => {
     assert(unsigned.status === 401);
     assert((await managerRequest(organizationId, "/agents", undefined, "agent")).status === 403);
     assert(
-      (await managerRequest(organizationId, "/agents/assistant/entries?pageSize=0")).status === 400,
+      (await managerRequest(organizationId, "/agents/assistant/entries?before=1&pageSize=0"))
+        .status === 400,
     );
     const foreign = await createAuthorizedBackofficeObjectRequest({
       request: new Request("https://backoffice.example/api/pi-manager/agents"),

@@ -46,28 +46,31 @@ describe("piConversationMessages", () => {
     } as never;
 
     expect(
-      piConversationMessages({
-        conversation: { id: 1 },
-        entries: [
-          { id: 1, conversationId: 1, kind: "pi.user", model: [] },
-          { id: 2, conversationId: 1, kind: "pi.assistant", byTaskId: 8, model: [completed] },
-          {
-            id: 3,
-            conversationId: 1,
-            kind: "pi.assistant",
-            byTaskId: 8,
-            model: [abortedCopy],
-          },
-          {
-            id: 4,
-            conversationId: 1,
-            kind: "pi.assistant",
-            byTaskId: 8,
-            model: [abortedCopy],
-          },
-        ],
-        docs: {},
-      } as never),
+      piConversationMessages(
+        {
+          conversation: { id: 1 },
+          entries: [
+            { id: 1, conversationId: 1, kind: "pi.user", model: [] },
+            { id: 2, conversationId: 1, kind: "pi.assistant", byTaskId: 8, model: [completed] },
+            {
+              id: 3,
+              conversationId: 1,
+              kind: "pi.assistant",
+              byTaskId: 8,
+              model: [abortedCopy],
+            },
+            {
+              id: 4,
+              conversationId: 1,
+              kind: "pi.assistant",
+              byTaskId: 8,
+              model: [abortedCopy],
+            },
+          ],
+          docs: {},
+        } as never,
+        null,
+      ).messages,
     ).toEqual([completed]);
   });
 
@@ -81,13 +84,16 @@ describe("piConversationMessages", () => {
     } as never;
 
     expect(
-      piConversationMessages({
-        conversation: { id: 1 },
-        entries: [
-          { id: 2, conversationId: 1, kind: "pi.assistant", byTaskId: 8, model: [aborted] },
-        ],
-        docs: {},
-      } as never),
+      piConversationMessages(
+        {
+          conversation: { id: 1 },
+          entries: [
+            { id: 2, conversationId: 1, kind: "pi.assistant", byTaskId: 8, model: [aborted] },
+          ],
+          docs: {},
+        } as never,
+        null,
+      ).messages,
     ).toEqual([aborted]);
   });
 });
@@ -135,11 +141,12 @@ describe("createAssistantUiMessages", () => {
       },
     } as never;
 
-    const converted = createAssistantUiMessages({
+    const { messages: converted } = createAssistantUiMessages({
+      activeContextStartIndex: null,
       draftAgentMessage: piConversationDraftAgentMessage(view),
       readyForInput: false,
       statusText: "Working…",
-      messages: piConversationMessages(view),
+      messages: piConversationMessages(view, null).messages,
     });
 
     expect(converted).toHaveLength(2);
@@ -155,7 +162,8 @@ describe("createAssistantUiMessages", () => {
   });
 
   test("converts thinking into reasoning and joins tool results to their calls", () => {
-    const converted = createAssistantUiMessages({
+    const { messages: converted } = createAssistantUiMessages({
+      activeContextStartIndex: null,
       draftAgentMessage: null,
       readyForInput: true,
       statusText: null,
@@ -223,7 +231,8 @@ describe("createAssistantUiMessages", () => {
         },
       },
     };
-    const converted = createAssistantUiMessages({
+    const { messages: converted } = createAssistantUiMessages({
+      activeContextStartIndex: null,
       draftAgentMessage: null,
       readyForInput: true,
       statusText: null,
@@ -267,7 +276,8 @@ describe("createAssistantUiMessages", () => {
   });
 
   test("presents an aborted provider stream as a user cancellation", () => {
-    const converted = createAssistantUiMessages({
+    const { messages: converted } = createAssistantUiMessages({
+      activeContextStartIndex: null,
       draftAgentMessage: null,
       readyForInput: true,
       statusText: null,
@@ -299,7 +309,8 @@ describe("createAssistantUiMessages", () => {
   });
 
   test("marks only the last visible message as running", () => {
-    const converted = createAssistantUiMessages({
+    const { messages: converted } = createAssistantUiMessages({
+      activeContextStartIndex: null,
       draftAgentMessage: null,
       readyForInput: false,
       statusText: "Working…",
@@ -347,7 +358,8 @@ describe("createAssistantUiMessages", () => {
   });
 
   test("adds a running assistant message for streamed reasoning and tools", () => {
-    const converted = createAssistantUiMessages({
+    const { messages: converted } = createAssistantUiMessages({
+      activeContextStartIndex: null,
       readyForInput: false,
       statusText: "Running tool…",
       messages: [{ role: "user", content: "Run it", timestamp: 1 } as never],
@@ -392,7 +404,8 @@ describe("createAssistantUiMessages", () => {
   });
 
   test("keeps valid persisted and draft content visible around unsupported blocks", () => {
-    const converted = createAssistantUiMessages({
+    const { messages: converted } = createAssistantUiMessages({
+      activeContextStartIndex: null,
       readyForInput: false,
       statusText: "Working…",
       messages: [
@@ -443,7 +456,8 @@ describe("createAssistantUiMessages", () => {
   });
 
   test("keeps skill reads recognizable without exposing skill contents in the tool card", () => {
-    const converted = createAssistantUiMessages({
+    const { messages: converted } = createAssistantUiMessages({
+      activeContextStartIndex: null,
       draftAgentMessage: null,
       readyForInput: true,
       statusText: null,

@@ -1,5 +1,5 @@
 import { backofficeScopeOrganization } from "@fragno-dev/backoffice-api/v0/shared/scope";
-import { Outlet } from "react-router";
+import { Outlet, type ShouldRevalidateFunctionArgs } from "react-router";
 
 import { backofficeContextScopeLabel } from "@/backoffice-runtime/context";
 import { backofficeRouteScopeFromResolvedScope } from "@/backoffice-runtime/resolved-scope";
@@ -9,6 +9,7 @@ import {
 } from "@/layouts/backoffice-shell-request.server";
 
 import type { Route } from "./+types/organization-layout";
+import { isPiConversationSubmission } from "./agent-conversation-submission";
 import { fetchPiManagerAvailableModels } from "./data";
 import { isPiAgentsPath } from "./path";
 import { PiErrorBoundary } from "./shared";
@@ -34,6 +35,13 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     billingOrganization,
     availableModelOptions,
   };
+}
+
+export function shouldRevalidate({
+  formData,
+  defaultShouldRevalidate,
+}: ShouldRevalidateFunctionArgs) {
+  return isPiConversationSubmission(formData) ? false : defaultShouldRevalidate;
 }
 
 export function meta({ loaderData }: Route.MetaArgs) {

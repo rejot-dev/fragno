@@ -582,14 +582,23 @@ const piManagerRoutes = defineRoutes(piManagerDefinition).create(
       defineRoute({
         method: "GET",
         path: "/agents/:agentName/entries",
-        queryParameters: ["cursor", "pageSize"],
+        queryParameters: ["before", "cursor", "pageSize"],
         outputSchema: z.object({
           entries: z.array(z.unknown()),
           cursor: z.string().nullable(),
           hasNextPage: z.boolean(),
         }),
-        errorCodes: ["AGENT_NOT_STARTED", "INVALID_CURSOR", "INVALID_PAGE_SIZE"],
+        errorCodes: ["AGENT_NOT_STARTED", "INVALID_BEFORE", "INVALID_CURSOR", "INVALID_PAGE_SIZE"],
         handler: async function ({ pathParams, query }, { json, error }) {
+          const before = piAgentEntryPageRequestSchema.shape.before.safeParse(
+            Number(query.get("before")),
+          );
+          if (!before.success) {
+            return error(
+              { code: "INVALID_BEFORE", message: "Pi entry history requires a `before` entry ID." },
+              400,
+            );
+          }
           const pageSize = z.coerce
             .number()
             .int()
@@ -624,6 +633,7 @@ const piManagerRoutes = defineRoutes(piManagerDefinition).create(
             return error({ code: "AGENT_NOT_STARTED", message: "Pi agent has no turns yet." }, 404);
           }
           const page = await config.agent(agent).listEntries(agent, {
+            before: before.data,
             pageSize: pageSize.data,
             cursor,
           });

@@ -160,8 +160,15 @@ function compactionMessage(entry: EntryRecord): PiCompactionMessage {
   };
 }
 
-/** Hides superseded recovery partials while preserving distinct attempts and completed tool rounds. */
-export function piConversationMessages(view: ConversationView): PiConversationMessage[] {
+/**
+ * Hides superseded recovery partials while preserving distinct attempts and completed tool rounds.
+ * `activeContextStartIndex` is the first message from entry `activeFrom` on, where the active
+ * context starts; it is null unless history before that entry is in the view.
+ */
+export function piConversationMessages(
+  view: ConversationView,
+  activeFrom: number | null,
+): { messages: PiConversationMessage[]; activeContextStartIndex: number | null } {
   const completedAssistantAttempts = new Set<string>();
   for (const entry of view.entries) {
     const taskKey = entry.byTaskId === undefined ? `entry:${entry.id}` : `task:${entry.byTaskId}`;
@@ -173,12 +180,19 @@ export function piConversationMessages(view: ConversationView): PiConversationMe
   }
 
   const visibleAbortedAttempts = new Set<string>();
-  return view.entries.flatMap((entry): PiConversationMessage[] => {
+  const messages: PiConversationMessage[] = [];
+  let activeContextStartIndex: number | null = null;
+  view.entries.forEach((entry, index) => {
+    const previous = view.entries[index - 1];
+    if (activeFrom !== null && previous && previous.id < activeFrom && entry.id >= activeFrom) {
+      activeContextStartIndex = messages.length;
+    }
     if (entry.kind === COMPACTION_ENTRY_KIND) {
-      return [compactionMessage(entry)];
+      messages.push(compactionMessage(entry));
+      return;
     }
     const taskKey = entry.byTaskId === undefined ? `entry:${entry.id}` : `task:${entry.byTaskId}`;
-    return (entry.model ?? []).filter((message) => {
+    const visible = (entry.model ?? []).filter((message) => {
       if (message.role !== "assistant" || message.stopReason !== "aborted") {
         return true;
       }
@@ -189,7 +203,9 @@ export function piConversationMessages(view: ConversationView): PiConversationMe
       visibleAbortedAttempts.add(attemptKey);
       return true;
     });
+    messages.push(...visible);
   });
+  return { messages, activeContextStartIndex };
 }
 
 /** Projects Pi's committed live document into the existing Assistant UI draft model. */
@@ -322,17 +338,20 @@ function convertDraftTool(
 const messageDate = (timestamp: number | undefined, fallbackIndex: number) =>
   new Date(timestamp ?? fallbackIndex);
 
+/** `activeContextStartMessageId` is the first rendered message of `activeContextStartIndex` on. */
 export function createAssistantUiMessages({
   draftAgentMessage,
   messages,
+  activeContextStartIndex,
   readyForInput,
   statusText,
 }: {
   draftAgentMessage: PiDraftAgentMessage | null;
   messages: PiConversationMessage[];
+  activeContextStartIndex: number | null;
   readyForInput: boolean;
   statusText: string | null;
-}): ThreadMessageLike[] {
+}): { messages: ThreadMessageLike[]; activeContextStartMessageId: string | null } {
   const toolResultsByCallId = new Map<string, ToolResultMessage>();
   for (const message of messages) {
     if (message.role === "toolResult") {
@@ -350,8 +369,17 @@ export function createAssistantUiMessages({
     }
   }
   const converted: ThreadMessageLike[] = [];
+  // Tool results render inside their calls, so the next message converted marks the start.
+  let activeContextStartPosition: number | null = null;
 
   messages.forEach((message, index) => {
+    if (
+      activeContextStartPosition === null &&
+      activeContextStartIndex !== null &&
+      index >= activeContextStartIndex
+    ) {
+      activeContextStartPosition = converted.length;
+    }
     if (message.role === "toolResult") {
       return;
     }
@@ -433,6 +461,10 @@ export function createAssistantUiMessages({
     });
   });
 
+  if (activeContextStartPosition === null && activeContextStartIndex !== null) {
+    activeContextStartPosition = converted.length;
+  }
+
   const lastConvertedMessage = converted.at(-1);
   if (
     !readyForInput &&
@@ -472,7 +504,13 @@ export function createAssistantUiMessages({
     });
   }
 
-  return converted;
+  return {
+    messages: converted,
+    activeContextStartMessageId:
+      activeContextStartPosition === null
+        ? null
+        : (converted[activeContextStartPosition]?.id ?? null),
+  };
 }
 
 export function getAppendMessageText(message: AppendMessage) {

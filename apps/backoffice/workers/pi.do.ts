@@ -5,7 +5,7 @@ import { DurableObject, RpcTarget } from "cloudflare:workers";
 import type { PostHog } from "posthog-node";
 import type { z } from "zod";
 
-import { ConversationBusy, type Storage } from "@earendil-works/pi-durable";
+import { ConversationBusy, type EntryId, type Storage } from "@earendil-works/pi-durable";
 
 import {
   createCloudflareDurableObjectRuntimeServices,
@@ -286,7 +286,8 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
     const { harness } = await this.#requireAgent(config);
     const root = await harness.root(BACKGROUND_CONTEXT);
     const page = await root.entries(
-      {},
+      // Pi's entry bounds are inclusive.
+      { maxEntryId: (request.before - 1) as EntryId },
       request.pageSize,
       request.cursor ?? undefined,
       BACKGROUND_CONTEXT,

@@ -1,7 +1,7 @@
 import { Menu } from "@base-ui/react/menu";
 import { Button } from "@fragno-private/design-system/button";
 import { Icon } from "@fragno-private/design-system/icon";
-import { useRef, useState, type UIEvent } from "react";
+import { useEffect, useRef, useState, type UIEvent } from "react";
 
 import { ComposerPrimitive, QueueItemPrimitive, ThreadPrimitive } from "@assistant-ui/react";
 
@@ -12,6 +12,9 @@ const contextTokenFormatter = new Intl.NumberFormat("en-US", {
   notation: "compact",
   maximumFractionDigits: 1,
 });
+
+const OUT_OF_CONTEXT_HISTORY =
+  "Earlier messages are still visible but out of context for the agent due to compaction.";
 
 // Warns ahead of Pi's automatic compaction, which starts near the window minus its reserve.
 const CONTEXT_USAGE_WARNING_RATIO = 0.8;
@@ -37,7 +40,7 @@ export function SessionThread({
   compactionError,
   compactionNotice,
   contextUsage,
-  inactiveHistoryCount,
+  activeContextStartMessageId,
   hasMoreHistory,
   historyLoading,
   historyError,
@@ -66,15 +69,53 @@ export function SessionThread({
   compactionNotice: string | null;
   /** `window` is null when the session's model is missing from the available catalog. */
   contextUsage: { tokens: number; window: number | null };
-  inactiveHistoryCount: number;
+  /** The message the context divider precedes; null while no earlier history is shown. */
+  activeContextStartMessageId: string | null;
   hasMoreHistory: boolean;
   historyLoading: boolean;
   historyError: string | null;
   onComposerActionChange: (value: "message" | "compact") => void;
-  onLoadMoreHistory: () => unknown;
+  onLoadMoreHistory: () => Promise<void>;
 }) {
   const disabled = disabledReason !== null;
   const viewportRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  // While older history loads, the reader's distance from the bottom stays fixed, so content
+  // inserted above them does not move what they are reading.
+  const historyScrollAnchorRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    const content = contentRef.current;
+    if (!viewport || !content) {
+      return undefined;
+    }
+    const observer = new ResizeObserver(() => {
+      const distanceFromBottom = historyScrollAnchorRef.current;
+      if (distanceFromBottom !== null) {
+        viewport.scrollTo({ top: viewport.scrollHeight - distanceFromBottom, behavior: "instant" });
+      }
+    });
+    observer.observe(content);
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
+
+  const loadOlderHistory = async () => {
+    const viewport = viewportRef.current;
+    historyScrollAnchorRef.current = viewport ? viewport.scrollHeight - viewport.scrollTop : null;
+    try {
+      await onLoadMoreHistory();
+    } finally {
+      // The loaded entries reach the thread over a render or two after the request settles.
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          historyScrollAnchorRef.current = null;
+        });
+      });
+    }
+  };
   const [showScrollToLatest, setShowScrollToLatest] = useState(false);
 
   const handleViewportScroll = (event: UIEvent<HTMLDivElement>) => {
@@ -100,35 +141,27 @@ export function SessionThread({
         onScroll={handleViewportScroll}
         className="backoffice-scroll flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain scroll-smooth px-3 sm:px-6"
       >
-        <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col py-5 sm:py-8">
-          {inactiveHistoryCount > 0 || hasMoreHistory || historyError ? (
-            <section className="mb-5 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2 text-xs text-[var(--bo-muted)]">
-              <div className="flex min-h-8 items-center justify-between gap-3">
-                <span>
-                  <span className="font-medium text-[var(--bo-fg)]">Earlier history</span>
-                  {inactiveHistoryCount > 0 ? (
-                    <span className="ml-2 text-[10px] text-[var(--bo-muted-2)] tabular-nums">
-                      {inactiveHistoryCount} inactive{" "}
-                      {inactiveHistoryCount === 1 ? "entry" : "entries"}
-                    </span>
-                  ) : null}
-                </span>
-                {hasMoreHistory ? (
-                  <Button
-                    variant="ghost"
-                    disabled={historyLoading}
-                    onClick={() => void onLoadMoreHistory()}
-                  >
-                    {historyLoading ? "Loading…" : "Load older"}
-                  </Button>
-                ) : null}
-              </div>
-              <p className="text-[10px] leading-4 text-[var(--bo-muted-2)]">
-                Entries shown here remain durable but are no longer part of Pi&apos;s active model
-                context.
-              </p>
+        <div
+          ref={contentRef}
+          className="mx-auto flex w-full max-w-3xl flex-1 flex-col py-5 sm:py-8"
+        >
+          {hasMoreHistory || historyError ? (
+            <section className="mb-7 flex flex-col items-center gap-2 text-center text-xs text-[var(--bo-muted)]">
+              {/* Once history shows, the divider below it carries this explanation. */}
+              {activeContextStartMessageId === null ? (
+                <p className="text-pretty">{OUT_OF_CONTEXT_HISTORY}</p>
+              ) : null}
+              {hasMoreHistory ? (
+                <Button
+                  variant="ghost"
+                  disabled={historyLoading}
+                  onClick={() => void loadOlderHistory()}
+                >
+                  {historyLoading ? "Loading…" : "Load older"}
+                </Button>
+              ) : null}
               {historyError ? (
-                <p role="alert" className="mt-2 text-[var(--bo-failed)]">
+                <p role="alert" className="text-pretty text-[var(--bo-failed)]">
                   {historyError}
                 </p>
               ) : null}
@@ -136,21 +169,22 @@ export function SessionThread({
           ) : null}
 
           <ThreadPrimitive.Messages>
-            {({ message }) => {
-              if (message.role === "user") {
-                return <UserMessage />;
-              }
-              if (message.role === "assistant") {
-                return (
+            {({ message }) => (
+              <>
+                {message.id === activeContextStartMessageId ? <ContextBoundaryDivider /> : null}
+                {message.role === "user" ? (
+                  <UserMessage />
+                ) : message.role === "assistant" ? (
                   <AssistantMessage
                     showThinking={showThinking}
                     showToolCalls={showToolCalls}
                     showUsage={showUsage}
                   />
-                );
-              }
-              return <CompactionMessage />;
-            }}
+                ) : (
+                  <CompactionMessage />
+                )}
+              </>
+            )}
           </ThreadPrimitive.Messages>
 
           {compacting ? <CompactionOperationIndicator /> : null}
@@ -358,6 +392,17 @@ function ContextUsageIndicator({ usage }: { usage: { tokens: number; window: num
     >
       {Math.min(100, Math.round(ratio * 100))}% context
     </span>
+  );
+}
+
+/** Separates loaded history from the messages still in the agent's context. */
+function ContextBoundaryDivider() {
+  return (
+    <div role="separator" className="my-12 flex items-center gap-5 text-xs text-[var(--bo-muted)]">
+      <span className="h-px min-w-8 flex-1 bg-[var(--bo-border-strong)]" />
+      <span className="text-center text-pretty sm:whitespace-nowrap">{OUT_OF_CONTEXT_HISTORY}</span>
+      <span className="h-px min-w-8 flex-1 bg-[var(--bo-border-strong)]" />
+    </div>
   );
 }
 

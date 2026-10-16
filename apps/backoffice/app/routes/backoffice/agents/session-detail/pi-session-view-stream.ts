@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { z } from "zod";
 
 import type { ConversationView } from "@earendil-works/pi-durable";
 
@@ -72,15 +73,25 @@ function waitForPiSessionViewReconnect(delayMs: number, signal: AbortSignal) {
   });
 }
 
-/** Maintains one reconnecting NDJSON subscription for the selected durable Pi session. */
-export function usePiSessionViewStream({
-  initialView,
-  streamUrl,
-}: {
-  initialView: ConversationView;
-  streamUrl: string;
-}) {
-  const [view, setView] = useState(initialView);
+/** The selected agent's live conversation, as far as its view stream has delivered it. */
+type PiSessionViewStreamState =
+  | { status: "connecting" }
+  | { status: "ready"; view: ConversationView }
+  | { status: "failed"; message: string };
+
+async function readPiSessionViewStreamFailure(response: Response) {
+  const body = z.object({ message: z.string() }).safeParse(await response.json().catch(() => null));
+  return body.success
+    ? body.data.message
+    : `The conversation is unavailable (status ${response.status}).`;
+}
+
+/**
+ * Maintains one reconnecting NDJSON subscription for the selected durable Pi session. Its first
+ * frame is the whole conversation view, so the page needs no server-loaded copy.
+ */
+export function usePiSessionViewStream(streamUrl: string) {
+  const [state, setState] = useState<PiSessionViewStreamState>({ status: "connecting" });
 
   useEffect(() => {
     const controller = new AbortController();
@@ -100,13 +111,18 @@ export function usePiSessionViewStream({
               response.status === 404 ||
               response.status === 409
             ) {
+              const message = await readPiSessionViewStreamFailure(response);
+              // A view that already arrived stays readable when a reconnect is refused.
+              setState((current) =>
+                current.status === "ready" ? current : { status: "failed", message },
+              );
               return;
             }
             throw new Error(`Pi session view stream failed with status ${response.status}.`);
           }
           reconnectDelayMs = INITIAL_RECONNECT_DELAY_MS;
           await consumePiSessionViewNdjson(response, (frame) => {
-            setView(frame.view);
+            setState({ status: "ready", view: frame.view });
           });
         } catch (cause) {
           if (controller.signal.aborted) {
@@ -125,5 +141,5 @@ export function usePiSessionViewStream({
     };
   }, [streamUrl]);
 
-  return view;
+  return state;
 }

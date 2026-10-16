@@ -37,7 +37,7 @@ export function AgentStartComposer({
         <AgentPermissions permissions={permissions} className="mt-2 mb-5 font-mono text-xs" />
 
         <fetcher.Form method="post" className="w-full">
-          <input type="hidden" name="intent" value="send" />
+          <input type="hidden" name="intent" value="start" />
           <div className="bo-input">
             <label
               htmlFor="agent-start-prompt"

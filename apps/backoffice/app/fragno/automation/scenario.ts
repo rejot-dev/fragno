@@ -82,7 +82,6 @@ import { getStaticMarketplaceEntry } from "@/fragno/marketplace/static-entries";
 import {
   piAgentObjectName,
   type PiAgent,
-  type PiAgentEntryPage,
   type PiAgentTurn,
   type PiAvailableModel,
 } from "@/fragno/pi/agent/pi-agent-contract";
@@ -1166,11 +1165,9 @@ const createFakePiManagerApi = (
       return submission ? { status: "settled", submission } : null;
     },
     async listEntries(config) {
-      const view = conversationView(requireAgent(config));
-      return {
-        entries: [...view.entries].reverse() as unknown as PiAgentEntryPage["entries"],
-        cursor: null,
-      };
+      requireAgent(config);
+      // The fake never compacts, so no history precedes its active context.
+      return { entries: [], cursor: null };
     },
     async exportEntries(config) {
       const fake = requireAgent(config);

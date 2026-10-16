@@ -274,13 +274,14 @@ export async function fetchPiManagerEntryPage(
   context: Readonly<RouterContextProvider>,
   scope: BackofficeContextScope,
   agentName: string,
-  input: { cursor?: string | null; pageSize?: number },
+  input: { before: string; cursor: string | null; pageSize: string },
 ): Promise<PiManagerEntryPage> {
   const { callRoute } = await createPiManagerRouteCaller(request, context, scope);
   const response = await callRoute("GET", "/agents/:agentName/entries", {
     pathParams: { agentName },
     query: {
-      pageSize: String(input.pageSize ?? 100),
+      before: input.before,
+      pageSize: input.pageSize,
       ...(input.cursor ? { cursor: input.cursor } : {}),
     },
   });
