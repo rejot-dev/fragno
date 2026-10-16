@@ -191,6 +191,7 @@ describe("admin OAuth client SQLite scenarios", () => {
                 codemode: codemodeRunnerFor(
                   ctx.runtime.objects.codemode.for({ kind: "system" }).commands,
                   createBackofficeSystemExecution({ kind: "system" }),
+                  null,
                 ),
                 families: runtimeToolFamilies,
                 toolContext: createBackofficeToolContext(oauthAdminContext(ctx, "admin-1")),
@@ -218,6 +219,7 @@ describe("admin OAuth client SQLite scenarios", () => {
                 codemode: codemodeRunnerFor(
                   ctx.runtime.objects.codemode.for({ kind: "system" }).commands,
                   createBackofficeSystemExecution({ kind: "system" }),
+                  null,
                 ),
                 families: runtimeToolFamilies,
                 toolContext: createBackofficeToolContext(oauthAdminContext(ctx, "admin-1")),
@@ -638,6 +640,7 @@ describe("admin OAuth client SQLite scenarios", () => {
                 codemode: codemodeRunnerFor(
                   ctx.runtime.objects.codemode.for(context.execution.scope).commands,
                   context.execution,
+                  null,
                 ),
                 families: runtimeToolFamilies,
                 toolContext: createBackofficeToolContext(context),
@@ -772,6 +775,7 @@ describe("admin OAuth client SQLite scenarios", () => {
                 codemode: codemodeRunnerFor(
                   ctx.runtime.objects.codemode.for(context.execution.scope).commands,
                   context.execution,
+                  null,
                 ),
                 families: runtimeToolFamilies,
                 toolContext: createBackofficeToolContext(context),
@@ -925,6 +929,7 @@ describe("admin OAuth client SQLite scenarios", () => {
                 codemode: codemodeRunnerFor(
                   ctx.runtime.objects.codemode.for(tools.execution.scope).commands,
                   tools.execution,
+                  null,
                 ),
                 families: runtimeToolFamilies,
                 toolContext: tools,
@@ -935,6 +940,7 @@ describe("admin OAuth client SQLite scenarios", () => {
                 codemode: codemodeRunnerFor(
                   ctx.runtime.objects.codemode.for(tools.execution.scope).commands,
                   tools.execution,
+                  null,
                 ),
                 families: runtimeToolFamilies,
                 toolContext: tools,

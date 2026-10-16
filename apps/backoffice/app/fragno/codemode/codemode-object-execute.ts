@@ -23,14 +23,19 @@ export type CodemodeRunner = {
   ): Promise<CodemodeExecution>;
 };
 
-/** Binds a scope's Codemode object to the provenance of the execution that obtained it. */
+/**
+ * Binds a scope's Codemode object to the provenance of the execution that obtained it. The object
+ * bills its scope's organization when it has one, so the billing choice matters only elsewhere.
+ */
 export function codemodeRunnerFor(
   codemode: CodemodeObject,
   execution: BackofficeExecutionContext,
+  billingOrganizationId: string | null,
 ): CodemodeRunner {
   const context = {
     actors: execution.actors,
     scopeRestriction: backofficeExecutionScopeRestriction(execution),
+    billingOrganizationId,
   };
   return {
     run: (activation, origin, host) => codemode.execute(activation, { ...context, origin }, host),

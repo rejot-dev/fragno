@@ -1812,7 +1812,11 @@ const runScenarioCodemode = async (
   const toolContext = createBackofficeToolContext(runtimeContext);
   const result = await runBackofficeCodemode({
     code: input.code,
-    codemode: codemodeRunnerFor(ctx.runtime.objects.codemode.for(input.scope).commands, execution),
+    codemode: codemodeRunnerFor(
+      ctx.runtime.objects.codemode.for(input.scope).commands,
+      execution,
+      null,
+    ),
     timeout: input.timeout,
     families: runtimeToolFamilies,
     toolContext: toolContext,

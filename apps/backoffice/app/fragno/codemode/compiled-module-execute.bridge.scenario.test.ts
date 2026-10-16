@@ -109,6 +109,7 @@ for (const interruption of ["parent cancellation", "activation deadline"] as con
                 codemode: codemodeRunnerFor(
                   runtime.objects.codemode.forOrg("org-1").commands,
                   createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+                  null,
                 ),
                 origin: { kind: "file", path: "/workspace/.build/test.module.json" },
                 signal: cancellation.signal,
@@ -258,6 +259,7 @@ test("remote compiled execution keeps its full guest timeout after a delayed Web
                 codemode: codemodeRunnerFor(
                   runtime.objects.codemode.forOrg("org-1").commands,
                   createBackofficeSystemExecution({ kind: "org", orgId: "org-1" }),
+                  null,
                 ),
                 origin: { kind: "file", path: "/workspace/.build/test.module.json" },
                 signal: null,

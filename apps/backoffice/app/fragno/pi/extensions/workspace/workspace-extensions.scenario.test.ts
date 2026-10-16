@@ -235,6 +235,7 @@ test("js.build publishes ordinary ES modules without executing or inspecting the
             const codemode = codemodeRunnerFor(
               runtime.objects.codemode.for(scope).commands,
               createBackofficeSystemExecution(scope),
+              null,
             );
             assert.equal(
               await runBackofficeCompiledModule({

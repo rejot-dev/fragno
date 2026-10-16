@@ -54,6 +54,7 @@ describe("JavaScript file execution in workerd", () => {
             createCloudflareBackofficeObjectRegistry(env as CloudflareEnv).codemode.singleton()
               .commands,
             createBackofficeSystemExecution({ kind: "system" }),
+            null,
           ),
           families: runtimeToolFamilies,
           toolContext,
