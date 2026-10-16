@@ -5,8 +5,9 @@ import { cn } from "../cn";
 
 // Buttons share the navigation item's shape without its border line: 4px corners, sentence-case
 // semibold text, and the raised selected surface. secondary is that surface, ghost is the resting navigation item,
-// accent tints the surface for the default action, and solid is the page-level call to action.
-export type ButtonVariant = "accent" | "secondary" | "ghost" | "solid";
+// accent tints the surface for the default action, solid is the page-level call to action, and danger
+// marks a destructive or rejecting action.
+export type ButtonVariant = "accent" | "secondary" | "ghost" | "solid" | "danger";
 
 const BASE =
   "inline-flex min-h-11 items-center justify-center gap-2 rounded-[4px] px-3 text-sm font-semibold transition-[background-color,box-shadow,color,scale] duration-150 ease-out focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100";
@@ -19,6 +20,8 @@ const VARIANTS: Record<ButtonVariant, string> = {
   ghost: "text-[var(--bo-fg)] hover:bg-[var(--bo-panel-2)]",
   solid:
     "bg-[var(--bo-btn-bg)] text-[var(--bo-btn-fg)] shadow-[var(--bo-selected-shadow)] hover:bg-[var(--bo-btn-bg-hover)]",
+  danger:
+    "bg-[var(--bo-failed-bg)] text-[var(--bo-failed)] shadow-[var(--bo-selected-shadow)] hover:bg-[color-mix(in_srgb,var(--bo-failed-bg)_82%,var(--bo-failed))]",
 };
 
 function buttonClassName(variant: ButtonVariant, className: string | undefined) {

@@ -24,6 +24,11 @@ const VARIANTS: { variant: ButtonVariant; label: string; description: string }[]
     label: "Skip",
     description: "No surface until hover. Low-emphasis actions and toolbars.",
   },
+  {
+    variant: "danger",
+    label: "Reject",
+    description: "Failure colour. Destructive or rejecting actions.",
+  },
 ];
 
 export function Variants() {
