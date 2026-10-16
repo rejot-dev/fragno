@@ -74,11 +74,7 @@ import {
   throwMarketplaceUploadRouteError,
   throwUnexpectedMarketplaceUploadResponse,
 } from "./marketplace-upload-errors";
-import {
-  workflowCompletedEventType,
-  type WorkflowCompletedEventPayload,
-  withWorkflowCompletionTarget,
-} from "./workflow-completion";
+import { workflowCompletedEventType, type WorkflowCompletedEventPayload } from "./workflow-reply";
 
 type PreparedWorkspaceWrite = PreparedFileWrite & { precondition: UploadFileWritePrecondition };
 
@@ -787,16 +783,18 @@ export function defineMarketplacePackageInstallWorkflow(
                   ],
                 },
               ],
+              replyTo: {
+                kind: "workflow",
+                workflowName: MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
+                instanceId: event.instanceId,
+              },
             });
             const result = await workflowsFragment.callServices(() =>
               workflowsFragment.services.restartOrCreateInstance(workflowInput.workflowName, {
                 id: workflowInput.instanceId,
                 create: {
                   remoteWorkflowName: workflowInput.remoteWorkflowName,
-                  params: withWorkflowCompletionTarget(workflowInput.params, {
-                    workflowName: MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
-                    instanceId: event.instanceId,
-                  }),
+                  params: workflowInput.params,
                 },
                 restart: {
                   precondition: {

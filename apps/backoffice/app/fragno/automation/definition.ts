@@ -294,6 +294,7 @@ const handleStartWorkflowRouteAction = async ({
     trigger: { type: "event", event: triggerEvent },
     execution,
     billingOrganizationId: null,
+    replyTo: null,
   });
 
   await runWorkflowServiceCall(

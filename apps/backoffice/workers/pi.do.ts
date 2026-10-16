@@ -267,8 +267,12 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
   async #notify(config: PiAgentConfig, turn: PiAgentTurn, notification: PiAgentNotification) {
     const { harness, storage } = await this.#requireAgent(config);
     const root = await harness.root(BACKGROUND_CONTEXT);
-    // Redelivering one event through one route reuses its write and its follow-up.
-    const requestId = `route:${notification.routeId}:${notification.event.id}`;
+    // Redelivering one event through one route, or to one agent directly, reuses its write and
+    // its follow-up.
+    const requestId =
+      notification.routeId === null
+        ? `reply:${notification.event.id}`
+        : `route:${notification.routeId}:${notification.event.id}`;
     // A busy agent places the write at its next boundary, so a running turn may handle it first.
     await root.submit(
       {

@@ -1,4 +1,3 @@
-import type { AutomationActors } from "@fragno-dev/backoffice-api/v0/automation";
 import type { PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import {
@@ -27,6 +26,7 @@ import type {
 import type { OtpRuntime } from "@/fragno/runtime-tools/families/otp-runtime";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 
+import { piAgentActor } from "./pi-agent-actor";
 import type { PiAgentTurn } from "./pi-agent-contract";
 
 /** Runtime services available to Backoffice tools executed by a durable Pi agent. */
@@ -66,11 +66,6 @@ export function requirePiStateBackend(context: PiRuntimeToolContext): Backoffice
     throw new Error("Pi requires a state backend.");
   }
   return context.stateBackend;
-}
-
-/** The delegate that narrows every turn of one agent to its definition's permissions. */
-function piAgentActor(agentName: string): AutomationActors["delegation"][number] {
-  return { scope: "internal", type: "pi-agent", id: agentName, role: "assistant" };
 }
 
 /** Rebuilds the scoped Backoffice context of whichever turn currently owns the agent's work. */

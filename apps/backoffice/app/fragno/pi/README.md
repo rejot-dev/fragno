@@ -95,33 +95,37 @@ without Automations forget settled turns without recording them.
 ## Notifications
 
 A `notify_agent` Automations route delivers an event to an agent of the route's scope through
-`POST /agents/:agentName/notifications`. The agent object writes the event into the root
-conversation as a `backoffice.notification` entry, whose data is the route ID and event and whose
-model message is one `<backoffice-event>` element: the event's identity as attributes, its subject
-and payload as JSON whose `<` is escaped, so event data cannot close the element. Backoffice
+`POST /agents/:agentName/notifications`. A workflow an agent starts with `execCodeMode` replies
+through the same route, with no route ID and the run's execution: when the run ends, Automations
+notifies the agent with a `workflows` `instance.completed` event carrying its status, output, and
+error. The workflows middleware accepts a codemode run's `replyTo` agent only from that agent's own
+turn, which it recognizes by the agent's delegate actor. The agent object writes the event into the
+root conversation as a `backoffice.notification` entry, whose data is the route ID and event and
+whose model message is one `<backoffice-event>` element: the event's identity as attributes, its
+subject and payload as JSON whose `<` is escaped, so event data cannot close the element. Backoffice
 guidance tells agents to treat it as data. Users only submit inputs, which Pi writes as `pi.user`,
 so the chat's event card cannot be forged.
 
 Pi places a write at a busy conversation's next boundary, tool rounds included, so a running turn
 can see and act on an event with its own submitter's authority. The agent then submits a follow-up
-input, one `<backoffice-notifications-request>` element listing each notification by its route and
-event ID, as a turn run with the route's execution. A queued input cannot change, so when a
-follow-up posted with the same actors and scope restriction is still queued, the agent withdraws it
-and posts one listing both its notifications and the new one; if Pi placed it first, the new
-follow-up lists only the new notification. A withdrawn follow-up settles unanswered and records no
-turn event. `backoffice.pi.notifications` records the queued follow-ups and what they list, and
-notifications run one at a time per agent object. The chat shows a follow-up as a "Handling N
-notifications" divider below their cards, and the composer queue labels it the same way; a typed
-request only restyles the typist's own message.
+input, one `<backoffice-notifications-request>` element listing each notification by its route, if
+any, and event ID, as a turn run with the route's or the workflow run's execution. A queued input
+cannot change, so when a follow-up posted with the same actors and scope restriction is still
+queued, the agent withdraws it and posts one listing both its notifications and the new one; if Pi
+placed it first, the new follow-up lists only the new notification. A withdrawn follow-up settles
+unanswered and records no turn event. `backoffice.pi.notifications` records the queued follow-ups
+and what they list, and notifications run one at a time per agent object. The chat shows a follow-up
+as a "Handling N notifications" divider below their cards, and the composer queue labels it the same
+way; a typed request only restyles the typist's own message.
 
-Request IDs make redelivery idempotent: the write is `route:<routeId>:<eventId>:event`, and a
-follow-up is `route:<routeId>:<eventId>` for the newest notification it lists, which is also the
-request ID its `turn.completed` reports. A redelivered notification that a queued follow-up already
-lists posts nothing. An object restart between withdrawing a follow-up and posting its replacement
-leaves the withdrawn notifications unlisted; their entries stay in the conversation. Notifications
-never provision an agent, because a personal agent's billing owner is chosen by its first prompter:
-an agent with no turns answers `404 AGENT_NOT_STARTED`. The route never delivers an agent's own `pi`
-events back to it.
+Request IDs make redelivery idempotent: the write is `route:<routeId>:<eventId>:event`, or
+`reply:<eventId>:event` without a route, and a follow-up takes the write's ID without `:event` for
+the newest notification it lists, which is also the request ID its `turn.completed` reports. A
+redelivered notification that a queued follow-up already lists posts nothing. An object restart
+between withdrawing a follow-up and posting its replacement leaves the withdrawn notifications
+unlisted; their entries stay in the conversation. Notifications never provision an agent, because a
+personal agent's billing owner is chosen by its first prompter: an agent with no turns answers
+`404 AGENT_NOT_STARTED`. The route never delivers an agent's own `pi` events back to it.
 
 ## Manager routes
 
@@ -138,7 +142,8 @@ All paths below are mounted at `/api/pi-manager` inside the manager object:
   agents require an authorized billing organization, and later turns keep the original owner.
   Reusing a request ID reuses the submission rather than generating another answer.
 - `POST /agents/:agentName/notifications`: `{ routeId, event }`, answering `204` or
-  `404 AGENT_NOT_STARTED`. Automations routes call it; see Notifications.
+  `404 AGENT_NOT_STARTED`. Automations routes and workflow replies, whose `routeId` is `null`, call
+  it; see Notifications.
 - `GET /agents/:agentName/submissions/:requestId`: Pi's submission record.
 - `GET /agents/:agentName/submissions/:requestId/wait?waitMs=...`: bounded, commit-driven wait for
   submission settlement.
