@@ -33,6 +33,12 @@ import { loader as marketplaceScopeLoader } from "@/routes/backoffice/marketplac
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
 import { establishBackofficeAuthenticatedRequest } from "./backoffice-authenticated-request.server";
+import {
+  archiveAutomationProject,
+  createAutomationProject,
+  sessionUserId,
+  withBackofficeAccessToken,
+} from "./backoffice-layout.test-support";
 import { establishBackofficeShellRequest } from "./backoffice-shell-request.server";
 
 const origin = "https://backoffice.example";
@@ -118,55 +124,6 @@ async function openPage(
   return { renders: "page", selectedScope, projectLookups } as const;
 }
 
-async function authRequest(ctx: Ctx, cookie: string, pathname: string, body?: unknown) {
-  return await ctx.runtime.objects.auth.singleton().http.fetch(
-    new Request(`${origin}/api/auth${pathname}`, {
-      method: body === undefined ? "GET" : "POST",
-      headers: {
-        origin,
-        cookie,
-        ...(body === undefined ? {} : { "content-type": "application/json" }),
-      },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    }),
-  );
-}
-
-async function sessionUserId(ctx: Ctx, cookie: string) {
-  const session = await authRequest(ctx, cookie, "/get-session");
-  return z.object({ user: z.object({ id: z.string() }) }).parse(await session.json()).user.id;
-}
-
-/** Adds the Backoffice access token, whose claims carry the user's role, to a session cookie. */
-async function withAccessToken(ctx: Ctx, cookie: string, organizationId: string | null) {
-  const issued = await authRequest(
-    ctx,
-    cookie,
-    "/backoffice-token",
-    organizationId
-      ? { selection: "required", organizationId }
-      : { selection: "preferred", organizationId: null },
-  );
-  assert(issued.ok, await issued.clone().text());
-  const accessToken = /fragno-backoffice\.access_token=([^;]+)/u.exec(
-    issued.headers.get("set-cookie") ?? "",
-  )?.[1];
-  assert(accessToken);
-  return `${cookie}; fragno-backoffice.access_token=${accessToken}`;
-}
-
-async function createProject(ctx: Ctx, name: string) {
-  const response = await ctx.runtime.objects.automations.forOrg(ctx.vars.orgId).http.fetch(
-    new Request(`${origin}/api/automations/projects`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name, createdByUserId: ctx.vars.adaId }),
-    }),
-  );
-  assert(response.ok, await response.clone().text());
-  return z.object({ id: z.string(), slug: z.string() }).parse(await response.json());
-}
-
 test("each section page selects the route's own scope, or reports a 404 inside the shell", async () => {
   await runBackofficeScenario(
     defineBackofficeScenario<Vars>({
@@ -206,19 +163,23 @@ test("each section page selects the route's own scope, or reports a 404 inside t
                 },
               ],
             });
-            ctx.vars.adaCookie = await withAccessToken(ctx, ctx.vars.adaCookie, ctx.vars.orgId);
-            ctx.vars.graceCookie = await withAccessToken(ctx, ctx.vars.graceCookie, null);
+            ctx.vars.adaCookie = await withBackofficeAccessToken(
+              ctx,
+              ctx.vars.adaCookie,
+              ctx.vars.orgId,
+            );
+            ctx.vars.graceCookie = await withBackofficeAccessToken(ctx, ctx.vars.graceCookie, null);
 
-            ctx.vars.launch = await createProject(ctx, "Launch");
-            ctx.vars.archived = await createProject(ctx, "Retired");
-            const archived = await ctx.runtime.objects.automations
-              .forOrg(ctx.vars.orgId)
-              .http.fetch(
-                new Request(`${origin}/api/automations/projects/${ctx.vars.archived.id}`, {
-                  method: "DELETE",
-                }),
-              );
-            assert(archived.ok, await archived.clone().text());
+            const project = { orgId: ctx.vars.orgId, createdByUserId: ctx.vars.adaId };
+            ctx.vars.launch = await createAutomationProject(ctx, { ...project, name: "Launch" });
+            ctx.vars.archived = await createAutomationProject(ctx, {
+              ...project,
+              name: "Retired",
+            });
+            await archiveAutomationProject(ctx, {
+              orgId: ctx.vars.orgId,
+              projectId: ctx.vars.archived.id,
+            });
           },
         ),
         then.assert("every section opens Ada's scopes with their labels", async (ctx) => {
