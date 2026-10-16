@@ -49,6 +49,8 @@ export type CodemodeRunContext = {
   origin: CodemodeRunOrigin;
   actors: AutomationActors;
   scopeRestriction: BackofficeContextScope | null;
+  /** Pays for the run's guest; null bills nobody. */
+  billingOrganizationId: string | null;
 };
 
 export type CodemodeRunStartedHookPayload = CodemodeRunContext & {
@@ -97,32 +99,37 @@ const CODEMODE_RUN_RETENTION_DAYS = 7;
 const CODEMODE_RUN_EXPIRY_BATCH_SIZE = 32;
 
 const codemodeSchema = schema("codemode", (s) =>
-  s.addTable("run", (t) =>
-    t
-      .addColumn("id", idColumn())
-      .addColumn(
-        "activationKind",
-        column("string") as Column<"string", CodemodeActivationKind, CodemodeActivationKind>,
-      )
-      .addColumn("origin", column("json") as Column<"json", CodemodeRunOrigin, CodemodeRunOrigin>)
-      .addColumn("actors", column("json") as Column<"json", AutomationActors, AutomationActors>)
-      .addColumn(
-        "scopeRestriction",
-        (
-          column("json") as Column<"json", BackofficeContextScope, BackofficeContextScope>
-        ).nullable(),
-      )
-      // Logs are already bounded by the executor, so the outcome is stored with its run.
-      .addColumn(
-        "outcome",
-        (column("json") as Column<"json", CodemodeRunOutcome, CodemodeRunOutcome>).nullable(),
-      )
-      .addColumn(
-        "createdAt",
-        column("timestamp").defaultTo((b) => b.now()),
-      )
-      .createIndex(CODEMODE_RUN_ORDER_INDEX, ["createdAt", "id"]),
-  ),
+  s
+    .addTable("run", (t) =>
+      t
+        .addColumn("id", idColumn())
+        .addColumn(
+          "activationKind",
+          column("string") as Column<"string", CodemodeActivationKind, CodemodeActivationKind>,
+        )
+        .addColumn("origin", column("json") as Column<"json", CodemodeRunOrigin, CodemodeRunOrigin>)
+        .addColumn("actors", column("json") as Column<"json", AutomationActors, AutomationActors>)
+        .addColumn(
+          "scopeRestriction",
+          (
+            column("json") as Column<"json", BackofficeContextScope, BackofficeContextScope>
+          ).nullable(),
+        )
+        // Logs are already bounded by the executor, so the outcome is stored with its run.
+        .addColumn(
+          "outcome",
+          (column("json") as Column<"json", CodemodeRunOutcome, CodemodeRunOutcome>).nullable(),
+        )
+        .addColumn(
+          "createdAt",
+          column("timestamp").defaultTo((b) => b.now()),
+        )
+        .createIndex(CODEMODE_RUN_ORDER_INDEX, ["createdAt", "id"]),
+    )
+    .alterTable("run", (t) =>
+      // Runs started before billing were billed to nobody.
+      t.addColumn("billingOrganizationId", column("string").nullable()),
+    ),
 );
 
 function codemodeRunFromRecord(record: {
@@ -131,6 +138,7 @@ function codemodeRunFromRecord(record: {
   origin: CodemodeRunOrigin;
   actors: AutomationActors;
   scopeRestriction: BackofficeContextScope | null;
+  billingOrganizationId: string | null;
   outcome: CodemodeRunOutcome | null;
   createdAt: Date;
 }): CodemodeRun {
@@ -140,6 +148,7 @@ function codemodeRunFromRecord(record: {
     origin: record.origin,
     actors: record.actors,
     scopeRestriction: record.scopeRestriction,
+    billingOrganizationId: record.billingOrganizationId,
     createdAt: record.createdAt.toISOString(),
   };
   return record.outcome === null ? { ...run, status: "running" } : { ...run, ...record.outcome };
@@ -212,6 +221,7 @@ const codemodeFragmentDefinition = defineFragment<CodemodeFragmentConfig>("codem
               origin: run.origin,
               actors: run.actors,
               scopeRestriction: run.scopeRestriction,
+              billingOrganizationId: run.billingOrganizationId,
               runId,
               activationKind: run.activationKind,
               startedAt: run.createdAt.toISOString(),

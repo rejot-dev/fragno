@@ -184,7 +184,8 @@ function codemodeRunEvent(
   hook: HookContext,
   run: CodemodeRunStartedHookPayload | CodemodeRunFinishedHookPayload,
 ): AutomationEvent {
-  const { actors, scopeRestriction, ...payload } = run;
+  // Billing is delivered to the payer's Billing object, not published to the scope's automations.
+  const { actors, scopeRestriction, billingOrganizationId, ...payload } = run;
   const finished = "finishedAt" in run ? run : null;
   const organization = backofficeScopeOrganization(scope);
   return {
@@ -215,6 +216,7 @@ export class InMemoryCodemodeObject extends RpcTarget implements CodemodeObject 
   readonly #host: FragmentDurableObjectHost<void, CodemodeFragment>;
   readonly #env: BackofficeCodemodeEnv | null;
   readonly #nowEpochMs: () => number;
+  readonly #scopeOrganizationId: string | null;
   #fragment: CodemodeFragment | null = null;
 
   constructor({
@@ -232,6 +234,29 @@ export class InMemoryCodemodeObject extends RpcTarget implements CodemodeObject 
     this.#env = runtime.codemodeEnv;
     this.#nowEpochMs = nowEpochMs;
     const scope = requireBackofficeContextScopeFromDurableObjectId(state.id, "CODEMODE");
+    this.#scopeOrganizationId = backofficeScopeOrganization(scope)?.orgId ?? null;
+    // Cloudflare bills each Dynamic Worker a run loads; a module build only compiles.
+    async function billRunStarted(run: CodemodeRunStartedHookPayload, hook: HookContext) {
+      if (
+        run.billingOrganizationId === null ||
+        run.activationKind === "module-build" ||
+        !runtime.config.bindings.billing
+      ) {
+        return;
+      }
+      await runtime.objects.billing.forOrg(run.billingOrganizationId).commands.recordEvent(
+        {
+          id: `codemode-run:${run.runId}`,
+          scope,
+          source: "codemode",
+          eventType: "run.started",
+          occurredAt: run.startedAt,
+          measurements: [{ meter: "codemode.executions", unit: "execution", quantity: 1 }],
+          metadata: { runId: run.runId },
+        },
+        { propagationContext: hook.capturePropagationContext() },
+      );
+    }
     async function ingestRunEvent(
       run: CodemodeRunStartedHookPayload | CodemodeRunFinishedHookPayload,
       hook: HookContext,
@@ -250,7 +275,13 @@ export class InMemoryCodemodeObject extends RpcTarget implements CodemodeObject 
       name: "Codemode",
       createRuntime: () =>
         createCodemodeFragment(
-          { onRunStarted: ingestRunEvent, onRunFinished: ingestRunEvent },
+          {
+            onRunStarted: async function billAndIngestRunStarted(run, hook) {
+              await billRunStarted(run, hook);
+              await ingestRunEvent(run, hook);
+            },
+            onRunFinished: ingestRunEvent,
+          },
           {
             databaseAdapter: implementation.fragmentDatabase.adapters.createAdapter({
               kind: "codemode",
@@ -285,7 +316,15 @@ export class InMemoryCodemodeObject extends RpcTarget implements CodemodeObject 
     }
     const fragment = this.#getFragment();
     const runId = await fragment.callServices(() =>
-      fragment.services.startRun(activation.kind, context, new Date(this.#nowEpochMs())),
+      fragment.services.startRun(
+        activation.kind,
+        // A scope's organization pays for its runs; only scopes without one take the caller's choice.
+        {
+          ...context,
+          billingOrganizationId: this.#scopeOrganizationId ?? context.billingOrganizationId,
+        },
+        new Date(this.#nowEpochMs()),
+      ),
     );
     const completion = await executeCodemodeRunActivation(env, activation, host);
     await fragment.callServices(() =>

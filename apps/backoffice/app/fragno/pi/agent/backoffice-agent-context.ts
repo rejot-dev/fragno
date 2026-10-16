@@ -162,6 +162,7 @@ export function createBackofficeAgentContext(input: {
         ? codemodeRunnerFor(
             kernel.scoped("CODEMODE", config.scope, runtime.objects.codemode).commands,
             execution,
+            config.billingOrganizationId,
           )
         : null,
       authorize,
