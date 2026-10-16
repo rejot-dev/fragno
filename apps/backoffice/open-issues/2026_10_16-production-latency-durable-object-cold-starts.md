@@ -173,7 +173,11 @@ returns 404. A WAF custom rule could drop them before they reach the worker. Not
    - Lazy-load class-specific heavy dependencies with `import()` inside the DO or fragment that
      needs them: the Cloudflare SDK (Cloudflare DO), the codemode `execute` chunk + domino (Codemode
      / Pi), react-email + postal-mime (Resend / Auth email paths), and the pi-ai providers.
-   - Deduplicate typebox (1.1.38 vs 1.3.27) and zod (4.6.7 vs 4.5.4).
+   - ~~Deduplicate typebox (1.1.38 vs 1.3.27) and zod (4.6.7 vs 4.5.4).~~ Done: one typebox (1.3.27)
+     and one zod (4.6.7) via `pnpm-workspace.yaml` overrides. Object bundle 15.8 → 15.3 MB raw, 3.13
+     → 3.04 MB gzip, `index.js` 8.98 → 8.43 MB. Local `wrangler check startup` did not move
+     measurably (~115 ms active both before and after, same machine), so the duplicate copies were
+     mostly not evaluated at startup.
    - Find the large module-level zod schemas evaluated at startup (backoffice-api contracts and
      runtime-tool definitions in `execute-*.js`, `index.js`) and build them on first use.
    - If that's not enough, split the object worker into several scripts (for example Pi / PiManager

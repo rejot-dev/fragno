@@ -15,7 +15,7 @@
     "@earendil-works/pi-coding-agent": "catalog:",
     "@earendil-works/pi-tui": "catalog:",
     "@rejot-dev/backoffice-local": "workspace:*",
-    "typebox": "1.1.38"
+    "typebox": "1.3.27"
   },
   "devDependencies": {
     "@earendil-works/pi-ai": "1.0.0",
