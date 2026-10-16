@@ -21,7 +21,7 @@ const onServerReadinessChanged = vi.fn();
 
 async function readinessChanges(fragment: McpTestFragmentResult["fragment"]) {
   await drainDurableHooks(fragment);
-  return onServerReadinessChanged.mock.calls.map(([payload]) => payload);
+  return onServerReadinessChanged.mock.calls.map(([{ serverId, ready }]) => ({ serverId, ready }));
 }
 
 const buildMcpTest = async (options: { allowedOAuthRedirectUris?: (url: URL) => boolean } = {}) => {
@@ -1135,6 +1135,9 @@ describe("mcp-fragment", () => {
       { serverId: slug, ready: false },
       { serverId: slug, ready: true },
     ]);
+    expect(onServerReadinessChanged.mock.calls.at(-1)?.[0].server).toMatchObject({
+      authMode: "oauth",
+    });
 
     // Without a refresh token, an expired access token needs fresh consent.
     const authSecret = await readAuthSecret(setup.fragments.mcp, slug);

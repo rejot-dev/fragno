@@ -34,6 +34,14 @@ export interface McpServerReadinessChangedPayload {
   ready: boolean;
 }
 
+/**
+ * A readiness change as delivered. The server is read at delivery rather than stored with the hook,
+ * so it is the current configuration, or null after it was deleted.
+ */
+export interface McpServerReadinessChange extends McpServerReadinessChangedPayload {
+  server: { name: string | null; authMode: string } | null;
+}
+
 export interface McpFragmentHooksConfig {
   onServerConfigurationChanged?: (
     payload: McpServerConfigurationChangedPayload,
@@ -49,7 +57,7 @@ export interface McpFragmentHooksConfig {
    * refresh token expires.
    */
   onServerReadinessChanged?: (
-    payload: McpServerReadinessChangedPayload,
+    payload: McpServerReadinessChange,
     context: HookContext,
   ) => Promise<void> | void;
 }
@@ -238,7 +246,15 @@ export const mcpFragmentDefinition = defineFragment<McpFragmentConfig>("mcp-frag
       await config.onServerConfigurationDeleted?.(payload, this);
     }),
     onServerReadinessChanged: defineHook(async function (payload) {
-      await config.onServerReadinessChanged?.(payload, this);
+      const server = await this.handlerTx()
+        .retrieve(({ forSchema }) =>
+          forSchema(mcpSchema).findFirst("server_configuration", (b) =>
+            b.whereIndex("primary", (eb) => eb("id", "=", payload.serverId)),
+          ),
+        )
+        .transformRetrieve(([server]) => server && { name: server.name, authMode: server.authMode })
+        .execute();
+      await config.onServerReadinessChanged?.({ ...payload, server }, this);
     }),
     internalAuthExpired: defineHook(async function ({ serverId, expiresAt }) {
       const expired = await this.handlerTx()
@@ -253,17 +269,18 @@ export const mcpFragmentDefinition = defineFragment<McpFragmentConfig>("mcp-frag
               ),
             ),
         )
-        .transformRetrieve(
-          ([server, secret]) =>
-            // The hook's due time already passed, so an untouched token is the expired one.
-            server !== null &&
-            secret !== null &&
-            secret.expiresAt?.getTime() === Date.parse(expiresAt) &&
-            mcpAuthReadyUntil(server.authMode, secret) !== null,
+        .transformRetrieve(([server, secret]) =>
+          // The hook's due time already passed, so an untouched token is the expired one.
+          server !== null &&
+          secret !== null &&
+          secret.expiresAt?.getTime() === Date.parse(expiresAt) &&
+          mcpAuthReadyUntil(server.authMode, secret) !== null
+            ? { name: server.name, authMode: server.authMode }
+            : null,
         )
         .execute();
       if (expired) {
-        await config.onServerReadinessChanged?.({ serverId, ready: false }, this);
+        await config.onServerReadinessChanged?.({ serverId, ready: false, server: expired }, this);
       }
     }),
   }))

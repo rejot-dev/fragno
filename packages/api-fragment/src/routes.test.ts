@@ -309,7 +309,12 @@ describe("api-fragment", () => {
     await drainDurableHooks(fragment);
     // A connection without auth is ready from creation, so adding a token changes nothing.
     expect(onConnectionReadinessChanged.mock.calls.map(([payload]) => payload)).toEqual([
-      { connectionId: "bearer", ready: true },
+      {
+        connectionId: "bearer",
+        ready: true,
+        // Read when the hook is delivered, so it reports the token added after creation's change.
+        connection: expect.objectContaining({ slug: "bearer", authMode: "bearer" }),
+      },
     ]);
 
     await setup.test.cleanup();
@@ -352,7 +357,12 @@ describe("api-fragment", () => {
     expect(restored.data).toEqual({ mode: "bearer", credentials: "present" });
 
     await drainDurableHooks(fragment);
-    expect(onConnectionReadinessChanged.mock.calls.map(([payload]) => payload)).toEqual([
+    expect(
+      onConnectionReadinessChanged.mock.calls.map(([{ connectionId, ready }]) => ({
+        connectionId,
+        ready,
+      })),
+    ).toEqual([
       { connectionId: slug, ready: true },
       { connectionId: slug, ready: false },
       { connectionId: slug, ready: true },
@@ -862,7 +872,12 @@ describe("api-fragment", () => {
 
     await drainDurableHooks(fragment);
     // Starting consent without discarding tokens leaves readiness unchanged.
-    expect(onConnectionReadinessChanged.mock.calls.map(([payload]) => payload)).toEqual([
+    expect(
+      onConnectionReadinessChanged.mock.calls.map(([{ connectionId, ready }]) => ({
+        connectionId,
+        ready,
+      })),
+    ).toEqual([
       { connectionId: slug, ready: false },
       { connectionId: slug, ready: true },
       { connectionId: slug, ready: false },

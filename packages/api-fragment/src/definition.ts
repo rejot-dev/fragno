@@ -41,6 +41,14 @@ export interface ApiConnectionReadinessChangedPayload {
   ready: boolean;
 }
 
+/**
+ * A readiness change as delivered. The connection is read at delivery rather than stored with the
+ * hook, so it is the current connection, or null after it was deleted.
+ */
+export interface ApiConnectionReadinessChange extends ApiConnectionReadinessChangedPayload {
+  connection: ApiConnectionHookSnapshot | null;
+}
+
 /** The token stored when expiry was scheduled; a later write replaces it and reports itself. */
 interface InternalAuthExpiredPayload {
   connectionId: string;
@@ -104,7 +112,7 @@ export interface ApiFragmentHooksConfig {
    * and when an access token without a refresh token expires.
    */
   onConnectionReadinessChanged?: (
-    payload: ApiConnectionReadinessChangedPayload,
+    payload: ApiConnectionReadinessChange,
     context: HookContext,
   ) => Promise<void> | void;
   onWebhookEndpointChanged?: (
@@ -173,7 +181,15 @@ export const apiFragmentDefinition = defineFragment<ApiFragmentConfig>("api-frag
       await config.onConnectionDeleted?.(payload, this);
     }),
     onConnectionReadinessChanged: defineHook(async function (payload) {
-      await config.onConnectionReadinessChanged?.(payload, this);
+      const connection = await this.handlerTx()
+        .retrieve(({ forSchema }) =>
+          forSchema(apiSchema).findFirst("api_connection", (b) =>
+            b.whereIndex("primary", (eb) => eb("id", "=", payload.connectionId)),
+          ),
+        )
+        .transformRetrieve(([connection]) => connection && connectionHookSnapshot(connection))
+        .execute();
+      await config.onConnectionReadinessChanged?.({ ...payload, connection }, this);
     }),
     onAuthExpired: defineHook(async function ({ connectionId, expiresAt }) {
       const expired = await this.handlerTx()
@@ -188,17 +204,21 @@ export const apiFragmentDefinition = defineFragment<ApiFragmentConfig>("api-frag
               ),
             ),
         )
-        .transformRetrieve(
-          ([connection, secret]) =>
-            // The hook's due time already passed, so an untouched token is the expired one.
-            connection !== null &&
-            secret !== null &&
-            secret.expiresAt?.getTime() === Date.parse(expiresAt) &&
-            apiAuthReadyUntil(connection.authMode, secret) !== null,
+        .transformRetrieve(([connection, secret]) =>
+          // The hook's due time already passed, so an untouched token is the expired one.
+          connection !== null &&
+          secret !== null &&
+          secret.expiresAt?.getTime() === Date.parse(expiresAt) &&
+          apiAuthReadyUntil(connection.authMode, secret) !== null
+            ? connectionHookSnapshot(connection)
+            : null,
         )
         .execute();
       if (expired) {
-        await config.onConnectionReadinessChanged?.({ connectionId, ready: false }, this);
+        await config.onConnectionReadinessChanged?.(
+          { connectionId, ready: false, connection: expired },
+          this,
+        );
       }
     }),
     onWebhookEndpointChanged: defineHook(async function (payload) {
