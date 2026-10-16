@@ -77,10 +77,9 @@ const normalizeTelegramConfigInput = (
   };
 };
 
-export async function action({ request, context, params }: Route.ActionArgs) {
-  const integration = await resolveAuthenticatedIntegrationContext({
+export async function action({ request, context }: Route.ActionArgs) {
+  const integration = resolveAuthenticatedIntegrationContext({
     context,
-    params,
     integration: "telegram",
   });
   const scope = integration.scope;

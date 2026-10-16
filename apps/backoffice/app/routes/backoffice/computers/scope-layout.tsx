@@ -13,7 +13,7 @@ import type { ComputersLayoutContext } from "./layout-context";
 import { sandboxesPath } from "./paths";
 
 export async function loader({ context }: Route.LoaderArgs) {
-  return { selectedScope: await requireScopeSelection(context) };
+  return { selectedScope: requireScopeSelection(context) };
 }
 
 export function meta({ loaderData }: Route.MetaArgs) {

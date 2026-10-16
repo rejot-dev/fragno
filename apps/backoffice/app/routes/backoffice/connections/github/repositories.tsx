@@ -21,11 +21,9 @@ export type GitHubRepositoriesOutletContext = {
   basePath: string;
 };
 
-export async function loader({ request, params, context, url }: Route.LoaderArgs) {
-  const { orgId: organizationId } = await resolveAuthenticatedOrgIntegrationRuntimeScope({
-    request,
+export async function loader({ request, context, url }: Route.LoaderArgs) {
+  const { orgId: organizationId } = resolveAuthenticatedOrgIntegrationRuntimeScope({
     context,
-    params,
   });
 
   const origin = url.origin;

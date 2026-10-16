@@ -1,24 +1,24 @@
+import { backofficeScopeOrganization } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { useEffect, useState } from "react";
 import { Outlet, redirect } from "react-router";
 
 import { getBackofficeShellRequest } from "@/layouts/backoffice-shell-request.server";
 
-import { organizationIdFromScope, resolveIntegrationContext } from "../../integrations/scope";
+import { resolveIntegrationContext } from "../../integrations/scope.server";
 import { IntegrationServiceHeader } from "../../integrations/service-header";
 import type { Route } from "./+types/organization-layout";
 import { fetchResendConfig } from "./data";
 import { ResendErrorBoundary, ResendTabs, type ResendConfigState, type ResendTab } from "./shared";
 
-export async function loader({ params, context, url }: Route.LoaderArgs) {
+export async function loader({ context, url }: Route.LoaderArgs) {
   const { me } = getBackofficeShellRequest(context);
 
   const integration = resolveIntegrationContext({
-    params,
-    me,
+    context,
     integration: "resend",
     allowedScopes: ["org", "system"],
   });
-  const organizationForScope = organizationIdFromScope(integration.scope);
+  const organizationForScope = backofficeScopeOrganization(integration.scope)?.orgId ?? null;
   const organization = organizationForScope
     ? (me.organizations.find((entry) => entry.organization.id === organizationForScope)
         ?.organization ?? null)

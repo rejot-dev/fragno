@@ -27,7 +27,7 @@ const currentTabFromPath = (pathname: string): MarketplaceTab => {
 
 /** System administrators browse the public Marketplace they curate from System scope. */
 export async function loader({ context }: Route.LoaderArgs) {
-  return { selectedScope: await requireScopeSelection(context) };
+  return { selectedScope: requireScopeSelection(context) };
 }
 
 export function meta({ loaderData }: Route.MetaArgs) {

@@ -1,3 +1,4 @@
+import { backofficeScopeOrganization } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { WorkerCompiler } from "@fragno-dev/codemode/compiler/compile-worker";
 import { createWorkerCompilerServiceClient } from "@fragno-dev/codemode/compiler/compiler-service-client";
 import type { CodemodeRemoteExecutor } from "@fragno-dev/codemode/execution/codemode-activation-contract";
@@ -135,12 +136,13 @@ const createBackofficeScopedCodemodeProvider = ({
       const currentScope = context.execution.scope;
       const scope = input.scope.kind === "current" ? currentScope : input.scope;
       if (scope.kind === "project" && !scope.orgId) {
-        if (currentScope.kind !== "org" && currentScope.kind !== "project") {
+        const currentOrganization = backofficeScopeOrganization(currentScope);
+        if (!currentOrganization) {
           throw new Error("Project scoped codemode handles require a current org context.");
         }
         return await callScopedTool(
           input,
-          context.createScopedContext({ ...scope, orgId: currentScope.orgId }),
+          context.createScopedContext({ ...scope, orgId: currentOrganization.orgId }),
           families,
           toolCalls,
         );

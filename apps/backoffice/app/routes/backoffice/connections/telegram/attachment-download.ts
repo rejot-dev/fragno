@@ -3,15 +3,14 @@ import {
   telegramAutomationFileDownloadPath,
 } from "@/backoffice-runtime/telegram-file-response";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
-import { getBackofficeShellRequest } from "@/layouts/backoffice-shell-request.server";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
-import { resolveIntegrationContext } from "../../integrations/scope";
+import { resolveIntegrationContext } from "../../integrations/scope.server";
 import type { Route } from "./+types/attachment-download";
 
 const DEFAULT_DOWNLOAD_NAME = "telegram-attachment";
 
-export async function loader({ request, params, context, url }: Route.LoaderArgs) {
+export async function loader({ request, context, url }: Route.LoaderArgs) {
   const requestUrl = url;
   const fileId = requestUrl.searchParams.get("fileId")?.trim() ?? "";
   const attachmentKind = requestUrl.searchParams.get("kind")?.trim() ?? "";
@@ -21,9 +20,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
   if (!fileId) {
     throw new Response("Missing Telegram file id.", { status: 400 });
   }
-  const { me } = getBackofficeShellRequest(context);
-
-  const integration = resolveIntegrationContext({ params, me, integration: "telegram" });
+  const integration = resolveIntegrationContext({ context, integration: "telegram" });
   const telegramDo = context
     .get(BackofficeWorkerContext)
     .runtime.objects.telegram.for(integration.scope);

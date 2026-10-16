@@ -6,7 +6,7 @@ import type { Route } from "./+types/preview";
 import { createFilesOverviewCollections } from "./file-collections.server";
 
 export async function loader({ request, context, url }: Route.LoaderArgs) {
-  const scope = backofficeRuntimeScopeFromResolvedScope(await requireScopeSelection(context));
+  const scope = backofficeRuntimeScopeFromResolvedScope(requireScopeSelection(context));
   const parsedPath = absoluteFilePathSchema.safeParse(url.searchParams.get("path"));
   if (!parsedPath.success) {
     throw new Response("A safe absolute file path is required.", { status: 400 });

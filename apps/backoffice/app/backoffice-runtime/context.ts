@@ -23,9 +23,11 @@ export const backofficeContextScopeLabel = (scope: BackofficeContextScope): stri
       return scope.userId;
     case "project":
       return `${scope.orgId} / ${scope.projectId}`;
+    default:
+      throw new Error("Unsupported Backoffice context scope kind.", {
+        cause: scope satisfies never,
+      });
   }
-
-  throw new Error("Unsupported Backoffice context scope kind.");
 };
 
 /** Short-lived user authority established by authenticating a Backoffice JWT request. */

@@ -1,9 +1,10 @@
+import { backofficeScopeOrganization } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { useEffect, useState } from "react";
 import { Outlet } from "react-router";
 
 import { getBackofficeShellRequest } from "@/layouts/backoffice-shell-request.server";
 
-import { organizationIdFromScope, resolveIntegrationContext } from "../../integrations/scope";
+import { resolveIntegrationContext } from "../../integrations/scope.server";
 import { IntegrationServiceHeader } from "../../integrations/service-header";
 import type { Route } from "./+types/organization-layout";
 import {
@@ -18,16 +19,15 @@ import {
   type GitHubTab,
 } from "./shared";
 
-export async function loader({ request, params, context, url }: Route.LoaderArgs) {
+export async function loader({ request, context, url }: Route.LoaderArgs) {
   const { me } = getBackofficeShellRequest(context);
 
   const integration = resolveIntegrationContext({
-    params,
-    me,
+    context,
     integration: "github",
     allowedScopes: ["org"],
   });
-  const organizationId = organizationIdFromScope(integration.scope);
+  const organizationId = backofficeScopeOrganization(integration.scope)?.orgId ?? null;
   if (!organizationId) {
     throw new Response("Not Found", { status: 404 });
   }

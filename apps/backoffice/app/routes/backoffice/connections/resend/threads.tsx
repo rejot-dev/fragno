@@ -32,11 +32,9 @@ export type ResendThreadsOutletContext = {
   configState: ResendConfigState | null;
 };
 
-export async function loader({ request, params, context, url }: Route.LoaderArgs) {
-  const scope = await resolveAuthenticatedIntegrationRuntimeScope({
-    request,
+export async function loader({ request, context, url }: Route.LoaderArgs) {
+  const scope = resolveAuthenticatedIntegrationRuntimeScope({
     context,
-    params,
     allowedScopes: ["org", "system"],
   });
 

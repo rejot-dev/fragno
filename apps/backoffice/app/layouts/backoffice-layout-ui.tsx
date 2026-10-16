@@ -1,3 +1,4 @@
+import { backofficeScopeOrganization } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { ButtonLink } from "@fragno-private/design-system/button";
 import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
 import { usePostHog } from "@posthog/react/slim";
@@ -89,10 +90,9 @@ export function ErrorBoundary() {
   const debugDetails =
     import.meta.env.MODE === "development" ? getRouteErrorDebugDetails(error) : null;
 
-  const currentOrganization =
-    layoutData?.resolvedScope.kind === "org" || layoutData?.resolvedScope.kind === "project"
-      ? layoutData.resolvedScope.organization
-      : null;
+  const currentOrganization = layoutData
+    ? (backofficeScopeOrganization(layoutData.resolvedScope)?.organization ?? null)
+    : null;
   const currentOrganizationPath = currentOrganization
     ? dashboardPath({ kind: "org", orgSlug: currentOrganization.slug })
     : null;

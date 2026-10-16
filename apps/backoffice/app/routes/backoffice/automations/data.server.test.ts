@@ -22,10 +22,7 @@ const automationsObject = {
 const runtime = {
   objects: {
     automations: {
-      singleton: () => automationsObject,
-      forOrg: () => automationsObject,
-      forUser: () => automationsObject,
-      forProject: () => automationsObject,
+      for: () => automationsObject,
     },
   },
   authorityResolver: unavailableBackofficeAuthorityResolver,
@@ -44,7 +41,9 @@ describe("lookupAutomationProject", () => {
     const project = { id: "project-1", slug: "project-one", name: "Project One" };
     fetchMock.mockResolvedValue(Response.json(project));
 
-    await expect(lookupAutomationProject(context, scope.orgId, "project-1")).resolves.toEqual({
+    await expect(
+      lookupAutomationProject(context, scope.orgId, { projectId: "project-1" }),
+    ).resolves.toEqual({
       status: "found",
       project,
     });
@@ -59,7 +58,9 @@ describe("lookupAutomationProject", () => {
       Response.json({ message: "Project not found", code: "PROJECT_NOT_FOUND" }, { status: 404 }),
     );
 
-    await expect(lookupAutomationProject(context, scope.orgId, "missing")).resolves.toEqual({
+    await expect(
+      lookupAutomationProject(context, scope.orgId, { projectId: "missing" }),
+    ).resolves.toEqual({
       status: "not-found",
     });
   });

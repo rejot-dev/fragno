@@ -11,7 +11,7 @@ vi.mock("cloudflare:workers", () => workers);
 
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
-import { backofficeRouteScopeSinglePathSegment } from "@/backoffice-runtime/route-scope";
+import { backofficePublicScopePathSegment } from "@/backoffice-runtime/route-scope";
 import {
   defineBackofficeScenario,
   runBackofficeScenario,
@@ -128,7 +128,7 @@ async function post(
       env: ctx.runtime.env as unknown as CloudflareEnv,
       ctx: {} as ExecutionContext,
     }),
-    params: { scopeSegment: backofficeRouteScopeSinglePathSegment({ kind: "org", orgSlug }) },
+    params: { scopeSegment: backofficePublicScopePathSegment({ kind: "org", orgSlug }) },
   } as unknown as Parameters<typeof receiveApiWebhook>[0]);
   return { status: response.status, body: await response.text() };
 }

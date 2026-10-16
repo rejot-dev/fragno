@@ -191,7 +191,7 @@ describe("Backoffice request state", () => {
       state.getAutomationCollectionSource({
         kind: "project",
         organization,
-        projectId: "project-1",
+        project: { id: "project-1", slug: "project-1" },
       }),
     ]);
 

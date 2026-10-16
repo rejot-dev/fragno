@@ -14,33 +14,25 @@ import { backofficeRouteScopePath } from "@/backoffice-runtime/route-scope";
 import { scopeSwitchPath } from "./scope-switch-path";
 
 export type BackofficeProjectOption = {
-  id: string;
+  slug: string;
   label: string;
 };
 
 export function BackofficeProjectMenu({
-  routeScope,
-  currentProjectId,
+  orgSlug,
+  currentProject,
   projects,
   projectsError,
   projectsLoading,
 }: {
-  routeScope:
-    | { kind: "org"; orgSlug: string }
-    | { kind: "project"; orgSlug: string; projectId: string };
-  currentProjectId: string | null;
+  orgSlug: string;
+  currentProject: BackofficeProjectOption | null;
   projects: BackofficeProjectOption[];
   projectsError: string | null;
   projectsLoading: boolean;
 }) {
   const location = useLocation();
-  const currentProject = currentProjectId
-    ? (projects.find((project) => project.id === currentProjectId) ?? {
-        id: currentProjectId,
-        label: currentProjectId,
-      })
-    : null;
-  const organizationRouteScope = { kind: "org", orgSlug: routeScope.orgSlug } as const;
+  const organizationRouteScope = { kind: "org", orgSlug } as const;
   const createProjectPath = `/backoffice/dashboard/${backofficeRouteScopePath(organizationRouteScope)}?createProject=1`;
 
   return (
@@ -67,16 +59,16 @@ export function BackofficeProjectMenu({
           ) : null}
           {projects.map((project) => (
             <SelectorMenuOption
-              key={project.id}
+              key={project.slug}
               to={scopeSwitchPath(location.pathname, {
                 kind: "project",
-                orgSlug: routeScope.orgSlug,
-                projectId: project.id,
+                orgSlug,
+                projectSlug: project.slug,
               })}
               label={project.label}
               description="Project scope"
               badge={null}
-              current={project.id === currentProject?.id}
+              current={project.slug === currentProject?.slug}
             />
           ))}
           {projectsLoading ? (

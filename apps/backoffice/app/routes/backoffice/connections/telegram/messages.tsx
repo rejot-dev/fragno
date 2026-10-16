@@ -19,11 +19,9 @@ export type TelegramMessagesOutletContext = {
   basePath: string;
 };
 
-export async function loader({ request, params, context, url }: Route.LoaderArgs) {
-  const scope = await resolveAuthenticatedIntegrationRuntimeScope({
-    request,
+export async function loader({ request, context, url }: Route.LoaderArgs) {
+  const scope = resolveAuthenticatedIntegrationRuntimeScope({
     context,
-    params,
   });
   const basePath = url.pathname.replace(/\/messages(?:\/.*)?$/u, "");
 

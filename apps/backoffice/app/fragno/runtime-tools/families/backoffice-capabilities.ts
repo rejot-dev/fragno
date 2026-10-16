@@ -2,7 +2,10 @@ import type {
   CapabilitiesListOutput,
   HookScopesListOutput,
 } from "@fragno-dev/backoffice-api/v0/capabilities";
-import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  type BackofficeContextScope,
+  backofficeScopeOrganization,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import {
   backofficeObjectScopePolicy,
@@ -170,7 +173,7 @@ export const createBackofficeCapabilitiesRuntime = ({
   config: BackofficeRuntimeConfig;
   scope: BackofficeContextScope;
 }): BackofficeCapabilitiesRuntime => {
-  const ownerOrgId = scope.kind === "org" || scope.kind === "project" ? scope.orgId : null;
+  const ownerOrgId = backofficeScopeOrganization(scope)?.orgId;
   const capabilityContext = {
     objects,
     config,

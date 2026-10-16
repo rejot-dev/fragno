@@ -23,10 +23,8 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   if (!params.emailId) {
     throw new Response("Not Found", { status: 404 });
   }
-  const scope = await resolveAuthenticatedIntegrationRuntimeScope({
-    request,
+  const scope = resolveAuthenticatedIntegrationRuntimeScope({
     context,
-    params,
     allowedScopes: ["org", "system"],
   });
 

@@ -97,10 +97,9 @@ const normalizeResendConfigInput = (input: ResendConfigForm): ResendConfigValida
   };
 };
 
-export async function action({ request, context, params }: Route.ActionArgs) {
-  const integration = await resolveAuthenticatedIntegrationContext({
+export async function action({ request, context }: Route.ActionArgs) {
+  const integration = resolveAuthenticatedIntegrationContext({
     context,
-    params,
     integration: "resend",
     allowedScopes: ["org", "system"],
   });

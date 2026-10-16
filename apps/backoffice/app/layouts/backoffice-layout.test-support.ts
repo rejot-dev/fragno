@@ -3,6 +3,8 @@ import type { RouterContextProvider } from "react-router";
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import {
   backofficeOrganizationIdentity,
+  backofficeProjectIdentity,
+  type BackofficeNamedProject,
   backofficeRuntimeScopeFromResolvedScope,
   type BackofficeResolvedScope,
   type BackofficeScopeSelection,
@@ -53,12 +55,16 @@ export function behindBackofficeLayout<TArgs extends BackofficeRouteHandlerArgs,
  */
 export function provideBackofficeShellRequest(
   context: RouterContextProvider,
-  input: { me: BackofficeMeData; routeScope: BackofficeResolvedScope<Organization> | null },
+  input: {
+    me: BackofficeMeData;
+    routeScope: BackofficeResolvedScope<Organization, BackofficeNamedProject> | null;
+  },
 ): void {
   const { me, routeScope } = input;
-  const defaultScope: BackofficeResolvedScope<Organization> = me.activeOrganization
-    ? { kind: "org", organization: me.activeOrganization.organization }
-    : { kind: "user", userId: me.user.id };
+  const defaultScope: BackofficeResolvedScope<Organization, BackofficeNamedProject> =
+    me.activeOrganization
+      ? { kind: "org", organization: me.activeOrganization.organization }
+      : { kind: "user", userId: me.user.id };
   const accessTokenExpiresAt = new Date(Date.now() + 60_000);
   context.set(BackofficeShellRequestContext, {
     me,
@@ -74,7 +80,7 @@ export function provideBackofficeShellRequest(
           execution: {
             scope: backofficeRuntimeScopeFromResolvedScope(routeScope),
           } as BackofficeExecutionContext,
-          selectScope: async () => ({ status: "selected", selection: selectionOf(routeScope, me) }),
+          selection: selectionOf(routeScope, me),
         }
       : { status: "not-found" },
     accessTokenExpiresAt,
@@ -82,7 +88,7 @@ export function provideBackofficeShellRequest(
 }
 
 function selectionOf(
-  scope: BackofficeResolvedScope<Organization>,
+  scope: BackofficeResolvedScope<Organization, BackofficeNamedProject>,
   me: BackofficeMeData,
 ): BackofficeScopeSelection {
   switch (scope.kind) {
@@ -98,8 +104,8 @@ function selectionOf(
       return {
         kind: "project",
         organization: backofficeOrganizationIdentity(scope.organization),
-        projectId: scope.projectId,
-        label: scope.projectId,
+        project: backofficeProjectIdentity(scope.project),
+        label: scope.project.name,
       };
     case "user":
       return { kind: "user", userId: scope.userId, label: me.user.email ?? me.user.id };

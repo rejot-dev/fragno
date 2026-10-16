@@ -1,16 +1,16 @@
 import {
+  type BackofficeResolvedScope,
   backofficeRouteScopeFromResolvedScope,
-  type BackofficeScopeSelection,
 } from "@/backoffice-runtime/resolved-scope";
 import {
   backofficeRouteScopePath,
   type BackofficeRouteScope,
 } from "@/backoffice-runtime/route-scope";
 
-export const integrationsScopeBasePath = (scope: BackofficeScopeSelection): string =>
+export const integrationsScopeBasePath = (scope: BackofficeResolvedScope): string =>
   `/backoffice/integrations/${backofficeRouteScopePath(backofficeRouteScopeFromResolvedScope(scope))}`;
 
-export const integrationConnectionPath = (scope: BackofficeScopeSelection, connectionId: string) =>
+export const integrationConnectionPath = (scope: BackofficeResolvedScope, connectionId: string) =>
   `${integrationsScopeBasePath(scope)}/${encodeURIComponent(connectionId)}`;
 
 /** What a provider's return reports. A `returned` provider keeps the outcome to itself. */

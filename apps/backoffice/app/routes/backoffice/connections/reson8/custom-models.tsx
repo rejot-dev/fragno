@@ -61,10 +61,9 @@ const normalizeCustomModelInput = (input: Reson8CustomModelForm) => {
   };
 };
 
-export async function loader({ request, context, params }: LoaderFunctionArgs) {
-  const { integration, orgId } = await resolveAuthenticatedOrgIntegrationContext({
+export async function loader({ request, context }: LoaderFunctionArgs) {
+  const { integration, orgId } = resolveAuthenticatedOrgIntegrationContext({
     context,
-    params,
     integration: "reson8",
   });
 
@@ -89,10 +88,9 @@ export async function loader({ request, context, params }: LoaderFunctionArgs) {
   };
 }
 
-export async function action({ request, context, params }: ActionFunctionArgs) {
-  const { orgId } = await resolveAuthenticatedOrgIntegrationContext({
+export async function action({ request, context }: ActionFunctionArgs) {
+  const { orgId } = resolveAuthenticatedOrgIntegrationContext({
     context,
-    params,
     integration: "reson8",
   });
 

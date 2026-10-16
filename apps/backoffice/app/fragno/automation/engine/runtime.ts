@@ -1,4 +1,5 @@
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
+import { backofficeScopeOrganization } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import { unavailableBackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
@@ -158,10 +159,7 @@ export const createAutomationRuntimeHostContext = ({
     }),
     automation: {
       event,
-      orgId:
-        event.scope.kind === "org" || event.scope.kind === "project"
-          ? event.scope.orgId
-          : undefined,
+      orgId: backofficeScopeOrganization(event.scope)?.orgId,
       binding,
       idempotencyKey,
       runtime,

@@ -1,55 +1,42 @@
-import { BackofficeScopeParseError } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  backofficeOrganizationSlugCodec,
+  type BackofficePublicScope,
+  backofficePublicScopeCodec,
+  type BackofficeRoutable,
+  type BackofficeScope,
+  type BackofficeScopeCodec,
+  BackofficeScopeParseError,
+  formatBackofficeScopeRoutePath,
+  formatBackofficeScopeSegment,
+  parseBackofficeScopeRouteParams,
+  parseBackofficeScopeSegment,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 
-/** Untrusted, slug-backed scope identity read from or written to a public Backoffice route. */
-export type BackofficeRouteScope =
-  | { kind: "system" }
-  | { kind: "org"; orgSlug: string }
-  | { kind: "project"; orgSlug: string; projectId: string }
-  | { kind: "user"; userId: string };
+type BackofficeRouteScopeNames = {
+  organization: { orgSlug: string };
+  project: { projectSlug: string };
+};
 
-export type BackofficeRoutableRouteScope = Exclude<BackofficeRouteScope, { kind: "system" }>;
+/** Untrusted scope identity read from or written to a Backoffice page URL, named by slugs. */
+export type BackofficeRouteScope = BackofficeScope<BackofficeRouteScopeNames>;
 
-function invalidRouteScope(message: string): never {
-  throw new BackofficeScopeParseError(message);
-}
+export type BackofficeRoutableRouteScope = BackofficeRoutable<BackofficeRouteScope>;
 
-function encodeRouteScopeComponent(value: string): string {
-  return encodeURIComponent(value);
-}
+const routeScopeCodec: BackofficeScopeCodec<BackofficeRouteScopeNames> = {
+  organization: backofficeOrganizationSlugCodec,
+  project: {
+    label: "project slug",
+    format: (name) => name.projectSlug,
+    parse: (projectSlug) => ({ projectSlug }),
+  },
+};
 
-function decodeRouteScopeComponent(value: string, label: string): string {
-  try {
-    const decoded = decodeURIComponent(value);
-    if (!decoded) {
-      invalidRouteScope(`Missing ${label}.`);
-    }
-    return decoded;
-  } catch (error) {
-    if (error instanceof BackofficeScopeParseError) {
-      throw error;
-    }
-    return invalidRouteScope(`Invalid ${label} encoding.`);
-  }
-}
-
-/** Encodes a public Backoffice route using organization slugs rather than runtime IDs. */
+/** Encodes a Backoffice page URL scope, e.g. `project/acme:website`. */
 export function backofficeRouteScopePath(scope: BackofficeRouteScope): string {
-  switch (scope.kind) {
-    case "system":
-      return "system/system";
-    case "org":
-      return `org/${encodeURIComponent(encodeRouteScopeComponent(scope.orgSlug))}`;
-    case "project": {
-      const routeId = `${encodeRouteScopeComponent(scope.orgSlug)}:${encodeRouteScopeComponent(scope.projectId)}`;
-      return `project/${encodeURIComponent(routeId)}`;
-    }
-    case "user":
-      return `user/${encodeURIComponent(encodeRouteScopeComponent(scope.userId))}`;
-  }
-  throw new Error("Unsupported Backoffice route scope kind.");
+  return formatBackofficeScopeRoutePath(scope, routeScopeCodec);
 }
 
-/** Parses untrusted route parameters without assigning runtime meaning to an organization slug. */
+/** Parses untrusted route parameters without assigning runtime meaning to slugs. */
 export function backofficeRouteScopeFromParams(params: {
   scopeKind?: string;
   scopeId?: string;
@@ -59,40 +46,12 @@ export function backofficeRouteScopeFromParams(params: {
     return null;
   }
   if (!scopeKind || !scopeId) {
-    return invalidRouteScope("Route scope requires both kind and id components.");
+    throw new BackofficeScopeParseError("Route scope requires both kind and id components.");
   }
-
-  if (scopeKind === "system") {
-    if (scopeId !== "system") {
-      return invalidRouteScope("System scope requires the system id.");
-    }
-    return { kind: "system" };
-  }
-
-  if (scopeKind === "org") {
-    return { kind: "org", orgSlug: decodeRouteScopeComponent(scopeId, "organization slug") };
-  }
-
-  if (scopeKind === "project") {
-    const parts = scopeId.split(":");
-    if (parts.length !== 2) {
-      return invalidRouteScope("Project scope requires organization and project identifiers.");
-    }
-    return {
-      kind: "project",
-      orgSlug: decodeRouteScopeComponent(parts[0] ?? "", "organization slug"),
-      projectId: decodeRouteScopeComponent(parts[1] ?? "", "project id"),
-    };
-  }
-
-  if (scopeKind === "user") {
-    return { kind: "user", userId: decodeRouteScopeComponent(scopeId, "user id") };
-  }
-
-  return invalidRouteScope(`Unknown scope kind '${scopeKind}'.`);
+  return parseBackofficeScopeRouteParams({ scopeKind, scopeId }, routeScopeCodec);
 }
 
-/** Requires route parameters to contain one complete public Backoffice scope. */
+/** Requires route parameters to contain one complete Backoffice page scope. */
 export function requireBackofficeRouteScopeFromParams(params: {
   scopeKind?: string;
   scopeId?: string;
@@ -104,65 +63,20 @@ export function requireBackofficeRouteScopeFromParams(params: {
   return routeScope;
 }
 
-/** Encodes decoded route parameters as one slug-backed public API path segment. */
-export function backofficeRouteScopeSinglePathSegmentFromParams(params: {
-  scopeKind?: string;
-  scopeId?: string;
-}): string {
-  const routeScope = requireBackofficeRouteScopeFromParams(params);
-  if (routeScope.kind === "system") {
-    throw new BackofficeScopeParseError("A public fragment route requires a routable scope.");
-  }
-  return backofficeRouteScopeSinglePathSegment(routeScope);
+/** Encodes the scope segment of a public fragment URL, e.g. `project:acme:<projectId>`. */
+export function backofficePublicScopePathSegment(
+  scope: BackofficeRoutable<BackofficePublicScope>,
+): string {
+  return formatBackofficeScopeSegment(scope, backofficePublicScopeCodec);
 }
 
-/** Encodes one public API path segment using organization slugs rather than runtime IDs. */
-export function backofficeRouteScopeSinglePathSegment(scope: BackofficeRoutableRouteScope): string {
-  switch (scope.kind) {
-    case "org":
-      return `org:${encodeRouteScopeComponent(scope.orgSlug)}`;
-    case "project":
-      return `project:${encodeRouteScopeComponent(scope.orgSlug)}:${encodeRouteScopeComponent(scope.projectId)}`;
-    case "user":
-      return `user:${encodeRouteScopeComponent(scope.userId)}`;
-  }
-  throw new Error("Unsupported Backoffice routable route scope kind.");
-}
-
-/** Parses one untrusted public API path segment as slug-backed route identity. */
-export function backofficeRouteScopeFromSinglePathSegment(
+/** Parses the untrusted scope segment of a public fragment URL. */
+export function backofficePublicScopeFromPathSegment(
   segment: string,
-): BackofficeRoutableRouteScope {
-  const parts = segment.split(":");
-  const [scopeKind] = parts;
-
-  if (scopeKind === "org") {
-    if (parts.length !== 2) {
-      return invalidRouteScope("Organization scope requires exactly one slug component.");
-    }
-    return {
-      kind: "org",
-      orgSlug: decodeRouteScopeComponent(parts[1] ?? "", "organization slug"),
-    };
+): BackofficeRoutable<BackofficePublicScope> {
+  const scope = parseBackofficeScopeSegment(segment, backofficePublicScopeCodec);
+  if (scope.kind === "system") {
+    throw new BackofficeScopeParseError("System scope is not routable here.");
   }
-
-  if (scopeKind === "project") {
-    if (parts.length !== 3) {
-      return invalidRouteScope("Project scope requires organization and project components.");
-    }
-    return {
-      kind: "project",
-      orgSlug: decodeRouteScopeComponent(parts[1] ?? "", "organization slug"),
-      projectId: decodeRouteScopeComponent(parts[2] ?? "", "project id"),
-    };
-  }
-
-  if (scopeKind === "user") {
-    if (parts.length !== 2) {
-      return invalidRouteScope("User scope requires exactly one id component.");
-    }
-    return { kind: "user", userId: decodeRouteScopeComponent(parts[1] ?? "", "user id") };
-  }
-
-  return invalidRouteScope(`Unknown routable scope kind '${scopeKind}'.`);
+  return scope;
 }

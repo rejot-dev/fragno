@@ -9,6 +9,7 @@ import {
   automationProjectListInputSchema,
   automationProjectSchema,
   automationProjectUpdateInputSchema,
+  projectSlugSchema,
 } from "./projects";
 
 export const automationProjectRoutes = defineRoutes(automationFragmentDefinition).create(
@@ -93,6 +94,25 @@ export const automationProjectRoutes = defineRoutes(automationFragmentDefinition
               },
               404,
             );
+          }
+
+          return json(project);
+        },
+      }),
+      defineRoute({
+        method: "GET",
+        path: "/projects/by-slug/:slug",
+        outputSchema: automationProjectSchema,
+        handler: async function ({ pathParams }, { json, error }) {
+          const slug = projectSlugSchema.safeParse(pathParams.slug);
+          const project = slug.success
+            ? await this.handlerTx()
+                .withServiceCalls(() => [services.getProject({ slug: slug.data })] as const)
+                .transform(({ serviceResult: [result] }) => result)
+                .execute()
+            : null;
+          if (!project) {
+            return error({ message: "Project not found.", code: "PROJECT_NOT_FOUND" }, 404);
           }
 
           return json(project);

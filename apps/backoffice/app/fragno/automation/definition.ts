@@ -83,9 +83,11 @@ function getStarterAutomationRoutesForScope(ownerScope: BackofficeContextScope) 
     case "project":
     case "user":
       return [];
+    default:
+      throw new Error("Unsupported Backoffice context scope kind.", {
+        cause: ownerScope satisfies never,
+      });
   }
-
-  throw new Error("Unsupported Backoffice context scope kind.");
 }
 
 type AutomationWorkflowsServiceBase = WorkflowsFragmentServices;

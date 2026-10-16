@@ -1,6 +1,12 @@
-import type {
-  BackofficeContextScope,
-  BackofficeRoutableScope,
+import {
+  type BackofficeContextScope,
+  type BackofficePublicScope,
+  type BackofficeRoutable,
+  type BackofficeRoutableScope,
+  type BackofficeScope,
+  backofficeScopeOrganization,
+  backofficeScopePathSegment,
+  mapBackofficeScopeNames,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import type { BackofficeRoutableRouteScope, BackofficeRouteScope } from "./route-scope";
@@ -8,40 +14,32 @@ import type { BackofficeRoutableRouteScope, BackofficeRouteScope } from "./route
 /** Canonical organization identity required to address both runtime services and public routes. */
 export type BackofficeOrganizationIdentity = Readonly<{ id: string; slug: string }>;
 
-/** Authenticated Backoffice scope with organization identity resolved from a public route slug. */
+/** Canonical project identity required to address both runtime services and page URLs. */
+export type BackofficeProjectIdentity = Readonly<{ id: string; slug: string }>;
+
+/** A project as Backoffice pages present it. */
+export type BackofficeNamedProject = BackofficeProjectIdentity & Readonly<{ name: string }>;
+
+/** Authenticated Backoffice scope with the organization and project its URL slugs name. */
 export type BackofficeResolvedScope<
   TOrganization extends BackofficeOrganizationIdentity = BackofficeOrganizationIdentity,
-> =
-  | { kind: "system" }
-  | { kind: "org"; organization: TOrganization }
-  | {
-      kind: "project";
-      organization: TOrganization;
-      projectId: string;
-    }
-  | { kind: "user"; userId: string };
+  TProject extends BackofficeProjectIdentity = BackofficeProjectIdentity,
+> = BackofficeScope<{
+  organization: { organization: TOrganization };
+  project: { project: TProject };
+}>;
 
 /** Authenticated non-system scope resolved from an ordinary Backoffice route. */
 export type BackofficeRoutableResolvedScope<
   TOrganization extends BackofficeOrganizationIdentity = BackofficeOrganizationIdentity,
-> = Exclude<BackofficeResolvedScope<TOrganization>, { kind: "system" }>;
+  TProject extends BackofficeProjectIdentity = BackofficeProjectIdentity,
+> = BackofficeRoutable<BackofficeResolvedScope<TOrganization, TProject>>;
 
 /** Resolved Backoffice scope paired with the label presented by a scope selector. */
-export type BackofficeScopeSelection =
-  | (Extract<BackofficeResolvedScope, { kind: "system" }> & { label: string })
-  | (Extract<BackofficeResolvedScope, { kind: "org" }> & { label: string })
-  | (Extract<BackofficeResolvedScope, { kind: "project" }> & { label: string })
-  | (Extract<BackofficeResolvedScope, { kind: "user" }> & { label: string });
+export type BackofficeScopeSelection = BackofficeResolvedScope & { label: string };
 
 /** Non-system scope selection available to ordinary routable Backoffice workspaces. */
-export type BackofficeRoutableScopeSelection = Exclude<
-  BackofficeScopeSelection,
-  { kind: "system" }
->;
-
-export type ResolveBackofficeOrganizationIdentity = (
-  organizationId: string,
-) => Promise<BackofficeOrganizationIdentity>;
+export type BackofficeRoutableScopeSelection = BackofficeRoutable<BackofficeScopeSelection>;
 
 /** Projects a canonical organization record to the identity required by Backoffice scopes. */
 export function backofficeOrganizationIdentity(
@@ -50,29 +48,55 @@ export function backofficeOrganizationIdentity(
   return { id: organization.id, slug: organization.slug };
 }
 
-export function resolveBackofficeRouteScope<TOrganization extends BackofficeOrganizationIdentity>(
-  routeScope: BackofficeRoutableRouteScope,
-  organizations: readonly TOrganization[],
-): BackofficeRoutableResolvedScope<TOrganization> | null;
-export function resolveBackofficeRouteScope<TOrganization extends BackofficeOrganizationIdentity>(
+/** Projects a canonical project record to the identity required by Backoffice scopes. */
+export function backofficeProjectIdentity(
+  project: BackofficeProjectIdentity,
+): BackofficeProjectIdentity {
+  return { id: project.id, slug: project.slug };
+}
+
+/** What a page URL's slugs name among the user's organizations and their projects. */
+export type BackofficeRouteScopeResolution<
+  TOrganization extends BackofficeOrganizationIdentity,
+  TProject extends BackofficeProjectIdentity,
+> =
+  | { status: "resolved"; scope: BackofficeResolvedScope<TOrganization, TProject> }
+  | { status: "organization-not-found"; orgSlug: string }
+  | { status: "project-not-found"; projectSlug: string };
+
+/** Resolves untrusted URL slugs into the organization and project they name. */
+export async function resolveBackofficeRouteScope<
+  TOrganization extends BackofficeOrganizationIdentity,
+  TProject extends BackofficeProjectIdentity,
+>(
   routeScope: BackofficeRouteScope,
-  organizations: readonly TOrganization[],
-): BackofficeResolvedScope<TOrganization> | null;
-/** Resolves an untrusted organization slug into canonical authenticated organization identity. */
-export function resolveBackofficeRouteScope<TOrganization extends BackofficeOrganizationIdentity>(
-  routeScope: BackofficeRouteScope,
-  organizations: readonly TOrganization[],
-): BackofficeResolvedScope<TOrganization> | null {
-  if (routeScope.kind === "system" || routeScope.kind === "user") {
-    return routeScope;
+  lookups: {
+    organizations: readonly TOrganization[];
+    findProject(organization: TOrganization, projectSlug: string): Promise<TProject | null>;
+  },
+): Promise<BackofficeRouteScopeResolution<TOrganization, TProject>> {
+  const reference = backofficeScopeOrganization(routeScope);
+  const organization = reference
+    ? lookups.organizations.find(({ slug }) => slug === reference.orgSlug)
+    : undefined;
+  if (reference && !organization) {
+    return { status: "organization-not-found", orgSlug: reference.orgSlug };
   }
-  const organization = organizations.find(({ slug }) => slug === routeScope.orgSlug);
-  if (!organization) {
-    return null;
+  const project =
+    routeScope.kind === "project" && organization
+      ? await lookups.findProject(organization, routeScope.projectSlug)
+      : null;
+  if (routeScope.kind === "project" && !project) {
+    return { status: "project-not-found", projectSlug: routeScope.projectSlug };
   }
-  return routeScope.kind === "org"
-    ? { kind: "org", organization }
-    : { kind: "project", organization, projectId: routeScope.projectId };
+  return {
+    status: "resolved",
+    // The map only visits names the lookups above found.
+    scope: mapBackofficeScopeNames(routeScope, {
+      organization: () => ({ organization: organization! }),
+      project: () => ({ project: project! }),
+    }),
+  };
 }
 
 export function backofficeRuntimeScopeFromResolvedScope(
@@ -85,17 +109,10 @@ export function backofficeRuntimeScopeFromResolvedScope(
 export function backofficeRuntimeScopeFromResolvedScope(
   scope: BackofficeResolvedScope,
 ): BackofficeContextScope {
-  switch (scope.kind) {
-    case "system":
-      return { kind: "system" };
-    case "org":
-      return { kind: "org", orgId: scope.organization.id };
-    case "project":
-      return { kind: "project", orgId: scope.organization.id, projectId: scope.projectId };
-    case "user":
-      return { kind: "user", userId: scope.userId };
-  }
-  throw new Error("Unsupported Backoffice resolved scope kind.");
+  return mapBackofficeScopeNames(scope, {
+    organization: ({ organization }) => ({ orgId: organization.id }),
+    project: ({ project }) => ({ projectId: project.id }),
+  });
 }
 
 export function backofficeRouteScopeFromResolvedScope(
@@ -104,98 +121,33 @@ export function backofficeRouteScopeFromResolvedScope(
 export function backofficeRouteScopeFromResolvedScope(
   scope: BackofficeResolvedScope,
 ): BackofficeRouteScope;
-/** Converts authenticated resolved identity into the slug-backed scope accepted by public routes. */
+/** Converts authenticated resolved identity into the slug-backed scope of page URLs. */
 export function backofficeRouteScopeFromResolvedScope(
   scope: BackofficeResolvedScope,
 ): BackofficeRouteScope {
-  switch (scope.kind) {
-    case "system":
-      return { kind: "system" };
-    case "org":
-      return { kind: "org", orgSlug: scope.organization.slug };
-    case "project":
-      return {
-        kind: "project",
-        orgSlug: scope.organization.slug,
-        projectId: scope.projectId,
-      };
-    case "user":
-      return { kind: "user", userId: scope.userId };
-  }
-  throw new Error("Unsupported Backoffice resolved scope kind.");
+  return mapBackofficeScopeNames(scope, {
+    organization: ({ organization }) => ({ orgSlug: organization.slug }),
+    project: ({ project }) => ({ projectSlug: project.slug }),
+  });
 }
 
-export function backofficeResolvedScopeFromRuntimeScope(
-  scope: Extract<BackofficeContextScope, { kind: "org" }>,
-  organization: BackofficeOrganizationIdentity,
-): Extract<BackofficeResolvedScope, { kind: "org" }>;
-export function backofficeResolvedScopeFromRuntimeScope(
-  scope: Extract<BackofficeContextScope, { kind: "project" }>,
-  organization: BackofficeOrganizationIdentity,
-): Extract<BackofficeResolvedScope, { kind: "project" }>;
-export function backofficeResolvedScopeFromRuntimeScope(
+/** Names a runtime scope as public fragment URLs do, by organization slug and project ID. */
+export function backofficePublicScopeFromRuntimeScope(
   scope: BackofficeRoutableScope,
   organization: BackofficeOrganizationIdentity | null,
-): BackofficeRoutableResolvedScope;
-export function backofficeResolvedScopeFromRuntimeScope(
-  scope: BackofficeContextScope,
-  organization: BackofficeOrganizationIdentity | null,
-): BackofficeResolvedScope;
-/** Reattaches canonical organization metadata to an ID-backed runtime scope. */
-export function backofficeResolvedScopeFromRuntimeScope(
-  scope: BackofficeContextScope,
-  organization: BackofficeOrganizationIdentity | null,
-): BackofficeResolvedScope {
-  if (scope.kind === "org" || scope.kind === "project") {
-    if (!organization || organization.id !== scope.orgId) {
-      throw new Error("Backoffice resolved scope requires the scoped organization identity.");
-    }
-    return scope.kind === "org"
-      ? { kind: "org", organization }
-      : { kind: "project", organization, projectId: scope.projectId };
-  }
-  return scope;
+): BackofficeRoutable<BackofficePublicScope> {
+  return mapBackofficeScopeNames(scope, {
+    organization: ({ orgId }) => {
+      if (!organization || organization.id !== orgId) {
+        throw new Error("Backoffice public scope requires the scoped organization identity.");
+      }
+      return { orgSlug: organization.slug };
+    },
+    project: ({ projectId }) => ({ projectId }),
+  });
 }
 
-export function resolveBackofficeRuntimeScope(
-  scope: Extract<BackofficeContextScope, { kind: "org" }>,
-  resolveOrganization: ResolveBackofficeOrganizationIdentity,
-): Promise<Extract<BackofficeResolvedScope, { kind: "org" }>>;
-export function resolveBackofficeRuntimeScope(
-  scope: Extract<BackofficeContextScope, { kind: "project" }>,
-  resolveOrganization: ResolveBackofficeOrganizationIdentity,
-): Promise<Extract<BackofficeResolvedScope, { kind: "project" }>>;
-export function resolveBackofficeRuntimeScope(
-  scope: BackofficeRoutableScope,
-  resolveOrganization: ResolveBackofficeOrganizationIdentity,
-): Promise<BackofficeRoutableResolvedScope>;
-export function resolveBackofficeRuntimeScope(
-  scope: BackofficeContextScope,
-  resolveOrganization: ResolveBackofficeOrganizationIdentity,
-): Promise<BackofficeResolvedScope>;
-/** Resolves ID-backed runtime identity into the canonical identity needed by public routes. */
-export async function resolveBackofficeRuntimeScope(
-  scope: BackofficeContextScope,
-  resolveOrganization: ResolveBackofficeOrganizationIdentity,
-): Promise<BackofficeResolvedScope> {
-  const organization =
-    scope.kind === "org" || scope.kind === "project"
-      ? await resolveOrganization(scope.orgId)
-      : null;
-  return backofficeResolvedScopeFromRuntimeScope(scope, organization);
-}
-
-/** Returns the stable ID-backed identity used for persisted scope-selection history and option IDs. */
+/** Returns the stable ID-backed identity that tells two scope selections apart. */
 export function backofficeResolvedScopeId(scope: BackofficeResolvedScope): string {
-  switch (scope.kind) {
-    case "system":
-      return "system:system";
-    case "org":
-      return `org:${scope.organization.id}`;
-    case "project":
-      return `project:${scope.organization.id}:${scope.projectId}`;
-    case "user":
-      return `user:${scope.userId}`;
-  }
-  throw new Error("Unsupported Backoffice resolved scope kind.");
+  return backofficeScopePathSegment(backofficeRuntimeScopeFromResolvedScope(scope));
 }

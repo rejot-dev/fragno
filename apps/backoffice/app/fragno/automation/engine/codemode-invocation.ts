@@ -14,6 +14,7 @@ import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api
 import {
   backofficeContextScopeSchema,
   backofficeContextScopesEqual,
+  backofficeScopeOrganization,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
 
@@ -202,9 +203,7 @@ export function createCodemodeWorkflowInstanceInput<TPayload extends AutomationE
         scopeRestriction: backofficeExecutionScopeRestriction(execution),
         actors: execution.actors,
         billingOrganizationId:
-          execution.scope.kind === "org" || execution.scope.kind === "project"
-            ? execution.scope.orgId
-            : billingOrganizationId,
+          backofficeScopeOrganization(execution.scope)?.orgId ?? billingOrganizationId,
         capabilityGrants,
       },
     } satisfies CodemodeWorkflowParams,

@@ -15,7 +15,6 @@ export async function loader({ context }: Route.LoaderArgs) {
     integrationsScopeBasePath({
       kind: "org",
       organization: { id: activeOrganization.id, slug: activeOrganization.slug },
-      label: activeOrganization.name,
     }),
   );
 }

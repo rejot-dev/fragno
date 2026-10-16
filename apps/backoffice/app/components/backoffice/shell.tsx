@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import {
+  type BackofficeNamedProject,
   backofficeRouteScopeFromResolvedScope,
   type BackofficeResolvedScope,
   type BackofficeScopeSelection,
@@ -18,7 +19,8 @@ import { BackofficeSidebarNav } from "./sidebar-nav";
 import { BackofficeTopBar } from "./top-bar";
 
 type BackofficeShellResolvedScope = BackofficeResolvedScope<
-  BackofficeMeData["organizations"][number]["organization"]
+  BackofficeMeData["organizations"][number]["organization"],
+  BackofficeNamedProject
 >;
 
 type BackofficeShellProps = {
@@ -41,7 +43,7 @@ function backofficeTerminalScopeSelection(
     case "org":
       return { ...scope, label: scope.organization.name };
     case "project":
-      return { ...scope, label: `${scope.organization.name} / ${scope.projectId}` };
+      return { ...scope, label: `${scope.organization.name} / ${scope.project.name}` };
     case "user":
       return {
         ...scope,

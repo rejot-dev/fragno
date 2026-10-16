@@ -36,7 +36,7 @@ import type { FilesLayoutContext } from "./layout-context";
 import { filesDownloadPath, filesExplorerPath } from "./scope";
 
 export async function loader({ request, context }: Route.LoaderArgs) {
-  const scope = backofficeRuntimeScopeFromResolvedScope(await requireScopeSelection(context));
+  const scope = backofficeRuntimeScopeFromResolvedScope(requireScopeSelection(context));
   return loadFilesExplorerData({ request, context, scope });
 }
 

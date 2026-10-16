@@ -2,7 +2,10 @@ import { assert, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { RouterContextProvider } from "react-router";
 
-import type { BackofficeResolvedScope } from "@/backoffice-runtime/resolved-scope";
+import type {
+  BackofficeNamedProject,
+  BackofficeResolvedScope,
+} from "@/backoffice-runtime/resolved-scope";
 import type { BackofficeMeData, Organization } from "@/fragno/auth/contracts";
 import { provideBackofficeShellRequest } from "@/layouts/backoffice-layout.test-support";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
@@ -22,7 +25,7 @@ const authenticatedUser = {
   },
 };
 const marketplace = { listPublishedListings: listPublishedListingsMock };
-function routeContext(routeScope: BackofficeResolvedScope<Organization>) {
+function routeContext(routeScope: BackofficeResolvedScope<Organization, BackofficeNamedProject>) {
   const context = new RouterContextProvider();
   context.set(BackofficeWorkerContext, {
     runtime: { objects: { marketplace: { for: marketplaceForMock } } },
@@ -80,7 +83,10 @@ describe("Marketplace catalog listing", () => {
   });
 
   test("the organization catalog reads the route organization's Marketplace", async () => {
-    const runCatalog = (routeScope: BackofficeResolvedScope<Organization>, scopeId: string) => {
+    const runCatalog = (
+      routeScope: BackofficeResolvedScope<Organization, BackofficeNamedProject>,
+      scopeId: string,
+    ) => {
       const url = new URL(
         `https://example.test/backoffice/marketplace/${routeScope.kind}/${scopeId}/organization/all`,
       );

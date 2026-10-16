@@ -42,10 +42,8 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     throw new Response("Not Found", { status: 404 });
   }
 
-  const scope = await resolveAuthenticatedIntegrationRuntimeScope({
-    request,
+  const scope = resolveAuthenticatedIntegrationRuntimeScope({
     context,
-    params,
   });
   const messageResult = await fetchTelegramChatMessages(request, context, scope, params.chatId, {
     order: "desc",
@@ -63,9 +61,8 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     throw new Response("Not Found", { status: 404 });
   }
 
-  const integration = await resolveAuthenticatedIntegrationContext({
+  const integration = resolveAuthenticatedIntegrationContext({
     context,
-    params,
     integration: "telegram",
   });
   const scope = integration.scope;

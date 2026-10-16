@@ -1,118 +1,99 @@
-import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  type BackofficeContextScope,
+  backofficeScopePathSegment,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { RouterContextProvider } from "react-router";
 
-import { requireBackofficeRouteScopeFromParams } from "@/backoffice-runtime/route-scope";
-import { requireBackofficePrincipal } from "@/fragno/auth/request-auth.server";
-import { getBackofficeShellRequest } from "@/layouts/backoffice-shell-request.server";
-
+import { backofficeRuntimeScopeFromResolvedScope } from "@/backoffice-runtime/resolved-scope";
 import {
-  resolveIntegrationContext,
+  getBackofficeShellRequest,
+  requireRouteScope,
+  requireScopeSelection,
+} from "@/layouts/backoffice-shell-request.server";
+
+import { integrationsScopeBasePath } from "./connection-paths";
+import {
   type AuthenticatedScopedIntegrationContext,
-  type IntegrationRouteParams,
+  integrationBasePath,
+  type ScopedIntegrationContext,
 } from "./scope";
 
-/** Resolves a public integration route to an ID-backed scope using JWT authority only. */
-export async function resolveAuthenticatedIntegrationRuntimeScope({
-  request,
+/** The runtime scope of an integration page, limited to the scope kinds the page supports. */
+export function resolveAuthenticatedIntegrationRuntimeScope({
   context,
-  params,
   allowedScopes,
 }: {
-  request: Request;
   context: Readonly<RouterContextProvider>;
-  params: IntegrationRouteParams;
   allowedScopes?: readonly BackofficeContextScope["kind"][];
-}): Promise<BackofficeContextScope> {
-  const principal = await requireBackofficePrincipal(request, context);
-  const routeScope = requireBackofficeRouteScopeFromParams(params);
-
-  if (allowedScopes && !allowedScopes.includes(routeScope.kind)) {
+}): BackofficeContextScope {
+  const scope = requireRouteScope(context).execution.scope;
+  if (allowedScopes && !allowedScopes.includes(scope.kind)) {
     throw new Response("Not Found", { status: 404 });
   }
-
-  switch (routeScope.kind) {
-    case "system":
-      if (principal.user.role !== "admin") {
-        throw new Response("Not Found", { status: 404 });
-      }
-      return { kind: "system" };
-    case "user":
-      if (routeScope.userId !== principal.user.id) {
-        throw new Response("Not Found", { status: 404 });
-      }
-      return { kind: "user", userId: principal.user.id };
-    case "org": {
-      const organization = principal.auth.organization;
-      if (!organization || organization.slug !== routeScope.orgSlug) {
-        throw new Response("Not Found", { status: 404 });
-      }
-      return { kind: "org", orgId: organization.id };
-    }
-    case "project": {
-      const organization = principal.auth.organization;
-      if (!organization || organization.slug !== routeScope.orgSlug) {
-        throw new Response("Not Found", { status: 404 });
-      }
-      return { kind: "project", orgId: organization.id, projectId: routeScope.projectId };
-    }
-  }
-
-  routeScope satisfies never;
-  throw new Error("Integration runtime scope received an unsupported route scope kind.");
+  return scope;
 }
 
-export async function resolveAuthenticatedOrgIntegrationRuntimeScope({
-  request,
+export function resolveAuthenticatedOrgIntegrationRuntimeScope({
   context,
-  params,
 }: {
-  request: Request;
   context: Readonly<RouterContextProvider>;
-  params: IntegrationRouteParams;
-}): Promise<Extract<BackofficeContextScope, { kind: "org" }>> {
-  const scope = await resolveAuthenticatedIntegrationRuntimeScope({
-    request,
-    context,
-    params,
-    allowedScopes: ["org"],
-  });
+}): Extract<BackofficeContextScope, { kind: "org" }> {
+  const scope = resolveAuthenticatedIntegrationRuntimeScope({ context, allowedScopes: ["org"] });
   if (scope.kind !== "org") {
     throw new Response("Not Found", { status: 404 });
   }
   return scope;
 }
 
-export const resolveAuthenticatedIntegrationContext = async ({
+/** The integration pages of a scoped Backoffice URL, in the scope the shell resolved. */
+export const resolveIntegrationContext = ({
   context,
-  params,
   integration,
   allowedScopes,
 }: {
   context: Readonly<RouterContextProvider>;
-  params: IntegrationRouteParams;
   integration: string;
   allowedScopes?: readonly BackofficeContextScope["kind"][];
-}): Promise<AuthenticatedScopedIntegrationContext> => {
-  const { me } = getBackofficeShellRequest(context);
+}): ScopedIntegrationContext => {
+  const uiScope = requireScopeSelection(context);
+  const scope = backofficeRuntimeScopeFromResolvedScope(uiScope);
+  if (allowedScopes && !allowedScopes.includes(scope.kind)) {
+    throw new Response("Not Found", { status: 404 });
+  }
 
   return {
-    ...resolveIntegrationContext({ params, me, integration, allowedScopes }),
-    me,
+    scope,
+    uiScope,
+    label: uiScope.label,
+    basePath: integrationBasePath(uiScope, integration),
+    integrationsPath: integrationsScopeBasePath(uiScope),
+    scopeSegment: backofficeScopePathSegment(scope),
+    isScopedRoute: true,
   };
 };
 
-export const resolveAuthenticatedOrgIntegrationContext = async ({
+export const resolveAuthenticatedIntegrationContext = ({
   context,
-  params,
+  integration,
+  allowedScopes,
+}: {
+  context: Readonly<RouterContextProvider>;
+  integration: string;
+  allowedScopes?: readonly BackofficeContextScope["kind"][];
+}): AuthenticatedScopedIntegrationContext => ({
+  ...resolveIntegrationContext({ context, integration, allowedScopes }),
+  me: getBackofficeShellRequest(context).me,
+});
+
+export const resolveAuthenticatedOrgIntegrationContext = ({
+  context,
   integration,
 }: {
   context: Readonly<RouterContextProvider>;
-  params: IntegrationRouteParams;
   integration: string;
 }) => {
-  const integrationContext = await resolveAuthenticatedIntegrationContext({
+  const integrationContext = resolveAuthenticatedIntegrationContext({
     context,
-    params,
     integration,
     allowedScopes: ["org"],
   });

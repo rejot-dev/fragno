@@ -518,12 +518,7 @@ export class BackofficeKernel {
     }
 
     if (ownerScope.kind === "org") {
-      const targetsOwnerOrganization =
-        targetScope.kind === "org" && targetScope.orgId === ownerScope.orgId;
-      const targetsProjectInOwnerOrganization =
-        targetScope.kind === "project" && targetScope.orgId === ownerScope.orgId;
-
-      if (targetsOwnerOrganization || targetsProjectInOwnerOrganization) {
+      if (backofficeScopeContains(ownerScope, targetScope)) {
         return;
       }
 
@@ -570,10 +565,7 @@ export class BackofficeKernel {
       case "system":
         return;
       case "org":
-        if (
-          (targetScope.kind === "org" || targetScope.kind === "project") &&
-          targetScope.orgId === ownerScope.orgId
-        ) {
+        if (backofficeScopeContains(ownerScope, targetScope)) {
           return;
         }
         // TODO: Check the Auth membership table before allowing an org-owned object to use a
@@ -591,6 +583,10 @@ export class BackofficeKernel {
         }
         deny();
         return;
+      default:
+        throw new Error("Unsupported Backoffice scope kind.", {
+          cause: ownerScope satisfies never,
+        });
     }
   }
 
@@ -603,25 +599,9 @@ export class BackofficeKernel {
   scoped<T>(
     binding: BackofficeObjectBindingName,
     scope: BackofficeContextScope,
-    family: {
-      singleton(): T;
-      forOrg(id: string): T;
-      forUser(input: { userId: string }): T;
-      forProject(input: { orgId: string; projectId: string }): T;
-    },
+    family: { for(scope: BackofficeContextScope): T },
   ): T {
     this.assertObjectAvailable(binding, scope);
-    switch (scope.kind) {
-      case "system":
-        return family.singleton();
-      case "org":
-        return family.forOrg(scope.orgId);
-      case "user":
-        return family.forUser({ userId: scope.userId });
-      case "project":
-        return family.forProject({ orgId: scope.orgId, projectId: scope.projectId });
-    }
-
-    throw new Error("Unsupported Backoffice context scope kind.");
+    return family.for(scope);
   }
 }

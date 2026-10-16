@@ -1,46 +1,42 @@
 import { describe, expect, test } from "vitest";
 
-import { resolveCurrentBackofficeScope } from "./backoffice-layout-scope";
+import { resolveBackofficePageScope } from "./backoffice-layout-scope";
 
-const defaultOrganization = { id: "org-default", slug: "default-org" };
-const routeOrganization = { id: "org-route", slug: "route-org" };
-const defaultScope = { kind: "org" as const, organization: defaultOrganization };
-const organizations = [routeOrganization];
+const organization = { id: "org-route", slug: "route-org" };
+const project = { id: "project-1", slug: "website" };
+const lookups = {
+  organizations: [organization],
+  findProject: async (_organization: typeof organization, slug: string) =>
+    slug === project.slug ? project : null,
+};
 
-describe("resolveCurrentBackofficeScope", () => {
+describe("resolveBackofficePageScope", () => {
   test.each([
     [
       { scopeKind: "org", scopeId: "route-org" },
-      { kind: "org", organization: routeOrganization },
+      { kind: "org", organization },
     ],
     [
       { scopeKind: "user", scopeId: "user-route" },
       { kind: "user", userId: "user-route" },
     ],
     [
-      { scopeKind: "project", scopeId: "route-org:project-route" },
-      { kind: "project", organization: routeOrganization, projectId: "project-route" },
+      { scopeKind: "project", scopeId: "route-org:website" },
+      { kind: "project", organization, project },
     ],
     [{ scopeKind: "system", scopeId: "system" }, { kind: "system" }],
-  ])("uses an explicit route scope for %s", (params, expectedScope) => {
-    expect(resolveCurrentBackofficeScope({ params, defaultScope, organizations })).toEqual(
-      expectedScope,
-    );
+    // Organization pages name their organization outside the scoped route parameters.
+    [{ orgSlug: "route-org" }, { kind: "org", organization }],
+  ])("resolves the scope a URL names for %o", async (params, scope) => {
+    await expect(resolveBackofficePageScope({ params, ...lookups })).resolves.toEqual({
+      status: "resolved",
+      scope,
+    });
   });
 
-  test("resolves the organization slug selected by an organization route", () => {
-    expect(
-      resolveCurrentBackofficeScope({
-        params: { orgSlug: "route-org" },
-        defaultScope,
-        organizations,
-      }),
-    ).toEqual({ kind: "org", organization: routeOrganization });
-  });
-
-  test("uses the authenticated default outside an explicitly scoped route", () => {
-    expect(resolveCurrentBackofficeScope({ params: {}, defaultScope, organizations })).toEqual(
-      defaultScope,
-    );
+  test("reports pages without a scope", async () => {
+    await expect(resolveBackofficePageScope({ params: {}, ...lookups })).resolves.toEqual({
+      status: "absent",
+    });
   });
 });

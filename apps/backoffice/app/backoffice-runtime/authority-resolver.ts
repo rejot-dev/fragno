@@ -6,7 +6,10 @@ import {
   allBackofficePermissionRequirements,
   type BackofficePermissionRequirement,
 } from "@fragno-dev/backoffice-api/v0/shared/permissions";
-import { backofficeScopeContains } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  backofficeScopeContains,
+  backofficeScopeOrganization,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import {
   type BackofficeExecutionContext,
@@ -162,10 +165,7 @@ export const createBackofficeAuthorityResolver = (
         });
       }
 
-      const organizationId =
-        execution.scope.kind === "org" || execution.scope.kind === "project"
-          ? execution.scope.orgId
-          : undefined;
+      const organizationId = backofficeScopeOrganization(execution.scope)?.orgId;
       const currentUser = await identities.getUserAuthorityFacts({
         userId: principal.id,
         ...(organizationId ? { organizationId } : {}),

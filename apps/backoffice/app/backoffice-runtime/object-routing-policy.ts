@@ -1,4 +1,5 @@
 import type { AutomationEvent, AutomationEventSubject } from "@fragno-dev/backoffice-api/v0/events";
+import { backofficeScopeOrganization } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import type { BackofficeObjectAddress, BackofficeObjectBindingName } from "./object-registry";
 import { org, project, singleton, user } from "./object-registry";
@@ -23,18 +24,19 @@ const objectAddress = (
 });
 
 export const resolveEventOrgId = (event: AutomationEvent): string => {
-  if (event.scope.kind !== "org" && event.scope.kind !== "project") {
+  const organization = backofficeScopeOrganization(event.scope);
+  if (!organization) {
     throw new Error(`Cannot route automation event ${event.id}: expected org-backed scope.`);
   }
 
   const subjectOrgId = subjectField(event.subject, "orgId");
-  if (subjectOrgId && event.scope.orgId !== subjectOrgId) {
+  if (subjectOrgId && organization.orgId !== subjectOrgId) {
     throw new Error(
-      `Cannot route automation event ${event.id}: event org id ${event.scope.orgId} does not match subject org id ${subjectOrgId}.`,
+      `Cannot route automation event ${event.id}: event org id ${organization.orgId} does not match subject org id ${subjectOrgId}.`,
     );
   }
 
-  return event.scope.orgId;
+  return organization.orgId;
 };
 
 export const resolveOrgScopedObjectAddress = (

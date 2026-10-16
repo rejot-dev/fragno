@@ -33,7 +33,7 @@ export async function requireScopedSandboxRuntime(
   listSandboxes: () => Promise<SandboxView[]>;
   routeScope: BackofficeRoutableRouteScope;
 }> {
-  const selection = await requireRoutableScopeSelection(context);
+  const selection = requireRoutableScopeSelection(context);
   const scope = backofficeRuntimeScopeFromResolvedScope(selection);
   const sandboxManager = context
     .get(BackofficeWorkerContext)

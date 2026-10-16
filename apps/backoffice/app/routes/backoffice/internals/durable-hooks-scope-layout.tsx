@@ -1,3 +1,4 @@
+import { backofficeScopeOrganization } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { ButtonLink } from "@fragno-private/design-system/button";
 import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
 import type { MouseEvent as ReactMouseEvent } from "react";
@@ -96,7 +97,7 @@ const loadDurableHookQueue = async ({
 };
 
 export async function loader({ params, context, url }: Route.LoaderArgs) {
-  const scope = await requireScopeSelection(context);
+  const scope = requireScopeSelection(context);
   const requestedSelection = resolveDurableHooksScopeSelection({
     scope,
     objectId: params.objectId,
@@ -232,10 +233,7 @@ export default function BackofficeDurableHooksScopeLayout({ loaderData }: Route.
     getDurableHooksObjectDefinition(selection.objectId)?.label ?? selection.objectId;
   const configureMeta = DURABLE_HOOKS_OBJECT_CONFIGURE_META[selection.objectId] ?? null;
   const selectionRouteScope = backofficeRouteScopeFromResolvedScope(selection.resolvedScope);
-  const configureOrgSlug =
-    selectionRouteScope.kind === "org" || selectionRouteScope.kind === "project"
-      ? selectionRouteScope.orgSlug
-      : null;
+  const configureOrgSlug = backofficeScopeOrganization(selectionRouteScope)?.orgSlug;
   const configurePath =
     configureOrgSlug && configureMeta ? configureMeta.path(configureOrgSlug) : null;
   const queueCount = items.length;

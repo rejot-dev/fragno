@@ -1,11 +1,11 @@
-import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  type BackofficeContextScope,
+  backofficeScopeOrganization,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
-import {
-  backofficeRouteScopeFromResolvedScope,
-  resolveBackofficeRuntimeScope,
-} from "@/backoffice-runtime/resolved-scope";
-import { backofficeRouteScopeSinglePathSegment } from "@/backoffice-runtime/route-scope";
+import { backofficePublicScopeFromRuntimeScope } from "@/backoffice-runtime/resolved-scope";
+import { backofficePublicScopePathSegment } from "@/backoffice-runtime/route-scope";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 
 /** Resolves an ID-backed organization to the identity public routes address it by. */
@@ -31,13 +31,14 @@ export async function resolveRuntimePublicScopePathSegment(
   scope: BackofficeContextScope,
   fragmentName: string,
 ): Promise<string> {
-  const resolvedScope = await resolveBackofficeRuntimeScope(scope, (organizationId) =>
-    resolveRuntimeOrganization(runtime, organizationId),
-  );
-  if (resolvedScope.kind === "system") {
+  if (scope.kind === "system") {
     throw new Error(`${fragmentName} public routes require a routable scope.`);
   }
-  return backofficeRouteScopeSinglePathSegment(
-    backofficeRouteScopeFromResolvedScope(resolvedScope),
+  const reference = backofficeScopeOrganization(scope);
+  const organization = reference
+    ? await resolveRuntimeOrganization(runtime, reference.orgId)
+    : null;
+  return backofficePublicScopePathSegment(
+    backofficePublicScopeFromRuntimeScope(scope, organization),
   );
 }

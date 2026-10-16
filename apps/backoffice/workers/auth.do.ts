@@ -12,7 +12,10 @@ import {
   type OrganizationRecord,
 } from "@fragno-dev/backoffice-api/v0/organization";
 import type { DirectoryPageInput } from "@fragno-dev/backoffice-api/v0/shared/pagination";
-import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  type BackofficeContextScope,
+  backofficeScopeOrganization,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { DurableObjectDialect } from "@fragno-dev/db/dialects/durable-object";
 import { betterAuth, type BetterAuthOptions } from "better-auth";
 import { APIError } from "better-auth/api";
@@ -720,11 +723,12 @@ async function resolveBackofficeUserTokenGrant(
     return createdAtDifference || left.id.localeCompare(right.id);
   });
 
-  const requestedOrganizationScope =
-    input.scope?.kind === "org" || input.scope?.kind === "project" ? input.scope : null;
+  const requestedOrganizationId = input.scope
+    ? (backofficeScopeOrganization(input.scope)?.orgId ?? null)
+    : null;
   const defaultMembership = memberships[0];
   if (!defaultMembership) {
-    if (requestedOrganizationScope && input.organizationSelection === "required") {
+    if (requestedOrganizationId && input.organizationSelection === "required") {
       throw new BackofficeUserTokenGrantForbiddenError(
         "The requested Backoffice scope is not available to this user.",
       );
@@ -732,13 +736,11 @@ async function resolveBackofficeUserTokenGrant(
     return { status: "organization_provisioning", retryAfterMs: 250 };
   }
 
-  const requestedMembership = requestedOrganizationScope
-    ? memberships.find(
-        (membership) => membership.organizationId === requestedOrganizationScope.orgId,
-      )
+  const requestedMembership = requestedOrganizationId
+    ? memberships.find((membership) => membership.organizationId === requestedOrganizationId)
     : null;
   if (
-    requestedOrganizationScope &&
+    requestedOrganizationId &&
     !requestedMembership &&
     input.organizationSelection === "required"
   ) {
@@ -749,8 +751,8 @@ async function resolveBackofficeUserTokenGrant(
 
   const selectedMembership = requestedMembership ?? defaultMembership;
   const selectedScope: BackofficeContextScope =
-    requestedMembership && requestedOrganizationScope
-      ? requestedOrganizationScope
+    requestedMembership && input.scope
+      ? input.scope
       : { kind: "org", orgId: selectedMembership.organizationId };
   const selectedOrganization = await adapter.findOne<StoreOrganization>({
     model: "organization",

@@ -3,11 +3,10 @@ import { redirect } from "react-router";
 import { getBackofficeShellRequest } from "@/layouts/backoffice-shell-request.server";
 import { getGitHubWebhookRouterDurableObject } from "@/worker-runtime/durable-objects";
 
-import { integrationOAuthReturn } from "../../integrations/connection-paths";
 import {
-  integrationBasePath,
-  integrationScopeSelectionFromRuntimeScope,
-} from "../../integrations/scope";
+  integrationOAuthReturn,
+  integrationsScopeBasePath,
+} from "../../integrations/connection-paths";
 import type { Route } from "./+types/setup-callback";
 
 const toStatePreview = (value: string) => (value ? `${value.slice(0, 8)}…` : "");
@@ -50,8 +49,13 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
     return reportFailure(resolved.message);
   }
 
-  const scope = { kind: "org" as const, orgId: resolved.orgId };
-  const targetPath = `${integrationBasePath(integrationScopeSelectionFromRuntimeScope(scope, me), "github")}/configuration`;
+  const organization = me.organizations.find(
+    (entry) => entry.organization.id === resolved.orgId,
+  )?.organization;
+  if (!organization) {
+    return reportFailure("The installing organization is no longer available.");
+  }
+  const targetPath = `${integrationsScopeBasePath({ kind: "org", organization })}/github/configuration`;
   const search = url.searchParams.toString();
   return redirect(search ? `${targetPath}?${search}` : targetPath);
 }

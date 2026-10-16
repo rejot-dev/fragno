@@ -6,6 +6,7 @@ import {
   backofficeContextScopesEqual,
   backofficeScopeContains,
   isBackofficeRoutableScope,
+  backofficeScopeOrganization,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import { authorizedBackofficeObjectHttp } from "@/backoffice-runtime/authorized-object-http";
@@ -14,7 +15,6 @@ import {
   type BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
 import { isBackofficeUnavailableError, type BackofficeKernel } from "@/backoffice-runtime/kernel";
-import { resolveBackofficeRuntimeScope } from "@/backoffice-runtime/resolved-scope";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { createStaticFileCollection } from "@/file-collection/create-static-file-collection";
 import { createBackofficeStaticFileCollection } from "@/files/content/static";
@@ -103,10 +103,10 @@ const unavailableRuntime = <T>(message: string): T =>
     },
   ) as T;
 
-const ownerOrgScope = (execution: BackofficeExecutionContext): { orgId: string } | null =>
-  execution.scope.kind === "org" || execution.scope.kind === "project"
-    ? { orgId: execution.scope.orgId }
-    : null;
+const ownerOrgScope = (execution: BackofficeExecutionContext): { orgId: string } | null => {
+  const organization = backofficeScopeOrganization(execution.scope);
+  return organization ? { orgId: organization.orgId } : null;
+};
 
 const selectedOrgScope = (
   execution: BackofficeExecutionContext,
@@ -418,10 +418,10 @@ export const createRouteBackedRuntimeContext = ({
       runtime: selectedOrg
         ? {
             createClaim: async (input) => {
-              const resolvedScope = await resolveBackofficeRuntimeScope(
-                selectedOrg,
-                (organizationId) => resolveRuntimeOrganization(runtime, organizationId),
-              );
+              const resolvedScope = {
+                kind: "org" as const,
+                organization: await resolveRuntimeOrganization(runtime, selectedOrg.orgId),
+              };
               return await createOtpRuntime({
                 object: kernel.scoped("OTP", execution.scope, runtime.objects.otp).commands,
                 config: runtime.config,

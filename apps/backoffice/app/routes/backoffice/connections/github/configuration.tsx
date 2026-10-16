@@ -168,11 +168,9 @@ const readInstallNotice = (requestUrl: URL): InstallFlowNotice => {
   return detail ? { ...notice, message: `${notice.message} ${detail}` } : notice;
 };
 
-export async function loader({ request, params, context, url }: Route.LoaderArgs) {
-  const { orgId: organizationId } = await resolveAuthenticatedOrgIntegrationRuntimeScope({
-    request,
+export async function loader({ request, context, url }: Route.LoaderArgs) {
+  const { orgId: organizationId } = resolveAuthenticatedOrgIntegrationRuntimeScope({
     context,
-    params,
   });
 
   const requestUrl = url;
@@ -307,10 +305,9 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
   };
 }
 
-export async function action({ request, params, context, url }: Route.ActionArgs) {
-  const integration = await resolveAuthenticatedIntegrationContext({
+export async function action({ request, context, url }: Route.ActionArgs) {
+  const integration = resolveAuthenticatedIntegrationContext({
     context,
-    params,
     integration: "github",
     allowedScopes: ["org"],
   });

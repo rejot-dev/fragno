@@ -29,7 +29,12 @@ import type {
   OrganizationRecord,
 } from "@fragno-dev/backoffice-api/v0/organization";
 import type { DirectoryPageInput } from "@fragno-dev/backoffice-api/v0/shared/pagination";
-import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  type BackofficeContextScope,
+  type BackofficeRoutableScope,
+  backofficeScopePathSegment,
+  parseBackofficeScopePathSegment,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { CodemodeHost } from "@fragno-dev/codemode/execution/codemode-activation-contract";
 import type { GitHubWebhookRouter } from "workers/github-webhook-router.do";
 import type { GitHub } from "workers/github.do";
@@ -703,12 +708,11 @@ export type BackofficeObjectBinding<_TCommands> = {
   name: BackofficeObjectBindingName;
 };
 
+/** A context scope's object, a deployment-wide singleton, or a standalone named object. */
 export type BackofficeObjectScope =
+  | BackofficeRoutableScope
   | { kind: "singleton" }
-  | { kind: "org"; orgId: string }
-  | { kind: "named"; name: string }
-  | { kind: "user"; userId: string }
-  | { kind: "project"; orgId: string; projectId: string };
+  | { kind: "named"; name: string };
 
 export type BackofficeObjectAddress = {
   binding: BackofficeObjectBindingName;
@@ -791,9 +795,6 @@ const validateScopeValue = (label: string, value: string): string => {
   return normalized;
 };
 
-const encodeScopeValue = (label: string, value: string): string =>
-  encodeURIComponent(validateScopeValue(label, value));
-
 export const singleton = (): BackofficeObjectScope => ({
   kind: "singleton",
 });
@@ -828,27 +829,14 @@ export const decodeBackofficeObjectScope = (encodedName: string): BackofficeObje
   }
 
   try {
-    switch (kind) {
-      case "singleton":
-        return encodedValues.length === 0 ? singleton() : null;
-      case "org":
-        return encodedValues.length === 1 ? org(decodeURIComponent(encodedValues[0])) : null;
-      case "named":
-        return encodedValues.length === 1 ? named(decodeURIComponent(encodedValues[0])) : null;
-      case "user":
-        return encodedValues.length === 1
-          ? user({ userId: decodeURIComponent(encodedValues[0]) })
-          : null;
-      case "project":
-        return encodedValues.length === 2
-          ? project({
-              orgId: decodeURIComponent(encodedValues[0]),
-              projectId: decodeURIComponent(encodedValues[1]),
-            })
-          : null;
-      default:
-        return null;
+    if (kind === "singleton") {
+      return encodedValues.length === 0 ? singleton() : null;
     }
+    if (kind === "named") {
+      return encodedValues.length === 1 ? named(decodeURIComponent(encodedValues[0])) : null;
+    }
+    const scope = parseBackofficeScopePathSegment(encodedName.slice(version.length + 1));
+    return scope.kind === "system" ? null : scope;
   } catch {
     return null;
   }
@@ -882,26 +870,15 @@ export function requireBackofficeContextScopeFromDurableObjectId(
   return scope;
 }
 
-export const encodeBackofficeObjectAddress = (address: BackofficeObjectAddress): string => {
-  switch (address.scope.kind) {
-    case "singleton":
-      return "v1:singleton";
-    case "org":
-      return `v1:org:${encodeScopeValue("org id", address.scope.orgId)}`;
-    case "named":
-      return `v1:named:${encodeScopeValue("name", address.scope.name)}`;
-    case "user":
-      return ["v1", "user", encodeScopeValue("user id", address.scope.userId)].join(":");
-    case "project":
-      return [
-        "v1",
-        "project",
-        encodeScopeValue("org id", address.scope.orgId),
-        encodeScopeValue("project id", address.scope.projectId),
-      ].join(":");
+export const encodeBackofficeObjectAddress = ({ scope }: BackofficeObjectAddress): string => {
+  if (scope.kind === "singleton") {
+    return "v1:singleton";
   }
-
-  throw new Error("Unsupported Backoffice object scope kind.");
+  if (scope.kind === "named") {
+    return `v1:named:${encodeURIComponent(scope.name)}`;
+  }
+  // A context scope's object is named by the scope's canonical path segment.
+  return `v1:${backofficeScopePathSegment(scope)}`;
 };
 
 export const objectAddressToActor = (
@@ -916,39 +893,17 @@ export const objectAddressToActor = (
 export function backofficeObjectScopeFromContextScope(
   scope: BackofficeContextScope,
 ): BackofficeObjectScope {
-  switch (scope.kind) {
-    case "system":
-      return singleton();
-    case "org":
-      return org(scope.orgId);
-    case "user":
-      return user({ userId: scope.userId });
-    case "project":
-      return project({ orgId: scope.orgId, projectId: scope.projectId });
-  }
-
-  throw new Error("Unsupported Backoffice context scope kind.");
+  return scope.kind === "system" ? singleton() : scope;
 }
 
 export function objectScopeToContextScope(scope: BackofficeObjectScope): BackofficeContextScope {
-  switch (scope.kind) {
-    case "singleton":
-      return { kind: "system" };
-    case "org":
-      return { kind: "org", orgId: scope.orgId };
-    case "user":
-      return { kind: "user", userId: scope.userId };
-    case "project":
-      return {
-        kind: "project",
-        orgId: scope.orgId,
-        projectId: scope.projectId,
-      };
-    case "named":
-      throw new Error("Named Backoffice object scopes do not have a Backoffice context scope.");
+  if (scope.kind === "singleton") {
+    return { kind: "system" };
   }
-
-  throw new Error("Unsupported Backoffice object scope kind.");
+  if (scope.kind === "named") {
+    throw new Error("Named Backoffice object scopes do not have a Backoffice context scope.");
+  }
+  return scope;
 }
 
 const objectAddress = (

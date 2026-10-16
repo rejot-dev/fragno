@@ -43,8 +43,8 @@ type Vars = {
   orgId: string;
   adaId: string;
   graceId: string;
-  launchId: string;
-  archivedId: string;
+  launch: { id: string; slug: string };
+  archived: { id: string; slug: string };
 };
 type Ctx = BackofficeScenarioContext<Vars>;
 
@@ -164,7 +164,7 @@ async function createProject(ctx: Ctx, name: string) {
     }),
   );
   assert(response.ok, await response.clone().text());
-  return z.object({ id: z.string() }).parse(await response.json()).id;
+  return z.object({ id: z.string(), slug: z.string() }).parse(await response.json());
 }
 
 test("each section page selects the route's own scope, or reports a 404 inside the shell", async () => {
@@ -179,8 +179,8 @@ test("each section page selects the route's own scope, or reports a 404 inside t
         orgId: "",
         adaId: "",
         graceId: "",
-        launchId: "",
-        archivedId: "",
+        launch: { id: "", slug: "" },
+        archived: { id: "", slug: "" },
       }),
       steps: ({ when, then }) => [
         when.auth.signUp({ email: "ada@acme.test", captureSessionCookieAs: "adaCookie" }),
@@ -209,12 +209,12 @@ test("each section page selects the route's own scope, or reports a 404 inside t
             ctx.vars.adaCookie = await withAccessToken(ctx, ctx.vars.adaCookie, ctx.vars.orgId);
             ctx.vars.graceCookie = await withAccessToken(ctx, ctx.vars.graceCookie, null);
 
-            ctx.vars.launchId = await createProject(ctx, "Launch");
-            ctx.vars.archivedId = await createProject(ctx, "Retired");
+            ctx.vars.launch = await createProject(ctx, "Launch");
+            ctx.vars.archived = await createProject(ctx, "Retired");
             const archived = await ctx.runtime.objects.automations
               .forOrg(ctx.vars.orgId)
               .http.fetch(
-                new Request(`${origin}/api/automations/projects/${ctx.vars.archivedId}`, {
+                new Request(`${origin}/api/automations/projects/${ctx.vars.archived.id}`, {
                   method: "DELETE",
                 }),
               );
@@ -230,16 +230,16 @@ test("each section page selects the route's own scope, or reports a 404 inside t
               selectedScope: { kind: "org", organization: acme, label: "Acme" },
               projectLookups: 0,
             });
-            // The layout and the leaf both select the scope, sharing one project lookup.
+            // The shell looks the project up by slug once, for the layout and the leaf alike.
             expect(
-              await openPage(ctx, pageName, ada("project", `acme:${ctx.vars.launchId}`)),
+              await openPage(ctx, pageName, ada("project", `acme:${ctx.vars.launch.slug}`)),
               pageName,
             ).toEqual({
               renders: "page",
               selectedScope: {
                 kind: "project",
                 organization: acme,
-                projectId: ctx.vars.launchId,
+                project: ctx.vars.launch,
                 label: "Launch",
               },
               projectLookups: 1,
@@ -255,7 +255,9 @@ test("each section page selects the route's own scope, or reports a 404 inside t
           const ada = (kind: string, id: string) => ({ kind, id, cookie: ctx.vars.adaCookie });
           for (const pageName of Object.keys(pages) as PageName[]) {
             for (const scope of [
-              ada("project", `acme:${ctx.vars.archivedId}`),
+              ada("project", `acme:${ctx.vars.archived.slug}`),
+              // Page URLs name projects by slug, not ID.
+              ada("project", `acme:${ctx.vars.launch.id}`),
               ada("project", "acme:missing-project"),
               ada("org", "unknown-org"),
               ada("unknown-kind", "acme"),

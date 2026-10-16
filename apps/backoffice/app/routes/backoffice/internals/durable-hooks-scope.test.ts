@@ -8,20 +8,18 @@ import {
   resolveDurableHooksScopeSelection,
 } from "./durable-hooks-scope";
 
-const acme = { id: "org_123", slug: "acme" };
-const systemScope: BackofficeScopeSelection = { kind: "system", label: "System" };
-const orgScope: BackofficeScopeSelection = { kind: "org", organization: acme, label: "Acme" };
-const projectScope: BackofficeScopeSelection = {
-  kind: "project",
-  organization: acme,
-  projectId: "project_1",
-  label: "Launch Plan",
-};
-const userScope: BackofficeScopeSelection = {
-  kind: "user",
-  userId: "user_1",
-  label: "operator@example.com",
-};
+const organization = { id: "org_123", slug: "acme" };
+const scopes = {
+  org: { kind: "org", organization, label: "Acme" },
+  project: {
+    kind: "project",
+    organization,
+    project: { id: "project_1", slug: "launch-plan" },
+    label: "Launch Plan",
+  },
+  user: { kind: "user", userId: "user_1", label: "operator@example.com" },
+  system: { kind: "system", label: "System" },
+} satisfies Record<string, BackofficeScopeSelection>;
 
 const resolveSelection = ({
   scope,
@@ -37,7 +35,7 @@ const resolveSelection = ({
 
 describe("resolveDurableHooksScopeSelection", () => {
   it("resolves organization, project, user, and singleton scopes", () => {
-    expect(resolveSelection({ scope: orgScope, objectId: "api" })).toMatchObject({
+    expect(resolveSelection({ scope: scopes.org, objectId: "api" })).toMatchObject({
       kind: "org",
       resolvedScope: {
         kind: "org",
@@ -47,7 +45,7 @@ describe("resolveDurableHooksScopeSelection", () => {
     });
     expect(
       resolveSelection({
-        scope: projectScope,
+        scope: scopes.project,
         objectId: "upload",
       }),
     ).toMatchObject({
@@ -55,18 +53,18 @@ describe("resolveDurableHooksScopeSelection", () => {
       resolvedScope: {
         kind: "project",
         organization: { id: "org_123", slug: "acme" },
-        projectId: "project_1",
+        project: { id: "project_1", slug: "launch-plan" },
       },
       label: "Launch Plan",
       objectId: "upload",
     });
-    expect(resolveSelection({ scope: userScope, objectId: "mcp" })).toMatchObject({
+    expect(resolveSelection({ scope: scopes.user, objectId: "mcp" })).toMatchObject({
       kind: "user",
       resolvedScope: { kind: "user", userId: "user_1" },
       label: "operator@example.com",
       objectId: "mcp",
     });
-    expect(resolveSelection({ scope: systemScope, objectId: "auth" })).toMatchObject({
+    expect(resolveSelection({ scope: scopes.system, objectId: "auth" })).toMatchObject({
       kind: "singleton",
       objectId: "auth",
     });
@@ -75,13 +73,13 @@ describe("resolveDurableHooksScopeSelection", () => {
   it("rejects objects that the registry policy does not allow for the selected scope", () => {
     expect(
       resolveDurableHooksScopeSelection({
-        scope: userScope,
+        scope: scopes.user,
         objectId: "auth",
       }),
     ).toBeNull();
     expect(
       resolveDurableHooksScopeSelection({
-        scope: systemScope,
+        scope: scopes.system,
         objectId: "api",
       }),
     ).toBeNull();
@@ -92,12 +90,12 @@ describe("durable hook selectors", () => {
   it("derives each scope's object options from the object registry policy", () => {
     expect(
       createDurableHooksObjectOptions(
-        resolveSelection({ scope: systemScope, objectId: "auth" }),
+        resolveSelection({ scope: scopes.system, objectId: "auth" }),
       ).map((option) => option.id),
     ).toEqual(["auth", "forms", "automations", "telegram", "otp", "resend", "workflows"]);
 
     expect(
-      createDurableHooksObjectOptions(resolveSelection({ scope: orgScope, objectId: "api" })).map(
+      createDurableHooksObjectOptions(resolveSelection({ scope: scopes.org, objectId: "api" })).map(
         (option) => option.id,
       ),
     ).toEqual([
@@ -113,11 +111,11 @@ describe("durable hook selectors", () => {
     ]);
 
     const userObjects = createDurableHooksObjectOptions(
-      resolveSelection({ scope: userScope, objectId: "api" }),
+      resolveSelection({ scope: scopes.user, objectId: "api" }),
     ).map((option) => option.id);
     const projectObjects = createDurableHooksObjectOptions(
       resolveSelection({
-        scope: projectScope,
+        scope: scopes.project,
         objectId: "api",
       }),
     ).map((option) => option.id);
@@ -131,7 +129,7 @@ describe("getDurableHooksLoaderErrorMessage", () => {
     const logError = vi.fn();
     const error = new Error("Missing storage credentials");
     const selection = resolveSelection({
-      scope: userScope,
+      scope: scopes.user,
       objectId: "upload",
     });
 

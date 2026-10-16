@@ -3,11 +3,9 @@ import { redirect } from "react-router";
 import { resolveAuthenticatedIntegrationRuntimeScope } from "../../integrations/scope.server";
 import type { Route } from "./+types/threads-index";
 
-export async function loader({ request, params, context, url }: Route.LoaderArgs) {
-  await resolveAuthenticatedIntegrationRuntimeScope({
-    request,
+export async function loader({ context, url }: Route.LoaderArgs) {
+  resolveAuthenticatedIntegrationRuntimeScope({
     context,
-    params,
     allowedScopes: ["org", "system"],
   });
 

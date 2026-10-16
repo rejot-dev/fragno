@@ -84,9 +84,24 @@ function createShellContext({
   me?: BackofficeMeData;
   principal?: BackofficeAuthPrincipal;
 }) {
+  // Organization "acme" has one project, "website".
+  const automations = {
+    http: {
+      fetch: async (projectRequest: Request) =>
+        new URL(projectRequest.url).pathname.endsWith("/projects/by-slug/website")
+          ? Response.json({ id: "project-1", slug: "website", name: "Website", archivedAt: null })
+          : Response.json(
+              { message: "Project not found.", code: "PROJECT_NOT_FOUND" },
+              { status: 404 },
+            ),
+    },
+  };
   const context = createBackofficeRouterContextProvider(request, {
-    runtime: {} as never,
-    kernel: {} as never,
+    runtime: { objects: { automations: { for: () => automations } } } as never,
+    kernel: {
+      scoped: (_binding: string, scope: unknown, family: { for(scope: unknown): unknown }) =>
+        family.for(scope),
+    } as never,
     env: {} as CloudflareEnv,
     ctx: {} as ExecutionContext,
   });
@@ -117,7 +132,7 @@ function createShellContext({
 describe("Backoffice shell request middleware", () => {
   test("establishes resolved scope and execution before descendant handlers run", async () => {
     const request = new Request(
-      "https://backoffice.example/backoffice/dashboard/project/acme%3Aproject-1",
+      "https://backoffice.example/backoffice/dashboard/project/acme:website",
     );
     const { context, getPrincipal } = createShellContext({ request });
     const response = new Response("descendant response");
@@ -128,15 +143,16 @@ describe("Backoffice shell request middleware", () => {
         resolvedScope: {
           kind: "project",
           organization: activeOrganization.organization,
-          projectId: "project-1",
+          project: { id: "project-1", slug: "website", name: "Website" },
         },
         route: {
           status: "resolved",
           resolvedScope: {
             kind: "project",
             organization: activeOrganization.organization,
-            projectId: "project-1",
+            project: { id: "project-1", slug: "website", name: "Website" },
           },
+          selection: { kind: "project", label: "Website" },
           execution: {
             scope: { kind: "project", orgId: "org-1", projectId: "project-1" },
             userAuthority: {
@@ -158,13 +174,32 @@ describe("Backoffice shell request middleware", () => {
         {
           request,
           context,
-          params: { scopeKind: "project", scopeId: "acme:project-1" },
+          params: { scopeKind: "project", scopeId: "acme:website" },
         },
         next,
       ),
     ).resolves.toBe(response);
     expect(next).toHaveBeenCalledOnce();
     expect(getPrincipal).toHaveBeenCalledOnce();
+  });
+
+  test.each([
+    { scopeKind: "project", scopeId: "acme:project-1" },
+    { scopeKind: "org", scopeId: "org-1" },
+    { scopeKind: "org", scopeId: "acme:extra" },
+  ])("keeps the default scope while recording that %o did not resolve", async (params) => {
+    const request = new Request("https://backoffice.example/backoffice/automations");
+    const { context } = createShellContext({ request });
+    const next = vi.fn(async () => {
+      expect(getBackofficeShellRequest(context)).toMatchObject({
+        route: { status: "not-found" },
+        resolvedScope: { kind: "org", organization: activeOrganization.organization },
+      });
+      return new Response("descendant response");
+    });
+
+    await establishBackofficeShellRequest({ request, context, params }, next);
+    expect(next).toHaveBeenCalledOnce();
   });
 
   test("redirects organization changes before resolving execution authority", async () => {

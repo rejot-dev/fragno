@@ -20,10 +20,10 @@ export const projectConnectorPublicRoute = {
     matches: (request, _scope, suffix) => request.method === "GET" && suffix === "/oauth/callback",
     // The gateway owns OAuth state, so this navigation neither knows the connection nor binds an
     // account, and none of the provider's query reaches the landing page.
-    redirect: ({ request, routeScope }) =>
+    redirect: ({ request, pageScope }) =>
       integrationOAuthReturn({
         request,
-        routeScope,
+        routeScope: pageScope,
         connectionId: null,
         outcome: { status: "returned" },
       }),
