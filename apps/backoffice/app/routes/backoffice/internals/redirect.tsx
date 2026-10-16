@@ -1,16 +1,12 @@
 import { redirect } from "react-router";
 
 import { backofficeRouteScopePath } from "@/backoffice-runtime/route-scope";
-import { findBackofficeMe } from "@/fragno/auth/auth-server";
+import { getBackofficeShellRequest } from "@/layouts/backoffice-shell-request.server";
 
-import { buildBackofficeLoginPath } from "../auth-navigation";
 import type { Route } from "./+types/redirect";
 
-export async function loader({ request, context, url }: Route.LoaderArgs) {
-  const me = await findBackofficeMe(request, context);
-  if (!me?.user) {
-    throw redirect(buildBackofficeLoginPath(`${url.pathname}${url.search}`));
-  }
+export async function loader({ context }: Route.LoaderArgs) {
+  const { me } = getBackofficeShellRequest(context);
 
   const organization =
     me.activeOrganization?.organization ?? me.organizations[0]?.organization ?? null;

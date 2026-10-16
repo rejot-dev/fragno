@@ -12,8 +12,10 @@ import {
 
 import type { TelegramAttachment, TelegramMessageSummary } from "@fragno-dev/telegram-fragment";
 
-import { resolveAuthenticatedIntegrationContext } from "../../integrations/scope";
-import { resolveAuthenticatedIntegrationRuntimeScope } from "../../integrations/scope.server";
+import {
+  resolveAuthenticatedIntegrationContext,
+  resolveAuthenticatedIntegrationRuntimeScope,
+} from "../../integrations/scope.server";
 import { formatTimestamp } from "../formatting";
 import type { Route } from "./+types/message-thread";
 import {
@@ -61,7 +63,6 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   }
 
   const integration = await resolveAuthenticatedIntegrationContext({
-    request,
     context,
     params,
     integration: "telegram",

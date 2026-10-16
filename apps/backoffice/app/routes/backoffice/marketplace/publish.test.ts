@@ -1,14 +1,16 @@
 import { assert, beforeEach, describe, expect, test, vi } from "vitest";
 
-const { findBackofficeMeMock, createDraftListingMock, marketplaceForMock } = vi.hoisted(() => ({
-  findBackofficeMeMock: vi.fn(),
+const { createDraftListingMock, marketplaceForMock } = vi.hoisted(() => ({
   createDraftListingMock: vi.fn(),
   marketplaceForMock: vi.fn(),
 }));
 
-vi.mock("@/fragno/auth/auth-server", () => ({ findBackofficeMe: findBackofficeMeMock }));
+import { RouterContextProvider } from "react-router";
 
+import type { BackofficeMeData } from "@/fragno/auth/contracts";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
+import { provideBackofficeShellRequest } from "@/layouts/backoffice-layout.test-support";
+import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import { marketplaceListingManagePath } from "./navigation";
 import { action, loader } from "./publish";
@@ -25,13 +27,14 @@ const listingId = marketplaceListingId({
 });
 
 const marketplace = { createDraftListing: createDraftListingMock };
-const context = {
-  get: () => ({
-    runtime: {
-      objects: { marketplace: { for: marketplaceForMock } },
-    },
-  }),
-};
+const context = new RouterContextProvider();
+context.set(BackofficeWorkerContext, {
+  runtime: { objects: { marketplace: { for: marketplaceForMock } } },
+} as never);
+provideBackofficeShellRequest(context, {
+  me: authenticatedUser as unknown as BackofficeMeData,
+  routeScope: null,
+});
 
 const publishRequest = (organizationSlug = "acme") => {
   const formData = new FormData();
@@ -54,11 +57,9 @@ const publishRequest = (organizationSlug = "acme") => {
 };
 
 beforeEach(() => {
-  findBackofficeMeMock.mockReset();
   createDraftListingMock.mockReset();
   marketplaceForMock.mockReset();
   marketplaceForMock.mockReturnValue({ commands: marketplace });
-  findBackofficeMeMock.mockResolvedValue(authenticatedUser);
   createDraftListingMock.mockResolvedValue({
     ok: true,
     value: {

@@ -12,7 +12,7 @@ import {
 
 import { getReson8DurableObject } from "@/worker-runtime/durable-objects";
 
-import { resolveAuthenticatedOrgIntegrationContext } from "../../integrations/scope";
+import { resolveAuthenticatedOrgIntegrationContext } from "../../integrations/scope.server";
 import { formatTimestamp } from "../formatting";
 import type { Reson8ConfigState, Reson8LayoutContext } from "./shared";
 
@@ -28,7 +28,6 @@ type Reson8ConfigActionData = {
 
 export async function action({ request, context, params }: ActionFunctionArgs) {
   const { orgId } = await resolveAuthenticatedOrgIntegrationContext({
-    request,
     context,
     params,
     integration: "reson8",

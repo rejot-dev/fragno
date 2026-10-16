@@ -7,7 +7,7 @@ import { Form, useActionData, useNavigation, useOutletContext } from "react-rout
 import { generateTelegramWebhookSecretToken } from "@/fragno/telegram-webhook-secret";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
-import { resolveAuthenticatedIntegrationContext } from "../../integrations/scope";
+import { resolveAuthenticatedIntegrationContext } from "../../integrations/scope.server";
 import type { Route } from "./+types/configuration";
 import type { TelegramConfigState, TelegramLayoutContext } from "./shared";
 
@@ -78,7 +78,6 @@ const normalizeTelegramConfigInput = (
 
 export async function action({ request, context, params }: Route.ActionArgs) {
   const integration = await resolveAuthenticatedIntegrationContext({
-    request,
     context,
     params,
     integration: "telegram",

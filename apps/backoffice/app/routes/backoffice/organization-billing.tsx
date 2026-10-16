@@ -3,12 +3,11 @@ import { FormContainer } from "@fragno-private/design-system/form-container";
 import { Input } from "@fragno-private/design-system/input";
 import { Form } from "react-router";
 
-import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import { billingPeriodSchema, type BillingStatementTracker } from "@/fragno/billing";
+import { getBackofficeShellRequest } from "@/layouts/backoffice-shell-request.server";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import type { Route } from "./+types/organization-billing";
-import { buildBackofficeLoginPath } from "./auth-navigation";
 import { throwBackofficeOrganizationNotFound } from "./route-errors";
 
 const TOTAL_COST_METER = "ai.cost.total";
@@ -60,18 +59,12 @@ const formatTimestamp = (value: string) => BILLING_TIMESTAMP_FORMATTER.format(ne
 
 const billingPagePath = (period: string) => `?${new URLSearchParams({ period }).toString()}`;
 
-export async function loader({ request, params, context, url }: Route.LoaderArgs) {
+export async function loader({ request, params, context }: Route.LoaderArgs) {
   if (!params.orgSlug) {
     throw new Response("Not Found", { status: 404 });
   }
 
-  const me = await findBackofficeMe(request, context);
-  if (!me?.user) {
-    return Response.redirect(
-      new URL(buildBackofficeLoginPath(`${url.pathname}${url.search}`), request.url),
-      302,
-    );
-  }
+  const { me } = getBackofficeShellRequest(context);
 
   const organization = me.organizations.find(
     (entry) => entry.organization.slug === params.orgSlug,

@@ -29,7 +29,7 @@ import type {
 
 import { createReson8Client } from "@/fragno/reson8-client";
 
-import { resolveAuthenticatedOrgIntegrationContext } from "../../integrations/scope";
+import { resolveAuthenticatedOrgIntegrationContext } from "../../integrations/scope.server";
 import {
   fetchReson8Config,
   fetchReson8CustomModels,
@@ -180,7 +180,6 @@ const getErrorMessage = (value: unknown) => {
 
 export async function loader({ request, context, params }: LoaderFunctionArgs) {
   const { integration, orgId } = await resolveAuthenticatedOrgIntegrationContext({
-    request,
     context,
     params,
     integration: "reson8",
@@ -220,7 +219,6 @@ export async function loader({ request, context, params }: LoaderFunctionArgs) {
 
 export async function action({ request, context, params }: ActionFunctionArgs) {
   const { orgId } = await resolveAuthenticatedOrgIntegrationContext({
-    request,
     context,
     params,
     integration: "reson8",

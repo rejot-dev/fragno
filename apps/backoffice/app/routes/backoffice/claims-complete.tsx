@@ -3,22 +3,15 @@ import { FormContainer } from "@fragno-private/design-system/form-container";
 import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
 import { Form, useNavigation } from "react-router";
 
-import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
+import { getBackofficeShellRequest } from "@/layouts/backoffice-shell-request.server";
 import { getOtpDurableObject } from "@/worker-runtime/durable-objects";
 
 import type { Route } from "./+types/claims-complete";
-import { buildBackofficeLoginPath } from "./auth-navigation";
 
 /** GET displays the persisted identity without consuming its claim or granting authority. */
-export async function loader({ request, context, params, url }: Route.LoaderArgs) {
-  const me = await findBackofficeMe(request, context);
-  if (!me) {
-    throw Response.redirect(
-      new URL(buildBackofficeLoginPath(`${url.pathname}${url.search}`), request.url),
-      302,
-    );
-  }
+export async function loader({ context, params, url }: Route.LoaderArgs) {
+  const { me } = getBackofficeShellRequest(context);
   const organization = me.organizations.find(
     (entry) => entry.organization.slug === params.orgSlug,
   )?.organization;
@@ -47,10 +40,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   if (request.headers.get("origin") !== new URL(request.url).origin) {
     throw new Response("Identity confirmation requires a same-origin POST.", { status: 403 });
   }
-  const me = await findBackofficeMe(request, context);
-  if (!me) {
-    throw new Response("Authentication required", { status: 401 });
-  }
+  const { me } = getBackofficeShellRequest(context);
   const organization = me.organizations.find(
     (entry) => entry.organization.slug === params.orgSlug,
   )?.organization;

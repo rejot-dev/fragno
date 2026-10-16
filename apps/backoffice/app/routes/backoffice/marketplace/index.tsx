@@ -1,23 +1,16 @@
 import { redirect } from "react-router";
 
 import type { BackofficeRoutableScopeSelection } from "@/backoffice-runtime/resolved-scope";
-import { findBackofficeMe } from "@/fragno/auth/auth-server";
+import { getBackofficeShellRequest } from "@/layouts/backoffice-shell-request.server";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
-import { buildBackofficeLoginPath } from "../auth-navigation";
 import type { Route } from "./+types/index";
 import { resolveMarketplaceListingRoute } from "./listing-route.server";
 import { marketplaceListingPath } from "./navigation";
 import { marketplaceScopeTabPath } from "./scope";
 
-export async function loader({ request, context, url }: Route.LoaderArgs) {
-  const me = await findBackofficeMe(request, context);
-  if (!me?.user) {
-    return Response.redirect(
-      new URL(buildBackofficeLoginPath(`${url.pathname}${url.search}`), request.url),
-      302,
-    );
-  }
+export async function loader({ context, url }: Route.LoaderArgs) {
+  const { me } = getBackofficeShellRequest(context);
 
   const organization = me.activeOrganization?.organization;
   const scope: BackofficeRoutableScopeSelection = organization

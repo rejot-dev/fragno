@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi, assert } from "vitest";
 
+import { RouterContextProvider } from "react-router";
+
+import type { BackofficeMeData } from "@/fragno/auth/contracts";
+import { provideBackofficeShellRequest } from "@/layouts/backoffice-layout.test-support";
+
 import { fetchUploadConfig } from "./data";
 import { loader } from "./files";
 import { shouldAutoStartUploads } from "./upload-queue";
@@ -11,12 +16,6 @@ vi.mock("@base-ui/react", () => ({
 
 vi.mock("@fragno-private/design-system/units", () => ({
   formatBytes: vi.fn(),
-}));
-
-vi.mock("@/fragno/auth/auth-server", () => ({
-  requireBackofficeMe: vi.fn(async () => ({
-    organizations: [{ organization: { id: "org_123", slug: "fragno" } }],
-  })),
 }));
 
 vi.mock("@/fragno/upload-client", () => ({
@@ -58,13 +57,23 @@ describe("upload files loader", () => {
     vi.clearAllMocks();
   });
 
-  const createLoaderArgs = (url: string) =>
-    ({
+  const createLoaderArgs = (url: string) => {
+    const context = new RouterContextProvider();
+    provideBackofficeShellRequest(context, {
+      me: {
+        user: { id: "user-1" },
+        organizations: [{ organization: { id: "org_123", slug: "fragno" } }],
+        activeOrganization: null,
+      } as unknown as BackofficeMeData,
+      routeScope: null,
+    });
+    return {
       request: new Request(url),
       url: new URL(url),
       params: { orgSlug: "fragno" },
-      context: {} as never,
-    }) as unknown as Parameters<typeof loader>[0];
+      context,
+    } as unknown as Parameters<typeof loader>[0];
+  };
 
   it("returns the loader-fetched config state alongside configError", async () => {
     const configState = {

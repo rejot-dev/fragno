@@ -534,8 +534,8 @@ const createSyntheticFolderNode = (prefix: string): UploadTreeFolderNode => ({
   providers: [],
 });
 
-export async function loader({ request, params, context, url }: LoaderFunctionArgs) {
-  const { organization } = await requireUploadRouteOrganization(request, context, params.orgSlug);
+export async function loader({ params, context, url }: LoaderFunctionArgs) {
+  const { organization } = requireUploadRouteOrganization(context, params.orgSlug);
   const { configState, configError } = await fetchUploadConfig(context, organization.id);
   if (configError) {
     return {
@@ -585,7 +585,7 @@ export async function loader({ request, params, context, url }: LoaderFunctionAr
 }
 
 export async function action({ request, params, context }: ActionFunctionArgs) {
-  const { organization } = await requireUploadRouteOrganization(request, context, params.orgSlug);
+  const { organization } = requireUploadRouteOrganization(context, params.orgSlug);
   const formData = await request.formData();
   const intent = formData.get("intent");
   const providerValue = formData.get("provider");

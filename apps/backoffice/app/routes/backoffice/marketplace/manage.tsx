@@ -9,7 +9,6 @@ import { Input } from "@fragno-private/design-system/input";
 import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
 import { Form, redirect, useActionData, useLocation, useNavigation } from "react-router";
 
-import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import {
   marketplaceAddDraftVersionInputSchema,
   marketplacePublishVersionInputSchema,
@@ -19,9 +18,9 @@ import {
   decodeMarketplaceOwnedVersionCursor,
   MarketplaceListingCursorError,
 } from "@/fragno/marketplace/pagination";
+import { getBackofficeShellRequest } from "@/layouts/backoffice-shell-request.server";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
-import { buildBackofficeLoginPath } from "../auth-navigation";
 import type { Route } from "./+types/manage";
 import {
   marketplaceListingManagePath,
@@ -43,14 +42,8 @@ const versionDateFormatter = new Intl.DateTimeFormat("en-US", {
   timeZoneName: "short",
 });
 
-export async function loader({ request, params, context, url }: Route.LoaderArgs) {
-  const me = await findBackofficeMe(request, context);
-  if (!me?.user) {
-    return Response.redirect(
-      new URL(buildBackofficeLoginPath(`${url.pathname}${url.search}`), request.url),
-      302,
-    );
-  }
+export async function loader({ params, context, url }: Route.LoaderArgs) {
+  const { me } = getBackofficeShellRequest(context);
 
   const route = marketplaceListingRouteSchema.safeParse(params);
   if (!route.success || !route.data.publisher.startsWith("@")) {
@@ -102,16 +95,13 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
   };
 }
 
-export async function action({ request, params, context, url }: Route.ActionArgs) {
+export async function action({ request, params, context }: Route.ActionArgs) {
   const route = marketplaceListingRouteSchema.safeParse(params);
   if (!route.success || !route.data.publisher.startsWith("@")) {
     throw new Response("Not Found", { status: 404 });
   }
 
-  const me = await findBackofficeMe(request, context);
-  if (!me?.user) {
-    throw redirect(buildBackofficeLoginPath(`${url.pathname}${url.search}`));
-  }
+  const { me } = getBackofficeShellRequest(context);
 
   const formData = await request.formData();
   const organizationSlug = route.data.publisher.slice(1);

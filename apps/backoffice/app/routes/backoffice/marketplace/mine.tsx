@@ -1,19 +1,12 @@
 import { redirect } from "react-router";
 
-import { findBackofficeMe } from "@/fragno/auth/auth-server";
+import { getBackofficeShellRequest } from "@/layouts/backoffice-shell-request.server";
 
-import { buildBackofficeLoginPath } from "../auth-navigation";
 import type { Route } from "./+types/mine";
 import { marketplaceScopeTabPath } from "./scope";
 
 export async function loader({ request, context, url }: Route.LoaderArgs) {
-  const me = await findBackofficeMe(request, context);
-  if (!me?.user) {
-    return Response.redirect(
-      new URL(buildBackofficeLoginPath(`${url.pathname}${url.search}`), request.url),
-      302,
-    );
-  }
+  const { me } = getBackofficeShellRequest(context);
 
   const requestedOrganizationSlug = url.searchParams.get("organizationSlug")?.trim() || null;
   const requestedOrganization = requestedOrganizationSlug

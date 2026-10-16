@@ -16,6 +16,7 @@ import {
   runBackofficeScenario,
   type BackofficeScenarioContext,
 } from "@/fragno/automation/scenario";
+import { behindBackofficeLayout } from "@/layouts/backoffice-layout.test-support";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
 import { InMemoryApiObject } from "../../../../../workers/api.do";
@@ -26,7 +27,9 @@ import { InMemoryGitHubWebhookRouterObject } from "../../../../../workers/github
 import { InMemoryOtpObject } from "../../../../../workers/otp.do";
 import { InMemoryTelegramObject } from "../../../../../workers/telegram.do";
 import { InMemoryUploadObject } from "../../../../../workers/upload.do";
-import { loader } from "./setup-callback";
+import { loader as setupCallbackLoader } from "./setup-callback";
+
+const loader = behindBackofficeLayout(setupCallbackLoader);
 
 const scenarioObjects = {
   API: (input) => new InMemoryApiObject(input),

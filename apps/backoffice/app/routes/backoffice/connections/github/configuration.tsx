@@ -10,16 +10,17 @@ import {
   useOutletContext,
 } from "react-router";
 
-import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import { completeGitHubInstallCallback } from "@/fragno/github-install-callback";
+import { getBackofficeShellRequest } from "@/layouts/backoffice-shell-request.server";
 import {
   getGitHubDurableObject,
   getGitHubWebhookRouterDurableObject,
 } from "@/worker-runtime/durable-objects";
 
-import { buildBackofficeLoginPath } from "../../auth-navigation";
-import { resolveAuthenticatedIntegrationContext } from "../../integrations/scope";
-import { resolveAuthenticatedOrgIntegrationRuntimeScope } from "../../integrations/scope.server";
+import {
+  resolveAuthenticatedIntegrationContext,
+  resolveAuthenticatedOrgIntegrationRuntimeScope,
+} from "../../integrations/scope.server";
 import { formatTimestamp } from "../formatting";
 import type { Route } from "./+types/configuration";
 import {
@@ -204,10 +205,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
       return redirect(buildConfigurationRedirect(requestUrl, "invalid_installation"));
     }
 
-    const me = await findBackofficeMe(request, context);
-    if (!me?.user) {
-      return redirect(buildBackofficeLoginPath(`${url.pathname}${url.search}`));
-    }
+    const { me } = getBackofficeShellRequest(context);
     const memberEntry = me.organizations.find((entry) => entry.organization.id === organizationId);
     if (!memberEntry) {
       throw new Response("Not Found", { status: 404 });
@@ -311,7 +309,6 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
 
 export async function action({ request, params, context, url }: Route.ActionArgs) {
   const integration = await resolveAuthenticatedIntegrationContext({
-    request,
     context,
     params,
     integration: "github",

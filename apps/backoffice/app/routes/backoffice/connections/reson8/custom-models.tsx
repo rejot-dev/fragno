@@ -13,7 +13,7 @@ import {
   type LoaderFunctionArgs,
 } from "react-router";
 
-import { resolveAuthenticatedOrgIntegrationContext } from "../../integrations/scope";
+import { resolveAuthenticatedOrgIntegrationContext } from "../../integrations/scope.server";
 import { formatTimestamp } from "../formatting";
 import { createReson8CustomModel, fetchReson8Config, fetchReson8CustomModels } from "./data";
 import type { Reson8LayoutContext } from "./shared";
@@ -61,7 +61,6 @@ const normalizeCustomModelInput = (input: Reson8CustomModelForm) => {
 
 export async function loader({ request, context, params }: LoaderFunctionArgs) {
   const { integration, orgId } = await resolveAuthenticatedOrgIntegrationContext({
-    request,
     context,
     params,
     integration: "reson8",
@@ -90,7 +89,6 @@ export async function loader({ request, context, params }: LoaderFunctionArgs) {
 
 export async function action({ request, context, params }: ActionFunctionArgs) {
   const { orgId } = await resolveAuthenticatedOrgIntegrationContext({
-    request,
     context,
     params,
     integration: "reson8",

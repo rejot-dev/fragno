@@ -2,16 +2,13 @@ import { ButtonLink } from "@fragno-private/design-system/button";
 import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
 import { redirect, useOutletContext, type LoaderFunctionArgs } from "react-router";
 
-import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import type { BackofficeLayoutContext } from "@/layouts/backoffice-layout";
+import { getBackofficeShellRequest } from "@/layouts/backoffice-shell-request.server";
 
 import { formatUploadTimestamp } from "./formatting";
 
-export async function loader({ request, context }: LoaderFunctionArgs) {
-  const me = await findBackofficeMe(request, context);
-  if (!me?.user) {
-    return redirect("/backoffice/login");
-  }
+export async function loader({ context }: LoaderFunctionArgs) {
+  const { me } = getBackofficeShellRequest(context);
 
   const activeOrganization = me.activeOrganization?.organization ?? null;
   if (activeOrganization) {

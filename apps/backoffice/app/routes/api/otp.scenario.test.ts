@@ -35,9 +35,10 @@ import {
   SIGN_UP_INVITATION_TYPE,
   buildIdentityClaimCompletionUrl,
 } from "@/fragno/otp";
+import { behindBackofficeLayout } from "@/layouts/backoffice-layout.test-support";
 import {
-  loader as previewIdentityClaim,
-  action as completeIdentityClaim,
+  loader as claimsCompleteLoader,
+  action as claimsCompleteAction,
 } from "@/routes/backoffice/claims-complete";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
@@ -49,6 +50,9 @@ import { InMemoryOtpObject } from "../../../workers/otp.do";
 import { InMemoryTelegramObject } from "../../../workers/telegram.do";
 import { InMemoryUploadObject } from "../../../workers/upload.do";
 import { action } from "./otp";
+
+const previewIdentityClaim = behindBackofficeLayout(claimsCompleteLoader);
+const completeIdentityClaim = behindBackofficeLayout(claimsCompleteAction);
 
 const scenarioObjects = {
   API: (input) => new InMemoryApiObject(input),

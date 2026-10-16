@@ -1,11 +1,10 @@
 import type { RouterContextProvider } from "react-router";
 
-import { requireBackofficeMe } from "@/fragno/auth/auth-server";
+import { getBackofficeShellRequest } from "@/layouts/backoffice-shell-request.server";
 import { throwBackofficeOrganizationNotFound } from "@/routes/backoffice/route-errors";
 
 /** Resolves an Upload browser-route organization slug to its internal organization record. */
-export async function requireUploadRouteOrganization(
-  request: Request,
+export function requireUploadRouteOrganization(
   context: Readonly<RouterContextProvider>,
   organizationSlug: string | undefined,
 ) {
@@ -13,7 +12,7 @@ export async function requireUploadRouteOrganization(
     throw new Response("Not Found", { status: 404 });
   }
 
-  const me = await requireBackofficeMe(request, context);
+  const { me } = getBackofficeShellRequest(context);
   const organization = me.organizations.find(
     (entry) => entry.organization.slug === organizationSlug,
   )?.organization;

@@ -1,22 +1,19 @@
 import { assert, beforeEach, describe, expect, test, vi } from "vitest";
 
-const {
-  findBackofficeMeMock,
-  addDraftVersionMock,
-  archiveListingMock,
-  publishVersionMock,
-  updateListingMock,
-} = vi.hoisted(() => ({
-  findBackofficeMeMock: vi.fn(),
-  addDraftVersionMock: vi.fn(),
-  archiveListingMock: vi.fn(),
-  publishVersionMock: vi.fn(),
-  updateListingMock: vi.fn(),
-}));
+const { addDraftVersionMock, archiveListingMock, publishVersionMock, updateListingMock } =
+  vi.hoisted(() => ({
+    addDraftVersionMock: vi.fn(),
+    archiveListingMock: vi.fn(),
+    publishVersionMock: vi.fn(),
+    updateListingMock: vi.fn(),
+  }));
 
-vi.mock("@/fragno/auth/auth-server", () => ({ findBackofficeMe: findBackofficeMeMock }));
+import { RouterContextProvider } from "react-router";
 
+import type { BackofficeMeData } from "@/fragno/auth/contracts";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
+import { provideBackofficeShellRequest } from "@/layouts/backoffice-layout.test-support";
+import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import { action } from "./manage";
 import { marketplaceListingManagePath } from "./navigation";
@@ -42,13 +39,14 @@ const marketplace = {
   publishVersion: publishVersionMock,
   updateListing: updateListingMock,
 };
-const context = {
-  get: () => ({
-    runtime: {
-      objects: { marketplace: { for: () => ({ commands: marketplace }) } },
-    },
-  }),
-};
+const context = new RouterContextProvider();
+context.set(BackofficeWorkerContext, {
+  runtime: { objects: { marketplace: { for: () => ({ commands: marketplace }) } } },
+} as never);
+provideBackofficeShellRequest(context, {
+  me: authenticatedUser as unknown as BackofficeMeData,
+  routeScope: null,
+});
 
 const runAction = (formData: FormData) => {
   formData.set("visibility", "public");
@@ -70,12 +68,10 @@ const runAction = (formData: FormData) => {
 };
 
 beforeEach(() => {
-  findBackofficeMeMock.mockReset();
   addDraftVersionMock.mockReset();
   archiveListingMock.mockReset();
   publishVersionMock.mockReset();
   updateListingMock.mockReset();
-  findBackofficeMeMock.mockResolvedValue(authenticatedUser);
 });
 
 describe("marketplace listing management action", () => {

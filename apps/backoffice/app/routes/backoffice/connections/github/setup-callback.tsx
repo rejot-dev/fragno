@@ -1,9 +1,8 @@
 import { redirect } from "react-router";
 
-import { findBackofficeMe } from "@/fragno/auth/auth-server";
+import { getBackofficeShellRequest } from "@/layouts/backoffice-shell-request.server";
 import { getGitHubWebhookRouterDurableObject } from "@/worker-runtime/durable-objects";
 
-import { buildBackofficeLoginPath } from "../../auth-navigation";
 import { integrationOAuthReturn } from "../../integrations/connection-paths";
 import {
   integrationBasePath,
@@ -14,10 +13,7 @@ import type { Route } from "./+types/setup-callback";
 const toStatePreview = (value: string) => (value ? `${value.slice(0, 8)}…` : "");
 
 export async function loader({ request, context, url }: Route.LoaderArgs) {
-  const me = await findBackofficeMe(request, context);
-  if (!me?.user) {
-    return redirect(buildBackofficeLoginPath(`${url.pathname}${url.search}`));
-  }
+  const { me } = getBackofficeShellRequest(context);
   // Without usable state the installation's organization is unknown, so the failure is reported
   // in the organization the user is working in.
   const reportFailure = (message: string) => {

@@ -1,8 +1,9 @@
-import { assert, beforeEach, describe, expect, test, vi } from "vitest";
+import { assert, describe, expect, test } from "vitest";
 
-const { findBackofficeMeMock } = vi.hoisted(() => ({ findBackofficeMeMock: vi.fn() }));
+import { RouterContextProvider } from "react-router";
 
-vi.mock("@/fragno/auth/auth-server", () => ({ findBackofficeMe: findBackofficeMeMock }));
+import type { BackofficeMeData } from "@/fragno/auth/contracts";
+import { provideBackofficeShellRequest } from "@/layouts/backoffice-layout.test-support";
 
 import { loader } from "./mine";
 
@@ -12,17 +13,14 @@ const authenticatedUser = {
   activeOrganization: { organization: { id: "org-1", slug: "ada-labs", name: "Ada Labs" } },
 };
 
-const runLoader = (url: URL) =>
-  loader({
-    request: new Request(url),
-    context: {},
-    url,
-  } as never);
-
-beforeEach(() => {
-  findBackofficeMeMock.mockReset();
-  findBackofficeMeMock.mockResolvedValue(authenticatedUser);
-});
+function runLoader(url: URL) {
+  const context = new RouterContextProvider();
+  provideBackofficeShellRequest(context, {
+    me: authenticatedUser as unknown as BackofficeMeData,
+    routeScope: null,
+  });
+  return loader({ request: new Request(url), context, url } as never);
+}
 
 describe("My listings organization selection", () => {
   test("rejects a requested organization outside the authenticated memberships", async () => {

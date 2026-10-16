@@ -2,13 +2,12 @@ import { Button, ButtonLink } from "@fragno-private/design-system/button";
 import { FormContainer } from "@fragno-private/design-system/form-container";
 import { Form, redirect, useActionData, useLoaderData, useNavigation } from "react-router";
 
-import { findBackofficeMe } from "@/fragno/auth/auth-server";
+import { getBackofficeShellRequest } from "@/layouts/backoffice-shell-request.server";
 import {
   getGitHubDurableObject,
   getGitHubWebhookRouterDurableObject,
 } from "@/worker-runtime/durable-objects";
 
-import { buildBackofficeLoginPath } from "../../auth-navigation";
 import type { Route } from "./+types/oauth-callback";
 import {
   completeGitHubOAuth,
@@ -70,10 +69,7 @@ export async function loader({
   const githubError = requestUrl.searchParams.get("error")?.trim() ?? "";
   const githubErrorDescription = requestUrl.searchParams.get("error_description")?.trim() ?? "";
 
-  const me = await findBackofficeMe(request, context);
-  if (!me?.user) {
-    return redirect(buildBackofficeLoginPath(`${requestUrl.pathname}${requestUrl.search}`));
-  }
+  const { me } = getBackofficeShellRequest(context);
 
   if (githubError) {
     return {
@@ -155,10 +151,7 @@ export async function action({
   const state = getStringValue(formData, "state");
   const installationId = getStringValue(formData, "installationId");
 
-  const me = await findBackofficeMe(request, context);
-  if (!me?.user) {
-    return { ok: false, message: "You must be signed in before restoring an installation." };
-  }
+  const { me } = getBackofficeShellRequest(context);
   if (!state || !/^\d+$/.test(installationId)) {
     return { ok: false, message: "Missing claim state or installation id." };
   }

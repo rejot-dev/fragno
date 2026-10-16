@@ -2,11 +2,10 @@ import {
   readTelegramAutomationFileResponse,
   telegramAutomationFileDownloadPath,
 } from "@/backoffice-runtime/telegram-file-response";
-import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
+import { getBackofficeShellRequest } from "@/layouts/backoffice-shell-request.server";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
-import { buildBackofficeLoginPath } from "../../auth-navigation";
 import { resolveIntegrationContext } from "../../integrations/scope";
 import type { Route } from "./+types/attachment-download";
 
@@ -22,12 +21,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
   if (!fileId) {
     throw new Response("Missing Telegram file id.", { status: 400 });
   }
-
-  const returnTo = `${requestUrl.pathname}${requestUrl.search}`;
-  const me = await findBackofficeMe(request, context);
-  if (!me?.user) {
-    return Response.redirect(new URL(buildBackofficeLoginPath(returnTo), request.url), 302);
-  }
+  const { me } = getBackofficeShellRequest(context);
 
   const integration = resolveIntegrationContext({ params, me, integration: "telegram" });
   const telegramDo = context

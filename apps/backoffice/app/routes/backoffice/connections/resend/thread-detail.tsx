@@ -7,8 +7,10 @@ import { useFetcher, useLoaderData, useOutletContext, useParams } from "react-ro
 
 import type { ResendThreadMessage, ResendThreadReplyInput } from "@fragno-dev/resend-fragment";
 
-import { resolveAuthenticatedIntegrationContext } from "../../integrations/scope";
-import { resolveAuthenticatedIntegrationRuntimeScope } from "../../integrations/scope.server";
+import {
+  resolveAuthenticatedIntegrationContext,
+  resolveAuthenticatedIntegrationRuntimeScope,
+} from "../../integrations/scope.server";
 import { formatTimestamp } from "../formatting";
 import type { Route } from "./+types/thread-detail";
 import { fetchResendThreadDetail, replyToResendThread } from "./data";
@@ -80,7 +82,6 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     throw new Response("Not Found", { status: 404 });
   }
   const integration = await resolveAuthenticatedIntegrationContext({
-    request,
     context,
     params,
     integration: "resend",

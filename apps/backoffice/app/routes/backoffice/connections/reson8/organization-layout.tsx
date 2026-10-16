@@ -1,20 +1,16 @@
 import { useState } from "react";
 import { Outlet, redirect } from "react-router";
 
-import { findBackofficeMe } from "@/fragno/auth/auth-server";
+import { getBackofficeShellRequest } from "@/layouts/backoffice-shell-request.server";
 
-import { buildBackofficeLoginPath } from "../../auth-navigation";
 import { resolveIntegrationContext } from "../../integrations/scope";
 import { IntegrationServiceHeader } from "../../integrations/service-header";
 import type { Route } from "./+types/organization-layout";
 import { fetchReson8Config } from "./data";
 import { Reson8ErrorBoundary, Reson8Tabs, type Reson8ConfigState, type Reson8Tab } from "./shared";
 
-export async function loader({ request, params, context, url }: Route.LoaderArgs) {
-  const me = await findBackofficeMe(request, context);
-  if (!me?.user) {
-    return redirect(buildBackofficeLoginPath(`${url.pathname}${url.search}`));
-  }
+export async function loader({ params, context, url }: Route.LoaderArgs) {
+  const { me } = getBackofficeShellRequest(context);
 
   const integration = resolveIntegrationContext({
     params,

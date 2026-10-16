@@ -11,7 +11,7 @@ import { requireUploadRouteOrganization } from "./organization.server";
 import { UploadErrorBoundary, UploadHeader, UploadWorkspaceTabs } from "./shared";
 
 export async function loader({ request, params, context, url }: LoaderFunctionArgs) {
-  const { organization } = await requireUploadRouteOrganization(request, context, params.orgSlug);
+  const { organization } = requireUploadRouteOrganization(context, params.orgSlug);
   const orgId = organization.id;
   const orgSlug = organization.slug;
 

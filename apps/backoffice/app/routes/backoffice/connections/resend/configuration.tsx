@@ -8,7 +8,7 @@ import { Form, useActionData, useNavigation, useOutletContext } from "react-rout
 
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
-import { resolveAuthenticatedIntegrationContext } from "../../integrations/scope";
+import { resolveAuthenticatedIntegrationContext } from "../../integrations/scope.server";
 import { formatTimestamp } from "../formatting";
 import type { Route } from "./+types/configuration";
 import type { ResendConfigState, ResendLayoutContext } from "./shared";
@@ -98,7 +98,6 @@ const normalizeResendConfigInput = (input: ResendConfigForm): ResendConfigValida
 
 export async function action({ request, context, params }: Route.ActionArgs) {
   const integration = await resolveAuthenticatedIntegrationContext({
-    request,
     context,
     params,
     integration: "resend",

@@ -22,6 +22,7 @@ import {
   type BackofficeScenarioDefinitionInput,
 } from "@/fragno/automation/scenario";
 import { setScenarioAuthUserRole } from "@/fragno/automation/scenario-auth";
+import { behindBackofficeLayout } from "@/layouts/backoffice-layout.test-support";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
 import { InMemoryApiObject } from "../../../../../workers/api.do";
@@ -30,8 +31,10 @@ import { InMemoryAutomationsObject } from "../../../../../workers/automations.do
 import { InMemoryFormsObject } from "../../../../../workers/forms.do";
 import { InMemoryOtpObject } from "../../../../../workers/otp.do";
 import { InMemoryUploadObject } from "../../../../../workers/upload.do";
-import { buildBackofficeLoginPath } from "../../auth-navigation";
-import { loader } from "./attachment-download";
+import { buildBackofficeAuthBootstrapPath } from "../../auth-navigation";
+import { loader as attachmentDownloadLoader } from "./attachment-download";
+
+const loader = behindBackofficeLayout(attachmentDownloadLoader);
 
 const scenarioObjects = {
   API: (input) => new InMemoryApiObject(input),
@@ -121,19 +124,22 @@ async function downloadAttachment(ctx: BackofficeScenarioContext, query: string,
 }
 
 describe("Telegram attachment download scenarios", () => {
-  test("redirects anonymous users to login without downloading a file", async () => {
+  test("redirects anonymous users to sign in without downloading a file", async () => {
     await runAttachmentScenario({
       objects: scenarioObjects,
       name: "Anonymous attachment requests do not reach Telegram",
       fakes: ({ fake }) => ({ telegram: fake.telegram() }),
       setup: ({ given }) => [given.organization.exists({ id: orgId, slug: "fragno" })],
       steps: ({ then }) => [
-        then.assert("login is required before file transport", async (ctx) => {
+        then.assert("sign-in is required before file transport", async (ctx) => {
           const query = "fileId=file-1&kind=voice";
-          const response = await downloadAttachment(ctx, query, "");
+          const response = await downloadAttachment(ctx, query, "").catch(
+            (error: unknown) => error,
+          );
+          assert(response instanceof Response);
           assert.equal(response.status, 302);
           expect(response.headers.get("location")).toBe(
-            `https://example.com${buildBackofficeLoginPath(`${downloadPath}?${query}`)}`,
+            buildBackofficeAuthBootstrapPath(`${downloadPath}?${query}`),
           );
           assert(ctx.fakes.telegram);
           expect(ctx.fakes.telegram.downloadFileCalls).toEqual([]);

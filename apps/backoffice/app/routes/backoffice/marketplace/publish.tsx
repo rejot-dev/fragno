@@ -8,11 +8,10 @@ import { Input } from "@fragno-private/design-system/input";
 import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
 import { Form, redirect, useActionData, useNavigation } from "react-router";
 
-import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import { marketplaceCreateDraftListingInputSchema } from "@/fragno/marketplace/contracts";
+import { getBackofficeShellRequest } from "@/layouts/backoffice-shell-request.server";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
-import { buildBackofficeLoginPath } from "../auth-navigation";
 import type { Route } from "./+types/publish";
 import { marketplaceListingManagePath } from "./navigation";
 import { marketplaceForPublisher, marketplaceOwnerForOrganization } from "./publisher.server";
@@ -20,14 +19,8 @@ import { marketplaceScopeTabPath } from "./scope";
 
 type PublishActionData = { ok: false; message: string };
 
-export async function loader({ request, context, url }: Route.LoaderArgs) {
-  const me = await findBackofficeMe(request, context);
-  if (!me?.user) {
-    return Response.redirect(
-      new URL(buildBackofficeLoginPath(`${url.pathname}${url.search}`), request.url),
-      302,
-    );
-  }
+export async function loader({ context, url }: Route.LoaderArgs) {
+  const { me } = getBackofficeShellRequest(context);
 
   const organizations = me.organizations.map(({ organization }) => ({
     id: organization.id,
@@ -49,11 +42,8 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
   return { organizations, activeOrganization };
 }
 
-export async function action({ request, context, url }: Route.ActionArgs) {
-  const me = await findBackofficeMe(request, context);
-  if (!me?.user) {
-    throw redirect(buildBackofficeLoginPath(`${url.pathname}${url.search}`));
-  }
+export async function action({ request, context }: Route.ActionArgs) {
+  const { me } = getBackofficeShellRequest(context);
 
   const formData = await request.formData();
   const organizationSlug = String(formData.get("ownerOrgSlug") ?? "").trim();

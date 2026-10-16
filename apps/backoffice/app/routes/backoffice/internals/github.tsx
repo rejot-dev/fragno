@@ -3,7 +3,7 @@ import { FormContainer } from "@fragno-private/design-system/form-container";
 import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
 import { useLoaderData, useOutletContext } from "react-router";
 
-import { findBackofficeMe } from "@/fragno/auth/auth-server";
+import { getBackofficeShellRequest } from "@/layouts/backoffice-shell-request.server";
 import {
   BACKOFFICE_ADMIN_OBJECT_NAME,
   getGitHubWebhookRouterDurableObject,
@@ -87,9 +87,9 @@ export function meta() {
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   const origin = new URL(request.url).origin;
-  const me = await findBackofficeMe(request, context);
+  const { me } = getBackofficeShellRequest(context);
   const organizationSlugs = Object.fromEntries(
-    (me?.organizations ?? []).map(({ organization }) => [organization.id, organization.slug]),
+    me.organizations.map(({ organization }) => [organization.id, organization.slug]),
   );
   const setupUrl = `${origin.replace(/\/+$/, "")}/backoffice/connections/github/setup-callback`;
   const githubRouterDo = getGitHubWebhookRouterDurableObject(context);

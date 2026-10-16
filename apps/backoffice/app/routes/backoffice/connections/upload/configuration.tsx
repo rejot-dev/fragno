@@ -415,7 +415,7 @@ const normalizeUploadConfigInput = (
 };
 
 export async function action({ request, context, params }: ActionFunctionArgs) {
-  const { organization } = await requireUploadRouteOrganization(request, context, params.orgSlug);
+  const { organization } = requireUploadRouteOrganization(context, params.orgSlug);
   const formData = await request.formData();
   const getValue = (key: string) => {
     const value = formData.get(key);

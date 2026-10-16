@@ -5,7 +5,7 @@ import { useFetcher, useOutletContext } from "react-router";
 
 import type { ResendEmailRecord, ResendSendEmailInput } from "@fragno-dev/resend-fragment";
 
-import { resolveAuthenticatedIntegrationContext } from "../../integrations/scope";
+import { resolveAuthenticatedIntegrationContext } from "../../integrations/scope.server";
 import type { Route } from "./+types/send";
 import { sendResendEmail } from "./data";
 import { EmailComposeFields } from "./email-compose-fields";
@@ -35,7 +35,6 @@ const parseOptionalValue = (value: string) => {
 
 export async function action({ request, params, context }: Route.ActionArgs) {
   const integration = await resolveAuthenticatedIntegrationContext({
-    request,
     context,
     params,
     integration: "resend",

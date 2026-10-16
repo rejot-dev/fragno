@@ -1,6 +1,5 @@
 import { backofficeScopePathSegment } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
-import type { RouterContextProvider } from "react-router";
 
 import {
   backofficeResolvedScopeFromRuntimeScope,
@@ -9,7 +8,6 @@ import {
   type BackofficeScopeSelection,
 } from "@/backoffice-runtime/resolved-scope";
 import { requireBackofficeRouteScopeFromParams } from "@/backoffice-runtime/route-scope";
-import { findBackofficeMe } from "@/fragno/auth/auth-server";
 import type { BackofficeMeData } from "@/fragno/auth/contracts";
 
 import { throwBackofficeOrganizationNotFound } from "../route-errors";
@@ -122,57 +120,5 @@ export const resolveIntegrationContext = ({
     integrationsPath: integrationsScopeBasePath(uiScope),
     scopeSegment: backofficeScopePathSegment(scope),
     isScopedRoute,
-  };
-};
-
-export const resolveAuthenticatedIntegrationContext = async ({
-  request,
-  context,
-  params,
-  integration,
-  allowedScopes,
-}: {
-  request: Request;
-  context: Readonly<RouterContextProvider>;
-  params: IntegrationRouteParams;
-  integration: string;
-  allowedScopes?: readonly BackofficeContextScope["kind"][];
-}): Promise<AuthenticatedScopedIntegrationContext> => {
-  const me = await findBackofficeMe(request, context);
-  if (!me?.user) {
-    throw new Response("Not Found", { status: 404 });
-  }
-
-  return {
-    ...resolveIntegrationContext({ params, me, integration, allowedScopes }),
-    me,
-  };
-};
-
-export const resolveAuthenticatedOrgIntegrationContext = async ({
-  request,
-  context,
-  params,
-  integration,
-}: {
-  request: Request;
-  context: Readonly<RouterContextProvider>;
-  params: IntegrationRouteParams;
-  integration: string;
-}) => {
-  const integrationContext = await resolveAuthenticatedIntegrationContext({
-    request,
-    context,
-    params,
-    integration,
-    allowedScopes: ["org"],
-  });
-  if (integrationContext.scope.kind !== "org") {
-    throw new Response("Not Found", { status: 404 });
-  }
-
-  return {
-    integration: integrationContext,
-    orgId: integrationContext.scope.orgId,
   };
 };

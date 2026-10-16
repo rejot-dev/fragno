@@ -28,6 +28,8 @@ Completed:
   section's 404 or 502 from its loader so it renders inside the shell. Files, computers,
   integrations, marketplace, dashboard, agents, durable hooks, internals, the terminal, and the
   sandbox and files helpers use them; the per-section resolvers are deleted.
+- Routes under the Backoffice layout read `me` from the shell request instead of looking it up and
+  redirecting signed-out users themselves.
 
 Pending:
 
