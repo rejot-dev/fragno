@@ -2,6 +2,7 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Models } from "@earendil-works/pi-ai/models";
 import type { PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
 
+import type { Context } from "@earendil-works/chord";
 import {
   createRegistry,
   Harness,
@@ -29,6 +30,7 @@ import {
   type BackofficeAgentContext,
 } from "./backoffice-agent-context";
 import type { PiAgentTurn } from "./pi-agent-contract";
+import { startReportingPiAgentTurns } from "./pi-agent-turn-events";
 import { readActivePiAgentTurn } from "./pi-agent-turns";
 import { createPiModels, PI_THINKING_LEVEL } from "./pi-models";
 
@@ -47,6 +49,8 @@ export type OpenPiAgent = {
   billing: PiBilling | null;
   /** Installs the workspace's current extensions with the authority of the given turn. */
   refreshWorkspaceExtensions: (turn: PiAgentTurn) => Promise<void>;
+  /** Records every answered turn not yet reported as a `pi` Automations event. */
+  reportSettledTurns: (context: Context) => Promise<void>;
 };
 
 /** Production agents use credential-backed providers and Pi's default run policy. */
@@ -69,6 +73,7 @@ export async function openPiAgentHarness(input: {
   runtime: BackofficeRuntimeServices;
   dependencies: PiAgentDependencies;
   openStorage: () => Promise<Storage>;
+  nowEpochMs: () => number;
 }): Promise<OpenPiAgent> {
   const { config, runtime, dependencies } = input;
   let opened: { harness: Harness; storage: Storage } | null = null;
@@ -117,6 +122,17 @@ export async function openPiAgentHarness(input: {
     BACKGROUND_CONTEXT,
   );
   opened = { harness, storage };
+  const reportSettledTurns = startReportingPiAgentTurns({
+    config,
+    agent,
+    harness,
+    storage,
+    automations: runtime.config.bindings.automations
+      ? runtime.objects.automations.for(config.scope).commands
+      : null,
+    nowEpochMs: input.nowEpochMs,
+    report: dependencies.report,
+  });
   let workspaceExtensions: LoadedWorkspaceExtensions | null = null;
   let refreshing = Promise.resolve();
   // A shared agent has no fresh session to pick up rebuilt extensions, so each turn checks for them.
@@ -155,5 +171,5 @@ export async function openPiAgentHarness(input: {
     await harness.close(BACKGROUND_CONTEXT);
     throw cause;
   }
-  return { harness, storage, billing, refreshWorkspaceExtensions };
+  return { harness, storage, billing, refreshWorkspaceExtensions, reportSettledTurns };
 }

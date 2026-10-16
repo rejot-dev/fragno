@@ -4,6 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+import { automationEventListResultSchema } from "@fragno-dev/backoffice-api/v0/events";
 import type { PiManagerAgent, PiManagerAgentDirectory } from "@fragno-dev/backoffice-api/v0/pi";
 import {
   backofficeScopeOrganization,
@@ -141,6 +142,17 @@ async function readPiViewStreamFrame(
     }
     state.buffer += decoder.decode(result.value, { stream: true });
   }
+}
+
+/** Every `pi` Automations event recorded in the scope. */
+async function piTurnEvents(runtime: InMemoryBackofficeRuntime, scope: BackofficeContextScope) {
+  const response = await runtime.objects.automations
+    .for(scope)
+    .http.fetch(new Request("https://automations.test/api/automations/events?limit=500"));
+  assert(response.ok, await response.clone().text());
+  return automationEventListResultSchema
+    .parse(await response.json())
+    .events.filter((event) => event.source === "pi");
 }
 
 function userEntryTexts(view: ConversationView) {
@@ -524,6 +536,82 @@ test("a busy agent runs other principals' prompts as follow-up turns, lets its o
           assert(graceSubmission.status === "done");
           const graceAnswer = view.entries.find((entry) => entry.id === graceSubmission.answer);
           expect(JSON.stringify(graceAnswer)).toContain("Follow-up turn answer.");
+
+          // Every admitted prompt reports its own settlement, including the steer that joined a turn.
+          expect(
+            (await piTurnEvents(runtime, scope))
+              .map((event) => `${String(event.subject?.requestId)} ${event.eventType}`)
+              .sort((left, right) => left.localeCompare(right)),
+          ).toEqual([
+            "ada-first turn.completed",
+            "ada-steer turn.completed",
+            "grace-steer turn.completed",
+          ]);
+        }),
+      ],
+    }),
+  );
+});
+
+test("each settled turn is recorded once as a pi Automations event", async () => {
+  const scope: BackofficeContextScope = {
+    kind: "project",
+    owner: { kind: "org", orgId: "events-org" },
+    projectId: "p-1",
+  };
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "durable Pi turn events",
+      piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
+      options: { drain: false },
+      objects: { ...scenarioObjects, ...objectOverrides },
+      steps: ({ then }) => [
+        then.assert("an answered prompt records turn.completed", async ({ runtime }) => {
+          const submitted = await prompt(runtime, scope, {
+            requestId: "answered",
+            content: "Echo and answer.",
+          });
+          assert.equal(submitted.status, 202, await submitted.clone().text());
+          await runtime.drain();
+
+          const submission = await (
+            await managerRequest(runtime, scope, "/agents/assistant/submissions/answered")
+          ).json<{ status: string; answer: number }>();
+          assert(submission.status === "done");
+          const [event, ...others] = await piTurnEvents(runtime, scope);
+          expect(others).toEqual([]);
+          expect(event).toMatchObject({
+            id: "pi:assistant:answered",
+            scope,
+            eventType: "turn.completed",
+            payload: { answerEntryId: submission.answer },
+            subject: {
+              orgId: "events-org",
+              projectId: "p-1",
+              agentName: "assistant",
+              requestId: "answered",
+            },
+            actors: {
+              delegation: [{ type: "pi-agent", id: "assistant", role: "assistant" }],
+            },
+          });
+        }),
+        then.assert("a prompt the model fails records no turn event", async ({ runtime }) => {
+          // The first turn used up every scripted response, so the model fails this one.
+          const submitted = await prompt(runtime, scope, {
+            requestId: "unanswered",
+            content: "Echo and answer.",
+          });
+          assert.equal(submitted.status, 202, await submitted.clone().text());
+          await runtime.drain();
+
+          const unanswered = await (
+            await managerRequest(runtime, scope, "/agents/assistant/submissions/unanswered")
+          ).json<{ status: string }>();
+          assert.equal(unanswered.status, "unanswered");
+          expect(
+            (await piTurnEvents(runtime, scope)).map((event) => event.subject?.requestId),
+          ).toEqual(["answered"]);
         }),
       ],
     }),

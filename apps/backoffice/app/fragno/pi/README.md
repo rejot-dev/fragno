@@ -78,6 +78,20 @@ at its next tool boundary only when the running turn has the same actors and sco
 otherwise it becomes a follow-up. The prompt receipt reports the `whenBusy` that applied. `reject`
 refuses a busy agent with `409 AGENT_BUSY`. Aborting withdraws every queued prompt.
 
+## Turn events
+
+Every answered prompt records one `pi` Automations event in the agent's scope, `turn.completed` with
+the answer's entry ID. Prompts that settle unanswered, such as aborted, withdrawn, or failed ones,
+record nothing. A steer that joined a running turn settles with that turn. The event's subject names
+the agent and the prompt's request ID, its actors are the turn's execution actors, and its scope
+restriction is the turn's. It carries no answer text; `pi.getSubmission` leads to the answer.
+
+Pi settles submissions in its own commits, so the turns document is the outbox: a settled turn stays
+in `pending` until its event, if any, is ingested, keyed `pi:<agentName>:<requestId>`, and then
+forgotten. A commit listener reports each settlement as it happens, and the alarm reports again
+after the agent goes idle, keeping its heartbeat until every settled turn is recorded. Runtimes
+without Automations forget settled turns without recording them.
+
 ## Manager routes
 
 All paths below are mounted at `/api/pi-manager` inside the manager object:
