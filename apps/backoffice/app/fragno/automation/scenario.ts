@@ -16,9 +16,10 @@ import {
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 import type { PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
 import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api/v0/shared/permissions";
-import type {
-  BackofficeContextScope,
-  BackofficeRoutableScope,
+import {
+  type BackofficeContextScope,
+  type BackofficeRoutableScope,
+  backofficeScopeOrganization,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { workflowsSchema } from "@fragno-dev/workflows/schema";
 import { InMemoryFs, type IFileSystem } from "just-bash";
@@ -1793,8 +1794,9 @@ const runScenarioCodemode = async (
   ctx: BackofficeScenarioContext,
   input: BackofficeScenarioCodemodeInput,
 ) => {
-  if (input.scope.kind === "org" || input.scope.kind === "project") {
-    ctx.rememberOrg(input.scope.orgId);
+  const organization = backofficeScopeOrganization(input.scope);
+  if (organization) {
+    ctx.rememberOrg(organization.orgId);
   }
 
   const kernel = new BackofficeKernel(ctx.runtime.services);

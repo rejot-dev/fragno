@@ -120,7 +120,7 @@ export const durableHooksSelectionPath = (selection: DurableHooksScopeSelection)
     selection.objectId,
   );
 
-/** The durable object a scope's inspector shows, or null when the scope's policy has no such object. */
+/** Pairs a page's workspace with one of its durable objects, or null when it has no such object. */
 export const resolveDurableHooksScopeSelection = ({
   scope,
   objectId,
@@ -139,41 +139,25 @@ export const resolveDurableHooksScopeSelection = ({
     return null;
   }
 
-  switch (scope.kind) {
+  const { label, ...resolvedScope } = scope;
+  switch (resolvedScope.kind) {
     case "system":
       return {
         kind: "singleton",
         label: "Singleton",
-        resolvedScope: { kind: "system" },
+        resolvedScope,
         objectId: objectDefinition.id,
       };
     case "org":
-      return {
-        kind: "org",
-        label: scope.label,
-        resolvedScope: { kind: "org", organization: scope.organization },
-        objectId: objectDefinition.id,
-      };
+      return { kind: "org", label, resolvedScope, objectId: objectDefinition.id };
     case "project":
-      return {
-        kind: "project",
-        label: scope.label,
-        resolvedScope: {
-          kind: "project",
-          organization: scope.organization,
-          projectId: scope.projectId,
-        },
-        objectId: objectDefinition.id,
-      };
+      return { kind: "project", label, resolvedScope, objectId: objectDefinition.id };
     case "user":
-      return {
-        kind: "user",
-        label: scope.label,
-        resolvedScope: { kind: "user", userId: scope.userId },
-        objectId: objectDefinition.id,
-      };
+      return { kind: "user", label, resolvedScope, objectId: objectDefinition.id };
     default:
-      throw new Error("Backoffice scope kind is unsupported.", { cause: scope satisfies never });
+      throw new Error("Unsupported Backoffice scope kind.", {
+        cause: resolvedScope satisfies never,
+      });
   }
 };
 

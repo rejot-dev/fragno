@@ -1,5 +1,8 @@
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
-import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  type BackofficeContextScope,
+  backofficeScopeOrganization,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
 
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
@@ -98,6 +101,5 @@ export const internalWorkspaceToolFamily = defineBackofficeRuntimeToolFamily({
   tools: [filesSeedExecuteTool],
   hidden: true,
   isAvailable: (context: InternalToolContext) =>
-    (context.execution.scope.kind === "org" || context.execution.scope.kind === "project") &&
-    !!context.runtimes.internal,
+    backofficeScopeOrganization(context.execution.scope) !== null && !!context.runtimes.internal,
 });

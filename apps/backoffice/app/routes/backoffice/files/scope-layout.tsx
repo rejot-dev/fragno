@@ -8,7 +8,7 @@ import type { FilesLayoutContext } from "./layout-context";
 import { FilesErrorBoundary } from "./shared";
 
 export async function loader({ context, url }: Route.LoaderArgs) {
-  return { origin: url.origin, selectedScope: await requireScopeSelection(context) };
+  return { origin: url.origin, selectedScope: requireScopeSelection(context) };
 }
 
 export function meta({ loaderData }: Route.MetaArgs) {

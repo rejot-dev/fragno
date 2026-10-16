@@ -1,8 +1,15 @@
-import { BackofficeScopeParseError } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import { isBackofficeScopeParseError } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
-import type { BackofficeResolvedScope } from "@/backoffice-runtime/resolved-scope";
-import { resolveBackofficeRouteScope } from "@/backoffice-runtime/resolved-scope";
-import { requireBackofficeRouteScopeFromParams } from "@/backoffice-runtime/route-scope";
+import {
+  type BackofficeOrganizationIdentity,
+  type BackofficeProjectIdentity,
+  type BackofficeRouteScopeResolution,
+  resolveBackofficeRouteScope,
+} from "@/backoffice-runtime/resolved-scope";
+import {
+  backofficeRouteScopeFromParams,
+  type BackofficeRouteScope,
+} from "@/backoffice-runtime/route-scope";
 
 type BackofficeRouteScopeParams = {
   scopeKind?: string;
@@ -10,43 +17,42 @@ type BackofficeRouteScopeParams = {
   orgSlug?: string;
 };
 
+/** What a page URL says about its scope: nothing, something unreadable, or a resolution. */
+export type BackofficePageScope<
+  TOrganization extends BackofficeOrganizationIdentity,
+  TProject extends BackofficeProjectIdentity,
+> =
+  | { status: "absent" }
+  | { status: "invalid" }
+  | BackofficeRouteScopeResolution<TOrganization, TProject>;
+
 /** Resolves URL identity against the organizations established by authentication. */
-export function resolveCurrentBackofficeScope<TOrganization extends { id: string; slug: string }>({
+export async function resolveBackofficePageScope<
+  TOrganization extends BackofficeOrganizationIdentity,
+  TProject extends BackofficeProjectIdentity,
+>({
   params,
-  defaultScope,
-  organizations,
+  ...lookups
 }: {
   params: BackofficeRouteScopeParams;
-  defaultScope: BackofficeResolvedScope<TOrganization>;
-  organizations: TOrganization[];
-}): BackofficeResolvedScope<TOrganization> {
-  if (params.scopeKind !== undefined || params.scopeId !== undefined) {
-    const routeScope = requireBackofficeRouteScopeFromParams(params);
-    const resolvedScope = resolveBackofficeRouteScope(routeScope, organizations);
-    if (!resolvedScope) {
-      const organizationSlug =
-        routeScope.kind === "org" || routeScope.kind === "project" ? routeScope.orgSlug : null;
-      throw new BackofficeScopeParseError(
-        organizationSlug
-          ? `Backoffice route organization slug '${organizationSlug}' was not found.`
-          : "Backoffice route scope could not be resolved.",
-      );
+  organizations: readonly TOrganization[];
+  findProject(organization: TOrganization, projectSlug: string): Promise<TProject | null>;
+}): Promise<BackofficePageScope<TOrganization, TProject>> {
+  let routeScope: BackofficeRouteScope | null;
+  try {
+    routeScope = backofficeRouteScopeFromParams(params);
+    // Organization pages name their organization outside the scoped route parameters.
+    if (!routeScope && params.orgSlug) {
+      routeScope = { kind: "org", orgSlug: params.orgSlug };
     }
-    return resolvedScope;
-  }
-
-  if (params.orgSlug) {
-    const resolvedScope = resolveBackofficeRouteScope(
-      { kind: "org", orgSlug: params.orgSlug },
-      organizations,
-    );
-    if (!resolvedScope) {
-      throw new BackofficeScopeParseError(
-        `Backoffice route organization slug '${params.orgSlug}' was not found.`,
-      );
+  } catch (error) {
+    if (isBackofficeScopeParseError(error)) {
+      return { status: "invalid" };
     }
-    return resolvedScope;
+    throw error;
   }
-
-  return defaultScope;
+  if (!routeScope) {
+    return { status: "absent" };
+  }
+  return await resolveBackofficeRouteScope(routeScope, lookups);
 }

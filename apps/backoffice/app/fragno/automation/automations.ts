@@ -4,6 +4,7 @@ import {
   BACKOFFICE_PERMISSION,
   type BackofficePermissionRequirement,
 } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+import { backofficeScopeOrganization } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import {
   createDurableHooksProcessor,
   type DurableHooksDispatcherDurableObjectHandler,
@@ -341,11 +342,12 @@ export const createAutomationsRuntime = (
       let billingOrganizationId: string | null = null;
       if (workflowName === CODEMODE_WORKFLOW) {
         // Restart-or-create may ignore the program input; only validate the billing selection here.
+        const scopeOrganization = backofficeScopeOrganization(execution.scope);
         const parsed = z
           .object({ billingOrganizationId: piBillingOrganizationIdSchema.default(null) })
           .safeParse(
-            execution.scope.kind === "org" || execution.scope.kind === "project"
-              ? { billingOrganizationId: execution.scope.orgId }
+            scopeOrganization
+              ? { billingOrganizationId: scopeOrganization.orgId }
               : (params.execution ?? {}),
           );
         if (!parsed.success) {

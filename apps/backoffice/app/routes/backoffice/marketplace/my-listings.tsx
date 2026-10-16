@@ -49,7 +49,7 @@ const minePath = (input: {
 };
 
 export async function loader({ context, url }: Route.LoaderArgs) {
-  const selectedScope = await requireRoutableScopeSelection(context);
+  const selectedScope = requireRoutableScopeSelection(context);
   const routeScope = backofficeRuntimeScopeFromResolvedScope(selectedScope);
 
   const statusResult = marketplaceListingStatusSchema

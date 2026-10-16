@@ -16,6 +16,7 @@ import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/perm
 import {
   type BackofficeContextScope,
   backofficeContextScopesEqual,
+  backofficeScopeOrganization,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { column, idColumn, schema, type Column } from "@fragno-dev/db/schema";
 import { z } from "zod";
@@ -840,9 +841,7 @@ export function createPiManagerFragment(
         }
         const values = parsed.data;
         const billingOrganizationId =
-          config.scope.kind === "org" || config.scope.kind === "project"
-            ? config.scope.orgId
-            : values.billingOrganizationId;
+          backofficeScopeOrganization(config.scope)?.orgId ?? values.billingOrganizationId;
         if (
           billingOrganizationId !== null &&
           (config.scope.kind === "user" || config.scope.kind === "system")

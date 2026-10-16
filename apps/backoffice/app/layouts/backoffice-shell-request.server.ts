@@ -1,4 +1,4 @@
-import { isBackofficeScopeParseError } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import { backofficeScopeOrganization } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import {
   createContext,
   redirect,
@@ -10,6 +10,8 @@ import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import { isBackofficeForbiddenError } from "@/backoffice-runtime/kernel";
 import {
   backofficeOrganizationIdentity,
+  backofficeProjectIdentity,
+  type BackofficeNamedProject,
   backofficeRuntimeScopeFromResolvedScope,
   type BackofficeResolvedScope,
   type BackofficeRoutableScopeSelection,
@@ -26,8 +28,7 @@ import {
   buildBackofficeAuthBootstrapPath,
   buildBackofficeOrganizationSwitchPath,
 } from "@/routes/backoffice/auth-navigation";
-import { toExternalId } from "@/routes/backoffice/automations/data";
-import { lookupAutomationProject } from "@/routes/backoffice/automations/data.server";
+import { lookupAutomationProject, toExternalId } from "@/routes/backoffice/automations/data.server";
 import {
   isBackofficeSystemAdministrator,
   projectScopeLabel,
@@ -36,34 +37,30 @@ import {
 } from "@/routes/backoffice/scope-labels";
 
 import { getBackofficeAuthenticatedRequest } from "./backoffice-authenticated-request.server";
-import { resolveCurrentBackofficeScope } from "./backoffice-layout-scope";
+import { resolveBackofficePageScope } from "./backoffice-layout-scope";
 
-/** Whether the route's own scope can be shown; sections turn the outcome into their response. */
-type BackofficeScopeSelectionResult =
-  | { status: "selected"; selection: BackofficeScopeSelection }
-  | { status: "not-found" }
-  | { status: "unavailable"; message: string };
+type BackofficePageResolvedScope = BackofficeResolvedScope<Organization, BackofficeNamedProject>;
 
 /**
  * The route's own scope: its URL scope, or the default scope on routes without one. Sections
- * require it, so a URL scope that does not resolve is their 404 rather than the shell's.
+ * require it, so a URL scope that does not resolve is their 404 or 502 rather than the shell's.
  */
 type BackofficeRouteScope =
   | {
       status: "resolved";
-      resolvedScope: BackofficeResolvedScope<Organization>;
+      resolvedScope: BackofficePageResolvedScope;
       execution: BackofficeExecutionContext;
-      /** Selects the scope on first call, looking up a project scope's project once. */
-      selectScope: () => Promise<BackofficeScopeSelectionResult>;
+      selection: BackofficeScopeSelection;
     }
-  | { status: "not-found" };
+  | { status: "not-found" }
+  | { status: "unavailable"; message: string };
 
 /** Contains authenticated scope and authority established before Backoffice route handlers. */
 export type BackofficeShellRequest = {
   me: BackofficeMeData;
   principal: BackofficeAuthPrincipal;
   /** The scope the shell renders: the route's own, or the default when the route's does not resolve. */
-  resolvedScope: BackofficeResolvedScope<Organization>;
+  resolvedScope: BackofficePageResolvedScope;
   route: BackofficeRouteScope;
   accessTokenExpiresAt: Date;
 };
@@ -102,22 +99,44 @@ export async function establishBackofficeShellRequest(
     throw redirect(buildBackofficeAuthBootstrapPath(returnTo));
   }
 
-  const defaultScope: BackofficeResolvedScope<Organization> = activeOrganization
+  const defaultScope: BackofficePageResolvedScope = activeOrganization
     ? { kind: "org", organization: activeOrganization }
     : { kind: "user", userId: me.user.id };
-  let routeScope: BackofficeResolvedScope<Organization> | null;
-  try {
-    routeScope = resolveCurrentBackofficeScope({
-      params,
-      defaultScope,
-      organizations: me.organizations.map(({ organization }) => organization),
-    });
-  } catch (error) {
-    if (!isBackofficeScopeParseError(error)) {
-      throw error;
-    }
-    // Throwing here would replace the whole layout; sections report the 404 from their loaders.
-    routeScope = null;
+  // Throwing here would replace the whole layout; sections report the 502 from their loaders.
+  let projectLookupFailure = null as string | null;
+  const pageScope = await resolveBackofficePageScope({
+    params,
+    organizations: me.organizations.map(({ organization }) => organization),
+    findProject: async (organization, slug): Promise<BackofficeNamedProject | null> => {
+      const lookup = await lookupAutomationProject(context, organization.id, { slug });
+      if (lookup.status === "error") {
+        projectLookupFailure = lookup.message;
+        return null;
+      }
+      // An archived project is no longer a workspace.
+      if (lookup.status === "not-found" || lookup.project.archivedAt) {
+        return null;
+      }
+      return { id: toExternalId(lookup.project.id), slug, name: projectScopeLabel(lookup.project) };
+    },
+  });
+  let routeScope: BackofficePageResolvedScope | null;
+  switch (pageScope.status) {
+    case "resolved":
+      routeScope = pageScope.scope;
+      break;
+    case "absent":
+      routeScope = defaultScope;
+      break;
+    case "invalid":
+    case "organization-not-found":
+    case "project-not-found":
+      routeScope = null;
+      break;
+    default:
+      throw new Error("Unsupported Backoffice page scope status.", {
+        cause: pageScope satisfies never,
+      });
   }
   // Administrators may act in any user's scope, but sections show only the user's own, and they
   // hide System scope from everyone else rather than refusing it.
@@ -130,9 +149,7 @@ export async function establishBackofficeShellRequest(
   const resolvedScope = routeScope ?? defaultScope;
 
   const destinationOrganizationId =
-    resolvedScope.kind === "org" || resolvedScope.kind === "project"
-      ? resolvedScope.organization.id
-      : null;
+    backofficeScopeOrganization(resolvedScope)?.organization.id ?? null;
   if (
     destinationOrganizationId &&
     destinationOrganizationId !== me.activeOrganizationId &&
@@ -142,7 +159,9 @@ export async function establishBackofficeShellRequest(
   }
 
   const principal = await requireBackofficePrincipal(request, context);
-  let route: BackofficeRouteScope = { status: "not-found" };
+  let route: BackofficeRouteScope = projectLookupFailure
+    ? { status: "unavailable", message: projectLookupFailure }
+    : { status: "not-found" };
   if (routeScope) {
     let execution: BackofficeExecutionContext;
     try {
@@ -156,12 +175,11 @@ export async function establishBackofficeShellRequest(
       }
       throw error;
     }
-    let scopeSelection: Promise<BackofficeScopeSelectionResult> | null = null;
     route = {
       status: "resolved",
       resolvedScope: routeScope,
       execution,
-      selectScope: () => (scopeSelection ??= selectRouteScope(context, routeScope, me.user)),
+      selection: scopeSelectionOf(routeScope, me.user),
     };
   }
 
@@ -175,53 +193,45 @@ export async function establishBackofficeShellRequest(
   return await next();
 }
 
-async function selectRouteScope(
-  context: Readonly<RouterContextProvider>,
-  scope: BackofficeResolvedScope<Organization>,
+function scopeSelectionOf(
+  scope: BackofficePageResolvedScope,
   user: BackofficeMeData["user"],
-): Promise<BackofficeScopeSelectionResult> {
+): BackofficeScopeSelection {
   switch (scope.kind) {
     // The route's execution established that System scope belongs to an administrator.
     case "system":
-      return { status: "selected", selection: { kind: "system", label: SYSTEM_SCOPE_LABEL } };
+      return { kind: "system", label: SYSTEM_SCOPE_LABEL };
     case "org":
       return {
-        status: "selected",
-        selection: {
-          kind: "org",
-          organization: backofficeOrganizationIdentity(scope.organization),
-          label: scope.organization.name ?? scope.organization.id,
-        },
+        kind: "org",
+        organization: backofficeOrganizationIdentity(scope.organization),
+        label: scope.organization.name ?? scope.organization.id,
       };
-    case "project": {
-      const lookup = await lookupAutomationProject(context, scope.organization.id, scope.projectId);
-      if (lookup.status === "error") {
-        return { status: "unavailable", message: lookup.message };
-      }
-      if (
-        lookup.status === "not-found" ||
-        toExternalId(lookup.project.id) !== scope.projectId ||
-        lookup.project.archivedAt
-      ) {
-        return { status: "not-found" };
-      }
+    case "project":
       return {
-        status: "selected",
-        selection: {
-          kind: "project",
-          organization: backofficeOrganizationIdentity(scope.organization),
-          projectId: scope.projectId,
-          label: projectScopeLabel(lookup.project),
-        },
+        kind: "project",
+        organization: backofficeOrganizationIdentity(scope.organization),
+        project: backofficeProjectIdentity(scope.project),
+        label: scope.project.name,
       };
-    }
     case "user":
-      return {
-        status: "selected",
-        selection: { kind: "user", userId: user.id, label: userScopeLabel(user) },
-      };
+      return { kind: "user", userId: user.id, label: userScopeLabel(user) };
     default:
       throw new Error("Backoffice scope kind is unsupported.", { cause: scope satisfies never });
+  }
+}
+
+function requireResolvedRoute(context: Readonly<RouterContextProvider>) {
+  const { route } = getBackofficeShellRequest(context);
+  switch (route.status) {
+    case "resolved":
+      return route;
+    case "not-found":
+      throw new Response("Not Found", { status: 404 });
+    case "unavailable":
+      throw new Response(route.message, { status: 502 });
+    default:
+      throw new Error("Backoffice route scope is unsupported.", { cause: route satisfies never });
   }
 }
 
@@ -229,52 +239,30 @@ async function selectRouteScope(
  * The route's own scope with its label, or the section's 404 or 502. Thrown from a section loader,
  * the response renders in that section's error boundary inside the shell.
  */
-export async function requireScopeSelection(
+export function requireScopeSelection(
   context: Readonly<RouterContextProvider>,
-): Promise<BackofficeScopeSelection> {
-  const { route } = getBackofficeShellRequest(context);
-  if (route.status === "not-found") {
-    throw new Response("Not Found", { status: 404 });
-  }
-  const result = await route.selectScope();
-  switch (result.status) {
-    case "selected":
-      return result.selection;
-    case "not-found":
-      throw new Response("Not Found", { status: 404 });
-    case "unavailable":
-      throw new Response(result.message, { status: 502 });
-    default:
-      throw new Error("Backoffice scope selection is unsupported.", {
-        cause: result satisfies never,
-      });
-  }
+): BackofficeScopeSelection {
+  return requireResolvedRoute(context).selection;
 }
 
 /** The route's own scope for sections that have no System scope. */
-export async function requireRoutableScopeSelection(
+export function requireRoutableScopeSelection(
   context: Readonly<RouterContextProvider>,
-): Promise<BackofficeRoutableScopeSelection> {
-  const selection = await requireScopeSelection(context);
+): BackofficeRoutableScopeSelection {
+  const selection = requireScopeSelection(context);
   if (selection.kind === "system") {
     throw new Response("Not Found", { status: 404 });
   }
   return selection;
 }
 
-/**
- * The route's own scope and the authority to act in it, without looking up a project scope's
- * project. Use {@link requireScopeSelection} when the project must exist.
- */
+/** The route's own scope and the authority to act in it. */
 export function requireRouteScope(context: Readonly<RouterContextProvider>): {
-  resolvedScope: BackofficeResolvedScope<Organization>;
+  resolvedScope: BackofficePageResolvedScope;
   execution: BackofficeExecutionContext;
 } {
-  const { route } = getBackofficeShellRequest(context);
-  if (route.status === "not-found") {
-    throw new Response("Not Found", { status: 404 });
-  }
-  return { resolvedScope: route.resolvedScope, execution: route.execution };
+  const { resolvedScope, execution } = requireResolvedRoute(context);
+  return { resolvedScope, execution };
 }
 
 /** Reads authenticated scope guaranteed by the Backoffice layout middleware chain. */

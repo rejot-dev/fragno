@@ -1,3 +1,4 @@
+import { backofficeScopeOrganization } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { IconName } from "@fragno-private/design-system/icon";
 import {
   SelectorMenu,
@@ -38,9 +39,9 @@ const scopeOptionId = (scope: BackofficeResolvedScope) => {
       return `org:${scope.organization.id}`;
     case "user":
       return `user:${scope.userId}`;
+    default:
+      throw new Error("Unsupported Backoffice scope kind.", { cause: scope satisfies never });
   }
-
-  throw new Error("Unsupported Backoffice scope kind.");
 };
 
 // While in project scope this menu keeps showing the parent organization; the
@@ -54,9 +55,9 @@ const triggerKindLabel = (kind: BackofficeResolvedScope["kind"]) => {
       return "Organization";
     case "user":
       return "Personal";
+    default:
+      throw new Error("Unsupported Backoffice scope kind.", { cause: kind satisfies never });
   }
-
-  throw new Error("Unsupported Backoffice scope kind.");
 };
 
 // While in project scope this menu shows the parent organization, so it shares its mark.
@@ -71,9 +72,9 @@ const scopeMark = (
       return { kind: "letter", letter: scope.organization.name.trim().charAt(0).toUpperCase() };
     case "user":
       return { kind: "icon", icon: "user" };
+    default:
+      throw new Error("Unsupported Backoffice scope kind.", { cause: scope satisfies never });
   }
-
-  throw new Error("Unsupported Backoffice scope kind.");
 };
 
 // The first organization carries the app's primary colour; every other scope gets its own hue.
@@ -82,8 +83,8 @@ const scopeColor = (
   me: BackofficeMeData,
   scopeId: string,
 ): { kind: "primary" } | { kind: "seeded"; seed: string } =>
-  (scope.kind === "org" || scope.kind === "project") &&
-  scope.organization.id === me.organizations[0]?.organization.id
+  me.organizations.length > 0 &&
+  backofficeScopeOrganization(scope)?.organization.id === me.organizations[0]?.organization.id
     ? { kind: "primary" }
     : { kind: "seeded", seed: scopeId };
 
@@ -96,9 +97,9 @@ const currentScopeLabel = (scope: BackofficeResolvedScope<Organization>, me: Bac
       return scope.organization.name;
     case "user":
       return me.user.email ?? scope.userId;
+    default:
+      throw new Error("Unsupported Backoffice scope kind.", { cause: scope satisfies never });
   }
-
-  throw new Error("Unsupported Backoffice scope kind.");
 };
 
 export function BackofficeScopeMenu({
@@ -164,9 +165,7 @@ export function BackofficeScopeMenu({
             <SelectorMenuGroup key={group.kind} label={group.label}>
               {groupOptions.map((option) => {
                 const destinationOrganizationId =
-                  option.scope.kind === "org" || option.scope.kind === "project"
-                    ? option.scope.organization.id
-                    : null;
+                  backofficeScopeOrganization(option.scope)?.organization.id ?? null;
                 const destination = scopeSwitchPath(
                   location.pathname,
                   backofficeRouteScopeFromResolvedScope(option.scope),

@@ -1,3 +1,4 @@
+import { backofficeScopeOrganization } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { Outlet } from "react-router";
 
 import { backofficeContextScopeLabel } from "@/backoffice-runtime/context";
@@ -23,11 +24,9 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   );
 
   const billingOrganization =
-    resolvedScope.kind === "org" || resolvedScope.kind === "project"
-      ? resolvedScope.organization
-      : resolvedScope.kind === "user" || resolvedScope.kind === "system"
-        ? (me.activeOrganization?.organization ?? null)
-        : null;
+    backofficeScopeOrganization(resolvedScope)?.organization ??
+    me.activeOrganization?.organization ??
+    null;
 
   return {
     resolvedScope,

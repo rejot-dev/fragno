@@ -1,9 +1,10 @@
+import { backofficeScopeOrganization } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { useEffect, useState } from "react";
 import { Outlet } from "react-router";
 
 import { getBackofficeShellRequest } from "@/layouts/backoffice-shell-request.server";
 
-import { organizationIdFromScope, resolveIntegrationContext } from "../../integrations/scope";
+import { resolveIntegrationContext } from "../../integrations/scope.server";
 import { IntegrationServiceHeader } from "../../integrations/service-header";
 import type { Route } from "./+types/organization-layout";
 import { fetchTelegramConfig } from "./data";
@@ -14,11 +15,11 @@ import {
   type TelegramTab,
 } from "./shared";
 
-export async function loader({ params, context }: Route.LoaderArgs) {
+export async function loader({ context }: Route.LoaderArgs) {
   const { me } = getBackofficeShellRequest(context);
 
-  const integration = resolveIntegrationContext({ params, me, integration: "telegram" });
-  const organizationForScope = organizationIdFromScope(integration.scope);
+  const integration = resolveIntegrationContext({ context, integration: "telegram" });
+  const organizationForScope = backofficeScopeOrganization(integration.scope)?.orgId ?? null;
   const organization = organizationForScope
     ? (me.organizations.find((entry) => entry.organization.id === organizationForScope)
         ?.organization ?? null)

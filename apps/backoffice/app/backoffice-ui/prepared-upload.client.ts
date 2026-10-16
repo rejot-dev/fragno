@@ -1,11 +1,8 @@
+import type { BackofficeRoutableScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { PreparedUploadedFileReference } from "@fragno-dev/backoffice-api/v0/upload";
 
 import type { UploadProgress } from "@fragno-dev/upload";
 
-import {
-  backofficeRuntimeScopeFromResolvedScope,
-  type BackofficeRoutableResolvedScope,
-} from "@/backoffice-runtime/resolved-scope";
 import { createScopedUploadHelpers } from "@/fragno/upload-client";
 
 const safeFilenameExtension = (filename: string): string => {
@@ -21,7 +18,7 @@ export async function uploadPreparedGeneratedUiFile({
   stepRecordId,
   onProgress,
 }: {
-  scope: BackofficeRoutableResolvedScope;
+  scope: BackofficeRoutableScope;
   file: File;
   workflowName: string;
   instanceId: string;
@@ -49,7 +46,7 @@ export async function uploadPreparedGeneratedUiFile({
 
   return {
     kind: "prepared-upload",
-    scope: backofficeRuntimeScopeFromResolvedScope(scope),
+    scope,
     uploadId: result.write.uploadId,
     provider: result.write.provider,
     fileKey: result.write.fileKey,

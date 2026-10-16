@@ -58,10 +58,8 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   if (!params.threadId) {
     throw new Response("Not Found", { status: 404 });
   }
-  const scope = await resolveAuthenticatedIntegrationRuntimeScope({
-    request,
+  const scope = resolveAuthenticatedIntegrationRuntimeScope({
     context,
-    params,
     allowedScopes: ["org", "system"],
   });
 
@@ -82,9 +80,8 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   if (!params.threadId) {
     throw new Response("Not Found", { status: 404 });
   }
-  const integration = await resolveAuthenticatedIntegrationContext({
+  const integration = resolveAuthenticatedIntegrationContext({
     context,
-    params,
     integration: "resend",
     allowedScopes: ["org", "system"],
   });

@@ -30,9 +30,9 @@ export const filesOverviewRootPathsForScope = (
     case "project":
     case "user":
       return ["/static", "/workspace"];
+    default:
+      throw new Error("Unsupported Backoffice file scope kind.", { cause: scope satisfies never });
   }
-
-  throw new Error("Unsupported Backoffice file scope kind.");
 };
 
 export async function createFilesOverviewCollections({

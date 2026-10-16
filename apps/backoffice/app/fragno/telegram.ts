@@ -1,5 +1,8 @@
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
-import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  type BackofficeContextScope,
+  backofficeScopePathSegment,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import {
   createTelegram,
@@ -50,25 +53,10 @@ const toIsoString = (value: Date | string, fieldName: string) => {
   return parsed.toISOString();
 };
 
-const telegramEventScopeId = (scope: BackofficeContextScope) => {
-  switch (scope.kind) {
-    case "system":
-      return "system";
-    case "org":
-      return `org:${scope.orgId}`;
-    case "project":
-      return `project:${scope.orgId}:${scope.projectId}`;
-    case "user":
-      return `user:${scope.userId}`;
-  }
-
-  throw new Error("Unsupported Backoffice context scope kind.");
-};
-
 export const buildTelegramAutomationEvent = (
   scope: BackofficeContextScope,
   payload: SerializableTelegramMessageHookPayload,
-  eventId = `telegram:${telegramEventScopeId(scope)}:${payload.updateId}:${payload.messageId}`,
+  eventId = `telegram:${backofficeScopePathSegment(scope)}:${payload.updateId}:${payload.messageId}`,
 ): AutomationKnownEvent<typeof AUTOMATION_SOURCES.telegram> => ({
   id: eventId,
   scopeRestriction: null,

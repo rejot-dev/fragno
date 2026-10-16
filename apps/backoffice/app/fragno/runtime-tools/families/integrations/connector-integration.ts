@@ -17,7 +17,7 @@ import { z } from "zod";
 
 import { authorizedBackofficeObjectHttp } from "@/backoffice-runtime/authorized-object-http";
 import { BackofficeUnavailableError } from "@/backoffice-runtime/kernel";
-import { backofficeRouteScopeSinglePathSegment } from "@/backoffice-runtime/route-scope";
+import { backofficePublicScopePathSegment } from "@/backoffice-runtime/route-scope";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import type { ProjectConnectorFragment } from "@/fragno/project-connector";
 import { projectConnectorPublicAddress } from "@/fragno/scoped-public-fragment-routes";
@@ -294,7 +294,7 @@ export function createConnectorIntegration({
         connectorSetupInputSchema.parse(operation.input);
         const returnUri = projectConnectorPublicAddress(
           runtime.config.docsPublicBaseUrl,
-          backofficeRouteScopeSinglePathSegment(context.execution.scope),
+          backofficePublicScopePathSegment(context.execution.scope),
         ).oauthRedirectUri;
         const started = await access.invoke(
           BACKOFFICE_PERMISSION.connections.manage,

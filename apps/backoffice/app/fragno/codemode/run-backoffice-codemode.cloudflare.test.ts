@@ -3,6 +3,10 @@ import "../../../workers/vitest-env";
 
 import { describe, expect, test, assert } from "vitest";
 
+import {
+  type BackofficeContextScope,
+  backofficeScopePathSegment,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { env } from "cloudflare:workers";
 
 import { unrestrictedBackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
@@ -769,6 +773,8 @@ const createScopedMcpRuntimeServices = (
     forUser: ({ userId }: { userId: string }) => createMcpObject(`user:${userId}`),
     forProject: ({ orgId, projectId }: { orgId: string; projectId: string }) =>
       createMcpObject(`project:${orgId}:${projectId}`),
+    for: (scope: BackofficeContextScope) =>
+      createMcpObject(scope.kind === "system" ? "singleton" : backofficeScopePathSegment(scope)),
   };
   const objects = new Proxy(
     { mcp: scoped },
@@ -782,6 +788,7 @@ const createScopedMcpRuntimeServices = (
               forName: () => createMcpObject(String(property)),
               forUser: () => createMcpObject(String(property)),
               forProject: () => createMcpObject(String(property)),
+              for: () => createMcpObject(String(property)),
             },
     },
   ) as unknown as BackofficeObjectRegistry;

@@ -8,6 +8,6 @@ export async function action({ request, context }: Route.ActionArgs) {
   return runBackofficeTerminalAction({
     request,
     context,
-    scope: backofficeRuntimeScopeFromResolvedScope(await requireScopeSelection(context)),
+    scope: backofficeRuntimeScopeFromResolvedScope(requireScopeSelection(context)),
   });
 }

@@ -1,5 +1,8 @@
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
-import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  type BackofficeContextScope,
+  backofficeScopeOrganization,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { CODEMODE_LIMITS } from "@fragno-dev/codemode/codemode-limits";
 import type {
   CodemodeCompletion,
@@ -183,6 +186,7 @@ function codemodeRunEvent(
 ): AutomationEvent {
   const { actors, scopeRestriction, ...payload } = run;
   const finished = "finishedAt" in run ? run : null;
+  const organization = backofficeScopeOrganization(scope);
   return {
     id: hook.hookId.toString(),
     // Automations started by this event inherit the run's ceiling, never a wider one.
@@ -199,7 +203,7 @@ function codemodeRunEvent(
     payload,
     actors,
     subject: {
-      ...(scope.kind === "org" || scope.kind === "project" ? { orgId: scope.orgId } : {}),
+      ...(organization ? { orgId: organization.orgId } : {}),
       ...(scope.kind === "project" ? { projectId: scope.projectId } : {}),
       runId: run.runId,
     },

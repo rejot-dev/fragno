@@ -1,4 +1,5 @@
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
+import { backofficeScopeOrganization } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { defineRemoteWorkflow } from "@fragno-dev/workflows/workflow";
 
 import { withBackofficeActorCapabilityGrants } from "@/backoffice-runtime/authority-resolver";
@@ -90,10 +91,7 @@ const createCodemodeWorkflowContext = async ({
     ...runtimeContext,
     automation: {
       event: automationEvent,
-      orgId:
-        automationEvent.scope.kind === "org" || automationEvent.scope.kind === "project"
-          ? automationEvent.scope.orgId
-          : undefined,
+      orgId: backofficeScopeOrganization(automationEvent.scope)?.orgId,
       binding: {
         source: automationEvent.source,
         eventType: automationEvent.eventType,
@@ -145,6 +143,7 @@ export const defineCodemodeWorkflow = (config: CodemodeWorkflowConfig) =>
       });
 
       const runtime = runtimeWithCapabilityGrants({ runtime: config.runtime, params });
+      const executionOrganization = backofficeScopeOrganization(execution.scope);
       const automationEvent: AutomationEvent =
         params.trigger.type === "event"
           ? params.trigger.event
@@ -157,12 +156,11 @@ export const defineCodemodeWorkflow = (config: CodemodeWorkflowConfig) =>
               occurredAt: event.timestamp.toISOString(),
               payload: params.trigger.payload,
               actors: execution.actors,
-              subject:
-                execution.scope.kind === "org" || execution.scope.kind === "project"
-                  ? { orgId: execution.scope.orgId }
-                  : execution.scope.kind === "user"
-                    ? { userId: execution.scope.userId }
-                    : null,
+              subject: executionOrganization
+                ? { orgId: executionOrganization.orgId }
+                : execution.scope.kind === "user"
+                  ? { userId: execution.scope.userId }
+                  : null,
             };
       const sourceReader = config.readAutomationSource;
 

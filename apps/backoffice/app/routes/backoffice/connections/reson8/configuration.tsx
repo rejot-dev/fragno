@@ -27,10 +27,9 @@ type Reson8ConfigActionData = {
   configState?: Reson8ConfigState;
 };
 
-export async function action({ request, context, params }: ActionFunctionArgs) {
-  const { orgId } = await resolveAuthenticatedOrgIntegrationContext({
+export async function action({ request, context }: ActionFunctionArgs) {
+  const { orgId } = resolveAuthenticatedOrgIntegrationContext({
     context,
-    params,
     integration: "reson8",
   });
 

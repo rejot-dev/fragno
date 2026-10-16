@@ -127,9 +127,11 @@ function describeBackofficeScope(context: BackofficeToolContext): string {
       return "project";
     case "user":
       return "user";
+    default:
+      throw new Error("Unsupported Backoffice scope kind.", {
+        cause: context.execution.scope satisfies never,
+      });
   }
-
-  throw new Error("Unsupported Backoffice scope kind.");
 }
 
 function unavailableRuntimeToolCommandMessage({

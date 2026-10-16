@@ -34,10 +34,8 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   if (!params.repoId) {
     throw new Response("Not Found", { status: 404 });
   }
-  const { orgId: organizationId } = await resolveAuthenticatedOrgIntegrationRuntimeScope({
-    request,
+  const { orgId: organizationId } = resolveAuthenticatedOrgIntegrationRuntimeScope({
     context,
-    params,
   });
 
   const linkedResult = await fetchGitHubLinkedRepositories(request, context, organizationId);

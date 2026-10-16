@@ -9,7 +9,6 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { createMemoryRouter, Outlet, RouterProvider, RouterContextProvider } from "react-router";
 
 import { createBackofficeRequestExecution } from "@/backoffice-runtime/context";
-import { backofficeResolvedScopeFromRuntimeScope } from "@/backoffice-runtime/resolved-scope";
 import type { BackofficeMeData } from "@/fragno/auth/contracts";
 import { provideBackofficeShellRequest } from "@/layouts/backoffice-layout.test-support";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
@@ -100,33 +99,46 @@ const workerContext = {
   },
 };
 
-/** The request context after the Backoffice layout established the signed-in user and route scope. */
-async function routeContext(scope: BackofficeRoutableScope) {
-  const me = (await shellMeMock()) as typeof authenticatedUser;
-  const context = new RouterContextProvider();
-  context.set(BackofficeWorkerContext, workerContext as never);
-  const routeScope = routeScopeForTest(scope);
-  const organization =
-    scope.kind === "user" || routeScope.kind === "user"
-      ? null
-      : (me.organizations.find(({ organization }) => organization.id === scope.orgId)
-          ?.organization ?? { id: scope.orgId, slug: routeScope.orgSlug, name: null });
-  provideBackofficeShellRequest(context, {
-    me: me as unknown as BackofficeMeData,
-    routeScope: backofficeResolvedScopeFromRuntimeScope(scope, organization) as never,
-  });
-  return context;
-}
+const knownOrganizations = [
+  { id: "org-1", slug: "ada-labs" },
+  { id: "org-2", slug: "second-labs" },
+];
 
 function routeScopeForTest(scope: BackofficeRoutableScope): BackofficeRoutableRouteScope {
   if (scope.kind === "user") {
     return scope;
   }
   const orgSlug =
-    scope.orgId === "org-1" ? "ada-labs" : scope.orgId === "org-2" ? "second-labs" : scope.orgId;
+    knownOrganizations.find(({ id }) => id === scope.orgId)?.slug ?? `unknown-${scope.orgId}`;
   return scope.kind === "org"
     ? { kind: "org", orgSlug }
-    : { kind: "project", orgSlug, projectId: scope.projectId };
+    : { kind: "project", orgSlug, projectSlug: scope.projectId };
+}
+
+/** The request context after the Backoffice layout established the signed-in user and route scope. */
+async function routeContext(scope: BackofficeRoutableScope) {
+  const me = (await shellMeMock()) as typeof authenticatedUser;
+  const context = new RouterContextProvider();
+  context.set(BackofficeWorkerContext, workerContext as never);
+  const organization =
+    scope.kind === "user" ? undefined : knownOrganizations.find(({ id }) => id === scope.orgId);
+  const routeScope =
+    scope.kind === "user"
+      ? scope
+      : !organization
+        ? null
+        : scope.kind === "org"
+          ? { kind: "org", organization }
+          : {
+              kind: "project",
+              organization,
+              project: { id: scope.projectId, slug: scope.projectId, name: scope.projectId },
+            };
+  provideBackofficeShellRequest(context, {
+    me: me as unknown as BackofficeMeData,
+    routeScope: routeScope as never,
+  });
+  return context;
 }
 
 const runLoader = async (

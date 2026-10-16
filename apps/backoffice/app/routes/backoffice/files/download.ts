@@ -11,7 +11,7 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
     throw new Response("Missing file path.", { status: 400 });
   }
 
-  const scope = backofficeRuntimeScopeFromResolvedScope(await requireScopeSelection(context));
+  const scope = backofficeRuntimeScopeFromResolvedScope(requireScopeSelection(context));
   const registrations = await createFilesOverviewCollections({ request, context, scope });
   const target = registrations.find(
     (registration) => path.startsWith(`${registration.rootPath}/`) && !path.endsWith("/"),

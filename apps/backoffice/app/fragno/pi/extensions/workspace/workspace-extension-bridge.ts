@@ -1,4 +1,5 @@
 import { jsonValueSchema } from "@fragno-dev/backoffice-api/v0/shared/json";
+import { backofficeScopePathSegment } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { WorkerBundle } from "@fragno-dev/codemode/compiler/worker-bundle";
 import type { ResolvedProvider } from "@fragno-dev/codemode/runtime-api";
 import { Compile } from "typebox/compile";
@@ -16,7 +17,6 @@ import {
   type ToolExecutionApi,
 } from "@earendil-works/pi-durable";
 
-import { backofficeContextScopeRouteId } from "@/backoffice-runtime/scope-codec";
 import { runBackofficeCompiledModule } from "@/fragno/codemode/compiled-module-execute";
 import { createBackofficeCodemodeResolvedProviders } from "@/fragno/codemode/execute";
 import {
@@ -167,7 +167,7 @@ export function createPiWorkspaceExtensionBridge(input: {
         input: {
           ...request,
           taskId: api?.taskId ?? null,
-          environmentId: `${agent.scope.kind}:${backofficeContextScopeRouteId(agent.scope)}`,
+          environmentId: backofficeScopePathSegment(agent.scope),
         },
         providers: authorizedProviders,
         codemode,

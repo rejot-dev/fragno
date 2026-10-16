@@ -12,7 +12,7 @@ describe("Upload collection source", () => {
 
     assert.equal(
       baseUrl.pathname,
-      "/api/upload-scoped/project/org%253Awith%252Fslash%3Aproject%252Fone",
+      "/api/upload-scoped/project/org%253Awith%252Fslash:project%252Fone",
     );
     assert.equal(baseUrl.search, "");
   });

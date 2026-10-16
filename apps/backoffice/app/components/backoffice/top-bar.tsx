@@ -3,10 +3,10 @@ import { Icon } from "@fragno-private/design-system/icon";
 import { Suspense, use } from "react";
 
 import {
+  type BackofficeNamedProject,
   backofficeRouteScopeFromResolvedScope,
   type BackofficeResolvedScope,
 } from "@/backoffice-runtime/resolved-scope";
-import type { BackofficeRouteScope } from "@/backoffice-runtime/route-scope";
 import type { AutomationCollectionSourceState } from "@/components/backoffice/current-context-state";
 import type { BackofficeMeData, Organization } from "@/fragno/auth/contracts";
 import {
@@ -25,7 +25,7 @@ const EMPTY_PROJECTS: BackofficeProjectOption[] = [];
 
 type BackofficeTopBarProps = {
   me: BackofficeMeData | null;
-  resolvedScope: BackofficeResolvedScope<Organization> | null;
+  resolvedScope: BackofficeResolvedScope<Organization, BackofficeNamedProject> | null;
   projectCollectionSource: AutomationCollectionSourceState | null;
   isLoading?: boolean;
   sidebarCollapsed: boolean;
@@ -34,18 +34,18 @@ type BackofficeTopBarProps = {
 };
 
 function LocalFirstBackofficeProjectMenu({
-  routeScope,
-  currentProjectId,
+  orgSlug,
+  currentProject,
   sourceState,
 }: {
-  routeScope: Extract<BackofficeRouteScope, { kind: "org" | "project" }>;
-  currentProjectId: string | null;
+  orgSlug: string;
+  currentProject: BackofficeProjectOption | null;
   sourceState: AutomationCollectionSourceState | null;
 }) {
   const loadingMenu = (
     <BackofficeProjectMenu
-      routeScope={routeScope}
-      currentProjectId={currentProjectId}
+      orgSlug={orgSlug}
+      currentProject={currentProject}
       projects={EMPTY_PROJECTS}
       projectsError={null}
       projectsLoading
@@ -54,8 +54,8 @@ function LocalFirstBackofficeProjectMenu({
   if (!sourceState || sourceState.status === "unavailable") {
     return (
       <BackofficeProjectMenu
-        routeScope={routeScope}
-        currentProjectId={currentProjectId}
+        orgSlug={orgSlug}
+        currentProject={currentProject}
         projects={EMPTY_PROJECTS}
         projectsError={sourceState?.message ?? "Project synchronization is unavailable."}
         projectsLoading={false}
@@ -69,8 +69,8 @@ function LocalFirstBackofficeProjectMenu({
     <ClientOnly fallback={loadingMenu}>
       <Suspense fallback={loadingMenu}>
         <SynchronizedBackofficeProjectMenu
-          routeScope={routeScope}
-          currentProjectId={currentProjectId}
+          orgSlug={orgSlug}
+          currentProject={currentProject}
           source={sourceState.source}
         />
       </Suspense>
@@ -79,25 +79,25 @@ function LocalFirstBackofficeProjectMenu({
 }
 
 function SynchronizedBackofficeProjectMenu({
-  routeScope,
-  currentProjectId,
+  orgSlug,
+  currentProject,
   source,
 }: {
-  routeScope: Extract<BackofficeRouteScope, { kind: "org" | "project" }>;
-  currentProjectId: string | null;
+  orgSlug: string;
+  currentProject: BackofficeProjectOption | null;
   source: AutomationCollectionSource;
 }) {
   const { collections } = use(getAutomationBrowserDatabase(source));
   const projectsState = useAutomationProjects(collections);
   const projects = projectsState.projects.map((project) => ({
-    id: project.id,
-    label: project.name.trim() || project.slug.trim() || project.id,
+    slug: project.slug,
+    label: project.name.trim() || project.slug,
   }));
 
   return (
     <BackofficeProjectMenu
-      routeScope={routeScope}
-      currentProjectId={currentProjectId}
+      orgSlug={orgSlug}
+      currentProject={currentProject}
       projects={projects}
       projectsError={projectsState.status === "error" ? projectsState.message : null}
       projectsLoading={projectsState.status === "loading"}
@@ -133,16 +133,12 @@ export function BackofficeTopBar({
         {resolvedScope?.kind === "org" || resolvedScope?.kind === "project" ? (
           <div className="flex min-w-0 flex-1 items-stretch min-[960px]:w-72 min-[960px]:flex-none min-[960px]:border-r min-[960px]:border-[color:var(--bo-border)]">
             <LocalFirstBackofficeProjectMenu
-              routeScope={
-                resolvedScope.kind === "org"
-                  ? { kind: "org", orgSlug: resolvedScope.organization.slug }
-                  : {
-                      kind: "project",
-                      orgSlug: resolvedScope.organization.slug,
-                      projectId: resolvedScope.projectId,
-                    }
+              orgSlug={resolvedScope.organization.slug}
+              currentProject={
+                resolvedScope.kind === "project"
+                  ? { slug: resolvedScope.project.slug, label: resolvedScope.project.name }
+                  : null
               }
-              currentProjectId={resolvedScope.kind === "project" ? resolvedScope.projectId : null}
               sourceState={projectCollectionSource}
             />
           </div>

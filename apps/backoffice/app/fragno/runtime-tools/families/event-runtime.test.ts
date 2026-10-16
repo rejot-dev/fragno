@@ -34,6 +34,25 @@ const automationExecution = (scope: AutomationEvent["scope"]) =>
     service: { type: "automation", id: "automation:event-1" },
   });
 
+/** Kernel-scoped calls address objects through `for`; route each scope kind to its fake. */
+function withScopedFor(family: {
+  forOrg?: (orgId: string) => unknown;
+  forUser?: (input: { userId: string }) => unknown;
+  forProject?: (input: { orgId: string; projectId: string }) => unknown;
+}) {
+  return {
+    ...family,
+    for: (scope: AutomationEvent["scope"]) =>
+      scope.kind === "org"
+        ? family.forOrg?.(scope.orgId)
+        : scope.kind === "user"
+          ? family.forUser?.({ userId: scope.userId })
+          : scope.kind === "project"
+            ? family.forProject?.({ orgId: scope.orgId, projectId: scope.projectId })
+            : undefined,
+  };
+}
+
 const createEvent = (overrides: Partial<AutomationEvent> = {}): AutomationEvent => ({
   id: "event-1",
   scopeRestriction: null,
@@ -82,9 +101,9 @@ describe("createEventRuntime.emitEvent", () => {
   it("emits from an interactive Backoffice context without a base automation event", async () => {
     const triggerIngestEvent = vi.fn(async () => undefined);
     const objects = {
-      automations: {
+      automations: withScopedFor({
         forOrg: vi.fn(() => ({ commands: { triggerIngestEvent } })),
-      },
+      }),
     } as unknown as BackofficeObjectRegistry;
     const runtime = createEventRuntime({
       objects,
@@ -132,9 +151,9 @@ describe("createEventRuntime.emitEvent", () => {
   it("attributes emitted events separately from the privileged execution authority", async () => {
     const triggerIngestEvent = vi.fn(async () => undefined);
     const objects = {
-      automations: {
+      automations: withScopedFor({
         forOrg: vi.fn(() => ({ commands: { triggerIngestEvent } })),
-      },
+      }),
     } as unknown as BackofficeObjectRegistry;
     const attributedActors = createBackofficeUserExecution({
       scope: { kind: "org", orgId: "org-1" },
@@ -156,9 +175,9 @@ describe("createEventRuntime.emitEvent", () => {
 
   it("requires source without a parent automation event", async () => {
     const objects = {
-      automations: {
+      automations: withScopedFor({
         forOrg: vi.fn(() => ({ commands: { triggerIngestEvent: vi.fn(async () => undefined) } })),
-      },
+      }),
     } as unknown as BackofficeObjectRegistry;
     const runtime = createEventRuntime({
       objects,
@@ -207,9 +226,9 @@ describe("createEventRuntime.emitEvent", () => {
   it("preserves initiator, principal, and ordered delegation on child events", async () => {
     const triggerIngestEvent = vi.fn(async () => undefined);
     const objects = {
-      automations: {
+      automations: withScopedFor({
         forOrg: vi.fn(() => ({ commands: { triggerIngestEvent } })),
-      },
+      }),
     } as unknown as BackofficeObjectRegistry;
     const parentEvent = createEvent({
       actors: {
@@ -265,10 +284,10 @@ describe("createEventRuntime.emitEvent", () => {
     const triggerOrgIngestEvent = vi.fn(async () => undefined);
     const triggerUserIngestEvent = vi.fn(async () => undefined);
     const objects = {
-      automations: {
+      automations: withScopedFor({
         forOrg: vi.fn(() => ({ commands: { triggerIngestEvent: triggerOrgIngestEvent } })),
         forUser: vi.fn(() => ({ commands: { triggerIngestEvent: triggerUserIngestEvent } })),
-      },
+      }),
     } as unknown as BackofficeObjectRegistry;
     const kernel = new BackofficeKernel(TEST_KERNEL_RUNTIME);
     const runtime = createEventRuntime({
@@ -304,10 +323,10 @@ describe("createEventRuntime.emitEvent", () => {
       name: "Launch",
     }));
     const objects = {
-      automations: {
+      automations: withScopedFor({
         forOrg: vi.fn(() => ({ commands: { resolveProjectForExecution } })),
         forProject: vi.fn(() => ({ commands: { triggerIngestEvent: triggerProjectIngestEvent } })),
-      },
+      }),
     } as unknown as BackofficeObjectRegistry;
     const runtime = createEventRuntime({
       objects,
@@ -338,12 +357,12 @@ describe("createEventRuntime.emitEvent", () => {
   it("does not enqueue events for unavailable projects", async () => {
     const triggerProjectIngestEvent = vi.fn(async () => undefined);
     const objects = {
-      automations: {
+      automations: withScopedFor({
         forOrg: vi.fn(() => ({
           commands: { resolveProjectForExecution: vi.fn(async () => null) },
         })),
         forProject: vi.fn(() => ({ commands: { triggerIngestEvent: triggerProjectIngestEvent } })),
-      },
+      }),
     } as unknown as BackofficeObjectRegistry;
     const runtime = createEventRuntime({
       objects,
@@ -365,9 +384,9 @@ describe("createEventRuntime.emitEvent", () => {
   it("does not enqueue events when the actor cannot access the target org", async () => {
     const triggerOrgIngestEvent = vi.fn(async () => undefined);
     const objects = {
-      automations: {
+      automations: withScopedFor({
         forOrg: vi.fn(() => ({ commands: { triggerIngestEvent: triggerOrgIngestEvent } })),
-      },
+      }),
     } as unknown as BackofficeObjectRegistry;
     const runtime = createEventRuntime({
       objects,
@@ -410,9 +429,9 @@ describe("createEventRuntime.emitEvent", () => {
       fragment.callServices(() => fragment.services.ingestEvent(event)),
     );
     const objects = {
-      automations: {
+      automations: withScopedFor({
         forOrg: vi.fn(() => ({ commands: { triggerIngestEvent } })),
-      },
+      }),
     } as unknown as BackofficeObjectRegistry;
     const runtime = createEventRuntime({
       objects,

@@ -27,9 +27,7 @@ const createRuntime = (): BackofficeRuntimeServices => {
   const automationsObject = { fetch: async () => new Response() };
   const objects = {
     automations: {
-      singleton: () => automationsObject,
-      forOrg: () => automationsObject,
-      forProject: () => automationsObject,
+      for: () => automationsObject,
     },
     cloudflare: {
       singleton: () => {

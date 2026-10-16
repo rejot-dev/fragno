@@ -3,18 +3,17 @@ import { Outlet, redirect } from "react-router";
 
 import { getBackofficeShellRequest } from "@/layouts/backoffice-shell-request.server";
 
-import { resolveIntegrationContext } from "../../integrations/scope";
+import { resolveIntegrationContext } from "../../integrations/scope.server";
 import { IntegrationServiceHeader } from "../../integrations/service-header";
 import type { Route } from "./+types/organization-layout";
 import { fetchReson8Config } from "./data";
 import { Reson8ErrorBoundary, Reson8Tabs, type Reson8ConfigState, type Reson8Tab } from "./shared";
 
-export async function loader({ params, context, url }: Route.LoaderArgs) {
+export async function loader({ context, url }: Route.LoaderArgs) {
   const { me } = getBackofficeShellRequest(context);
 
   const integration = resolveIntegrationContext({
-    params,
-    me,
+    context,
     integration: "reson8",
     allowedScopes: ["org"],
   });

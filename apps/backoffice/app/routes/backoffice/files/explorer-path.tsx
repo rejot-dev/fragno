@@ -7,7 +7,7 @@ import { loadFilesExplorerData } from "./data";
 export { default } from "./explorer";
 
 export async function loader({ request, params, context }: Route.LoaderArgs) {
-  const scope = backofficeRuntimeScopeFromResolvedScope(await requireScopeSelection(context));
+  const scope = backofficeRuntimeScopeFromResolvedScope(requireScopeSelection(context));
   return loadFilesExplorerData({
     request,
     context,

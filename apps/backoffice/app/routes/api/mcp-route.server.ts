@@ -19,11 +19,11 @@ export const mcpPublicRoute = {
   oauth: {
     internalCallbackPath: MCP_INTERNAL_OAUTH_CALLBACK_PATH,
     invalidResponse: (message) => new Response(message, { status: 502 }),
-    redirect: ({ request, routeScope, status, message }) => {
+    redirect: ({ request, pageScope, status, message }) => {
       const slug = new URL(request.url).searchParams.get("state")?.split(":")[0]?.trim();
       return integrationOAuthReturn({
         request,
-        routeScope,
+        routeScope: pageScope,
         connectionId: slug ? encodeMcpConnectionId(slug) : null,
         outcome: status === "success" ? { status } : { status, message: message ?? null },
       });

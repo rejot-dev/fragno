@@ -3,7 +3,10 @@ import {
   marketplaceVersionSchema,
   type MarketplaceScope,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
-import type { BackofficeRoutableScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  type BackofficeRoutableScope,
+  backofficeScopeOrganization,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import { type MarketplaceArtifactManifest } from "@/fragno/marketplace/contracts";
 
@@ -33,10 +36,8 @@ export const assertMarketplaceIngestionTargetBelongsToOrganization = (input: {
   organizationId: string;
   targetScope: BackofficeRoutableScope;
 }): void => {
-  if (
-    (input.targetScope.kind === "org" || input.targetScope.kind === "project") &&
-    input.targetScope.orgId !== input.organizationId
-  ) {
+  const targetOrganization = backofficeScopeOrganization(input.targetScope);
+  if (targetOrganization && targetOrganization.orgId !== input.organizationId) {
     throw new MarketplaceIngestionTargetAccessError(
       "Marketplace ingestion target belongs to another organization.",
     );

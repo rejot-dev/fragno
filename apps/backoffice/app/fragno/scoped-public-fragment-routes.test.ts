@@ -1,6 +1,6 @@
 import { assert, describe, expect, test } from "vitest";
 
-import { backofficeRouteScopeSinglePathSegmentFromParams } from "@/backoffice-runtime/route-scope";
+import { backofficePublicScopePathSegment } from "@/backoffice-runtime/route-scope";
 
 import {
   API_PUBLIC_PREFIX,
@@ -45,10 +45,11 @@ describe("scoped public fragment routes", () => {
     });
   });
 
-  test("builds project addresses from decoded router parameters", () => {
-    const scopePathSegment = backofficeRouteScopeSinglePathSegmentFromParams({
-      scopeKind: "project",
-      scopeId: "acme:project%2Fone",
+  test("builds project addresses that name the project by ID", () => {
+    const scopePathSegment = backofficePublicScopePathSegment({
+      kind: "project",
+      orgSlug: "acme",
+      projectId: "project/one",
     });
 
     expect(apiPublicAddress("https://backoffice.example", scopePathSegment)).toEqual({

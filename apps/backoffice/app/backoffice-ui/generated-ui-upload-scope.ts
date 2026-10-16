@@ -1,7 +1,9 @@
-import { backofficeRoutableScopeSchema } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  type BackofficeRoutableScope,
+  backofficeRoutableScopeSchema,
+  backofficeScopeOrganization,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
-
-import type { BackofficeRoutableResolvedScope } from "@/backoffice-runtime/resolved-scope";
 
 export const generatedUiUploadScopeSchema = z.union([
   z.strictObject({ kind: z.literal("current") }),
@@ -10,10 +12,11 @@ export const generatedUiUploadScopeSchema = z.union([
 
 export type GeneratedUiUploadScope = z.infer<typeof generatedUiUploadScopeSchema>;
 
+/** Generated UI may upload to the current scope, the user's own, or its organization's scopes. */
 export function resolveGeneratedUiUploadScope(
   scope: GeneratedUiUploadScope,
-  currentScope: BackofficeRoutableResolvedScope | undefined,
-): BackofficeRoutableResolvedScope {
+  currentScope: BackofficeRoutableScope | undefined,
+): BackofficeRoutableScope {
   if (scope.kind === "current") {
     if (!currentScope) {
       throw new Error("The current Backoffice context does not support private file uploads.");
@@ -23,18 +26,9 @@ export function resolveGeneratedUiUploadScope(
   if (scope.kind === "user") {
     return scope;
   }
-  if (
-    !currentScope ||
-    (currentScope.kind !== "org" && currentScope.kind !== "project") ||
-    currentScope.organization.id !== scope.orgId
-  ) {
+  const organization = currentScope && backofficeScopeOrganization(currentScope);
+  if (!organization || organization.orgId !== scope.orgId) {
     throw new Error("Generated UI uploads cannot target another organization.");
   }
-  return scope.kind === "org"
-    ? { kind: "org", organization: currentScope.organization }
-    : {
-        kind: "project",
-        organization: currentScope.organization,
-        projectId: scope.projectId,
-      };
+  return scope;
 }

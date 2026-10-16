@@ -74,14 +74,9 @@ describe("organization agents layout", () => {
 });
 
 describe("isPiAgentsPath", () => {
-  const scope = { kind: "project" as const, orgSlug: "org-1", projectId: "project-1" };
+  const scope = { kind: "project" as const, orgSlug: "org-1", projectSlug: "project-1" };
 
   test.each([
-    "/backoffice/agents/project/org-1%3Aproject-1/agents",
-    "/backoffice/agents/project/org-1%3Aproject-1/agents/assistant",
-    "/backoffice/agents/project/org-1%3Aproject-1/agents/assistant/debug",
-    // React Router reports matched pathnames decoded, so the scope separator
-    // arrives as a literal colon at runtime.
     "/backoffice/agents/project/org-1:project-1/agents",
     "/backoffice/agents/project/org-1:project-1/agents/assistant",
     "/backoffice/agents/project/org-1:project-1/agents/assistant/debug",
@@ -89,22 +84,22 @@ describe("isPiAgentsPath", () => {
     assert(isPiAgentsPath(scope, pathname));
   });
 
-  test.each([
-    "/backoffice/agents/project/org-1%3Aproject-1",
-    "/backoffice/agents/project/org-1:project-1",
-  ])("does not apply the workspace layout outside the agents branch: %s", (pathname) => {
-    assert(!isPiAgentsPath(scope, pathname));
-  });
+  test.each(["/backoffice/agents/project/org-1:project-1"])(
+    "does not apply the workspace layout outside the agents branch: %s",
+    (pathname) => {
+      assert(!isPiAgentsPath(scope, pathname));
+    },
+  );
 
   // Scope ids with reserved characters stay encoded inside the once-decoded
   // pathname; decoding again would corrupt them.
-  const colonScope = { kind: "project" as const, orgSlug: "org-1", projectId: "a:b" };
-  const slashScope = { kind: "project" as const, orgSlug: "org-1", projectId: "a/b" };
+  const colonScope = { kind: "project" as const, orgSlug: "org-1", projectSlug: "a:b" };
+  const slashScope = { kind: "project" as const, orgSlug: "org-1", projectSlug: "a/b" };
 
   test.each([
-    [colonScope, "/backoffice/agents/project/org-1%3Aa%253Ab/agents/assistant"],
+    [colonScope, "/backoffice/agents/project/org-1:a%253Ab/agents/assistant"],
     [colonScope, "/backoffice/agents/project/org-1:a%3Ab/agents/assistant"],
-    [slashScope, "/backoffice/agents/project/org-1%3Aa%252Fb/agents/assistant"],
+    [slashScope, "/backoffice/agents/project/org-1:a%252Fb/agents/assistant"],
     [slashScope, "/backoffice/agents/project/org-1:a%2Fb/agents/assistant"],
   ])("matches scope ids containing encoded characters: %o %s", (encodedScope, pathname) => {
     assert(isPiAgentsPath(encodedScope, pathname));

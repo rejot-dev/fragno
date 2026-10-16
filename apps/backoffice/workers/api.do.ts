@@ -2,6 +2,7 @@ import type { WebhookEndpointChangedPayload } from "@fragno-dev/api-fragment/def
 import {
   type BackofficeRoutableScope,
   backofficeRoutableScopeSchema,
+  backofficeScopeOrganization,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { DurableObject, RpcTarget } from "cloudflare:workers";
@@ -43,9 +44,10 @@ import {
 } from "./lib/scoped-fragment-durable-object";
 
 function scopeSubject(scope: BackofficeRoutableScope, subject?: Record<string, unknown>) {
+  const organization = backofficeScopeOrganization(scope);
   return {
     scope,
-    ...(scope.kind === "org" || scope.kind === "project" ? { orgId: scope.orgId } : {}),
+    ...(organization ? { orgId: organization.orgId } : {}),
     ...subject,
   };
 }

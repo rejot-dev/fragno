@@ -78,15 +78,18 @@ type AutomationProjectLookupResult =
 export async function lookupAutomationProject(
   context: Readonly<RouterContextProvider>,
   orgId: string,
-  projectId: string,
+  project: { projectId: string } | { slug: string },
 ): Promise<AutomationProjectLookupResult> {
   try {
     const callRoute = createAutomationsRouteCaller({
       object: getScopedAutomationsObject(context, { kind: "org", orgId }),
     });
-    const response = await callRoute("GET", "/projects/:projectId", {
-      pathParams: { projectId },
-    });
+    const response =
+      "slug" in project
+        ? await callRoute("GET", "/projects/by-slug/:slug", { pathParams: { slug: project.slug } })
+        : await callRoute("GET", "/projects/:projectId", {
+            pathParams: { projectId: project.projectId },
+          });
 
     if (response.type === "json" && isSuccessStatus(response.status)) {
       return { status: "found", project: response.data as AutomationProjectRecord };

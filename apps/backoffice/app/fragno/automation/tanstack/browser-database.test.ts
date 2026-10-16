@@ -24,14 +24,14 @@ describe("Automation collection sources", () => {
       resolvedScope: {
         kind: "project",
         organization: { id: "org-1", slug: "acme" },
-        projectId: "project/one",
+        project: { id: "project/one", slug: "project/one" },
       },
       adapterIdentity: "adapter-1",
     });
 
     assert.equal(
       description.internalUrl,
-      "/api/automations-scoped/project/org-1%3Aproject%252Fone/_internal",
+      "/api/automations-scoped/project/org-1:project%252Fone/_internal",
     );
   });
 

@@ -42,7 +42,7 @@ import { NativeServices } from "./native-services";
 
 /** Connections and their labels come from local connection events; the loader only selects scope. */
 export async function loader({ context }: Route.LoaderArgs) {
-  return { selectedScope: await requireScopeSelection(context) };
+  return { selectedScope: requireScopeSelection(context) };
 }
 
 /** Selecting a connection changes nothing the loader selects. */

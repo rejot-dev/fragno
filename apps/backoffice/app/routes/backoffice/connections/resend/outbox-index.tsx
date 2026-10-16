@@ -4,11 +4,9 @@ import { resolveAuthenticatedIntegrationRuntimeScope } from "../../integrations/
 import type { Route } from "./+types/outbox-index";
 import { fetchResendConfig } from "./data";
 
-export async function loader({ request, params, context, url }: Route.LoaderArgs) {
-  const scope = await resolveAuthenticatedIntegrationRuntimeScope({
-    request,
+export async function loader({ context, url }: Route.LoaderArgs) {
+  const scope = resolveAuthenticatedIntegrationRuntimeScope({
     context,
-    params,
     allowedScopes: ["org", "system"],
   });
 

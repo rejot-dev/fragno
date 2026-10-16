@@ -17,6 +17,7 @@ import {
   type MarketplaceFeatureEntry,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+import { backofficeScopeOrganization } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
 
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
@@ -84,13 +85,14 @@ export function createMarketplaceRuntime({
     if (visibility === "public") {
       return objects.marketplace.singleton().commands;
     }
-    if (execution.scope.kind !== "org" && execution.scope.kind !== "project") {
+    const organization = backofficeScopeOrganization(execution.scope);
+    if (!organization) {
       throw new BackofficeOperationError(
         "forbidden",
         "Organization Marketplace reads require an organization or project workspace.",
       );
     }
-    const marketplace: MarketplaceScope = { kind: "org", orgId: execution.scope.orgId };
+    const marketplace: MarketplaceScope = { kind: "org", orgId: organization.orgId };
     return objects.marketplace.for(marketplace).commands;
   }
 

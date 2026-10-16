@@ -63,7 +63,7 @@ describe("BackofficeShell resolved scope", () => {
     const resolvedScope = {
       kind: "project" as const,
       organization,
-      projectId: "project-1",
+      project: { id: "project-1", slug: "project-1", name: "Project One" },
     };
 
     render(
@@ -85,14 +85,14 @@ describe("BackofficeShell resolved scope", () => {
     expect(topBarMock).toHaveBeenCalledWith(expect.objectContaining({ resolvedScope }));
     expect(sidebarMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        currentScope: { kind: "project", orgSlug: "acme", projectId: "project-1" },
+        currentScope: { kind: "project", orgSlug: "acme", projectSlug: "project-1" },
       }),
     );
     expect(terminalMock).toHaveBeenCalledWith(
       expect.objectContaining({
         selectedScope: {
           ...resolvedScope,
-          label: "Acme / project-1",
+          label: "Acme / Project One",
         },
       }),
     );

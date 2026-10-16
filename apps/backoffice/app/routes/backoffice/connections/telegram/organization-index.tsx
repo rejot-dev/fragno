@@ -4,11 +4,9 @@ import { resolveAuthenticatedIntegrationRuntimeScope } from "../../integrations/
 import type { Route } from "./+types/organization-index";
 import { fetchTelegramConfig } from "./data";
 
-export async function loader({ request, params, context, url }: Route.LoaderArgs) {
-  const scope = await resolveAuthenticatedIntegrationRuntimeScope({
-    request,
+export async function loader({ context, url }: Route.LoaderArgs) {
+  const scope = resolveAuthenticatedIntegrationRuntimeScope({
     context,
-    params,
   });
   const { configState } = await fetchTelegramConfig(context, scope);
   const target = configState?.configured ? "messages" : "configuration";

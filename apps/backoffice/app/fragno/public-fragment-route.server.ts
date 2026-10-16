@@ -1,13 +1,15 @@
-import type { BackofficeRoutableScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  type BackofficePublicScope,
+  type BackofficeRoutable,
+  type BackofficeRoutableScope,
+  backofficeScopeOrganization,
+  mapBackofficeScopeNames,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { RouterContextProvider } from "react-router";
 
 import type { BackofficeObjectHandle } from "@/backoffice-runtime/object-registry";
 import {
-  backofficeRuntimeScopeFromResolvedScope,
-  resolveBackofficeRouteScope,
-} from "@/backoffice-runtime/resolved-scope";
-import {
-  backofficeRouteScopeFromSinglePathSegment,
+  backofficePublicScopeFromPathSegment,
   type BackofficeRoutableRouteScope,
 } from "@/backoffice-runtime/route-scope";
 import { authorizeBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
@@ -33,7 +35,7 @@ export type PublicFragmentRoute<TCommands> = {
             kind: "redirect";
             redirect(input: {
               request: Request;
-              routeScope: BackofficeRoutableRouteScope;
+              pageScope: BackofficeRoutableRouteScope;
             }): Response;
           }
       ) & { matches(request: Request, scope: BackofficeRoutableScope, suffix: string): boolean })
@@ -45,7 +47,7 @@ export type PublicFragmentRoute<TCommands> = {
     redirect(input: {
       request: Request;
       scope: BackofficeRoutableScope;
-      routeScope: BackofficeRoutableRouteScope;
+      pageScope: BackofficeRoutableRouteScope;
       status: "success" | "error";
       code?: string;
       message?: string;
@@ -102,7 +104,7 @@ function parsePublicRouteScope(scopePathSegment: string | undefined) {
     return {
       ok: true as const,
       scopePathSegment,
-      routeScope: backofficeRouteScopeFromSinglePathSegment(scopePathSegment),
+      routeScope: backofficePublicScopeFromPathSegment(scopePathSegment),
     };
   } catch {
     return { ok: false as const, response: new Response("Invalid scope", { status: 400 }) };
@@ -111,22 +113,47 @@ function parsePublicRouteScope(scopePathSegment: string | undefined) {
 
 async function resolvePublicRouteScope(
   context: Readonly<RouterContextProvider>,
-  routeScope: BackofficeRoutableRouteScope,
+  routeScope: BackofficeRoutable<BackofficePublicScope>,
 ): Promise<BackofficeRoutableScope | null> {
-  if (routeScope.kind === "user") {
-    return backofficeRuntimeScopeFromResolvedScope(routeScope);
-  }
-
-  const organization = await context
-    .get(BackofficeWorkerContext)
-    .runtime.objects.auth.singleton()
-    .commands.getOrganizationBySlug(routeScope.orgSlug);
-  if (!organization) {
+  const reference = backofficeScopeOrganization(routeScope);
+  const organization = reference
+    ? await context
+        .get(BackofficeWorkerContext)
+        .runtime.objects.auth.singleton()
+        .commands.getOrganizationBySlug(reference.orgSlug)
+    : null;
+  if (reference && !organization) {
     return null;
   }
+  return mapBackofficeScopeNames(routeScope, {
+    // Only scopes with an organization reference visit this, and it was found above.
+    organization: () => ({ orgId: organization!.id }),
+    project: ({ projectId }) => ({ projectId }),
+  });
+}
 
-  const resolvedScope = resolveBackofficeRouteScope(routeScope, [organization]);
-  return resolvedScope ? backofficeRuntimeScopeFromResolvedScope(resolvedScope) : null;
+/**
+ * Names a public route's scope as Backoffice pages do. Public URLs name projects by ID so they
+ * survive renames; pages name them by slug. An archived project falls back to its organization.
+ */
+async function pageScopeForPublicRoute(
+  context: Readonly<RouterContextProvider>,
+  routeScope: BackofficeRoutable<BackofficePublicScope>,
+): Promise<BackofficeRoutableRouteScope> {
+  if (routeScope.kind !== "project") {
+    return routeScope;
+  }
+  const scope = await resolvePublicRouteScope(context, routeScope);
+  const project =
+    scope?.kind === "project"
+      ? await context
+          .get(BackofficeWorkerContext)
+          .runtime.objects.automations.forOrg(scope.orgId)
+          .commands.resolveProjectForExecution({ projectId: scope.projectId })
+      : null;
+  return project
+    ? { kind: "project", orgSlug: routeScope.orgSlug, projectSlug: project.slug }
+    : { kind: "org", orgSlug: routeScope.orgSlug };
 }
 
 async function handleScopedOAuthCallback<TCommands>({
@@ -137,7 +164,7 @@ async function handleScopedOAuthCallback<TCommands>({
 }: {
   request: Request;
   context: Readonly<RouterContextProvider>;
-  routeScope: BackofficeRoutableRouteScope;
+  routeScope: BackofficeRoutable<BackofficePublicScope>;
   route: PublicFragmentRoute<TCommands> & {
     oauth: NonNullable<PublicFragmentRoute<TCommands>["oauth"]>;
   };
@@ -161,7 +188,7 @@ async function handleScopedOAuthCallback<TCommands>({
     return route.oauth.redirect({
       request,
       scope,
-      routeScope,
+      pageScope: await pageScopeForPublicRoute(context, routeScope),
       status: "error",
       code: fragmentError.code,
       message: fragmentError.message,
@@ -186,7 +213,7 @@ async function handleScopedOAuthCallback<TCommands>({
   return route.oauth.redirect({
     request,
     scope,
-    routeScope,
+    pageScope: await pageScopeForPublicRoute(context, routeScope),
     status: payload.authenticated && payload.mode === "oauth" ? "success" : "error",
   });
 }
@@ -232,7 +259,10 @@ export async function forwardPublicFragmentRequest<TCommands>({
   const ingress = route.publicIngress;
   const isPublicIngress = ingress?.matches(request, scope, publicPathSuffix) ?? false;
   if (isPublicIngress && ingress?.kind === "redirect") {
-    return ingress.redirect({ request, routeScope: parsed.routeScope });
+    return ingress.redirect({
+      request,
+      pageScope: await pageScopeForPublicRoute(context, parsed.routeScope),
+    });
   }
   const auth = isPublicIngress
     ? { ok: true as const, execution: null, headers: [] }

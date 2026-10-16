@@ -1,3 +1,4 @@
+import { backofficeScopeOrganization } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { Button, ButtonLink } from "@fragno-private/design-system/button";
 import { ClientOnly } from "@fragno-private/design-system/client-only";
 import { Field } from "@fragno-private/design-system/field";
@@ -37,11 +38,7 @@ import {
 } from "@/layouts/backoffice-shell-request.server";
 
 import { fetchPiManagerAgents, type PiManagerAgentsResult } from "../agents/data";
-import {
-  createAutomationProject,
-  loadAutomationScriptSource,
-  toExternalId,
-} from "../automations/data.server";
+import { createAutomationProject, loadAutomationScriptSource } from "../automations/data.server";
 import {
   automationWorkflowRunsFromRecords,
   workflowRunRecordsQuery,
@@ -65,7 +62,7 @@ const pageClassName = `${backofficePageBodyClassName} flex flex-col gap-4`;
 type ProjectActionData = { ok: false; message: string };
 
 export async function loader({ request, context, url }: Route.LoaderArgs) {
-  const selectedScope = await requireScopeSelection(context);
+  const selectedScope = requireScopeSelection(context);
   const workflowScriptId = url.searchParams.get(WORKFLOW_SCRIPT_PARAM)?.trim() ?? "";
   const [agents, workflowSource] = await Promise.all([
     fetchDashboardPiAgents(
@@ -112,12 +109,9 @@ export async function action({ request, context }: Route.ActionArgs) {
   }
 
   const { me } = getBackofficeShellRequest(context);
-  const organizations = me.organizations.map((entry) => entry.organization);
-  const scope = requireRouteScope(context).execution.scope;
   const organization =
-    scope.kind === "org" || scope.kind === "project"
-      ? organizations.find(({ id }) => id === scope.orgId)
-      : me.activeOrganization?.organization;
+    backofficeScopeOrganization(requireRouteScope(context).resolvedScope)?.organization ??
+    me.activeOrganization?.organization;
   if (!organization) {
     throw new Response("Not Found", { status: 404 });
   }
@@ -133,15 +127,15 @@ export async function action({ request, context }: Route.ActionArgs) {
     description: description || null,
     createdByUserId: me.user.id,
   });
-  const projectId = result.project ? toExternalId(result.project.id) : null;
-  if (result.error || !projectId) {
+  const projectSlug = result.project?.slug;
+  if (result.error || !projectSlug) {
     return {
       ok: false,
       message: result.error ?? "Unable to create project.",
     } satisfies ProjectActionData;
   }
 
-  return redirect(dashboardPath({ kind: "project", orgSlug: organization.slug, projectId }));
+  return redirect(dashboardPath({ kind: "project", orgSlug: organization.slug, projectSlug }));
 }
 
 /** Agents are one panel of the dashboard, so an unavailable Pi manager does not fail the page. */

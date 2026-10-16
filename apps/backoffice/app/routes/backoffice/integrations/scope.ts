@@ -1,22 +1,9 @@
-import { backofficeScopePathSegment } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
-import {
-  backofficeResolvedScopeFromRuntimeScope,
-  backofficeRuntimeScopeFromResolvedScope,
-  resolveBackofficeRouteScope,
-  type BackofficeScopeSelection,
-} from "@/backoffice-runtime/resolved-scope";
-import { requireBackofficeRouteScopeFromParams } from "@/backoffice-runtime/route-scope";
+import type { BackofficeScopeSelection } from "@/backoffice-runtime/resolved-scope";
 import type { BackofficeMeData } from "@/fragno/auth/contracts";
 
-import { throwBackofficeOrganizationNotFound } from "../route-errors";
 import { integrationsScopeBasePath } from "./connection-paths";
-
-export type IntegrationRouteParams = {
-  scopeKind?: string;
-  scopeId?: string;
-};
 
 export type ScopedIntegrationContext = {
   scope: BackofficeContextScope;
@@ -32,93 +19,5 @@ export type AuthenticatedScopedIntegrationContext = ScopedIntegrationContext & {
   me: BackofficeMeData;
 };
 
-export const scopeLabel = (scope: BackofficeContextScope, me: BackofficeMeData): string => {
-  switch (scope.kind) {
-    case "system":
-      return "System";
-    case "org": {
-      const organization = me.organizations.find((entry) => entry.organization.id === scope.orgId);
-      return organization?.organization.name ?? scope.orgId;
-    }
-    case "project":
-      return scope.projectId;
-    case "user":
-      return me.user.id === scope.userId ? (me.user.email ?? me.user.id) : scope.userId;
-  }
-
-  throw new Error("Unsupported Backoffice context scope kind.");
-};
-
-export function integrationScopeSelectionFromRuntimeScope(
-  scope: BackofficeContextScope,
-  me: BackofficeMeData,
-): BackofficeScopeSelection {
-  const organization =
-    scope.kind === "org" || scope.kind === "project"
-      ? (me.organizations.find((entry) => entry.organization.id === scope.orgId)?.organization ??
-        null)
-      : null;
-  const resolvedScope = backofficeResolvedScopeFromRuntimeScope(scope, organization);
-  return { ...resolvedScope, label: scopeLabel(scope, me) };
-}
-
 export const integrationBasePath = (scope: BackofficeScopeSelection, integration: string) =>
   `${integrationsScopeBasePath(scope)}/${integration}`;
-
-export const organizationIdFromScope = (scope: BackofficeContextScope): string | null =>
-  scope.kind === "org" || scope.kind === "project" ? scope.orgId : null;
-
-export const createOrganizationScopeOptions = (organizations: BackofficeMeData["organizations"]) =>
-  organizations.map(({ organization }) => ({
-    id: organization.id,
-    label: organization.name ?? organization.id,
-  }));
-
-export const resolveIntegrationContext = ({
-  params,
-  me,
-  integration,
-  allowedScopes,
-}: {
-  params: IntegrationRouteParams;
-  me: BackofficeMeData;
-  integration: string;
-  allowedScopes?: readonly BackofficeContextScope["kind"][];
-}): ScopedIntegrationContext => {
-  const routeScope = requireBackofficeRouteScopeFromParams(params);
-  const resolvedScope = resolveBackofficeRouteScope(
-    routeScope,
-    me.organizations.map(({ organization }) => organization),
-  );
-  if (!resolvedScope) {
-    const organizationSlug =
-      routeScope.kind === "org" || routeScope.kind === "project" ? routeScope.orgSlug : undefined;
-    throwBackofficeOrganizationNotFound(organizationSlug);
-  }
-  const scope = backofficeRuntimeScopeFromResolvedScope(resolvedScope);
-  const isScopedRoute = true;
-
-  if (allowedScopes && !allowedScopes.includes(scope.kind)) {
-    throw new Response("Not Found", { status: 404 });
-  }
-
-  if (scope.kind === "system" && me.user.role !== "admin") {
-    throw new Response("Not Found", { status: 404 });
-  }
-
-  if (scope.kind === "user" && scope.userId !== me.user.id) {
-    throw new Response("Not Found", { status: 404 });
-  }
-
-  const uiScope = { ...resolvedScope, label: scopeLabel(scope, me) };
-  const scopedBasePath = integrationBasePath(uiScope, integration);
-  return {
-    scope,
-    uiScope,
-    label: scopeLabel(scope, me),
-    basePath: scopedBasePath,
-    integrationsPath: integrationsScopeBasePath(uiScope),
-    scopeSegment: backofficeScopePathSegment(scope),
-    isScopedRoute,
-  };
-};

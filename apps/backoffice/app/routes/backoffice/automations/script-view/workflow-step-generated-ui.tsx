@@ -1,8 +1,12 @@
+import type { BackofficeRoutableScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { useEffect, useState } from "react";
 
 import { setByPath } from "@json-render/core";
 
-import type { BackofficeRoutableResolvedScope } from "@/backoffice-runtime/resolved-scope";
+import {
+  type BackofficeRoutableResolvedScope,
+  backofficeRuntimeScopeFromResolvedScope,
+} from "@/backoffice-runtime/resolved-scope";
 import {
   resolveGeneratedUiUploadScope,
   type GeneratedUiUploadScope,
@@ -45,7 +49,10 @@ export function WorkflowStepGeneratedUi({
   waitingEventTypes: readonly string[];
 }) {
   const resolveUploadScope = (scope: GeneratedUiUploadScope) =>
-    resolveGeneratedUiUploadScope(scope, currentScope);
+    resolveGeneratedUiUploadScope(
+      scope,
+      currentScope && backofficeRuntimeScopeFromResolvedScope(currentScope),
+    );
   if (state?.status !== "completed") {
     return null;
   }
@@ -96,7 +103,7 @@ function InteractiveWorkflowStepGeneratedUi({
   fillAvailableWidth: boolean;
   workflowEvents: readonly WorkflowRunEvent[];
   workflowRunRecordId?: string;
-  resolveUploadScope: (scope: GeneratedUiUploadScope) => BackofficeRoutableResolvedScope;
+  resolveUploadScope: (scope: GeneratedUiUploadScope) => BackofficeRoutableScope;
   workflowEventSender?: WorkflowEventSender;
   workflowInstanceId?: string;
   workflowName?: string;

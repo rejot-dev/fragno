@@ -2,16 +2,16 @@ import { assert, describe, test } from "vitest";
 
 import { scopeSwitchPath } from "./scope-switch-path";
 
-const projectScope = { kind: "project" as const, orgSlug: "org-a", projectId: "proj-1" };
+const projectScope = { kind: "project" as const, orgSlug: "org-a", projectSlug: "proj-1" };
 
 describe("scopeSwitchPath", () => {
   test.each([
-    ["/backoffice/dashboard", "/backoffice/dashboard/project/org-a%3Aproj-1"],
-    ["/backoffice/agents", "/backoffice/agents/project/org-a%3Aproj-1/agents"],
-    ["/backoffice/computers", "/backoffice/computers/project/org-a%3Aproj-1/sandboxes"],
-    ["/backoffice/files", "/backoffice/files/project/org-a%3Aproj-1"],
-    ["/backoffice/marketplace", "/backoffice/marketplace/project/org-a%3Aproj-1/marketplace"],
-    ["/backoffice/internals", "/backoffice/internals/project/org-a%3Aproj-1"],
+    ["/backoffice/dashboard", "/backoffice/dashboard/project/org-a:proj-1"],
+    ["/backoffice/agents", "/backoffice/agents/project/org-a:proj-1/agents"],
+    ["/backoffice/computers", "/backoffice/computers/project/org-a:proj-1/sandboxes"],
+    ["/backoffice/files", "/backoffice/files/project/org-a:proj-1"],
+    ["/backoffice/marketplace", "/backoffice/marketplace/project/org-a:proj-1/marketplace"],
+    ["/backoffice/internals", "/backoffice/internals/project/org-a:proj-1"],
   ])("carries the scope into the section root %s", (pathname, expectedPath) => {
     assert(scopeSwitchPath(pathname, projectScope) === expectedPath);
   });
@@ -26,7 +26,7 @@ describe("scopeSwitchPath", () => {
   test("switches the scope used by the durable hooks inspector", () => {
     assert(
       scopeSwitchPath("/backoffice/internals/org/org-a/durable-hooks/api/hook-1", projectScope) ===
-        "/backoffice/internals/project/org-a%3Aproj-1/durable-hooks/api",
+        "/backoffice/internals/project/org-a:proj-1/durable-hooks/api",
     );
   });
 
@@ -35,21 +35,21 @@ describe("scopeSwitchPath", () => {
       scopeSwitchPath(
         "/backoffice/internals/org/org-a/workflows/example/instance-1",
         projectScope,
-      ) === "/backoffice/internals/project/org-a%3Aproj-1/workflows",
+      ) === "/backoffice/internals/project/org-a:proj-1/workflows",
     );
   });
 
   test("switches the scope while keeping an internals tool", () => {
     assert(
       scopeSwitchPath("/backoffice/internals/org/org-a/users", projectScope) ===
-        "/backoffice/internals/project/org-a%3Aproj-1/users",
+        "/backoffice/internals/project/org-a:proj-1/users",
     );
   });
 
   test("lands unknown sections on the dashboard", () => {
     assert(
       scopeSwitchPath("/backoffice/organizations", projectScope) ===
-        "/backoffice/dashboard/project/org-a%3Aproj-1",
+        "/backoffice/dashboard/project/org-a:proj-1",
     );
   });
 });

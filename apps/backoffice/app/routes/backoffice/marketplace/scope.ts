@@ -2,7 +2,10 @@ import type {
   MarketplaceScope,
   MarketplaceVisibility,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
-import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  type BackofficeContextScope,
+  backofficeScopeOrganization,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import {
   backofficeRouteScopeFromResolvedScope,
@@ -40,9 +43,10 @@ export function marketplaceForCatalog(
   if (catalog === "marketplace") {
     return { catalog, marketplace: { kind: "system" } };
   }
-  // Only organization and project workspaces have an organization Marketplace.
-  if (catalog === "organization" && (scope.kind === "org" || scope.kind === "project")) {
-    return { catalog, marketplace: { kind: "org", orgId: scope.orgId } };
+  // Only workspaces that belong to an organization have an organization Marketplace.
+  const organization = backofficeScopeOrganization(scope);
+  if (catalog === "organization" && organization) {
+    return { catalog, marketplace: { kind: "org", orgId: organization.orgId } };
   }
   throw new Response("Not Found", { status: 404 });
 }
@@ -51,6 +55,4 @@ export function marketplaceForCatalog(
 export const marketplaceCatalogsForScope = (
   scope: BackofficeScopeSelection,
 ): MarketplaceCatalog[] =>
-  scope.kind === "org" || scope.kind === "project"
-    ? ["marketplace", "organization"]
-    : ["marketplace"];
+  backofficeScopeOrganization(scope) ? ["marketplace", "organization"] : ["marketplace"];

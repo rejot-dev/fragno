@@ -30,11 +30,11 @@ export const apiPublicRoute = {
   oauth: {
     internalCallbackPath: API_INTERNAL_OAUTH_CALLBACK_PATH,
     invalidResponse: (message) => new Response(message, { status: 502 }),
-    redirect: ({ request, routeScope, status, code, message }) => {
+    redirect: ({ request, pageScope, status, code, message }) => {
       const slug = new URL(request.url).searchParams.get("state")?.split(":")[0]?.trim();
       return integrationOAuthReturn({
         request,
-        routeScope,
+        routeScope: pageScope,
         connectionId: slug ? encodeApiConnectionId(slug) : null,
         outcome:
           status === "success"
