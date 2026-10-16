@@ -77,7 +77,10 @@ describe("Backoffice generated UI workflow input", () => {
       />,
     );
 
-    fireEvent.change(screen.getByLabelText("Decision"), { target: { value: "reject" } });
+    fireEvent.click(screen.getByRole("combobox", { name: "Decision" }));
+    const reject = await screen.findByRole("option", { name: "Reject" });
+    fireEvent.pointerDown(reject);
+    fireEvent.click(reject);
     fireEvent.change(screen.getByLabelText("Reason"), {
       target: { value: "Missing supporting evidence" },
     });
@@ -164,7 +167,7 @@ describe("Backoffice generated UI workflow input", () => {
     fireEvent.click(submit);
     expect(sendEvent).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole("checkbox", { name: /I confirm/ }));
+    fireEvent.click(screen.getByText("I confirm"));
     fireEvent.click(submit);
     await waitFor(() => {
       expect(sendEvent).toHaveBeenCalledWith(

@@ -1,3 +1,5 @@
+import { Field } from "@fragno-private/design-system/field";
+import { TextArea as TextAreaControl } from "@fragno-private/design-system/text-area";
 import { useId } from "react";
 
 import { useBoundProp, type ComponentFn } from "@json-render/react";
@@ -14,18 +16,17 @@ export const TextArea: ComponentFn<typeof backofficeUiCatalog, "TextArea"> = ({
   const [value, setValue] = useBoundProp(props.value, bindings?.value);
 
   return (
-    <label htmlFor={id} className="block min-w-0">
-      <span className="block text-[10px] font-semibold tracking-[0.08em] text-[var(--bo-fg)]">
-        {props.label}
-        {props.required ? <span className="ml-1 text-[var(--bo-failed)]">*</span> : null}
-      </span>
-      {props.description ? (
-        <span className="mt-1 block text-[10px] leading-4 text-[var(--bo-muted-2)]">
-          {props.description}
-        </span>
-      ) : null}
-      <textarea
+    <Field
+      controlId={id}
+      density="compact"
+      label={props.label}
+      description={props.description}
+      required={props.required === true}
+      error={null}
+    >
+      <TextAreaControl
         id={id}
+        density="compact"
         value={value ?? ""}
         placeholder={props.placeholder}
         required={props.required}
@@ -34,8 +35,7 @@ export const TextArea: ComponentFn<typeof backofficeUiCatalog, "TextArea"> = ({
         onChange={(event) => {
           setValue(event.target.value);
         }}
-        className="bo-input mt-2 w-full resize-y px-3 py-2.5 text-xs leading-5"
       />
-    </label>
+    </Field>
   );
 };

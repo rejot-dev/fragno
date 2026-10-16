@@ -1,5 +1,6 @@
 import type { PreparedUploadedFileReference } from "@fragno-dev/backoffice-api/v0/upload";
 import { Button } from "@fragno-private/design-system/button";
+import { Field } from "@fragno-private/design-system/field";
 import { Icon } from "@fragno-private/design-system/icon";
 import { useEffect, useId, useRef, useState } from "react";
 
@@ -39,7 +40,6 @@ export const FileUpload: ComponentFn<typeof backofficeUiCatalog, "FileUpload"> =
 }) => {
   const host = useWorkflowUiInteractionHost();
   const inputId = useId();
-  const descriptionId = useId();
   const statusId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const retryFileRef = useRef<File | undefined>(undefined);
@@ -111,24 +111,21 @@ export const FileUpload: ComponentFn<typeof backofficeUiCatalog, "FileUpload"> =
       : undefined;
 
   return (
-    <div className="min-w-0">
-      <label htmlFor={inputId} className="block text-xs font-semibold text-[var(--bo-foreground)]">
-        {props.label}
-        {props.required ? <span className="ml-1 text-[var(--bo-failed)]">*</span> : null}
-      </label>
-      {props.description ? (
-        <p id={descriptionId} className="mt-1 text-[11px] leading-4 text-[var(--bo-muted)]">
-          {props.description}
-        </p>
-      ) : null}
-
+    <Field
+      controlId={inputId}
+      density="compact"
+      label={props.label}
+      description={props.description}
+      required={props.required === true}
+      error={null}
+    >
       <input
         ref={inputRef}
         id={inputId}
         type="file"
         accept={props.accept?.join(",")}
         disabled={disabled || uploadState === "uploading"}
-        aria-describedby={`${props.description ? descriptionId : ""} ${statusId}`.trim()}
+        aria-describedby={`${props.description ? `${inputId}-description` : ""} ${statusId}`.trim()}
         onChange={(event) => {
           const file = event.currentTarget.files?.[0];
           event.currentTarget.value = "";
@@ -139,7 +136,7 @@ export const FileUpload: ComponentFn<typeof backofficeUiCatalog, "FileUpload"> =
         className="sr-only"
       />
 
-      <div className="mt-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 shadow-[0_1px_0_rgba(0,0,0,0.04)]">
+      <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 shadow-[0_1px_0_rgba(0,0,0,0.04)]">
         <div className="flex min-w-0 items-center gap-3">
           <div className="flex size-9 shrink-0 items-center justify-center bg-[var(--bo-panel)] text-[var(--bo-muted)] shadow-[inset_0_0_0_1px_var(--bo-border)]">
             {uploadState === "complete" ? (
@@ -217,6 +214,6 @@ export const FileUpload: ComponentFn<typeof backofficeUiCatalog, "FileUpload"> =
           File uploads are unavailable in this generated interface.
         </p>
       ) : null}
-    </div>
+    </Field>
   );
 };
