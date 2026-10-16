@@ -6,6 +6,7 @@ import {
   backofficePermissionRequirementSchema,
   type BackofficePermissionRequirement,
 } from "./shared/permissions";
+import { piAgentNameSchema } from "./shared/pi-agent-name";
 
 export type AutomationExternalEntityRef<
   TSource extends string = string,
@@ -280,11 +281,28 @@ export type AutomationReclassifyEventAction = {
   payload: AutomationEventPayloadProjection;
 };
 
+/** Delivers the event to an agent in the route's scope as a turn run with the route's authority. */
+export type AutomationNotifyAgentAction = {
+  kind: "notify_agent";
+  agentName: string;
+  authority: AutomationAuthorityMode;
+};
+
 export type AutomationRouteAction =
   | AutomationStartWorkflowAction
   | AutomationSendWorkflowEventAction
   | AutomationForwardEventAction
-  | AutomationReclassifyEventAction;
+  | AutomationReclassifyEventAction
+  | AutomationNotifyAgentAction;
+
+/** The authority an action runs its work with, or null for actions that only move events. */
+export function automationRouteActionAuthority(
+  action: AutomationRouteAction,
+): AutomationAuthorityMode | null {
+  return action.kind === "start_workflow" || action.kind === "notify_agent"
+    ? action.authority
+    : null;
+}
 
 export type AutomationRouteEventTrigger = {
   kind: "event";
@@ -336,7 +354,7 @@ export const isAutomationActorProvenancePath = (path: string) =>
 
 /** Scheduled routes have no triggering user, so only organization authority can start workflows. */
 export const AUTOMATION_ROUTE_AUTHORITY_ERROR_MESSAGE =
-  "Scheduled workflows require organization-automation authority. Linked-user authority requires an external sender; delegated-user authority requires a user principal.";
+  "Scheduled workflows and agent notifications require organization-automation authority. Linked-user authority requires an external sender; delegated-user authority requires a user principal.";
 
 const automationActorMatcherSchema: z.ZodType<AutomationActorMatcher> = z.lazy(() =>
   z.discriminatedUnion("participation", [
@@ -598,6 +616,19 @@ const automationReclassifyEventActionSchema = z
     codemodeInputId: "AutomationReclassifyEventActionInput",
   }) satisfies z.ZodType<AutomationReclassifyEventAction>;
 
+const automationNotifyAgentActionSchema = z
+  .lazy(() =>
+    z.strictObject({
+      kind: z.literal("notify_agent"),
+      agentName: piAgentNameSchema,
+      authority: automationAuthorityModeSchema,
+    }),
+  )
+  .meta({
+    id: "AutomationNotifyAgentAction",
+    codemodeInputId: "AutomationNotifyAgentActionInput",
+  }) satisfies z.ZodType<AutomationNotifyAgentAction>;
+
 export const automationRouteActionSchema = z
   .lazy(() =>
     z.discriminatedUnion("kind", [
@@ -605,6 +636,7 @@ export const automationRouteActionSchema = z
       automationSendWorkflowEventActionSchema,
       automationForwardEventActionSchema,
       automationReclassifyEventActionSchema,
+      automationNotifyAgentActionSchema,
     ]),
   )
   .meta({
@@ -672,6 +704,9 @@ const automationRouteConfigurationSchema = z.lazy(() =>
           automationSendWorkflowEventActionSchema,
           automationForwardEventActionSchema,
           automationReclassifyEventActionSchema,
+          automationNotifyAgentActionSchema._zod.innerType.extend({
+            authority: organizationAutomationAuthoritySchema,
+          }),
         ]),
       }),
     ],
@@ -680,11 +715,13 @@ const automationRouteConfigurationSchema = z.lazy(() =>
         const configuration = z
           .object({
             trigger: automationRouteScheduleTriggerSchema,
-            action: automationStartWorkflowActionSchema,
+            action: automationRouteActionSchema,
           })
           .safeParse(issue.input);
-        return configuration.success &&
-          configuration.data.action.authority.kind !== "organization-automation"
+        const authority = configuration.success
+          ? automationRouteActionAuthority(configuration.data.action)
+          : null;
+        return authority && authority.kind !== "organization-automation"
           ? AUTOMATION_ROUTE_AUTHORITY_ERROR_MESSAGE
           : undefined;
       },

@@ -47,8 +47,9 @@ reclassifies the event, or forwards it to another scope.
    - Resume waiting work: `send_workflow_event`.
    - Domain event classification: `reclassify_event`.
    - Cross-scope delivery: `forward_event`.
+   - Tell an agent: `notify_agent`.
 
-   For reclassification or forwarding, read
+   For reclassification, forwarding, or agent notifications, read
    `/static/skills/building-automations/references/event-routing.md` before choosing the
    destination, matcher, projection, or scope template.
 

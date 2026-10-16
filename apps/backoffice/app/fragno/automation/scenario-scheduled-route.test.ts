@@ -138,7 +138,7 @@ describe("scheduled automation route scenario", () => {
                   );
                   assert(response.status === 400, await response.clone().text());
                   expect(await response.text()).toContain(
-                    "Scheduled workflows require organization-automation authority",
+                    "Scheduled workflows and agent notifications require organization-automation authority",
                   );
                 }
                 for (const configuration of [
@@ -172,7 +172,7 @@ describe("scheduled automation route scenario", () => {
                   const message = await response.text();
                   expect(message).toContain("Validation failed");
                   expect(message).not.toContain(
-                    "Scheduled workflows require organization-automation authority",
+                    "Scheduled workflows and agent notifications require organization-automation authority",
                   );
                 }
               },
@@ -340,7 +340,7 @@ describe("scheduled automation route scenario", () => {
                     },
                   ] as const) {
                     await expect(router.updateRoute({ id: route.id, ...patch })).rejects.toThrow(
-                      "Scheduled workflows require organization-automation authority",
+                      "Scheduled workflows and agent notifications require organization-automation authority",
                     );
                   }
                   expect(await router.getRoute({ id: route.id })).toMatchObject({

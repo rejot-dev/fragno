@@ -3,7 +3,13 @@ import { useState, type ReactNode } from "react";
 
 import { MessagePrimitive, groupPartByType, useAuiState } from "@assistant-ui/react";
 
-import type { PiAssistantMessageMetadata, PiCompactionMessageMetadata } from "./assistant-runtime";
+import {
+  notificationRequestLabel,
+  type PiAssistantMessageMetadata,
+  type PiCompactionMessageMetadata,
+  type PiNotificationMessageMetadata,
+  type PiNotificationRequestMessageMetadata,
+} from "./assistant-runtime";
 import { MarkdownText, MessageImage } from "./message-content";
 import { ToolCallBlock } from "./tool-call";
 import { formatEventTimestamp, formatMessageTimestamp } from "./ui";
@@ -178,6 +184,73 @@ export function CompactionMessage() {
           <MarkdownText text={summary} className="[&_h2]:text-sm [&_h3]:text-xs" />
         </div>
       </details>
+    </MessagePrimitive.Root>
+  );
+}
+
+/** An event a route delivered to the agent; expanding it shows the event's subject and payload. */
+export function NotificationMessage() {
+  const createdAt = useAuiState((state) => state.message.createdAt);
+  const { notification } = useAuiState(
+    (state) => state.message.metadata.custom as PiNotificationMessageMetadata,
+  );
+  const data = useAuiState((state) =>
+    state.message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n"),
+  );
+
+  return (
+    <MessagePrimitive.Root className="mb-7 min-w-0">
+      <details className="group/notification overflow-hidden border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)]">
+        <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-3 text-xs font-medium text-[var(--bo-muted)] transition-colors marker:hidden hover:text-[var(--bo-fg)]">
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="size-1.5 shrink-0 bg-amber-500" />
+            <span className="truncate">
+              {notification.event.source} · {notification.event.eventType}
+            </span>
+            <span className="truncate text-[10px] font-normal text-[var(--bo-muted-2)]">
+              via {notification.routeId}
+            </span>
+          </span>
+          <span className="grid w-[10.5rem] shrink-0 grid-cols-[7rem_3.5rem] items-center text-right text-[10px] text-[var(--bo-muted-2)]">
+            <time className="tabular-nums">{formatEventTimestamp(createdAt)}</time>
+            <span className="font-medium tracking-[0.1em] uppercase">
+              <span className="group-open/notification:hidden">View</span>
+              <span className="hidden group-open/notification:inline">Close</span>
+            </span>
+          </span>
+        </summary>
+        <div className="border-t border-[color:var(--bo-border)] px-4 py-3">
+          <p className="mb-2 text-[10px] text-[var(--bo-muted-2)]">
+            Event {notification.event.id}, delivered by an automation route.
+          </p>
+          <pre className="overflow-x-auto text-xs leading-5 whitespace-pre-wrap text-[var(--bo-muted)]">
+            {data}
+          </pre>
+        </div>
+      </details>
+    </MessagePrimitive.Root>
+  );
+}
+
+/** Where the agent was asked to handle the listed notifications, whose cards are above. */
+export function NotificationRequestMessage() {
+  const createdAt = useAuiState((state) => state.message.createdAt);
+  const { notifications } = useAuiState(
+    (state) => state.message.metadata.custom as PiNotificationRequestMessageMetadata,
+  );
+
+  return (
+    <MessagePrimitive.Root className="mb-7 flex min-w-0 items-center gap-3 text-[10px] text-[var(--bo-muted-2)]">
+      <span className="h-px flex-1 bg-[var(--bo-border)]" />
+      <span
+        className="flex items-center gap-2 font-medium"
+        title={notifications.map(({ routeId, eventId }) => `${eventId} via ${routeId}`).join("\n")}
+      >
+        <span className="size-1.5 shrink-0 bg-amber-500" />
+        {notificationRequestLabel(notifications)}
+      </span>
+      <span className="h-px flex-1 bg-[var(--bo-border)]" />
+      <time className="tabular-nums">{formatEventTimestamp(createdAt)}</time>
     </MessagePrimitive.Root>
   );
 }
