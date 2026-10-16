@@ -6,66 +6,77 @@ import { jsonValueSchema } from "./shared/json";
 import { BACKOFFICE_PERMISSION } from "./shared/permissions";
 
 export const integrationVerificationCheckShape = {
-  id: z.string().min(1),
-  label: z.string(),
+  id: z.lazy(() => z.string().min(1)),
+  label: z.lazy(() => z.string()),
 };
 
 export const integrationVerificationCheckSchema = z
-  .discriminatedUnion("status", [
-    z.strictObject({
-      ...integrationVerificationCheckShape,
-      status: z.literal("not-checked"),
-      reason: z.string(),
-    }),
-    z.strictObject({
-      ...integrationVerificationCheckShape,
-      status: z.enum(["passed", "failed"]),
-      checkedAt: isoDateTimeOutputSchema.describe(
-        "Time of the actual check, not configuration storage.",
-      ),
-      message: z.string(),
-    }),
-  ])
+  .lazy(() =>
+    z.discriminatedUnion("status", [
+      z.strictObject({
+        ...integrationVerificationCheckShape,
+        status: z.literal("not-checked"),
+        reason: z.string(),
+      }),
+      z.strictObject({
+        ...integrationVerificationCheckShape,
+        status: z.enum(["passed", "failed"]),
+        checkedAt: isoDateTimeOutputSchema.describe(
+          "Time of the actual check, not configuration storage.",
+        ),
+        message: z.string(),
+      }),
+    ]),
+  )
   .meta({ id: "IntegrationVerificationCheck" });
 
 export const integrationConfigurationStatusSchema = z
-  .discriminatedUnion("status", [
-    z.strictObject({ status: z.literal("missing"), missingFields: z.array(z.string()) }),
-    z.strictObject({ status: z.literal("configured") }),
-  ])
+  .lazy(() =>
+    z.discriminatedUnion("status", [
+      z.strictObject({ status: z.literal("missing"), missingFields: z.array(z.string()) }),
+      z.strictObject({ status: z.literal("configured") }),
+    ]),
+  )
   .meta({ id: "IntegrationConfigurationStatus" });
 
 export const integrationAuthorizationStatusSchema = z
-  .discriminatedUnion("status", [
-    z.strictObject({ status: z.literal("not-required") }),
-    z.strictObject({ status: z.literal("not-checked") }),
-    z.strictObject({ status: z.literal("missing") }),
-    z.strictObject({
-      status: z
-        .literal("available")
-        .describe(
-          "Credentials or confirmed consent exist; this does not prove live service access.",
-        ),
-    }),
-    z.strictObject({ status: z.literal("expired") }),
-  ])
+  .lazy(() =>
+    z.discriminatedUnion("status", [
+      z.strictObject({ status: z.literal("not-required") }),
+      z.strictObject({ status: z.literal("not-checked") }),
+      z.strictObject({ status: z.literal("missing") }),
+      z.strictObject({
+        status: z
+          .literal("available")
+          .describe(
+            "Credentials or confirmed consent exist; this does not prove live service access.",
+          ),
+      }),
+      z.strictObject({ status: z.literal("expired") }),
+    ]),
+  )
   .meta({ id: "IntegrationAuthorizationStatus" });
 
-export const integrationSetupSubmissionSchema = z.strictObject({
-  kind: z.literal("input"),
-  input: jsonValueSchema
-    .describe(
-      "Direct JSON setup input validated against the source's current requirements. Null is a submitted value, never a check sentinel.",
-    )
-    .meta({ codemodeType: "JsonValue" }),
-});
+export const integrationSetupSubmissionSchema = z.lazy(() =>
+  z.strictObject({
+    kind: z.literal("input"),
+    input: jsonValueSchema
+      .describe(
+        "Direct JSON setup input validated against the source's current requirements. Null is a submitted value, never a check sentinel.",
+      )
+      .meta({ codemodeType: "JsonValue" }),
+  }),
+);
 
 /** Connection IDs preserve source identity and resolve only within the selected execution scope. */
 export const integrationConnectionIdSchema = z
-  .string()
-  .regex(/^[a-z][a-z0-9-]*#[\s\S]+$/, "Integration connection ID must be namespace#local-id.")
-  .describe(
-    "Deterministic scoped address such as backoffice#reson8, not a credential or a separately revocable binding. The suffix preserves the source's identity.",
+  .lazy(() =>
+    z
+      .string()
+      .regex(/^[a-z][a-z0-9-]*#[\s\S]+$/, "Integration connection ID must be namespace#local-id.")
+      .describe(
+        "Deterministic scoped address such as backoffice#reson8, not a credential or a separately revocable binding. The suffix preserves the source's identity.",
+      ),
   )
   .meta({ id: "IntegrationConnectionId" });
 
@@ -73,56 +84,73 @@ export const integrationSetupProgressShape = {
   connectionId: integrationConnectionIdSchema,
 };
 
-export const integrationSetupCheckSchema = z.strictObject({
-  kind: z
-    .literal("check")
-    .describe("Read authoritative setup state; user confirmation is not proof of consent."),
-});
+export const integrationSetupCheckSchema = z.lazy(() =>
+  z.strictObject({
+    kind: z
+      .literal("check")
+      .describe("Read authoritative setup state; user confirmation is not proof of consent."),
+  }),
+);
 
 export const integrationJsonSchemaSchema = z
-  .union([z.boolean(), z.record(z.string(), z.unknown())])
-  .describe(
-    "Authoritative JSON Schema supplied by the integration, never inferred from an action ID.",
+  .lazy(() =>
+    z
+      .union([z.boolean(), z.record(z.string(), z.unknown())])
+      .describe(
+        "Authoritative JSON Schema supplied by the integration, never inferred from an action ID.",
+      ),
   )
   .meta({ id: "IntegrationJsonSchema" });
 
-export const integrationInspectionSchema = z.strictObject({
-  configuration: integrationConfigurationStatusSchema,
-  authorization: integrationAuthorizationStatusSchema,
-  checks: z
-    .array(integrationVerificationCheckSchema)
-    .describe(
-      "Supported checks distinguish missing evidence from actual timestamped results; saved configuration alone proves no live health.",
-    ),
-  nextSteps: z.array(z.string()),
-});
+export const integrationInspectionSchema = z.lazy(() =>
+  z.strictObject({
+    configuration: integrationConfigurationStatusSchema,
+    authorization: integrationAuthorizationStatusSchema,
+    checks: z
+      .array(integrationVerificationCheckSchema)
+      .describe(
+        "Supported checks distinguish missing evidence from actual timestamped results; saved configuration alone proves no live health.",
+      ),
+    nextSteps: z.array(z.string()),
+  }),
+);
 
 /** Integration inspection excludes connection identity, which the runtime attaches separately. */
 export type IntegrationInspection = z.output<typeof integrationInspectionSchema>;
 
 export const integrationIdSchema = z
-  .string()
-  .min(1)
-  .describe("Service identity returned by discover; it does not identify an integration mechanism.")
+  .lazy(() =>
+    z
+      .string()
+      .min(1)
+      .describe(
+        "Service identity returned by discover; it does not identify an integration mechanism.",
+      ),
+  )
   .meta({ id: "IntegrationId" });
 
 export const integrationConnectionSetupTargetSchema = z
-  .strictObject({ kind: z.literal("connection"), connectionId: integrationConnectionIdSchema })
+  .lazy(() =>
+    z.strictObject({ kind: z.literal("connection"), connectionId: integrationConnectionIdSchema }),
+  )
   .meta({ id: "IntegrationConnectionSetupTarget" });
 
 export const integrationAuthMethodSchema = z
-  .enum([
-    "none",
-    "api-key",
-    "bearer",
-    "basic",
-    "client-credentials",
-    "oauth",
-    "signature",
-    "app-installation",
-  ])
-  .describe(
-    "How the connection authenticates to its provider; for inbound webhooks, how deliveries authenticate. Signature means an HMAC-signed body.",
+  .lazy(() =>
+    z
+      .enum([
+        "none",
+        "api-key",
+        "bearer",
+        "basic",
+        "client-credentials",
+        "oauth",
+        "signature",
+        "app-installation",
+      ])
+      .describe(
+        "How the connection authenticates to its provider; for inbound webhooks, how deliveries authenticate. Signature means an HMAC-signed body.",
+      ),
   )
   .meta({ id: "IntegrationAuthMethod" });
 
@@ -133,273 +161,312 @@ export type IntegrationAuthMethod = z.output<typeof integrationAuthMethodSchema>
 export type IntegrationConnection = z.output<typeof integrationConnectionSchema>;
 
 /** Integration connection identity is supplied by the runtime, not by private adapter inspection. */
-export const integrationConnectionSchema = integrationInspectionSchema
-  .extend({
-    connectionId: integrationConnectionIdSchema,
-    integrationId: integrationIdSchema,
-    name: z.string(),
-    authMethod: integrationAuthMethodSchema
-      .nullable()
-      .describe(
-        "Null while nothing stored at the address chooses a method, such as before API setup.",
-      ),
-  })
+export const integrationConnectionSchema = z
+  .lazy(() =>
+    integrationInspectionSchema._zod.innerType.extend({
+      connectionId: integrationConnectionIdSchema,
+      integrationId: integrationIdSchema,
+      name: z.string(),
+      authMethod: integrationAuthMethodSchema
+        .nullable()
+        .describe(
+          "Null while nothing stored at the address chooses a method, such as before API setup.",
+        ),
+    }),
+  )
   .meta({ id: "IntegrationConnection" });
 
 export const integrationConnectionSettingsSchema = z
-  .record(z.string(), jsonValueSchema)
-  .nullable()
+  .lazy(() => z.record(z.string(), jsonValueSchema).nullable())
   .meta({ id: "IntegrationConnectionSettings" });
 
 /** Source-owned settings a replacement can start from; they never contain secrets. */
 export type IntegrationConnectionSettings = z.output<typeof integrationConnectionSettingsSchema>;
 
-export const inspectedIntegrationConnectionSchema = integrationConnectionSchema
-  .extend({
-    settings: integrationConnectionSettingsSchema.describe(
-      "Stored values that are not secret, shaped like this connection's reconfigure input. Start a replacement from them, change what was asked, and supply secrets and omitted fields again. Null when the source takes no replacement or nothing is stored.",
-    ),
-  })
+export const inspectedIntegrationConnectionSchema = z
+  .lazy(() =>
+    integrationConnectionSchema._zod.innerType.extend({
+      settings: integrationConnectionSettingsSchema.describe(
+        "Stored values that are not secret, shaped like this connection's reconfigure input. Start a replacement from them, change what was asked, and supply secrets and omitted fields again. Null when the source takes no replacement or nothing is stored.",
+      ),
+    }),
+  )
   .meta({ id: "InspectedIntegrationConnection" });
 
-export const configuredIntegrationSchema = integrationConnectionSchema
-  .extend({ configuration: z.strictObject({ status: z.literal("configured") }) })
+export const configuredIntegrationSchema = z
+  .lazy(() =>
+    integrationConnectionSchema._zod.innerType.extend({
+      configuration: z.strictObject({ status: z.literal("configured") }),
+    }),
+  )
   .meta({ id: "ConfiguredIntegrationConnection" });
 
 /** Public integration setup progress never exposes private continuation state or binding data. */
 export const integrationSetupProgressSchema = z
-  .discriminatedUnion("status", [
-    z.strictObject({
-      ...integrationSetupProgressShape,
-      status: z.literal("needs-input"),
-      instructions: z.string(),
-      inputSchema: integrationJsonSchemaSchema,
-      secretFields: z
-        .array(z.string())
-        .describe(
-          "Secret property names for input controls, as dot-separated paths when nested; never secret values.",
-        ),
-    }),
-    z.strictObject({
-      ...integrationSetupProgressShape,
-      status: z.literal("needs-authorization"),
-      instructions: z.string(),
-      authorizationUrl: z.url(),
-    }),
-    z.strictObject({
-      ...integrationSetupProgressShape,
-      status: z.literal("pending"),
-      message: z.string(),
-    }),
-    z.strictObject({
-      ...integrationSetupProgressShape,
-      status: z.literal("ready"),
-    }),
-    z.strictObject({
-      ...integrationSetupProgressShape,
-      status: z.literal("blocked"),
-      reason: z.string(),
-    }),
-    z.strictObject({
-      ...integrationSetupProgressShape,
-      status: z.literal("expired"),
-      reason: z.string(),
-    }),
-  ])
+  .lazy(() =>
+    z.discriminatedUnion("status", [
+      z.strictObject({
+        ...integrationSetupProgressShape,
+        status: z.literal("needs-input"),
+        instructions: z.string(),
+        inputSchema: integrationJsonSchemaSchema,
+        secretFields: z
+          .array(z.string())
+          .describe(
+            "Secret property names for input controls, as dot-separated paths when nested; never secret values.",
+          ),
+      }),
+      z.strictObject({
+        ...integrationSetupProgressShape,
+        status: z.literal("needs-authorization"),
+        instructions: z.string(),
+        authorizationUrl: z.url(),
+      }),
+      z.strictObject({
+        ...integrationSetupProgressShape,
+        status: z.literal("pending"),
+        message: z.string(),
+      }),
+      z.strictObject({
+        ...integrationSetupProgressShape,
+        status: z.literal("ready"),
+      }),
+      z.strictObject({
+        ...integrationSetupProgressShape,
+        status: z.literal("blocked"),
+        reason: z.string(),
+      }),
+      z.strictObject({
+        ...integrationSetupProgressShape,
+        status: z.literal("expired"),
+        reason: z.string(),
+      }),
+    ]),
+  )
   .meta({ id: "IntegrationSetupProgress" });
 
 /** Integration setup progress describes current requirements without exposing private continuation data. */
 export type IntegrationSetupProgress = z.output<typeof integrationSetupProgressSchema>;
 
 /** Connection operations select an address, never a caller-supplied owner scope. */
-export const integrationConnectionInputSchema = z.strictObject({
-  connectionId: integrationConnectionIdSchema,
-});
+export const integrationConnectionInputSchema = z.lazy(() =>
+  z.strictObject({
+    connectionId: integrationConnectionIdSchema,
+  }),
+);
 
 /** Named setup distinguishes checking source-owned state from submitting any JSON value, including null. */
-export const integrationSetupInputSchema = z.discriminatedUnion("kind", [
-  integrationSetupCheckSchema.extend(integrationConnectionInputSchema.shape),
-  integrationSetupSubmissionSchema.extend(integrationConnectionInputSchema.shape),
-]);
+export const integrationSetupInputSchema = z.lazy(() =>
+  z.discriminatedUnion("kind", [
+    integrationSetupCheckSchema._zod.innerType.extend(
+      integrationConnectionInputSchema._zod.innerType.shape,
+    ),
+    integrationSetupSubmissionSchema._zod.innerType.extend(
+      integrationConnectionInputSchema._zod.innerType.shape,
+    ),
+  ]),
+);
 
 /** Setup requests select a scoped address and carry one explicit operation, without private continuation data. */
 export type IntegrationSetupInput = z.output<typeof integrationSetupInputSchema>;
 
 /** Disconnecting repeats the address, so removal is never a side effect of an edited command. */
-export const integrationDisconnectInputSchema = integrationConnectionInputSchema
-  .extend({
-    confirm: integrationConnectionIdSchema.describe(
-      "Repeat connectionId to confirm removing its source-owned configuration and credentials.",
-    ),
-  })
-  .refine((input) => input.confirm === input.connectionId, {
-    message: "Integration disconnect confirmation must repeat the connection ID.",
-    path: ["confirm"],
-  });
+export const integrationDisconnectInputSchema = z.lazy(() =>
+  integrationConnectionInputSchema._zod.innerType
+    .extend({
+      confirm: integrationConnectionIdSchema.describe(
+        "Repeat connectionId to confirm removing its source-owned configuration and credentials.",
+      ),
+    })
+    .refine((input) => input.confirm === input.connectionId, {
+      message: "Integration disconnect confirmation must repeat the connection ID.",
+      path: ["confirm"],
+    }),
+);
 
 /** Disconnect results report source state; the address stays valid for a later setup. */
 export const integrationDisconnectResultSchema = z
-  .strictObject({
-    connectionId: integrationConnectionIdSchema,
-    status: z
-      .enum(["disconnected", "not-configured"])
-      .describe("Not-configured means nothing was stored at this address in the selected scope."),
-  })
+  .lazy(() =>
+    z.strictObject({
+      connectionId: integrationConnectionIdSchema,
+      status: z
+        .enum(["disconnected", "not-configured"])
+        .describe("Not-configured means nothing was stored at this address in the selected scope."),
+    }),
+  )
   .meta({ id: "IntegrationDisconnectResult" });
 
 /** Disconnect results never retain a removed connection's configuration. */
 export type IntegrationDisconnectResult = z.output<typeof integrationDisconnectResultSchema>;
 
 export const integrationConnectionEventsBackfillResultSchema = z
-  .strictObject({
-    connections: z.array(
-      z.strictObject({
-        connectionId: integrationConnectionIdSchema,
-        service: integrationIdSchema,
-        state: z.enum(["ready", "unavailable"]),
-      }),
-    ),
-  })
+  .lazy(() =>
+    z.strictObject({
+      connections: z.array(
+        z.strictObject({
+          connectionId: integrationConnectionIdSchema,
+          service: integrationIdSchema,
+          state: z.enum(["ready", "unavailable"]),
+        }),
+      ),
+    }),
+  )
   .meta({ id: "IntegrationConnectionEventsBackfillResult" });
 
 /** Integration discovery reports service availability in the selected scope, not live health. */
 export const integrationOverviewSchema = z
-  .strictObject({
-    id: integrationIdSchema,
-    label: z.string(),
-    description: z.string(),
-    connectionCardinality: z
-      .enum(["singleton", "multiple"])
-      .describe(
-        "Singleton means one scoped configuration; multiple means separately selectable connections. Credentials remain in their existing service-owned stores.",
-      ),
-    availability: z
-      .discriminatedUnion("status", [
-        z.strictObject({ status: z.literal("available") }),
-        z.strictObject({ status: z.literal("unavailable"), reason: z.string() }),
-      ])
-      .describe(
-        "Whether this service's configuration store is available in the selected scope, not whether credentials are present or live service access works.",
-      )
-      .meta({ id: "IntegrationAvailability" }),
-    setupTargets: z
-      .array(integrationConnectionSetupTargetSchema)
-      .describe(
-        "Known named setup targets, including unconfigured fixed slots; never invented account or attempt IDs.",
-      ),
-    automationEvents: z
-      .array(z.strictObject({ source: z.string(), eventType: z.string() }))
-      .describe(
-        "Source-specific activity events; declared identities do not prove live event delivery. Connection state changes arrive for every service as source integrations, keyed by subject.connectionId.",
-      ),
-  })
+  .lazy(() =>
+    z.strictObject({
+      id: integrationIdSchema,
+      label: z.string(),
+      description: z.string(),
+      connectionCardinality: z
+        .enum(["singleton", "multiple"])
+        .describe(
+          "Singleton means one scoped configuration; multiple means separately selectable connections. Credentials remain in their existing service-owned stores.",
+        ),
+      availability: z
+        .discriminatedUnion("status", [
+          z.strictObject({ status: z.literal("available") }),
+          z.strictObject({ status: z.literal("unavailable"), reason: z.string() }),
+        ])
+        .describe(
+          "Whether this service's configuration store is available in the selected scope, not whether credentials are present or live service access works.",
+        )
+        .meta({ id: "IntegrationAvailability" }),
+      setupTargets: z
+        .array(integrationConnectionSetupTargetSchema)
+        .describe(
+          "Known named setup targets, including unconfigured fixed slots; never invented account or attempt IDs.",
+        ),
+      automationEvents: z
+        .array(z.strictObject({ source: z.string(), eventType: z.string() }))
+        .describe(
+          "Source-specific activity events; declared identities do not prove live event delivery. Connection state changes arrive for every service as source integrations, keyed by subject.connectionId.",
+        ),
+    }),
+  )
   .meta({ id: "IntegrationOverview" });
 
 /** Integration discovery metadata has one canonical schema shared by tools and implementations. */
 export type IntegrationOverview = z.output<typeof integrationOverviewSchema>;
 
 /** Integration list pages project existing configured connections, not independent binding records. */
-export const integrationListOutputSchema = z.strictObject({
-  connections: z.array(configuredIntegrationSchema),
-  unavailableSources: z
-    .array(
-      z.strictObject({
-        source: z
-          .string()
-          .describe(
-            "Addresses the source owns: `namespace#` for a whole namespace, or one exact connection ID.",
-          ),
-        reason: z.string(),
-      }),
-    )
-    .describe(
-      "Sources that failed to list in this page. Their connections are missing from the listing, not removed; list again later.",
-    ),
-  cursor: z
-    .string()
-    .nullable()
-    .describe("Null means all configured integrations in this scope have been listed."),
-});
+export const integrationListOutputSchema = z.lazy(() =>
+  z.strictObject({
+    connections: z.array(configuredIntegrationSchema),
+    unavailableSources: z
+      .array(
+        z.strictObject({
+          source: z
+            .string()
+            .describe(
+              "Addresses the source owns: `namespace#` for a whole namespace, or one exact connection ID.",
+            ),
+          reason: z.string(),
+        }),
+      )
+      .describe(
+        "Sources that failed to list in this page. Their connections are missing from the listing, not removed; list again later.",
+      ),
+    cursor: z
+      .string()
+      .nullable()
+      .describe("Null means all configured integrations in this scope have been listed."),
+  }),
+);
 
 /** Connection pages retain source pagination without allocating new connection identities. */
 export type IntegrationConnectionPage = z.output<typeof integrationListOutputSchema>;
 
 /** Integration listing starts with a null cursor and never selects an adapter. */
-export const integrationListInputSchema = z.strictObject({
-  cursor: z
-    .string()
-    .nullable()
-    .describe("Null starts the scoped listing; use the returned next cursor."),
-});
+export const integrationListInputSchema = z.lazy(() =>
+  z.strictObject({
+    cursor: z
+      .string()
+      .nullable()
+      .describe("Null starts the scoped listing; use the returned next cursor."),
+  }),
+);
 
 /** Action values are JSON; action-specific validation still precedes service side effects. */
-export const integrationExecuteInputSchema = integrationConnectionInputSchema.extend({
-  actionId: z.string().min(1),
-  input: jsonValueSchema
-    .describe(
-      "JSON action input, validated against the live action schema before dispatch. Binary inputs use schema-declared byte arrays of integers 0–255, never ArrayBuffer or typed arrays; implementations convert them privately.",
-    )
-    .meta({ codemodeType: "JsonValue" }),
-  unchecked: z
-    .boolean()
-    .default(false)
-    .describe(
-      "Required to run an action whose validation is unchecked: its input and output skip validation and the service alone rejects bad input. Checked actions validate regardless.",
-    ),
-});
+export const integrationExecuteInputSchema = z.lazy(() =>
+  integrationConnectionInputSchema._zod.innerType.extend({
+    actionId: z.string().min(1),
+    input: jsonValueSchema
+      .describe(
+        "JSON action input, validated against the live action schema before dispatch. Binary inputs use schema-declared byte arrays of integers 0–255, never ArrayBuffer or typed arrays; implementations convert them privately.",
+      )
+      .meta({ codemodeType: "JsonValue" }),
+    unchecked: z
+      .boolean()
+      .default(false)
+      .describe(
+        "Required to run an action whose validation is unchecked: its input and output skip validation and the service alone rejects bad input. Checked actions validate regardless.",
+      ),
+  }),
+);
 
 /**
  * Whether execution validates an action against its schemas. Unchecked actions publish contracts
  * that cannot be validated faithfully, so callers must opt in to running them.
  */
 export const integrationActionValidationSchema = z
-  .discriminatedUnion("kind", [
-    z.strictObject({ kind: z.literal("checked") }),
-    z.strictObject({
-      kind: z.literal("unchecked"),
-      reason: z.string().describe("Why the published schemas cannot be validated."),
-    }),
-  ])
+  .lazy(() =>
+    z.discriminatedUnion("kind", [
+      z.strictObject({ kind: z.literal("checked") }),
+      z.strictObject({
+        kind: z.literal("unchecked"),
+        reason: z.string().describe("Why the published schemas cannot be validated."),
+      }),
+    ]),
+  )
   .meta({ id: "IntegrationActionValidation" });
 
 /** Integration action schemas describe the operation's own result, including asynchronous job handles. */
 export const integrationActionSchema = z
-  .strictObject({
-    id: z.string().min(1).describe("Action identity returned by actions for this connection."),
-    label: z.string(),
-    description: z.string(),
-    validation: integrationActionValidationSchema,
-    inputSchema: integrationJsonSchemaSchema,
-    outputSchema: integrationJsonSchemaSchema.describe(
-      "Describes the action's own result, including any asynchronous job handle.",
-    ),
-  })
+  .lazy(() =>
+    z.strictObject({
+      id: z.string().min(1).describe("Action identity returned by actions for this connection."),
+      label: z.string(),
+      description: z.string(),
+      validation: integrationActionValidationSchema,
+      inputSchema: integrationJsonSchemaSchema,
+      outputSchema: integrationJsonSchemaSchema.describe(
+        "Describes the action's own result, including any asynchronous job handle.",
+      ),
+    }),
+  )
   .meta({ id: "IntegrationAction" });
 
 /** Integration action metadata contains contracts but no executable handler. */
 export type IntegrationAction = z.output<typeof integrationActionSchema>;
 
-export const integrationGenerateClientInputSchema = integrationConnectionInputSchema.extend({
-  out: z
-    .string()
-    .trim()
-    .min(1)
-    .describe(
-      "Absolute path of the .js module to write under /workspace. Only a module this operation generated is replaced.",
-    ),
-});
+export const integrationGenerateClientInputSchema = z.lazy(() =>
+  integrationConnectionInputSchema._zod.innerType.extend({
+    out: z
+      .string()
+      .trim()
+      .min(1)
+      .describe(
+        "Absolute path of the .js module to write under /workspace. Only a module this operation generated is replaced.",
+      ),
+  }),
+);
 
 /** Generated clients are snapshots of the connection's action contracts. */
 export const integrationClientSchema = z
-  .strictObject({
-    path: z.string(),
-    exports: z.array(
-      z.strictObject({
-        name: z.string().describe("Exported function name."),
-        actionId: z.string().describe("Action the function executes."),
-      }),
-    ),
-  })
+  .lazy(() =>
+    z.strictObject({
+      path: z.string(),
+      exports: z.array(
+        z.strictObject({
+          name: z.string().describe("Exported function name."),
+          actionId: z.string().describe("Action the function executes."),
+        }),
+      ),
+    }),
+  )
   .meta({ id: "IntegrationClient" });
 
 export const integrationsOperations = {
@@ -408,7 +475,7 @@ export const integrationsOperations = {
       "Discover available services and unconfigured services in the selected scope. Service availability does not prove live health.",
     permissions: [BACKOFFICE_PERMISSION.integrations.read],
     input: z.void(),
-    output: z.array(integrationOverviewSchema),
+    output: z.lazy(() => z.array(integrationOverviewSchema)),
   },
   "integrations.list": {
     description:
@@ -457,7 +524,7 @@ export const integrationsOperations = {
       "Discover the selected connection's supported actions and authoritative input/output contracts without executing them. Never infer schemas from action IDs.",
     permissions: [BACKOFFICE_PERMISSION.integrations.read],
     input: integrationConnectionInputSchema,
-    output: z.array(integrationActionSchema),
+    output: z.lazy(() => z.array(integrationActionSchema)),
   },
   "integrations.execute": {
     description:

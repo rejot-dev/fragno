@@ -12,43 +12,47 @@ export const BACKOFFICE_TOKEN_ISSUER = "fragno-backoffice-auth";
 export const APP_ACTION_TOKEN_LIFETIME_SECONDS = 60;
 
 /** The JSON body Backoffice POSTs to an app's action endpoint. */
-export const appActionRequestSchema = z.discriminatedUnion("type", [
-  // integrations.verify proves the endpoint accepts Backoffice's signature without running an action.
-  z.strictObject({ type: z.literal("ping") }),
-  z.strictObject({
-    type: z.literal("action"),
-    actionId: z.string().min(1),
-    input: jsonValueSchema.describe("Validated against the action's declared input schema."),
-  }),
-]);
+export const appActionRequestSchema = z.lazy(() =>
+  z.discriminatedUnion("type", [
+    // integrations.verify proves the endpoint accepts Backoffice's signature without running an action.
+    z.strictObject({ type: z.literal("ping") }),
+    z.strictObject({
+      type: z.literal("action"),
+      actionId: z.string().min(1),
+      input: jsonValueSchema.describe("Validated against the action's declared input schema."),
+    }),
+  ]),
+);
 export type AppActionRequest = z.infer<typeof appActionRequestSchema>;
 
 /**
  * The bearer token on every action request. Its audience is the app's endpoint URL, so a request
  * sent to one app cannot be replayed against another.
  */
-export const appActionTokenClaimsSchema = z.object({
-  iss: z.literal(BACKOFFICE_TOKEN_ISSUER),
-  aud: z.string().min(1),
-  iat: z.number().int().nonnegative(),
-  exp: z.number().int().positive(),
-  /** Unique per request; apps may use it as an idempotency key. */
-  jti: z.string().min(1),
-  sub: z.string().min(1),
-  /** The Backoffice user behind the call, or the installation itself for automated calls. */
-  actor: z.discriminatedUnion("kind", [
-    z.strictObject({ kind: z.literal("user"), userId: z.string().min(1) }),
-    z.strictObject({ kind: z.literal("installation") }),
-  ]),
-  installation: z.strictObject({
-    appId: z.string().min(1),
-    activation: z.number().int().positive(),
-    externalAccount: appInstallationExternalAccountSchema,
+export const appActionTokenClaimsSchema = z.lazy(() =>
+  z.object({
+    iss: z.literal(BACKOFFICE_TOKEN_ISSUER),
+    aud: z.string().min(1),
+    iat: z.number().int().nonnegative(),
+    exp: z.number().int().positive(),
+    /** Unique per request; apps may use it as an idempotency key. */
+    jti: z.string().min(1),
+    sub: z.string().min(1),
+    /** The Backoffice user behind the call, or the installation itself for automated calls. */
+    actor: z.discriminatedUnion("kind", [
+      z.strictObject({ kind: z.literal("user"), userId: z.string().min(1) }),
+      z.strictObject({ kind: z.literal("installation") }),
+    ]),
+    installation: z.strictObject({
+      appId: z.string().min(1),
+      activation: z.number().int().positive(),
+      externalAccount: appInstallationExternalAccountSchema,
+    }),
+    scopeRestriction: backofficeRoutableScopeSchema,
+    /** Base64url SHA-256 of the exact request body bytes. */
+    bodySha256: z.string().min(1),
   }),
-  scopeRestriction: backofficeRoutableScopeSchema,
-  /** Base64url SHA-256 of the exact request body bytes. */
-  bodySha256: z.string().min(1),
-});
+);
 export type AppActionTokenClaims = z.infer<typeof appActionTokenClaimsSchema>;
 
 /** Binds a token to one body; Backoffice signs it and the app's verifier recomputes it. */

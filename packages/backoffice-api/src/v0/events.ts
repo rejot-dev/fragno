@@ -25,160 +25,192 @@ export type AutomationEvent = {
   subject?: AutomationEventSubject | null;
 };
 
-export const idSchema = z.preprocess((value) => {
-  if (typeof value === "string") {
-    return value;
-  }
-  if (value && typeof value === "object" && "valueOf" in value) {
-    const primitive = value.valueOf();
-    if (typeof primitive === "string" || typeof primitive === "number") {
-      return String(primitive);
+export const idSchema = z.lazy(() =>
+  z.preprocess((value) => {
+    if (typeof value === "string") {
+      return value;
     }
-  }
-  return value;
-}, z.string());
+    if (value && typeof value === "object" && "valueOf" in value) {
+      const primitive = value.valueOf();
+      if (typeof primitive === "string" || typeof primitive === "number") {
+        return String(primitive);
+      }
+    }
+    return value;
+  }, z.string()),
+);
 
-const automationEventSubjectSchema: z.ZodType<AutomationEventSubject> = z
-  .object({
-    orgId: z.string().trim().min(1).optional(),
-    userId: z.string().trim().min(1).optional(),
-  })
-  .catchall(z.unknown());
+const automationEventSubjectSchema: z.ZodType<AutomationEventSubject> = z.lazy(() =>
+  z
+    .object({
+      orgId: z.string().trim().min(1).optional(),
+      userId: z.string().trim().min(1).optional(),
+    })
+    .catchall(z.unknown()),
+);
 
-export const automationEventSchema = z.object({
-  id: idSchema,
-  scope: backofficeContextScopeSchema,
-  scopeRestriction: backofficeContextScopeSchema.nullable(),
-  source: z.string().trim().min(1),
-  eventType: z.string().trim().min(1),
-  occurredAt: z.iso.datetime(),
-  payload: z.record(z.string(), z.unknown()),
-  actors: automationActorsSchema,
-  subject: z.preprocess((value) => value ?? null, automationEventSubjectSchema.nullable()),
-}) satisfies z.ZodType<AutomationEvent>;
+export const automationEventSchema = z.lazy(() =>
+  z.object({
+    id: idSchema,
+    scope: backofficeContextScopeSchema,
+    scopeRestriction: backofficeContextScopeSchema.nullable(),
+    source: z.string().trim().min(1),
+    eventType: z.string().trim().min(1),
+    occurredAt: z.iso.datetime(),
+    payload: z.record(z.string(), z.unknown()),
+    actors: automationActorsSchema,
+    subject: z.preprocess((value) => value ?? null, automationEventSubjectSchema.nullable()),
+  }),
+) satisfies z.ZodType<AutomationEvent>;
 
-export const automationEventRecordSchema = automationEventSchema.extend({
-  createdAt: z.iso.datetime().optional(),
-});
+export const automationEventRecordSchema = z.lazy(() =>
+  automationEventSchema._zod.innerType.extend({
+    createdAt: z.iso.datetime().optional(),
+  }),
+);
 
 export type AutomationEventRecord = z.infer<typeof automationEventRecordSchema>;
 
-export const automationEventListInputSchema = z.object({
-  limit: z.number().int().positive().max(500).optional(),
-});
+export const automationEventListInputSchema = z.lazy(() =>
+  z.object({
+    limit: z.number().int().positive().max(500).optional(),
+  }),
+);
 
-export const automationEventListResultSchema = z.object({
-  events: z.array(automationEventRecordSchema),
-  nextCursor: z.string().optional(),
-  hasNextPage: z.boolean(),
-});
+export const automationEventListResultSchema = z.lazy(() =>
+  z.object({
+    events: z.array(automationEventRecordSchema),
+    nextCursor: z.string().optional(),
+    hasNextPage: z.boolean(),
+  }),
+);
 
-const jsonSchemaDocumentSchema = z.record(z.string(), z.unknown());
+const jsonSchemaDocumentSchema = z.lazy(() => z.record(z.string(), z.unknown()));
 
-export const automationEventDefinitionSchema = z.object({
-  id: z.string().trim().min(1),
-  source: z.string().trim().min(1),
-  eventType: z.string().trim().min(1),
-  label: z.string().trim().min(1),
-  description: z.string().nullable().optional(),
-  payloadSchema: jsonSchemaDocumentSchema.nullable().optional(),
-  actorSchema: jsonSchemaDocumentSchema.nullable().optional(),
-  subjectSchema: jsonSchemaDocumentSchema.nullable().optional(),
-  example: z.unknown().nullable().optional(),
-  enabled: z.boolean(),
-  capabilityId: z.string(),
-  createdAt: z.iso.datetime().optional(),
-  updatedAt: z.iso.datetime().optional(),
-});
-
-export type AutomationEventDefinition = z.infer<typeof automationEventDefinitionSchema>;
-
-export const automationEventDefinitionCreateInputSchema = z.object({
-  source: z.string().trim().min(1),
-  eventType: z.string().trim().min(1),
-  label: z.string().trim().min(1),
-  description: z.string().nullable().optional(),
-  payloadSchema: jsonSchemaDocumentSchema.nullable().optional(),
-  actorSchema: jsonSchemaDocumentSchema.nullable().optional(),
-  subjectSchema: jsonSchemaDocumentSchema.nullable().optional(),
-  example: z.unknown().nullable().optional(),
-  enabled: z.boolean().default(true),
-});
-
-export type AutomationEventDefinitionCreateInput = z.input<
-  typeof automationEventDefinitionCreateInputSchema
->;
-
-export const automationEventDefinitionUpdatePayloadSchema = z
-  .object({
-    label: z.string().trim().min(1).optional(),
+export const automationEventDefinitionSchema = z.lazy(() =>
+  z.object({
+    id: z.string().trim().min(1),
+    source: z.string().trim().min(1),
+    eventType: z.string().trim().min(1),
+    label: z.string().trim().min(1),
     description: z.string().nullable().optional(),
     payloadSchema: jsonSchemaDocumentSchema.nullable().optional(),
     actorSchema: jsonSchemaDocumentSchema.nullable().optional(),
     subjectSchema: jsonSchemaDocumentSchema.nullable().optional(),
     example: z.unknown().nullable().optional(),
-    enabled: z.boolean().optional(),
-  })
-  .refine((patch) => Object.values(patch).some((value) => typeof value !== "undefined"), {
-    message: "At least one event definition field must be provided.",
-  });
+    enabled: z.boolean(),
+    capabilityId: z.string(),
+    createdAt: z.iso.datetime().optional(),
+    updatedAt: z.iso.datetime().optional(),
+  }),
+);
 
-export const automationEventDefinitionUpdateInputSchema = z.object({
-  source: z.string().trim().min(1),
-  eventType: z.string().trim().min(1),
-  patch: automationEventDefinitionUpdatePayloadSchema,
-});
+export type AutomationEventDefinition = z.infer<typeof automationEventDefinitionSchema>;
+
+export const automationEventDefinitionCreateInputSchema = z.lazy(() =>
+  z.object({
+    source: z.string().trim().min(1),
+    eventType: z.string().trim().min(1),
+    label: z.string().trim().min(1),
+    description: z.string().nullable().optional(),
+    payloadSchema: jsonSchemaDocumentSchema.nullable().optional(),
+    actorSchema: jsonSchemaDocumentSchema.nullable().optional(),
+    subjectSchema: jsonSchemaDocumentSchema.nullable().optional(),
+    example: z.unknown().nullable().optional(),
+    enabled: z.boolean().default(true),
+  }),
+);
+
+export type AutomationEventDefinitionCreateInput = z.input<
+  typeof automationEventDefinitionCreateInputSchema
+>;
+
+export const automationEventDefinitionUpdatePayloadSchema = z.lazy(() =>
+  z
+    .object({
+      label: z.string().trim().min(1).optional(),
+      description: z.string().nullable().optional(),
+      payloadSchema: jsonSchemaDocumentSchema.nullable().optional(),
+      actorSchema: jsonSchemaDocumentSchema.nullable().optional(),
+      subjectSchema: jsonSchemaDocumentSchema.nullable().optional(),
+      example: z.unknown().nullable().optional(),
+      enabled: z.boolean().optional(),
+    })
+    .refine((patch) => Object.values(patch).some((value) => typeof value !== "undefined"), {
+      message: "At least one event definition field must be provided.",
+    }),
+);
+
+export const automationEventDefinitionUpdateInputSchema = z.lazy(() =>
+  z.object({
+    source: z.string().trim().min(1),
+    eventType: z.string().trim().min(1),
+    patch: automationEventDefinitionUpdatePayloadSchema,
+  }),
+);
 
 export type AutomationEventDefinitionUpdateInput = z.input<
   typeof automationEventDefinitionUpdateInputSchema
 >;
 
-const eventListInputSchema = automationEventListInputSchema.extend({
-  cursor: z.string().trim().min(1).optional(),
-});
-
-export type EventListInput = z.infer<typeof eventListInputSchema>;
-
-const eventEmitInputSchema = z.strictObject({
-  eventType: z.string().trim().min(1),
-  source: z.string().trim().min(1).optional(),
-  subjectUserId: z.string().trim().min(1).optional(),
-  payload: z.record(z.string(), z.unknown()).optional(),
-  targetScope: backofficeContextScopeSchema.optional(),
-});
-
-const eventEmitOutputSchema = z.object({
-  accepted: z.boolean(),
-  eventId: z.string().trim().min(1),
-  scope: backofficeContextScopeSchema,
-  source: z.string().trim().min(1),
-  eventType: z.string().trim().min(1),
-});
-
-const automationEventDescriptorSchema = z.object({
-  source: z.string(),
-  eventType: z.string(),
-  label: z.string(),
-  description: z.string().optional(),
-  capabilityId: z.string(),
-  payloadSchema: z.record(z.string(), z.unknown()).optional(),
-  actorSchema: z.record(z.string(), z.unknown()).optional(),
-  subjectSchema: z.record(z.string(), z.unknown()).optional(),
-  example: z.unknown().optional(),
-});
-
-const automationEventsCatalogListOutputSchema = z.array(
-  automationEventDescriptorSchema.omit({
-    payloadSchema: true,
-    actorSchema: true,
-    subjectSchema: true,
+const eventListInputSchema = z.lazy(() =>
+  automationEventListInputSchema._zod.innerType.extend({
+    cursor: z.string().trim().min(1).optional(),
   }),
 );
 
-const automationEventCatalogGetInputSchema = z.object({
-  source: z.string().trim().min(1),
-  eventType: z.string().trim().min(1),
-});
+export type EventListInput = z.infer<typeof eventListInputSchema>;
+
+const eventEmitInputSchema = z.lazy(() =>
+  z.strictObject({
+    eventType: z.string().trim().min(1),
+    source: z.string().trim().min(1).optional(),
+    subjectUserId: z.string().trim().min(1).optional(),
+    payload: z.record(z.string(), z.unknown()).optional(),
+    targetScope: backofficeContextScopeSchema.optional(),
+  }),
+);
+
+const eventEmitOutputSchema = z.lazy(() =>
+  z.object({
+    accepted: z.boolean(),
+    eventId: z.string().trim().min(1),
+    scope: backofficeContextScopeSchema,
+    source: z.string().trim().min(1),
+    eventType: z.string().trim().min(1),
+  }),
+);
+
+const automationEventDescriptorSchema = z.lazy(() =>
+  z.object({
+    source: z.string(),
+    eventType: z.string(),
+    label: z.string(),
+    description: z.string().optional(),
+    capabilityId: z.string(),
+    payloadSchema: z.record(z.string(), z.unknown()).optional(),
+    actorSchema: z.record(z.string(), z.unknown()).optional(),
+    subjectSchema: z.record(z.string(), z.unknown()).optional(),
+    example: z.unknown().optional(),
+  }),
+);
+
+const automationEventsCatalogListOutputSchema = z.lazy(() =>
+  z.array(
+    automationEventDescriptorSchema._zod.innerType.omit({
+      payloadSchema: true,
+      actorSchema: true,
+      subjectSchema: true,
+    }),
+  ),
+);
+
+const automationEventCatalogGetInputSchema = z.lazy(() =>
+  z.object({
+    source: z.string().trim().min(1),
+    eventType: z.string().trim().min(1),
+  }),
+);
 
 export const eventsOperations = {
   "events.fire": {
@@ -197,8 +229,10 @@ export const eventsOperations = {
   "events.get": {
     description: "Get one stored automation event by id in the current scope.",
     permissions: [BACKOFFICE_PERMISSION.events.read],
-    input: z.object({ id: z.string().trim().min(1) }),
-    output: automationEventListResultSchema.shape.events.element.nullable(),
+    input: z.lazy(() => z.object({ id: z.string().trim().min(1) })),
+    output: z.lazy(() =>
+      automationEventListResultSchema._zod.innerType.shape.events.element.nullable(),
+    ),
   },
   "events.catalog.list": {
     description:
@@ -211,7 +245,7 @@ export const eventsOperations = {
     description: "Get one automation event descriptor and its JSON schemas.",
     permissions: [BACKOFFICE_PERMISSION.events.read],
     input: automationEventCatalogGetInputSchema,
-    output: automationEventDescriptorSchema.nullable(),
+    output: z.lazy(() => automationEventDescriptorSchema.nullable()),
   },
   "events.catalog.create": {
     description: "Create a scoped dynamic automation event definition with optional JSON schemas.",

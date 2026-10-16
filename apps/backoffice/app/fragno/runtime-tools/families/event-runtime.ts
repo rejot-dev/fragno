@@ -73,7 +73,9 @@ export function createEventRuntime(options: CreateEventRuntimeOptions): EventRun
         return null;
       }
       if (response.type === "json") {
-        return automationEventListResultSchema.shape.events.element.parse(response.data);
+        return automationEventListResultSchema._zod.innerType.shape.events.element.parse(
+          response.data,
+        );
       }
       throw new BackofficeOperationError(
         backofficeOperationErrorKindForStatus(response.status),

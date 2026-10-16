@@ -41,7 +41,7 @@ export const marketplacePackageManifestSchema = z.strictObject({
       "Marketplace package names use @<organization-slug>/<package-slug>.",
     ),
   version: marketplaceVersionSchema,
-  metadata: marketplaceListingMetadataSchema.strict(),
+  metadata: z.lazy(() => marketplaceListingMetadataSchema._zod.innerType.strict()),
   files: z
     .array(packagePathSchema)
     .min(1)

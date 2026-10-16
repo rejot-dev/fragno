@@ -3,31 +3,35 @@ import { z } from "zod";
 import type { BackofficeApiOperation } from "../api";
 import { BACKOFFICE_PERMISSION } from "./shared/permissions";
 
-export const hookScopeOutputSchema = z.object({
-  id: z.string(),
-  label: z.string(),
-  capabilityId: z.string(),
-  capabilityLabel: z.string(),
-  kind: z.enum(["connection", "system"]),
-  configured: z.boolean().optional(),
-  healthy: z.boolean().optional(),
-});
+export const hookScopeOutputSchema = z.lazy(() =>
+  z.object({
+    id: z.string(),
+    label: z.string(),
+    capabilityId: z.string(),
+    capabilityLabel: z.string(),
+    kind: z.enum(["connection", "system"]),
+    configured: z.boolean().optional(),
+    healthy: z.boolean().optional(),
+  }),
+);
 
-export const capabilitySummarySchema = z.object({
-  id: z.string(),
-  label: z.string(),
-  kind: z.enum(["connection", "system"]),
-  available: z.boolean(),
-  configured: z.boolean(),
-  healthy: z.boolean().optional(),
-  reason: z.string().optional(),
-});
+export const capabilitySummarySchema = z.lazy(() =>
+  z.object({
+    id: z.string(),
+    label: z.string(),
+    kind: z.enum(["connection", "system"]),
+    available: z.boolean(),
+    configured: z.boolean(),
+    healthy: z.boolean().optional(),
+    reason: z.string().optional(),
+  }),
+);
 
-export const capabilitiesListOutputSchema = z.array(capabilitySummarySchema);
+export const capabilitiesListOutputSchema = z.lazy(() => z.array(capabilitySummarySchema));
 
 export type CapabilitiesListOutput = z.infer<typeof capabilitiesListOutputSchema>;
 
-export const hookScopesListOutputSchema = z.array(hookScopeOutputSchema);
+export const hookScopesListOutputSchema = z.lazy(() => z.array(hookScopeOutputSchema));
 
 export type HookScopesListOutput = z.infer<typeof hookScopesListOutputSchema>;
 

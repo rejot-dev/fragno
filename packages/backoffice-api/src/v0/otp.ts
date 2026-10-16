@@ -3,26 +3,32 @@ import { z } from "zod";
 import type { BackofficeApiOperation } from "../api";
 import { BACKOFFICE_PERMISSION } from "./shared/permissions";
 
-export const externalIdentitySchema = z.strictObject({
-  scope: z.literal("external"),
-  source: z.string().trim().min(1),
-  type: z.string().trim().min(1),
-  id: z.string().trim().min(1),
-});
+export const externalIdentitySchema = z.lazy(() =>
+  z.strictObject({
+    scope: z.literal("external"),
+    source: z.string().trim().min(1),
+    type: z.string().trim().min(1),
+    id: z.string().trim().min(1),
+  }),
+);
 
-const createClaimInputSchema = z.strictObject({
-  ttlMinutes: z.number().int().positive().optional(),
-});
+const createClaimInputSchema = z.lazy(() =>
+  z.strictObject({
+    ttlMinutes: z.number().int().positive().optional(),
+  }),
+);
 
-const identityClaimRecordSchema = z.object({
-  url: z.string().trim().min(1),
-  otpId: z.string().trim().min(1),
-  externalId: z.string().trim().min(1),
-  code: z.string().trim().min(1),
-  actor: externalIdentitySchema,
-  type: z.string().trim().min(1).optional(),
-  expiresAt: z.string().trim().min(1).optional(),
-});
+const identityClaimRecordSchema = z.lazy(() =>
+  z.object({
+    url: z.string().trim().min(1),
+    otpId: z.string().trim().min(1),
+    externalId: z.string().trim().min(1),
+    code: z.string().trim().min(1),
+    actor: externalIdentitySchema,
+    type: z.string().trim().min(1).optional(),
+    expiresAt: z.string().trim().min(1).optional(),
+  }),
+);
 
 export const otpOperations = {
   "otp.identity.create-claim": {

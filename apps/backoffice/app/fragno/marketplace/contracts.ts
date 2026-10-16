@@ -228,16 +228,18 @@ export const marketplaceOwnedListingInputSchema = z.object({
 
 export type MarketplaceOwnedListingInput = z.input<typeof marketplaceOwnedListingInputSchema>;
 
-export const marketplaceOwnedListingSchema = marketplaceListingMetadataSchema.extend({
-  listingId: marketplaceListingIdSchema,
-  slug: marketplaceSlugSchema,
-  publisherName: z.string(),
-  status: marketplaceListingStatusSchema,
-  latestPublishedVersion: marketplaceVersionSchema.nullable(),
-  publishedAt: z.string().nullable(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
-});
+export const marketplaceOwnedListingSchema = z.lazy(() =>
+  marketplaceListingMetadataSchema._zod.innerType.extend({
+    listingId: marketplaceListingIdSchema,
+    slug: marketplaceSlugSchema,
+    publisherName: z.string(),
+    status: marketplaceListingStatusSchema,
+    latestPublishedVersion: marketplaceVersionSchema.nullable(),
+    publishedAt: z.string().nullable(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  }),
+);
 
 export type MarketplaceOwnedListing = z.infer<typeof marketplaceOwnedListingSchema>;
 
@@ -284,10 +286,12 @@ export const marketplaceDraftResultSchema = z.object({
 
 export type MarketplaceDraftResult = z.infer<typeof marketplaceDraftResultSchema>;
 
-export const marketplaceListingUpdateResultSchema = marketplaceListingMetadataSchema.extend({
-  listingId: marketplaceListingIdSchema,
-  slug: marketplaceSlugSchema,
-});
+export const marketplaceListingUpdateResultSchema = z.lazy(() =>
+  marketplaceListingMetadataSchema._zod.innerType.extend({
+    listingId: marketplaceListingIdSchema,
+    slug: marketplaceSlugSchema,
+  }),
+);
 
 export type MarketplaceListingUpdateResult = z.infer<typeof marketplaceListingUpdateResultSchema>;
 

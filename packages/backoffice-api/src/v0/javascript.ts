@@ -4,100 +4,118 @@ import type { BackofficeApiOperation } from "../api";
 import { BACKOFFICE_PERMISSION } from "./shared/permissions";
 
 /** One console call, unprefixed; `codemode` lines come from the runtime rather than the guest. */
-const javaScriptLogLineSchema = z.object({
-  at: z.number().int(),
-  channel: z.enum(["log", "info", "debug", "warn", "error", "codemode"]),
-  text: z.string(),
-});
+const javaScriptLogLineSchema = z.lazy(() =>
+  z.object({
+    at: z.number().int(),
+    channel: z.enum(["log", "info", "debug", "warn", "error", "codemode"]),
+    text: z.string(),
+  }),
+);
 
-const javaScriptCheckDiagnosticSchema = z.object({
-  code: z.number().int(),
-  path: z.string().nullable(),
-  line: z.number().int().positive().nullable(),
-  column: z.number().int().positive().nullable(),
-  message: z.string(),
-});
+const javaScriptCheckDiagnosticSchema = z.lazy(() =>
+  z.object({
+    code: z.number().int(),
+    path: z.string().nullable(),
+    line: z.number().int().positive().nullable(),
+    column: z.number().int().positive().nullable(),
+    message: z.string(),
+  }),
+);
 
-export const javaScriptBuildInputSchema = z.strictObject({
-  path: z.string().trim().min(1),
-  out: z.string().trim().min(1),
-});
+export const javaScriptBuildInputSchema = z.lazy(() =>
+  z.strictObject({
+    path: z.string().trim().min(1),
+    out: z.string().trim().min(1),
+  }),
+);
 
 // `rejected` means no build run was recorded; the other outcomes name their run for js.logs.
-const javaScriptBuildOutputSchema = z.discriminatedUnion("status", [
-  z.strictObject({
-    status: z.literal("success"),
-    path: z.string(),
-    artifactPath: z.string(),
-    runId: z.string(),
-    warnings: z.array(z.string()),
-  }),
-  z.strictObject({
-    status: z.literal("error"),
-    path: z.string(),
-    artifactPath: z.string(),
-    runId: z.string(),
-    error: z.string(),
-  }),
-  z.strictObject({
-    status: z.literal("rejected"),
-    path: z.string(),
-    artifactPath: z.string(),
-    error: z.string(),
-  }),
-]);
+const javaScriptBuildOutputSchema = z.lazy(() =>
+  z.discriminatedUnion("status", [
+    z.strictObject({
+      status: z.literal("success"),
+      path: z.string(),
+      artifactPath: z.string(),
+      runId: z.string(),
+      warnings: z.array(z.string()),
+    }),
+    z.strictObject({
+      status: z.literal("error"),
+      path: z.string(),
+      artifactPath: z.string(),
+      runId: z.string(),
+      error: z.string(),
+    }),
+    z.strictObject({
+      status: z.literal("rejected"),
+      path: z.string(),
+      artifactPath: z.string(),
+      error: z.string(),
+    }),
+  ]),
+);
 
-const javaScriptCheckOutputSchema = z.object({
-  path: z.string(),
-  valid: z.boolean(),
-  diagnostics: z.array(javaScriptCheckDiagnosticSchema),
-});
+const javaScriptCheckOutputSchema = z.lazy(() =>
+  z.object({
+    path: z.string(),
+    valid: z.boolean(),
+    diagnostics: z.array(javaScriptCheckDiagnosticSchema),
+  }),
+);
 
-const javaScriptFileInputSchema = z.object({
-  path: z.string().trim().min(1),
-});
+const javaScriptFileInputSchema = z.lazy(() =>
+  z.object({
+    path: z.string().trim().min(1),
+  }),
+);
 
 // `rejected` means no run result: the file was refused or execution could not start or report.
-const javaScriptRunOutputSchema = z.discriminatedUnion("status", [
-  z.object({
-    status: z.literal("success"),
-    path: z.string(),
-    runId: z.string(),
-    logs: z.array(javaScriptLogLineSchema),
-  }),
-  z.object({
-    status: z.literal("error"),
-    path: z.string(),
-    runId: z.string(),
-    error: z.string(),
-    logs: z.array(javaScriptLogLineSchema),
-  }),
-  z.object({
-    status: z.literal("rejected"),
-    path: z.string(),
-    error: z.string(),
-  }),
-]);
+const javaScriptRunOutputSchema = z.lazy(() =>
+  z.discriminatedUnion("status", [
+    z.object({
+      status: z.literal("success"),
+      path: z.string(),
+      runId: z.string(),
+      logs: z.array(javaScriptLogLineSchema),
+    }),
+    z.object({
+      status: z.literal("error"),
+      path: z.string(),
+      runId: z.string(),
+      error: z.string(),
+      logs: z.array(javaScriptLogLineSchema),
+    }),
+    z.object({
+      status: z.literal("rejected"),
+      path: z.string(),
+      error: z.string(),
+    }),
+  ]),
+);
 
-export const javaScriptLogsInputSchema = z.strictObject({
-  runId: z.string().trim().min(1),
-});
+export const javaScriptLogsInputSchema = z.lazy(() =>
+  z.strictObject({
+    runId: z.string().trim().min(1),
+  }),
+);
 
 // A running run has no logs yet: they are stored with its outcome.
-const javaScriptLogsOutputSchema = z.discriminatedUnion("status", [
-  z.object({ runId: z.string(), status: z.literal("running") }),
-  z.object({
-    runId: z.string(),
-    status: z.literal("completed"),
-    logs: z.array(javaScriptLogLineSchema),
-  }),
-  z.object({
-    runId: z.string(),
-    status: z.literal("failed"),
-    logs: z.array(javaScriptLogLineSchema),
-    error: z.string(),
-  }),
-]);
+const javaScriptLogsOutputSchema = z.lazy(() =>
+  z.discriminatedUnion("status", [
+    z.object({ runId: z.string(), status: z.literal("running") }),
+    z.object({
+      runId: z.string(),
+      status: z.literal("completed"),
+      logs: z.array(javaScriptLogLineSchema),
+    }),
+    z.object({
+      runId: z.string(),
+      status: z.literal("failed"),
+      logs: z.array(javaScriptLogLineSchema),
+      error: z.string(),
+    }),
+  ]),
+);
 
 export const javascriptOperations = {
   "js.build": {

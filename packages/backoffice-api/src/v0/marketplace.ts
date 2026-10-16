@@ -8,78 +8,94 @@ import {
   backofficeUserScopeSchema,
 } from "./shared/scope";
 
-export const marketplaceTagSchema = z
-  .string()
-  .trim()
-  .min(1)
-  .max(32)
-  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/u, "Tags use lowercase words separated by hyphens.");
+export const marketplaceTagSchema = z.lazy(() =>
+  z
+    .string()
+    .trim()
+    .min(1)
+    .max(32)
+    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/u, "Tags use lowercase words separated by hyphens."),
+);
 
-export const marketplaceOwnerIdSchema = z.string().trim().min(1).max(191);
+export const marketplaceOwnerIdSchema = z.lazy(() => z.string().trim().min(1).max(191));
 
 /** Scoped package names resolve to stable organization ownership, not a user or project owner. */
-export const marketplaceOrganizationOwnerScopeSchema = z.strictObject({
-  kind: z.literal("org"),
-  orgId: marketplaceOwnerIdSchema,
-});
+export const marketplaceOrganizationOwnerScopeSchema = z.lazy(() =>
+  z.strictObject({
+    kind: z.literal("org"),
+    orgId: marketplaceOwnerIdSchema,
+  }),
+);
 
-const marketplaceUserOwnerScopeSchema = z.object({
-  kind: z.literal("user"),
-  userId: marketplaceOwnerIdSchema,
-});
-const marketplaceAppOwnerScopeSchema = z.object({
-  kind: z.literal("app"),
-  owner: z.discriminatedUnion("kind", [
-    marketplaceOrganizationOwnerScopeSchema,
-    marketplaceUserOwnerScopeSchema,
-  ]),
-  appId: marketplaceOwnerIdSchema,
-});
-
-export const marketplaceOwnerScopeSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("system") }),
-  marketplaceOrganizationOwnerScopeSchema,
-  marketplaceUserOwnerScopeSchema,
-  marketplaceAppOwnerScopeSchema,
+const marketplaceUserOwnerScopeSchema = z.lazy(() =>
   z.object({
-    kind: z.literal("project"),
+    kind: z.literal("user"),
+    userId: marketplaceOwnerIdSchema,
+  }),
+);
+const marketplaceAppOwnerScopeSchema = z.lazy(() =>
+  z.object({
+    kind: z.literal("app"),
     owner: z.discriminatedUnion("kind", [
       marketplaceOrganizationOwnerScopeSchema,
       marketplaceUserOwnerScopeSchema,
-      marketplaceAppOwnerScopeSchema,
     ]),
-    projectId: marketplaceOwnerIdSchema,
+    appId: marketplaceOwnerIdSchema,
   }),
-]);
+);
+
+export const marketplaceOwnerScopeSchema = z.lazy(() =>
+  z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("system") }),
+    marketplaceOrganizationOwnerScopeSchema,
+    marketplaceUserOwnerScopeSchema,
+    marketplaceAppOwnerScopeSchema,
+    z.object({
+      kind: z.literal("project"),
+      owner: z.discriminatedUnion("kind", [
+        marketplaceOrganizationOwnerScopeSchema,
+        marketplaceUserOwnerScopeSchema,
+        marketplaceAppOwnerScopeSchema,
+      ]),
+      projectId: marketplaceOwnerIdSchema,
+    }),
+  ]),
+);
 
 export type MarketplaceOwnerScope = z.infer<typeof marketplaceOwnerScopeSchema>;
 
-export const marketplaceOwnerSchema = z.object({
-  scope: marketplaceOwnerScopeSchema,
-  publisherName: z.string().trim().min(1).max(191),
-});
+export const marketplaceOwnerSchema = z.lazy(() =>
+  z.object({
+    scope: marketplaceOwnerScopeSchema,
+    publisherName: z.string().trim().min(1).max(191),
+  }),
+);
 
 export type MarketplaceOwner = z.infer<typeof marketplaceOwnerSchema>;
 
 /** System hosts the public Marketplace; each organization has its own members-only Marketplace. */
-export const marketplaceScopeSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("system") }),
-  backofficeOrganizationScopeSchema,
-]);
+export const marketplaceScopeSchema = z.lazy(() =>
+  z.discriminatedUnion("kind", [
+    z.strictObject({ kind: z.literal("system") }),
+    backofficeOrganizationScopeSchema,
+  ]),
+);
 
 export type MarketplaceScope = z.infer<typeof marketplaceScopeSchema>;
 
 /** Organization visibility publishes into the owning organization's Marketplace. */
-export const marketplaceVisibilitySchema = z.enum(["public", "organization"]);
+export const marketplaceVisibilitySchema = z.lazy(() => z.enum(["public", "organization"]));
 
 export type MarketplaceVisibility = z.infer<typeof marketplaceVisibilitySchema>;
 
-export const marketplaceListingContentSchema = z.object({
-  name: z.string().trim().min(3).max(120),
-  summary: z.string().trim().min(10).max(240),
-  description: z.string().trim().min(20).max(10_000),
-  tags: z.array(marketplaceTagSchema).max(12).default([]),
-});
+export const marketplaceListingContentSchema = z.lazy(() =>
+  z.object({
+    name: z.string().trim().min(3).max(120),
+    summary: z.string().trim().min(10).max(240),
+    description: z.string().trim().min(20).max(10_000),
+    tags: z.array(marketplaceTagSchema).max(12).default([]),
+  }),
+);
 
 export type MarketplaceListingContent = z.infer<typeof marketplaceListingContentSchema>;
 
@@ -99,30 +115,39 @@ export const MARKETPLACE_CATEGORIES = [
 ] as const;
 
 export const marketplaceSlugSchema = z
-  .string()
-  .trim()
-  .min(3)
-  .max(80)
-  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/u, "Use lowercase words separated by hyphens.")
+  .lazy(() =>
+    z
+      .string()
+      .trim()
+      .min(3)
+      .max(80)
+      .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/u, "Use lowercase words separated by hyphens."),
+  )
   .meta({ examples: ["telegram-test-command"] });
 
-export const marketplacePackageOwnerSchema = marketplaceOwnerSchema.extend({
-  scope: marketplaceOrganizationOwnerScopeSchema,
-});
+export const marketplacePackageOwnerSchema = z.lazy(() =>
+  marketplaceOwnerSchema._zod.innerType.extend({
+    scope: marketplaceOrganizationOwnerScopeSchema,
+  }),
+);
 
-export const marketplaceCategorySchema = z.enum(MARKETPLACE_CATEGORIES);
+export const marketplaceCategorySchema = z.lazy(() => z.enum(MARKETPLACE_CATEGORIES));
 
-export const marketplaceListingMetadataSchema = marketplaceListingContentSchema.extend({
-  category: marketplaceCategorySchema,
-});
+export const marketplaceListingMetadataSchema = z.lazy(() =>
+  marketplaceListingContentSchema._zod.innerType.extend({
+    category: marketplaceCategorySchema,
+  }),
+);
 
 export type MarketplaceListingMetadata = z.infer<typeof marketplaceListingMetadataSchema>;
 
-export const marketplaceIngestionTargetScopeSchema = z.discriminatedUnion("kind", [
-  backofficeOrganizationScopeSchema,
-  backofficeProjectScopeSchema,
-  backofficeUserScopeSchema,
-]);
+export const marketplaceIngestionTargetScopeSchema = z.lazy(() =>
+  z.discriminatedUnion("kind", [
+    backofficeOrganizationScopeSchema,
+    backofficeProjectScopeSchema,
+    backofficeUserScopeSchema,
+  ]),
+);
 export type MarketplaceIngestionTargetScope = z.infer<typeof marketplaceIngestionTargetScopeSchema>;
 
 export type MarketplaceCategory = z.infer<typeof marketplaceCategorySchema>;
@@ -147,279 +172,320 @@ export const MARKETPLACE_FEATURED_LIMIT = 24;
 export const MARKETPLACE_DATABASE_ID_MAX_LENGTH = 128;
 
 export const marketplaceVersionSchema = z
-  .string()
-  .trim()
-  .max(40)
-  .regex(MARKETPLACE_VERSION_PATTERN, "Use a semantic version such as 1.0.0.")
+  .lazy(() =>
+    z
+      .string()
+      .trim()
+      .max(40)
+      .regex(MARKETPLACE_VERSION_PATTERN, "Use a semantic version such as 1.0.0."),
+  )
   .meta({ examples: ["1.0.0", "2.1.0-beta.1"] });
 
 export const marketplaceListingIdSchema = z
-  .string()
-  .trim()
-  .min(5)
-  .max(MARKETPLACE_DATABASE_ID_MAX_LENGTH)
-  .regex(
-    /^(?:system|org:[^#]+|user:[^#]+|project:[^#:]+:[^#]+)#[a-z0-9]+(?:-[a-z0-9]+)*$/u,
-    "Use an owner-qualified marketplace listing id.",
+  .lazy(() =>
+    z
+      .string()
+      .trim()
+      .min(5)
+      .max(MARKETPLACE_DATABASE_ID_MAX_LENGTH)
+      .regex(
+        /^(?:system|org:[^#]+|user:[^#]+|project:[^#:]+:[^#]+)#[a-z0-9]+(?:-[a-z0-9]+)*$/u,
+        "Use an owner-qualified marketplace listing id.",
+      ),
   )
   .meta({
     examples: ["system#telegram-test-command", "org:org-123#deployment-notifier"],
   });
 
-export const packageIdentitySchema = z.strictObject({
-  name: z.string(),
-  listingId: marketplaceListingIdSchema,
-  version: marketplaceVersionSchema,
-  snapshotId: z.string(),
-  owner: marketplacePackageOwnerSchema,
-  marketplace: marketplaceScopeSchema,
-  files: z.array(
-    z.strictObject({ relativePath: z.string(), sizeBytes: z.number(), checksum: z.string() }),
-  ),
-  sizeBytes: z.number(),
-});
+export const packageIdentitySchema = z.lazy(() =>
+  z.strictObject({
+    name: z.string(),
+    listingId: marketplaceListingIdSchema,
+    version: marketplaceVersionSchema,
+    snapshotId: z.string(),
+    owner: marketplacePackageOwnerSchema,
+    marketplace: marketplaceScopeSchema,
+    files: z.array(
+      z.strictObject({ relativePath: z.string(), sizeBytes: z.number(), checksum: z.string() }),
+    ),
+    sizeBytes: z.number(),
+  }),
+);
 
-export const marketplaceVersionSchemaPublic = z.object({
-  version: marketplaceVersionSchema,
-  publishedAt: z.string(),
-});
+export const marketplaceVersionSchemaPublic = z.lazy(() =>
+  z.object({
+    version: marketplaceVersionSchema,
+    publishedAt: z.string(),
+  }),
+);
 
 export type MarketplaceVersion = z.infer<typeof marketplaceVersionSchemaPublic>;
 
 export const marketplaceVersionPageFields = {
-  versionPageSize: z
-    .number()
-    .int()
-    .min(1)
-    .max(MARKETPLACE_MAX_PAGE_SIZE)
-    .default(MARKETPLACE_DEFAULT_PAGE_SIZE),
-  versionCursor: z.string().trim().min(1).optional(),
+  versionPageSize: z.lazy(() =>
+    z.number().int().min(1).max(MARKETPLACE_MAX_PAGE_SIZE).default(MARKETPLACE_DEFAULT_PAGE_SIZE),
+  ),
+  versionCursor: z.lazy(() => z.string().trim().min(1).optional()),
 };
 
-export const marketplacePublicListingSchema = marketplaceListingMetadataSchema.extend({
-  listingId: marketplaceListingIdSchema,
-  slug: marketplaceSlugSchema,
-  publisherName: z.string(),
-  status: z.literal("published"),
-  latestVersion: marketplaceVersionSchema,
-  publishedAt: z.string(),
-  updatedAt: z.string(),
-  /** The listing has a feature entry whose window is open now. */
-  featured: z.boolean(),
-});
+export const marketplacePublicListingSchema = z.lazy(() =>
+  marketplaceListingMetadataSchema._zod.innerType.extend({
+    listingId: marketplaceListingIdSchema,
+    slug: marketplaceSlugSchema,
+    publisherName: z.string(),
+    status: z.literal("published"),
+    latestVersion: marketplaceVersionSchema,
+    publishedAt: z.string(),
+    updatedAt: z.string(),
+    /** The listing has a feature entry whose window is open now. */
+    featured: z.boolean(),
+  }),
+);
 
 export type MarketplaceListing = z.infer<typeof marketplacePublicListingSchema>;
 
-export const marketplaceListingPageInputSchema = z.object({
-  category: marketplaceCategorySchema.optional(),
-  pageSize: z
-    .number()
-    .int()
-    .min(1)
-    .max(MARKETPLACE_MAX_PAGE_SIZE)
-    .default(MARKETPLACE_DEFAULT_PAGE_SIZE),
-  cursor: z.string().trim().min(1).optional(),
-});
+export const marketplaceListingPageInputSchema = z.lazy(() =>
+  z.object({
+    category: marketplaceCategorySchema.optional(),
+    pageSize: z
+      .number()
+      .int()
+      .min(1)
+      .max(MARKETPLACE_MAX_PAGE_SIZE)
+      .default(MARKETPLACE_DEFAULT_PAGE_SIZE),
+    cursor: z.string().trim().min(1).optional(),
+  }),
+);
 
 export type MarketplaceListingPageInput = z.input<typeof marketplaceListingPageInputSchema>;
 
 /** Installation paths are absolute directories within the destination workspace. */
-export const marketplaceInstallationRootSchema = z
-  .string()
-  .trim()
-  .transform((path) => path.replace(/\/+$/u, ""))
-  // Declaration generation needs the transform's concrete output schema.
-  .pipe(z.string())
-  .refine(
-    (path) =>
-      (path === "/workspace" || path.startsWith("/workspace/")) &&
-      !/[\\\p{Cc}]/u.test(path) &&
-      path
-        .slice(1)
-        .split("/")
-        .every((part) => part !== "" && part !== "." && part !== ".."),
-    "Choose an absolute install path under /workspace without '.' or '..' segments.",
-  )
-  .refine(
-    (path) => !isMarketplaceLockPath(path),
-    "The workspace Marketplace lock file cannot be used as an install folder.",
-  );
+export const marketplaceInstallationRootSchema = z.lazy(() =>
+  z
+    .string()
+    .trim()
+    .transform((path) => path.replace(/\/+$/u, ""))
+    // Declaration generation needs the transform's concrete output schema.
+    .pipe(z.string())
+    .refine(
+      (path) =>
+        (path === "/workspace" || path.startsWith("/workspace/")) &&
+        !/[\\\p{Cc}]/u.test(path) &&
+        path
+          .slice(1)
+          .split("/")
+          .every((part) => part !== "" && part !== "." && part !== ".."),
+      "Choose an absolute install path under /workspace without '.' or '..' segments.",
+    )
+    .refine(
+      (path) => !isMarketplaceLockPath(path),
+      "The workspace Marketplace lock file cannot be used as an install folder.",
+    ),
+);
 
 /** Installation callers share the existing workflow restart result contract. */
-export const marketplaceIngestionRestartResultSchema = z.object({
-  listingId: marketplaceListingIdSchema,
-  version: marketplaceVersionSchema,
-  workflowInstanceId: z.string().min(1),
-  action: z.enum(["created", "restarted", "unchanged"]),
-  workflowStatus: z.enum(["active", "paused", "errored", "terminated", "complete", "waiting"]),
-});
+export const marketplaceIngestionRestartResultSchema = z.lazy(() =>
+  z.object({
+    listingId: marketplaceListingIdSchema,
+    version: marketplaceVersionSchema,
+    workflowInstanceId: z.string().min(1),
+    action: z.enum(["created", "restarted", "unchanged"]),
+    workflowStatus: z.enum(["active", "paused", "errored", "terminated", "complete", "waiting"]),
+  }),
+);
 
 export type MarketplaceIngestionRestartResult = z.infer<
   typeof marketplaceIngestionRestartResultSchema
 >;
 
 /** Installation names the Marketplace holding the listing; listing ids repeat across Marketplaces. */
-export const marketplaceIngestionRequestInputSchema = z.object({
-  marketplace: marketplaceScopeSchema,
-  targetScope: marketplaceIngestionTargetScopeSchema,
-  installationRoot: marketplaceInstallationRootSchema,
-  listingId: marketplaceListingIdSchema,
-  version: marketplaceVersionSchema.optional(),
-});
+export const marketplaceIngestionRequestInputSchema = z.lazy(() =>
+  z.object({
+    marketplace: marketplaceScopeSchema,
+    targetScope: marketplaceIngestionTargetScopeSchema,
+    installationRoot: marketplaceInstallationRootSchema,
+    listingId: marketplaceListingIdSchema,
+    version: marketplaceVersionSchema.optional(),
+  }),
+);
 
 export type MarketplaceIngestionRequestInput = z.infer<
   typeof marketplaceIngestionRequestInputSchema
 >;
 
 /** Installation reports the existing workflow result and its organization coordinator. */
-export const packagesInstallResultSchema = marketplaceIngestionRestartResultSchema.extend({
-  installationRoot: marketplaceInstallationRootSchema,
-  workflowScope: z.object({ kind: z.literal("org"), orgId: z.string().min(1) }),
-});
+export const packagesInstallResultSchema = z.lazy(() =>
+  marketplaceIngestionRestartResultSchema._zod.innerType.extend({
+    installationRoot: marketplaceInstallationRootSchema,
+    workflowScope: z.object({ kind: z.literal("org"), orgId: z.string().min(1) }),
+  }),
+);
 
 /** Read and install tools address the public Marketplace unless organization visibility is requested. */
 const marketplaceReadVisibilityField = {
-  visibility: marketplaceVisibilitySchema.default("public"),
+  visibility: z.lazy(() => marketplaceVisibilitySchema.default("public")),
 };
 
 /** Package installation takes its destination scope and organization Marketplace from the runtime, not caller input. */
-export const packagesInstallInputSchema = marketplaceIngestionRequestInputSchema
-  .omit({ marketplace: true, targetScope: true })
-  .extend(marketplaceReadVisibilityField)
-  .strict();
+export const packagesInstallInputSchema = z.lazy(() =>
+  marketplaceIngestionRequestInputSchema._zod.innerType
+    .omit({ marketplace: true, targetScope: true })
+    .extend(marketplaceReadVisibilityField)
+    .strict(),
+);
 
 /** Registry search returns compact metadata and a cursor for the next candidate page. */
-export const marketplaceSearchResultSchema = z.object({
-  listings: z.array(
-    marketplacePublicListingSchema.pick({
-      listingId: true,
-      name: true,
-      summary: true,
-      publisherName: true,
-      category: true,
-      tags: true,
-      latestVersion: true,
-      featured: true,
-    }),
-  ),
-  nextCursor: z.string().nullable(),
-  hasNextPage: z.boolean(),
-});
+export const marketplaceSearchResultSchema = z.lazy(() =>
+  z.object({
+    listings: z.array(
+      marketplacePublicListingSchema._zod.innerType.pick({
+        listingId: true,
+        name: true,
+        summary: true,
+        publisherName: true,
+        category: true,
+        tags: true,
+        latestVersion: true,
+        featured: true,
+      }),
+    ),
+    nextCursor: z.string().nullable(),
+    hasNextPage: z.boolean(),
+  }),
+);
 
 /** Search cursors advance through registry candidates, including pages without matches. */
-export const marketplaceSearchInputSchema = marketplaceListingPageInputSchema.extend({
-  query: z.string().trim().min(1).max(240),
-  ...marketplaceReadVisibilityField,
-});
+export const marketplaceSearchInputSchema = z.lazy(() =>
+  marketplaceListingPageInputSchema._zod.innerType.extend({
+    query: z.string().trim().min(1).max(240),
+    ...marketplaceReadVisibilityField,
+  }),
+);
 
-export const marketplacePublishedListingInputSchema = z.object({
-  listingId: marketplaceListingIdSchema,
-  ...marketplaceVersionPageFields,
-});
+export const marketplacePublishedListingInputSchema = z.lazy(() =>
+  z.object({
+    listingId: marketplaceListingIdSchema,
+    ...marketplaceVersionPageFields,
+  }),
+);
 
 export type MarketplacePublishedListingInput = z.input<
   typeof marketplacePublishedListingInputSchema
 >;
 
-export const marketplaceViewInputSchema = marketplacePublishedListingInputSchema.extend(
-  marketplaceReadVisibilityField,
+export const marketplaceViewInputSchema = z.lazy(() =>
+  marketplacePublishedListingInputSchema._zod.innerType.extend(marketplaceReadVisibilityField),
 );
 
 /** A dry run writes nothing; accepted packages return their durable System workflow identity. */
-export const marketplacePublishResultSchema = z.discriminatedUnion("state", [
-  packageIdentitySchema.extend({ state: z.literal("preview") }),
-  packageIdentitySchema.extend({
-    state: z.enum(["requested", "published"]),
-    workflowInstanceId: z.string(),
-    workflowScope: z.strictObject({ kind: z.literal("system") }),
-  }),
-]);
+export const marketplacePublishResultSchema = z.lazy(() =>
+  z.discriminatedUnion("state", [
+    packageIdentitySchema._zod.innerType.extend({ state: z.literal("preview") }),
+    packageIdentitySchema._zod.innerType.extend({
+      state: z.enum(["requested", "published"]),
+      workflowInstanceId: z.string(),
+      workflowScope: z.strictObject({ kind: z.literal("system") }),
+    }),
+  ]),
+);
 
 export type MarketplacePublishResult = z.output<typeof marketplacePublishResultSchema>;
 
 /** Publishing switches are enforced against the original caller, never the coordinator. */
-export const marketplacePublishInputSchema = z.strictObject({
-  packageRoot: z
-    .string()
-    .trim()
-    .min(1)
-    .max(512)
-    .refine(
-      (path) =>
-        path.startsWith("/") &&
-        path !== "/" &&
-        !/[\\\p{Cc}]/u.test(path) &&
-        path
-          .replace(/\/$/u, "")
-          .slice(1)
-          .split("/")
-          .every((segment) => segment && segment !== "." && segment !== ".."),
-      "Marketplace package root must be an absolute directory path without traversal.",
-    )
-    .transform((path) => path.replace(/\/$/u, ""))
-    .pipe(z.string()),
-  visibility: marketplaceVisibilitySchema,
-  dryRun: z.boolean().default(false),
-  skipAuthorCheck: z.boolean().default(false),
-  skipVersionCheck: z.boolean().default(false),
-});
+export const marketplacePublishInputSchema = z.lazy(() =>
+  z.strictObject({
+    packageRoot: z
+      .string()
+      .trim()
+      .min(1)
+      .max(512)
+      .refine(
+        (path) =>
+          path.startsWith("/") &&
+          path !== "/" &&
+          !/[\\\p{Cc}]/u.test(path) &&
+          path
+            .replace(/\/$/u, "")
+            .slice(1)
+            .split("/")
+            .every((segment) => segment && segment !== "." && segment !== ".."),
+        "Marketplace package root must be an absolute directory path without traversal.",
+      )
+      .transform((path) => path.replace(/\/$/u, ""))
+      .pipe(z.string()),
+    visibility: marketplaceVisibilitySchema,
+    dryRun: z.boolean().default(false),
+    skipAuthorCheck: z.boolean().default(false),
+    skipVersionCheck: z.boolean().default(false),
+  }),
+);
 
 /** The workspace lock records one successful release per listing and installation folder. */
-export const marketplaceLockSchema = z
-  .strictObject({
-    entries: z.array(
-      z.strictObject({
-        // Locks written before organization Marketplaces existed only installed public listings.
-        marketplace: marketplaceScopeSchema.default({ kind: "system" }),
-        listingId: marketplaceListingIdSchema,
-        version: marketplaceVersionSchema,
-        installationRoot: marketplaceInstallationRootSchema,
-      }),
+export const marketplaceLockSchema = z.lazy(() =>
+  z
+    .strictObject({
+      entries: z.array(
+        z.strictObject({
+          // Locks written before organization Marketplaces existed only installed public listings.
+          marketplace: marketplaceScopeSchema.default({ kind: "system" }),
+          listingId: marketplaceListingIdSchema,
+          version: marketplaceVersionSchema,
+          installationRoot: marketplaceInstallationRootSchema,
+        }),
+      ),
+    })
+    .refine(
+      (lock) =>
+        new Set(
+          lock.entries.map((entry) => JSON.stringify([entry.listingId, entry.installationRoot])),
+        ).size === lock.entries.length,
+      "Marketplace lock entries must have unique listing and installation folder pairs.",
     ),
-  })
-  .refine(
-    (lock) =>
-      new Set(
-        lock.entries.map((entry) => JSON.stringify([entry.listingId, entry.installationRoot])),
-      ).size === lock.entries.length,
-    "Marketplace lock entries must have unique listing and installation folder pairs.",
-  );
+);
 
-export const marketplaceListingDetailSchema = z.object({
-  listing: marketplacePublicListingSchema,
-  versions: z.array(marketplaceVersionSchemaPublic),
-  nextVersionCursor: z.string().optional(),
-  hasNextVersionPage: z.boolean(),
-});
+export const marketplaceListingDetailSchema = z.lazy(() =>
+  z.object({
+    listing: marketplacePublicListingSchema,
+    versions: z.array(marketplaceVersionSchemaPublic),
+    nextVersionCursor: z.string().optional(),
+    hasNextVersionPage: z.boolean(),
+  }),
+);
 
 export type MarketplaceListingDetail = z.infer<typeof marketplaceListingDetailSchema>;
 
 /** Hidden entries belong to listings that are no longer published. */
-export const marketplaceFeatureStateSchema = z.enum(["active", "scheduled", "expired", "hidden"]);
+export const marketplaceFeatureStateSchema = z.lazy(() =>
+  z.enum(["active", "scheduled", "expired", "hidden"]),
+);
 
 export type MarketplaceFeatureState = z.infer<typeof marketplaceFeatureStateSchema>;
 
 /** Curators see every entry with its state; browsers only see active entries. */
-export const marketplaceFeatureEntrySchema = z.object({
-  listingId: marketplaceListingIdSchema,
-  name: z.string(),
-  state: marketplaceFeatureStateSchema,
-  priority: z.number().int(),
-  note: z.string().nullable(),
-  startsAt: z.string(),
-  until: z.string().nullable(),
-  featuredBy: z.string(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
-});
+export const marketplaceFeatureEntrySchema = z.lazy(() =>
+  z.object({
+    listingId: marketplaceListingIdSchema,
+    name: z.string(),
+    state: marketplaceFeatureStateSchema,
+    priority: z.number().int(),
+    note: z.string().nullable(),
+    startsAt: z.string(),
+    until: z.string().nullable(),
+    featuredBy: z.string(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  }),
+);
 
 export type MarketplaceFeatureEntry = z.infer<typeof marketplaceFeatureEntrySchema>;
 
 /** Featuring an already featured listing replaces its window, priority, and note. */
-export const marketplaceFeaturedResultSchema = z.object({
-  entries: z.array(marketplaceFeatureEntrySchema),
-  limit: z.number().int(),
-});
+export const marketplaceFeaturedResultSchema = z.lazy(() =>
+  z.object({
+    entries: z.array(marketplaceFeatureEntrySchema),
+    limit: z.number().int(),
+  }),
+);
 
 export type MarketplaceFeaturedResult = z.infer<typeof marketplaceFeaturedResultSchema>;
 
@@ -452,7 +518,7 @@ export const marketplaceOperations = {
   "marketplace.featured": {
     description: `List every feature entry with its state: active, scheduled, expired, or hidden (the listing is no longer published). ${MARKETPLACE_CURATION_AUTHORITY}`,
     permissions: [BACKOFFICE_PERMISSION.marketplace.read],
-    input: z.strictObject({}),
+    input: z.lazy(() => z.strictObject({})),
     output: marketplaceFeaturedResultSchema,
   },
 } satisfies Record<string, BackofficeApiOperation>;
@@ -469,7 +535,7 @@ export const packagesOperations = {
     description:
       "List successful package installations recorded in /workspace/marketplace-lock.json for the current workspace. A missing lock is empty; malformed locks fail without being modified.",
     permissions: [BACKOFFICE_PERMISSION.packages.read],
-    input: z.strictObject({}),
+    input: z.lazy(() => z.strictObject({})),
     output: marketplaceLockSchema,
   },
 } satisfies Record<string, BackofficeApiOperation>;

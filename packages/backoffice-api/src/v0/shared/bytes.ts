@@ -7,5 +7,8 @@ import { z } from "zod";
  * downloads) so large files do not pass through JSON bodies.
  */
 export const base64BytesSchema = z
-  .base64()
-  .meta({ id: "Base64Bytes", description: "Bytes encoded as standard base64." });
+  .lazy(() => z.base64())
+  .meta({
+    id: "Base64Bytes",
+    description: "Bytes encoded as standard base64.",
+  });

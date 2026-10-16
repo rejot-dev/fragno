@@ -20,6 +20,17 @@ new version starts as a copy and the old one stays frozen:
 `api`, `errors`, and `openapi` are version-independent: how any version is defined, how errors are
 reported, and how a version is described as OpenAPI.
 
+## Lazy schemas
+
+Every module-level schema except an operation's `z.void()` is a `z.lazy(() => …)`, so importing the
+contract builds no schemas until they are used. Backoffice imports it on every Durable Object
+activation, and a request uses only a few of its schemas. Parse, infer, describe, and convert them
+like any schema. For object- or enum-specific members such as `.extend`, `.shape`, `.pick`, or
+`.options`, use the built schema, `schema._zod.innerType`, which is built once and shared;
+`unwrap()` builds a new copy on every call. Keep a schema lazy when you derive from it at module
+level: `z.lazy(() => schema._zod.innerType.extend({ … }))`. Put a schema's `.meta({ id })` on the
+lazy, not inside it, so references to the schema resolve to that id.
+
 ## Calling an operation
 
 Every operation is `POST /api/<version>/scopes/<scope>/<operationId>` with a bearer token and the

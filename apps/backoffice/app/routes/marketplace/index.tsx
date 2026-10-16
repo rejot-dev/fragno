@@ -30,7 +30,7 @@ function publicMarketplaceSearchPath(query: string, cursor: string): string {
 // Anonymous visitors read only the public Marketplace; organization Marketplaces are separate objects.
 export async function loader({ context, url }: Route.LoaderArgs) {
   const query = url.searchParams.get("q")?.trim() ?? "";
-  if (query && !marketplaceSearchInputSchema.shape.query.safeParse(query).success) {
+  if (query && !marketplaceSearchInputSchema._zod.innerType.shape.query.safeParse(query).success) {
     throw new Response("Search query is too long.", { status: 400 });
   }
   const cursor = url.searchParams.get("cursor")?.trim() || undefined;

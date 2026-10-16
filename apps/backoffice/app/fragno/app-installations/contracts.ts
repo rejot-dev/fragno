@@ -68,19 +68,23 @@ export function appInstallationReaches(
 }
 
 /** Ownership comes from the object scope, never an RPC payload. */
-export const backofficeAppInstallationInputSchema = backofficeAppLookupInputSchema
-  .extend(appInstallationAccessSchema.shape)
-  .extend({
-    installedByUserId: z.string().min(1).max(191),
-    actionsRevision: z.number().int().positive(),
-  });
+export const backofficeAppInstallationInputSchema = z.lazy(() =>
+  backofficeAppLookupInputSchema._zod.innerType
+    .extend(appInstallationAccessSchema._zod.innerType.shape)
+    .extend({
+      installedByUserId: z.string().min(1).max(191),
+      actionsRevision: z.number().int().positive(),
+    }),
+);
 export type BackofficeAppInstallationInput = z.infer<typeof backofficeAppInstallationInputSchema>;
 
 /** Binds the app's own tenant to one activation; only the authenticated app server may claim. */
-export const backofficeAppInstallationClaimInputSchema = backofficeAppLookupInputSchema.extend({
-  activation: z.number().int().positive(),
-  externalAccount: appInstallationExternalAccountSchema,
-});
+export const backofficeAppInstallationClaimInputSchema = z.lazy(() =>
+  backofficeAppLookupInputSchema._zod.innerType.extend({
+    activation: z.number().int().positive(),
+    externalAccount: appInstallationExternalAccountSchema,
+  }),
+);
 export type BackofficeAppInstallationClaimInput = z.infer<
   typeof backofficeAppInstallationClaimInputSchema
 >;
@@ -89,15 +93,17 @@ export type BackofficeAppInstallationClaimInput = z.infer<
 export type BackofficeAppInstallationStatus = BackofficeAppInstallation["status"];
 
 /** What the app learns about the installation it claimed; never credentials or installer identity. */
-export const backofficeAppInstallationClaimResultSchema = backofficeAppInstallationSchema.pick({
-  id: true,
-  appId: true,
-  owner: true,
-  grantedPermissions: true,
-  resourceScope: true,
-  externalAccount: true,
-  activation: true,
-});
+export const backofficeAppInstallationClaimResultSchema = z.lazy(() =>
+  backofficeAppInstallationSchema._zod.innerType.pick({
+    id: true,
+    appId: true,
+    owner: true,
+    grantedPermissions: true,
+    resourceScope: true,
+    externalAccount: true,
+    activation: true,
+  }),
+);
 export type BackofficeAppInstallationClaimResult = z.infer<
   typeof backofficeAppInstallationClaimResultSchema
 >;

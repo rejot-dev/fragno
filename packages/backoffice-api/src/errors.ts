@@ -1,23 +1,27 @@
 import { z } from "zod";
 
-const backofficeApiErrorCodeSchema = z.enum([
-  "invalid_request",
-  "authentication_failed",
-  "forbidden",
-  "not_found",
-  "conflict",
-  "operation_failed",
-]);
+const backofficeApiErrorCodeSchema = z.lazy(() =>
+  z.enum([
+    "invalid_request",
+    "authentication_failed",
+    "forbidden",
+    "not_found",
+    "conflict",
+    "operation_failed",
+  ]),
+);
 export type BackofficeApiErrorCode = z.output<typeof backofficeApiErrorCodeSchema>;
 
 /** Every error response carries this body; the status follows from the code alone. */
 export const backofficeApiErrorSchema = z
-  .strictObject({
-    error: z.strictObject({
-      code: backofficeApiErrorCodeSchema,
-      message: z.string(),
+  .lazy(() =>
+    z.strictObject({
+      error: z.strictObject({
+        code: backofficeApiErrorCodeSchema,
+        message: z.string(),
+      }),
     }),
-  })
+  )
   .meta({ id: "BackofficeApiError" });
 export type BackofficeApiError = z.output<typeof backofficeApiErrorSchema>;
 

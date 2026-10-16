@@ -23,9 +23,11 @@ import {
 } from "./release-snapshot";
 
 /** Workspace manifests are validated at the author-facing boundary, not in the release publisher. */
-export const marketplacePublishPackageInputSchema = marketplacePublishInputSchema
-  .omit({ packageRoot: true })
-  .extend({ snapshot: marketplacePackageSnapshotSchema });
+export const marketplacePublishPackageInputSchema = z.lazy(() =>
+  marketplacePublishInputSchema._zod.innerType
+    .omit({ packageRoot: true })
+    .extend({ snapshot: marketplacePackageSnapshotSchema }),
+);
 export type MarketplacePublishPackageInput = z.input<typeof marketplacePublishPackageInputSchema>;
 
 /** Both capture adapters submit resolved releases through this authenticated RPC boundary. */

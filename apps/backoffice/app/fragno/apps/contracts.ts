@@ -23,9 +23,9 @@ export const backofficeAppRegistrationInputSchema = z.strictObject({
 export type BackofficeAppRegistrationInput = z.infer<typeof backofficeAppRegistrationInputSchema>;
 
 /** Replaces an app's action declaration; installations approve the new revision unless automatic. */
-export const backofficeAppActionsUpdateInputSchema = backofficeAppLookupInputSchema.extend({
-  actions: appActionsDeclarationSchema,
-});
+export const backofficeAppActionsUpdateInputSchema = z.lazy(() =>
+  backofficeAppLookupInputSchema._zod.innerType.extend({ actions: appActionsDeclarationSchema }),
+);
 export type BackofficeAppActionsUpdateInput = z.infer<typeof backofficeAppActionsUpdateInputSchema>;
 
 /** An unchanged declaration keeps its revision, so repeating an update needs no new approval. */

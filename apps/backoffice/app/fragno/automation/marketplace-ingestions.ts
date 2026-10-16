@@ -8,16 +8,18 @@ import {
   backofficeScopeOrganization,
   backofficeScopeRootOwner,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import { z } from "zod";
 
 import { type MarketplaceArtifactManifest } from "@/fragno/marketplace/contracts";
 
 import { backofficeWorkflowActorMetadataSchema } from "./actors";
 
-export const marketplaceIngestionWorkflowInputSchema =
-  marketplaceIngestionRequestInputSchema.extend({
+export const marketplaceIngestionWorkflowInputSchema = z.lazy(() =>
+  marketplaceIngestionRequestInputSchema._zod.innerType.extend({
     version: marketplaceVersionSchema,
     metadata: backofficeWorkflowActorMetadataSchema,
-  });
+  }),
+);
 
 export class MarketplaceIngestionTargetAccessError extends Error {
   constructor(message: string) {

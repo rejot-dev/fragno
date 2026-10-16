@@ -69,48 +69,59 @@ export type BackofficeScopePublicNames = {
 
 export type BackofficePublicScope = BackofficeScope<BackofficeScopePublicNames>;
 
-const backofficeSystemScopeSchema = z.strictObject({ kind: z.literal("system") });
-export const backofficeOrganizationScopeSchema = z.strictObject({
-  kind: z.literal("org"),
-  orgId: z.string().trim().min(1),
-});
-export const backofficeUserScopeSchema = z.strictObject({
-  kind: z.literal("user"),
-  userId: z.string().trim().min(1),
-});
-export const backofficeRootOwnerSchema = z.discriminatedUnion("kind", [
-  backofficeOrganizationScopeSchema,
-  backofficeUserScopeSchema,
-]);
-export const backofficeAppScopeSchema = z.strictObject({
-  kind: z.literal("app"),
-  owner: backofficeRootOwnerSchema,
-  appId: z.string().trim().min(1),
-});
-export const backofficeProjectScopeSchema = z.strictObject({
-  kind: z.literal("project"),
-  owner: z.discriminatedUnion("kind", [
+const backofficeSystemScopeSchema = z.lazy(() => z.strictObject({ kind: z.literal("system") }));
+export const backofficeOrganizationScopeSchema = z.lazy(() =>
+  z.strictObject({
+    kind: z.literal("org"),
+    orgId: z.string().trim().min(1),
+  }),
+);
+export const backofficeUserScopeSchema = z.lazy(() =>
+  z.strictObject({
+    kind: z.literal("user"),
+    userId: z.string().trim().min(1),
+  }),
+);
+export const backofficeRootOwnerSchema = z.lazy(() =>
+  z.discriminatedUnion("kind", [backofficeOrganizationScopeSchema, backofficeUserScopeSchema]),
+);
+export const backofficeAppScopeSchema = z.lazy(() =>
+  z.strictObject({
+    kind: z.literal("app"),
+    owner: backofficeRootOwnerSchema,
+    appId: z.string().trim().min(1),
+  }),
+);
+export const backofficeProjectScopeSchema = z.lazy(() =>
+  z.strictObject({
+    kind: z.literal("project"),
+    owner: z.discriminatedUnion("kind", [
+      backofficeOrganizationScopeSchema,
+      backofficeUserScopeSchema,
+      backofficeAppScopeSchema,
+    ]),
+    projectId: z.string().trim().min(1),
+  }),
+);
+
+export const backofficeRoutableScopeSchema = z.lazy(() =>
+  z.discriminatedUnion("kind", [
     backofficeOrganizationScopeSchema,
     backofficeUserScopeSchema,
     backofficeAppScopeSchema,
+    backofficeProjectScopeSchema,
   ]),
-  projectId: z.string().trim().min(1),
-});
+) satisfies z.ZodType<BackofficeRoutableScope>;
 
-export const backofficeRoutableScopeSchema = z.discriminatedUnion("kind", [
-  backofficeOrganizationScopeSchema,
-  backofficeUserScopeSchema,
-  backofficeAppScopeSchema,
-  backofficeProjectScopeSchema,
-]) satisfies z.ZodType<BackofficeRoutableScope>;
-
-export const backofficeContextScopeSchema = z.discriminatedUnion("kind", [
-  backofficeSystemScopeSchema,
-  backofficeOrganizationScopeSchema,
-  backofficeUserScopeSchema,
-  backofficeAppScopeSchema,
-  backofficeProjectScopeSchema,
-]) satisfies z.ZodType<BackofficeContextScope>;
+export const backofficeContextScopeSchema = z.lazy(() =>
+  z.discriminatedUnion("kind", [
+    backofficeSystemScopeSchema,
+    backofficeOrganizationScopeSchema,
+    backofficeUserScopeSchema,
+    backofficeAppScopeSchema,
+    backofficeProjectScopeSchema,
+  ]),
+) satisfies z.ZodType<BackofficeContextScope>;
 
 export function isBackofficeRoutableScope(
   scope: BackofficeContextScope,

@@ -178,8 +178,14 @@ returns 404. A WAF custom rule could drop them before they reach the worker. Not
      → 3.04 MB gzip, `index.js` 8.98 → 8.43 MB. Local `wrangler check startup` did not move
      measurably (~115 ms active both before and after, same machine), so the duplicate copies were
      mostly not evaluated at startup.
-   - Find the large module-level zod schemas evaluated at startup (backoffice-api contracts and
-     runtime-tool definitions in `execute-*.js`, `index.js`) and build them on first use.
+   - ~~Find the large module-level zod schemas evaluated at startup (backoffice-api contracts and
+     runtime-tool definitions in `execute-*.js`, `index.js`) and build them on first use.~~ Done:
+     integration action definitions convert to JSON Schema on first listing, and every
+     backoffice-api module-level schema is lazy. Local `wrangler check startup` went from ~105–119
+     ms to ~86–90 ms active. Zod is still ~30 ms of startup, now spread across fragment contracts,
+     app modules, and third-party packages (MCP SDK protocol schemas, better-auth). Non-zod
+     top-level work worth deferring next: turndown (~13 ms in Node) and `systemFileCollection` (~5
+     ms).
    - If that's not enough, split the object worker into several scripts (for example Pi / PiManager
      / Codemode / Sandbox vs Auth / Automations / Upload / integrations) so each activation loads
      only its own graph.

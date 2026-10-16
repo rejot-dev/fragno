@@ -13,7 +13,7 @@ export const automationEventRoutes = defineRoutes(automationFragmentDefinition).
     defineRoute({
       method: "GET",
       path: "/events/:eventId",
-      outputSchema: automationEventListResultSchema.shape.events.element,
+      outputSchema: automationEventListResultSchema._zod.innerType.shape.events.element,
       handler: async function ({ pathParams }, { json, error }) {
         const event = await this.handlerTx()
           .withServiceCalls(() => [services.getEvent({ id: pathParams.eventId })] as const)

@@ -3,24 +3,30 @@ import { z } from "zod";
 import type { BackofficeApiOperation } from "../api";
 import { BACKOFFICE_PERMISSION } from "./shared/permissions";
 
-const webPageInputSchema = z
-  .looseObject({
-    url: z.url().optional(),
-    html: z.string().optional(),
-  })
-  .refine((input) => input.url !== undefined || input.html !== undefined, {
-    message: "Web extraction input requires either `url` or `html`.",
-  });
+const webPageInputSchema = z.lazy(() =>
+  z
+    .looseObject({
+      url: z.url().optional(),
+      html: z.string().optional(),
+    })
+    .refine((input) => input.url !== undefined || input.html !== undefined, {
+      message: "Web extraction input requires either `url` or `html`.",
+    }),
+);
 
-export const webExtractInputSchema = z.discriminatedUnion("action", [
-  z.object({ action: z.literal("content"), input: webPageInputSchema }),
-  z.object({ action: z.literal("markdown"), input: webPageInputSchema }),
-]);
+export const webExtractInputSchema = z.lazy(() =>
+  z.discriminatedUnion("action", [
+    z.object({ action: z.literal("content"), input: webPageInputSchema }),
+    z.object({ action: z.literal("markdown"), input: webPageInputSchema }),
+  ]),
+);
 
-const webExtractResultSchema = z.discriminatedUnion("action", [
-  z.object({ action: z.literal("content"), result: z.string() }),
-  z.object({ action: z.literal("markdown"), result: z.string() }),
-]);
+const webExtractResultSchema = z.lazy(() =>
+  z.discriminatedUnion("action", [
+    z.object({ action: z.literal("content"), result: z.string() }),
+    z.object({ action: z.literal("markdown"), result: z.string() }),
+  ]),
+);
 
 export const webOperations = {
   "web.extract": {

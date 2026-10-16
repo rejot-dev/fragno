@@ -42,7 +42,7 @@ const releaseContentsSchema = z.strictObject({
   owner: marketplaceOwnerSchema,
   slug: marketplaceSlugSchema,
   version: marketplaceVersionSchema,
-  metadata: marketplaceListingMetadataSchema.strict(),
+  metadata: z.lazy(() => marketplaceListingMetadataSchema._zod.innerType.strict()),
   files: z.array(marketplaceReleaseFileSchema).min(1).max(MARKETPLACE_RELEASE_LIMITS.files),
 });
 

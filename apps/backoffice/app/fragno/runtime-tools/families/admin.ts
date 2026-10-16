@@ -341,9 +341,9 @@ const listOrganizationMembersTool = defineBackofficeRuntimeTool({
   name: "orgMembersList",
   description: "List members of any organization with their roles, using cursor pagination.",
   requiredPermissions: [BACKOFFICE_PERMISSION.admin.organizationsManage],
-  inputSchema: directoryPageInputSchema.extend({
-    organizationSlug: z.string().trim().min(1),
-  }),
+  inputSchema: z.lazy(() =>
+    directoryPageInputSchema._zod.innerType.extend({ organizationSlug: z.string().trim().min(1) }),
+  ),
   outputSchema: organizationMemberPageSchema,
   execute: async (input, context: AdminToolContext) =>
     await getAdminRuntime(context.runtimes.admin).listOrganizationMembers(input),
