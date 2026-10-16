@@ -1,6 +1,8 @@
 import type {
+  BackofficeAppInstallInput,
   BackofficeAppInstallation,
   BackofficeAppInstallationAccessInput,
+  BackofficeAppInstallationActionsApprovalInput,
   BackofficeAppInstallationMutationResult,
   BackofficeAppInstallationPage,
   BackofficeAppInstallationPageInput,
@@ -15,7 +17,7 @@ import { requireBackofficeAppOperationValue } from "@/fragno/apps/errors";
 export type AppsRuntime = {
   getApp(input: BackofficeAppLookupInput): Promise<BackofficeApp | null>;
   installApp(
-    input: BackofficeAppInstallationAccessInput,
+    input: BackofficeAppInstallInput,
     installedByUserId: string,
   ): Promise<BackofficeAppInstallationMutationResult>;
   getInstallation(input: BackofficeAppLookupInput): Promise<BackofficeAppInstallation | null>;
@@ -24,6 +26,9 @@ export type AppsRuntime = {
   ): Promise<BackofficeAppInstallationPage>;
   updateInstallationAccess(
     input: BackofficeAppInstallationAccessInput,
+  ): Promise<BackofficeAppInstallationMutationResult>;
+  approveActions(
+    input: BackofficeAppInstallationActionsApprovalInput,
   ): Promise<BackofficeAppInstallationMutationResult>;
   uninstallApp(input: BackofficeAppLookupInput): Promise<BackofficeAppInstallationMutationResult>;
 };
@@ -52,6 +57,8 @@ export function createAppsRuntime({
       requireBackofficeAppOperationValue(await installations.listInstallations(input)),
     updateInstallationAccess: async (input) =>
       requireBackofficeAppOperationValue(await installations.updateInstallationAccess(input)),
+    approveActions: async (input) =>
+      requireBackofficeAppOperationValue(await installations.approveActions(input)),
     uninstallApp: async (input) =>
       requireBackofficeAppOperationValue(await installations.uninstallApp(input)),
   };

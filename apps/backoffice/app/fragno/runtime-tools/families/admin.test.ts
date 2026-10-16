@@ -83,6 +83,9 @@ describe("admin runtime tools", () => {
       createApp: async () => {
         throw new Error("App creation is not configured in this legacy fixture.");
       },
+      updateAppActions: async () => {
+        throw new Error("unexpected app action update");
+      },
       listApps: async () => {
         throw new Error("App listing is not configured in this legacy fixture.");
       },

@@ -7,6 +7,7 @@ import {
 export type BackofficeAppErrorCode =
   | "APP_NOT_FOUND"
   | "APP_REGISTRATION_CONFLICT"
+  | "APP_SLUG_TAKEN"
   | "APP_CURSOR_INVALID"
   | "APP_GRANTS_NOT_REQUESTED"
   | "APP_INSTALLATION_NOT_FOUND"
@@ -15,11 +16,17 @@ export type BackofficeAppErrorCode =
   | "APP_INSTALLATION_CURSOR_INVALID"
   | "APP_INSTALLATION_PROJECT_NOT_FOUND"
   | "APP_INSTALLATION_ACTIVATION_STALE"
-  | "APP_INSTALLATION_ALREADY_CLAIMED";
+  | "APP_INSTALLATION_ALREADY_CLAIMED"
+  | "APP_INSTALLATION_UNCLAIMED"
+  | "APP_INSTALLATION_OUT_OF_SCOPE"
+  | "APP_ACTIONS_REVISION_STALE"
+  | "APP_ACTION_NOT_FOUND"
+  | "APP_ENDPOINT_UNREACHABLE";
 
 const BACKOFFICE_APP_ERROR_KIND = {
   APP_NOT_FOUND: "not_found",
   APP_REGISTRATION_CONFLICT: "conflict",
+  APP_SLUG_TAKEN: "conflict",
   APP_CURSOR_INVALID: "invalid_request",
   APP_GRANTS_NOT_REQUESTED: "invalid_request",
   APP_INSTALLATION_NOT_FOUND: "not_found",
@@ -29,6 +36,11 @@ const BACKOFFICE_APP_ERROR_KIND = {
   APP_INSTALLATION_PROJECT_NOT_FOUND: "not_found",
   APP_INSTALLATION_ACTIVATION_STALE: "conflict",
   APP_INSTALLATION_ALREADY_CLAIMED: "conflict",
+  APP_INSTALLATION_UNCLAIMED: "conflict",
+  APP_INSTALLATION_OUT_OF_SCOPE: "forbidden",
+  APP_ACTIONS_REVISION_STALE: "conflict",
+  APP_ACTION_NOT_FOUND: "not_found",
+  APP_ENDPOINT_UNREACHABLE: "operation_failed",
 } as const satisfies Record<BackofficeAppErrorCode, BackofficeOperationErrorKind>;
 
 /** Known app failures are serialized at RPC boundaries; unexpected failures still propagate. */

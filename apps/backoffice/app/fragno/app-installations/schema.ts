@@ -2,7 +2,7 @@ import type { AppInstallationExternalAccount } from "@fragno-dev/backoffice-api/
 import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import { column, idColumn, schema, type Column } from "@fragno-dev/db/schema";
 
-import type { BackofficeAppInstallationStatus } from "./contracts";
+import type { AppApprovedActions, BackofficeAppInstallationStatus } from "./contracts";
 
 /** Each organization owns its installation database; app IDs refer to the external registry. */
 export const appInstallationsFragmentSchema = schema("app-installations", (s) =>
@@ -60,5 +60,17 @@ export const appInstallationsFragmentSchema = schema("app-installations", (s) =>
             AppInstallationExternalAccount | null
           >,
         ),
+    )
+    .alterTable("app_installation", (t) =>
+      // The declaration this installation approved, so a changed one cannot widen what it calls.
+      // Null approved nothing: the installation predates actions, or it was uninstalled.
+      t.addColumn(
+        "approvedActions",
+        column("json").nullable() as Column<
+          "json",
+          AppApprovedActions | null,
+          AppApprovedActions | null
+        >,
+      ),
     ),
 );

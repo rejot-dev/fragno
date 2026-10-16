@@ -1,9 +1,11 @@
 import type {
+  BackofficeApp,
   BackofficeAppLookupInput,
   AppInstallationExternalAccount,
   AppInstallationResourceScope,
   BackofficeAppInstallation,
   BackofficeAppInstallationAccessInput,
+  BackofficeAppInstallationActionsApprovalInput,
   BackofficeAppInstallationMutationResult,
   BackofficeAppInstallationPage,
   BackofficeAppInstallationPageInput,
@@ -18,6 +20,7 @@ import { BackofficeAppDomainError } from "@/fragno/apps/errors";
 import { appPermissionsEqual } from "@/fragno/apps/permissions";
 
 import type {
+  AppApprovedActions,
   BackofficeAppInstallationClaimInput,
   BackofficeAppInstallationClaimResult,
   BackofficeAppInstallationInput,
@@ -45,6 +48,17 @@ function assertAppGrantsWereRequested(
       "Backoffice app installation grants exceed the app's requested permissions.",
     );
   }
+}
+
+/** Approval names the revision its approver reviewed; anything else was not what they approved. */
+function approveCurrentActions(app: BackofficeApp, reviewedRevision: number): AppApprovedActions {
+  if (reviewedRevision !== app.actionsRevision) {
+    throw new BackofficeAppDomainError(
+      "APP_ACTIONS_REVISION_STALE",
+      `Backoffice app actions changed since revision ${reviewedRevision}; review revision ${app.actionsRevision} with apps.get.`,
+    );
+  }
+  return { revision: app.actionsRevision, declaration: app.actions };
 }
 
 function resourceScopesEqual(
@@ -81,6 +95,7 @@ function toBackofficeAppInstallation(installation: {
   installedByUserId: string;
   status: BackofficeAppInstallationStatus;
   activation: number;
+  approvedActions: AppApprovedActions | null;
   createdAt: Date;
   updatedAt: Date;
 }): BackofficeAppInstallation {
@@ -94,6 +109,7 @@ function toBackofficeAppInstallation(installation: {
     installedByUserId: installation.installedByUserId,
     status: installation.status,
     activation: installation.activation,
+    approvedActionsRevision: installation.approvedActions?.revision ?? 0,
     createdAt: installation.createdAt.toISOString(),
     updatedAt: installation.updatedAt.toISOString(),
   };
@@ -126,17 +142,14 @@ function decodeAppInstallationCursor(
   }
 }
 
-/** Local services receive immutable registry declarations from control-plane RPC orchestration. */
+/** Local services receive the registry's current declarations from control-plane RPC orchestration. */
 export const appInstallationsFragmentDefinition = defineFragment<AppInstallationsConfig>(
   "app-installations",
 )
   .extend(withDatabase(appInstallationsFragmentSchema))
   .providesBaseService(({ defineService, config }) =>
     defineService({
-      installApp: function (
-        input: BackofficeAppInstallationInput,
-        requestedPermissions: readonly BackofficePermissionRequirement[],
-      ) {
+      installApp: function (input: BackofficeAppInstallationInput, app: BackofficeApp) {
         return this.serviceTx(appInstallationsFragmentSchema)
           .retrieve((uow) =>
             uow.findFirst("app_installation", (b) =>
@@ -145,7 +158,8 @@ export const appInstallationsFragmentDefinition = defineFragment<AppInstallation
           )
           .mutate(
             ({ uow, retrieveResult: [installation] }): BackofficeAppInstallationMutationResult => {
-              assertAppGrantsWereRequested(requestedPermissions, input.grantedPermissions);
+              assertAppGrantsWereRequested(app.requestedPermissions, input.grantedPermissions);
+              const approvedActions = approveCurrentActions(app, input.actionsRevision);
               if (installation?.status === "active") {
                 if (
                   !appPermissionsEqual(installation.grantedPermissions, input.grantedPermissions) ||
@@ -159,6 +173,12 @@ export const appInstallationsFragmentDefinition = defineFragment<AppInstallation
                     "Backoffice app is already installed with different access; update it explicitly.",
                   );
                 }
+                if ((installation.approvedActions?.revision ?? 0) !== approvedActions.revision) {
+                  throw new BackofficeAppDomainError(
+                    "APP_INSTALLATION_CONFLICT",
+                    "Backoffice app is already installed with an earlier action declaration; approve it explicitly.",
+                  );
+                }
                 return { installationId: installation.id.externalId, changed: false };
               }
               if (installation) {
@@ -170,6 +190,7 @@ export const appInstallationsFragmentDefinition = defineFragment<AppInstallation
                       installedByUserId: input.installedByUserId,
                       status: "active",
                       activation: installation.activation + 1,
+                      approvedActions,
                       updatedAt: uow.now(),
                     })
                     .check(),
@@ -188,6 +209,7 @@ export const appInstallationsFragmentDefinition = defineFragment<AppInstallation
                   installedByUserId: input.installedByUserId,
                   organizationId: config.organizationId,
                   externalAccount: null,
+                  approvedActions,
                   status: "active",
                 },
                 {
@@ -210,6 +232,62 @@ export const appInstallationsFragmentDefinition = defineFragment<AppInstallation
           )
           .transformRetrieve(([installation]): BackofficeAppInstallation | null =>
             installation ? toBackofficeAppInstallation(installation) : null,
+          )
+          .build();
+      },
+
+      /** The installation together with the action declaration it approved. */
+      getApprovedInstallation: function (input: BackofficeAppLookupInput) {
+        return this.serviceTx(appInstallationsFragmentSchema)
+          .retrieve((uow) =>
+            uow.findFirst("app_installation", (b) =>
+              b.whereIndex("idx_app_installation_appId", (eb) => eb("appId", "=", input.appId)),
+            ),
+          )
+          .transformRetrieve(([installation]) =>
+            installation
+              ? {
+                  installation: toBackofficeAppInstallation(installation),
+                  approvedActions: installation.approvedActions,
+                }
+              : null,
+          )
+          .build();
+      },
+
+      approveActions: function (
+        input: BackofficeAppInstallationActionsApprovalInput,
+        app: BackofficeApp,
+      ) {
+        return this.serviceTx(appInstallationsFragmentSchema)
+          .retrieve((uow) =>
+            uow.findFirst("app_installation", (b) =>
+              b.whereIndex("idx_app_installation_appId", (eb) => eb("appId", "=", input.appId)),
+            ),
+          )
+          .mutate(
+            ({ uow, retrieveResult: [installation] }): BackofficeAppInstallationMutationResult => {
+              if (!installation) {
+                throw new BackofficeAppDomainError(
+                  "APP_INSTALLATION_NOT_FOUND",
+                  "Backoffice app installation was not found.",
+                );
+              }
+              if (installation.status !== "active") {
+                throw new BackofficeAppDomainError(
+                  "APP_INSTALLATION_INACTIVE",
+                  "Backoffice app installation is uninstalled.",
+                );
+              }
+              const approvedActions = approveCurrentActions(app, input.actionsRevision);
+              if ((installation.approvedActions?.revision ?? 0) === approvedActions.revision) {
+                return { installationId: installation.id.externalId, changed: false };
+              }
+              uow.update("app_installation", installation.id, (b) =>
+                b.set({ approvedActions, updatedAt: uow.now() }).check(),
+              );
+              return { installationId: installation.id.externalId, changed: true };
+            },
           )
           .build();
       },
@@ -362,6 +440,7 @@ export const appInstallationsFragmentDefinition = defineFragment<AppInstallation
                     status: "uninstalled",
                     grantedPermissions: [],
                     externalAccount: null,
+                    approvedActions: null,
                     updatedAt: uow.now(),
                   })
                   .check(),

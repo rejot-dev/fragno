@@ -72,6 +72,7 @@ import type {
   BackofficeOAuthClientUpdateInput,
   BackofficeOAuthClientUpdateResult,
 } from "@/fragno/auth/oauth-client";
+import type { AppActionTokenInput } from "@/fragno/auth/token-lifecycle";
 import type {
   AutomationIngestResult,
   AutomationProjectExecutionTarget,
@@ -294,6 +295,8 @@ export type AuthObject = DurableHookCommands & {
     organizationId: string;
     activation: number;
   }): Promise<{ code: string }>;
+  /** Signs one request to an app's action endpoint; the token is valid only for that body. */
+  issueAppActionToken(input: AppActionTokenInput): Promise<{ token: string }>;
   getBackofficeCliOAuthConfig(input: { requestUrl: string }): Promise<BackofficeCliOAuthConfig>;
   /** Verifies an installed app's client-credentials token and returns its registered app. */
   authenticateInstalledAppClient(input: {

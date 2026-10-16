@@ -562,6 +562,13 @@
     "summary": "admin.apps.create registers an existing OAuth client as a Backoffice app (System administrators only).",
     "options": [
       {
+        "name": "slug",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "slug",
+        "description": "Unique, permanent app name, e.g. bookkeeping; its integration connection is app#<slug>"
+      },
+      {
         "name": "oauth-client-id",
         "valueRequired": true,
         "valueName": "id",
@@ -572,6 +579,12 @@
         "valueRequired": true,
         "valueName": "json",
         "description": "JSON array of canonical namespace/permission requirements; use [] for no capabilities"
+      },
+      {
+        "name": "actions-json",
+        "valueRequired": true,
+        "valueName": "json",
+        "description": "Action declaration: {\"kind\":\"none\"}, or {\"kind\":\"endpoint\",\"endpointUrl\":\"https://...\",\"changeApproval\":\"installation\"|\"automatic\",\"actions\":[{\"id\",\"label\",\"description\",\"inputSchema\",\"outputSchema\"}]} (default: none)"
       },
       {
         "name": "help",
@@ -609,6 +622,45 @@
         "valueRequired": true,
         "valueName": "cursor",
         "description": "Cursor from the previous page; keep the same page size"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "admin.apps.update-actions",
+    "summary": "admin.apps.update-actions replaces an app's action declaration (System administrators only).",
+    "options": [
+      {
+        "name": "app-id",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "id",
+        "description": "Registered Backoffice app ID"
+      },
+      {
+        "name": "actions-json",
+        "valueRequired": true,
+        "valueName": "json",
+        "description": "Action declaration: {\"kind\":\"none\"}, or {\"kind\":\"endpoint\",\"endpointUrl\":\"https://...\",\"changeApproval\":\"installation\"|\"automatic\",\"actions\":[{\"id\",\"label\",\"description\",\"inputSchema\",\"outputSchema\"}]}",
+        "required": true
       },
       {
         "name": "help",
@@ -1138,6 +1190,13 @@
         "description": "Explicitly approved subset of requested permissions; use [] for no grants"
       },
       {
+        "name": "actions-revision",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "revision",
+        "description": "The app's actionsRevision reviewed with apps.get; fails if its actions changed since"
+      },
+      {
         "name": "resource-scope-json",
         "valueRequired": true,
         "valueName": "json",
@@ -1257,6 +1316,45 @@
         "valueRequired": true,
         "valueName": "json",
         "description": "Resources the grants apply to: {\"kind\":\"organization\"} or {\"kind\":\"projects\",\"projectIds\":[\"...\"]}"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "apps.installations.approve-actions",
+    "summary": "apps.installations.approve-actions approves the app's current action declaration for this organization (organization owners/admins only). Review it with apps.get first.",
+    "options": [
+      {
+        "name": "app-id",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "id",
+        "description": "Registered Backoffice app ID (not an OAuth client ID)"
+      },
+      {
+        "name": "actions-revision",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "revision",
+        "description": "The app's actionsRevision reviewed with apps.get; fails if its actions changed since"
       },
       {
         "name": "help",

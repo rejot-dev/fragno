@@ -20,6 +20,8 @@ type AdminCodemodeProvider = {
   appsCreate(input: AdminAppsCreateInput): Promise<AdminAppsCreateOutput>;
   /** List global Backoffice app registrations using cursor pagination. Does not expose OAuth credentials or organization installations. */
   appsList(input: AdminAppsListInput): Promise<AdminAppsListOutput>;
+  /** Replace a registered app's action declaration. A changed declaration gets a new revision; installations approve it before new or changed actions run, unless its changeApproval is automatic. */
+  appsUpdateActions(input: AdminAppsUpdateActionsInput): Promise<AdminAppsUpdateActionsOutput>;
   /** Create an Auth-owned authorization-code OAuth web or native client for the current System administrator. Confidential clients return an initial secret and may use client credentials; public clients use PKCE without a secret. Does not register or install a Backoffice app. */
   oauthClientsCreate(input: AdminOauthClientsCreateInput): Promise<AdminOauthClientsCreateOutput>;
   /** List the global Auth-owned OAuth client catalog, including other owners and the internal Codemode client, using cursor pagination. Never exposes credentials or credential hashes. */
@@ -285,10 +287,40 @@ type BackofficePermissionRequirement =
       namespace: "workflow";
       permission: "read";
     };
+type AppActionsDeclaration =
+  | {
+      kind: "none";
+    }
+  | {
+      kind: "endpoint";
+      /** Receives each signed action request as a POST; the request token's audience is this URL. */
+      endpointUrl: string;
+      /** installation: each installation approves a changed declaration before new or changed actions run. automatic: changes apply immediately; only administrators register apps, so reserve it for apps they operate. */
+      changeApproval: "installation" | "automatic";
+      actions: AppAction[];
+    };
+type AppAction = {
+  id: string;
+  label: string;
+  description: string;
+  /** JSON Schema (2020-12 or draft-07) for the action's object input. */
+  inputSchema: {
+    [key: string]: unknown;
+  };
+  /** JSON Schema (2020-12 or draft-07) for the action's result. */
+  outputSchema: {
+    [key: string]: unknown;
+  };
+};
 type BackofficeApp = {
   id: string;
+  /** Unique, permanent name for the app; its integration connection is app#<slug>, e.g. app#bookkeeping. */
+  slug: string;
   oauthClientId: string;
   requestedPermissions: BackofficePermissionRequirement[];
+  actions: AppActionsDeclaration;
+  /** Increments whenever the app's action declaration changes. */
+  actionsRevision: number;
   /** ISO 8601 datetime string. */
   createdAt: string;
 };
@@ -402,8 +434,11 @@ type AdminOrgMembersListInput = {
 };
 type AdminOrgMembersListOutput = OrganizationMemberPage;
 type AdminAppsCreateInput = {
+  /** Unique, permanent name for the app; its integration connection is app#<slug>, e.g. app#bookkeeping. */
+  slug: string;
   oauthClientId: string;
   requestedPermissions: BackofficePermissionRequirement[];
+  actions?: AppActionsDeclaration;
 };
 type AdminAppsCreateOutput = {
   appId: string;
@@ -417,6 +452,14 @@ type AdminAppsListOutput = {
   apps: BackofficeApp[];
   nextCursor: string | null;
   hasNextPage: boolean;
+};
+type AdminAppsUpdateActionsInput = {
+  appId: string;
+  actions: AppActionsDeclaration;
+};
+type AdminAppsUpdateActionsOutput = {
+  actionsRevision: number;
+  changed: boolean;
 };
 type AdminOauthClientsCreateInput = BackofficeOAuthClientCreateInput;
 type AdminOauthClientsCreateOutput = BackofficeOAuthClientCreateResult;

@@ -1,8 +1,8 @@
 // apps tools
 type AppsCodemodeProvider = {
-  /** Review a registered app's requested permissions before approving an installation. */
+  /** Review a registered app's requested permissions and declared actions before approving an installation. */
   get(input: AppsGetInput): Promise<AppsGetOutput>;
-  /** Approve an app installation in the selected organization, limited to explicit permissions and resources. Installer identity comes from the authenticated user. */
+  /** Approve an app installation in the selected organization, limited to explicit permissions and resources, and approve the app's declared actions at the reviewed revision. Installer identity comes from the authenticated user. */
   install(input: AppsInstallInput): Promise<AppsInstallOutput>;
   /** Inspect one app installation in the selected organization, including approved grants. */
   getInstallation(input: AppsGetInstallationInput): Promise<AppsGetInstallationOutput>;
@@ -10,6 +10,10 @@ type AppsCodemodeProvider = {
   listInstallations(input: AppsListInstallationsInput): Promise<AppsListInstallationsOutput>;
   /** Replace an active installation's approved permissions and resources. Takes effect immediately, including for issued app credentials. Does not change installer attribution. */
   updateInstallation(input: AppsUpdateInstallationInput): Promise<AppsUpdateInstallationOutput>;
+  /** Approve an app's current action declaration for the selected organization's installation, so its new and changed actions run. Only needed when the app's changeApproval is installation. */
+  approveInstallationActions(
+    input: AppsApproveInstallationActionsInput,
+  ): Promise<AppsApproveInstallationActionsOutput>;
   /** Uninstall an app in the selected organization, clearing approved grants and its linked account while retaining installation identity. Immediately invalidates app credentials. Does not revoke personal OAuth consent. */
   uninstall(input: AppsUninstallInput): Promise<AppsUninstallOutput>;
 };
@@ -17,8 +21,13 @@ declare const apps: AppsCodemodeProvider;
 
 type BackofficeApp = {
   id: string;
+  /** Unique, permanent name for the app; its integration connection is app#<slug>, e.g. app#bookkeeping. */
+  slug: string;
   oauthClientId: string;
   requestedPermissions: BackofficePermissionRequirement[];
+  actions: AppActionsDeclaration;
+  /** Increments whenever the app's action declaration changes. */
+  actionsRevision: number;
   /** ISO 8601 datetime string. */
   createdAt: string;
 };
@@ -235,6 +244,31 @@ type BackofficePermissionRequirement =
       namespace: "workflow";
       permission: "read";
     };
+type AppActionsDeclaration =
+  | {
+      kind: "none";
+    }
+  | {
+      kind: "endpoint";
+      /** Receives each signed action request as a POST; the request token's audience is this URL. */
+      endpointUrl: string;
+      /** installation: each installation approves a changed declaration before new or changed actions run. automatic: changes apply immediately; only administrators register apps, so reserve it for apps they operate. */
+      changeApproval: "installation" | "automatic";
+      actions: AppAction[];
+    };
+type AppAction = {
+  id: string;
+  label: string;
+  description: string;
+  /** JSON Schema (2020-12 or draft-07) for the action's object input. */
+  inputSchema: {
+    [key: string]: unknown;
+  };
+  /** JSON Schema (2020-12 or draft-07) for the action's result. */
+  outputSchema: {
+    [key: string]: unknown;
+  };
+};
 type AppInstallationResourceScope =
   | {
       kind: "organization";
@@ -260,6 +294,8 @@ type BackofficeAppInstallation = {
   installedByUserId: string;
   status: "active" | "uninstalled";
   activation: number;
+  /** The app's actionsRevision this installation approved; 0 when it approved no declaration. */
+  approvedActionsRevision: number;
   /** ISO 8601 datetime string. */
   createdAt: string;
   /** ISO 8601 datetime string. */
@@ -278,6 +314,8 @@ type AppsInstallInput = {
   appId: string;
   grantedPermissions: BackofficePermissionRequirement[];
   resourceScope?: AppInstallationResourceScope;
+  /** The actionsRevision reviewed with apps.get; installation fails if the declaration changed since. */
+  actionsRevision: number;
 };
 type AppsInstallOutput = BackofficeAppInstallationMutationResult;
 type AppsGetInstallationInput = {
@@ -295,6 +333,12 @@ type AppsUpdateInstallationInput = {
   resourceScope: AppInstallationResourceScope;
 };
 type AppsUpdateInstallationOutput = BackofficeAppInstallationMutationResult;
+type AppsApproveInstallationActionsInput = {
+  appId: string;
+  /** The actionsRevision reviewed with apps.get; approval fails if the declaration changed since. */
+  actionsRevision: number;
+};
+type AppsApproveInstallationActionsOutput = BackofficeAppInstallationMutationResult;
 type AppsUninstallInput = {
   appId: string;
 };

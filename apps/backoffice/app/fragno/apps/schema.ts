@@ -1,24 +1,47 @@
+import type { AppActionsDeclaration } from "@fragno-dev/backoffice-api/v0/apps";
 import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import { column, idColumn, schema, type Column } from "@fragno-dev/db/schema";
 
 /** The singleton registry owns registrations only; organization grants live in separate objects. */
 export const appsFragmentSchema = schema("apps", (s) =>
-  s.addTable("app", (t) =>
-    t
-      .addColumn("id", idColumn())
-      .addColumn("oauthClientId", column("string"))
-      .addColumn(
-        "requestedPermissions",
-        column("json") as Column<
-          "json",
-          BackofficePermissionRequirement[],
-          BackofficePermissionRequirement[]
-        >,
-      )
-      .addColumn(
-        "createdAt",
-        column("timestamp").defaultTo((b) => b.now()),
-      )
-      .createIndex("idx_app_oauthClientId", ["oauthClientId"], { unique: true }),
-  ),
+  s
+    .addTable("app", (t) =>
+      t
+        .addColumn("id", idColumn())
+        .addColumn("oauthClientId", column("string"))
+        .addColumn(
+          "requestedPermissions",
+          column("json") as Column<
+            "json",
+            BackofficePermissionRequirement[],
+            BackofficePermissionRequirement[]
+          >,
+        )
+        .addColumn(
+          "createdAt",
+          column("timestamp").defaultTo((b) => b.now()),
+        )
+        .createIndex("idx_app_oauthClientId", ["oauthClientId"], { unique: true }),
+    )
+    .alterTable("app", (t) =>
+      t
+        // Null for apps registered before apps declared actions, which declared none.
+        .addColumn(
+          "actions",
+          column("json").nullable() as Column<
+            "json",
+            AppActionsDeclaration | null,
+            AppActionsDeclaration | null
+          >,
+        )
+        // Installations approve a revision, so a changed declaration needs their approval again.
+        .addColumn("actionsRevision", column("integer").defaultTo(1)),
+    )
+    .alterTable("app", (t) =>
+      t
+        // Null for apps registered before slugs; their ID serves as the slug until registration
+        // names one.
+        .addColumn("slug", column("string").nullable())
+        .createIndex("idx_app_slug", ["slug"], { unique: true }),
+    ),
 );

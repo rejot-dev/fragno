@@ -681,6 +681,7 @@ describe("admin OAuth client SQLite scenarios", () => {
               assert(beforeRegistration.ok);
               expect(beforeRegistration.value.apps).toEqual([]);
               const registration = {
+                slug: "accounting",
                 oauthClientId: created.clientId,
                 requestedPermissions: [BACKOFFICE_PERMISSION.events.emit],
               };

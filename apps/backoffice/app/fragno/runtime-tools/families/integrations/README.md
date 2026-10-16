@@ -162,6 +162,26 @@ publishes each account under its named address.
 
 Listing always forwards exactly one native page and its cursor.
 
+### App addresses
+
+The app source owns the `app` namespace in organization and project scopes. `app#<slug>` names the
+organization's installation of the registered app with that slug, which the registry resolves to the
+app ID; the slug never changes, so addresses and generated clients stay valid; the app declares its
+actions in its registration (see [App actions](../../../apps/README.md#app-actions)). Discovery
+publishes one `app` service with `multiple` cardinality, no setup targets, and no events. Listing
+forwards one page of the organization's installations and keeps those with callable actions in the
+selected scope, each under its app's slug; in a project, the installation's resources must include
+it. `integrations.get` explains the rest: no installation (including an unknown slug), a project
+outside it, an app that has not claimed it, or a newer declaration awaiting approval.
+
+Setup, reconfigure, and disconnect are unsupported because installation is the setup: the `apps.*`
+tools and the install page own that lifecycle. The actions are the declaration the installation
+approved, or the current one when it is automatic, and are all checked. Invocation validates the
+input, then the organization's AppInstallations object signs the request through Auth and POSTs it
+to the app; a 2xx JSON answer is validated against the output schema and any other status fails with
+the app's `message`. `verify` sends a signed ping. Calls need only `integrations.execute`; the app
+sees the caller in the token's `actor` claim and enforces its own rules.
+
 ## Service-owned setup
 
 Reson8 setup with `{ kind: "check" }` reads current configuration without contacting the provider or

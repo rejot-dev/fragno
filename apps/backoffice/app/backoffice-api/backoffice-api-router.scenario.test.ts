@@ -865,6 +865,8 @@ describe("Backoffice API v0 SQLite scenarios", () => {
           ctx.vars.clientSecret = client.clientSecret;
           const permissions = [BACKOFFICE_PERMISSION.org.read, BACKOFFICE_PERMISSION.org.manage];
           const registered = await ctx.runtime.objects.apps.singleton().commands.registerApp({
+            actions: { kind: "none" },
+            slug: "accounting",
             oauthClientId: client.clientId,
             requestedPermissions: permissions,
           });
@@ -873,6 +875,7 @@ describe("Backoffice API v0 SQLite scenarios", () => {
           const installed = await ctx.runtime.objects.appInstallations
             .forOrg(ctx.vars.orgId)
             .commands.installApp({
+              actionsRevision: 1,
               appId: ctx.vars.appId,
               grantedPermissions: permissions,
               installedByUserId: ctx.vars.ownerId,
