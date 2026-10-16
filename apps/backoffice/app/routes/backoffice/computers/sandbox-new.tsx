@@ -5,7 +5,8 @@ import {
   type SandboxInstanceType,
 } from "@fragno-apps/cf-sandbox-bridge/sandbox/sandbox-container-contract";
 import { Button } from "@fragno-private/design-system/button";
-import { FormField } from "@fragno-private/design-system/form-container";
+import { Checkbox } from "@fragno-private/design-system/checkbox";
+import { Field } from "@fragno-private/design-system/field";
 import { Input } from "@fragno-private/design-system/input";
 import { TimeUnitField } from "@fragno-private/design-system/unit-fields";
 import { useState, type ReactNode } from "react";
@@ -63,9 +64,9 @@ export default function BackofficeNewSandbox({ actionData }: Route.ComponentProp
 
       <Form method="post" className="mt-5 space-y-6">
         <div className="md:w-1/2">
-          <FormField
+          <Field
             label="Sandbox id"
-            hint="Leave blank to generate one. An existing id resumes its saved workspace."
+            description="Leave blank to generate one. An existing id resumes its saved workspace."
           >
             <Input
               name="id"
@@ -74,7 +75,7 @@ export default function BackofficeNewSandbox({ actionData }: Route.ComponentProp
               autoComplete="off"
               className="w-full font-mono"
             />
-          </FormField>
+          </Field>
         </div>
 
         <ChoiceGroup legend="Image" columns="sm:grid-cols-2">
@@ -112,14 +113,14 @@ export default function BackofficeNewSandbox({ actionData }: Route.ComponentProp
             Advanced
           </summary>
           <div className="mt-4 grid gap-4 md:grid-cols-2">
-            <FormField label="Startup command" hint="Must succeed before the sandbox is ready.">
+            <Field label="Startup command" description="Must succeed before the sandbox is ready.">
               <Input
                 name="startupCommand"
                 defaultValue={values.startupCommand}
                 autoComplete="off"
                 className="w-full font-mono"
               />
-            </FormField>
+            </Field>
             <TimeUnitField
               label="Sleep after"
               hint="Saves the workspace and stops the sandbox after this long."
@@ -136,23 +137,15 @@ export default function BackofficeNewSandbox({ actionData }: Route.ComponentProp
               onChange={setStartupTimeoutSeconds}
               defaultDisplayUnit="seconds"
             />
-            <label className="flex items-start gap-2 text-sm md:col-span-2">
-              <input
-                name="keepAlive"
-                type="checkbox"
-                checked={keepAlive}
-                onChange={(event) => {
-                  setKeepAlive(event.target.checked);
-                }}
-                className="mt-1 h-4 w-4 accent-[var(--bo-accent)]"
-              />
-              <span>
-                <span className="font-semibold text-[var(--bo-fg)]">Keep alive</span>
-                <span className="block text-xs text-[var(--bo-muted)]">
-                  Run until stopped instead of sleeping.
-                </span>
-              </span>
-            </label>
+            <Checkbox
+              name="keepAlive"
+              checked={keepAlive}
+              onCheckedChange={setKeepAlive}
+              description="Run until stopped instead of sleeping."
+              className="md:col-span-2"
+            >
+              <span className="font-semibold text-[var(--bo-fg)]">Keep alive</span>
+            </Checkbox>
           </div>
         </details>
 

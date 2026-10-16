@@ -2,6 +2,7 @@ import { Button } from "@fragno-private/design-system/button";
 import { cn } from "@fragno-private/design-system/cn";
 import { Input } from "@fragno-private/design-system/input";
 import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
+import { Select } from "@fragno-private/design-system/select";
 import { useState } from "react";
 import {
   useLoaderData,
@@ -245,26 +246,21 @@ function SystemUserRow({
       </td>
       <td className="px-3 py-3 whitespace-nowrap">{formatDate(user.createdAt)}</td>
       <td className="px-3 py-3">
-        <select
+        <Select
           aria-label={`Global role for ${user.email}`}
+          density="compact"
           disabled={isCurrentUser}
-          title={isCurrentUser ? "You cannot change your own global role." : undefined}
           value={selectedRole}
-          onChange={(event) => {
-            setRoleSelection({
-              userRole: user.role,
-              selectedRole: event.target.value as GlobalRole,
-            });
+          options={GLOBAL_ROLES.map((role) => ({ label: role, value: role }))}
+          onValueChange={(role) => {
+            if (role === null) {
+              return;
+            }
+            setRoleSelection({ userRole: user.role, selectedRole: role });
             setNotice(null);
           }}
-          className="bo-input min-w-32 px-3 py-2 text-xs font-semibold tracking-[0.16em] uppercase"
-        >
-          {GLOBAL_ROLES.map((role) => (
-            <option key={role} value={role}>
-              {role}
-            </option>
-          ))}
-        </select>
+          className="min-w-32 font-semibold tracking-[0.16em] uppercase"
+        />
       </td>
       <td className="px-3 py-3">
         <div className="flex min-w-36 flex-col items-start gap-1.5">

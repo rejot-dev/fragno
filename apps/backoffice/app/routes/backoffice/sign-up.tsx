@@ -1,7 +1,8 @@
 import "@fragno-private/design-system/components.css";
 
 import { Button, ButtonLink } from "@fragno-private/design-system/button";
-import { FormContainer, FormField } from "@fragno-private/design-system/form-container";
+import { Field } from "@fragno-private/design-system/field";
+import { FormContainer } from "@fragno-private/design-system/form-container";
 import { Input } from "@fragno-private/design-system/input";
 import { Form, Link, redirect, useActionData, useLoaderData, useNavigation } from "react-router";
 import { z } from "zod";
@@ -302,9 +303,9 @@ export default function BackofficeSignUp() {
                     <input type="hidden" name="invitationCode" value={activeInvitation.code} />
                   </>
                 ) : null}
-                <FormField
+                <Field
                   label="Work email"
-                  hint={
+                  description={
                     activeInvitation
                       ? "Use the email tied to your invitation."
                       : "Use the email tied to your team access."
@@ -318,8 +319,8 @@ export default function BackofficeSignUp() {
                     placeholder="team@example.com"
                     className="w-full"
                   />
-                </FormField>
-                <FormField label="Create password" hint="At least 8 characters.">
+                </Field>
+                <Field label="Create password" description="At least 8 characters.">
                   <Input
                     type="password"
                     name="password"
@@ -328,8 +329,8 @@ export default function BackofficeSignUp() {
                     placeholder="••••••••"
                     className="w-full"
                   />
-                </FormField>
-                <FormField label="Confirm password" hint="Re-type to confirm.">
+                </Field>
+                <Field label="Confirm password" description="Re-type to confirm.">
                   <Input
                     type="password"
                     name="confirmPassword"
@@ -338,7 +339,7 @@ export default function BackofficeSignUp() {
                     placeholder="••••••••"
                     className="w-full"
                   />
-                </FormField>
+                </Field>
                 {signUpError ? (
                   <p className="text-xs text-red-400">{signUpError}</p>
                 ) : (

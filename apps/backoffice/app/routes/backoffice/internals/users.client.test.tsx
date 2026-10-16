@@ -91,10 +91,12 @@ describe("Backoffice internal users", () => {
   test("keeps the success notice after updating a user's role", async () => {
     updateUserRole.mockResolvedValue(undefined);
     renderUsers();
-    fireEvent.change(
+    fireEvent.click(
       await screen.findByRole("combobox", { name: "Global role for one@example.com" }),
-      { target: { value: "admin" } },
     );
+    const admin = await screen.findByRole("option", { name: "admin" });
+    fireEvent.pointerDown(admin);
+    fireEvent.click(admin);
     fireEvent.click(screen.getByRole("button", { name: "Save role" }));
     expect(await screen.findByText("Role updated.")).toBeTruthy();
     expect(updateUserRole).toHaveBeenCalledWith({

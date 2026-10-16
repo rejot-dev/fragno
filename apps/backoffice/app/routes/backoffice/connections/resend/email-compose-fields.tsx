@@ -1,5 +1,13 @@
-import { FormField } from "@fragno-private/design-system/form-container";
+import { Field } from "@fragno-private/design-system/field";
 import { Input } from "@fragno-private/design-system/input";
+import { Select } from "@fragno-private/design-system/select";
+import { TextArea } from "@fragno-private/design-system/text-area";
+
+const SCHEDULE_UNIT_OPTIONS = [
+  { label: "minutes", value: "minutes" },
+  { label: "hours", value: "hours" },
+  { label: "days", value: "days" },
+];
 
 const BODY_GRID = {
   md: "grid gap-3 md:grid-cols-2",
@@ -27,23 +35,23 @@ export function EmailComposeFields({
   return (
     <>
       <div className="grid gap-3 md:grid-cols-2">
-        <FormField label="To" hint="Comma or newline separated list.">
+        <Field label="To" description="Comma or newline separated list.">
           <Input
             name="to"
             required
             placeholder="hello@resend.dev, ops@example.com"
             className="w-full"
           />
-        </FormField>
-        <FormField label="Subject" hint={subjectHint}>
+        </Field>
+        <Field label="Subject" description={subjectHint}>
           <Input name="subject" required placeholder={subjectPlaceholder} className="w-full" />
-        </FormField>
+        </Field>
       </div>
 
       <div className="grid gap-3 md:grid-cols-2">
-        <FormField
+        <Field
           label="From"
-          hint={
+          description={
             defaultFrom
               ? `Defaults to ${defaultFrom}.`
               : "Leave blank to use the configured default."
@@ -55,10 +63,10 @@ export function EmailComposeFields({
             placeholder={defaultFrom || "onboarding@yourdomain.com"}
             className="w-full"
           />
-        </FormField>
-        <FormField
+        </Field>
+        <Field
           label="Reply-to"
-          hint={
+          description={
             defaultReplyTo
               ? `Defaults to ${defaultReplyTo}.`
               : "Optional. Use commas for multiple addresses."
@@ -70,20 +78,25 @@ export function EmailComposeFields({
             placeholder={defaultReplyTo || "support@yourdomain.com"}
             className="w-full"
           />
-        </FormField>
+        </Field>
       </div>
 
       <div className="grid gap-3 md:grid-cols-2">
-        <FormField label="CC" hint="Optional. Use commas for multiple addresses.">
+        <Field label="CC" description="Optional. Use commas for multiple addresses.">
           <Input name="cc" placeholder="finance@yourdomain.com" className="w-full" />
-        </FormField>
-        <FormField label="BCC" hint="Optional. Use commas for multiple addresses.">
+        </Field>
+        <Field label="BCC" description="Optional. Use commas for multiple addresses.">
           <Input name="bcc" placeholder="audit@yourdomain.com" className="w-full" />
-        </FormField>
+        </Field>
       </div>
 
-      <FormField label="Schedule in" hint="Optional delay from now (uses database time).">
-        <div className="flex flex-wrap gap-2">
+      {/* The unit picker sits beside the field so the field's label names only the number. */}
+      <div className="flex flex-wrap items-end gap-2">
+        <Field
+          label="Schedule in"
+          description="Optional delay from now (uses database time)."
+          className="w-full md:w-auto"
+        >
           <Input
             name="scheduledInValue"
             type="number"
@@ -92,35 +105,28 @@ export function EmailComposeFields({
             placeholder="15"
             className="w-full md:w-36"
           />
-          <select
-            name="scheduledInUnit"
-            defaultValue="minutes"
-            className="bo-input px-3 py-2 text-sm"
-          >
-            <option value="minutes">minutes</option>
-            <option value="hours">hours</option>
-            <option value="days">days</option>
-          </select>
-        </div>
-      </FormField>
+        </Field>
+        <Select
+          name="scheduledInUnit"
+          aria-label="Schedule unit"
+          defaultValue="minutes"
+          options={SCHEDULE_UNIT_OPTIONS}
+          className="w-full md:w-36"
+        />
+      </div>
 
       <div className={BODY_GRID[bodyColumnsFrom]}>
-        <FormField label="Text" hint="Provide either text or HTML.">
-          <textarea
-            name="text"
-            rows={6}
-            placeholder={textPlaceholder}
-            className="bo-input w-full px-3 py-2 text-sm"
-          />
-        </FormField>
-        <FormField label="HTML" hint="Optional rich HTML body.">
-          <textarea
+        <Field label="Text" description="Provide either text or HTML.">
+          <TextArea name="text" rows={6} placeholder={textPlaceholder} />
+        </Field>
+        <Field label="HTML" description="Optional rich HTML body.">
+          <TextArea
             name="html"
             rows={6}
             placeholder="<p>Hello from Resend...</p>"
             className="bo-input w-full px-3 py-2 text-sm"
           />
-        </FormField>
+        </Field>
       </div>
     </>
   );

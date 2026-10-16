@@ -29,23 +29,3 @@ export function FormContainer({
     </section>
   );
 }
-
-export function FormField({
-  label,
-  hint,
-  children,
-}: {
-  label: string;
-  hint?: string;
-  children: ReactNode;
-}) {
-  return (
-    <label className="block space-y-2 text-sm">
-      <span className="flex flex-col gap-1">
-        <span className="text-sm font-semibold text-[var(--bo-fg)]">{label}</span>
-        {hint ? <span className="text-xs text-[var(--bo-muted)]">{hint}</span> : null}
-      </span>
-      {children}
-    </label>
-  );
-}

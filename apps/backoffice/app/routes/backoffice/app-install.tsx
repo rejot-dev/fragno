@@ -120,6 +120,8 @@ export default function BackofficeAppInstall({
           </p>
         ) : (
           <>
+            {/* Native controls keep this consent screen usable without JavaScript, where the
+                design-system pickers cannot be operated. */}
             <Form method="get" className="space-y-2">
               {/* Keep the app's request while switching organizations. */}
               {Object.entries(install.appRequest).map(([name, value]) => (

@@ -4,9 +4,12 @@ import {
   marketplaceVisibilitySchema,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 import { Button, ButtonLink } from "@fragno-private/design-system/button";
+import { Field } from "@fragno-private/design-system/field";
 import { FormContainer } from "@fragno-private/design-system/form-container";
 import { Input } from "@fragno-private/design-system/input";
 import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
+import { Select } from "@fragno-private/design-system/select";
+import { TextArea } from "@fragno-private/design-system/text-area";
 import { Form, redirect, useActionData, useLocation, useNavigation } from "react-router";
 
 import {
@@ -345,42 +348,28 @@ export default function BackofficeMarketplaceManage({ loaderData }: Route.Compon
             <Form method="post" className="space-y-4">
               <input type="hidden" name="intent" value="update" />
               <input type="hidden" name="visibility" value={visibility} />
-              <MetadataField label="Name" name="name" defaultValue={listing.name} />
-              <MetadataField label="Summary" name="summary" defaultValue={listing.summary} />
-              <label className="flex flex-col gap-1">
-                <span className="text-[10px] tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
-                  Description
-                </span>
-                <textarea
-                  name="description"
-                  required
-                  rows={8}
-                  defaultValue={listing.description}
-                  className="bo-input px-3 py-2 text-sm"
-                />
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-[10px] tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
-                  Category
-                </span>
-                <select
+              <Field label="Name">
+                <Input name="name" required defaultValue={listing.name} className="w-full" />
+              </Field>
+              <Field label="Summary">
+                <Input name="summary" required defaultValue={listing.summary} className="w-full" />
+              </Field>
+              <Field label="Description">
+                <TextArea name="description" required rows={8} defaultValue={listing.description} />
+              </Field>
+              <Field label="Category">
+                <Select
                   name="category"
                   defaultValue={listing.category}
-                  className="bo-input px-3 py-2 text-sm"
-                >
-                  {MARKETPLACE_CATEGORIES.map((category) => (
-                    <option key={category} value={category}>
-                      {category}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <MetadataField
-                label="Tags"
-                name="tags"
-                defaultValue={listing.tags.join(", ")}
-                required={false}
-              />
+                  options={MARKETPLACE_CATEGORIES.map((category) => ({
+                    label: category,
+                    value: category,
+                  }))}
+                />
+              </Field>
+              <Field label="Tags">
+                <Input name="tags" defaultValue={listing.tags.join(", ")} className="w-full" />
+              </Field>
               <Button type="submit" disabled={isSubmitting} variant="secondary">
                 Save metadata
               </Button>
@@ -395,7 +384,9 @@ export default function BackofficeMarketplaceManage({ loaderData }: Route.Compon
             <Form method="post" className="space-y-4">
               <input type="hidden" name="intent" value="add-version" />
               <input type="hidden" name="visibility" value={visibility} />
-              <MetadataField label="Version" name="version" defaultValue="" />
+              <Field label="Version">
+                <Input name="version" required className="w-full" />
+              </Field>
               <Button type="submit" disabled={isSubmitting} variant="secondary">
                 Add draft version
               </Button>
@@ -498,27 +489,6 @@ export default function BackofficeMarketplaceManage({ loaderData }: Route.Compon
         </aside>
       </div>
     </div>
-  );
-}
-
-function MetadataField({
-  label,
-  name,
-  defaultValue,
-  required = true,
-}: {
-  label: string;
-  name: string;
-  defaultValue: string;
-  required?: boolean;
-}) {
-  return (
-    <label className="flex flex-col gap-1">
-      <span className="text-[10px] tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
-        {label}
-      </span>
-      <Input name={name} required={required} defaultValue={defaultValue} />
-    </label>
   );
 }
 

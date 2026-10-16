@@ -1,5 +1,7 @@
 import { Button, ButtonLink } from "@fragno-private/design-system/button";
-import { FormContainer, FormField } from "@fragno-private/design-system/form-container";
+import { Checkbox } from "@fragno-private/design-system/checkbox";
+import { Field } from "@fragno-private/design-system/field";
+import { FormContainer } from "@fragno-private/design-system/form-container";
 import { Input } from "@fragno-private/design-system/input";
 import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
 import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
@@ -137,7 +139,7 @@ function SessionTargets({ sessionId }: { sessionId: string }) {
         onSubmit={(event) => void handleCreateTarget(event)}
       >
         <div className="min-w-0 flex-1">
-          <FormField label="Initial URL" hint="Leave empty to create a blank target.">
+          <Field label="Initial URL" description="Leave empty to create a blank target.">
             <Input
               className="min-h-10 w-full"
               value={url}
@@ -147,7 +149,7 @@ function SessionTargets({ sessionId }: { sessionId: string }) {
               placeholder="https://fragno.dev"
               inputMode="url"
             />
-          </FormField>
+          </Field>
         </div>
         <Button variant="accent" disabled={busy} type="submit">
           {createTarget.loading ? "Opening…" : "Open target"}
@@ -369,9 +371,9 @@ export default function CloudflareBrowserRunInternals() {
             description="The session remains billable until closed or timed out by Cloudflare."
           >
             <form className="space-y-3" onSubmit={(event) => void handleCreateSession(event)}>
-              <FormField
+              <Field
                 label="Keep alive"
-                hint="Inactivity timeout in milliseconds, from 10,000 to 1,200,000."
+                description="Inactivity timeout in milliseconds, from 10,000 to 1,200,000."
               >
                 <Input
                   className="min-h-10 w-full"
@@ -385,27 +387,25 @@ export default function CloudflareBrowserRunInternals() {
                     setKeepAlive(event.target.value);
                   }}
                 />
-              </FormField>
+              </Field>
 
               <div className="grid gap-2 sm:grid-cols-3">
-                {[
-                  ["Record", recording, setRecording],
-                  ["Lab", lab, setLab],
-                  ["Targets", includeTargets, setIncludeTargets],
-                ].map(([label, checked, setChecked]) => (
-                  <label
-                    key={String(label)}
-                    className="flex min-h-10 cursor-pointer items-center justify-between gap-3 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 text-xs font-semibold tracking-[0.14em] text-[var(--bo-muted)] uppercase"
+                {(
+                  [
+                    ["Record", recording, setRecording],
+                    ["Lab", lab, setLab],
+                    ["Targets", includeTargets, setIncludeTargets],
+                  ] as const
+                ).map(([label, checked, setChecked]) => (
+                  <Checkbox
+                    key={label}
+                    appearance="card"
+                    density="compact"
+                    checked={checked}
+                    onCheckedChange={setChecked}
                   >
-                    {label as string}
-                    <input
-                      type="checkbox"
-                      checked={checked as boolean}
-                      onChange={(event) => {
-                        (setChecked as (value: boolean) => void)(event.target.checked);
-                      }}
-                    />
-                  </label>
+                    {label}
+                  </Checkbox>
                 ))}
               </div>
 

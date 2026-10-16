@@ -1,5 +1,7 @@
 import { Button } from "@fragno-private/design-system/button";
-import { FormContainer, FormField } from "@fragno-private/design-system/form-container";
+import { Checkbox } from "@fragno-private/design-system/checkbox";
+import { Field } from "@fragno-private/design-system/field";
+import { FormContainer } from "@fragno-private/design-system/form-container";
 import { Input } from "@fragno-private/design-system/input";
 import { ByteUnitField, TimeUnitField } from "@fragno-private/design-system/unit-fields";
 import { useEffect, useState, type Dispatch, type SetStateAction, type SubmitEvent } from "react";
@@ -635,7 +637,7 @@ function UploadProviderConfigurationFields({
       {formState.provider === "r2" ? (
         <>
           <div className="grid gap-3 md:grid-cols-2">
-            <FormField label="Bucket" hint="Lowercase bucket name.">
+            <Field label="Bucket" description="Lowercase bucket name.">
               <Input
                 name="bucket"
                 required={formState.provider === "r2"}
@@ -649,9 +651,9 @@ function UploadProviderConfigurationFields({
                 placeholder="acme-upload-bucket"
                 className="w-full"
               />
-            </FormField>
-            <FormField label="Endpoint" hint="R2 S3 endpoint.">
-              <input
+            </Field>
+            <Field label="Endpoint" description="R2 S3 endpoint.">
+              <Input
                 name="endpoint"
                 required={formState.provider === "r2"}
                 value={formState.endpoint}
@@ -662,13 +664,13 @@ function UploadProviderConfigurationFields({
                   }));
                 }}
                 placeholder="https://<account>.r2.cloudflarestorage.com"
-                className="bo-input w-full px-3 py-2 text-sm"
+                className="w-full"
               />
-            </FormField>
+            </Field>
           </div>
 
           <div className="grid gap-3 md:grid-cols-2">
-            <FormField label="Access key id" hint="Required.">
+            <Field label="Access key id" description="Required.">
               <Input
                 name="accessKeyId"
                 required={formState.provider === "r2"}
@@ -682,8 +684,8 @@ function UploadProviderConfigurationFields({
                 placeholder={r2Config?.accessKeyIdPreview || "AKIA..."}
                 className="w-full"
               />
-            </FormField>
-            <FormField label="Secret access key" hint="Leave blank to keep current secret.">
+            </Field>
+            <Field label="Secret access key" description="Leave blank to keep current secret.">
               <Input
                 name="secretAccessKey"
                 type="password"
@@ -697,11 +699,11 @@ function UploadProviderConfigurationFields({
                 placeholder={r2Config?.secretAccessKeyPreview || "••••••••"}
                 className="w-full"
               />
-            </FormField>
+            </Field>
           </div>
 
           <div className="grid gap-3 md:grid-cols-2">
-            <FormField label="Region" hint="Usually auto for R2.">
+            <Field label="Region" description="Usually auto for R2.">
               <Input
                 name="region"
                 value={formState.region}
@@ -714,8 +716,8 @@ function UploadProviderConfigurationFields({
                 placeholder="auto"
                 className="w-full"
               />
-            </FormField>
-            <FormField label="Session token" hint="Optional.">
+            </Field>
+            <Field label="Session token" description="Optional.">
               <Input
                 name="sessionToken"
                 value={formState.sessionToken}
@@ -728,24 +730,21 @@ function UploadProviderConfigurationFields({
                 placeholder="Optional session token"
                 className="w-full"
               />
-            </FormField>
+            </Field>
           </div>
 
-          <label className="inline-flex items-center gap-2 text-sm text-[var(--bo-muted)]">
-            <input
-              name="pathStyle"
-              type="checkbox"
-              checked={formState.pathStyle}
-              onChange={(event) => {
-                setFormState((prev) => ({
-                  ...prev,
-                  pathStyle: event.target.checked,
-                }));
-              }}
-              className="h-4 w-4 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)]"
-            />
+          <Checkbox
+            name="pathStyle"
+            checked={formState.pathStyle}
+            onCheckedChange={(checked) => {
+              setFormState((prev) => ({
+                ...prev,
+                pathStyle: checked,
+              }));
+            }}
+          >
             Use path-style addressing
-          </label>
+          </Checkbox>
         </>
       ) : formState.provider === "r2-binding" ? (
         <div className="rounded border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3 text-xs text-[var(--bo-muted)]">
@@ -913,7 +912,7 @@ function UploadConfigurationEditor({
             r2Config={r2Config}
           />
 
-          <FormField label="Storage suffix" hint="Optional suffix under org prefix.">
+          <Field label="Storage suffix" description="Optional suffix under org prefix.">
             <Input
               name="storageKeySuffix"
               value={formState.storageKeySuffix}
@@ -926,7 +925,7 @@ function UploadConfigurationEditor({
               placeholder="uploads"
               className="w-full"
             />
-          </FormField>
+          </Field>
 
           <UploadAdvancedLimitFields formState={formState} setFormState={setFormState} />
 

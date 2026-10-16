@@ -1,5 +1,6 @@
 import { Button } from "@fragno-private/design-system/button";
-import { FormContainer, FormField } from "@fragno-private/design-system/form-container";
+import { Field } from "@fragno-private/design-system/field";
+import { FormContainer } from "@fragno-private/design-system/form-container";
 import { Input } from "@fragno-private/design-system/input";
 import { useEffect, useState, type SubmitEvent } from "react";
 import {
@@ -146,9 +147,9 @@ export default function BackofficeOrganizationReson8Configuration() {
         description="Save the API key for this organization. Leave it blank later if you want to keep the existing key."
       >
         <Form method="post" onSubmit={handleSubmit} className="space-y-4">
-          <FormField
+          <Field
             label="Reson8 API key"
-            hint={
+            description={
               isConfigured
                 ? "Leave blank to keep the current API key."
                 : "Required before you can use Reson8."
@@ -165,7 +166,7 @@ export default function BackofficeOrganizationReson8Configuration() {
               placeholder="rs8_..."
               className="w-full"
             />
-          </FormField>
+          </Field>
 
           {saveError ? <p className="text-xs text-red-500">{saveError}</p> : null}
           {saveSuccess ? <p className="text-xs text-green-500">{saveSuccess}</p> : null}

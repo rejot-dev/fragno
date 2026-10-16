@@ -1,6 +1,7 @@
 import { backofficeScopePathSegment } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { Button } from "@fragno-private/design-system/button";
-import { FormContainer, FormField } from "@fragno-private/design-system/form-container";
+import { Field } from "@fragno-private/design-system/field";
+import { FormContainer } from "@fragno-private/design-system/form-container";
 import { Input } from "@fragno-private/design-system/input";
 import { WizardStepper } from "@fragno-private/design-system/wizard-stepper";
 import { useEffect, useState } from "react";
@@ -309,9 +310,9 @@ export default function BackofficeOrganizationResendConfiguration() {
       >
         <Form method="post" className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2">
-            <FormField
+            <Field
               label="Resend API key"
-              hint={
+              description={
                 isConfigured
                   ? "Leave blank to keep the current API key."
                   : "Generate in the Resend dashboard. Required on first setup."
@@ -330,18 +331,17 @@ export default function BackofficeOrganizationResendConfiguration() {
                 placeholder="re_..."
                 className="w-full"
               />
-            </FormField>
+            </Field>
 
-            <FormField
+            <Field
               label="Default from"
-              hint={
+              description={
                 isConfigured
                   ? "Update the default sender as needed."
                   : "Required. Matches your verified Resend domain."
               }
             >
-              <input
-                type="text"
+              <Input
                 name="defaultFrom"
                 value={formState.defaultFrom}
                 onChange={(event) => {
@@ -351,11 +351,11 @@ export default function BackofficeOrganizationResendConfiguration() {
                   }));
                 }}
                 placeholder="Fragno <hello@example.com>"
-                className="bo-input w-full px-3 py-2 text-sm"
+                className="w-full"
               />
-            </FormField>
+            </Field>
 
-            <FormField label="Default reply-to" hint="Optional. Comma-separated list.">
+            <Field label="Default reply-to" description="Optional. Comma-separated list.">
               <Input
                 type="text"
                 name="defaultReplyTo"
@@ -369,11 +369,11 @@ export default function BackofficeOrganizationResendConfiguration() {
                 placeholder="support@example.com"
                 className="w-full"
               />
-            </FormField>
+            </Field>
 
-            <FormField
+            <Field
               label="Webhook base URL"
-              hint="Required. Use the public Backoffice origin or a tunnel URL."
+              description="Required. Use the public Backoffice origin or a tunnel URL."
             >
               <Input
                 type="url"
@@ -392,7 +392,7 @@ export default function BackofficeOrganizationResendConfiguration() {
               {webhookBaseUrlError ? (
                 <p className="text-xs text-red-500">{webhookBaseUrlError}</p>
               ) : null}
-            </FormField>
+            </Field>
           </div>
 
           <div className="space-y-3">

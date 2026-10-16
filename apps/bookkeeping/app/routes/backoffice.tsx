@@ -1,6 +1,8 @@
 import { Button } from "@fragno-private/design-system/button";
-import { FormContainer, FormField } from "@fragno-private/design-system/form-container";
+import { Field } from "@fragno-private/design-system/field";
+import { FormContainer } from "@fragno-private/design-system/form-container";
 import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
+import { Select } from "@fragno-private/design-system/select";
 import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
 import { env } from "cloudflare:workers";
 import { useState } from "react";
@@ -268,19 +270,16 @@ export default function BackofficeConnection({ loaderData, actionData }: Route.C
             description="Sends one bookkeeping.connection.tested event. As the organization, Bookkeeping uses only its approved access; as you, it is also limited to what you may do in Backoffice."
           >
             <fetcher.Form method="post" className="space-y-4">
-              <FormField label="Target">
-                <select
+              <Field label="Target">
+                <Select
                   name="target"
-                  className="bo-input min-h-11 w-full px-3 py-2 text-sm"
-                  defaultValue={link.targets[0]?.key}
-                >
-                  {link.targets.map((target) => (
-                    <option key={target.key} value={target.key}>
-                      {target.label}
-                    </option>
-                  ))}
-                </select>
-              </FormField>
+                  defaultValue={link.targets[0]?.key ?? null}
+                  options={link.targets.map((target) => ({
+                    label: target.label,
+                    value: target.key,
+                  }))}
+                />
+              </Field>
               <div className="flex flex-wrap gap-2">
                 <Button
                   type="submit"

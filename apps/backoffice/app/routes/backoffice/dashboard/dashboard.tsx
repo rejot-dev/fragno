@@ -1,8 +1,10 @@
 import { Button, ButtonLink } from "@fragno-private/design-system/button";
 import { ClientOnly } from "@fragno-private/design-system/client-only";
+import { Field } from "@fragno-private/design-system/field";
 import { Input } from "@fragno-private/design-system/input";
 import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
 import { BackofficeTabHeader } from "@fragno-private/design-system/tab-header";
+import { TextArea } from "@fragno-private/design-system/text-area";
 import { Suspense, use, useEffect, useMemo, useState } from "react";
 import {
   Form,
@@ -240,24 +242,23 @@ function CreateProjectPanel({ cancelPath }: { cancelPath: string }) {
 
       <Form method="post" className="mt-4 max-w-2xl space-y-4">
         <input type="hidden" name="intent" value="create-project" />
-        <label className="flex flex-col gap-1 text-xs text-[var(--bo-muted)]">
-          <span className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-            Name
-          </span>
-          <Input name="name" required maxLength={160} placeholder="Launch Plan" />
-        </label>
-        <label className="flex flex-col gap-1 text-xs text-[var(--bo-muted)]">
-          <span className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-            Description
-          </span>
-          <textarea
+        <Field label="Name">
+          <Input
+            name="name"
+            required
+            maxLength={160}
+            placeholder="Launch Plan"
+            className="w-full"
+          />
+        </Field>
+        <Field label="Description">
+          <TextArea
             name="description"
             maxLength={1000}
             rows={4}
             placeholder="What this project owns."
-            className="bo-input resize-y px-3 py-2 text-sm"
           />
-        </label>
+        </Field>
         <Button variant="secondary" type="submit" disabled={isSubmitting}>
           {isSubmitting ? "Creating…" : "Create project"}
         </Button>

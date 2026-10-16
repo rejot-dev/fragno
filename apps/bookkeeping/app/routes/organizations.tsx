@@ -1,5 +1,6 @@
 import { Button } from "@fragno-private/design-system/button";
-import { FormContainer, FormField } from "@fragno-private/design-system/form-container";
+import { Field } from "@fragno-private/design-system/field";
+import { FormContainer } from "@fragno-private/design-system/form-container";
 import { Input } from "@fragno-private/design-system/input";
 import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
 import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
@@ -88,13 +89,13 @@ export default function Organizations() {
               }
             }}
           >
-            <FormField label="Name">
+            <Field label="Name">
               <Input
                 className="w-full focus-visible:ring-2 focus-visible:ring-[var(--bo-accent)]/30"
                 name="name"
                 required
               />
-            </FormField>
+            </Field>
             {error && (
               <p role="alert" className="text-sm text-[var(--bo-failed)]">
                 {error}

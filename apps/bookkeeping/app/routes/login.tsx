@@ -1,5 +1,6 @@
 import { Button } from "@fragno-private/design-system/button";
-import { FormContainer, FormField } from "@fragno-private/design-system/form-container";
+import { Field } from "@fragno-private/design-system/field";
+import { FormContainer } from "@fragno-private/design-system/form-container";
 import { Input } from "@fragno-private/design-system/input";
 import { useState } from "react";
 import { Link } from "react-router";
@@ -43,7 +44,7 @@ export default function Login() {
             }
           }}
         >
-          <FormField label="Email">
+          <Field label="Email">
             <Input
               className="w-full focus-visible:ring-2 focus-visible:ring-[var(--bo-accent)]/30"
               name="email"
@@ -51,8 +52,8 @@ export default function Login() {
               autoComplete="email"
               required
             />
-          </FormField>
-          <FormField label="Password">
+          </Field>
+          <Field label="Password">
             <Input
               className="w-full focus-visible:ring-2 focus-visible:ring-[var(--bo-accent)]/30"
               name="password"
@@ -60,7 +61,7 @@ export default function Login() {
               autoComplete="current-password"
               required
             />
-          </FormField>
+          </Field>
           {error && (
             <p role="alert" className="error">
               {error}

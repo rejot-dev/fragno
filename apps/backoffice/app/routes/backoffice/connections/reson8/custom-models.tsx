@@ -1,6 +1,8 @@
 import { Button } from "@fragno-private/design-system/button";
-import { FormContainer, FormField } from "@fragno-private/design-system/form-container";
+import { Field } from "@fragno-private/design-system/field";
+import { FormContainer } from "@fragno-private/design-system/form-container";
 import { Input } from "@fragno-private/design-system/input";
+import { TextArea } from "@fragno-private/design-system/text-area";
 import { useEffect, useMemo, useState, type SubmitEvent } from "react";
 import {
   Form,
@@ -233,9 +235,9 @@ export default function BackofficeOrganizationReson8CustomModels() {
         >
           <Form method="post" onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-4">
-              <FormField
+              <Field
                 label="Model name"
-                hint="Human-readable label used throughout the backoffice."
+                description="Human-readable label used throughout the backoffice."
               >
                 <Input
                   type="text"
@@ -248,13 +250,13 @@ export default function BackofficeOrganizationReson8CustomModels() {
                   placeholder="Clinical intake"
                   className="w-full"
                 />
-              </FormField>
+              </Field>
 
-              <FormField
+              <Field
                 label="Description"
-                hint="Explain where this vocabulary is intended to be used."
+                description="Explain where this vocabulary is intended to be used."
               >
-                <textarea
+                <TextArea
                   name="description"
                   rows={3}
                   value={formState.description}
@@ -263,12 +265,11 @@ export default function BackofficeOrganizationReson8CustomModels() {
                     setFormState((prev) => ({ ...prev, description: event.target.value }));
                   }}
                   placeholder="Terms commonly used during patient intake calls."
-                  className="bo-input w-full resize-y px-3 py-2 text-sm"
                 />
-              </FormField>
+              </Field>
 
-              <FormField label="Phrases" hint="One phrase per line.">
-                <textarea
+              <Field label="Phrases" description="One phrase per line.">
+                <TextArea
                   name="phrases"
                   rows={8}
                   value={formState.phrases}
@@ -279,9 +280,8 @@ export default function BackofficeOrganizationReson8CustomModels() {
                   placeholder={
                     "myocardial infarction\natrial fibrillation\nnon-invasive ventilation"
                   }
-                  className="bo-input w-full resize-y px-3 py-2 text-sm"
                 />
-              </FormField>
+              </Field>
             </div>
 
             {createError ? <p className="text-xs text-red-500">{createError}</p> : null}

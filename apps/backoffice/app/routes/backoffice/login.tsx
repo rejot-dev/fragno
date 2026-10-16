@@ -1,7 +1,8 @@
 import "@fragno-private/design-system/components.css";
 
 import { Button, ButtonLink } from "@fragno-private/design-system/button";
-import { FormContainer, FormField } from "@fragno-private/design-system/form-container";
+import { Field } from "@fragno-private/design-system/field";
+import { FormContainer } from "@fragno-private/design-system/form-container";
 import { BackofficeFragmentMark } from "@fragno-private/design-system/fragment-mark";
 import { Icon } from "@fragno-private/design-system/icon";
 import { Input } from "@fragno-private/design-system/input";
@@ -502,7 +503,7 @@ export default function BackofficeLogin() {
                   <span>Or use a password</span>
                   <span className="h-px flex-1 bg-[var(--bo-border)]" aria-hidden="true" />
                 </div>
-                <FormField label="Email address">
+                <Field label="Email address">
                   <Input
                     type="email"
                     name="email"
@@ -512,8 +513,8 @@ export default function BackofficeLogin() {
                     placeholder="you@example.com"
                     className="w-full"
                   />
-                </FormField>
-                <FormField label="Password">
+                </Field>
+                <Field label="Password">
                   <Input
                     type="password"
                     name="password"
@@ -522,7 +523,7 @@ export default function BackofficeLogin() {
                     placeholder="••••••••"
                     className="w-full"
                   />
-                </FormField>
+                </Field>
                 {passwordError ? (
                   <p
                     className={

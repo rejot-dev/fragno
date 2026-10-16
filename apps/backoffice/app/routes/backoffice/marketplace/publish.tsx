@@ -3,9 +3,12 @@ import {
   marketplaceVisibilitySchema,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 import { Button, ButtonLink } from "@fragno-private/design-system/button";
+import { Field } from "@fragno-private/design-system/field";
 import { FormContainer } from "@fragno-private/design-system/form-container";
 import { Input } from "@fragno-private/design-system/input";
 import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
+import { Select } from "@fragno-private/design-system/select";
+import { TextArea } from "@fragno-private/design-system/text-area";
 import { Form, redirect, useActionData, useNavigation } from "react-router";
 
 import { marketplaceCreateDraftListingInputSchema } from "@/fragno/marketplace/contracts";
@@ -165,82 +168,64 @@ export default function BackofficeMarketplacePublish({ loaderData }: Route.Compo
         ) : null}
 
         <Form method="post" className="grid gap-4 md:grid-cols-2">
-          <Field label="Slug" name="slug" placeholder="daily-operations-brief" />
-          <Field label="Initial version" name="version" placeholder="1.0.0" />
-          <Field label="Name" name="name" placeholder="Daily operations brief" />
-          <label className="flex flex-col gap-1">
-            <span className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-              Category
-            </span>
-            <select
+          <Field label="Slug">
+            <Input name="slug" required placeholder="daily-operations-brief" className="w-full" />
+          </Field>
+          <Field label="Initial version">
+            <Input name="version" required placeholder="1.0.0" className="w-full" />
+          </Field>
+          <Field label="Name">
+            <Input name="name" required placeholder="Daily operations brief" className="w-full" />
+          </Field>
+          <Field label="Category">
+            <Select
               name="category"
               required
               defaultValue="operations"
-              className="bo-input px-3 py-2 text-sm"
-            >
-              {MARKETPLACE_CATEGORIES.map((category) => (
-                <option key={category} value={category}>
-                  {category}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1 md:col-span-2">
-            <span className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-              Publisher organization
-            </span>
-            <select
+              options={MARKETPLACE_CATEGORIES.map((category) => ({
+                label: category,
+                value: category,
+              }))}
+            />
+          </Field>
+          <Field label="Publisher organization" className="md:col-span-2">
+            <Select
               name="ownerOrgSlug"
               required
-              defaultValue={loaderData.activeOrganization?.slug ?? ""}
-              className="bo-input px-3 py-2 text-sm"
-            >
-              <option value="" disabled>
-                Select an organization
-              </option>
-              {loaderData.organizations.map((organization) => (
-                <option key={organization.id} value={organization.slug}>
-                  {organization.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1 md:col-span-2">
-            <span className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-              Visibility
-            </span>
-            <select
+              defaultValue={loaderData.activeOrganization?.slug ?? null}
+              placeholder="Select an organization"
+              options={loaderData.organizations.map((organization) => ({
+                label: organization.name,
+                value: organization.slug,
+              }))}
+            />
+          </Field>
+          <Field label="Visibility" className="md:col-span-2">
+            <Select
               name="visibility"
               required
-              defaultValue=""
-              className="bo-input px-3 py-2 text-sm"
-            >
-              <option value="" disabled>
-                Choose who can see this listing
-              </option>
-              <option value="organization">Organization members only</option>
-              <option value="public">Public</option>
-            </select>
-          </label>
-          <Field
-            label="Summary"
-            name="summary"
-            placeholder="Build and deliver a concise daily operations report."
-            className="md:col-span-2"
-          />
-          <label className="flex flex-col gap-1 md:col-span-2">
-            <span className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-              Description
-            </span>
-            <textarea name="description" required rows={8} className="bo-input px-3 py-2 text-sm" />
-          </label>
-          <Field
-            label="Tags"
-            name="tags"
-            placeholder="reporting, scheduled"
-            required={false}
-            className="md:col-span-2"
-          />
+              defaultValue={null}
+              placeholder="Choose who can see this listing"
+              options={[
+                { label: "Organization members only", value: "organization" },
+                { label: "Public", value: "public" },
+              ]}
+            />
+          </Field>
+          <Field label="Summary" className="md:col-span-2">
+            <Input
+              name="summary"
+              required
+              placeholder="Build and deliver a concise daily operations report."
+              className="w-full"
+            />
+          </Field>
+          <Field label="Description" className="md:col-span-2">
+            <TextArea name="description" required rows={8} />
+          </Field>
+          <Field label="Tags" className="md:col-span-2">
+            <Input name="tags" placeholder="reporting, scheduled" className="w-full" />
+          </Field>
           <Button
             type="submit"
             disabled={isSubmitting || loaderData.organizations.length === 0}
@@ -252,28 +237,5 @@ export default function BackofficeMarketplacePublish({ loaderData }: Route.Compo
         </Form>
       </FormContainer>
     </div>
-  );
-}
-
-function Field({
-  label,
-  name,
-  placeholder,
-  className,
-  required = true,
-}: {
-  label: string;
-  name: string;
-  placeholder: string;
-  className?: string;
-  required?: boolean;
-}) {
-  return (
-    <label className={`flex flex-col gap-1 ${className ?? ""}`}>
-      <span className="text-[10px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-        {label}
-      </span>
-      <Input name={name} required={required} placeholder={placeholder} />
-    </label>
   );
 }

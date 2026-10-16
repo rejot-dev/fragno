@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 
-import { FormField } from "./form-container";
+import { Field } from "./field";
 import { Input } from "./input";
+import { Select } from "./select";
 import {
   BYTE_UNITS,
   formatUnitNumber,
@@ -30,8 +31,6 @@ type UnitNumberFieldProps<UnitId extends string> = {
   required?: boolean;
   disabled?: boolean;
 };
-
-const INPUT_CLASS = "bo-input w-full px-3 py-2 text-sm";
 
 const parseIntegerString = (value: string): number | null => {
   const trimmed = value.trim();
@@ -129,16 +128,19 @@ function UnitNumberField<UnitId extends string>({
     onChange(String(Math.round(converted)));
   };
 
-  const handleUnitChange = (event: ChangeEvent<HTMLSelectElement>) => {
-    const nextUnit = resolveUnit(units, event.target.value as UnitId, fallbackUnit);
+  const handleUnitChange = (unitId: UnitId | null) => {
+    if (unitId === null) {
+      return;
+    }
     setManualDisplayUnit(true);
-    setDisplayUnitId(nextUnit.id);
+    setDisplayUnitId(resolveUnit(units, unitId, fallbackUnit).id);
   };
 
+  // The unit picker sits beside the field so the field's label names only the number.
   return (
-    <FormField label={label} hint={hint}>
+    <div className="grid items-end gap-2 sm:grid-cols-[1fr_auto]">
       <input type="hidden" name={name} value={value} />
-      <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+      <Field label={label} description={hint}>
         <Input
           type="number"
           value={displayValue}
@@ -149,21 +151,16 @@ function UnitNumberField<UnitId extends string>({
           disabled={disabled}
           className="w-full"
         />
-        <select
-          value={displayUnitId}
-          onChange={handleUnitChange}
-          disabled={disabled}
-          className={INPUT_CLASS}
-          aria-label={`${label} unit`}
-        >
-          {units.map((unit) => (
-            <option key={unit.id} value={unit.id}>
-              {unit.label}
-            </option>
-          ))}
-        </select>
-      </div>
-    </FormField>
+      </Field>
+      <Select
+        aria-label={`${label} unit`}
+        options={units.map((unit) => ({ label: unit.label, value: unit.id }))}
+        value={displayUnitId}
+        onValueChange={handleUnitChange}
+        disabled={disabled}
+        className="min-w-32"
+      />
+    </div>
   );
 }
 

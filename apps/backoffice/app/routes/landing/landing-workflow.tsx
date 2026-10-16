@@ -2,6 +2,7 @@
 
 import { Tabs } from "@base-ui/react/tabs";
 import { Button } from "@fragno-private/design-system/button";
+import { Field } from "@fragno-private/design-system/field";
 import { Icon } from "@fragno-private/design-system/icon";
 import { Input } from "@fragno-private/design-system/input";
 import { UnderlineTab, UnderlineTabList } from "@fragno-private/design-system/underline-tabs";
@@ -451,14 +452,14 @@ function LandingGeneratedUi({
           <p className="text-sm leading-6 text-[var(--bo-muted)]">
             Enter your Reson8 API key to enable speech-to-text for this organisation.
           </p>
-          <label className="block min-w-0">
-            <span className="block text-[10px] font-semibold tracking-[0.08em] text-[var(--bo-fg)]">
-              Reson8 API key <span className="text-[var(--bo-failed)]">*</span>
-            </span>
-            <span className="mt-1 block text-[10px] leading-4 text-[var(--bo-muted-2)]">
-              Your key is handled as a secret and is not shown in the setup result.
-            </span>
+          <Field
+            density="compact"
+            label="Reson8 API key"
+            description="Your key is handled as a secret and is not shown in the setup result."
+            required
+          >
             <Input
+              density="compact"
               type="password"
               value={apiKey}
               autoComplete="off"
@@ -466,9 +467,9 @@ function LandingGeneratedUi({
               onChange={(event) => {
                 onApiKeyChange(event.target.value);
               }}
-              className="mt-2 min-h-10 w-full text-xs"
+              className="w-full"
             />
-          </label>
+          </Field>
           <Button type="submit" variant="solid" disabled={disabled}>
             Configure Reson8
           </Button>
