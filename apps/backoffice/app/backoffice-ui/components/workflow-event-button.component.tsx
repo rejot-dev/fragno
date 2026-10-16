@@ -1,3 +1,4 @@
+import { Button } from "@fragno-private/design-system/button";
 import { useId, useState } from "react";
 
 import type { ComponentFn } from "@json-render/react";
@@ -18,7 +19,6 @@ export const WorkflowEventButton: ComponentFn<
   const [error, setError] = useState<string>();
   const available = host?.canSendEvent(props.eventType) === true;
   const disabled = !available || submissionState === "sending" || submissionState === "sent";
-  const danger = props.variant === "danger";
 
   const submit = async (form: HTMLFormElement | null) => {
     if (!host || disabled || (form && !form.reportValidity())) {
@@ -54,19 +54,15 @@ export const WorkflowEventButton: ComponentFn<
 
   return (
     <div className="min-w-0">
-      <button
-        type="button"
+      <Button
+        variant={props.variant === "danger" ? "danger" : "solid"}
         disabled={disabled}
         aria-describedby={error ? errorId : undefined}
         onClick={(event) => void submit(event.currentTarget.form)}
-        className={`inline-flex min-h-10 items-center justify-center px-4 text-xs font-semibold transition-[background-color,border-color,color,scale,opacity] duration-150 ease-out active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-45 disabled:active:scale-100 ${
-          danger
-            ? "border border-[color:var(--bo-failed)] bg-[var(--bo-failed-bg)] text-[var(--bo-failed)] hover:bg-red-500/15"
-            : "border border-[color:var(--bo-btn-bg)] bg-[var(--bo-btn-bg)] text-[var(--bo-btn-fg)] hover:bg-[var(--bo-btn-bg-hover)]"
-        }`}
+        className="min-h-10 px-4 text-xs"
       >
         {label}
-      </button>
+      </Button>
       {host && !available && submissionState !== "sent" ? (
         <p className="mt-1.5 text-[10px] leading-4 text-[var(--bo-muted-2)]">
           This workflow is no longer waiting for {props.eventType}.
