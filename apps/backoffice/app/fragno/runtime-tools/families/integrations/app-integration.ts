@@ -1,4 +1,5 @@
 import type { AppActionTokenClaims } from "@fragno-dev/backoffice-api/v0/app-actions";
+import type { BackofficeApp } from "@fragno-dev/backoffice-api/v0/apps";
 import type {
   IntegrationConnection,
   IntegrationInspection,
@@ -14,7 +15,7 @@ import {
 import { requireBackofficeAppOperationValue } from "@/fragno/apps/errors";
 
 import { compileIntegrationActionSchema } from "./integration-action-json-schema";
-import { connectionStateOfInspection } from "./integration-events";
+import { connectionStateOfInspection, type IntegrationConnectionState } from "./integration-events";
 import type {
   IntegrationActionImplementation,
   IntegrationContext,
@@ -125,6 +126,37 @@ function inspectAppConnection(
   };
 }
 
+/** The OAuth client's name is what members saw when they installed the app. */
+export async function appConnectionName(
+  runtime: Pick<BackofficeRuntimeServices, "objects" | "config">,
+  app: BackofficeApp,
+) {
+  if (!runtime.config.bindings.auth) {
+    return app.slug;
+  }
+  const client = await runtime.objects.auth
+    .singleton()
+    .commands.getOAuthClientFacts({ clientId: app.oauthClientId });
+  return client?.name ?? app.slug;
+}
+
+/**
+ * The state integrations.connection.* events report for an app connection in one scope. Outside
+ * the installation's resources, or once uninstalled, the connection no longer exists there.
+ */
+export function appConnectionState(
+  connection: BackofficeAppConnection,
+  scope: AppScope,
+): IntegrationConnectionState | "disconnected" {
+  if (
+    connection.status !== "installed" ||
+    !appInstallationResourceScopeContains(connection.installation.resourceScope, scope)
+  ) {
+    return "disconnected";
+  }
+  return connectionStateOfInspection(inspectAppConnection(connection, scope));
+}
+
 /**
  * Installed apps whose registration declares actions. Installing the app is the setup, and the
  * actions run on the app's own server, signed by Backoffice for each call.
@@ -167,15 +199,10 @@ export function createAppIntegration({
     return { scope, installations };
   }
 
-  /** The OAuth client's name is what members saw when they installed the app. */
   async function appName(connection: BackofficeAppConnection, slug: string) {
-    if (connection.status !== "installed" || !runtime.config.bindings.auth) {
-      return slug;
-    }
-    const client = await runtime.objects.auth
-      .singleton()
-      .commands.getOAuthClientFacts({ clientId: connection.app.oauthClientId });
-    return client?.name ?? slug;
+    return connection.status === "installed"
+      ? await appConnectionName(runtime, connection.app)
+      : slug;
   }
 
   return {

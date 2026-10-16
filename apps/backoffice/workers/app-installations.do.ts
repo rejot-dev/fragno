@@ -20,6 +20,8 @@ import { jsonValueSchema } from "@fragno-dev/backoffice-api/v0/shared/json";
 import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { DurableObject, RpcTarget } from "cloudflare:workers";
 
+import type { HookContext } from "@fragno-dev/db";
+
 import { requireBackofficeContextScopeFromDurableObjectId } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import {
@@ -35,6 +37,7 @@ import {
   type BackofficeAppInstallationInput,
   type BackofficeAppInstallationsCommands,
 } from "@/fragno/app-installations/contracts";
+import type { AppInstallationChangedPayload } from "@/fragno/app-installations/definition";
 import type { AppInstallationsFragment } from "@/fragno/app-installations/fragment";
 import { createAppInstallationsServer } from "@/fragno/app-installations/server";
 import {
@@ -42,6 +45,12 @@ import {
   runBackofficeAppOperation,
   type BackofficeAppOperationResult,
 } from "@/fragno/apps/errors";
+import {
+  appConnectionName,
+  appConnectionState,
+  encodeAppConnectionId,
+} from "@/fragno/runtime-tools/families/integrations/app-integration";
+import { recordIntegrationConnectionState } from "@/fragno/runtime-tools/families/integrations/integration-events";
 
 import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-object";
 import type { BackofficeObjectImplementation } from "./lib/backoffice-object-implementation";
@@ -82,7 +91,11 @@ export class InMemoryAppInstallationsObject
     this.#host = implementation.createFragmentHost({
       name: "AppInstallations",
       createRuntime: () =>
-        createAppInstallationsServer(implementation.fragmentDatabase, scope.orgId),
+        createAppInstallationsServer(implementation.fragmentDatabase, {
+          organizationId: scope.orgId,
+          onInstallationChanged: (payload, context) =>
+            this.#recordConnectionStates(payload, context),
+        }),
       onProcessError: (error) => {
         console.error("AppInstallations hook processor error", error);
       },
@@ -100,6 +113,37 @@ export class InMemoryAppInstallationsObject
       throw new Error("Backoffice app installations are unavailable.");
     }
     return this.#fragment;
+  }
+
+  /** Reports each affected scope's connection state as it is once the change committed. */
+  async #recordConnectionStates(
+    { appId, scopes }: AppInstallationChangedPayload,
+    context: HookContext,
+  ) {
+    if (!this.#runtime.config.bindings.automations) {
+      return;
+    }
+    const app = await this.#getRegisteredApp(appId);
+    const connection = await this.getAppConnection({ appId });
+    const label = {
+      name: await appConnectionName(this.#runtime, app),
+      authMethod: "app-installation",
+    } as const;
+    for (const scope of scopes) {
+      const state = appConnectionState(connection, scope);
+      await recordIntegrationConnectionState(
+        this.#runtime.objects.automations.for(scope).commands,
+        {
+          id: `${context.hookId.toString()}:${scope.kind === "org" ? "org" : scope.projectId}`,
+          scope,
+          service: "app",
+          connectionId: encodeAppConnectionId(app.slug),
+          ...(state === "disconnected" ? { state } : { state, label }),
+          occurredAt: context.createdAt,
+        },
+        { propagationContext: context.capturePropagationContext() },
+      );
+    }
   }
 
   async #getRegisteredApp(appId: string) {

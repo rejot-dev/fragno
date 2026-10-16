@@ -13,6 +13,7 @@ import {
   type VerifiedAppActionRequest,
 } from "@fragno-dev/backoffice-api/v0/app-actions";
 import type { AppActionsDeclaration } from "@fragno-dev/backoffice-api/v0/apps";
+import { automationEventListResultSchema } from "@fragno-dev/backoffice-api/v0/events";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { createCodemodeNodeExecutor } from "@fragno-dev/codemode/remote/codemode-node-executor";
 import { createCodemodeTestServer } from "@fragno-dev/codemode/testing/codemode-test-server";
@@ -159,6 +160,23 @@ async function fails(bash: ReturnType<typeof terminal>, command: string) {
 
 const quote = (value: unknown) => `'${JSON.stringify(value)}'`;
 
+/** The newest integrations.connection.* state recorded for the connection, after hooks ran. */
+async function latestConnectionState(ctx: BackofficeScenarioContext, connectionId: string) {
+  await ctx.drain();
+  const response = await ctx.runtime.objects.automations
+    .for(org)
+    .http.fetch(new Request("https://automations.test/api/automations/events?limit=500"));
+  assert(response.ok, await response.clone().text());
+  const [latest] = automationEventListResultSchema
+    .parse(await response.json())
+    .events.filter(
+      (event) =>
+        event.source === "integrations" &&
+        (event.subject as { connectionId?: unknown } | null)?.connectionId === connectionId,
+    );
+  return latest?.eventType ?? null;
+}
+
 test("an installed app's declared actions run on its server, signed per call and gated by approval", async () => {
   const ledger = createLedgerApp();
   let appId = "";
@@ -233,6 +251,7 @@ test("an installed app's declared actions run on its server, signed per call and
               owner,
               `apps.install --app-id ${appId} --granted-permissions-json '[]' --actions-revision 1`,
             );
+            assert((await latestConnectionState(ctx, "app#ledger")) === "connection.unavailable");
             expect(
               await runJson(owner, `integrations.get --connection-id ${connection()}`),
             ).toMatchObject({
@@ -249,6 +268,7 @@ test("an installed app's declared actions run on its server, signed per call and
                 externalAccount: { id: "ledger-org-7", label: "Acme Books" },
               });
             assert(claimed.ok);
+            assert((await latestConnectionState(ctx, "app#ledger")) === "connection.ready");
             expect(
               await runJson(owner, `integrations.verify --connection-id ${connection()}`),
             ).toMatchObject({
@@ -378,6 +398,7 @@ test("an installed app's declared actions run on its server, signed per call and
             );
             expect(await actionIds(owner)).toEqual(["invoices.count"]);
             await run(owner, `apps.uninstall --app-id ${appId}`);
+            assert((await latestConnectionState(ctx, "app#ledger")) === "connection.disconnected");
             expect(await runJson(owner, "integrations.list")).toMatchObject({ connections: [] });
             expect(await actionIds(owner)).toEqual([]);
             expect(await fails(owner, execute("invoices.count", { year: 2025 }))).toContain(
@@ -385,6 +406,7 @@ test("an installed app's declared actions run on its server, signed per call and
             );
           },
         ),
+        then.hooks.noFailed({ orgId: org.orgId, fragments: ["automations"] }),
       ],
     }),
   );

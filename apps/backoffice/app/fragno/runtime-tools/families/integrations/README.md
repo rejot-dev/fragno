@@ -182,6 +182,15 @@ to the app; a 2xx JSON answer is validated against the output schema and any oth
 the app's `message`. `verify` sends a signed ping. Calls need only `integrations.execute`; the app
 sees the caller in the token's `actor` claim and enforces its own rules.
 
+The AppInstallations Fragment fires a durable hook from every installation change: install,
+reinstall, access update, action approval, the app's claim, and uninstall. The hook names every
+scope the change touched, before and after it: the organization for a whole-organization
+installation, otherwise each project. The object then records each scope's
+`integrations.connection.*` state from the committed installation, so the Integrations page lists
+the connection and automations react to it. Leaving a scope's resources or uninstalling records
+`disconnected`. Registry changes to an automatic declaration record nothing until the next
+installation change.
+
 ## Service-owned setup
 
 Reson8 setup with `{ kind: "check" }` reads current configuration without contacting the provider or

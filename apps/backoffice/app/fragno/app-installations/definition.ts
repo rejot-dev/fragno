@@ -13,7 +13,7 @@ import type {
 import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 
 import { defineFragment } from "@fragno-dev/core";
-import { decodeCursor, withDatabase } from "@fragno-dev/db";
+import { decodeCursor, withDatabase, type HookContext, type HookFn } from "@fragno-dev/db";
 
 import { knownBackofficePermissions } from "@/backoffice-runtime/stored-permissions";
 import { BackofficeAppDomainError } from "@/fragno/apps/errors";
@@ -28,8 +28,45 @@ import type {
 } from "./contracts";
 import { appInstallationsFragmentSchema } from "./schema";
 
+/** A scope where an installation's integration connection resolves. */
+export type AppConnectionScope =
+  | { kind: "org"; orgId: string }
+  | { kind: "project"; orgId: string; projectId: string };
+
+/** Every scope whose connection state the change may have affected, before and after it. */
+export type AppInstallationChangedPayload = { appId: string; scopes: AppConnectionScope[] };
+
+type AppInstallationsHooksMap = {
+  onInstallationChanged: HookFn<AppInstallationChangedPayload>;
+};
+
 /** The owning organization is established from the Durable Object identity. */
-export type AppInstallationsConfig = { organizationId: string };
+export type AppInstallationsConfig = {
+  organizationId: string;
+  /** Runs after commit, so the object can report the connection state the change produced. */
+  onInstallationChanged: (
+    payload: AppInstallationChangedPayload,
+    context: HookContext,
+  ) => Promise<void>;
+};
+
+/** An organization-wide installation's connection lives in the organization scope. */
+function connectionScopesOf(
+  organizationId: string,
+  resourceProjectIds: readonly (string[] | null)[],
+): AppConnectionScope[] {
+  const scopes = new Map<string, AppConnectionScope>();
+  for (const projectIds of resourceProjectIds) {
+    if (projectIds === null) {
+      scopes.set("org", { kind: "org", orgId: organizationId });
+      continue;
+    }
+    for (const projectId of projectIds) {
+      scopes.set(`project:${projectId}`, { kind: "project", orgId: organizationId, projectId });
+    }
+  }
+  return [...scopes.values()];
+}
 
 function assertAppGrantsWereRequested(
   requestedPermissions: readonly BackofficePermissionRequirement[],
@@ -147,6 +184,11 @@ export const appInstallationsFragmentDefinition = defineFragment<AppInstallation
   "app-installations",
 )
   .extend(withDatabase(appInstallationsFragmentSchema))
+  .provideHooks<AppInstallationsHooksMap>(({ defineHook, config }) => ({
+    onInstallationChanged: defineHook(async function (payload) {
+      await config.onInstallationChanged(payload, this);
+    }),
+  }))
   .providesBaseService(({ defineService, config }) =>
     defineService({
       installApp: function (input: BackofficeAppInstallationInput, app: BackofficeApp) {
@@ -195,6 +237,13 @@ export const appInstallationsFragmentDefinition = defineFragment<AppInstallation
                     })
                     .check(),
                 );
+                uow.triggerHook("onInstallationChanged", {
+                  appId: input.appId,
+                  scopes: connectionScopesOf(config.organizationId, [
+                    installation.resourceProjectIds,
+                    toResourceProjectIds(input.resourceScope),
+                  ]),
+                });
                 return { installationId: installation.id.externalId, changed: true };
               }
               uow.checkAbsent("app_installation", "idx_app_installation_appId", {
@@ -217,6 +266,12 @@ export const appInstallationsFragmentDefinition = defineFragment<AppInstallation
                     error.columns?.length === 1 && error.columns[0] === "appId",
                 },
               );
+              uow.triggerHook("onInstallationChanged", {
+                appId: input.appId,
+                scopes: connectionScopesOf(config.organizationId, [
+                  toResourceProjectIds(input.resourceScope),
+                ]),
+              });
               return { installationId: id.externalId, changed: true };
             },
           )
@@ -286,6 +341,12 @@ export const appInstallationsFragmentDefinition = defineFragment<AppInstallation
               uow.update("app_installation", installation.id, (b) =>
                 b.set({ approvedActions, updatedAt: uow.now() }).check(),
               );
+              uow.triggerHook("onInstallationChanged", {
+                appId: input.appId,
+                scopes: connectionScopesOf(config.organizationId, [
+                  installation.resourceProjectIds,
+                ]),
+              });
               return { installationId: installation.id.externalId, changed: true };
             },
           )
@@ -359,6 +420,13 @@ export const appInstallationsFragmentDefinition = defineFragment<AppInstallation
                   })
                   .check(),
               );
+              uow.triggerHook("onInstallationChanged", {
+                appId: input.appId,
+                scopes: connectionScopesOf(config.organizationId, [
+                  installation.resourceProjectIds,
+                  toResourceProjectIds(input.resourceScope),
+                ]),
+              });
               return { installationId: installation.id.externalId, changed: true };
             },
           )
@@ -402,6 +470,12 @@ export const appInstallationsFragmentDefinition = defineFragment<AppInstallation
               uow.update("app_installation", installation.id, (b) =>
                 b.set({ externalAccount: input.externalAccount, updatedAt: uow.now() }).check(),
               );
+              uow.triggerHook("onInstallationChanged", {
+                appId: input.appId,
+                scopes: connectionScopesOf(config.organizationId, [
+                  installation.resourceProjectIds,
+                ]),
+              });
               return {
                 id: installation.id.externalId,
                 appId: installation.appId,
@@ -445,6 +519,12 @@ export const appInstallationsFragmentDefinition = defineFragment<AppInstallation
                   })
                   .check(),
               );
+              uow.triggerHook("onInstallationChanged", {
+                appId: input.appId,
+                scopes: connectionScopesOf(config.organizationId, [
+                  installation.resourceProjectIds,
+                ]),
+              });
               return { installationId: installation.id.externalId, changed: true };
             },
           )

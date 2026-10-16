@@ -14,6 +14,7 @@ const kindsByNamespace = new Map<string, IntegrationConnectionKind>([
   ["connector", "connector"],
   ["backoffice", "native"],
   ["github", "native"],
+  ["app", "native"],
 ]);
 
 type StoredEvent = {
