@@ -16,6 +16,8 @@ type AdminCodemodeProvider = {
   orgGet(input: AdminOrgGetInput): Promise<AdminOrgGetOutput>;
   /** List members of any organization with their roles, using cursor pagination. */
   orgMembersList(input: AdminOrgMembersListInput): Promise<AdminOrgMembersListOutput>;
+  /** Mark a user's email address as verified without sending a verification email, for example on a deployment without email delivery. */
+  usersVerifyEmail(input: AdminUsersVerifyEmailInput): Promise<AdminUsersVerifyEmailOutput>;
   /** Register a Backoffice app for an existing Better Auth OAuth client. Does not provision OAuth credentials or install the app. */
   appsCreate(input: AdminAppsCreateInput): Promise<AdminAppsCreateOutput>;
   /** List global Backoffice app registrations using cursor pagination. Does not expose OAuth credentials or organization installations. */
@@ -106,6 +108,10 @@ type BackofficePermissionRequirement =
   | {
       namespace: "admin";
       permission: "organizations.manage";
+    }
+  | {
+      namespace: "admin";
+      permission: "users.manage";
     }
   | {
       namespace: "apps";
@@ -437,6 +443,14 @@ type AdminOrgMembersListInput = {
   organizationSlug: string;
 };
 type AdminOrgMembersListOutput = OrganizationMemberPage;
+type AdminUsersVerifyEmailInput = {
+  email: string;
+};
+type AdminUsersVerifyEmailOutput = {
+  userId: string;
+  email: string;
+  status: "verified" | "already_verified";
+};
 type AdminAppsCreateInput = {
   /** Unique, permanent name for the app; its integration connection is app#<slug>, e.g. app#bookkeeping. */
   slug: string;

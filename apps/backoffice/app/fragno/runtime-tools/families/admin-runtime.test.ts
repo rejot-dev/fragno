@@ -25,6 +25,11 @@ function createAdminRuntimeDependencies() {
         slug: input.slug,
         ownerUserId: "owner-1",
       }),
+      verifyAdminUserEmail: async (input: { email: string }) => ({
+        userId: "user-1",
+        email: input.email,
+        status: "verified" as const,
+      }),
       getOrganizationBySlug: async (slug: string) =>
         slug === "acme" ? { id: "org-1", slug } : null,
       getOrganization: async () => null,

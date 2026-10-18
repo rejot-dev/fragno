@@ -16,6 +16,7 @@ import { z } from "zod";
 import type {
   AdminOrganizationMemberRecord,
   AdminOrganizationRecord,
+  AdminUserEmailVerificationRecord,
 } from "@/backoffice-runtime/object-registry";
 import type {
   BackofficeAppPage,
@@ -84,6 +85,7 @@ export type AdminRuntime = {
     email: string;
     ttlDays?: number;
   }): Promise<AdminSignUpInvitationRecord>;
+  verifyUserEmail(input: { email: string }): Promise<AdminUserEmailVerificationRecord>;
   createOrganization(input: {
     name: string;
     slug: string;
@@ -203,6 +205,57 @@ const createSignUpInvitationTool = defineBackofficeRuntimeTool({
         options.format === "json" || options.print
           ? { data: result }
           : { data: result, stdout: `${result.url}\n` },
+    },
+  },
+});
+
+const verifyUserEmailTool = defineBackofficeRuntimeTool({
+  id: "admin.users.verify-email",
+  namespace: "admin",
+  name: "usersVerifyEmail",
+  description:
+    "Mark a user's email address as verified without sending a verification email, for example on a deployment without email delivery.",
+  requiredPermissions: [BACKOFFICE_PERMISSION.admin.usersManage],
+  inputSchema: z.strictObject({ email: z.string().trim().toLowerCase().pipe(z.email()) }),
+  outputSchema: z.strictObject({
+    userId: z.string().trim().min(1),
+    email: z.email(),
+    status: z.enum(["verified", "already_verified"]),
+  }),
+  execute: async (input, context: AdminToolContext) =>
+    await getAdminRuntime(context.runtimes.admin).verifyUserEmail(input),
+  adapters: {
+    bash: {
+      command: "admin.users.verify-email",
+      help: {
+        summary:
+          "admin.users.verify-email marks a user's email address as verified without sending an email.",
+        options: [
+          {
+            name: "email",
+            valueRequired: true,
+            valueName: "email",
+            description: "Email address of the existing user",
+          },
+        ],
+        examples: [
+          "admin.users.verify-email --email person@example.com",
+          "admin.users.verify-email --email person@example.com --format json",
+        ],
+      },
+      parse: defineCliArgsParser("admin.users.verify-email", {
+        email: { kind: "string", required: true },
+      }),
+      format: (result, options) =>
+        options.format === "json" || options.print
+          ? { data: result }
+          : {
+              data: result,
+              stdout:
+                result.status === "verified"
+                  ? `Verified ${result.email}.\n`
+                  : `${result.email} was already verified.\n`,
+            },
     },
   },
 });
@@ -472,6 +525,7 @@ export const adminRuntimeTools = [
   listOrganizationsTool,
   getOrganizationTool,
   listOrganizationMembersTool,
+  verifyUserEmailTool,
   ...adminAppsRuntimeTools,
   ...adminOAuthClientsRuntimeTools,
 ] as const;

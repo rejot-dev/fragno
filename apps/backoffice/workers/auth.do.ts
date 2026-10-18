@@ -30,6 +30,7 @@ import type { BackofficeRuntimeEnv } from "@/backoffice-runtime/backoffice-runti
 import type {
   AdminOrganizationMemberRecord,
   AdminOrganizationRecord,
+  AdminUserEmailVerificationRecord,
   AuthObject,
   GrantBackofficeAdminResult,
   ScenarioAuthFixture,
@@ -1623,6 +1624,24 @@ export class InMemoryAuthObject implements AuthObject {
     throw new Error(`No free organization slug is left for '${base}'. Choose another name.`);
   }
 
+  async verifyAdminUserEmail(input: { email: string }): Promise<AdminUserEmailVerificationRecord> {
+    const { adapter } = await this.#authContext();
+    const email = input.email.trim().toLowerCase();
+    const user = await findStoreUserByEmail(adapter, email);
+    if (!user) {
+      throw new Error(`Admin email verification could not find user '${email}'.`);
+    }
+    const verification = await this.verifyUserEmail({
+      userId: user.id,
+      expectedEmail: email,
+      verifiedAt: new Date(),
+    });
+    if (!verification.ok) {
+      throw new Error(`Admin email verification failed for '${email}': ${verification.code}.`);
+    }
+    return { userId: user.id, email, status: verification.status };
+  }
+
   async addAdminOrganizationMember(input: {
     organizationId: string;
     userEmail: string;
@@ -2261,6 +2280,10 @@ export class Auth extends DurableObject<CloudflareEnv> implements AuthObject {
 
   async createUserOrganization(input: { userId: string; name: string }) {
     return await this.#object.createUserOrganization(input);
+  }
+
+  async verifyAdminUserEmail(input: { email: string }) {
+    return await this.#object.verifyAdminUserEmail(input);
   }
 
   async addAdminOrganizationMember(input: {

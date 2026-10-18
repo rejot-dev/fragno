@@ -41,6 +41,7 @@ type AdminAuthCommands = Pick<
   | "updateAdminOAuthClient"
   | "rotateAdminOAuthClientSecret"
   | "createAdminOrganization"
+  | "verifyAdminUserEmail"
   | "getOrganizationBySlug"
   | "getOrganization"
   | "listOrganizations"
@@ -160,6 +161,7 @@ export function createAdminRuntime({
         ttlDays: invitation.ttlDays,
       };
     },
+    verifyUserEmail: async (input) => await auth.verifyAdminUserEmail(input),
     createOrganization: async (input) => await auth.createAdminOrganization(input),
     listOrganizations: async (input) => await auth.listOrganizations(input),
     getOrganization: async ({ organizationSlug }) => {
