@@ -212,6 +212,7 @@ describe("Pi durable agent scenarios", () => {
     // The manager leads with the agent's queue, empty since the prompt was dispatched.
     expect(await readPiViewStreamFrame(reader, streamState)).toEqual({
       type: "queue",
+      paused: false,
       items: [],
     });
     expect(await readPiViewStreamFrame(reader, streamState)).toMatchObject({

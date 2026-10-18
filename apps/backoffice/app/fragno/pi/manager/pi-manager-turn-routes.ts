@@ -25,14 +25,18 @@ import type { PiAgentTurnProvenance } from "./pi-manager-schema";
 
 // Middleware resolves identity and overwrites provenance before route validation.
 const turnProvenanceSchema = piAgentTurnSchema.pick({ actors: true, scopeRestriction: true });
+// A person's message resumes a stopped agent's queue; automations wait until someone does.
+const promptWhenPausedSchema = z.enum(["wait", "resume"]);
 export const promptRequestSchema = z.object({
   requestId: z.string().trim().min(1).max(256).optional(),
   content: piAgentPromptSchema.shape.content,
   whenBusy: piPromptWhenBusySchema.default("followUp"),
+  whenPaused: promptWhenPausedSchema.default("wait"),
   billingOrganizationId: piBillingOrganizationIdSchema.default(null),
 });
 const promptSchema = piAgentPromptSchema.extend({
   whenBusy: piPromptWhenBusySchema,
+  whenPaused: promptWhenPausedSchema,
   billingOrganizationId: piBillingOrganizationIdSchema,
   provenance: turnProvenanceSchema,
 });
@@ -101,7 +105,8 @@ export const piManagerTurnRoutes = defineRoutes(piManagerDefinition).create(
           "AGENT_BUSY",
         ],
         handler: async function ({ pathParams, input }, { json, error }) {
-          const { provenance, billingOrganizationId, whenBusy, ...prompt } = await input.valid();
+          const { provenance, billingOrganizationId, whenBusy, whenPaused, ...prompt } =
+            await input.valid();
           const { agentName } = pathParams;
           const availableModels = await config.supportedAvailableModels();
           const submitted = await this.handlerTx()
@@ -112,6 +117,7 @@ export const piManagerTurnRoutes = defineRoutes(piManagerDefinition).create(
                     agentName,
                     prompt,
                     whenBusy,
+                    whenPaused,
                     provenance,
                     billingOrganizationId,
                     availableModels,
@@ -136,7 +142,7 @@ export const piManagerTurnRoutes = defineRoutes(piManagerDefinition).create(
             return error(
               {
                 code: "AGENT_BUSY",
-                message: `Agent "${agentName}" is running a turn; the prompt was not queued.`,
+                message: `Agent "${agentName}" is busy; the prompt was not queued.`,
               },
               409,
             );
@@ -276,26 +282,41 @@ export const piManagerTurnRoutes = defineRoutes(piManagerDefinition).create(
         errorCodes: ["AGENT_NOT_STARTED"],
         handler: async function ({ pathParams }, { empty, error }) {
           const { agentName } = pathParams;
-          const { agent, dropped } = await this.handlerTx()
+          const { agent, paused } = await this.handlerTx()
             .withServiceCalls(
-              () =>
-                [
-                  services.getAgents([agentName]),
-                  services.dropWaitingQueueItems(agentName),
-                ] as const,
+              () => [services.getAgents([agentName]), services.pauseAgentQueue(agentName)] as const,
             )
-            .transform(({ serviceResult: [agents, emptied] }) => ({
+            .transform(({ serviceResult: [agents, queue] }) => ({
               agent: agents.get(agentName),
-              dropped: emptied,
+              paused: queue,
             }))
             .execute();
-          if (!agent) {
+          if (!agent || !paused) {
             return error({ code: "AGENT_NOT_STARTED", message: "Pi agent has no turns yet." }, 404);
           }
-          if (dropped) {
-            config.queueChannel.publish(agentName, dropped);
-          }
+          config.queueChannel.publish(agentName, paused);
           await config.agent(agent).abort(agent);
+          return empty(204);
+        },
+      }),
+      defineRoute({
+        method: "POST",
+        path: "/agents/:agentName/resume",
+        errorCodes: ["AGENT_NOT_STARTED"],
+        handler: async function ({ pathParams }, { empty, error }) {
+          const { agentName } = pathParams;
+          const availableModels = await config.supportedAvailableModels();
+          const resumed = await this.handlerTx()
+            .withServiceCalls(
+              () => [services.resumeAgentQueue({ agentName, availableModels })] as const,
+            )
+            .transform(({ serviceResult: [result] }) => result)
+            .execute();
+          if (!resumed) {
+            return error({ code: "AGENT_NOT_STARTED", message: "Pi agent has no turns yet." }, 404);
+          }
+          config.queueChannel.publish(agentName, resumed.queue);
+          await handOver(resumed.handover);
           return empty(204);
         },
       }),

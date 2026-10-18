@@ -35,6 +35,7 @@ import type { PiAgentsOutletContext } from "./agent-types";
 import { AgentsHeader } from "./agents-header";
 import {
   abortPiManagerAgent,
+  resumePiManagerAgent,
   compactPiManagerAgent,
   submitPiManagerPrompt,
   type PiManagerEntryPage,
@@ -74,9 +75,9 @@ const PI_COMPACTION_POLL_MS = 250;
 
 type PiAgentActionData =
   | { ok: true; intent: "start" | "send"; receipt: PiPromptReceipt }
-  | { ok: true; intent: "abort" }
+  | { ok: true; intent: "abort" | "resume" }
   | { ok: true; intent: "compact"; taskId: number }
-  | { ok: false; intent: "start" | "send" | "abort" | "compact"; error: string };
+  | { ok: false; intent: "start" | "send" | "abort" | "resume" | "compact"; error: string };
 
 type SessionWorkflowCollectionsState = {
   collections: AutomationBrowserCollections | null;
@@ -92,6 +93,10 @@ export async function action(args: Route.ActionArgs): Promise<PiAgentActionData>
 
   if (intent === "abort") {
     const error = await abortPiManagerAgent(request, context, scope, agentName);
+    return error ? { ok: false, intent, error } : { ok: true, intent };
+  }
+  if (intent === "resume") {
+    const error = await resumePiManagerAgent(request, context, scope, agentName);
     return error ? { ok: false, intent, error } : { ok: true, intent };
   }
   if (intent === "compact") {
@@ -115,11 +120,12 @@ export async function action(args: Route.ActionArgs): Promise<PiAgentActionData>
 
   const { me } = getBackofficeShellRequest(context);
   // Your message joins your own running turn at its next tool boundary; otherwise it waits in the
-  // agent's queue for a turn of its own.
+  // agent's queue for a turn of its own. Sending to a stopped agent resumes its queue.
   const result = await submitPiManagerPrompt(request, context, scope, agentName, {
     requestId: crypto.randomUUID(),
     content: content.trim(),
     whenBusy: "steer",
+    whenPaused: "resume",
     // Agents outside an organization keep the organization that pays for their first turn.
     billingOrganizationId: backofficeScopeOrganization(scope)
       ? null
@@ -694,6 +700,9 @@ function BackofficeOrganizationPiAgent({
   const handleStop = useCallback(() => {
     void fetcher.submit({ intent: "abort" }, { method: "post" });
   }, [fetcher]);
+  const handleResume = useCallback(() => {
+    void fetcher.submit({ intent: "resume" }, { method: "post" });
+  }, [fetcher]);
 
   // The definition can change models between turns; the conversation's stored agent is current.
   // Pi's agent document stores the conversation's model choice as a provider and model id.
@@ -742,6 +751,8 @@ function BackofficeOrganizationPiAgent({
                 disabledReason={null}
                 error={sendError}
                 queueLabels={conversationQueue.labels}
+                paused={agentQueue.paused && agentQueue.items.length > 0}
+                onResume={handleResume}
                 modelLabel={modelLabel}
                 needsNudge={false}
                 onCompact={handleCompact}

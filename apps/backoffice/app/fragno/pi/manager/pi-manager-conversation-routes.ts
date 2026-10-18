@@ -28,8 +28,8 @@ function withQueueFrames(
   let unwatch = () => {};
   return new ReadableStream<Uint8Array>({
     start(controller) {
-      unwatch = watchQueue(({ items }) => {
-        const frame: PiAgentViewStreamFrame = { type: "queue", items };
+      unwatch = watchQueue(({ paused, items }) => {
+        const frame: PiAgentViewStreamFrame = { type: "queue", paused, items };
         controller.enqueue(encoder.encode(`${JSON.stringify(frame)}\n`));
       });
     },

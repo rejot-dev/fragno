@@ -85,8 +85,8 @@ type PiSessionViewStreamState =
   | { status: "ready"; view: ConversationView; queue: PiAgentQueueState }
   | { status: "failed"; message: string };
 
-/** What waits in the agent's queue. */
-export type PiAgentQueueState = { items: PiAgentQueueEntry[] };
+/** What waits in the agent's queue, and whether stopping the agent paused it. */
+export type PiAgentQueueState = { paused: boolean; items: PiAgentQueueEntry[] };
 
 async function readPiSessionViewStreamFailure(response: Response) {
   const body = z.object({ message: z.string() }).safeParse(await response.json().catch(() => null));
@@ -131,10 +131,10 @@ export function usePiSessionViewStream(streamUrl: string) {
           }
           reconnectDelayMs = INITIAL_RECONNECT_DELAY_MS;
           // Each connection starts with the queue, which waits here for the first view.
-          let queue: PiAgentQueueState = { items: [] };
+          let queue: PiAgentQueueState = { paused: false, items: [] };
           await consumePiSessionViewNdjson(response, (frame) => {
             if (frame.type === "queue") {
-              queue = { items: frame.items };
+              queue = { paused: frame.paused, items: frame.items };
               setState((current) => (current.status === "ready" ? { ...current, queue } : current));
               return;
             }

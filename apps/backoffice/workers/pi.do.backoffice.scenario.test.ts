@@ -1428,6 +1428,7 @@ test("Cloudflare backend analytics delivers verified outcomes and Pi usage witho
                   requestId: "accepted-prompt",
                   content: "PRIVATE_USER_PROMPT",
                   whenBusy: "reject",
+                  whenPaused: "wait",
                   billingOrganizationId: null,
                 },
               );
@@ -1444,6 +1445,7 @@ test("Cloudflare backend analytics delivers verified outcomes and Pi usage witho
                   requestId: "rejected-prompt",
                   content: "PRIVATE_REJECTED_PROMPT",
                   whenBusy: "reject",
+                  whenPaused: "wait",
                   billingOrganizationId: null,
                 },
               );
@@ -1505,6 +1507,7 @@ test("Cloudflare backend analytics delivers verified outcomes and Pi usage witho
                   requestId: "second-prompt",
                   content: "PRIVATE_SECOND_PROMPT",
                   whenBusy: "followUp",
+                  whenPaused: "wait",
                   billingOrganizationId: null,
                 },
               );

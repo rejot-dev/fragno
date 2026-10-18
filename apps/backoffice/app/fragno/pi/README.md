@@ -82,7 +82,7 @@ and Pi only ever receives a steer or the one turn the queue dispatched. An item 
 dispatched or settled item names its turn by the turn's Pi request ID. Items stay after they end, so
 a resent request ID keeps its first placement and never runs twice; nothing prunes the log yet.
 
-The queue follows five rules. `nextPiAgentQueueTurn` in `pi-agent-queue-rules.ts` applies the first
+The queue follows six rules. `nextPiAgentQueueTurn` in `pi-agent-queue-rules.ts` applies the first
 four, which pick each turn:
 
 1. **Oldest first.** Items are handled in the order they arrived.
@@ -93,6 +93,8 @@ four, which pick each turn:
 4. **One prompt per turn.** Each prompt gets its own turn.
 5. **Events appear as they arrive.** An event is written into the conversation right away; only the
    request to handle it waits in the queue.
+6. **Stopping pauses the queue.** Waiting items stay until someone sends a message or resumes the
+   queue.
 
 A sender is a turn's actors and scope restriction, which its authority derives from. So the oldest
 item leads the next turn; a prompt runs alone, and a notification takes every waiting notification
@@ -101,9 +103,15 @@ oldest item it handles.
 
 - `steer` joins the dispatched turn when that turn has the same sender. Otherwise the prompt is
   queued like `followUp`, the default. The receipt's `status` says `steered` or `queued`.
-- `reject` is refused with `409 AGENT_BUSY` while a turn is dispatched.
-- With nothing dispatched, a new item is dispatched at once; items wait only behind a dispatched
-  turn.
+- `reject` is refused with `409 AGENT_BUSY` while a turn is dispatched or items wait.
+- With nothing dispatched and the queue running, a new item is dispatched at once; items wait only
+  behind a dispatched turn or in a paused queue.
+- Aborting an agent pauses its queue and aborts what Pi holds; the stopped turn settles unanswered
+  and nothing starts after it. A paused queue records new items but dispatches none, even for an
+  idle agent, and a steer never joins the stopped turn. `POST /agents/:agentName/resume`, or a
+  prompt with `whenPaused: "resume"`, resumes it: the next turn starts at once, or when the stopped
+  turn settles, with the queue's oldest item. The Backoffice UI sends `resume`; the default, `wait`,
+  keeps automations and workflows from undoing a stop, so `pi.runPrompt` waits until its deadline.
 
 Each change is one retrieve and one mutation, then at most one call to the agent object. The
 mutation decides: it admits the item against the agent's definition and models as they are then,
@@ -126,11 +134,12 @@ A request's submission reads `{ type: "input", status: "queued", requestId }` un
 and `{ type: "input", status: "dropped", requestId, reason }` once dropped; waiting for a queued
 prompt also waits for its dispatch, and `pi.runPrompt` fails with `PI_MANAGER_PROMPT_DROPPED`. Once
 its turn is dispatched, a request's submission is its turn's, so every notification a turn handled
-answers with that turn's submission. Aborting drops the queued items and withdraws what Pi holds.
+answers with that turn's submission.
 
-Every change publishes the agent's waiting items, with the agent row's version as their revision, to
-the manager object's in-memory queue channel. The view stream leads with them and sends them again
-as a `queue` frame whenever they change; an older revision published late is ignored.
+Every change publishes the agent's waiting items and whether its queue is paused, with the agent
+row's version as their revision, to the manager object's in-memory queue channel. The view stream
+leads with them and sends them again as a `queue` frame whenever they change; an older revision
+published late is ignored.
 
 ## Turn events
 
@@ -189,11 +198,12 @@ All paths below are mounted at `/api/pi-manager` inside the manager object:
 - `GET /agents`: every definition with its provisioning (`null` until its first turn), and invalid
   definitions.
 - `GET /agents/:agentName`: one definition and its provisioning.
-- `POST /agents/:agentName/prompts`: `{ requestId, content, whenBusy, billingOrganizationId }`,
-  answering `{ requestId, status }` or `409 AGENT_BUSY` for a refused `reject`; see Queue. The first
-  prompt provisions the agent: organization and project agents bill their organization, user agents
-  require an authorized billing organization, and later turns keep the original owner. Reusing a
-  request ID reuses the submission rather than generating another answer.
+- `POST /agents/:agentName/prompts`:
+  `{ requestId, content, whenBusy, whenPaused, billingOrganizationId }`, answering
+  `{ requestId, status }` or `409 AGENT_BUSY` for a refused `reject`; see Queue. The first prompt
+  provisions the agent: organization and project agents bill their organization, user agents require
+  an authorized billing organization, and later turns keep the original owner. Reusing a request ID
+  reuses the submission rather than generating another answer.
 - `POST /agents/:agentName/notifications`: `{ routeId, event }`, answering `204` or
   `404 AGENT_NOT_STARTED`. Automations routes and workflow replies, whose `routeId` is `null`, call
   it; see Notifications.
@@ -210,7 +220,8 @@ All paths below are mounted at `/api/pi-manager` inside the manager object:
 - `POST /agents/:agentName/compact`: admits manual durable compaction with optional instructions.
 - `GET /agents/:agentName/compactions/:taskId`: public running/completed/failed compaction state.
 - `POST /agents/:agentName/abort`: aborts the agent's current work, including background work, and
-  drops its queued items; see Queue.
+  pauses its queue; see Queue.
+- `POST /agents/:agentName/resume`: resumes a paused queue; see Queue.
 
 Conversation routes return `404 AGENT_NOT_STARTED` before an agent's first turn. A damaged Chord
 document path returns `409 PI_CONVERSATION_VIEW_DAMAGED` from the view and stream routes instead of
@@ -264,8 +275,9 @@ owner), steers the sender's own running turn and queues messages otherwise, show
 composer (the input Pi holds in `pi.inbox` as steering or up next, then the agent's queue as queued
 prompts and notifications), estimates the active context against the conversation's model, runs and
 monitors manual compaction, paginates inactive transcript history, downloads streaming JSONL
-exports, and aborts active work. A scoped resource route proxies the agent's `application/x-ndjson`
-conversation-view stream to the browser.
+exports, and stops active work. Messages resume a stopped agent's queue, and while it is paused with
+items waiting, the composer's empty send button resumes it. A scoped resource route proxies the
+agent's `application/x-ndjson` conversation-view stream to the browser.
 
 ## Recovery
 

@@ -72,7 +72,9 @@ export const piAgentDirectorySchema = schema("pi_manager", (s) =>
         .addColumn("state", jsonColumn<PiAgentQueueItemState>())
         .createIndex(AGENT_QUEUE_STATUS_INDEX, ["agentName", "status", "position"])
         .createIndex(AGENT_QUEUE_REQUEST_INDEX, ["agentName", "requestId"], { unique: true }),
-    ),
+    )
+    // Stopping an agent pauses its queue: nothing waiting is dispatched until it is resumed.
+    .alterTable("agent", (t) => t.addColumn("paused", column("bool").defaultTo(false))),
 );
 
 type AgentDefinitionRow = {

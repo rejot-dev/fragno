@@ -3,7 +3,12 @@ import { Button } from "@fragno-private/design-system/button";
 import { Icon } from "@fragno-private/design-system/icon";
 import { useEffect, useRef, useState, type UIEvent } from "react";
 
-import { ComposerPrimitive, QueueItemPrimitive, ThreadPrimitive } from "@assistant-ui/react";
+import {
+  ComposerPrimitive,
+  QueueItemPrimitive,
+  ThreadPrimitive,
+  useAuiState,
+} from "@assistant-ui/react";
 
 import type {
   PiCompactionMessageMetadata,
@@ -31,10 +36,44 @@ const OUT_OF_CONTEXT_HISTORY =
 // Warns ahead of Pi's automatic compaction, which starts near the window minus its reserve.
 const CONTEXT_USAGE_WARNING_RATIO = 0.8;
 
+const SEND_BUTTON_CLASS = `inline-flex min-h-10 items-center border border-r-0 border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 text-xs font-semibold text-[var(--bo-accent-fg)] transition-[border-color,scale] duration-150 ease-out hover:border-[color:var(--bo-accent-strong)] disabled:cursor-not-allowed disabled:opacity-35 ${tapScale}`;
+
+/** A paused queue resumes with an empty composer; a message resumes it too, at the queue's end. */
+function SendOrResume({
+  disabled,
+  paused,
+  onResume,
+}: {
+  disabled: boolean;
+  paused: boolean;
+  onResume: () => unknown;
+}) {
+  const empty = useAuiState((state) => state.composer.isEmpty);
+  if (paused && empty) {
+    return (
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => void onResume()}
+        className={SEND_BUTTON_CLASS}
+      >
+        Resume
+      </button>
+    );
+  }
+  return (
+    <ComposerPrimitive.Send disabled={disabled} className={SEND_BUTTON_CLASS}>
+      Send
+    </ComposerPrimitive.Send>
+  );
+}
+
 export function SessionThread({
   disabledReason,
   error,
   queueLabels,
+  paused,
+  onResume,
   modelLabel,
   needsNudge,
   onCompact,
@@ -62,6 +101,9 @@ export function SessionThread({
   error: string | null;
   /** Keyed by queue item id: steers join the running turn, everything else waits for a turn. */
   queueLabels: ReadonlyMap<string, PiConversationQueueLabel>;
+  /** Stopping the agent paused its queue with items waiting; sending anything resumes it. */
+  paused: boolean;
+  onResume: () => unknown;
   modelLabel: string | null;
   needsNudge: boolean;
   onCompact: () => unknown;
@@ -312,12 +354,7 @@ export function SessionThread({
                         Compact
                       </button>
                     ) : (
-                      <ComposerPrimitive.Send
-                        disabled={disabled}
-                        className={`inline-flex min-h-10 items-center border border-r-0 border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] px-4 text-xs font-semibold text-[var(--bo-accent-fg)] transition-[border-color,scale] duration-150 ease-out hover:border-[color:var(--bo-accent-strong)] disabled:cursor-not-allowed disabled:opacity-35 ${tapScale}`}
-                      >
-                        Send
-                      </ComposerPrimitive.Send>
+                      <SendOrResume disabled={disabled} paused={paused} onResume={onResume} />
                     )}
                     <Menu.Root modal={false}>
                       <Menu.Trigger
