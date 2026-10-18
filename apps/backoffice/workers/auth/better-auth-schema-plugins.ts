@@ -20,6 +20,9 @@ export function createBackofficeBetterAuthSchemaPlugins(input: {
   const organizationOptions = {
     allowUserToCreateOrganization: true,
     creatorRole: BACKOFFICE_ORGANIZATION_OWNER_ROLE,
+    // Nothing removes an organization's installations, automations, or projects, so deleting one
+    // would orphan them.
+    disableOrganizationDeletion: true,
     schema: {
       organization: {
         additionalFields: {
