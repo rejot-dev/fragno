@@ -21,7 +21,6 @@ import { ProjectConnectorDurableObject } from "./project-connector.do";
 import { Resend } from "./resend.do";
 import { Reson8 } from "./reson8.do";
 import { SandboxManager } from "./sandbox-manager.do";
-import { Sandbox } from "./sandbox.do";
 import { Telegram } from "./telegram.do";
 import { Upload } from "./upload.do";
 
@@ -55,7 +54,6 @@ export {
   Presence,
   Resend,
   Reson8,
-  Sandbox,
   SandboxManager,
   Telegram,
   Upload,

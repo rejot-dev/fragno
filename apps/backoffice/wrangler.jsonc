@@ -214,9 +214,8 @@
     "ProjectConnectorDurableObject": { "type": "durable-object", "storage": "sqlite" },
     "Otp": { "type": "durable-object", "storage": "sqlite" },
     "Upload": { "type": "durable-object", "storage": "sqlite" },
-    // Retired: SANDBOX binds the bridge's class. Kept live until a separate `wrangler deploy` turns
-    // this into a `deleted` tombstone, which permanently drops the old sandboxes' namespace.
-    "Sandbox": { "type": "durable-object", "storage": "sqlite" },
+    // SANDBOX binds the bridge's Sandbox; this Worker's own copy and its namespace are gone.
+    "Sandbox": { "type": "durable-object", "state": "deleted" },
     "SandboxManager": { "type": "durable-object", "storage": "sqlite" },
     "GitHub": { "type": "durable-object", "storage": "sqlite" },
     "GitHubWebhookRouter": { "type": "durable-object", "storage": "sqlite" },
