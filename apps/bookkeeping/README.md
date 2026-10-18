@@ -106,7 +106,10 @@ pnpm --dir apps/bookkeeping backoffice:connect
 The script signs in through the Backoffice CLI, creates Bookkeeping's OAuth client (or repairs the
 one in `.dev.vars`: callback URL, scopes, and client credentials), registers the app with
 `events.emit` and the actions declared in `workers/backoffice-actions.ts`, and writes the client ID,
-secret, and both origins to `.dev.vars`. It reads both origins from `.dev.vars` and defaults to
+secret, and both origins to `.dev.vars`. Bookkeeping is registered as a first-party app with every
+provisioning permission: Backoffice skips its consent screen and permission review, and Bookkeeping
+may provision its users, organizations, and administrations in Backoffice (see Backoffice's
+`app/fragno/apps/README.md`). It reads both origins from `.dev.vars` and defaults to
 `http://127.0.0.1:5173` and `http://127.0.0.1:6174`; pass `--backoffice-url` or `--bookkeeping-url`
 to change them, which also moves the callback and the action endpoint. The app is registered as
 `app#bookkeeping`; pass `--slug` to choose another permanent name. Rerunning converges on the same
@@ -119,8 +122,8 @@ Then an owner or admin of the Bookkeeping organization opens **Backoffice → Co
 1. Bookkeeping records a single-use, 10-minute state bound to that user and organization, and
    redirects to Backoffice's install page.
 2. In Backoffice, the user chooses where to install: an organization they own or administer, or
-   themselves. They then approve permissions and either everything the owner has or selected
-   projects.
+   themselves. Bookkeeping is first-party, so there is no permission review: it gets every
+   permission it requests, over everything the owner has.
 3. Backoffice returns to `/dashboard/backoffice/callback` with a short-lived code. Bookkeeping
    consumes the state, authenticates with client credentials, and claims the installation for its
    organization at `POST /api/backoffice/app-installations/claim`. The Backoffice installation

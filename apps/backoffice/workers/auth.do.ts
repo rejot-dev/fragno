@@ -1,3 +1,4 @@
+import { createOAuthAccountIssuer } from "@better-auth/core/db";
 import type { AccountProfile, OAuthConsentPage } from "@fragno-dev/backoffice-api/v0/account";
 import {
   type OrganizationRole,
@@ -7,6 +8,17 @@ import {
   type OrganizationMembershipRecord,
   type OrganizationRecord,
 } from "@fragno-dev/backoffice-api/v0/organization";
+import {
+  provisionOrganizationInputSchema,
+  provisionUserInputSchema,
+  syncOrganizationMembersInputSchema,
+  type ProvisionOrganizationInput,
+  type ProvisionOrganizationResult,
+  type ProvisionUserInput,
+  type ProvisionUserResult,
+  type SyncOrganizationMembersInput,
+  type SyncOrganizationMembersResult,
+} from "@fragno-dev/backoffice-api/v0/provisioning";
 import type { DirectoryPageInput } from "@fragno-dev/backoffice-api/v0/shared/pagination";
 import {
   type BackofficeContextScope,
@@ -38,6 +50,8 @@ import {
   type BackofficeRuntimeServices,
 } from "@/backoffice-runtime/runtime-services";
 import type { AppInstallationOwner } from "@/fragno/app-installations/contracts";
+import { provisionedResourceId } from "@/fragno/apps/provisioned-id";
+import type { AppProvisioningResult, ProvisioningApp } from "@/fragno/auth/app-provisioning";
 import {
   type AuthHookContext,
   type AuthUser,
@@ -548,6 +562,11 @@ function hasOrganizationAdminEndpoints(
     "addMember" in auth.api &&
     typeof auth.api.addMember === "function"
   );
+}
+
+/** The provider of the accounts an app's users have, linking them to the Backoffice users it made. */
+function appAccountProviderId(appId: string): string {
+  return `app:${appId}`;
 }
 
 function getOrganizationAdminEndpoints(auth: BetterAuthInstance): OrganizationAdminEndpoints {
@@ -1082,7 +1101,13 @@ export class InMemoryAuthObject implements AuthObject {
       capturePropagationContext: () => record.propagationContext,
     };
     if (record.hookName === "onUserCreated") {
-      if (this.#runtime.config.authEmailVerification.enabled) {
+      // Users can arrive with a verified address, such as those a first-party app provisions.
+      const user = await findStoreUser((await this.#authContext()).adapter, record.payload.user.id);
+      if (
+        this.#runtime.config.authEmailVerification.enabled &&
+        user &&
+        !normalizeBoolean(user.emailVerified)
+      ) {
         const verificationHookId = `email-verification-${record.payload.user.id}`;
         const existingVerificationHook = await getBetterAuthDurableHook(
           this.#database,
@@ -1578,6 +1603,265 @@ export class InMemoryAuthObject implements AuthObject {
       },
     });
     return { id: organization.id, slug: organization.slug };
+  }
+
+  /**
+   * Users an app may name: those it provisioned, which have an account at the app, and those who
+   * authorized its OAuth client. An app cannot reach other Backoffice users through provisioning.
+   */
+  async #appLinkedUserIds(app: ProvisioningApp, userIds: readonly string[]): Promise<Set<string>> {
+    if (userIds.length === 0) {
+      return new Set();
+    }
+    const { adapter } = await this.#authContext();
+    const provisioned = await adapter.findMany<{ userId: string }>({
+      model: "account",
+      select: ["userId"],
+      where: [
+        { field: "providerId", value: appAccountProviderId(app.appId) },
+        { field: "userId", operator: "in", value: [...userIds] },
+      ],
+    });
+    const authorized = await adapter.findMany<{ userId: string }>({
+      model: "oauthConsent",
+      select: ["userId"],
+      where: [
+        { field: "clientId", value: app.oauthClientId },
+        { field: "userId", operator: "in", value: [...userIds] },
+      ],
+    });
+    return new Set([...provisioned, ...authorized].map(({ userId }) => userId));
+  }
+
+  /**
+   * Creates a user without a password for one of the app's users, with an account at the app that
+   * names the app's user. Better Auth writes both in one transaction, and the account's unique key
+   * means the app's user has at most one Backoffice user.
+   */
+  async provisionAppUser(
+    input: { appId: string } & ProvisionUserInput,
+  ): Promise<ProvisionUserResult> {
+    const { appId, ...user } = input;
+    const parsed = provisionUserInputSchema.parse(user);
+    const { internalAdapter } = await this.#authContext();
+    const providerId = appAccountProviderId(appId);
+    const account = {
+      providerId,
+      issuer: createOAuthAccountIssuer(providerId),
+      accountId: parsed.externalUserId,
+    };
+    const owner = await internalAdapter.findAccountOwnerByKey(account);
+    if (owner?.kind === "owned") {
+      return { status: "provisioned", userId: owner.user.id, created: false };
+    }
+    if (await internalAdapter.findUserByEmail(parsed.email)) {
+      return { status: "requires_link" };
+    }
+    // The app verified the address; Backoffice does not ask its user to verify it again.
+    const created = await internalAdapter.createOAuthUser(
+      { email: parsed.email, name: parsed.name, emailVerified: true },
+      account,
+    );
+    return { status: "provisioned", userId: created.user.id, created: true };
+  }
+
+  async findAppOrganization(input: {
+    appId: string;
+    externalOrganizationId: string;
+  }): Promise<{ organizationId: string; createdByUserId: string } | null> {
+    const organization = await this.#findAppOrganizationRecord(input);
+    return organization
+      ? { organizationId: organization.id, createdByUserId: organization.createdBy }
+      : null;
+  }
+
+  async #findAppOrganizationRecord(input: {
+    appId: string;
+    externalOrganizationId: string;
+  }): Promise<StoreOrganization | null> {
+    const { adapter } = await this.#authContext();
+    return await adapter.findOne<StoreOrganization>({
+      model: "organization",
+      where: [
+        {
+          field: "id",
+          value: provisionedResourceId({
+            appId: input.appId,
+            kind: "organization",
+            externalId: input.externalOrganizationId,
+          }),
+        },
+      ],
+    });
+  }
+
+  /**
+   * Creates an organization owned by a user linked to the app. Its ID is derived from the app's
+   * organization, so a repeated call finds it. Better Auth's endpoint chooses IDs itself, so the
+   * organization and its owner are written here, in one transaction.
+   */
+  async provisionAppOrganization(
+    input: ProvisioningApp & ProvisionOrganizationInput,
+  ): Promise<AppProvisioningResult<ProvisionOrganizationResult>> {
+    const { appId, oauthClientId, ...organization } = input;
+    const parsed = provisionOrganizationInputSchema.parse(organization);
+    const existing = await this.#findAppOrganizationRecord({
+      appId,
+      externalOrganizationId: parsed.externalOrganizationId,
+    });
+    if (existing) {
+      return {
+        ok: true,
+        value: { organizationId: existing.id, slug: existing.slug, created: false },
+      };
+    }
+    const linked = await this.#appLinkedUserIds({ appId, oauthClientId }, [parsed.ownerUserId]);
+    if (!linked.has(parsed.ownerUserId)) {
+      return {
+        ok: false,
+        error: {
+          code: "forbidden",
+          message: `User '${parsed.ownerUserId}' is not linked to this app. Provision them with users.provision, or have them authorize the app.`,
+        },
+      };
+    }
+    const organizationId = provisionedResourceId({
+      appId,
+      kind: "organization",
+      externalId: parsed.externalOrganizationId,
+    });
+    const slug = await this.#nextOrganizationSlug(parsed.name);
+    const { adapter } = await this.#authContext();
+    await adapter.transaction(async (transaction) => {
+      const now = new Date();
+      await transaction.create({
+        model: "organization",
+        data: {
+          id: organizationId,
+          name: parsed.name,
+          slug,
+          createdBy: parsed.ownerUserId,
+          createdAt: now,
+        },
+        forceAllowId: true,
+      });
+      await transaction.create({
+        model: "member",
+        data: {
+          organizationId,
+          userId: parsed.ownerUserId,
+          role: BACKOFFICE_ORGANIZATION_OWNER_ROLE,
+          createdAt: now,
+        },
+      });
+    });
+    return { ok: true, value: { organizationId, slug, created: true } };
+  }
+
+  /**
+   * Makes the organization's members that are linked to the app exactly the listed ones. Members
+   * the app is not linked to were added in Backoffice, so they stay; the organization keeps an
+   * owner.
+   */
+  async syncAppOrganizationMembers(
+    input: ProvisioningApp & SyncOrganizationMembersInput,
+  ): Promise<AppProvisioningResult<SyncOrganizationMembersResult>> {
+    const { appId, oauthClientId, ...sync } = input;
+    const parsed = syncOrganizationMembersInputSchema.parse(sync);
+    const app = { appId, oauthClientId };
+    const organization = await this.#findAppOrganizationRecord({
+      appId,
+      externalOrganizationId: parsed.externalOrganizationId,
+    });
+    if (!organization) {
+      return {
+        ok: false,
+        error: {
+          code: "not_found",
+          message: `This app has not provisioned organization '${parsed.externalOrganizationId}'.`,
+        },
+      };
+    }
+    const listed = new Map(parsed.members.map(({ userId, role }) => [userId, role]));
+    const linkedListed = await this.#appLinkedUserIds(app, [...listed.keys()]);
+    const unlinked = [...listed.keys()].filter((userId) => !linkedListed.has(userId));
+    if (unlinked.length > 0) {
+      return {
+        ok: false,
+        error: {
+          code: "forbidden",
+          message: `Users are not linked to this app: ${unlinked.join(", ")}.`,
+        },
+      };
+    }
+
+    const { adapter } = await this.#authContext();
+    const current = await adapter.findMany<StoreMember>({
+      model: "member",
+      where: [{ field: "organizationId", value: organization.id }],
+    });
+    const linkedCurrent = await this.#appLinkedUserIds(
+      app,
+      current.map(({ userId }) => userId),
+    );
+    const added = [...listed.keys()].filter(
+      (userId) => !current.some((member) => member.userId === userId),
+    );
+    const updated = current.filter((member) => {
+      const role = listed.get(member.userId);
+      return role !== undefined && member.role !== joinOrganizationRoles([role]);
+    });
+    const removed = current.filter(
+      (member) => !listed.has(member.userId) && linkedCurrent.has(member.userId),
+    );
+    const owners = [
+      ...current
+        .filter((member) => !removed.includes(member))
+        .filter((member) =>
+          listed.has(member.userId)
+            ? listed.get(member.userId) === BACKOFFICE_ORGANIZATION_OWNER_ROLE
+            : splitOrganizationRoles(member.role).includes(BACKOFFICE_ORGANIZATION_OWNER_ROLE),
+        ),
+      ...added.filter((userId) => listed.get(userId) === BACKOFFICE_ORGANIZATION_OWNER_ROLE),
+    ];
+    if (owners.length === 0) {
+      return {
+        ok: false,
+        error: { code: "conflict", message: "The organization would have no owner left." },
+      };
+    }
+
+    await adapter.transaction(async (transaction) => {
+      for (const userId of added) {
+        await transaction.create<StoreMember>({
+          model: "member",
+          data: {
+            organizationId: organization.id,
+            userId,
+            role: joinOrganizationRoles([listed.get(userId)!]),
+            createdAt: new Date(),
+          },
+        });
+      }
+      for (const member of updated) {
+        await transaction.update<StoreMember>({
+          model: "member",
+          where: [{ field: "id", value: member.id }],
+          update: { role: joinOrganizationRoles([listed.get(member.userId)!]) },
+        });
+      }
+      for (const member of removed) {
+        await transaction.delete({ model: "member", where: [{ field: "id", value: member.id }] });
+      }
+    });
+    return {
+      ok: true,
+      value: {
+        added,
+        updated: updated.map(({ userId }) => userId),
+        removed: removed.map(({ userId }) => userId),
+      },
+    };
   }
 
   async verifyAdminUserEmail(input: { email: string }): Promise<AdminUserEmailVerificationRecord> {
@@ -2251,6 +2535,28 @@ export class Auth extends DurableObject<CloudflareEnv> implements AuthObject {
 
   async createUserOrganization(input: { userId: string; name: string }) {
     return await this.#object.createUserOrganization(input);
+  }
+
+  async provisionAppUser(
+    input: { appId: string } & ProvisionUserInput,
+  ): Promise<ProvisionUserResult> {
+    return await this.#object.provisionAppUser(input);
+  }
+
+  async provisionAppOrganization(
+    input: ProvisioningApp & ProvisionOrganizationInput,
+  ): Promise<AppProvisioningResult<ProvisionOrganizationResult>> {
+    return await this.#object.provisionAppOrganization(input);
+  }
+
+  async findAppOrganization(input: { appId: string; externalOrganizationId: string }) {
+    return await this.#object.findAppOrganization(input);
+  }
+
+  async syncAppOrganizationMembers(
+    input: ProvisioningApp & SyncOrganizationMembersInput,
+  ): Promise<AppProvisioningResult<SyncOrganizationMembersResult>> {
+    return await this.#object.syncAppOrganizationMembers(input);
   }
 
   async verifyAdminUserEmail(input: { email: string }) {

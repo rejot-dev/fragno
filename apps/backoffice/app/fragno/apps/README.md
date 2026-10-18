@@ -390,9 +390,66 @@ A first-party app is part of Backoffice, so:
   revoking one is refused.
 - **Owners link it without a review.** The install page only asks where to install; the installation
   gets every requested permission over everything the owner has.
+- **It may provision**, with the [provisioning permissions](#provisioning-api) it is granted.
 
 Making an app third-party again ends all of this at once, except consents and installations already
 recorded.
+
+## Provisioning API
+
+A first-party app mirrors its own tenants in Backoffice server to server, e.g. Bookkeeping creating
+the Backoffice organization for a Bookkeeping organization. Each operation is
+`POST /api/v0/provisioning/<operationId>` with the app's client-credentials token, needs the
+provisioning permission of the same name in the app's trust, and is idempotent on the app's own
+identifiers: repeating a call returns what the first one made, with `created: false`. Calls whose
+outcome is unknown can therefore be retried. The contract and a client live in
+`@fragno-dev/backoffice-api/v0/provisioning` and `createBackofficeProvisioningClient`.
+
+| Operation                    | Does                                                                                                                                                |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `users.provision`            | Creates a user without a password and with a verified address, or returns `requires_link` when another account has the address                      |
+| `organizations.provision`    | Creates an organization owned by a linked user, installs the app there with every requested permission, owner-wide, and claims it for the app's org |
+| `projects.provision`         | Creates a project in an organization the app provisioned                                                                                            |
+| `organizations.members.sync` | Makes the organization's members linked to the app exactly those listed, with their roles                                                           |
+
+- **Linked users.** An app names Backoffice users it provisioned or who authorized its OAuth client,
+  never others. `requires_link` exists for this: handing an existing account to the app would let it
+  act as that person, so the person links it by authorizing the app instead.
+- **The app's identifiers.** A provisioned user has a Better Auth account with provider
+  `app:<appId>` whose account ID is the app's user, written with the user in one transaction; its
+  unique key keeps one Backoffice user per app user. Organizations and projects get IDs derived from
+  the app and its identifier (`app/fragno/apps/provisioned-id.ts`), so a repeated call finds them by
+  primary key. Nothing else records them.
+- **Membership sync** leaves members the app is not linked to, such as people invited in Backoffice,
+  and refuses a sync that would leave no owner.
+- **Uninstalling wins.** If the organization's owners uninstalled the app, provisioning that
+  organization again answers `409` instead of installing it again.
+- **Provisioned users have no password yet.** Backoffice has no way for them to set one; until it
+  does, they use Backoffice only through the app.
+- **Audit.** Every completed call is recorded as a System event from source `provisioning`
+  (`user.provisioned`, `organization.provisioned`, `project.provisioned`,
+  `organization.members.synced`), with the app as initiator and the input and result as payload.
+  Administrators read them with `events.list` in System context. The event is recorded after the
+  operation, so a retry after a failure in between records it again.
+
+Errors use the API's envelope: `401` for a missing or invalid token, `403` for a third-party app, a
+missing provisioning permission, or a user not linked to the app, `404` for an unknown organization,
+and `409` for a conflict.
+
+### Rotating the app's secret
+
+The client-credentials token comes from the app's confidential OAuth client secret. Rotate it when
+it may have leaked, and on a schedule:
+
+1. A system administrator runs `admin.oauth-clients.rotate-secret --client-id CLIENT_ID` as the
+   client's owner. The old secret stops working at once.
+2. Store the new secret in the app (for Bookkeeping,
+   `wrangler secret put BACKOFFICE_OAUTH_CLIENT_SECRET`, or `.dev.vars` locally) and redeploy or
+   restart it.
+
+Provisioning calls fail with `401` between the two steps, so run them together. Calls are
+idempotent, so the app retries whatever failed in between. Tokens issued before the rotation stay
+valid until they expire.
 
 ## Installation runtime tools
 

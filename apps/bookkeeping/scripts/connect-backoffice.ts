@@ -2,8 +2,9 @@
 
 /**
  * Connects this Bookkeeping checkout to a Backoffice server through the Backoffice CLI: signs in,
- * creates or repairs Bookkeeping's OAuth client, registers the app with its actions, and writes the
- * resulting credentials to apps/bookkeeping/.dev.vars. Safe to rerun; every step converges.
+ * creates or repairs Bookkeeping's OAuth client, registers the app as first-party with its actions,
+ * and writes the resulting credentials to apps/bookkeeping/.dev.vars. Safe to rerun; every step
+ * converges.
  */
 import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -30,6 +31,16 @@ const cliEntry = resolve(repositoryRoot, "apps/backoffice-cli/bin/run.js");
 
 const OAUTH_SCOPES = ["openid", "profile", "email", "offline_access", "backoffice"];
 const REQUESTED_PERMISSIONS = [{ namespace: "events", permission: "emit" }];
+// Backoffice operates Bookkeeping, so it may provision Bookkeeping's tenants there.
+const TRUST = {
+  kind: "first-party",
+  provisioningPermissions: [
+    "users.provision",
+    "organizations.provision",
+    "projects.provision",
+    "organizations.members.sync",
+  ],
+};
 const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "localhost", "[::1]"]);
 
 function readDevVars(): Map<string, string> {
@@ -110,7 +121,7 @@ if (flags.help) {
   console.log(`Usage: pnpm --dir apps/bookkeeping backoffice:connect [options]
 
 Signs in to Backoffice with the Backoffice CLI (a global administrator is required), creates or
-repairs Bookkeeping's OAuth client, registers the app with its actions, and updates
+repairs Bookkeeping's OAuth client, registers the app as first-party with its actions, and updates
 apps/bookkeeping/.dev.vars. Rerunning converges on the same client and app.
 
 Options:
@@ -263,6 +274,7 @@ const app = execSystem<{
       oauthClientId: client.clientId,
       requestedPermissions: REQUESTED_PERMISSIONS,
       actions,
+      trust: TRUST,
     })};
     const findApp = async () => {
       let cursor = null;
@@ -282,6 +294,7 @@ const app = execSystem<{
       created = true;
     } else {
       actionsChanged = (await admin.appsUpdateActions({ appId: app.id, actions: want.actions })).changed;
+      await admin.appsUpdateTrust({ appId: app.id, trust: want.trust });
       // An app registered before slugs answers to its ID; registering it again names it.
       if (app.slug === app.id) await admin.appsCreate(want);
     }
@@ -291,6 +304,7 @@ const app = execSystem<{
     else {
       if (app.slug !== want.slug) problems.push("it is registered as app#" + app.slug + "; slugs never change, so pass --slug " + app.slug);
       if (JSON.stringify(app.actions) !== JSON.stringify(want.actions)) problems.push("the stored actions differ from Bookkeeping's");
+      if (JSON.stringify(app.trust) !== JSON.stringify(want.trust)) problems.push("it is not registered as a first-party app with every provisioning permission");
       const granted = app.requestedPermissions.map((p) => p.namespace + "." + p.permission);
       for (const p of want.requestedPermissions) {
         if (!granted.includes(p.namespace + "." + p.permission)) problems.push("permission " + p.namespace + "." + p.permission + " is not requested; registered permissions never change, so register a new client");
