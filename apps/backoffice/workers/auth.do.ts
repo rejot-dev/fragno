@@ -98,6 +98,7 @@ import type {
   DurableHookQueueOptions,
   DurableHookQueueResponse,
 } from "@/fragno/durable-hooks";
+import { nextNumberedSlug } from "@/lib/numbered-slug";
 import { BACKOFFICE_LOGIN_PATH } from "@/routes/backoffice/auth-navigation";
 import { buildUserEmailVerificationEmail } from "@/transactional-emails/user-email-verification";
 
@@ -547,15 +548,6 @@ function hasOrganizationAdminEndpoints(
     "addMember" in auth.api &&
     typeof auth.api.addMember === "function"
   );
-}
-
-/** The number a slug takes in its base's sequence: 1 for the base itself, N for `base-N`, else 0. */
-function organizationSlugNumber(base: string, slug: string): number {
-  if (slug === base) {
-    return 1;
-  }
-  const suffix = slug.startsWith(`${base}-`) ? slug.slice(base.length + 1) : "";
-  return /^[1-9][0-9]*$/.test(suffix) ? Number(suffix) : 0;
 }
 
 function getOrganizationAdminEndpoints(auth: BetterAuthInstance): OrganizationAdminEndpoints {
@@ -1547,27 +1539,40 @@ export class InMemoryAuthObject implements AuthObject {
     };
   }
 
+  /**
+   * The slug a new organization with this name gets: its base, numbered after the organizations
+   * that share it. Auth handles no other request between this lookup and the insert that follows
+   * it, as it awaits only its own database. Outside I/O in between, such as an organization hook
+   * calling another object, would let a concurrent creation take the slug first, and the unique
+   * slug would reject this one.
+   */
+  async #nextOrganizationSlug(name: string): Promise<string> {
+    const { adapter } = await this.#authContext();
+    const base = organizationSlugFromName(name);
+    const sharing = await adapter.findMany<StoreOrganization>({
+      model: "organization",
+      where: [{ field: "slug", operator: "starts_with", value: base }],
+    });
+    return nextNumberedSlug(
+      base,
+      sharing.map(({ slug }) => slug),
+    );
+  }
+
   /** Creates an organization owned by the user, numbering its slug after those its name shares. */
   async createUserOrganization(input: {
     userId: string;
     name: string;
   }): Promise<{ id: string; slug: string }> {
-    const { adapter } = await this.#authContext();
     const createOrganization = getOrganizationAdminEndpoints(
       this.#getAuth("http://localhost"),
     ).createOrganization;
-    const base = organizationSlugFromName(input.name);
-    // The prefix also matches other bases, such as "acme-corp" for "acme"; those number as 0.
-    const existing = await adapter.findMany<StoreOrganization>({
-      model: "organization",
-      where: [{ field: "slug", operator: "starts_with", value: base }],
-    });
-    // Auth handles no other request between this lookup and the insert: it awaits only its own
-    // database. Outside I/O in between, such as an organization hook calling another object, would
-    // let a concurrent creation take the number first, and Better Auth would reject this one.
-    const next = Math.max(0, ...existing.map(({ slug }) => organizationSlugNumber(base, slug))) + 1;
     const organization = await createOrganization({
-      body: { name: input.name, slug: next === 1 ? base : `${base}-${next}`, userId: input.userId },
+      body: {
+        name: input.name,
+        slug: await this.#nextOrganizationSlug(input.name),
+        userId: input.userId,
+      },
     });
     return { id: organization.id, slug: organization.slug };
   }
