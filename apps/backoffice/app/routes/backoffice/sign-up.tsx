@@ -17,7 +17,6 @@ import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import type { Route } from "./+types/sign-up";
 import {
-  buildBackofficeAuthBootstrapPath,
   buildBackofficeLoginPath,
   buildBackofficeSignUpPath,
   readBackofficeReturnTo,
@@ -170,7 +169,7 @@ export async function action({ request, context, url }: Route.ActionArgs) {
       } satisfies BackofficeSignUpActionData;
     }
     if (response.headers.has("set-cookie")) {
-      return redirect(buildBackofficeAuthBootstrapPath(returnTo), {
+      return redirect(returnTo, {
         headers: createBackofficeIdentityChangeHeaders(response),
       });
     }

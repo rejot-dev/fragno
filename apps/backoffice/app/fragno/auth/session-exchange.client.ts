@@ -5,16 +5,6 @@ import {
 } from "./contracts";
 import { readBackofficeSessionExchangeErrorMessage } from "./session-exchange-error";
 
-export class BackofficeSessionExchangeError extends Error {
-  readonly status: number;
-
-  constructor(status: number, message: string) {
-    super(message);
-    this.name = "BackofficeSessionExchangeError";
-    this.status = status;
-  }
-}
-
 export async function exchangeBackofficeSessionForJwt(
   input: IssueBackofficeTokenInput,
   fetchImplementation: typeof fetch = fetch,
@@ -26,10 +16,7 @@ export async function exchangeBackofficeSessionForJwt(
     body: JSON.stringify(input),
   });
   if (!response.ok) {
-    throw new BackofficeSessionExchangeError(
-      response.status,
-      await readBackofficeSessionExchangeErrorMessage(response),
-    );
+    throw new Error(await readBackofficeSessionExchangeErrorMessage(response));
   }
   return issueBackofficeTokenResultSchema.parse(await response.json());
 }

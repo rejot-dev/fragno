@@ -291,7 +291,7 @@ describe("Auth Durable Object account creation policy", () => {
         },
         body: JSON.stringify({
           provider: "github",
-          callbackURL: "https://backoffice.example/backoffice/auth/bootstrap",
+          callbackURL: "https://backoffice.example/backoffice",
           requestSignUp: true,
         }),
       }),

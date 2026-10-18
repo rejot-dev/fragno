@@ -1,6 +1,7 @@
 import { type BetterAuthPlugin } from "better-auth";
 import { APIError, createAuthEndpoint, sessionMiddleware } from "better-auth/api";
 import { deleteSessionCookie } from "better-auth/cookies";
+import { z } from "zod";
 
 import { issueBackofficeTokenInputSchema } from "@/fragno/auth/contracts";
 import {
@@ -13,6 +14,14 @@ import {
   BackofficeUserTokenGrantForbiddenError,
   type ResolveBackofficeUserTokenGrant,
 } from "./backoffice-user-token-grant";
+
+/**
+ * The organization plugin's session field. It remembers the organization of the browser's last
+ * access token, so a token minted later, after the previous one expired, keeps that organization.
+ */
+const activeOrganizationSessionSchema = z.object({
+  activeOrganizationId: z.string().nullish(),
+});
 
 export function createBackofficeTokenPlugin(input: {
   secureCookies: boolean;
@@ -52,13 +61,18 @@ export function createBackofficeTokenPlugin(input: {
           use: [sessionMiddleware],
         },
         async function issueOrganizationScopedBackofficeToken(context) {
+          const { session, user } = context.context.session;
+          const preferredOrganizationId =
+            activeOrganizationSessionSchema.parse(session).activeOrganizationId ?? null;
+          const organizationId =
+            context.body.selection === "required"
+              ? context.body.organizationId
+              : preferredOrganizationId;
           let authority;
           try {
             authority = await input.resolveBackofficeUserTokenGrant(context.context.adapter, {
-              userId: context.context.session.user.id,
-              scope: context.body.organizationId
-                ? { kind: "org", orgId: context.body.organizationId }
-                : null,
+              userId: user.id,
+              scope: organizationId ? { kind: "org", orgId: organizationId } : null,
               organizationSelection: context.body.selection,
             });
           } catch (error) {
@@ -72,6 +86,12 @@ export function createBackofficeTokenPlugin(input: {
             ...authority,
             scopeRestriction: null,
           });
+          const issuedOrganizationId = authority.organization?.id ?? null;
+          if (issuedOrganizationId !== preferredOrganizationId) {
+            await context.context.internalAdapter.updateSession(session.token, {
+              activeOrganizationId: issuedOrganizationId,
+            });
+          }
           context.setCookie(backofficeAccessTokenCookieName(!input.secureCookies), "", {
             ...backofficeAccessTokenCookieAttributes(!input.secureCookies),
             maxAge: 0,

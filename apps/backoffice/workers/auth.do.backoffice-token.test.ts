@@ -213,7 +213,7 @@ describe("Backoffice token exchange", () => {
     );
   });
 
-  test("requires explicit organizations and falls back from unavailable preferences", async () => {
+  test("requires explicit organizations and keeps the last one for preferred tokens", async () => {
     const { auth, sessionCookie } = await signUp();
     const firstOrganizationId = await createOrganization(auth, sessionCookie, {
       name: "First Workspace",
@@ -225,13 +225,22 @@ describe("Backoffice token exchange", () => {
       slug: "second-workspace",
     });
 
+    // Creating an organization makes it the session's.
+    const createdResponse = await authRequest(auth, "/backoffice-token", {
+      cookie: sessionCookie,
+      body: { selection: "preferred" },
+    });
+    expect(await createdResponse.json()).toMatchObject({
+      organization: { id: secondOrganizationId },
+    });
+
     const requestedResponse = await authRequest(auth, "/backoffice-token", {
       cookie: sessionCookie,
-      body: { selection: "required", organizationId: secondOrganizationId },
+      body: { selection: "required", organizationId: firstOrganizationId },
     });
     assert(requestedResponse.status === 200);
     expect(await requestedResponse.json()).toMatchObject({
-      organization: { id: secondOrganizationId },
+      organization: { id: firstOrganizationId },
     });
 
     const rejectedResponse = await authRequest(auth, "/backoffice-token", {
@@ -240,12 +249,12 @@ describe("Backoffice token exchange", () => {
     });
     assert(rejectedResponse.status === 403);
 
-    const fallbackResponse = await authRequest(auth, "/backoffice-token", {
+    const preferredResponse = await authRequest(auth, "/backoffice-token", {
       cookie: sessionCookie,
-      body: { selection: "preferred", organizationId: "unavailable-organization" },
+      body: { selection: "preferred" },
     });
-    assert(fallbackResponse.status === 200);
-    expect(await fallbackResponse.json()).toMatchObject({
+    assert(preferredResponse.status === 200);
+    expect(await preferredResponse.json()).toMatchObject({
       organization: { id: firstOrganizationId },
     });
   });
@@ -256,7 +265,7 @@ describe("Backoffice token exchange", () => {
 
     const response = await authRequest(auth, "/backoffice-token", {
       cookie: sessionCookie,
-      body: { selection: "preferred", organizationId: null },
+      body: { selection: "preferred" },
     });
     assert(response.status === 200, `${response.status}: ${await response.clone().text()}`);
     expect(await response.json()).toEqual({
@@ -308,7 +317,7 @@ describe("Backoffice token exchange", () => {
 
     const revokedSessionResponse = await authRequest(auth, "/backoffice-token", {
       cookie: sessionCookie,
-      body: { selection: "preferred", organizationId: null },
+      body: { selection: "preferred" },
     });
     assert(revokedSessionResponse.status === 401);
   });
@@ -328,7 +337,7 @@ describe("Backoffice token exchange", () => {
 
     const response = await authRequest(auth, "/backoffice-token", {
       cookie: sessionCookie,
-      body: { selection: "preferred", organizationId: null },
+      body: { selection: "preferred" },
     });
     assert(response.status === 403);
     expect(getSetCookieHeaders(response.headers)).toEqual([]);

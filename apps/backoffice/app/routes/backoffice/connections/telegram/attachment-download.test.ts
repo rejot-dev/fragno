@@ -31,7 +31,7 @@ import { InMemoryAutomationsObject } from "../../../../../workers/automations.do
 import { InMemoryFormsObject } from "../../../../../workers/forms.do";
 import { InMemoryOtpObject } from "../../../../../workers/otp.do";
 import { InMemoryUploadObject } from "../../../../../workers/upload.do";
-import { buildBackofficeAuthBootstrapPath } from "../../auth-navigation";
+import { buildBackofficeLoginPath } from "../../auth-navigation";
 import { loader as attachmentDownloadLoader } from "./attachment-download";
 
 const loader = behindBackofficeLayout(attachmentDownloadLoader);
@@ -94,7 +94,9 @@ async function authenticateAttachmentUser(
         origin: "https://example.com",
         "content-type": "application/json",
       },
-      body: JSON.stringify({ selection: "preferred", organizationId: member ? orgId : null }),
+      body: JSON.stringify(
+        member ? { selection: "required", organizationId: orgId } : { selection: "preferred" },
+      ),
     }),
   );
   assert(exchange.ok, await exchange.clone().text());
@@ -139,7 +141,7 @@ describe("Telegram attachment download scenarios", () => {
           assert(response instanceof Response);
           assert.equal(response.status, 302);
           expect(response.headers.get("location")).toBe(
-            buildBackofficeAuthBootstrapPath(`${downloadPath}?${query}`),
+            buildBackofficeLoginPath(`${downloadPath}?${query}`),
           );
           assert(ctx.fakes.telegram);
           expect(ctx.fakes.telegram.downloadFileCalls).toEqual([]);

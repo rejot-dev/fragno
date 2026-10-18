@@ -97,7 +97,6 @@ function authRequest(ctx: Ctx, pathname: string, cookie: string, body?: unknown)
 async function backofficeCookie(ctx: Ctx, session: string): Promise<string> {
   const exchange = await authRequest(ctx, "/backoffice-token", session, {
     selection: "preferred",
-    organizationId: null,
   });
   assert(exchange.ok, await exchange.clone().text());
   return [

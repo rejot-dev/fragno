@@ -53,13 +53,9 @@ describe("Backoffice invitation acceptance", () => {
       await Promise.resolve();
     });
     expect(await screen.findByText("Invitation accepted.")).toBeTruthy();
-    const destination = new URL(
-      screen.getByRole("link", { name: "Open organization" }).getAttribute("href") ?? "",
-      "https://example.com",
-    );
-    assert(destination.searchParams.get("organizationId") === "organization-1");
     assert(
-      destination.searchParams.get("returnTo") === "/backoffice/organizations/example-organization",
+      screen.getByRole("link", { name: "Open organization" }).getAttribute("href") ===
+        "/backoffice/organizations/example-organization",
     );
     expect(respondInvitation).toHaveBeenCalledTimes(1);
     router.dispose();

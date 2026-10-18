@@ -10,16 +10,3 @@ export function sortOrganizationsByPreference<
     ...organizations.filter((entry) => entry.organization.id !== preferredOrganizationId),
   ];
 }
-
-export function getOrganizationPreferenceState(
-  organizationId: string,
-  preferredOrganizationId: string | null,
-) {
-  const isPreferred = organizationId === preferredOrganizationId;
-  return {
-    isPreferred,
-    badgeLabel: isPreferred ? "Preferred" : "Available",
-    actionLabel: isPreferred ? "Preferred org" : "Switch here",
-    canSwitch: !isPreferred,
-  };
-}

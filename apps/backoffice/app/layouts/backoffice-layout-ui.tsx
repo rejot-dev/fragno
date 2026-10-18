@@ -6,7 +6,6 @@ import { type ReactNode, useEffect } from "react";
 import { Outlet, isRouteErrorResponse, useRouteError, useRouteLoaderData } from "react-router";
 
 import { BackofficeShell } from "@/components/backoffice/shell";
-import { writePreferredOrganization } from "@/fragno/auth/preferred-organization";
 import { dashboardPath } from "@/routes/backoffice/dashboard/path";
 import {
   getBackofficeOrganizationNotFound,
@@ -32,10 +31,6 @@ export default function BackofficeLayout({
     automationCollectionSource,
     projectCollectionSource,
   } = loaderData;
-
-  useEffect(() => {
-    writePreferredOrganization(me.activeOrganizationId);
-  }, [me.activeOrganizationId]);
 
   useEffect(
     function identifyAuthenticatedUser() {

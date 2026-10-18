@@ -1,13 +1,11 @@
 export const BACKOFFICE_HOME_PATH = "/backoffice";
 export const BACKOFFICE_LOGIN_PATH = "/backoffice/login";
 export const BACKOFFICE_SIGN_UP_PATH = "/backoffice/sign-up";
-export const BACKOFFICE_AUTH_BOOTSTRAP_PATH = "/backoffice/auth/bootstrap";
 
 export function backofficeInvitationPath(invitationId: string): string {
   return `/backoffice/invitations/${encodeURIComponent(invitationId)}`;
 }
 const BACKOFFICE_RETURN_TO_PARAM = "returnTo";
-const BACKOFFICE_ORGANIZATION_ID_PARAM = "organizationId";
 
 function isBackofficePath(pathname: string): boolean {
   return pathname === BACKOFFICE_HOME_PATH || pathname.startsWith(`${BACKOFFICE_HOME_PATH}/`);
@@ -62,51 +60,6 @@ export function buildBackofficeLoginPath(returnTo?: string | null): string {
 
 export function buildBackofficeSignUpPath(returnTo?: string | null): string {
   return buildBackofficeAuthPath(BACKOFFICE_SIGN_UP_PATH, returnTo);
-}
-
-export function buildBackofficeAuthBootstrapPath(returnTo?: string | null): string {
-  return buildBackofficeAuthPath(BACKOFFICE_AUTH_BOOTSTRAP_PATH, returnTo);
-}
-
-/** Exchanges the browser JWT for the destination organization before opening the return path. */
-export function buildBackofficeOrganizationSwitchPath(
-  organizationId: string,
-  returnTo: string,
-): string {
-  const sanitizedOrganizationId = organizationId.trim();
-  if (!sanitizedOrganizationId) {
-    throw new Error("Backoffice organization switch requires an organization id.");
-  }
-
-  const searchParams = new URLSearchParams();
-  searchParams.set(BACKOFFICE_ORGANIZATION_ID_PARAM, sanitizedOrganizationId);
-  searchParams.set(
-    BACKOFFICE_RETURN_TO_PARAM,
-    sanitizeBackofficeReturnTo(returnTo) ?? BACKOFFICE_HOME_PATH,
-  );
-  return `${BACKOFFICE_AUTH_BOOTSTRAP_PATH}?${searchParams.toString()}`;
-}
-
-export function readBackofficeOrganizationSwitchId(url: URL | string): string | null {
-  const resolvedUrl = typeof url === "string" ? new URL(url, "http://localhost") : url;
-  return resolvedUrl.searchParams.get(BACKOFFICE_ORGANIZATION_ID_PARAM)?.trim() || null;
-}
-
-export function retargetBackofficeOrganizationReturnTo(
-  returnTo: string,
-  organizationSlug: string | null,
-): string {
-  const sanitizedReturnTo = sanitizeBackofficeReturnTo(returnTo) ?? BACKOFFICE_HOME_PATH;
-  if (!organizationSlug || !sanitizedReturnTo.startsWith(BACKOFFICE_HOME_PATH)) {
-    return sanitizedReturnTo;
-  }
-
-  const destination = new URL(sanitizedReturnTo, "http://localhost");
-  destination.pathname = destination.pathname.replace(
-    /\/org\/[^/]+/,
-    `/org/${encodeURIComponent(organizationSlug)}`,
-  );
-  return `${destination.pathname}${destination.search}`;
 }
 
 export function readBackofficeReturnTo(url: URL | string): string {

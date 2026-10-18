@@ -69,7 +69,7 @@ async function signInToOrganization(ctx: BackofficeScenarioContext) {
         origin: "https://example.com",
         "content-type": "application/json",
       },
-      body: JSON.stringify({ selection: "preferred", organizationId: orgId }),
+      body: JSON.stringify({ selection: "required", organizationId: orgId }),
     }),
   );
   assert(exchange.ok, await exchange.clone().text());

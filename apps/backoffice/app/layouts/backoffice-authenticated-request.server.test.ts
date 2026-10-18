@@ -1,4 +1,4 @@
-import { assert, describe, expect, test, vi } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
 import type { BackofficeMeData } from "@/fragno/auth/contracts";
 import {
@@ -55,28 +55,6 @@ function createAuthenticationContext(
 }
 
 describe("Backoffice authenticated request middleware", () => {
-  test("redirects before descendant handlers run when authentication is missing", async () => {
-    const request = new Request("https://backoffice.example/backoffice/settings?tab=profile");
-    const getBackofficeMe = vi.fn<BackofficeRequestState["getBackofficeMe"]>(async () => ({
-      status: "missing",
-    }));
-    const context = createAuthenticationContext(request, getBackofficeMe);
-    const next = vi.fn(async () => new Response("descendant response"));
-
-    const result = await establishBackofficeAuthenticatedRequest({ request, context }, next).catch(
-      (error: unknown) => error,
-    );
-
-    assert(result instanceof Response);
-    assert.equal(result.status, 302);
-    assert.equal(
-      result.headers.get("location"),
-      "/backoffice/auth/bootstrap?returnTo=%2Fbackoffice%2Fsettings%3Ftab%3Dprofile",
-    );
-    expect(next).not.toHaveBeenCalled();
-    expect(getBackofficeMe).toHaveBeenCalledOnce();
-  });
-
   test("establishes authenticated membership before descendant handlers run", async () => {
     const request = new Request("https://backoffice.example/backoffice/settings");
     const expiresAt = new Date("2026-09-01T12:15:00.000Z");
@@ -98,9 +76,12 @@ describe("Backoffice authenticated request middleware", () => {
       return response;
     });
 
-    await expect(establishBackofficeAuthenticatedRequest({ request, context }, next)).resolves.toBe(
-      response,
-    );
+    await expect(
+      establishBackofficeAuthenticatedRequest(
+        { request, context, url: new URL(request.url) },
+        next,
+      ),
+    ).resolves.toBe(response);
     expect(next).toHaveBeenCalledOnce();
     expect(getBackofficeMe).toHaveBeenCalledOnce();
   });

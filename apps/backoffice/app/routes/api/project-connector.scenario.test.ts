@@ -146,7 +146,9 @@ async function issueBackofficeAccessCookie(
         origin: "https://backoffice.example",
         "content-type": "application/json",
       },
-      body: JSON.stringify({ selection: "preferred", organizationId }),
+      body: JSON.stringify(
+        organizationId ? { selection: "required", organizationId } : { selection: "preferred" },
+      ),
     }),
   );
   assert(exchange.ok, await exchange.clone().text());

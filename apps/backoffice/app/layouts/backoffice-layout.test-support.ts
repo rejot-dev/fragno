@@ -41,8 +41,10 @@ export function behindBackofficeLayout<TArgs extends BackofficeRouteHandlerArgs,
 ): (args: TArgs) => Promise<TResult> {
   return async (args) => {
     let handled: { result: TResult } | null = null;
-    await establishBackofficeAuthenticatedRequest(args, () =>
-      establishBackofficeShellRequest(args, async () => {
+    // Tests call handlers with page URLs, never React Router's `.data` endpoints.
+    const middlewareArgs = { ...args, url: new URL(args.request.url) };
+    await establishBackofficeAuthenticatedRequest(middlewareArgs, () =>
+      establishBackofficeShellRequest(middlewareArgs, async () => {
         handled = { result: await handler(args) };
         return new Response(null);
       }),
@@ -167,9 +169,7 @@ export async function withBackofficeAccessToken(
     ctx,
     cookie,
     "/backoffice-token",
-    organizationId
-      ? { selection: "required", organizationId }
-      : { selection: "preferred", organizationId: null },
+    organizationId ? { selection: "required", organizationId } : { selection: "preferred" },
   );
   assert(issued.ok, await issued.clone().text());
   const accessToken = /fragno-backoffice\.access_token=([^;]+)/u.exec(

@@ -102,8 +102,7 @@ async function createOrganizationFromPage(
     params: {},
   } as never);
   assert(response instanceof Response);
-  const location = new URL(response.headers.get("location") ?? "", origin);
-  return { returnTo: location.searchParams.get("returnTo") };
+  return { opens: response.headers.get("location") };
 }
 
 async function runInSystemTerminal(ctx: BackofficeScenarioContext, command: string) {
@@ -214,10 +213,10 @@ test("users name their organizations, and Auth gives each a free slug", async ()
         then.assert("both users create an organization with the same name", async (ctx) => {
           expect(
             await createOrganizationFromPage(ctx, ctx.vars.firstCookie, "  my COOL org "),
-          ).toEqual({ returnTo: "/backoffice/dashboard/org/my-cool-org" });
+          ).toEqual({ opens: "/backoffice/dashboard/org/my-cool-org" });
           expect(
             await createOrganizationFromPage(ctx, ctx.vars.secondCookie, "my COOL org"),
-          ).toEqual({ returnTo: "/backoffice/dashboard/org/my-cool-org-2" });
+          ).toEqual({ opens: "/backoffice/dashboard/org/my-cool-org-2" });
           const organizations = await ctx.runtime.objects.auth
             .singleton()
             .commands.getAllOrganizations();
@@ -228,6 +227,34 @@ test("users name their organizations, and Auth gives each a free slug", async ()
             ]),
           );
         }),
+        then.assert(
+          "slugs keep numbering, apart from names that only share their beginning",
+          async (ctx) => {
+            expect(
+              await createOrganizationFromPage(ctx, ctx.vars.firstCookie, "My Cool Org Corp"),
+            ).toEqual({ opens: "/backoffice/dashboard/org/my-cool-org-corp" });
+            const opened = [];
+            for (let created = 0; created < 20; created += 1) {
+              opened.push(
+                await createOrganizationFromPage(ctx, ctx.vars.firstCookie, "my cool org"),
+              );
+            }
+            expect(opened.at(-1)).toEqual({ opens: "/backoffice/dashboard/org/my-cool-org-22" });
+          },
+        ),
+        then.assert(
+          "names without Latin letters or digits number from organization",
+          async (ctx) => {
+            expect(
+              await createOrganizationFromPage(ctx, ctx.vars.secondCookie, "株式会社"),
+            ).toEqual({
+              opens: "/backoffice/dashboard/org/organization",
+            });
+            expect(await createOrganizationFromPage(ctx, ctx.vars.secondCookie, "Ωμέγα")).toEqual({
+              opens: "/backoffice/dashboard/org/organization-2",
+            });
+          },
+        ),
       ],
     }),
   );
