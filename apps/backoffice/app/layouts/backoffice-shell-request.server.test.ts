@@ -62,7 +62,6 @@ const authenticatedMe: BackofficeMeData = {
   organizations: [activeOrganization, otherOrganization],
   activeOrganizationId: activeOrganization.organization.id,
   activeOrganization,
-  invitations: [],
 };
 
 const authenticatedPrincipal: BackofficeAuthPrincipal = {
