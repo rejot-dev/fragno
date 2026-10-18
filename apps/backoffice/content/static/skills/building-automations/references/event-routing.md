@@ -101,14 +101,13 @@ const action = {
 };
 ```
 
-The event is written into the agent's conversation, and the agent is asked to handle it in a turn
-run with the route's authority, so grant `pi.modify` plus whatever the agent's work needs. A busy
-agent sees the event at its next tool round and may handle it in its running turn; the requested
-turn follows. Several events delivered while the agent is busy share one requested turn per route
-authority, whose prompt request ID is `route:<routeId>:<eventId>` for the last of them. Delivering
-one event through one route twice writes it once. Only started agents receive notifications; prompt
-an agent once first. Events an agent's own turns produced, even reclassified or forwarded, are never
-delivered to it.
+The event is written into the agent's conversation at once, and a busy agent sees it at its next
+tool round. The request to handle it waits in the agent's queue with its prompts and runs in a turn
+with the route's authority, so grant `pi.modify` plus whatever the agent's work needs. Requests
+waiting from one route authority share that turn, whose prompt request ID is
+`route:<routeId>:<eventId>` for the oldest of them. Delivering one event through one route twice
+delivers it once. Only started agents receive notifications; prompt an agent once first. Events an
+agent's own turns produced, even reclassified or forwarded, are never delivered to it.
 
 ## Catalog versus delivery
 

@@ -19,6 +19,7 @@ import {
   piAgentTurnSchema,
 } from "@/fragno/pi/agent/pi-agent-contract";
 
+import { handOverPiAgentWork, type PiAgentHandover } from "./pi-agent-queue";
 import { piManagerDefinition } from "./pi-manager-definition";
 import type { PiAgentTurnProvenance } from "./pi-manager-schema";
 
@@ -52,10 +53,13 @@ export const piManagerTurnRoutes = defineRoutes(piManagerDefinition).create(
           () =>
             [
               services.getAgents([agentName]),
-              services.getQueueSubmission(agentName, requestId),
+              services.getQueueRecord(agentName, requestId),
             ] as const,
         )
-        .transform(({ serviceResult: [agents, held] }) => ({ agent: agents.get(agentName), held }))
+        .transform(({ serviceResult: [agents, record] }) => ({
+          agent: agents.get(agentName),
+          record,
+        }))
         .execute();
     }
 
@@ -70,6 +74,18 @@ export const piManagerTurnRoutes = defineRoutes(piManagerDefinition).create(
         provenance,
         await config.supportedAvailableModels(),
       );
+    }
+
+    async function handOver(handover: PiAgentHandover | null) {
+      if (!handover) {
+        return;
+      }
+      try {
+        await handOverPiAgentWork(config.agent, handover);
+      } catch (cause) {
+        // The item is recorded, and the hook its placement triggered hands it over again.
+        console.error(cause);
+      }
     }
 
     return [
@@ -125,19 +141,8 @@ export const piManagerTurnRoutes = defineRoutes(piManagerDefinition).create(
               409,
             );
           }
-          const { dispatch } = submitted;
-          if (dispatch) {
-            const agent = config.agent(dispatch.agent);
-            try {
-              await (submitted.type === "steered"
-                ? agent.steer(dispatch.agent, dispatch.turn, dispatch.prompt)
-                : agent.dispatch(dispatch.agent, dispatch.turn, dispatch.prompt));
-            } catch (cause) {
-              // The prompt is recorded, and the hook its submission triggered hands it over again.
-              console.error(cause);
-            }
-          }
-          return json({ requestId: prompt.requestId, status: submitted.type }, 202);
+          await handOver(submitted.handover);
+          return json({ requestId: prompt.requestId, status: submitted.status }, 202);
         },
       }),
       defineRoute({
@@ -147,19 +152,29 @@ export const piManagerTurnRoutes = defineRoutes(piManagerDefinition).create(
         errorCodes: ["AGENT_NOT_STARTED", "AGENT_NOT_FOUND", "MODEL_UNAVAILABLE"],
         handler: async function ({ pathParams, input }, { empty, error }) {
           const { provenance, ...notification } = await input.valid();
-          const { definition, config: agentConfig } = await this.handlerTx()
-            .withServiceCalls(() => [services.getAgent(pathParams.agentName)])
-            .transform(({ serviceResult: [agent] }) => agent)
+          const { agentName } = pathParams;
+          const availableModels = await config.supportedAvailableModels();
+          const submitted = await this.handlerTx()
+            .withServiceCalls(
+              () =>
+                [
+                  services.submitNotification({
+                    agentName,
+                    notification,
+                    provenance,
+                    availableModels,
+                  }),
+                ] as const,
+            )
+            .transform(({ serviceResult: [result] }) => result)
             .execute();
-          // A notification never starts an agent: a personal agent has no billing owner to pick.
-          if (!agentConfig) {
+          if (submitted.type === "not-started") {
             return error({ code: "AGENT_NOT_STARTED", message: "Pi agent has no turns yet." }, 404);
           }
-          const admitted = await admitTurn(definition, pathParams.agentName, provenance);
-          if (admitted.type === "error") {
-            return error({ code: admitted.code, message: admitted.message }, admitted.status);
+          if (submitted.type === "error") {
+            return error({ code: submitted.code, message: submitted.message }, submitted.status);
           }
-          await config.agent(agentConfig).notify(agentConfig, admitted.turn, notification);
+          await handOver(submitted.handover);
           return empty(204);
         },
       }),
@@ -204,23 +219,23 @@ export const piManagerTurnRoutes = defineRoutes(piManagerDefinition).create(
               400,
             );
           }
-          const { agent, held } = await findSubmission(() => this.handlerTx(), pathParams);
+          const { agent, record } = await findSubmission(() => this.handlerTx(), pathParams);
           if (!agent) {
             return error({ code: "AGENT_NOT_STARTED", message: "Pi agent has no turns yet." }, 404);
           }
-          if (held?.status === "dropped") {
-            return json({ status: "settled", submission: held });
+          if (record?.type === "held" && record.submission.status === "dropped") {
+            return json({ status: "settled", submission: record.submission });
           }
-          // A queued prompt reaches Pi only once its queue dispatches it, which the wait covers.
-          if (!held && !(await config.agent(agent).getSubmission(agent, pathParams.requestId))) {
+          // A queued request reaches Pi only once its turn is dispatched, which the wait covers;
+          // a turn's submission answers for every item it handled.
+          const requestId = record?.type === "turn" ? record.turnRequestId : pathParams.requestId;
+          if (!record && !(await config.agent(agent).getSubmission(agent, requestId))) {
             return error(
               { code: "SUBMISSION_NOT_FOUND", message: "Pi submission was not found." },
               404,
             );
           }
-          return json(
-            await config.agent(agent).waitForSubmission(agent, pathParams.requestId, wait.data),
-          );
+          return json(await config.agent(agent).waitForSubmission(agent, requestId, wait.data));
         },
       }),
       defineRoute({
@@ -229,16 +244,23 @@ export const piManagerTurnRoutes = defineRoutes(piManagerDefinition).create(
         outputSchema: z.unknown(),
         errorCodes: ["AGENT_NOT_STARTED", "SUBMISSION_NOT_FOUND"],
         handler: async function ({ pathParams }, { json, error }) {
-          const { agent, held } = await findSubmission(() => this.handlerTx(), pathParams);
+          const { agent, record } = await findSubmission(() => this.handlerTx(), pathParams);
           if (!agent) {
             return error({ code: "AGENT_NOT_STARTED", message: "Pi agent has no turns yet." }, 404);
           }
-          if (held?.status === "dropped") {
-            return json(held);
+          if (record?.type === "held") {
+            return json(record.submission);
           }
-          const submission = await config.agent(agent).getSubmission(agent, pathParams.requestId);
-          if (submission ?? held) {
-            return json(submission ?? held);
+          // A turn's submission answers for every item it handled.
+          const submission = await config
+            .agent(agent)
+            .getSubmission(agent, record ? record.turnRequestId : pathParams.requestId);
+          if (submission) {
+            return json(submission);
+          }
+          // A dispatched turn reads as queued until Pi has its submission.
+          if (record) {
+            return json({ type: "input", status: "queued", requestId: pathParams.requestId });
           }
           return error(
             { code: "SUBMISSION_NOT_FOUND", message: "Pi submission was not found." },

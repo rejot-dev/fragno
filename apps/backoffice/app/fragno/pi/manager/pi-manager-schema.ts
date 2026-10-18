@@ -2,7 +2,7 @@ import type { AutomationRouteManagedBy } from "@fragno-dev/backoffice-api/v0/aut
 import type { PiAgentDefinition } from "@fragno-dev/backoffice-api/v0/pi";
 import { column, idColumn, schema, type Column } from "@fragno-dev/db/schema";
 
-import type { PiAgentTurn } from "@/fragno/pi/agent/pi-agent-contract";
+import type { PiAgentNotification, PiAgentTurn } from "@/fragno/pi/agent/pi-agent-contract";
 
 const jsonColumn = <T>() => column("json") as Column<"json", T, T>;
 
@@ -10,17 +10,21 @@ const jsonColumn = <T>() => column("json") as Column<"json", T, T>;
 export type PiAgentTurnProvenance = Pick<PiAgentTurn, "actors" | "scopeRestriction">;
 
 /** What a queued item asks the agent for. */
-type PiAgentQueueInput = { type: "prompt"; content: string };
+export type PiAgentQueueInput =
+  | { type: "prompt"; content: string }
+  | { type: "notification"; notification: PiAgentNotification };
 
 /**
- * Where an item is in its agent's queue. A dispatched item is the one Pi runs; a steered item joined
- * it. Settled and dropped items stay, so a resent request ID is recognized and never runs twice.
+ * Where an item is in its agent's queue. Dispatched items are the turn Pi runs, several when it
+ * handles notifications together, and each names that turn by its Pi request ID; a steered item
+ * joined it under its own. Settled and dropped items stay, so a resent request ID is recognized and
+ * never runs twice, and a settled one still names the turn that handled it.
  */
 export type PiAgentQueueItemState =
   | { status: "queued" }
-  | { status: "dispatched"; turn: PiAgentTurn }
+  | { status: "dispatched"; turn: PiAgentTurn; turnRequestId: string }
   | { status: "steered"; turn: PiAgentTurn }
-  | { status: "settled" }
+  | { status: "settled"; turnRequestId: string }
   | { status: "dropped"; reason: string };
 
 export const AGENT_QUEUE_STATUS_INDEX = "idx_agent_queue_item_agentName_status_position";

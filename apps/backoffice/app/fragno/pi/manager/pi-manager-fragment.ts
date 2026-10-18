@@ -17,6 +17,7 @@ import {
   piAgentNotificationSchema,
 } from "@/fragno/pi/agent/pi-agent-contract";
 
+import { handOverPiAgentWork } from "./pi-agent-queue";
 import { piManagerConversationRoutes } from "./pi-manager-conversation-routes";
 import { piManagerDefinition, type PiManagerConfig } from "./pi-manager-definition";
 import { piManagerDirectoryRoutes } from "./pi-manager-directory-routes";
@@ -147,21 +148,21 @@ export function createPiManagerFragment(
     });
 }
 
-/** Called for every turn an agent settles, so its queue hands it the next item. */
+/** Called for every turn an agent settles, so its queue hands it the next turn. */
 export async function reportPiAgentTurnSettled(
   fragment: ReturnType<typeof createPiManagerFragment>,
   config: Pick<PiManagerConfig, "agent" | "supportedAvailableModels">,
   input: { agentName: string; requestId: string },
 ): Promise<void> {
   const availableModels = await config.supportedAvailableModels();
-  const dispatch = await fragment.callServices(() =>
+  const handover = await fragment.callServices(() =>
     fragment.services.advanceAgentQueue({
       agentName: input.agentName,
       settledRequestId: input.requestId,
       availableModels,
     }),
   );
-  if (dispatch) {
-    await config.agent(dispatch.agent).dispatch(dispatch.agent, dispatch.turn, dispatch.prompt);
+  if (handover) {
+    await handOverPiAgentWork(config.agent, handover);
   }
 }

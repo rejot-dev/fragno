@@ -71,6 +71,22 @@ export const piAgentNotificationSchema = z.lazy(() =>
 export type PiAgentNotification = z.infer<typeof piAgentNotificationSchema>;
 
 /**
+ * What a dispatched turn asks the agent for: one prompt, or the notifications it handles together,
+ * named by the oldest one's request ID.
+ */
+export const piAgentWorkSchema = z.lazy(() =>
+  z.discriminatedUnion("type", [
+    piAgentPromptSchema.extend({ type: z.literal("prompt") }),
+    z.object({
+      type: z.literal("notifications"),
+      requestId: z.string().min(1),
+      notifications: z.array(piAgentNotificationSchema).min(1),
+    }),
+  ]),
+);
+export type PiAgentWork = z.infer<typeof piAgentWorkSchema>;
+
+/**
  * The authority of one turn: its submitter's actors, narrowed by the agent definition read when
  * the turn was admitted. The kernel re-resolves the actors' permissions on every check.
  */
@@ -160,8 +176,16 @@ export type PiAgent = {
    * dispatched; if another turn runs by then, the prompt follows it instead of joining it.
    */
   steer(config: PiAgentConfig, turn: PiAgentTurn, prompt: PiAgentPrompt): Promise<void>;
-  /** Hands Pi the item the manager's queue dispatched; a request ID Pi already has is kept. */
-  dispatch(config: PiAgentConfig, turn: PiAgentTurn, prompt: PiAgentPrompt): Promise<void>;
+  /**
+   * Hands Pi the turn the manager's queue dispatched, writing its notifications into the
+   * conversation first; a request ID Pi already has is kept.
+   */
+  dispatch(config: PiAgentConfig, turn: PiAgentTurn, work: PiAgentWork): Promise<void>;
+  /**
+   * Writes notifications into the conversation as they arrive, at a running turn's next boundary;
+   * the request to handle them waits in the manager's queue. A written one is not written again.
+   */
+  writeNotifications(config: PiAgentConfig, notifications: PiAgentNotification[]): Promise<void>;
   getView(config: PiAgentConfig): Promise<unknown>;
   watchView(config: PiAgentConfig): Promise<ReadableStream<Uint8Array>>;
   getSubmission(config: PiAgentConfig, requestId: string): Promise<SubmissionRecord | null>;
@@ -176,15 +200,6 @@ export type PiAgent = {
     request: z.infer<typeof piAgentEntryPageRequestSchema>,
   ): Promise<PiAgentEntryPage>;
   exportEntries(config: PiAgentConfig): Promise<ReadableStream<Uint8Array>>;
-  /**
-   * Writes the event into the conversation, then asks for a turn with the given authority unless
-   * a follow-up with that authority is still queued.
-   */
-  notify(
-    config: PiAgentConfig,
-    turn: PiAgentTurn,
-    notification: PiAgentNotification,
-  ): Promise<void>;
   compact(
     config: PiAgentConfig,
     turn: PiAgentTurn,

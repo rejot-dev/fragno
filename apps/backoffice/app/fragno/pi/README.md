@@ -76,37 +76,57 @@ runs as the principal without the definition's narrowing.
 
 ## Queue
 
-The manager logs every prompt an agent receives in its `agent_queue_item` table, and Pi only ever
-receives a steer or the one item the queue dispatched. An item is `queued`, `dispatched` (the turn
-Pi runs), `steered` (joined that turn), `settled`, or `dropped`. Items stay after they end, so a
-resent request ID keeps its first placement and never runs twice; nothing prunes the log yet.
+The manager logs every prompt and notification an agent receives in its `agent_queue_item` table,
+and Pi only ever receives a steer or the one turn the queue dispatched. An item is `queued`,
+`dispatched` (in the turn Pi runs), `steered` (joined that turn), `settled`, or `dropped`; a
+dispatched or settled item names its turn by the turn's Pi request ID. Items stay after they end, so
+a resent request ID keeps its first placement and never runs twice; nothing prunes the log yet.
 
-- `steer` joins the dispatched turn when that turn has the same actors and scope restriction.
-  Otherwise the prompt is queued like `followUp`, the default. The receipt's `status` says `steered`
-  or `queued`.
-- `reject` is refused with `409 AGENT_BUSY` while an item is dispatched.
-- With nothing dispatched, a new prompt is dispatched at once; items wait only behind a dispatched
-  one.
+The queue follows five rules. `nextPiAgentQueueTurn` in `pi-agent-queue-rules.ts` applies the first
+four, which pick each turn:
+
+1. **Oldest first.** Items are handled in the order they arrived.
+2. **One sender per turn.** A turn acts for one sender, so items from different senders run in
+   separate turns.
+3. **Group notifications.** Notifications waiting from the same sender are handled together in one
+   turn.
+4. **One prompt per turn.** Each prompt gets its own turn.
+5. **Events appear as they arrive.** An event is written into the conversation right away; only the
+   request to handle it waits in the queue.
+
+A sender is a turn's actors and scope restriction, which its authority derives from. So the oldest
+item leads the next turn; a prompt runs alone, and a notification takes every waiting notification
+from its sender along, even ones behind another sender's items. The turn takes the request ID of the
+oldest item it handles.
+
+- `steer` joins the dispatched turn when that turn has the same sender. Otherwise the prompt is
+  queued like `followUp`, the default. The receipt's `status` says `steered` or `queued`.
+- `reject` is refused with `409 AGENT_BUSY` while a turn is dispatched.
+- With nothing dispatched, a new item is dispatched at once; items wait only behind a dispatched
+  turn.
 
 Each change is one retrieve and one mutation, then at most one call to the agent object. The
-mutation decides: it admits the prompt against the agent's definition and models as they are then,
+mutation decides: it admits the item against the agent's definition and models as they are then,
 provisions the agent on its first prompt, and records the placement. Every change updates the agent
 row with Fragno's optimistic version check, so concurrent changes to one queue conflict and retry,
-and a new item takes the row's new version as its position. The agent's settled-turn outbox (see
-Turn events) reports every settled turn through the manager object's `reportSettledTurn` command,
-whose mutation settles the item and dispatches the next one, admitted against the definition as it
-is then. When the definition or model it needs is gone, every waiting item is dropped with the
-reason, since admission does not depend on the item.
+and a new item takes the row's new version as its position. A concurrent first prompt retries on the
+agent row's unique conflict. The agent's settled-turn outbox (see Turn events) reports every settled
+turn through the manager object's `reportSettledTurn` command, whose mutation settles every item of
+the dispatched turn and dispatches the next one, admitted against the definition as it is then. When
+the definition or model it needs is gone, every waiting item is dropped with the reason, since
+admission does not depend on the item.
 
-Items are recorded before the agent receives them. Each handover also triggers the
-`redispatchAgentQueue` durable hook, which hands every unsettled dispatched or steered item over
-again; Pi keeps the submission of a request ID it already has. A steer that reaches the agent after
-its turn ended runs as a follow-up instead of joining another authority's turn.
+Items are recorded before the agent receives them. Each handover also triggers a durable hook that
+repeats it: `redispatchAgentQueue` hands every unsettled dispatched or steered item over again, and
+`writeNotificationCards` writes an arrived notification's card again; Pi keeps the submission of a
+request ID it already has. A steer that reaches the agent after its turn ended runs as a follow-up
+instead of joining another sender's turn.
 
-A prompt's submission reads `{ type: "input", status: "queued", requestId }` until Pi has it, and
-`{ type: "input", status: "dropped", requestId, reason }` once dropped; waiting for a queued prompt
-also waits for its dispatch, and `pi.runPrompt` fails with `PI_MANAGER_PROMPT_DROPPED`. Aborting
-drops the queued items and withdraws what Pi holds. Notifications do not go through the queue yet.
+A request's submission reads `{ type: "input", status: "queued", requestId }` until Pi has its turn,
+and `{ type: "input", status: "dropped", requestId, reason }` once dropped; waiting for a queued
+prompt also waits for its dispatch, and `pi.runPrompt` fails with `PI_MANAGER_PROMPT_DROPPED`. Once
+its turn is dispatched, a request's submission is its turn's, so every notification a turn handled
+answers with that turn's submission. Aborting drops the queued items and withdraws what Pi holds.
 
 ## Turn events
 
@@ -130,35 +150,31 @@ A `notify_agent` Automations route delivers an event to an agent of the route's 
 through the same route, with no route ID and the run's execution: when the run ends, Automations
 notifies the agent with a `workflows` `instance.completed` event carrying its status, output, and
 error. The workflows middleware accepts a codemode run's `replyTo` agent only from that agent's own
-turn, which it recognizes by the agent's delegate actor. The agent object writes the event into the
-root conversation as a `backoffice.notification` entry, whose data is the route ID and event and
-whose model message is one `<backoffice-event>` element: the event's identity as attributes, its
-subject and payload as JSON whose `<` is escaped, so event data cannot close the element. Backoffice
-guidance tells agents to treat it as data. Users only submit inputs, which Pi writes as `pi.user`,
-so the chat's event card cannot be forged.
+turn, which it recognizes by the agent's delegate actor.
 
-Pi places a write at a busy conversation's next boundary, tool rounds included, so a running turn
-can see and act on an event with its own submitter's authority. The agent then submits a follow-up
-input, one `<backoffice-notifications-request>` element listing each notification by its route, if
-any, and event ID, as a turn run with the route's or the workflow run's execution. A queued input
-cannot change, so when a follow-up posted with the same actors and scope restriction is still
-queued, the agent withdraws it and posts one listing both its notifications and the new one; if Pi
-placed it first, the new follow-up lists only the new notification. A withdrawn follow-up settles
-unanswered and records no turn event. `backoffice.pi.notifications` records the queued follow-ups
-and what they list, and notifications run one at a time per agent object. The chat shows a follow-up
-as a "Handling N notifications" divider below their cards, and the composer queue labels it the same
-way; a typed request only restyles the typist's own message.
+A notification is a queue item whose sender is the route's or the workflow run's execution, so the
+request to handle it waits its turn like a prompt (see Queue). Its request ID is
+`route:<routeId>:<eventId>`, or `reply:<eventId>` without a route, so redelivering an event through
+one route, or to the agent directly, places nothing new, even after it was handled. Notifications
+never provision an agent, because a personal agent's billing owner is chosen by its first prompter:
+an agent with no turns answers `404 AGENT_NOT_STARTED`.
 
-Request IDs make redelivery idempotent: the write is `route:<routeId>:<eventId>:event`, or
-`reply:<eventId>:event` without a route, and a follow-up takes the write's ID without `:event` for
-the newest notification it lists, which is also the request ID its `turn.completed` reports. A
-redelivered notification that a queued follow-up already lists posts nothing. An object restart
-between withdrawing a follow-up and posting its replacement leaves the withdrawn notifications
-unlisted; their entries stay in the conversation. Notifications never provision an agent, because a
-personal agent's billing owner is chosen by its first prompter: an agent with no turns answers
-`404 AGENT_NOT_STARTED`. Everything an agent's turns produce, including its `pi` events and any
-event reclassified or forwarded from them, keeps the agent's actor among its delegates, and a route
-never delivers such an event to that agent.
+The event itself is written as it arrives, into the root conversation as a `backoffice.notification`
+entry with request ID `<requestId>:event`. Pi places a write at a busy conversation's next boundary,
+tool rounds included, so a running turn can see and act on an event with its own sender's authority.
+When the queue dispatches a turn of notifications, the agent object writes their entries again,
+which keeps ones already written where they are, then submits one input, a
+`<backoffice-notifications-request>` element listing each notification by its route, if any, and
+event ID. The entry's data is the route ID and event; its model message is one `<backoffice-event>`
+element: the event's identity as attributes, its subject and payload as JSON whose `<` is escaped,
+so event data cannot close the element. Backoffice guidance tells agents to treat it as data. Users
+only submit inputs, which Pi writes as `pi.user`, so the chat's event card cannot be forged. The
+chat shows the event cards where Pi placed them and the request as a "Handling N notifications"
+divider; a typed request only restyles the typist's own message.
+
+Everything an agent's turns produce, including its `pi` events and any event reclassified or
+forwarded from them, keeps the agent's actor among its delegates, and a route never delivers such an
+event to that agent.
 
 ## Manager routes
 
@@ -178,16 +194,18 @@ All paths below are mounted at `/api/pi-manager` inside the manager object:
   `404 AGENT_NOT_STARTED`. Automations routes and workflow replies, whose `routeId` is `null`, call
   it; see Notifications.
 - `GET /agents/:agentName/submissions/:requestId`: Pi's submission record, or the queue's record of
-  a prompt Pi does not have; see Queue.
+  an item Pi does not have; see Queue.
 - `GET /agents/:agentName/submissions/:requestId/wait?waitMs=...`: bounded, commit-driven wait for a
   queued prompt's dispatch and its submission's settlement.
 - `GET /agents/:agentName/view`: Pi's committed active structural conversation view.
+
 - `GET /agents/:agentName/entries?cursor=...&pageSize=...`: newest-first, fork-aware durable entry
   history (maximum 256 entries per page).
 - `GET /agents/:agentName/export`: streaming versioned JSONL export over every durable entry.
 - `POST /agents/:agentName/compact`: admits manual durable compaction with optional instructions.
 - `GET /agents/:agentName/compactions/:taskId`: public running/completed/failed compaction state.
-- `POST /agents/:agentName/abort`: aborts the agent's current work, including background work.
+- `POST /agents/:agentName/abort`: aborts the agent's current work, including background work, and
+  drops its queued items; see Queue.
 
 Conversation routes return `404 AGENT_NOT_STARTED` before an agent's first turn. A damaged Chord
 document path returns `409 PI_CONVERSATION_VIEW_DAMAGED` from the view and stream routes instead of

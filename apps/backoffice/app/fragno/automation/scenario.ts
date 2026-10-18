@@ -85,6 +85,7 @@ import {
   type PiAgentTurn,
   type PiAvailableModel,
 } from "@/fragno/pi/agent/pi-agent-contract";
+import { renderPiNotificationRequest } from "@/fragno/pi/agent/pi-agent-notification-entry";
 import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 import type { BackofficeRuntimeToolCall } from "@/fragno/runtime-tools/runtime-tools";
 import { createStateShellFileSystem } from "@/fragno/runtime-tools/state-shell-file-system";
@@ -1111,7 +1112,7 @@ const createFakePiManagerApi = (
   }
 
   // The fake answers each prompt as it receives it, steered or dispatched.
-  const answer: PiAgent["dispatch"] = async (config, turn, prompt) => {
+  const answer: PiAgent["steer"] = async (config, turn, prompt) => {
     const fake = requireAgent(config);
     if (fake.submissions.has(prompt.requestId)) {
       return;
@@ -1142,7 +1143,20 @@ const createFakePiManagerApi = (
   const agent: PiAgent = {
     async warm() {},
     steer: answer,
-    dispatch: answer,
+    async dispatch(config, turn, work) {
+      await answer(config, turn, {
+        requestId: work.requestId,
+        content:
+          work.type === "prompt"
+            ? work.content
+            : renderPiNotificationRequest(
+                work.notifications.map(({ routeId, event }) => ({ routeId, eventId: event.id })),
+              ),
+      });
+    },
+    async writeNotifications(config) {
+      requireAgent(config);
+    },
     async getView(config) {
       const fake = requireAgent(config);
       getViewCalls.push({ agentName: config.agentName });
@@ -1190,9 +1204,6 @@ const createFakePiManagerApi = (
           controller.close();
         },
       });
-    },
-    async notify() {
-      throw new Error("Scripted Pi agents take no notifications; override PI with a real agent.");
     },
     async compact() {
       return { taskId: 1 };
@@ -4137,9 +4148,9 @@ const createFakeObjectOverrides = async (fakes: ScenarioFakes): Promise<LocalBac
               await fakePi.agent.steer(config, turn, prompt);
               await settled(config, prompt.requestId);
             },
-            async dispatch(config, turn, prompt) {
-              await fakePi.agent.dispatch(config, turn, prompt);
-              await settled(config, prompt.requestId);
+            async dispatch(config, turn, work) {
+              await fakePi.agent.dispatch(config, turn, work);
+              await settled(config, work.requestId);
             },
           };
         },

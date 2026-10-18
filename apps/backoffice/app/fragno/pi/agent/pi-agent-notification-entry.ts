@@ -10,6 +10,14 @@ export const PI_NOTIFICATION_ENTRY_KIND = "backoffice.notification";
 /** One notification entry, by the route that delivered it, if any, and the event it carries. */
 export type PiNotificationReference = { routeId: string | null; eventId: string };
 
+/**
+ * A notification's request ID in its agent's queue, so redelivering one event through one route,
+ * or to the agent directly, is recognized. Its entry is written as `<requestId>:event`.
+ */
+export function piNotificationRequestId({ routeId, event }: PiAgentNotification) {
+  return routeId === null ? `reply:${event.id}` : `route:${routeId}:${event.id}`;
+}
+
 function escapeAttribute(value: string) {
   return value
     .replaceAll("&", "&amp;")
@@ -31,9 +39,9 @@ const REQUEST_PATTERN =
 const REQUEST_ITEM_PATTERN = /<notification (?:route="([^"]*)" )?event="([^"]*)"\/>/gu;
 
 /**
- * The follow-up input that asks the agent to handle notifications. It names each one by the
- * `route` and `id` of its `<backoffice-event>`, since one event can reach an agent through two
- * routes. An event addressed to the agent has no route.
+ * The input of a turn that handles notifications, submitted below their entries. It names each
+ * by the `route` and `id` of its `<backoffice-event>`, since one event can reach an agent through
+ * two routes. An event addressed to the agent has no route.
  */
 export function renderPiNotificationRequest(notifications: readonly PiNotificationReference[]) {
   const items = notifications.map(
@@ -43,7 +51,7 @@ export function renderPiNotificationRequest(notifications: readonly PiNotificati
   return `<backoffice-notifications-request>\n${items.join("")}</backoffice-notifications-request>`;
 }
 
-/** The notifications a follow-up asks for, or null when the text is not exactly one request. */
+/** The notifications a request asks for, or null when the text is not exactly one request. */
 export function parsePiNotificationRequest(text: string): PiNotificationReference[] | null {
   const items = REQUEST_PATTERN.exec(text)?.[1];
   if (items === undefined) {
