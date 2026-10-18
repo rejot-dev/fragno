@@ -259,3 +259,49 @@ test("users name their organizations, and Auth gives each a free slug", async ()
     }),
   );
 });
+
+test("owners rename their organization, but cannot change its slug or delete it through Better Auth", async () => {
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      objects: scenarioObjects,
+      name: "organization slugs and deletion",
+      env: { AUTH_EMAIL_VERIFICATION_ENABLED: "false", SIGN_UP_INVITATIONS_ENABLED: "false" },
+      vars: () => ({ cookie: "" }),
+      steps: ({ when, then }) => [
+        when.auth.signUp({ email: "owner@example.test", captureSessionCookieAs: "cookie" }),
+        then.assert("only the name changes, and the organization stays", async (ctx) => {
+          await createOrganizationFromPage(ctx, ctx.vars.cookie, "Acme");
+          const auth = ctx.runtime.objects.auth.singleton();
+          const organization = await auth.commands.getOrganizationBySlug("acme");
+          assert(organization);
+          const callOrganizationEndpoint = async (path: string, body: unknown) =>
+            await auth.http.fetch(
+              new Request(`${origin}/api/auth/organization/${path}`, {
+                method: "POST",
+                headers: { cookie: ctx.vars.cookie, origin, "content-type": "application/json" },
+                body: JSON.stringify(body),
+              }),
+            );
+
+          const renamed = await callOrganizationEndpoint("update", {
+            organizationId: organization.id,
+            data: { name: "Acme Inc." },
+          });
+          assert.equal(renamed.status, 200, await renamed.clone().text());
+          const reslugged = await callOrganizationEndpoint("update", {
+            organizationId: organization.id,
+            data: { slug: "acme-inc" },
+          });
+          assert.equal(reslugged.status, 400, await reslugged.clone().text());
+          const deleted = await callOrganizationEndpoint("delete", {
+            organizationId: organization.id,
+          });
+          assert.equal(deleted.status, 404, await deleted.clone().text());
+
+          const [stored] = await auth.commands.getAllOrganizations();
+          expect(stored).toMatchObject({ id: organization.id, name: "Acme Inc.", slug: "acme" });
+        }),
+      ],
+    }),
+  );
+});

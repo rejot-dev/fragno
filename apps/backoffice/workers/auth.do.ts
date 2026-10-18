@@ -16,6 +16,7 @@ import {
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { DurableObjectDialect } from "@fragno-dev/db/dialects/durable-object";
 import { betterAuth, type BetterAuthOptions } from "better-auth";
+import { APIError } from "better-auth/api";
 import { DurableObject } from "cloudflare:workers";
 import { Kysely } from "kysely";
 import { z } from "zod";
@@ -856,6 +857,12 @@ export class InMemoryAuthObject implements AuthObject {
           };
         },
         async beforeUpdateOrganization({ organization: patch }) {
+          // Page URLs name organizations by slug, so a changed slug would break every link to one.
+          if (patch.slug !== undefined) {
+            throw new APIError("BAD_REQUEST", {
+              message: "An organization's slug cannot be changed.",
+            });
+          }
           return { data: { ...patch, updatedAt: new Date() } };
         },
       },
