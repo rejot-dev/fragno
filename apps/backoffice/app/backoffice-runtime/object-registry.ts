@@ -162,6 +162,11 @@ import type {
   SandboxInstanceRequestInput,
   SandboxProvider,
 } from "@/fragno/sandbox-manager/contracts";
+import type {
+  PresenceActivity,
+  PresenceActivityResult,
+  PresenceMember,
+} from "@/presence/contracts";
 import type { SandboxCommandResult, SandboxInstanceStatus } from "@/sandbox/contracts";
 
 import type {
@@ -394,7 +399,17 @@ export type AuthObject = DurableHookCommands & {
   }): Promise<string[] | null>;
 };
 
-export type ApiObject = DurableHookCommands;
+/**
+ * Starts an object ahead of the pages that use it. Resolves once its constructor's
+ * initialization has finished, so a page request after it finds the object ready.
+ */
+export type WarmableObject = {
+  warm(): Promise<void>;
+};
+
+export type ApiObject = WarmableObject & DurableHookCommands;
+
+export type PiManagerObject = WarmableObject;
 
 export type BillingObject = {
   recordEvent(
@@ -409,15 +424,16 @@ export type BillingObject = {
  * Executes non-workflow activations through the codemode bridge and records each one as a run.
  * Run starts and outcomes become `codemode` events in the same scope's Automations object.
  */
-export type CodemodeObject = DurableHookCommands & {
-  execute(
-    activation: CodemodeRunActivation,
-    context: CodemodeRunContext,
-    host: CodemodeHost,
-  ): Promise<CodemodeExecution>;
-  getRun(runId: string): Promise<CodemodeRun | null>;
-  listRuns(input: CodemodeRunPageInput): Promise<CodemodeRunPage>;
-};
+export type CodemodeObject = WarmableObject &
+  DurableHookCommands & {
+    execute(
+      activation: CodemodeRunActivation,
+      context: CodemodeRunContext,
+      host: CodemodeHost,
+    ): Promise<CodemodeExecution>;
+    getRun(runId: string): Promise<CodemodeRun | null>;
+    listRuns(input: CodemodeRunPageInput): Promise<CodemodeRunPage>;
+  };
 
 export type MarketplaceObject = {
   publishRelease(
@@ -603,7 +619,8 @@ export type Reson8Object = AdminConfigurableObject<
 export type McpObject = DurableHookCommands;
 /** Connector has HTTP operations only; provider tokens stay upstream. */
 export type ProjectConnectorObject = Record<never, never>;
-export type UploadObject = DurableHookCommands &
+export type UploadObject = WarmableObject &
+  DurableHookCommands &
   AdminConfigurableObject<AwaitedMethodReturn<Upload, "getAdminConfig">>;
 export type CloudflareObject = Record<never, never>;
 export type FormsObject = DurableHookCommands;
@@ -612,7 +629,7 @@ export type GitHubObject = DurableHookCommands & {
   redeliverFailedInstallationWebhooks(installationId: string): Promise<void>;
 };
 
-export type SandboxManagerObject = {
+export type SandboxManagerObject = WarmableObject & {
   listSandboxInstances(input?: {
     provider?: SandboxProvider;
     limit?: number;
@@ -625,6 +642,15 @@ export type SandboxManagerObject = {
     command: string;
     timeoutMs?: number;
   }): Promise<SandboxCommandResult>;
+};
+
+/**
+ * Remembers who in an organization was recently active in Backoffice, and where. A user without
+ * an active organization has a room of their own, which only decides warming.
+ */
+export type PresenceObject = {
+  recordActivity(activity: PresenceActivity): Promise<PresenceActivityResult>;
+  listActiveMembers(): Promise<PresenceMember[]>;
 };
 
 type SandboxObject = {
@@ -683,6 +709,7 @@ export type GitHubWebhookRouterObject = {
 };
 
 export type BackofficeObjectBindingName =
+  | "PRESENCE"
   | "APPS"
   | "APP_INSTALLATIONS"
   | "API"
@@ -748,6 +775,7 @@ export const backofficeObjectScopePolicy = {
   GITHUB_WEBHOOK_ROUTER: ["singleton"],
   CLOUDFLARE: ["singleton"],
   FORMS: ["singleton"],
+  PRESENCE: ["org", "user"],
 
   SANDBOX: ["named"],
   SANDBOX_MANAGER: ["singleton", "org", "user", "project"],
@@ -954,7 +982,7 @@ export const createBackofficeObjectRegistry = (factory: BackofficeObjectFactory)
   ),
 
   automations: scoped(factory, binding<AutomationsObject>("AUTOMATIONS")),
-  piManager: scoped(factory, binding<Record<never, never>>("PI_MANAGER")),
+  piManager: scoped(factory, binding<PiManagerObject>("PI_MANAGER")),
   billing: scoped(factory, binding<BillingObject>("BILLING")),
   codemode: scoped(factory, binding<CodemodeObject>("CODEMODE")),
   marketplace: scoped(factory, binding<MarketplaceObject>("MARKETPLACE")),
@@ -970,6 +998,7 @@ export const createBackofficeObjectRegistry = (factory: BackofficeObjectFactory)
   githubWebhookRouter: scoped(factory, binding<GitHubWebhookRouterObject>("GITHUB_WEBHOOK_ROUTER")),
   cloudflare: scoped(factory, binding<CloudflareObject>("CLOUDFLARE")),
   forms: scoped(factory, binding<FormsObject>("FORMS")),
+  presence: scoped(factory, binding<PresenceObject>("PRESENCE")),
 
   sandbox: scoped(factory, binding<SandboxObject>("SANDBOX")),
   sandboxManager: scoped(factory, binding<SandboxManagerObject>("SANDBOX_MANAGER")),

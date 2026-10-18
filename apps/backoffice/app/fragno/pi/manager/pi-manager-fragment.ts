@@ -49,6 +49,7 @@ import {
   piAgentViewStreamFrameSchema,
   piAvailableModelSchema,
   type PiAgent,
+  type PiAgentAddress,
   type PiAgentTurn,
   type PiAvailableModel,
 } from "@/fragno/pi/agent/pi-agent-contract";
@@ -72,7 +73,7 @@ const notificationSchema = z.lazy(() =>
 
 type PiManagerConfig = {
   scope: BackofficeContextScope;
-  agent: (config: PiAgentConfig) => PiAgent;
+  agent: (address: PiAgentAddress) => PiAgent;
   supportedAvailableModels: () => Promise<readonly PiAvailableModel[]>;
 };
 

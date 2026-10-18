@@ -194,6 +194,10 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
     await this.#requireAgent(config);
   }
 
+  async warm(): Promise<void> {
+    await this.#startup;
+  }
+
   async submit(
     config: PiAgentConfig,
     rawTurn: PiAgentTurn,
@@ -558,6 +562,10 @@ export class Pi extends DurableObject<CloudflareEnv> implements PiAgent {
 
   async initialize(config: PiAgentConfig): Promise<void> {
     await this.#object.initialize(config);
+  }
+
+  async warm(): Promise<void> {
+    await this.#object.warm();
   }
   async submit(
     config: PiAgentConfig,

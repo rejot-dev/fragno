@@ -465,6 +465,10 @@ export class InMemoryUploadObject implements UploadObject {
     return buildUploadAdminConfigResponse(resolved.config);
   }
 
+  async warm(): Promise<void> {
+    await this.#initialization;
+  }
+
   async getDurableHookQueue(options?: DurableHookQueueOptions) {
     await this.#refreshConfigured();
     return await this.#host.getDurableHookQueue(
@@ -542,6 +546,10 @@ export class Upload extends DurableObject<CloudflareEnv> implements UploadObject
     origin?: string,
   ): Promise<UploadAdminConfigResponse> {
     return await this.#object.setAdminConfig(payload, orgId, origin);
+  }
+
+  async warm(): Promise<void> {
+    await this.#object.warm();
   }
 
   async getDurableHookQueue(options?: DurableHookQueueOptions) {

@@ -153,6 +153,11 @@ export type PiAgentSubmitResult =
 
 /** Agent operations shared by Cloudflare RPC and the local object runtime. */
 export type PiAgent = {
+  /**
+   * Resolves once a provisioned agent has opened its harness. An agent that has never been
+   * provisioned has nothing to open, and warming does not provision it.
+   */
+  warm(): Promise<void>;
   submit(
     config: PiAgentConfig,
     turn: PiAgentTurn,
@@ -189,8 +194,11 @@ export type PiAgent = {
   abort(config: PiAgentConfig): Promise<void>;
 };
 
+/** Names an agent's object; unlike its config, it does not need the agent to be provisioned. */
+export type PiAgentAddress = Pick<PiAgentConfig, "scope" | "agentName">;
+
 /** Namespaced object identity prevents two execution scopes from sharing an agent. */
-export function piAgentObjectName(config: Pick<PiAgentConfig, "scope" | "agentName">) {
+export function piAgentObjectName(config: PiAgentAddress) {
   // The `agent` tag keeps defined agents apart from objects addressed by earlier session ids.
   return JSON.stringify(["agent", backofficeContextScopeRoutePath(config.scope), config.agentName]);
 }

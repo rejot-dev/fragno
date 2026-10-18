@@ -16,6 +16,7 @@ import { Mcp } from "./mcp.do";
 import { Otp } from "./otp.do";
 import { PiManager } from "./pi-manager.do";
 import { Pi } from "./pi.do";
+import { Presence } from "./presence.do";
 import { ProjectConnectorDurableObject } from "./project-connector.do";
 import { Resend } from "./resend.do";
 import { Reson8 } from "./reson8.do";
@@ -51,6 +52,7 @@ export {
   Otp,
   Pi,
   PiManager,
+  Presence,
   Resend,
   Reson8,
   Sandbox,

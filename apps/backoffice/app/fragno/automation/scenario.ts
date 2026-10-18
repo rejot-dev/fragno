@@ -1111,6 +1111,7 @@ const createFakePiManagerApi = (
   }
 
   const agent: PiAgent = {
+    async warm() {},
     async submit(config, turn, prompt) {
       const fake = requireAgent(config);
       const reply = assistantText({ agentName: config.agentName, content: prompt.content });

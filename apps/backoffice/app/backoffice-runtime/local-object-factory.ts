@@ -12,6 +12,7 @@ import type { AutomationSourceReader } from "@/fragno/automation/automation-sour
 import {
   piAgentObjectName,
   type PiAgent,
+  type PiAgentAddress,
   type PiAvailableModel,
 } from "@/fragno/pi/agent/pi-agent-contract";
 import type { CreateSandboxRuntimeProviders } from "@/sandbox/contracts";
@@ -71,7 +72,7 @@ export type LocalBackofficeObjectFactoryInput = {
   sqliteDataDirectory?: string;
   readonly createSandboxProviders: CreateSandboxRuntimeProviders;
   readonly getAuthDatabase: () => LocalAuthDatabase;
-  readonly getPiAgent: (config: PiAgentConfig) => PiAgent;
+  readonly getPiAgent: (address: PiAgentAddress) => PiAgent;
   readonly piAgentIdFromConfig: (config: PiAgentConfig) => DurableObjectId;
   readonly openPiSessionStore: () => Promise<Storage>;
   readonly piAvailableModels: readonly PiAvailableModel[] | null;

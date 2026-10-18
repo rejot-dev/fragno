@@ -17,6 +17,7 @@ import { InMemoryMcpObject } from "../../workers/mcp.do";
 import { InMemoryOtpObject } from "../../workers/otp.do";
 import { InMemoryPiManagerObject } from "../../workers/pi-manager.do";
 import { InMemoryPiObject } from "../../workers/pi.do";
+import { InMemoryPresenceObject } from "../../workers/presence.do";
 import { InMemoryProjectConnectorObject } from "../../workers/project-connector.do";
 import { InMemoryResendObject } from "../../workers/resend.do";
 import { InMemoryReson8Object } from "../../workers/reson8.do";
@@ -170,6 +171,7 @@ export const allLocalObjects = {
   GITHUB_WEBHOOK_ROUTER: (input) => new InMemoryGitHubWebhookRouterObject(input),
   CLOUDFLARE: (input) => new InMemoryCloudflareObject(input),
   FORMS: (input) => new InMemoryFormsObject(input),
+  PRESENCE: (input) => new InMemoryPresenceObject(input),
   AUTOMATIONS: (input) => new InMemoryAutomationsObject(input),
   PI: (input) =>
     new InMemoryPiObject({

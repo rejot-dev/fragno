@@ -122,6 +122,8 @@ export class InMemorySandboxManagerObject extends RpcTarget implements SandboxMa
     return this.#runtime.sandboxManagerFragment;
   }
 
+  async warm(): Promise<void> {}
+
   async listSandboxInstances(input?: { provider?: SandboxProvider; limit?: number }) {
     const fragment = this.#fragment();
     return await fragment.callServices(() => fragment.services.listSandboxInstances(input));
@@ -211,6 +213,10 @@ export class SandboxManager extends DurableObject<CloudflareEnv> implements Sand
       },
     });
   }
+  async warm(): Promise<void> {
+    await this.#object.warm();
+  }
+
   async listSandboxInstances(input?: { provider?: SandboxProvider; limit?: number }) {
     return await this.#object.listSandboxInstances(input);
   }

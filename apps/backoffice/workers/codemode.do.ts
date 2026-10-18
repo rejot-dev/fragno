@@ -361,6 +361,8 @@ export class InMemoryCodemodeObject extends RpcTarget implements CodemodeObject 
     return await fragment.callServices(() => fragment.services.listRuns({ page: "next", cursor }));
   }
 
+  async warm(): Promise<void> {}
+
   async getDurableHookQueue(options?: DurableHookQueueOptions) {
     return await loadDurableHookQueue(this.#getFragment(), options);
   }
@@ -396,6 +398,10 @@ export class Codemode extends DurableObject<CloudflareEnv> implements CodemodeOb
 
   listRuns(input: CodemodeRunPageInput): Promise<CodemodeRunPage> {
     return this.#object.listRuns(input);
+  }
+
+  async warm(): Promise<void> {
+    await this.#object.warm();
   }
 
   getDurableHookQueue(options?: DurableHookQueueOptions) {

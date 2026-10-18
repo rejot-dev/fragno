@@ -236,6 +236,8 @@ export class InMemoryApiObject extends RpcTarget implements ApiObject {
     };
   }
 
+  async warm(): Promise<void> {}
+
   async getDurableHookQueue(options?: DurableHookQueueOptions) {
     return await loadDurableHookQueue(await this.#scopedRuntime.getRuntime(), options);
   }
@@ -265,6 +267,10 @@ export class Api extends DurableObject<CloudflareEnv> implements ApiObject {
 
   async alarm(): Promise<void> {
     await this.#object.alarm();
+  }
+
+  async warm(): Promise<void> {
+    await this.#object.warm();
   }
 
   async getDurableHookQueue(options?: DurableHookQueueOptions) {

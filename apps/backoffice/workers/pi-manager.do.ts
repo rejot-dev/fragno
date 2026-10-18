@@ -1,4 +1,3 @@
-import type { PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
 import {
   type BackofficeContextScope,
   backofficeContextScopeSchema,
@@ -15,11 +14,13 @@ import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import {
   backofficeContextScopeFromDurableObjectId,
   backofficeObjectScopeFromContextScope,
+  type PiManagerObject,
 } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import {
   piAgentObjectName,
   type PiAgent,
+  type PiAgentAddress,
   type PiAvailableModel,
 } from "@/fragno/pi/agent/pi-agent-contract";
 import { createPiModels, listAvailablePiModels } from "@/fragno/pi/agent/pi-models";
@@ -36,11 +37,12 @@ import {
 type PiManagerFragment = ReturnType<typeof createPiManagerFragment>;
 
 /** Shared scoped agent directory; agent execution is handed to the runtime's agent namespace. */
-export class InMemoryPiManagerObject extends RpcTarget {
+export class InMemoryPiManagerObject extends RpcTarget implements PiManagerObject {
   readonly #host: FragmentDurableObjectHost<BackofficeContextScope, PiManagerFragment>;
   readonly #scoped: ScopedFragmentDurableObjectRuntime<PiManagerFragment>;
   readonly #env: Pick<BackofficeRuntimeEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">;
   readonly #nowEpochMs: () => number;
+  readonly #agent: (address: PiAgentAddress) => PiAgent;
 
   constructor({
     state,
@@ -55,13 +57,14 @@ export class InMemoryPiManagerObject extends RpcTarget {
     env: Pick<BackofficeRuntimeEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">;
     runtime: BackofficeRuntimeServices;
     implementation: BackofficeObjectImplementation;
-    agent: (config: PiAgentConfig) => PiAgent;
+    agent: (address: PiAgentAddress) => PiAgent;
     supportedAvailableModels: () => Promise<readonly PiAvailableModel[]>;
     nowEpochMs: () => number;
   }) {
     super();
     this.#env = env;
     this.#nowEpochMs = nowEpochMs;
+    this.#agent = agent;
     const kernel = new BackofficeKernel(runtime);
     this.#host = implementation.createFragmentHost({
       name: "PiManager",
@@ -91,6 +94,11 @@ export class InMemoryPiManagerObject extends RpcTarget {
       createSource: (scope) => scope,
     });
     void state.blockConcurrencyWhile(() => this.#scoped.initializeFromOwnerScope());
+  }
+
+  async warm(): Promise<void> {
+    // Pages in a scope usually reach its built-in assistant, so it starts with its directory.
+    await this.#agent({ scope: this.#scoped.requireOwnerScope(), agentName: "assistant" }).warm();
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -125,7 +133,7 @@ export class InMemoryPiManagerObject extends RpcTarget {
 }
 
 /** Singleton, organization, user, and project agent directories match Automations scopes. */
-export class PiManager extends DurableObject<CloudflareEnv> {
+export class PiManager extends DurableObject<CloudflareEnv> implements PiManagerObject {
   readonly #object: InMemoryPiManagerObject;
 
   constructor(state: DurableObjectState, env: CloudflareEnv) {
@@ -138,6 +146,10 @@ export class PiManager extends DurableObject<CloudflareEnv> {
       supportedAvailableModels: async () => await listAvailablePiModels(models),
       nowEpochMs: Date.now,
     });
+  }
+
+  async warm(): Promise<void> {
+    await this.#object.warm();
   }
 
   async fetch(request: Request): Promise<Response> {

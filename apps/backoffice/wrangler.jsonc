@@ -206,6 +206,10 @@
         "name": "FORMS",
         "class_name": "Forms",
       },
+      {
+        "name": "PRESENCE",
+        "class_name": "Presence",
+      },
     ],
   },
   /**
@@ -236,5 +240,6 @@
     "Marketplace": { "type": "durable-object", "storage": "sqlite" },
     "Cloudflare": { "type": "durable-object", "storage": "sqlite" },
     "Forms": { "type": "durable-object", "storage": "sqlite" },
+    "Presence": { "type": "durable-object", "storage": "sqlite" },
   },
 }

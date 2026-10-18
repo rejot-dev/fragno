@@ -6,6 +6,7 @@ import { fetchAutomationCollectionSource } from "@/fragno/automation/tanstack/se
 import type { Route } from "./+types/backoffice-layout";
 import { establishBackofficeAuthenticatedRequest } from "./backoffice-authenticated-request.server";
 import BackofficeLayout, { ErrorBoundary } from "./backoffice-layout-ui";
+import { recordBackofficePresence } from "./backoffice-presence.server";
 import {
   establishBackofficeShellRequest,
   getBackofficeShellRequest,
@@ -16,6 +17,7 @@ export { ErrorBoundary };
 export const middleware: Route.MiddlewareFunction[] = [
   establishBackofficeAuthenticatedRequest,
   establishBackofficeShellRequest,
+  recordBackofficePresence,
 ];
 
 export default function BackofficeLayoutRoute(props: Route.ComponentProps) {
