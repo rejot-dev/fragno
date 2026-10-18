@@ -1,6 +1,6 @@
 import { describe, test, assert } from "vitest";
 
-import { readPreferredOrganizationFromStorage } from "./preferred-organization.client";
+import { readPreferredOrganizationFromStorage } from "./preferred-organization";
 
 const createStorage = (initial: Record<string, string>) => {
   const values = new Map(Object.entries(initial));

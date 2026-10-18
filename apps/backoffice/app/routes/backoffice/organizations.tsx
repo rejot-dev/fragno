@@ -9,7 +9,7 @@ import { loadUserInvitations } from "@/fragno/auth/auth-directory.server";
 import {
   usePreferredOrganization,
   resolvePreferredOrganizationId,
-} from "@/fragno/auth/preferred-organization.client";
+} from "@/fragno/auth/preferred-organization";
 import type { BackofficeLayoutContext } from "@/layouts/backoffice-layout";
 import { buildBackofficeOrganizationSwitchPath } from "@/routes/backoffice/auth-navigation";
 
