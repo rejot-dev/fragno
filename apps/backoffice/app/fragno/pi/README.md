@@ -90,13 +90,13 @@ resent request ID keeps its first placement and never runs twice; nothing prunes
 
 Each change is one retrieve and one mutation, then at most one call to the agent object. The
 mutation decides: it admits the prompt against the agent's definition and models as they are then,
-provisions the agent on its first prompt, and records the placement. Every change bumps the agent
-row's `queueRevision` with an optimistic check, so concurrent changes to one queue conflict and
-retry, and a new item takes that revision as its position. The agent's settled-turn outbox (see Turn
-events) reports every settled turn through the manager object's `reportSettledTurn` command, whose
-mutation settles the item and dispatches the next one, admitted against the definition as it is
-then. When the definition or model it needs is gone, every waiting item is dropped with the reason,
-since admission does not depend on the item.
+provisions the agent on its first prompt, and records the placement. Every change updates the agent
+row with Fragno's optimistic version check, so concurrent changes to one queue conflict and retry,
+and a new item takes the row's new version as its position. The agent's settled-turn outbox (see
+Turn events) reports every settled turn through the manager object's `reportSettledTurn` command,
+whose mutation settles the item and dispatches the next one, admitted against the definition as it
+is then. When the definition or model it needs is gone, every waiting item is dropped with the
+reason, since admission does not depend on the item.
 
 Items are recorded before the agent receives them. Each handover also triggers the
 `redispatchAgentQueue` durable hook, which hands every unsettled dispatched or steered item over

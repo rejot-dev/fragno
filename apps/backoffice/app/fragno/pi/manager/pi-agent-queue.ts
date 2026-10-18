@@ -3,8 +3,9 @@ import {
   type BackofficeContextScope,
   backofficeScopeRootOwner,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import type { FragnoId } from "@fragno-dev/db/schema";
 
-import type { DatabaseServiceContext, HookFn } from "@fragno-dev/db";
+import type { DatabaseServiceContext, HookFn, TypedUnitOfWork } from "@fragno-dev/db";
 
 import {
   admitPiAgentTurn,
@@ -39,6 +40,17 @@ export type PiAgentDispatch = { agent: PiAgentConfig; turn: PiAgentTurn; prompt:
 /** `status` repeats the state's tag so the queue's index can find live items. */
 function itemState(state: PiAgentQueueItemState) {
   return { status: state.status, state };
+}
+
+type PiAgentQueueUow = TypedUnitOfWork<typeof piAgentDirectorySchema, [], unknown, PiManagerHooks>;
+
+/**
+ * Every change to an agent's queue updates its row, so concurrent changes to one queue conflict and
+ * retry. Returns the row's new version, which orders items.
+ */
+function changeAgentQueue(uow: PiAgentQueueUow, agent: { id: FragnoId }) {
+  uow.update("agent", agent.id, (b) => b.set({}).check());
+  return agent.id.version + 1;
 }
 
 /**
@@ -149,20 +161,19 @@ export function piAgentQueueServices(
             if (input.whenBusy === "reject" && dispatched) {
               return { type: "busy" };
             }
-            const revision = (agent?.queueRevision ?? 0) + 1;
             const billingOrganizationId = agent
               ? agent.billingOrganizationId
               : input.billingOrganizationId;
-            if (agent) {
-              uow.update("agent", agent.id, (b) => b.set({ queueRevision: revision }).check());
-            } else {
+            if (!agent) {
               // A concurrent first prompt may provision the agent first; the retry then finds it.
               uow.create(
                 "agent",
-                { id: agentName, billingOrganizationId, queueRevision: revision },
+                { id: agentName, billingOrganizationId },
                 { retryOnUniqueConflict: () => true },
               );
             }
+            // A new row starts at version 0.
+            const revision = agent ? changeAgentQueue(uow, agent) : 0;
             const item = {
               agentName,
               position: revision,
@@ -251,9 +262,7 @@ export function piAgentQueueServices(
             ) {
               return null;
             }
-            uow.update("agent", agent.id, (b) =>
-              b.set({ queueRevision: agent.queueRevision + 1 }).check(),
-            );
+            changeAgentQueue(uow, agent);
             uow.update("agent_queue_item", settled.id, (b) =>
               b.set(itemState({ status: "settled" })),
             );
@@ -353,9 +362,7 @@ export function piAgentQueueServices(
           if (!agent || queued.length === 0) {
             return;
           }
-          uow.update("agent", agent.id, (b) =>
-            b.set({ queueRevision: agent.queueRevision + 1 }).check(),
-          );
+          changeAgentQueue(uow, agent);
           for (const item of queued) {
             uow.update("agent_queue_item", item.id, (b) =>
               b.set(

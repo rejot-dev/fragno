@@ -53,13 +53,12 @@ export const piAgentDirectorySchema = schema("pi_manager", (s) =>
         .addColumn("instructions", column("text"))
         .addColumn("managedBy", jsonColumn<AutomationRouteManagedBy>().nullable()),
     )
-    // Every change to an agent's queue bumps its revision, so concurrent changes to one queue
-    // conflict; an item takes the revision that queued it as its position.
-    .alterTable("agent", (t) => t.addColumn("queueRevision", column("integer").defaultTo(0)))
+    .noOp("removed agent queueRevision column; the agent row's version replaces it")
     .addTable("agent_queue_item", (t) =>
       t
         .addColumn("id", idColumn())
         .addColumn("agentName", column("string"))
+        // The agent row's version after the change that queued the item.
         .addColumn("position", column("integer"))
         .addColumn("requestId", column("string"))
         .addColumn("input", jsonColumn<PiAgentQueueInput>())
