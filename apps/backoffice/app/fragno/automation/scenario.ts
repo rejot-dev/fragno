@@ -1110,39 +1110,39 @@ const createFakePiManagerApi = (
     };
   }
 
+  // The fake answers each prompt as it receives it, steered or dispatched.
+  const answer: PiAgent["dispatch"] = async (config, turn, prompt) => {
+    const fake = requireAgent(config);
+    if (fake.submissions.has(prompt.requestId)) {
+      return;
+    }
+    const reply = assistantText({ agentName: config.agentName, content: prompt.content });
+    const submissionId = runPromptCalls.length + 1;
+    const answerEntryId = `answer-${submissionId}`;
+    fake.model = turn.agent.model;
+    fake.assistantText = reply;
+    fake.answerEntryId = answerEntryId;
+    fake.submissions.set(prompt.requestId, {
+      id: submissionId,
+      conversationId: 1,
+      requestId: prompt.requestId,
+      type: "input",
+      status: "done",
+      entry: `input-${submissionId}`,
+      answer: answerEntryId,
+    } as unknown as SubmissionRecord);
+    runPromptCalls.push({
+      agentName: config.agentName,
+      content: prompt.content,
+      assistantText: reply,
+      turn,
+    });
+  };
+
   const agent: PiAgent = {
     async warm() {},
-    async submit(config, turn, prompt) {
-      const fake = requireAgent(config);
-      const reply = assistantText({ agentName: config.agentName, content: prompt.content });
-      const submissionId = runPromptCalls.length + 1;
-      const answerEntryId = `answer-${submissionId}`;
-      fake.model = turn.agent.model;
-      fake.assistantText = reply;
-      fake.answerEntryId = answerEntryId;
-      fake.submissions.set(prompt.requestId, {
-        id: submissionId,
-        conversationId: 1,
-        requestId: prompt.requestId,
-        type: "input",
-        status: "done",
-        entry: `input-${submissionId}`,
-        answer: answerEntryId,
-      } as unknown as SubmissionRecord);
-      runPromptCalls.push({
-        agentName: config.agentName,
-        content: prompt.content,
-        assistantText: reply,
-        turn,
-      });
-      // The fake answers synchronously, so a prompt never finds the agent busy.
-      return {
-        type: "admitted",
-        submissionId,
-        requestId: prompt.requestId,
-        whenBusy: prompt.whenBusy,
-      };
-    },
+    steer: answer,
+    dispatch: answer,
     async getView(config) {
       const fake = requireAgent(config);
       getViewCalls.push({ agentName: config.agentName });
@@ -1165,7 +1165,9 @@ const createFakePiManagerApi = (
     },
     async waitForSubmission(config, requestId) {
       const submission = requireAgent(config).submissions.get(requestId);
-      return submission ? { status: "settled", submission } : null;
+      return submission
+        ? { status: "settled", submission }
+        : { status: "pending", submission: null };
     },
     async listEntries(config) {
       requireAgent(config);
@@ -4122,7 +4124,25 @@ const createFakeObjectOverrides = async (fakes: ScenarioFakes): Promise<LocalBac
         env,
         runtime,
         implementation,
-        agent: () => fakePi.agent,
+        // Like a real agent, the fake reports each turn it settles, which it does on receipt.
+        agent: () => {
+          async function settled(config: PiAgentConfig, requestId: string) {
+            await runtime.objects.piManager
+              .for(config.scope)
+              .commands.reportSettledTurn({ agentName: config.agentName, requestId });
+          }
+          return {
+            ...fakePi.agent,
+            async steer(config, turn, prompt) {
+              await fakePi.agent.steer(config, turn, prompt);
+              await settled(config, prompt.requestId);
+            },
+            async dispatch(config, turn, prompt) {
+              await fakePi.agent.dispatch(config, turn, prompt);
+              await settled(config, prompt.requestId);
+            },
+          };
+        },
         supportedAvailableModels: async () => [
           {
             provider: "openai",

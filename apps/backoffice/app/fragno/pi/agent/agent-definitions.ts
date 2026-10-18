@@ -46,7 +46,7 @@ function resolvePiAgentModel(
   );
 }
 
-type PiAgentAdmission =
+export type PiAgentAdmission =
   | { type: "turn"; turn: PiAgentTurn }
   | {
       type: "error";

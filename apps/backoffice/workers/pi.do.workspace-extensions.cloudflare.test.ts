@@ -157,10 +157,9 @@ test("precompiled workspace extensions open concurrently and after restart witho
         // Both requests share one harness; artifact loading and rendering cannot consult a compiler.
         const views = await Promise.all([object.getView(config), object.getView(config)]);
         expect(views[0]).toEqual(views[1]);
-        await object.submit(config, turn, {
+        await object.dispatch(config, turn, {
           requestId,
           content: "Read the extension.",
-          whenBusy: "followUp",
         });
         await object.alarm();
         const view = (await object.getView(config)) as ConversationView;

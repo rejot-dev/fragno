@@ -49,7 +49,7 @@ export type OpenPiAgent = {
   billing: PiBilling | null;
   /** Installs the workspace's current extensions with the authority of the given turn. */
   refreshWorkspaceExtensions: (turn: PiAgentTurn) => Promise<void>;
-  /** Records every answered turn not yet reported as a `pi` Automations event. */
+  /** Reports every settled turn not yet reported to Automations and the agent's manager. */
   reportSettledTurns: (context: Context) => Promise<void>;
 };
 
@@ -130,6 +130,7 @@ export async function openPiAgentHarness(input: {
     automations: runtime.config.bindings.automations
       ? runtime.objects.automations.for(config.scope).commands
       : null,
+    manager: runtime.objects.piManager.for(config.scope).commands,
     nowEpochMs: input.nowEpochMs,
     report: dependencies.report,
   });

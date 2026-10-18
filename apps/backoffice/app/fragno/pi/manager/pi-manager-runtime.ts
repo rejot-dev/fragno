@@ -27,6 +27,7 @@ import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-ser
 import {
   PI_AGENT_SUBMISSION_WAIT_MAX_MS,
   type PiAgentNotification,
+  type PiAgentQueueSubmission,
   type PiAgentSubmissionWait,
 } from "@/fragno/pi/agent/pi-agent-contract";
 
@@ -103,7 +104,9 @@ export type PiManagerRuntime = {
   updateAgent(input: PiAgentDefinitionCreate): Promise<PiAgentDefinition>;
   deleteAgent(input: PiManagerAgentInput): Promise<void>;
   submitPrompt(input: PiManagerSubmitPromptInput): Promise<PiPromptReceipt>;
-  getSubmission(input: PiManagerGetSubmissionInput): Promise<SubmissionRecord>;
+  getSubmission(
+    input: PiManagerGetSubmissionInput,
+  ): Promise<SubmissionRecord | PiAgentQueueSubmission>;
   runPrompt(input: PiManagerRunPromptInput): Promise<PiManagerPromptResult>;
   /** Writes an event into a started agent's conversation and asks it to handle the event. */
   notifyAgent(input: PiManagerNotifyAgentInput): Promise<void>;
@@ -187,8 +190,10 @@ export function createPiManagerRuntime(input: {
     return `${agentRoute(agentName)}/submissions/${encodeURIComponent(normalizedRequestId)}`;
   }
 
-  async function getSubmission(input: PiManagerGetSubmissionInput): Promise<SubmissionRecord> {
-    return await request<SubmissionRecord>(submissionRoute(input), null);
+  async function getSubmission(
+    input: PiManagerGetSubmissionInput,
+  ): Promise<SubmissionRecord | PiAgentQueueSubmission> {
+    return await request<SubmissionRecord | PiAgentQueueSubmission>(submissionRoute(input), null);
   }
 
   async function waitForSubmission(
@@ -247,7 +252,7 @@ export function createPiManagerRuntime(input: {
         const remainingMs = deadline - Date.now();
         if (remainingMs <= 0) {
           throw new Error(
-            `PI_MANAGER_PROMPT_TIMED_OUT: ${prompt.agentName}; admitted request ${receipt.requestId} continues durably.`,
+            `PI_MANAGER_PROMPT_TIMED_OUT: ${prompt.agentName}; request ${receipt.requestId} stays queued or running durably.`,
           );
         }
         const result = await waitForSubmission(
@@ -256,6 +261,13 @@ export function createPiManagerRuntime(input: {
         );
         if (result.status === "pending") {
           continue;
+        }
+        if (result.submission.status === "dropped") {
+          throw new PiManagerRuntimeRequestError(
+            409,
+            "PI_MANAGER_PROMPT_DROPPED",
+            `${prompt.agentName}; request ${receipt.requestId} was dropped: ${result.submission.reason}`,
+          );
         }
         const view = await request<ConversationView>(`${agentRoute(prompt.agentName)}/view`, null);
         return {

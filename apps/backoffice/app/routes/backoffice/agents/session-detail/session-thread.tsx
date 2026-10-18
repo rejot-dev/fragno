@@ -33,7 +33,6 @@ const CONTEXT_USAGE_WARNING_RATIO = 0.8;
 export function SessionThread({
   disabledReason,
   error,
-  notice,
   queueModes,
   modelLabel,
   needsNudge,
@@ -60,7 +59,6 @@ export function SessionThread({
 }: {
   disabledReason: string | null;
   error: string | null;
-  notice: string | null;
   /** Keyed by queue item id: steers join the running turn, follow-ups run after it. */
   queueModes: ReadonlyMap<string, "steer" | "followUp">;
   modelLabel: string | null;
@@ -219,13 +217,6 @@ export function SessionThread({
           {error ? (
             <p className="mb-2 border border-[color:var(--bo-failed)] bg-[var(--bo-failed-bg)] px-3 py-2 text-xs text-pretty text-[var(--bo-failed)]">
               {error}
-            </p>
-          ) : notice ? (
-            <p
-              role="status"
-              className="mb-2 border border-[color:var(--bo-border-strong)] bg-[var(--bo-panel-2)] px-3 py-2 text-xs text-pretty text-[var(--bo-fg)]"
-            >
-              {notice}
             </p>
           ) : null}
 

@@ -68,8 +68,9 @@ definition's narrowing.
 
 ## Prompt an agent
 
-Use `pi.submitPrompt` or `pi.runPrompt` with `agentName`. A prompt to a busy agent waits for the
-current turn (`whenBusy: "followUp"`, the default). `steer` joins the running turn at its next tool
-boundary only when the running turn has the same authority; otherwise it waits, and the receipt's
-`whenBusy` says `followUp`. `reject` fails with `409 AGENT_BUSY` and queues nothing. Aborting an
-agent drops its queued prompts.
+Use `pi.submitPrompt` or `pi.runPrompt` with `agentName`. Prompts wait in the agent's queue and run
+one turn each, in arrival order (`whenBusy: "followUp"`, the default), under the agent's definition
+as it is when their turn starts. `steer` joins the running turn at its next tool boundary only when
+the running turn has the same authority; otherwise it is queued, and the receipt's `status` says
+`queued` instead of `steered`. `reject` fails with `409 AGENT_BUSY` while the agent runs a turn or
+has queued work. Aborting an agent drops its queued prompts.

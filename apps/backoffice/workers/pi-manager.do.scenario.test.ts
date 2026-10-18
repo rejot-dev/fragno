@@ -25,6 +25,7 @@ import {
   fauxProvider,
   fauxText,
   fauxToolCall,
+  type FauxResponseStep,
 } from "@earendil-works/pi-ai/providers/faux";
 
 import { Type } from "@earendil-works/pi-ai";
@@ -449,7 +450,7 @@ test("each scope's agents keep separate conversations and run real durable tool 
   );
 });
 
-test("a busy agent runs other principals' prompts as follow-up turns, lets its own turn be steered, and refuses rejectable prompts", async () => {
+test("a busy agent queues other principals' prompts, lets its own turn be steered, and refuses rejectable prompts", async () => {
   const scope: BackofficeContextScope = { kind: "org", orgId: "turns-org" };
   await runBackofficeScenario(
     defineBackofficeScenario({
@@ -520,13 +521,14 @@ test("a busy agent runs other principals' prompts as follow-up turns, lets its o
           ] as const) {
             const response = await submit(execution, requestId, content, "steer");
             assert.equal(response.status, 202, await response.clone().text());
-            receipts.push(await response.json<{ requestId: string; whenBusy: string }>());
+            receipts.push(await response.json<{ requestId: string; status: string }>());
           }
-          // The receipt tells Grace her steer was queued instead.
-          expect(receipts.map(({ requestId, whenBusy }) => [requestId, whenBusy])).toEqual([
-            ["ada-first", "steer"],
-            ["grace-steer", "followUp"],
-            ["ada-steer", "steer"],
+          // Nothing runs to steer at first, so Ada's first prompt queues and starts at once; the
+          // receipt tells Grace her steer was queued instead.
+          expect(receipts.map(({ requestId, status }) => [requestId, status])).toEqual([
+            ["ada-first", "queued"],
+            ["grace-steer", "queued"],
+            ["ada-steer", "steered"],
           ]);
           const rejected = await submit(grace, "grace-reject", "Only if idle.", "reject");
           assert(rejected.status === 409);
@@ -563,6 +565,254 @@ test("a busy agent runs other principals' prompts as follow-up turns, lets its o
             "ada-steer turn.completed",
             "grace-steer turn.completed",
           ]);
+        }),
+      ],
+    }),
+  );
+});
+
+test("queued prompts each run a turn of their own, in arrival order, under the definition current when they run", async () => {
+  const scope: BackofficeContextScope = { kind: "org", orgId: "queue-org" };
+  const instructions: string[] = [];
+  function answer(text: string): FauxResponseStep {
+    return (context) => {
+      // Pi carries the definition's instructions as the `agent` section of system messages.
+      const sections = context.messages.flatMap((message) =>
+        "sections" in message && typeof message.sections === "object" && message.sections
+          ? [message.sections]
+          : [],
+      );
+      instructions.push(sections.filter((section) => "agent" in section).at(-1)?.agent ?? "none");
+      return fauxAssistantMessage([fauxText(text)]);
+    };
+  }
+  const clerk = {
+    description: "Answers in turn.",
+    model: null,
+    permissions: ["*"],
+    managedBy: null,
+  };
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "Pi agent queue order",
+      piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
+      options: { drain: false },
+      objects: {
+        ...scenarioObjects,
+        PI: ({ state, runtime, openPiSessionStore, piAgentIdFromConfig, nowEpochMs }) => {
+          // A slow first answer keeps the agent busy while the other prompts queue.
+          const faux = fauxProvider({ tokensPerSecond: 40, tokenSize: { min: 1, max: 1 } });
+          faux.setResponses([
+            answer("The first answer takes a good while to finish streaming back."),
+            answer("Second."),
+            answer("Third."),
+          ]);
+          const models = createModels();
+          models.setProvider(faux.provider);
+          return new InMemoryPiObject({
+            state,
+            dependencies: createScriptedPiAgentDependencies(models),
+            runtime,
+            openStorage: openPiSessionStore,
+            idFromConfig: piAgentIdFromConfig,
+            nowEpochMs,
+          });
+        },
+      },
+      steps: ({ then }) => [
+        then.assert("queue prompts behind a running turn", async ({ runtime }) => {
+          const defined = await managerRequest(runtime, scope, "/agents", {
+            agentName: "clerk",
+            ...clerk,
+            instructions: "Version one.",
+          });
+          assert.equal(defined.status, 201, await defined.clone().text());
+          for (const [requestId, content] of [
+            ["first", "First."],
+            ["second", "Second."],
+            ["third", "Third."],
+          ]) {
+            const queued = await prompt(runtime, scope, { agentName: "clerk", requestId, content });
+            assert.equal(queued.status, 202, await queued.clone().text());
+            expect(await queued.json()).toEqual({ requestId, status: "queued" });
+          }
+          // Until the queue dispatches it, a prompt has no Pi submission of its own.
+          expect(
+            await (await managerRequest(runtime, scope, "/agents/clerk/submissions/third")).json(),
+          ).toEqual({ type: "input", status: "queued", requestId: "third" });
+          const rejected = await managerRequest(runtime, scope, "/agents/clerk/prompts", {
+            requestId: "rejected",
+            content: "Only if idle.",
+            whenBusy: "reject",
+            billingOrganizationId: null,
+          });
+          expect(await rejected.json()).toMatchObject({ code: "AGENT_BUSY" });
+          const edited = await managerRequest(
+            runtime,
+            scope,
+            "/agents/clerk",
+            { ...clerk, instructions: "Version two." },
+            scopeExecution(scope),
+            "PUT",
+          );
+          assert.equal(edited.status, 200, await edited.clone().text());
+        }),
+        then.assert(
+          "each prompt runs in order once the turn before it settles",
+          async ({ runtime }) => {
+            await runtime.drain();
+            expect(userEntryTexts(await readView(runtime, scope, "clerk"))).toEqual([
+              "First.",
+              "Second.",
+              "Third.",
+            ]);
+            // Prompts that waited run under the definition as it is when their turn starts.
+            expect(instructions).toEqual(["Version one.", "Version two.", "Version two."]);
+            expect(
+              await (
+                await managerRequest(runtime, scope, "/agents/clerk/submissions/third")
+              ).json(),
+            ).toMatchObject({ status: "done", requestId: "third" });
+          },
+        ),
+      ],
+    }),
+  );
+});
+
+test("a prompt whose agent is deleted while it waits is dropped, and its submission says why", async () => {
+  const scope: BackofficeContextScope = { kind: "org", orgId: "dropped-org" };
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "Pi agent queue drop",
+      piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
+      options: { drain: false },
+      objects: {
+        ...scenarioObjects,
+        PI: ({ state, runtime, openPiSessionStore, piAgentIdFromConfig, nowEpochMs }) => {
+          // A slow answer keeps the agent busy while its definition is deleted.
+          const faux = fauxProvider({ tokensPerSecond: 40, tokenSize: { min: 1, max: 1 } });
+          faux.setResponses([
+            fauxAssistantMessage([
+              fauxText("The first answer takes a good while to finish streaming back."),
+            ]),
+          ]);
+          const models = createModels();
+          models.setProvider(faux.provider);
+          return new InMemoryPiObject({
+            state,
+            dependencies: createScriptedPiAgentDependencies(models),
+            runtime,
+            openStorage: openPiSessionStore,
+            idFromConfig: piAgentIdFromConfig,
+            nowEpochMs,
+          });
+        },
+      },
+      steps: ({ then }) => [
+        then.assert("the waiting prompt never runs", async ({ runtime }) => {
+          const defined = await managerRequest(runtime, scope, "/agents", {
+            agentName: "clerk",
+            description: "Answers in turn.",
+            model: null,
+            permissions: ["*"],
+            instructions: "",
+            managedBy: null,
+          });
+          assert.equal(defined.status, 201, await defined.clone().text());
+          for (const [requestId, content] of [
+            ["first", "First."],
+            ["second", "Second."],
+          ]) {
+            const queued = await prompt(runtime, scope, { agentName: "clerk", requestId, content });
+            assert.equal(queued.status, 202, await queued.clone().text());
+          }
+          const deleted = await managerRequest(
+            runtime,
+            scope,
+            "/agents/clerk",
+            undefined,
+            scopeExecution(scope),
+            "DELETE",
+          );
+          assert.equal(deleted.status, 204, await deleted.clone().text());
+          await runtime.drain();
+
+          expect(userEntryTexts(await readView(runtime, scope, "clerk"))).toEqual(["First."]);
+          const dropped = {
+            type: "input",
+            status: "dropped",
+            requestId: "second",
+            reason: "Pi agent 'clerk' is not defined.",
+          };
+          expect(
+            await (await managerRequest(runtime, scope, "/agents/clerk/submissions/second")).json(),
+          ).toEqual(dropped);
+          expect(
+            await (
+              await managerRequest(
+                runtime,
+                scope,
+                "/agents/clerk/submissions/second/wait?waitMs=1000",
+              )
+            ).json(),
+          ).toEqual({ status: "settled", submission: dropped });
+        }),
+      ],
+    }),
+  );
+});
+
+test("a prompt whose handover to the agent fails is handed over again by the queue's hook", async () => {
+  const scope: BackofficeContextScope = { kind: "org", orgId: "redrain-org" };
+  let unavailable = true;
+  class InterruptedPiObject extends InMemoryPiObject {
+    override async dispatch(...args: Parameters<InMemoryPiObject["dispatch"]>) {
+      if (unavailable) {
+        unavailable = false;
+        throw new Error("The agent is unavailable.");
+      }
+      return await super.dispatch(...args);
+    }
+  }
+  vi.spyOn(console, "error").mockImplementation(() => undefined);
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "Pi agent queue recovery",
+      piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
+      options: { drain: false },
+      objects: {
+        ...scenarioObjects,
+        PI: ({ state, runtime, openPiSessionStore, piAgentIdFromConfig, nowEpochMs }) =>
+          new InterruptedPiObject({
+            state,
+            dependencies: createPiScenarioDependencies(),
+            runtime,
+            openStorage: openPiSessionStore,
+            idFromConfig: piAgentIdFromConfig,
+            nowEpochMs,
+          }),
+      },
+      steps: ({ then }) => [
+        then.assert("the prompt runs once after its handover fails", async ({ runtime }) => {
+          const queued = await prompt(runtime, scope, {
+            requestId: "retried",
+            content: "Retry me.",
+          });
+          assert.equal(queued.status, 202, await queued.clone().text());
+          expect(
+            await (
+              await managerRequest(runtime, scope, "/agents/assistant/submissions/retried")
+            ).json(),
+          ).toMatchObject({ status: "queued" });
+
+          await runtime.drain();
+          expect(userEntryTexts(await readView(runtime, scope))).toEqual(["Retry me."]);
+          expect(
+            await (
+              await managerRequest(runtime, scope, "/agents/assistant/submissions/retried")
+            ).json(),
+          ).toMatchObject({ status: "done", requestId: "retried" });
         }),
       ],
     }),

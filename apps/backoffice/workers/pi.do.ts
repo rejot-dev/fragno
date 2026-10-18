@@ -7,10 +7,10 @@ import type { z } from "zod";
 
 import { copyJson } from "@earendil-works/chord";
 import {
-  ConversationBusy,
   type EntryId,
   type JsonObject,
   type Storage,
+  type SubmissionRecord,
 } from "@earendil-works/pi-durable";
 
 import {
@@ -34,8 +34,8 @@ import {
   type PiAgent,
   type PiAgentCompactionStatus,
   type PiAgentNotification,
+  type PiAgentPrompt,
   type PiAgentSubmissionWait,
-  type PiAgentSubmitResult,
   type PiAgentTurn,
 } from "@/fragno/pi/agent/pi-agent-contract";
 import {
@@ -57,6 +57,7 @@ import {
   recordAdmittedPiAgentTurn,
   recordPiAgentCompactionTurn,
   recordPiAgentTurn,
+  waitForPiAgentSubmission,
   withdrawPiAgentTurn,
 } from "@/fragno/pi/agent/pi-agent-turns";
 import { createPiPostHogExtension } from "@/fragno/pi/extensions/posthog/posthog-extension";
@@ -198,27 +199,19 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
     await this.#startup;
   }
 
-  async submit(
-    config: PiAgentConfig,
-    rawTurn: PiAgentTurn,
-    rawPrompt: z.infer<typeof piAgentPromptSchema>,
-  ): Promise<PiAgentSubmitResult> {
-    const prompt = piAgentPromptSchema.parse(rawPrompt);
-    const turn = piAgentTurnSchema.parse(rawTurn);
-    const opened = await this.#requireAgent(config);
-    const { harness, storage } = opened;
+  // Records the turn before Pi admits its prompt, so no generation or tool can start without it.
+  async #admit(
+    opened: OpenPiAgent,
+    turn: PiAgentTurn,
+    prompt: PiAgentPrompt,
+    whenBusy: "steer" | "followUp",
+  ): Promise<void> {
+    const { harness } = opened;
     const root = await harness.root(BACKGROUND_CONTEXT);
     this.#admitting += 1;
     try {
       // The wake must be durable before Pi admits work, not after the HTTP request returns.
       await this.#state.storage.setAlarm(this.#nowEpochMs());
-      const run = await readPiAgentRun(harness, storage, BACKGROUND_CONTEXT);
-      const whenBusy =
-        prompt.whenBusy === "steer" &&
-        run.type === "running" &&
-        (run.turn === null || !mayJoinPiAgentTurn(run.turn, turn))
-          ? "followUp"
-          : prompt.whenBusy;
       await recordPiAgentTurn(harness, prompt.requestId, turn, BACKGROUND_CONTEXT);
       try {
         await opened.refreshWorkspaceExtensions(turn);
@@ -229,28 +222,46 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
         ) {
           await root.configure({ model: turn.agent.model }, BACKGROUND_CONTEXT);
         }
-        const submission = await root.submit(
+        await root.submit(
           { type: "input", requestId: prompt.requestId, content: prompt.content, whenBusy },
           BACKGROUND_CONTEXT,
         );
         await recordAdmittedPiAgentTurn(harness, turn, BACKGROUND_CONTEXT);
-        return {
-          type: "admitted",
-          submissionId: submission.id,
-          requestId: prompt.requestId,
-          whenBusy,
-        };
       } catch (error) {
         // Withdrawal keeps the record of a submission Pi did admit before the failure.
         await withdrawPiAgentTurn(harness, prompt.requestId, BACKGROUND_CONTEXT);
-        if (error instanceof ConversationBusy) {
-          return { type: "busy" };
-        }
         throw error;
       }
     } finally {
       this.#admitting -= 1;
     }
+  }
+
+  async steer(config: PiAgentConfig, rawTurn: PiAgentTurn, rawPrompt: PiAgentPrompt) {
+    const prompt = piAgentPromptSchema.parse(rawPrompt);
+    const turn = piAgentTurnSchema.parse(rawTurn);
+    const opened = await this.#requireAgent(config);
+    const root = await opened.harness.root(BACKGROUND_CONTEXT);
+    if (await opened.storage.submissionByRequest(root.id, prompt.requestId, BACKGROUND_CONTEXT)) {
+      return;
+    }
+    const run = await readPiAgentRun(opened.harness, opened.storage, BACKGROUND_CONTEXT);
+    // The manager's dispatched turn may have just ended; a steer never joins another authority's.
+    const joins = run.type === "running" && run.turn !== null && mayJoinPiAgentTurn(run.turn, turn);
+    await this.#admit(opened, turn, prompt, joins ? "steer" : "followUp");
+  }
+
+  async dispatch(config: PiAgentConfig, rawTurn: PiAgentTurn, rawPrompt: PiAgentPrompt) {
+    const prompt = piAgentPromptSchema.parse(rawPrompt);
+    const turn = piAgentTurnSchema.parse(rawTurn);
+    const opened = await this.#requireAgent(config);
+    const root = await opened.harness.root(BACKGROUND_CONTEXT);
+    // An item handed over again keeps the submission and turn Pi already has for it.
+    if (await opened.storage.submissionByRequest(root.id, prompt.requestId, BACKGROUND_CONTEXT)) {
+      return;
+    }
+    // Only a steer that outlived its turn can still be running; Pi queues the item behind it.
+    await this.#admit(opened, turn, prompt, "followUp");
   }
 
   async notify(
@@ -269,7 +280,8 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
   }
 
   async #notify(config: PiAgentConfig, turn: PiAgentTurn, notification: PiAgentNotification) {
-    const { harness, storage } = await this.#requireAgent(config);
+    const opened = await this.#requireAgent(config);
+    const { harness, storage } = opened;
     const root = await harness.root(BACKGROUND_CONTEXT);
     // Redelivering one event through one route, or to one agent directly, reuses its write and
     // its follow-up.
@@ -326,14 +338,15 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
       { requestId, notifications },
       BACKGROUND_CONTEXT,
     );
-    await this.submit(config, turn, {
-      requestId,
-      content: renderPiNotificationRequest(notifications),
-      whenBusy: "followUp",
-    });
+    await this.#admit(
+      opened,
+      turn,
+      { requestId, content: renderPiNotificationRequest(notifications) },
+      "followUp",
+    );
   }
 
-  async getSubmission(config: PiAgentConfig, requestId: string): Promise<unknown> {
+  async getSubmission(config: PiAgentConfig, requestId: string): Promise<SubmissionRecord | null> {
     const { storage, harness } = await this.#requireAgent(config);
     const root = await harness.root(BACKGROUND_CONTEXT);
     return (await storage.submissionByRequest(root.id, requestId, BACKGROUND_CONTEXT)) ?? null;
@@ -343,32 +356,25 @@ export class InMemoryPiObject extends RpcTarget implements PiAgent {
     config: PiAgentConfig,
     requestId: string,
     rawRequest: z.infer<typeof piAgentSubmissionWaitRequestSchema>,
-  ): Promise<PiAgentSubmissionWait | null> {
+  ): Promise<PiAgentSubmissionWait> {
     const request = piAgentSubmissionWaitRequestSchema.parse(rawRequest);
     const { storage, harness } = await this.#requireAgent(config);
-    const root = await harness.root(BACKGROUND_CONTEXT);
-    const record = await storage.submissionByRequest(root.id, requestId, BACKGROUND_CONTEXT);
-    if (!record) {
-      return null;
-    }
-    if (record.status === "done" || record.status === "unanswered") {
-      return { status: "settled", submission: record };
-    }
-    const submission = await harness.submission(record.id, BACKGROUND_CONTEXT);
-    if (!submission) {
-      return null;
-    }
-
     const controller = new AbortController();
     const timeoutReason = new Error("PI_AGENT_SUBMISSION_WAIT_TIMED_OUT");
     const timer = setTimeout(() => {
       controller.abort(timeoutReason);
     }, request.waitMs);
+    const context = withAbortSignal(controller.signal, BACKGROUND_CONTEXT);
     try {
-      return {
-        status: "settled",
-        submission: await submission.wait(withAbortSignal(controller.signal, BACKGROUND_CONTEXT)),
-      };
+      const record = await waitForPiAgentSubmission(harness, storage, requestId, context);
+      if (record.status === "done" || record.status === "unanswered") {
+        return { status: "settled", submission: record };
+      }
+      const submission = await harness.submission(record.id, context);
+      if (!submission) {
+        return { status: "pending", submission: null };
+      }
+      return { status: "settled", submission: await submission.wait(context) };
     } catch (cause) {
       if (controller.signal.aborted && controller.signal.reason === timeoutReason) {
         return { status: "pending", submission: null };
@@ -567,21 +573,20 @@ export class Pi extends DurableObject<CloudflareEnv> implements PiAgent {
   async warm(): Promise<void> {
     await this.#object.warm();
   }
-  async submit(
-    config: PiAgentConfig,
-    turn: PiAgentTurn,
-    prompt: z.infer<typeof piAgentPromptSchema>,
-  ) {
-    return await this.#object.submit(config, turn, prompt);
+  async steer(config: PiAgentConfig, turn: PiAgentTurn, prompt: PiAgentPrompt) {
+    await this.#object.steer(config, turn, prompt);
   }
-  async getSubmission(config: PiAgentConfig, requestId: string): Promise<unknown> {
+  async dispatch(config: PiAgentConfig, turn: PiAgentTurn, prompt: PiAgentPrompt) {
+    await this.#object.dispatch(config, turn, prompt);
+  }
+  async getSubmission(config: PiAgentConfig, requestId: string): Promise<SubmissionRecord | null> {
     return await this.#object.getSubmission(config, requestId);
   }
   async waitForSubmission(
     config: PiAgentConfig,
     requestId: string,
     request: z.infer<typeof piAgentSubmissionWaitRequestSchema>,
-  ): Promise<PiAgentSubmissionWait | null> {
+  ): Promise<PiAgentSubmissionWait> {
     return await this.#object.waitForSubmission(config, requestId, request);
   }
   async listEntries(config: PiAgentConfig, request: z.infer<typeof piAgentEntryPageRequestSchema>) {

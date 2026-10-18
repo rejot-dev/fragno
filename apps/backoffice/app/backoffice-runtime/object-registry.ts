@@ -409,7 +409,10 @@ export type WarmableObject = {
 
 export type ApiObject = WarmableObject & DurableHookCommands;
 
-export type PiManagerObject = WarmableObject;
+export type PiManagerObject = WarmableObject & {
+  /** An agent reports each settled turn, so its queue can hand the agent its next item. */
+  reportSettledTurn(input: { agentName: string; requestId: string }): Promise<void>;
+};
 
 export type BillingObject = {
   recordEvent(

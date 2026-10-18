@@ -74,10 +74,39 @@ does not admit it, so a refused prompt never decides whom later work runs as. Wo
 such as workflows or events, keeps the `pi-agent` actor, whose static role grants everything: it
 runs as the principal without the definition's narrowing.
 
-Prompts default to `whenBusy: "followUp"`, queued as their own turn. `steer` joins the running turn
-at its next tool boundary only when the running turn has the same actors and scope restriction;
-otherwise it becomes a follow-up. The prompt receipt reports the `whenBusy` that applied. `reject`
-refuses a busy agent with `409 AGENT_BUSY`. Aborting withdraws every queued prompt.
+## Queue
+
+The manager logs every prompt an agent receives in its `agent_queue_item` table, and Pi only ever
+receives a steer or the one item the queue dispatched. An item is `queued`, `dispatched` (the turn
+Pi runs), `steered` (joined that turn), `settled`, or `dropped`. Items stay after they end, so a
+resent request ID keeps its first placement and never runs twice; nothing prunes the log yet.
+
+- `steer` joins the dispatched turn when that turn has the same actors and scope restriction.
+  Otherwise the prompt is queued like `followUp`, the default. The receipt's `status` says `steered`
+  or `queued`.
+- `reject` is refused with `409 AGENT_BUSY` while an item is dispatched.
+- With nothing dispatched, a new prompt is dispatched at once; items wait only behind a dispatched
+  one.
+
+Each change is one retrieve and one mutation, then at most one call to the agent object. The
+mutation decides: it admits the prompt against the agent's definition and models as they are then,
+provisions the agent on its first prompt, and records the placement. Every change bumps the agent
+row's `queueRevision` with an optimistic check, so concurrent changes to one queue conflict and
+retry, and a new item takes that revision as its position. The agent's settled-turn outbox (see Turn
+events) reports every settled turn through the manager object's `reportSettledTurn` command, whose
+mutation settles the item and dispatches the next one, admitted against the definition as it is
+then. When the definition or model it needs is gone, every waiting item is dropped with the reason,
+since admission does not depend on the item.
+
+Items are recorded before the agent receives them. Each handover also triggers the
+`redispatchAgentQueue` durable hook, which hands every unsettled dispatched or steered item over
+again; Pi keeps the submission of a request ID it already has. A steer that reaches the agent after
+its turn ended runs as a follow-up instead of joining another authority's turn.
+
+A prompt's submission reads `{ type: "input", status: "queued", requestId }` until Pi has it, and
+`{ type: "input", status: "dropped", requestId, reason }` once dropped; waiting for a queued prompt
+also waits for its dispatch, and `pi.runPrompt` fails with `PI_MANAGER_PROMPT_DROPPED`. Aborting
+drops the queued items and withdraws what Pi holds. Notifications do not go through the queue yet.
 
 ## Turn events
 
@@ -88,10 +117,11 @@ the agent and the prompt's request ID, its actors are the turn's execution actor
 restriction is the turn's. It carries no answer text; `pi.getSubmission` leads to the answer.
 
 Pi settles submissions in its own commits, so the turns document is the outbox: a settled turn stays
-in `pending` until its event, if any, is ingested, keyed `pi:<agentName>:<requestId>`, and then
-forgotten. A commit listener reports each settlement as it happens, and the alarm reports again
-after the agent goes idle, keeping its heartbeat until every settled turn is recorded. Runtimes
-without Automations forget settled turns without recording them.
+in `pending` until its event, if any, is ingested, keyed `pi:<agentName>:<requestId>`, and its
+manager is told, and then forgotten. Neither report waits on the other, so an unrecordable event
+never holds back the agent's queue. A commit listener reports each settlement as it happens, and the
+alarm reports again after the agent goes idle, keeping its heartbeat until every settled turn is
+recorded. Runtimes without Automations forget settled turns without recording them.
 
 ## Notifications
 
@@ -140,16 +170,17 @@ All paths below are mounted at `/api/pi-manager` inside the manager object:
   definitions.
 - `GET /agents/:agentName`: one definition and its provisioning.
 - `POST /agents/:agentName/prompts`: `{ requestId, content, whenBusy, billingOrganizationId }`,
-  answering `{ submissionId, requestId, whenBusy }` or `409 AGENT_BUSY` for a refused `reject`. The
-  first turn provisions the agent: organization and project agents bill their organization, user
-  agents require an authorized billing organization, and later turns keep the original owner.
-  Reusing a request ID reuses the submission rather than generating another answer.
+  answering `{ requestId, status }` or `409 AGENT_BUSY` for a refused `reject`; see Queue. The first
+  prompt provisions the agent: organization and project agents bill their organization, user agents
+  require an authorized billing organization, and later turns keep the original owner. Reusing a
+  request ID reuses the submission rather than generating another answer.
 - `POST /agents/:agentName/notifications`: `{ routeId, event }`, answering `204` or
   `404 AGENT_NOT_STARTED`. Automations routes and workflow replies, whose `routeId` is `null`, call
   it; see Notifications.
-- `GET /agents/:agentName/submissions/:requestId`: Pi's submission record.
-- `GET /agents/:agentName/submissions/:requestId/wait?waitMs=...`: bounded, commit-driven wait for
-  submission settlement.
+- `GET /agents/:agentName/submissions/:requestId`: Pi's submission record, or the queue's record of
+  a prompt Pi does not have; see Queue.
+- `GET /agents/:agentName/submissions/:requestId/wait?waitMs=...`: bounded, commit-driven wait for a
+  queued prompt's dispatch and its submission's settlement.
 - `GET /agents/:agentName/view`: Pi's committed active structural conversation view.
 - `GET /agents/:agentName/entries?cursor=...&pageSize=...`: newest-first, fork-aware durable entry
   history (maximum 256 entries per page).
@@ -206,12 +237,11 @@ which codemode preserves for workflow recovery decisions.
 The agent route loaders and actions call the scoped manager through `http.fetchAuthorized` and the
 Fragno route contract. The UI lists defined agents and where each comes from, starts an agent's
 conversation with its first message (choosing the active organization as a personal agent's billing
-owner), admits prompts that steer the sender's own running turn, shows queued input from `pi.inbox`
-in the composer as steering or up next, says when a steer waits behind someone else's turn,
-estimates the active context against the conversation's model, runs and monitors manual compaction,
-paginates inactive transcript history, downloads streaming JSONL exports, and aborts active work. A
-scoped resource route proxies the agent's `application/x-ndjson` conversation-view stream to the
-browser.
+owner), steers the sender's own running turn and queues messages otherwise, shows the input Pi holds
+in `pi.inbox` in the composer as steering or up next, estimates the active context against the
+conversation's model, runs and monitors manual compaction, paginates inactive transcript history,
+downloads streaming JSONL exports, and aborts active work. A scoped resource route proxies the
+agent's `application/x-ndjson` conversation-view stream to the browser.
 
 ## Recovery
 

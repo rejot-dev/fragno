@@ -3,10 +3,7 @@ import {
   type PiAgentDefinition,
   type PiAgentDefinitionCreate,
 } from "@fragno-dev/backoffice-api/v0/pi";
-import {
-  type BackofficeContextScope,
-  backofficeScopeRootOwner,
-} from "@fragno-dev/backoffice-api/v0/shared/scope";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import type { DatabaseServiceContext } from "@fragno-dev/db";
 
@@ -17,11 +14,7 @@ import {
 
 import { definitionFromRow, piAgentDirectorySchema } from "./pi-manager-schema";
 
-type AgentProvisioning =
-  | { type: "provisioned"; config: PiAgentConfig }
-  | { type: "billing-owner-required" };
-
-/** A scope's agent definitions and the agents provisioned in it. */
+/** A scope's agent definitions and the agents provisioned in it; a first prompt provisions one. */
 export function piAgentDirectoryServices(
   defineService: <TService>(
     service: TService & ThisType<DatabaseServiceContext<Record<never, never>>>,
@@ -29,47 +22,6 @@ export function piAgentDirectoryServices(
   config: { scope: BackofficeContextScope },
 ) {
   return defineService({
-    /** A user-scoped agent's first turn chooses its billing owner; later turns reuse it. */
-    provisionAgent: function (input: { agentName: string; billingOrganizationId: string | null }) {
-      return this.serviceTx(piAgentDirectorySchema)
-        .retrieve((uow) =>
-          uow.findFirst("agent", (b) =>
-            b.whereIndex("primary", (eb) => eb("id", "=", input.agentName)),
-          ),
-        )
-        .mutate(({ uow, retrieveResult: [existing] }): AgentProvisioning => {
-          if (existing) {
-            return {
-              type: "provisioned",
-              config: {
-                scope: config.scope,
-                agentName: input.agentName,
-                billingOrganizationId: existing.billingOrganizationId,
-              },
-            };
-          }
-          // Work a user answers for has no organization to bill unless the user picks one.
-          if (
-            backofficeScopeRootOwner(config.scope)?.kind === "user" &&
-            input.billingOrganizationId === null
-          ) {
-            return { type: "billing-owner-required" };
-          }
-          uow.create("agent", {
-            id: input.agentName,
-            billingOrganizationId: input.billingOrganizationId,
-          });
-          return {
-            type: "provisioned",
-            config: {
-              scope: config.scope,
-              agentName: input.agentName,
-              billingOrganizationId: input.billingOrganizationId,
-            },
-          };
-        })
-        .build();
-    },
     /** Built-in definitions shadow nothing: their names cannot be defined in a scope. */
     getAgent: function (agentName: string) {
       return this.serviceTx(piAgentDirectorySchema)
