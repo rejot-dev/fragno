@@ -45,6 +45,7 @@ import {
   type BackofficeRpcContext,
 } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
+import { provisionedResourceId } from "@/fragno/apps/provisioned-id";
 import type {
   AutomationFragmentConfig,
   AutomationIngestResult,
@@ -1055,6 +1056,28 @@ export class InMemoryAutomationsObject extends RpcTarget implements AutomationsO
     );
   }
 
+  async provisionAppProject(input: {
+    appId: string;
+    externalProjectId: string;
+    name: string;
+    createdByUserId: string;
+  }): Promise<{ projectId: string; slug: string; created: boolean }> {
+    await this.#ensureConfigured({ scope: this.#requireScope() });
+    const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
+    const projectId = provisionedResourceId({
+      appId: input.appId,
+      kind: "project",
+      externalId: input.externalProjectId,
+    });
+    return await runtime.automationFragment.callServices(() =>
+      runtime.automationFragment.services.provisionAppProject({
+        projectId,
+        name: input.name,
+        createdByUserId: input.createdByUserId,
+      }),
+    );
+  }
+
   async getDurableHookQueue(
     fragment: AutomationsDurableHookFragment,
     options?: DurableHookQueueOptions,
@@ -1228,6 +1251,15 @@ export class Automations extends DurableObject<CloudflareEnv> implements Automat
 
   async resolveProjectForExecution(input: { projectId?: string; slug?: string }) {
     return await this.#object.resolveProjectForExecution(input);
+  }
+
+  async provisionAppProject(input: {
+    appId: string;
+    externalProjectId: string;
+    name: string;
+    createdByUserId: string;
+  }) {
+    return await this.#object.provisionAppProject(input);
   }
 
   async getDurableHookQueue(

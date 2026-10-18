@@ -22,6 +22,7 @@ describe("Capability contributions", () => {
       "integrations",
       "otp",
       "pi",
+      "provisioning",
       "sandbox",
       "scheduler",
       "telegram",

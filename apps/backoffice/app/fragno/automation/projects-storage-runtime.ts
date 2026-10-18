@@ -8,6 +8,8 @@ import {
 
 import type { DatabaseServiceContext } from "@fragno-dev/db";
 
+import { nextNumberedSlug } from "@/lib/numbered-slug";
+
 import { AUTOMATION_SYSTEM_INITIATOR } from "./actors";
 import type { AutomationEventIngestionPayload, AutomationInternalHooks } from "./internal-hooks";
 import {
@@ -241,6 +243,56 @@ export const createAutomationProjectServices = (
             id: id.valueOf(),
             ...project,
           };
+        })
+        .build();
+    },
+
+    /**
+     * Creates the project an app provisioned, once. The caller derives `projectId` from the app's
+     * own identifier, so a repeated call finds the project it made, even after a rename.
+     */
+    provisionAppProject(args: { projectId: string; name: string; createdByUserId: string }) {
+      const ownerScope = requireProjectOwner(options.ownerScope);
+      // Leaves room for the number that makes the slug unique.
+      const base = slugFromProjectName(args.name).slice(0, 72).replace(/-+$/, "") || "project";
+      return this.serviceTx(automationFragmentSchema)
+        .retrieve((uow) =>
+          uow
+            .findFirst("project", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", args.projectId)),
+            )
+            .find("project", (b) =>
+              b.whereIndex("idx_project_slug", (eb) => eb("slug", "starts with", base)),
+            ),
+        )
+        .mutate(({ uow, retrieveResult: [existing, sharing] }) => {
+          if (existing) {
+            return { projectId: args.projectId, slug: existing.slug, created: false };
+          }
+          const now = new Date();
+          const nowIso = now.toISOString();
+          const project = {
+            slug: nextNumberedSlug(
+              base,
+              sharing.map(({ slug }) => slug),
+            ),
+            name: args.name,
+            description: null,
+            archivedAt: null,
+            createdByUserId: args.createdByUserId,
+            createdAt: now,
+            updatedAt: now,
+          };
+          const id = uow.create("project", { id: args.projectId, ...project });
+          triggerProjectEvent({
+            uow,
+            ownerScope,
+            eventType: "project.created",
+            project: { id, ...project },
+            occurredAt: nowIso,
+            timestamps: { archivedAt: null, createdAt: nowIso, updatedAt: nowIso },
+          });
+          return { projectId: args.projectId, slug: project.slug, created: true };
         })
         .build();
     },

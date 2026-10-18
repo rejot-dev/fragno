@@ -1,9 +1,4 @@
 import type { BackofficeApi, BackofficeApiImplementation } from "@fragno-dev/backoffice-api/api";
-import {
-  BACKOFFICE_API_ERROR_STATUS,
-  type BackofficeApiError,
-  type BackofficeApiErrorCode,
-} from "@fragno-dev/backoffice-api/errors";
 import { createOpenApiDocument } from "@fragno-dev/backoffice-api/openapi";
 import { backofficeApiV0 } from "@fragno-dev/backoffice-api/v0";
 import {
@@ -37,22 +32,13 @@ import type { BackofficeToolContext } from "@/fragno/runtime-tools/runtime-tools
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
 import { principalFromBackofficeJwt } from "@/worker-runtime/request-state.server";
 
+import { apiError } from "./api-error";
+import { backofficeProvisioningRouter } from "./provisioning-router";
 import { createRuntimeToolHandlers } from "./runtime-tool-handlers";
 import { backofficeApiV0Adapters } from "./v0-adapters";
 
 /** Per-request services; both hosts create them before dispatching here. */
 type BackofficeApiBindings = { runtime: BackofficeRuntimeServices; kernel: BackofficeKernel };
-
-function apiError(
-  code: BackofficeApiErrorCode,
-  message: string,
-  headers: Record<string, string> = {},
-): Response {
-  return Response.json({ error: { code, message } } satisfies BackofficeApiError, {
-    status: BACKOFFICE_API_ERROR_STATUS[code],
-    headers: { "cache-control": "no-store", ...headers },
-  });
-}
 
 /**
  * Turns a bearer credential into an execution for the requested scope. User credentials act with
@@ -225,6 +211,7 @@ function createVersionRouter<TApi extends BackofficeApi>(
 
 /** Serves `/api/<version>/…`; every other path belongs to React Router. */
 export const backofficeApiRouter = new Hono<{ Bindings: BackofficeApiBindings }>()
+  .route(`/api/${backofficeApiV0.version}/provisioning`, backofficeProvisioningRouter)
   .route(
     `/api/${backofficeApiV0.version}`,
     createVersionRouter(

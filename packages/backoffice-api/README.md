@@ -76,6 +76,30 @@ the outcome is unknown. Network failures reject with `BackofficeApiUnreachableEr
 is also unknown. Anything else, such as a success body that does not match the client's contract, is
 a bug and rejects unchanged.
 
+## Provisioning
+
+`v0/provisioning` is a separate contract for apps Backoffice operates. Its operations are
+`POST /api/<version>/provisioning/<operationId>` with the app's OAuth client-credentials token, not
+a scope: they create the users, organizations, and projects that scopes then name. Each requires the
+provisioning permission of the same name, which only a Backoffice administrator grants, and is
+idempotent on the app's identifiers, so a call whose outcome is unknown can be repeated.
+
+```ts
+import { createBackofficeProvisioningClient } from "@fragno-dev/backoffice-api/v0/client";
+
+const provisioning = createBackofficeProvisioningClient({ origin, accessToken, fetch });
+const user = await provisioning.call("users.provision", {
+  externalUserId: "user_123",
+  email: "ada@example.com",
+  name: "Ada",
+});
+if (user.status === "requires_link") {
+  // Another Backoffice account has the address; its owner links it by authorizing the app.
+}
+```
+
+Errors reject like `createBackofficeApiClient`'s.
+
 ## OpenAPI
 
 ```ts

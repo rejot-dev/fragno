@@ -1,3 +1,7 @@
+import {
+  backofficeProvisioningOperations,
+  type BackofficeProvisioningOperationId,
+} from "@fragno-dev/backoffice-api/v0/provisioning";
 import { z } from "zod";
 
 import type { BackofficeCapability } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
@@ -6,6 +10,31 @@ import { createDurableHookRepositoryFromCommands } from "@/fragno/durable-hook-c
 export const AUTH_AUTOMATION_SOURCE = "auth" as const;
 export const AUTH_AUTOMATION_EVENT_ORGANIZATION_CREATED = "organization.created" as const;
 export const AUTH_AUTOMATION_EVENT_ORGANIZATION_UPDATED = "organization.updated" as const;
+
+/** First-party apps' provisioning, recorded in the System scope as its audit trail. */
+export const PROVISIONING_AUTOMATION_SOURCE = "provisioning" as const;
+export const PROVISIONING_AUTOMATION_EVENTS = {
+  "users.provision": { eventType: "user.provisioned", label: "User provisioned" },
+  "organizations.provision": {
+    eventType: "organization.provisioned",
+    label: "Organization provisioned",
+  },
+  "projects.provision": { eventType: "project.provisioned", label: "Project provisioned" },
+  "organizations.members.sync": {
+    eventType: "organization.members.synced",
+    label: "Organization members synced",
+  },
+} as const satisfies Record<
+  BackofficeProvisioningOperationId,
+  { eventType: string; label: string }
+>;
+
+const provisioningActorSchema = z.object({
+  scope: z.literal("internal"),
+  type: z.literal("app"),
+  id: z.string().trim().min(1),
+  role: z.literal("initiator"),
+});
 
 const authOrganizationPayloadSchema = z.object({
   organization: z.object({
@@ -52,6 +81,12 @@ export const authCapability: BackofficeCapability = {
         label: "Organizations",
         description: "Backoffice organization lifecycle events.",
       },
+      {
+        source: PROVISIONING_AUTOMATION_SOURCE,
+        label: "Provisioning",
+        description:
+          "First-party apps provisioning users, organizations, projects, and memberships.",
+      },
     ],
     actionProviders: [],
     hookScopes: [
@@ -65,6 +100,22 @@ export const authCapability: BackofficeCapability = {
     skillPaths: [],
     externalEntities: [],
     automationEvents: [
+      ...Object.entries(PROVISIONING_AUTOMATION_EVENTS).map(([operationId, event]) => {
+        const operation =
+          backofficeProvisioningOperations[operationId as BackofficeProvisioningOperationId];
+        return {
+          source: PROVISIONING_AUTOMATION_SOURCE,
+          eventType: event.eventType,
+          label: event.label,
+          description: `Records a first-party app's ${operationId} call: ${operation.description}`,
+          payloadSchema: z.object({
+            appId: z.string().trim().min(1),
+            input: operation.input,
+            result: operation.output,
+          }),
+          actorSchema: provisioningActorSchema,
+        };
+      }),
       {
         source: AUTH_AUTOMATION_SOURCE,
         eventType: AUTH_AUTOMATION_EVENT_ORGANIZATION_CREATED,

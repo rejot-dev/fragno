@@ -2,6 +2,10 @@ import type { z } from "zod";
 
 import { backofficeApiErrorSchema, type BackofficeApiErrorCode } from "../errors";
 import { backofficeApiV0 } from "./api";
+import {
+  backofficeProvisioningOperations,
+  type BackofficeProvisioningOperationId,
+} from "./provisioning";
 import { backofficeScopePathSegment, type BackofficeContextScope } from "./shared/scope";
 
 type Operations = typeof backofficeApiV0.operations;
@@ -101,6 +105,54 @@ export function createBackofficeApiClient({
       return backofficeApiV0.operations[operationId].output.parse(
         response.status === 204 ? undefined : await response.json(),
       ) as z.output<Operations[typeof operationId]["output"]>;
+    },
+  };
+}
+
+type ProvisioningOperations = typeof backofficeProvisioningOperations;
+
+export type BackofficeProvisioningClient = {
+  /** Runs one provisioning operation, returning its output parsed by the operation's schema. */
+  call<TId extends BackofficeProvisioningOperationId>(
+    operationId: TId,
+    input: z.input<ProvisioningOperations[TId]["input"]>,
+  ): Promise<z.output<ProvisioningOperations[TId]["output"]>>;
+};
+
+/**
+ * Calls the provisioning API at `origin` with a first-party app's client-credentials token. Fails
+ * like `createBackofficeApiClient`; every operation is idempotent, so a call whose outcome is
+ * unknown can be repeated.
+ */
+export function createBackofficeProvisioningClient({
+  origin,
+  accessToken,
+  fetch,
+}: {
+  origin: string;
+  accessToken: string;
+  fetch: typeof globalThis.fetch;
+}): BackofficeProvisioningClient {
+  return {
+    async call(operationId, input) {
+      const url = new URL(`/api/${backofficeApiV0.version}/provisioning/${operationId}`, origin);
+      let response: Response;
+      try {
+        response = await fetch(url, {
+          method: "POST",
+          headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
+          body: JSON.stringify(input),
+        });
+      } catch (error) {
+        throw new BackofficeApiUnreachableError(error);
+      }
+      if (!response.ok) {
+        throw await requestErrorFromResponse(response);
+      }
+      // TypeScript cannot relate an indexed schema's result to `TId`; it is that operation's output.
+      return backofficeProvisioningOperations[operationId].output.parse(
+        await response.json(),
+      ) as z.output<ProvisioningOperations[typeof operationId]["output"]>;
     },
   };
 }

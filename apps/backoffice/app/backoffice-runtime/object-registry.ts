@@ -53,6 +53,7 @@ import type {
   BackofficeAppInstallationsCommands,
 } from "@/fragno/app-installations/contracts";
 import type { BackofficeAppsCommands } from "@/fragno/apps/contracts";
+import type { AuthAppProvisioningCommands } from "@/fragno/auth/app-provisioning";
 import type {
   BackofficeCliOAuthConfig,
   BackofficeMeData,
@@ -280,143 +281,147 @@ export type AdminOrganizationMemberRecord = {
   roles: string[];
 };
 
-export type AuthObject = DurableHookCommands & {
-  enqueueEmailVerificationHook(
-    input: { userId: string; email: string },
-    propagationContext?: Readonly<Record<string, string>> | null,
-  ): Promise<string>;
-  enqueueOrganizationHook(
-    hookName: "onOrganizationCreated" | "onOrganizationUpdated",
-    payload: OrganizationHookPayload,
-    propagationContext?: Readonly<Record<string, string>> | null,
-  ): Promise<string>;
-  verifyUserEmail(input: VerifyUserEmailInput): Promise<VerifyUserEmailResult>;
-  getBackofficeMe(input: {
-    userId: string;
-    activeOrganizationId: string | null;
-  }): Promise<BackofficeMeData | null>;
-  /** Creates an OAuth client owned by the administrator principal, not an organization installation. */
-  createAdminOAuthClient(
-    input: BackofficeOAuthClientCreateRequest & { administratorUserId: string },
-  ): Promise<BackofficeOAuthClientCreateResult>;
-  /** Reads the global, credential-free OAuth catalog under live administrator authority. */
-  listAdminOAuthClients(
-    input: BackofficeOAuthClientListInput & { administratorUserId: string },
-  ): Promise<BackofficeOAuthClientPage>;
-  /** Changes an administrator-owned client's redirects, scopes, and client credentials. */
-  updateAdminOAuthClient(
-    input: BackofficeOAuthClientUpdateInput & { administratorUserId: string },
-  ): Promise<BackofficeOAuthClientUpdateResult>;
-  /** Replaces an administrator-owned confidential client's secret, returning it once. */
-  rotateAdminOAuthClientSecret(
-    input: BackofficeOAuthClientRotateSecretInput & { administratorUserId: string },
-  ): Promise<BackofficeOAuthClientRotateSecretResult>;
-  /** Reads Auth-owned OAuth client facts without exposing credentials. */
-  getOAuthClientFacts(input: { clientId: string }): Promise<BackofficeOAuthClientFacts | null>;
-  /** Signs a short-lived code that lets the app's server claim an approved installation. */
-  issueAppInstallationCode(input: {
-    appId: string;
-    owner: AppInstallationOwner;
-    activation: number;
-  }): Promise<{ code: string }>;
-  /** Signs one request to an app's action endpoint; the token is valid only for that body. */
-  issueAppActionToken(input: AppActionTokenInput): Promise<{ token: string }>;
-  getBackofficeCliOAuthConfig(input: { requestUrl: string }): Promise<BackofficeCliOAuthConfig>;
-  /** Verifies an installed app's client-credentials token and returns its registered app. */
-  authenticateInstalledAppClient(input: {
-    requestUrl: string;
-    oauthAccessToken: string;
-  }): Promise<{ appId: string }>;
-  /** Exchanges OAuth identity under a server-controlled execution policy, not app registration alone. */
-  exchangeBackofficeExecutionToken(
-    input: BackofficeExecutionTokenExchangeInput,
-  ): Promise<BackofficeExecutionTokenResult>;
-  getUserAuthorityFacts(input: {
-    userId: string;
-    organizationId?: string;
-  }): Promise<UserAuthorityFacts>;
-  /** Resolves live user status and roles for exactly one organization, without session metadata. */
-  getUserOrganizationAuthorityFacts(
-    input: UserOrganizationAuthorityInput,
-  ): Promise<UserOrganizationAuthorityFacts>;
-  /** Grants global administrator access; only the first administrator may be unverified. */
-  grantBackofficeAdminByEmail(input: { email: string }): Promise<GrantBackofficeAdminResult>;
-  createAdminOrganization(input: {
-    name: string;
-    slug: string;
-    ownerEmail: string;
-  }): Promise<AdminOrganizationRecord>;
-  /** Creates an organization owned by the user, with the first free slug its name suggests. */
-  createUserOrganization(input: {
-    userId: string;
-    name: string;
-  }): Promise<{ id: string; slug: string }>;
-  /** Marks an email address verified without the owner proving it, as an administrator. */
-  verifyAdminUserEmail(input: { email: string }): Promise<AdminUserEmailVerificationRecord>;
-  addAdminOrganizationMember(input: {
-    organizationId: string;
-    userEmail: string;
-    roles: readonly OrganizationRole[];
-  }): Promise<AdminOrganizationMemberRecord>;
-  removeAdminOrganizationMember(input: {
-    organizationId: string;
-    userEmail: string;
-  }): Promise<AdminOrganizationMemberRecord>;
-  // Directory commands do not authorize: callers pass the principal or organization that kernel
-  // authorization already established for the execution.
-  getAccountProfile(input: { userId: string }): Promise<AccountProfile>;
-  updateAccountProfile(input: { userId: string; name: string }): Promise<AccountProfile>;
-  listAccountOrganizations(input: { userId: string }): Promise<OrganizationMembershipRecord[]>;
-  listAccountInvitations(input: { userId: string }): Promise<AccountInvitationListing>;
-  /** Accepts as the user, so Better Auth enforces the recipient email, expiry, and status. */
-  acceptAccountInvitation(input: {
-    userId: string;
-    invitationId: string;
-  }): Promise<OrganizationMembershipRecord>;
-  listAccountOAuthConsents(
-    input: { userId: string } & DirectoryPageInput,
-  ): Promise<OAuthConsentPage>;
-  getOrganization(input: { organizationId: string }): Promise<OrganizationRecord | null>;
-  getOrganizationMembership(input: {
-    organizationId: string;
-    userId: string;
-  }): Promise<OrganizationMembershipRecord | null>;
-  updateOrganization(input: { organizationId: string; name: string }): Promise<OrganizationRecord>;
-  listOrganizations(input: DirectoryPageInput): Promise<OrganizationPage>;
-  listOrganizationMembers(
-    input: { organizationId: string } & DirectoryPageInput,
-  ): Promise<OrganizationMemberPage>;
-  listOrganizationInvitations(
-    input: { organizationId: string } & DirectoryPageInput,
-  ): Promise<OrganizationInvitationPage>;
-  /** Invites as the inviter, so Better Auth enforces membership, duplicate, and owner-role rules. */
-  createOrganizationInvitation(input: {
-    organizationId: string;
-    inviterUserId: string;
-    email: string;
-    roles: readonly OrganizationRole[];
-  }): Promise<OrganizationInvitationRecord>;
-  getAllOrganizations(): Promise<Organization[]>;
-  getOrganizationBySlug(slug: string): Promise<Pick<Organization, "id" | "slug"> | null>;
-  hasOrganizationMember(input: { organizationId: string; userId: string }): Promise<boolean>;
-  getDevOrganizations(): Promise<
-    Array<
-      Pick<Organization, "id" | "name" | "slug" | "createdBy"> & {
-        createdAt: Date;
-        updatedAt: Date;
-      }
-    >
-  >;
-  /**
-   * Applies deterministic auth state for scenario setup without sessions or lifecycle hooks.
-   * Production auth flows must use Better Auth's public endpoints instead.
-   */
-  applyScenarioFixture(fixture: ScenarioAuthFixture): Promise<void>;
-  getScenarioMemberRoles(input: {
-    organizationId: string;
-    userId: string;
-  }): Promise<string[] | null>;
-};
+export type AuthObject = DurableHookCommands &
+  AuthAppProvisioningCommands & {
+    enqueueEmailVerificationHook(
+      input: { userId: string; email: string },
+      propagationContext?: Readonly<Record<string, string>> | null,
+    ): Promise<string>;
+    enqueueOrganizationHook(
+      hookName: "onOrganizationCreated" | "onOrganizationUpdated",
+      payload: OrganizationHookPayload,
+      propagationContext?: Readonly<Record<string, string>> | null,
+    ): Promise<string>;
+    verifyUserEmail(input: VerifyUserEmailInput): Promise<VerifyUserEmailResult>;
+    getBackofficeMe(input: {
+      userId: string;
+      activeOrganizationId: string | null;
+    }): Promise<BackofficeMeData | null>;
+    /** Creates an OAuth client owned by the administrator principal, not an organization installation. */
+    createAdminOAuthClient(
+      input: BackofficeOAuthClientCreateRequest & { administratorUserId: string },
+    ): Promise<BackofficeOAuthClientCreateResult>;
+    /** Reads the global, credential-free OAuth catalog under live administrator authority. */
+    listAdminOAuthClients(
+      input: BackofficeOAuthClientListInput & { administratorUserId: string },
+    ): Promise<BackofficeOAuthClientPage>;
+    /** Changes an administrator-owned client's redirects, scopes, and client credentials. */
+    updateAdminOAuthClient(
+      input: BackofficeOAuthClientUpdateInput & { administratorUserId: string },
+    ): Promise<BackofficeOAuthClientUpdateResult>;
+    /** Replaces an administrator-owned confidential client's secret, returning it once. */
+    rotateAdminOAuthClientSecret(
+      input: BackofficeOAuthClientRotateSecretInput & { administratorUserId: string },
+    ): Promise<BackofficeOAuthClientRotateSecretResult>;
+    /** Reads Auth-owned OAuth client facts without exposing credentials. */
+    getOAuthClientFacts(input: { clientId: string }): Promise<BackofficeOAuthClientFacts | null>;
+    /** Signs a short-lived code that lets the app's server claim an approved installation. */
+    issueAppInstallationCode(input: {
+      appId: string;
+      owner: AppInstallationOwner;
+      activation: number;
+    }): Promise<{ code: string }>;
+    /** Signs one request to an app's action endpoint; the token is valid only for that body. */
+    issueAppActionToken(input: AppActionTokenInput): Promise<{ token: string }>;
+    getBackofficeCliOAuthConfig(input: { requestUrl: string }): Promise<BackofficeCliOAuthConfig>;
+    /** Verifies an installed app's client-credentials token and returns its registered app. */
+    authenticateInstalledAppClient(input: {
+      requestUrl: string;
+      oauthAccessToken: string;
+    }): Promise<{ appId: string }>;
+    /** Exchanges OAuth identity under a server-controlled execution policy, not app registration alone. */
+    exchangeBackofficeExecutionToken(
+      input: BackofficeExecutionTokenExchangeInput,
+    ): Promise<BackofficeExecutionTokenResult>;
+    getUserAuthorityFacts(input: {
+      userId: string;
+      organizationId?: string;
+    }): Promise<UserAuthorityFacts>;
+    /** Resolves live user status and roles for exactly one organization, without session metadata. */
+    getUserOrganizationAuthorityFacts(
+      input: UserOrganizationAuthorityInput,
+    ): Promise<UserOrganizationAuthorityFacts>;
+    /** Grants global administrator access; only the first administrator may be unverified. */
+    grantBackofficeAdminByEmail(input: { email: string }): Promise<GrantBackofficeAdminResult>;
+    createAdminOrganization(input: {
+      name: string;
+      slug: string;
+      ownerEmail: string;
+    }): Promise<AdminOrganizationRecord>;
+    /** Creates an organization owned by the user, with the first free slug its name suggests. */
+    createUserOrganization(input: {
+      userId: string;
+      name: string;
+    }): Promise<{ id: string; slug: string }>;
+    /** Marks an email address verified without the owner proving it, as an administrator. */
+    verifyAdminUserEmail(input: { email: string }): Promise<AdminUserEmailVerificationRecord>;
+    addAdminOrganizationMember(input: {
+      organizationId: string;
+      userEmail: string;
+      roles: readonly OrganizationRole[];
+    }): Promise<AdminOrganizationMemberRecord>;
+    removeAdminOrganizationMember(input: {
+      organizationId: string;
+      userEmail: string;
+    }): Promise<AdminOrganizationMemberRecord>;
+    // Directory commands do not authorize: callers pass the principal or organization that kernel
+    // authorization already established for the execution.
+    getAccountProfile(input: { userId: string }): Promise<AccountProfile>;
+    updateAccountProfile(input: { userId: string; name: string }): Promise<AccountProfile>;
+    listAccountOrganizations(input: { userId: string }): Promise<OrganizationMembershipRecord[]>;
+    listAccountInvitations(input: { userId: string }): Promise<AccountInvitationListing>;
+    /** Accepts as the user, so Better Auth enforces the recipient email, expiry, and status. */
+    acceptAccountInvitation(input: {
+      userId: string;
+      invitationId: string;
+    }): Promise<OrganizationMembershipRecord>;
+    listAccountOAuthConsents(
+      input: { userId: string } & DirectoryPageInput,
+    ): Promise<OAuthConsentPage>;
+    getOrganization(input: { organizationId: string }): Promise<OrganizationRecord | null>;
+    getOrganizationMembership(input: {
+      organizationId: string;
+      userId: string;
+    }): Promise<OrganizationMembershipRecord | null>;
+    updateOrganization(input: {
+      organizationId: string;
+      name: string;
+    }): Promise<OrganizationRecord>;
+    listOrganizations(input: DirectoryPageInput): Promise<OrganizationPage>;
+    listOrganizationMembers(
+      input: { organizationId: string } & DirectoryPageInput,
+    ): Promise<OrganizationMemberPage>;
+    listOrganizationInvitations(
+      input: { organizationId: string } & DirectoryPageInput,
+    ): Promise<OrganizationInvitationPage>;
+    /** Invites as the inviter, so Better Auth enforces membership, duplicate, and owner-role rules. */
+    createOrganizationInvitation(input: {
+      organizationId: string;
+      inviterUserId: string;
+      email: string;
+      roles: readonly OrganizationRole[];
+    }): Promise<OrganizationInvitationRecord>;
+    getAllOrganizations(): Promise<Organization[]>;
+    getOrganizationBySlug(slug: string): Promise<Pick<Organization, "id" | "slug"> | null>;
+    hasOrganizationMember(input: { organizationId: string; userId: string }): Promise<boolean>;
+    getDevOrganizations(): Promise<
+      Array<
+        Pick<Organization, "id" | "name" | "slug" | "createdBy"> & {
+          createdAt: Date;
+          updatedAt: Date;
+        }
+      >
+    >;
+    /**
+     * Applies deterministic auth state for scenario setup without sessions or lifecycle hooks.
+     * Production auth flows must use Better Auth's public endpoints instead.
+     */
+    applyScenarioFixture(fixture: ScenarioAuthFixture): Promise<void>;
+    getScenarioMemberRoles(input: {
+      organizationId: string;
+      userId: string;
+    }): Promise<string[] | null>;
+  };
 
 /**
  * Starts an object ahead of the pages that use it. Resolves once its constructor's
@@ -587,6 +592,13 @@ export type AutomationsObject = {
     projectId?: string;
     slug?: string;
   }): Promise<AutomationProjectExecutionTarget | null>;
+  /** Idempotent on the app and its identifier for the project. */
+  provisionAppProject(input: {
+    appId: string;
+    externalProjectId: string;
+    name: string;
+    createdByUserId: string;
+  }): Promise<{ projectId: string; slug: string; created: boolean }>;
   getDurableHookQueue(
     fragment: AutomationsDurableHookFragment,
     options?: DurableHookQueueOptions,
