@@ -4,6 +4,7 @@ import { Link } from "react-router";
 
 import { cn } from "../cn";
 import { Icon, type IconName } from "./icon";
+import { seededColor } from "./seeded-color";
 
 // Top-bar dropdown for picking what the chrome is currently about (organization, project,
 // account) and jumping to related destinations. The trigger shows a small label over the current
@@ -32,21 +33,6 @@ type WorkspaceMark = { kind: "letter"; letter: string } | { kind: "icon"; icon: 
 // (not a display name) as the seed to keep the colour across renames.
 type WorkspaceColor = { kind: "primary" } | { kind: "seeded"; seed: string };
 
-// FNV-1a keeps the hue stable across sessions and spreads similar seeds apart.
-function seedHue(seed: string) {
-  let hash = 0x811c9dc5;
-  for (let index = 0; index < seed.length; index++) {
-    hash ^= seed.charCodeAt(index);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return (hash >>> 0) % 360;
-}
-
-// Fixed lightness and chroma keep every hue equally prominent and legible under a white mark.
-function workspaceTileColor(seed: string) {
-  return `oklch(0.62 0.14 ${seedHue(seed)})`;
-}
-
 function WorkspaceTile({
   mark,
   color,
@@ -58,9 +44,7 @@ function WorkspaceTile({
 }) {
   return (
     <span
-      style={
-        color.kind === "seeded" ? { backgroundColor: workspaceTileColor(color.seed) } : undefined
-      }
+      style={color.kind === "seeded" ? { backgroundColor: seededColor(color.seed) } : undefined}
       className={cn(
         "mr-1 flex size-8 shrink-0 items-center justify-center rounded-[6px]",
         color.kind === "primary"
