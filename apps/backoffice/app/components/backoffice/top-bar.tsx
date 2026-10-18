@@ -18,6 +18,7 @@ import { useAutomationProjects } from "@/fragno/automation/tanstack/use-automati
 
 import { BackofficeAccountMenu } from "./account-menu";
 import { GLOBAL_WORKFLOW_DRAWER_ID } from "./global-workflow-drawer";
+import { BackofficePresenceIndicator } from "./presence-indicator";
 import {
   BackofficeProjectMenu,
   type BackofficeProjectMenuOwner,
@@ -150,8 +151,14 @@ export function BackofficeTopBar({
           </div>
         ) : null}
 
-        <div className="ml-auto flex shrink-0 items-center min-[960px]:border-l min-[960px]:border-[color:var(--bo-border)]">
-          <BackofficeAccountMenu me={me} currentScope={routeScope} isLoading={isLoading} />
+        <div className="ml-auto flex shrink-0 items-stretch">
+          {me?.activeOrganizationId ? (
+            // Keyed so switching organizations drops the previous organization's members.
+            <BackofficePresenceIndicator key={me.activeOrganizationId} />
+          ) : null}
+          <div className="flex shrink-0 items-center min-[960px]:border-l min-[960px]:border-[color:var(--bo-border)]">
+            <BackofficeAccountMenu me={me} currentScope={routeScope} isLoading={isLoading} />
+          </div>
         </div>
 
         {onWorkflowDrawerToggle ? (
