@@ -334,6 +334,11 @@ export type AuthObject = DurableHookCommands & {
     slug: string;
     ownerEmail: string;
   }): Promise<AdminOrganizationRecord>;
+  /** Creates an organization owned by the user, with the first free slug its name suggests. */
+  createUserOrganization(input: {
+    userId: string;
+    name: string;
+  }): Promise<{ id: string; slug: string }>;
   addAdminOrganizationMember(input: {
     organizationId: string;
     userEmail: string;
