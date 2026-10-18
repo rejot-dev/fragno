@@ -60,17 +60,11 @@ export type OrganizationMembership = {
   member: OrganizationMember;
 };
 
-export type OrganizationInvitationSummary = {
-  invitation: OrganizationInvitation;
-  organization: Organization;
-};
-
 export type BackofficeMeData = {
   user: AuthUser;
   organizations: OrganizationMembership[];
   activeOrganizationId: string | null;
   activeOrganization: OrganizationMembership | null;
-  invitations: OrganizationInvitationSummary[];
 };
 
 export type IssueBackofficeTokenInput =
@@ -133,25 +127,9 @@ const organizationMemberSchema = z.object({
   updatedAt: z.coerce.date(),
 }) satisfies z.ZodType<OrganizationMember>;
 
-const organizationInvitationSchema = z.object({
-  id: z.string(),
-  organizationId: z.string(),
-  email: z.string(),
-  roles: z.array(z.string()),
-  status: z.enum(["pending", "accepted", "rejected", "canceled", "expired"]),
-  inviterId: z.string(),
-  expiresAt: z.coerce.date(),
-  createdAt: z.coerce.date(),
-}) satisfies z.ZodType<OrganizationInvitation>;
-
 const organizationMembershipSchema = z.object({
   organization: organizationSchema,
   member: organizationMemberSchema,
-});
-
-const organizationInvitationSummarySchema = z.object({
-  invitation: organizationInvitationSchema,
-  organization: organizationSchema,
 });
 
 export const backofficeMeDataSchema = z.object({
@@ -159,7 +137,6 @@ export const backofficeMeDataSchema = z.object({
   organizations: z.array(organizationMembershipSchema),
   activeOrganizationId: z.string().nullable(),
   activeOrganization: organizationMembershipSchema.nullable(),
-  invitations: z.array(organizationInvitationSummarySchema),
 }) satisfies z.ZodType<BackofficeMeData>;
 
 export const issueBackofficeTokenInputSchema = z.discriminatedUnion("selection", [

@@ -120,5 +120,4 @@ const createAuthMe = () => ({
     organization: { id: "org_123", slug: "fragno", name: "Fragno" },
     member: { organizationId: "org_123" },
   },
-  invitations: [],
 });

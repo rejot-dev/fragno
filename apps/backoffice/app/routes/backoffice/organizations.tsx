@@ -67,7 +67,10 @@ export async function action({ request, context }: Route.ActionArgs) {
   );
 }
 
-type UserInvitation = Awaited<ReturnType<typeof loader>>["invitations"][number];
+type UserInvitation = Extract<
+  Awaited<ReturnType<typeof loader>>,
+  { status: "listed" }
+>["invitations"][number];
 
 export function meta() {
   return [
@@ -82,7 +85,7 @@ export default function BackofficeOrganizations({ actionData }: Route.ComponentP
   const { mutate: switchOrganization, loading: switchingOrganization } =
     authClient.useSwitchOrganization();
   const revalidator = useRevalidator();
-  const userInvitationsData = useLoaderData<typeof loader>();
+  const userInvitations = useLoaderData<typeof loader>();
   const { mutate: respondInvitation, loading: respondingInvitation } =
     authClient.useRespondOrganizationInvitation();
   const [invitationNotice, setInvitationNotice] = useState<ActionNotice>(null);
@@ -92,7 +95,6 @@ export default function BackofficeOrganizations({ actionData }: Route.ComponentP
   const me = initialMe;
   const organizations = me?.organizations ?? [];
   const preferredOrganizationId = resolvePreferredOrganizationId(me, storedOrganizationId);
-  const openInvitations = userInvitationsData?.invitations ?? [];
   const sortedOrganizations = sortOrganizationsByPreference(organizations, preferredOrganizationId);
 
   const handleInvitationAction = async (entry: UserInvitation, action: "accept" | "reject") => {
@@ -160,10 +162,18 @@ export default function BackofficeOrganizations({ actionData }: Route.ComponentP
 
       <FormContainer
         eyebrow="Invitations"
-        title={`Open invitations (${openInvitations.length})`}
+        title={
+          userInvitations.status === "listed"
+            ? `Open invitations (${userInvitations.invitations.length})`
+            : "Open invitations"
+        }
         description="Invitations addressed to your account. Accepting adds you to the organization."
       >
-        {openInvitations.length === 0 ? (
+        {userInvitations.status === "email-unverified" ? (
+          <p className="text-sm text-[var(--bo-muted)]">
+            Verify your email address to see invitations sent to it.
+          </p>
+        ) : userInvitations.invitations.length === 0 ? (
           <p className="text-sm text-[var(--bo-muted)]">No open invitations.</p>
         ) : (
           <div className="overflow-hidden border border-[color:var(--bo-border)]">
@@ -188,7 +198,7 @@ export default function BackofficeOrganizations({ actionData }: Route.ComponentP
                 </tr>
               </thead>
               <tbody className="divide-y divide-[color:var(--bo-border)] bg-[var(--bo-panel)]">
-                {openInvitations.map((entry) => {
+                {userInvitations.invitations.map((entry) => {
                   const isWorking =
                     respondingInvitation && activeInvitationId === entry.invitation.id;
                   return (

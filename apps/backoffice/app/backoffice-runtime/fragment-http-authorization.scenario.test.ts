@@ -217,7 +217,7 @@ describe("fragment HTTP authority scenarios", () => {
         ]),
       );
       expect((await loadOrganizationInvitations(input, organization.slug)).invitations).toEqual([]);
-      expect((await loadUserInvitations(input)).invitations).toEqual([]);
+      expect(await loadUserInvitations(input)).toEqual({ status: "listed", invitations: [] });
       await expect(loadSystemUsers(input)).rejects.toMatchObject({ status: 403 });
       const invitationResponse = await auth.http.fetch(
         new Request(`${origin}/api/auth/organization/invite-member`, {
@@ -273,6 +273,7 @@ describe("fragment HTTP authority scenarios", () => {
         request: previewRequest,
         context: routerContext(ctx, previewRequest),
       });
+      assert(listed.status === "listed");
       expect(listed.invitations).toEqual(
         expect.arrayContaining([
           expect.objectContaining({

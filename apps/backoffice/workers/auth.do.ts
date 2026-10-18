@@ -1,8 +1,4 @@
-import type {
-  AccountInvitationRecord,
-  AccountProfile,
-  OAuthConsentPage,
-} from "@fragno-dev/backoffice-api/v0/account";
+import type { AccountProfile, OAuthConsentPage } from "@fragno-dev/backoffice-api/v0/account";
 import {
   type OrganizationRole,
   organizationRoleSchema,
@@ -30,6 +26,7 @@ import type { BackofficeRuntimeEnv } from "@/backoffice-runtime/backoffice-runti
 import type {
   AdminOrganizationMemberRecord,
   AdminOrganizationRecord,
+  AccountInvitationListing,
   AdminUserEmailVerificationRecord,
   AuthObject,
   GrantBackofficeAdminResult,
@@ -398,17 +395,6 @@ const toOrganizationMember = (member: StoreMember): OrganizationMember => ({
   updatedAt: toDate(member.createdAt),
 });
 
-const toOrganizationInvitation = (invitation: StoreInvitation): OrganizationInvitation => ({
-  id: invitation.id,
-  organizationId: invitation.organizationId,
-  email: invitation.email,
-  roles: splitOrganizationRoles(invitation.role),
-  status: invitation.status,
-  inviterId: invitation.inviterId,
-  expiresAt: toDate(invitation.expiresAt),
-  createdAt: toDate(invitation.createdAt),
-});
-
 const buildOrganizationPayload = (organization: Organization) => ({
   organization: {
     id: organization.id,
@@ -755,26 +741,6 @@ const buildBackofficeMe = async (
       : [];
   });
 
-  const invitations = await adapter.findMany<StoreInvitation>({
-    model: "invitation",
-    where: [
-      { field: "email", value: storedUser.email.toLowerCase() },
-      { field: "status", value: "pending" },
-    ],
-  });
-  const invitationOrganizationIds = [
-    ...new Set(invitations.map((invitation) => invitation.organizationId)),
-  ];
-  const invitationOrganizations = invitationOrganizationIds.length
-    ? await adapter.findMany<StoreOrganization>({
-        model: "organization",
-        where: [{ field: "id", value: invitationOrganizationIds, operator: "in" }],
-      })
-    : [];
-  const invitationOrganizationById = new Map(
-    invitationOrganizations.map((organization) => [organization.id, organization]),
-  );
-
   return {
     user: toAuthUser(storedUser),
     organizations: mappedOrganizations,
@@ -782,17 +748,6 @@ const buildBackofficeMe = async (
     activeOrganization:
       mappedOrganizations.find((entry) => entry.organization.id === input.activeOrganizationId) ??
       null,
-    invitations: invitations.flatMap((invitation) => {
-      const organization = invitationOrganizationById.get(invitation.organizationId);
-      return organization
-        ? [
-            {
-              invitation: toOrganizationInvitation(invitation),
-              organization: toOrganization(organization),
-            },
-          ]
-        : [];
-    }),
   };
 };
 
@@ -1775,10 +1730,20 @@ export class InMemoryAuthObject implements AuthObject {
     return await readAccountOrganizations(adapter, input.userId);
   }
 
-  async listAccountInvitations(input: { userId: string }): Promise<AccountInvitationRecord[]> {
+  async listAccountInvitations(input: { userId: string }): Promise<AccountInvitationListing> {
     const { adapter } = await this.#authContext();
-    const profile = await this.getAccountProfile(input);
-    return await readAccountInvitations(adapter, { email: profile.email, now: new Date() });
+    const user = await findStoreUser(adapter, input.userId);
+    if (!user) {
+      throw new Error(`Account invitations could not find user '${input.userId}'.`);
+    }
+    // As Better Auth does: an unproven address must not reveal invitations sent to it.
+    if (!normalizeBoolean(user.emailVerified)) {
+      return { status: "email-unverified" };
+    }
+    return {
+      status: "listed",
+      invitations: await readAccountInvitations(adapter, { email: user.email, now: new Date() }),
+    };
   }
 
   async acceptAccountInvitation(input: {
